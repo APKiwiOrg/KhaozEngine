@@ -197,7 +197,9 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
     remain, `[Obsolete]`, so an existing caller keeps building.
     Opt-in (default off): `ShowChevron` draws an up/down caret reflecting the open state; `Opacity` fades the whole
     dropdown for a host transition. `TextScale` (default `1f`) scales the trigger label AND every option row's
-    label, text only: the rects, the row fills, the chevron and the hit-testing are unchanged.
+    label, text only: the rects, the row fills, the chevron and the hit-testing are unchanged. Pointer actions
+    that open, close, select or dismiss consume their gesture, so controls behind the trigger or open list cannot
+    act on the same release.
   - `TabBar` - horizontal tab bar / segmented control: N evenly-split tabs, exactly one active. A valid tap
     activates a tab and raises `ChangedThisFrame` for one frame (and `Update` returns true), so the caller swaps
     the panel body only on a real change. `ActiveIndex` is settable to restore/persist the selection without

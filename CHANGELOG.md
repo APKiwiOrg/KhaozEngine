@@ -5,6 +5,17 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.20.1
+
+Dropdown pointer gestures no longer reach controls behind the trigger or open list.
+
+- `Dropdown.Update(Pointer)` consumes a gesture when it opens or closes the trigger, selects an option, or
+  dismisses the open list. A toggle or another dropdown updated later in the frame can no longer react to the
+  same release.
+- The return value still reports only a changed selection. Keyboard and gamepad control are unchanged.
+
+Consumer: https://github.com/APKiwiOrg/Grimhollow
+
 ## 18.20.0
 
 Explicit storage roots and bounded pending connections for tile-world hosts.

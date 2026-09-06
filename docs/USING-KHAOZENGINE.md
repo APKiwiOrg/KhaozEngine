@@ -1261,7 +1261,7 @@ primitives (headless-testable, matching `Slider.Nudge`) sit under each overload 
 
 - `Toggle`: menu-select (Enter/Space/A/Start) flips; select-next/previous (Left/Right/D-pad) force off/on. Primitives `Flip()` / `Set(bool)`.
 - `Slider`: select-next/previous nudge `Value` by `NudgeStep` (default 0.1). Primitive `Nudge(float)`.
-- `Dropdown`: closed -> menu-select opens, select-next/previous cycle the selection in place; open -> menu-up/down move `HighlightedIndex`, menu-select commits it, menu-cancel (Escape/B/Back) closes without changing. `Wrap` (default true) wraps at the ends; `FocusColor` fills the highlighted row (the pointer path leaves `HighlightedIndex` at -1, so its overlay is byte-identical). Primitives `Open`/`Close`/`HighlightNext`/`HighlightPrevious`/`CommitHighlight`/`StepSelection`.
+- `Dropdown`: closed -> menu-select opens, select-next/previous cycle the selection in place. Open -> menu-up/down move `HighlightedIndex`, menu-select commits it, menu-cancel (Escape/B/Back) closes without changing. Pointer actions that open, close, select or dismiss consume their gesture, so controls behind the trigger or open list cannot act on the same release. `Wrap` (default true) wraps at the ends. `FocusColor` fills the highlighted row (the pointer path leaves `HighlightedIndex` at -1, so its overlay is byte-identical). Primitives `Open`/`Close`/`HighlightNext`/`HighlightPrevious`/`CommitHighlight`/`StepSelection`.
 
 ```csharp
 // A keyboard/gamepad-navigable settings column inside a Screen. In the retained path the InputManager comes
@@ -5953,7 +5953,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.20.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.20.1" />
 ```
 
 ```csharp
@@ -11096,7 +11096,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.20.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.20.1" />
 ```
 
 ```csharp
@@ -11132,7 +11132,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.20.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.20.1" />
 ```
 
 ```csharp
@@ -11374,7 +11374,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.20.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.20.1" />
 ```
 
 ```csharp
@@ -13415,7 +13415,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="18.20.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="18.20.1" />
 </ItemGroup>
 ```
 

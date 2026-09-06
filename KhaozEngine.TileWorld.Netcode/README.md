@@ -215,7 +215,9 @@ it steps through the same `TileMoveSimulator` for free and can never move in a w
   from (id, max health, step mode, attack cadence, wander and leash radii, respawn delay, and a game-owned `Kind`),
   and the spawner that owns one home tile, its live actor and its respawn countdown. `LeashRadius` is checked
   against `TileWorldServerConfig.ActorMove.MaxPathRadius` where the definition arrives, at `TileActorHost.Add`,
-  because a leash beyond the pathfinder's window is a walk home it cannot plan in one go.
+  because a leash beyond the pathfinder's window is a walk home it cannot plan in one go. Cell eviction keeps the
+  documented respawn countdown. When it expires, the spawner retires any former actor restored from the evicted
+  cell before it checks the cap and builds the replacement.
 - **`TileActorHost`** (`server.Actors`) - `Add(definition, home)` to register a spawner, `Command(netId, command)`
   to latch one command onto one actor, `Behaviour` and `Seed` for the decision seam, `Spawners`,
   `TryGetSpawnerOf`, `Forget` (the despawn hook, dropping the unspent latch, the birth tile and the spawner link

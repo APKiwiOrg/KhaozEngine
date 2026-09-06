@@ -355,12 +355,13 @@ public sealed class TileActorHost
             case TileActorSpawnerState.Alive:
                 if (!server.TryGetActorState(spawner.ActorNetId, out _))
                 {
+                    long formerActorNetId = spawner.ActorNetId;
                     // A no-op for a loss the server saw, since Forget already dropped both entries. Kept for the
                     // loss it did NOT see: a cell eviction removes the entity without any despawn call, and this
                     // is the only pass that notices.
-                    spawnerByActor.Remove(spawner.ActorNetId);
-                    homeByActor.Remove(spawner.ActorNetId);
-                    spawner.Wait(spawner.Definition.RespawnDelayTicks);
+                    spawnerByActor.Remove(formerActorNetId);
+                    homeByActor.Remove(formerActorNetId);
+                    spawner.Wait(spawner.Definition.RespawnDelayTicks, formerActorNetId);
                 }
                 return;
             case TileActorSpawnerState.Waiting:
@@ -388,6 +389,16 @@ public sealed class TileActorHost
 
     void TrySpawn(TileActorSpawner spawner)
     {
+        long formerActorNetId = spawner.PendingFormerActorNetId;
+        if (formerActorNetId != 0L)
+        {
+            // An eviction starts the documented countdown, but its frozen actor can reappear when SpawnActorFrom
+            // materializes the home cell for the cap check. Retire that old lifecycle first. A real despawn already
+            // removed it, so false is the ordinary no-op for death and manual removal. Clear only after the attempt
+            // so a failed cleanup cannot orphan an id the spawner has forgotten.
+            server.DespawnActor(formerActorNetId);
+            spawner.FormerActorRetired();
+        }
         TileActorDefinition d = spawner.Definition;
         // The spawner rides INTO the spawn rather than being filed after it returns. See LinkSpawner.
         server.SpawnActorFrom(spawner.Home,

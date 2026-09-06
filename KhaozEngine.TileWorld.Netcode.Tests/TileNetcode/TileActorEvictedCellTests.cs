@@ -118,4 +118,43 @@ public class TileActorEvictedCellTests
         Assert.Equal(7, restored.ItemId);
     }
 
+    [Fact]
+    public void An_evicted_spawner_retires_its_restored_actor_before_replacing_it()
+    {
+        var hub = new InMemoryTransportHub();
+        using TileWorldServer s = Server(hub.Server, maxActorsPerCell: 1);
+        _ = new FreezeCache(s.Host);
+        var home = new TileCoord(12, 12, 0);
+        TileActorSpawner spawner = s.Actors.Add(new TileActorDefinition
+        {
+            Id = "rat",
+            MaxHealth = 30,
+            AttackTicks = 10,
+            RespawnDelayTicks = 2,
+        }, home);
+        s.Tick(0.25f);
+        long first = spawner.ActorNetId;
+        Assert.NotEqual(0L, first);
+        Assert.True(s.Host.RemoveCell(TileCells.CoordOf(home)));
+
+        s.Tick(0.25f);
+        Assert.Equal(TileActorSpawnerState.Waiting, spawner.State);
+        Assert.Equal(2, spawner.TicksUntilRespawn);
+        s.Tick(0.25f);
+        s.Tick(0.25f);
+
+        long replacement = spawner.ActorNetId;
+        Assert.Equal(TileActorSpawnerState.Alive, spawner.State);
+        Assert.NotEqual(0L, replacement);
+        Assert.NotEqual(first, replacement);
+        Assert.Equal(1, s.ActorCount);
+        Assert.False(s.Host.TryGetOwner(first, out _, out _));
+        Assert.True(s.Actors.TryGetSpawnerOf(replacement, out TileActorSpawner linked));
+        Assert.Same(spawner, linked);
+
+        for (int i = 0; i < 4; i++) s.Tick(0.25f);
+        Assert.Equal(TileActorSpawnerState.Alive, spawner.State);
+        Assert.Equal(replacement, spawner.ActorNetId);
+        Assert.Equal(1, s.ActorCount);
+    }
 }

@@ -448,6 +448,7 @@ chat.Draw(batch, white);
     `GuiDraw.FillStyled` against `EditorStyle` so it picks up `GuiStyle.Modern`'s rounded corners.
 - `UpdateOverlayView` / `UpdateOverlayScreen` (+ `UpdateOverlayTheme`) - the in-game auto-updater popup, a pure
   presenter over `KhaozEngine.Updates`' `IUpdateStatus`: it announces an available update, shows download
+  progress, and shows a dismissible, non-modal `Untrusted` panel when the client cannot authenticate the feed.
   progress, and prompts the restart-and-apply, driven by the theme's trigger key/button (default U / gamepad Y).
   Its dim scrim (like any opaque `Screen.BackgroundColor` via `Screen.DrawBackground`) fills the viewport's
   `WindowBounds`, so under a letterbox scale it covers the whole window instead of leaving the bars showing the

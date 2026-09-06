@@ -69,6 +69,12 @@ public static class UpdateOverlayStrings
     /// </summary>
     public static readonly StringId FailedBodyExhausted = new("update.overlay.failed.body.exhausted");
 
+    /// <summary>Title for <see cref="UpdateState.Untrusted"/>. No arguments.</summary>
+    public static readonly StringId UntrustedTitle = new("update.overlay.untrusted.title");
+
+    /// <summary>Body for <see cref="UpdateState.Untrusted"/>. No arguments.</summary>
+    public static readonly StringId UntrustedBody = new("update.overlay.untrusted.body");
+
     /// <summary>
     /// The dismiss prompt drawn under the body on a panel the player is allowed to decline
     /// (<see cref="UpdateOverlayView.IsDismissible"/>, and never for a required update). Takes
@@ -126,6 +132,8 @@ public static class UpdateOverlayStrings
             ["update.overlay.failed.title"] = "Update Failed",
             ["update.overlay.failed.body"] = "Press [{0}] to retry",
             ["update.overlay.failed.body.exhausted"] = "This update could not be installed",
+            ["update.overlay.untrusted.title"] = "Updates Cannot Be Verified",
+            ["update.overlay.untrusted.body"] = "This build cannot verify updates",
             ["update.overlay.dismiss.hint"] = "Press [{0}] to dismiss",
             ["update.overlay.available.title.required"] = "Required Update - v{0}",
             ["update.overlay.available.body.required"] = "A required update is downloading",

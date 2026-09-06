@@ -44,6 +44,8 @@ configured base host), and caps both the manifest and each downloaded file at a 
 - **`UpdateService`** - the check -> download -> apply state machine with resumable staging. Process
   control (shim launch, exit) is injectable, so the whole thing is headless-testable. The individual
   `CheckForUpdateAsync` / `StartDownloadAsync` / `ApplyUpdate` steps are for a fire-and-forget overlay;
+  an advertised newer build with a missing or invalid signed manifest rests at `UpdateState.Untrusted`,
+  exposes a player-presentable `ErrorMessage`, and remains fail-closed until a later check succeeds.
   for a startup gate see `EnsureUpToDateAsync` below. Opt into periodic in-session re-checking with
   `RecheckInterval` + `Tick(dt)` ("In-session recheck" below), and read `PostUpdateRelaunch` to detect a
   boot that follows an auto-applied update ("Detecting a post-update relaunch" below).

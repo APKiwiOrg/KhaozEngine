@@ -19,7 +19,10 @@ public interface IUpdateStatus
     long BytesDownloaded { get; }
     /// <summary>Total bytes this download must fetch.</summary>
     long TotalDownloadBytes { get; }
-    /// <summary>Last error message when <see cref="State"/> is <see cref="UpdateState.Failed"/>.</summary>
+    /// <summary>
+    /// Last player-presentable error when <see cref="State"/> is <see cref="UpdateState.Failed"/> or
+    /// <see cref="UpdateState.Untrusted"/>.
+    /// </summary>
     string? ErrorMessage { get; }
     /// <summary>True when the offered update is marked required.</summary>
     bool IsRequired { get; }

@@ -845,6 +845,7 @@ namespace KhaozEngine.Render3D
             _retired.BeginFrame();   // frees mid-life mesh buffers whose retirement fence has signaled (no stall)
             LatchRenderOrigin();
             _instances.Begin();
+            BeginFoliageFrame();
             _skinnedInstances.Begin();
             _boneMatrices.Clear();
             _lights.Clear();
@@ -1656,12 +1657,9 @@ namespace KhaozEngine.Render3D
             ApplyAlphaCutoffs(_instanceData, _runs);
             // Reduced into a staging copy, so _instanceData stays absolute for the culling + caster reads below.
             UploadInstancesRelative(cl);
+            PrepareFoliageFrame(cl);
 
-            // Camera-frustum visibility for the MAIN pass only. Computed after grouping (so it is index-aligned to
-            // the uploaded _instanceData / runs) and BEFORE the shadow pass runs, but the shadow pass ignores it -
-            // an off-screen caster must still write depth into the light-space map so its shadow lands on-screen.
-            // Reuses _instanceVisible (grown, not per-frame allocated); the main + splat draws then rasterize only
-            // the visible contiguous sub-spans of each run against the same GPU buffer (no re-upload, no reorder).
+            // Main-pass visibility is aligned to the grouped stream. Shadows retain offscreen casters.
             ComputeMainPassVisibility(camFrustum);
 
             // Resolve the shadow tier + (when active) this frame's cascade fit BEFORE the CPU skin pass below, so an
@@ -1851,6 +1849,7 @@ namespace KhaozEngine.Render3D
                 DrawSplatRuns(cl);
                 DrawTileGroundRuns(cl);
             }
+            DrawFoliagePass(cl);
 
             // Blob shadows (receiver-only): with the resolved tier at Blob, turn each queued ShadowBlob into a dark
             // Circle GroundDecal and draw it HERE - after the opaque RECEIVER geometry (terrain/props/splat) wrote
@@ -2328,6 +2327,7 @@ namespace KhaozEngine.Render3D
             // executes queued commands on its own thread and segfaults on destroyed resources).
             _gd.WaitForIdle();
             _retired.Dispose();    // flushes the retired tail (it would outlive the scene) and frees the fence barrier
+            DisposeFoliage();
             _model.Dispose();
             _post.Dispose();
             _lines.Dispose();

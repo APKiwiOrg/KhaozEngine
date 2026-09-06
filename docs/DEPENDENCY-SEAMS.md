@@ -1353,13 +1353,11 @@ blocks are described where they live: `../KhaozEngine.Render3D/Rendering/Particl
 per-sprite values ride an instanced vertex-attribute stream instead of a second buffer is a bandwidth argument
 that survives #604 untouched.
 
-**THE TEXTURE DISCIPLINE IS A DIFFERENT RULE AND IS UNCHANGED.** Sample textures in binding order, and keep the
-sampled order and the declared order the same. That is what `MslBindingOrder.CheckStage` and the
-sample-all-textures-up-front pattern in `SplatFrag` / `ModelFrag` / `EdgeFrag` are about, and nothing in #604
-touched it. The particle pass is the worked example: its textures sit at set 0 bindings 1 to 5, sampled
-statically in binding order, with the flipbook motion sheet ahead of the atlas so the warp vectors are supplied
-before the taps that consume them, and procedural-only frames bind 1x1 dummies so the static sample order is
-byte-identical.
+**Texture sampling order is unrestricted on native Metal.** The conditional pixel-readback proof above
+retires the old rule separately from #604's uniform-buffer work. `MslBindingOrder.CheckStage` checks
+that authored indices reached emission. It does not require unconditional texture samples or matching
+sample/declaration order. Existing passes can retain their current sample sequence without imposing it
+on new shaders.
 
 ## GPU seam contract: `DepthClipEnabled` binds on every backend, Metal included (17.39.0)
 

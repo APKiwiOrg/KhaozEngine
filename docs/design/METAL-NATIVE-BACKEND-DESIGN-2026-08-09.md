@@ -3353,6 +3353,11 @@ memory record says so for both the vertex-input and the interpolant cases), and 
 closing act, so removing a sink because Metal tolerates it corrupts WARP. This is the third design that has had
 to write that sentence.
 
+**Later resolution (#729):** the native conditional pixel-readback proof now samples a higher binding
+before a lower one and verifies both runtime branches. The texture-sampling restriction below is retired.
+The historical decision is retained here. Current authoring rules live in `docs/USING-KHAOZENGINE.md`
+and `docs/DEPENDENCY-SEAMS.md`.
+
 **The "sample all textures up front in binding order" shader discipline stays**, even though M-B1's table
 removes the SPIRV-Cross behaviour that made it necessary for this backend. Same reason: the Veldrid Metal leg
 is still selectable and still numbers by first-sample order. It comes out with that leg, in the closing act,

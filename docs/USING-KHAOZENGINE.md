@@ -4420,7 +4420,8 @@ your draw callback. Leaving it at 0 (never set) renders a static pattern, same a
 **Residue** (`GroundTelegraphs.BuildResidueCircle` / `scene.GroundResidueCircle`, 3D only): a
 one-shot fading, slightly expanding scorch/frost mark for the moment after a telegraph resolves.
 The builder is pure and immediate-mode like every other telegraph call, so the CONSUMER tracks
-`age01` (0 = just resolved, 1 = gone) and stops calling once it reaches 1:
+`age01` (0 = just resolved, 1 = gone) and stops calling once it reaches 1. The residue also respects
+its style's `VoidFallback` and `VoidDim`, so an opted-in mark can project beyond a ground edge:
 
     residueAge += dt;
     float age01 = Math.Clamp(residueAge / ResidueLifetime, 0f, 1f);
@@ -10499,7 +10500,7 @@ audio.PlaySfx("beep");                         // no bus => default bus (1.0), u
 
 `DefineBus(id, new SfxAttenuation(referenceDistance, rolloffFactor, maxDistance))` also sets the curve for
 later positional one-shots. Reference distance must be positive, rolloff non-negative and maximum at least
-the reference distance. Values must be finite. The historical default is `(1, 1, 50)`. Existing bus volume
+the reference distance. Values must be finite. `DefineBus` rejects `default(SfxAttenuation)`. The historical default is `(1, 1, 50)`. Existing bus volume
 is preserved, and non-positional sounds ignore attenuation. The new `ISfxBackend.Play` overload forwards
 to the existing priority overload unless a custom backend opts into the curve.
 

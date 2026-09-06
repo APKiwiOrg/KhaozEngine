@@ -747,10 +747,10 @@ in the `ShaderSources.cs` source comments; this is the consolidated checklist.)
   hazard note next to `ShadowDepthVert` in `KhaozEngine.Render3D/Internal/ShaderSources.Shadow.cs`. Its
   dissolve-aware sibling (`ShadowDepthDissolveVert`, 17.x) declares the model pass's full 0..13 input set and
   carries the same sink over everything it does not genuinely read, for the same reason.
-- **Sample all textures up front, in binding order.** SPIRV-Cross assigns MSL texture indices in the order
-  textures are first SAMPLED, not by `binding=`, so sampling a higher-binding texture first makes a lower one read
-  the wrong texture on Metal (untextured meshes came out flat-normal coloured). See the `ModelFrag` / `EdgeFrag` /
-  `SplatFrag` comments.
+- **Sampling textures in binding order is retired.** Native Metal authors resource indices through
+  `MslIndexRemap`. The higher-binding-first conditional pixel-readback case in
+  `MetalConditionalTextureOrderGpuTests` verifies both runtime branches. Samples can be conditional
+  and ordered as the shader needs. Existing shipped shaders may keep their historical sequence.
 - **One uniform buffer per pipeline, RETIRED.** The rule was written against the Veldrid Metal
   backend, where a STAGE referencing fewer buffers than the declared layout array puts before them made
   Veldrid's per-kind declaration count and SPIRV-Cross's emission disagree: a fragment function reading set 1

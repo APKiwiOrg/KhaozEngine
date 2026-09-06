@@ -168,7 +168,9 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   per frame. Rank and distance rejection run before model lookup.
 - **`GroundCoverBatch`** - an immutable copy of a cover list with cached bounds over consecutive ranges.
   The renderer rejects distant ranges before reading individual placements, preserving source order and
-  exactly the same placement choices as a plain list. Tile-world views build these batches once when
+  exactly the same placement choices as a plain list. It also indexes model IDs so each needed model is
+  resolved once per batch submission. Live mesh handles are refreshed every submission, including missing
+  or replaced models, with no warmed per-frame allocation. Tile-world views build these batches once when
   foliage changes, with no scene or camera work during generation.
 - **`PropHlod`** - author-agnostic HLOD (hierarchical LOD) merge+weld for a chunk cluster's props.
   `PropHlod.Merge(placements, sourceMeshes)` transforms each placement's flat source mesh to world space and

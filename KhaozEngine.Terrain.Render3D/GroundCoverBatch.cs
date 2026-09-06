@@ -12,12 +12,17 @@ public sealed class GroundCoverBatch : IReadOnlyList<GroundCoverInstance>
     const int RangeSize = 128;
     readonly GroundCoverInstance[] _items;
     readonly Vector4[] _bounds;
+    readonly int[] _modelIndices;
+    readonly string[] _modelIds;
 
     public GroundCoverBatch(IReadOnlyList<GroundCoverInstance> source)
     {
         ArgumentNullException.ThrowIfNull(source);
         _items = new GroundCoverInstance[source.Count];
         _bounds = new Vector4[(source.Count + RangeSize - 1) / RangeSize];
+        _modelIndices = new int[source.Count];
+        var modelIndices = new Dictionary<string, int>(StringComparer.Ordinal);
+        var modelIds = new List<string>();
         for (int range = 0; range < _bounds.Length; range++)
         {
             var bounds = new Vector4(float.PositiveInfinity, float.PositiveInfinity,
@@ -27,6 +32,14 @@ public sealed class GroundCoverBatch : IReadOnlyList<GroundCoverInstance>
             {
                 GroundCoverInstance item = source[i];
                 _items[i] = item;
+                int modelIndex = -1;
+                if (item.ModelId is not null && !modelIndices.TryGetValue(item.ModelId, out modelIndex))
+                {
+                    modelIndex = modelIds.Count;
+                    modelIndices.Add(item.ModelId, modelIndex);
+                    modelIds.Add(item.ModelId);
+                }
+                _modelIndices[i] = modelIndex;
                 bounds.X = MathF.Min(bounds.X, item.Position.X);
                 bounds.Y = MathF.Min(bounds.Y, item.Position.Z);
                 bounds.Z = MathF.Max(bounds.Z, item.Position.X);
@@ -34,6 +47,7 @@ public sealed class GroundCoverBatch : IReadOnlyList<GroundCoverInstance>
             }
             _bounds[range] = bounds;
         }
+        _modelIds = modelIds.ToArray();
     }
 
     public int Count => _items.Length;
@@ -42,6 +56,9 @@ public sealed class GroundCoverBatch : IReadOnlyList<GroundCoverInstance>
     IEnumerator IEnumerable.GetEnumerator() => _items.GetEnumerator();
 
     internal ReadOnlySpan<GroundCoverInstance> Items => _items;
+    internal int ModelCount => _modelIds.Length;
+    internal int ModelIndex(int instanceIndex) => _modelIndices[instanceIndex];
+    internal string ModelId(int modelIndex) => _modelIds[modelIndex];
 
     internal int SkipOutside(int index, Vector3 focus, float radiusSquared)
     {

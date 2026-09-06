@@ -1617,9 +1617,9 @@ namespace KhaozEngine.Render3D
             // and a re-render never double-counts.
             _frameStats.Reset();
             EnsureSize(viewportW, viewportH);
-            // The caps-resolved FXAA decision (AntiAliasingMode.Fxaa, or an MSAA request the device couldn't honour
+            // The caps-resolved FXAA decision (FXAA alone, opted in after MSAA, or an unsupported MSAA request
             // falling back to FXAA). Must be the same value for PrepareUniforms (flip parity) and Run.
-            bool runFxaa = ResolvedAa().Mode == AntiAliasingMode.Fxaa;
+            bool runFxaa = ResolvedAa().UsesFxaa;
             // Distortion is lazily allocated per frame (unlike bloom, which is a resize-time decision): whether any
             // distortion sprite is queued is known now (queues fill between Begin and Render). (Re)allocate the
             // offset field at half res (Full) or quarter res (Reduced) when sprites are queued, free it when none,

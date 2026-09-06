@@ -103,7 +103,9 @@ namespace KhaozEngine.Render3D
                 {
                     int slot = (int)(run.Start + s);
                     bool visible = true;
-                    if (haveMesh)
+                    // Explicit non-casters survived CullOptedOutInstances against this same absolute frustum
+                    // before grouping. Reuse that result instead of testing every visible blade twice.
+                    if (haveMesh && _instanceCastKinds[slot] != ShadowCastKind.None)
                     {
                         Matrix4x4 world = _instanceData[slot].Model;
                         visible = IntersectsMainPass(mesh.Bounds, world, materialPassPlaced, frustum);

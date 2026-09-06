@@ -88,6 +88,7 @@ public static class GroundCoverRenderer
         float inner = densityRadius - band;
         float distant = MathF.Min(options.DistantDensity, options.QualityDensity);
         GroundCoverBatch? batch = cover as GroundCoverBatch;
+        using var bindings = new GroundCoverBindings(batch, meshes);
         int drawn = 0;
         for (int i = 0; i < cover.Count; i++)
         {
@@ -115,7 +116,8 @@ public static class GroundCoverRenderer
                 dissolveStart = MathF.Max(inner, cutoff - personalBand);
             }
             if (distance > cutoff) continue;
-            if (!meshes.TryGetValue(instance.ModelId, out IReadOnlyList<MeshHandle>? parts) || parts is null) continue;
+            IReadOnlyList<MeshHandle>? parts = bindings.Resolve(i, instance.ModelId);
+            if (parts is null) continue;
             float dissolve = cutoff > dissolveStart
                 ? Math.Clamp((distance - dissolveStart) / (cutoff - dissolveStart), 0f, 1f)
                 : 0f;

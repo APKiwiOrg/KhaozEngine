@@ -79,13 +79,12 @@ public class TileWorldServerSessionTests
             s.Poll();
             Assert.Equal(1, s.DroppedCommandCount);
 
-            // A full bucket at the burst allowance admits exactly CommandBurst of the 200 and drops the rest, on
-            // top of the malformed frame already counted. Pinned exactly, because a "> 1" also passes on a limiter
-            // that dropped one frame, and the count is what says a burst is SHED rather than the client dropped.
+            // The malformed frame consumed one token from the initial burst. The remaining nineteen tokens admit
+            // that many flood frames. Polling between them does not mint another command budget.
             for (int i = 0; i < 200; i++)
                 net.Send(TileProtocol.EncodeCommand(i + 1, TileCommand.None), NetChannelReliability.ReliableOrdered);
             s.Poll();
-            Assert.Equal(181, s.DroppedCommandCount);
+            Assert.Equal(182, s.DroppedCommandCount);
         }
     }
 

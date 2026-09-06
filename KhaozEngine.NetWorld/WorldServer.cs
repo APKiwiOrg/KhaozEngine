@@ -402,7 +402,6 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
     public void Poll()
     {
         net.Poll();
-        foreach (RateLimiter limiter in rateBySlot.Values) limiter.Refill();   // one budget top-up per poll
         while (net.TryDequeueEvent(out ServerSessionEvent ev))
         {
             switch (ev.Kind)
@@ -503,6 +502,8 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
     /// <summary>Steps one authoritative frame: apply each client's queued input, then serve every client its AoI.</summary>
     public void Tick(float dt)
     {
+        double elapsedSteps = float.IsFinite(dt) && dt > 0f ? dt / config.TickSeconds : 0.0;
+        foreach (RateLimiter limiter in rateBySlot.Values) limiter.Refill(elapsedSteps);
         OnBeforeTick?.Invoke(dt);   // consumer NPC/enemy brains run before movement + serving
         admin.Drain(ApplyAdminCommand);
         // Authoritative movement: one command per player per tick. The slot list is a reused buffer rather than a

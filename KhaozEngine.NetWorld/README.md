@@ -349,7 +349,8 @@ frames, demuxes, rate-limits and size-caps them, but never deserializes them - t
 - **Hostile-input hardening (client -> server), to the same bar as the move path.** The per-connection
   `AntiCheat` rate limiter runs in front of game messages (they share the move flood budget), and a payload larger
   than **`WorldServerConfig.MaxGameMessageBytes`** / **`ShardedWorldServerConfig.MaxGameMessageBytes`** (default
-  1024) is dropped and flagged `SuspiciousReason.OversizedMessage` via `OnSuspiciousActivity` - never thrown.
+  1024) is dropped and flagged `SuspiciousReason.OversizedMessage` via `OnSuspiciousActivity` - never thrown. Its
+  token budget advances with simulated ticks, so extra calls to `Poll` do not mint command capacity.
 - **Framing / version skew.** A client message rides the existing `0xC5` control-marker family with its own
   sub-marker, demuxed ahead of the move; by construction it can never alias the 2 / 6 / 18 byte control / ack /
   move shapes (see the aliasing contract in `MoveProtocol`). Server frames use a new `ServerFrameKind.GameMessage`

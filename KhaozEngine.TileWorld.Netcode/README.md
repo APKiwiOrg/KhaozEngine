@@ -756,11 +756,9 @@ fixed size cannot carry these notices, because the padding it adds is length the
 
 ## Known limits in this release
 
-- **`TileWorldServerConfig.MaxCommandsPerSecond` is spent per POLL, not per wall-clock second.** The bucket is
-  topped up once per `Poll` with `MaxCommandsPerSecond * TickSeconds` tokens, so the sustained ceiling is
-  `pollRate * MaxCommandsPerSecond * TickSeconds` messages per second. It is the `RateLimiter` contract the rest of
-  the engine's servers run on, and the fleet-wide unit defect is
-  [#681](https://github.com/APKiwiOrg/KhaozEngine/issues/681).
+- **`TileWorldServerConfig.MaxCommandsPerSecond` is a simulated-time rate.** Each whole tick tops the bucket up
+  with `MaxCommandsPerSecond * TickSeconds` tokens. `Poll` only transports messages, so polling faster than the
+  command clock does not raise the sustained ceiling. The default is 40 messages per simulated second.
 - **A remote's BODY is drawn `InterpolationDelayTicks` behind.** Not a step behind: the one-step-behind
   reconstruction went with the lead commit in 18.1.0, which put `StepFrom` on the everyone channel, so an observer
   is handed the step's two tiles and glides FORWARD into the committed one. What is left is the delay itself,

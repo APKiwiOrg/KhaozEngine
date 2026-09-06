@@ -108,11 +108,6 @@ public sealed partial class TileWorldServer : IPersistenceHost<TileMoveState>
     public void Poll()
     {
         net.Poll();
-        // One budget top-up per poll rather than per tick, because this is the cadence inbound frames actually
-        // arrive on: a host polling faster than it ticks would otherwise throttle a client that sent nothing
-        // unusual. The budget itself is per tick (see SpawnPlayer), so the two only differ on a head whose frame
-        // rate is above its tick rate, which is every real one.
-        foreach (RateLimiter limiter in rateBySlot.Values) limiter.Refill();
         while (net.TryDequeueEvent(out ServerSessionEvent ev))
         {
             switch (ev.Kind)

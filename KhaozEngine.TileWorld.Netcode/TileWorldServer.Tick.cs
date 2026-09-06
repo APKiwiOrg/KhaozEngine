@@ -110,6 +110,7 @@ public sealed partial class TileWorldServer
     void RunOneTick()
     {
         float dt = config.TickSeconds;
+        foreach (RateLimiter limiter in rateBySlot.Values) limiter.Refill();
         OnBeforeTick?.Invoke(dt);
 
         // 0c. The entity target space, snapshotted ONCE. Everything for the rest of this tick resolves a net id to

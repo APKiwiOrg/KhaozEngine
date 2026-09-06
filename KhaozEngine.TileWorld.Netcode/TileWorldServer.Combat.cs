@@ -241,7 +241,10 @@ public sealed partial class TileWorldServer
             if (targetHealth.Current == 0) continue;
 
             var footprint = new TileRect(targetState.Tile.X, targetState.Tile.Z, 1, 1);
-            if (!TileReach.Contains(simulator.Map, footprint, targetState.Tile.Plane, attackerState.Tile)) continue;
+            // Reach is the final geometry check of the chase, so it has to read the same topology the attacker's
+            // movement used. Players still resolve to the constructor map. An unresolved actor gets no fallback.
+            if (!TryGetMoverTraversalMap(attacker, out TileCollisionMap reachMap)) continue;
+            if (!TileReach.Contains(reachMap, footprint, targetState.Tile.Plane, attackerState.Tile)) continue;
 
             TileAttackOutcome outcome = CombatRules.Roll(new TileAttackContext(
                 attacker, attackerState.Tile, attackerHealth, target, targetState.Tile, targetHealth, TickCount));

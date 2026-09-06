@@ -10,8 +10,8 @@ namespace KhaozEngine.TileWorld.Netcode;
 
 /// <summary>
 /// The authoritative tile server: a <see cref="ShardHost"/> whose cell grid IS the tile region grid, one
-/// <see cref="TileMoveSimulator"/> shared by every cell, and a per-cell tick order of drain, step, hand off, act
-/// and serve.
+/// player <see cref="TileMoveSimulator"/> plus registered actor simulators shared by every cell, and a per-cell
+/// tick order of drain, step, hand off, act and serve.
 /// <para>Tile coordinates ARE the plane the shard grid runs on. Every <see cref="CellCoord.FromWorld"/>, interest
 /// insert and query takes (tileX, tileZ) as its floats, with a cell edge of <see cref="TileCells.CellSize"/>, so a
 /// cell is exactly a region and a crossing is exactly a region crossing. See <see cref="TileCells"/> for why
@@ -47,8 +47,9 @@ public sealed partial class TileWorldServer : IDisposable
     readonly ShardHost host;
     readonly ReplicationRegistry registry;
     readonly TileMoveSimulator simulator;
-    readonly TileMoveSimulator actorSimulator;
-    // The entity target space both simulators chase through, refreshed ONCE at the top of every tick. Owned here
+    readonly TileActorTraversalRegistry actorTraversalProfiles;
+    readonly ITileTargets? interactionTargets;
+    // The entity target space every simulator chases through, refreshed ONCE at the top of every tick. Owned here
     // rather than handed in, because the tick body is the only thing that may refresh it and the snapshot boundary
     // is the property the follow's determinism rests on. See TileEntityTargets.
     readonly TileEntityTargets combatTargets = new();
@@ -92,7 +93,8 @@ public sealed partial class TileWorldServer : IDisposable
     /// <summary>Builds a tile server over a transport and a baked collision map.</summary>
     /// <param name="transport">The listening transport sessions arrive on.</param>
     /// <param name="config">The clock, the cadence, the spawn and the knobs. See <see cref="TileWorldServerConfig"/>.</param>
-    /// <param name="map">The collision map both heads bake from the same world files.</param>
+    /// <param name="map">The collision map both heads bake from the same world files. It is also the default actor
+    /// traversal profile.</param>
     /// <param name="targets">Resolves interaction targets, null on a head with no interactions wired.</param>
     /// <param name="authenticator">Gate for inbound connect tokens. Null admits every token.</param>
     /// <param name="registry">The replication registry both heads share. Null builds
@@ -131,14 +133,17 @@ public sealed partial class TileWorldServer : IDisposable
 
         this.config = config;
         this.registry = registry ?? TileProtocol.CreateRegistry();
+        interactionTargets = targets;
         maxActionAgeTicks =
             (long)config.Move.MaxRouteSteps * (Math.Max(config.StepTicks.Walk, config.StepTicks.Run) + 1);
         simulator = new TileMoveSimulator(map, config.StepTicks, targets, config.Move, combatTargets);
         // A SECOND instance rather than a second stepper. Nothing about TileMoveSimulator is stateful, so this costs
         // its options and nothing else, and it is what keeps a chasing actor's pathfinder scratch at 3 KB instead of
-        // 83 KB. Same map, same cadence, same TWO target seams: only the knobs differ. Both get the combat resolver,
-        // because a player chasing a monster and a monster chasing a player are the same follow over the same space.
-        actorSimulator = new TileMoveSimulator(map, config.StepTicks, targets, config.ActorMove, combatTargets);
+        // 83 KB. This is the default profile. Each registered map gets another instance with the same cadence,
+        // actor knobs and TWO target seams. Every one gets the combat resolver because a player chasing a monster
+        // and a monster chasing a player are the same follow over the same entity space.
+        var actorSimulator = new TileMoveSimulator(map, config.StepTicks, targets, config.ActorMove, combatTargets);
+        actorTraversalProfiles = new TileActorTraversalRegistry(actorSimulator);
         Actors = new TileActorHost(this);
         // The queue's own neutral is never what a starved player is stepped with: Admit replaces it with a Continue
         // at the player's CURRENT mode, because TileCommand.None is a run toggled off. It is supplied because the
@@ -470,7 +475,7 @@ public sealed partial class TileWorldServer : IDisposable
     {
         if (!wiredCells.Add(cell.Coord)) return;
         liveCells.Add(cell);
-        cell.World.AddSystem(new TileMovementSystem(simulator, actorSimulator));
+        cell.World.AddSystem(new TileMovementSystem(simulator, actorTraversalProfiles));
     }
 
     /// <inheritdoc/>

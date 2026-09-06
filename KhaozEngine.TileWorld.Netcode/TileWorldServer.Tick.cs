@@ -109,6 +109,7 @@ public sealed partial class TileWorldServer
     // accumulators stay in phase with this one and the tick stamped on the wire counts what actually stepped.
     void RunOneTick()
     {
+        actorTraversalProfiles.Close();
         float dt = config.TickSeconds;
         foreach (RateLimiter limiter in rateBySlot.Values) limiter.Refill();
         OnBeforeTick?.Invoke(dt);

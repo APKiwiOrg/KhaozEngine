@@ -57,6 +57,47 @@ public class TileWanderBehaviourTests
     internal static int Chebyshev(TileCoord a, TileCoord b) =>
         Math.Max(Math.Abs(a.X - b.X), Math.Abs(a.Z - b.Z));
 
+    [Fact]
+    public void A_default_literal_keeps_selecting_the_legacy_map_constructor()
+    {
+#pragma warning disable CS8625
+        Assert.Throws<ArgumentNullException>(() => new TileWanderBehaviour(default));
+#pragma warning restore CS8625
+    }
+
+    [Fact]
+    public void The_timing_factory_applies_the_requested_retaliation_window()
+    {
+        TileWanderBehaviour behaviour = TileWanderBehaviour.CreateWithTiming(
+            meanPauseTicks: 1, retaliateWindowTicks: 0);
+        var tile = new TileCoord(20, 20, 0);
+        var recent = new TileActorContext(
+            NetId: 1L,
+            Tile: tile,
+            Home: tile,
+            Definition: Rat with { WanderRadius = 0 },
+            Health: new TileHealth { Current = 30, Max = 30 },
+            CombatTarget: 0L,
+            TargetTile: default,
+            TargetResolved: false,
+            LastDamagedBy: 0L,
+            LastDamagedTick: 0L,
+            Walking: false,
+            Tick: 10L,
+            Rng: TileActorRandom.For(1, 1L, 10L),
+            LastAttackedBy: 2L,
+            LastAttackedTick: 10L,
+            LastAttackedByResolved: true);
+
+        TileActorIntent current = behaviour.Decide(in recent);
+        TileActorContext stale = recent with { LastAttackedTick = 9L };
+        TileActorIntent expired = behaviour.Decide(in stale);
+
+        Assert.Equal(TileActorIntentKind.Attack, current.Kind);
+        Assert.Equal(2L, current.Target);
+        Assert.Equal(TileActorIntentKind.Idle, expired.Kind);
+    }
+
     // A hit landing on an actor, written where the combat pass writes it: the damage record AND the swung-at
     // record together, because a landed hit is also a swing and the retaliation reads the swing side since the
     // swing-aggro rule.

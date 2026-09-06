@@ -34,6 +34,9 @@ public sealed partial class TileWorldServer
     // comes back. One tick stale after a crossing, which only matters for an actor whose NEW cell was evicted
     // between the two, and there the resolve simply falls through as it did before.
     readonly Dictionary<long, CellCoord> actorCells = new();
+    // netId -> the registered topology selected at spawn. This server-owned index survives a region handoff and
+    // lets the actor pass restore the server-only tag before movement.
+    readonly Dictionary<long, TileActorTraversalProfile> actorTraversalByNetId = new();
 
     /// <summary>The spawner list and the actor tick, driven from this server's own tick body at step 1b. A head adds
     /// its authored spawn points here and never has to call anything per tick.</summary>
@@ -58,6 +61,65 @@ public sealed partial class TileWorldServer
     // reader is TileActorHost.Add, which is the one door a definition comes through and the only place both the
     // definition and this server's config are in hand at once.
     internal int ActorPathRadius => config.ActorMove.MaxPathRadius;
+
+    internal void RegisterActorTraversalProfile(TileActorTraversalProfile profile, TileCollisionMap map)
+    {
+        ArgumentNullException.ThrowIfNull(map);
+        if (map.PlaneCount != config.PlaneCount)
+            throw new ArgumentException(
+                $"Actor traversal map plane count {map.PlaneCount} does not match the server's {config.PlaneCount} planes.",
+                nameof(map));
+        var actorSimulator = new TileMoveSimulator(map, config.StepTicks, interactionTargets, config.ActorMove,
+            combatTargets);
+        actorTraversalProfiles.Register(profile, map, actorSimulator);
+    }
+
+    internal bool TryGetActorTraversal(TileActorTraversalProfile profile, out TileCollisionMap map)
+    {
+        if (actorTraversalProfiles.TryGet(profile, out TileActorTraversalEntry entry))
+        {
+            map = entry.Map;
+            return true;
+        }
+        map = null!;
+        return false;
+    }
+
+    internal TileActorTraversalProfile ActorTraversalProfileOf(long netId) =>
+        actorTraversalByNetId.GetValueOrDefault(netId, TileActorTraversalProfile.Unresolved);
+
+    // The map an entity's movement uses. Players always use the constructor map. A live actor whose server index
+    // is unexpectedly missing gets no answer, which keeps combat from falling back after movement already froze.
+    internal bool TryGetMoverTraversalMap(long netId, out TileCollisionMap map)
+    {
+        if (actorTraversalByNetId.TryGetValue(netId, out TileActorTraversalProfile profile))
+            return TryGetActorTraversal(profile, out map);
+        if (actorNetIds.Contains(netId))
+        {
+            map = null!;
+            return false;
+        }
+        map = simulator.Map;
+        return true;
+    }
+
+    internal bool IsActorTraversalPlacementBlocked(TileActorTraversalProfile profile, TileCoord at)
+    {
+        if (profile == TileActorTraversalProfile.Default) return false;
+        return !TryGetActorTraversal(profile, out TileCollisionMap map)
+            || !map.HasRegion(at.Region)
+            || TileCollision.IsBlocked(map, at.X, at.Z, at.Plane);
+    }
+
+    internal void ValidateActorTraversalPlacement(TileActorTraversalProfile profile, TileCoord at,
+        string parameterName)
+    {
+        if (!TryGetActorTraversal(profile, out _))
+            throw new ArgumentException($"Actor traversal profile {profile.Value} is not registered.", parameterName);
+        if (IsActorTraversalPlacementBlocked(profile, at))
+            throw new ArgumentException(
+                $"Actor traversal profile {profile.Value} blocks the spawn tile {at}.", parameterName);
+    }
 
     /// <summary>Live actors' net ids in SPAWN ORDER, which is the order every actor pass runs in. The live list, so
     /// it reflects a spawn or a despawn immediately and must not be enumerated across one.</summary>
@@ -84,11 +146,13 @@ public sealed partial class TileWorldServer
     /// entity under the same net id.</para>
     /// </summary>
     /// <param name="at">The tile to build it on.</param>
-    /// <param name="spec">The numbers that go on its components.</param>
+    /// <param name="spec">The numbers that go on its components and its registered traversal profile.</param>
     /// <returns>The new actor's net id, or 0 when the destination cell already holds
     /// <see cref="TileWorldServerConfig.MaxActorsPerCell"/> actors.</returns>
     /// <exception cref="ArgumentException"><paramref name="at"/> is on a plane at or above
-    /// <see cref="TileWorldServerConfig.PlaneCount"/>, or in a region the collision map has not loaded.</exception>
+    /// <see cref="TileWorldServerConfig.PlaneCount"/>, or in a region the collision map has not loaded. Also thrown
+    /// when the spawn names an unregistered profile or a non-default profile blocks the spawn tile. The default
+    /// profile retains the legacy blocked-home rule.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="spec"/> asks for a max health of zero.</exception>
     public long SpawnActor(TileCoord at, in TileActorSpawn spec) => SpawnActorFrom(at, spec, null);
 
@@ -111,6 +175,7 @@ public sealed partial class TileWorldServer
         // whether the entity has a connection behind it or not. A freshly placed state has no route, so the array
         // this hands back is empty and is written out for the same reason SpawnPlayer writes an empty one.
         TileDirection[] steps = ValidatePlayerState(state);
+        ValidateActorTraversalPlacement(spec.TraversalProfile, at, nameof(spec));
 
         CellCoord target = CellCoord.FromWorld(at.X, at.Z, config.CellSize);
         if (ActorsIn(target) >= config.MaxActorsPerCell)
@@ -124,7 +189,7 @@ public sealed partial class TileWorldServer
         cell.World.Set(e, state);
         cell.World.Set(e, new TileRouteState { Remaining = steps });
         cell.World.Set(e, new PendingTileCommand { Command = TileCommand.Continue(state.Mode) });
-        cell.World.Set(e, new TileActor());
+        cell.World.Set(e, new TileActor { TraversalProfile = spec.TraversalProfile });
         cell.World.Set(e, new TileHealth { Current = spec.MaxHealth, Max = spec.MaxHealth });
         cell.World.Set(e, new TileCombatState { AttackTicks = spec.AttackTicks });
         cell.World.Set(e, new Transient { Scope = TransientScope.DurableOnly });
@@ -133,6 +198,7 @@ public sealed partial class TileWorldServer
         // and a monster's name is PROSE the server owns no catalog for.
         actorNetIds.Add(netId);
         actorCells[netId] = cell.Coord;
+        actorTraversalByNetId[netId] = spec.TraversalProfile;
         // The tile it was BORN on, recorded before anything else can see the actor, because this is the one place
         // that knows it without asking the world. It is what a behaviour is handed as HOME for an actor no spawner
         // built, and a home read off the actor's current tile instead is a home that moves with it.
@@ -159,6 +225,7 @@ public sealed partial class TileWorldServer
         Actors.Forget(netId);
         bool owned = TryResolveActor(netId, out CellSim cell, out Entity e);
         actorCells.Remove(netId);
+        actorTraversalByNetId.Remove(netId);
         if (owned && cell.World.IsAlive(e))
         {
             cell.UnregisterOwned(netId);
@@ -336,7 +403,9 @@ public sealed partial class TileWorldServer
         // The last-seen cell, refreshed here because this is the one pass that is documented to run for every live
         // actor on every tick and it already has the cell in hand.
         actorCells[netId] = cell.Coord;
-        cell.World.Set(e, new TileActor());
+        TileActorTraversalProfile profile = actorTraversalByNetId.GetValueOrDefault(netId,
+            TileActorTraversalProfile.Unresolved);
+        cell.World.Set(e, new TileActor { TraversalProfile = profile });
         cell.World.Set(e, new PendingTileCommand { Command = command });
         return true;
     }

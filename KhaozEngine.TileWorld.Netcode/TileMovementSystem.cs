@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using KhaozEngine.Ecs;
 using KhaozEngine.Replication;
 using KhaozEngine.Sharding;
@@ -7,13 +8,14 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// <summary>
 /// Runs <see cref="TileMoveSimulator"/> over every OWNED entity, player and actor alike, inside the cell's own
 /// fixed tick, so authority follows the cell that owns the entity and the per-cell fan-out stays free of shared
-/// mutable state. One instance is added to each cell's world, and the simulators behind it are shared by all of
-/// them because nothing about one is stateful. The pathfinder scratch belongs to this per-cell system instead, so
-/// scheduler-fanned cells never search through the same mutable buffers.
-/// <para>WHICH simulator an entity is stepped through is the <see cref="TileActor"/> TAG, so an actor runs the
-/// same stepper as a player over its own options rather than a movement rule of its own. The tag rather than the
-/// absence of a connection slot, because nothing inside a cell knows about slots and net ids deliberately know
-/// nothing about connections.</para>
+/// mutable state. One instance is added to each cell's world. The player simulator and registered actor simulators
+/// are shared by all cells because none is stateful. Pathfinder scratch belongs to this per-cell system instead,
+/// one player buffer plus one buffer for each actor profile the cell encounters, so scheduler-fanned cells never
+/// search through the same mutable buffers.
+/// <para>WHICH simulator an entity is stepped through comes from the <see cref="TileActor"/> tag and its
+/// <see cref="TileActor.TraversalProfile"/>. An actor still runs the same stepper as a player, over actor options
+/// and its registered map rather than a movement rule of its own. An unknown profile freezes and consumes its
+/// pending command. It never falls back to the player or default actor map.</para>
 /// <para>A <see cref="Ghost"/> is a read-only mirror of an entity another cell simulates, and a
 /// <see cref="Migrating"/> entity has already been captured and sent to its destination. Stepping either would
 /// simulate one player twice in one tick, in two cells, from two copies of its state, so both are skipped.</para>
@@ -30,9 +32,9 @@ namespace KhaozEngine.TileWorld.Netcode;
 public sealed class TileMovementSystem : ISystem
 {
     readonly TileMoveSimulator players;
-    readonly TileMoveSimulator actors;
+    readonly TileActorTraversalRegistry actorProfiles;
     readonly TilePathfinderScratch playerScratch;
-    readonly TilePathfinderScratch actorScratch;
+    readonly Dictionary<TileActorTraversalProfile, TilePathfinderScratch> actorScratch = new();
 
     /// <summary>Steps every owned entity through one simulator, players and actors alike. The shape that shipped
     /// before actors existed, kept because it is still the right one for a head with no actors.</summary>
@@ -41,18 +43,22 @@ public sealed class TileMovementSystem : ISystem
     {
     }
 
-    /// <summary>Steps players through <paramref name="players"/> and <see cref="TileActor"/>s through
-    /// <paramref name="actors"/>. Two instances rather than two systems, so the <see cref="Ghost"/> and
+    /// <summary>Steps players through <paramref name="players"/> and every <see cref="TileActor"/> through
+    /// <paramref name="actors"/> as its default profile. Two instances rather than two systems, so the <see cref="Ghost"/> and
     /// <see cref="Migrating"/> skip stays in ONE place and one pass still walks the archetype once. The simulator is
     /// stateless, so a second instance costs nothing but its options.</summary>
     /// <param name="players">The stepper a player entity runs, and the one a client predicts against.</param>
-    /// <param name="actors">The stepper an actor entity runs, tuned to a leash-sized path radius.</param>
-    public TileMovementSystem(TileMoveSimulator players, TileMoveSimulator actors)
+    /// <param name="actors">The stepper a default-profile actor runs, tuned to a leash-sized path radius.</param>
+    public TileMovementSystem(TileMoveSimulator players, TileMoveSimulator actors) :
+        this(players, new TileActorTraversalRegistry(actors))
+    {
+    }
+
+    internal TileMovementSystem(TileMoveSimulator players, TileActorTraversalRegistry actorProfiles)
     {
         this.players = players;
-        this.actors = actors;
+        this.actorProfiles = actorProfiles;
         playerScratch = new TilePathfinderScratch(players.MaxPathRadius);
-        actorScratch = new TilePathfinderScratch(actors.MaxPathRadius);
     }
 
     /// <inheritdoc/>
@@ -65,9 +71,23 @@ public sealed class TileMovementSystem : ISystem
             // The pick is the TAG rather than the absence of a slot, because nothing in a cell knows about slots and
             // net ids deliberately know nothing about connections. An actor that crossed a region boundary this tick
             // has already had its tag written back by step 1b, which runs before this pass.
-            bool isActor = world.Has<TileActor>(e);
-            TileMoveSimulator simulator = isActor ? actors : players;
-            TilePathfinderScratch scratch = isActor ? actorScratch : playerScratch;
+            bool isActor = world.TryGet(e, out TileActor actor);
+            TileMoveSimulator simulator = players;
+            TilePathfinderScratch scratch = playerScratch;
+            if (isActor)
+            {
+                if (!actorProfiles.TryGet(actor.TraversalProfile, out TileActorTraversalEntry entry))
+                {
+                    pending.Command = TileCommand.Continue(state.Mode);
+                    return;
+                }
+                simulator = entry.Simulator;
+                if (!actorScratch.TryGetValue(actor.TraversalProfile, out scratch!))
+                {
+                    scratch = new TilePathfinderScratch(simulator.MaxPathRadius);
+                    actorScratch.Add(actor.TraversalProfile, scratch);
+                }
+            }
 
             // WHOSE state this is, handed to the stepper because the follow's rule 4 cannot derive it: an Attack
             // naming the attacker itself and one naming another entity standing on the same tile resolve to the

@@ -82,6 +82,21 @@ public sealed class TileActorHost
     /// and driven with the same commands produce the same wander, which is what a replay depends on.</summary>
     public int Seed { get; set; }
 
+    /// <summary>Registers a non-default actor collision topology. Call before the first authoritative tick and
+    /// before adding or spawning an actor that names the key. The map is held by reference, so later writes to that
+    /// instance are visible on the next movement tick. Mutate it only on the server's owning thread between ticks.
+    /// <see cref="TileActorTraversalProfile.Default"/> is already bound to the map passed to
+    /// <see cref="TileWorldServer"/> and cannot be replaced.</summary>
+    /// <param name="profile">The game-owned opaque profile key.</param>
+    /// <param name="map">The collision map actors assigned that key move over. It must carry the server's plane
+    /// count.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="map"/> is null.</exception>
+    /// <exception cref="ArgumentException"><paramref name="profile"/> is default, reserved or already registered,
+    /// or the map's plane count differs from the server's.</exception>
+    /// <exception cref="InvalidOperationException">The first authoritative tick has started.</exception>
+    public void RegisterTraversalProfile(TileActorTraversalProfile profile, TileCollisionMap map) =>
+        server.RegisterActorTraversalProfile(profile, map);
+
     /// <summary>The spawner that built one actor.</summary>
     /// <param name="netId">The actor's net id.</param>
     /// <param name="spawner">Its spawner, null when it was built outside one.</param>
@@ -102,6 +117,8 @@ public sealed class TileActorHost
     /// <param name="definition">What to build there.</param>
     /// <param name="home">Where to build it.</param>
     /// <exception cref="ArgumentNullException"><paramref name="definition"/> is null.</exception>
+    /// <exception cref="ArgumentException">The definition names an unregistered traversal profile or that
+    /// profile blocks <paramref name="home"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="definition"/> is refused by
     /// <see cref="TileActorSpawner"/>'s own door, or its <see cref="TileActorDefinition.LeashRadius"/> is above
     /// this server's <see cref="TileMoveOptions.MaxPathRadius"/> for actors.</exception>
@@ -115,6 +132,7 @@ public sealed class TileActorHost
                 + $"({pathRadius}, TileWorldServerConfig.ActorMove.MaxPathRadius). A leash beyond that window is a "
                 + "walk home the pathfinder cannot plan in one go.");
         var spawner = new TileActorSpawner(definition, home);
+        server.ValidateActorTraversalPlacement(definition.TraversalProfile, home, nameof(definition));
         spawners.Add(spawner);
         return spawner;
     }
@@ -224,6 +242,8 @@ public sealed class TileActorHost
         // game is entitled to keep reading.
         bool damagedResolved = combat.LastDamagedBy != 0L && server.TryGetTargetTile(combat.LastDamagedBy, out _);
         bool attackedResolved = combat.LastAttackedBy != 0L && server.TryGetTargetTile(combat.LastAttackedBy, out _);
+        TileActorTraversalProfile traversalProfile = server.ActorTraversalProfileOf(netId);
+        server.TryGetActorTraversal(traversalProfile, out TileCollisionMap traversalMap);
 
         var context = new TileActorContext(
             NetId: netId,
@@ -243,7 +263,11 @@ public sealed class TileActorHost
             LastAttackedBy: combat.LastAttackedBy,
             LastAttackedTick: combat.LastAttackedTick,
             LastDamagedByResolved: damagedResolved,
-            LastAttackedByResolved: attackedResolved);
+            LastAttackedByResolved: attackedResolved)
+        {
+            TraversalProfile = traversalProfile,
+            TraversalMap = traversalMap,
+        };
 
         TileActorIntent intent = Behaviour.Decide(context);
         switch (intent.Kind)
@@ -401,9 +425,15 @@ public sealed class TileActorHost
             spawner.FormerActorRetired();
         }
         TileActorDefinition d = spawner.Definition;
+        // A registered topology can change after authoring. A temporary blocker at a non-default home leaves the
+        // spawner in its current state and retries next tick, the same way a full cell does.
+        if (server.IsActorTraversalPlacementBlocked(d.TraversalProfile, spawner.Home)) return;
         // The spawner rides INTO the spawn rather than being filed after it returns. See LinkSpawner.
         server.SpawnActorFrom(spawner.Home,
-            new TileActorSpawn(d.MaxHealth, d.AttackTicks, TileDirection.S, d.StepMode), spawner);
+            new TileActorSpawn(d.MaxHealth, d.AttackTicks, TileDirection.S, d.StepMode)
+            {
+                TraversalProfile = d.TraversalProfile,
+            }, spawner);
         // The answer is deliberately dropped. A zero is the per-cell cap refusing at the door, and a refused spawn
         // files nothing, so the spawner keeps its state and tries again on the next tick. That is the right answer
         // for a transient condition: a cell over its budget is usually not over it a moment later, and stranding

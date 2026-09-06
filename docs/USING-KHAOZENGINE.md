@@ -6065,7 +6065,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.29.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.30.0" />
 ```
 
 ```csharp
@@ -7406,9 +7406,18 @@ objects. Pass `Rebake` a rect covering the FULL footprint of anything you remove
 `TileFootprint.Of` before the removal, because a rebake can only re-derive the tiles it clears. Branch on
 `TilePath.Reached`, never on `Tiles.Count`: a partial walk to the nearest reachable tile carries steps too.
 
-The tile server's `TileMovementSystem` supplies its own scratch per cell, with separate player and actor
-windows. Walk, interact, follow and blocked-route searches reuse those buffers. The shared
-`TileMoveSimulator` remains stateless, and standalone callers can still pass their own scratch explicitly.
+The `Bake` overload taking `Func<int, int, int, bool> groundBlocked` replaces only the ground rule. Its arguments
+are absolute world tile X and Z plus a zero-based plane, and it runs once for every tile and plane in every loaded
+region. Solid, diagonal, wall and wall-corner objects are applied afterward through the ordinary baker passes, so
+opening a ground tile in an alternate topology never clears a placed solid or directional wall. Missing regions
+remain absent and blocked. Callback invocation order is not an API contract, so the rule must be deterministic and
+independent of earlier calls. The ordinary `Rebake` still restores the authored-ground rule, so a game maintaining
+a dynamic alternate topology updates its retained map directly or rebuilds it with the same callback.
+
+The tile server's `TileMovementSystem` supplies its own scratch per cell, with one player window and one lazily
+created window for each actor traversal profile the cell encounters. Walk, interact, follow and blocked-route
+searches reuse those buffers. Every shared `TileMoveSimulator` remains stateless, and standalone callers can still
+pass their own scratch explicitly.
 
 **A caller that paths on a tick hands `FindPath` a `TilePathfinderScratch`.** The default call allocates the two
 `(2r + 1)^2` window arrays every search, about 83 KB at radius 64, which is nothing for an editor click and is
@@ -9644,7 +9653,8 @@ fields there are a rolling rate window and a reconcile correction in metres, and
 ### Server-owned actors
 
 An ACTOR is a player minus a connection. It carries `TileMoveState`, `TileRouteState` and `PendingTileCommand`,
-so it steps through the SAME `TileMoveSimulator` a player does and can never move in a way a player could not.
+so it steps through the SAME `TileMoveSimulator` algorithm a player does and can never move by a rule the player
+stepper does not understand. A registered traversal profile can give an actor a different collision topology.
 Nothing about an actor is predicted: the client sees one as an ordinary remote entity.
 
 Wiring is three lines and a definition per monster.
@@ -9665,7 +9675,7 @@ var rat = new TileActorDefinition
 };
 
 server.Actors.Add(rat, new TileCoord(70, 70, 0));          // the home tile, and the spawner's identity
-server.Actors.Behaviour = new TileWanderBehaviour(map);    // the default: leash, chase, retaliate, stand, wander
+server.Actors.Behaviour = new TileWanderBehaviour();       // the default: leash, chase, retaliate, stand, wander
 server.Actors.Seed = 20260827;                             // fixes every actor's random stream
 ```
 
@@ -9676,6 +9686,49 @@ drag was long. Raise the window with the leash if a monster is meant to roam tha
 
 No constructor installs a behaviour, so an actor with `Behaviour` left null stands exactly where it was put. That
 is deliberate: the engine ships a default and never assumes it.
+
+**An actor traversal profile is an opaque game-owned key bound to one collision map.** Register every non-default
+profile during server setup, before the first authoritative tick and before any spawner or direct spawn names it.
+The default profile is already bound to the map passed to `TileWorldServer`, so existing actor code keeps the same
+topology without changing a line.
+
+```csharp
+var swimmer = new TileActorTraversalProfile(1);
+
+// The game decides which authored surfaces this kind of actor may occupy. The callback replaces only ground
+// blocking. Placed solid, diagonal, wall and wall-corner collision is applied afterward by the baker.
+TileCollisionMap swimmerMap = TileCollisionBaker.Bake(document, catalogs,
+    (x, z, plane) => !GameGroundRules.CanAquaticActorStand(document, catalogs, x, z, plane));
+
+server.Actors.RegisterTraversalProfile(swimmer, swimmerMap);
+
+var waterCreature = new TileActorDefinition
+{
+    Id = "water-creature",
+    MaxHealth = 20,
+    TraversalProfile = swimmer,
+};
+server.Actors.Add(waterCreature, new TileCoord(48, 36, 0));
+
+// Direct spawns use the same non-positional property and keep the old four-value constructor shape.
+long id = server.SpawnActor(new TileCoord(49, 36, 0), new TileActorSpawn(20, 0, TileDirection.S)
+{
+    TraversalProfile = swimmer,
+});
+```
+
+The map is held by reference. A dynamic blocker applied to it is visible at the next authoritative movement tick.
+Mutate it only on the server's owning thread between ticks. The selected profile governs destination acceptance,
+pathfinding, committed step validation, repathing, chase, wander destinations, leash return, respawn and region
+handoff. It also supplies the attacker's final adjacency check so chase and melee reach cannot disagree about a
+wall. This is geometry only. Attack admission, damage and any ranged rules remain game policy.
+
+A non-default actor must start on an open tile in its registered map. `Add` and direct `SpawnActor` reject an
+unknown profile or blocked custom home before creating an entity. A managed spawner waits and retries if a dynamic
+change later blocks that home when respawn becomes due. The default profile keeps the earlier blocked-home spawn
+behaviour for compatibility. If corrupted ECS state carries an unknown key, movement freezes and consumes its
+pending command instead of falling back to another topology. Player movement and client prediction always keep
+the constructor map.
 
 **The seam is one method, and an intent names a TILE or a TARGET and never a route.** Everything about HOW an
 actor gets there stays inside the stepper.
@@ -9731,6 +9784,12 @@ Six things about the context are worth knowing before writing one:
   net id when several do, and one tick behind a freshly accepted attack command. It is what lets a behaviour
   react to a fight that is COMING rather than only to one that has landed: the shipped default answers it with
   `Stand`, so a monster a player has clicked stops walking away before the first blow.
+- **`TraversalProfile` and `TraversalMap` are the topology selected for this actor.** The shipped wander behaviour
+  reads that map before choosing a destination. Both are non-positional init properties, so old context
+  construction and deconstruction remain source compatible. `TraversalMap` can be null only on a hand-built
+  context or a broken server invariant. The original `TileWanderBehaviour(map, ...)` constructor remains as a
+  fallback for hand-built contexts, while a server-supplied map wins. The parameterless constructor reads the
+  server-supplied map, and `CreateWithTiming` does the same with custom pause and retaliation timings.
 
 `TileActorIntentKind.Break` drops the target, walks home and restores the actor to full health when it ARRIVES,
 not when it breaks, and it drops the damage record with the target, because a break that left it set would have a
@@ -9752,11 +9811,12 @@ is refused, so a spawner can never take a tick down with it.
 Combat is a FOLLOWED interaction rather than a system of its own. `TileCommandKind.Attack` names a NET ID,
 `TileMoveState.CombatTarget` carries the lock, and the chase therefore runs inside the ONE stepper both heads
 predict rather than in a second movement authority the client would pay a round trip on. Melee range is literally
-`TileReach.Contains` against a 1x1 rect, so cardinal adjacency, the no-diagonal rule and the wall-denied safespot
-all fall out of the reach rule the package already had. The follow turns the attacker toward its target on every
-tick it answers in range, not once as it lands, so a combatant faces what it is fighting even after a step-off
-walked it away from the target and even as the target circles it. Both heads predict that turn with the chase, so
-it is not a facing the client waits a snapshot for.
+`TileReach.Contains` against a 1x1 rect, using the attacker's registered movement map for an actor and the normal
+constructor map for a player. Cardinal adjacency, the no-diagonal rule and the wall-denied safespot all fall out
+of the reach rule the package already had, and the final legal-reach check agrees with the chase topology. The
+follow turns the attacker toward its target on every tick it answers in range, not once as it lands, so a
+combatant faces what it is fighting even after a step-off walked it away from the target and even as the target
+circles it. Both heads predict that turn with the chase, so it is not a facing the client waits a snapshot for.
 
 **Read the player health contract before anything else here.** A spawned PLAYER has no `TileHealth` at all. An
 actor gets one from its spawn spec, and nothing writes a player's, because `Max` is a number out of the game's own
@@ -11374,7 +11434,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.29.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.30.0" />
 ```
 
 ```csharp
@@ -11410,7 +11470,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.29.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.30.0" />
 ```
 
 ```csharp
@@ -11652,7 +11712,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.29.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.30.0" />
 ```
 
 ```csharp
@@ -13697,7 +13757,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="18.29.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="18.30.0" />
 </ItemGroup>
 ```
 

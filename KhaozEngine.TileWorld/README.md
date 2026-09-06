@@ -144,13 +144,20 @@ and callers may branch on them: `header.planeCount`, `header.tileSize`, `header.
 `ProjectileBlocked` and `Decoration` reserved for later. A wall is ONE EDGE SHARED BY TWO TILES, so the baker
 sets the edge bit on both tiles and a movement check never has to look at objects.
 
-`TileCollisionBaker.Bake(doc, catalogs)` builds the whole map. `Rebake(map, doc, catalogs, dirtyRect, plane)`
-re-derives one rect, expanded by a tile for mirrored edges, ensuring and full-ground-baking any document region
-the cleared rect touches that has no storage yet, dropping the storage of any it touches that the DOCUMENT no
-longer has (so a deleted region reads blocked again rather than turning into walkable void), and gathering
-objects out to a margin taken from the catalogs' largest footprint. THE CALLER MUST PASS A RECT COVERING THE
-FULL FOOTPRINT of anything it removed,
-measured with `TileFootprint.Of` BEFORE the removal. `EdgeFlag` and `WallFacing` are the mapping helpers.
+`TileCollisionBaker.Bake(doc, catalogs)` builds the whole map. Its overload taking
+`Func<int, int, int, bool> groundBlocked` lets a game replace only the standable-ground rule. The arguments are
+absolute world tile X and Z plus a zero-based plane, and the callback runs once for every tile and plane in each
+loaded region. The baker applies the ordinary solid, diagonal, wall and wall-corner object passes afterward, so
+an alternate ground topology does not erase placed-object or directional-wall collision. Missing regions remain
+absent and read as blocked. Callback invocation order is not an API contract, so the rule must be deterministic
+and independent of earlier calls.
+
+`Rebake(map, doc, catalogs, dirtyRect, plane)` re-derives one rect through the ordinary authored-ground rule,
+expanded by a tile for mirrored edges, ensuring and full-ground-baking any document region the cleared rect
+touches that has no storage yet, dropping the storage of any it touches that the DOCUMENT no longer has (so a
+deleted region reads blocked again rather than turning into walkable void), and gathering objects out to a margin
+taken from the catalogs' largest footprint. THE CALLER MUST PASS A RECT COVERING THE FULL FOOTPRINT of anything it
+removed, measured with `TileFootprint.Of` BEFORE the removal. `EdgeFlag` and `WallFacing` are the mapping helpers.
 
 `TileCollisionMap` is the storage, keyed by region and plane, never persisted. Reads outside storage answer
 `Blocked`, so an unloaded region is a wall rather than a void, and an `Or` outside storage is a NO-OP.

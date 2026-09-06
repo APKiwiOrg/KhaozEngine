@@ -22,6 +22,25 @@ public class TileCollisionBakerTests
         Assert.Equal(TileCollisionFlags.Blocked, map.Get(5, 5, 9));
     }
 
+    [Fact]
+    public void A_custom_ground_rule_keeps_solid_objects_and_directional_walls_on_open_ground()
+    {
+        TileWorldDocument doc = TileWorldTestData.FlatWorld();
+        doc.SetSettings(10, 10, 0, TileSettings.Blocked);
+        doc.SetSettings(12, 10, 0, TileSettings.Blocked);
+        doc.AddObject("tree", 10, 10, 0, 0);
+        doc.AddObject("wall", 12, 10, 0, 2);
+
+        TileCollisionMap map = TileCollisionBaker.Bake(doc, Cat,
+            (x, z, plane) => plane != 0 || z != 10 || x < 9 || x > 13);
+
+        Assert.Equal(TileCollisionFlags.None, map.Get(9, 10, 0));
+        Assert.Equal(TileCollisionFlags.Blocked, map.Get(9, 11, 0));
+        Assert.Equal(TileCollisionFlags.Blocked, map.Get(10, 10, 0));
+        Assert.Equal(TileCollisionFlags.WallE, map.Get(12, 10, 0));
+        Assert.Equal(TileCollisionFlags.WallW, map.Get(13, 10, 0));
+    }
+
     [Theory]
     [InlineData(0, TileCollisionFlags.WallW, -1, 0, TileCollisionFlags.WallE)]
     [InlineData(1, TileCollisionFlags.WallN, 0, 1, TileCollisionFlags.WallS)]

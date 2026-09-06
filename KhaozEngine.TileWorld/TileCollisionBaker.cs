@@ -5,7 +5,7 @@ namespace KhaozEngine.TileWorld;
 
 /// <summary>Derives <see cref="TileCollisionMap"/> from settings and objects. Full bake at load, rect rebake
 /// after an edit. Never authored, never persisted, and it never throws on a dangling archetype (the validator
-/// reports that, an edit must not fault the map). Both entry points give storage to the document's own regions
+/// reports that, an edit must not fault the map). Every bake path gives storage to the document's own regions
 /// first and only then apply objects, so a footprint or a mirrored edge spilling past the edge of the authored
 /// world is dropped by the map rather than opening a region nobody authored.</summary>
 public static class TileCollisionBaker
@@ -15,8 +15,36 @@ public static class TileCollisionBaker
     {
         ArgumentNullException.ThrowIfNull(doc);
         ArgumentNullException.ThrowIfNull(catalogs);
+        return BakeCore(doc, catalogs, null);
+    }
+
+    /// <summary>Bakes every loaded region and plane with a caller-owned ground blocking rule, then applies the
+    /// ordinary solid, diagonal, wall and wall-corner object passes unchanged. This is the safe way to build an
+    /// alternate movement topology without losing placed-object collision.</summary>
+    /// <param name="doc">The authored tile world whose regions and objects are baked.</param>
+    /// <param name="catalogs">The catalogs that define every placed object's collision kind and footprint.</param>
+    /// <param name="groundBlocked">Returns true when one authored ground tile is impassable. X and Z are absolute
+    /// world tile coordinates. Plane is in the range zero through <see cref="TileWorldDocument.PlaneCount"/> minus
+    /// one. It is called once for every tile and plane in every loaded document region, before objects are applied.
+    /// Invocation order is not an API contract, so the callback must be deterministic and independent of earlier
+    /// calls. Missing regions remain absent and therefore read as blocked.</param>
+    /// <returns>A new derived collision map.</returns>
+    /// <exception cref="ArgumentNullException">Any argument is null.</exception>
+    public static TileCollisionMap Bake(TileWorldDocument doc, TileWorldCatalogs catalogs,
+        Func<int, int, int, bool> groundBlocked)
+    {
+        ArgumentNullException.ThrowIfNull(doc);
+        ArgumentNullException.ThrowIfNull(catalogs);
+        ArgumentNullException.ThrowIfNull(groundBlocked);
+        return BakeCore(doc, catalogs, groundBlocked);
+    }
+
+    static TileCollisionMap BakeCore(TileWorldDocument doc, TileWorldCatalogs catalogs,
+        Func<int, int, int, bool>? groundBlocked)
+    {
         var map = new TileCollisionMap(doc.PlaneCount);
-        foreach (TileRegion region in doc.Regions.Values) AddRegionWithGround(map, doc, region.Coord);
+        foreach (TileRegion region in doc.Regions.Values)
+            AddRegionWithGround(map, doc, region.Coord, groundBlocked);
         foreach (TileRegion region in doc.Regions.Values)
             foreach (TileObject o in region.Objects) ApplyObject(map, catalogs, o);
         return map;
@@ -98,18 +126,21 @@ public static class TileCollisionBaker
 
     // Storage implies derived ground, and this is the one place that holds that invariant: allocating a
     // region without its ground would leave every tile the caller did not ask about reading walkable, which
-    // is the wrong direction to be wrong in. Both entry points add regions through here.
-    static void AddRegionWithGround(TileCollisionMap map, TileWorldDocument doc, RegionCoord coord)
+    // is the wrong direction to be wrong in. Every entry point adds regions through here.
+    static void AddRegionWithGround(TileCollisionMap map, TileWorldDocument doc, RegionCoord coord,
+        Func<int, int, int, bool>? groundBlocked = null)
     {
         map.EnsureRegion(coord);
-        for (int p = 0; p < doc.PlaneCount; p++) BakeGround(map, doc, coord.Rect, p);
+        for (int p = 0; p < doc.PlaneCount; p++) BakeGround(map, doc, coord.Rect, p, groundBlocked);
     }
 
-    static void BakeGround(TileCollisionMap map, TileWorldDocument doc, TileRect rect, int plane)
+    static void BakeGround(TileCollisionMap map, TileWorldDocument doc, TileRect rect, int plane,
+        Func<int, int, int, bool>? groundBlocked)
     {
         for (int z = rect.Z; z < rect.Z1; z++)
             for (int x = rect.X; x < rect.X1; x++)
-                if (IsGroundBlocked(doc, x, z, plane)) map.Or(x, z, plane, TileCollisionFlags.Blocked);
+                if (groundBlocked?.Invoke(x, z, plane) ?? IsGroundBlocked(doc, x, z, plane))
+                    map.Or(x, z, plane, TileCollisionFlags.Blocked);
     }
 
     static bool IsGroundBlocked(TileWorldDocument doc, int x, int z, int plane) =>

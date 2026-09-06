@@ -18,12 +18,16 @@ public sealed record TileActorDefinition
     /// Written onto the actor's move state at spawn (<see cref="TileActorSpawn.Mode"/>), so it is live from the
     /// first tick and then rides the command stream. A head that latches a different mode on one actor keeps it:
     /// this is the cadence an actor STARTS at, not one restated over it every tick.
-    /// <para>A MODE rather than a tick count, and that is a consequence of there being exactly ONE actor simulator.
-    /// <see cref="TileStepTicks"/> is a property of a <see cref="TileMoveSimulator"/> instance rather than of a
-    /// state, so a per-definition tick count would need a per-definition simulator. The mode is the cadence knob
-    /// this package already has, it rides the command stream the way a player's run toggle does, and a world that
-    /// one day needs a third actor cadence adds a second actor simulator and a pick.</para></summary>
+    /// <para>A MODE rather than a tick count, because <see cref="TileStepTicks"/> belongs to a
+    /// <see cref="TileMoveSimulator"/> rather than to state. Registered traversal profiles select different
+    /// simulators, but all use the server's one actor cadence. A per-definition tick count would multiply those
+    /// instances by both profile and cadence. The mode is the cadence knob the command stream already carries.</para></summary>
     public TileMoveMode StepMode { get; init; } = TileMoveMode.Walk;
+
+    /// <summary>The registered collision topology actors from this spawner move over. Register a non-default key
+    /// through <see cref="TileActorHost.RegisterTraversalProfile"/> before adding the spawner. The zero default
+    /// preserves the map supplied to <see cref="TileWorldServer"/>.</summary>
+    public TileActorTraversalProfile TraversalProfile { get; init; } = TileActorTraversalProfile.Default;
 
     /// <summary>Ticks between swings, written onto <see cref="TileCombatState.AttackTicks"/> at spawn. Zero means an
     /// actor that never swings, which is a legitimate content decision (a critter, a training dummy).</summary>

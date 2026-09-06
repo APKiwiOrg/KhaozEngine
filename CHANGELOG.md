@@ -5,6 +5,25 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.30.0
+
+Server-owned tile actors can use registered traversal topologies while existing actors retain the default map.
+
+- `TileActorTraversalProfile` is an opaque game key registered through
+  `TileActorHost.RegisterTraversalProfile(profile, map)`. Definitions and direct spawns select it through
+  additive init properties, with zero preserving existing construction and movement.
+- The selected topology governs destination validation, pathfinding, committed steps, blocked-route repathing,
+  chase, wander, leash return, respawn placement, region handoff and the attacker's final adjacent reach check.
+  Player movement and client prediction remain on the constructor map.
+- Unknown profiles are rejected by actor spawn doors. An unresolved ECS tag freezes and consumes its pending
+  command instead of falling back to another topology. Profile registration closes before the first server tick.
+- `TileCollisionBaker.Bake(doc, catalogs, groundBlocked)` lets a game replace only the ground pass using absolute
+  world tile coordinates and a zero-based plane. Solid, diagonal, wall and wall-corner object passes remain
+  unchanged, including on ground the callback opens.
+- Headless regressions cover default compatibility, mixed profiles, registration and destination failures,
+  routing, committed steps, repathing, wandering, chase and combat reach, leash return, respawn, region handoff,
+  unknown-profile handling and preserved object collision.
+
 ## 18.29.0
 
 Persistent GPU foliage adds shader wind and actor bending while removing per-blade CPU frame preparation (#841).

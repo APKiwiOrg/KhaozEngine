@@ -132,7 +132,16 @@ public readonly record struct TileActorContext(
     long LastAttackedBy = 0L,
     long LastAttackedTick = 0L,
     bool LastDamagedByResolved = true,
-    bool LastAttackedByResolved = true);
+    bool LastAttackedByResolved = true)
+{
+    /// <summary>The opaque registered topology this actor moves over. Kept outside the positional record shape so
+    /// existing construction and deconstruction remain source compatible.</summary>
+    public TileActorTraversalProfile TraversalProfile { get; init; } = TileActorTraversalProfile.Default;
+
+    /// <summary>The collision map registered for <see cref="TraversalProfile"/>. Null only on a context built by
+    /// hand or on an unresolved server invariant.</summary>
+    public TileCollisionMap? TraversalMap { get; init; }
+}
 
 /// <summary>
 /// The one seam a game plugs an actor's decisions into. The engine owns the tick scheduling and the movement, this

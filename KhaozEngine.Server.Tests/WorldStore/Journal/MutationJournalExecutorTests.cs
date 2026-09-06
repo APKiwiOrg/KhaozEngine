@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.WorldStore.Journal;
@@ -18,6 +20,35 @@ public sealed class MutationJournalExecutorTests
         Assert.Throws<ArgumentOutOfRangeException>(() => new MutationJournalExecutor(store, new JournalExecutorOptions(1, 0, 1)));
         Assert.Throws<ArgumentOutOfRangeException>(() => new MutationJournalExecutor(store, new JournalExecutorOptions(1, 1, 0)));
         Assert.Throws<ArgumentNullException>(() => new MutationJournalExecutor(store, null!));
+    }
+
+    [Fact]
+    public async Task DuplicateAcknowledgementThrowsWithoutChangingOtherAdmittedState()
+    {
+        var store = new ControlledStore();
+        MutationJournalExecutor executor = CreateExecutor(store, workerCount: 2, operationCapacity: 2);
+        JournalCommit first = Commit(Guid.Parse("01000000-0000-0000-0000-000000000001"), "player/a");
+        JournalCommit other = Commit(Guid.Parse("01000000-0000-0000-0000-000000000002"), "player/b");
+        executor.Submit(first);
+        executor.Submit(other);
+        ControlledStore.CommitCall[] calls = { await store.TakeCommitAsync(), await store.TakeCommitAsync() };
+        ControlledStore.CommitCall firstCall = calls.Single(call => call.Commit.Identity.OperationId == first.Identity.OperationId);
+        ControlledStore.CommitCall otherCall = calls.Single(call => call.Commit.Identity.OperationId == other.Identity.OperationId);
+        firstCall.Succeed(Applied(firstCall.Commit));
+        JournalCompletion completion = await TakeCompletionAsync(executor);
+        executor.AcknowledgeCompletion(completion.OperationId, JournalCompletionAcknowledgement.Handled);
+        var before = (executor.Metrics.QueueOperations, executor.Metrics.QueueOwnedBytes, executor.Metrics.ReservedStreams,
+            executor.Metrics.UnacknowledgedCompletions, executor.Metrics.Quarantined);
+
+        Exception? duplicate = Record.Exception(() => executor.AcknowledgeCompletion(completion.OperationId, JournalCompletionAcknowledgement.Quarantined));
+
+        Assert.Equal(before, (executor.Metrics.QueueOperations, executor.Metrics.QueueOwnedBytes, executor.Metrics.ReservedStreams,
+            executor.Metrics.UnacknowledgedCompletions, executor.Metrics.Quarantined));
+        Assert.IsType<KeyNotFoundException>(duplicate);
+        Assert.Equal(JournalSubmissionStatus.StreamBusy, executor.Submit(Commit(Guid.NewGuid(), "player/b")).Status);
+        otherCall.Succeed(Applied(otherCall.Commit));
+        executor.AcknowledgeCompletion((await TakeCompletionAsync(executor)).OperationId, JournalCompletionAcknowledgement.Handled);
+        await executor.StopAsync(TimeSpan.Zero);
     }
 
     [Fact]
@@ -189,6 +220,86 @@ public sealed class MutationJournalExecutorTests
         Assert.Equal(JournalCommitStatus.Replayed, completion.Result!.Status);
         Assert.Equal(1, executor.Metrics.Replayed);
         executor.AcknowledgeCompletion(completion.OperationId, JournalCompletionAcknowledgement.Handled);
+        await executor.StopAsync(TimeSpan.Zero);
+    }
+
+    [Fact]
+    public async Task UnknownResolutionAvailabilityRetriesPastTransientBudgetThenRetriesFrozenCommit()
+    {
+        var store = new ControlledStore();
+        MutationJournalExecutor executor = CreateExecutor(store, maximumTransientRetries: 0);
+        executor.Submit(Commit(Guid.Parse("62000000-0000-0000-0000-000000000001"), "player/a"));
+        ControlledStore.CommitCall first = await store.TakeCommitAsync();
+        first.Fail(StoreFailure(JournalStoreFailureKind.UnknownOutcome, JournalStoreFailureCertainty.Unknown, "player/a"));
+        ControlledStore.ResolveCall resolve1 = await store.TakeResolveAsync();
+        resolve1.Fail(StoreFailure(JournalStoreFailureKind.Unavailable, JournalStoreFailureCertainty.DefinitelyNotCommitted, "player/a"));
+        await WaitUntilAsync(() => store.ResolveCallCount >= 2 || executor.Metrics.UnacknowledgedCompletions > 0);
+        Assert.Equal(2, store.ResolveCallCount);
+        ControlledStore.ResolveCall resolve2 = await store.TakeResolveAsync();
+        Assert.Same(resolve1.Identity, resolve2.Identity);
+        resolve2.Fail(StoreFailure(JournalStoreFailureKind.Timeout, JournalStoreFailureCertainty.DefinitelyNotCommitted, "player/a"));
+        await WaitUntilAsync(() => store.ResolveCallCount >= 3 || executor.Metrics.UnacknowledgedCompletions > 0);
+        Assert.Equal(3, store.ResolveCallCount);
+        ControlledStore.ResolveCall resolve3 = await store.TakeResolveAsync();
+        Assert.Same(resolve1.Identity, resolve3.Identity);
+        resolve3.Succeed(new JournalOperationResolution(JournalOperationResolutionStatus.NotFound));
+        ControlledStore.CommitCall retry = await store.TakeCommitAsync();
+        Assert.Same(first.Commit, retry.Commit);
+        retry.Succeed(Applied(retry.Commit));
+        JournalCompletion completion = await TakeCompletionAsync(executor);
+        executor.AcknowledgeCompletion(completion.OperationId, JournalCompletionAcknowledgement.Handled);
+        await executor.StopAsync(TimeSpan.Zero);
+    }
+
+    [Fact]
+    public async Task UnknownResolutionOperationConflictCompletesWithoutASecondCommit()
+    {
+        var store = new ControlledStore();
+        MutationJournalExecutor executor = CreateExecutor(store);
+        JournalCommit commit = Commit(Guid.Parse("63000000-0000-0000-0000-000000000001"), "player/a");
+        executor.Submit(commit);
+        ControlledStore.CommitCall first = await store.TakeCommitAsync();
+        first.Fail(StoreFailure(JournalStoreFailureKind.UnknownOutcome, JournalStoreFailureCertainty.Unknown, "player/a"));
+        ControlledStore.ResolveCall resolve = await store.TakeResolveAsync();
+        resolve.Succeed(new JournalOperationResolution(JournalOperationResolutionStatus.OperationConflict));
+
+        JournalCompletion completion = await TakeCompletionAsync(executor);
+        Assert.Equal(JournalCommitStatus.OperationConflict, completion.Result!.Status);
+        Assert.Equal((1L, 0L, 0L, 0L, 0L, 1L, 1L, 1L), (executor.Metrics.OperationConflict, executor.Metrics.Applied,
+            executor.Metrics.Replayed, executor.Metrics.VersionConflict, executor.Metrics.Failed, executor.Metrics.QueueOperations, executor.Metrics.ReservedStreams, executor.Metrics.UnacknowledgedCompletions));
+        Assert.Equal(commit.OwnedByteCount, executor.Metrics.QueueOwnedBytes);
+        Assert.Equal(1, store.CommitCallCount);
+        executor.AcknowledgeCompletion(completion.OperationId, JournalCompletionAcknowledgement.Handled);
+        await executor.StopAsync(TimeSpan.Zero);
+    }
+
+    [Fact]
+    public async Task ExactOperationCapacityCannotFailAfterReservationWhileWorkerIsBlocked()
+    {
+        var store = new ControlledStore();
+        MutationJournalExecutor executor = CreateExecutor(store, operationCapacity: 3);
+        JournalCommit[] commits =
+        {
+            Commit(Guid.Parse("64000000-0000-0000-0000-000000000001"), "player/a"),
+            Commit(Guid.Parse("64000000-0000-0000-0000-000000000002"), "player/b"),
+            Commit(Guid.Parse("64000000-0000-0000-0000-000000000003"), "player/c"),
+        };
+        Assert.Equal(JournalSubmissionStatus.Accepted, executor.Submit(commits[0]).Status);
+        ControlledStore.CommitCall blocked = await store.TakeCommitAsync();
+        Assert.Equal(JournalSubmissionStatus.Accepted, executor.Submit(commits[1]).Status);
+        Assert.Equal(JournalSubmissionStatus.Accepted, executor.Submit(commits[2]).Status);
+        Assert.Equal(JournalSubmissionStatus.Backpressure, executor.Submit(Commit(Guid.NewGuid(), "player/d")).Status);
+
+        foreach (JournalCommit expected in commits)
+        {
+            ControlledStore.CommitCall call = expected == commits[0] ? blocked : await store.TakeCommitAsync();
+            Assert.Equal(expected.Identity.OperationId, call.Commit.Identity.OperationId);
+            call.Succeed(Applied(call.Commit));
+            JournalCompletion completion = await TakeCompletionAsync(executor);
+            executor.AcknowledgeCompletion(completion.OperationId, JournalCompletionAcknowledgement.Handled);
+        }
+        Assert.Equal((0L, 0L, 0L, 0L), (executor.Metrics.QueueOperations, executor.Metrics.QueueOwnedBytes,
+            executor.Metrics.ReservedStreams, executor.Metrics.UnacknowledgedCompletions));
         await executor.StopAsync(TimeSpan.Zero);
     }
 

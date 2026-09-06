@@ -124,10 +124,13 @@ internal static class MutationJournalExecutorTestSupport
     {
         private readonly Channel<CommitCall> commits = Channel.CreateUnbounded<CommitCall>();
         private readonly Channel<ResolveCall> resolves = Channel.CreateUnbounded<ResolveCall>();
+        private int commitCallCount;
+        private int resolveCallCount;
 
         public Task<JournalCommitResult> CommitAsync(JournalCommit commit, CancellationToken cancellationToken = default)
         {
             var call = new CommitCall(commit, cancellationToken);
+            Interlocked.Increment(ref commitCallCount);
             commits.Writer.TryWrite(call);
             return call.Task;
         }
@@ -135,10 +138,13 @@ internal static class MutationJournalExecutorTestSupport
         public Task<JournalOperationResolution> ResolveOperationAsync(JournalOperationIdentity identity, CancellationToken cancellationToken = default)
         {
             var call = new ResolveCall(identity, cancellationToken);
+            Interlocked.Increment(ref resolveCallCount);
             resolves.Writer.TryWrite(call);
             return call.Task;
         }
 
+        internal int CommitCallCount => Volatile.Read(ref commitCallCount);
+        internal int ResolveCallCount => Volatile.Read(ref resolveCallCount);
         internal ValueTask<CommitCall> TakeCommitAsync() => commits.Reader.ReadAsync();
         internal ValueTask<ResolveCall> TakeResolveAsync() => resolves.Reader.ReadAsync();
 

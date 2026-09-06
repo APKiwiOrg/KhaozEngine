@@ -18,6 +18,7 @@ namespace KhaozEngine.Tests.Gui
         [Theory]
         [InlineData("Fill")]
         [InlineData("Border")]
+        [InlineData("BorderSingleCoverage")]
         [InlineData("Line")]
         public void Primitive_is_public(string name) =>
             Assert.NotNull(PublicStatic(name));

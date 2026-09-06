@@ -13,7 +13,7 @@ public class ServerNoticeDeliveryTests
     [Fact]
     public void Broadcast_notice_reaches_a_connected_client()
     {
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         var config = new WorldServerConfig { TickSeconds = 1f / 30f, InterestRadius = 500f, MaxPlayers = 8 };
         var server = new WorldServer(hub.Server, config, Flat, MoveTuning.Default);
         var client = new WorldClient(hub.CreateClient(), Flat, MoveTuning.Default,

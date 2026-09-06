@@ -105,7 +105,7 @@ public class ShardedWorldServerTests
     [Fact]
     public void Ghosting_AdjacentPlayersSeeEachOther_FarPlayerDoesNot()
     {
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         // slot0 @ x=8.5 (cell0), slot1 @ x=11.5 (cell1) - 3 m apart across x=10; slot2 @ x=55 (cell5) far.
         var cfg = SmallCells(slot => slot switch
         {
@@ -136,7 +136,7 @@ public class ShardedWorldServerTests
     {
         List<(Vector3 pos, CellCoord cell)> Run(IJobScheduler sched)
         {
-            var hub = new InMemoryHub();
+            var hub = new InMemoryTransportHub();
             var cfg = SmallCells(slot => new Vector3(7f + slot * 2f, 0f, 5f));
             var server = new ShardedWorldServer(hub.Server, cfg, Flat, MoveTuning.Default) { Scheduler = sched };
             var a = new NetClient(hub.CreateClient(), TestHandshake.Wire());
@@ -202,7 +202,7 @@ public class ShardedWorldServerTests
     [Fact]
     public void Reconnect_OnRecycledSlot_CanMove()
     {
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         var cfg = SmallCells(_ => new Vector3(5f, 0f, 5f));   // both players spawn in cell (0,0)
         var server = new ShardedWorldServer(hub.Server, cfg, Flat, MoveTuning.Default);
 

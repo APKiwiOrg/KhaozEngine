@@ -66,7 +66,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
     private readonly List<int> tickSlots = new();
     private readonly HashSet<long> interestScratch = new();
     private readonly OnlineSnapshotPublisher onlinePublisher = new();
-    private readonly DrainController drain = new();
+    private readonly KhaozEngine.Simulation.Hosting.DrainController drain = new();
     private readonly AdminCommandBuffer admin = new();
     private readonly IBanStore? banStore;
     private readonly MoveTuning tuning;
@@ -368,7 +368,6 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
     public void Poll()
     {
         net.Poll();
-        foreach (RateLimiter limiter in rateBySlot.Values) limiter.Refill();   // one budget top-up per poll
         while (net.TryDequeueEvent(out ServerSessionEvent ev))
         {
             switch (ev.Kind)
@@ -508,6 +507,8 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         long cellTicksBefore = TotalCellTicks();
         host.Tick(dt, maxTicksPerFrame: 1);
         bool movementRan = TotalCellTicks() != cellTicksBefore;
+        if (movementRan)
+            foreach (RateLimiter limiter in rateBySlot.Values) limiter.Refill();
 
         // 4. Authority follows entities across boundaries (exactly-once), then refresh border ghosts.
         host.ProcessHandoffs();

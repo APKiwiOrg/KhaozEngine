@@ -3,6 +3,7 @@ using KhaozEngine.TileWorld;
 using KhaozEngine.TileWorld.Netcode;
 using Xunit;
 using static KhaozEngine.Tests.TileNetcode.TileWanderBehaviourTests;
+using KhaozEngine.Netcode;
 
 namespace KhaozEngine.Tests.TileNetcode;
 

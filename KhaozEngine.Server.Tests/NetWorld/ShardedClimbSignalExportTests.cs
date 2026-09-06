@@ -115,40 +115,101 @@ public class ShardedClimbSignalExportTests
         return false;
     }
 
-    // Test 3: shard-handoff EWMA behaviour. The sim-local ascent EWMA (MovementState.ClimbRateEwma) is DELIBERATELY
-    // absent from the movement codec, and a handoff captures only the Migrate-channel codec set
-    // (SnapshotWriter.WriteFiltered), so the crossing RECONSTRUCTS the entity's MovementState via the codec rather than
-    // copying the struct wholesale. Result (the trace's answer): the wire ClimbRateQ SURVIVES the crossing (a remote
-    // keeps seeing the climb across a cell edge) while the sim-local EWMA RESETS to 0 - an acceptable few-tick
-    // re-converge transient, documented on the field.
+    // A real mid-stair handoff reconstructs MovementState through the Migrate snapshot, which deliberately leaves the
+    // full-precision EWMA out. The quantized climb signal must seed the destination's next movement step so the
+    // exported signal stays continuous instead of warming from zero again at the cell edge.
     [Fact]
-    public void ShardHandoff_CarriesWireClimbRateQ_ButResetsSimLocalEwma()
+    public void ShardHandoff_SeedsSimLocalEwmaBeforeTheNextStairStep()
     {
         ReplicationRegistry registry = MoveProtocol.CreateRegistry();
-        var host = new ShardHost(cellSize: 100f, tickSeconds: Dt, registry, interestCellSize: 100f,
+        MoveTuning tuning = Tuning();
+        using IPhysicsWorld physics = new BepuPhysicsWorld();
+        AddStairs(physics);
+        physics.Step(Dt);
+        using var host = new ShardHost(cellSize: 2f, tickSeconds: Dt, registry, interestCellSize: 2f,
             overlapMargin: 0f, positionAccessor: PosAccessor);
+        host.CellCreated += cell => cell.World.AddSystem(
+            new PlayerMovementSystem(Ground, tuning, Normal, bounds: null, physics, medium: null));
 
-        Entity e = host.SpawnAt(95f, 50f, out CellSim a);
-        a.World.Set(e, new NetId(7));
-        a.World.Set(e, ReplicatedPosition.FromWorld(new Vector3(95f, 1f, 50f), WorldFrame.Origin));
-        // A mid-run climber: a nonzero sim-local EWMA AND a nonzero wire ClimbRateQ.
-        sbyte q = MovementState.QuantizeClimbRate(2.5f);
-        a.World.Set(e, new MovementState { VerticalVelocity = 1.5f, Grounded = true, ClimbRateEwma = 2.5f, ClimbRateQ = q });
-        Assert.Equal(new CellCoord(0, 0), a.Coord);
-        Assert.NotEqual(0, (int)q);
+        Entity e = host.SpawnOwned(0f, 1f, 7, out CellSim start);
+        start.World.Set(e, ReplicatedPosition.FromWorld(
+            new Vector3(0f, tuning.CapsuleHalfHeight, 1f), WorldFrame.Origin));
+        start.World.Set(e, new MovementState { Grounded = true });
+        var command = new MoveCommand(new Vector2(0f, 1f), run: false, cameraYaw: 0f, jump: false);
 
-        // Cross the east edge into cell B(1,0) and hand off.
-        Assert.True(host.TryGetOwner(7, out CellSim owner, out Entity moving));
-        owner.World.Set(moving, ReplicatedPosition.FromWorld(new Vector3(130f, 1f, 50f), WorldFrame.Origin));
-        host.ProcessHandoffs();
+        bool exercised = false;
+        for (int tick = 0; tick < 300 && !exercised; tick++)
+        {
+            Assert.True(host.TryGetOwner(7, out CellSim source, out Entity moving));
+            source.World.Set(moving, new PendingMove { Command = command });
+            host.Tick(Dt);
 
-        Assert.True(host.TryGetOwner(7, out CellSim b, out Entity moved));
-        Assert.Equal(new CellCoord(1, 0), b.Coord);
-        MovementState ms = b.World.Get<MovementState>(moved);
-        // The WIRE signal is codec-migrated, so a remote keeps seeing the climb across the shard edge.
-        Assert.Equal(q, ms.ClimbRateQ);
-        Assert.Equal(1.5f, ms.VerticalVelocity, 3);
-        // The SIM-LOCAL ascent EWMA rides no codec, so it resets to 0 on the crossing (reconstructed, not copied).
-        Assert.Equal(0f, ms.ClimbRateEwma);
+            MovementState before = source.World.Get<MovementState>(moving);
+            ReplicatedPosition position = source.World.Get<ReplicatedPosition>(moving);
+            bool crossed = host.CoordFor(position.Value.X, position.Value.Z) != source.Coord;
+            if (!crossed || before.ClimbRateQ == 0)
+            {
+                host.ProcessHandoffs();
+                continue;
+            }
+
+            MoveState uninterrupted = CharacterMovement.Step(new MoveState
+            {
+                Position = position.Local,
+                VerticalVelocity = before.VerticalVelocity,
+                Grounded = before.Grounded,
+                TimeSinceGrounded = before.TimeSinceGrounded,
+                JumpBufferRemaining = before.JumpBufferRemaining,
+                Swimming = before.Swimming,
+                ClimbRateEwma = before.ClimbRateEwma,
+                SpeedScale = MovementState.DecodeSpeedScale(before.SpeedScaleQ),
+                HorizontalVelocity = new Vector2(
+                    MovementState.DecodeHorizontalVelocity(before.HorizontalVelocityXQ),
+                    MovementState.DecodeHorizontalVelocity(before.HorizontalVelocityZQ)),
+                FacingYaw = MovementState.DecodeFacingYaw(before.FacingYawQ),
+            }, command, Dt, Ground, tuning, Normal, physics);
+            sbyte uninterruptedQ = MovementState.QuantizeClimbRate(uninterrupted.ClimbRate);
+
+            host.ProcessHandoffs();
+            Assert.True(host.TryGetOwner(7, out CellSim destination, out Entity moved));
+            Assert.NotEqual(source.Coord, destination.Coord);
+            MovementState arrived = destination.World.Get<MovementState>(moved);
+            Assert.Equal(before.ClimbRateQ, arrived.ClimbRateQ);
+            Assert.Equal(0f, arrived.ClimbRateEwma);
+
+            destination.World.Set(moved, new PendingMove { Command = command });
+            host.Tick(Dt);
+            MovementState after = destination.World.Get<MovementState>(moved);
+            int continuationGap = Math.Abs((int)uninterruptedQ - (int)after.ClimbRateQ);
+            Assert.True(continuationGap <= 1,
+                $"handoff signal {after.ClimbRateQ} differed from uninterrupted {uninterruptedQ} by {continuationGap} wire units");
+            Assert.NotEqual(0f, after.ClimbRateEwma);
+            exercised = true;
+        }
+
+        Assert.True(exercised, "the staircase never crossed a cell edge with a live climb signal");
+    }
+
+    [Fact]
+    public void ObserverSnapshot_StillOmitsSimLocalClimbEwma()
+    {
+        ReplicationRegistry registry = MoveProtocol.CreateRegistry();
+        var source = new World();
+        Entity e = source.Spawn();
+        source.Set(e, new NetId(7));
+        source.Set(e, new MovementState
+        {
+            ClimbRateQ = MovementState.QuantizeClimbRate(2.5f),
+            ClimbRateEwma = 2.4875f,
+        });
+
+        byte[] snapshot = SnapshotWriter.Write(source, registry, ReplicationChannels.Replicate);
+        var destination = new World();
+        var view = new ClientReplicationView(registry);
+        view.Apply(destination, snapshot);
+
+        MovementState observed = destination.Get<MovementState>(view.Entities[7]);
+        Assert.NotEqual(0, observed.ClimbRateQ);
+        Assert.Equal(0f, observed.ClimbRateEwma);
     }
 }

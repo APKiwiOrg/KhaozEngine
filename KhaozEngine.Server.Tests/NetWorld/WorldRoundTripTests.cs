@@ -61,7 +61,7 @@ public class WorldRoundTripTests
     [Fact]
     public void Two_clients_each_see_the_other_move()
     {
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         var config = new WorldServerConfig { TickSeconds = 1f / 30f, InterestRadius = 500f, MaxPlayers = 8 };
         var server = new WorldServer(hub.Server, config, Flat, MoveTuning.Default);
         var a = new WorldClient(hub.CreateClient(), Flat, MoveTuning.Default, new WorldClientConfig { TickSeconds = config.TickSeconds });
@@ -107,7 +107,7 @@ public class WorldRoundTripTests
         // The animator bridge needs the EXACT air state for remotes (deriving it from a remote's terrain-following
         // position misfires - the faster it moves over a slope, the more it looks like falling). Snapshot() must
         // surface the replicated MovementState (grounded + vertical velocity) on each remote's EntityRenderState.
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         var config = new WorldServerConfig { TickSeconds = 1f / 30f, InterestRadius = 500f, MaxPlayers = 8 };
         var server = new WorldServer(hub.Server, config, Flat, MoveTuning.Default);
         var a = new WorldClient(hub.CreateClient(), Flat, MoveTuning.Default, new WorldClientConfig { TickSeconds = config.TickSeconds });
@@ -148,7 +148,7 @@ public class WorldRoundTripTests
     [Fact]
     public void Reconnect_on_recycled_slot_can_move()
     {
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         var config = new WorldServerConfig { TickSeconds = 1f / 30f, InterestRadius = 500f, MaxPlayers = 8 };
         var server = new WorldServer(hub.Server, config, Flat, MoveTuning.Default);
 

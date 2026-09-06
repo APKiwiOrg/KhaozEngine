@@ -78,7 +78,7 @@ public class ShardedWorldServerDeltaTests
     {
         List<(long netId, Vector3 pos)> Run(IJobScheduler sched)
         {
-            var hub = new InMemoryHub();
+            var hub = new InMemoryTransportHub();
             var cfg = SmallCells(slot => new Vector3(7f + slot * 2f, 0f, 5f));
             var server = new ShardedWorldServer(hub.Server, cfg, Flat, MoveTuning.Default) { Scheduler = sched };
             var a = new RawDeltaClient(hub.CreateClient(), server.Registry);

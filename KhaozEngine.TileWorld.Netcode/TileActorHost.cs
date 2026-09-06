@@ -190,6 +190,7 @@ public sealed class TileActorHost
             TileCommand command = nextCommand.Remove(netId, out TileCommand latched)
                 ? latched
                 : Decide(netId, state, spawner, mode, server.TickCount);
+            command = server.AdmitActorAttack(netId, command);
 
             server.WriteActorCommand(netId, command);
             RestoreOnArrival(netId, state, spawner);

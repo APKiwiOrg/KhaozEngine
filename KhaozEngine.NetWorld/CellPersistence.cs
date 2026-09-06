@@ -198,6 +198,15 @@ public sealed class CellPersistence
     /// </summary>
     public event Action<CellPersistenceIssue>? Issue;
 
+    /// <summary>
+    /// Raised exactly once in <see cref="Update"/> or <see cref="FlushAsync"/>'s server-thread restore drain after
+    /// a stored cell snapshot has been successfully applied, its NetId high-water has advanced, load issues have
+    /// been surfaced, and its dirty baseline has been established.
+    /// Missing, rejected, quarantined, and too-old or too-new loads do not raise this event. A coordinate loaded
+    /// again after <see cref="ForgetCell"/> produces a new event when that later restore succeeds.
+    /// </summary>
+    public event Action<CellRestoreAppliedEvent>? CellRestoreApplied;
+
     public CellPersistence(ICellPersistenceHost host, IWorldStore store, CellPersistenceConfig? config = null)
     {
         this.host = host ?? throw new ArgumentNullException(nameof(host));
@@ -574,6 +583,11 @@ public sealed class CellPersistence
         if (r.RetainedFrameCount > 0) RaiseIssue(CellPersistenceIssue.RetainedUnknownExtensions(coord, r.RetainedFrameCount));
 
         if (!migrated) lastSaved[coord] = host.SnapshotCell(coord) ?? body;
+
+        CellRestoreApplied?.Invoke(new CellRestoreAppliedEvent(
+            coord,
+            new List<long>(r.NetIds).AsReadOnly(),
+            r.RetainedFrameCount));
     }
 
     // Copies the original bytes to the quarantine key (so nothing is destroyed), then surfaces the issue. The cell is

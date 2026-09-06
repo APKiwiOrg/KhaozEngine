@@ -47,6 +47,15 @@ public sealed partial class TileWorldServer
     /// has not wired combat: the cooldown still runs down and no roll is ever asked for.</summary>
     public ITileCombatRules? CombatRules { get; set; }
 
+    internal bool CanAttack(long attackerNetId, long targetNetId) =>
+        CombatRules?.CanAttack(attackerNetId, targetNetId) ?? true;
+
+    internal TileCommand AdmitActorAttack(long attackerNetId, in TileCommand command) =>
+        command.Kind == TileCommandKind.Attack && command.Target != 0L
+            && !CanAttack(attackerNetId, command.Target)
+                ? TileCommand.Continue(command.Mode)
+                : command;
+
     /// <summary>How often the combat pass skipped a combatant that carried no <see cref="TileHealth"/> at all, in
     /// EITHER of the two roles: an ATTACKER holding a target and ready to swing, and a TARGET a swing was being
     /// rolled at.

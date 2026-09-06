@@ -80,7 +80,7 @@ public class WorldServerGameMessageTests
     [Fact]
     public void Broadcast_game_message_reaches_every_client()
     {
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         var config = new WorldServerConfig { TickSeconds = 1f / 30f, InterestRadius = 500f, MaxPlayers = 8 };
         var server = new WorldServer(hub.Server, config, Flat, MoveTuning.Default);
         var clientCfg = new WorldClientConfig { TickSeconds = config.TickSeconds };
@@ -258,7 +258,7 @@ public class WorldServerGameMessageTests
     [Fact]
     public void Slot_recycle_does_not_leak_messages_across_occupants()
     {
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         var config = new WorldServerConfig { TickSeconds = 1f / 30f, InterestRadius = 500f, MaxPlayers = 1 };
         var server = new WorldServer(hub.Server, config, Flat, MoveTuning.Default);
         var clientCfg = new WorldClientConfig { TickSeconds = config.TickSeconds };

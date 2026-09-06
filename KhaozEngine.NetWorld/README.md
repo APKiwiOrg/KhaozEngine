@@ -69,7 +69,9 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   the single-`World` `WorldServer` and the sharded `PlayerMovementSystem`), so an animator
   bridge reads them straight instead of finite-differencing the terrain-following position - swim in particular is
   impossible to derive from position (a swimmer glides horizontally like a walker), so the replicated bit is the only
-  source. Since 17.26.0 the same list carries **`FacingYaw`** (the authoritative heading, decoded from
+  source. The climb EWMA stays server-local and absent from observer and migration payloads. A destination shard seeds
+  it from the migrated `ClimbRateQ` before its next stair step, so the signal does not dip at a mid-climb cell crossing.
+  Since 17.26.0 the same list carries **`FacingYaw`** (the authoritative heading, decoded from
   `MovementState.FacingYawQ` for a remote and predicted un-quantized for the local player), which the position
   delta could not supply at all for a stationary entity. **`LandingImpactSpeed`** rides alongside it but is
   LOCAL-ONLY (always 0 for remotes, whose landing effects come from the replicated `Grounded` transition), and is
@@ -302,6 +304,11 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
     `SkippedTooNewCellCount`, `QuarantinedCorruptCellCount` and `QuarantinedAmbiguousCellCount` tally what the store
     handed back, and one aggregate line is logged at the end of each flush that changed any of them, so a boot says
     what the save came up as without a subscriber having to add the `Issue` stream up.
+  - **Successful async restores are observable.** `CellPersistence.CellRestoreApplied` fires exactly once on the
+    server thread after the host has applied the cell, advanced its NetId high-water, surfaced load issues, and
+    established its dirty baseline. `CellRestoreAppliedEvent` carries the coordinate, restored NetIds, and retained
+    extension-frame count. Missing, rejected, quarantined, and stale-version loads do not signal success. A cell
+    loaded again after `ForgetCell` signals again after that later restore is applied.
   - **Store-outage hygiene (since 10.4.1).** `CellPersistence.OnStoreError` (`event Action<Exception>`, mirrors
     `WorldPersistence.OnStoreError`) surfaces a faulted background cell save, meta write, or quarantine write. The
     driver prunes the faulted task every `Update` so a store outage can't grow the pending list unbounded or make the
@@ -331,6 +338,9 @@ No render, window, or GPU dependency: the servers are headless and the client gl
 renders a capsule per `EntityRenderState`). `WorldServer` is the single-`World` slice; `ShardedWorldServer` is
 the multi-cell variant (overworld sub-project 6b).
 
+Both server drains use `KhaozEngine.Simulation.Hosting.DrainController` for their deterministic tick-driven grace. The
+public `KhaozEngine.NetWorld.DrainController` remains as a source-compatible forwarding facade for existing code.
+
 ## Game messages (since 9.27.0)
 
 A generic, game-defined message channel alongside the movement protocol, so a game (attack, interaction, pick-up,
@@ -349,7 +359,8 @@ frames, demuxes, rate-limits and size-caps them, but never deserializes them - t
 - **Hostile-input hardening (client -> server), to the same bar as the move path.** The per-connection
   `AntiCheat` rate limiter runs in front of game messages (they share the move flood budget), and a payload larger
   than **`WorldServerConfig.MaxGameMessageBytes`** / **`ShardedWorldServerConfig.MaxGameMessageBytes`** (default
-  1024) is dropped and flagged `SuspiciousReason.OversizedMessage` via `OnSuspiciousActivity` - never thrown.
+  1024) is dropped and flagged `SuspiciousReason.OversizedMessage` via `OnSuspiciousActivity` - never thrown. Its
+  token budget advances with simulated ticks, so extra calls to `Poll` do not mint command capacity.
 - **Framing / version skew.** A client message rides the existing `0xC5` control-marker family with its own
   sub-marker, demuxed ahead of the move; by construction it can never alias the 2 / 6 / 18 byte control / ack /
   move shapes (see the aliasing contract in `MoveProtocol`). Server frames use a new `ServerFrameKind.GameMessage`
@@ -1019,12 +1030,17 @@ seam's state (the time-to-live, the clock, the offer records) lives in this proc
 a plain entity carrying `PickupState` that the seam knows nothing about, offered to nobody and expiring never.
 
 The mark is not a lock. `ClearTransient(pickupNetId)` after `Spawn` drops it and the next save writes the entity like
-any other, but what comes back is exactly that husk: nothing rehydrates the seam's tracking, so the restored orb is
-in no proximity scan, expires never, and no `Despawn` / `DespawnAll` / `ForgetCell` reaches it. Persistent ground
-loot needs a `WorldPickups.Rehydrate(world)` re-adopting restored `PickupState` entities into the seam, filed as
-[#660](https://github.com/APKiwiOrg/KhaozEngine/issues/660). Until then a collectible meant to outlive a restart
-belongs in the game's own content or save data, spawned again at boot, which is also the only place its payload still
-means anything.
+any other. Call **`WorldPickups.Rehydrate(world)`** after that cell restores to adopt its valid untracked
+`PickupState` entities. It preserves the persisted payload, owner, and position. Process-local state starts fresh:
+the radius and time-to-live use `WorldPickupsConfig` defaults, age starts at zero, and offer history is empty.
+Repeated calls are idempotent and do not reset an adopted pickup. Invalid entities, duplicate ids, ghosts, and
+entities the host does not own are skipped. Adopted pickups use every normal exit path, including collect, expiry,
+`Despawn`, and `ForgetCell`.
+
+For asynchronous store loads, subscribe to **`CellPersistence.CellRestoreApplied`**, resolve the event's coordinate
+to its cell, and pass that cell's `World` to `Rehydrate`. A caller with its own synchronous cache restore calls
+`Rehydrate` immediately after applying the cached snapshot. `Spawn` stays transient by default, so persistent ground
+loot remains an explicit per-pickup choice through `ClearTransient`.
 
 The same opt-out is reachable by hand for any other transient server-owned entity, a timed spawn or a wave of adds:
 **`ShardedWorldServer.MarkTransient(netId)`**, with **`ClearTransient`**, **`IsTransient`** and (since 17.39.0)

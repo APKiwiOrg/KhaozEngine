@@ -1,30 +1,25 @@
 namespace KhaozEngine.NetWorld;
 
-/// <summary>A deterministic, tick-driven grace countdown shared by <see cref="WorldServer"/> and
-/// <see cref="ShardedWorldServer"/> for a graceful drain. No wall clock: the host advances it by dt each tick.</summary>
+/// <summary>
+/// Source-compatible NetWorld facade for <see cref="KhaozEngine.Simulation.Hosting.DrainController"/>. New shared host code
+/// can reference the Simulation type directly.
+/// </summary>
 public sealed class DrainController
 {
-    private float remaining;
+    private readonly KhaozEngine.Simulation.Hosting.DrainController inner = new();
 
-    /// <summary>True between <see cref="Begin"/> and the grace elapsing.</summary>
-    public bool IsDraining { get; private set; }
+    /// <inheritdoc cref="KhaozEngine.Simulation.Hosting.DrainController.HasBegun"/>
+    public bool HasBegun => inner.HasBegun;
 
-    /// <summary>True once the grace period has elapsed (the host should then flush + close).</summary>
-    public bool IsComplete { get; private set; }
+    /// <inheritdoc cref="KhaozEngine.Simulation.Hosting.DrainController.IsDraining"/>
+    public bool IsDraining => inner.IsDraining;
 
-    /// <summary>Starts the grace countdown. A non-positive grace completes on the next <see cref="Advance"/>.</summary>
-    public void Begin(float graceSeconds)
-    {
-        remaining = graceSeconds;
-        IsDraining = true;
-        IsComplete = false;
-    }
+    /// <inheritdoc cref="KhaozEngine.Simulation.Hosting.DrainController.IsComplete"/>
+    public bool IsComplete => inner.IsComplete;
 
-    /// <summary>Advances the countdown by dt; flips <see cref="IsComplete"/> when the grace elapses.</summary>
-    public void Advance(float dt)
-    {
-        if (!IsDraining || IsComplete) return;
-        remaining -= dt;
-        if (remaining <= 0f) { IsComplete = true; IsDraining = false; }
-    }
+    /// <inheritdoc cref="KhaozEngine.Simulation.Hosting.DrainController.Begin"/>
+    public void Begin(float graceSeconds) => inner.Begin(graceSeconds);
+
+    /// <inheritdoc cref="KhaozEngine.Simulation.Hosting.DrainController.Advance"/>
+    public void Advance(float dt) => inner.Advance(dt);
 }

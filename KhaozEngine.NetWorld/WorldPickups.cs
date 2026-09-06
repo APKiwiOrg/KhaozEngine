@@ -54,14 +54,9 @@ namespace KhaozEngine.NetWorld;
 /// resurrected pickup would be a plain entity carrying <see cref="PickupState"/> that the seam knows nothing about,
 /// offered to nobody and expiring never.
 /// <para>The mark is not a lock: a game may call <c>ShardedWorldServer.ClearTransient(pickupNetId)</c> after
-/// <see cref="Spawn"/> and the next save writes the entity like any other. What it gets back is precisely the husk
-/// above, because nothing rehydrates this seam's tracking: the restored entity is in no proximity scan, expires
-/// never, and neither <see cref="Despawn"/> nor <see cref="DespawnAll"/> nor <see cref="ForgetCell"/> can reach it.
-/// Making persistent ground loot actually work needs a <c>Rehydrate(world)</c> that re-adopts restored
-/// <see cref="PickupState"/> entities into this seam, filed as
-/// https://github.com/APKiwiOrg/KhaozEngine/issues/660. Until that lands, a collectible that outlives a restart
-/// belongs in the game's own content or save data, spawned again at boot, which is also the only way its payload can
-/// still mean anything.</para>
+/// <see cref="Spawn"/> and the next save writes the entity like any other. After the cell restores, call
+/// <see cref="Rehydrate"/> with that cell's world to re-adopt its valid pickup entities. Rehydration preserves each
+/// payload and owner, then starts a fresh lifetime and offer history from the configured defaults.</para>
 /// <para>The save is not the only route to that husk. Re-marking a pickup
 /// <see cref="TransientScope.DurableOnly"/> keeps it in the evictor's unload freeze while
 /// <see cref="ForgetCell"/> has already dropped this seam's record for it, so re-entering that coordinate hands
@@ -93,7 +88,7 @@ namespace KhaozEngine.NetWorld;
 /// <para><b>Threading.</b> Single-threaded, like the servers themselves: construct it, and call every member, on the
 /// server thread. Both game hooks are raised inline from <see cref="Update"/> on that thread.</para>
 /// </remarks>
-public sealed class WorldPickups
+public sealed partial class WorldPickups
 {
     private readonly IWorldPickupHost host;
     private readonly WorldPickupsConfig config;

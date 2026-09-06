@@ -297,7 +297,9 @@ it steps through the same `TileMoveSimulator` for free and can never move in a w
   through `SpawnActor` has no spawner and answers false. Combat is `CombatRules`, `OnCombatEvent`, `OnDied`,
   `CombatEventsThisTick` and `SkippedHealthlessCombatantCount`, with `TryGetHealth` / `SetHealth` /
   `TryGetCombatState` as the reads and the one write, `ForgetAttacker` as the one field a game can drop (see
-  what a dead player leaves behind, below) and `DelayAttack` as the one number (see charging attack time, below). `TileWorldServerConfig` gained `MaxActorsPerCell` (the
+  what a dead player leaves behind, below), `DelayAttack` as the one number (see charging attack time, below), and
+  `CancelPendingAction` as the quiet way a game abandons an interaction without exposing the action queue.
+  `TileWorldServerConfig` gained `MaxActorsPerCell` (the
   per-REGION monster budget, since a cell is a region), `ActorMove` (the actor's own `TileMoveOptions`, whose
   default drops `MaxPathRadius` from 64 to 12 because `FindPath` allocates `(2r+1)^2` scratch per call, about 83 KB
   at 64 and 3 KB at 12) and `CombatLogoutTicks` (zero by default, and one number with two jobs: how long a
@@ -552,6 +554,19 @@ still answers the cadence at the first swing exactly as it does today.
 
 The delay runs down once per tick like any other cadence, so it is a wait rather than a freeze. False means no live
 cell owns the id, and a zero `ticks` writes nothing while still reporting whether the entity is there.
+
+### Cancelling an interaction without refusing it
+
+`CancelPendingAction(slot)` quietly abandons a pending interaction after the game accepts another action that
+supersedes it, such as eating while walking to a tree. It atomically clears the server's one-deep action queue entry
+and the player's `InteractTarget`. It does not raise `OnInteract` or `OnCannotReach`, and it sends no
+`ke:cannot-reach` notice. False means the seat is missing or has no pending action, including a repeated call.
+
+The player's route and step stay intact. Cancelling an interaction is not a movement command, so the authority
+continues the walk already in progress. A client that also wants to stop its predicted body should send the usual
+`WalkTo` through its command queue. That command remains useful for prediction and for clearing any older buffered
+commands. The cancellation call does not touch `CombatTarget` or `TileCombatState`, so a game may cancel interaction
+intent and charge a combat cooldown independently.
 
 ## A server, in ten lines
 

@@ -25,6 +25,30 @@ public sealed partial class TileWorldServer
     static readonly Comparison<(long issuedTick, int slot)> OldestFirst = (a, b) =>
         a.issuedTick != b.issuedTick ? a.issuedTick.CompareTo(b.issuedTick) : a.slot.CompareTo(b.slot);
 
+    /// <summary>
+    /// Cancels one player's pending interaction without raising <see cref="OnInteract"/>,
+    /// <see cref="OnCannotReach"/> or a <see cref="TileServerReason.CannotReach"/> notice. The queue entry and
+    /// <see cref="TileMoveState.InteractTarget"/> are cleared together.
+    /// <para>The active route and step are retained. Cancelling the interaction does not ask the authority to
+    /// rewrite where the player is walking, and a client may still stop its predicted walk through its ordinary
+    /// command path. The combat target and server-only combat cooldown state are left unchanged.</para>
+    /// </summary>
+    /// <param name="slot">The player's connection slot.</param>
+    /// <returns>True when a live player's pending action was cancelled. False when the seat is missing or has no
+    /// pending action.</returns>
+    public bool CancelPendingAction(int slot)
+    {
+        if (!actions.TryPeek(slot, out _)) return false;
+        if (!netIdBySlot.TryGetValue(slot, out long netId)) return false;
+        if (!host.TryGetOwner(netId, out CellSim cell, out Entity e)) return false;
+        if (!cell.World.TryGet(e, out TileMoveState state)) return false;
+
+        state.InteractTarget = 0L;
+        cell.World.Set(e, state);
+        actions.Clear(slot);
+        return true;
+    }
+
     // Resolves every pending action whose walk has run out of route, which is the tick its LAST step was committed.
     // The arrival test is the state's own, not a second reach computation: TileMoveSimulator routes an interact to a
     // reach tile and keeps InteractTarget for exactly as long as that walk is alive, dropping it the moment the

@@ -61,6 +61,103 @@ public class PngReaderTests
         }, image.Bytes);
     }
 
+    [Fact]
+    public void Independent_greyscale_eight_bit_transparency_fixture_expands_to_ga()
+    {
+        byte[] png = Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAAAAADRSSBWAAAAAnRSTlMAKq0oBO4AAAALSURBVHicY9DSBgAAggBWGhDksAAAAABJRU5ErkJggg==");
+
+        PngImage image = PngReader.Decode(png);
+
+        Assert.Equal(2, image.Channels);
+        Assert.Equal(8, image.BitDepth);
+        Assert.Equal(new byte[] { 42, 0, 43, 255 }, image.Bytes);
+    }
+
+    [Fact]
+    public void Independent_rgb_eight_bit_transparency_fixture_expands_to_rgba()
+    {
+        byte[] png = Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAIAAAB7QOjdAAAABnRSTlMAAQACAAPJS6v1AAAAD0lEQVR4nGNgZGJmZGIBAAAuAA7vvRSkAAAAAElFTkSuQmCC");
+
+        PngImage image = PngReader.Decode(png);
+
+        Assert.Equal(4, image.Channels);
+        Assert.Equal(8, image.BitDepth);
+        Assert.Equal(new byte[] { 1, 2, 3, 0, 1, 2, 4, 255 }, image.Bytes);
+    }
+
+    [Fact]
+    public void Independent_greyscale_sixteen_bit_transparency_fixture_compares_the_full_sample()
+    {
+        byte[] png = Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAIAAAABEAAAAACB2fwVAAAAAnRSTlMSNC/TSV4AAAANSURBVHicYxAyETIFAAFCAI47CDOaAAAAAElFTkSuQmCC");
+
+        PngImage image = PngReader.Decode(png);
+
+        Assert.Equal(2, image.Channels);
+        Assert.Equal(16, image.BitDepth);
+        Assert.Equal(new byte[] { 0x12, 0x34, 0x00, 0x00, 0x12, 0x35, 0xff, 0xff }, image.Bytes);
+    }
+
+    [Fact]
+    public void Independent_rgb_sixteen_bit_transparency_fixture_compares_the_full_pixel()
+    {
+        byte[] png = Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAIAAAABEAIAAAAr0DSeAAAABnRSTlMBAhAgMEAe9OFIAAAAEUlEQVR4nGNgZBJQMHAAk44ABoABSKApBfsAAAAASUVORK5CYII=");
+
+        PngImage image = PngReader.Decode(png);
+
+        Assert.Equal(4, image.Channels);
+        Assert.Equal(16, image.BitDepth);
+        Assert.Equal(new byte[]
+        {
+            0x01, 0x02, 0x10, 0x20, 0x30, 0x40, 0x00, 0x00,
+            0x01, 0x02, 0x10, 0x20, 0x30, 0x41, 0xff, 0xff,
+        }, image.Bytes);
+    }
+
+    [Fact]
+    public void Transparency_chunk_order_size_and_color_type_are_validated()
+    {
+        byte[] header = Header(1, 1, 8, 0, 0);
+        byte[] data = Chunk("IDAT", Compress(new byte[] { 0, 42 }));
+        byte[] transparency = Chunk("tRNS", new byte[] { 0, 42 });
+
+        Assert.Throws<InvalidDataException>(() => PngReader.Decode(
+            Join(Signature, Chunk("IHDR", header), data, transparency, Chunk("IEND", Array.Empty<byte>()))));
+        Assert.Throws<InvalidDataException>(() => PngReader.Decode(
+            Join(Signature, Chunk("IHDR", header), transparency, Chunk("PLTE", new byte[] { 0, 0, 0 }), data,
+                Chunk("IEND", Array.Empty<byte>()))));
+        Assert.Throws<InvalidDataException>(() => PngReader.Decode(
+            Join(Signature, Chunk("IHDR", header), transparency, transparency, data, Chunk("IEND", Array.Empty<byte>()))));
+        Assert.Throws<InvalidDataException>(() => PngReader.Decode(
+            Join(Signature, Chunk("IHDR", header), Chunk("tRNS", new byte[] { 42 }), data,
+                Chunk("IEND", Array.Empty<byte>()))));
+        Assert.Throws<InvalidDataException>(() => PngReader.Decode(
+            Join(Signature, Chunk("IHDR", Header(1, 1, 8, 2, 0)), Chunk("tRNS", new byte[] { 0, 1 }),
+                Chunk("IDAT", Compress(new byte[] { 0, 1, 2, 3 })), Chunk("IEND", Array.Empty<byte>()))));
+
+        foreach (byte alphaColorType in new byte[] { 4, 6 })
+        {
+            int channels = alphaColorType == 4 ? 2 : 4;
+            byte[] alphaData = Chunk("IDAT", Compress(new byte[1 + channels]));
+            Assert.Throws<InvalidDataException>(() => PngReader.Decode(
+                Join(Signature, Chunk("IHDR", Header(1, 1, 8, alphaColorType, 0)), transparency, alphaData,
+                    Chunk("IEND", Array.Empty<byte>()))));
+        }
+    }
+
+    [Fact]
+    public void Transparency_expansion_is_rejected_when_output_would_exceed_the_allocation_cap()
+    {
+        byte[] png = Join(Signature, Chunk("IHDR", Header(140_000_000, 1, 8, 0, 0)),
+            Chunk("tRNS", new byte[] { 0, 42 }), Chunk("IEND", Array.Empty<byte>()));
+
+        InvalidDataException error = Assert.Throws<InvalidDataException>(() => PngReader.Decode(png));
+        Assert.Contains("allocation cap", error.Message, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData(0, 10, 20, 0, 30, 50)]
     [InlineData(1, 10, 10, 1, 30, 20)]

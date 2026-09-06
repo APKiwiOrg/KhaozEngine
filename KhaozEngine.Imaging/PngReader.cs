@@ -7,14 +7,14 @@ namespace KhaozEngine.Imaging;
 /// <summary>Dependency-free decoder for noninterlaced 8-bit and 16-bit greyscale, GA, RGB and RGBA PNGs.</summary>
 public static class PngReader
 {
-    /// <summary>Maximum decoded sample bytes and filtered payload accepted from one image.</summary>
+    /// <summary>Maximum filtered, decoded, or transparency-expanded sample bytes accepted from one image.</summary>
     public const int MaxDecodedBytes = 256 * 1024 * 1024;
 
     private static ReadOnlySpan<byte> Signature => new byte[] { 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a };
 
     /// <summary>
-    /// Decodes a complete PNG. Output samples are top-to-bottom in PNG channel order. A 16-bit sample remains
-    /// two bytes, most-significant byte first.
+    /// Decodes a complete PNG. Output samples are top-to-bottom in PNG channel order. Greyscale and RGB
+    /// transparency chunks add an alpha channel. A 16-bit sample remains two bytes, most-significant byte first.
     /// </summary>
     public static PngImage Decode(ReadOnlySpan<byte> png)
     {
@@ -26,7 +26,9 @@ public static class PngReader
         bool sawData = false;
         bool dataEnded = false;
         bool sawEnd = false;
+        bool sawPalette = false;
         Header header = default;
+        PngTransparency? transparency = null;
         using var compressed = new MemoryStream();
 
         while (offset < png.Length)
@@ -69,8 +71,16 @@ public static class PngReader
             }
             else if (IsType(type, "PLTE"))
             {
-                if (!sawHeader || sawData || sawEnd)
+                if (!sawHeader || sawPalette || transparency.HasValue || sawData || sawEnd)
                     throw new InvalidDataException("PNG PLTE chunk is out of order");
+                sawPalette = true;
+            }
+            else if (IsType(type, "tRNS"))
+            {
+                if (!sawHeader || transparency.HasValue || sawData || sawEnd)
+                    throw new InvalidDataException("PNG tRNS chunk is out of order");
+                transparency = PngTransparency.Parse(
+                    header.ColorType, header.BitDepth, header.Width, header.Height, data);
             }
             else if ((type[0] & 0x20) == 0 && !IsType(type, "PLTE"))
             {
@@ -86,7 +96,7 @@ public static class PngReader
         }
 
         if (!sawEnd) throw new InvalidDataException("PNG is missing IEND");
-        return DecodePayload(header, compressed.ToArray());
+        return DecodePayload(header, transparency, compressed.ToArray());
     }
 
     private static Header ParseHeader(ReadOnlySpan<byte> data)
@@ -118,10 +128,10 @@ public static class PngReader
         long filtered = decoded + height;
         if (stride > int.MaxValue || decoded > MaxDecodedBytes || filtered > MaxDecodedBytes)
             throw new InvalidDataException($"PNG decoded payload exceeds the {MaxDecodedBytes}-byte allocation cap");
-        return new Header((int)width, (int)height, channels, bitDepth, (int)stride, (int)filtered);
+        return new Header((int)width, (int)height, data[9], channels, bitDepth, (int)stride, (int)filtered);
     }
 
-    private static PngImage DecodePayload(Header header, byte[] compressed)
+    private static PngImage DecodePayload(Header header, PngTransparency? transparency, byte[] compressed)
     {
         var filtered = new byte[header.FilteredLength];
         using var input = new MemoryStream(compressed, writable: false);
@@ -138,7 +148,11 @@ public static class PngReader
 
         byte[] decoded = PngFilters.Unfilter(
             filtered, header.Stride, header.Height, header.Channels * (header.BitDepth / 8));
-        return new PngImage(header.Width, header.Height, header.Channels, header.BitDepth, decoded);
+        if (transparency is not { } transparent)
+            return new PngImage(header.Width, header.Height, header.Channels, header.BitDepth, decoded);
+
+        byte[] expanded = transparent.Expand(decoded, header.BitDepth);
+        return new PngImage(header.Width, header.Height, transparent.OutputChannels, header.BitDepth, expanded);
     }
 
     private static bool IsType(ReadOnlySpan<byte> type, string expected) =>
@@ -155,5 +169,5 @@ public static class PngReader
         ((uint)bytes[offset + 2] << 8) | bytes[offset + 3];
 
     private readonly record struct Header(
-        int Width, int Height, int Channels, int BitDepth, int Stride, int FilteredLength);
+        int Width, int Height, int ColorType, int Channels, int BitDepth, int Stride, int FilteredLength);
 }

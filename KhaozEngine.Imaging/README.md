@@ -25,10 +25,12 @@ the exact decompressed payload size. Palette and interlaced images are rejected.
 `PngReader.MaxDecodedBytes`.
 
 The returned `PngImage.Bytes` is top-to-bottom in the PNG's channel order. Each 16-bit channel sample remains
-two bytes in most-significant-byte-first order, so no precision is discarded.
+two bytes in most-significant-byte-first order, so no precision is discarded. A greyscale or RGB `tRNS`
+chunk promotes the decoded output to GA or RGBA. Matching samples receive zero alpha and all other samples
+receive full alpha, with the full 16-bit value compared when applicable.
 
 This stays a focused PNG utility rather than a general image-processing library. Encoding is RGBA8 only.
-Decoding deliberately excludes palettes, interlace, color conversion, transforms and metadata interpretation.
+Decoding deliberately excludes palettes, interlace, color conversion, transforms and other metadata interpretation.
 
 ## GoldenGrid
 

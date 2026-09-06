@@ -272,7 +272,9 @@ order is not stable across platforms or launches, both comparisons are culture-i
 cannot shift with the machine's locale, and the pair is a total order so two maps sharing a file name in
 different directories keep a fixed relative position. Open Recent and Open Map share a clipped
 `ScrollablePanel` region. The title, New Map row, status note, and Quit button stay fixed while every returned
-map remains reachable by wheel or drag scrolling, including when both lists are full at 1280x720.
+map remains reachable by wheel or drag scrolling, including when both lists are full at 1280x720. A drag or
+wheel movement consumes the active pointer gesture, so releasing over a row after scrolling cannot open it. A
+fresh tap after scrolling still opens the selected map.
 
 A discovered path whose file is gone greys with the same missing-file style as a stale recent entry, and
 clicking it re-queries the head and leaves a note instead of pushing: there is no store to prune (the head

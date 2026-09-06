@@ -107,7 +107,7 @@ namespace KhaozEngine.Tests.Render3D
         /// vulkan-native.
         /// </summary>
         [GpuFact]
-        public void Single_flat_layer_reproduces_a_vertex_colour_look()
+        public void A_slot_past_a_single_flat_layer_clamps_to_that_layer()
         {
             // The R1-to-R4 colour-only world drawn through the SAME pipeline: one flat layer, white tint, weight 1
             // everywhere. If this comes back anything but green the flat-fill fallback cannot replace vertex colour.
@@ -115,7 +115,7 @@ namespace KhaozEngine.Tests.Render3D
             {
                 var mat = scene.LoadTileGroundMaterial(4, 4, new[] { Layer(0, 255, 0) }, baseSpecStrength: 0f);
                 var one = new Vector4(1f, 0f, 0f, 0f);
-                return scene.LoadMesh(Quad(one, one, 0f, 0f, 0f, 0f), mat);
+                return scene.LoadMesh(Quad(one, one, 63f, 0f, 0f, 0f), mat);
             });
 
             (int r, int g, int b) = Patch(rgba, 0.50f, 0.5f);

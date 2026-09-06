@@ -134,10 +134,12 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
     multiplies by the slot tint and the jitter. **The jitter is a MULTIPLIER, not an offset, so `Tangent.z` of 0
     renders that vertex BLACK**: write 1 for none. A mesh built for the model pipeline, where `Tangent` is a
     tangent frame, is not a tile-ground mesh.
-  - **Constraints worth knowing.** Entries past the layer count are ZEROED rather than defaulted, so a mesh naming
-    a slot the set never filled renders black instead of borrowing another material's look. The pipeline binds TWO
+  - **Constraints worth knowing.** Entries past the layer count are zeroed, while the shader clamps every mesh slot
+    to the last real texture layer before reading either resource. A hand-built mesh naming an invalid slot
+    therefore shows the set's last material instead of sampling a nonexistent array slice. The pipeline binds TWO
     sets, the same split the splat pipeline has: set 0 is the shared frame block both stages read, and set 1 is the
-    material's own `TileGroundParams` buffer (`vec4 TintTiling[64]` then a `Misc` vector, written once at load),
+    material's own `TileGroundParams` buffer (`vec4 TintTiling[64]` then a `Misc` vector carrying base specular
+    strength and layer count, written once at load),
     then the albedo array, its sampler, and the shadow map and its sampler LAST, which is the binding-order
     convention the terrain pass established. Until 18.1.0 the frame block and the params rode in ONE buffer per
     material, re-uploaded whole every frame, which is what #727 unfolded. Tile ground CASTS shadows, like a model

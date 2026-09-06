@@ -131,7 +131,7 @@ layout(set=0, binding=0) uniform U {
 // side of this block, MaxMaterials + 1 vec4).
 layout(set=1, binding=0) uniform TileGroundParams {
     vec4 TintTiling[64];   // xyz = tint, w = tiles/metre, one entry per catalog material
-    vec4 Misc;             // x = baseSpecStrength, yzw reserved (0)
+    vec4 Misc;             // x = baseSpecStrength, y = material layer count, zw reserved (0)
 };
 layout(set=1, binding=1) uniform texture2DArray AlbedoArray;  // one layer per catalog material, sampled FIRST
 layout(set=1, binding=2) uniform sampler Samp;
@@ -168,11 +168,12 @@ void main() {
 
     // The four corner slots. Held as floats and read back with the +0.5 round the splat pass uses, because a float
     // that carries an integer can arrive a hair under it and truncation would then pick the wrong material. The
-    // clamp to 0..63 is not decoration: the index reaches BOTH the TintTiling array and the texture array's layer,
-    // and an out-of-range index into a uniform block array is undefined behaviour rather than a wrap, which on one
-    // backend reads whatever follows the block. A mesher bug should show as the wrong material, not as garbage.
-    int slot[4] = int[4](clamp(int(vSlots.x + 0.5), 0, 63), clamp(int(vSlots.y + 0.5), 0, 63),
-                         clamp(int(vSlots.z + 0.5), 0, 63), clamp(int(vSlots.w + 0.5), 0, 63));
+    // The index reaches BOTH the TintTiling array and the texture array's layer. Clamp to the tighter of the
+    // uniform bound and the last real texture layer, so a bad slot samples the last material rather than reading
+    // past either resource. Misc.y is the validated layer count written when the material is loaded.
+    int maxSlot = min(63, max(0, int(Misc.y + 0.5) - 1));
+    int slot[4] = int[4](clamp(int(vSlots.x + 0.5), 0, maxSlot), clamp(int(vSlots.y + 0.5), 0, maxSlot),
+                         clamp(int(vSlots.z + 0.5), 0, maxSlot), clamp(int(vSlots.w + 0.5), 0, maxSlot));
 
     // Screen-space world derivatives, taken ONCE here in uniform control flow (before the loop's data-dependent
     // `continue`). The UV is wpAbs.xz * tile, so its texture-space gradient is the matching world derivative scaled

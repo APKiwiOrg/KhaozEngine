@@ -528,6 +528,15 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
+        public void TileGroundFrag_ClampsSlotsToTheLastRealMaterialLayer()
+        {
+            Assert.Contains("int maxSlot = min(63, max(0, int(Misc.y + 0.5) - 1));",
+                ShaderSources.TileGroundFrag);
+            Assert.Contains("clamp(int(vSlots.x + 0.5), 0, maxSlot)", ShaderSources.TileGroundFrag);
+            Assert.Contains("clamp(int(vSlots.w + 0.5), 0, maxSlot)", ShaderSources.TileGroundFrag);
+        }
+
+        [Fact]
         public void TileGroundParams_AreTheirOwnFragmentOnlyBlockAtSetOne()
         {
             // The params used to be APPENDED to the frame block, so this pinned the append offset against

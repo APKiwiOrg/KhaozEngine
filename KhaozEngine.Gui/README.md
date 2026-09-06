@@ -304,6 +304,8 @@ chat.Draw(batch, white);
   - `ContextMenu` (18.2.0) - a right-click option menu anchored at a screen point: a title band over a stack of
     selectable rows, the OSRS-style option list. `Open(title, entries, screenPoint)` shows it (reopening while
     open just replaces the content and the anchor), `Update(Pointer)` drives one frame, `Draw(batch, white)`
+    accepts caller-ordered `LabelSegment` values through `ContextMenuEntry.Segmented(...)`, so separately
+    localized verb and target text can use independent colors without splitting translated strings.
     paints it. Text is `LocalizedText` throughout, resolved ONCE: the title in `Open`, each row through
     `ContextMenuEntry.Of(label, rightDetail, ...)` at construction (the `TooltipLine.Of` precedent), so the draw
     path never re-resolves and a runtime locale switch means rebuilding the entries. A row carries an optional

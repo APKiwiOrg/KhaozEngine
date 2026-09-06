@@ -21,6 +21,11 @@ namespace KhaozEngine.Gui
         long Tag = 0, bool Enabled = true)
     {
         /// <summary>
+        /// Caller-ordered localized label parts, or null for the legacy single <see cref="Label"/> string.
+        /// </summary>
+        public IReadOnlyList<LabelSegment>? LabelSegments { get; init; }
+
+        /// <summary>
         /// Build an entry from localized text, resolved now against the ambient catalog.
         /// <paramref name="rightDetail"/> defaults to <c>default(LocalizedText)</c>, which resolves to the empty
         /// string, so a row with no right-hand detail needs no extra ceremony.
@@ -28,6 +33,27 @@ namespace KhaozEngine.Gui
         public static ContextMenuEntry Of(LocalizedText label, LocalizedText rightDetail = default,
             Vector4? labelColor = null, Vector4? detailColor = null, long tag = 0, bool enabled = true) =>
             new(label.Resolve() ?? "", rightDetail.Resolve() ?? "", labelColor, detailColor, tag, enabled);
+
+        /// <summary>
+        /// Builds an entry whose left label is measured and drawn as caller-ordered localized segments.
+        /// Segments are copied so later mutations of the source list cannot change an open menu.
+        /// </summary>
+        public static ContextMenuEntry Segmented(
+            IReadOnlyList<LabelSegment> labelSegments,
+            LocalizedText rightDetail = default,
+            Vector4? labelColor = null,
+            Vector4? detailColor = null,
+            long tag = 0,
+            bool enabled = true)
+        {
+            ArgumentNullException.ThrowIfNull(labelSegments);
+            var copy = new LabelSegment[labelSegments.Count];
+            for (int i = 0; i < copy.Length; i++) copy[i] = labelSegments[i];
+            return new ContextMenuEntry("", rightDetail.Resolve() ?? "", labelColor, detailColor, tag, enabled)
+            {
+                LabelSegments = copy,
+            };
+        }
     }
 
     /// <summary>Spacing and padding knobs for context-menu auto-sizing and edge clamping.</summary>
@@ -55,7 +81,7 @@ namespace KhaozEngine.Gui
     /// functions over <see cref="ITextMeasurer"/>, so the whole geometry is headless-testable with a fake
     /// measurer, exactly as <see cref="Tooltip.ComputeBounds(ITextMeasurer, string, ITextMeasurer, IReadOnlyList{TooltipLine}, Vector2, Vector2, TooltipMetrics)"/> is.
     /// </summary>
-    public sealed class ContextMenu
+    public sealed partial class ContextMenu
     {
         readonly ITextMeasurer _titleMeasure, _bodyMeasure;
         readonly SpriteFont? _titleFont, _bodyFont;
@@ -321,10 +347,14 @@ namespace KhaozEngine.Gui
                 Rect r = RowBounds(b, _titleMeasure, _bodyMeasure, i, Metrics);
                 if (e.Enabled && i == HoverIndex) GuiDraw.Fill(batch, white, r, HoverColor);
 
-                Vector4 label = e.Enabled ? e.LabelColor ?? TextColor : DisabledColor;
                 Vector4 detail = e.Enabled ? e.DetailColor ?? DetailColor : DisabledColor;
                 float y = MathF.Floor(r.Y + Metrics.RowPadY);
-                batch.DrawString(_bodyFont, e.Label, new Vector2(textX, y), (Color)label);
+                LabelRun[] runs = LayoutLabel(e, _bodyFont, textX, TextColor, DisabledColor);
+                for (int segment = 0; segment < runs.Length; segment++)
+                {
+                    LabelRun run = runs[segment];
+                    batch.DrawString(_bodyFont, run.Text, new Vector2(run.X, y), (Color)run.Color);
+                }
                 if (!string.IsNullOrEmpty(e.RightDetail))
                 {
                     float dw = _bodyFont.Measure(e.RightDetail).X;
@@ -360,7 +390,7 @@ namespace KhaozEngine.Gui
             for (int i = 0; i < entries.Count; i++)
             {
                 ContextMenuEntry e = entries[i];
-                float rowW = bodyFont.Measure(e.Label).X;
+                float rowW = MeasureLabel(bodyFont, e);
                 if (!string.IsNullOrEmpty(e.RightDetail))
                     rowW += m.DetailGap + bodyFont.Measure(e.RightDetail).X;
                 contentW = MathF.Max(contentW, rowW);

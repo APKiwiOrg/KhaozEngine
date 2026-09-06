@@ -160,6 +160,47 @@ namespace KhaozEngine.Tests.Gui
             Assert.Equal(Vector4.One, full.LabelColor.Value);
         }
 
+        [Fact]
+        public void Segmented_label_width_is_the_sum_of_caller_ordered_segments()
+        {
+            var entry = ContextMenuEntry.Segmented(new[]
+            {
+                new LabelSegment(LocalizedText.Raw("Goblin "), new Vector4(0f, 1f, 0f, 1f)),
+                new LabelSegment(LocalizedText.Raw("Attack"), new Vector4(1f, 0f, 0f, 1f)),
+            }, tag: 42);
+
+            Rect bounds = ContextMenu.ComputeBounds(Font, "", Font, new[] { entry },
+                new Vector2(100, 100), View, M);
+            ContextMenu.LabelRun[] runs = ContextMenu.LayoutLabel(entry, Font, 100f, Vector4.One, Vector4.Zero);
+
+            Assert.Equal(130f + M.PadX * 2f, bounds.Width);
+            Assert.Equal("Goblin ", runs[0].Text);
+            Assert.Equal(100f, runs[0].X);
+            Assert.Equal(new Vector4(0f, 1f, 0f, 1f), runs[0].Color);
+            Assert.Equal("Attack", runs[1].Text);
+            Assert.Equal(170f, runs[1].X);
+            Assert.Equal(new Vector4(1f, 0f, 0f, 1f), runs[1].Color);
+            Assert.Equal(42L, entry.Tag);
+        }
+
+        [Fact]
+        public void Segmented_label_matches_legacy_layout_for_the_same_resolved_text()
+        {
+            var legacy = new ContextMenuEntry("Attack Goblin");
+            var segmented = ContextMenuEntry.Segmented(new[]
+            {
+                new LabelSegment(LocalizedText.Raw("Attack ")),
+                new LabelSegment(LocalizedText.Raw("Goblin")),
+            });
+
+            Rect legacyBounds = ContextMenu.ComputeBounds(Font, "", Font, new[] { legacy },
+                new Vector2(100, 100), View, M);
+            Rect segmentedBounds = ContextMenu.ComputeBounds(Font, "", Font, new[] { segmented },
+                new Vector2(100, 100), View, M);
+
+            Assert.Equal(legacyBounds, segmentedBounds);
+        }
+
         // ---- interaction ----------------------------------------------------
         //
         // The interaction fixture is a three-row menu opened at (300,200) in the 960x540 viewport. With the
@@ -288,6 +329,24 @@ namespace KhaozEngine.Tests.Gui
             Assert.Equal(1, menu.SelectedIndex);
             Assert.False(menu.IsOpen);
             Assert.False(menu.WasDismissed);
+        }
+
+        [Fact]
+        public void Tap_on_a_segmented_row_selects_its_tag_unchanged()
+        {
+            var entry = ContextMenuEntry.Segmented(new[]
+            {
+                new LabelSegment(LocalizedText.Raw("Attack ")),
+                new LabelSegment(LocalizedText.Raw("Goblin")),
+            }, tag: 77);
+            ContextMenu menu = OpenMenu(new[] { entry }, Point);
+            var p = new Pointer();
+
+            Tap(menu, p, Row0Pt);
+
+            Assert.True(menu.WasSelected);
+            Assert.Equal(77L, menu.SelectedTag);
+            Assert.Equal(0, menu.SelectedIndex);
         }
 
         [Fact]

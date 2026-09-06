@@ -5,6 +5,20 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.18.0
+
+One theming fix a game asked for: the two colours `Dropdown` hardcoded now come off the theme.
+
+**`GuiTheme.SelectionFill` and `GuiTheme.FocusFill`** (`KhaozEngine.Gui`, closes #830)
+
+- `Dropdown.SelectedColor` and `Dropdown.FocusColor` derive from the two new fields at construction, the way
+  its other eight colours already derived from the theme, so a game that rebrands through `GuiTheme` no longer
+  gets a blue selected row. Both stay public per-instance overrides.
+- Every preset carries the exact colours the widget hardcoded before (`#283c5a` and `#23375a`), so nothing
+  moves for a consumer that has not themed them.
+- `GuiStyle.Primary` and `Active` still hardcode their five fills, `SelectedFill` included, which `TabBar` and
+  `TreeView` read: that is #831, left whole because the five want moving together under the button goldens.
+
 ## 18.17.0
 
 One additive piece a tile-world game asked for: an anti-aliased arc band baked on the CPU, for HUD gauges and

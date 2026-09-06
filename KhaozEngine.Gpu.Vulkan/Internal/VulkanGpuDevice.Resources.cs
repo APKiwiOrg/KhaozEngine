@@ -142,7 +142,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             lock (_submitLock)
             {
-                if (VulkanStagingMaps.Writes(_maps.Close(target)))
+                GpuMapMode mode = _maps.Close(target);
+                if (!_liveness.IsDead && VulkanStagingMaps.Writes(mode))
                 {
                     target.Allocation.Flush(layout.Offset, layout.Size);
                 }
@@ -178,7 +179,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             lock (_submitLock)
             {
-                if (VulkanStagingMaps.Writes(_maps.Close(target))) target.Allocation.Flush(0, target.SizeInBytes);
+                GpuMapMode mode = _maps.Close(target);
+                if (!_liveness.IsDead && VulkanStagingMaps.Writes(mode))
+                    target.Allocation.Flush(0, target.SizeInBytes);
             }
         }
 

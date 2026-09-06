@@ -23,7 +23,8 @@ internal static class SqlServerJournalSchema
         string connectionString,
         SqlServerJournalSchemaMode mode,
         int commandTimeoutSeconds,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        SqlServerJournalSchemaTestHook? testHook = null)
     {
         await using var connection = new SqlConnection(connectionString);
         try
@@ -83,6 +84,8 @@ internal static class SqlServerJournalSchema
                 await create.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
             }
 
+            if (testHook is not null)
+                await testHook.InvokeAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
             await ValidateShapeAsync(connection, transaction, commandTimeoutSeconds, cancellationToken).ConfigureAwait(false);
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
             completed = true;

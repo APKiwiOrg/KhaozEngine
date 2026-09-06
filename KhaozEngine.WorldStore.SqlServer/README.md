@@ -52,4 +52,6 @@ host. Initialization is serialized with a transaction-owned SQL application lock
 maintenance gate, while compaction, replay retention, and epoch rotation take the exclusive side.
 
 Live provider tests require `KE_SQLSERVER_TEST_CONNSTRING`. Each test owns a unique stream prefix and cleanup
-removes only rows under that prefix.
+removes only rows under that prefix. Because cursor epoch rotation and operation retention are database-global,
+the test fixture requires the connection string's `Initial Catalog` to contain the literal `-journal-test-` marker.
+The guard runs before provider construction, schema validation, maintenance, or mutation.

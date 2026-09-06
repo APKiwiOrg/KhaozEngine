@@ -48,7 +48,8 @@ public sealed partial class SqlServerMutationJournalStore : IMutationJournalStor
 
     internal SqlServerMutationJournalStore(
         SqlServerMutationJournalStoreOptions options,
-        SqlServerJournalTestHook? testHook)
+        SqlServerJournalTestHook? testHook,
+        SqlServerJournalSchemaTestHook? schemaTestHook = null)
     {
         ArgumentNullException.ThrowIfNull(options);
         connectionString = options.ConnectionString
@@ -72,7 +73,8 @@ public sealed partial class SqlServerMutationJournalStore : IMutationJournalStor
             connectionString,
             options.SchemaMode,
             commandTimeoutSeconds,
-            CancellationToken.None).GetAwaiter().GetResult();
+            CancellationToken.None,
+            schemaTestHook).GetAwaiter().GetResult();
     }
 
     public async Task<JournalOperationResolution> ResolveOperationAsync(
@@ -333,18 +335,11 @@ public sealed partial class SqlServerMutationJournalStore : IMutationJournalStor
 
     internal static JournalStoreException MapTransportFailureForTest(
         Exception exception,
+        bool transactionStarted,
         bool commitStarted,
         bool rollbackConfirmed,
         IReadOnlyList<string> streamKeys)
-        => commitStarted && !rollbackConfirmed
-            ? UnknownOutcome(streamKeys, exception)
-            : new JournalStoreException(
-                JournalStoreFailureKind.Unavailable,
-                JournalStoreFailureCertainty.DefinitelyNotCommitted,
-                Scope(streamKeys),
-                streamKeys,
-                "SQL Server mutation journal transport failed.",
-                exception);
+        => TransportFailure(exception, transactionStarted, commitStarted, rollbackConfirmed, streamKeys);
 
     internal static string[] OrderStreamKeysForTest(IEnumerable<string> streamKeys)
         => streamKeys.OrderBy(value => value, StringComparer.Ordinal).ToArray();

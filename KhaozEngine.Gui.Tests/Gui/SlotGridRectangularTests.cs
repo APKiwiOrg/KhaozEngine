@@ -164,5 +164,59 @@ namespace KhaozEngine.Tests.Gui
             Assert.Equal(-1, fired);
             Assert.Equal(-1, g.RightClickedSlot);
         }
+
+        [Fact]
+        public void Right_pressed_slot_tracks_a_held_right_press_inside_its_origin_slot()
+        {
+            var g = Panel();
+            var p = new Pointer();
+            var at = new Vector2(120, 60);
+
+            p.Update(Frame(at));
+            g.Update(p);
+            Assert.Equal(-1, g.RightPressedSlot);
+
+            p.Update(Frame(at, MouseButton.Right));
+            g.Update(p);
+            Assert.Equal(1, g.RightPressedSlot);
+
+            p.Update(Frame(at));
+            g.Update(p);
+            Assert.Equal(-1, g.RightPressedSlot);
+        }
+
+        [Fact]
+        public void Right_pressed_slot_clears_outside_and_restores_on_reentry_to_the_press_origin()
+        {
+            var g = Panel();
+            var p = new Pointer();
+
+            p.Update(Frame(new Vector2(60, 60)));
+            p.Update(Frame(new Vector2(60, 60), MouseButton.Right));
+            g.Update(p);
+            Assert.Equal(0, g.RightPressedSlot);
+
+            p.Update(Frame(new Vector2(300, 300), MouseButton.Right));
+            g.Update(p);
+            Assert.Equal(-1, g.RightPressedSlot);
+
+            p.Update(Frame(new Vector2(60, 60), MouseButton.Right));
+            g.Update(p);
+            Assert.Equal(0, g.RightPressedSlot);
+        }
+
+        [Fact]
+        public void Right_pressed_slot_stays_clear_when_the_press_began_outside()
+        {
+            var g = Panel();
+            var p = new Pointer();
+
+            p.Update(Frame(new Vector2(300, 300)));
+            p.Update(Frame(new Vector2(300, 300), MouseButton.Right));
+            p.Update(Frame(new Vector2(60, 60), MouseButton.Right));
+            g.Update(p);
+
+            Assert.Equal(-1, g.RightPressedSlot);
+        }
     }
 }

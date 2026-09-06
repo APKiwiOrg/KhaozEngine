@@ -69,6 +69,9 @@ chat.Draw(batch, white);
   screen pulled out mid-frame (its own transition-off completing, or another screen's `Update` removing it)
   cannot get one more `Update` out of the loop's scratch copy after its content is gone. Re-adding that same
   instance remounts it and re-runs its entry transition.
+  `AdvanceTransitionsBehindModal` is an opt-in flag, false by default. When true, screens below a modal update
+  break advance transition-on and transition-off clocks without receiving input or running `Screen.Update`.
+  Finished transition-off screens are removed normally while covered.
   `PressBeganOverUi` carries the press-origin invariant across the UI boundary: true while the current gesture
   began over a region the screens had reserved, latched at the press and held until the next fresh press. The
   stack drives its own pointer, so a reservation here is invisible to a game's world-picking pointer, and there
@@ -105,8 +108,12 @@ chat.Draw(batch, white);
   `CornerRadius`/`BorderThickness`). `SelectionFill` is the fill under a selected row (a list's current item, a
   `Dropdown`'s chosen option) and `FocusFill` the fill under the keyboard cursor row, a shade under it. The
   `Dropdown` used to hardcode that pair, so a rebranded palette still drew a blue selected row. Both presets
-  carry the same two values, so `GuiTheme.Legacy` does not move either row. Set the ambient
-  `GuiTheme.Default` ONCE at startup (before building widgets) to
+  carry the same two values, so `GuiTheme.Legacy` does not move either row. Set
+  `PrimaryFill`, `PrimaryHover`, `PrimaryPress`, `PrimaryBorder`, and `PrimarySelectedFill` to
+  rebrand `GuiStyle.Primary`. The parallel `ActiveFill`, `ActiveHover`, `ActivePress`, `ActiveBorder`,
+  `ActiveText`, and `ActiveSelectedFill` fields drive `GuiStyle.Active`. Both built-in themes retain the prior
+  preset values, and `GuiStyle.Legacy` plus `GuiStyle.Modern` remain independent. Set the ambient
+  `GuiTheme.Default` once at startup (before building widgets) to
   rebrand the whole UI; set it to `GuiTheme.Legacy` to keep the pre-10.11.0 flat blue-grey look. `GuiStyle` carries
   the button palette + the modern-affordance knobs, with presets: `Default` (crisp, == `Primary`), `Secondary`
   (muted), `Danger` (red), `Active` (bright-accent selected), `Modern` (rounded + glow + shadow), and `Legacy` (the
@@ -239,12 +246,14 @@ chat.Draw(batch, white);
     label, text only: the rects, the row fills, the chevron and the hit-testing are unchanged. Pointer actions
     that open, close, select or dismiss consume their gesture, so controls behind the trigger or open list cannot
     act on the same release.
-  - `TabBar` - horizontal tab bar / segmented control: N evenly-split tabs, exactly one active. A valid tap
-    activates a tab and raises `ChangedThisFrame` for one frame (and `Update` returns true), so the caller swaps
-    the panel body only on a real change. `ActiveIndex` is settable to restore/persist the selection without
-    raising the change signal. Active tab uses `ActiveStyle` (`GuiStyle.Active`), inactive tabs `InactiveStyle`
-    (`GuiStyle.Secondary`), labels are `LocalizedText`, and `TabRect(i)` is the pure per-tab layout, independent of
-    `TextScale` (default `1f`, scales every tab label only). `Opacity` fades the whole bar for a host transition.
+  - `TabBar` - tab bar / segmented control with exactly one active tab. The original
+    `IReadOnlyList<LocalizedText>` constructor keeps one row of evenly split tabs. The `TabBarItem` overload adds
+    per-tab `Enabled` state. Disabled tabs use the style's disabled colours and swallow taps without changing the
+    selection. Positive `TabWidth` and `TabHeight` opt into fixed-size layout. `Columns` controls left-to-right
+    wrapping and `Spacing` sets both gutters. `ContentBounds` reports and reserves the resulting footprint.
+    `ActiveIndex` is settable to restore or persist selection without raising the change signal. Active tabs use
+    `ActiveStyle` (`GuiStyle.Active`), inactive tabs use `InactiveStyle` (`GuiStyle.Secondary`), and `TabRect(i)`
+    exposes the active layout. `TextScale` scales every label only. `Opacity` fades the whole bar.
   - **Keyboard/gamepad control (opt-in, additive)** on `Toggle`/`Slider`/`Dropdown`: each has an
     `Update(InputManager, bool focused, PlayerIndex? = null)` overload that layers `InputManager` menu actions on
     top of the pointer path (only when `focused`), mirroring `FocusNavigator`. So a settings row is fully
@@ -375,8 +384,9 @@ chat.Draw(batch, white);
     only, so a dense tree fits more text per row without changing `RowHeight`, `Indent` or any hit-testing.
   - `PropertyGrid` - a vertical stack of `PropertyRow`s split label/editor at `LabelFraction`, scrolling like
     `ScrollablePanel` (wheel + scissor clip). Built-in rows: `FloatRow` (a `NumberField`), `BoolRow` (a
-    `Toggle`), `TextRow` (a `TextInput`), `ChoiceRow` (a `Dropdown` over a fixed set of option strings, get/set
-    delegates over the selected option like `TextRow`), `ReadOnlyRow` (a polled display string, no input).
+    `Toggle`), `TextRow` (a `TextInput`), `ChoiceRow` (a `Dropdown` over either raw strings or localized
+    `ChoiceOption` display content with a separate stable string value), `ReadOnlyRow` (a polled display string,
+    no input).
     Each row polls its getter every `Update` unless the user is mid-edit/scrub/focus on that row's child widget
     (a `ChoiceRow` polls only while its list is closed, so an in-progress pick is never stomped), so external
     changes (undo, another editor) stay in sync without a change-event bus. A `ChoiceRow`'s setter fires only on
@@ -540,10 +550,11 @@ chat.Draw(batch, white);
   (three ASCII dots, binary-searched against the caller-supplied measure function, e.g.
   `s => font.Measure(s).X`, so it is pure and headless-testable). When not even the dots fit, `"..."` is still
   returned. `PropertyGrid` cell/label text and the map editor's status strip draw through it.
-- `GuiDraw.Fill(batch, white, rect, color)`, `GuiDraw.Border(batch, white, rect, thickness, color)` and
+- `GuiDraw.Fill(batch, white, rect, color)`, `GuiDraw.Border(batch, white, rect, thickness, color)`,
+  `GuiDraw.BorderSingleCoverage(batch, white, rect, thickness, color)` and
   `GuiDraw.Line(batch, white, a, b, thickness, color)` - the 2D primitives, public alongside
   `TruncateWithEllipsis` so a game drawing its own chrome in its own pass calls the engine helper instead of
-  hand-building four rects. All three take a 1x1 white texture (Render2D has no primitive renderer). `Fill`
+  hand-building four rects. All four take a 1x1 white texture (Render2D has no primitive renderer). `Fill`
   draws the rect verbatim, `Border` strokes a `thickness`-wide outline just inside it and snaps rect and
   thickness to whole device pixels in a point-space pass (a no-op elsewhere), and `Line` is a single rotated
   quad between two points. Everything else on `GuiDraw` (`FillStyled`, the skin path, the glow, the widget
@@ -599,6 +610,11 @@ var grid = new PropertyGrid(inspectorRect);
 grid.Rows.Add(new FloatRow(Strings.PosX, () => obj.Position.X, v => obj.Position = obj.Position with { X = v },
     dragScale: 0.1f));
 grid.Rows.Add(new BoolRow(Strings.Visible, () => obj.Visible, v => obj.Visible = v));
+grid.Rows.Add(new ChoiceRow(Strings.Difficulty, new[]
+{
+    new ChoiceOption(Strings.DifficultyEasy, "easy"),
+    new ChoiceOption(Strings.DifficultyHard, "hard"),
+}, () => obj.Difficulty, v => obj.Difficulty = v));
 grid.Rows.Add(new ReadOnlyRow(Strings.ObjectId, () => obj.Id.ToString()));
 grid.Update(input, dt);   // polls getters, runs the focused row's child widget, writes back on a real change
 grid.Draw(batch, white, font);

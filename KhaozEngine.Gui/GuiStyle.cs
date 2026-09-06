@@ -182,14 +182,14 @@ namespace KhaozEngine.Gui
                 var t = GuiTheme.Default;
                 return new()
                 {
-                    Fill = new Vector4(0.137f, 0.216f, 0.353f, 1f),   // #233a5a accent-muted
-                    Hover = new Vector4(0.176f, 0.275f, 0.451f, 1f),  // #2d4673
-                    Press = new Vector4(0.098f, 0.157f, 0.275f, 1f),  // #192846
-                    Border = new Vector4(0.235f, 0.353f, 0.588f, 1f), // #3c5a96
+                    Fill = t.PrimaryFill,
+                    Hover = t.PrimaryHover,
+                    Press = t.PrimaryPress,
+                    Border = t.PrimaryBorder,
                     Text = t.Text,
                     DisabledFill = t.SurfaceDisabled,
                     DisabledText = t.TextDisabled,
-                    SelectedFill = new Vector4(0.157f, 0.235f, 0.353f, 1f), // #283c5a (Active fill)
+                    SelectedFill = t.PrimarySelectedFill,
                     SelectedBorder = t.AccentBright,
                     BorderThickness = t.BorderThickness,
                     CornerRadius = t.CornerRadius,
@@ -260,14 +260,14 @@ namespace KhaozEngine.Gui
                 var t = GuiTheme.Default;
                 return new()
                 {
-                    Fill = new Vector4(0.157f, 0.235f, 0.353f, 1f),   // #283c5a
-                    Hover = new Vector4(0.196f, 0.294f, 0.431f, 1f),
-                    Press = new Vector4(0.118f, 0.176f, 0.275f, 1f),
-                    Border = new Vector4(0.314f, 0.549f, 0.863f, 1f), // #508cdc
-                    Text = new Vector4(0.549f, 0.784f, 1f, 1f),        // #8cc8ff
+                    Fill = t.ActiveFill,
+                    Hover = t.ActiveHover,
+                    Press = t.ActivePress,
+                    Border = t.ActiveBorder,
+                    Text = t.ActiveText,
                     DisabledFill = t.SurfaceDisabled,
                     DisabledText = t.TextDisabled,
-                    SelectedFill = new Vector4(0.196f, 0.294f, 0.431f, 1f),
+                    SelectedFill = t.ActiveSelectedFill,
                     SelectedBorder = t.AccentBright,
                     BorderThickness = t.BorderThickness,
                     CornerRadius = t.CornerRadius,

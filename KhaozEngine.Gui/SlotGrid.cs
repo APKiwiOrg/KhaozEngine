@@ -56,7 +56,8 @@ namespace KhaozEngine.Gui
     /// Slots fill left-to-right then top-to-bottom, wrapping at <see cref="Columns"/>. Each slot is hit-tested through
     /// the press-origin <see cref="Pointer.IsTapIn"/> invariant, so a click that began in another slot (or off-grid)
     /// can't fire it, and the right button gets the same treatment through <see cref="OnSlotRightClicked"/> (the
-    /// per-slot context menu). <see cref="HoveredSlot"/> / <see cref="PressedSlot"/> expose the live states (-1 = none). The
+    /// per-slot context menu). <see cref="HoveredSlot"/>, <see cref="PressedSlot"/>, and
+    /// <see cref="RightPressedSlot"/> expose the live states (-1 = none). The
     /// widget knows nothing about game items: it draws each empty slot as a themed frame and lets the caller paint
     /// icons / counts through <see cref="DrawSlotContent"/>. Call <see cref="Update(Pointer)"/> then <see cref="Draw"/> each
     /// frame. <see cref="Update(Pointer)"/> reserves the footprint on the pointer (the click-through gate), clipped
@@ -198,6 +199,10 @@ namespace KhaozEngine.Gui
         public int HoveredSlot { get; private set; } = -1;
         /// <summary>Index of the slot being pressed this frame (press began inside it), or -1. Set by <see cref="Update(Pointer)"/>.</summary>
         public int PressedSlot { get; private set; } = -1;
+
+        /// <summary>Index of the slot being right-pressed this frame (press began inside it), or -1. Set by
+        /// <see cref="Update(Pointer)"/> and cleared at the start of every update.</summary>
+        public int RightPressedSlot { get; private set; } = -1;
 
         /// <summary>Slot a right tap landed on this frame, or -1. The polling form of
         /// <see cref="OnSlotRightClicked"/>, and cleared at the top of every <c>Update</c> the same way
@@ -364,6 +369,7 @@ namespace KhaozEngine.Gui
             if (TryVisiblePart(ContentBounds, out Rect reservation)) pointer.BlockRegion(reservation);
             HoveredSlot = -1;
             PressedSlot = -1;
+            RightPressedSlot = -1;
             PressOriginSlot = -1;
             DropTargetSlot = -1;
             DropTargetAccepted = false;
@@ -376,6 +382,7 @@ namespace KhaozEngine.Gui
                 if (!TryVisiblePart(SlotRect(i), out Rect r)) continue;
                 if (HoveredSlot < 0 && pointer.IsHoveringIn(r)) HoveredSlot = i;
                 if (PressedSlot < 0 && pointer.IsPressingIn(r)) PressedSlot = i;
+                if (RightPressedSlot < 0 && pointer.IsRightPressingIn(r)) RightPressedSlot = i;
                 if (PressOriginSlot < 0 && pointer.IsDragStartIn(r)) PressOriginSlot = i;
                 if (clicked < 0 && pointer.IsTapIn(r)) clicked = i;
                 if (RightClickedSlot < 0 && pointer.IsRightTapIn(r)) RightClickedSlot = i;

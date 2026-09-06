@@ -293,23 +293,13 @@ public sealed class MutationJournalBenchmarkTests
     }
 
     [Fact]
-    public async Task Soak_is_duration_bounded_cancellable_and_emits_complete_progress_lines()
+    public async Task Soak_duration_starts_after_setup_and_emits_complete_progress_lines()
     {
         string database = TemporaryDatabasePath();
         try
         {
             var output = new StringWriter(System.Globalization.CultureInfo.InvariantCulture);
-            var config = new JournalBenchmarkConfig
-            {
-                Mode = JournalBenchmarkMode.Soak,
-                Operations = 70,
-                Players = 16,
-                Seed = 835,
-                PayloadBytes = 96,
-                DatabasePath = database,
-                Duration = TimeSpan.FromTicks(1),
-                ProgressInterval = TimeSpan.FromTicks(1),
-            };
+            JournalBenchmarkConfig config = SoakConfig(database, TimeSpan.FromTicks(1), TimeSpan.FromTicks(1));
 
             JournalBenchmarkResult result = await JournalSoakRunner.RunAsync(config, output);
 
@@ -322,6 +312,57 @@ public sealed class MutationJournalBenchmarkTests
                 Assert.Equal("journal-soak-progress", json.RootElement.GetProperty("type").GetString());
                 Assert.True(json.RootElement.GetProperty("operationsCompleted").GetInt32() > 0);
             });
+        }
+        finally
+        {
+            DeleteDatabase(database);
+        }
+    }
+
+    [Fact]
+    public async Task Soak_pre_cancelled_caller_does_not_start_workload()
+    {
+        string database = TemporaryDatabasePath();
+        try
+        {
+            var output = new StringWriter(System.Globalization.CultureInfo.InvariantCulture);
+            using var cancellation = new CancellationTokenSource();
+            cancellation.Cancel();
+
+            JournalBenchmarkResult result = await JournalSoakRunner.RunAsync(
+                SoakConfig(database, TimeSpan.FromTicks(1), TimeSpan.FromTicks(1)),
+                output,
+                cancellation.Token);
+
+            Assert.Equal(0, result.OperationsCompleted);
+            Assert.Equal(string.Empty, output.ToString());
+        }
+        finally
+        {
+            DeleteDatabase(database);
+        }
+    }
+
+    [Fact]
+    public async Task Soak_caller_cancellation_after_progress_finishes_current_operation()
+    {
+        string database = TemporaryDatabasePath();
+        try
+        {
+            using var cancellation = new CancellationTokenSource();
+            using var output = new CancelOnFirstLineWriter(cancellation);
+
+            JournalBenchmarkResult result = await JournalSoakRunner.RunAsync(
+                SoakConfig(database, TimeSpan.FromMinutes(1), TimeSpan.FromTicks(1)),
+                output,
+                cancellation.Token);
+
+            Assert.Equal(1, result.OperationsCompleted);
+            Assert.Equal(1, result.Applied);
+            string line = Assert.Single(output.ToString().Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries));
+            using JsonDocument json = JsonDocument.Parse(line);
+            Assert.Equal(1, json.RootElement.GetProperty("operationsCompleted").GetInt32());
+            Assert.Equal(1, json.RootElement.GetProperty("applied").GetInt64());
         }
         finally
         {
@@ -447,6 +488,19 @@ public sealed class MutationJournalBenchmarkTests
     private static string TemporaryDatabasePath()
         => Path.Combine(Path.GetTempPath(), $"khaoz-journal-benchmark-{Guid.NewGuid():N}.db");
 
+    private static JournalBenchmarkConfig SoakConfig(string database, TimeSpan duration, TimeSpan progressInterval)
+        => new()
+        {
+            Mode = JournalBenchmarkMode.Soak,
+            Operations = 70,
+            Players = 16,
+            Seed = 835,
+            PayloadBytes = 96,
+            DatabasePath = database,
+            Duration = duration,
+            ProgressInterval = progressInterval,
+        };
+
     private static void DeleteDatabase(string database)
     {
         foreach (string suffix in new[] { string.Empty, "-shm", "-wal" })
@@ -471,6 +525,23 @@ public sealed class MutationJournalBenchmarkTests
         {
             Store.Dispose();
             return ValueTask.CompletedTask;
+        }
+    }
+
+    private sealed class CancelOnFirstLineWriter : StringWriter
+    {
+        private readonly CancellationTokenSource cancellation;
+        private int lineCount;
+
+        internal CancelOnFirstLineWriter(CancellationTokenSource cancellation)
+            : base(System.Globalization.CultureInfo.InvariantCulture)
+            => this.cancellation = cancellation;
+
+        public override void WriteLine(string? value)
+        {
+            if (lineCount++ != 0) throw new InvalidOperationException("Soak continued after caller cancellation.");
+            base.WriteLine(value);
+            cancellation.Cancel();
         }
     }
 }

@@ -28,7 +28,52 @@ public sealed class OidcTokenValidator : IIdentityValidator
 
     public async Task<VerifiedIdentity?> ValidateAsync(string credentialToken, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         OpenIdConnectConfiguration cfg = await config.GetConfigurationAsync(ct).ConfigureAwait(false);
+        ct.ThrowIfCancellationRequested();
+        return await ValidateAgainstConfigurationAsync(credentialToken, cfg).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Validates while keeping provider transport failure separate from a credential refusal. Discovery and JWKS
+    /// retrieval are the transport half. Once configuration arrives, every signature or claim failure is a refusal.
+    /// Caller cancellation still propagates.
+    /// </summary>
+    public async Task<IdentityValidation> ValidateDetailedAsync(
+        string credentialToken,
+        CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        OpenIdConnectConfiguration cfg;
+        try
+        {
+            cfg = await config.GetConfigurationAsync(ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ct.IsCancellationRequested)
+        {
+            throw new OperationCanceledException("OIDC validation was cancelled.", ex, ct);
+        }
+        catch (Exception ex)
+        {
+            return IdentityValidation.ProviderUnavailable("OIDC metadata request failed: " + ex.Message);
+        }
+
+        ct.ThrowIfCancellationRequested();
+
+        VerifiedIdentity? identity = await ValidateAgainstConfigurationAsync(credentialToken, cfg).ConfigureAwait(false);
+        return identity is { } verified
+            ? IdentityValidation.Verified(verified)
+            : IdentityValidation.Refused("OIDC provider answered, but the token was invalid");
+    }
+
+    private async Task<VerifiedIdentity?> ValidateAgainstConfigurationAsync(
+        string credentialToken,
+        OpenIdConnectConfiguration cfg)
+    {
         TokenValidationParameters parameters = new()
         {
             ValidIssuer = cfg.Issuer,

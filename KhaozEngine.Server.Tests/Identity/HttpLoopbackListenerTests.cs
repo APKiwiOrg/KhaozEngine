@@ -5,7 +5,7 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.Identity;
-using KhaozEngine.Identity.Oidc;
+using KhaozEngine.Identity.Interactive;
 using Xunit;
 
 namespace KhaozEngine.Tests.Identity;
@@ -122,5 +122,30 @@ public sealed class HttpLoopbackListenerTests
         // The contract is that the wait faults rather than returning a spurious LoopbackResult. Cancelling a
         // pending accept surfaces as OperationCanceledException (TaskCanceledException derives from it).
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await wait);
+    }
+
+    [Fact]
+    public async Task Oidc_namespace_listener_forwards_to_the_base_implementation()
+    {
+        using var listener = new KhaozEngine.Identity.Oidc.HttpLoopbackListener(0);
+        using var cts = new CancellationTokenSource(HangGuard);
+        Task<LoopbackResult> wait = listener.WaitForRedirectAsync(cts.Token);
+
+        using HttpClient http = new() { Timeout = RequestTimeout };
+        using HttpResponseMessage response = await http.GetAsync(
+            new Uri(listener.RedirectUri.ToString() + "?code=compat"));
+
+        LoopbackResult result = await wait.WaitAsync(HangGuard);
+        Assert.Equal("compat", result.Query["code"]);
+    }
+
+    [Fact]
+    public void Browser_launchers_exist_in_base_and_compatibility_namespaces()
+    {
+        IBrowserLauncher baseLauncher = new SystemBrowserLauncher();
+        IBrowserLauncher compatibilityLauncher = new KhaozEngine.Identity.Oidc.SystemBrowserLauncher();
+
+        Assert.Equal("KhaozEngine.Identity", baseLauncher.GetType().Assembly.GetName().Name);
+        Assert.Equal("KhaozEngine.Identity.Oidc", compatibilityLauncher.GetType().Assembly.GetName().Name);
     }
 }

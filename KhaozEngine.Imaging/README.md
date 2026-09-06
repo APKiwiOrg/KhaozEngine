@@ -17,9 +17,18 @@ byte[] rgba = Render2DSnapshot.Capture(320, 180, Color.Black, ctx => DrawScene(c
 PngWriter.Save("/tmp/scene.png", rgba, 320, 180);
 ```
 
-It is a tooling / test helper, not a general image library: RGBA8 encode only. No decode, no
-palette, no interlace, no other color types. If you need real image processing, bring your own
-library. If you need "turn this captured buffer into a .png on disk", this is enough.
+## PngReader
+
+`PngReader.Decode(png)` decodes noninterlaced 8-bit and 16-bit greyscale, greyscale plus alpha, RGB and
+RGBA PNGs. It handles all five PNG row filters and validates the signature, chunk order, CRCs, dimensions and
+the exact decompressed payload size. Palette and interlaced images are rejected. Decoded allocation is capped at
+`PngReader.MaxDecodedBytes`.
+
+The returned `PngImage.Bytes` is top-to-bottom in the PNG's channel order. Each 16-bit channel sample remains
+two bytes in most-significant-byte-first order, so no precision is discarded.
+
+This stays a focused PNG utility rather than a general image-processing library. Encoding is RGBA8 only.
+Decoding deliberately excludes palettes, interlace, color conversion, transforms and metadata interpretation.
 
 ## GoldenGrid
 

@@ -1,4 +1,6 @@
 using System;
+using System.IO;
+using KhaozEngine.Imaging;
 
 namespace KhaozEngine.TileWorld.Editing;
 
@@ -62,11 +64,49 @@ public static partial class TileEditOps
         return new SetCornerHeightsCommand(cornerRect, plane, cm);
     }
 
-    /// <summary>Reads the binary PGM at <paramref name="pgmPath"/> and resamples it onto the corner rect, the
+    /// <summary>
+    /// Resamples a decoded PNG onto the corner rect. Greyscale uses its value channel. GA ignores alpha. RGB and
+    /// RGBA use the red channel, which preserves authored greyscale heightmaps whose color channels are identical.
+    /// Sixteen-bit input keeps its full 0..65535 sample range.
+    /// </summary>
+    public static SetCornerHeightsCommand ImportHeights(PngImage image, TileRect cornerRect, int plane,
+        short minCm, short maxCm)
+    {
+        if (image.Bytes is null || image.Width <= 0 || image.Height <= 0 || image.Channels <= 0)
+            throw new ArgumentException("the PNG carries no samples, decode one with PngReader.Decode first.", nameof(image));
+        int bytesPerSample = image.BitDepth switch
+        {
+            8 => 1,
+            16 => 2,
+            _ => throw new ArgumentException($"the PNG bit depth {image.BitDepth} is not supported.", nameof(image)),
+        };
+        long expected = (long)image.Width * image.Height * image.Channels * bytesPerSample;
+        if (expected != image.Bytes.Length)
+            throw new ArgumentException(
+                $"the PNG is {image.Width} by {image.Height} with {image.Channels} channels and carries {image.Bytes.Length} bytes.",
+                nameof(image));
+
+        var samples = new ushort[image.Width * image.Height];
+        int pixelStride = image.Channels * bytesPerSample;
+        for (int pixel = 0; pixel < samples.Length; pixel++)
+        {
+            int offset = pixel * pixelStride;
+            samples[pixel] = bytesPerSample == 1
+                ? image.Bytes[offset]
+                : (ushort)((image.Bytes[offset] << 8) | image.Bytes[offset + 1]);
+        }
+        return ImportHeights(
+            new PgmImage(image.Width, image.Height, bytesPerSample == 1 ? 255 : 65535, samples),
+            cornerRect, plane, minCm, maxCm);
+    }
+
+    /// <summary>Reads the binary PGM or PNG at <paramref name="pgmPath"/> and resamples it onto the corner rect, the
     /// whole heightmap import in one call.</summary>
     public static SetCornerHeightsCommand ImportHeights(string pgmPath, TileRect cornerRect, int plane,
         short minCm, short maxCm) =>
-        ImportHeights(PgmReader.Read(pgmPath), cornerRect, plane, minCm, maxCm);
+        string.Equals(Path.GetExtension(pgmPath), ".png", StringComparison.OrdinalIgnoreCase)
+            ? ImportHeights(PngReader.Decode(File.ReadAllBytes(pgmPath)), cornerRect, plane, minCm, maxCm)
+            : ImportHeights(PgmReader.Read(pgmPath), cornerRect, plane, minCm, maxCm);
 
     // One output index to its position along an image axis: index 0 sits on the first sample and the last index
     // on the last, which is what makes an image the size of the rect land sample on corner. A rect one corner

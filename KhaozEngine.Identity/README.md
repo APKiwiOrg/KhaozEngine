@@ -10,7 +10,8 @@ Pluggable player-identity seam: provider sign-in + server-side verified-subject 
 - **IIdentityValidator** - Server-side credential verification to a stable subject
 - **IdentityValidation** / **IdentityValidationOutcome** - The three-outcome result of `ValidateDetailedAsync`: `Verified`, `Refused`, or `ProviderUnavailable`
 - **ITokenCache** / **FileTokenCache** - Persisted sign-in session (provider credential + session token), so a returning player skips an interactive sign-in
-- **IBrowserLauncher** / **ILoopbackListener** - The OS/network seams an interactive sign-in flow drives (opening the system browser, capturing the redirect)
+- **IBrowserLauncher** / **ILoopbackListener** - The OS and network seams an interactive sign-in flow drives
+- **Interactive.SystemBrowserLauncher** / **Interactive.HttpLoopbackListener** - Ready-to-use browser launch and loopback callback implementations shared by every provider. The child namespace avoids shadowing the source-compatible names in `KhaozEngine.Identity.Oidc`
 - **ProviderCredential** - Client sign-in result with refresh state
 - **VerifiedIdentity** - Server-verified subject + claims
 - **CachedSession** / **IdentityState** - The persisted and in-memory session shapes `IdentitySession` reads and writes
@@ -19,14 +20,19 @@ Pluggable player-identity seam: provider sign-in + server-side verified-subject 
 - **CredentialRefreshResult** / **CredentialRefreshOutcome** - The result of `RefreshCredentialAsync`: `Refreshed` (a new rotated credential, already persisted) or `Rejected` (a dead chain, fall back to interactive sign-in)
 - **SignInException** - The shared base every provider backend's sign-in failure derives from, so cross-provider code catches one type instead of one per backend
 
-Provider implementations (OIDC, Discord) are opt-in sibling packages. This core package depends only on `KhaozEngine.Diagnostics` and `KhaozEngine.Serialization`; it has no HTTP/ASP.NET dependency of its own.
+Provider implementations (OIDC, Discord) are opt-in sibling packages. This core package depends on
+`KhaozEngine.Diagnostics`, `KhaozEngine.Platform` and `KhaozEngine.Serialization`. The loopback listener uses only
+the BCL and does not add an HTTP or ASP.NET package dependency.
 
 ## Usage
 
 ```csharp
+using KhaozEngine.Identity.Interactive;
+
 // Client: restore the cached session, then sign in if needed.
 // (using KhaozEngine.Identity.Oidc's OidcClientProvider here; swap in Discord's DiscordClientProvider
 // for Discord sign-in, both implement IIdentityProvider)
+IBrowserLauncher browser = new SystemBrowserLauncher();
 IIdentityProvider provider = new OidcClientProvider(oidcOptions, browser, port => new HttpLoopbackListener(port));
 ITokenCache cache = new FileTokenCache(sessionFilePath);
 IdentitySession session = new(provider, cache, new IdentitySessionOptions());
@@ -78,14 +84,14 @@ switch (result.Outcome)
 
 It is a default interface member, so every existing validator already has it: the default calls
 `ValidateAsync` and maps null to `Refused`, which is exactly what null meant. A backend that can see more
-overrides it. `DiscordTokenValidator` does, splitting on the HTTP status class (any 5xx, 429 and 408 are
-unavailable, every other non-success is refused) and treating a request that never completed as unavailable
-too. `OidcTokenValidator` still takes the default, so an OIDC provider outage reads as `Refused` until it
-overrides in turn. `result.Detail` carries a developer-facing note (a status code, an exception message) and is
-never localized or shown to a player.
+overrides it. `DiscordTokenValidator` splits on the HTTP status class (any 5xx, 429 and 408 are unavailable,
+every other non-success is refused) and treats a request that never completed as unavailable too.
+`OidcTokenValidator` reports discovery, JWKS and transport failures as unavailable after keeping them separate
+from token signature and claim validation. `result.Detail` carries a developer-facing note (a status code, an
+exception message) and is never localized or shown to a player.
 
-Being a default interface member has one consequence worth knowing: it is reachable through the interface, so
-a caller holding a concrete type that does not declare the method calls it through `IIdentityValidator`.
+Being a default interface member has one consequence worth knowing: an implementation that does not override it
+is reachable through the interface rather than through its concrete type.
 
 A consumer that supports multiple providers at once builds its own lookup, e.g. a
 `IReadOnlyDictionary<string, IIdentityValidator>` keyed by provider id, and dispatches to

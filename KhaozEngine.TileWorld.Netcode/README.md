@@ -230,10 +230,13 @@ understand. Its registered traversal profile can give that algorithm a different
   because a leash beyond the pathfinder's window is a walk home it cannot plan in one go. Cell eviction keeps the
   documented respawn countdown. When it expires, the spawner retires any former actor restored from the evicted
   cell before it checks the cap and builds the replacement. A non-default home must be open when the definition is
-  added. If that topology later blocks the home, respawn waits and retries on a later tick.
+  added. If that topology later blocks the home, respawn waits and retries on a later tick. A head can also set
+  `TileActorHost.SpawnAdmission` to keep a ready authored spawner unavailable until a synchronous game-owned
+  condition passes. Denial allocates no actor and retries on the next authoritative tick.
 - **`TileActorHost`** (`server.Actors`) - `Add(definition, home)` to register a spawner, `Command(netId, command)`
   to latch one command onto one actor, `RegisterTraversalProfile(profile, map)` to register a non-default topology
-  before the first authoritative tick, `Behaviour` and `Seed` for the decision seam, `Spawners`,
+  before the first authoritative tick, `SpawnAdmission` for synchronous game-owned spawn availability,
+  `Behaviour` and `Seed` for the decision seam, `Spawners`,
   `TryGetSpawnerOf`, `Forget` (the despawn hook, dropping the unspent latch, the birth tile and the spawner link
   together) and `PendingCommandCount`. Its tick is step 1b: every spawner respawns or counts
   down, then every live actor gets its decision translated into a command, plus the tag and
@@ -344,7 +347,8 @@ always keep the constructor map.
   and a head could only learn a monster died by noticing an absence. A throw inside the serve does not lose the
   reap, which is drained at the top of the next combat pass.
 
-  Actors are `Actors` (the `TileActorHost`), `SpawnActor`, `DespawnActor`, `TryGetActorState`, `ActorCount`,
+  Actors are `Actors` (the `TileActorHost`, including its authored-spawner `SpawnAdmission` gate), `SpawnActor`,
+  `DespawnActor`, `TryGetActorState`, `ActorCount`,
   `ActorNetIds`, `OnActorSpawned` and `RefusedActorSpawnCount`. `OnActorSpawned` fires with the spawner link
   ALREADY in place, so a handler attaching a game's own component can read
   `Actors.TryGetSpawnerOf(netId, out var spawner)` and dispatch on `spawner.Definition`. An actor built straight

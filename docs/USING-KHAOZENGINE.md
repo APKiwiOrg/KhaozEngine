@@ -9679,6 +9679,20 @@ server.Actors.Behaviour = new TileWanderBehaviour();       // the default: leash
 server.Actors.Seed = 20260827;                             // fixes every actor's random stream
 ```
 
+Set `SpawnAdmission` when an authored spawner has a game-owned availability condition that must pass before the
+actor exists. The delegate is synchronous and runs on the authoritative tick thread. A false answer leaves a new
+spawner `Empty`, or a due respawner `Waiting` at zero ticks, and the host asks again on the next tick. No actor net
+id is allocated, no spawner link is written, and `OnActorSpawned` does not fire before admission.
+
+```csharp
+server.Actors.SpawnAdmission = spawner =>
+    durableSources.IsGenerationAvailable(spawner.Definition.Id, spawner.Home);
+```
+
+Keep the delegate as an in-memory lookup. It cannot await and should not block the tick on storage or network IO.
+Populate its state before ticking, then update that state when asynchronous work completes. The gate applies only
+to actors managed by `server.Actors.Add`. A direct `server.SpawnActor(...)` call is unaffected.
+
 `Add` refuses a definition whose `LeashRadius` is above `TileWorldServerConfig.ActorMove.MaxPathRadius`
 (12 by default, against a default leash of 10). A leash beyond that window is a walk home the pathfinder cannot
 plan in one go, so the break paths to the nearest reachable tile and the actor comes home in as many hops as the

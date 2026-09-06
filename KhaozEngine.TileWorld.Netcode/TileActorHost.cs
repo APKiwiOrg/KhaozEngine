@@ -78,6 +78,15 @@ public sealed class TileActorHost
     /// implementation that dispatches on <see cref="TileActorDefinition.Kind"/>.</summary>
     public ITileActorBehaviour? Behaviour { get; set; }
 
+    /// <summary>Optional synchronous gate for an authored spawner that is ready to build its actor. Return false
+    /// to leave an initial spawner <see cref="TileActorSpawnerState.Empty"/>, or a due respawner
+    /// <see cref="TileActorSpawnerState.Waiting"/> at zero ticks, and ask again on the next authoritative tick.
+    /// The gate runs on that tick's owning thread after engine placement checks and before actor allocation,
+    /// linkage, or <see cref="TileWorldServer.OnActorSpawned"/>. It must not block or await. A null gate admits
+    /// every ready spawner. Actors built directly through <see cref="TileWorldServer.SpawnActor"/> do not pass
+    /// through this gate.</summary>
+    public Func<TileActorSpawner, bool>? SpawnAdmission { get; set; }
+
     /// <summary>The seed every actor's per-tick random stream is derived from. Two servers built with the same seed
     /// and driven with the same commands produce the same wander, which is what a replay depends on.</summary>
     public int Seed { get; set; }
@@ -428,6 +437,7 @@ public sealed class TileActorHost
         // A registered topology can change after authoring. A temporary blocker at a non-default home leaves the
         // spawner in its current state and retries next tick, the same way a full cell does.
         if (server.IsActorTraversalPlacementBlocked(d.TraversalProfile, spawner.Home)) return;
+        if (SpawnAdmission is not null && !SpawnAdmission(spawner)) return;
         // The spawner rides INTO the spawn rather than being filed after it returns. See LinkSpawner.
         server.SpawnActorFrom(spawner.Home,
             new TileActorSpawn(d.MaxHealth, d.AttackTicks, TileDirection.S, d.StepMode)

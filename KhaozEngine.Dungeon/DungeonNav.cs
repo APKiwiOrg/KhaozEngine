@@ -9,8 +9,8 @@ namespace KhaozEngine.Dungeon;
 /// <see cref="NavGrid"/> layer per floor, stacked in world-Y bands, joined by the stair
 /// <see cref="NavLink"/> connections a climber crosses between floors. Headroom-aware: in a
 /// <see cref="DungeonCeilingMode.Roofed"/> layout, a cell whose ceiling clearance is below the agent
-/// height baked into <see cref="Bake"/> blocks, even though its cell kind is walkable. Render-free,
-/// deterministic: the same layout always bakes the same space. See <see cref="Bake"/>.
+/// height baked into <c>Bake</c> blocks, even though its cell kind is walkable. Render-free,
+/// deterministic: the same layout always bakes the same space. See <c>Bake</c>.
 /// </summary>
 public static class DungeonNav
 {
@@ -21,7 +21,7 @@ public static class DungeonNav
     /// <summary>Neighbor Z offsets paired with <see cref="AdjDx"/>.</summary>
     static readonly int[] AdjDz = { 0, 0, 1, -1 };
 
-    /// <summary>Full standing height (world metres) <see cref="Bake"/> checks a
+    /// <summary>Full standing height (world metres) <c>Bake</c> checks a
     /// <see cref="DungeonCeilingMode.Roofed"/> layout's headroom against when the caller supplies none.
     /// 1.8, matching the shipped character capsule (<c>MoveTuning.Default.CapsuleHalfHeight</c> 0.9
     /// doubled) and the figure <c>NavGridBaker.BakeOverworldSteps</c> already uses for the same quantity
@@ -67,6 +67,15 @@ public static class DungeonNav
     public static NavSpace Bake(
         DungeonLayout layout, float originX = 0f, float originZ = 0f, float baseY = 0f,
         float agentHeight = DefaultAgentHeight)
+        => Bake(layout, new DungeonPlotTransform(originX, originZ, baseY, 0), agentHeight);
+
+    /// <summary>
+    /// Bakes navigation at the same translation and yaw as the dungeon geometry sinks. Cell centers,
+    /// world-space queries and path smoothing use the plot transform. Stair links keep local cell
+    /// coordinates and floor heights use <see cref="DungeonPlotTransform.BaseY"/>.
+    /// </summary>
+    public static NavSpace Bake(DungeonLayout layout, DungeonPlotTransform plot,
+        float agentHeight = DefaultAgentHeight)
     {
         ArgumentNullException.ThrowIfNull(layout);
 
@@ -81,18 +90,18 @@ public static class DungeonNav
         for (int f = 0; f < layout.Floors; f++)
         {
             int floor = f; // Capture for the per-cell sample closure below.
-            float floorY = baseY + f * layout.FloorHeightMeters;
+            float floorY = plot.BaseY + f * layout.FloorHeightMeters;
 
             // stepHeight 0: every cell on a floor shares the same floorY, so the surface never "rises"
             // between neighbors and the step-erosion rule in NavGrid.FromSurfaces never trips. Only
             // headroom (blocked when below agentHeight) can newly block a cell here.
             layers[f] = NavGrid.FromSurfaces(
-                layout.Width, layout.Depth, layout.CellSizeMeters, originX, originZ,
+                layout.Width, layout.Depth, layout.CellSizeMeters, plot.OriginX, plot.OriginZ,
                 (x, z) => new NavSurfaceSample(
                     DungeonLayout.IsWalkable(layout.GetCell(x, z, floor)), floorY, headroom),
                 stepHeight: 0f, agentHeight: agentHeight,
                 yMin: floorY,
-                yMax: floorY + layout.FloorHeightMeters);
+                yMax: floorY + layout.FloorHeightMeters, yawRadians: plot.YawRadians);
         }
 
         var links = new List<NavLink>();

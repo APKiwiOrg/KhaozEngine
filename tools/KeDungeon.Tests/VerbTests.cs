@@ -8,6 +8,7 @@ using Xunit;
 
 namespace KeDungeon.Tests;
 
+[Collection("DungeonConsole")]
 public class VerbTests
 {
     static string NewTempDir()
@@ -319,30 +320,33 @@ public class VerbTests
     }
 
     [Fact]
-    public void Nav_NonZeroYaw_IsRejected_WithUnsupportedMessage()
+    public void Nav_NonZeroYaw_BakesRotatedLayout()
     {
+        string dir = NewTempDir();
+        TextWriter originalOut = Console.Out;
         TextWriter originalError = Console.Error;
         try
         {
+            string layoutPath = Path.Combine(dir, "layout.json");
+            File.WriteAllText(layoutPath, DungeonJson.SaveLayout(StairLayout()));
+            using var stdout = new StringWriter();
             using var stderr = new StringWriter();
+            Console.SetOut(stdout);
             Console.SetError(stderr);
-
-            // --layout points at a file that does not exist: RunNav validates --yaw before ever touching
-            // the file, so a missing path still proves the rejection is about yaw, not about the file.
             int exit = Program.Main(new[]
             {
-                "nav", "--layout", "does-not-exist.json", "--origin-x", "0", "--origin-z", "0",
-                "--base-y", "0", "--yaw", "0.5",
+                "nav", "--layout", layoutPath, "--origin-x", "120", "--origin-z", "-83",
+                "--base-y", "15", "--yaw", "0.5", "--require-connected",
             });
-
-            Assert.Equal(2, exit);
-            string message = stderr.ToString();
-            Assert.Contains("not supported", message, StringComparison.Ordinal);
-            Assert.Contains("140", message, StringComparison.Ordinal);
+            Assert.Equal(0, exit);
+            Assert.Contains("components: 1", stdout.ToString(), StringComparison.Ordinal);
+            Assert.Equal("", stderr.ToString());
         }
         finally
         {
+            Console.SetOut(originalOut);
             Console.SetError(originalError);
+            Directory.Delete(dir, recursive: true);
         }
     }
 

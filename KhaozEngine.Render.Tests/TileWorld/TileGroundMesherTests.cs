@@ -364,6 +364,24 @@ public class TileGroundMesherTests
     }
 
     [Fact]
+    public void A_full_overlay_tile_does_not_tint_its_neighbours_underlay_colour()
+    {
+        TileWorldDocument doc = FlatGrassWorld();
+        doc.SetUnderlay(40, 40, 0, Dirt);
+        doc.SetOverlay(41, 40, 0, TileRenderTestData.WoodFloor);
+        doc.SetOverlayShape(41, 40, 0, TileOverlayShape.Full);
+        doc.SetUnderlay(40, 39, 0, 0);
+        doc.SetUnderlay(41, 39, 0, 0);
+        var options = new TileGroundMesherOptions { JitterAmplitude = 0f };
+        Vector4 dirt = TileColors.Parse(TileRenderTestData.Catalogs.Material(Dirt)!);
+
+        Vector4 shared = TileGroundMesher.CornerColor(
+            doc, TileRenderTestData.Catalogs, 41, 40, 0, options);
+
+        Assert.Equal(dirt, shared);
+    }
+
+    [Fact]
     public void Flat_normals_option_gives_one_normal_per_triangle()
     {
         TileWorldDocument doc = TileRenderTestData.HillWorld();

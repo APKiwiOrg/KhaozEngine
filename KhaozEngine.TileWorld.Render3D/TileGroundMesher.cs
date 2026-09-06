@@ -98,7 +98,8 @@ public static partial class TileGroundMesher
     }
 
     /// <summary>The blended underlay colour at a lattice corner: the average of the jittered material colours of
-    /// the up-to-four tiles that share it, void tiles excluded. All void blends to <see cref="TileColors.Void"/>.
+    /// the up-to-four visible underlays that share it. Void tiles and underlays hidden by full overlays are
+    /// excluded. All void blends to <see cref="TileColors.Void"/>.
     /// A <see cref="TileSettings.NoDraw"/> tile draws no ground of its own but DOES contribute its underlay here,
     /// so the ground colour stays continuous across a hole punched for an object floor.</summary>
     public static Vector4 CornerColor(
@@ -113,8 +114,9 @@ public static partial class TileGroundMesher
         ArgumentNullException.ThrowIfNull(catalogs);
         ArgumentNullException.ThrowIfNull(options);
 
-        // Underlay 0 is the ONLY exclusion. A NoDraw tile is deliberately still counted, because its neighbours'
-        // ground would otherwise step to a hard edge at the hole rather than blending across it.
+        // A NoDraw tile is deliberately still counted, because its neighbours' ground would otherwise step to a
+        // hard edge at the hole rather than blending across it. A drawn full overlay hides its underlay entirely,
+        // so that hidden material must not tint a neighbouring exposed surface.
         Span<Vector4> sharing = stackalloc Vector4[4];
         int count = 0;
         for (int dz = -1; dz <= 0; dz++)
@@ -122,7 +124,7 @@ public static partial class TileGroundMesher
             {
                 int tx = worldX + dx;
                 int tz = worldZ + dz;
-                ushort underlay = doc.GetUnderlay(tx, tz, plane);
+                ushort underlay = VisibleUnderlay(doc, tx, tz, plane);
                 if (underlay == 0) continue;
                 sharing[count++] = MaterialColor(catalogs, underlay) * TileColors.Jitter(tx, tz, plane, options.JitterAmplitude);
             }

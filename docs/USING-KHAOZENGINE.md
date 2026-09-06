@@ -1165,9 +1165,20 @@ widgets):
 ```csharp
 // Global reskin: keep the crisp shape, change the accent to teal.
 GuiTheme.Default = GuiTheme.Default with { Accent = new Vector4(0.14f, 0.60f, 0.55f, 1f) };
+// Row fills a list widget draws: the selected option, and the keyboard cursor a shade under it.
+GuiTheme.Default = GuiTheme.Default with
+{
+    SelectionFill = new Vector4(0.42f, 0.28f, 0.11f, 1f),
+    FocusFill = new Vector4(0.31f, 0.20f, 0.08f, 1f),
+};
 // ...or keep the pre-10.11.0 flat blue-grey look wholesale:
 GuiTheme.Default = GuiTheme.Legacy;
 ```
+
+`SelectionFill` / `FocusFill` are what a `Dropdown`'s open list fills its chosen row and its keyboard-cursor row
+with (`SelectedColor` / `FocusColor`, both still overridable per instance). The `Dropdown` hardcoded that pair
+before, so a rebranded palette still drew a blue selected row. `Crisp` and `Legacy` carry the same two values, so
+reverting the theme does not move either row.
 
 `GuiStyle` carries the button palette + modern-affordance knobs, with presets you pass per widget:
 `GuiStyle.Default` (crisp, == `Primary`), `Secondary` (muted), `Danger` (red), `Active` (bright-accent selected),

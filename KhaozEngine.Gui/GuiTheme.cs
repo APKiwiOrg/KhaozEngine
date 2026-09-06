@@ -31,6 +31,16 @@ namespace KhaozEngine.Gui
         public Vector4 Accent;
         /// <summary>Bright accent (focus rings, active text, open-border highlight).</summary>
         public Vector4 AccentBright;
+        /// <summary>
+        /// Fill under a SELECTED row: the current item of a list, a dropdown's chosen option. An accent-muted
+        /// surface rather than the accent itself, so a whole row of it sits under text without shouting.
+        /// </summary>
+        public Vector4 SelectionFill;
+        /// <summary>
+        /// Fill under the KEYBOARD CURSOR row, a shade under <see cref="SelectionFill"/> so a cursor sitting on
+        /// the selected row still reads as two states rather than one.
+        /// </summary>
+        public Vector4 FocusFill;
         /// <summary>Default text.</summary>
         public Vector4 Text;
         /// <summary>Muted / secondary text.</summary>
@@ -66,6 +76,8 @@ namespace KhaozEngine.Gui
             BorderDisabled = new(0.157f, 0.157f, 0.196f, 1f), // #282832
             Accent = new(0.157f, 0.431f, 0.706f, 1f),       // #286eb4
             AccentBright = new(0.392f, 0.784f, 1f, 1f),      // #64c8ff
+            SelectionFill = new(0.157f, 0.235f, 0.353f, 1f), // #283c5a accent-muted
+            FocusFill = new(0.137f, 0.216f, 0.353f, 1f),     // #23375a, one shade under the selection
             Text = new(0.95f, 0.96f, 0.98f, 1f),
             TextMuted = new(0.627f, 0.627f, 0.667f, 1f),    // #a0a0aa
             TextDisabled = new(0.275f, 0.275f, 0.314f, 1f), // #464650
@@ -93,6 +105,10 @@ namespace KhaozEngine.Gui
             BorderDisabled = new(0.18f, 0.18f, 0.22f, 1f),
             Accent = new(0.16f, 0.39f, 0.70f, 1f),
             AccentBright = new(0.39f, 0.70f, 1f, 1f),
+            // The pre-theme widgets hardcoded these two, so the legacy palette carries the same pair as Crisp:
+            // reverting the theme must not move a selected or cursored row.
+            SelectionFill = new(0.157f, 0.235f, 0.353f, 1f),
+            FocusFill = new(0.137f, 0.216f, 0.353f, 1f),
             Text = Vector4.One,
             TextMuted = new(0.78f, 0.80f, 0.84f, 1f),
             TextDisabled = new(0.5f, 0.5f, 0.55f, 1f),

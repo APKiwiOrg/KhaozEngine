@@ -63,7 +63,11 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
 - **Theming (`GuiTheme` + `GuiStyle`).** Since 10.11.0 the default widget look is crisp: a neutral-dark palette
   with a blue accent, subtle 3px corners, and 1px hairline borders (no shadow/gradient/glow). `GuiTheme` is the
   central semantic palette every retained widget reads at construction (`Surface`/`Accent`/`Border`/`Text`/... plus
-  `CornerRadius`/`BorderThickness`). Set the ambient `GuiTheme.Default` ONCE at startup (before building widgets) to
+  `CornerRadius`/`BorderThickness`). `SelectionFill` is the fill under a selected row (a list's current item, a
+  `Dropdown`'s chosen option) and `FocusFill` the fill under the keyboard cursor row, a shade under it. The
+  `Dropdown` used to hardcode that pair, so a rebranded palette still drew a blue selected row. Both presets
+  carry the same two values, so `GuiTheme.Legacy` does not move either row. Set the ambient
+  `GuiTheme.Default` ONCE at startup (before building widgets) to
   rebrand the whole UI; set it to `GuiTheme.Legacy` to keep the pre-10.11.0 flat blue-grey look. `GuiStyle` carries
   the button palette + the modern-affordance knobs, with presets: `Default` (crisp, == `Primary`), `Secondary`
   (muted), `Danger` (red), `Active` (bright-accent selected), `Modern` (rounded + glow + shadow), and `Legacy` (the

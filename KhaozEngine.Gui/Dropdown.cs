@@ -70,9 +70,11 @@ namespace KhaozEngine.Gui
         public Vector4 OpenBorder = GuiTheme.Default.AccentBright;
         public Vector4 ListBackground = GuiTheme.Default.Background;
         public Vector4 HoverColor = GuiTheme.Default.SurfaceHover;
-        public Vector4 SelectedColor = new(0.157f, 0.235f, 0.353f, 1f);   // accent-muted (Active fill)
-        /// <summary>Row fill under the keyboard/gamepad highlight (<see cref="HighlightedIndex"/>). Only drawn when a keyboard highlight is active.</summary>
-        public Vector4 FocusColor = new(0.137f, 0.216f, 0.353f, 1f);      // accent-muted (Primary fill)
+        /// <summary>Row fill under the selected option, from <see cref="GuiTheme.SelectionFill"/> at construction.</summary>
+        public Vector4 SelectedColor = GuiTheme.Default.SelectionFill;
+        /// <summary>Row fill under the keyboard/gamepad highlight (<see cref="HighlightedIndex"/>), from
+        /// <see cref="GuiTheme.FocusFill"/> at construction. Only drawn when a keyboard highlight is active.</summary>
+        public Vector4 FocusColor = GuiTheme.Default.FocusFill;
         public Vector4 TextColor = GuiTheme.Default.TextMuted;
         public Vector4 SelectedTextColor = GuiTheme.Default.AccentBright;
 

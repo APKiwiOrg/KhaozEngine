@@ -34,7 +34,8 @@ gives the eight step directions in the fixed W, E, S, N, SW, SE, NW, NE order th
 `PlaneHeight`, `CatalogPaths`, `NextObjectId`) plus a sparse map of `TileRegion`s. It is mutable, has no undo
 of its own and raises no events: every mutation marks its region `Dirty`, and the caller tracks the rect.
 
-- Regions: `GetRegion`, `GetOrCreateRegion`, `RegionAt`, `RequireRegion`, `RemoveRegion`, `RegionsTouching`.
+- Regions: `GetRegion`, `GetOrCreateRegion`, `RegionAt`, `RequireRegion`, `RemoveRegion`, `DeleteRegion`,
+  `RegionsTouching`.
   `GetOrCreateRegion` and `RequireRegion` are the two that THROW. `RequireRegion` throws for a region that does
   not exist at all, and both throw for one the manifest knows about but that is not in memory (creating it
   blind would let the next save overwrite authored terrain), so load that one through `TileWorldSource` first.
@@ -86,6 +87,9 @@ only, `EnsureLoaded(coord)`/`EnsureLoaded(rect)` materialise regions on demand h
 `IsLoaded`, `KnownRegions` and `Document` expose the state, and `Unload(coord)` drops a CLEAN region while
 refreshing its known-hash table from that region's current bytes, so a region that was edited and saved is not
 later mistaken for a torn write, and refreshing its marker rows the same way and for the same reason.
+`Document.RemoveRegion(coord)` takes that same safe unload path on a source-backed document. Use
+`Document.DeleteRegion(coord)` for permanent deletion: it accepts dirty or unloaded regions and clears the
+source's known hash, unloaded hash and marker rows so the next save removes the file and manifest entry.
 `FindMarker(name)` and `Markers` answer off the manifest's marker index with no
 region read at all, which is how a client finds the spawn before it streams anything. The index is DERIVED from
 the regions, like the collision map: `Save` rebuilds it for every region it holds and carries the rest forward

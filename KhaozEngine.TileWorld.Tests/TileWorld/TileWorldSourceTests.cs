@@ -145,6 +145,72 @@ public class TileWorldSourceTests
         Assert.Equal(7, s.Document.GetUnderlay(1, 1, 0));
     }
 
+    [Fact]
+    public void Document_delete_region_removes_a_fully_loaded_region_from_the_next_save()
+    {
+        using var tmp = new TempDir();
+        string dir = SavedWorld(tmp);
+        TileWorldDocument doc = TileWorldFile.Load(dir);
+        var c = new RegionCoord(1, 0);
+        string path = TileWorldFile.RegionPath(dir, c);
+
+        Assert.True(doc.DeleteRegion(c));
+        Assert.Null(doc.GetRegion(c));
+        Assert.False(doc.Source!.IsKnown(c));
+
+        TileWorldFile.Save(doc, dir);
+
+        Assert.False(File.Exists(path));
+        TileWorldDocument back = TileWorldFile.Load(dir);
+        Assert.Null(back.GetRegion(c));
+        Assert.False(back.Source!.IsKnown(c));
+    }
+
+    [Fact]
+    public void Document_delete_region_accepts_dirty_state_and_frees_its_marker_name()
+    {
+        using var tmp = new TempDir();
+        var doomed = new RegionCoord(1, 0);
+        TileWorldDocument original = TileWorldTestData.FlatWorld(4, new RegionCoord(0, 0), doomed);
+        original.SetMarker("gate", 70, 5, 0);
+        string dir = tmp.Sub("delete-dirty");
+        TileWorldFile.Save(original, dir);
+        TileWorldDocument doc = TileWorldFile.Load(dir);
+        doc.SetUnderlay(70, 5, 0, 6);
+
+        Assert.True(doc.DeleteRegion(doomed));
+        Assert.Null(doc.Source!.FindMarker("gate"));
+        TileMarker replacement = doc.SetMarker("gate", 5, 5, 0);
+
+        Assert.Equal(new TileCoord(5, 5, 0), replacement.Coord);
+        TileWorldFile.Save(doc, dir);
+        TileWorldDocument back = TileWorldFile.Load(dir);
+        Assert.Null(back.GetRegion(doomed));
+        Assert.Equal(new TileCoord(5, 5, 0), back.FindMarker("gate")!.Coord);
+    }
+
+    [Fact]
+    public void Document_delete_region_removes_an_unloaded_regions_hash_and_marker_row()
+    {
+        using var tmp = new TempDir();
+        var doomed = new RegionCoord(1, 0);
+        TileWorldDocument original = TileWorldTestData.FlatWorld(4, new RegionCoord(0, 0), doomed);
+        original.SetMarker("gate", 70, 5, 0);
+        string dir = tmp.Sub("delete-unloaded");
+        TileWorldFile.Save(original, dir);
+        TileWorldSource source = TileWorldSource.Open(dir);
+
+        Assert.False(source.IsLoaded(doomed));
+        Assert.True(source.Document.DeleteRegion(doomed));
+        Assert.False(source.IsKnown(doomed));
+        Assert.Null(source.FindMarker("gate"));
+
+        TileWorldFile.Save(source.Document, dir);
+        TileWorldDocument back = TileWorldFile.Load(dir);
+        Assert.Null(back.GetRegion(doomed));
+        Assert.Null(back.FindMarker("gate"));
+    }
+
     // The marker index: a client that opens a world and wants the spawn BEFORE it streams anything used to have to
     // materialise regions one at a time until one carried the marker, then unload the ones that did not.
     [Fact]

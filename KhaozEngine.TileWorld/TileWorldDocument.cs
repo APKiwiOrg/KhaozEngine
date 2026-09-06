@@ -98,6 +98,18 @@ public sealed partial class TileWorldDocument
     /// saved.</para></summary>
     public bool RemoveRegion(RegionCoord c) => Source is null ? DetachRegion(c) : Source.Unload(c);
 
+    /// <summary>Permanently deletes a loaded or unloaded region. Unlike <see cref="RemoveRegion"/>, this does
+    /// not preserve source state for a later reload and does not refuse dirty regions. A source-backed delete
+    /// drops the known hash and marker-index rows too, so the next <see cref="TileWorldFile.Save"/> removes the
+    /// region file and manifest row.</summary>
+    public bool DeleteRegion(RegionCoord c)
+    {
+        if (Source is not null) return Source.DeleteRegion(c);
+        bool loaded = DetachRegion(c);
+        bool unloaded = UnloadedRegionHashes.Remove(c);
+        return loaded || unloaded;
+    }
+
     // The source's final detach after it has captured the region state. Kept separate from the public path so
     // TileWorldSource.Unload does not recurse through itself.
     internal bool DetachRegion(RegionCoord c)

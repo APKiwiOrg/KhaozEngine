@@ -141,10 +141,7 @@ public sealed class TileWorldSource
         // edited and saved carries markers those rows do not describe. Loaded regions outrank the index
         // everywhere it is read, so a row only has to be true while its region is NOT in memory, and this is
         // the one transition into that state.
-        var stale = new List<string>();
-        foreach (KeyValuePair<string, TileMarker> entry in _markers)
-            if (RegionCoord.Of(entry.Value.X, entry.Value.Z) == c) stale.Add(entry.Key);
-        foreach (string name in stale) _markers.Remove(name);
+        RemoveIndexedMarkers(c);
         foreach (TileMarker m in r.Markers) _markers[m.Name] = Copy(m);
 
         Document.DetachRegion(c);
@@ -155,5 +152,25 @@ public sealed class TileWorldSource
         // even though the save put it in the manifest on disk.
         _known[c] = hash;
         return true;
+    }
+
+    // Permanent deletion is exposed on the document, where document mutation lives. The source owns the
+    // additional state that distinguishes deletion from a detach or safe unload.
+    internal bool DeleteRegion(RegionCoord c)
+    {
+        bool loaded = Document.DetachRegion(c);
+        bool unloaded = Document.UnloadedRegionHashes.Remove(c);
+        bool known = _known.Remove(c);
+        if (!loaded && !unloaded && !known) return false;
+        RemoveIndexedMarkers(c);
+        return true;
+    }
+
+    void RemoveIndexedMarkers(RegionCoord c)
+    {
+        var stale = new List<string>();
+        foreach (KeyValuePair<string, TileMarker> entry in _markers)
+            if (RegionCoord.Of(entry.Value.X, entry.Value.Z) == c) stale.Add(entry.Key);
+        foreach (string name in stale) _markers.Remove(name);
     }
 }

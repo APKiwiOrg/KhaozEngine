@@ -163,6 +163,21 @@ public class MutationServiceTests
     }
 
     [Fact]
+    public void HeightsImport_AcceptsSixteenBitPngAgainstTheWorldDirectory()
+    {
+        using var f = new Fixture();
+        byte[] png = Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACEAAAAAAHTY67AAAAEklEQVR4nGNgYBQyYVh99v9/AAnYA77rxuqwAAAAAElFTkSuQmCC");
+        File.WriteAllBytes(Path.Combine(f.Session.DocumentPath!, "hills.png"), png);
+
+        f.Mutate.HeightsImport("hills.png", new TileRect(0, 0, 2, 2), 0, short.MinValue, short.MaxValue);
+
+        short[][] rows = f.Query.HeightGetRect(new TileRect(0, 0, 2, 2), 0).Rows.ToArray();
+        Assert.Equal(new short[] { -32767, -28108 }, rows[0]);
+        Assert.Equal(new short[] { 11213, 32767 }, rows[1]);
+    }
+
+    [Fact]
     public void ObjectVerbs_PlaceMoveRotateTagAndRemove()
     {
         using var f = new Fixture();

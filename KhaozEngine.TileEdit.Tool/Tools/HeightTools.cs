@@ -70,10 +70,10 @@ public sealed class HeightTools(QueryService query, MutationService mutate)
         [Description("Plane index, 0 is the ground storey.")] int plane)
         => ToolGuard.Guard(() => query.HeightGetRect(new TileRect(x, z, width, height), plane));
 
-    /// <summary>Resamples a PGM heightmap onto a corner rect.</summary>
-    [McpServerTool(Name = "height_import"), Description("Resamples a binary PGM (P5, 8 or 16 bit) heightmap onto a rect of corners, mapping its greyscale linearly onto the given centimetre range, black to minCm and white to maxCm. The image's own row 0 is treated as the NORTH edge. PNG is not accepted because the engine ships no PNG decoder, so convert first. One undo step. Returns the mutation fields plus the corner counts.")]
+    /// <summary>Resamples a PGM or PNG heightmap onto a corner rect.</summary>
+    [McpServerTool(Name = "height_import"), Description("Resamples a binary PGM (P5) or noninterlaced 8/16-bit PNG heightmap onto a rect of corners, mapping greyscale linearly onto the given centimetre range, black to minCm and white to maxCm. The image's own row 0 is treated as the NORTH edge. PNG alpha is ignored. For RGB or RGBA PNGs the red channel supplies height. One undo step. Returns the mutation fields plus the corner counts.")]
     public HeightResult HeightImport(
-        [Description("Path to the binary PGM (P5) file. A relative path resolves against the OPEN WORLD's directory, not the process working directory.")] string pgmPath,
+        [Description("Path to a binary PGM (P5) or noninterlaced PNG file. A relative path resolves against the OPEN WORLD's directory, not the process working directory.")] string pgmPath,
         [Description("Corner rect's west edge, corner x, inclusive.")] int x,
         [Description("Corner rect's south edge, corner z, inclusive.")] int z,
         [Description("Corner rect width, x + width exclusive.")] int width,

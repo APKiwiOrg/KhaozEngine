@@ -302,6 +302,11 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
     `SkippedTooNewCellCount`, `QuarantinedCorruptCellCount` and `QuarantinedAmbiguousCellCount` tally what the store
     handed back, and one aggregate line is logged at the end of each flush that changed any of them, so a boot says
     what the save came up as without a subscriber having to add the `Issue` stream up.
+  - **Successful async restores are observable.** `CellPersistence.CellRestoreApplied` fires exactly once on the
+    server thread after the host has applied the cell, advanced its NetId high-water, surfaced load issues, and
+    established its dirty baseline. `CellRestoreAppliedEvent` carries the coordinate, restored NetIds, and retained
+    extension-frame count. Missing, rejected, quarantined, and stale-version loads do not signal success. A cell
+    loaded again after `ForgetCell` signals again after that later restore is applied.
   - **Store-outage hygiene (since 10.4.1).** `CellPersistence.OnStoreError` (`event Action<Exception>`, mirrors
     `WorldPersistence.OnStoreError`) surfaces a faulted background cell save, meta write, or quarantine write. The
     driver prunes the faulted task every `Update` so a store outage can't grow the pending list unbounded or make the

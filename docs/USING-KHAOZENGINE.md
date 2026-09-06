@@ -1426,6 +1426,18 @@ opens the composer. A later Enter submits trimmed non-empty text and leaves it o
 `ShowTimestamps` converts each UTC timestamp to local time for presentation only. `ChatBoxTheme` carries the frame,
 composer, ordinary, own, system and timestamp colours.
 
+The composer remains internal. Its public configuration surface is exactly:
+
+```csharp
+public LocalizedText ComposerPlaceholder { get; set; }
+public int MaxInputLength { get; set; }
+```
+
+`ComposerPlaceholder` is lazily resolved, so switching the ambient catalog changes the placeholder on the next
+draw. It defaults to empty. `MaxInputLength` preserves the existing 32-character default and accepts only positive
+values. Assigning a lower limit immediately reclamps existing text through `TextInput.SetText`, preserving the
+normal change-detection path. There is no raw string placeholder overload on `ChatBox`.
+
 ```csharp
 using System;
 using KhaozEngine.App;
@@ -1435,6 +1447,8 @@ using KhaozEngine.Primitives;
 var history = new ChatHistory(capacity: 100);
 var chat = new ChatBox(history, new Rect(16, 420, 460, 284), font)
 {
+    ComposerPlaceholder = Strings.ChatPlaceholder,
+    MaxInputLength = 160,
     ShowTimestamps = settings.ShowChatTimestamps,
     Submitted = SendNearbyChat
 };
@@ -6005,7 +6019,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.22.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.23.0" />
 ```
 
 ```csharp
@@ -11228,7 +11242,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.22.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.23.0" />
 ```
 
 ```csharp
@@ -11264,7 +11278,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.22.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.23.0" />
 ```
 
 ```csharp
@@ -11506,7 +11520,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.22.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.23.0" />
 ```
 
 ```csharp
@@ -13547,7 +13561,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="18.22.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="18.23.0" />
 </ItemGroup>
 ```
 

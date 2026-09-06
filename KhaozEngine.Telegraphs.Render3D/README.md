@@ -81,7 +81,8 @@ This is the only path that renders `TelegraphStyle`'s modern knobs (`TelegraphRe
   overhanging a cliff paints across it, and a wall standing on the decal's ground still occludes
   it. `VoidDim` scales alpha on the plane-projected pixels only (0 default = no dim). Both are
   `false`/`0` on every preset, so no existing style opts in on its own. Set them explicitly on a
-  style or a `TelegraphStyle.Generic with { VoidFallback = true, VoidDim = 0.15f }` copy.
+  style or a `TelegraphStyle.Generic with { VoidFallback = true, VoidDim = 0.15f }` copy. Every shape builder,
+  including `BuildResidueCircle`, carries both fields.
 - `AccentColor`, `PatternParam` and `EdgeErosion` on `ResolvedTelegraph` pass through VERBATIM to
   the matching `GroundDecal` fields, with no conversion at all. That is the point: `PatternParam`
   is in cell space and `EdgeErosion` is a fraction of the shape's own half-thickness, so both are

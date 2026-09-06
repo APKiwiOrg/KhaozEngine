@@ -248,7 +248,9 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
 - Frustum culling: `Scene3D.FrustumCulling` (on by default) skips any queued mesh instance whose world-space
   bounding sphere is entirely outside the camera frustum, so off-screen terrain chunks and props cost nothing to
   draw. Pixel-neutral by construction (only provably-offscreen geometry is dropped), so existing renders stay
-  byte-stable. Set it `false` to force everything drawn. The shadow depth pass is never camera-culled (an off-screen
+  byte-stable. Explicit `CastsShadows = false` instances are culled before packing and GPU upload,
+  compacting visible instances without changing mesh submission order. Counters include these early rejects.
+  Set culling `false` to force everything drawn. The shadow depth pass is never camera-culled (an off-screen
   caster still writes the shadow map, so its shadow lands on-screen). Read the win from `Scene3D.DrawnInstances` /
   `Scene3D.CulledInstances`. Mesh-local bounds (`MeshBounds`, computed once at `LoadMesh`) feed the pure plane math
   `FrustumPlanes.Extract(camera.ViewProjection)` + `IntersectsAabb`/`IntersectsSphere` (headless, allocation-free).

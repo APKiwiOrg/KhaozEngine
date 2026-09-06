@@ -316,10 +316,11 @@ catalog archetype up front, so a region load is placements alone.
   lattice values as the rendered ground, then the surface rejects absent regions, disallowed visible materials,
   water, configured interiors and upper roofs, same-plane solid footprints and same-plane tagged door clearances.
   Shaped overlays use `TileTriangulation`, so only the painted part changes the visible material. Non-solid
-  decorative objects remain eligible. `LoadRegion` builds `GroundCoverInstance` values once, dirty flushes
-  rebuild affected caches and `UnloadRegion` drops them. `GeneratedCoverCount` and `LastDrawnCover` expose the
+  decorative objects remain eligible. `LoadRegion` builds `GroundCoverInstance` values once in a
+  `GroundCoverBatch` with cached range bounds. Dirty flushes rebuild affected caches and `UnloadRegion`
+  drops them. Distant ranges are rejected before individual placements are visited. `GeneratedCoverCount` and `LastDrawnCover` expose the
   cached and submitted counts. Live `TileWorldViewOptions.GroundCover` settings control distance, quality,
-  distant thinning and shadow policy without regenerating positions. A world with no foliage performs no
+  distant thinning, fade mode, per-instance fade width and shadow policy without regenerating positions. A world with no foliage performs no
   distribution work.
 
 - `LoadRegion` / `UnloadRegion` build and free every plane of one region. Loading a region that is already loaded

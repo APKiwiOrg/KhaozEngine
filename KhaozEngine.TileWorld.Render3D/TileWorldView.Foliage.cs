@@ -40,7 +40,7 @@ public sealed partial class TileWorldView
             var surface = new TileFoliageSurface(_doc, _catalogs, layer, _options.Mesher.SmoothNormals);
             result.AddRange(GroundCoverDistribution.Generate(area, settings, surface.Sample));
         }
-        return result;
+        return new GroundCoverBatch(result);
     }
 
     static GroundCoverModel[] Models(IReadOnlyList<TileFoliageArchetype> archetypes)

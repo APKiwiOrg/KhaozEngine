@@ -154,10 +154,20 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   "Alpha cutout" bullet).
 - **`GroundCoverRenderer`** - queues precomputed `GroundCoverInstance` transforms through `SceneInstances`,
   with a `Scene3D.DrawGroundCover` convenience overload. `GroundCoverRenderOptions` carries draw radius, fade
-  band, quality density, distant density and shadow policy. Quality and distance compare against each
-  instance's stable thinning rank, so lower settings select nested subsets. Distance dissolve starts before
-  the final cull and uses no emissive edge. Multi-part meshes share one transform, shadows default off, and the
-  warmed queue path allocates nothing per frame. Rank and distance rejection run before model lookup.
+  band, quality density, distant density and shadow policy. Optional `DensityRadius` bounds the dense
+  area independently of the draw radius. Beyond it only `DistantDensity` remains, allowing a longer horizon
+  without expanding the dense area. Quality and distance compare against each
+  instance's stable thinning rank, so lower settings select nested subsets. `FadeMode` defaults to the
+  original `Dissolve` and can select `HeightScale` for short rooted foliage. Height scaling smoothly lowers
+  local up toward zero, keeps roots and footprints fixed on slopes, and avoids fragment cutouts.
+  `InstanceFadeBandWidth` sets each thinning placement's transition width in metres (default 1), bounded
+  by the layer fade band. Fully lowered cover is culled before a singular matrix reaches the shader.
+  Multi-part meshes share one transform, shadows default off, and the warmed queue path allocates nothing
+  per frame. Rank and distance rejection run before model lookup.
+- **`GroundCoverBatch`** - an immutable copy of a cover list with cached bounds over consecutive ranges.
+  The renderer rejects distant ranges before reading individual placements, preserving source order and
+  exactly the same placement choices as a plain list. Tile-world views build these batches once when
+  foliage changes, with no scene or camera work during generation.
 - **`PropHlod`** - author-agnostic HLOD (hierarchical LOD) merge+weld for a chunk cluster's props.
   `PropHlod.Merge(placements, sourceMeshes)` transforms each placement's flat source mesh to world space and
   concatenates into one `GltfMesh` (per-kit opt-in, an id with no source mesh contributes nothing).

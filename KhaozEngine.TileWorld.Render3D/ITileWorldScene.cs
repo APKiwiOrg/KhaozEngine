@@ -24,6 +24,12 @@ public interface ITileWorldScene
     /// <summary>Queues one ground mesh at its world transform for this frame.</summary>
     void DrawMesh(MeshHandle handle, Matrix4x4 world);
 
+    /// <summary>Queues one translucent, unlit, depth-tested mesh in the overlay pass. An implementation that
+    /// cannot reach that pass refuses the call rather than silently drawing an opaque mesh.</summary>
+    /// <exception cref="NotSupportedException">This scene implementation has no overlay-mesh pass.</exception>
+    void DrawOverlayMesh(MeshHandle handle, Matrix4x4 world) =>
+        throw new NotSupportedException("This tile-world scene does not support translucent overlay meshes.");
+
     /// <summary>Queues one rigid mesh with a dissolve threshold, edge width and edge colour. Defaults to the
     /// solid draw so an implementation written before rigid dissolve support keeps compiling and keeps the body
     /// visible.</summary>
@@ -101,6 +107,9 @@ public sealed class Scene3DTileWorldScene : ITileWorldScene
 
     /// <inheritdoc />
     public void DrawMesh(MeshHandle handle, Matrix4x4 world) => _scene.Draw(handle, world);
+
+    /// <inheritdoc />
+    public void DrawOverlayMesh(MeshHandle handle, Matrix4x4 world) => _scene.DrawOverlayMesh(handle, world);
 
     /// <inheritdoc />
     public void DrawMeshDissolved(MeshHandle handle, Matrix4x4 world, float dissolve, float edgeWidth, Color edgeColor) =>

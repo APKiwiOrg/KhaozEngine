@@ -34,7 +34,8 @@ gives the eight step directions in the fixed W, E, S, N, SW, SE, NW, NE order th
 `PlaneHeight`, `CatalogPaths`, `NextObjectId`) plus a sparse map of `TileRegion`s. It is mutable, has no undo
 of its own and raises no events: every mutation marks its region `Dirty`, and the caller tracks the rect.
 
-- Regions: `GetRegion`, `GetOrCreateRegion`, `RegionAt`, `RequireRegion`, `RemoveRegion`, `RegionsTouching`.
+- Regions: `GetRegion`, `GetOrCreateRegion`, `RegionAt`, `RequireRegion`, `RemoveRegion`, `DeleteRegion`,
+  `RegionsTouching`.
   `GetOrCreateRegion` and `RequireRegion` are the two that THROW. `RequireRegion` throws for a region that does
   not exist at all, and both throw for one the manifest knows about but that is not in memory (creating it
   blind would let the next save overwrite authored terrain), so load that one through `TileWorldSource` first.
@@ -86,6 +87,9 @@ only, `EnsureLoaded(coord)`/`EnsureLoaded(rect)` materialise regions on demand h
 `IsLoaded`, `KnownRegions` and `Document` expose the state, and `Unload(coord)` drops a CLEAN region while
 refreshing its known-hash table from that region's current bytes, so a region that was edited and saved is not
 later mistaken for a torn write, and refreshing its marker rows the same way and for the same reason.
+`Document.RemoveRegion(coord)` takes that same safe unload path on a source-backed document. Use
+`Document.DeleteRegion(coord)` for permanent deletion: it accepts dirty or unloaded regions and clears the
+source's known hash, unloaded hash and marker rows so the next save removes the file and manifest entry.
 `FindMarker(name)` and `Markers` answer off the manifest's marker index with no
 region read at all, which is how a client finds the spawn before it streams anything. The index is DERIVED from
 the regions, like the collision map: `Save` rebuilds it for every region it holds and carries the rest forward
@@ -198,8 +202,11 @@ the tile actually draws with, so a shape whose overlay material is missing is pa
 corner, objects and markers in prefab-relative coordinates) that can be stamped elsewhere with a rotation.
 `TilePrefabFile.Save`/`Load` are its JSON form (base64 layers, indented for git, atomic replace).
 
-- `Extract(doc, catalogs, rect, planeFrom, planeCount, includeObjects, includeMarkers, name)` lifts it,
-  stamping each object's UNROTATED `SizeX`/`SizeZ` so a rotation later needs no catalog.
+- `Extract(doc, catalogs, rect, planeFrom, planeCount, includeObjects, includeMarkers, name,
+  includeDerivedHeights)` lifts it, stamping each object's UNROTATED `SizeX`/`SizeZ` so a rotation later needs no
+  catalog. `includeDerivedHeights: false` omits unauthored higher-plane height lattices, so those planes derive
+  from the destination ground after placement. Explicitly authored height layers remain in the prefab even when
+  their values match the source derivation. The default is true for compatibility.
 - `Rotate(prefab, rotation)` turns a copy, bumping overlay rotations with the tiles and re-basing every plane's
   heights by the shift that puts the rotated SW corner on plane 0 at height 0, so the inter-plane offsets
   survive, then re-trimming, so a rotated prefab is shaped exactly like a fresh `Extract` of the same content.

@@ -68,6 +68,8 @@ public static class TileWorldSnapshot
     /// is used exactly as given, radius included.</param>
     /// <param name="configureScene">Runs last inside the capture's setup, so a caller's lighting, post or camera
     /// changes win over everything set here.</param>
+    /// <param name="drawFrame">Runs after the tile-world view has drawn on every captured frame. Use it for
+    /// transient scene draws that <see cref="Scene3D.Begin"/> clears between frames.</param>
     /// <returns>The captured image as RGBA8, four bytes per pixel, row major from the top.</returns>
     public static byte[] CaptureTopDown(
         TileWorldDocument doc,
@@ -77,7 +79,8 @@ public static class TileWorldSnapshot
         int plane,
         int pxPerTile,
         TileWorldViewOptions? options = null,
-        Action<Scene3D>? configureScene = null)
+        Action<Scene3D>? configureScene = null,
+        Action<Scene3D>? drawFrame = null)
     {
         ArgumentNullException.ThrowIfNull(doc);
         ArgumentNullException.ThrowIfNull(catalogs);
@@ -120,7 +123,11 @@ public static class TileWorldSnapshot
                 camera.FarPlane = camera.Distance * 2f + spanY;
                 configureScene?.Invoke(scene);
             },
-            drawFrame: scene => view!.Draw(centre),
+            drawFrame: scene =>
+            {
+                view!.Draw(centre);
+                drawFrame?.Invoke(scene);
+            },
             frames: CaptureFrames);
     }
 
@@ -144,6 +151,8 @@ public static class TileWorldSnapshot
     /// <param name="options">View knobs, or null for the defaults.</param>
     /// <param name="configureScene">Runs last inside the capture's setup, so a caller's lighting, post or camera
     /// changes win over everything set here.</param>
+    /// <param name="drawFrame">Runs after the tile-world view has drawn on every captured frame. Use it for
+    /// transient scene draws that <see cref="Scene3D.Begin"/> clears between frames.</param>
     /// <returns>The captured image as RGBA8, four bytes per pixel, row major from the top.</returns>
     /// <exception cref="ArgumentException">The eye and the target coincide, so the look direction is zero.</exception>
     public static byte[] CapturePerspective(
@@ -156,7 +165,8 @@ public static class TileWorldSnapshot
         int height,
         TileCoord? observer = null,
         TileWorldViewOptions? options = null,
-        Action<Scene3D>? configureScene = null)
+        Action<Scene3D>? configureScene = null,
+        Action<Scene3D>? drawFrame = null)
     {
         ArgumentNullException.ThrowIfNull(doc);
         ArgumentNullException.ThrowIfNull(catalogs);
@@ -193,7 +203,11 @@ public static class TileWorldSnapshot
                 };
                 configureScene?.Invoke(scene);
             },
-            drawFrame: scene => view!.Draw(target),
+            drawFrame: scene =>
+            {
+                view!.Draw(target);
+                drawFrame?.Invoke(scene);
+            },
             frames: CaptureFrames);
     }
 

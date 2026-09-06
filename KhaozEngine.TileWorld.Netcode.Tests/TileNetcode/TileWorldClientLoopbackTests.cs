@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using KhaozEngine.Ecs;
 using KhaozEngine.Netcode;
 using KhaozEngine.Replication;
@@ -37,7 +38,8 @@ public class TileWorldClientLoopbackTests
         // gameComponents is handed to BOTH registries for the same reason goalRadius goes to both heads: a game
         // component registered on one side only is skipped on the way in, silently, which is the whole of #700.
         public Harness(TileWorldDocument serverDoc, TileWorldDocument clientDoc, TileCoord spawn, float clientPhase,
-            int goalRadius = TilePathfinder.DefaultMaxRadius, Action<ReplicationRegistry>? gameComponents = null)
+            int goalRadius = TilePathfinder.DefaultMaxRadius, Action<ReplicationRegistry>? gameComponents = null,
+            ushort allocatorNode = 0)
         {
             hub = new InMemoryTransportHub();
             Server = new TileWorldServer(hub.Server,
@@ -45,6 +47,12 @@ public class TileWorldClientLoopbackTests
                 TileMoveSimulatorTests.Bake(serverDoc),
                 new TileDocumentTargets(serverDoc, TileMoveSimulatorTests.Catalogs), new AllowAllAuthenticator(),
                 TileProtocol.CreateRegistry(gameComponents));
+            if (allocatorNode != 0)
+            {
+                FieldInfo allocator = typeof(TileWorldServer).GetField("allocator",
+                    BindingFlags.Instance | BindingFlags.NonPublic)!;
+                allocator.SetValue(Server, new NetIdAllocator(allocatorNode));
+            }
             clientTransport = hub.CreateClient();
             Client = new TileWorldClient(clientTransport, new TileWorldClientConfig
             {
@@ -81,6 +89,21 @@ public class TileWorldClientLoopbackTests
         public void Drop() => hub.DisconnectClient(clientTransport);
 
         public void Dispose() { Client.Dispose(); Server.Dispose(); }
+    }
+
+    [Fact]
+    public void A_packed_negative_local_net_id_still_advances_remote_presentation()
+    {
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        using var h = new Harness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f,
+            allocatorNode: 40000);
+        h.Frames(24);
+        Assert.Equal(NetIdAllocator.Pack(40000, 1), h.Client.LocalNetId);
+
+        long remote = h.Server.SpawnPlayer(slot: 1, "remote", "Rem");
+        h.Frames(24);
+
+        Assert.True(h.Client.TryGetRemotePose(remote, out _));
     }
 
     [Fact]

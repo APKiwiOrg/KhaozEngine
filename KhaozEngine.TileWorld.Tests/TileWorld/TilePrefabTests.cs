@@ -43,6 +43,45 @@ public class TilePrefabTests
     }
 
     [Fact]
+    public void Extract_can_leave_an_unauthored_upper_plane_derived_at_its_destination()
+    {
+        TileWorldDocument source = TileWorldTestData.FlatWorld(2, new RegionCoord(0, 0));
+        source.SetUnderlay(10, 10, 1, 5);
+        TilePrefab p = TilePrefabs.Extract(source, Cat, new TileRect(10, 10, 2, 2), 0, 2,
+            includeDerivedHeights: false);
+        Assert.Null(p.Planes[1]!.HeightsRelative);
+
+        TileWorldDocument destination = TileWorldTestData.FlatWorld(2, new RegionCoord(0, 0));
+        destination.SetCornerHeightCm(30, 30, 0, 175);
+        destination.SetCornerHeightCm(32, 32, 0, -60);
+        TilePrefabs.Place(destination, p, 30, 30, 0, 0);
+
+        Assert.Null(destination.GetRegion(new RegionCoord(0, 0))!.Plane(1).Heights);
+        Assert.Equal(175 + destination.PlaneHeightCm, destination.CornerHeightCm(30, 30, 1));
+        Assert.Equal(-60 + destination.PlaneHeightCm, destination.CornerHeightCm(32, 32, 1));
+    }
+
+    [Fact]
+    public void Extract_preserves_an_authored_upper_plane_that_matches_its_derivation()
+    {
+        TileWorldDocument source = TileWorldTestData.FlatWorld(2, new RegionCoord(0, 0));
+        source.SetUnderlay(10, 10, 1, 5);
+        source.SetCornerHeightCm(10, 10, 1, (short)source.PlaneHeightCm);
+        TilePrefab p = TilePrefabs.Extract(source, Cat, new TileRect(10, 10, 2, 2), 0, 2,
+            includeDerivedHeights: false);
+        Assert.NotNull(p.Planes[1]!.HeightsRelative);
+
+        TileWorldDocument destination = TileWorldTestData.FlatWorld(2, new RegionCoord(0, 0));
+        destination.SetCornerHeightCm(30, 30, 0, 175);
+        destination.SetCornerHeightCm(32, 32, 0, -60);
+        TilePrefabs.Place(destination, p, 30, 30, 0, 0);
+
+        Assert.NotNull(destination.GetRegion(new RegionCoord(0, 0))!.Plane(1).Heights);
+        Assert.Equal(175 + source.PlaneHeightCm, destination.CornerHeightCm(30, 30, 1));
+        Assert.Equal(175 + source.PlaneHeightCm, destination.CornerHeightCm(32, 32, 1));
+    }
+
+    [Fact]
     public void Rotate_once_clockwise_moves_north_to_east()
     {
         TilePrefab p = TilePrefabs.Extract(HouseWorld(), Cat, new TileRect(10, 10, 3, 2), 0, 1);

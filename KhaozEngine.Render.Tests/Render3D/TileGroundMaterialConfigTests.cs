@@ -53,12 +53,12 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void BuildParams_PutsBaseSpecStrengthInMiscX()
+        public void BuildParams_PutsBaseSpecStrengthAndLayerCountInMisc()
         {
             Vector4[] tail = TileGroundMaterialConfig.BuildParams(new[] { Layer(Color.White, 0.5f) }, 0.42f);
 
             Assert.Equal(TileGroundMaterialConfig.MaxMaterials, TileGroundMaterialConfig.MiscIndex);
-            Assert.Equal(new Vector4(0.42f, 0f, 0f, 0f), tail[TileGroundMaterialConfig.MiscIndex]);
+            Assert.Equal(new Vector4(0.42f, 1f, 0f, 0f), tail[TileGroundMaterialConfig.MiscIndex]);
         }
 
         [Fact]

@@ -92,12 +92,11 @@ Hand-build a `TileGroundMaterialSet` directly when the layers come from somewher
 constructor takes the size, the material id of each leading slot, and one layer per id PLUS the trailing reserved
 one, and it refuses a layer that is not the size the set declares.
 
-**A slot past the last layer is not clamped to the last layer.** The tile-ground fragment clamps a corner slot to
-`0..63`, which is the uniform block's `TintTiling[64]` bound rather than the set's layer count, so a hand-built
-mesh naming a slot the set does not carry samples a layer that is not there. The three native backends
-hardware-clamp the layer index and read layer 0, and they are the only backends since 18.0.0. A set built by `Build` cannot reach it (every set carries at least the reserved trailing layer, and the
-mesher only ever emits a slot `SlotOf` gave it), so this is about hand-built sets and hand-built meshes:
-[#675](https://github.com/APKiwiOrg/KhaozEngine/issues/675).
+**A slot past the last layer clamps to the last real layer.** The tile-ground params carry the set's layer count,
+and the fragment clamps each corner slot to `min(63, layerCount - 1)` before reading the uniform block or texture
+array. A hand-built mesh naming a slot the set does not carry therefore shows the final material instead of
+sampling a nonexistent array slice. Sets built by `Build` do not normally need the guard because the mesher only
+emits slots supplied by the set.
 
 **What a game does to get textures on the ground.** Two catalog fields and one rule about where the files live:
 
@@ -269,11 +268,15 @@ material base colour. So a palette-painted kit needs neither textures nor a mate
 ## The scene seam (`ITileWorldScene`, `Scene3DTileWorldScene`)
 
 Everything the view does to a scene goes through `ITileWorldScene`: `LoadMesh`, `UnloadMesh`, `DrawMesh`,
+`DrawOverlayMesh`,
 `LoadPropMeshes`, `UnloadPropMeshes`, `DrawProps`, plus the ground-material trio `LoadTileGroundMaterial`,
 `UnloadTileGroundMaterial` and the `LoadMesh(mesh, material)` overload that binds a mesh to the tile-ground
 pipeline, `DrawWater(in WaterPlane)` for the water surfaces, and `DrawMeshSilhouette(handle, world, color,
 widthMetres)` for the per-entity highlight rim (18.3.0). `DrawMeshDissolved(handle, world, dissolve, edgeWidth,
 edgeColor)` queues a rigid mesh through `Scene3D`'s existing dissolve path with a white tint and opaque material.
+`DrawOverlayMesh(handle, world)` reaches `Scene3D`'s translucent, unlit overlay pass. Its default implementation
+throws `NotSupportedException`, so a legacy scene reports that it cannot provide translucency instead of silently
+drawing an opaque mesh.
 These six ship as DEFAULT interface implementations (an invalid handle, a no-op, a fall-through to the
 material-free upload, two no-ops, and a fall-through to the solid mesh draw), so an implementation written before
 textured ground, water, silhouettes or rigid dissolves existed keeps compiling. It draws untextured ground, no
@@ -409,18 +412,20 @@ Two RGBA8 captures over `Render3DSnapshot`, both building a throwaway view, load
 settling every queued rebuild before the first frame, and rendering `CaptureFrames` (2) frames so nothing that
 warms up over a frame is read back cold. Needs a headless GPU device.
 
-- `CaptureTopDown(doc, catalogs, resolver, rect, plane, pxPerTile, options, configureScene)` is the orthographic
+- `CaptureTopDown(doc, catalogs, resolver, rect, plane, pxPerTile, options, configureScene, drawFrame)` is the orthographic
   map shot: the image is exactly `rect.Width * pxPerTile` by `rect.Height * pxPerTile` and one tile is exactly
   that many pixels square, set outright rather than framed, because a fit margin turns an exact scale into an
   approximate one. North is UP and east is RIGHT (`TopDownAzimuth` 0). `plane` chooses whose corner heights size
   the clip band, not what is drawn: every plane of every loaded region is drawn, and the observer stands on the
   top plane so the roof rule shows every roof.
-- `CapturePerspective(doc, catalogs, resolver, eye, target, width, height, observer, options, configureScene)`
+- `CapturePerspective(doc, catalogs, resolver, eye, target, width, height, observer, options, configureScene, drawFrame)`
   shoots from an eye toward a target in world metres at a 60 degree vertical field of view, loading every region
   within `PerspectiveRegionRadius` (3) of the target's region. `observer` defaults to the tile under the target on
   plane 0, so a shot aimed inside a house hides that house's roof.
 - `configureScene` runs LAST inside the capture's setup, so a caller's lighting, post or camera changes win over
   everything the helper set.
+- `drawFrame` runs after the tile-world view on every captured frame, after `Scene3D.Begin` has cleared transient
+  draw queues. Use it for actors, debug geometry and other caller-owned scene draws that belong in the snapshot.
 - Both need the document's regions MATERIALISED first, through `TileWorldFile.Load` or
   `TileWorldSource.EnsureLoaded`. A region the document does not hold is skipped rather than loaded, so a lazily
   opened world captures only the regions resident at the time and the rest come out as void.

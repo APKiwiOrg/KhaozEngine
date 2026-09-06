@@ -161,6 +161,28 @@ public class MarkerAndRegionCommandTests
     }
 
     [Fact]
+    public void Creating_a_region_can_be_undone_on_a_source_backed_document()
+    {
+        using var tmp = new TempDir();
+        var existing = new RegionCoord(0, 0);
+        var created = new RegionCoord(1, 0);
+        string dir = tmp.Sub("create-undo");
+        TileWorldFile.Save(TileWorldTestData.FlatWorld(4, existing), dir);
+        TileWorldDocument doc = TileWorldFile.Load(dir);
+        var ed = new TileEditingDocument(doc, Cat);
+
+        ed.Execute(new CreateRegionCommand(created));
+        Assert.NotNull(doc.GetRegion(created));
+
+        Assert.True(ed.Undo());
+        Assert.Null(doc.GetRegion(created));
+        Assert.False(doc.Source!.IsKnown(created));
+
+        TileWorldFile.Save(doc, dir);
+        Assert.Null(TileWorldFile.Load(dir).GetRegion(created));
+    }
+
+    [Fact]
     public void Deleting_a_region_and_undoing_restores_its_layers_objects_markers_and_collision()
     {
         var coord = new RegionCoord(1, 0);
@@ -218,6 +240,55 @@ public class MarkerAndRegionCommandTests
         Assert.Same(instance, doc.GetRegion(coord));
         Assert.Equal(6, doc.GetUnderlay(70, 5, 0));
         Assert.Equal(72, doc.FindObject(tree.Id)!.X);
+    }
+
+    [Fact]
+    public void Source_backed_delete_undo_redo_allows_the_deleted_marker_name_to_be_reused()
+    {
+        using var tmp = new TempDir();
+        var west = new RegionCoord(0, 0);
+        var east = new RegionCoord(1, 0);
+        TileWorldDocument original = TileWorldTestData.FlatWorld(4, west, east);
+        original.SetMarker("gate", 70, 5, 0);
+        string dir = tmp.Sub("delete-undo-redo");
+        TileWorldFile.Save(original, dir);
+        TileWorldDocument doc = TileWorldFile.Load(dir);
+        var ed = new TileEditingDocument(doc, Cat);
+
+        ed.Execute(new DeleteRegionCommand(east));
+        Assert.False(doc.Source!.IsKnown(east));
+        Assert.Null(doc.Source.FindMarker("gate"));
+
+        ed.Execute(new SetMarkerCommand("gate", 5, 5, 0, null));
+        Assert.Equal(new TileCoord(5, 5, 0), doc.FindMarker("gate")!.Coord);
+
+        Assert.True(ed.Undo());
+        Assert.Null(doc.FindMarker("gate"));
+        Assert.True(ed.Undo());
+        Assert.Equal(new TileCoord(70, 5, 0), doc.FindMarker("gate")!.Coord);
+
+        Assert.True(ed.Redo());
+        Assert.Null(doc.FindMarker("gate"));
+        Assert.True(ed.Redo());
+        Assert.Equal(new TileCoord(5, 5, 0), doc.FindMarker("gate")!.Coord);
+    }
+
+    [Fact]
+    public void Deleting_a_dirty_source_backed_region_does_not_take_the_unload_refusal_path()
+    {
+        using var tmp = new TempDir();
+        var west = new RegionCoord(0, 0);
+        var east = new RegionCoord(1, 0);
+        string dir = tmp.Sub("delete-dirty-command");
+        TileWorldFile.Save(TileWorldTestData.FlatWorld(4, west, east), dir);
+        TileWorldDocument doc = TileWorldFile.Load(dir);
+        doc.SetUnderlay(70, 5, 0, 6);
+        var ed = new TileEditingDocument(doc, Cat);
+
+        ed.Execute(new DeleteRegionCommand(east));
+
+        Assert.Null(doc.GetRegion(east));
+        Assert.False(doc.Source!.IsKnown(east));
     }
 
     [Fact]

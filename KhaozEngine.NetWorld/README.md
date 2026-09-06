@@ -69,7 +69,9 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   the single-`World` `WorldServer` and the sharded `PlayerMovementSystem`), so an animator
   bridge reads them straight instead of finite-differencing the terrain-following position - swim in particular is
   impossible to derive from position (a swimmer glides horizontally like a walker), so the replicated bit is the only
-  source. Since 17.26.0 the same list carries **`FacingYaw`** (the authoritative heading, decoded from
+  source. The climb EWMA stays server-local and absent from observer and migration payloads. A destination shard seeds
+  it from the migrated `ClimbRateQ` before its next stair step, so the signal does not dip at a mid-climb cell crossing.
+  Since 17.26.0 the same list carries **`FacingYaw`** (the authoritative heading, decoded from
   `MovementState.FacingYawQ` for a remote and predicted un-quantized for the local player), which the position
   delta could not supply at all for a stationary entity. **`LandingImpactSpeed`** rides alongside it but is
   LOCAL-ONLY (always 0 for remotes, whose landing effects come from the replicated `Grounded` transition), and is

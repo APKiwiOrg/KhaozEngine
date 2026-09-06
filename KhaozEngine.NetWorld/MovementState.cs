@@ -126,10 +126,11 @@ public struct MovementState : IComponent
     /// from the movement codec (see <see cref="MoveProtocol.CreateRegistry"/>): it rides no wire (both heads derive it
     /// deterministically from the identical <see cref="KhaozEngine.Locomotion.CharacterMovement"/> step, so replicating it
     /// is redundant and would only widen the built-in wire) and is not part of the
-    /// <see cref="KhaozEngine.Replication.ReplicationChannels.Migrate"/> capture, so it
-    /// RESETS to 0 across a shard handoff (the entity is reconstructed via the codec, not copied wholesale) - an acceptable
-    /// few-tick re-converge transient at a cell crossing, since the wire <see cref="ClimbRateQ"/> itself survives the
-    /// crossing. Set at spawn/teleport to 0 via <see cref="From"/> (a fresh climb state). <c>default</c> is 0
+    /// <see cref="KhaozEngine.Replication.ReplicationChannels.Migrate"/> capture. A handoff therefore reconstructs this
+    /// slot as 0 while preserving <see cref="ClimbRateQ"/>. Before the destination's next movement step,
+    /// <see cref="PlayerMovementSystem"/> seeds that zero slot from the decoded positive climb rate, matching the client
+    /// reconcile seed. This keeps the next exported signal within one wire quantum of the pre-handoff value without
+    /// putting the full-precision average on the observer wire. Set at spawn/teleport to 0 via <see cref="From"/> (a fresh climb state). <c>default</c> is 0
     /// (byte-identical to a pre-feature state). The single-<see cref="World"/> head never reads this field.</summary>
     public float ClimbRateEwma;
 

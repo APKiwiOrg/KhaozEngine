@@ -56,9 +56,10 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
     // are seeded only when a rescue is honored and cleared on leave.
     private double selfRescueClock;
     private readonly Dictionary<int, double> selfRescueReadyAt = new();
-    // Per-tick scratch: the pre-step state of each owned player whose command we routed this frame, so we can
-    // measure the authoritative correction after the cells step. Reused across ticks (single-threaded orchestration).
-    private readonly List<(int slot, PlayerMoveState prev)> correctionScratch = new();
+    // Per-tick scratch: the pre-step state and original cell tick count of each owned player whose command we routed,
+    // so correction sampling follows that player's fixed step even when cell accumulators are out of phase.
+    // Reused across ticks (single-threaded orchestration).
+    private readonly List<(int slot, PlayerMoveState prev, CellSim cell, long tickCount)> correctionScratch = new();
     // Per-tick scratch, reused across ticks so the steady-state serve loop allocates nothing for its own
     // bookkeeping (#134): the slot list the tick iterates, the per-client interest set (cleared between clients,
     // never retained by the delta replicator), and the online-snapshot rebuild buffer.
@@ -493,7 +494,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
                 if (trackCorrection && cell.World.TryGet(e, out ReplicatedPosition rp))
                 {
                     cell.World.TryGet(e, out MovementState ms);
-                    correctionScratch.Add((slot, PlayerMoveState.From(rp.Value, ms)));
+                    correctionScratch.Add((slot, PlayerMoveState.From(rp.Value, ms), cell, cell.TickCount));
                 }
             }
         }
@@ -519,10 +520,11 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         // consecutive-tick streak untouched.
         if (movementRan)
         {
-            foreach ((int slot, PlayerMoveState prev) in correctionScratch)
+            foreach ((int slot, PlayerMoveState prev, CellSim cell, long tickCount) in correctionScratch)
             {
+                if (cell.TickCount == tickCount) continue;
                 if (!TryGetPlayerState(slot, out PlayerMoveState after)) continue;
-                float correction = MovementAnomaly.CorrectionDistance(prev, after, dt);
+                float correction = MovementAnomaly.CorrectionDistance(prev, after, cell.TickSeconds);
                 if (MovementAnomaly.RegisterCorrection(correctionStreakBySlot, slot, correction, config.AntiCheat))
                     Raise(slot, SuspiciousReason.MovementCorrection, correction);
             }

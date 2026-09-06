@@ -15344,6 +15344,10 @@ load lands, so on a high-latency store a rejoiner who is moving can cross `Quiet
 restore arrives and take a hard cut. Nothing regressed there (every restore was a teleport before), but the
 benefit does degrade with store latency, and widening the distance is the knob for a slow store.
 
+`PersistenceBinding<TState>.RestoreDistance` lets a binding compare restored state in its own coordinates.
+The default uses `Position`, preserving existing 3D behavior. Tile persistence compares tile coordinates and
+elevation directly, so resuming the same tile at any map scale does not invent a teleport or advance the epoch.
+
 ### Per-cell world persistence (`CellPersistence`)
 
 `KhaozEngine.NetWorld.CellPersistence` wires an `IWorldStore` into a `ShardHost`-based server (through
@@ -15354,6 +15358,12 @@ instantiated), a **periodic dirty save** of cells changed since their last save,
 record** so restored entities never collide with a freshly spawned one after a restart. Players are excluded
 (they persist separately, player-keyed, through `WorldPersistence`), and so are ghosts and migrating entities -
 only a cell's owned, non-player state is saved.
+
+
+`CellPersistence.CellRestoreApplied` fires after a successful restore, retained-frame handling and NetId
+high-water advancement. Its `CellRestoreAppliedEvent` carries `Coord`, restored `NetIds` and
+`RetainedFrameCount`. It runs inline from the restore drain in `Update` or `FlushAsync`, so drain on the
+server thread when handlers touch world state. Missing, rejected and stale loads do not emit it.
 
 ```csharp
 using KhaozEngine.NetWorld;
@@ -16267,16 +16277,13 @@ The seam's state (the time-to-live, the clock, the offer records) lives in this 
 is a plain entity carrying `PickupState` that the seam knows nothing about, offered to nobody and expiring never.
 
 The mark is not a lock, and it is worth knowing what clearing it actually buys you. `server.ClearTransient(pickupNetId)`
-after `Spawn` drops the mark, and the next save writes the entity like any other. What you get back on restore is
-precisely the husk above: nothing rehydrates the seam's tracking, so the restored orb is offered to nobody, expires
-never, and `Despawn` / `DespawnAll` / `ForgetCell` all miss it. Persistent ground loot needs a
-`WorldPickups.Rehydrate(world)` that re-adopts restored `PickupState` entities into the seam, filed as
-[#660](https://github.com/APKiwiOrg/KhaozEngine/issues/660). Until that lands, a collectible meant to survive a
-restart belongs in your own content or save data, spawned again at boot, which is also the only place its payload
-still means anything. Clearing the mark is not the only route to that husk either: re-marking a pickup
-`TransientScope.DurableOnly` keeps it in the evictor's unload freeze while `ForgetCell` has already dropped the
-seam's record for it, so re-entering that coordinate hands back an untracked, never-expiring pickup entity
-mid-session, with no restart involved. Leave a pickup on the `Always` scope `Spawn` gives it.
+after `Spawn` drops the mark, and the next save writes the entity like any other. Call `WorldPickups.Rehydrate(world)` after applying the restored cell snapshot. It adopts owned entities
+carrying `PickupState`, `NetId` and `ReplicatedPosition`, preserves payload and owner, and starts a fresh lifetime
+and offer history from the configured defaults. Repeated calls do not reset already adopted pickups.
+For asynchronous loads, subscribe to `CellPersistence.CellRestoreApplied` and pass the restored cell's world.
+For an eviction cache restore, call it after the cached snapshot is applied. Keep the default `Always` scope
+for pickups that should disappear on unload or restart. Use `ClearTransient` for deliberate durable loot and
+keep its payload definitions valid across restarts.
 
 **The same opt-out is yours for any other transient server-owned entity.** A timed spawn, a wave of adds, a
 projectile, a temporary marker:

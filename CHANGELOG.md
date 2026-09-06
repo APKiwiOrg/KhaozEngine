@@ -5,6 +5,29 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.17.0
+
+One additive piece a tile-world game asked for: an anti-aliased arc band baked on the CPU, for HUD gauges and
+health crescents that `PrimitiveRenderer.DrawFilledArcBand` could only draw as rotated quads (no edge
+anti-aliasing, and overdraw that darkens a translucent colour in blotches).
+
+**`VfxTextures.BakeArcBandPixels` / `BakeArcBand` / `ArcBandImageSize`** (`KhaozEngine.Render2D`)
+
+- `BakeArcBandPixels(width, height, centre, innerRadius, outerRadius, startRadians, sweepRadians,
+  featherPixels = 1, roundCaps = false)` bakes a white RGBA image whose alpha is the coverage of an annulus
+  sector, from an EXACT signed distance (radial to the two edges, and to the cap segments outside the sector,
+  mirrored about the sector's own axis so there is one cap to handle) smoothed over `featherPixels`. Every
+  argument is in pixels of the target image, so the centre of curvature may lie outside the image and a shallow
+  arc does not cost a texture the size of its circle. Either sweep sign, sweeps up to a full turn (no caps at
+  Tau), optional round caps as half discs. Pixel `(x, y)` samples its own centre `(x + 0.5, y + 0.5)`.
+- `ArcBandImageSize(...)` returns the tight image that holds the band plus its feather and where the centre of
+  curvature lands inside it, so a caller draws the texture at `anchor - Centre`.
+- `BakeArcBand(Render2DSurface | Render2DContext, ...)` uploads the bake, the same shape as `BakeRing`.
+- The idiom for a partial fill (a health bar, a gauge) is bake ONCE, draw the track, then draw the same texture
+  again through `SpriteBatch.SetScissor` for the lit part, so nothing is re-uploaded per frame. Documented in
+  the Render2D README and `docs/USING-KHAOZENGINE.md`.
+- `PrimitiveRenderer.DrawFilledArcBand` is unchanged.
+
 ## 18.16.0
 
 Two additive pieces a tile-world game asked for: a public writer for the swing cooldown, so an action

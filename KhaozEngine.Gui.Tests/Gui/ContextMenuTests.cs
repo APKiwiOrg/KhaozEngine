@@ -235,6 +235,13 @@ namespace KhaozEngine.Tests.Gui
                 b, edgePressed, pos, Vector2.Zero, 0, 960, 540, mouseReleased: edgeReleased);
         }
 
+        static InputState SameFrameTap(Vector2 pos)
+        {
+            var edge = new HashSet<MouseButton> { MouseButton.Left };
+            return new InputState(new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
+                new HashSet<MouseButton>(), edge, pos, Vector2.Zero, 0, 960, 540, mouseReleased: edge);
+        }
+
         static ContextMenu OpenMenu(ContextMenuEntry[] entries, Vector2 point)
         {
             var menu = new ContextMenu(Font, Font) { Viewport = View };
@@ -638,6 +645,53 @@ namespace KhaozEngine.Tests.Gui
             Assert.Equal(9, menu.SelectedIndex);
             Assert.Equal(109L, menu.SelectedTag);
             Assert.False(menu.IsOpen);
+        }
+
+        [Fact]
+        public void Same_frame_tap_after_opening_frame_selects_a_row()
+        {
+            ContextMenu menu = OpenMenu(Three(), Point);
+            var p = new Pointer();
+            Idle(menu, p, Row0Pt);
+
+            p.Update(SameFrameTap(Row0Pt));
+            Assert.True(p.IsPressOriginFresh);
+            Assert.True(menu.Update(p));
+
+            Assert.True(menu.WasSelected);
+            Assert.Equal(11L, menu.SelectedTag);
+            Assert.False(menu.IsOpen);
+        }
+
+        [Fact]
+        public void Same_frame_tap_after_opening_frame_dismisses_outside()
+        {
+            ContextMenu menu = OpenMenu(Three(), Point);
+            var p = new Pointer();
+            Idle(menu, p, Row0Pt);
+
+            p.Update(SameFrameTap(Outside));
+            menu.Update(p);
+
+            Assert.True(menu.WasDismissed);
+            Assert.Equal(Outside, menu.DismissPress);
+            Assert.False(menu.IsOpen);
+        }
+
+        [Fact]
+        public void Update_before_Open_defers_opening_gesture_protection_to_the_next_update()
+        {
+            var menu = new ContextMenu(Font, Font) { Viewport = View };
+            var p = new Pointer();
+            p.Update(SameFrameTap(Point));
+            menu.Update(p);
+            menu.Open(LocalizedText.Raw("Options"), Three(), Point);
+
+            p.Update(SameFrameTap(Row0Pt));
+            Assert.False(menu.Update(p));
+
+            Assert.True(menu.IsOpen);
+            Assert.False(menu.WasSelected);
         }
     }
 }

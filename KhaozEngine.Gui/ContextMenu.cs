@@ -192,8 +192,8 @@ namespace KhaozEngine.Gui
         /// moves the menu the gesture reads either as a release outside the menu it just opened (a dismissal) or
         /// as a tap on a row the menu dropped under the cursor (a selection). Neither is deliberate: a press that
         /// began before the menu existed cannot be an act on it. The latch disarms on the first
-        /// <see cref="Pointer.IsJustPressed"/> landing on a frame AFTER the opening one, and that press is then
-        /// read normally from its own edge, so the opening gesture can neither dismiss the menu nor select a row
+        /// <see cref="Pointer.IsPressOriginFresh"/> landing on a frame AFTER the opening one, including a tap
+        /// completed within one frame. That gesture is then read normally, so the opening gesture can neither dismiss the menu nor select a row
         /// in it. Menu-cancel via <see cref="Update(InputManager, PlayerIndex?)"/> stays live throughout,
         /// since the keyboard was not the opening gesture.
         /// </para>
@@ -235,7 +235,7 @@ namespace KhaozEngine.Gui
         /// an ENABLED row (setting <see cref="WasSelected"/> / <see cref="SelectedTag"/> /
         /// <see cref="SelectedIndex"/> and closing), and dismisses on a release outside the bounds (setting
         /// <see cref="WasDismissed"/> and <see cref="DismissPress"/>). BOTH of those are suppressed while the
-        /// opening-gesture latch from <see cref="Open"/> is armed, which lasts until a press edge lands on a
+        /// opening-gesture latch from <see cref="Open"/> is armed, which lasts until a fresh gesture lands on a
         /// frame after the opening one. <see cref="HoverIndex"/> and the <see cref="Pointer.BlockRegion"/>
         /// reservation are computed either way, so a latched frame still highlights and blocks exactly like any
         /// other open frame. A tap inside the menu that hits the title band or a disabled row does nothing and
@@ -248,11 +248,10 @@ namespace KhaozEngine.Gui
 
             bool openingFrame = _openedThisFrame;
             _openedThisFrame = false;
-            // A press edge on a LATER frame began when the menu already existed, so it is the user's first
-            // deliberate gesture at it: disarm, and read that same press normally from its own edge below. A
-            // press edge on the opening frame itself belongs to the gesture that opened the menu, and leaving
-            // the latch armed there is what carries it across a press-open gesture's release a frame later.
-            if (_openGestureLatch && !openingFrame && pointer.IsJustPressed) _openGestureLatch = false;
+            // A fresh gesture on a LATER frame began when the menu already existed, so it is the user's first
+            // deliberate gesture at it. IsPressOriginFresh includes a tap completed within one frame, which has
+            // no IsJustPressed edge. A fresh gesture on the opening frame still belongs to the open operation.
+            if (_openGestureLatch && !openingFrame && pointer.IsPressOriginFresh) _openGestureLatch = false;
 
             Rect bounds = Bounds();
             pointer.BlockRegion(bounds);

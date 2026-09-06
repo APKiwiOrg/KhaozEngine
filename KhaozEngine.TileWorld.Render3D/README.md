@@ -412,18 +412,20 @@ Two RGBA8 captures over `Render3DSnapshot`, both building a throwaway view, load
 settling every queued rebuild before the first frame, and rendering `CaptureFrames` (2) frames so nothing that
 warms up over a frame is read back cold. Needs a headless GPU device.
 
-- `CaptureTopDown(doc, catalogs, resolver, rect, plane, pxPerTile, options, configureScene)` is the orthographic
+- `CaptureTopDown(doc, catalogs, resolver, rect, plane, pxPerTile, options, configureScene, drawFrame)` is the orthographic
   map shot: the image is exactly `rect.Width * pxPerTile` by `rect.Height * pxPerTile` and one tile is exactly
   that many pixels square, set outright rather than framed, because a fit margin turns an exact scale into an
   approximate one. North is UP and east is RIGHT (`TopDownAzimuth` 0). `plane` chooses whose corner heights size
   the clip band, not what is drawn: every plane of every loaded region is drawn, and the observer stands on the
   top plane so the roof rule shows every roof.
-- `CapturePerspective(doc, catalogs, resolver, eye, target, width, height, observer, options, configureScene)`
+- `CapturePerspective(doc, catalogs, resolver, eye, target, width, height, observer, options, configureScene, drawFrame)`
   shoots from an eye toward a target in world metres at a 60 degree vertical field of view, loading every region
   within `PerspectiveRegionRadius` (3) of the target's region. `observer` defaults to the tile under the target on
   plane 0, so a shot aimed inside a house hides that house's roof.
 - `configureScene` runs LAST inside the capture's setup, so a caller's lighting, post or camera changes win over
   everything the helper set.
+- `drawFrame` runs after the tile-world view on every captured frame, after `Scene3D.Begin` has cleared transient
+  draw queues. Use it for actors, debug geometry and other caller-owned scene draws that belong in the snapshot.
 - Both need the document's regions MATERIALISED first, through `TileWorldFile.Load` or
   `TileWorldSource.EnsureLoaded`. A region the document does not hold is skipped rather than loaded, so a lazily
   opened world captures only the regions resident at the time and the rest come out as void.

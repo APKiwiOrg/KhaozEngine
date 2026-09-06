@@ -555,6 +555,27 @@ public sealed class UpdateServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Check_SignedMalformedManifest_ReportsUntrustedWithoutStartingUpdate()
+    {
+        byte[] malformedManifest = Encoding.UTF8.GetBytes("{");
+        source.Bytes[ManifestUrl] = malformedManifest;
+        source.Bytes[ManifestUrl + ".sig"] = ManifestSigner.Sign(malformedManifest, PrivPem);
+        source.Latest = new LatestVersionInfo("2.0.0", "2.0.0", ManifestUrl, Required: false);
+        using UpdateService svc = Build();
+        var states = new List<UpdateState>();
+        svc.StateChanged += () => states.Add(svc.State);
+
+        await svc.CheckForUpdateAsync();
+
+        Assert.Equal(UpdateState.Untrusted, svc.State);
+        Assert.Equal("This build cannot verify updates.", svc.ErrorMessage);
+        Assert.Contains(UpdateState.Untrusted, states);
+        Assert.Equal(0, source.DownloadCalls);
+        Assert.Empty(launches);
+        Assert.False(exited);
+    }
+
+    [Fact]
     public async Task Check_ValidSignature_OffersUpdate()
     {
         File.WriteAllText(Path.Combine(installDir, "game.dll"), "v1");

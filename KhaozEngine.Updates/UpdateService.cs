@@ -163,7 +163,17 @@ public sealed partial class UpdateService : IDisposable, IUpdateStatus
                 return;
             }
 
-            UpdateManifest? remoteManifest = UpdateManifest.Deserialize(System.Text.Encoding.UTF8.GetString(manifestBytes));
+            UpdateManifest? remoteManifest;
+            try
+            {
+                remoteManifest = UpdateManifest.Deserialize(System.Text.Encoding.UTF8.GetString(manifestBytes));
+            }
+            catch (JsonException)
+            {
+                log.Warn($"Signed manifest for {latest.Version} is malformed. Refusing update.");
+                RefuseUntrustedUpdate(latest.Version);
+                return;
+            }
             if (remoteManifest is null)
             {
                 RefuseUntrustedUpdate(latest.Version);

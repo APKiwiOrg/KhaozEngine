@@ -3,6 +3,7 @@ using System.Linq;
 using System.Numerics;
 using KhaozEngine.Diagnostics;
 using KhaozEngine.Gui;
+using KhaozEngine.Netcode;
 using KhaozEngine.Primitives;
 using KhaozEngine.Windowing;
 using Xunit;
@@ -122,6 +123,48 @@ namespace KhaozEngine.Tests.Gui
             net = new ClientNetStats { Connected = true, RttMs = 42f };
             hud.Update(KeyFrame(), 0.016f);
             Assert.Contains("Network", hud.Overlay.Sections.Select(s => s.Title));
+        }
+
+        [Fact]
+        public void Transport_stats_source_replaces_rich_stats_without_inventing_rows()
+        {
+            var hud = new DiagnosticsHud(InstantTheme(), withPassTimings: false, refreshSeconds: 0f);
+            ClientNetStats? rich = new ClientNetStats
+            {
+                Connected = true,
+                RttMs = 10f,
+                BytesInPerSec = 2048f,
+            };
+            NetTransportStats? transport = new NetTransportStats(true, 40f, 0.05f, 90_000, 30_000);
+            hud.SetNetStatsSource(() => rich);
+            hud.Update(KeyFrame(Key.F1), 0.016f);
+            Assert.Contains(hud.Overlay.Sections.Single(s => s.Title == "Network").Rows,
+                row => row.Label == "in/out");
+
+            hud.SetTransportStatsSource(() => transport);
+            hud.Update(KeyFrame(), 0.016f);
+
+            OverlaySection network = hud.Overlay.Sections.Single(s => s.Title == "Network");
+            Assert.Equal(new[] { "ping", "loss" }, network.Rows.Select(r => r.Label).ToArray());
+        }
+
+        [Fact]
+        public void Either_null_network_setter_removes_the_active_source()
+        {
+            var hud = new DiagnosticsHud(InstantTheme(), withPassTimings: false, refreshSeconds: 0f);
+            NetTransportStats? transport = new NetTransportStats(true, 40f, 0f, 0, 0);
+            hud.SetTransportStatsSource(() => transport);
+            hud.Update(KeyFrame(Key.F1), 0.016f);
+            Assert.Contains("Network", hud.Overlay.Sections.Select(s => s.Title));
+
+            hud.SetNetStatsSource(null);
+            hud.Update(KeyFrame(), 0.016f);
+            Assert.DoesNotContain("Network", hud.Overlay.Sections.Select(s => s.Title));
+
+            hud.SetNetStatsSource(() => new ClientNetStats { Connected = true });
+            hud.SetTransportStatsSource(null);
+            hud.Update(KeyFrame(), 0.016f);
+            Assert.DoesNotContain("Network", hud.Overlay.Sections.Select(s => s.Title));
         }
 
         [Fact]

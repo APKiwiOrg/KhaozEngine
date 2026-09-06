@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Numerics;
 using KhaozEngine.Diagnostics;
+using KhaozEngine.Netcode;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Windowing;
@@ -15,7 +16,7 @@ namespace KhaozEngine.Gui;
 /// in via <see cref="SetSections"/>; <see cref="Update"/> handles the toggle key (default F1) and a fade, and
 /// <see cref="Draw"/> renders a corner panel of section titles and right-aligned label/value rows. The widget
 /// is content-agnostic (the metric catalog stays game-owned); <see cref="PerformanceSection"/> and
-/// <see cref="NetworkSection"/> are convenience populators for the common cases. Headless-testable:
+/// <c>NetworkSection</c> overloads are convenience populators for the common cases. Headless-testable:
 /// <see cref="Update"/> and the populators need no GPU. Drop it into any Gui layer.
 /// </summary>
 public sealed class DiagnosticsOverlay
@@ -206,6 +207,21 @@ public sealed class DiagnosticsOverlay
             new OverlayRow("in/out", string.Format(Inv, "{0:0.0}/{1:0.0} KB/s", n.BytesInPerSec / 1024f, n.BytesOutPerSec / 1024f)),
             new OverlayRow("snapshots", n.SnapshotsPerSec.ToString("0.0", Inv) + "/s"),
             new OverlayRow("correction", string.Format(Inv, "{0:0.00}/{1:0.00} m", n.LastCorrectionMeters, n.AvgCorrectionMeters)),
+        };
+        return new OverlaySection("Network", rows);
+    }
+
+    /// <summary>Build a standard "Network" section from transport link health. Cumulative byte counters are not
+    /// shown because this snapshot has no time window from which to derive an honest rate.</summary>
+    public static OverlaySection NetworkSection(in NetTransportStats n)
+    {
+        if (!n.Connected)
+            return new OverlaySection("Network", new[] { new OverlayRow("status", "not connected") });
+
+        var rows = new[]
+        {
+            new OverlayRow("ping", n.RttMs.ToString("0", Inv) + " ms"),
+            new OverlayRow("loss", (n.PacketLoss * 100f).ToString("0.0", Inv) + " %"),
         };
         return new OverlaySection("Network", rows);
     }

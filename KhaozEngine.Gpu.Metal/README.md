@@ -178,7 +178,9 @@ MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 dotnet run --project <your game>
 
 and the engine's knob then says which tier is really armed, checks that answer against the device's own
 Objective-C class, and WARNS with the exact prefix above when a tier was asked for and the process cannot have
-it.
+it. The two launch variables are checked independently. Asking for `on` with only shader validation armed warns
+that `MTL_DEBUG_LAYER` is missing, while asking for `shaders` with only the debug layer armed warns that
+`MTL_SHADER_VALIDATION` is missing. The active validation still appears accurately in the INFO description.
 
 The class check knows all four devices Metal has been measured handing back:
 

@@ -55,6 +55,7 @@ void main() {
     bool rejected = rank >= Density.x || distanceToFocus > cutoff || heightFade <= 0.0001;
     mat4 Model = mat4(IModel0, IModel1, IModel2, IModel3);
     Model[3].xyz -= RenderOrigin.xyz;
+    Model[3].xyz += IModel1.xyz * FoliageParameters.y * (1.0 - heightFade);
     Model[1].xyz *= max(heightFade, 0.00001);
     vec4 world = Model * vec4(Position, 1.0);
     float invHeight = FoliageParameters.z;

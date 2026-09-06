@@ -7,6 +7,9 @@ namespace KhaozEngine.Render3D.Internal;
 internal readonly record struct FoliagePatch(MeshHandle Mesh, int Start, int Count, MeshBounds Bounds,
     Vector2 RootMin, Vector2 RootMax, float MaxHeight)
 {
+    // The shader's horizontal bend and tip drop together move a vertex by at most 0.693 blade heights.
+    internal float CullingRadius(bool bending) => Bounds.Radius + (bending ? .7f * MaxHeight : 0f);
+
     /// <summary>Selects a conservative rank prefix in logarithmic time. Exact blade fading stays on the GPU.</summary>
     internal int CandidateCount(FoliageInstance[] ordered, Vector3 focus, in FoliageRenderSettings settings)
     {

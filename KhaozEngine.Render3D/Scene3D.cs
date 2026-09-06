@@ -1657,7 +1657,7 @@ namespace KhaozEngine.Render3D
             ApplyAlphaCutoffs(_instanceData, _runs);
             // Reduced into a staging copy, so _instanceData stays absolute for the culling + caster reads below.
             UploadInstancesRelative(cl);
-            PrepareFoliageFrame(cl);
+            PrepareFoliageFrame(cl, camFrustum);
 
             // Main-pass visibility is aligned to the grouped stream. Shadows retain offscreen casters.
             ComputeMainPassVisibility(camFrustum);

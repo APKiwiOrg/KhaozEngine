@@ -1102,7 +1102,7 @@ jobs:
           # itself checked against, which is what owning a family means. The refusal itself is unchanged and
           # still guards the rule for the next backend that shares rather than owns.
           KE_UPDATE_GOLDENS: ${{ (github.event_name == 'workflow_dispatch' && inputs.bake) && '1' || '' }}
-          KE_TEST_FILTER: ${{ (matrix.fullSuite == 'always' || (matrix.fullSuite == 'scheduled' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'))) && 'Category!=LiveSocket' || 'FullyQualifiedName~Golden' }}
+          KE_TEST_FILTER: ${{ (matrix.fullSuite == 'always' || (matrix.fullSuite == 'scheduled' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'))) && 'Category!=LiveSocket' || 'FullyQualifiedName~Golden|FullyQualifiedName~FoliageGpuTests' }}
           # BOTH Vulkan legs' full-suite runs: serialize xUnit collections, one live device at a time
           # (~22 min serialized vs minutes parallel, header). Empty for every other leg and for
           # golden-only runs (months of parallel green history). It is named rather than matched on a prefix
@@ -1547,7 +1547,7 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p TestResults
-          dotnet test -c Release --no-build --filter "FullyQualifiedName~Golden|FullyQualifiedName~Compute" --blame --results-directory TestResults --logger "console;verbosity=detailed" 2>&1 | tee TestResults/sync-validation.log
+          dotnet test -c Release --no-build --filter "FullyQualifiedName~Golden|FullyQualifiedName~Compute|FullyQualifiedName~FoliageGpuTests" --blame --results-directory TestResults --logger "console;verbosity=detailed" 2>&1 | tee TestResults/sync-validation.log
         shell: bash
 
       # WHAT MAKES TIER TWO A GATE. The engine does not fail a sync run on an error (the job header says why,

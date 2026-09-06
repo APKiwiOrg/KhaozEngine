@@ -111,8 +111,8 @@ internal sealed class FoliagePatchLayout
 
         var min = new Vector3(float.PositiveInfinity);
         var max = new Vector3(float.NegativeInfinity);
-        // Height fading scales local up about zero. Include that flattened plane even for offset mesh roots.
-        float low = MathF.Min(local.Min.Y, 0f), high = MathF.Max(local.Max.Y, 0f);
+        // Height fading contracts toward the authored root, staying within the original local bounds.
+        float low = local.Min.Y, high = local.Max.Y;
         for (int corner = 0; corner < 8; corner++)
         {
             Vector3 point = Vector3.Transform(new Vector3(

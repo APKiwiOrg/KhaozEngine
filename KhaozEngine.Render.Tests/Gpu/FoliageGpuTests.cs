@@ -116,6 +116,41 @@ public sealed class FoliageGpuTests(FoliageGpuScene fixture) : IClassFixture<Fol
     }
 
     [GpuFact]
+    public void HeightFadeKeepsAnOffsetMeshRootPlanted()
+    {
+        Scene3D scene = fixture.Scene;
+        GltfMesh mesh = MeshPrimitives.Tile(.2f, 2f);
+        foreach (ref ModelVertex vertex in mesh.Vertices.AsSpan()) vertex.Position.Y -= 1f;
+        MeshHandle handle = scene.LoadMesh(mesh);
+        try
+        {
+            using FoliageBatch batch = scene.CreateFoliageBatch(new[] { new FoliageInstance(handle, Matrix4x4.Identity, .1f) });
+            byte[] reference = fixture.Capture(s => s.Draw(handle,
+                Matrix4x4.CreateScale(1f, .5f, 1f) * Matrix4x4.CreateTranslation(0f, -.5f, 0f),
+                Color.White, Material.None, false));
+            byte[] faded = fixture.Capture(s => s.DrawFoliage(batch, new Vector3(8f, 0f, 0f),
+                Solid with { DrawRadius = 10f, FadeBandWidth = 4f }));
+            Assert.Equal(reference, faded);
+        }
+        finally { scene.UnloadMesh(handle); }
+    }
+
+    [GpuFact]
+    public void CameraChangesAfterSubmissionUseTheRenderedFrustum()
+    {
+        using FoliageBatch batch = fixture.Scene.CreateFoliageBatch(new[]
+            { new FoliageInstance(fixture.Blade, Matrix4x4.Identity, .1f) });
+        byte[] expected = fixture.Capture(s => s.DrawFoliage(batch, Vector3.Zero, Solid));
+        byte[] changed = fixture.Capture(s =>
+        {
+            s.Camera.Frame(new Vector3(1000f, 0f, 0f), new Vector3(4f, 3f, 4f));
+            s.DrawFoliage(batch, Vector3.Zero, Solid);
+            s.Camera.Frame(Vector3.Zero, new Vector3(4f, 3f, 4f));
+        });
+        Assert.Equal(expected, changed);
+    }
+
+    [GpuFact]
     public void ReusedSceneMatchesAFreshSceneAfterWindAndOriginChanges()
     {
         using FoliageBatch batch = fixture.Scene.CreateFoliageBatch(new[]

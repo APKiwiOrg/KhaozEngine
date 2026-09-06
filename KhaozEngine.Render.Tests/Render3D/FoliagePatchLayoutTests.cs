@@ -93,18 +93,33 @@ public sealed class FoliagePatchLayoutTests
     }
 
     [Fact]
-    public void BoundsContainTransformedGeometryAndTheFlattenedRootPlane()
+    public void BoundsContainTransformedGeometryAndItsOffsetRoot()
     {
         var bounds = new MeshBounds(new Vector3(-1f, 2f, -.5f), new Vector3(1f, 4f, .5f));
         var transform = new Matrix4x4(2, 0, 0, 0, 1, 2, 3, 0, 0, 0, 4, 0, 10, 20, 30, 1);
         FoliagePatch patch = Assert.Single(FoliagePatchLayout.Build(
             [new FoliageInstance(new MeshHandle(4), transform, .1f)], _ => bounds).Patches);
 
-        Assert.Equal(new Vector3(8f, 20f, 28f), patch.Bounds.Min);
+        Assert.Equal(new Vector3(10f, 24f, 34f), patch.Bounds.Min);
         Assert.Equal(new Vector3(16f, 28f, 44f), patch.Bounds.Max);
         Assert.Equal(new Vector2(10f, 30f), patch.RootMin);
         Assert.Equal(patch.RootMin, patch.RootMax);
         Assert.Equal(7.483315f, patch.MaxHeight, 5);
+    }
+
+    [Fact]
+    public void TiltedBladeCullingContainsHorizontalBendAndTipDrop()
+    {
+        var up = Vector3.Normalize(new Vector3(.938066f, -.346458f, 0f));
+        var transform = Matrix4x4.Identity;
+        transform.M21 = up.X;
+        transform.M22 = up.Y;
+        var bounds = new MeshBounds(Vector3.Zero, Vector3.UnitY);
+        FoliagePatch patch = Assert.Single(FoliagePatchLayout.Build(
+            [new FoliageInstance(new MeshHandle(4), transform, .1f)], _ => bounds).Patches);
+        Vector3 bentTip = up + new Vector3(.65f, -(1f - MathF.Sqrt(1f - .65f * .65f)), 0f);
+        Assert.True(Vector3.Distance(bentTip, patch.Bounds.Center) <= patch.CullingRadius(true));
+        Assert.Equal(patch.Bounds.Radius, patch.CullingRadius(false));
     }
 
     [Theory]

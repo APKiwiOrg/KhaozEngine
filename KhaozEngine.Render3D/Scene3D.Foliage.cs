@@ -15,7 +15,7 @@ public sealed partial class Scene3D
     readonly List<ModelRenderer.FoliageUniforms> _foliageUniforms = new();
     int _foliagePatchTests;
     bool _foliageDisposed;
-    readonly record struct FoliageDraw(FoliageBatch Batch, FoliagePatch Patch, int Count, int UniformSlot);
+    readonly record struct FoliageDraw(FoliageBatch Batch, FoliagePatch Patch, int Count, int UniformSlot, float CullRadius);
 
     /// <summary>Last completed foliage submission counters. These are workload counts, not GPU timings.</summary>
     public FoliageFrameStats LastFoliageStats { get; private set; }
@@ -69,7 +69,6 @@ public sealed partial class Scene3D
         foreach (ref readonly FoliageInteractor interactor in interactors) interactor.Validate();
         if (settings.QualityDensity == 0f || batch.Count == 0) return 0;
 
-        FrustumPlanes frustum = FrustumCulling ? FrustumPlanes.Extract(FrameAbsoluteViewProjection()) : default;
         int slot = _foliageUniforms.Count;
         int candidates = 0;
         foreach (FoliagePatch patch in batch.Layout.Patches)
@@ -77,9 +76,8 @@ public sealed partial class Scene3D
             _foliagePatchTests++;
             int count = patch.CandidateCount(batch.Layout.Instances, focus, settings);
             if (count == 0) continue;
-            float bend = settings.WindStrength > 0f || interactors.Length > 0 ? .65f * patch.MaxHeight : 0f;
-            if (FrustumCulling && !frustum.IntersectsSphere(patch.Bounds.Center, patch.Bounds.Radius + bend)) continue;
-            _foliageDraws.Add(new FoliageDraw(batch, patch, count, slot));
+            float radius = patch.CullingRadius(settings.WindStrength > 0f || interactors.Length > 0);
+            _foliageDraws.Add(new FoliageDraw(batch, patch, count, slot, radius));
             candidates = checked(candidates + count);
         }
         if (candidates > 0)
@@ -104,8 +102,18 @@ public sealed partial class Scene3D
         _foliagePatchTests = 0;
     }
 
-    void PrepareFoliageFrame(IGpuCommandList cl)
+    void PrepareFoliageFrame(IGpuCommandList cl, in FrustumPlanes frustum)
     {
+        // Render size and camera overrides are final now. Submission can precede either change.
+        int kept = 0;
+        for (int i = 0; i < _foliageDraws.Count; i++)
+        {
+            FoliageDraw draw = _foliageDraws[i];
+            if (draw.Batch.IsDisposed || (FrustumCulling &&
+                !frustum.IntersectsSphere(draw.Patch.Bounds.Center, draw.CullRadius))) continue;
+            _foliageDraws[kept++] = draw;
+        }
+        _foliageDraws.RemoveRange(kept, _foliageDraws.Count - kept);
         long uploaded = 0;
         foreach (FoliageDraw draw in _foliageDraws)
         {
@@ -117,7 +125,7 @@ public sealed partial class Scene3D
             batch.Pending = null;
             uploaded += bytes;
         }
-        long uniforms = _model.UploadFoliageUniforms(cl, CollectionsMarshal.AsSpan(_foliageUniforms));
+        long uniforms = kept == 0 ? 0 : _model.UploadFoliageUniforms(cl, CollectionsMarshal.AsSpan(_foliageUniforms));
         _frameStats.AddInstanceUpload(uploaded);
         LastFoliageStats = new FoliageFrameStats(_foliagePatchTests, 0, 0, uploaded, uniforms);
     }

@@ -272,3 +272,37 @@ turns an anchor id into a design-space screen point, where returning null SKIPS 
 dropping it (a body off screen comes back in the same column it left). Every line is centred on its point, the
 optional shadow rides under it at the same scale, and a master `opacity` fades the whole layer. It ages nothing:
 call `Age` once from the update, so a store drawn twice does not age twice.
+
+## Baked VFX textures (`Vfx.VfxTextures`)
+
+`BakeGlowPixels` / `BakeRingPixels` / `BakeArcBandPixels` return pure RGBA8 buffers (row-major, top-left origin,
+white RGB with the shape in alpha) that need no device, and the `BakeGlow` / `BakeRing` / `BakeArcBand` / `White`
+overloads upload one to a `Render2DSurface` or a snapshot `Render2DContext`. Nothing here is a shipped asset.
+
+`BakeArcBandPixels(width, height, centre, innerRadius, outerRadius, startRadians, sweepRadians, featherPixels,
+roundCaps)` is the anti-aliased one, for HUD arcs, gauges and health crescents: the shapes `PrimitiveRenderer.
+DrawFilledArcBand` fills with rotated quads, which has no anti-aliasing (a 5 px band reads pixelated) and darkens
+a translucent colour wherever the quads overlap. The bake has neither problem, because it is one quad of one
+texture.
+
+Everything is in PIXELS of the target image and the sample point for pixel `(x, y)` is its own centre
+`(x + 0.5, y + 0.5)`, so `centre` (the centre of CURVATURE) may sit outside the image, which is what makes a
+shallow arc off a large radius affordable. Alpha is a signed distance to the annulus sector, radial distance to
+the two band edges combined with angular distance to the two end caps, run through a `smoothstep` over
+`featherPixels` centred on the edge, so one pixel of feather gives a clean edge and a pixel exactly on an edge
+comes out at half alpha. Angles are the rest of Render2D's: screen space with +y down, angle 0 along +x, positive
+sweep clockwise on screen. Either sign of sweep describes the same sector from the other end, a sweep of a full
+turn or more drops the caps and bakes a closed ring, and `roundCaps` rounds each end with a half disc of radius
+half the band thickness.
+
+`ArcBandImageSize(inner, outer, start, sweep, feather, roundCaps)` returns `(Width, Height, Centre)`: the tight
+image that holds the band plus its feather, and where the centre of curvature lands inside it. Draw the baked
+texture at `anchor - Centre`, where `anchor` is where that centre of curvature belongs on screen. A 10 px band at
+radius 150 over 0.8 radians comes back around 120 by 30 rather than the 310 by 310 its whole circle would need.
+
+**Bake once, draw twice, for a partial fill.** A gauge that empties does not need a fresh upload every frame:
+bake the full band once, draw it in the track colour, then draw the SAME texture again in the lit colour through
+`SpriteBatch.SetScissor` with a rect covering only the filled part, and `ClearScissor` after. The scissor is a
+device state, not a new quad, so the whole gauge is two draws and zero uploads per frame however fast the value
+moves. A radial wipe past a quarter turn wants the arc split into per-quadrant scissor passes, since a scissor
+rect is axis-aligned.

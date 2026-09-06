@@ -2296,8 +2296,24 @@ vfx.DrawBeam(batch, from, to, BeamParams.ElectricArc with { JitterSeed = arcId }
   `RingCount`/`RingPeriod`/`InnerRadius`/`MaxRadius`/`RingThickness` (relative band thickness, 1 = texture-native),
   `GlintCount`/`GlintRadius`/`GlintSize`/`TwinkleRate`/`GlintStyle` (`Disc` or `Star`), plus `Color` and
   `Intensity`. `RingCount = 0` and `GlintCount = 0` draw nothing; a null `ring`/`glow` skips that sub-effect.
-- `VfxTextures`: `BakeGlowPixels`/`BakeRingPixels` (pure RGBA8, headless) and `BakeGlow`/`BakeRing`/`White`
-  (upload to a `Render2DSurface` / `Render2DContext`).
+- `VfxTextures`: `BakeGlowPixels`/`BakeRingPixels`/`BakeArcBandPixels` (pure RGBA8, headless) and
+  `BakeGlow`/`BakeRing`/`BakeArcBand`/`White` (upload to a `Render2DSurface` / `Render2DContext`).
+  `BakeArcBandPixels(width, height, centre, innerRadius, outerRadius, startRadians, sweepRadians, featherPixels,
+  roundCaps)` is the ANTI-ALIASED arc band, for HUD arcs, gauges and health crescents, and is what
+  `PrimitiveRenderer.DrawFilledArcBand` is not: that one fills the band with rotated quads, so a thin band reads
+  pixelated and the quad overlap darkens a translucent colour in blotches. Everything is in PIXELS of the target
+  image (pixel `(x, y)` samples its own centre `(x + 0.5, y + 0.5)`), so the centre of CURVATURE may sit outside
+  the image, which is how a shallow arc off a large radius is baked without a texture the size of its circle.
+  Alpha is a signed distance to the annulus sector (radial distance to the band edges, angular distance to the
+  caps) run through a `smoothstep` over `featherPixels`, so one pixel of feather is a clean edge and a pixel
+  exactly on an edge lands at half alpha. Angles are Render2D's own: +y down, 0 along +x, positive sweep
+  clockwise on screen. Either sign of sweep describes the same sector, a full turn or more drops the caps and
+  bakes a closed ring, and `roundCaps` rounds each end with a half disc of radius half the thickness.
+  `ArcBandImageSize(inner, outer, start, sweep, feather, roundCaps)` returns the `(Width, Height, Centre)` of the
+  tight image that holds the band plus its feather: draw the baked texture at `anchor - Centre`, where `anchor`
+  is where the centre of curvature belongs on screen. For a PARTIAL fill, bake once and draw twice: the track
+  colour first, then the same texture again in the lit colour through `SpriteBatch.SetScissor` over the filled
+  part (`ClearScissor` after), so a gauge that moves every frame is two draws and no per-frame upload.
 - Screen shake is **not** here - use `KhaozEngine.Particles.ScreenShake` (trauma-based, camera-independent: `Add` /
   `Update(dt)` / `Offset` / `Angle`); compose `Offset`/`Angle` onto your own camera.
 

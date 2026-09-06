@@ -3,13 +3,15 @@ using System;
 namespace KhaozEngine.Render2D.Vfx
 {
     /// <summary>
-    /// CPU-baked VFX textures - no shipped asset. <see cref="BakeGlowPixels"/> and <see cref="BakeRingPixels"/>
-    /// produce tightly-packed RGBA8 buffers (row-major, top-left origin) usable headlessly; the
-    /// <c>BakeGlow</c>/<c>BakeRing</c>/<c>White</c> overloads upload one to a sampleable <see cref="Texture2D"/>
-    /// on a live <see cref="Render2DSurface"/> or a snapshot <see cref="Render2DContext"/>. White RGB with a
-    /// radial alpha falloff, so an additive draw reads as a soft glow dot (sprite halos, beam flares, bloom).
+    /// CPU-baked VFX textures - no shipped asset. <see cref="BakeGlowPixels"/>, <see cref="BakeRingPixels"/> and
+    /// <see cref="BakeArcBandPixels"/> produce tightly-packed RGBA8 buffers (row-major, top-left origin) usable
+    /// headlessly. The <c>BakeGlow</c>/<c>BakeRing</c>/<c>BakeArcBand</c>/<c>White</c> overloads upload one to a
+    /// sampleable <see cref="Texture2D"/> on a live <see cref="Render2DSurface"/> or a snapshot
+    /// <see cref="Render2DContext"/>. All of them are white RGB with the shape carried in alpha, so an additive
+    /// draw of the glow reads as a soft dot (sprite halos, beam flares, bloom) and an alpha-blended draw of the
+    /// arc band reads as a smooth HUD arc.
     /// </summary>
-    public static class VfxTextures
+    public static partial class VfxTextures
     {
         /// <summary>
         /// Bakes a square radial-glow RGBA8 buffer of <paramref name="size"/>x<paramref name="size"/> pixels:

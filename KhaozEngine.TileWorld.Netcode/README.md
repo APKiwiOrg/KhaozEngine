@@ -299,6 +299,9 @@ it steps through the same `TileMoveSimulator` for free and can never move in a w
   `TryGetCombatState` as the reads and the one write, `ForgetAttacker` as the one field a game can drop (see
   what a dead player leaves behind, below), `DelayAttack` as the one number (see charging attack time, below), and
   `CancelPendingAction` as the quiet way a game abandons an interaction without exposing the action queue.
+  Connection pressure is visible through `PendingConnectionCount` and `RefusedPendingConnectionCount`.
+  `TileWorldServerConfig.MaxPendingConnections` caps clients that connected but have not completed Hello. Zero keeps
+  the prior unlimited behavior. A positive cap sheds excess connections before they can hold server state.
   `TileWorldServerConfig` gained `MaxActorsPerCell` (the
   per-REGION monster budget, since a cell is a region), `ActorMove` (the actor's own `TileMoveOptions`, whose
   default drops `MaxPathRadius` from 64 to 12 because `FindPath` allocates `(2r+1)^2` scratch per call, about 83 KB
@@ -583,6 +586,7 @@ var server = new TileWorldServer(
         TickSeconds = 0.25f,                       // the GAME's number, not the engine's
         StepTicks = new TileStepTicks(walk: 4, run: 2),
         Spawn = new TileCoord(64, 64, Plane: 0),
+        MaxPendingConnections = 128,
         IsBanned = bans.IsBanned,
     },
     map,
@@ -603,6 +607,11 @@ while (running)                                    // any frame clock: the serve
     persistence.Update(dt);
 }
 ```
+
+Monitor `server.PendingConnectionCount` for handshakes still in flight and
+`server.RefusedPendingConnectionCount` for the total shed by `MaxPendingConnections`. Size the cap above the real
+concurrent join burst from a launch or restart. A non-zero refusal count can mean either a flood or a cap set too
+low for normal traffic.
 
 `BeginDrain(TileServerReason.Draining, graceSeconds)` on SIGINT announces the token to every client at once, keeps
 ticking through the grace so a player mid walk finishes it, and raises `IsDrainComplete` once the grace is spent

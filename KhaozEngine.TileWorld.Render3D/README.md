@@ -387,6 +387,18 @@ catalog archetype up front, so a region load is placements alone.
   a whole-region seasonal swap through it: call `TileObjectProps.Build` once instead. There is no batch door.
 - `Dispose` frees every region and every archetype mesh set the view uploaded. The scene is not owned.
 
+## Animated authored grass
+
+`TileWorldViewOptions.GroundCover.UseGpuBatches` enables persistent GPU cover when height fading and
+no-shadow drawing are selected. The view releases retained batches on rebuild, unload and disposal through
+`ITileWorldScene.ReleaseGroundCover`, whose default is a no-op for existing scene implementations.
+
+`AnimatedFoliageArchetypes` selects placed ground-prop model IDs for the same wind and bending shader.
+Selected props keep their authored transforms, ordinary prop draw radius and full density. Turning short
+cover off does not hide them. Wind settings and up to four `GroundCover.Interactors` are shared with short
+cover. The host advances `Scene3D.EffectTimeSeconds`. Selection, overrides and dirty rebuilds invalidate
+only affected cached splits. This changes presentation only, with picking and collision left to world data.
+
 ## Streaming (`TileRegionResidency`, `TileResidencyConfig`)
 
 `TileRegionResidency(source, view, config)` keeps a square ring of REGIONS resident around one observer tile,

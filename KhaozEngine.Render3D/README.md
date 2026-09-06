@@ -839,3 +839,20 @@ Renderer deps (the GPU backends, the `Silk.NET.Shaderc` and `Silk.NET.SPIRV.Cros
 SharpGLTF) are confined to this package via
 `KhaozEngine.Gpu`. See
 `docs/USING-KHAOZENGINE.md`.
+
+## Persistent grass and foliage
+
+Create a `FoliageBatch` once from authored `FoliageInstance` mesh handles, transforms and stable thinning
+ranks in `[0, 1)`. `Scene3D.DrawFoliage` submits it each frame with a focus and `FoliageRenderSettings`.
+Transforms upload on first visibility and remain resident. CPU work selects spatial patch prefixes.
+The vertex shader performs exact fading, wind and nearby actor bending with roots anchored at mesh minimum Y.
+
+Wind strength is a fraction of blade height. Direction, speed and spatial frequency are configurable per
+submission. Advance `Scene3D.EffectTimeSeconds` from the render clock. Supply up to four `FoliageInteractor`
+positions, radii and strengths for cosmetic bending. Vertical separation prevents a different floor from
+pushing the grass. All inputs are copied at submission. Grass is lit, supports material alpha masks and
+casts no dynamic shadow. It adds no collision or world state.
+
+Dispose the batch when placements change or unload. The scene owns GPU buffers and retires them safely.
+Mesh handles remain caller-owned and must belong to that scene. `LastFoliageStats` reports workload and
+upload counts. `CandidateInstances` includes instances the shader rejects, rather than exact visible blades.

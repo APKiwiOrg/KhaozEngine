@@ -6065,7 +6065,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.28.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.29.0" />
 ```
 
 ```csharp
@@ -7481,6 +7481,33 @@ instance's stable rank, so lower values select nested subsets without regenerati
 lighting and defaults to no shadow casting. `MarkDirty` includes every loaded region reached by an active
 same-plane door clearance. Streaming loads and unloads also rebuild caches affected by solid footprints, upper
 roofs and tagged doors.
+
+**Persistent GPU grass and shader wind (18.29.0).** Keep the existing authored placements and enable:
+
+```csharp
+options.GroundCover.UseGpuBatches = true;
+options.GroundCover.FadeMode = GroundCoverFadeMode.HeightScale;
+options.GroundCover.CastsShadows = false;
+options.GroundCover.WindStrength = 0.1f;
+options.AnimatedFoliageArchetypes = new HashSet<string> { "grass_tall" };
+// Advance the scene clock in Update. Reuse the interactor array each frame.
+scene.EffectTimeSeconds += dt;
+interactors[0] = new FoliageInteractor(playerPosition, 0.8f, 0.8f);
+options.GroundCover.Interactors = interactors;
+```
+
+The renderer retains immutable buffers until placements or model bindings change. CPU work culls patches,
+while the GPU fades and bends blades. Short grass and selected tall props share wind and interactions, but
+tall props keep full density and ordinary prop distance. This adds no collision. Wind is height-relative,
+roots stay planted, and the shader uses at most four nearby interaction positions with vertical separation.
+Other fade and shadow policies keep the existing CPU path. `LastDrawnCover` on the retained path is a
+conservative candidate count, including placements rejected by the shader. `Scene3D.LastFoliageStats`
+separates instance upload bytes, uniform bytes and submitted patch counts.
+
+For a non-tile game, create `FoliageBatch` through `Scene3D.CreateFoliageBatch` once from authored
+`FoliageInstance` values and call `DrawFoliage` each frame with `FoliageRenderSettings`. Dispose the batch
+on unload. A terrain caller using `DrawGroundCover` instead releases its source with
+`scene.ReleaseGroundCover(batch)`. See the Render3D and Terrain.Render3D package READMEs.
 
 **Roofs come off one building at a time.** `Observer` is the tile the roof rule is judged from, and
 `ObserverIndoors` says whether it carries `TileSettings.Indoors`. A roof is hidden when the observer is indoors,
@@ -11347,7 +11374,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.28.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.29.0" />
 ```
 
 ```csharp
@@ -11383,7 +11410,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.28.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.29.0" />
 ```
 
 ```csharp
@@ -11625,7 +11652,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.28.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.29.0" />
 ```
 
 ```csharp
@@ -13670,7 +13697,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="18.28.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="18.29.0" />
 </ItemGroup>
 ```
 

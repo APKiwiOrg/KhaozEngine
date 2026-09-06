@@ -172,6 +172,12 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   resolved once per batch submission. Live mesh handles are refreshed every submission, including missing
   or replaced models, with no warmed per-frame allocation. Tile-world views build these batches once when
   foliage changes, with no scene or camera work during generation.
+- **Retained GPU cover** - set `GroundCoverRenderOptions.UseGpuBatches = true` on an immutable
+  `GroundCoverBatch`, with `FadeMode = HeightScale` and `CastsShadows = false`. Transforms upload once,
+  patch selection stays on the CPU, and the GPU handles exact rooted fading, wind and `Interactors`.
+  Wind strength is relative to mesh height. Advance `Scene3D.EffectTimeSeconds` each frame. Other cover
+  policies keep the CPU path described above. `scene.ReleaseGroundCover(batch)` retires retained data
+  when that source is no longer needed. Changed model bindings recreate the buffer automatically.
 - **`PropHlod`** - author-agnostic HLOD (hierarchical LOD) merge+weld for a chunk cluster's props.
   `PropHlod.Merge(placements, sourceMeshes)` transforms each placement's flat source mesh to world space and
   concatenates into one `GltfMesh` (per-kit opt-in, an id with no source mesh contributes nothing).

@@ -488,6 +488,10 @@ exist when there is no dependency from `TileWorld` to `Terrain`. `TileWorldView`
 through its own `ITileWorldScene` seam rather than a `Scene3D` field, so every view and residency rule is testable
 without a device, and `Scene3DTileWorldScene` is the one place the two meet.
 
+`ITileWorldScene.ReleaseGroundCover(GroundCoverBatch)` releases retained GPU cover on rebuild and unload.
+Its default is a no-op for existing scene fakes and adapters. `Scene3DTileWorldScene` forwards to the
+Terrain.Render3D cache, which owns `Scene3D` foliage batches. This adds no new package dependency.
+
 **The seam grew four members for textured ground and water (17.38.0), a fifth for silhouettes (18.3.0),
 a sixth for rigid mesh dissolve (18.19.0), a seventh for authored ground cover, and an eighth for
 translucent overlay meshes, all DEFAULT interface implementations.**

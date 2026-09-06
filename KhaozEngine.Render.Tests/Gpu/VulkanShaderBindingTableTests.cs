@@ -52,6 +52,7 @@ namespace KhaozEngine.Tests.Gpu
                 ["Sprite2D"] = "SpriteBatch",
 
                 ["Model"] = "ModelRenderer",
+                ["Foliage"] = "ModelRenderer foliage",
                 ["ModelDissolve"] = "ModelRenderer dissolve",
                 ["SkinnedModel"] = "ModelRenderer skinned",
                 ["SkinnedModelDissolve"] = "ModelRenderer skinned dissolve",
@@ -184,7 +185,7 @@ namespace KhaozEngine.Tests.Gpu
                 .Select(p => p.Pipeline)
                 .ToHashSet(StringComparer.Ordinal);
 
-            Assert.Equal(35, catalog.Length);
+            Assert.Equal(36, catalog.Length);
             Assert.Equal(catalog.Length, ProgramPipelines.Count);
 
             foreach (string program in catalog)

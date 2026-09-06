@@ -76,6 +76,7 @@ namespace KhaozEngine.Tests.Gpu
                 // Render3D/Rendering/ModelRenderer.cs:225, :270 and :273
                 ["Model"] = L(U("U", VF), T("Albedo"), T("NormalMap"), T("RoughnessMap"), S("Sampler"),
                     T("ShadowMap"), S("ShadowSamp")),
+                ["Foliage"] = L(U("Foliage", V, dynamic: true)),
                 // TWO uniform buffers in ONE set since #604 unfolded the combined skinned block: the shared frame
                 // block both stages read, then the per-draw one only the vertex reads. That order is the layout's
                 // half of the prefix property, and this is the only shipped set that spends two uniform buffers.
@@ -177,6 +178,7 @@ namespace KhaozEngine.Tests.Gpu
             ("DistortionRenderer", ["Distortion"]),
             ("GroundDecalRenderer", ["GroundDecal"]),
             ("ModelRenderer", ["Model"]),
+            ("ModelRenderer foliage", ["Model", "Foliage"]),
             ("ModelRenderer dissolve", ["Model"]),
             ("ModelRenderer splat", ["Model.splatFrame", "Model.splatMaterial"]),
             ("ModelRenderer tile ground", ["Model.tileGroundFrame", "Model.tileGroundMaterial"]),
@@ -213,14 +215,10 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void EveryShippedPipeline_StaysWithinTheRequiredMinimumDynamicUniformBuffers()
         {
-            // 37 layouts: 35 after #604 split the splat pipeline's one layout into a frame set and a material set,
-            // 36 after #727 did the same to the tile-ground pipeline, and 37 after #407 gave the GPU-skinned bone
-            // palette a set of its own. 34 PIPELINES, unchanged by any of them: every time, pipelines gained a slot
-            // rather than a pipeline being added, which is why the two numbers came apart. #407 is also the first
-            // time ONE layout is shared by two pipelines at different slots, so it adds one entry and three slots.
+            // Foliage adds one layout and one pipeline beside the existing shared model material layout.
             // Both counts are stated so an emptied table cannot pass by agreeing with itself.
-            Assert.Equal(37, ShippedLayouts.Count);
-            Assert.Equal(34, ShippedPipelines.Count);
+            Assert.Equal(38, ShippedLayouts.Count);
+            Assert.Equal(35, ShippedPipelines.Count);
 
             foreach ((string pipeline, string[] slots) in ShippedPipelines)
             {

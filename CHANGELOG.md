@@ -5,6 +5,29 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.29.0
+
+Persistent GPU foliage adds shader wind and actor bending while removing per-blade CPU frame preparation (#841).
+
+- `Scene3D.CreateFoliageBatch` uploads immutable `FoliageInstance` transforms once. Spatial patches use
+  conservative distance prefixes and the final render camera for culling. Exact distance fading runs in
+  the vertex shader. `FoliageBatch.Dispose` safely retires buffers, and scene disposal frees remaining batches.
+- `FoliageRenderSettings` controls density, draw distance, rooted height fading and height-relative wind.
+  Up to four `FoliageInteractor` values bend nearby blades with a smooth falloff. The host advances
+  `Scene3D.EffectTimeSeconds`. Authored mesh roots stay planted, including meshes whose minimum Y is offset.
+  Foliage receives existing material lighting and alpha masks, and casts no dynamic shadows.
+- `LastFoliageStats` reports tested and submitted patches, candidate instances and upload bytes. Candidate
+  counts include blades rejected in the shader. These counters do not claim GPU execution time.
+- `GroundCoverRenderOptions.UseGpuBatches` opts immutable `GroundCoverBatch` values into this path with
+  `HeightScale` fading and shadows off. Other policies keep their existing CPU path. Live model binding
+  changes rebuild retained buffers, while settings and render-origin changes leave transforms resident.
+- `TileWorldViewOptions.AnimatedFoliageArchetypes` selects existing placed ground props for the same shader.
+  Short cover and selected tall grass retain separate density policies and share wind and interaction inputs.
+  `ITileWorldScene.ReleaseGroundCover` adds a compatible default lifecycle hook for rebuilds and unloads.
+- Pixel comparisons cover wind, player bending, rooted fading, camera changes, render origins and independent
+  uniform slots. The shipped shader registry includes foliage on all three translation paths, and native GPU
+  CI includes its image and upload checks on each push.
+
 ## 18.28.0
 
 Twenty backlog fixes improve restore accuracy, command handling, authoring tools and rendering regression coverage.

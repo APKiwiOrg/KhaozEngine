@@ -222,6 +222,37 @@ public class AppDataPathsTests
         Assert.Throws<ArgumentException>(() => new AppDataPaths(Publisher, badAppName!, new FakeAppDataEnvironment()));
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("relative/path")]
+    public void FromDirectory_RejectsMissingOrRelativePaths(string? badDirectory)
+    {
+        Assert.Throws<ArgumentException>(() => AppDataPaths.FromDirectory(badDirectory!));
+    }
+
+    [Fact]
+    public void FromDirectory_NormalizesAndLazilyCreatesOnlyTheChosenDirectory()
+    {
+        string root = NewTempRoot();
+        string chosen = Path.Combine(root, "intermediate", "..", "chosen");
+        string expected = Path.Combine(root, "chosen");
+        try
+        {
+            Directory.CreateDirectory(root);
+
+            AppDataPaths paths = AppDataPaths.FromDirectory(chosen);
+
+            Assert.False(Directory.Exists(expected));
+            Assert.Equal(expected, paths.BaseDirectory);
+            Assert.True(Directory.Exists(expected));
+            Assert.Equal(Path.Combine(expected, "settings.json"), paths.SettingsFilePath);
+            Assert.False(Directory.Exists(Path.Combine(root, Publisher, AppName)));
+        }
+        finally { Cleanup(root); }
+    }
+
     [Fact]
     public void FilePaths_ComposeOffBaseDirectory()
     {

@@ -20,6 +20,23 @@ string version = BuildMetadata.Read(
 First assembly with a matching, non-whitespace `AssemblyMetadata` value wins; null assemblies are
 skipped; otherwise the fallback is returned.
 
+## AppDataPaths
+
+`AppDataPaths` resolves and lazily creates the platform-correct application-data directory for a publisher and
+app name. Tooling, portable installs, and tests can instead choose an existing or future fully-qualified root with
+`FromDirectory`. That path is normalized immediately and created only when `BaseDirectory` or a file path is first
+read, so constructing the resolver does not touch the current user's application-data directory.
+
+```csharp
+using System.IO;
+using KhaozEngine.App;
+
+var installed = new AppDataPaths("MyStudio", "MyGame");
+var isolated = AppDataPaths.FromDirectory(Path.Combine(Path.GetTempPath(), "my-test-run"));
+
+string settingsPath = isolated.SettingsFilePath;
+```
+
 ## AppInstallStamp
 
 A local record of when the current app version first ran on this machine and when it last changed

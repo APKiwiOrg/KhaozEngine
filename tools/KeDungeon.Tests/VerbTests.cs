@@ -31,9 +31,9 @@ public class VerbTests
     // config/seed-search idiom KhaozEngine.Game.Tests/Navigation/DungeonNavTests.cs uses for the same
     // reason, and (like that fixture) is completable by construction, so it always bakes to exactly one
     // connected component.
-    static DungeonLayout StairLayout()
+    static DungeonLayout StairLayout(DungeonConfig? config = null)
     {
-        DungeonConfig config = MultiFloorNavConfig();
+        config ??= MultiFloorNavConfig();
         for (ulong seed = 11; seed <= 60; seed++)
         {
             DungeonLayout layout = DungeonGenerator.Generate(config, seed);
@@ -347,26 +347,16 @@ public class VerbTests
     }
 
     [Fact]
-    public void Nav_AgentHeight_AcceptedAndPassedThrough_ButInertViaLayoutJson_SinceCeilingModeNeverSurvivesIt()
+    public void Nav_AgentHeight_ChangesRoofedLayoutReportAfterJsonRoundTrip()
     {
-        // DungeonNav.Bake's agentHeight only ever matters against a Roofed layout: headroom bakes to
-        // float.PositiveInfinity for an Open one, so no agentHeight value can block a cell there (see
-        // DungeonNav.Bake, KhaozEngine.Dungeon/DungeonNav.cs). DungeonLayout.CeilingMode is deliberately
-        // NOT part of DungeonJson's LayoutDto (see DungeonLayout.cs's own doc comment: "A layout rebuilt
-        // from JSON is always Open, the field is not serialized"), so every --layout file this verb can
-        // ever load bakes Open regardless of what produced it. That means --agent-height cannot be shown
-        // changing the report through this verb's only entry point (a --layout file): there is no
-        // reachable Roofed low-ceiling case to demonstrate here. DungeonNav.Bake's own Roofed/agentHeight
-        // interaction is already covered directly, with no CLI and no JSON round-trip, by
-        // KhaozEngine.Game.Tests/Navigation/DungeonNavTests.cs (Bake_RoofedLowCeiling_BlocksEveryCell_...).
-        // This test instead pins the CLI-observable half of that gap: --agent-height parses and passes
-        // through without error at very different heights, and (correctly, given the gap above) the report
-        // is identical every time on the only kind of layout this verb can ever bake against.
         string dir = NewTempDir();
         TextWriter originalOut = Console.Out;
         try
         {
-            DungeonLayout layout = StairLayout();
+            DungeonConfig config = MultiFloorNavConfig();
+            config.CeilingMode = DungeonCeilingMode.Roofed;
+            config.CeilingHeightMeters = 1f;
+            DungeonLayout layout = StairLayout(config);
             string layoutPath = Path.Combine(dir, "layout.json");
             File.WriteAllText(layoutPath, DungeonJson.SaveLayout(layout));
 
@@ -390,7 +380,7 @@ public class VerbTests
             Assert.Equal(0, defaultExit);
             Assert.Equal(0, shortExit);
             Assert.Equal(0, tallExit);
-            Assert.Equal(defaultStdout.ToString(), shortStdout.ToString());
+            Assert.NotEqual(defaultStdout.ToString(), shortStdout.ToString());
             Assert.Equal(defaultStdout.ToString(), tallStdout.ToString());
         }
         finally

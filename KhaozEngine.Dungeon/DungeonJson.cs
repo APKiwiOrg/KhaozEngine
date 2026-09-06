@@ -117,6 +117,8 @@ public static class DungeonJson
         {
             CellSizeMeters = layout.CellSizeMeters,
             FloorHeightMeters = layout.FloorHeightMeters,
+            CeilingMode = layout.CeilingMode,
+            CeilingHeightMeters = layout.CeilingHeightMeters,
             Width = layout.Width,
             Depth = layout.Depth,
             Floors = layout.Floors,
@@ -170,6 +172,8 @@ public static class DungeonJson
 
         var layout = new DungeonLayout(dto.Width, dto.Depth, dto.Floors, dto.CellSizeMeters, dto.FloorHeightMeters)
         {
+            CeilingMode = dto.CeilingMode,
+            CeilingHeightMeters = dto.CeilingHeightMeters,
             Rooms = dto.Rooms,
             Edges = dto.Edges,
             Keys = dto.Keys,
@@ -189,6 +193,8 @@ public static class DungeonJson
     {
         public float CellSizeMeters { get; set; }
         public float FloorHeightMeters { get; set; }
+        public DungeonCeilingMode CeilingMode { get; set; } = DungeonCeilingMode.Open;
+        public float CeilingHeightMeters { get; set; }
         public int Width { get; set; }
         public int Depth { get; set; }
         public int Floors { get; set; }

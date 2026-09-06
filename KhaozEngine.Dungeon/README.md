@@ -43,7 +43,9 @@ reserved for a future growth-heuristics/grammar layer.
 tolerant reads, deterministic byte-identical writes). The JSON matches the embedded schema
 (`DungeonSchema.GetJson()`, a `oneOf` over a `config` and a `layout` `$def`), which the package's tests
 validate against and which is available for editor/AI tooling. The load path itself enforces its own semantic
-checks, throwing `DungeonJsonException` naming the offending field in its own camelCase spelling.
+checks, throwing `DungeonJsonException` naming the offending field in its own camelCase spelling. Layout JSON
+preserves `CeilingMode` and the resolved `CeilingHeightMeters`. Older layouts without those optional fields load
+as `Open` with a zero ceiling height.
 
 ## Baking into a `MapDocument` (`DungeonMapDocEmitter`)
 
@@ -199,9 +201,8 @@ just what looks adjacent on the grid. `nav` accepts `--yaw` for symmetry with `b
 value: `DungeonNav.Bake` has no rotation concept (`NavGrid` is strictly axis-aligned), so a rotated plot would
 silently bake a `NavSpace` that does not match the rotated geometry (issue #140, deferred on purpose) rather
 than failing loudly, which is why this verb refuses the combination outright instead of pretending to support
-it. Note: `DungeonLayout.CeilingMode` is not part of the layout JSON (see `DungeonJson`), so every `--layout`
-file `nav` can load bakes `Open`, and `--agent-height` cannot demonstrate blocking a `Roofed` low-ceiling cell
-through this verb, only through `DungeonNav.Bake` called directly.
+it. Roofed layout JSON retains its ceiling height, so `--agent-height` affects file-backed nav baking when the
+requested agent does not fit below that ceiling.
 
 ## NPC pathfinding (`DungeonNav`)
 

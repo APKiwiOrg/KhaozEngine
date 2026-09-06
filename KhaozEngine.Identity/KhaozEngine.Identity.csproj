@@ -8,10 +8,11 @@
     <PackageId>KhaozEngine.Identity</PackageId>
     <Version>$(KhaozEngineVersion)</Version>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <Description>Pluggable player-identity seam: provider sign-in + server-side verified-subject validation + an HMAC session token, via the exchange model. Transport-agnostic (no HTTP/ASP.NET); OIDC and Discord providers are opt-in sibling packages.</Description>
+    <Description>Pluggable player identity with provider seams, browser and loopback adapters, verified subject validation and HMAC session tokens. OIDC and Discord providers are opt-in sibling packages.</Description>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
+    <ProjectReference Include="../KhaozEngine.Platform/KhaozEngine.Platform.csproj" />
     <ProjectReference Include="../KhaozEngine.Serialization/KhaozEngine.Serialization.csproj" />
   </ItemGroup>
   <ItemGroup>

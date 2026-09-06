@@ -7,7 +7,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.Identity/KhaozEngine.Identity.csproj" />
-    <ProjectReference Include="../KhaozEngine.Platform/KhaozEngine.Platform.csproj" />
     <PackageReference Include="Microsoft.IdentityModel.Protocols.OpenIdConnect" />
     <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" />
   </ItemGroup>

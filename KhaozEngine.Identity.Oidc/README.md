@@ -19,9 +19,9 @@ authorization-code + PKCE flow, using the system browser and a local loopback re
   `JsonWebTokens`), checks issuer/audience/lifetime/signature, and maps the `sub` claim (+ `name` or
   `preferred_username`) to a `VerifiedIdentity`. `ValidateDetailedAsync` reports discovery, JWKS and
   transport failures as `ProviderUnavailable`. Invalid signatures and claims remain `Refused`.
-- **SystemBrowserLauncher** - `IBrowserLauncher` implementation that opens the sign-in URL in the OS
-  default browser via `KhaozEngine.Platform.Browser`.
-- **HttpLoopbackListener** - `ILoopbackListener` implementation that binds a short-lived socket on
+- **SystemBrowserLauncher** - source-compatible forwarding wrapper for the implementation now shipped under
+  `KhaozEngine.Identity.Interactive`.
+- **HttpLoopbackListener** - source-compatible forwarding wrapper for the shared implementation that binds a short-lived socket on
   `http://127.0.0.1:<port>/`, captures the provider's redirect, and returns the parsed query string.
   Pass port 0 (the `LoopbackPort` default) for an OS-assigned port, which is bound atomically and read
   back from the socket, or a fixed port when the provider requires a pre-registered redirect URI (a
@@ -79,7 +79,8 @@ as above), and
 
 ## Dependencies
 
-References `KhaozEngine.Identity` (core seam) and `KhaozEngine.Platform` (browser launch), plus
+References `KhaozEngine.Identity`, plus
 `Microsoft.IdentityModel.Protocols.OpenIdConnect` and `Microsoft.IdentityModel.JsonWebTokens` for
 discovery-document and JWKS-backed token validation. These HTTP/IdentityModel dependencies are
-intentionally isolated to this opt-in package; `KhaozEngine.Identity` itself stays transport-agnostic.
+intentionally isolated to this opt-in package. Base Identity carries the BCL loopback listener and browser
+adapter under its `Interactive` namespace without taking an IdentityModel dependency.

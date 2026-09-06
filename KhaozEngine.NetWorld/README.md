@@ -631,8 +631,9 @@ product to compute.
   16.0.0). `MovementAnomaly.CorrectionDistance` folds the scale into its intended-target
   calculation. Without that, a legitimately hasted player steps far past an unscaled target and every boosted tick
   reads as a large correction, so the streak reports them as a speed hacker. A boosted client fighting a wall or a
-  play-area bound still raises the signal. On the sharded head, frames that produce no cell sub-tick leave the
-  correction streak untouched because no authoritative movement ran to classify as corrected or clean.
+  play-area bound still raises the signal. On the sharded head, each player is sampled only when their original
+  owning cell produced a sub-tick, and the calculation uses that cell's fixed `TickSeconds`. An idle player cell
+  leaves its correction streak untouched even when an out-of-phase neighbor advances.
 - **Composes, never replaces.** It multiplies into the existing speed product alongside the grounded/`AirControl`
   term and the medium's wade scale. So a hasted player who jumps travels correspondingly further horizontally
   (jump HEIGHT is untouched - this is a horizontal scale), and the boost persists into a swim. Under

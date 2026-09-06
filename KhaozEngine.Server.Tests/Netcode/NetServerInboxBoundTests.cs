@@ -38,6 +38,7 @@ public class NetServerInboxBoundTests
         var transport = new ScriptedTransport();
         var conn = new NetConnectionId(1);
         // Establish a slot with a Hello (enqueues one Joined into the inbox).
+        transport.Stage(NetEvent.Connected(conn));
         transport.Stage(NetEvent.FromData(conn, SessionFrame.Write(SessionOpcode.Hello, Array.Empty<byte>()),
             NetChannelReliability.ReliableOrdered));
         // Then flood 200 data frames the host will never drain. Each carries a 1-byte sequence tag.
@@ -67,7 +68,9 @@ public class NetServerInboxBoundTests
         var leaver = new NetConnectionId(1);
         var flooder = new NetConnectionId(2);
         byte[] hello = SessionFrame.Write(SessionOpcode.Hello, Array.Empty<byte>());
+        transport.Stage(NetEvent.Connected(leaver));
         transport.Stage(NetEvent.FromData(leaver, hello, NetChannelReliability.ReliableOrdered));  // Joined slot 0
+        transport.Stage(NetEvent.Connected(flooder));
         transport.Stage(NetEvent.FromData(flooder, hello, NetChannelReliability.ReliableOrdered)); // Joined slot 1
         transport.Stage(NetEvent.Disconnected(leaver));                                            // Left slot 0
         // Then a second peer floods the inbox with far more than the cap, all of it NEWER than the Left.

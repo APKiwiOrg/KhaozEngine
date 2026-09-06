@@ -141,6 +141,13 @@ public sealed class NetServer
             return;
         }
 
+        // A pre-slot frame is valid only from a connection this server admitted into the pending set. A Connected
+        // event refused by the pending cap can already have a Hello queued behind it in this same transport poll.
+        // Without this membership check that stale Hello authenticates after the disconnect, takes a player slot,
+        // and can never surface the later disconnect needed to release it. Keep this after the established-peer
+        // branch so ordinary Data from joined connections remains unchanged.
+        if (!pending.Contains(ev.Connection)) return;
+
         // Not yet established: the only thing we accept is a Hello.
         if (op != SessionOpcode.Hello) return;
 

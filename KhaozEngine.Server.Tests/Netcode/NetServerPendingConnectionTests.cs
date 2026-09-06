@@ -80,6 +80,32 @@ public class NetServerPendingConnectionTests
     }
 
     [Fact]
+    public void A_same_poll_hello_from_a_cap_rejected_connection_cannot_take_a_slot()
+    {
+        var transport = new RecordingTransport();
+        var server = new NetServer(transport, maxPlayers: 1, new AllowAllAuthenticator(), maxPendingConnections: 1);
+        var holder = new NetConnectionId(1);
+        var excess = new NetConnectionId(2);
+        transport.Deliver(NetEvent.Connected(holder));
+        transport.Deliver(NetEvent.Connected(excess));
+        transport.Deliver(NetEvent.FromData(excess, Hello(), NetChannelReliability.ReliableOrdered));
+
+        server.Poll();
+
+        Assert.Equal(1, server.PendingConnectionCount);
+        Assert.Equal(1, server.RefusedPendingConnectionCount);
+        Assert.False(server.TryDequeueEvent(out _));
+
+        transport.Deliver(NetEvent.FromData(holder, Hello(), NetChannelReliability.ReliableOrdered));
+        server.Poll();
+
+        Assert.True(server.TryDequeueEvent(out ServerSessionEvent joined));
+        Assert.Equal(ServerSessionEventKind.Joined, joined.Kind);
+        Assert.Equal(0, joined.Slot);
+        Assert.False(server.TryDequeueEvent(out _));
+    }
+
+    [Fact]
     public void A_refused_connect_frees_capacity_for_the_next_one()
     {
         var transport = new RecordingTransport();

@@ -42,6 +42,7 @@ public class WorldServerInboxBoundTests
     {
         var transport = new ScriptedTransport();
         var conn = new NetConnectionId(1);
+        transport.Stage(NetEvent.Connected(conn));
         transport.Stage(NetEvent.FromData(conn, SessionFrame.Write(SessionOpcode.Hello, TestHandshake.Wire("p1")),
             NetChannelReliability.ReliableOrdered));
         for (int i = 0; i < FloodFrames; i++)
@@ -121,8 +122,10 @@ public class WorldServerInboxBoundTests
         var transport = new ScriptedTransport();
         var leaver = new NetConnectionId(1);
         var flooder = new NetConnectionId(2);
+        transport.Stage(NetEvent.Connected(leaver));
         transport.Stage(NetEvent.FromData(leaver, SessionFrame.Write(SessionOpcode.Hello, TestHandshake.Wire("a")),
             NetChannelReliability.ReliableOrdered));
+        transport.Stage(NetEvent.Connected(flooder));
         transport.Stage(NetEvent.FromData(flooder, SessionFrame.Write(SessionOpcode.Hello, TestHandshake.Wire("b")),
             NetChannelReliability.ReliableOrdered));
         transport.Stage(NetEvent.Disconnected(leaver));

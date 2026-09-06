@@ -22,6 +22,33 @@ public class TileWorldServerPendingConnectionTests
     }
 
     [Fact]
+    public void A_same_poll_hello_from_a_cap_rejected_connection_never_joins_the_tile_world()
+    {
+        var hub = new InMemoryTransportHub();
+        using TileWorldServer server = CreateServer(hub, maxPendingConnections: 1);
+        using INetTransport holderTransport = hub.CreateClient();
+        using INetTransport excessTransport = hub.CreateClient();
+        var holder = new NetClient(holderTransport);
+        var excess = new NetClient(excessTransport);
+        int joinCount = 0;
+        server.PlayerJoined += (_, _) => joinCount++;
+        excess.Poll();
+
+        server.Poll();
+
+        Assert.Equal(0, joinCount);
+        Assert.Equal(0, server.PlayerCount);
+        Assert.Equal(1, server.PendingConnectionCount);
+        Assert.Equal(1, server.RefusedPendingConnectionCount);
+
+        holder.Poll();
+        server.Poll();
+
+        Assert.Equal(1, joinCount);
+        Assert.Equal(1, server.PlayerCount);
+    }
+
+    [Fact]
     public void Pending_connections_remain_unlimited_by_default()
     {
         var hub = new InMemoryTransportHub();

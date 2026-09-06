@@ -29,7 +29,11 @@ public class WelcomeSlotEndiannessTests
         // Tokenless is what keeps them 257 separate sessions: an empty subject is never a duplicate of anything.
         byte[] hello = SessionFrame.Write(SessionOpcode.Hello, ReadOnlySpan<byte>.Empty);
         for (int i = 1; i <= 257; i++)
-            transport.Deliver(NetEvent.FromData(new NetConnectionId(i), hello, NetChannelReliability.ReliableOrdered));
+        {
+            var connection = new NetConnectionId(i);
+            transport.Deliver(NetEvent.Connected(connection));
+            transport.Deliver(NetEvent.FromData(connection, hello, NetChannelReliability.ReliableOrdered));
+        }
         server.Poll();
 
         Assert.Equal(257, transport.Sent.Count);

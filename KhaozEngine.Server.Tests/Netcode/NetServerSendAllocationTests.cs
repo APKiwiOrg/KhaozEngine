@@ -119,7 +119,11 @@ public class NetServerSendAllocationTests
         {
             byte[] hello = SessionFrame.Write(SessionOpcode.Hello, ReadOnlySpan<byte>.Empty);
             for (int i = 1; i <= count; i++)
-                inbound.Enqueue(NetEvent.FromData(new NetConnectionId(i), hello, NetChannelReliability.ReliableOrdered));
+            {
+                var connection = new NetConnectionId(i);
+                inbound.Enqueue(NetEvent.Connected(connection));
+                inbound.Enqueue(NetEvent.FromData(connection, hello, NetChannelReliability.ReliableOrdered));
+            }
         }
 
         /// <summary>Starts keeping a copy of every payload sent from here on, and hands back the list they land in.</summary>

@@ -530,8 +530,9 @@ namespace KhaozEngine.Tests.Render3D
         [Fact]
         public void TileGroundFrag_ClampsSlotsToTheLastRealMaterialLayer()
         {
-            Assert.Contains("int maxSlot = min(63, max(0, int(Misc.y + 0.5) - 1));",
-                ShaderSources.TileGroundFrag);
+            string maxSlot = "int maxSlot = min(" + (TileGroundMaterialConfig.MaxMaterials - 1)
+                + ", max(0, int(Misc.y + 0.5) - 1));";
+            Assert.Contains(maxSlot, ShaderSources.TileGroundFrag);
             Assert.Contains("clamp(int(vSlots.x + 0.5), 0, maxSlot)", ShaderSources.TileGroundFrag);
             Assert.Contains("clamp(int(vSlots.w + 0.5), 0, maxSlot)", ShaderSources.TileGroundFrag);
         }
@@ -559,9 +560,9 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Contains("for (int L = 0; L < 4; L++)", ShaderSources.TileGroundFrag);
             Assert.Contains("float w[4] = float[4]", ShaderSources.TileGroundFrag);
             // Clamped to the last valid slot, since the index reaches the UBO array AND the texture array layer,
-            // and an out-of-range uniform-array index is undefined rather than wrapped. Spelled from the constant.
-            string firstSlot = "int slot[4] = int[4](clamp(int(vSlots.x + 0.5), 0, "
-                + (TileGroundMaterialConfig.MaxMaterials - 1) + ")";
+            // and an out-of-range uniform-array index is undefined rather than wrapped. The maxSlot declaration
+            // above pins the shader's hard ceiling to the C# constant.
+            string firstSlot = "int slot[4] = int[4](clamp(int(vSlots.x + 0.5), 0, maxSlot)";
             Assert.True(ShaderSources.TileGroundFrag.Contains(firstSlot),
                 $"TileGroundFrag lost '{firstSlot}': the slot clamp drifted from TileGroundMaterialConfig.MaxMaterials ({TileGroundMaterialConfig.MaxMaterials}). Fix ShaderSources.TileGroundFrag or the constant.");
             // Renormalised by their OWN sum: there is no one-minus-sum fifth layer on this pipeline.

@@ -8,11 +8,15 @@ namespace KhaozEngine.Tests.Gpu;
 
 public sealed class MsaaPostFxaaGpuTests
 {
-    [GpuFact]
+    [GpuFact(RequiresFourSampleMsaa = true)]
     public void PostFilterRunsAfterMultisampleResolveAndPreservesColor()
     {
-        byte[] unfiltered = Capture(postFxaa: false);
-        byte[] filtered = Capture(postFxaa: true);
+        var reference = Capture(postFxaa: false);
+        var result = Capture(postFxaa: true);
+        Assert.Equal(2, reference.Samples);
+        Assert.Equal(2, result.Samples);
+        byte[] unfiltered = reference.Pixels;
+        byte[] filtered = result.Pixels;
         int changed = 0;
         double before = 0, after = 0;
         for (int i = 0; i < filtered.Length; i += 4)
@@ -31,10 +35,11 @@ public sealed class MsaaPostFxaaGpuTests
     static double Luma(byte[] pixels, int i) =>
         .299 * pixels[i] + .587 * pixels[i + 1] + .114 * pixels[i + 2];
 
-    static byte[] Capture(bool postFxaa)
+    static (byte[] Pixels, int Samples) Capture(bool postFxaa)
     {
         MeshHandle bar = default;
-        return Render3DSnapshot.Capture(160, 160,
+        int samples = 0;
+        byte[] pixels = Render3DSnapshot.Capture(160, 160,
             setup: scene =>
             {
                 scene.Post.UseSmoothPreset();
@@ -50,6 +55,8 @@ public sealed class MsaaPostFxaaGpuTests
             },
             drawFrame: scene =>
             {
+                // On the second frame this observes the MRT allocated by the first render.
+                samples = scene.RenderTargetSampleCount;
                 for (int i = 0; i < 12; i++)
                 {
                     Matrix4x4 world = Matrix4x4.CreateScale(.12f, 6f, .08f)
@@ -58,5 +65,6 @@ public sealed class MsaaPostFxaaGpuTests
                     scene.Draw(bar, world, new Color(.9f, .92f, .95f, 1f));
                 }
             }, frames: 2);
+        return (pixels, samples);
     }
 }

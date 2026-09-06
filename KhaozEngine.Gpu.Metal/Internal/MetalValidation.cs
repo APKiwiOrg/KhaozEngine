@@ -293,17 +293,28 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// reads its variables at launch. It names the exact prefix to re-run with, because the alternative is a
         /// session that looks validated in the log and validated nothing.
         /// </summary>
-        internal static string NotArmedWarning(MetalValidationMode requested)
+        internal static string NotArmedWarning(
+            MetalValidationMode requested,
+            bool debugLayerArmed,
+            bool shaderValidationArmed)
         {
             string vars = requested == MetalValidationMode.Shaders
                 ? $"{DebugLayerVar}=1 {ShaderValidationVar}=1"
                 : $"{DebugLayerVar}=1";
+            bool missingDebug = requested >= MetalValidationMode.On && !debugLayerArmed;
+            bool missingShaders = requested == MetalValidationMode.Shaders && !shaderValidationArmed;
+            string missing = (missingDebug, missingShaders) switch
+            {
+                (true, true) => $"Missing launch variables: {DebugLayerVar} and {ShaderValidationVar}.",
+                (true, false) => $"Missing launch variable: {DebugLayerVar}.",
+                _ => $"Missing launch variable: {ShaderValidationVar}.",
+            };
 
-            return $"{EnvVarName} asked for Metal validation ({requested}) and this process was not launched with "
-                + $"it. Metal reads {DebugLayerVar} and {ShaderValidationVar} from the environment BEFORE the "
-                + "first device exists and offers no way to arm validation afterwards, which was measured with a "
-                + "control rather than assumed. This run carries NO validation. Re-run with the variables in the "
-                + $"launch environment instead: {vars} <your command>.";
+            return $"{EnvVarName} asked for Metal validation ({requested}), but this process was not launched "
+                + $"with every required instrument. {missing} Metal reads these variables from the environment "
+                + "BEFORE the first device exists and offers no way to arm validation afterwards, which was "
+                + "measured with a control rather than assumed. Other validation may still be active. Re-run "
+                + $"with the complete launch prefix: {vars} <your command>.";
         }
 
         /// <summary>

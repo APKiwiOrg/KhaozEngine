@@ -51,6 +51,8 @@
       "properties": {
         "cellSizeMeters": { "type": "number", "exclusiveMinimum": 0 },
         "floorHeightMeters": { "type": "number", "exclusiveMinimum": 0 },
+        "ceilingMode": { "enum": ["Open", "Roofed"] },
+        "ceilingHeightMeters": { "type": "number", "minimum": 0 },
         "width": { "type": "integer", "minimum": 1 },
         "depth": { "type": "integer", "minimum": 1 },
         "floors": { "type": "integer", "minimum": 1 },

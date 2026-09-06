@@ -285,39 +285,74 @@ public sealed class MapEditSession
         }
     }
 
-    /// <summary>Validates the open document. Structural = <see cref="MapDocumentValidator"/>. When structural
-    /// passes, schema = <see cref="JsonSchemaValidator"/> over the serialized document against the packaged
-    /// schema. When structural fails the schema check is skipped (serialization would throw) and its errors
-    /// carry a note. A windowed (partial) document skips the schema check too:
-    /// <see cref="MapDocumentFile.SaveText"/> (what the schema check serializes) refuses a partial document by
-    /// the same guard every whole-document writer shares, so attempting it here would throw on every windowed
-    /// session rather than degrade gracefully. Widen the window to validate the whole world's schema. Both
-    /// skip paths return <see cref="ValidateResult.SchemaChecked"/> false alongside a false
-    /// <see cref="ValidateResult.SchemaValid"/>, so a caller reading only <c>SchemaValid</c> cannot mistake
-    /// "not checked" for "checked and invalid".</summary>
-    public ValidateResult Validate()
+    /// <summary>Validates the open document structurally, then schema-checks either the whole document or each
+    /// loaded tile in a partial document. When <paramref name="verifyWholeWorld"/> is true, a tiled source also
+    /// runs <see cref="MapDocumentFile.VerifyTiled"/> against every tile on disk without widening or mutating
+    /// the loaded window.</summary>
+    public ValidateResult Validate(bool verifyWholeWorld = false)
     {
         lock (_lock)
         {
             RequireDocumentLocked();
             IReadOnlyList<string> structuralErrors = MapDocumentValidator.Validate(_doc!, _registry);
             bool structuralValid = structuralErrors.Count == 0;
+            ValidateResult result;
             if (!structuralValid)
             {
-                return new ValidateResult(false, structuralErrors, SchemaChecked: false, SchemaValid: false,
-                    new[] { "schema check skipped because the document is structurally invalid." });
+                result = new ValidateResult(false, structuralErrors, SchemaChecked: false, SchemaValid: false,
+                    new[] { "schema check skipped because the document is structurally invalid." })
+                {
+                    Valid = false,
+                    SchemaScope = "none",
+                };
             }
-
-            if (_doc!.Tiles is { IsPartial: true })
+            else if (_doc!.Tiles is { IsPartial: true })
             {
-                return new ValidateResult(true, Array.Empty<string>(), SchemaChecked: false, SchemaValid: false,
-                    new[] { "schema check skipped: this is a windowed (partial) document. Widen the window " +
-                            "(set_window over the full extent) to run the whole-document schema check." });
+                ValidationReport report = MapEditSchemaValidation.ValidateLoadedTiles(_doc, _registry);
+                result = new ValidateResult(true, Array.Empty<string>(), SchemaChecked: true,
+                    report.IsValid, report.Errors)
+                {
+                    Valid = report.IsValid,
+                    SchemaScope = "loadedTiles",
+                };
+            }
+            else
+            {
+                ValidationReport report = JsonSchemaValidator.Validate(
+                    MapDocumentFile.SaveText(_doc!, _registry), MapDocumentSchema.GetJson());
+                result = new ValidateResult(true, Array.Empty<string>(), SchemaChecked: true,
+                    report.IsValid, report.Errors)
+                {
+                    Valid = report.IsValid,
+                    SchemaScope = "document",
+                };
             }
 
-            ValidationReport report = JsonSchemaValidator.Validate(
-                MapDocumentFile.SaveText(_doc!, _registry), MapDocumentSchema.GetJson());
-            return new ValidateResult(true, Array.Empty<string>(), SchemaChecked: true, report.IsValid, report.Errors);
+            if (!verifyWholeWorld) return result;
+
+            if (_doc!.Tiles?.SourceDirectory is not { } directory)
+            {
+                return result with
+                {
+                    Valid = false,
+                    WholeWorldChecked = false,
+                    WholeWorldValid = false,
+                    WholeWorldErrors = new[]
+                    {
+                        "whole-world verification requires an open tiled document backed by a directory.",
+                    },
+                };
+            }
+
+            IReadOnlyList<string> wholeWorldErrors = MapDocumentFile.VerifyTiled(directory, _registry);
+            bool wholeWorldValid = wholeWorldErrors.Count == 0;
+            return result with
+            {
+                Valid = result.Valid && wholeWorldValid,
+                WholeWorldChecked = true,
+                WholeWorldValid = wholeWorldValid,
+                WholeWorldErrors = wholeWorldErrors,
+            };
         }
     }
 

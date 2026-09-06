@@ -80,6 +80,60 @@ namespace KhaozEngine.Tests.Dungeon
         }
 
         [Fact]
+        public void Layout_RoundTrips_RoofedCeilingSettings()
+        {
+            DungeonConfig config = Config();
+            config.CeilingMode = DungeonCeilingMode.Roofed;
+            config.CeilingHeightMeters = 1.25f;
+            DungeonLayout layout = DungeonGenerator.Generate(config, 42UL);
+
+            DungeonLayout loaded = DungeonJson.LoadLayout(DungeonJson.SaveLayout(layout));
+
+            Assert.Equal(DungeonCeilingMode.Roofed, loaded.CeilingMode);
+            Assert.Equal(1.25f, loaded.CeilingHeightMeters);
+        }
+
+        [Fact]
+        public void Layout_MissingCeilingFields_LoadsOpenDefaults()
+        {
+            DungeonLayout layout = DungeonGenerator.Generate(Config(), 42UL);
+            JsonNode node = JsonNode.Parse(DungeonJson.SaveLayout(layout))!;
+            node.AsObject().Remove("ceilingMode");
+            node.AsObject().Remove("ceilingHeightMeters");
+
+            DungeonLayout loaded = DungeonJson.LoadLayout(node.ToJsonString());
+
+            Assert.Equal(DungeonCeilingMode.Open, loaded.CeilingMode);
+            Assert.Equal(0f, loaded.CeilingHeightMeters);
+        }
+
+        [Fact]
+        public void Layout_NegativeCeilingHeight_Throws_NamingField()
+        {
+            DungeonLayout layout = DungeonGenerator.Generate(Config(), 42UL);
+            JsonNode node = JsonNode.Parse(DungeonJson.SaveLayout(layout))!;
+            node["ceilingHeightMeters"] = -1f;
+
+            DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() =>
+                DungeonJson.LoadLayout(node.ToJsonString()));
+
+            Assert.Contains("ceilingHeightMeters", ex.Message);
+        }
+
+        [Fact]
+        public void Layout_NonFiniteCeilingHeight_Throws_NamingField()
+        {
+            DungeonLayout layout = DungeonGenerator.Generate(Config(), 42UL);
+            string json = Regex.Replace(DungeonJson.SaveLayout(layout),
+                "\"ceilingHeightMeters\":\\s*[-+0-9.eE]+", "\"ceilingHeightMeters\": 1e1000",
+                RegexOptions.None, System.TimeSpan.FromSeconds(1));
+
+            DungeonJsonException ex = Assert.Throws<DungeonJsonException>(() => DungeonJson.LoadLayout(json));
+
+            Assert.Contains("ceilingHeightMeters", ex.Message);
+        }
+
+        [Fact]
         public void Layout_SchemaValidates()
         {
             DungeonLayout layout = DungeonGenerator.Generate(Config(), 7UL);

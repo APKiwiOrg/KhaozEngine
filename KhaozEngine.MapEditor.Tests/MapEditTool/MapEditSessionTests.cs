@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Text.Json.Nodes;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapEdit;
 using KhaozEngine.Terrain;
@@ -207,10 +208,12 @@ namespace KhaozEngine.Tests.MapEditTool
                 session.Open(path);
 
                 ValidateResult ok = session.Validate();
+                Assert.True(ok.Valid);
                 Assert.True(ok.StructuralValid);
                 Assert.Empty(ok.StructuralErrors);
                 Assert.True(ok.SchemaChecked);
                 Assert.True(ok.SchemaValid);
+                Assert.Equal("document", ok.SchemaScope);
                 Assert.Empty(ok.SchemaErrors);
 
                 // Bypass command guards: inject a duplicate placement id straight into the document.
@@ -221,9 +224,11 @@ namespace KhaozEngine.Tests.MapEditTool
                 }, worldChanged: false);
 
                 ValidateResult bad = session.Validate();
+                Assert.False(bad.Valid);
                 Assert.False(bad.StructuralValid);
                 Assert.Contains(bad.StructuralErrors, e => e.Contains("duplicate placement id"));
                 Assert.False(bad.SchemaChecked);   // skipped, not "checked and invalid"
+                Assert.Equal("none", bad.SchemaScope);
             }
             finally { Directory.Delete(dir, recursive: true); }
         }
@@ -633,7 +638,7 @@ namespace KhaozEngine.Tests.MapEditTool
         }
 
         [Fact]
-        public void Validate_WindowedDocument_SkipsSchemaCheckGracefully()
+        public void Validate_WindowedDocument_SchemaChecksLoadedTiles()
         {
             string dir = TiledFixture.NewDirectory();
             try
@@ -644,10 +649,118 @@ namespace KhaozEngine.Tests.MapEditTool
 
                 ValidateResult result = session.Validate();
 
+                Assert.True(result.Valid);
                 Assert.True(result.StructuralValid);
-                Assert.False(result.SchemaChecked);   // skipped, not "checked and invalid"
+                Assert.True(result.SchemaChecked);
+                Assert.True(result.SchemaValid);
+                Assert.Equal("loadedTiles", result.SchemaScope);
+                Assert.Empty(result.SchemaErrors);
+                Assert.False(result.WholeWorldChecked);
+                Assert.False(result.WholeWorldValid);
+                Assert.Empty(result.WholeWorldErrors);
+            }
+            finally { TiledFixture.Delete(dir); }
+        }
+
+        [Fact]
+        public void Validate_WindowedDocument_NamesTheLoadedTileWithASchemaError()
+        {
+            string dir = TiledFixture.NewDirectory();
+            try
+            {
+                MapDocumentFile.SaveTiled(TiledFixture.SampleDoc(), dir);
+                var session = new MapEditSession { WholeWorldTileLimit = 1, EditorWindowRadius = 0 };
+                session.Open(dir);
+                session.Mutate((doc, _) =>
+                {
+                    doc.Placements[0].Tags.Add(null!);
+                    return 0;
+                }, worldChanged: false);
+
+                ValidateResult result = session.Validate();
+
+                Assert.True(result.StructuralValid);
+                Assert.True(result.SchemaChecked);
                 Assert.False(result.SchemaValid);
-                Assert.Contains(result.SchemaErrors, e => e.Contains("windowed"));
+                Assert.False(result.Valid);
+                Assert.Equal("loadedTiles", result.SchemaScope);
+                Assert.Contains(result.SchemaErrors,
+                    e => e.Contains("tile (0, 0)", StringComparison.Ordinal));
+            }
+            finally { TiledFixture.Delete(dir); }
+        }
+
+        [Fact]
+        public void Validate_WindowedDocument_ChecksNewContentInAnEmptyLoadedCoordinate()
+        {
+            string dir = TiledFixture.NewDirectory();
+            try
+            {
+                MapDocumentFile.SaveTiled(TiledFixture.SampleDoc(), dir);
+                var session = new MapEditSession { WholeWorldTileLimit = 1, EditorWindowRadius = 1 };
+                session.Open(dir);
+                session.Mutate((doc, _) =>
+                {
+                    doc.Placements.Add(new MapPlacement
+                    {
+                        Id = "new-tile",
+                        Kind = "rock",
+                        X = 10f,
+                        Z = 600f,
+                        Tags = new() { null! },
+                    });
+                    return 0;
+                }, worldChanged: false);
+
+                ValidateResult result = session.Validate();
+
+                Assert.True(result.StructuralValid);
+                Assert.False(result.SchemaValid);
+                Assert.Contains(result.SchemaErrors,
+                    e => e.Contains("tile (0, 1)", StringComparison.Ordinal));
+            }
+            finally { TiledFixture.Delete(dir); }
+        }
+
+        [Fact]
+        public void Validate_RequestedWholeWorld_InspectsAnInvalidColdTileOnDisk()
+        {
+            string dir = TiledFixture.NewDirectory();
+            try
+            {
+                MapDocumentFile.SaveTiled(TiledFixture.SampleDoc(), dir);
+                var session = new MapEditSession { WholeWorldTileLimit = 1, EditorWindowRadius = 0 };
+                session.Open(dir);
+
+                WindowStatusResult before = session.WindowStatus();
+                Assert.True(before.Windowed);
+                Assert.Equal(1, before.LoadedCount);
+
+                string coldTile = Path.Combine(dir, TiledFixture.TileFiles(dir)
+                    .Single(f => f.Contains("t_-2_0.", StringComparison.Ordinal)));
+                JsonNode node = JsonNode.Parse(File.ReadAllText(coldTile))!;
+                node["placements"]![0]!["yaw"] = 9.5f;
+                File.WriteAllText(coldTile, node.ToJsonString());
+
+                ValidateResult loadedOnly = session.Validate();
+                Assert.True(loadedOnly.Valid);
+                Assert.True(loadedOnly.SchemaValid);
+                Assert.Equal("loadedTiles", loadedOnly.SchemaScope);
+                Assert.False(loadedOnly.WholeWorldChecked);
+
+                ValidateResult wholeWorld = session.Validate(verifyWholeWorld: true);
+                Assert.False(wholeWorld.Valid);
+                Assert.True(wholeWorld.SchemaValid);
+                Assert.Equal("loadedTiles", wholeWorld.SchemaScope);
+                Assert.True(wholeWorld.WholeWorldChecked);
+                Assert.False(wholeWorld.WholeWorldValid);
+                Assert.Contains(wholeWorld.WholeWorldErrors,
+                    e => e.Contains("tile (-2, 0)", StringComparison.Ordinal));
+
+                WindowStatusResult after = session.WindowStatus();
+                Assert.Equal(before.LoadedCount, after.LoadedCount);
+                Assert.Equal(before.MinTileX, after.MinTileX);
+                Assert.Equal(before.MinTileZ, after.MinTileZ);
             }
             finally { TiledFixture.Delete(dir); }
         }

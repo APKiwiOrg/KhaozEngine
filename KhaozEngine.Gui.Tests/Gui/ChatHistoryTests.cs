@@ -104,6 +104,19 @@ public sealed class ChatHistoryTests
     }
 
     [Fact]
+    public void Adjacent_collapse_retains_the_latest_content()
+    {
+        var history = new ChatHistory(3);
+        history.Add(CreateEntry(Content: LocalizedText.Raw("first")));
+        history.Add(CreateEntry(
+            TimestampUtc: Utc(2),
+            Content: LocalizedText.Raw("second")));
+
+        ChatEntry kept = Assert.Single(history.Entries);
+        Assert.Equal("second", kept.Content.Resolve());
+    }
+
+    [Fact]
     public void Source_and_collapse_keys_use_ordinal_equality()
     {
         var history = new ChatHistory(4);

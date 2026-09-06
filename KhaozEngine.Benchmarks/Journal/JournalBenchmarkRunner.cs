@@ -11,6 +11,8 @@ namespace KhaozEngine.Benchmarks.Journal;
 
 public sealed record JournalScalingProbe(
     int ConnectedPlayers,
+    int RosterCount,
+    int InventoryReadCount,
     int SerializationCount,
     int JournalWriteCount,
     int SubmittedMutations,
@@ -31,14 +33,28 @@ public static class JournalBenchmarkRunner
     {
         if (connectedPlayers < 1) throw new ArgumentOutOfRangeException(nameof(connectedPlayers));
         if (activePlayers < 0 || activePlayers > connectedPlayers) throw new ArgumentOutOfRangeException(nameof(activePlayers));
-        if (activePlayers == 0) return new JournalScalingProbe(connectedPlayers, 0, 0, 0, 0);
+        var roster = new ConnectedPlayer[connectedPlayers];
+        for (int player = 0; player < roster.Length; player++) roster[player] = new ConnectedPlayer(player);
+        if (activePlayers == 0) return new JournalScalingProbe(connectedPlayers, roster.Length, 0, 0, 0, 0, 0);
 
-        var store = new InMemoryMutationJournalStore();
+        int countMutationWrites = 0;
+        int writes = 0;
+        var hook = new InMemoryJournalTestHook(phase =>
+        {
+            if (phase == JournalTestHookPhase.BeforeCommit && Volatile.Read(ref countMutationWrites) != 0)
+                Interlocked.Increment(ref writes);
+        });
+        var store = new InMemoryMutationJournalStore(
+            JournalLimits.Maximum,
+            TimeSpan.FromHours(24),
+            TimeProvider.System,
+            hook);
         var executor = new MutationJournalExecutor(
             store,
             new JournalExecutorOptions(1, Math.Max(activePlayers, 1), Math.Max(activePlayers * 2_048L, 4_096)));
         int serializations = 0;
-        int writes = 0;
+        int inventoryReads = 0;
+        int submitted = 0;
         int completed = 0;
         try
         {
@@ -47,7 +63,7 @@ public static class JournalBenchmarkRunner
                 cancellationToken.ThrowIfCancellationRequested();
                 string stream = ScalingPlayerStream(player);
                 await InitializeAsync(store, stream, seed).ConfigureAwait(false);
-                byte[] payload = Encoding.ASCII.GetBytes($"item:{seed}:{player}");
+                byte[] payload = roster[player].ReadInventory(seed, () => inventoryReads++);
                 serializations++;
                 var commit = new JournalCommit(
                     Identity(DeterministicGuid(seed, player, "scale"), "inventory.change", payload),
@@ -56,8 +72,17 @@ public static class JournalBenchmarkRunner
                     "mutation.result.v1",
                     1,
                     new byte[] { 1 });
-                writes++;
-                JournalCompletion completion = await SubmitAndWaitAsync(executor, commit, cancellationToken).ConfigureAwait(false);
+                Volatile.Write(ref countMutationWrites, 1);
+                submitted++;
+                JournalCompletion completion;
+                try
+                {
+                    completion = await SubmitAndWaitAsync(executor, commit, cancellationToken).ConfigureAwait(false);
+                }
+                finally
+                {
+                    Volatile.Write(ref countMutationWrites, 0);
+                }
                 if (completion.Result?.Status != JournalCommitStatus.Applied)
                     throw completion.Failure ?? new InvalidOperationException("Scaling probe mutation did not apply.");
                 executor.AcknowledgeCompletion(commit.Identity.OperationId, JournalCompletionAcknowledgement.Handled);
@@ -69,7 +94,14 @@ public static class JournalBenchmarkRunner
             await executor.StopAsync(TimeSpan.FromSeconds(5), CancellationToken.None).ConfigureAwait(false);
         }
 
-        return new JournalScalingProbe(connectedPlayers, serializations, writes, activePlayers, completed);
+        return new JournalScalingProbe(
+            connectedPlayers,
+            roster.Length,
+            inventoryReads,
+            serializations,
+            writes,
+            submitted,
+            completed);
     }
 
     public static Task<JournalBenchmarkResult> RunAsync(
@@ -322,10 +354,10 @@ public static class JournalBenchmarkRunner
         string stream = state.PlayerStream(step.PrimaryPlayer);
         await state.EnsureStreamAsync(stream, cancellationToken).ConfigureAwait(false);
         long head = state.Versions[stream];
-        long? prune = head > 1 ? head - 1 : null;
         JournalCompactionResult result = await state.Scope.Store.CompactAsync(
-            new JournalCompaction(stream, head, "player.snapshot.v1", 1, step.Payload, prune),
+            new JournalCompaction(stream, head, "player.snapshot.v1", 1, step.Payload, pruneThroughVersion: null),
             cancellationToken).ConfigureAwait(false);
+        state.PrunedEventCount += result.PrunedEventCount;
         if (result.Status != JournalCompactionStatus.Compacted) state.PartialCommitFailures++;
     }
 
@@ -445,6 +477,7 @@ public static class JournalBenchmarkRunner
         internal long SequenceFailures { get; set; }
         internal long PartialCommitFailures { get; set; }
         internal int PeakReplayCandidates { get; set; }
+        internal long PrunedEventCount { get; set; }
 
         internal string PlayerStream(int player) => $"benchmark/{RunNamespace:N}/player/{player:D6}";
         internal string BankStream(int player) => $"benchmark/{RunNamespace:N}/bank/{player:D6}";
@@ -476,8 +509,11 @@ public static class JournalBenchmarkRunner
                 Machine = Environment.MachineName,
                 Framework = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription,
                 ProcessorCount = Environment.ProcessorCount,
+                Workload = "mmo-mixed-v1",
                 Seed = Config.Seed,
                 Players = Config.Players,
+                Workers = Config.Workers,
+                PayloadBytes = Config.PayloadBytes,
                 OperationsRequested = Config.Operations,
                 OperationsCompleted = OperationsCompleted,
                 MutationSubmissions = MutationSubmissions,
@@ -498,6 +534,7 @@ public static class JournalBenchmarkRunner
                 SerializationCount = SerializationCount,
                 JournalWriteCount = JournalWriteCount,
                 PeakReplayCandidates = PeakReplayCandidates,
+                PrunedEventCount = PrunedEventCount,
                 AllocationBytesPerOperation = OperationsCompleted == 0 ? 0 : (double)allocatedBytes / OperationsCompleted,
                 ChecksumFailures = ChecksumFailures,
                 DuplicateEffectFailures = DuplicateEffectFailures,
@@ -508,5 +545,18 @@ public static class JournalBenchmarkRunner
 
         private static double Ratio(long numerator, long denominator)
             => denominator == 0 ? 0 : (double)numerator / denominator;
+    }
+
+    private sealed class ConnectedPlayer
+    {
+        private readonly int playerId;
+
+        internal ConnectedPlayer(int playerId) => this.playerId = playerId;
+
+        internal byte[] ReadInventory(int seed, Action onRead)
+        {
+            onRead();
+            return Encoding.ASCII.GetBytes($"item:{seed}:{playerId}");
+        }
     }
 }

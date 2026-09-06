@@ -17,8 +17,11 @@ public sealed record JournalBenchmarkResult
     public string Machine { get; init; } = string.Empty;
     public string Framework { get; init; } = string.Empty;
     public int ProcessorCount { get; init; }
+    public string Workload { get; init; } = "mmo-mixed-v1";
     public int Seed { get; init; }
     public int Players { get; init; }
+    public int Workers { get; init; }
+    public int PayloadBytes { get; init; }
     public int OperationsRequested { get; init; }
     public int OperationsCompleted { get; init; }
     public long MutationSubmissions { get; init; }
@@ -39,6 +42,7 @@ public sealed record JournalBenchmarkResult
     public long SerializationCount { get; init; }
     public long JournalWriteCount { get; init; }
     public int PeakReplayCandidates { get; init; }
+    public long PrunedEventCount { get; init; }
     public double AllocationBytesPerOperation { get; init; }
     public long ChecksumFailures { get; init; }
     public long DuplicateEffectFailures { get; init; }

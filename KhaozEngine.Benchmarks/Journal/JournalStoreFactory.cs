@@ -3,6 +3,7 @@ using System.IO;
 using KhaozEngine.WorldStore.Journal;
 using KhaozEngine.WorldStore.Sqlite;
 using KhaozEngine.WorldStore.SqlServer;
+using Microsoft.Data.SqlClient;
 
 namespace KhaozEngine.Benchmarks.Journal;
 
@@ -35,9 +36,16 @@ internal sealed class JournalStoreScope : IDisposable
     internal static JournalStoreScope Create(JournalBenchmarkConfig config)
     {
         JournalLimits limits = CreateLimits(config.PayloadBytes);
-        if (config.SqlServerConnectionString is not null)
+        if (config.SqlServerEnvironmentVariable is not null)
         {
-            var store = new SqlServerMutationJournalStore(new SqlServerMutationJournalStoreOptions(config.SqlServerConnectionString)
+            string connectionString = Environment.GetEnvironmentVariable(config.SqlServerEnvironmentVariable)
+                ?? throw new InvalidOperationException($"SQL Server environment variable '{config.SqlServerEnvironmentVariable}' is not set.");
+            if (string.IsNullOrWhiteSpace(connectionString))
+                throw new InvalidOperationException($"SQL Server environment variable '{config.SqlServerEnvironmentVariable}' is empty.");
+            var builder = new SqlConnectionStringBuilder(connectionString);
+            if (!builder.InitialCatalog.Contains("-journal-benchmark-", StringComparison.OrdinalIgnoreCase))
+                throw new ArgumentException("SQL Server Initial Catalog must contain '-journal-benchmark-'.", nameof(config));
+            var store = new SqlServerMutationJournalStore(new SqlServerMutationJournalStoreOptions(connectionString)
             {
                 Limits = limits,
             });

@@ -38,6 +38,8 @@ if (Array.IndexOf(args, "--journal") >= 0 || Array.IndexOf(args, "--journal-soak
         JournalBenchmarkResult journalResult = journalConfig.Mode == JournalBenchmarkMode.Soak
             ? await JournalSoakRunner.RunAsync(journalConfig, Console.Out, cancellation.Token)
             : await JournalBenchmarkRunner.RunAsync(journalConfig, cancellation.Token);
+        if (journalConfig.OutputPath is not null)
+            await JournalBenchmarkOutput.WriteAsync(journalResult, journalConfig.OutputPath);
         Console.Out.WriteLine(journalResult.ToJson());
         Environment.ExitCode = journalResult.ProcessExitCode;
     }

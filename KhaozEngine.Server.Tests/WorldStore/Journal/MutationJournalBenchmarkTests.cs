@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -20,10 +21,11 @@ public sealed class MutationJournalBenchmarkTests
     public void Parse_accepts_explicit_options_and_rejects_hard_limit_violations()
     {
         string database = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "journal-benchmark.db"));
+        string output = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "journal-benchmark.json"));
         JournalBenchmarkConfig config = JournalBenchmarkConfig.Parse(new[]
         {
             "--journal", "--operations", "10000", "--players", "1000", "--seed", "835",
-            "--workers", "3", "--payload-bytes", "192", "--database", database,
+            "--workers", "3", "--payload-bytes", "192", "--database", database, "--output", output,
         });
 
         Assert.Equal(JournalBenchmarkMode.Benchmark, config.Mode);
@@ -33,6 +35,7 @@ public sealed class MutationJournalBenchmarkTests
         Assert.Equal(3, config.Workers);
         Assert.Equal(192, config.PayloadBytes);
         Assert.Equal(database, config.DatabasePath);
+        Assert.Equal(output, config.OutputPath);
 
         Assert.Throws<ArgumentOutOfRangeException>(() => JournalBenchmarkConfig.Parse(
             new[] { "--journal", "--operations", "10000001" }));
@@ -41,7 +44,76 @@ public sealed class MutationJournalBenchmarkTests
         Assert.Throws<ArgumentException>(() => JournalBenchmarkConfig.Parse(
             new[] { "--journal", "--database", "relative.db" }));
         Assert.Throws<ArgumentException>(() => JournalBenchmarkConfig.Parse(
+            new[] { "--journal", "--output", "relative.json" }));
+        Assert.Throws<ArgumentException>(() => JournalBenchmarkConfig.Parse(
+            new[] { "--journal", "--output", Path.Combine(Path.GetTempPath(), "baseline.txt") }));
+        Assert.Throws<ArgumentException>(() => JournalBenchmarkConfig.Parse(
+            new[] { "--journal", "--database", output, "--output", output }));
+        Assert.Throws<ArgumentException>(() => JournalBenchmarkConfig.Parse(
             new[] { "--journal", "--unknown", "1" }));
+        Assert.Throws<ArgumentOutOfRangeException>(() => JournalBenchmarkConfig.Parse(
+            new[] { "--journal-soak", "--duration-seconds", "2", "--progress-seconds", "3" }));
+    }
+
+    [Fact]
+    public async Task Output_writer_atomically_creates_and_safely_overwrites_stable_json()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), $"journal-output-{Guid.NewGuid():N}");
+        string output = Path.Combine(directory, "baseline.json");
+        try
+        {
+            var first = new JournalBenchmarkResult { Seed = 835, OperationsCompleted = 7 };
+            var second = first with { OperationsCompleted = 8 };
+
+            await JournalBenchmarkOutput.WriteAsync(first, output);
+            Assert.Equal(first.ToJson() + Environment.NewLine, await File.ReadAllTextAsync(output, Encoding.UTF8));
+            Assert.Empty(Directory.EnumerateFiles(directory, "*.tmp"));
+
+            await JournalBenchmarkOutput.WriteAsync(second, output);
+            Assert.Equal(second.ToJson() + Environment.NewLine, await File.ReadAllTextAsync(output, Encoding.UTF8));
+            Assert.Empty(Directory.EnumerateFiles(directory, "*.tmp"));
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Sql_server_credentials_are_environment_only_and_require_a_dedicated_catalog_before_io()
+    {
+        Assert.Throws<ArgumentException>(() => JournalBenchmarkConfig.Parse(
+            new[] { "--journal", "--sql-server", "Server=db;Database=production" }));
+        Assert.Throws<ArgumentException>(() => JournalBenchmarkConfig.Parse(
+            new[] { "--journal", "--sql-server-env", "BAD-NAME" }));
+
+        string variable = $"KE_JOURNAL_TEST_{Guid.NewGuid():N}".ToUpperInvariant();
+        JournalBenchmarkConfig config = JournalBenchmarkConfig.Parse(
+            new[] { "--journal", "--operations", "7", "--players", "2", "--sql-server-env", variable });
+        Assert.Equal(variable, config.SqlServerEnvironmentVariable);
+
+        try
+        {
+            Environment.SetEnvironmentVariable(variable, null);
+            InvalidOperationException missing = await Assert.ThrowsAsync<InvalidOperationException>(
+                () => JournalBenchmarkRunner.RunAsync(config));
+            Assert.DoesNotContain("Password", missing.Message, StringComparison.OrdinalIgnoreCase);
+
+            Environment.SetEnvironmentVariable(variable, "   ");
+            await Assert.ThrowsAsync<InvalidOperationException>(() => JournalBenchmarkRunner.RunAsync(config));
+
+            Environment.SetEnvironmentVariable(
+                variable,
+                "Server=203.0.113.1;Initial Catalog=production;User ID=prod;Password=top-secret;Connect Timeout=1");
+            ArgumentException production = await Assert.ThrowsAsync<ArgumentException>(
+                () => JournalBenchmarkRunner.RunAsync(config));
+            Assert.Contains("-journal-benchmark-", production.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain("top-secret", production.Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(variable, null);
+        }
     }
 
     [Fact]
@@ -83,8 +155,11 @@ public sealed class MutationJournalBenchmarkTests
             Machine = "test-machine",
             Framework = ".NET test",
             ProcessorCount = 4,
+            Workload = "mmo-mixed-v1",
             Seed = 835,
             Players = 1000,
+            Workers = 3,
+            PayloadBytes = 192,
             OperationsRequested = 10,
             OperationsCompleted = 10,
             MutationSubmissions = 7,
@@ -105,6 +180,7 @@ public sealed class MutationJournalBenchmarkTests
             SerializationCount = 7,
             JournalWriteCount = 7,
             PeakReplayCandidates = 1,
+            PrunedEventCount = 0,
             AllocationBytesPerOperation = 512.25,
             ChecksumFailures = 0,
             DuplicateEffectFailures = 0,
@@ -117,7 +193,7 @@ public sealed class MutationJournalBenchmarkTests
 
         Assert.Equal(first, second);
         Assert.Equal(
-            "{\"mode\":\"benchmark\",\"provider\":\"sqlite\",\"machine\":\"test-machine\",\"framework\":\".NET test\",\"processorCount\":4,\"seed\":835,\"players\":1000,\"operationsRequested\":10,\"operationsCompleted\":10,\"mutationSubmissions\":7,\"applied\":6,\"replayed\":1,\"throughputPerSecond\":1234.5,\"p50Milliseconds\":0.25,\"p95Milliseconds\":1.5,\"p99Milliseconds\":2.75,\"replayRate\":0.1,\"retryRate\":0.02,\"busyRate\":0.03,\"backpressureRate\":0.04,\"databaseBytes\":4096,\"eventTailLength\":12,\"projectionBytes\":256,\"compactionLagVersions\":3,\"serializationCount\":7,\"journalWriteCount\":7,\"peakReplayCandidates\":1,\"allocationBytesPerOperation\":512.25,\"checksumFailures\":0,\"duplicateEffectFailures\":0,\"sequenceFailures\":0,\"partialCommitFailures\":0}",
+            "{\"mode\":\"benchmark\",\"provider\":\"sqlite\",\"machine\":\"test-machine\",\"framework\":\".NET test\",\"processorCount\":4,\"workload\":\"mmo-mixed-v1\",\"seed\":835,\"players\":1000,\"workers\":3,\"payloadBytes\":192,\"operationsRequested\":10,\"operationsCompleted\":10,\"mutationSubmissions\":7,\"applied\":6,\"replayed\":1,\"throughputPerSecond\":1234.5,\"p50Milliseconds\":0.25,\"p95Milliseconds\":1.5,\"p99Milliseconds\":2.75,\"replayRate\":0.1,\"retryRate\":0.02,\"busyRate\":0.03,\"backpressureRate\":0.04,\"databaseBytes\":4096,\"eventTailLength\":12,\"projectionBytes\":256,\"compactionLagVersions\":3,\"serializationCount\":7,\"journalWriteCount\":7,\"peakReplayCandidates\":1,\"prunedEventCount\":0,\"allocationBytesPerOperation\":512.25,\"checksumFailures\":0,\"duplicateEffectFailures\":0,\"sequenceFailures\":0,\"partialCommitFailures\":0}",
             first);
         using JsonDocument _ = JsonDocument.Parse(first);
     }
@@ -129,12 +205,16 @@ public sealed class MutationJournalBenchmarkTests
         JournalScalingProbe active = await JournalBenchmarkRunner.RunScalingProbeAsync(10_000, 100, 835);
 
         Assert.Equal(10_000, idle.ConnectedPlayers);
+        Assert.Equal(10_000, idle.RosterCount);
+        Assert.Equal(0, idle.InventoryReadCount);
         Assert.Equal(0, idle.SerializationCount);
         Assert.Equal(0, idle.JournalWriteCount);
         Assert.Equal(0, idle.SubmittedMutations);
         Assert.Equal(0, idle.CompletedMutations);
 
         Assert.Equal(10_000, active.ConnectedPlayers);
+        Assert.Equal(10_000, active.RosterCount);
+        Assert.Equal(100, active.InventoryReadCount);
         Assert.Equal(100, active.SerializationCount);
         Assert.Equal(100, active.JournalWriteCount);
         Assert.Equal(100, active.SubmittedMutations);
@@ -161,6 +241,7 @@ public sealed class MutationJournalBenchmarkTests
             Assert.True(result.EventTailLength > 0);
             Assert.True(result.ProjectionBytes > 0);
             Assert.InRange(result.PeakReplayCandidates, 1, 1);
+            Assert.Equal(0, result.PrunedEventCount);
             Assert.Equal(0, result.ChecksumFailures);
             Assert.Equal(0, result.DuplicateEffectFailures);
             Assert.Equal(0, result.SequenceFailures);

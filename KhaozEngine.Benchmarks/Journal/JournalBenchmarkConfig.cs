@@ -26,7 +26,8 @@ public sealed record JournalBenchmarkConfig
     public int Workers { get; init; } = Math.Clamp(Environment.ProcessorCount / 2, 1, 8);
     public int PayloadBytes { get; init; } = 192;
     public string? DatabasePath { get; init; }
-    public string? SqlServerConnectionString { get; init; }
+    public string? SqlServerEnvironmentVariable { get; init; }
+    public string? OutputPath { get; init; }
     public TimeSpan Duration { get; init; } = TimeSpan.FromMinutes(5);
     public TimeSpan ProgressInterval { get; init; } = TimeSpan.FromSeconds(10);
 
@@ -40,7 +41,8 @@ public sealed record JournalBenchmarkConfig
         int workers = Math.Clamp(Environment.ProcessorCount / 2, 1, 8);
         int payloadBytes = 192;
         string? database = null;
-        string? sqlServer = null;
+        string? sqlServerEnvironmentVariable = null;
+        string? output = null;
         TimeSpan duration = TimeSpan.FromMinutes(5);
         TimeSpan progress = TimeSpan.FromSeconds(10);
 
@@ -73,8 +75,11 @@ public sealed record JournalBenchmarkConfig
                 case "--database":
                     database = Value(args, ref i, option);
                     break;
-                case "--sql-server":
-                    sqlServer = Value(args, ref i, option);
+                case "--sql-server-env":
+                    sqlServerEnvironmentVariable = Value(args, ref i, option);
+                    break;
+                case "--output":
+                    output = Value(args, ref i, option);
                     break;
                 case "--duration-seconds":
                     duration = TimeSpan.FromSeconds(ParseInt(Value(args, ref i, option), option));
@@ -96,7 +101,8 @@ public sealed record JournalBenchmarkConfig
             Workers = workers,
             PayloadBytes = payloadBytes,
             DatabasePath = database,
-            SqlServerConnectionString = sqlServer,
+            SqlServerEnvironmentVariable = sqlServerEnvironmentVariable,
+            OutputPath = output,
             Duration = duration,
             ProgressInterval = progress,
         };
@@ -112,14 +118,22 @@ public sealed record JournalBenchmarkConfig
         InRange(PayloadBytes, 1, MaximumPayloadBytes, nameof(PayloadBytes));
         if (Duration <= TimeSpan.Zero || Duration > MaximumDuration)
             throw new ArgumentOutOfRangeException(nameof(Duration), Duration, $"Duration must be positive and no greater than {MaximumDuration}.");
-        if (ProgressInterval <= TimeSpan.Zero || ProgressInterval > MaximumDuration)
-            throw new ArgumentOutOfRangeException(nameof(ProgressInterval), ProgressInterval, "Progress interval must be positive and bounded.");
+        if (ProgressInterval <= TimeSpan.Zero || ProgressInterval > Duration)
+            throw new ArgumentOutOfRangeException(nameof(ProgressInterval), ProgressInterval, "Progress interval must be positive and no greater than duration.");
         if (DatabasePath is not null && !Path.IsPathFullyQualified(DatabasePath))
             throw new ArgumentException("Database path must be absolute.", nameof(DatabasePath));
-        if (DatabasePath is not null && SqlServerConnectionString is not null)
+        if (DatabasePath is not null && SqlServerEnvironmentVariable is not null)
             throw new ArgumentException("Choose SQLite or SQL Server, not both.");
-        if (SqlServerConnectionString is { Length: 0 })
-            throw new ArgumentException("SQL Server connection string cannot be empty.", nameof(SqlServerConnectionString));
+        if (SqlServerEnvironmentVariable is not null && !IsEnvironmentVariableName(SqlServerEnvironmentVariable))
+            throw new ArgumentException("SQL Server environment variable name is invalid.", nameof(SqlServerEnvironmentVariable));
+        if (OutputPath is not null && !Path.IsPathFullyQualified(OutputPath))
+            throw new ArgumentException("Output path must be absolute.", nameof(OutputPath));
+        if (OutputPath is not null && !string.Equals(Path.GetExtension(OutputPath), ".json", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("Output path must use the .json extension.", nameof(OutputPath));
+        if (DatabasePath is not null
+            && OutputPath is not null
+            && string.Equals(Path.GetFullPath(DatabasePath), Path.GetFullPath(OutputPath), StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("Database and output paths must be different.");
     }
 
     private static void SetMode(ref JournalBenchmarkMode? mode, JournalBenchmarkMode value)
@@ -143,5 +157,13 @@ public sealed record JournalBenchmarkConfig
     {
         if (value < minimum || value > maximum)
             throw new ArgumentOutOfRangeException(name, value, $"Value must be from {minimum} through {maximum}.");
+    }
+
+    private static bool IsEnvironmentVariableName(string value)
+    {
+        if (value.Length == 0 || !(char.IsAsciiLetter(value[0]) || value[0] == '_')) return false;
+        for (int i = 1; i < value.Length; i++)
+            if (!(char.IsAsciiLetterOrDigit(value[i]) || value[i] == '_')) return false;
+        return true;
     }
 }

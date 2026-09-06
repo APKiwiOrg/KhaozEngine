@@ -200,29 +200,42 @@ the entities axis, `EntitiesAxisBenchmark.Measure(entities, workPerRow, warmup, 
 
 ## Durable mutation journal
 
-The journal modes exercise the real executor and store with seeded MMO-shaped work. The mix includes inventory
-changes, bank transfers, atomic two-player trades, selected projection reads, operation replays, snapshot recovery,
-and compaction. Event, projection, result, and snapshot payloads are non-empty and bounded by `--payload-bytes`.
+The `mmo-mixed-v1` journal workload exercises the real executor and store with seeded MMO-shaped work. The mix
+includes inventory changes, bank transfers, atomic two-player trades, selected projection reads, operation replays,
+snapshots, and snapshot-only compaction. Compaction passes no prune boundary, so the benchmark never deletes journal
+events. Event, projection, result, and snapshot payloads are non-empty and bounded by `--payload-bytes`.
 
-SQLite is the default provider. Pass an absolute `--database` path to keep its file. SQL Server is used only when
-`--sql-server` supplies a connection string. Every run receives its own internal stream and operation namespace,
-so repeating one seed against a retained database measures fresh writes without colliding with the prior baseline.
+SQLite is the default provider. Pass an absolute `--database` path to keep its file. Every run receives its own
+internal stream and operation namespace, so repeating one seed against a retained database measures fresh writes
+without colliding with the prior baseline.
+
+SQL Server credentials are accepted only through the named environment variable supplied by `--sql-server-env`.
+The connection string never appears in command arguments or result JSON. Its `Initial Catalog` must contain the
+dedicated `-journal-benchmark-` marker. The tool rejects other catalogs before opening a provider connection.
 
 ```bash
 dotnet run --project KhaozEngine.Benchmarks -c Release -- --journal --operations 10000 --players 1000 --seed 835
 
 dotnet run --project KhaozEngine.Benchmarks -c Release -- --journal-soak --players 1000 --seed 835 --duration-seconds 300 --progress-seconds 10 --database /tmp/khaoz-journal-soak.db
 
-dotnet run --project KhaozEngine.Benchmarks -c Release -- --journal-soak --players 1000 --seed 835 --duration-seconds 300 --sql-server 'Server=localhost;Database=KhaozJournal;Integrated Security=true;TrustServerCertificate=true'
+dotnet run --project KhaozEngine.Benchmarks -c Release -- --journal-soak --players 1000 --seed 835 --duration-seconds 300 --sql-server-env KE_SQLSERVER_BENCHMARK_CONNSTRING
 ```
 
 The benchmark prints one stable JSON result. The soak prints newline-delimited progress records and then the final
-result. Redirect the final output to retain a capacity baseline with provider, machine, framework, and processor
-facts. The result reports mutation throughput, p50, p95 and p99 commit latency, replay, retry, busy and backpressure
-rates, database bytes when available, retained event tail length, current projection bytes, compaction lag,
-allocation per operation, and all integrity failure counters. It does not encode a universal throughput target.
-The final JSON is written before the process returns a failing exit code for any nonzero checksum, duplicate-effect,
-sequence, or partial-commit counter.
+result. A soak progress interval must be no greater than its duration. Pass an absolute JSON path through `--output`
+to atomically create or safely replace a saved baseline after the run completes. The result records the workload,
+seed, players, workers, payload bound, provider, machine, framework, and processor facts. It also reports mutation
+throughput, p50, p95 and p99 commit latency, replay, retry, busy and backpressure rates, database bytes when available,
+retained event tail length, current projection bytes, compaction lag, allocation per operation, and every integrity
+failure counter. It does not encode a universal throughput target. The final JSON is written before the process
+returns a failing exit code for any nonzero checksum, duplicate-effect, sequence, or partial-commit counter.
+
+The checked-in SQLite baseline is
+`Baselines/journal-sqlite-mmo-mixed-v1-seed835-10000ops.json`. Reproduce it on the current machine with:
+
+```bash
+dotnet run --project KhaozEngine.Benchmarks -c Release -- --journal --operations 10000 --players 1000 --seed 835 --output "$PWD/KhaozEngine.Benchmarks/Baselines/journal-sqlite-mmo-mixed-v1-seed835-10000ops.json"
+```
 
 The `--journal-crash-probe` mode is an internal release gate used by the test suite. It accepts an absolute SQLite
 database path, operation GUID, and either `before-commit` or `after-commit-before-response`. At the requested internal

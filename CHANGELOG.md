@@ -5,6 +5,44 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.27.0
+
+Another backlog batch fixes update trust reporting, tiled-world lifecycle bugs and GPU cleanup, and adds small audio, GUI and rendering APIs.
+
+- `UpdateState.Untrusted` makes unsigned, wrong-key, tampered and malformed signed manifests visible through
+  a dismissible localized overlay. It offers no download or apply action and permits later checks (#819).
+- `SfxAttenuation` and `AudioSystem.DefineBus(id, attenuation)` configure positional falloff per bus.
+  Existing volume, priority and non-positional behavior stay intact. Legacy backends retain a forwarding
+  default, and the implicit curve remains reference 1, rolloff 1, maximum 50 (#824).
+- `LabelSegment` and `ContextMenuEntry.Segmented` support separately localized, colored label parts in caller
+  order (#818). Context menus accept later taps whose press and release arrive in the same frame while
+  preserving opening-gesture protection (#760).
+- `Render2DTextures.White` creates a caller-owned white pixel without a Vfx dependency (#804).
+  `SpriteBatch.Flush` provides an ordering boundary within an active batch while preserving its state (#401).
+- Ground-item caps count drops restored from evicted cells (#811). Actor spawners retire a frozen former
+  actor before creating its replacement, preserving the countdown and avoiding duplicate ownership (#812).
+- Tile movement reuses separate player and actor pathfinding scratch per cell, including interact, follow
+  and blocked-route searches, while shared simulators remain stateless (#809).
+- `DiagnosticsOverlay.NetworkSection(NetTransportStats)` and `DiagnosticsHud.SetTransportStatsSource`
+  provide transport ping, loss and disconnected status without invented replication metrics (#806).
+- Sharded correction detection only updates its streak when that player's cell ran, using its fixed tick duration (#435). Desired player
+  speed scales survive temporarily unresolved ownership and are removed when that player leaves (#431).
+- Both `Scene3DChunkSink` constructors expose the render mesh's `snowLine`, defaulting to 60 and preserving
+  collision behavior (#375). Residue circles respect `VoidFallback` and `VoidDim` (#12).
+- Skinned shadow culling retains casters beyond a cascade's near plane for depth clamping, while main-pass,
+  lateral and far-plane rejection stay active (#395). Vulkan unmap closes bookkeeping after device loss
+  without flushing memory on the dead device (#807).
+- `ShippedShaderPrograms` names the shared backend validation catalog (#555). Native Metal pixel readback
+  proves conditional, out-of-binding-order texture samples. The old sampling-order restriction is retired,
+  while authored-index validation remains active and shipped shader strings remain unchanged (#729).
+- Tiled map saves hold exclusive directory writer access through cleanup. Overlapping saves fail before
+  modifying tiles, and ownership is released on completion, failure or process exit (#350).
+- Terrain sculpt interpolation resolves shared interior corners with one dictionary lookup, preserving
+  bit-exact boundary and missing-tile results. Headless measurements cover resident sets and isolate the
+  terrain-to-physics build from GC and the later consumer nav bake (#339).
+- Angle-wrap comments explain the intentionally retained negative half-turn and ocean spectrum boundaries
+  rather than changing deterministic behavior (#785).
+
 ## 18.26.0
 
 Dense ground cover avoids invisible uploads and gains a smooth rooted fade.

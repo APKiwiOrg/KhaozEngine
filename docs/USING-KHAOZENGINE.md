@@ -6055,7 +6055,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.26.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.27.0" />
 ```
 
 ```csharp
@@ -7108,6 +7108,11 @@ MapDocumentFile.SaveAuto(doc, path);                       // saves back in the 
 MapDocumentFile.SaveAs(doc, path, MapDocumentForm.Tiled);  // writes the named form, whatever is there
 ```
 
+`SaveTiled` permits one writer per directory, holding exclusive access through the final tile sweep.
+An overlapping save throws `MapDocumentException` before it modifies tiles. Retry after the owning save
+finishes. The empty `.mapdoc-save.lock` file persists, while OS ownership is released on completion,
+failure or process exit. Independent directories can save concurrently. Do not delete an active lock file.
+
 **Document tiles.** `MapTileCoord` is a square of world XZ with edge `MapDocument.TileSize`, a distinct type
 from `ChunkCoord` so a 60 m chunk coord cannot be passed where a 512 m tile coord is meant.
 `MapTileGrid.CoordOf` delegates to `ChunkGrid.CoordOf`, so the floor rule has one implementation, and
@@ -7384,6 +7389,10 @@ edit, and a wall is one edge shared by two tiles (the baker sets the bit on both
 objects. Pass `Rebake` a rect covering the FULL footprint of anything you removed, measured with
 `TileFootprint.Of` before the removal, because a rebake can only re-derive the tiles it clears. Branch on
 `TilePath.Reached`, never on `Tiles.Count`: a partial walk to the nearest reachable tile carries steps too.
+
+The tile server's `TileMovementSystem` supplies its own scratch per cell, with separate player and actor
+windows. Walk, interact, follow and blocked-route searches reuse those buffers. The shared
+`TileMoveSimulator` remains stateless, and standalone callers can still pass their own scratch explicitly.
 
 **A caller that paths on a tick hands `FindPath` a `TilePathfinderScratch`.** The default call allocates the two
 `(2r + 1)^2` window arrays every search, about 83 KB at radius 64, which is nothing for an editor click and is
@@ -11320,7 +11329,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.26.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.27.0" />
 ```
 
 ```csharp
@@ -11356,7 +11365,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.26.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.27.0" />
 ```
 
 ```csharp
@@ -11598,7 +11607,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.26.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.27.0" />
 ```
 
 ```csharp
@@ -13638,7 +13647,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="18.26.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="18.27.0" />
 </ItemGroup>
 ```
 
@@ -15854,8 +15863,10 @@ boost, what it costs, what shows in the HUD and how it is balanced are all game 
 `Teleport(PlayerRef, Vector3)` moves a player without owning any concept of why. If two effects are active at
 once, the product is yours to compute before you call.
 
-The call is queued and applied on the host thread at the top of the next tick, so it is safe from any thread (an
-ability system, a game-message handler, an expiry timer). Read the applied value back with `TryGetPlayerState`.
+The call is queued to the host thread at the top of the next tick, so it is safe from any thread (an
+ability system, a game-message handler, an expiry timer). The sharded server retains the quantized desired
+value by stable player net id if ownership is temporarily unresolved, retries after handoffs, and clears
+it when that player leaves. Read the applied value back with `TryGetPlayerState`.
 
 What the engine guarantees once you set it:
 

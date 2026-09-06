@@ -42,6 +42,9 @@ Another backlog batch fixes update trust reporting, tiled-world lifecycle bugs a
   terrain-to-physics build from GC and the later consumer nav bake (#339).
 - Angle-wrap comments explain the intentionally retained negative half-turn and ocean spectrum boundaries
   rather than changing deterministic behavior (#785).
+- Transport overflow tests wait for server-side evictions and verify the retained disconnect and newest
+  ordered payload (#837). Shadow re-fit tests check caster and cascade coverage, with depth-atlas parity
+  against an uncompacted full-draw reference instead of a historical minimum draw count (#838).
 
 ## 18.26.0
 

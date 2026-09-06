@@ -20,12 +20,29 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// </summary>
 public sealed class TileWanderBehaviour : ITileActorBehaviour
 {
-    readonly TileCollisionMap map;
-    readonly int meanPauseTicks;
-    readonly int retaliateWindowTicks;
+    readonly TileCollisionMap? fallbackMap;
+    int meanPauseTicks = 12;
+    int retaliateWindowTicks = 40;
 
-    /// <summary>Builds the default behaviour over the map its wander destinations must be standable on.</summary>
-    /// <param name="map">The baked collision map, the same one the server steps over.</param>
+    /// <summary>Builds the default behaviour for server-created contexts, which carry their actor's registered
+    /// traversal map and use the standard timing.</summary>
+    public TileWanderBehaviour() { }
+
+    /// <summary>Builds the default behaviour with custom timing for server-created contexts, which carry their
+    /// actor's registered traversal map.</summary>
+    /// <param name="meanPauseTicks">Mean ticks an idle actor waits before choosing another destination.</param>
+    /// <param name="retaliateWindowTicks">How recent an incoming swing must be to provoke a counterattack.</param>
+    /// <returns>A behaviour with no fallback map. Server-created contexts supply the selected profile map.</returns>
+    public static TileWanderBehaviour CreateWithTiming(int meanPauseTicks = 12, int retaliateWindowTicks = 40) =>
+        new()
+        {
+            meanPauseTicks = Math.Max(1, meanPauseTicks),
+            retaliateWindowTicks = Math.Max(0, retaliateWindowTicks),
+        };
+
+    /// <summary>Builds the default behaviour with a fallback map for contexts built by hand. A server-created
+    /// context always supplies its actor's registered map and that map wins.</summary>
+    /// <param name="map">The fallback collision map for a hand-built context.</param>
     /// <param name="meanPauseTicks">Mean ticks an idle actor waits before it picks somewhere to wander to. A per
     /// tick roll rather than a countdown, so the behaviour keeps no per-actor state: the pause is randomised with
     /// this as its mean rather than bounded inside a band, and <see cref="TileActorContext.Walking"/> is what stops
@@ -39,7 +56,7 @@ public sealed class TileWanderBehaviour : ITileActorBehaviour
     /// <exception cref="ArgumentNullException"><paramref name="map"/> is null.</exception>
     public TileWanderBehaviour(TileCollisionMap map, int meanPauseTicks = 12, int retaliateWindowTicks = 40)
     {
-        this.map = map ?? throw new ArgumentNullException(nameof(map));
+        fallbackMap = map ?? throw new ArgumentNullException(nameof(map));
         this.meanPauseTicks = Math.Max(1, meanPauseTicks);
         this.retaliateWindowTicks = Math.Max(0, retaliateWindowTicks);
     }
@@ -88,7 +105,8 @@ public sealed class TileWanderBehaviour : ITileActorBehaviour
         // A destination nobody can stand on is dropped rather than walked toward, because the pathfinder's
         // nearest-reachable fallback would walk the actor to the edge of the obstruction and look like it was stuck
         // on it. Rolling again next tick is free.
-        if (goal.Equals(context.Tile) || !map.HasRegion(goal.Region)
+        TileCollisionMap? map = context.TraversalMap ?? fallbackMap;
+        if (map is null || goal.Equals(context.Tile) || !map.HasRegion(goal.Region)
             || TileCollision.IsBlocked(map, goal.X, goal.Z, goal.Plane))
             return TileActorIntent.Idle;
         return TileActorIntent.WalkTo(goal);

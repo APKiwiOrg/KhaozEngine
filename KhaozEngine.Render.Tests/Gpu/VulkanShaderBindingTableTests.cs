@@ -52,6 +52,7 @@ namespace KhaozEngine.Tests.Gpu
                 ["Sprite2D"] = "SpriteBatch",
 
                 ["Model"] = "ModelRenderer",
+                ["Foliage"] = "ModelRenderer foliage",
                 ["ModelDissolve"] = "ModelRenderer dissolve",
                 ["SkinnedModel"] = "ModelRenderer skinned",
                 ["SkinnedModelDissolve"] = "ModelRenderer skinned dissolve",
@@ -107,7 +108,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             var problems = new List<string>();
 
-            foreach (ShippedGraphicsProgram program in D3D11ShaderProgramCatalog.GraphicsPrograms())
+            foreach (ShippedGraphicsProgram program in ShippedShaderPrograms.GraphicsPrograms())
             {
                 string[] slots = SlotsOf(program.Name, problems);
                 if (slots.Length == 0) continue;
@@ -125,7 +126,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             var problems = new List<string>();
 
-            foreach (ShippedComputeKernel kernel in D3D11ShaderProgramCatalog.ComputeKernels())
+            foreach (ShippedComputeKernel kernel in ShippedShaderPrograms.ComputeKernels())
             {
                 string[] slots = SlotsOf(PipelineOf(kernel.Name), problems, kernel.Name);
                 if (slots.Length == 0) continue;
@@ -179,12 +180,12 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void EveryShippedProgram_HasAPipelineAndEveryPipelineNamedIsReal()
         {
-            string[] catalog = D3D11ShaderProgramCatalog.GraphicsPrograms().Select(p => p.Name).ToArray();
+            string[] catalog = ShippedShaderPrograms.GraphicsPrograms().Select(p => p.Name).ToArray();
             var pipelines = VulkanDescriptorLimitTests.ShippedPipelines
                 .Select(p => p.Pipeline)
                 .ToHashSet(StringComparer.Ordinal);
 
-            Assert.Equal(35, catalog.Length);
+            Assert.Equal(36, catalog.Length);
             Assert.Equal(catalog.Length, ProgramPipelines.Count);
 
             foreach (string program in catalog)
@@ -239,12 +240,12 @@ namespace KhaozEngine.Tests.Gpu
 
         static IEnumerable<(string Program, string[] Slots, IEnumerable<Declaration> Declarations)> EveryProgram()
         {
-            foreach (ShippedGraphicsProgram program in D3D11ShaderProgramCatalog.GraphicsPrograms())
+            foreach (ShippedGraphicsProgram program in ShippedShaderPrograms.GraphicsPrograms())
             {
                 yield return (program.Name, SlotsOf(program.Name, null),
                     Parse(program.VertexGlsl).Concat(Parse(program.FragmentGlsl)));
             }
-            foreach (ShippedComputeKernel kernel in D3D11ShaderProgramCatalog.ComputeKernels())
+            foreach (ShippedComputeKernel kernel in ShippedShaderPrograms.ComputeKernels())
                 yield return (kernel.Name, SlotsOf(PipelineOf(kernel.Name), null), Parse(kernel.ComputeGlsl));
         }
 

@@ -15,9 +15,9 @@ public static partial class TileGroundMesher
     static readonly Vector4 OverlayWeights = new(1f, 0f, 0f, 0f);
 
     /// <summary>The material at a lattice corner: the underlay id shared by the most of the up-to-four tiles
-    /// that touch it, ties broken by the LOWER id, and 0 when none of them has an underlay. Void tiles are the
-    /// only exclusion, exactly as <see cref="CornerColor"/> excludes them, so a <see cref="TileSettings.NoDraw"/>
-    /// tile draws no ground of its own but still decides the material at the corners it touches and the ground
+    /// that touch it, ties broken by the LOWER id, and 0 when none of them has a visible underlay. Void tiles and
+    /// underlays hidden by drawn full overlays are excluded, exactly as <see cref="CornerColor"/> excludes them.
+    /// A <see cref="TileSettings.NoDraw"/> tile still decides the material at the corners it touches and the ground
     /// stays continuous across a hole punched for an object floor. The rule reads the global grid and breaks its
     /// ties without reference to which tile is asking, so every tile sharing a corner picks the same material
     /// there and the corner cannot seam.</summary>
@@ -31,7 +31,7 @@ public static partial class TileGroundMesher
         for (int dz = -1; dz <= 0; dz++)
             for (int dx = -1; dx <= 0; dx++)
             {
-                ushort underlay = doc.GetUnderlay(worldX + dx, worldZ + dz, plane);
+                ushort underlay = VisibleUnderlay(doc, worldX + dx, worldZ + dz, plane);
                 if (underlay == 0) continue;
                 int at = 0;
                 while (at < distinct && ids[at] != underlay) at++;
@@ -57,7 +57,7 @@ public static partial class TileGroundMesher
     }
 
     /// <summary>The brightness multiplier at a lattice corner: the mean of <see cref="TileColors.Jitter"/> over
-    /// the same tiles <see cref="CornerMaterial"/> counts, so the ground varies softly across a corner instead of
+    /// the same visible underlays <see cref="CornerMaterial"/> counts, so the ground varies softly across a corner instead of
     /// stepping at every tile edge, and 1 when none of them has an underlay. It is a MULTIPLIER the shader
     /// applies to the sampled albedo, so no jitter is 1 and never 0: a vertex carrying 0 renders black. That is
     /// why <paramref name="amplitude"/> is refused at 1 and above, which leaves every answer inside (0, 2).</summary>
@@ -78,11 +78,24 @@ public static partial class TileGroundMesher
             {
                 int tx = worldX + dx;
                 int tz = worldZ + dz;
-                if (doc.GetUnderlay(tx, tz, plane) == 0) continue;
+                if (VisibleUnderlay(doc, tx, tz, plane) == 0) continue;
                 sum += TileColors.Jitter(tx, tz, plane, amplitude);
                 count++;
             }
         return count == 0 ? 1f : sum / count;
+    }
+
+    // The underlay seen by its neighbours. NoDraw remains visible for blending because another object supplies
+    // that tile's surface. A drawn full overlay hides the underlay, so carrying it into a neighbouring tile would
+    // make an exact overlay boundary grade into the material below it.
+    static ushort VisibleUnderlay(TileWorldDocument doc, int x, int z, int plane)
+    {
+        ushort underlay = doc.GetUnderlay(x, z, plane);
+        if (underlay == 0) return 0;
+        bool drawnFullOverlay = (doc.GetSettings(x, z, plane) & TileSettings.NoDraw) == 0
+            && doc.GetOverlay(x, z, plane) != 0
+            && doc.GetOverlayShape(x, z, plane) == TileOverlayShape.Full;
+        return drawnFullOverlay ? (ushort)0 : underlay;
     }
 
     /// <summary>The amplitude back, or a throw: it runs from 0 (no jitter) up to but not including 1, so the

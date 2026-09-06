@@ -2,6 +2,18 @@
 
 Game-agnostic, transport-free netcode primitives.
 
+## In-memory transports
+
+`LoopbackTransport.CreatePair()` provides one deterministic two-endpoint link. `InMemoryTransportHub` provides one
+server endpoint and any number of isolated client endpoints for headless multi-client tests and single-process local
+hosts. `CreateClient` assigns stable positive server-side connection ids. Data is copied and reaches the target on
+its next `Poll`, with no sockets, threads, or wall clock.
+
+Plain disconnects preserve data already sent and then surface one terminal event on both sides. A disconnect with a
+reason supersedes only that connection's unpolled frames, matching the rejection contract. Disconnect is idempotent,
+traffic after it is ignored, disposing a client releases its server connection, and disposing the hub or server
+disconnects every remaining client and prevents new connections.
+
 ## UnitAxisQuantizer
 
 8-bit quantization of a unit-range axis (`[-1,1]`) to a signed byte and back, rounding away-from-zero.

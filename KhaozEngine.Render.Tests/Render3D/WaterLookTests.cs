@@ -64,6 +64,12 @@ namespace KhaozEngine.Tests.Render3D
             new(nameof(WaterLook.DetailFadeDistance), l => l.DetailFadeDistance = 18f, u => u.DetailParams.Y),
             new(nameof(WaterLook.DistantDetailScale), l => l.DistantDetailScale = 0.6f, u => u.DetailParams.Z),
 
+            // Sun response. The light direction and colour still belong to the scene.
+            new(nameof(WaterLook.GlintStrength), l => l.GlintStrength = 0.11f, u => u.ShoreGlint.Y),
+            new(nameof(WaterLook.GlintRoughness), l => l.GlintRoughness = 0.11f, u => u.ReflectGlint.Z),
+            new(nameof(WaterLook.GlintDistantRoughness), l => l.GlintDistantRoughness = 0.71f, u => u.ReflectGlint.W),
+            new(nameof(WaterLook.GlintExponent), l => l.GlintExponent = 13f, u => u.ShoreGlint.Z),
+
             // Foam.
             new(nameof(WaterLook.FoamColor), l => l.FoamColor = new Color(0.2f, 0.3f, 0.4f, 0.5f), u => u.FoamColor.X),
             new(nameof(WaterLook.FoamStrength), l => l.FoamStrength = 0f, u => u.FoamParams.X),
@@ -114,8 +120,8 @@ namespace KhaozEngine.Tests.Render3D
         public void Every_overridable_field_is_covered_by_the_table()
         {
             HashSet<string> declared = LookFieldNames();
-            Assert.True(declared.Count == 33,
-                $"WaterLook declares {declared.Count} fields, not the 33 the design specifies. Either the cut " +
+            Assert.True(declared.Count == 37,
+                $"WaterLook declares {declared.Count} fields, not the 37 the design specifies. Either the cut " +
                 "moved (update the design doc) or a field landed here by accident.");
 
             HashSet<string> covered = Table.Select(f => f.Name).ToHashSet();
@@ -139,9 +145,7 @@ namespace KhaozEngine.Tests.Render3D
                          nameof(WaterSettings.ClipmapLevels), nameof(WaterSettings.ClipmapGeomorphBand),
                          nameof(WaterSettings.ClipmapBandLimitSamples), nameof(WaterSettings.FootprintSamples),
                          nameof(WaterSettings.HorizonColor), nameof(WaterSettings.SkyReflectionStrength),
-                         nameof(WaterSettings.SkyReflectionSunStrength), nameof(WaterSettings.GlintStrength),
-                         nameof(WaterSettings.GlintRoughness), nameof(WaterSettings.GlintDistantRoughness),
-                         nameof(WaterSettings.GlintExponent), nameof(WaterSettings.SurfBreakerIndex),
+                         nameof(WaterSettings.SkyReflectionSunStrength), nameof(WaterSettings.SurfBreakerIndex),
                          nameof(WaterSettings.SurfBandWidth), nameof(WaterSettings.SurfCrestBias),
                          nameof(WaterSettings.SurfTrailWidth), nameof(WaterSettings.SurfAmplitudeCollapse),
                          nameof(WaterSettings.ShoalingDepthScale),

@@ -697,7 +697,7 @@ mechanics live in [UPDATER.md](UPDATER.md).
 - **Periodic recheck.** A launch-time check misses a release that lands mid-session. Set
   `UpdateServiceOptions.RecheckInterval` (a `TimeSpan?`, null by default = off) and call
   `updates.Tick(dt)` once per frame next to `UpdateOverlayActions.AutoAdvanceRequired(updates)`. `Tick`
-  accrues time only while the service is `Idle` (any active flow zeroes it), fires one offline-safe
+  accrues time while the service is `Idle` or `Untrusted` (any active flow zeroes it), fires one offline-safe
   `CheckForUpdateAsync` on reaching the interval, and no-ops when the interval is null. Call `Tick` and
   `CheckForUpdateAsync` from the same thread (a manual check resets the clock).
 - **Post-update relaunch marker.** After the shim applies an update and relaunches, the boot's
@@ -705,6 +705,11 @@ mechanics live in [UPDATER.md](UPDATER.md).
   `AppliedAtUtc`), read once from an `update-applied.json` marker and then deleted, so it is null on every
   ordinary launch. Check it at startup to suppress a "welcome back" / "what's new" prompt on a boot the
   game restarted itself into.
+
+A newer advertised build with a missing signature or a signature that no trusted key verifies enters
+`UpdateState.Untrusted`. The localized overlay explains that this build cannot verify updates and permits
+dismissal. It offers no download or apply action. A later manual or periodic check can recover after the
+feed or trusted keys are corrected. An unavailable version pointer still returns to `Idle`.
 
 ### Dismissing the update overlay, and the apply cap (`UpdateOverlayView`, `UpdateService`)
 
@@ -714,7 +719,7 @@ no way out but quitting. Two mechanisms, both on by default and neither needing 
 [UPDATER.md](UPDATER.md).
 
 - **A dismiss key.** `UpdateOverlayTheme.DismissKey` (default `Escape`, with `DismissButton` default gamepad
-  `B`) hides the panel for a state the player may decline: `UpdateAvailable`, `ReadyToApply`, `Failed`
+  `B`) hides the panel for a state the player may decline: `UpdateAvailable`, `ReadyToApply`, `Failed`, `Untrusted`
   (`UpdateOverlayView.IsDismissible`). Never the in-flight `Downloading`/`Applying`, and never a required
   update. The dismissal is remembered per state, so a periodic recheck landing back on the same offer stays
   hidden, and the panel returns only at a state that was not declined. `View.ResetDismissed()` clears it, for
@@ -1062,6 +1067,10 @@ for menu-heavy games. `Add`/`Remove`, `Update(dt, input[, viewport])`, `Draw(bat
 `Manager.Pointer`, so both share one click-through gate), and returns whether it consumed (to block screens
 below); set a screen non-pass-through for a modal.
 
+Set `ScreenStack.AdvanceTransitionsBehindModal = true` to keep covered screens advancing their on/off
+transitions while their normal updates and input stay blocked. The default is `false`, preserving the
+existing freeze below a modal. A covered screen can finish its transition off and leave the stack.
+
 **Gating a world pick behind the UI (`PressBeganOverUi`).** The stack drives its OWN composed `Pointer`, so a
 `BlockRegion` a screen makes is invisible to the pointer a game uses to pick in its 3D world, and there is no
 rect the game can hand `IsTapIn` that means "the whole screen stack" (its rect is the window, so it contains
@@ -1170,11 +1179,11 @@ Four lines of wiring for N components, and none of them grows when N does. Point
 
 **Theming: `GuiTheme` + `GuiStyle` (crisp default, 10.11.0)** - the default widget look is crisp: a neutral-dark
 palette with a blue accent, subtle 3px corners, 1px hairline borders, no bloom. `GuiTheme` is the central semantic
-palette every retained widget reads at construction. Rebrand the whole UI in one line at startup (before building
-widgets):
+palette every retained widget reads at construction. Set its semantic colors at startup before building
+widgets:
 
 ```csharp
-// Global reskin: keep the crisp shape, change the accent to teal.
+// Keep the crisp shape and change the shared accent to teal.
 GuiTheme.Default = GuiTheme.Default with { Accent = new Vector4(0.14f, 0.60f, 0.55f, 1f) };
 // Row fills a list widget draws: the selected option, and the keyboard cursor a shade under it.
 GuiTheme.Default = GuiTheme.Default with
@@ -1190,6 +1199,11 @@ GuiTheme.Default = GuiTheme.Legacy;
 with (`SelectedColor` / `FocusColor`, both still overridable per instance). The `Dropdown` hardcoded that pair
 before, so a rebranded palette still drew a blue selected row. `Crisp` and `Legacy` carry the same two values, so
 reverting the theme does not move either row.
+
+`PrimaryFill`, `PrimaryHover`, `PrimaryPress`, `PrimaryBorder`, and `PrimarySelectedFill` control the
+`GuiStyle.Primary` surface family. The matching `Active*` fields plus `ActiveText` control `GuiStyle.Active`.
+Set these alongside the accent for a full rebrand. `Crisp` and `Legacy` retain the previous preset colors,
+and `GuiStyle.Modern` retains its existing palette.
 
 `GuiStyle` carries the button palette + modern-affordance knobs, with presets you pass per widget:
 `GuiStyle.Default` (crisp, == `Primary`), `Secondary` (muted), `Danger` (red), `Active` (bright-accent selected),
@@ -1291,6 +1305,7 @@ panel.SlideFromBottom = true;
 panel.TransitionAlpha = screen.TransitionAlpha; // 0 hidden below the dock edge .. 1 fully shown
 panel.Resizable = true; panel.MinHeight = 140f; panel.MaxHeight = navTop - topBarBottom;
 panel.Scrim = new Rect(0, topBarBottom, viewW, navTop - topBarBottom);
+panel.DragScrollingEnabled = false;            // child rows own drag gestures, wheel scroll still works
 
 panel.Update(pointer, input);
 if (panel.ScrimDismissed) Close();             // tap outside the panel
@@ -1349,7 +1364,8 @@ The glide always snaps (no easing) on the first update and whenever the panel is
 lays out `Count` uniform slots wrapping at `Columns` (`Bounds`.X/Y is the origin, and the footprint is
 `ContentSize` / `ContentBounds`, derived from `SlotWidth` / `SlotHeight` / `Spacing`). It hit-tests each slot
 through the press-origin invariant and
-exposes `HoveredSlot` / `PressedSlot` (-1 = none). A valid tap fires `OnSlotClicked` and `Update` returns the
+exposes `HoveredSlot` / `PressedSlot` / `RightPressedSlot` (-1 = none). Left and right held states are
+independent and follow the same press-origin rule. A valid tap fires `OnSlotClicked` and `Update` returns the
 tapped index. The widget is item-agnostic: empty slots draw a themed frame, and the caller paints icons / counts through the
 `DrawSlotContent(index, rect, batch)` hook and optional per-slot `KeybindLabels` (raw input-token glyphs).
 
@@ -1426,6 +1442,18 @@ opens the composer. A later Enter submits trimmed non-empty text and leaves it o
 `ShowTimestamps` converts each UTC timestamp to local time for presentation only. `ChatBoxTheme` carries the frame,
 composer, ordinary, own, system and timestamp colours.
 
+The composer remains internal. Its public configuration surface is exactly:
+
+```csharp
+public LocalizedText ComposerPlaceholder { get; set; }
+public int MaxInputLength { get; set; }
+```
+
+`ComposerPlaceholder` is lazily resolved, so switching the ambient catalog changes the placeholder on the next
+draw. It defaults to empty. `MaxInputLength` preserves the existing 32-character default and accepts only positive
+values. Assigning a lower limit immediately reclamps existing text through `TextInput.SetText`, preserving the
+normal change-detection path. There is no raw string placeholder overload on `ChatBox`.
+
 ```csharp
 using System;
 using KhaozEngine.App;
@@ -1435,6 +1463,8 @@ using KhaozEngine.Primitives;
 var history = new ChatHistory(capacity: 100);
 var chat = new ChatBox(history, new Rect(16, 420, 460, 284), font)
 {
+    ComposerPlaceholder = Strings.ChatPlaceholder,
+    MaxInputLength = 160,
     ShowTimestamps = settings.ShowChatTimestamps,
     Submitted = SendNearbyChat
 };
@@ -1562,8 +1592,11 @@ if (pointer.IsRightTapIn(slotRect))
 
 `KhaozEngine.Gui.ContextMenu` is the right-click option menu those helpers open: a title band over a stack of
 selectable rows, anchored at a screen point in design pixels (the OSRS-style option list). Its text is
-`LocalizedText` and resolves ONCE, when the menu opens, so the draw path never re-resolves and a runtime locale
-switch means rebuilding the entries.
+`LocalizedText`. `ContextMenuEntry.Of` resolves its single label when the entry is created, and the title
+resolves when the menu opens. Rebuild those entries after a locale switch. `ContextMenuEntry.Segmented`
+accepts caller-ordered `LabelSegment` values, each carrying `LocalizedText` and an optional color. Segment
+text resolves for layout and drawing. The caller owns ordering and spacing, including locale-specific word
+order. Disabled rows use the disabled color across every segment.
 
 ```csharp
 var pointer = input.Pointer;
@@ -1585,6 +1618,9 @@ menu.Update(input);                      // InputManager overload: pointer path 
 if (menu.WasSelected) Act((MenuAction)menu.SelectedTag);
 menu.Draw(batch, white);                 // last, so it covers what it should
 ```
+
+A tap that begins and ends in one input frame can select or dismiss the menu once its opening frame has
+passed. The opening gesture itself stays suppressed, including its later release.
 
 `Update` returns `WasSelected`, and that whole result group (`WasSelected`, `SelectedTag`, `SelectedIndex`,
 `WasDismissed`, `DismissPress`) is a ONE-FRAME signal cleared at the top of the next `Update`, closed menu
@@ -1994,8 +2030,8 @@ tunes wheel speed). Set `WrapLongLabels = true` to wrap a stat row whose value i
 fade the whole popup with a host screen transition. `Toggle` / `Slider` / `TextInput` carry the same `Opacity` knob;
 `TextInput` adds `SetText(value)`, public `Focus()` / `Unfocus()`, and a `LocalizedText` `PlaceholderContent`.
 
-**Tab bar / segmented control (`TabBar`, 10.25.0)** - a horizontal switcher for a panel with sub-views (a
-Goals/Tree split, settings sub-pages, inventory categories). Construct it with the localized labels, assign
+**Tab bar / segmented control (`TabBar`, 10.25.0)** - a panel switcher with a horizontal row by default
+(Goals/Tree split, settings sub-pages, inventory categories). Construct it with the localized labels, assign
 `Bounds` (the tab strip rect) each frame from your layout, then `Update(pointer)` / `Draw(batch, white)`:
 
 ```csharp
@@ -2017,6 +2053,11 @@ accent-outlined on top) keeps every seam a crisp single 1px line, uniform even i
 device-pixel snapping (10.32.1). Override `ActiveStyle` / `InactiveStyle` to
 re-theme, and `Opacity` (0..1) fades the whole bar with a host transition. Labels are `LocalizedText`, so use a
 `StringId` for player-facing copy (`LocalizedText.Raw(...)` only for debug/non-localizable tokens).
+
+Use `TabBarItem` entries to disable individual tabs. Fixed-size tabs opt into a wrapped layout through
+`TabWidth`, `TabHeight`, `Columns` and `Spacing`, leaving the default evenly split row unchanged. Disabled
+tabs use their disabled palette and cannot be selected by a pointer gesture. They still reserve their
+footprint and consume taps, so pressing a disabled tab cannot trigger the world or controls behind it.
 
 ## File-size ratchet (KESIZE analyzer)
 
@@ -2257,6 +2298,11 @@ inside the callback: the command list it is recording into still names them unti
   runs), trading away painter's order BETWEEN textures (order stays intact WITHIN one texture's group). Off by
   default and reset by every `Begin`. Only turn it on for a pass whose visual correctness does not depend on
   cross-texture draw order (e.g. not a scene with overlapping alpha-blended sprites of different textures).
+- `SpriteBatch.Flush()` submits queued draws without ending the active batch. Flush before enabling texture
+  grouping and again before disabling it to isolate one unordered group inside a larger ordered pass. It
+  preserves transform, sampler, blend and scissor state. Calling it outside `Begin`/`End` throws.
+- `Render2DTextures.White(surface)` and `White(context)` create a caller-owned opaque white pixel without a
+  Vfx namespace dependency. `VfxTextures.White` remains a compatibility forward.
 - `PrimitiveRenderer` (owns a 1x1 white pixel): filled/outlined rects, lines, circles/rings, filled circles,
   vertical gradients, progress bars, and filled sectors/arc-bands. For a partial ring, `DrawArc(center, radius,
   thickness, startAngleRadians, sweepAngleRadians, color)` strokes a general arc outline, and
@@ -2895,7 +2941,7 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
   mip-filtered (trilinear) box at ANY factor - the internal target carries a mip chain the final blit samples at
   LOD ~= log2(factor) - so `3` and `4` anti-alias properly, not just `2`. Cost scales ~factor^2 in fragment shading
   (`3` = 9x the pixels), so keep it off by default and measure on the target GPU before going above `2`.
-- Anti-aliasing options (the AA dropdown): `Post.Quality.AntiAliasing` picks one technique -
+- Anti-aliasing options (the AA dropdown): `Post.Quality.AntiAliasing` picks a configuration -
   `AntiAliasing.Off` (default), `.Fxaa` (cheap one-pass edge smoother), `.Msaa(2|4|8)` (hardware multisample,
   geometry edges only), or `.Ssaa(factor)` (supersample the whole image, the strongest, also kills shaded-interior
   shimmer). Build a menu from `AppWindow.Capabilities.MaxMsaaSampleCount` and validate a choice with
@@ -2903,6 +2949,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
   the high-level equivalent of `RenderScale.MatchViewport` + `Supersample = f`; the raw fields remain and, with AA
   `Off`, still govern (so existing scenes are unchanged). The `Pixelated` retro path forces AA off. Costs: SSAA is
   ~factor^2 fragment shading, MSAA adds a per-frame resolve, FXAA one pass - keep AA off by default and measure.
+  `.Msaa(2, postFxaa: true)` combines multisampled geometry with the FXAA post filter. It retains the
+  current internal resolution and carries the filter through device sample-count clamping. `UsesFxaa`
+  reports FXAA alone or this combined configuration. The one-argument `.Msaa(samples)` stays unchanged.
   `Post.Quality` (a `RenderQuality`) is where the quality knobs live (AA, shadows, and future anisotropy/TAA), so a
   game's options menu binds to it.
 - Shadows (the shadow dropdown): `Post.Quality.Shadows` (a `ShadowSettings`) picks the shadow tier via
@@ -3080,7 +3129,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
   whose world-space bounding sphere lies entirely outside the camera frustum, so nothing off-screen is rasterized
   (a win for the streamed overworld: distant terrain chunks and scattered props behind/beside the camera cost
   nothing). It is **pixel-neutral by construction** - only geometry the camera cannot see is dropped - so existing
-  renders are byte-identical. Set `scene.FrustumCulling = false` to force everything drawn (for profiling or to
+  renders are byte-identical. Explicit `CastsShadows = false` instances are rejected before instance packing
+  and GPU upload. Remaining instances preserve each mesh's original first-seen order, and
+  `CulledInstances` includes early rejects. Set `scene.FrustumCulling = false` to force everything drawn (for profiling or to
   prove the parity). Mesh-local bounds (`MeshBounds`) are computed once at `LoadMesh` from the vertex positions, so
   the cull never rescans vertices and allocates nothing per frame. Terrain chunks (which draw at identity with
   world-space vertices) are culled with the tighter positive-vertex AABB test; props/models use the world-sphere
@@ -3231,6 +3282,8 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
   `Moderate` being closest to `WaterSettings`' own defaults). It deliberately leaves `GridMode`, the clipmap
   fields, `Bathymetry` and the surf fields alone: those describe the water body's geometry and shoreline rather
   than its weather, so a preset pick never undoes your clipmap or bathymetry wiring.
+  `OceanPresets.ApplyToLook(kind, look)` applies the full bundle to a `WaterLook`, including glint. It leaves
+  `WaveSource` and unrelated overrides untouched. Set a lake's source to `Procedural` explicitly if wanted.
 - **Bloom** (`Post.Bloom`, a `BloomSettings`, **default off**): an opt-in threshold + separable-blur bloom pass
   so beams, emissive materials, and bright billboards read as a glow instead of flat. Default `Bloom.Enabled = false`,
   so the post chain runs no extra passes and existing scenes are byte-stable; set `Post.Bloom.Enabled = true` to
@@ -3344,16 +3397,17 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
         SurfStrength = 0f,
     }));
     ```
-    **33 fields are overridable**: `WaveSource`, the whole swell group, the ripple/detail group, body colour
-    (`DeepColor`/`ShallowColor`/`AbsorptionPerMetre`/`ShallowDepth`/`Opacity`), foam, `ShoreFadeDistance`, and the
+    **37 fields are overridable**: `WaveSource`, the whole swell group, the ripple/detail group, body colour
+    (`DeepColor`/`ShallowColor`/`AbsorptionPerMetre`/`ShallowDepth`/`Opacity`), foam, the four `Glint*` scalars,
+    `ShoreFadeDistance`, and the
     two depth-response strengths `ShoalingStrength`/`SurfStrength`. **What stays scene-wide, and cannot be put on
     a look at all**: `SeaState` (one FFT bake - calling the producer twice a frame with two sea states does not
     make two oceans, it makes the one producer rebake on every call for both states and corrupts the persistent
     foam accumulator, whose contract is that one invocation owns each texel), `Bathymetry` (one depth texture),
     the grid group (`GridMode`/`ClipmapCellSize`/`ClipmapRingCells`/`ClipmapLevels`/`ClipmapGeomorphBand`/
     `GridFocusBias` - these select the pass's pipeline, index buffer and vertex layout before the draw loop
-    starts, so they are a geometry choice rather than a look), reflection/horizon/glint (read the one sky and the
-    one sun, out of scope for now, cheap enough to move later without a structural change), the `Surf*` shape
+    starts, so they are a geometry choice rather than a look), reflection weights and horizon colour (read the
+    shared sky), the `Surf*` shape
     knobs (a plane wanting no surf sets `SurfStrength = 0`, which is the whole per-body need), and the sample-
     count quality knobs. Setting `WaveSource = WaterWaveSource.Procedural` on a look is the inland-body case: it
     takes the plane off the shared ocean entirely, so it loses the sea's swell and whitecaps, and (since shoaling
@@ -4374,7 +4428,8 @@ your draw callback. Leaving it at 0 (never set) renders a static pattern, same a
 **Residue** (`GroundTelegraphs.BuildResidueCircle` / `scene.GroundResidueCircle`, 3D only): a
 one-shot fading, slightly expanding scorch/frost mark for the moment after a telegraph resolves.
 The builder is pure and immediate-mode like every other telegraph call, so the CONSUMER tracks
-`age01` (0 = just resolved, 1 = gone) and stops calling once it reaches 1:
+`age01` (0 = just resolved, 1 = gone) and stops calling once it reaches 1. The residue also respects
+its style's `VoidFallback` and `VoidDim`, so an opted-in mark can project beyond a ground edge:
 
     residueAge += dt;
     float age01 = Math.Clamp(residueAge / ResidueLifetime, 0f, 1f);
@@ -5311,7 +5366,8 @@ except where a walkable cell or another `StairVoid` sits directly above (its sla
 is capped at the UPPER floor's ceiling height (the `StairVoid`s sit on the upper floor above the treads), so it
 is roofed overhead, not open to the sky, while the treads stay clear at head height for the climb. It is pure
 sink-time geometry - the layout structure and `LayoutHash` are unchanged, so `Open` output is byte-for-byte
-identical to before.
+identical to before. `DungeonJson` preserves `CeilingMode` and `CeilingHeightMeters` in layout files,
+including layouts read by `ke-dungeon --layout`. Older files without those fields load as open-top.
 
 Corridors are 1-tile single-file by default. Set `CorridorMinWidth`/`CorridorMaxWidth` above 1 to carve grand
 multi-tile halls (growth and loop corridors both widen into a straight rectangular tube with multi-cell door
@@ -5371,8 +5427,7 @@ dotnet run --project tools/KeDungeon -- nav --layout layout.json \
     --origin-x 120 --origin-z 0 --base-y 0 --agent-height 1.8 --require-connected
 ```
 
-`nav` refuses a non-zero `--yaw` outright (`DungeonNav.Bake` has no rotation concept, see issue #140) rather
-than silently baking a `NavSpace` that does not match a rotated plot, and `--require-connected` turns a
+`nav --yaw` applies the same plot rotation as the geometry bake. `--require-connected` turns a
 report of more than one connected component into exit code 1, so it doubles as a CI gate. See the
 `KhaozEngine.Dungeon` package README's CLI section for the full option list and its connectivity model.
 
@@ -5415,6 +5470,11 @@ above. Headroom-aware: in a `DungeonCeilingMode.Roofed` layout, a cell whose cei
 (`CeilingHeightMeters`) is below `agentHeight` (default `DungeonNav.DefaultAgentHeight`, 1.8, the shipped
 character capsule height) bakes blocked even though its cell kind is walkable. An `Open` layout never blocks
 on headroom, matching its pre-headroom-awareness behavior exactly.
+
+Use `DungeonNav.BakeTransformed(layout, plot, agentHeight)` with the same `DungeonPlotTransform` passed to the
+geometry sinks when the plot has nonzero yaw. `NavGrid.FromWalkable` and `FromSurfaces` also accept
+optional `yawRadians`, default zero. Cell lookup, path smoothing and waypoint centers use the rotated
+mapping. Sample callbacks and stair links still address local cells, surface heights remain world Y.
 
 ### Bake ramps, stairs, and standable props
 
@@ -6005,7 +6065,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.22.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.30.0" />
 ```
 
 ```csharp
@@ -6569,6 +6629,12 @@ multiplying the fields yourself: a blind per-field multiply lands on a set `Vali
 
 ### Far props: HLOD merged clusters
 
+`Scene3DChunkSink.MergeStats` returns cumulative `HlodMergeStats`. `MalformedCornersDropped` counts each
+out-of-range source corner contained during HLOD building, including repeated placements. A nonzero count
+identifies malformed source content even when containment keeps the live client running. At authoring ingress,
+`GltfLoader` and every `PropLoader` path reject invalid indices with asset identity, bad index and vertex count.
+
+
 The decor ring makes far *terrain* visible for free, but its props still pop in only at the gameplay radius. HLOD
 (hierarchical LOD) closes that gap: past a configurable distance a chunk cluster's individual props collapse into
 ONE merged coarse mesh drawn as a single instance, so a continent-scale forest horizon renders at a handful of
@@ -6731,6 +6797,10 @@ Scene3D.SplatMaterialHandle splatHandle = scene.LoadTerrainMaterial(mat);
 
 Supply real PBR textures by constructing `TerrainLayeredMaterial` directly with `TerrainMaterialLayer` instances
 whose `Albedo`/`Normal` fields are `SplatLayerImage`s loaded from PNG bytes.
+
+Both `Scene3DChunkSink` constructors accept `snowLine` (default `60f`) for the streamed render mesh's
+snow transition. It reaches the default splat weights and any custom splat rule. Collision meshes and
+height sampling are unchanged. Choose it when creating the sink and recreate the sink to change it.
 
 **2. Pass the handle to the streamer.** `Scene3DChunkSink` accepts an optional `SplatMaterialHandle`; when set,
 every chunk it loads uses the textured splat pipeline instead of the ramp:
@@ -7054,6 +7124,11 @@ MapDocumentFile.SaveAuto(doc, path);                       // saves back in the 
 MapDocumentFile.SaveAs(doc, path, MapDocumentForm.Tiled);  // writes the named form, whatever is there
 ```
 
+`SaveTiled` permits one writer per directory, holding exclusive access through the final tile sweep.
+An overlapping save throws `MapDocumentException` before it modifies tiles. Retry after the owning save
+finishes. The empty `.mapdoc-save.lock` file persists, while OS ownership is released on completion,
+failure or process exit. Independent directories can save concurrently. Do not delete an active lock file.
+
 **Document tiles.** `MapTileCoord` is a square of world XZ with edge `MapDocument.TileSize`, a distinct type
 from `ChunkCoord` so a 60 m chunk coord cannot be passed where a 512 m tile coord is meant.
 `MapTileGrid.CoordOf` delegates to `ChunkGrid.CoordOf`, so the floor rule has one implementation, and
@@ -7290,7 +7365,11 @@ buys a top-down view with north up and east right at the same time.
 
 **Streaming.** `TileWorldSource.Open(dir)` reads the manifest only and materialises regions on demand through
 `EnsureLoaded(coord)` or `EnsureLoaded(rect)`, each hash-checked exactly like an eager load, and `Unload(coord)`
-drops a clean region while keeping its hash so a later save carries it through untouched. `TileWorldFile.Load`
+drops a clean region while keeping its hash so a later save carries it through untouched. Public
+`document.RemoveRegion(coord)` uses that same path when the document has a source, preserving hash and
+marker bookkeeping and refusing unsaved regions. Use `document.DeleteRegion(coord)` for permanent removal:
+it forgets source indexes, permits deletion of dirty content, and excludes the region from the next save.
+Editor region deletion and create-undo use that explicit deletion path. `TileWorldFile.Load`
 is that plus load-everything. A region the manifest knows about but that is not in memory cannot be created
 blind: `GetOrCreateRegion` and `RequireRegion` both throw for it, so a save can never blank authored terrain.
 
@@ -7327,6 +7406,19 @@ objects. Pass `Rebake` a rect covering the FULL footprint of anything you remove
 `TileFootprint.Of` before the removal, because a rebake can only re-derive the tiles it clears. Branch on
 `TilePath.Reached`, never on `Tiles.Count`: a partial walk to the nearest reachable tile carries steps too.
 
+The `Bake` overload taking `Func<int, int, int, bool> groundBlocked` replaces only the ground rule. Its arguments
+are absolute world tile X and Z plus a zero-based plane, and it runs once for every tile and plane in every loaded
+region. Solid, diagonal, wall and wall-corner objects are applied afterward through the ordinary baker passes, so
+opening a ground tile in an alternate topology never clears a placed solid or directional wall. Missing regions
+remain absent and blocked. Callback invocation order is not an API contract, so the rule must be deterministic and
+independent of earlier calls. The ordinary `Rebake` still restores the authored-ground rule, so a game maintaining
+a dynamic alternate topology updates its retained map directly or rebuilds it with the same callback.
+
+The tile server's `TileMovementSystem` supplies its own scratch per cell, with one player window and one lazily
+created window for each actor traversal profile the cell encounters. Walk, interact, follow and blocked-route
+searches reuse those buffers. Every shared `TileMoveSimulator` remains stateless, and standalone callers can still
+pass their own scratch explicitly.
+
 **A caller that paths on a tick hands `FindPath` a `TilePathfinderScratch`.** The default call allocates the two
 `(2r + 1)^2` window arrays every search, about 83 KB at radius 64, which is nothing for an editor click and is
 the steady-state Gen0 rate of a server walking every actor. A scratch owns those arrays plus the BFS queue and
@@ -7342,7 +7434,10 @@ uses over the same `TileLatticePoint` lattice and `SplitSwNe` diagonal choice, s
 drawn. Every triangle comes back wound the same way, so a pass that culls a face direction keeps or drops all of
 them together. `TilePrefabs.Extract`/`Rotate`/`Place` lift a rect of tiles (layers,
 relative heights, objects, markers) and stamp it elsewhere at any rotation, with `TilePrefabFile` as the JSON
-form. A stamp is additive per layer, so clear the rect first if you want a replace. Full API summary: the
+form. Pass `includeDerivedHeights: false` to `TilePrefabs.Extract` when an unauthored upper plane should keep
+deriving its height from the destination ground. Explicit height layers remain authored, even when their
+values happen to match the derived surface. The default includes derived heights for compatibility.
+A stamp is additive per layer, so clear the rect first if you want a replace. Full API summary: the
 `KhaozEngine.TileWorld` package README. Design rationale: `docs/design/TILE-WORLD-DESIGN-2026-08-15.md`.
 
 **Picking object models.** `TileRaycast` answers the GROUND. For the objects standing on it,
@@ -7395,6 +7490,33 @@ instance's stable rank, so lower values select nested subsets without regenerati
 lighting and defaults to no shadow casting. `MarkDirty` includes every loaded region reached by an active
 same-plane door clearance. Streaming loads and unloads also rebuild caches affected by solid footprints, upper
 roofs and tagged doors.
+
+**Persistent GPU grass and shader wind (18.29.0).** Keep the existing authored placements and enable:
+
+```csharp
+options.GroundCover.UseGpuBatches = true;
+options.GroundCover.FadeMode = GroundCoverFadeMode.HeightScale;
+options.GroundCover.CastsShadows = false;
+options.GroundCover.WindStrength = 0.1f;
+options.AnimatedFoliageArchetypes = new HashSet<string> { "grass_tall" };
+// Advance the scene clock in Update. Reuse the interactor array each frame.
+scene.EffectTimeSeconds += dt;
+interactors[0] = new FoliageInteractor(playerPosition, 0.8f, 0.8f);
+options.GroundCover.Interactors = interactors;
+```
+
+The renderer retains immutable buffers until placements or model bindings change. CPU work culls patches,
+while the GPU fades and bends blades. Short grass and selected tall props share wind and interactions, but
+tall props keep full density and ordinary prop distance. This adds no collision. Wind is height-relative,
+roots stay planted, and the shader uses at most four nearby interaction positions with vertical separation.
+Other fade and shadow policies keep the existing CPU path. `LastDrawnCover` on the retained path is a
+conservative candidate count, including placements rejected by the shader. `Scene3D.LastFoliageStats`
+separates instance upload bytes, uniform bytes and submitted patch counts.
+
+For a non-tile game, create `FoliageBatch` through `Scene3D.CreateFoliageBatch` once from authored
+`FoliageInstance` values and call `DrawFoliage` each frame with `FoliageRenderSettings`. Dispose the batch
+on unload. A terrain caller using `DrawGroundCover` instead releases its source with
+`scene.ReleaseGroundCover(batch)`. See the Render3D and Terrain.Render3D package READMEs.
 
 **Roofs come off one building at a time.** `Observer` is the tile the roof rule is judged from, and
 `ObserverIndoors` says whether it carries `TileSettings.Indoors`. A roof is hidden when the observer is indoors,
@@ -7529,12 +7651,19 @@ its border data, solid footprints, upper roofs or tagged doors. A dirty region i
 unsaved edits would throw, so it stays resident and logs once), and a torn region file throws
 `TileWorldException` straight out of `Update` rather than drawing a hole.
 
+**Translucent overlays.** `ITileWorldScene.DrawOverlayMesh(mesh, world)` forwards the scene's unlit,
+depth-tested, alpha-blended overlay pass, which does not write depth. Use it for route highlights or range
+indicators. A custom scene that has not implemented this optional member throws `NotSupportedException`
+instead of drawing an opaque substitute.
+
 **Capture is the same code path as the goldens.** `TileWorldSnapshot.CaptureTopDown` sizes the image outright at
 `pxPerTile` pixels a tile rather than framing it, so the scale is exact, and `CapturePerspective` shoots from an
 eye toward a target with the observer defaulting to the tile under the target, so a shot aimed inside a house
 hides that house's roof. Both take a `configureScene` callback that runs LAST, so your lighting, post or camera
-settings win over everything the helper set. Full API summary: the `KhaozEngine.TileWorld.Render3D` package
-README.
+settings win over everything the helper set. Both also accept `drawFrame: scene => ...`, invoked after
+the tile view on each frame, so transient game meshes survive the scene's per-frame queue reset. Load meshes
+in `configureScene`, then queue them from `drawFrame`. Full API summary: the `KhaozEngine.TileWorld.Render3D`
+package README.
 
 ---
 
@@ -7602,9 +7731,10 @@ referring to it by id keeps resolving.
 (an iterated box blur reading its outside neighbours from the document, so a patch blends into the terrain
 around it), `SetHeights`, `Line` (Bresenham, one object per tile, one undo step), `Scatter` (a jittered grid
 whose offsets come from a hash of the point and the seed, so the same arguments always produce the same world),
-`PlacePrefab` and `ImportHeights`. `PgmReader` decodes the binary PGM (netpbm P5, 8 or 16 bit) a heightmap
-import takes, PGM rather than PNG because the engine ships no deflate decoder. Write those files with LF line
-endings: a CRLF header spends its CR as the single delimiter byte and leaves the LF as sample 0, which shifts
+`PlacePrefab` and `ImportHeights`. Height imports detect binary PGM (netpbm P5) or PNG by signature.
+`PngReader` in Imaging supports non-interlaced 8/16-bit grayscale, gray-alpha, RGB and RGBA, using grayscale
+or the red channel as height and ignoring alpha. Both formats preserve 16-bit sample precision. Palette and
+interlaced PNGs are rejected. Write PGM files with LF line endings: a CRLF header spends its CR as the single delimiter byte and leaves the LF as sample 0, which shifts
 the whole raster.
 
 Two limits are worth knowing before leaning on the general case. A `SnapshotRectCommand` owns what was inside
@@ -7690,8 +7820,8 @@ centre and radius. Every configure, density, paint and remove call is one undo s
 (a headless Metal, D3D11 or Vulkan device, through `TileWorldSnapshot`, the same path the render goldens take),
 and both hand back a text block naming the framing followed by the PNG itself, with an optional `savePath` that
 ALSO writes the file and joins the saved path to that framing line. Everything else runs on a machine with no
-display. `height_import` reads binary PGM (P5) rather than PNG, since the engine ships no PNG decoder, so
-convert first.
+display. `height_import` reads binary PGM (P5) or non-interlaced 8/16-bit PNG. Both formats use the same
+undoable height command and north-first row orientation.
 
 A short authoring run:
 
@@ -7735,7 +7865,10 @@ grid.Draw(batch, white, font);
 units of travel to type instead, Enter commits clamped and rounded, Escape cancels, typing also accepts
 numpad/keypad keys the same as the top-row keys, digits/dot/minus, shift-independent), `BoolRow` through a
 `Toggle`, `TextRow` through a `TextInput`, `ChoiceRow` through a `Dropdown` over a fixed set of option
-strings (get/set delegates over the selected option, like `TextRow`), and `ReadOnlyRow` just polls and
+strings (get/set delegates over the selected option, like `TextRow`), or `ChoiceOption` values that separate
+localized `Content` from stable string `Value`. Use the `ChoiceOption` overload for player-facing choices
+so a language switch changes labels without changing the value passed to the getter and setter.
+`ReadOnlyRow` just polls and
 displays a string. A `ChoiceRow` polls the getter only while its list is closed, so an in-progress pick is
 never stomped. The grid draws in two passes (every row's label+editor, then a late overlay pass), so a
 `ChoiceRow`'s open list draws ABOVE the rows below the selector instead of being overpainted by them; the list
@@ -7752,7 +7885,9 @@ chrome in its own pass does not hand-build the shapes: `GuiDraw.Fill(batch, whit
 `GuiDraw.Border(batch, white, rect, thickness, color)` and `GuiDraw.Line(batch, white, a, b, thickness, color)`,
 all over a 1x1 white texture (Render2D has no primitive renderer). `Border` strokes the outline just inside the
 rect and snaps rect + thickness to whole device pixels in a point-space UI pass, so a consumer border matches
-the engine's own. The rest of `GuiDraw` (`FillStyled`, the skin and glow paths, the widget geometry helpers) is
+the engine's own. For translucent borders, use `GuiDraw.BorderSingleCoverage` with the same arguments:
+its strips do not overlap, so each corner receives the requested alpha once. `Border` retains its existing
+corner coverage. The rest of `GuiDraw` (`FillStyled`, the skin and glow paths, the widget geometry helpers) is
 internal widget plumbing and is not part of the consumer contract.
 
 `NumberField` and `TreeView` also stand alone outside a grid, e.g. an
@@ -7927,8 +8062,9 @@ during its own shutdown to drain the coalesced write. A `--map <path>` launch fl
 push `MapEditorScene` directly ABOVE the landing scene instead of going through New Map/Open Recent, so
 Close still returns to the menu. `DiscoverMaps` renders a further Open Map section below Open Recent for
 paths the head knows about but the recents store does not: deduplicated against `Recent`, deterministically
-ordered, and capped with a reported remainder, re-queried on scene enter and on re-exposure rather than every
-frame since it is head file IO. See the `KhaozEngine.MapEditor` README's "Landing scene and recent files"
+ordered, and re-queried on scene enter and on re-exposure rather than every frame since it is head file IO.
+Open Recent and Open Map share a clipped scroll region with every row reachable. Title, New Map, status and
+Quit remain fixed outside that region. See the `KhaozEngine.MapEditor` README's "Landing scene and recent files"
 section for the full mechanics.
 
 **Tool modes** (`EditorToolController.Mode`, also the toolbar tab bar): `Select` (pick a placement or spawn
@@ -8311,6 +8447,13 @@ always preserve `tileSize` and the world hash exactly. `retile(tileSize)` change
 re-saves: `tileSize` IS part of world identity (`MapDocumentHash.OfWorld`), so this changes the world hash
 on purpose, and the result's `Warning` states the before/after digests plainly rather than leaving a caller
 to notice a coordinated client/server release is now needed.
+
+**Validation scope.** `map_validate()` validates the document structure and schema, including each loaded
+tile of a windowed document against the tile schema. `SchemaScope` reports `document`, `loadedTiles`, or
+`none`. Pass `verifyWholeWorld: true` to also run `MapDocumentFile.VerifyTiled` against a tiled source's
+saved directory. `WholeWorldChecked`, `WholeWorldValid`, and `WholeWorldErrors` describe that separate
+on-disk check, which does not replace validation of unsaved loaded edits. A failed requested whole-world
+check makes the overall `Valid` result false.
 
 **Features and shapes cross the wire as JSON.** Terrain features (`featureJson`) and
 exclusion/region/override shapes (`shapeJson`) are registry-open or polymorphic unions, so they cross
@@ -9510,7 +9653,8 @@ fields there are a rolling rate window and a reconcile correction in metres, and
 ### Server-owned actors
 
 An ACTOR is a player minus a connection. It carries `TileMoveState`, `TileRouteState` and `PendingTileCommand`,
-so it steps through the SAME `TileMoveSimulator` a player does and can never move in a way a player could not.
+so it steps through the SAME `TileMoveSimulator` algorithm a player does and can never move by a rule the player
+stepper does not understand. A registered traversal profile can give an actor a different collision topology.
 Nothing about an actor is predicted: the client sees one as an ordinary remote entity.
 
 Wiring is three lines and a definition per monster.
@@ -9531,7 +9675,7 @@ var rat = new TileActorDefinition
 };
 
 server.Actors.Add(rat, new TileCoord(70, 70, 0));          // the home tile, and the spawner's identity
-server.Actors.Behaviour = new TileWanderBehaviour(map);    // the default: leash, chase, retaliate, stand, wander
+server.Actors.Behaviour = new TileWanderBehaviour();       // the default: leash, chase, retaliate, stand, wander
 server.Actors.Seed = 20260827;                             // fixes every actor's random stream
 ```
 
@@ -9542,6 +9686,49 @@ drag was long. Raise the window with the leash if a monster is meant to roam tha
 
 No constructor installs a behaviour, so an actor with `Behaviour` left null stands exactly where it was put. That
 is deliberate: the engine ships a default and never assumes it.
+
+**An actor traversal profile is an opaque game-owned key bound to one collision map.** Register every non-default
+profile during server setup, before the first authoritative tick and before any spawner or direct spawn names it.
+The default profile is already bound to the map passed to `TileWorldServer`, so existing actor code keeps the same
+topology without changing a line.
+
+```csharp
+var swimmer = new TileActorTraversalProfile(1);
+
+// The game decides which authored surfaces this kind of actor may occupy. The callback replaces only ground
+// blocking. Placed solid, diagonal, wall and wall-corner collision is applied afterward by the baker.
+TileCollisionMap swimmerMap = TileCollisionBaker.Bake(document, catalogs,
+    (x, z, plane) => !GameGroundRules.CanAquaticActorStand(document, catalogs, x, z, plane));
+
+server.Actors.RegisterTraversalProfile(swimmer, swimmerMap);
+
+var waterCreature = new TileActorDefinition
+{
+    Id = "water-creature",
+    MaxHealth = 20,
+    TraversalProfile = swimmer,
+};
+server.Actors.Add(waterCreature, new TileCoord(48, 36, 0));
+
+// Direct spawns use the same non-positional property and keep the old four-value constructor shape.
+long id = server.SpawnActor(new TileCoord(49, 36, 0), new TileActorSpawn(20, 0, TileDirection.S)
+{
+    TraversalProfile = swimmer,
+});
+```
+
+The map is held by reference. A dynamic blocker applied to it is visible at the next authoritative movement tick.
+Mutate it only on the server's owning thread between ticks. The selected profile governs destination acceptance,
+pathfinding, committed step validation, repathing, chase, wander destinations, leash return, respawn and region
+handoff. It also supplies the attacker's final adjacency check so chase and melee reach cannot disagree about a
+wall. This is geometry only. Attack admission, damage and any ranged rules remain game policy.
+
+A non-default actor must start on an open tile in its registered map. `Add` and direct `SpawnActor` reject an
+unknown profile or blocked custom home before creating an entity. A managed spawner waits and retries if a dynamic
+change later blocks that home when respawn becomes due. The default profile keeps the earlier blocked-home spawn
+behaviour for compatibility. If corrupted ECS state carries an unknown key, movement freezes and consumes its
+pending command instead of falling back to another topology. Player movement and client prediction always keep
+the constructor map.
 
 **The seam is one method, and an intent names a TILE or a TARGET and never a route.** Everything about HOW an
 actor gets there stays inside the stepper.
@@ -9597,6 +9784,12 @@ Six things about the context are worth knowing before writing one:
   net id when several do, and one tick behind a freshly accepted attack command. It is what lets a behaviour
   react to a fight that is COMING rather than only to one that has landed: the shipped default answers it with
   `Stand`, so a monster a player has clicked stops walking away before the first blow.
+- **`TraversalProfile` and `TraversalMap` are the topology selected for this actor.** The shipped wander behaviour
+  reads that map before choosing a destination. Both are non-positional init properties, so old context
+  construction and deconstruction remain source compatible. `TraversalMap` can be null only on a hand-built
+  context or a broken server invariant. The original `TileWanderBehaviour(map, ...)` constructor remains as a
+  fallback for hand-built contexts, while a server-supplied map wins. The parameterless constructor reads the
+  server-supplied map, and `CreateWithTiming` does the same with custom pause and retaliation timings.
 
 `TileActorIntentKind.Break` drops the target, walks home and restores the actor to full health when it ARRIVES,
 not when it breaks, and it drops the damage record with the target, because a break that left it set would have a
@@ -9618,11 +9811,12 @@ is refused, so a spawner can never take a tick down with it.
 Combat is a FOLLOWED interaction rather than a system of its own. `TileCommandKind.Attack` names a NET ID,
 `TileMoveState.CombatTarget` carries the lock, and the chase therefore runs inside the ONE stepper both heads
 predict rather than in a second movement authority the client would pay a round trip on. Melee range is literally
-`TileReach.Contains` against a 1x1 rect, so cardinal adjacency, the no-diagonal rule and the wall-denied safespot
-all fall out of the reach rule the package already had. The follow turns the attacker toward its target on every
-tick it answers in range, not once as it lands, so a combatant faces what it is fighting even after a step-off
-walked it away from the target and even as the target circles it. Both heads predict that turn with the chase, so
-it is not a facing the client waits a snapshot for.
+`TileReach.Contains` against a 1x1 rect, using the attacker's registered movement map for an actor and the normal
+constructor map for a player. Cardinal adjacency, the no-diagonal rule and the wall-denied safespot all fall out
+of the reach rule the package already had, and the final legal-reach check agrees with the chase topology. The
+follow turns the attacker toward its target on every tick it answers in range, not once as it lands, so a
+combatant faces what it is fighting even after a step-off walked it away from the target and even as the target
+circles it. Both heads predict that turn with the chase, so it is not a facing the client waits a snapshot for.
 
 **Read the player health contract before anything else here.** A spawned PLAYER has no `TileHealth` at all. An
 actor gets one from its spawn spec, and nothing writes a player's, because `Max` is a number out of the game's own
@@ -10420,6 +10614,12 @@ audio.PlaySfx3D("wind", pos, bus: "ambience"); // master * sfx * 0.4 * volume
 audio.PlaySfx("beep");                         // no bus => default bus (1.0), unchanged from before
 ```
 
+`DefineBus(id, new SfxAttenuation(referenceDistance, rolloffFactor, maxDistance))` also sets the curve for
+later positional one-shots. Reference distance must be positive, rolloff non-negative and maximum at least
+the reference distance. Values must be finite. `DefineBus` rejects `default(SfxAttenuation)`. The historical default is `(1, 1, 50)`. Existing bus volume
+is preserved, and non-positional sounds ignore attenuation. The new `ISfxBackend.Play` overload forwards
+to the existing priority overload unless a custom backend opts into the curve.
+
 **Authoring SFX assets (`ke-sfxbake`).** The `KhaozEngine.Sfx.Tool` dotnet tool bulk-generates and bakes a
 game's sound effects from a `sfx.manifest.jsonc` (prompt -> ElevenLabs sound-effects API -> ffmpeg/oggenc ->
 your asset tree). It defaults to the formats this `AudioSystem` wants: mono OGG Vorbis (mono because OpenAL only
@@ -10717,7 +10917,13 @@ _recorder.Stop();                                        // flush + close (also 
 Each sample line is one object: `{"t":12.34,"fps":59.7,"rttMs":48,"correctionM":0.02}`. Non-finite values
 serialize as JSON `null` so every line stays parseable.
 
-### The session header (`TelemetrySessionHeader` / `TelemetrySessionInfo`, 17.25.0)
+#`DiagnosticsOverlay.NetworkSection(NetTransportStats)` supplies ping and packet loss for a transport-only
+client. `DiagnosticsHud.SetTransportStatsSource(Func<NetTransportStats?>?)` wires that snapshot into the
+throttled HUD. Returning null hides the section, while a disconnected snapshot shows the disconnected
+status. This source and `SetNetStatsSource` replace each other, and passing null to either removes the
+active network source. Transport snapshots do not invent byte rates or correction counts.
+
+## The session header (`TelemetrySessionHeader` / `TelemetrySessionInfo`, 17.25.0)
 
 **Every recording opens with a session-header line**, so a capture says what produced it instead of being a
 column of numbers an analyst has to take on trust. Without it a field report cannot be tied to a build, a
@@ -11228,7 +11434,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.22.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.30.0" />
 ```
 
 ```csharp
@@ -11264,7 +11470,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.22.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.30.0" />
 ```
 
 ```csharp
@@ -11506,7 +11712,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.22.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.30.0" />
 ```
 
 ```csharp
@@ -11574,18 +11780,17 @@ And an element the emitted shader does not reference in a stage is NOT bound for
 indices: `GpuResourceLayoutElement`'s `Stages` is what you declared and the emission is what the compiler did,
 and this backend binds on the second.
 
-**The shader path takes the same GLSL 450 every other backend takes**, so there is nothing to write differently
-for it: sources go in, an `MTLLibrary` and an `MTLFunction` per stage come out, and a compute shader reports the
-`ThreadGroupSize*` its own module declares. What is worth knowing is where a binding index comes from, because
-Metal is the one backend where it is not written in the shader. There is no `register(t3)` and no
-`layout(binding = 3)` on the far side: the cross-compiler assigns each resource an index of its own, per stage,
-following first reference rather than declaration order. The native backend reads those indices out of the
-emitted text and resolves each one back to your declared `(set, binding)` through the shader's own SPIR-V
-decorations, so what it binds is where the resource actually went. The deleted Veldrid Metal backend counted declarations
-instead, which is why the engine's shaders still sample every texture up front in binding order and why
-`ShaderValidation.ValidatePair` and `ValidateCompute` both reject a shader whose emitted index order disagrees
-with its binding order (see "It also checks the Metal binding order" under device-free shader validation). Keep
-both habits: the shipped shaders were authored under that constraint.
+**The shader path takes the same GLSL 450 every other backend takes.** Sources become an `MTLLibrary`
+and an `MTLFunction` per stage, and compute shaders report their declared thread-group sizes. The engine
+assigns each resource an index from its declared `(set, binding)` through `MslIndexRemap`, then installs
+that mapping in SPIRV-Cross. The native backend binds against the same authored indices.
+
+Texture sampling can be conditional and can occur in a different order from resource declarations.
+`MetalConditionalTextureOrderGpuTests` proves this on the native device by reading a higher binding first
+inside a runtime branch and checking both branch outcomes through pixel readback. The old requirement to
+sample every texture up front in binding order belonged to the removed Veldrid backend. Existing shaders
+may retain that shape, but new shaders do not need it. `ShaderValidation.ValidatePair` and `ValidateCompute`
+still check that the authored indices reached the emitted MSL.
 
 A shader whose emission cannot be read fails at `CreateShadersFromSpirv` with a message naming the program, the
 stage and the offending argument, and it fails with no device involved, so it surfaces in a headless test run
@@ -13205,8 +13410,13 @@ It is a default interface member, so every validator already has it. The default
 maps null to `Refused`, which is what null already meant, so nothing that exists today changes meaning.
 `DiscordTokenValidator` overrides it and splits on the HTTP status class: any 5xx, a 429, a 408, or a request
 that never completed report `ProviderUnavailable`, everything else non-success reports `Refused`.
-`OidcTokenValidator` takes the default for now, so an OIDC outage still reads as `Refused`. `result.Detail` is
-a developer-facing note (a status code, an exception message), never localized and never shown to a player.
+`OidcTokenValidator` also overrides it: discovery, JWKS and transport failures report `ProviderUnavailable`,
+while invalid signatures and claims report `Refused`. Caller cancellation still propagates, including when
+metadata is cached. `result.Detail` is a developer-facing note, never shown to a player.
+
+Shared browser and loopback adapters live in `KhaozEngine.Identity.Interactive`, so Discord and custom
+providers can use them without referencing OIDC. Existing `KhaozEngine.Identity.Oidc` adapter names remain
+forwarding wrappers. Import the shared namespace when using those adapters with another provider.
 
 ### Offline grace
 
@@ -13547,7 +13757,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="18.22.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="18.30.0" />
 </ItemGroup>
 ```
 
@@ -13602,6 +13812,11 @@ Two bounds sit ahead of the token check, because the token travels inside the re
 `AutomationHost.MaxRequestLineBytes` (64 KiB) is refused and the connection closes, without the rest of it ever being
 buffered. A connection gets `FirstLineTimeout` (5 seconds) for its first complete line and `IdleTimeout` (60 seconds)
 between lines after that, both settable on the options and both off when set to zero or less.
+
+`CommandTimeout` defaults to 5 seconds and must be positive, up to the runtime timer limit of about 49.7 days.
+An expired queued command gets a timeout reply and is removed so it cannot execute after the frame loop resumes.
+An expired `step` is also removed from the wait list, and the connection stays usable. A synchronous callback
+already executing at its deadline cannot be preempted safely and returns its actual success or failure.
 
 The state provider and every verb run on the WINDOW thread at the frame boundary, so they may touch the live camera,
 the screen stack and the world directly with no locking. A verb that throws becomes an error reply rather than taking
@@ -15340,6 +15555,9 @@ load lands, so on a high-latency store a rejoiner who is moving can cross `Quiet
 restore arrives and take a hard cut. Nothing regressed there (every restore was a teleport before), but the
 benefit does degrade with store latency, and widening the distance is the knob for a slow store.
 
+`PersistenceBinding<TState>.RestoreDistance` lets a binding compare restored state in its own coordinates.
+The default uses `Position`, preserving existing 3D behavior. Tile persistence compares integer X, Z and plane coordinates directly, so resuming the same tile at any map scale does not invent a teleport or advance the epoch.
+
 ### Per-cell world persistence (`CellPersistence`)
 
 `KhaozEngine.NetWorld.CellPersistence` wires an `IWorldStore` into a `ShardHost`-based server (through
@@ -15350,6 +15568,12 @@ instantiated), a **periodic dirty save** of cells changed since their last save,
 record** so restored entities never collide with a freshly spawned one after a restart. Players are excluded
 (they persist separately, player-keyed, through `WorldPersistence`), and so are ghosts and migrating entities -
 only a cell's owned, non-player state is saved.
+
+
+`CellPersistence.CellRestoreApplied` fires after a successful restore, retained-frame handling and NetId
+high-water advancement. Its `CellRestoreAppliedEvent` carries `Coord`, restored `NetIds` and
+`RetainedFrameCount`. It runs inline from the restore drain in `Update` or `FlushAsync`, so drain on the
+server thread when handlers touch world state. Missing, rejected and stale loads do not emit it.
 
 ```csharp
 using KhaozEngine.NetWorld;
@@ -15871,8 +16095,10 @@ boost, what it costs, what shows in the HUD and how it is balanced are all game 
 `Teleport(PlayerRef, Vector3)` moves a player without owning any concept of why. If two effects are active at
 once, the product is yours to compute before you call.
 
-The call is queued and applied on the host thread at the top of the next tick, so it is safe from any thread (an
-ability system, a game-message handler, an expiry timer). Read the applied value back with `TryGetPlayerState`.
+The call is queued to the host thread at the top of the next tick, so it is safe from any thread (an
+ability system, a game-message handler, an expiry timer). The sharded server retains the quantized desired
+value by stable player net id if ownership is temporarily unresolved, retries after handoffs, and clears
+it when that player leaves. Read the applied value back with `TryGetPlayerState`.
 
 What the engine guarantees once you set it:
 
@@ -16261,16 +16487,13 @@ The seam's state (the time-to-live, the clock, the offer records) lives in this 
 is a plain entity carrying `PickupState` that the seam knows nothing about, offered to nobody and expiring never.
 
 The mark is not a lock, and it is worth knowing what clearing it actually buys you. `server.ClearTransient(pickupNetId)`
-after `Spawn` drops the mark, and the next save writes the entity like any other. What you get back on restore is
-precisely the husk above: nothing rehydrates the seam's tracking, so the restored orb is offered to nobody, expires
-never, and `Despawn` / `DespawnAll` / `ForgetCell` all miss it. Persistent ground loot needs a
-`WorldPickups.Rehydrate(world)` that re-adopts restored `PickupState` entities into the seam, filed as
-[#660](https://github.com/APKiwiOrg/KhaozEngine/issues/660). Until that lands, a collectible meant to survive a
-restart belongs in your own content or save data, spawned again at boot, which is also the only place its payload
-still means anything. Clearing the mark is not the only route to that husk either: re-marking a pickup
-`TransientScope.DurableOnly` keeps it in the evictor's unload freeze while `ForgetCell` has already dropped the
-seam's record for it, so re-entering that coordinate hands back an untracked, never-expiring pickup entity
-mid-session, with no restart involved. Leave a pickup on the `Always` scope `Spawn` gives it.
+after `Spawn` drops the mark, and the next save writes the entity like any other. Call `WorldPickups.Rehydrate(world)` after applying the restored cell snapshot. It adopts owned entities
+carrying `PickupState`, `NetId` and `ReplicatedPosition`, preserves payload and owner, and starts a fresh lifetime
+and offer history from the configured defaults. Repeated calls do not reset already adopted pickups.
+For asynchronous loads, subscribe to `CellPersistence.CellRestoreApplied` and pass the restored cell's world.
+For an eviction cache restore, call it after the cached snapshot is applied. Keep the default `Always` scope
+for pickups that should disappear on unload or restart. Use `ClearTransient` for deliberate durable loot and
+keep its payload definitions valid across restarts.
 
 **The same opt-out is yours for any other transient server-owned entity.** A timed spawn, a wave of adds, a
 projectile, a temporary marker:
@@ -16550,3 +16773,39 @@ and execute the published binary; it prints one `AOT PROBE:` line and returns ex
 - To change the library: edit, add a headless test, `scripts/pack-local-feed.sh`, consume locally. When
   stable, bump the version + add a `CHANGELOG.md` entry + tag for a published release. Each game adopts on
   its own schedule by bumping its pinned version (or its umbrella metapackage version).
+
+## Safe-area UI layout
+
+A platform host supplies `KhaozEngine.Primitives.SafeAreaInsets` in design units. Apply them to the
+viewport's `DesignBounds`, then use the existing `KhaozEngine.Gui.Layout` anchors inside that rect.
+
+```csharp
+Rect safe = new SafeAreaInsets(top: 24, bottom: 12, left: 0, right: 0).Apply(viewport.DesignBounds);
+Rect action = Layout.Resolve(safe, Anchor.BottomRight, 120, 40, marginX: 16, marginY: 16);
+Rect point = Layout.ResolveFractional(safe, 0.25f, 0.75f, width: 0, height: 0);
+```
+
+Insets must be finite and non-negative. Opposing insets that consume an axis produce zero safe size.
+`ResolveFractional` accepts fractions in [0, 1] and aligns the same fraction of the child and parent,
+then applies optional offsets. Zero child size resolves a point. This API does not query platform insets
+or alter the viewport, it composes with each host's existing viewport and input mapping.
+
+
+### Shared local transports and drain countdowns
+
+`InMemoryTransportHub` in Netcode gives headless tests and local hosts one `Server` endpoint and multiple
+`CreateClient()` endpoints. Sends copy payloads and arrive on the receiving endpoint's next `Poll`. Disconnects
+are observable and stop later sends. Dispose the hub to disconnect its clients. The hub is single-threaded.
+
+`KhaozEngine.Simulation.Hosting.DrainController` owns the deterministic grace countdown shared by world and tile
+servers. Call `Begin(graceSeconds)` and advance it from the host's own clock. `HasBegun` stays true after completion,
+so admission stays closed after a drain finishes. The existing NetWorld type forwards to the shared implementation.
+
+Command-rate budgets refill when simulation time advances, independent of transport polling frequency. Extra
+`Poll` calls cannot mint another per-tick allowance. `ITileCombatRules.CanAttack(attackerNetId, targetNetId)` lets
+the game reject a target before an Attack command creates a lock, chase or roll, and defaults to permissive behavior.
+
+
+Stair climb smoothing survives a shard handoff by seeding the destination's empty smoothing accumulator from the
+migrated `ClimbRateQ` signal. Ordinary ticks retain their full-precision accumulator. The float remains absent
+from observer snapshots, so the wire payload does not grow.

@@ -15,7 +15,7 @@ public class WorldClientTimeoutTests
     [Fact]
     public void No_snapshots_for_the_timeout_window_is_Disconnected_Timeout()
     {
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         var config = new WorldServerConfig { TickSeconds = 1f / 30f, MaxPlayers = 8 };
         var server = new WorldServer(hub.Server, config, Flat, MoveTuning.Default);
         var client = new WorldClient(hub.CreateClient(), Flat, MoveTuning.Default,
@@ -33,7 +33,7 @@ public class WorldClientTimeoutTests
     [Fact]
     public void Drop_after_a_shutdown_notice_is_attributed_ServerShutdown()
     {
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         var config = new WorldServerConfig { TickSeconds = 1f / 30f, MaxPlayers = 8 };
         var server = new WorldServer(hub.Server, config, Flat, MoveTuning.Default);
         INetTransport ct = hub.CreateClient();
@@ -56,15 +56,15 @@ public class WorldClientTimeoutTests
     /// <see cref="ServerNoticeKind.Banned"/> notice at join, and the drop that follows must attribute as
     /// <see cref="DisconnectReason.Banned"/> rather than the generic <see cref="DisconnectReason.Unreachable"/> a
     /// crash or a network loss gives, so a consumer reading only the reason can tell a ban from an outage. The
-    /// harness produces the drop because <c>InMemoryHub</c>'s server endpoint no-ops Disconnect, exactly as the
-    /// shutdown case above does.</summary>
+    /// in-memory transport carries both the notice frame and the server's terminal event through the real kick
+    /// path.</summary>
     [Fact]
     public async Task Drop_after_a_banned_notice_is_attributed_Banned()
     {
         var bans = new InMemoryBanStore();
         await bans.BanAsync("evil", "cheating");
 
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         var config = new WorldServerConfig { TickSeconds = 1f / 30f, MaxPlayers = 8 };
         var server = new WorldServer(hub.Server, config, Flat, MoveTuning.Default, banStore: bans);
         INetTransport ct = hub.CreateClient();
@@ -88,7 +88,7 @@ public class WorldClientTimeoutTests
     [Fact]
     public void Drop_with_no_notice_in_front_of_it_is_still_Unreachable()
     {
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         var config = new WorldServerConfig { TickSeconds = 1f / 30f, MaxPlayers = 8 };
         var server = new WorldServer(hub.Server, config, Flat, MoveTuning.Default);
         INetTransport ct = hub.CreateClient();

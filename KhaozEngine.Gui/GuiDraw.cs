@@ -11,8 +11,9 @@ namespace KhaozEngine.Gui
     /// Small rectangle-drawing helpers shared by the widgets, drawn with a 1x1 white texture through the
     /// <see cref="SpriteBatch"/> (Render2D has no primitive renderer; this fills that gap for Gui).
     /// <para>The public surface is deliberate rather than blanket. The 2D primitives a game needs to draw its own
-    /// chrome in its own pass are public: <see cref="Fill"/>, <see cref="Border"/> and <see cref="Line"/>, plus
-    /// <see cref="TruncateWithEllipsis"/>. Everything else (the styled fill, the skin path, the glow and the
+    /// chrome in its own pass are public: <see cref="Fill"/>, <see cref="Border"/>,
+    /// <see cref="BorderSingleCoverage"/> and <see cref="Line"/>, plus <see cref="TruncateWithEllipsis"/>.
+    /// Everything else (the styled fill, the skin path, the glow and the
     /// widget-specific geometry) is internal widget plumbing with no consumer contract, and stays internal so it
     /// can change with the widgets.</para>
     /// </summary>
@@ -97,6 +98,51 @@ namespace KhaozEngine.Gui
             Fill(batch, white, new Rect(r.X, r.Bottom - t, r.Width, t), color);              // bottom
             Fill(batch, white, new Rect(r.X, r.Y, t, r.Height), color);                      // left
             Fill(batch, white, new Rect(r.Right - t, r.Y, t, r.Height), color);              // right
+        }
+
+        /// <summary>Draw an outline just inside <paramref name="r"/> with each point covered by at most one strip.
+        /// Unlike <see cref="Border"/>, translucent corners do not receive the colour twice. Existing border
+        /// geometry remains available through <see cref="Border"/>. The rect and thickness use the same explicit
+        /// device-pixel snapping as that method.</summary>
+        public static void BorderSingleCoverage(
+            SpriteBatch batch, Texture2D white, Rect r, float thickness, Vector4 color)
+        {
+            if (thickness <= 0f) return;
+            r = batch.SnapRect(r);
+            float t = batch.SnapLength(thickness, minDevicePixels: 1f);
+            foreach (Rect strip in BorderSingleCoverageGeometry(r, t))
+                Fill(batch, white, strip, color);
+        }
+
+        /// <summary>Pure strip geometry for <see cref="BorderSingleCoverage"/>. Strips are clipped to the source
+        /// rect and never overlap, including when thickness consumes the interior.</summary>
+        internal static Rect[] BorderSingleCoverageGeometry(Rect r, float thickness)
+        {
+            if (thickness <= 0f || r.Width <= 0f || r.Height <= 0f) return Array.Empty<Rect>();
+
+            var strips = new Rect[4];
+            int count = 0;
+            float topHeight = MathF.Min(thickness, r.Height);
+            strips[count++] = new Rect(r.X, r.Y, r.Width, topHeight);
+
+            float remainingHeight = r.Height - topHeight;
+            float bottomHeight = MathF.Min(thickness, remainingHeight);
+            if (bottomHeight > 0f)
+                strips[count++] = new Rect(r.X, r.Bottom - bottomHeight, r.Width, bottomHeight);
+
+            float middleHeight = remainingHeight - bottomHeight;
+            if (middleHeight > 0f)
+            {
+                float leftWidth = MathF.Min(thickness, r.Width);
+                strips[count++] = new Rect(r.X, r.Y + topHeight, leftWidth, middleHeight);
+                float rightWidth = MathF.Min(thickness, r.Width - leftWidth);
+                if (rightWidth > 0f)
+                    strips[count++] = new Rect(r.Right - rightWidth, r.Y + topHeight, rightWidth, middleHeight);
+            }
+
+            if (count == strips.Length) return strips;
+            Array.Resize(ref strips, count);
+            return strips;
         }
 
         /// <summary>

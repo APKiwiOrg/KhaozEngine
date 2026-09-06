@@ -81,7 +81,7 @@ namespace KhaozEngine.Tests.Gpu
                 if (!pinned.TryGetValue(key, out string? want))
                 {
                     problems.Add($"  {key}: not in the table. A program was added to "
-                        + $"{nameof(D3D11ShaderProgramCatalog)} without a bake.");
+                        + $"{nameof(ShippedShaderPrograms)} without a bake.");
                 }
                 else if (!string.Equals(want, hash, StringComparison.Ordinal))
                 {
@@ -93,7 +93,7 @@ namespace KhaozEngine.Tests.Gpu
                          .OrderBy(k => k, StringComparer.Ordinal))
             {
                 problems.Add($"  {orphan}: in the table but no longer emitted. A program was removed from "
-                    + $"{nameof(D3D11ShaderProgramCatalog)} without a bake.");
+                    + $"{nameof(ShippedShaderPrograms)} without a bake.");
             }
 
             Assert.True(problems.Count == 0,
@@ -115,13 +115,13 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void TheCatalogCoversEveryShippedProgram()
         {
-            var graphics = D3D11ShaderProgramCatalog.GraphicsPrograms().ToArray();
-            var compute = D3D11ShaderProgramCatalog.ComputeKernels().ToArray();
+            var graphics = ShippedShaderPrograms.GraphicsPrograms().ToArray();
+            var compute = ShippedShaderPrograms.ComputeKernels().ToArray();
 
             // 37 non-test CreateShadersFromSpirv call sites, 35 distinct source pairs (the Line pair is created
             // three times). R5's tile-ground pass is the newest, and the count moves with every pipeline the
             // renderers gain. Two compute kernels across the four reachable cascade resolutions.
-            Assert.Equal(35, graphics.Length);
+            Assert.Equal(36, graphics.Length);
             Assert.Equal(8, compute.Length);
 
             Assert.Equal(graphics.Length, graphics.Select(p => p.Name).Distinct(StringComparer.Ordinal).Count());
@@ -140,14 +140,14 @@ namespace KhaozEngine.Tests.Gpu
         static Dictionary<string, string> EmitEverything()
         {
             var emitted = new Dictionary<string, string>(StringComparer.Ordinal);
-            foreach (ShippedGraphicsProgram program in D3D11ShaderProgramCatalog.GraphicsPrograms())
+            foreach (ShippedGraphicsProgram program in ShippedShaderPrograms.GraphicsPrograms())
             {
                 CrossCompiledPair pair = SpirvCrossCompile.GlslPairToHlsl(
                     program.VertexGlsl, program.FragmentGlsl, program.Name);
                 emitted[program.Name + ".vertex"] = Sha256(pair.VertexSource);
                 emitted[program.Name + ".fragment"] = Sha256(pair.FragmentSource);
             }
-            foreach (ShippedComputeKernel kernel in D3D11ShaderProgramCatalog.ComputeKernels())
+            foreach (ShippedComputeKernel kernel in ShippedShaderPrograms.ComputeKernels())
             {
                 CrossCompiledCompute compute = SpirvCrossCompile.GlslComputeToHlsl(kernel.ComputeGlsl, kernel.Name);
                 emitted[kernel.Name + ".compute"] = Sha256(compute.ComputeSource);
@@ -166,14 +166,14 @@ namespace KhaozEngine.Tests.Gpu
             string name = key.Substring(0, dot);
             string stage = key.Substring(dot + 1);
 
-            foreach (ShippedGraphicsProgram program in D3D11ShaderProgramCatalog.GraphicsPrograms())
+            foreach (ShippedGraphicsProgram program in ShippedShaderPrograms.GraphicsPrograms())
             {
                 if (!string.Equals(program.Name, name, StringComparison.Ordinal)) continue;
                 CrossCompiledPair pair = SpirvCrossCompile.GlslPairToHlsl(
                     program.VertexGlsl, program.FragmentGlsl, program.Name);
                 return stage == "vertex" ? pair.VertexSource : pair.FragmentSource;
             }
-            foreach (ShippedComputeKernel kernel in D3D11ShaderProgramCatalog.ComputeKernels())
+            foreach (ShippedComputeKernel kernel in ShippedShaderPrograms.ComputeKernels())
             {
                 if (string.Equals(kernel.Name, name, StringComparison.Ordinal))
                     return SpirvCrossCompile.GlslComputeToHlsl(kernel.ComputeGlsl, kernel.Name).ComputeSource;

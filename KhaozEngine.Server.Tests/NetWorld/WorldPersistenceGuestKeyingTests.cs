@@ -23,7 +23,7 @@ namespace KhaozEngine.Tests.NetWorld;
 /// in with <see cref="WorldPersistenceConfig.PersistGuests"/>, which files each guest under a durable key minted for
 /// that one session and never under the seat.</para>
 ///
-/// <para>The rows drive the real loopback stack (an <see cref="InMemoryHub"/>, a <see cref="WorldServer"/> and a
+/// <para>The rows drive the real loopback stack (an <see cref="InMemoryTransportHub"/>, a <see cref="WorldServer"/> and a
 /// <see cref="WorldPersistence"/> over an <see cref="InMemoryWorldStore"/>), because the seat-shaped key is derived by
 /// the HEAD and the whole question is what the persistence layer then does with it. A synchronous store is enough:
 /// nothing here depends on the in-flight window that <see cref="WorldPersistenceSlotRecycleTests"/> needs a gate for.
@@ -50,7 +50,7 @@ public class WorldPersistenceGuestKeyingTests
     {
         private readonly List<NetClient> peers = new();
 
-        public required InMemoryHub Hub { get; init; }
+        public required InMemoryTransportHub Hub { get; init; }
         public required InMemoryWorldStore Store { get; init; }
         public required WorldPersistence Persistence { get; init; }
         public required WorldServer Server { get; init; }
@@ -128,7 +128,7 @@ public class WorldPersistenceGuestKeyingTests
 
     private static Rig Build(WorldPersistenceConfig? pcfg = null)
     {
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         var store = new InMemoryWorldStore();
         var config = new WorldServerConfig
         {

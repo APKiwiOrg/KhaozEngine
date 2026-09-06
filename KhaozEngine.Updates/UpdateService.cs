@@ -21,6 +21,7 @@ namespace KhaozEngine.Updates;
 /// </summary>
 public sealed partial class UpdateService : IDisposable, IUpdateStatus
 {
+    private const string UntrustedUpdateMessage = "This build cannot verify updates.";
     private readonly UpdateServiceOptions options;
     private readonly IUpdateSource source;
     private readonly string platform;
@@ -124,6 +125,8 @@ public sealed partial class UpdateService : IDisposable, IUpdateStatus
         }
 
         SetState(UpdateState.Checking);
+        errorMessage = null;
+        required = false;
         lastCheckReachedFeed = false;
 
         try
@@ -149,21 +152,31 @@ public sealed partial class UpdateService : IDisposable, IUpdateStatus
             byte[]? signature = await source.DownloadBytesAsync(latest.ManifestUrl + ".sig", maxManifestBytes, cancellationToken);
             if (manifestBytes is null || signature is null)
             {
-                SetState(UpdateState.Idle);
+                RefuseUntrustedUpdate(latest.Version);
                 return;
             }
 
             if (!ManifestVerifier.Verify(manifestBytes, signature, trustedKeys))
             {
                 log.Warn($"Manifest signature INVALID for {latest.Version}; refusing update.");
-                SetState(UpdateState.Idle);
+                RefuseUntrustedUpdate(latest.Version);
                 return;
             }
 
-            UpdateManifest? remoteManifest = UpdateManifest.Deserialize(System.Text.Encoding.UTF8.GetString(manifestBytes));
+            UpdateManifest? remoteManifest;
+            try
+            {
+                remoteManifest = UpdateManifest.Deserialize(System.Text.Encoding.UTF8.GetString(manifestBytes));
+            }
+            catch (JsonException)
+            {
+                log.Warn($"Signed manifest for {latest.Version} is malformed. Refusing update.");
+                RefuseUntrustedUpdate(latest.Version);
+                return;
+            }
             if (remoteManifest is null)
             {
-                SetState(UpdateState.Idle);
+                RefuseUntrustedUpdate(latest.Version);
                 return;
             }
 
@@ -246,6 +259,14 @@ public sealed partial class UpdateService : IDisposable, IUpdateStatus
             log.Info($"Check failed: {ex.Message}");
             SetState(UpdateState.Idle);
         }
+    }
+
+    private void RefuseUntrustedUpdate(string advertisedVersion)
+    {
+        remoteVersion = advertisedVersion;
+        errorMessage = UntrustedUpdateMessage;
+        required = false;
+        SetState(UpdateState.Untrusted);
     }
 
     /// <summary>

@@ -236,6 +236,69 @@ namespace KhaozEngine.Tests.Terrain
         }
 
         [Fact]
+        public void Sink_snow_line_changes_the_baked_snow_transition()
+        {
+            var field = new TerrainField(new TerrainConfig
+            {
+                Seed = 1,
+                GentleAmplitude = 0f,
+                WaterLevel = 0f,
+                Biomes =
+                [
+                    new BiomeBand
+                    {
+                        Start = float.NegativeInfinity,
+                        End = float.PositiveInfinity,
+                        Biome = BiomeId.Meadow,
+                        BaseHeight = 55f,
+                        HillAmplitude = 0f,
+                    },
+                ],
+            });
+            var coord = new ChunkCoord(0, 0);
+            var single = new Scene3DChunkSink(scene: null!, field, new ScatterConfig(),
+                propMeshes: new Dictionary<string, MeshHandle>(), chunkSize: 60f, propDrawRadius: 90f,
+                snowLine: 40f);
+            var layers = new[]
+            {
+                PropLayer.ScatterLayer(new ScatterConfig(), new Dictionary<string, MeshHandle>(), 90f),
+            };
+            var multi = new Scene3DChunkSink(scene: null!, field, layers, chunkSize: 60f, snowLine: 40f);
+            var defaultSink = new Scene3DChunkSink(scene: null!, field, layers, chunkSize: 60f);
+
+            var singleCpu = (Scene3DChunkSink.CpuBuild)single.BuildCpu(coord, lod: 1);
+            var multiCpu = (Scene3DChunkSink.CpuBuild)multi.BuildCpu(coord, lod: 1);
+            var defaultCpu = (Scene3DChunkSink.CpuBuild)defaultSink.BuildCpu(coord, lod: 1);
+
+            Assert.Equal(1f, singleCpu.Mesh.Splat[0].Snow);
+            Assert.Equal(1f, multiCpu.Mesh.Splat[0].Snow);
+            Assert.InRange(defaultCpu.Mesh.Splat[0].Snow, 0.001f, 0.999f);
+        }
+
+        [Fact]
+        public void Sink_default_snow_line_is_identical_to_explicit_60()
+        {
+            var field = Field();
+            var layers = new[]
+            {
+                PropLayer.ScatterLayer(new ScatterConfig(), new Dictionary<string, MeshHandle>(), 90f),
+            };
+            var omitted = new Scene3DChunkSink(scene: null!, field, layers, chunkSize: 60f);
+            var explicitDefault = new Scene3DChunkSink(scene: null!, field, layers, chunkSize: 60f,
+                snowLine: SnowLine);
+            var coord = new ChunkCoord(-1, 2);
+
+            var omittedCpu = (Scene3DChunkSink.CpuBuild)omitted.BuildCpu(coord, lod: 2);
+            var explicitCpu = (Scene3DChunkSink.CpuBuild)explicitDefault.BuildCpu(coord, lod: 2);
+
+            Assert.Equal(omittedCpu.Mesh.Mesh.Vertices, explicitCpu.Mesh.Mesh.Vertices);
+            Assert.Equal(omittedCpu.Mesh.Mesh.Indices32, explicitCpu.Mesh.Mesh.Indices32);
+            Assert.Equal(omittedCpu.Mesh.Splat.Length, explicitCpu.Mesh.Splat.Length);
+            for (int i = 0; i < omittedCpu.Mesh.Splat.Length; i++)
+                AssertSameWeights(omittedCpu.Mesh.Splat[i], explicitCpu.Mesh.Splat[i], $"vertex {i}");
+        }
+
+        [Fact]
         public void Normalized_restores_the_sum_the_shader_relies_on()
         {
             // The splat pipeline packs four weights and reconstructs snow as 1 - sum, so an unnormalized rule result

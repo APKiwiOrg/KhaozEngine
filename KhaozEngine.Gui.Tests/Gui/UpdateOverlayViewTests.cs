@@ -16,6 +16,7 @@ public sealed class UpdateOverlayViewTests
     [InlineData(UpdateState.ReadyToApply, true)]
     [InlineData(UpdateState.Applying, true)]
     [InlineData(UpdateState.Failed, true)]
+    [InlineData(UpdateState.Untrusted, true)]
     public void IsVisible_matches_state(UpdateState s, bool vis) =>
         Assert.Equal(vis, UpdateOverlayView.IsVisible(s));
 
@@ -236,6 +237,7 @@ public sealed class UpdateOverlayViewTests
         {
             UpdateState.UpdateAvailable, UpdateState.Downloading, UpdateState.ReadyToApply,
             UpdateState.Applying, UpdateState.Failed,
+            UpdateState.Untrusted,
         })
         {
             var status = new FakeUpdateStatus { State = s };

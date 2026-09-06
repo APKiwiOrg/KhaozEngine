@@ -96,6 +96,20 @@ public sealed class AudioSystemSfxPriorityTests : IDisposable
         Assert.Equal(1, backend.Plays);
     }
 
+    [Fact]
+    public void ABackendWithoutTheAttenuationOverloadStillGetsThePositionalPlay()
+    {
+        var backend = new PriorityBlindSfxBackend();
+        var audio = new AudioSystem(new NullMusicBackend(), backend);
+        audio.RegisterSfx("blip");
+        audio.LoadContent(_dir);
+        audio.DefineBus("world", new SfxAttenuation(8f, 0.4f, 120f));
+
+        audio.PlaySfx3D("blip", Vector3.One, bus: "world");
+
+        Assert.Equal(1, backend.Plays);
+    }
+
     /// <summary>An ISfxBackend implementing only the members that existed before #114.</summary>
     private sealed class PriorityBlindSfxBackend : ISfxBackend
     {

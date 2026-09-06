@@ -7,7 +7,7 @@ per-agent follower that turns a moving goal into a per-tick steering direction f
 
 ## Clearance grid (`NavGrid`)
 
-`NavGrid.FromWalkable(width, height, cellSize, originX, originZ, walkable, yMin, yMax)` rasterizes a
+`NavGrid.FromWalkable(width, height, cellSize, originX, originZ, walkable, yMin, yMax, yawRadians)` rasterizes a
 `(cx, cz) -> bool` walkable predicate over a rectangular XZ region, then bakes a clearance transform once.
 Each cell stores a clearance byte: the approximate distance from the cell center to the nearest blocked
 cell center, in half-cell units (a two-pass 2-3 chamfer distance transform - an orthogonal neighbor step
@@ -20,6 +20,12 @@ CellSize * 0.5f`, and a cell is passable for an agent of a given radius when its
 `FromWalkable`. `IsPassable`/`ClearanceMetersAt` are the only per-query radius check, so a rat and a bear
 query the same grid with no rebake. `YMin`/`YMax` record the vertical band a layer represents
 (`ContainsY`), used by `NavSpace` to resolve which layer a world Y falls on.
+
+Both `FromWalkable` and `FromSurfaces` accept optional finite `yawRadians` (default zero). Positive yaw
+rotates local +X toward world +Z before translating to `(OriginX, OriginZ)`. `CellOf`, `CellCenter`,
+path smoothing and waypoint emission use that transform. Sample callbacks still receive local cell
+coordinates, and surface heights remain world Y. `NavLayerLinks.Generate` requires matching yaw as
+well as matching dimensions, cell size and origin across its co-registered layers.
 
 ## Multi-layer spaces (`NavSpace` / `NavLink`)
 

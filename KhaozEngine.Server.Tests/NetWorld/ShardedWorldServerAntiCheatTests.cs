@@ -4,6 +4,7 @@ using System.Numerics;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Netcode;
 using KhaozEngine.NetWorld;
+using KhaozEngine.Sharding;
 using Xunit;
 
 namespace KhaozEngine.Tests.NetWorld;
@@ -95,5 +96,82 @@ public class ShardedWorldServerAntiCheatTests
         }
 
         Assert.Contains(flags, f => f.Reason == SuspiciousReason.MovementCorrection && f.Slot == client.Slot);
+    }
+
+    [Fact]
+    public void A_frame_without_a_cell_subtick_neither_advances_nor_resets_the_correction_streak()
+    {
+        var flags = new List<SuspiciousActivity>();
+        const float R = 5f;
+        var cfg = Config(new AntiCheatConfig { MaxCorrectionDistance = 0.175f, CorrectionStreak = 2 },
+            spawn: _ => new Vector3(0f, 0f, R));
+        var (server, client) = Connect(cfg, new CircleBounds(Vector2.Zero, R), flags);
+        flags.Clear();
+        var pushOut = new MoveCommand(new Vector2(0f, 1f), run: false, cameraYaw: MathF.PI);
+
+        client.Send(MoveProtocol.EncodeMove(0, pushOut), Unrel);
+        client.Poll();
+        server.Poll();
+        server.Tick(cfg.TickSeconds);
+        Assert.DoesNotContain(flags, f => f.Reason == SuspiciousReason.MovementCorrection);
+
+        server.Tick(cfg.TickSeconds / 4f);
+        Assert.DoesNotContain(flags, f => f.Reason == SuspiciousReason.MovementCorrection);
+
+        client.Send(MoveProtocol.EncodeMove(1, pushOut), Unrel);
+        client.Poll();
+        server.Poll();
+        server.Tick(cfg.TickSeconds * 3f / 4f);
+
+        Assert.Contains(flags, f => f.Reason == SuspiciousReason.MovementCorrection && f.Slot == client.Slot);
+    }
+
+    [Fact]
+    public void A_tick_in_an_out_of_phase_cell_does_not_sample_a_player_whose_cell_stayed_idle()
+    {
+        var flags = new List<SuspiciousActivity>();
+        const float R = 5f;
+        var cfg = Config(new AntiCheatConfig { MaxCorrectionDistance = 0.01f, CorrectionStreak = 2 },
+            spawn: _ => new Vector3(0f, 0f, R));
+        var (server, client) = Connect(cfg, new CircleBounds(Vector2.Zero, R), flags);
+        flags.Clear();
+        var pushOut = new MoveCommand(new Vector2(0f, 1f), run: false, cameraYaw: MathF.PI);
+
+        client.Send(MoveProtocol.EncodeMove(0, pushOut), Unrel);
+        client.Poll();
+        server.Poll();
+        server.Tick(cfg.TickSeconds);
+        Assert.DoesNotContain(flags, f => f.Reason == SuspiciousReason.MovementCorrection);
+
+        CellSim other = server.Host.EnsureCell(new CellCoord(2, 0));
+        other.Tick(cfg.TickSeconds / 2f);
+        server.Tick(cfg.TickSeconds / 2f);
+        Assert.DoesNotContain(flags, f => f.Reason == SuspiciousReason.MovementCorrection);
+
+        client.Send(MoveProtocol.EncodeMove(1, pushOut), Unrel);
+        client.Poll();
+        server.Poll();
+        server.Tick(cfg.TickSeconds / 2f);
+
+        Assert.Contains(flags, f => f.Reason == SuspiciousReason.MovementCorrection && f.Slot == client.Slot);
+    }
+
+    [Fact]
+    public void A_long_frame_measures_correction_over_the_single_fixed_subtick_that_ran()
+    {
+        var flags = new List<SuspiciousActivity>();
+        const float R = 5f;
+        var cfg = Config(new AntiCheatConfig { MaxCorrectionDistance = 0.25f, CorrectionStreak = 1 },
+            spawn: _ => new Vector3(0f, 0f, R));
+        var (server, client) = Connect(cfg, new CircleBounds(Vector2.Zero, R), flags);
+        flags.Clear();
+        var pushOut = new MoveCommand(new Vector2(0f, 1f), run: false, cameraYaw: MathF.PI);
+
+        client.Send(MoveProtocol.EncodeMove(0, pushOut), Unrel);
+        client.Poll();
+        server.Poll();
+        server.Tick(cfg.TickSeconds * 2f);
+
+        Assert.DoesNotContain(flags, f => f.Reason == SuspiciousReason.MovementCorrection);
     }
 }

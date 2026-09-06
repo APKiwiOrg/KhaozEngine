@@ -64,12 +64,13 @@ namespace KhaozEngine.Render3D.Rendering
         /// <summary>The single per-frame uniform block for the decal pass (Frame, set 0 binding 2). The retired
         /// Veldrid Metal backend mis-bound a second UBO, so the RAW inverse view-projection and the time/quality
         /// value were folded into this one block. #604 lifted that rule, and the block is still everything this
-        /// pass reads. Mirrors <see cref="BeamRenderer"/>'s FrameUniforms. 80 bytes.</summary>
+        /// pass reads. Mirrors <see cref="BeamRenderer"/>'s FrameUniforms. 96 bytes.</summary>
         [StructLayout(LayoutKind.Sequential)]
-        struct FrameUniforms
+        internal struct FrameUniforms
         {
             public Matrix4x4 InvViewProj;   // RAW (un-clip-corrected), matching Camera.ScreenToRay picking
             public Vector4 TimeQ;           // x = effect time seconds, y = quality (1 full / 0 reduced), z = maxRgb ceiling, w = reject dynamic geometry (1 = discard skinned-tagged pixels)
+            public Vector4 RenderOrigin;    // xyz restores render-relative decal centres to absolute phase space
         }
 
         /// <summary>A maximal run of consecutive queued decals sharing one blend, drawn as one instanced call.</summary>
@@ -403,7 +404,9 @@ namespace KhaozEngine.Render3D.Rendering
         /// With no dynamic geometry every geometry pixel keeps alpha 1, so the reject never fires and the render is
         /// byte-identical.
         /// </para></summary>
-        public int Draw(IGpuCommandList cl, RenderResources res, Matrix4x4 viewProj, float timeSeconds, GroundDecalQuality quality, bool hdr, FramePass pass, ReadOnlySpan<GroundDecal> decals)
+        public int Draw(IGpuCommandList cl, RenderResources res, Matrix4x4 viewProj, float timeSeconds,
+            GroundDecalQuality quality, bool hdr, FramePass pass, Vector3 renderOrigin,
+            ReadOnlySpan<GroundDecal> decals)
         {
             if (decals.Length == 0) return 0;
             bool rejectDynamicGeometry = pass == FramePass.Main;
@@ -421,6 +424,7 @@ namespace KhaozEngine.Render3D.Rendering
             {
                 InvViewProj = inv,
                 TimeQ = new Vector4(timeSeconds, quality == GroundDecalQuality.Full ? 1f : 0f, maxRgb, rejectDynamicGeometry ? 1f : 0f),
+                RenderOrigin = new Vector4(renderOrigin, 0f),
             };
             // This pass's own slot, then the WHOLE mirror in one write, ahead of every draw that binds a slot of
             // it. The other pass's slot goes up again carrying the bytes it already held, so the upload is a no-op

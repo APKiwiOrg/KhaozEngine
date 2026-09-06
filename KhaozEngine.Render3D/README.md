@@ -134,10 +134,12 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
     multiplies by the slot tint and the jitter. **The jitter is a MULTIPLIER, not an offset, so `Tangent.z` of 0
     renders that vertex BLACK**: write 1 for none. A mesh built for the model pipeline, where `Tangent` is a
     tangent frame, is not a tile-ground mesh.
-  - **Constraints worth knowing.** Entries past the layer count are ZEROED rather than defaulted, so a mesh naming
-    a slot the set never filled renders black instead of borrowing another material's look. The pipeline binds TWO
+  - **Constraints worth knowing.** Entries past the layer count are zeroed, while the shader clamps every mesh slot
+    to the last real texture layer before reading either resource. A hand-built mesh naming an invalid slot
+    therefore shows the set's last material instead of sampling a nonexistent array slice. The pipeline binds TWO
     sets, the same split the splat pipeline has: set 0 is the shared frame block both stages read, and set 1 is the
-    material's own `TileGroundParams` buffer (`vec4 TintTiling[64]` then a `Misc` vector, written once at load),
+    material's own `TileGroundParams` buffer (`vec4 TintTiling[64]` then a `Misc` vector carrying base specular
+    strength and layer count, written once at load),
     then the albedo array, its sampler, and the shadow map and its sampler LAST, which is the binding-order
     convention the terrain pass established. Until 18.1.0 the frame block and the params rode in ONE buffer per
     material, re-uploaded whole every frame, which is what #727 unfolded. Tile ground CASTS shadows, like a model
@@ -162,7 +164,10 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   to FXAA, never throws). Default `Off`, so the low-level `RenderScale` / `Supersample` fields still govern.
   SSAA supersamples the whole image (geometry AND shaded interiors, the only one that kills high-frequency terrain
   shimmer) and now downsamples correctly at ANY factor via a mip-filtered blit. FXAA is a cheap one-pass edge
-  smoother. MSAA multisamples geometry edges only. `RenderQuality` is the extension point for further quality knobs.
+  smoother. MSAA multisamples geometry edges only. `.Msaa(2, postFxaa: true)` keeps the FXAA post filter
+  after the multisample resolve without increasing internal resolution. `UsesFxaa` reports both forms,
+  and the post-filter choice survives device sample-count clamping. The one-argument MSAA factory keeps
+  its existing unfiltered behavior. `RenderQuality` is the extension point for further quality knobs.
   `RenderScale.FixedInternal` (the default) keeps a single bilinear tap on its final downscale for byte-stable
   goldens, which under-samples on a window smaller than the fixed internal target. Opt into the same mip-filtered
   blit machinery there too with `PixelPostProcessSettings.MipFilterFixedInternalDownscale` (default `false`), or
@@ -246,7 +251,9 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
 - Frustum culling: `Scene3D.FrustumCulling` (on by default) skips any queued mesh instance whose world-space
   bounding sphere is entirely outside the camera frustum, so off-screen terrain chunks and props cost nothing to
   draw. Pixel-neutral by construction (only provably-offscreen geometry is dropped), so existing renders stay
-  byte-stable. Set it `false` to force everything drawn. The shadow depth pass is never camera-culled (an off-screen
+  byte-stable. Explicit `CastsShadows = false` instances are culled before packing and GPU upload,
+  compacting visible instances without changing mesh submission order. Counters include these early rejects.
+  Set culling `false` to force everything drawn. The shadow depth pass is never camera-culled (an off-screen
   caster still writes the shadow map, so its shadow lands on-screen). Read the win from `Scene3D.DrawnInstances` /
   `Scene3D.CulledInstances`. Mesh-local bounds (`MeshBounds`, computed once at `LoadMesh`) feed the pure plane math
   `FrustumPlanes.Extract(camera.ViewProjection)` + `IntersectsAabb`/`IntersectsSphere` (headless, allocation-free).
@@ -474,12 +481,12 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   existed still compiles and still packs from the caller's own `WaterSettings` object unchanged. Every field on
   `WaterLook` mirrors a `WaterSettings` field and is itself nullable - `null` inherits the scene, a value overrides
   it for that plane alone, leaving every other queued plane on the scene's look, which is what lets a calm inland
-  lake and a rough FFT sea share a frame. 33 fields are overridable: `WaveSource`, the swell group, the ripple/
-  detail group, body colour, foam, `ShoreFadeDistance` and the two depth-response strengths `ShoalingStrength`/
+  lake and a rough FFT sea share a frame. 37 fields are overridable: `WaveSource`, the swell group, the ripple/
+  detail group, body colour, foam, the four `Glint*` scalars, `ShoreFadeDistance` and the two depth-response strengths `ShoalingStrength`/
   `SurfStrength`. Scene-wide and NOT on a look at all: `SeaState` (one FFT bake - two sea states a frame does not
   make two oceans, it makes the one producer rebake on every call for both and corrupts the persistent foam
   accumulator), `Bathymetry` (one depth texture), the grid group (`GridMode` and the `Clipmap*` knobs, which pick
-  the pass's pipeline and vertex layout before the draw loop starts), reflection/glint (read the one sky and sun),
+  the pass's pipeline and vertex layout before the draw loop starts), reflection weights (read the one sky),
   the `Surf*` shape knobs, and the sample-count knobs. `WaveSource = WaterWaveSource.Procedural` on a look is the
   inland-body case: the plane leaves the shared ocean, so it loses the sea's swell, whitecaps and (shoaling/surf
   ride the same gate) its breaking surf. The shared ocean itself now runs on DEMAND - it bakes when any queued
@@ -558,6 +565,8 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   `OceanPresets.Apply(kind, post.Water)` writes one coherent group of `Calm`/`Moderate`/`Rough` values: the
   Gerstner swell (`SwellAmplitude`, `SwellWavelength`, `SwellSteepness`, `SwellSpeed`), `NormalStrength`, the
   whitecap foam (`FoamStrength`, `FoamCrestCoverage`) and the sun glint (`GlintStrength`, `GlintRoughness`).
+  `OceanPresets.ApplyToLook(kind, look)` applies that whole bundle to a `WaterLook`, including glint. It keeps
+  `WaveSource` unchanged, so the caller explicitly chooses whether a lake leaves the shared FFT ocean.
   It deliberately leaves `GridMode`, the clipmap fields, `Bathymetry` and the surf fields ALONE: those describe
   the water body's geometry and shoreline rather than its weather, so a preset pick never undoes a consumer's
   clipmap or bathymetry wiring. `Moderate` is closest to `WaterSettings`' own defaults. Throws
@@ -677,6 +686,11 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   exactly as `LoadProp`. Upload the result with `Scene3D.LoadMesh(GltfMesh, GltfMaterialMaps)`. Opt in per-asset
   via the manifest `"textured": true` flag (`AssetEntry.Textured`, default false: renders with the flat
   per-material base colour as before).
+- glTF index validation: every rigid, material-part, skinned and animation load rejects a triangle index outside
+  its primitive's position count. The error names the asset path, bad index and vertex count. Manifest and LOD
+  loads through `PropLoader` add the prop id, and direct `Normalize` calls apply the same check to caller-supplied
+  `GltfMesh` values before transforming them. The raw `GltfMesh` constructor remains permissive for live
+  containment paths that must degrade safely when handed malformed data.
 - Multi-texture-per-primitive props: a prop whose parts are separate materials (a tree with a bark material +
   a leaf material, a signpost with a wood post + a painted sign) renders each part with its own texture instead
   of one flattened mesh. `GltfLoader.LoadPartsWithMaterials(path) -> IReadOnlyList<GltfMeshPart>` splits the glTF
@@ -825,3 +839,20 @@ Renderer deps (the GPU backends, the `Silk.NET.Shaderc` and `Silk.NET.SPIRV.Cros
 SharpGLTF) are confined to this package via
 `KhaozEngine.Gpu`. See
 `docs/USING-KHAOZENGINE.md`.
+
+## Persistent grass and foliage
+
+Create a `FoliageBatch` once from authored `FoliageInstance` mesh handles, transforms and stable thinning
+ranks in `[0, 1)`. `Scene3D.DrawFoliage` submits it each frame with a focus and `FoliageRenderSettings`.
+Transforms upload on first visibility and remain resident. CPU work selects spatial patch prefixes.
+The vertex shader performs exact fading, wind and nearby actor bending with roots anchored at mesh minimum Y.
+
+Wind strength is a fraction of blade height. Direction, speed and spatial frequency are configurable per
+submission. Advance `Scene3D.EffectTimeSeconds` from the render clock. Supply up to four `FoliageInteractor`
+positions, radii and strengths for cosmetic bending. Vertical separation prevents a different floor from
+pushing the grass. All inputs are copied at submission. Grass is lit, supports material alpha masks and
+casts no dynamic shadow. It adds no collision or world state.
+
+Dispose the batch when placements change or unload. The scene owns GPU buffers and retires them safely.
+Mesh handles remain caller-owned and must belong to that scene. `LastFoliageStats` reports workload and
+upload counts. `CandidateInstances` includes instances the shader rejects, rather than exact visible blades.

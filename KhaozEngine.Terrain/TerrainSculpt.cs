@@ -80,8 +80,29 @@ public sealed class TerrainSculpt
         float gx = x / _cellSize, gz = z / _cellSize;
         int i0 = (int)MathF.Floor(gx), j0 = (int)MathF.Floor(gz);
         float fx = gx - i0, fz = gz - j0;
-        float d00 = CellDelta(i0, j0), d10 = CellDelta(i0 + 1, j0);
-        float d01 = CellDelta(i0, j0 + 1), d11 = CellDelta(i0 + 1, j0 + 1);
+        int tileX = FloorDivTile(i0), tileZ = FloorDivTile(j0);
+        int localX = i0 - tileX * TileSize, localZ = j0 - tileZ * TileSize;
+        float d00, d10, d01, d11;
+        if ((uint)localX < TileSize - 1 && (uint)localZ < TileSize - 1)
+        {
+            // All four corners share a tile. Resolve it once without retaining mutable sampler state.
+            if (_tiles.TryGetValue(Key(tileX, tileZ), out float[]? deltas))
+            {
+                int index = localZ * TileSize + localX;
+                d00 = deltas[index];
+                d10 = deltas[index + 1];
+                d01 = deltas[index + TileSize];
+                d11 = deltas[index + TileSize + 1];
+            }
+            else d00 = d10 = d01 = d11 = 0f;
+        }
+        else
+        {
+            d00 = CellDelta(i0, j0);
+            d10 = CellDelta(i0 + 1, j0);
+            d01 = CellDelta(i0, j0 + 1);
+            d11 = CellDelta(i0 + 1, j0 + 1);
+        }
         float top = d00 + (d10 - d00) * fx;
         float bottom = d01 + (d11 - d01) * fx;
         return top + (bottom - top) * fz;

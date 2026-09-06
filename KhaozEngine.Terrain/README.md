@@ -23,6 +23,8 @@ up regardless of load order. Plain `float` math throughout.
   over the analytic base: a sparse map of 32x32 (`TerrainSculpt.TileSize`) delta tiles at a fixed cell
   size. `SampleDelta(x, z)` bilinearly interpolates the authored deltas between cell centers and returns
   0 outside every stored tile. Read-only and deterministic, so composited terrain stays stateless.
+  Samples whose four corners share a tile resolve it once. Tile edges keep the same interpolation and
+  missing-corner behavior, with no mutable cache shared between sampling threads.
   Documents author the tiles as the `terrainOverrides` block (`KhaozEngine.MapDoc`), and
   `MapRuntime.BuildField` builds and attaches this. **`With(add, remove)`** returns a new snapshot sharing
   every unchanged tile's delta array by reference, `O(tile count)` rather than `O(cell count)`, which is

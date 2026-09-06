@@ -243,7 +243,9 @@ namespace KhaozEngine.Render3D
 
         /// <summary>
         /// Pure sequence compare of two captured shadow-caster signatures (each a per-span mesh handle + instance
-        /// count + cast kind list, and the flat per-instance world-matrix + dissolve list, in draw order). Returns
+        /// count + cast kind list, and the flat per-instance world-matrix + dissolve list, in draw order). Uploaded
+        /// offsets and non-caster gaps are ignored: adjacent spans of the same mesh, generation and cast kind are
+        /// compared as one group, so compacting receive-only instances never dirties an unchanged atlas. Returns
         /// <c>true</c> when they DIFFER, so the depth map must re-render. Both signatures are captured by
         /// <see cref="BuildShadowCasterSpans"/> in the exact draw order of <see cref="RenderShadowDepthPass"/>, so an
         /// equal signature proves the same casters, at the same transforms, with the same dissolves and the same
@@ -253,10 +255,29 @@ namespace KhaozEngine.Render3D
             List<ShadowCasterSpan> spansA, List<ShadowCasterInstance> instancesA,
             List<ShadowCasterSpan> spansB, List<ShadowCasterInstance> instancesB)
         {
-            if (spansA.Count != spansB.Count || instancesA.Count != instancesB.Count) return true;
-            for (int i = 0; i < spansA.Count; i++) if (spansA[i] != spansB[i]) return true;
+            if (instancesA.Count != instancesB.Count) return true;
+            int a = 0, b = 0;
+            while (a < spansA.Count && b < spansB.Count)
+                if (NextCanonicalCasterSpan(spansA, ref a) != NextCanonicalCasterSpan(spansB, ref b)) return true;
+            if (a != spansA.Count || b != spansB.Count) return true;
             for (int i = 0; i < instancesA.Count; i++) if (instancesA[i] != instancesB[i]) return true;
             return false;
+        }
+
+        // Normalize only the signature's view. The actual draw spans keep their upload offsets and gaps.
+        // BuildShadowCasterSpans has already excluded None spans, so equal neighbours differ only in packing.
+        static ShadowCasterSpan NextCanonicalCasterSpan(List<ShadowCasterSpan> spans, ref int cursor)
+        {
+            ShadowCasterSpan first = spans[cursor++];
+            uint count = first.Count;
+            while (cursor < spans.Count)
+            {
+                ShadowCasterSpan next = spans[cursor];
+                if (next.Index != first.Index || next.Generation != first.Generation || next.Kind != first.Kind) break;
+                count += next.Count;
+                cursor++;
+            }
+            return first with { Start = 0, Count = count };
         }
 
         /// <summary>

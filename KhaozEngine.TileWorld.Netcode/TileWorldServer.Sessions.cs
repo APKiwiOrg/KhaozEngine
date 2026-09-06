@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using KhaozEngine.Ecs;
 using KhaozEngine.Netcode;
 using KhaozEngine.Sharding;
+using KhaozEngine.Simulation.Hosting;
 using KhaozEngine.WorldStore;
 
 namespace KhaozEngine.TileWorld.Netcode;
@@ -31,10 +32,9 @@ public sealed partial class TileWorldServer : IPersistenceHost<TileMoveState>
 {
     PositionHintProvider? hintProvider;
 
-    // The drain countdown, in seconds of wall clock, and the token it was started with. Negative means no drain
-    // has been asked for, which is what keeps IsDraining answerable from the one field: a grace of zero is a
-    // legitimate drain that completes on the next Tick, and a zero-initialised field could not tell the two apart.
-    float drainRemaining = -1f;
+    // The shared countdown and the token it was started with. The TileWorld contract is one way, so HasBegun stays
+    // true after the central controller reaches its terminal state.
+    readonly DrainController drain = new();
     string drainReason = string.Empty;
     bool drainClosed;
     // The slots to close when a drain completes. Snapshotted, because closing one removes it from the player index
@@ -80,7 +80,7 @@ public sealed partial class TileWorldServer : IPersistenceHost<TileMoveState>
 
     /// <summary>True from the moment <see cref="BeginDrain"/> runs until the server is disposed. A drain is
     /// one way: there is no resume, because the announcement has already gone out to every client.</summary>
-    public bool IsDraining => drainRemaining >= 0f;
+    public bool IsDraining => drain.HasBegun;
 
     /// <summary>True once a drain's grace has elapsed AND the sessions it was counting down for have been closed,
     /// so the host may flush persistence and exit. Polled by the head's own loop rather than raised as an event,
@@ -91,11 +91,7 @@ public sealed partial class TileWorldServer : IPersistenceHost<TileMoveState>
     /// <see cref="PlayerLeaving"/> raised for any of them, so a head that exited on it would file nothing newer than
     /// its last periodic pass. The close runs on the next <see cref="Tick"/>, which is what this waits for.</para>
     /// </summary>
-    public bool IsDrainComplete => IsDrainGraceSpent && drainClosed;
-
-    // The grace half of IsDrainComplete, and the trigger the tick uses. Separate from the property so the close can
-    // depend on it without the property depending on the close, which would be circular.
-    bool IsDrainGraceSpent => IsDraining && drainRemaining <= 0f;
+    public bool IsDrainComplete => drain.IsComplete && drainClosed;
 
     /// <summary>
     /// Pumps the transport and turns session events into joins, leaves and buffered commands. Call once per host
@@ -108,11 +104,6 @@ public sealed partial class TileWorldServer : IPersistenceHost<TileMoveState>
     public void Poll()
     {
         net.Poll();
-        // One budget top-up per poll rather than per tick, because this is the cadence inbound frames actually
-        // arrive on: a host polling faster than it ticks would otherwise throttle a client that sent nothing
-        // unusual. The budget itself is per tick (see SpawnPlayer), so the two only differ on a head whose frame
-        // rate is above its tick rate, which is every real one.
-        foreach (RateLimiter limiter in rateBySlot.Values) limiter.Refill();
         while (net.TryDequeueEvent(out ServerSessionEvent ev))
         {
             switch (ev.Kind)
@@ -389,10 +380,8 @@ public sealed partial class TileWorldServer : IPersistenceHost<TileMoveState>
     /// <para>The countdown is WALL CLOCK rather than tick count, so it runs down on frames that stepped nothing.
     /// A head asked to shut down has a real-time deadline whatever the simulation is doing, and a server that had
     /// fallen behind would otherwise take longer to drain the further behind it was.</para>
-    /// <para>Deliberately a small local state machine rather than <c>NetWorld.DrainController</c>: that type sits
-    /// in a package this one must never reference, and duplicating three lines of countdown is cheaper than the
-    /// dependency. When the controller moves down to <c>KhaozEngine.Simulation</c>, this is the call site that
-    /// adopts it.</para>
+    /// <para>The elapsed-time state machine is the shared <see cref="DrainController"/> from
+    /// <c>KhaozEngine.Simulation</c>. This server keeps ownership of notices and session closure.</para>
     /// <para>Idempotent: a second call while a drain is running is ignored rather than restarting the clock, so an
     /// operator who runs the command twice does not hand everyone a second grace period.</para>
     /// <para>When the grace is spent, the next <see cref="Tick"/> closes every remaining session through
@@ -408,9 +397,9 @@ public sealed partial class TileWorldServer : IPersistenceHost<TileMoveState>
     /// true.</param>
     public void BeginDrain(string reasonToken, float graceSeconds)
     {
-        if (IsDraining) return;
+        if (drain.HasBegun) return;
         drainReason = reasonToken;
-        drainRemaining = Math.Max(0f, graceSeconds);
+        drain.Begin(Math.Max(0f, graceSeconds));
         BroadcastNotice(reasonToken);
     }
 }

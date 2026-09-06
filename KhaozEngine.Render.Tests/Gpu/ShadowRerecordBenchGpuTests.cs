@@ -76,6 +76,8 @@ namespace KhaozEngine.Tests.Gpu
         // SPANS, not instances, so this is the knob that decides what the bench actually measures: emitting each
         // chunk's casters as one block yields about 80 spans over four cascades, an order of magnitude below the
         // field trace's 707 to 789, and would measure a pass shape the reporting machine never records.
+        // Early culling can join groups when the non-casters between them are off camera. Coverage and cadence
+        // must stay correct even when that compaction makes the recorded pass cheaper than the original trace.
         const int CasterGroup = 4, NonCasterGroup = 8;
         const float SunElevationDegrees = 35f;
         // Ruinborne's real daylight rate: a 30 minute day is 0.2 deg/s, so 0.00333 deg per frame at 60 fps.
@@ -292,9 +294,55 @@ namespace KhaozEngine.Tests.Gpu
             // and not an artifact of either rate.
             Assert.Equal(subCadence * SubEpsilonDegreesPerFrame, dayCadence * DaylightDegreesPerFrame,
                 dayCadence * DaylightDegreesPerFrame * 0.25);
-            // A re-fit frame is a FULL re-record: the saving is in the frames between them, never in a cheaper pass.
-            Assert.True(daylight.draws > 300, $"a re-fit frame must still draw the whole atlas ({daylight.draws})");
+            // Both rates record the same scene. Sweep checks caster coverage on every re-fit without requiring
+            // redundant draw calls when visibility compaction joins adjacent caster spans.
             Assert.InRange(subEpsilon.draws, (int)(daylight.draws * 0.9), (int)(daylight.draws * 1.1));
+        }
+
+        [GpuFact]
+        public void Compacted_refit_preserves_the_atlas_from_drawing_every_caster()
+        {
+            Placement[] placements = BuildPlacements();
+            (float[] Depth, long UploadBytes) Capture(bool optimized)
+            {
+                using GpuDeviceContext ctx = GpuDeviceContext.CreateHeadless();
+                using var preview = new Render3DPreview(ctx.GpuDevice, W, H, new ShadowSettings
+                {
+                    Mode = ShadowMode.ShadowMap, ShadowMapResolution = 512, ShadowCascadeCount = Cascades,
+                    ShadowLightHoldTexels = 0f,
+                });
+                Scene3D scene = preview.Scene;
+                scene.FrustumCulling = optimized;
+                scene.ShadowCascadeCulling = optimized;
+                scene.Camera.Azimuth = 0.6f;
+                scene.Camera.Elevation = 0.35f;
+                scene.Camera.Frame(Vector3.Zero, new Vector3(60f, 20f, 60f));
+                var kinds = new[] { scene.LoadMesh(MeshPrimitives.Box(0.8f)), scene.LoadMesh(MeshPrimitives.Cone(0.5f, 2.2f, 6)) };
+                void DrawFrame(Scene3D s)
+                {
+                    foreach (Placement p in placements)
+                        s.Draw(kinds[p.Kind], Matrix4x4.CreateScale(p.Scale) * Matrix4x4.CreateRotationY(p.Yaw)
+                            * Matrix4x4.CreateTranslation(p.Position), Color.White, Material.None, p.CastsShadows);
+                }
+                scene.Post.LightDirection = SunAt(0f);
+                preview.Capture(DrawFrame);
+                scene.Post.LightDirection = SunAt(1f);
+                preview.Capture(DrawFrame);
+                Assert.True(scene.LastShadowPassDiagnostics.LightMatrixChanged);
+                Assert.True(scene.LastShadowPassDiagnostics.Rendered);
+                float[] depth = scene.DebugReadShadowMap(out int width, out int height);
+                Assert.Equal(512 * Cascades, width);
+                Assert.Equal(512, height);
+                return (depth, scene.LastFrameStats.InstanceUploadBytes);
+            }
+
+            // The reference bypasses both compaction and cascade rejection. Read real depth pixels so missing
+            // geometry cannot hide behind counters that agree about an incomplete span list.
+            var full = Capture(optimized: false);
+            var compacted = Capture(optimized: true);
+            Assert.True(compacted.UploadBytes < full.UploadBytes, "the fixture must exercise compaction");
+            Assert.Contains(full.Depth, depth => depth > 0f && depth < 1f);
+            Assert.Equal(full.Depth, compacted.Depth);
         }
 
         /// <summary>Settle a static scene, then advance the sun by <paramref name="degreesPerFrame"/> for
@@ -337,6 +385,8 @@ namespace KhaozEngine.Tests.Gpu
             }
 
             preview.Capture(DrawFrame);   // the first frame has no atlas and always records
+            int expectedCasters = 0;
+            foreach (Placement p in placements) if (p.CastsShadows) expectedCasters++;
             int refits = 0, draws = 0;
             for (int i = 0; i < SweepFrames; i++)
             {
@@ -346,6 +396,10 @@ namespace KhaozEngine.Tests.Gpu
                 Assert.False(d.CasterDataChanged, "nothing but the sun moves in this sweep");
                 Assert.Equal(d.LightMatrixChanged, d.Rendered);
                 if (!d.Rendered) continue;
+                Assert.Equal(expectedCasters, scene.ShadowCasterCandidateCount);
+                Assert.Equal(Cascades, d.CascadeCount);
+                for (int c = 0; c < Cascades; c++) Assert.True(d.RigidSpanCount(c) > 0);
+                Assert.Equal(d.TotalRigidSpanCount, d.RigidDrawCalls);
                 refits++;
                 draws = d.TotalDrawCalls;
             }

@@ -32,6 +32,10 @@ public sealed class TileWorldViewOptions
     /// <summary>Live distance, quality and shadow policy for authored ground cover.</summary>
     public GroundCoverRenderOptions GroundCover { get; set; } = new();
 
+    /// <summary>Authored non-roof archetypes drawn as animated foliage. Empty preserves ordinary prop draws.
+    /// Selected props keep their full density and PropDrawRadius, independent of short-grass quality.</summary>
+    public IReadOnlySet<string> AnimatedFoliageArchetypes { get; set; } = new HashSet<string>(StringComparer.Ordinal);
+
     /// <summary>The settings every region-plane ground mesh is built with. The view SETS
     /// <see cref="TileGroundMesherOptions.Slots"/> on this object when it is constructed, to the material set it
     /// is about to upload, because the slots a vertex names only mean anything against that set.</summary>
@@ -227,7 +231,8 @@ public sealed partial class TileWorldView : IDisposable
         get { EnsureInterior(); return _interior.Truncated; }
     }
 
-    /// <summary>How many prop placements the last <see cref="Draw"/> queued, roofs included when shown.</summary>
+    /// <summary>How many prop placements the last <see cref="Draw"/> queued, roofs included when shown.
+    /// Animated foliage contributes conservative submitted candidates, including model parts.</summary>
     public int LastDrawnProps { get; private set; }
 
     /// <summary>How many regions are loaded right now.</summary>
@@ -380,6 +385,7 @@ public sealed partial class TileWorldView : IDisposable
                 if (handles.Meshes[plane] is { } old) _scene.UnloadMesh(old);
                 handles.Meshes[plane] = rebuilt;
                 handles.Props[plane] = TileObjectProps.Build(_doc, _catalogs, region, plane, OverrideLookup());
+                ReleaseAnimatedFoliage(handles, plane);
                 RebuildCover(region, handles);
                 // Only a mesh that was actually built counts. The budget exists to bound uploads and handle
                 // churn, and an empty region-plane produces neither.
@@ -414,8 +420,7 @@ public sealed partial class TileWorldView : IDisposable
                 if (handles.Meshes[plane] is { } mesh) _scene.DrawMesh(mesh, world);
 
                 TileRegionProps props = handles.Props[plane];
-                if (props.Ground.Count > 0)
-                    drawn += _scene.DrawProps(props.Ground, _propMeshes, focus, _options.PropDrawRadius);
+                drawn += DrawGroundProps(handles, plane, focus);
                 if (props.Roofs.Count > 0)
                 {
                     IReadOnlyList<PropPlacement> roofs = VisibleRoofs(props, plane);
@@ -590,7 +595,12 @@ public sealed partial class TileWorldView : IDisposable
         return mesh is null ? null : _scene.LoadMesh(mesh, _material);
     }
 
-    void FreeMeshes(RegionHandles handles) => FreeMeshes(handles.Meshes);
+    void FreeMeshes(RegionHandles handles)
+    {
+        _scene.ReleaseGroundCover(handles.Cover);
+        ReleaseAnimatedFoliage(handles);
+        FreeMeshes(handles.Meshes);
+    }
 
     // Takes the array rather than the record, so the rollback in LoadRegion can free a half-filled plane array
     // that never became a RegionHandles. Nulling as it goes keeps it safe to call twice.

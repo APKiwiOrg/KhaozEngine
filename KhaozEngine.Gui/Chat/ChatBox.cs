@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Numerics;
+using KhaozEngine.App;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Windowing;
@@ -57,6 +58,31 @@ public sealed class ChatBox
 
     /// <summary>True while the composer is open and focused.</summary>
     public bool ComposerOpen => Composer.IsFocused;
+
+    /// <summary>The localized placeholder shown while the composer is empty.</summary>
+    public LocalizedText ComposerPlaceholder
+    {
+        get => Composer.PlaceholderContent;
+        set => Composer.PlaceholderContent = value;
+    }
+
+    /// <summary>
+    /// Maximum number of characters accepted by the composer. Defaults to 32. Assigning a positive value
+    /// reclamps any existing composer text immediately.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="value"/> is not positive.</exception>
+    public int MaxInputLength
+    {
+        get => Composer.MaxLength;
+        set
+        {
+            if (value <= 0)
+                throw new ArgumentOutOfRangeException(nameof(value), value, "Maximum input length must be positive.");
+
+            Composer.MaxLength = value;
+            Composer.SetText(Composer.Text);
+        }
+    }
 
     /// <summary>Receives each non-empty trimmed line submitted by the player.</summary>
     public Action<string>? Submitted { get; set; }

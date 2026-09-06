@@ -314,6 +314,7 @@ namespace KhaozEngine.Render3D.Rendering
 
         void BuildPipelines(IGpuResourceFactory factory, GpuOutputDescription modelOutputs)
         {
+            SetFoliageOutputs(modelOutputs);
             // Slot 0: per-vertex geometry (locations 0..4).
             var vertexLayout = new GpuVertexLayoutDescription(
                 new GpuVertexElement("Position", GpuVertexElementFormat.Float3),
@@ -387,8 +388,6 @@ namespace KhaozEngine.Render3D.Rendering
                 Outputs = modelOutputs,
             });
 
-            // The two ground pipelines: the same two vertex layouts, each with its own shaders + resource layouts
-            // (ModelRenderer.Splat.cs and ModelRenderer.TileGround.cs).
             BuildSplatPipeline(factory, modelOutputs, vertexLayout, instanceLayout);
             BuildTileGroundPipeline(factory, modelOutputs, vertexLayout, instanceLayout);
 
@@ -744,6 +743,7 @@ namespace KhaozEngine.Render3D.Rendering
 
         public void Dispose()
         {
+            DisposeFoliageResources();
             _shadowMap.Dispose();
             _pipeline.Dispose(); _defaultSet.Dispose(); _layout.Dispose();
             _white.Dispose(); _flatNormal.Dispose(); _defaultRough.Dispose(); // _sampler is the device built-in (non-owning); do not dispose it.

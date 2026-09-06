@@ -46,17 +46,17 @@ public sealed class CreateRegionCommand : TileCommandBase
         if (Dirty.Count == 0) TileRegionEdit.AddPlaneRects(Dirty, doc, _coord);
     }
 
-    /// <summary>Drops the region again, but only when this command is the one that created it.</summary>
+    /// <summary>Permanently drops the region again, but only when this command is the one that created it.</summary>
     public override void Revert(TileWorldDocument doc)
     {
         ArgumentNullException.ThrowIfNull(doc);
-        if (Created) doc.RemoveRegion(_coord);
+        if (Created) doc.DeleteRegion(_coord);
     }
 }
 
 /// <summary>Deletes a whole region and puts it back on the undo, layers, objects and markers included.
 ///
-/// The capture is the region OBJECT itself, not a copy of it. <see cref="TileWorldDocument.RemoveRegion"/>
+/// The capture is the region OBJECT itself, not a copy of it. <see cref="TileWorldDocument.DeleteRegion"/>
 /// detaches the instance without touching a byte of it, so the thing this command holds IS the pre-delete
 /// state, with no copy that could fall out of step and no 64x64 array clone per layer per plane. Re-attaching
 /// the same instance also means a caller that took a reference before the delete is still holding the live
@@ -79,7 +79,7 @@ public sealed class DeleteRegionCommand : TileCommandBase
     /// <summary>The region this command deletes.</summary>
     public RegionCoord Coord => _coord;
 
-    /// <summary>Detaches the region, holding on to the instance the first time round.</summary>
+    /// <summary>Permanently deletes the region, holding on to the detached instance the first time round.</summary>
     public override void Apply(TileWorldDocument doc)
     {
         ArgumentNullException.ThrowIfNull(doc);
@@ -90,7 +90,7 @@ public sealed class DeleteRegionCommand : TileCommandBase
             _region = region;
             TileRegionEdit.AddPlaneRects(Dirty, doc, _coord);
         }
-        doc.RemoveRegion(_coord);
+        doc.DeleteRegion(_coord);
     }
 
     /// <summary>Re-attaches the region exactly as it was, re-indexing its objects and marking it for a save.</summary>

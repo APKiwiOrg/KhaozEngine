@@ -31,6 +31,28 @@ namespace KhaozEngine.Gui
         public Vector4 Accent;
         /// <summary>Bright accent (focus rings, active text, open-border highlight).</summary>
         public Vector4 AccentBright;
+        /// <summary>Primary preset resting fill.</summary>
+        public Vector4 PrimaryFill;
+        /// <summary>Primary preset hover fill.</summary>
+        public Vector4 PrimaryHover;
+        /// <summary>Primary preset pressed fill.</summary>
+        public Vector4 PrimaryPress;
+        /// <summary>Primary preset border.</summary>
+        public Vector4 PrimaryBorder;
+        /// <summary>Primary preset selected fill.</summary>
+        public Vector4 PrimarySelectedFill;
+        /// <summary>Active preset resting fill.</summary>
+        public Vector4 ActiveFill;
+        /// <summary>Active preset hover fill.</summary>
+        public Vector4 ActiveHover;
+        /// <summary>Active preset pressed fill.</summary>
+        public Vector4 ActivePress;
+        /// <summary>Active preset border.</summary>
+        public Vector4 ActiveBorder;
+        /// <summary>Active preset text.</summary>
+        public Vector4 ActiveText;
+        /// <summary>Active preset selected fill.</summary>
+        public Vector4 ActiveSelectedFill;
         /// <summary>
         /// Fill under a SELECTED row: the current item of a list, a dropdown's chosen option. An accent-muted
         /// surface rather than the accent itself, so a whole row of it sits under text without shouting.
@@ -76,6 +98,17 @@ namespace KhaozEngine.Gui
             BorderDisabled = new(0.157f, 0.157f, 0.196f, 1f), // #282832
             Accent = new(0.157f, 0.431f, 0.706f, 1f),       // #286eb4
             AccentBright = new(0.392f, 0.784f, 1f, 1f),      // #64c8ff
+            PrimaryFill = new(0.137f, 0.216f, 0.353f, 1f),
+            PrimaryHover = new(0.176f, 0.275f, 0.451f, 1f),
+            PrimaryPress = new(0.098f, 0.157f, 0.275f, 1f),
+            PrimaryBorder = new(0.235f, 0.353f, 0.588f, 1f),
+            PrimarySelectedFill = new(0.157f, 0.235f, 0.353f, 1f),
+            ActiveFill = new(0.157f, 0.235f, 0.353f, 1f),
+            ActiveHover = new(0.196f, 0.294f, 0.431f, 1f),
+            ActivePress = new(0.118f, 0.176f, 0.275f, 1f),
+            ActiveBorder = new(0.314f, 0.549f, 0.863f, 1f),
+            ActiveText = new(0.549f, 0.784f, 1f, 1f),
+            ActiveSelectedFill = new(0.196f, 0.294f, 0.431f, 1f),
             SelectionFill = new(0.157f, 0.235f, 0.353f, 1f), // #283c5a accent-muted
             FocusFill = new(0.137f, 0.216f, 0.353f, 1f),     // #23375a, one shade under the selection
             Text = new(0.95f, 0.96f, 0.98f, 1f),
@@ -105,6 +138,17 @@ namespace KhaozEngine.Gui
             BorderDisabled = new(0.18f, 0.18f, 0.22f, 1f),
             Accent = new(0.16f, 0.39f, 0.70f, 1f),
             AccentBright = new(0.39f, 0.70f, 1f, 1f),
+            PrimaryFill = new(0.137f, 0.216f, 0.353f, 1f),
+            PrimaryHover = new(0.176f, 0.275f, 0.451f, 1f),
+            PrimaryPress = new(0.098f, 0.157f, 0.275f, 1f),
+            PrimaryBorder = new(0.235f, 0.353f, 0.588f, 1f),
+            PrimarySelectedFill = new(0.157f, 0.235f, 0.353f, 1f),
+            ActiveFill = new(0.157f, 0.235f, 0.353f, 1f),
+            ActiveHover = new(0.196f, 0.294f, 0.431f, 1f),
+            ActivePress = new(0.118f, 0.176f, 0.275f, 1f),
+            ActiveBorder = new(0.314f, 0.549f, 0.863f, 1f),
+            ActiveText = new(0.549f, 0.784f, 1f, 1f),
+            ActiveSelectedFill = new(0.196f, 0.294f, 0.431f, 1f),
             // The pre-theme widgets hardcoded these two, so the legacy palette carries the same pair as Crisp:
             // reverting the theme must not move a selected or cursored row.
             SelectionFill = new(0.157f, 0.235f, 0.353f, 1f),

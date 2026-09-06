@@ -112,6 +112,27 @@ public sealed class UpdateServiceRecheckTests : IDisposable
     }
 
     [Fact]
+    public async Task Tick_AfterUntrustedResponse_RechecksAfterFreshInterval()
+    {
+        SetupV2Available();
+        byte[] signature = source.Bytes[ManifestUrl + ".sig"];
+        source.Bytes.Remove(ManifestUrl + ".sig");
+        using UpdateService svc = Build(recheckInterval: TimeSpan.FromSeconds(10));
+
+        await svc.CheckForUpdateAsync();
+        Assert.Equal(UpdateState.Untrusted, svc.State);
+
+        source.Bytes[ManifestUrl + ".sig"] = signature;
+        svc.Tick(9f);
+        Assert.Equal(1, source.CheckCalls);
+        svc.Tick(1f);
+
+        Assert.Equal(2, source.CheckCalls);
+        Assert.Equal(UpdateState.UpdateAvailable, svc.State);
+        Assert.Null(svc.ErrorMessage);
+    }
+
+    [Fact]
     public async Task Tick_InNonIdleState_DoesNotAccumulateOrFire()
     {
         SetupV2Available();

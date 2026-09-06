@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using KhaozEngine.Diagnostics;
+using KhaozEngine.Netcode;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Windowing;
@@ -33,6 +34,7 @@ namespace KhaozEngine.Gui
 
         RenderFrameStats _drawStats;
         Func<ClientNetStats?>? _netStatsSource;
+        Func<NetTransportStats?>? _transportStatsSource;
         List<Func<OverlaySection?>>? _gameSections;   // null until a game adds one, so the default HUD allocates nothing
 
         /// <summary>
@@ -72,7 +74,22 @@ namespace KhaozEngine.Gui
         /// a "Network" section. Pass null to remove it. Handy for a game whose active screen may or may not be
         /// networked (return null off the network, the connected stats on it).
         /// </summary>
-        public void SetNetStatsSource(Func<ClientNetStats?>? source) => _netStatsSource = source;
+        public void SetNetStatsSource(Func<ClientNetStats?>? source)
+        {
+            _netStatsSource = source;
+            _transportStatsSource = null;
+        }
+
+        /// <summary>
+        /// Register a source of transport link health. The Network section shows only ping and loss because
+        /// <see cref="NetTransportStats"/> does not measure rates or reconciliation corrections. Pass null to remove
+        /// the active network source. Registering this source replaces one set through <see cref="SetNetStatsSource"/>.
+        /// </summary>
+        public void SetTransportStatsSource(Func<NetTransportStats?>? source)
+        {
+            _transportStatsSource = source;
+            _netStatsSource = null;
+        }
 
         /// <summary>
         /// Add a GAME section to the HUD, composed after the built-in Performance / Draw-stats / Pass-timings /
@@ -130,6 +147,8 @@ namespace KhaozEngine.Gui
                 _buf.Add(DiagnosticsOverlay.PassTimingsSection(pt));
             if (_netStatsSource?.Invoke() is { } net)
                 _buf.Add(DiagnosticsOverlay.NetworkSection(net));
+            else if (_transportStatsSource?.Invoke() is { } transport)
+                _buf.Add(DiagnosticsOverlay.NetworkSection(transport));
             if (_gameSections is { Count: > 0 } extra)
                 for (int i = 0; i < extra.Count; i++)
                     if (extra[i]() is { } section) _buf.Add(section);

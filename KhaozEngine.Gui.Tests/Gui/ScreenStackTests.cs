@@ -67,6 +67,57 @@ namespace KhaozEngine.Tests.Gui
         }
 
         [Fact]
+        public void Modal_freezes_lower_transitions_by_default()
+        {
+            var stack = new ScreenStack();
+            var low = new FakeScreen { DrawOrder = 0, TransitionOnDuration = 1f };
+            var modal = new FakeScreen { DrawOrder = 10, PassUpdateThrough = false };
+            stack.Add(low);
+            stack.Add(modal);
+
+            stack.Update(0.5f, InputState.Empty);
+
+            Assert.Equal(ScreenState.TransitionOn, low.State);
+            Assert.Equal(0f, low.TransitionAlpha);
+            Assert.Equal(0, low.UpdateCount);
+        }
+
+        [Fact]
+        public void Opt_in_advances_lower_transition_without_updating_or_routing_input()
+        {
+            var stack = new ScreenStack { AdvanceTransitionsBehindModal = true };
+            var low = new FakeScreen { DrawOrder = 0, TransitionOnDuration = 1f };
+            var modal = new FakeScreen { DrawOrder = 10, PassUpdateThrough = false };
+            stack.Add(low);
+            stack.Add(modal);
+
+            stack.Update(0.5f, InputState.Empty);
+
+            Assert.Equal(ScreenState.TransitionOn, low.State);
+            Assert.Equal(0.5f, low.TransitionAlpha, 3);
+            Assert.Equal(0, low.UpdateCount);
+            Assert.False(low.LastReceivedInput);
+        }
+
+        [Fact]
+        public void Opt_in_removes_a_lower_screen_when_its_transition_off_finishes()
+        {
+            var stack = new ScreenStack { AdvanceTransitionsBehindModal = true };
+            var low = new UnloadTrackingScreen { DrawOrder = 0, TransitionOffDuration = 0.1f };
+            var modal = new FakeScreen { DrawOrder = 10, PassUpdateThrough = false };
+            stack.Add(low);
+            stack.Add(modal);
+            low.ExitScreen();
+
+            stack.Update(0.2f, InputState.Empty);
+
+            Assert.DoesNotContain(low, stack.Screens);
+            Assert.True(low.Unloaded);
+            Assert.Equal(ScreenState.Hidden, low.State);
+            Assert.Equal(0, low.UpdatesAfterUnload);
+        }
+
+        [Fact]
         public void AlwaysReceivesInput_screen_gets_input_even_when_a_higher_screen_consumed()
         {
             var stack = new ScreenStack();

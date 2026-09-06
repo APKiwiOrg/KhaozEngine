@@ -187,6 +187,31 @@ public class TileWorldPersistenceTests
         Assert.Equal(loud, teleport);
     }
 
+    [Theory]
+    [InlineData(33_554_432, 0, false)]
+    [InlineData(33_554_433, 0, true)]
+    [InlineData(33_554_432, 1, true)]
+    public async Task Quiet_restore_compares_large_tile_coordinates_without_float_rounding(
+        int restoredX, int restoredPlane, bool loud)
+    {
+        const int liveX = 33_554_432;
+        TileCollisionMap largeMap = TileMoveSimulatorTests.Bake(
+            TileMoveSimulatorTests.FlatWorld(planeCount: 4, RegionCoord.Of(liveX, 0)));
+        var store = new InMemoryWorldStore();
+        await store.SaveAsync("player:acct-large",
+            TilePlayerRecord.From(TileMoveState.At(new TileCoord(restoredX, 0, restoredPlane), TileDirection.S)).Encode());
+
+        var host = new FakeHost();
+        var p = new TileWorldPersistence(host, store, largeMap);
+        host.Join(7, "acct-large", TileMoveState.At(new TileCoord(liveX, 0, 0), TileDirection.N));
+        await p.FlushAsync();
+
+        (int slot, TileMoveState state, bool teleport) = Assert.Single(host.Placed);
+        Assert.Equal(7, slot);
+        Assert.Equal(new TileCoord(restoredX, 0, restoredPlane), state.Tile);
+        Assert.Equal(loud, teleport);
+    }
+
     // A record can outlive the world it was written against: an authored-world edit drops or moves a region, or
     // lowers the plane count, and a player who logged out there is now stored somewhere the running build has no
     // ground for. TileWorldServer.SetPlayerState refuses both, by design and with a throw, because it is a door for

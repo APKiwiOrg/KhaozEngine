@@ -5,9 +5,9 @@ namespace KhaozEngine.Navigation;
 
 /// <summary>
 /// Immutable clearance grid over a rectangular slice of the XZ world plane. Row-major storage: cell
-/// (cx, cz) lives at index cz * Width + cx and covers the world-space rectangle
-/// [Origin + c * CellSize, Origin + (c + 1) * CellSize) on each axis, with its center at
-/// Origin + (c + 0.5) * CellSize. Each cell stores a clearance byte, the approximate distance from
+/// (cx, cz) lives at index cz * Width + cx and covers the grid-local rectangle
+/// [c * CellSize, (c + 1) * CellSize) on each axis. Local XZ rotates by YawRadians before
+/// translation to (OriginX, OriginZ). Each cell stores a clearance byte, the approximate distance from
 /// the cell center to the nearest blocked cell center in half-cell units (2-3 chamfer, see
 /// <see cref="ClearanceTransform"/>), saturated at 255. A blocked cell stores 0, and space outside
 /// the grid counts as blocked, so clearance falls off toward the borders. In world meters,
@@ -20,15 +20,20 @@ public sealed class NavGrid
 {
     readonly byte[] _clearance;
     readonly float[]? _heights;
+    readonly float _cosYaw;
+    readonly float _sinYaw;
 
     /// <summary>World size of one cell, on both axes (world units).</summary>
     public float CellSize { get; }
 
-    /// <summary>World X of the grid origin, cell (0, 0)'s minimum X corner.</summary>
+    /// <summary>World X of the grid-local (0, 0) corner and rotation pivot.</summary>
     public float OriginX { get; }
 
-    /// <summary>World Z of the grid origin, cell (0, 0)'s minimum Z corner.</summary>
+    /// <summary>World Z of the grid-local (0, 0) corner and rotation pivot.</summary>
     public float OriginZ { get; }
+
+    /// <summary>Finite rotation in radians. Positive yaw turns local +X toward world +Z.</summary>
+    public float YawRadians { get; }
 
     /// <summary>Grid width in cells (X axis).</summary>
     public int Width { get; }
@@ -44,7 +49,7 @@ public sealed class NavGrid
     /// (no upper bound). See <see cref="ContainsY"/>.</summary>
     public float YMax { get; }
 
-    NavGrid(byte[] clearance, int width, int height, float cellSize, float originX, float originZ, float yMin, float yMax, float[]? heights = null)
+    NavGrid(byte[] clearance, int width, int height, float cellSize, float originX, float originZ, float yMin, float yMax, float[]? heights = null, float yawRadians = 0)
     {
         _clearance = clearance;
         Width = width;
@@ -55,6 +60,8 @@ public sealed class NavGrid
         YMin = yMin;
         YMax = yMax;
         _heights = heights;
+        YawRadians = yawRadians;
+        (_sinYaw, _cosYaw) = MathF.SinCos(yawRadians);
     }
 
     /// <summary>
@@ -63,17 +70,19 @@ public sealed class NavGrid
     /// then bakes the clearance transform once. <paramref name="walkable"/> is called once per cell with its
     /// (cx, cz) grid coordinates and returns false for a blocked cell. <paramref name="yMin"/> and
     /// <paramref name="yMax"/> record the vertical band this grid represents, checked later via
-    /// <see cref="ContainsY"/>.
+    /// <see cref="ContainsY"/>. <paramref name="yawRadians"/> rotates grid-local XZ before translation.
     /// </summary>
     public static NavGrid FromWalkable(
         int width, int height, float cellSize, float originX, float originZ,
         Func<int, int, bool> walkable,
-        float yMin = float.NegativeInfinity, float yMax = float.PositiveInfinity)
+        float yMin = float.NegativeInfinity, float yMax = float.PositiveInfinity, float yawRadians = 0f)
     {
         if (walkable is null) throw new ArgumentNullException(nameof(walkable));
         if (width <= 0) throw new ArgumentOutOfRangeException(nameof(width), width, "Width must be positive.");
         if (height <= 0) throw new ArgumentOutOfRangeException(nameof(height), height, "Height must be positive.");
         if (cellSize <= 0f) throw new ArgumentOutOfRangeException(nameof(cellSize), cellSize, "Cell size must be positive.");
+
+        if (!float.IsFinite(yawRadians)) throw new ArgumentOutOfRangeException(nameof(yawRadians));
 
         var blocked = new bool[width * height];
         for (int z = 0; z < height; z++)
@@ -81,7 +90,7 @@ public sealed class NavGrid
                 blocked[z * width + x] = !walkable(x, z);
 
         byte[] clearance = ClearanceTransform.Compute(blocked, width, height);
-        return new NavGrid(clearance, width, height, cellSize, originX, originZ, yMin, yMax);
+        return new NavGrid(clearance, width, height, cellSize, originX, originZ, yMin, yMax, yawRadians: yawRadians);
     }
 
     /// <summary>
@@ -98,18 +107,21 @@ public sealed class NavGrid
     /// more than a step below it and every neighbor blocked, which stays passable so a
     /// <see cref="NavLinkKind.Hop"/> link can still reach it (see <see cref="StepMask"/>).
     /// <paramref name="yMin"/> and <paramref name="yMax"/> record the
-    /// vertical band, checked later via <see cref="ContainsY"/>.
+    /// vertical band, checked later via <see cref="ContainsY"/>. <paramref name="yawRadians"/> rotates
+    /// grid-local XZ before translation. It does not change sampled heights or cell topology.
     /// </summary>
     public static NavGrid FromSurfaces(
         int width, int height, float cellSize, float originX, float originZ,
         Func<int, int, NavSurfaceSample> sample,
         float stepHeight, float agentHeight,
-        float yMin = float.NegativeInfinity, float yMax = float.PositiveInfinity)
+        float yMin = float.NegativeInfinity, float yMax = float.PositiveInfinity, float yawRadians = 0f)
     {
         if (sample is null) throw new ArgumentNullException(nameof(sample));
         if (width <= 0) throw new ArgumentOutOfRangeException(nameof(width), width, "Width must be positive.");
         if (height <= 0) throw new ArgumentOutOfRangeException(nameof(height), height, "Height must be positive.");
         if (cellSize <= 0f) throw new ArgumentOutOfRangeException(nameof(cellSize), cellSize, "Cell size must be positive.");
+
+        if (!float.IsFinite(yawRadians)) throw new ArgumentOutOfRangeException(nameof(yawRadians));
 
         var standable = new bool[width * height];
         var heights = new float[width * height];
@@ -128,7 +140,7 @@ public sealed class NavGrid
 
         bool[] blocked = StepMask.Compute(standable, heights, headroom, width, height, stepHeight, agentHeight);
         byte[] clearance = ClearanceTransform.Compute(blocked, width, height);
-        return new NavGrid(clearance, width, height, cellSize, originX, originZ, yMin, yMax, heights);
+        return new NavGrid(clearance, width, height, cellSize, originX, originZ, yMin, yMax, heights, yawRadians);
     }
 
     /// <summary>True when (<paramref name="cx"/>, <paramref name="cz"/>) is within the grid.</summary>
@@ -167,11 +179,25 @@ public sealed class NavGrid
 
     /// <summary>The grid cell containing world position (<paramref name="x"/>, <paramref name="z"/>).</summary>
     public (int X, int Z) CellOf(float x, float z)
-        => ((int)MathF.Floor((x - OriginX) / CellSize), (int)MathF.Floor((z - OriginZ) / CellSize));
+    {
+        Vector2 local = WorldToLocal(new Vector2(x, z));
+        return ((int)MathF.Floor(local.X / CellSize), (int)MathF.Floor(local.Y / CellSize));
+    }
+
+    internal Vector2 WorldToLocal(Vector2 world)
+    {
+        float x = world.X - OriginX;
+        float z = world.Y - OriginZ;
+        return new Vector2(x * _cosYaw + z * _sinYaw, -x * _sinYaw + z * _cosYaw);
+    }
 
     /// <summary>World-space center of cell (<paramref name="cx"/>, <paramref name="cz"/>).</summary>
     public Vector2 CellCenter(int cx, int cz)
-        => new(OriginX + (cx + 0.5f) * CellSize, OriginZ + (cz + 0.5f) * CellSize);
+    {
+        float x = (cx + 0.5f) * CellSize;
+        float z = (cz + 0.5f) * CellSize;
+        return new Vector2(OriginX + x * _cosYaw - z * _sinYaw, OriginZ + x * _sinYaw + z * _cosYaw);
+    }
 
     /// <summary>True when <paramref name="y"/> falls within [<see cref="YMin"/>, <see cref="YMax"/>].</summary>
     public bool ContainsY(float y) => y >= YMin && y <= YMax;

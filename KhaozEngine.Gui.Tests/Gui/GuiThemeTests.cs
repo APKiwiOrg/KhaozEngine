@@ -94,5 +94,70 @@ namespace KhaozEngine.Tests.Gui
             }
             finally { GuiTheme.Default = saved; }
         }
+
+        [Fact]
+        public void Primary_and_active_presets_read_every_palette_colour_from_the_theme()
+        {
+            GuiTheme saved = GuiTheme.Default;
+            GuiStyle legacyBefore = GuiStyle.Legacy;
+            GuiStyle modernBefore = GuiStyle.Modern;
+            try
+            {
+                GuiTheme.Default = GuiTheme.Crisp with
+                {
+                    PrimaryFill = new Vector4(0.01f, 0.02f, 0.03f, 1f),
+                    PrimaryHover = new Vector4(0.04f, 0.05f, 0.06f, 1f),
+                    PrimaryPress = new Vector4(0.07f, 0.08f, 0.09f, 1f),
+                    PrimaryBorder = new Vector4(0.10f, 0.11f, 0.12f, 1f),
+                    PrimarySelectedFill = new Vector4(0.13f, 0.14f, 0.15f, 1f),
+                    ActiveFill = new Vector4(0.16f, 0.17f, 0.18f, 1f),
+                    ActiveHover = new Vector4(0.19f, 0.20f, 0.21f, 1f),
+                    ActivePress = new Vector4(0.22f, 0.23f, 0.24f, 1f),
+                    ActiveBorder = new Vector4(0.25f, 0.26f, 0.27f, 1f),
+                    ActiveText = new Vector4(0.28f, 0.29f, 0.30f, 1f),
+                    ActiveSelectedFill = new Vector4(0.31f, 0.32f, 0.33f, 1f),
+                };
+
+                GuiStyle primary = GuiStyle.Primary;
+                Assert.Equal(GuiTheme.Default.PrimaryFill, primary.Fill);
+                Assert.Equal(GuiTheme.Default.PrimaryHover, primary.Hover);
+                Assert.Equal(GuiTheme.Default.PrimaryPress, primary.Press);
+                Assert.Equal(GuiTheme.Default.PrimaryBorder, primary.Border);
+                Assert.Equal(GuiTheme.Default.PrimarySelectedFill, primary.SelectedFill);
+
+                GuiStyle active = GuiStyle.Active;
+                Assert.Equal(GuiTheme.Default.ActiveFill, active.Fill);
+                Assert.Equal(GuiTheme.Default.ActiveHover, active.Hover);
+                Assert.Equal(GuiTheme.Default.ActivePress, active.Press);
+                Assert.Equal(GuiTheme.Default.ActiveBorder, active.Border);
+                Assert.Equal(GuiTheme.Default.ActiveText, active.Text);
+                Assert.Equal(GuiTheme.Default.ActiveSelectedFill, active.SelectedFill);
+                Assert.Equal(legacyBefore, GuiStyle.Legacy);
+                Assert.Equal(modernBefore, GuiStyle.Modern);
+            }
+            finally
+            {
+                GuiTheme.Default = saved;
+            }
+        }
+
+        [Fact]
+        public void Primary_and_active_theme_defaults_match_the_previous_hardcoded_palettes()
+        {
+            foreach (GuiTheme theme in new[] { GuiTheme.Crisp, GuiTheme.Legacy })
+            {
+                Assert.Equal(new Vector4(0.137f, 0.216f, 0.353f, 1f), theme.PrimaryFill);
+                Assert.Equal(new Vector4(0.176f, 0.275f, 0.451f, 1f), theme.PrimaryHover);
+                Assert.Equal(new Vector4(0.098f, 0.157f, 0.275f, 1f), theme.PrimaryPress);
+                Assert.Equal(new Vector4(0.235f, 0.353f, 0.588f, 1f), theme.PrimaryBorder);
+                Assert.Equal(new Vector4(0.157f, 0.235f, 0.353f, 1f), theme.PrimarySelectedFill);
+                Assert.Equal(new Vector4(0.157f, 0.235f, 0.353f, 1f), theme.ActiveFill);
+                Assert.Equal(new Vector4(0.196f, 0.294f, 0.431f, 1f), theme.ActiveHover);
+                Assert.Equal(new Vector4(0.118f, 0.176f, 0.275f, 1f), theme.ActivePress);
+                Assert.Equal(new Vector4(0.314f, 0.549f, 0.863f, 1f), theme.ActiveBorder);
+                Assert.Equal(new Vector4(0.549f, 0.784f, 1f, 1f), theme.ActiveText);
+                Assert.Equal(new Vector4(0.196f, 0.294f, 0.431f, 1f), theme.ActiveSelectedFill);
+            }
+        }
     }
 }

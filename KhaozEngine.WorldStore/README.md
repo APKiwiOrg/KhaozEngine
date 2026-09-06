@@ -29,7 +29,9 @@ periodic dirty snapshots, per-key ordering, guest policy, validation quarantine,
 
 - `IPersistenceHost<TState>` supplies join, leave, state lookup, account lookup, and position-hint hooks from the
   server head.
-- `PersistenceBinding<TState>` supplies `PositionOf`, `Encode`, `Decode`, and `Validate` for the game's record.
+- `PersistenceBinding<TState>` supplies `PositionOf`, `Encode`, `Decode`, and `Validate` for the game's record. A
+  discrete binding can set `RestoreDistance` for its native coordinate type. Null preserves the continuous world's
+  Euclidean `Vector3` behavior.
 - `PersistenceCoreConfig` supplies cadence, key prefixes, guest policy, hint capacity, state hooks, and the
   dependency-free diagnostic sink.
 

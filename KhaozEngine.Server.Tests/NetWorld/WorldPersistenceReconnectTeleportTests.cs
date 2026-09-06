@@ -53,7 +53,7 @@ public class WorldPersistenceReconnectTeleportTests
 
     sealed class Rig
     {
-        public required InMemoryHub Hub { get; init; }
+        public required InMemoryTransportHub Hub { get; init; }
         /// <summary>One server frame in the field's order: poll, tick (serves), persistence update (applies).</summary>
         public required Action Step { get; init; }
         public required WorldPersistence Persistence { get; init; }
@@ -109,7 +109,7 @@ public class WorldPersistenceReconnectTeleportTests
     static Rig ConnectSingle(InMemoryWorldStore store, Func<int, Vector3>? spawn = null,
         WorldPersistenceConfig? pcfg = null, bool anonymous = false)
     {
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         var config = new WorldServerConfig
         {
             TickSeconds = Dt,
@@ -148,7 +148,7 @@ public class WorldPersistenceReconnectTeleportTests
     // entity in whichever cell the resolved spawn falls in.
     static Rig ConnectSharded(InMemoryWorldStore store, WorldPersistenceConfig? pcfg = null)
     {
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         var config = new ShardedWorldServerConfig
         {
             TickSeconds = Dt,
@@ -231,7 +231,7 @@ public class WorldPersistenceReconnectTeleportTests
     [Fact]
     public void A_first_ever_join_with_no_stored_record_spawns_at_the_configured_spawn()
     {
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         var config = new WorldServerConfig
         {
             TickSeconds = Dt,

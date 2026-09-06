@@ -7,6 +7,10 @@ namespace KhaozEngine.Render3D.Internal
     /// ResourceLayout binding order is unambiguous. The model pass writes 3 MRT color targets
     /// (lit color, encoded normal, linear-ish depth) so the edge pass never samples a depth texture.
     ///
+    /// Shader-string comments about mandatory up-front texture sampling record the retired Veldrid workaround.
+    /// Native Metal authors resource indices, so conditional and out-of-order samples are supported (#729).
+    /// The existing shader strings retain their historical form and hashes.
+    ///
     /// The sources are split across ShaderSources.&lt;Domain&gt;.cs partial files by render domain, so the
     /// file-size ratchet reports growth per domain rather than on one 2600-line pile. Splitting is by
     /// responsibility, not by line count: every member below is a compile-time const, so

@@ -69,6 +69,28 @@ public class CharacterMovementNanGuardTests
         Assert.Equal(landed.Grounded, poisoned.Grounded);
     }
 
+    [Theory]
+    [InlineData(0.25f)]
+    [InlineData(-0.25f)]
+    public void Repeated_poisoned_ticks_hold_the_pose_without_replaying_a_step(float stepDelta)
+    {
+        var start = new MoveState
+        {
+            Position = new Vector3(5f, T.CapsuleHalfHeight, -3f),
+            Grounded = true,
+            StepDeltaY = stepDelta,
+        };
+        MoveState state = start;
+        for (int i = 0; i < 3; i++)
+        {
+            state = CharacterMovement.Step(state, MoveCommand.Idle, 1f / 30f, Flat, T,
+                clampXz: (x, z) => new Vector2(float.NaN, float.NaN));
+            Assert.Equal(start.Position, state.Position);
+            Assert.Equal(start.Grounded, state.Grounded);
+            Assert.Equal(0f, state.StepDeltaY);
+        }
+    }
+
     // --- The move gate already neutralizes a pathological command (regression lock). ---
 
     [Theory]

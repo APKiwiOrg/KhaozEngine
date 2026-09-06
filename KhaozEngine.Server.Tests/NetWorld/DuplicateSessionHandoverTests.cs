@@ -40,7 +40,7 @@ public class DuplicateSessionHandoverTests
 
     private sealed class Rig
     {
-        public required InMemoryHub Hub { get; init; }
+        public required InMemoryTransportHub Hub { get; init; }
         public required SlowSaveWorldStore Store { get; init; }
         public required InMemoryWorldStore Inner { get; init; }
         public required WorldPersistence Persistence { get; init; }
@@ -116,7 +116,7 @@ public class DuplicateSessionHandoverTests
         await inner.SaveAsync("player:" + Alpha, PlayerRecord.From(new PlayerMoveState { Position = Stored },
             Encoding.UTF8.GetBytes("alpha-blob")).Encode());
         var store = new SlowSaveWorldStore(inner);
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         var server = new WorldServer(hub.Server, new WorldServerConfig
         {
             TickSeconds = Dt,

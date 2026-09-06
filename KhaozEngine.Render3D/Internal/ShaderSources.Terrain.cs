@@ -87,8 +87,8 @@ void main() {
         //      as ModelFrag, via the shared LightingCommonGlsl block (single-sourced, not hand-duplicated) which
         //      both fragments splice in and call. Writes the same 3 MRT targets (geometric normal to attachment 1
         //      for the edge pass). The two arrays are still sampled in binding order (Albedo then Normal), which is
-        //      no longer a Metal constraint (the native backend authors its own indices) and stays as the engine's
-        //      own convention. ----
+        //      no longer a Metal constraint (the native backend authors its own indices). The existing source
+        //      retains that sequence without requiring it of other shaders. ----
         public const string SplatFrag = @"#version 450
 layout(set=0, binding=0) uniform U {
     mat4 ViewProj;

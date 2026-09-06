@@ -12,11 +12,16 @@ Game-agnostic audio on the custom MonoGame-free stack: streaming music + SFX + 3
   Release, so a background job firing an SFX fails on its first call instead of quietly corrupting a dictionary.
   To trigger audio from a worker, record the request and issue the call from the main thread's next frame.
   `Dispose` is the one exemption, so a shutdown path on another thread is not turned into a crash.
-- SFX buses - `DefineBus(id)` / `SetBusVolume(id, v)` / `GetBusVolume(id)` group sounds (UI, ambience, combat, ...)
+- SFX buses - `DefineBus(id)` / `DefineBus(id, SfxAttenuation)` / `SetBusVolume(id, v)` / `GetBusVolume(id)`
+  group sounds (UI, ambience, combat, ...)
   under one volume without per-voice bookkeeping. Every `PlaySfx` / `PlaySfx3D` overload takes an optional
   `bus`; effective voice gain = `master x sfx x bus x volume`. No bus (or an unknown bus) = the default bus at
   1.0, so bus-less plays are byte-for-byte the old behavior. A bus volume change applies on the NEXT play on
   that bus (the `ISfxBackend` seam is fire-and-forget: no live per-voice re-gain).
+  Positional plays on a configured bus carry its immutable inverse-distance curve to the backend. The default
+  remains reference distance 1, rolloff 1, maximum distance 50. Non-positional sounds ignore attenuation.
+  Construct curves with `new SfxAttenuation(referenceDistance, rolloffFactor, maxDistance)` or use
+  `SfxAttenuation.Default`. The all-zero `default(SfxAttenuation)` value is invalid and `DefineBus` rejects it.
 - SFX priority - `PlaySfx` / `PlaySfx3D` each have an overload taking an `SfxPriority` (`Low` / `Normal` /
   `High`) right after the name. The pool is small and fixed, so once every voice is busy a new sound can only be
   heard by taking one: with a priority the backend steals the LOWEST-priority voice still playing instead of

@@ -19,4 +19,10 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// something deliberately replaces it. Defaults to <see cref="TileMoveMode.Walk"/>, which is what
 /// <see cref="TileMoveState.At"/> would have written anyway.</param>
 public readonly record struct TileActorSpawn(ushort MaxHealth, byte AttackTicks, TileDirection Facing,
-    TileMoveMode Mode = TileMoveMode.Walk);
+    TileMoveMode Mode = TileMoveMode.Walk)
+{
+    /// <summary>The registered collision topology this actor moves over. Register a non-default key through
+    /// <see cref="TileActorHost.RegisterTraversalProfile"/> before spawning. Kept outside the positional record
+    /// shape so existing construction and deconstruction remain source compatible.</summary>
+    public TileActorTraversalProfile TraversalProfile { get; init; } = TileActorTraversalProfile.Default;
+}

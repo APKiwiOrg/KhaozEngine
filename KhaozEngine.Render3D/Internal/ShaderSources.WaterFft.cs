@@ -262,8 +262,8 @@ vec2 oceanWarp(vec2 xz) {
         vec2 focusRot = FftFocus.z > 0.0 ? oceanUnitRot(vFocusRot) : vec2(1.0, 0.0);
         vec4 sec = oceanSectors(focusRot);
         vec2 csHi = oceanRotAdd(sec.xy, FftSector.yz);
-        // L2 weights for the displacement/slope maps (zero-mean Gaussian fields, so this conserves the
-        // spectrum's variance); plain linear ones for foam, which is a bounded coverage and wants its mean.
+        // L2 weights preserve variance only for decorrelated displacement/slope taps. Near the focus the taps
+        // correlate and can amplify the result (see OceanFocus.Sectors). Foam uses linear coverage weights.
         float wLo = (1.0 - sec.z) * sec.w, wHi = sec.z * sec.w;
         for (int i = 0; i < KE_MAX_CASCADES; i++) {
             if (i >= nc) break;

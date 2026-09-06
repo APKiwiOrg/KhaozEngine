@@ -55,7 +55,7 @@ public class WorldClientReconnectTeleportTests
         Reconnect = new ReconnectBackoff { InitialSeconds = 0.05f, Multiplier = 1f, MaxSeconds = 0.05f },
     };
 
-    // A live rig over InMemoryHub: one server, one auto-reconnecting client, and a handle on the client's CURRENT
+    // A live rig over InMemoryTransportHub: one server, one auto-reconnecting client, and a handle on the client's CURRENT
     // transport endpoint so a test can drop it (a transport drop against a server that never restarted - the case
     // #409 is about, and the one RestartableHub's server-restart model does not cover).
     // The client's current transport endpoint, written by the connect factory on every attempt. A holder rather than a
@@ -64,7 +64,7 @@ public class WorldClientReconnectTeleportTests
 
     sealed class Rig
     {
-        public required InMemoryHub Hub { get; init; }
+        public required InMemoryTransportHub Hub { get; init; }
         public required WorldServer Server { get; init; }
         public required WorldServerConfig Config { get; init; }
         public required WorldClient Client { get; init; }
@@ -99,7 +99,7 @@ public class WorldClientReconnectTeleportTests
 
     static Rig Connect()
     {
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         var store = new SessionStore();
         WorldServerConfig config = NewServerConfig(store);
         var server = new WorldServer(hub.Server, config, Flat, MoveTuning.Default);
@@ -119,7 +119,7 @@ public class WorldClientReconnectTeleportTests
     [Fact]
     public void First_join_reports_a_teleport()
     {
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         WorldServerConfig config = NewServerConfig();
         var server = new WorldServer(hub.Server, config, Flat, MoveTuning.Default);
         using var client = new WorldClient(hub.CreateClient(), Flat, MoveTuning.Default, NewClientConfig());

@@ -14,6 +14,17 @@ public sealed class UpdateOverlayThemeTests
         Assert.Equal("Update Available - v1.2.3", t.TitleFor(UpdateState.UpdateAvailable, "1.2.3"));
         Assert.Equal("Update v1.2.3 Ready", t.TitleFor(UpdateState.ReadyToApply, "1.2.3"));
         Assert.Equal("Update Failed", t.TitleFor(UpdateState.Failed, (string?)null));
+        Assert.Equal("Updates Cannot Be Verified", t.TitleFor(UpdateState.Untrusted, (string?)null));
+    }
+
+    [Fact]
+    public void Untrusted_body_is_catalog_resolved_and_offers_no_action()
+    {
+        var t = UpdateOverlayTheme.Default;
+        var status = new FakeUpdateStatus { State = UpdateState.Untrusted };
+
+        Assert.Equal("This build cannot verify updates", t.BodyFor(UpdateState.Untrusted, status));
+        Assert.Equal("Press [Esc] to dismiss", t.HintFor(UpdateState.Untrusted, status));
     }
 
     [Fact]

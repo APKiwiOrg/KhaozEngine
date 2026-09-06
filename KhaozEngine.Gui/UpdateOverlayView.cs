@@ -53,7 +53,7 @@ public sealed class UpdateOverlayView
     /// accounts for a dismissal.</summary>
     public static bool IsVisible(UpdateState state) => state is
         UpdateState.UpdateAvailable or UpdateState.Downloading or UpdateState.ReadyToApply
-        or UpdateState.Applying or UpdateState.Failed;
+        or UpdateState.Applying or UpdateState.Failed or UpdateState.Untrusted;
 
     /// <summary>
     /// States the player may decline with the dismiss key: the ones that are waiting on a decision rather than
@@ -64,7 +64,7 @@ public sealed class UpdateOverlayView
     /// operation the player already started, and the second is a process that is about to exit.
     /// </summary>
     public static bool IsDismissible(UpdateState state) => state is
-        UpdateState.UpdateAvailable or UpdateState.ReadyToApply or UpdateState.Failed;
+        UpdateState.UpdateAvailable or UpdateState.ReadyToApply or UpdateState.Failed or UpdateState.Untrusted;
 
     /// <summary>True when the dismiss key/button would be accepted for <paramref name="status"/> right now.</summary>
     public bool CanDismiss(IUpdateStatus status)
@@ -127,7 +127,8 @@ public sealed class UpdateOverlayView
         float step = Theme.FadeSpeed * dt;
         _alpha = target > _alpha ? MathF.Min(target, _alpha + step) : MathF.Max(target, _alpha - step);
 
-        TriggeredThisFrame = showing && Pressed(input, Theme.TriggerKey, Theme.TriggerButton);
+        TriggeredThisFrame = showing && UpdateOverlayActions.ResolveAction(status) != OverlayAction.None
+            && Pressed(input, Theme.TriggerKey, Theme.TriggerButton);
         DismissedThisFrame = false;
         if (TriggeredThisFrame)
         {

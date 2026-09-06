@@ -720,7 +720,14 @@ public sealed partial class AudioSystem : IDisposable
         float gain = _masterVolume * _sfxVolume * ResolveBusVolume(bus) * Math.Clamp(volume, 0f, 1f);
         try
         {
-            _sfxBackend.Play(handle, gain, pitch, positional, position, priority);
+            if (positional)
+            {
+                _sfxBackend.Play(handle, gain, pitch, positional, position, priority, ResolveBusAttenuation(bus));
+            }
+            else
+            {
+                _sfxBackend.Play(handle, gain, pitch, positional, position, priority);
+            }
         }
         catch (Exception ex)
         {

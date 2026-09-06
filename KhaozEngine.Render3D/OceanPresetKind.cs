@@ -1,7 +1,7 @@
 namespace KhaozEngine.Render3D
 {
     /// <summary>
-    /// A named ocean-surface bundle applied in one call via <see cref="OceanPresets.Apply"/>. Each value sets the
+    /// A named ocean-surface bundle applied in one call via <see cref="OceanPresets.Apply(OceanPresetKind, WaterSettings)"/>. Each value sets the
     /// same coherent group of swell, ripple, and foam/glint fields on <see cref="WaterSettings"/>, so a map editor
     /// or sample can offer a simple dropdown instead of tuning every knob by hand.
     /// </summary>

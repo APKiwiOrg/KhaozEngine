@@ -178,9 +178,11 @@ Without them the map would keep stale storage for a region the document no longe
 rather than blocked. The plane count comes from the document, so the rects can only be built on the first
 apply. `CreateRegionCommand.Created` reports whether that apply actually created the region, and an apply over
 one that was already there is a no-op with a no-op revert. `DeleteRegionCommand` captures the region OBJECT
-itself rather than a copy: `RemoveRegion` detaches the instance untouched, so what the command holds IS the
+itself rather than a copy: `DeleteRegion` detaches the instance untouched, so what the command holds IS the
 pre-delete state, with no clone that could fall out of step and no 64x64 array copy per layer per plane, and a
-caller that took a reference before the delete still holds the live region after the undo.
+caller that took a reference before the delete still holds the live region after the undo. Delete and the undo
+of create use the permanent path, so a source-backed world drops its known hash and marker rows instead of
+turning the operation into a safe unload.
 
 **`CompositeCommand`** lands a list of commands as ONE undo step: applied front to back, reverted back to
 front, reporting every child's rects live rather than as a snapshot (a child can only work out what it touched
@@ -260,7 +262,7 @@ collision map in step.
   planes are `plane` through `plane + prefab.PlaneCount - 1`, UNCLIPPED: a prefab reaching above the world's
   planes is refused by `Execute` rather than clipped the way `TilePrefabs.Place` clips it, because a snapshot
   must not claim a rect it cannot capture or restore.
-- `ImportHeights(image, cornerRect, plane, minCm, maxCm)` and `ImportHeights(pgmPath, ...)` resample a
+- `ImportHeights(PgmImage, ...)`, `ImportHeights(PngImage, ...)` and the path overload resample a
   greyscale heightmap onto the corner rect. The image is stretched over the rect with bilinear interpolation,
   its first and last columns landing on the west and east corners and its first and last rows on the north and
   south ones, and image row 0 is the NORTH edge, because an image is written top row first while tile z grows
@@ -276,9 +278,9 @@ much of the edit landed inside the authored world.
 ## `PgmReader` and `PgmImage`
 
 `PgmReader.Read(path)` and `Read(bytes, name?)` decode binary PGM (netpbm P5) greyscale images, 8 or 16 bit,
-which is how a heightmap painted in any terrain or image tool reaches the engine. PGM rather than PNG because
-the format is a header of ASCII decimals followed by raw big-endian samples, so reading it is a small parser
-rather than a deflate decoder the engine does not have.
+which remains the smallest heightmap format for generated tooling. The path overload also accepts `.png` through
+`KhaozEngine.Imaging.PngReader`. Its PNG overload ignores alpha and reads the first color channel, preserving
+ordinary greyscale RGB heightmaps while retaining all 16 bits of sample precision.
 
 `PgmImage(Width, Height, MaxValue, Samples)` carries the decoded samples row-major with the TOP row first, the
 order the file itself is written in, and `Sample(x, y)` reads one with per-axis bounds checks (a raw flat index

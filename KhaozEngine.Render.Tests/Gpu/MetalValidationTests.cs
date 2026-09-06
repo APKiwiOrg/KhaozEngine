@@ -160,13 +160,54 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void TheNotArmedWarning_NamesTheLaunchPrefixForBothTiers()
         {
-            string one = MetalValidation.NotArmedWarning(MetalValidationMode.On);
-            string shaders = MetalValidation.NotArmedWarning(MetalValidationMode.Shaders);
+            string one = MetalValidation.NotArmedWarning(MetalValidationMode.On, false, false);
+            string shaders = MetalValidation.NotArmedWarning(MetalValidationMode.Shaders, false, false);
 
             Assert.Contains("MTL_DEBUG_LAYER=1 <your command>", one, StringComparison.Ordinal);
             Assert.Contains("MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 <your command>", shaders,
                 StringComparison.Ordinal);
             Assert.Contains("BEFORE the first device exists", one, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void TheNotArmedWarning_NamesOnlyMissingRequestedInstruments()
+        {
+            string shaderOnly = MetalValidation.NotArmedWarning(MetalValidationMode.On, false, true);
+            Assert.Contains("Missing launch variable: MTL_DEBUG_LAYER", shaderOnly, StringComparison.Ordinal);
+            Assert.DoesNotContain("Missing launch variable: MTL_SHADER_VALIDATION", shaderOnly,
+                StringComparison.Ordinal);
+
+            string debugOnly = MetalValidation.NotArmedWarning(MetalValidationMode.Shaders, true, false);
+            Assert.Contains("Missing launch variable: MTL_SHADER_VALIDATION", debugOnly,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain("Missing launch variable: MTL_DEBUG_LAYER", debugOnly,
+                StringComparison.Ordinal);
+        }
+
+        [Theory]
+        [InlineData("Off", false, false, false)]
+        [InlineData("On", false, false, true)]
+        [InlineData("On", true, false, false)]
+        [InlineData("On", false, true, true)]
+        [InlineData("On", true, true, false)]
+        [InlineData("Shaders", false, false, true)]
+        [InlineData("Shaders", true, false, true)]
+        [InlineData("Shaders", false, true, true)]
+        [InlineData("Shaders", true, true, false)]
+        public void RequestedValidation_IsComparedPerLaunchVariable(
+            string requestedName,
+            bool debugLayerArmed,
+            bool shaderValidationArmed,
+            bool expectedMismatch)
+        {
+            MetalValidationMode requested = Enum.Parse<MetalValidationMode>(requestedName);
+            MetalValidationMode armed = shaderValidationArmed
+                ? MetalValidationMode.Shaders
+                : debugLayerArmed ? MetalValidationMode.On : MetalValidationMode.Off;
+            var arming = new MetalValidationArming(
+                requested, null, armed, debugLayerArmed, shaderValidationArmed, false, false);
+
+            Assert.Equal(expectedMismatch, arming.RequestedRequirementsMissing);
         }
 
         /// <summary>The in-process case gets its own sentence rather than folding into the one above, because the
@@ -263,7 +304,7 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal(MetalValidationMode.On, arming.Requested);
             Assert.Equal(MetalValidationMode.Off, arming.Armed);
-            Assert.True(arming.RequestedMoreThanArmed);
+            Assert.True(arming.RequestedRequirementsMissing);
         }
 
         /// <summary>

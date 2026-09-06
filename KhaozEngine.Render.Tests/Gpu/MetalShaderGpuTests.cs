@@ -58,7 +58,7 @@ namespace KhaozEngine.Tests.Gpu
             var stopwatch = Stopwatch.StartNew();
             int programs = 0;
 
-            foreach (ShippedGraphicsProgram program in D3D11ShaderProgramCatalog.GraphicsPrograms())
+            foreach (ShippedGraphicsProgram program in ShippedShaderPrograms.GraphicsPrograms())
             {
                 using IGpuShaderSet set = device.Factory.CreateShadersFromSpirv(
                     program.VertexGlsl, program.FragmentGlsl);
@@ -95,7 +95,7 @@ namespace KhaozEngine.Tests.Gpu
             using IGpuDevice device = CreateHeadless();
             int kernels = 0;
 
-            foreach (ShippedComputeKernel kernel in D3D11ShaderProgramCatalog.ComputeKernels())
+            foreach (ShippedComputeKernel kernel in ShippedShaderPrograms.ComputeKernels())
             {
                 using IGpuComputeShader shader = device.Factory.CreateComputeShaderFromSpirv(kernel.ComputeGlsl);
 
@@ -212,7 +212,7 @@ namespace KhaozEngine.Tests.Gpu
             if (!Available()) return;
 
             using IGpuDevice device = CreateHeadless();
-            ShippedGraphicsProgram program = D3D11ShaderProgramCatalog.GraphicsPrograms().First();
+            ShippedGraphicsProgram program = ShippedShaderPrograms.GraphicsPrograms().First();
 
             IGpuShaderSet set = device.Factory.CreateShadersFromSpirv(program.VertexGlsl, program.FragmentGlsl);
             var metal = (MetalShaderSet)set;

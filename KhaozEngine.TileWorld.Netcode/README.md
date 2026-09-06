@@ -149,11 +149,16 @@ so it walks visibly under the winner rather than vanishing a step before it gets
   a blocker is felt when the step would begin rather than when the foot lands. The step in progress is never
   abandoned either, and it needs no special case for it: a route is always pathed from `Tile`, which is the tile
   the step in flight is entering, so a direction change while moving never drags the avatar back toward the tile
-  it was leaving. The route cap counts the steps still to take from that tile.
+  it was leaving. The route cap counts the steps still to take from that tile. `Step` and `BeginWalk` also have
+  overloads taking a `TilePathfinderScratch`. The caller owns that mutable scratch and must never share it across
+  concurrent searches. Omitting it preserves the allocating behavior used by client prediction.
 - **`TileMovementSystem`** - runs the simulator over every OWNED entity inside a cell's own fixed tick,
-  skipping ghosts and migrating entities so nothing is stepped twice in one tick. It holds TWO simulators and
-  picks on the `TileActor` tag, so an actor paths at its own `ActorMove` radius while a player paths at the
-  click radius. The one-argument constructor still exists and runs one simulator over everything.
+  skipping ghosts and migrating entities so nothing is stepped twice in one tick. It holds the player simulator
+  and the actor traversal registry. A `TileActor` tag selects a registered actor simulator, so each profile reads
+  its own map while every actor keeps the server's `ActorMove` radius. The cell owns one player pathfinder scratch
+  buffer and lazily creates one per actor profile it encounters. No mutable scratch is shared by the server, the
+  simulators or scheduler-fanned cells. The one-argument and two-simulator constructors keep their original
+  behaviour for heads that build this system directly.
 - **`TileReach`** / **`TileActionQueue`** / **`TilePendingAction`** / **`TileActionKind`** - the OSRS reach rule and
   the one-deep pending action. `TileReach.Set` is every tile cardinally adjacent to a footprint tile that the
   footprint tile could step OUT onto, `Contains` is the in-range test, `TryNearest` picks the reach tile by real
@@ -164,6 +169,7 @@ so it walks visibly under the winner rather than vanishing a step before it gets
   candidate, skipping one outside the window or already at or past the best length found so far, both of which
   the loop would have discarded after paying for the search: a walk is eight-connected, so its step count is
   never below the Chebyshev distance to its goal. The chosen tile and the tie rule are unchanged by either.
+  Its overload accepting `TilePathfinderScratch` reuses the same working memory across candidate searches.
   `agentSize` and `maxRadius` are validated at the top of `TryNearest` rather than left to the first search, so a
   bad argument throws whether the target is open, walled in, out of range or on another plane.
 - **`ITileTargets`** / **`TileDocumentTargets`** / **`TileEntityTargets`** / **`TileRemoteTargets`** - the seam
@@ -189,11 +195,13 @@ so it walks visibly under the winner rather than vanishing a step before it gets
 **Actors and combat**
 
 An ACTOR is a player minus a connection. It carries `TileMoveState`, `TileRouteState` and `PendingTileCommand`, so
-it steps through the same `TileMoveSimulator` for free and can never move in a way a player could not.
+it steps through the same `TileMoveSimulator` algorithm and can never move by a rule the player stepper does not
+understand. Its registered traversal profile can give that algorithm a different collision topology.
 
 - **`TileActor`** - the tag marking a server-owned entity. ECS-only and never replicated, which is why the host
   rewrites it every tick: a region handoff captures only the registered components, so a crossing actor would
-  otherwise arrive on the far side no longer an actor.
+  otherwise arrive on the far side no longer an actor. The tag carries the actor's opaque traversal profile, and
+  the host restores that from the server's live actor index after the handoff.
 - **`TileHealth`** - `Current` and `Max`, four payload bytes on the default channels so a health bar has something
   to read. The engine owns it MECHANICALLY and owns none of its meaning: it subtracts a game-rolled amount and
   raises the death event at zero. **A spawned PLAYER carries none.** See the health contract below.
@@ -205,19 +213,27 @@ it steps through the same `TileMoveSimulator` for free and can never move in a w
   age pair (`TargetSeen` / `TargetSinceTick`, which is what makes the roll order oldest lock first). Registered
   on the MIGRATE channel alone, so it survives a handoff and reaches no client at all.
 - **`TileActorSpawn`** / **`TileWorldServer.SpawnActor`** / **`DespawnActor`** - the door. The spec is the numbers
-  that go on ONE entity (`MaxHealth`, `AttackTicks`, `Facing`, `Mode`), and the door refuses a zero `MaxHealth`, an
-  off-map or off-plane tile and a cell already at `MaxActorsPerCell` by answering 0 rather than throwing, so a
-  spawner can never take a tick down with it. `RefusedActorSpawnCount` counts the refusals. An actor is
+  that go on ONE entity (`MaxHealth`, `AttackTicks`, `Facing`, `Mode`, plus the non-positional
+  `TraversalProfile`). The default profile preserves the constructor map and the original positional construction
+  and deconstruction. A non-default profile must be registered and its map must permit the spawn tile. The door
+  refuses a zero `MaxHealth`, an off-map or off-plane tile and a cell already at `MaxActorsPerCell` by answering 0
+  rather than throwing, so a spawner can never take a tick down with it. `RefusedActorSpawnCount` counts the
+  capacity refusals. An actor is
   `Transient` at `DurableOnly`, so a cell eviction FREEZES it rather than ending it, and both doors instantiate
   the coordinate before they resolve: the cap counts a frozen actor rather than admitting a spawn on top of it,
   and the despawn reaches one rather than leaving it to come back as an entity nothing indexes.
 - **`TileActorDefinition`** / **`TileActorSpawner`** / **`TileActorSpawnerState`** - what a spawn POINT is authored
-  from (id, max health, step mode, attack cadence, wander and leash radii, respawn delay, and a game-owned `Kind`),
-  and the spawner that owns one home tile, its live actor and its respawn countdown. `LeashRadius` is checked
+  from (id, max health, step mode, attack cadence, wander and leash radii, respawn delay, a game-owned `Kind`, and
+  an optional registered `TraversalProfile`), and the spawner that owns one home tile, its live actor and its
+  respawn countdown. `LeashRadius` is checked
   against `TileWorldServerConfig.ActorMove.MaxPathRadius` where the definition arrives, at `TileActorHost.Add`,
-  because a leash beyond the pathfinder's window is a walk home it cannot plan in one go.
+  because a leash beyond the pathfinder's window is a walk home it cannot plan in one go. Cell eviction keeps the
+  documented respawn countdown. When it expires, the spawner retires any former actor restored from the evicted
+  cell before it checks the cap and builds the replacement. A non-default home must be open when the definition is
+  added. If that topology later blocks the home, respawn waits and retries on a later tick.
 - **`TileActorHost`** (`server.Actors`) - `Add(definition, home)` to register a spawner, `Command(netId, command)`
-  to latch one command onto one actor, `Behaviour` and `Seed` for the decision seam, `Spawners`,
+  to latch one command onto one actor, `RegisterTraversalProfile(profile, map)` to register a non-default topology
+  before the first authoritative tick, `Behaviour` and `Seed` for the decision seam, `Spawners`,
   `TryGetSpawnerOf`, `Forget` (the despawn hook, dropping the unspent latch, the birth tile and the spawner link
   together) and `PendingCommandCount`. Its tick is step 1b: every spawner respawns or counts
   down, then every live actor gets its decision translated into a command, plus the tag and
@@ -233,9 +249,10 @@ it steps through the same `TileMoveSimulator` for free and can never move in a w
   rule can skip an attacker who logged out without the record being touched), whether it is walking, who is
   locked onto IT
   (`TargetedBy`, lowest net id when several are, one tick behind a freshly accepted attack), the tick and its own
-  random stream), so no actor's decision can depend on another having moved first. One instance is SHARED by every
-  actor, as a simulator is, so a game that wants different behaviour per monster dispatches on `Definition.Kind`
-  inside one implementation.
+  random stream), plus `TraversalProfile` and its registered `TraversalMap`, so no actor's decision can depend on
+  another having moved first. The profile and map are non-positional init properties to preserve existing context
+  construction and deconstruction. One behaviour instance is SHARED by every actor, so a game that wants different
+  behaviour per monster dispatches on `Definition.Kind` inside one implementation.
 - **`TileActorRandom`** - a splitmix64 value type, `For(seed, netId, tick)`, so a behaviour needs no per-actor
   storage and a replay reproduces every draw. Deliberately not `System.Random`, whose sequence is not stable
   across .NET releases. **It MUTATES, and the context hands it over an `in` parameter, so copy it to a local and
@@ -245,16 +262,53 @@ it steps through the same `TileMoveSimulator` for free and can never move in a w
   chase, retaliate, stand-your-ground, wander, in that order, stateless. The stand rule is the feel fix a click
   game wants: an actor something has locked onto stops walking away before the first blow lands, instead of
   finishing the wander leg it had rolled. Not installed by any constructor, so an actor with no behaviour stands
-  exactly where it was put.
+  exactly where it was put. The parameterless constructor reads `TileActorContext.TraversalMap`, and
+  `CreateWithTiming` supplies custom pause and retaliation timings without overlapping the original constructor.
+  The original constructor still accepts a fallback map for contexts a consumer builds by hand, while a
+  server-supplied profile map wins.
 - **`ITileCombatRules`** / **`TileAttackContext`** / **`TileAttackOutcome`** - where the GAME plugs into the hit
   pipeline. The engine owns whether a swing is DUE (the cooldown) and whether it is LEGAL (adjacency through
-  `TileReach`). This owns what it DOES. `Roll` is called once per eligible attacker per tick, in the engine's fixed
-  order and BEFORE any of the tick's damage is applied, so no roll sees another roll's result, and `AttackTicks`
-  is the per-attacker cadence. Build an outcome through `Hit` or `Miss`: the two fields are read independently, so
-  a hand-built `new TileAttackOutcome(false, 50, 0)` is a miss that takes 50 health.
+  `TileReach`). That reach check uses the attacker's movement map, which keeps an actor's final chase geometry on
+  its selected topology. Players continue to use the constructor map. `CanAttack(attackerNetId, targetNetId)` is
+  the admission rule for acquiring a target. A false answer is rewritten to `Continue` before a player command or
+  actor latch can create a lock, chase, swing, or roll. Its default permits every target for source compatibility.
+  `Roll` is called once per eligible attacker per tick, in the engine's fixed order and BEFORE any of the tick's
+  damage is applied, so no roll sees another roll's result, and `AttackTicks` is the per-attacker cadence. Build an
+  outcome through `Hit` or `Miss`: the two fields are read independently, so a hand-built
+  `new TileAttackOutcome(false, 50, 0)` is a miss that takes 50 health.
 - **`TileCombatEvent`** - one resolved swing, explicit rather than derived. `Amount` is the ROLLED damage, so an
   overkill reports more than was taken (award experience off the target's health, not off this), and `Killed`
   rides the blow that caused the death so a client never has to notice an absence to know something died.
+
+### Actor traversal profiles
+
+The profile value is an opaque game-owned key. Build the alternate topology, register it during server setup, and
+assign it to the definition or direct spawn. The callback overload of `TileCollisionBaker.Bake` replaces only the
+ground blocking rule. It receives absolute world tile X and Z plus a zero-based plane for every tile in every
+loaded region. The baker then runs the ordinary solid, diagonal, wall and wall-corner object passes unchanged.
+
+```csharp
+var swimmer = new TileActorTraversalProfile(1);
+TileCollisionMap swimmerMap = TileCollisionBaker.Bake(document, catalogs,
+    (x, z, plane) => !GameGroundRules.CanSwimmerStand(document, catalogs, x, z, plane));
+
+server.Actors.RegisterTraversalProfile(swimmer, swimmerMap);
+server.Actors.Add(new TileActorDefinition
+{
+    Id = "marsh-creature",
+    MaxHealth = 5,
+    TraversalProfile = swimmer,
+}, new TileCoord(18, 27, 0));
+
+server.Actors.Behaviour = new TileWanderBehaviour();
+```
+
+Register every non-default key before the first authoritative tick and before any spawn or spawner that names it.
+The map is held by reference, so later dynamic blockers affect destination checks, routes, committed steps,
+repaths, chase, wander, leash return and respawn. The profile follows an actor through region handoff. Unknown keys
+are refused at the public spawn doors, and an unresolved ECS tag freezes instead of falling back to another map.
+Mutate a retained map only on the server's owning thread between ticks. The player simulator and client prediction
+always keep the constructor map.
 
 **Wire**
 
@@ -379,7 +433,8 @@ it steps through the same `TileMoveSimulator` for free and can never move in a w
   `TileWorldServer.SetPlayerState` and throwing out of the head's frame loop. `QuietRestoreDistance` defaults to
   half a tile here rather than the core's one, because this binding is a lattice and puts the PLANE on the
   position's Y: at the core's default a restore that moved a player a whole floor measured exactly 1, passed as no
-  move, and the client glided between floors instead of cutting.
+  move, and the client glided between floors instead of cutting. Restore distance is measured from the original
+  integer tile coordinates, so adjacent tiles stay distinct even beyond the exact integer range of a float.
 
 ## Ground items, whose lifecycle is the engine's and whose meaning is yours
 
@@ -389,7 +444,8 @@ ttlTicks)` places one (net id from the actors' own allocator, refused countably 
 `SpawnActor` does), the server despawns it unprompted when its clock runs out (`OnGroundItemExpired`),
 and `DespawnGroundItem` is the deliberate removal whose true-once answer is what a pickup racing the
 expiry sweep keys on: move your payload only after it answers true. `TryGetGroundItem`,
-`GroundItemCount` and `GroundItemNetIds` are the server-side reads.
+`GroundItemCount` and `GroundItemNetIds` are the server-side reads. The per-cell cap also counts a drop held in an
+evicted cell snapshot. Checking a cold coordinate materializes and restores that cell before deciding the spawn.
 
 The component is two meaning-free integers plus the tile (`TileGroundItem`: `ItemId`, `Count`, `X`,
 `Z`, `Plane`), deliberately not a dependency on `KhaozEngine.Items`: the engine owns existence,
@@ -649,7 +705,9 @@ low for normal traffic.
 
 `BeginDrain(TileServerReason.Draining, graceSeconds)` on SIGINT announces the token to every client at once, keeps
 ticking through the grace so a player mid walk finishes it, and raises `IsDrainComplete` once the grace is spent
-AND the sessions are closed. Flush persistence there, then exit.
+AND the sessions are closed. Flush persistence there, then exit. The countdown is the shared
+`KhaozEngine.Simulation.Hosting.DrainController`. A second `BeginDrain` remains an idempotent no-op for this server, so it
+does not resend the notice or restart the grace.
 
 ## A client, in ten lines
 
@@ -745,11 +803,9 @@ fixed size cannot carry these notices, because the padding it adds is length the
 
 ## Known limits in this release
 
-- **`TileWorldServerConfig.MaxCommandsPerSecond` is spent per POLL, not per wall-clock second.** The bucket is
-  topped up once per `Poll` with `MaxCommandsPerSecond * TickSeconds` tokens, so the sustained ceiling is
-  `pollRate * MaxCommandsPerSecond * TickSeconds` messages per second. It is the `RateLimiter` contract the rest of
-  the engine's servers run on, and the fleet-wide unit defect is
-  [#681](https://github.com/APKiwiOrg/KhaozEngine/issues/681).
+- **`TileWorldServerConfig.MaxCommandsPerSecond` is a simulated-time rate.** Each whole tick tops the bucket up
+  with `MaxCommandsPerSecond * TickSeconds` tokens. `Poll` only transports messages, so polling faster than the
+  command clock does not raise the sustained ceiling. The default is 40 messages per simulated second.
 - **A remote's BODY is drawn `InterpolationDelayTicks` behind.** Not a step behind: the one-step-behind
   reconstruction went with the lead commit in 18.1.0, which put `StepFrom` on the everyone channel, so an observer
   is handed the step's two tiles and glides FORWARD into the committed one. What is left is the delay itself,

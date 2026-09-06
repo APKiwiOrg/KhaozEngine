@@ -18,12 +18,6 @@ namespace KhaozEngine.Audio;
 internal sealed unsafe class OpenAlSfxBackend : ISfxBackend
 {
     const int VoiceCount = 16;
-    // Sane positional-attenuation defaults applied per source at play time (Silk's AL surface has no
-    // SetDistanceModel; the inverse-distance default model uses these per-source distances).
-    const float ReferenceDistance = 1f;
-    const float RolloffFactor = 1f;
-    const float MaxDistance = 50f;
-
     readonly ILogger _logger;
     readonly AlErrorLog _errors;
     readonly AL _al;
@@ -105,6 +99,16 @@ internal sealed unsafe class OpenAlSfxBackend : ISfxBackend
         => Play(handle, gain, pitch, positional, position, SfxPriority.Normal);
 
     public void Play(int handle, float gain, float pitch, bool positional, Vector3 position, SfxPriority priority)
+        => Play(handle, gain, pitch, positional, position, priority, SfxAttenuation.Default);
+
+    public void Play(
+        int handle,
+        float gain,
+        float pitch,
+        bool positional,
+        Vector3 position,
+        SfxPriority priority,
+        SfxAttenuation attenuation)
     {
         if (handle < 0 || handle >= _buffers.Count) return;
         uint bufferId = _buffers[handle];
@@ -123,9 +127,9 @@ internal sealed unsafe class OpenAlSfxBackend : ISfxBackend
         {
             _al.SetSourceProperty(source, SourceBoolean.SourceRelative, false);
             _al.SetSourceProperty(source, SourceVector3.Position, position);
-            _al.SetSourceProperty(source, SourceFloat.ReferenceDistance, ReferenceDistance);
-            _al.SetSourceProperty(source, SourceFloat.RolloffFactor, RolloffFactor);
-            _al.SetSourceProperty(source, SourceFloat.MaxDistance, MaxDistance);
+            _al.SetSourceProperty(source, SourceFloat.ReferenceDistance, attenuation.ReferenceDistance);
+            _al.SetSourceProperty(source, SourceFloat.RolloffFactor, attenuation.RolloffFactor);
+            _al.SetSourceProperty(source, SourceFloat.MaxDistance, attenuation.MaxDistance);
         }
         else
         {

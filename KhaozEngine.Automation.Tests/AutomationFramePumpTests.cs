@@ -17,7 +17,9 @@ namespace KhaozEngine.Tests;
 /// </summary>
 public class AutomationFramePumpTests
 {
-    static AutomationHost NewHost() => new(AutomationOptions.Off);
+    static AutomationHost NewHost(TimeSpan? timeout = null) => new(timeout is TimeSpan value
+        ? AutomationOptions.Off with { CommandTimeout = value }
+        : AutomationOptions.Off);
 
     static readonly InputState Frame = AutomationTestKit.Real(position: new Vector2(1, 2));
 
@@ -139,6 +141,60 @@ public class AutomationFramePumpTests
         host.Pump(Frame);
 
         Assert.Equal("the camera is not ready", (await reply).Error);
+    }
+
+    [Fact]
+    public async Task ExpiredQueuedCommandIsRemovedWithoutAFramePump()
+    {
+        using AutomationHost host = NewHost(TimeSpan.FromMilliseconds(30));
+        Task<AutomationReply> reply = host.Submit(AutomationTestKit.Parse("{\"id\":8,\"cmd\":\"state\"}"));
+
+        AutomationReply result = await reply.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal("automation command timed out", result.Error);
+        Assert.Equal(0, host.IncomingCount);
+    }
+
+    [Fact]
+    public async Task TimeoutDoesNotClaimAnExecutingSynchronousVerbWasCancelled()
+    {
+        using AutomationHost host = NewHost(TimeSpan.FromMilliseconds(50));
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        host.Register("slow", _ =>
+        {
+            entered.Set();
+            release.Wait(TimeSpan.FromSeconds(5));
+            return new JsonObject { ["done"] = true };
+        });
+        Task<AutomationReply> reply = host.Submit(AutomationTestKit.Parse(
+            "{\"id\":9,\"cmd\":\"call\",\"name\":\"slow\"}"));
+        Task pump = Task.Run(() => host.Pump(Frame));
+
+        Assert.True(entered.Wait(TimeSpan.FromSeconds(2)));
+        await Task.Delay(150);
+        Assert.False(reply.IsCompleted);
+
+        release.Set();
+        await pump.WaitAsync(TimeSpan.FromSeconds(2));
+        AutomationReply result = await reply;
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Ok!["done"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public async Task ExpiredStepIsRemovedFromTheWaitList()
+    {
+        using AutomationHost host = NewHost(TimeSpan.FromMilliseconds(30));
+        Task<AutomationReply> reply = host.Submit(AutomationTestKit.Parse(
+            "{\"id\":10,\"cmd\":\"step\",\"frames\":1000}"));
+        host.Pump(Frame);
+        Assert.Equal(1, host.WaitingCount);
+
+        AutomationReply result = await reply.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal("automation command timed out", result.Error);
+        Assert.Equal(0, host.WaitingCount);
     }
 
     [Fact]

@@ -370,6 +370,8 @@ decision. **A null provider never engages swim.** The swim flag replicates via N
   of `docs/USING-KHAOZENGINE.md` for the full `CharacterController3D.ClimbRate` / `.StepDeltaY` consumer
   contract. `ClimbRateEwma` is a sim-local (not replicated) smoothing average `ClimbRate` is stamped from on
   a run tick, with no consumer of its own.
+  A rejected non-finite tick holds the last good pose and clears `StepDeltaY`, so its previous step impulse
+  is not replayed while the input remains invalid.
 - **`MoveState.SpeedScale`** (14.26.0) - per-entity HORIZONTAL speed multiplier: haste (`> 1`), slow (`< 1`),
   root (`0`), unmodified (`1`, the default). A movement INPUT the step reads and carries through unchanged, and nothing
   in the sim derives or decays it. It multiplies INTO the existing speed product rather than replacing any of it, so

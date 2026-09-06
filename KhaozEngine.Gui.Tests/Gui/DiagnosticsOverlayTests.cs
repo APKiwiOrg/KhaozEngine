@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.Diagnostics;
 using KhaozEngine.Gui;
+using KhaozEngine.Netcode;
 using KhaozEngine.Windowing;
 using Xunit;
 
@@ -144,6 +145,32 @@ public sealed class DiagnosticsOverlayTests
         OverlaySection s = DiagnosticsOverlay.NetworkSection(in n);
         Assert.True(HasRow(s, "ping"));
         Assert.Contains("48", ValueOf(s, "ping"));
+    }
+
+    [Fact]
+    public void Transport_network_section_lists_only_measured_link_health()
+    {
+        var n = new NetTransportStats(connected: true, rttMs: 42.5f, packetLoss: 0.125f,
+            bytesReceivedTotal: 123_456, bytesSentTotal: 654_321);
+
+        OverlaySection s = DiagnosticsOverlay.NetworkSection(in n);
+
+        Assert.Equal("Network", s.Title);
+        Assert.Equal(new[] { "ping", "loss" }, s.Rows.Select(r => r.Label).ToArray());
+        Assert.Equal("43 ms", ValueOf(s, "ping"));
+        Assert.Equal("12.5 %", ValueOf(s, "loss"));
+    }
+
+    [Fact]
+    public void Unavailable_transport_network_section_reports_disconnected()
+    {
+        NetTransportStats n = NetTransportStats.Unavailable;
+
+        OverlaySection s = DiagnosticsOverlay.NetworkSection(in n);
+
+        Assert.Single(s.Rows);
+        Assert.Equal("status", s.Rows[0].Label);
+        Assert.Equal("not connected", s.Rows[0].Value);
     }
 
     static Func<IReadOnlyList<OverlaySection>> Counting(Action tick) =>

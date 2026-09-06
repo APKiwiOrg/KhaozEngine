@@ -8,8 +8,8 @@ using KhaozEngine.Primitives;
 namespace KhaozEngine.Gui
 {
     /// <summary>
-    /// A vertically-scrolling list region over <see cref="Pointer"/>: the wheel (while hovering) and dragging
-    /// inside scroll a fixed-height item list, clamped to range. The owner draws each item itself, positioned via
+    /// A vertically-scrolling list region over <see cref="Pointer"/>: the wheel (while hovering) and optional
+    /// dragging inside scroll a fixed-height item list, clamped to range. The owner draws each item itself, positioned via
     /// <see cref="ItemBounds"/>, between <see cref="BeginClip"/> and <see cref="EndClip"/> (which set/clear the
     /// SpriteBatch scissor so rows are clipped to the content region). Hit-test rows with
     /// <see cref="TappedItemIndex"/>. Clipping is via the engine's <see cref="SpriteBatch"/> scissor.
@@ -39,6 +39,9 @@ namespace KhaozEngine.Gui
         public float ItemSpacing = 4f;
         /// <summary>Pixels scrolled per wheel notch.</summary>
         public float WheelSpeed = 30f;
+        /// <summary>Whether a pointer drag that begins inside the content region pans the list. True by default.
+        /// Disable it when the content owns dragging for another interaction. Wheel scrolling is unaffected.</summary>
+        public bool DragScrollingEnabled = true;
         /// <summary>When true, <see cref="Update(Pointer,InputState)"/> reserves <see cref="CurrentBounds"/> on the pointer (so layers beneath skip it).</summary>
         public bool BlocksPointer = true;
 
@@ -221,7 +224,7 @@ namespace KhaozEngine.Gui
             // guard is load-bearing: a header drag that grows the panel moves ContentBounds up past the fixed
             // press-origin, so GetDragDelta's press-origin test would start returning the drag delta and pan the
             // list while the user is only resizing. Latching on _resizing keeps resize and scroll mutually exclusive.
-            float dragY = _resizing ? 0f : pointer.GetDragDelta(content).Y;
+            float dragY = _resizing || !DragScrollingEnabled ? 0f : pointer.GetDragDelta(content).Y;
             if (dragY != 0f)
                 ScrollOffset -= dragY;
 

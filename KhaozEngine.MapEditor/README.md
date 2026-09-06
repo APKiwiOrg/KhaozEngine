@@ -270,10 +270,11 @@ Recent the first time it is opened. The returned paths are deduplicated (ordinal
 sorted by file name `OrdinalIgnoreCase` with the full path `Ordinal` as tiebreak: filesystem enumeration
 order is not stable across platforms or launches, both comparisons are culture-independent so the order
 cannot shift with the machine's locale, and the pair is a total order so two maps sharing a file name in
-different directories keep a fixed relative position. At most `MaxDiscoveredShown` (12) rows are drawn, with
-any remainder stated on its own line ("+N more not shown") rather than silently dropped: the cap bounds the
-section against a head with a large maps directory, it is not a fit guarantee, since the panel does not
-scroll and a full Open Recent list can already overflow a small window on its own.
+different directories keep a fixed relative position. Open Recent and Open Map share a clipped
+`ScrollablePanel` region. The title, New Map row, status note, and Quit button stay fixed while every returned
+map remains reachable by wheel or drag scrolling, including when both lists are full at 1280x720. A drag or
+wheel movement consumes the active pointer gesture, so releasing over a row after scrolling cannot open it. A
+fresh tap after scrolling still opens the selected map.
 
 A discovered path whose file is gone greys with the same missing-file style as a stale recent entry, and
 clicking it re-queries the head and leaves a note instead of pushing: there is no store to prune (the head

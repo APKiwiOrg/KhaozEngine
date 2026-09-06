@@ -130,10 +130,9 @@ public sealed class TileWorldPersistence
         });
     }
 
-    // What the core cannot know about a tile player. The plane rides the Vector3's Y so one hint carries a full
-    // lattice address, and a record from another plane therefore measures exactly one unit of distance. That is a
-    // MOVE and it is why the config above sets its own sub-1 QuietRestoreDistance: at the core's default of 1f a
-    // whole floor was not greater than the threshold and the restore went in quietly.
+    // What the core cannot know about a tile player. Hints keep the lattice address in a Vector3 for the host, while
+    // the restore comparison stays on the original integer coordinates so adjacent large tiles cannot round
+    // together in the float projection.
     static PersistenceBinding<TileMoveState> Binding(TileWorldPersistenceConfig c, TileCollisionMap world) => new(
         PositionOf: s => new Vector3(s.Tile.X, s.Tile.Plane, s.Tile.Z),
         Encode: (s, game) => TilePlayerRecord.From(s, game).Encode(),
@@ -164,7 +163,12 @@ public sealed class TileWorldPersistence
             // maps to. Rejecting it here is what keeps an illegal enum value out of the simulator.
             if ((byte)s.Facing > (byte)TileDirection.NE) return "facing out of range";
             return null;
-        });
+        })
+    {
+        RestoreDistance = (live, restored) => Math.Max(
+            Math.Max(Math.Abs((long)live.Tile.X - restored.Tile.X), Math.Abs((long)live.Tile.Z - restored.Tile.Z)),
+            Math.Abs((long)live.Tile.Plane - restored.Tile.Plane)),
+    };
 
     /// <summary>The rejoin hints, so a head can seed a join before the record loads. Pre-warm it from the game's own
     /// store at boot to keep rejoins quiet across a process restart.</summary>

@@ -80,14 +80,9 @@ public sealed record TileWorldServerConfig
     /// cell.</summary>
     public int MaxGroundItemsPerCell { get; init; } = 64;
 
-    /// <summary>Inbound message budget per connection, spent per POLL rather than per wall-clock second. The token
-    /// bucket is topped up once per <see cref="TileWorldServer.Poll"/> with <c>MaxCommandsPerSecond * TickSeconds</c>
-    /// tokens, so a head admits that many messages per poll and its sustained ceiling is
-    /// <c>pollRate * MaxCommandsPerSecond * TickSeconds</c> messages per second. That is the name's own number only
-    /// on a head that polls exactly once per tick, and proportionally more on one polling faster, which is every
-    /// real one. Deliberate rather than a slip: it is the <c>RateLimiter</c> contract <c>ShardedWorldServer</c> and
-    /// <c>WorldServer</c> also run on, and a budget topped up on the TICK would throttle a 60 Hz client that sent
-    /// nothing unusual, because a client sends on its frame cadence.
+    /// <summary>Inbound message budget per connection, measured per simulated second. Every whole server tick adds
+    /// <c>MaxCommandsPerSecond * TickSeconds</c> tokens. Polling only transports messages and cannot mint budget, so
+    /// the sustained rate is independent of the host's poll cadence.
     /// <para>Deliberately well ABOVE the drain rate, which is
     /// one command per player per tick (four per second at a 250 ms tick): the budget is a flood gate, not a
     /// cadence, and a client whose packets bunch after a lag spike or a reconnect is delivering real input late

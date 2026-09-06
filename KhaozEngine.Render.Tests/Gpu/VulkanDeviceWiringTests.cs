@@ -1,5 +1,6 @@
 using System;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Vulkan.Internal;
 using Xunit;
 
@@ -213,6 +214,52 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Empty(fixture.CommandApi.Submissions);
             Assert.Equal(0, fixture.Semaphore.WaitCount);
             Assert.Equal(0, fixture.Device.Counters.DrainCount);
+        }
+
+        [Fact]
+        public void UnmappingAfterDeviceLoss_ClosesBothWriteMapsWithoutFlushing()
+        {
+            var liveness = new DeviceLiveness();
+            var semaphore = new FakeVulkanTimelineSemaphore();
+            var timeline = new VulkanTimeline(semaphore, liveness);
+            var memoryApi = new FakeVulkanDeviceMemoryApi();
+            var commandApi = new FakeVulkanCommandApi();
+            var resourceApi = new FakeVulkanResourceApi();
+            var setupSink = new FakeVulkanSetupSink();
+            var descriptorApi = new FakeVulkanDescriptorApi();
+            var shaderApi = new FakeVulkanShaderApi();
+            var pipelineApi = new FakeVulkanPipelineApi();
+            var facts = new VulkanMemoryFacts(
+                [
+                    new(0, 0, VulkanMemoryTrait.DeviceLocal),
+                    new(1, 1, VulkanMemoryTrait.HostVisible),
+                    new(2, 1, VulkanMemoryTrait.HostVisible | VulkanMemoryTrait.HostCached),
+                ],
+                NonCoherentAtomSize: 64,
+                MaxAllocationCount: 4096);
+            using VulkanGpuDevice device = VulkanGpuDevice.CreateOverSeams(
+                liveness, timeline, memoryApi, facts, commandApi, resourceApi, setupSink, descriptorApi,
+                shaderApi, pipelineApi, VulkanDeviceFixture.Capabilities);
+            using IGpuTexture texture = device.Factory.CreateTexture(new GpuTextureDescription(
+                4, 4, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Staging));
+            using IGpuBuffer buffer = device.Factory.CreateBuffer(
+                new GpuBufferDescription(256, GpuBufferUsage.Staging));
+
+            device.Map(texture, GpuMapMode.Write);
+            device.Map(buffer, GpuMapMode.Write);
+            try
+            {
+                liveness.MarkDead();
+            }
+            finally
+            {
+                device.Unmap(texture);
+                device.Unmap(buffer);
+            }
+
+            Assert.Empty(memoryApi.Flushes);
+            Assert.Throws<InvalidOperationException>(() => device.Unmap(texture));
+            Assert.Throws<InvalidOperationException>(() => device.Unmap(buffer));
         }
 
         // ---- The hook's own contract ---------------------------------------------------------------------

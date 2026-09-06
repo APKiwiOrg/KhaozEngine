@@ -38,7 +38,7 @@ namespace KhaozEngine.Render3D
         public const uint ParamsBytes = (MaxMaterials + 1) * 16;
 
         /// <summary>Index of the <c>Misc</c> vector in the <see cref="BuildParams"/> result (it follows the 64
-        /// TintTiling entries). Misc.x is the base specular strength, the rest is reserved and zero.</summary>
+        /// TintTiling entries). Misc.x is the base specular strength and Misc.y is the material layer count.</summary>
         public const int MiscIndex = MaxMaterials;
 
         /// <summary>Full mip-chain level count for a WxH texture: floor(log2(max(w,h))) + 1.</summary>
@@ -51,7 +51,7 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>Pack the per-layer tint and tiling plus the globals into the std140 params tail: 64 entries of
-        /// (tint.rgb, tilesPerMetre) followed by Misc = (baseSpecStrength, 0, 0, 0). Layer i lands at entry i, so a
+        /// (tint.rgb, tilesPerMetre) followed by Misc = (baseSpecStrength, layerCount, 0, 0). Layer i lands at entry i, so a
         /// vertex naming slot i reads that layer's params. Entries past the layer count are ZEROED rather than
         /// defaulted, so a mesh naming a slot the set never filled renders black instead of borrowing another
         /// material's look, which is what makes that mesher bug visible.</summary>
@@ -67,7 +67,7 @@ namespace KhaozEngine.Render3D
                 Vector4 t = layers[i].Tint;
                 tail[i] = new Vector4(t.X, t.Y, t.Z, layers[i].TilesPerMetre);
             }
-            tail[MiscIndex] = new Vector4(baseSpecStrength, 0f, 0f, 0f);
+            tail[MiscIndex] = new Vector4(baseSpecStrength, layers.Count, 0f, 0f);
             return tail;
         }
     }

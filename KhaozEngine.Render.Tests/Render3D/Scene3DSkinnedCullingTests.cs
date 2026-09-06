@@ -114,6 +114,38 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
+        public void ShadowCasterOutsideOnlyTheCascadeNearPlane_IsKeptForPancaking()
+        {
+            Vector3 lightDir = Vector3.Normalize(new Vector3(-0.3f, -1f, -0.2f));
+            const float cascadeRadius = 10f;
+            FrustumPlanes shadowFrustum = FrustumPlanes.Extract(
+                ShadowMapMath.BuildLightViewProj(lightDir, Vector3.Zero, cascadeRadius, resolution: 512));
+            Vector3 center = -lightDir * (cascadeRadius * 2f + 5f);
+            var world = Matrix4x4.CreateTranslation(center);
+
+            UnitCubeBounds.WorldSphere(world, out _, out float radius);
+            float inflatedRadius = radius * Scene3D.SkinnedCullSafetyFactor;
+            Assert.False(shadowFrustum.IntersectsSphere(center, inflatedRadius));
+            for (int plane = 0; plane < 6; plane++)
+            {
+                if (plane == 4) continue;
+                Vector4 p = shadowFrustum[plane];
+                float distance = Vector3.Dot(new Vector3(p.X, p.Y, p.Z), center) + p.W;
+                float normalLength = new Vector3(p.X, p.Y, p.Z).Length();
+                Assert.True(distance >= -inflatedRadius * normalLength,
+                    $"test premise: centre is outside plane {plane}, not only the near plane");
+            }
+
+            var (main, shadow) = Scene3D.ClassifySkinnedVisibility(
+                UnitCubeBounds, world,
+                cullMain: true, mainFrustum: OrthoFrustum(),
+                shadowActive: true, shadowFrustums: new[] { shadowFrustum });
+
+            Assert.False(main);
+            Assert.True(shadow);
+        }
+
+        [Fact]
         public void InsideBothVolumes_IsVisibleInBoth()
         {
             FrustumPlanes shadowFrustum = FrustumPlanes.Extract(

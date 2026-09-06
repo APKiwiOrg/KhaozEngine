@@ -67,10 +67,12 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   adds baked prop collision statics to an `IPhysicsWorld` (the `physics` + `collisionShapes` ctor params). A
   **`Decor`**-ring chunk is render-only: the sink skips scatter, prop colliders, dynamics, and terrain
   collision for it. The `lodConfig` ctor param sets the tier table it meshes with (must match the streamer's),
-  and the `splatRule` ctor param (both ctors, default null) threads a consumer splat rule into every chunk the
-  sink builds - this is the seam a game configures, since games drive the streamer rather than calling
-  `TerrainChunkBuilder.Build` themselves. See the builder bullet above for the contract. The rule is fixed for
-  the sink's lifetime, matching how the mesh cache is keyed.
+  the `snowLine` ctor param (both ctors, default `60f`) sets the snow transition for every chunk, and the
+  `splatRule` ctor param (both ctors, default null) threads a consumer splat rule into every chunk the
+  sink builds. These settings are the seams a game configures, since games drive the streamer rather than calling
+  `TerrainChunkBuilder.Build` themselves. See the builder bullet above for the contract. Both settings are fixed
+  for the sink's lifetime. A snow-line or rule change needs a new sink or `TerrainStreamer.Invalidate` to rebuild the
+  loaded chunks.
   A game may also
   pass an **`IChunkDynamicsSource`** (`dynamicsSource` ctor param, requires `physics`) to spawn dynamic
   bodies per chunk: the source yields **`DynamicSpawn`**s (shape + pose + `DynamicBodyDescription`) for a
@@ -154,10 +156,28 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   "Alpha cutout" bullet).
 - **`GroundCoverRenderer`** - queues precomputed `GroundCoverInstance` transforms through `SceneInstances`,
   with a `Scene3D.DrawGroundCover` convenience overload. `GroundCoverRenderOptions` carries draw radius, fade
-  band, quality density, distant density and shadow policy. Quality and distance compare against each
-  instance's stable thinning rank, so lower settings select nested subsets. Distance dissolve starts before
-  the final cull and uses no emissive edge. Multi-part meshes share one transform, shadows default off, and the
-  warmed queue path allocates nothing per frame. Rank and distance rejection run before model lookup.
+  band, quality density, distant density and shadow policy. Optional `DensityRadius` bounds the dense
+  area independently of the draw radius. Beyond it only `DistantDensity` remains, allowing a longer horizon
+  without expanding the dense area. Quality and distance compare against each
+  instance's stable thinning rank, so lower settings select nested subsets. `FadeMode` defaults to the
+  original `Dissolve` and can select `HeightScale` for short rooted foliage. Height scaling smoothly lowers
+  local up toward zero, keeps roots and footprints fixed on slopes, and avoids fragment cutouts.
+  `InstanceFadeBandWidth` sets each thinning placement's transition width in metres (default 1), bounded
+  by the layer fade band. Fully lowered cover is culled before a singular matrix reaches the shader.
+  Multi-part meshes share one transform, shadows default off, and the warmed queue path allocates nothing
+  per frame. Rank and distance rejection run before model lookup.
+- **`GroundCoverBatch`** - an immutable copy of a cover list with cached bounds over consecutive ranges.
+  The renderer rejects distant ranges before reading individual placements, preserving source order and
+  exactly the same placement choices as a plain list. It also indexes model IDs so each needed model is
+  resolved once per batch submission. Live mesh handles are refreshed every submission, including missing
+  or replaced models, with no warmed per-frame allocation. Tile-world views build these batches once when
+  foliage changes, with no scene or camera work during generation.
+- **Retained GPU cover** - set `GroundCoverRenderOptions.UseGpuBatches = true` on an immutable
+  `GroundCoverBatch`, with `FadeMode = HeightScale` and `CastsShadows = false`. Transforms upload once,
+  patch selection stays on the CPU, and the GPU handles exact rooted fading, wind and `Interactors`.
+  Wind strength is relative to mesh height. Advance `Scene3D.EffectTimeSeconds` each frame. Other cover
+  policies keep the CPU path described above. `scene.ReleaseGroundCover(batch)` retires retained data
+  when that source is no longer needed. Changed model bindings recreate the buffer automatically.
 - **`PropHlod`** - author-agnostic HLOD (hierarchical LOD) merge+weld for a chunk cluster's props.
   `PropHlod.Merge(placements, sourceMeshes)` transforms each placement's flat source mesh to world space and
   concatenates into one `GltfMesh` (per-kit opt-in, an id with no source mesh contributes nothing).
@@ -171,6 +191,9 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   on an Invalidate field rebuild), and the same function is offline-ready if a future artifact bake wants it. The
   merged mesh keeps flat **vertex-colour** albedo (from the `PropLoader.LoadProp` source form), so it renders
   through the existing untextured `Scene3D.Draw` path with no atlas, no impostor card, and no new shader.
+  Malformed source corners still collapse to a safe degenerate corner for live containment.
+  `Scene3DChunkSink.MergeStats.MalformedCornersDropped` counts every contained corner exactly, alongside the
+  existing merge build and upload totals, so a bad kit remains attributable without crashing a chunk build.
 - **`TerrainChunkCollision`** - extracts a chunk's SURFACE triangles (skirts excluded, winding flipped so
   the collidable face points up) into a static `TriangleMeshShape`. `Build(TerrainChunkMesh)` or
   `Build(GltfMesh, surfaceVertexCount)`; returns null for an empty chunk. Render-free (no GPU), so terrain

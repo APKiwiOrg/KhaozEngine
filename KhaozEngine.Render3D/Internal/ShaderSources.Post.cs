@@ -128,10 +128,10 @@ void main() {
 }";
 
         // ---- Depth/normal edge outline ----
-        // Bug B fix: sample ColorTex, NormalTex, DepthTex UP FRONT in BINDING ORDER. On Metal SPIRV-Cross assigns
-        // MSL texture indices by first-sample order, so sampling Depth before Normal (the old order) swapped the
-        // two samplers and the normal-edge term silently read depth data (mirrors the ModelFrag Albedo/NormalMap/
-        // Roughness fix; D3D11/Vulkan bind by explicit decoration and are order-insensitive).
+        // Historical Bug B fix: sampling ColorTex, NormalTex, DepthTex in binding order kept the retired Veldrid
+        // Metal binder aligned with SPIRV-Cross. The old Depth-before-Normal order swapped their inputs and made
+        // the normal-edge term read depth data. Native Metal authors indices and needs no sample-order rule.
+        // The source below retains the proven output and its existing hash.
         // Fix C: under perspective the stored z/w is non-linear, so a fixed threshold pops on zoom/distance.
         // Linearize to view-space eye distance (Thresh.zw = near/far) and compare a depth delta RELATIVE to view
         // depth. Orthographic (Texel.z == 0) keeps the original raw abs(d-d0) > Thresh.x test, byte-identical.

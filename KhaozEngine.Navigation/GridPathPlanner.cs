@@ -557,18 +557,13 @@ public sealed class GridPathPlanner : IPathPlanner
     /// <see cref="GridRay.IsClear"/>.
     /// </summary>
     /// <remarks>
-    /// Gotcha: <see cref="GridRay"/> assumes its own grid's origin is at (0, 0), with cell =
-    /// floor(world / cellSize). That only lines up with <paramref name="grid"/>'s own cell indices
-    /// when <paramref name="grid"/> was also baked at origin (0, 0). A <see cref="NavGrid"/> baked at
-    /// a non-zero <see cref="NavGrid.OriginX"/>/<see cref="NavGrid.OriginZ"/> would otherwise be walked
-    /// against the wrong cells entirely. Both points are translated into grid-local space
-    /// (world - (OriginX, OriginZ)) before the call to correct for that.
+    /// GridRay walks axis-aligned local cells. Both endpoints are inverse-transformed through the
+    /// grid's translation and yaw before tracing, so path smoothing tests the same cells as A*.
     /// </remarks>
     static bool HasLineOfSight(NavGrid grid, Vector2 fromWorldXz, Vector2 toWorldXz, float agentRadius)
     {
-        var origin = new Vector2(grid.OriginX, grid.OriginZ);
-        Vector2 localFrom = fromWorldXz - origin;
-        Vector2 localTo = toWorldXz - origin;
+        Vector2 localFrom = grid.WorldToLocal(fromWorldXz);
+        Vector2 localTo = grid.WorldToLocal(toWorldXz);
 
         return GridRay.IsClear(
             localFrom, localTo, grid.CellSize,

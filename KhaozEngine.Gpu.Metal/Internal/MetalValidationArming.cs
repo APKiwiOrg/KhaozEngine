@@ -37,18 +37,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
         bool DebugLayerSetInProcessOnly,
         bool ShaderValidationSetInProcessOnly)
     {
-        /// <summary>Whether the tier asked for is higher than the tier that is armed, which is the case worth a
-        /// WARN: the tester believes they are validating and they are not.
-        /// <para>
-        /// IT COMPARES RUNGS, AND THE RUNGS ARE NOT NESTED, so it misses one combination: a process asking for
-        /// <see cref="MetalValidationMode.On"/> with only <c>MTL_SHADER_VALIDATION</c> armed reads as
-        /// <see cref="MetalValidationMode.Shaders"/>, which is the HIGHER rung, so nothing warns even though the
-        /// API validation tier it asked for is absent. Recorded as
-        /// https://github.com/APKiwiOrg/KhaozEngine/issues/634 rather than fixed here, because the fix compares
-        /// per-variable instead and that changes what this WARN means.
-        /// </para>
-        /// </summary>
-        internal bool RequestedMoreThanArmed => Requested > Armed;
+        /// <summary>Whether the launch is missing any validation instrument the engine knob requested. API and
+        /// shader validation are independent Metal variables, so each requirement is checked separately.</summary>
+        internal bool RequestedRequirementsMissing
+            => (Requested >= MetalValidationMode.On && !DebugLayerArmed)
+                || (Requested == MetalValidationMode.Shaders && !ShaderValidationArmed);
     }
 
     /// <summary>

@@ -88,7 +88,7 @@ namespace KhaozEngine.Tests.Gpu
                 if (!pinned.TryGetValue(key, out string? want))
                 {
                     problems.Add($"  {key}: not in the table. A program was added to "
-                        + $"{nameof(D3D11ShaderProgramCatalog)} without a bake.");
+                        + $"{nameof(ShippedShaderPrograms)} without a bake.");
                 }
                 else if (!string.Equals(want, hash, StringComparison.Ordinal))
                 {
@@ -100,7 +100,7 @@ namespace KhaozEngine.Tests.Gpu
                          .OrderBy(k => k, StringComparer.Ordinal))
             {
                 problems.Add($"  {orphan}: in the table but no longer emitted. A program was removed from "
-                    + $"{nameof(D3D11ShaderProgramCatalog)} without a bake.");
+                    + $"{nameof(ShippedShaderPrograms)} without a bake.");
             }
 
             Assert.True(problems.Count == 0,
@@ -157,13 +157,13 @@ namespace KhaozEngine.Tests.Gpu
         static Dictionary<string, string> EmitEverything()
         {
             var emitted = new Dictionary<string, string>(StringComparer.Ordinal);
-            foreach (ShippedGraphicsProgram program in D3D11ShaderProgramCatalog.GraphicsPrograms())
+            foreach (ShippedGraphicsProgram program in ShippedShaderPrograms.GraphicsPrograms())
             {
                 CrossCompiledPair pair = PairMsl(program);
                 emitted[program.Name + ".vertex"] = Sha256(pair.VertexSource);
                 emitted[program.Name + ".fragment"] = Sha256(pair.FragmentSource);
             }
-            foreach (ShippedComputeKernel kernel in D3D11ShaderProgramCatalog.ComputeKernels())
+            foreach (ShippedComputeKernel kernel in ShippedShaderPrograms.ComputeKernels())
                 emitted[kernel.Name + ".compute"] = Sha256(ComputeMsl(kernel).ComputeSource);
 
             return emitted;
@@ -192,13 +192,13 @@ namespace KhaozEngine.Tests.Gpu
             string name = key[..dot];
             string stage = key[(dot + 1)..];
 
-            foreach (ShippedGraphicsProgram program in D3D11ShaderProgramCatalog.GraphicsPrograms())
+            foreach (ShippedGraphicsProgram program in ShippedShaderPrograms.GraphicsPrograms())
             {
                 if (!string.Equals(program.Name, name, StringComparison.Ordinal)) continue;
                 CrossCompiledPair pair = PairMsl(program);
                 return stage == "vertex" ? pair.VertexSource : pair.FragmentSource;
             }
-            foreach (ShippedComputeKernel kernel in D3D11ShaderProgramCatalog.ComputeKernels())
+            foreach (ShippedComputeKernel kernel in ShippedShaderPrograms.ComputeKernels())
             {
                 if (string.Equals(kernel.Name, name, StringComparison.Ordinal))
                     return ComputeMsl(kernel).ComputeSource;

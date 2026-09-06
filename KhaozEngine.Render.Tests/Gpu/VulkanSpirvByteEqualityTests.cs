@@ -92,7 +92,7 @@ namespace KhaozEngine.Tests.Gpu
                 if (!pinned.TryGetValue(key, out string? want))
                 {
                     problems.Add($"  {key}: not in the table. A program was added to "
-                        + $"{nameof(D3D11ShaderProgramCatalog)} without a bake.");
+                        + $"{nameof(ShippedShaderPrograms)} without a bake.");
                 }
                 else if (!string.Equals(want, hash, StringComparison.Ordinal))
                 {
@@ -104,7 +104,7 @@ namespace KhaozEngine.Tests.Gpu
                          .OrderBy(k => k, StringComparer.Ordinal))
             {
                 problems.Add($"  {orphan}: in the table but no longer emitted. A program was removed from "
-                    + $"{nameof(D3D11ShaderProgramCatalog)} without a bake.");
+                    + $"{nameof(ShippedShaderPrograms)} without a bake.");
             }
 
             Assert.True(problems.Count == 0,
@@ -138,8 +138,8 @@ namespace KhaozEngine.Tests.Gpu
             Dictionary<string, string> emitted = EmitEverything();
             int distinct = emitted.Values.Distinct(StringComparer.Ordinal).Count();
 
-            // 78 since R5 added the tile-ground pair (the 76 in the note above is the 2026-08-08 measurement).
-            Assert.Equal(78, emitted.Count);
+            // 80 with the foliage pair. The 76 above is the original 2026-08-08 measurement.
+            Assert.Equal(80, emitted.Count);
             Assert.True(distinct < emitted.Count,
                 $"The {emitted.Count} shipped stage emissions produced {distinct} distinct SPIR-V modules, so "
                 + "nothing is shared and decision V-S7's dedup buys nothing. Measured at 59 distinct on "
@@ -152,14 +152,14 @@ namespace KhaozEngine.Tests.Gpu
         static Dictionary<string, string> EmitEverything()
         {
             var emitted = new Dictionary<string, string>(StringComparer.Ordinal);
-            foreach (ShippedGraphicsProgram program in D3D11ShaderProgramCatalog.GraphicsPrograms())
+            foreach (ShippedGraphicsProgram program in ShippedShaderPrograms.GraphicsPrograms())
             {
                 emitted[program.Name + ".vertex"] = Sha256(
                     SpirvFrontEnd.ToSpirv(program.VertexGlsl, GpuShaderStages.Vertex, program.Name));
                 emitted[program.Name + ".fragment"] = Sha256(
                     SpirvFrontEnd.ToSpirv(program.FragmentGlsl, GpuShaderStages.Fragment, program.Name));
             }
-            foreach (ShippedComputeKernel kernel in D3D11ShaderProgramCatalog.ComputeKernels())
+            foreach (ShippedComputeKernel kernel in ShippedShaderPrograms.ComputeKernels())
             {
                 emitted[kernel.Name + ".compute"] = Sha256(
                     SpirvFrontEnd.ToSpirv(kernel.ComputeGlsl, GpuShaderStages.Compute, kernel.Name));
@@ -178,14 +178,14 @@ namespace KhaozEngine.Tests.Gpu
             string name = key.Substring(0, dot);
             string stage = key.Substring(dot + 1);
 
-            foreach (ShippedGraphicsProgram program in D3D11ShaderProgramCatalog.GraphicsPrograms())
+            foreach (ShippedGraphicsProgram program in ShippedShaderPrograms.GraphicsPrograms())
             {
                 if (!string.Equals(program.Name, name, StringComparison.Ordinal)) continue;
                 return stage == "vertex"
                     ? SpirvFrontEnd.ToSpirv(program.VertexGlsl, GpuShaderStages.Vertex, program.Name)
                     : SpirvFrontEnd.ToSpirv(program.FragmentGlsl, GpuShaderStages.Fragment, program.Name);
             }
-            foreach (ShippedComputeKernel kernel in D3D11ShaderProgramCatalog.ComputeKernels())
+            foreach (ShippedComputeKernel kernel in ShippedShaderPrograms.ComputeKernels())
             {
                 if (string.Equals(kernel.Name, name, StringComparison.Ordinal))
                     return SpirvFrontEnd.ToSpirv(kernel.ComputeGlsl, GpuShaderStages.Compute, kernel.Name);

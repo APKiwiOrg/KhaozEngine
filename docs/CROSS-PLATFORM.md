@@ -293,6 +293,10 @@ dropped about 63 minutes of runner time from a full dispatch.
   | `MTL_SHADER_VALIDATION=1` alone | `The device class is MTLGPUDebugDevice`, no warning. Hosted `macos-26` answers `MTLLegacySVDevice` for the same environment, see below |
   | `MTL_DEBUG_LAYER=1 MTL_CAPTURE_ENABLED=1` | `The device class is CaptureMTLDevice`, plus the WARN that the run `is probably NOT validated` |
 
+  These rows describe device-class disambiguation. The separate `KE_METAL_VALIDATION` request checks each
+  required launch variable: `on` requires the debug layer, and `shaders` requires both layers. A shader-only
+  device is correctly reported as validated while still warning if a requested debug layer is missing.
+
   **Shader validation alone has TWO class spellings, and that is what
   [#628](https://github.com/APKiwiOrg/KhaozEngine/issues/628) turned out to be about.** That issue was filed on
   run `31874140088`, where hosted `macos-26` under `MTL_SHADER_VALIDATION=1` alone reported `MTLLegacySVDevice`
@@ -743,10 +747,10 @@ in the `ShaderSources.cs` source comments; this is the consolidated checklist.)
   hazard note next to `ShadowDepthVert` in `KhaozEngine.Render3D/Internal/ShaderSources.Shadow.cs`. Its
   dissolve-aware sibling (`ShadowDepthDissolveVert`, 17.x) declares the model pass's full 0..13 input set and
   carries the same sink over everything it does not genuinely read, for the same reason.
-- **Sample all textures up front, in binding order.** SPIRV-Cross assigns MSL texture indices in the order
-  textures are first SAMPLED, not by `binding=`, so sampling a higher-binding texture first makes a lower one read
-  the wrong texture on Metal (untextured meshes came out flat-normal coloured). See the `ModelFrag` / `EdgeFrag` /
-  `SplatFrag` comments.
+- **Sampling textures in binding order is retired.** Native Metal authors resource indices through
+  `MslIndexRemap`. The higher-binding-first conditional pixel-readback case in
+  `MetalConditionalTextureOrderGpuTests` verifies both runtime branches. Samples can be conditional
+  and ordered as the shader needs. Existing shipped shaders may keep their historical sequence.
 - **One uniform buffer per pipeline, RETIRED.** The rule was written against the Veldrid Metal
   backend, where a STAGE referencing fewer buffers than the declared layout array puts before them made
   Veldrid's per-kind declaration count and SPIRV-Cross's emission disagree: a fragment function reading set 1

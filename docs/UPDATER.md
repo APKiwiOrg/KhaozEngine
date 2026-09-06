@@ -185,7 +185,8 @@ On a check the engine:
 
 1. Reads the RID pointer and compares versions numerically.
 2. If newer, downloads `manifest.json` + `manifest.json.sig` and **verifies the signature against the
-   embedded public key**. A failed verify aborts the check (no download, no apply).
+   embedded public key**. A missing or invalid signature enters `UpdateState.Untrusted` with no download
+   or apply. Its localized overlay can be dismissed and a later check can recover after feed/key repair.
 3. Diffs the remote manifest against the local install, downloads only changed files to a staging dir
    (SHA-256 verified, resume-aware), then stages the manifest.
 4. Hands off to the shim to apply.
@@ -310,7 +311,7 @@ failed apply, with closing the game as the only exit (#739). Two mechanisms clos
 panel the player may decline records that state as dismissed and hides the panel, and the frame is consumed
 so the press does not also reach the game below. `UpdateOverlayView.OnDismiss` reports it.
 
-- **Dismissible states** (`UpdateOverlayView.IsDismissible`): `UpdateAvailable`, `ReadyToApply`, `Failed`.
+- **Dismissible states** (`UpdateOverlayView.IsDismissible`): `UpdateAvailable`, `ReadyToApply`, `Failed`, `Untrusted`.
   Those are the states waiting on a decision. `Downloading` and `Applying` are not: both report an operation
   the player already started, and the second is a process on its way out.
 - **A required update is never dismissible.** The key is refused while `IUpdateStatus.IsRequired`, and
@@ -412,13 +413,12 @@ UpdateOverlayActions.AutoAdvanceRequired(service);
 
 Semantics that matter for a reviewer:
 
-- **Idle-only accumulation.** `Tick` accrues time only while the service is `Idle`. Any other state (an
-  offered, downloading, ready, applying, or failed update) zeroes the clock, so a whole interval of quiet
-  Idle time must pass before the next recheck fires rather than an instant re-probe as a flow settles back
-  to Idle.
+- **Resting-state accumulation.** `Tick` accrues time while the service is `Idle` or `Untrusted`. An
+  offered, downloading, ready, applying or failed update zeroes the clock. A whole interval must pass
+  before the next check, including recovery from an untrusted feed response.
 - **Offline-safe, non-overlapping.** On reaching the interval it starts one fire-and-forget
-  `CheckForUpdateAsync`, which swallows failures back to Idle exactly like the launch-time check, and moves
-  Idle -> Checking synchronously so a second Tick cannot start an overlapping check.
+  `CheckForUpdateAsync`. An unreachable feed returns to `Idle`, and failed trust stays visible as
+  `Untrusted`. The service enters `Checking` synchronously so a second Tick cannot overlap the check.
 - **A manual check resets the clock.** `CheckForUpdateAsync` zeroes the accumulator, so a gate-driven or
   player-driven check does not get double-fired moments later. Call `Tick` and `CheckForUpdateAsync` from
   the same (game-loop) thread: the clock is owned by that thread.

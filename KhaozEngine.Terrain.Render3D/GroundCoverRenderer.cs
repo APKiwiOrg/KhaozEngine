@@ -1,24 +1,53 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 
 namespace KhaozEngine.Terrain;
 
+/// <summary>How cover disappears before its distance cutoff.</summary>
+public enum GroundCoverFadeMode
+{
+    /// <summary>Discard fragments using the shared world-space dissolve mask.</summary>
+    Dissolve,
+    /// <summary>Smoothly lower blades along their local up axis while keeping their roots fixed.</summary>
+    HeightScale,
+}
+
 /// <summary>Live draw and thinning policy for ground cover.</summary>
 public sealed class GroundCoverRenderOptions
 {
     public float DrawRadius { get; set; } = 40f;
+    /// <summary>End of density thinning in metres. Null follows DrawRadius. Beyond this radius only
+    /// DistantDensity remains, so extending the horizon need not enlarge the dense area.</summary>
+    public float? DensityRadius { get; set; }
     public float FadeBandWidth { get; set; } = 8f;
     public float QualityDensity { get; set; } = 1f;
     public float DistantDensity { get; set; } = 0.35f;
     public bool CastsShadows { get; set; }
+    /// <summary>Width in metres of each thinning placement's fade. The layer fade band bounds it.</summary>
+    public float InstanceFadeBandWidth { get; set; } = 1f;
+    /// <summary>Defaults to the original fragment dissolve. Height scaling suits short rooted foliage.</summary>
+    public GroundCoverFadeMode FadeMode { get; set; }
+    /// <summary>Retains immutable height-scaled batches on the GPU when shadow casting is disabled.</summary>
+    public bool UseGpuBatches { get; set; }
+    /// <summary>World-space XZ wind direction for GPU batches. A zero vector disables wind.</summary>
+    public Vector2 WindDirection { get; set; } = Vector2.UnitX;
+    /// <summary>Wind bend as a fraction of blade height, from zero through one. GPU batches only.</summary>
+    public float WindStrength { get; set; }
+    public float WindSpeed { get; set; } = 1.8f;
+    public float WindSpatialFrequency { get; set; } = .35f;
+    /// <summary>Up to four cosmetic influences, sampled by value for each GPU submission.</summary>
+    public IReadOnlyList<FoliageInteractor> Interactors { get; set; } = Array.Empty<FoliageInteractor>();
 }
 
-/// <summary>Queues precomputed ground-cover transforms through the rigid instancing path.</summary>
+/// <summary>Queues precomputed ground cover through immediate or retained instancing.</summary>
 public static class GroundCoverRenderer
 {
+    static readonly ConditionalWeakTable<Scene3D, GroundCoverGpuCache> GpuCaches = new();
+
     /// <summary>Queues each surviving placement and all of its model parts. Returns placements drawn.</summary>
     public static int Queue(
         SceneInstances instances,
@@ -31,7 +60,9 @@ public static class GroundCoverRenderer
         return Emit(cover, meshes, focus, options, instances, QueuePart);
     }
 
-    /// <summary>Scene3D convenience over <see cref="Queue"/>.</summary>
+    /// <summary>Queues ground cover. Eligible immutable batches can retain their transforms on the GPU.
+    /// The CPU path returns drawn placements. The GPU path returns conservative submitted candidates,
+    /// including model parts and instances later rejected by the shader.</summary>
     public static int DrawGroundCover(
         this Scene3D scene,
         IReadOnlyList<GroundCoverInstance> cover,
@@ -40,7 +71,26 @@ public static class GroundCoverRenderer
         GroundCoverRenderOptions options)
     {
         ArgumentNullException.ThrowIfNull(scene);
+        ArgumentNullException.ThrowIfNull(cover);
+        ArgumentNullException.ThrowIfNull(meshes);
+        ArgumentNullException.ThrowIfNull(options);
+        if (GroundCoverGpuCache.CanRetain(cover, options))
+        {
+            Validate(options);
+            return GpuCaches.GetValue(scene, static _ => new GroundCoverGpuCache())
+                .Draw(scene, (GroundCoverBatch)cover, meshes, focus, options);
+        }
         return Emit(cover, meshes, focus, options, scene, DrawPart);
+    }
+
+    /// <summary>Releases this scene's retained resources for one immutable cover batch. Safe to repeat.
+    /// Cover submitted through the CPU path needs no release.</summary>
+    public static void ReleaseGroundCover(this Scene3D scene, IReadOnlyList<GroundCoverInstance> cover)
+    {
+        ArgumentNullException.ThrowIfNull(scene);
+        ArgumentNullException.ThrowIfNull(cover);
+        if (cover is GroundCoverBatch batch && GpuCaches.TryGetValue(scene, out GroundCoverGpuCache? cache))
+            cache.Release(batch);
     }
 
     static readonly Action<SceneInstances, MeshHandle, Matrix4x4, float, bool> QueuePart =
@@ -67,13 +117,21 @@ public static class GroundCoverRenderer
 
         float radius = options.DrawRadius;
         float radius2 = radius * radius;
-        float band = MathF.Min(options.FadeBandWidth, radius);
-        float inner = radius - band;
+        float densityRadius = MathF.Min(options.DensityRadius ?? radius, radius);
+        float band = MathF.Min(options.FadeBandWidth, densityRadius);
+        float inner = densityRadius - band;
         float distant = MathF.Min(options.DistantDensity, options.QualityDensity);
+        GroundCoverBatch? batch = cover as GroundCoverBatch;
+        using var bindings = new GroundCoverBindings(batch, meshes);
         int drawn = 0;
         for (int i = 0; i < cover.Count; i++)
         {
-            GroundCoverInstance instance = cover[i];
+            if (batch is not null)
+            {
+                i = batch.SkipOutside(i, focus, radius2);
+                if (i == cover.Count) break;
+            }
+            GroundCoverInstance instance = batch is null ? cover[i] : batch.Items[i];
             if (instance.ThinningRank < 0f || instance.ThinningRank >= options.QualityDensity) continue;
             float dx = instance.Position.X - focus.X;
             float dz = instance.Position.Z - focus.Z;
@@ -82,22 +140,34 @@ public static class GroundCoverRenderer
 
             float distance = MathF.Sqrt(distance2);
             float cutoff = radius;
-            float dissolveStart = inner;
-            if (band > 0f && options.QualityDensity > distant && instance.ThinningRank >= distant)
+            float dissolveStart = MathF.Max(0f, radius - options.FadeBandWidth);
+            if (options.QualityDensity > distant && instance.ThinningRank >= distant)
             {
                 float progress = (options.QualityDensity - instance.ThinningRank) /
                                  (options.QualityDensity - distant);
                 cutoff = inner + progress * band;
-                float personalBand = MathF.Min(1f, band * 0.2f);
+                float personalBand = MathF.Min(options.InstanceFadeBandWidth, band);
                 dissolveStart = MathF.Max(inner, cutoff - personalBand);
             }
             if (distance > cutoff) continue;
-            if (!meshes.TryGetValue(instance.ModelId, out IReadOnlyList<MeshHandle>? parts) || parts is null) continue;
+            IReadOnlyList<MeshHandle>? parts = bindings.Resolve(i, instance.ModelId);
+            if (parts is null) continue;
             float dissolve = cutoff > dissolveStart
                 ? Math.Clamp((distance - dissolveStart) / (cutoff - dissolveStart), 0f, 1f)
                 : 0f;
+            Matrix4x4 transform = instance.Transform;
+            if (options.FadeMode == GroundCoverFadeMode.HeightScale && dissolve > 0f)
+            {
+                // Only local up changes. Roots and footprint stay fixed, including on slopes.
+                float height = 1f - dissolve * dissolve * (3f - 2f * dissolve);
+                if (height <= 0.0001f) continue;
+                transform.M21 *= height;
+                transform.M22 *= height;
+                transform.M23 *= height;
+                dissolve = 0f;
+            }
             for (int part = 0; part < parts.Count; part++)
-                emit(state, parts[part], instance.Transform, dissolve, options.CastsShadows);
+                emit(state, parts[part], transform, dissolve, options.CastsShadows);
             drawn++;
         }
         return drawn;
@@ -107,8 +177,14 @@ public static class GroundCoverRenderer
     {
         if (!Finite(options.DrawRadius) || options.DrawRadius < 0f)
             throw new ArgumentException("Ground cover draw radius must be finite and non-negative.", nameof(options));
+        if (options.DensityRadius is float densityRadius && (!Finite(densityRadius) || densityRadius < 0f))
+            throw new ArgumentException("Ground cover density radius must be finite and non-negative.", nameof(options));
         if (!Finite(options.FadeBandWidth) || options.FadeBandWidth < 0f)
             throw new ArgumentException("Ground cover fade band must be finite and non-negative.", nameof(options));
+        if (!Finite(options.InstanceFadeBandWidth) || options.InstanceFadeBandWidth < 0f)
+            throw new ArgumentException("Ground cover instance fade band must be finite and non-negative.", nameof(options));
+        if (options.FadeMode is not GroundCoverFadeMode.Dissolve and not GroundCoverFadeMode.HeightScale)
+            throw new ArgumentException("Unknown ground cover fade mode.", nameof(options));
         if (!Unit(options.QualityDensity) || !Unit(options.DistantDensity))
             throw new ArgumentException("Ground cover densities must be finite values from 0 through 1.", nameof(options));
     }

@@ -2,6 +2,7 @@ using System;
 using KhaozEngine.Locomotion;
 using KhaozEngine.NetWorld;
 using Xunit;
+using KhaozEngine.Netcode;
 
 namespace KhaozEngine.Tests.NetWorld;
 
@@ -12,7 +13,7 @@ public class ServerDrainTests
     [Fact]
     public void Begin_drain_broadcasts_the_notice_then_completes_after_the_grace()
     {
-        var hub = new InMemoryHub();
+        var hub = new InMemoryTransportHub();
         var config = new WorldServerConfig { TickSeconds = 1f / 30f, InterestRadius = 500f, MaxPlayers = 8 };
         var server = new WorldServer(hub.Server, config, Flat, MoveTuning.Default);
         var client = new WorldClient(hub.CreateClient(), Flat, MoveTuning.Default,

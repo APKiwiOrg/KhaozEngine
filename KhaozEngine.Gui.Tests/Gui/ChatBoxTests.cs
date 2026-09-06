@@ -5,11 +5,13 @@ using KhaozEngine.App;
 using KhaozEngine.Gui.Chat;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
+using KhaozEngine.Tests.App;
 using KhaozEngine.Windowing;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gui;
 
+[Collection("AmbientLocalization")]
 public sealed class ChatBoxTests
 {
     static readonly Rect BoxBounds = new(100f, 100f, 300f, 180f);
@@ -26,6 +28,76 @@ public sealed class ChatBoxTests
         TimestampText = new Vector4(0.5f, 0.5f, 0.5f, 1f),
     };
     static readonly FixedMeasurer Font = new();
+
+    [Fact]
+    public void Composer_placeholder_resolves_through_the_ambient_catalog()
+    {
+        IStringCatalog? previous = LocalizationContext.Catalog;
+        try
+        {
+            var box = Box();
+            box.ComposerPlaceholder = new StringId("Chat.Placeholder");
+            LocalizationContext.Catalog = new DictionaryCatalog().Add("Chat.Placeholder", "Say something");
+
+            Assert.Equal("Say something", box.Composer.PlaceholderContent.Resolve());
+
+            LocalizationContext.Catalog = new DictionaryCatalog().Add("Chat.Placeholder", "Dis quelque chose");
+            Assert.Equal("Dis quelque chose", box.Composer.PlaceholderContent.Resolve());
+        }
+        finally
+        {
+            LocalizationContext.Catalog = previous;
+        }
+    }
+
+    [Fact]
+    public void Max_input_length_limits_typed_composer_input()
+    {
+        var box = Box();
+        var pointer = new Pointer();
+        box.MaxInputLength = 2;
+
+        Update(box, pointer, Press(Key.Enter));
+        Update(box, pointer, Press(Key.A));
+        Update(box, pointer, Press(Key.B));
+        Update(box, pointer, Press(Key.C));
+
+        Assert.Equal("ab", box.Composer.Text);
+    }
+
+    [Fact]
+    public void Lowering_max_input_length_reclamps_existing_text_as_a_change()
+    {
+        var box = OpenBox("abcdef");
+        var pointer = new Pointer();
+        Update(box, pointer, InputState.Empty);
+
+        box.MaxInputLength = 3;
+        Update(box, pointer, InputState.Empty);
+
+        Assert.Equal("abc", box.Composer.Text);
+        Assert.True(box.Composer.TextChanged);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void Max_input_length_rejects_non_positive_values(int value)
+    {
+        var box = Box();
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => box.MaxInputLength = value);
+    }
+
+    [Fact]
+    public void Max_input_length_preserves_the_existing_32_character_default()
+    {
+        var box = Box();
+        box.Composer.SetText(new string('x', 33));
+
+        Assert.Equal(32, box.MaxInputLength);
+        Assert.Equal(new string('x', 32), box.Composer.Text);
+    }
 
     [Fact]
     public void Enter_opens_without_sending_then_sends_and_stays_open()

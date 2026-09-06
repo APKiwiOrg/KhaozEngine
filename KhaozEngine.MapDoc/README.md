@@ -309,6 +309,12 @@ does not name. Crash at any instant and the directory loads as entirely the old 
 new one, never a mixture. That is why the file name encodes the content hash: with a fixed name per
 coordinate the manifest could not tell old content from new.
 
+`SaveTiled` holds exclusive write access to the directory until its sweep and in-memory index refresh finish.
+An overlapping save from another thread or process fails with `MapDocumentException` before changing tiles or
+the manifest. Retry after the first save finishes. The empty `.mapdoc-save.lock` file remains in the directory
+between saves, but the operating system releases its ownership when the writer closes or exits. Do not remove
+that file while a writer is active. Writers targeting different directories remain independent.
+
 `MapDocumentSaveOptions.Durability` defaults to `MapSaveDurability.Fast`, which defends against a process
 kill, an unhandled exception or an editor crash, which is what actually happens on a dev box.
 `PowerFail` opts into per-file flushes plus a directory fsync on the platforms that have one (Linux and

@@ -5,9 +5,14 @@ using KhaozEngine.Identity;
 
 namespace KhaozEngine.Identity.Oidc;
 
-/// <summary>Opens the sign-in URL in the system default browser via <see cref="KhaozEngine.Platform.Browser"/>.</summary>
+/// <summary>
+/// Source-compatible forwarding wrapper for the shared
+/// <see cref="KhaozEngine.Identity.Interactive.SystemBrowserLauncher"/>. New consumers can import
+/// <c>KhaozEngine.Identity.Interactive</c> directly.
+/// </summary>
 public sealed class SystemBrowserLauncher : IBrowserLauncher
 {
-    public Task<bool> LaunchAsync(Uri url, CancellationToken ct = default)
-        => KhaozEngine.Platform.Browser.LaunchBrowserAsync(url, ct);
+    private readonly KhaozEngine.Identity.Interactive.SystemBrowserLauncher inner = new();
+
+    public Task<bool> LaunchAsync(Uri url, CancellationToken ct = default) => inner.LaunchAsync(url, ct);
 }

@@ -17,6 +17,7 @@ internal sealed class GatedWorldStore : IWorldStore
     private readonly IWorldStore inner;
     private readonly List<TaskCompletionSource> loadGates = new();
     private readonly List<string> savedKeys = new();
+    private readonly SemaphoreSlim completedLoadSignal = new(0);
     private int completedLoads;
 
     public GatedWorldStore(IWorldStore inner) => this.inner = inner;
@@ -35,6 +36,10 @@ internal sealed class GatedWorldStore : IWorldStore
     /// on, never a "the layer has finished reacting to it" one. The rows that need the latter wait on an apply or a
     /// drop instead, which a load returning null never produces.</summary>
     public int CompletedLoads => Volatile.Read(ref completedLoads);
+
+    /// <summary>Waits until one gated load has returned from the inner store.</summary>
+    public Task WaitForCompletedLoadAsync(CancellationToken cancellationToken = default) =>
+        completedLoadSignal.WaitAsync(cancellationToken);
 
     /// <summary>Completes exactly ONE parked load, the oldest still waiting (<paramref name="oldest"/> true) or the
     /// newest, and reports whether there was one. This is how a row drives the ORDER two loads outstanding under one
@@ -69,6 +74,7 @@ internal sealed class GatedWorldStore : IWorldStore
         await gate.Task.ConfigureAwait(false);
         byte[]? data = await inner.LoadAsync(key, cancellationToken).ConfigureAwait(false);
         Interlocked.Increment(ref completedLoads);
+        completedLoadSignal.Release();
         return data;
     }
 

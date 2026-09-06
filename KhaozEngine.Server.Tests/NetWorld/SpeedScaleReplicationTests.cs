@@ -2,9 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using KhaozEngine.Ecs;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Netcode;
 using KhaozEngine.NetWorld;
+using KhaozEngine.Sharding;
 using Xunit;
 
 namespace KhaozEngine.Tests.NetWorld;
@@ -24,6 +26,19 @@ public class SpeedScaleReplicationTests
     static readonly Func<float, float, float> Flat = (x, z) => 0f;
     const float Dt = 1f / 30f;
     static MoveCommand Forward => new(new Vector2(0f, 1f), run: false, cameraYaw: 0f);
+
+    private sealed class RestoreOwnershipSystem(CellSim cell, long netId, Entity entity) : ISystem
+    {
+        private bool restored;
+
+        public void Update(World world, float dt)
+        {
+            if (restored) return;
+            world.Remove<Migrating>(entity);
+            cell.RegisterOwned(netId, entity);
+            restored = true;
+        }
+    }
 
     // ---- Encoding: the default must be exactly 1, and a root exactly 0 ----
 
@@ -148,6 +163,64 @@ public class SpeedScaleReplicationTests
         Assert.Equal(3f, s.Move.SpeedScale);
     }
 
+    [Fact]
+    public void The_sharded_setter_waits_for_a_temporarily_unowned_entity()
+    {
+        var (st, ct) = LoopbackTransport.CreatePair();
+        var config = new ShardedWorldServerConfig { TickSeconds = Dt, MaxPlayers = 8 };
+        var server = new ShardedWorldServer(st, config, Flat, MoveTuning.Default);
+        var client = new NetClient(ct, TestHandshake.Wire("alice"));
+        int slot = JoinSharded(server, client, config);
+        Assert.True(server.TryGetPlayerNetId(slot, out long netId));
+        Assert.True(server.Host.TryGetOwner(netId, out CellSim owner, out Entity entity));
+        owner.World.AddSystem(new RestoreOwnershipSystem(owner, netId, entity));
+        bool interruptOwnership = true;
+        server.OnBeforeTick += _ =>
+        {
+            if (!interruptOwnership) return;
+            owner.World.Set(entity, new Migrating { Destination = new CellCoord(1, 0) });
+            Assert.True(owner.UnregisterOwned(netId));
+            interruptOwnership = false;
+        };
+
+        server.SetSpeedScale(PlayerRef.Slot(slot), 1.1f);
+        server.Tick(Dt);
+
+        Assert.True(owner.World.TryGet(entity, out MovementState replicated));
+        Assert.Equal(MovementState.QuantizeSpeedScale(1.1f), replicated.SpeedScaleQ);
+        Assert.True(server.TryGetPlayerState(slot, out PlayerMoveState applied));
+        Assert.Equal(1.125f, applied.Move.SpeedScale);
+    }
+
+    [Fact]
+    public void A_recycled_sharded_slot_does_not_inherit_the_former_players_scale()
+    {
+        var hub = new InMemoryTransportHub();
+        var config = new ShardedWorldServerConfig { TickSeconds = Dt, MaxPlayers = 1 };
+        var server = new ShardedWorldServer(hub.Server, config, Flat, MoveTuning.Default);
+        INetTransport firstTransport = hub.CreateClient();
+        var first = new NetClient(firstTransport, TestHandshake.Wire("alice"));
+        int firstSlot = JoinSharded(server, first, config);
+        Assert.True(server.TryGetPlayerNetId(firstSlot, out long firstNetId));
+        server.SetSpeedScale(PlayerRef.Slot(firstSlot), 4f);
+        server.Tick(Dt);
+        Assert.True(server.TryGetPlayerState(firstSlot, out PlayerMoveState boosted));
+        Assert.Equal(4f, boosted.Move.SpeedScale);
+
+        hub.DisconnectClient(firstTransport);
+        server.Poll();
+        server.Tick(Dt);
+        Assert.Equal(0, server.PlayerCount);
+
+        var second = new NetClient(hub.CreateClient(), TestHandshake.Wire("bob"));
+        int secondSlot = JoinSharded(server, second, config);
+        Assert.Equal(firstSlot, secondSlot);
+        Assert.True(server.TryGetPlayerNetId(secondSlot, out long secondNetId));
+        Assert.NotEqual(firstNetId, secondNetId);
+        Assert.True(server.TryGetPlayerState(secondSlot, out PlayerMoveState replacement));
+        Assert.Equal(1f, replacement.Move.SpeedScale);
+    }
+
     // ---- The reconcile case the whole shape was chosen for ----
 
     [Fact]
@@ -246,6 +319,18 @@ public class SpeedScaleReplicationTests
         for (int i = 0; i < 20 && !client.Joined; i++) { server.Poll(); server.Tick(Dt); client.Poll(); }
         Assert.True(client.Joined);
         return (server, client, server.JoinedSlots.First());
+    }
+
+    static int JoinSharded(ShardedWorldServer server, NetClient client, ShardedWorldServerConfig config)
+    {
+        for (int i = 0; i < 200; i++)
+        {
+            client.Poll();
+            server.Poll();
+            server.Tick(config.TickSeconds);
+            if (client.Slot >= 0 && server.TryGetPlayerNetId(client.Slot, out _)) return client.Slot;
+        }
+        throw new Xunit.Sdk.XunitException("client never joined");
     }
 
     static void Frame(WorldServer server, WorldClient client, in MoveCommand cmd)

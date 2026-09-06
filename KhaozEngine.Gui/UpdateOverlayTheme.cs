@@ -40,6 +40,7 @@ public class UpdateOverlayTheme
     public Vector4 ReadyAccent = Color.FromBytes(120, 255, 120);
     public Vector4 ApplyingAccent = Color.FromBytes(255, 220, 100);
     public Vector4 FailedAccent = Color.FromBytes(255, 140, 100);
+    public Vector4 UntrustedAccent = Color.FromBytes(255, 180, 80);
 
     // Layout
     public float PanelWidth = 480f;
@@ -70,6 +71,7 @@ public class UpdateOverlayTheme
         UpdateState.ReadyToApply => ReadyAccent,
         UpdateState.Applying => ApplyingAccent,
         UpdateState.Failed => FailedAccent,
+        UpdateState.Untrusted => UntrustedAccent,
         _ => AvailableAccent,
     };
 
@@ -85,6 +87,7 @@ public class UpdateOverlayTheme
         UpdateState.ReadyToApply => Localize(UpdateOverlayStrings.ReadyTitle, remoteVersion ?? string.Empty),
         UpdateState.Applying => Localize(UpdateOverlayStrings.ApplyingTitle),
         UpdateState.Failed => Localize(UpdateOverlayStrings.FailedTitle),
+        UpdateState.Untrusted => Localize(UpdateOverlayStrings.UntrustedTitle),
         _ => string.Empty,
     };
 
@@ -109,6 +112,7 @@ public class UpdateOverlayTheme
             UpdateState.ReadyToApply => Localize(UpdateOverlayStrings.ReadyTitleRequired, version),
             UpdateState.Applying => Localize(UpdateOverlayStrings.ApplyingTitleRequired),
             UpdateState.Failed => Localize(UpdateOverlayStrings.FailedTitleRequired),
+            UpdateState.Untrusted => Localize(UpdateOverlayStrings.UntrustedTitle),
             _ => string.Empty,
         };
     }
@@ -137,6 +141,7 @@ public class UpdateOverlayTheme
         UpdateState.Failed => status.ApplyAttemptsExhausted
             ? Localize(UpdateOverlayStrings.FailedBodyExhausted)
             : Localize(UpdateOverlayStrings.FailedBody, TriggerKeyLabel),
+        UpdateState.Untrusted => Localize(UpdateOverlayStrings.UntrustedBody),
         _ => string.Empty,
     };
 

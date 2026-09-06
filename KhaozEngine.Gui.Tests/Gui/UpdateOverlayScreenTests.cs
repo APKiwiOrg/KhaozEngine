@@ -34,6 +34,7 @@ public sealed class UpdateOverlayScreenTests
     [InlineData(UpdateState.Downloading)]
     [InlineData(UpdateState.ReadyToApply)]
     [InlineData(UpdateState.Failed)]
+    [InlineData(UpdateState.Untrusted)]
     public void Optional_update_is_non_modal_so_the_game_keeps_updating(UpdateState state)
     {
         var status = new FakeUpdateStatus { State = state, IsRequired = false };
@@ -91,6 +92,24 @@ public sealed class UpdateOverlayScreenTests
 
         Assert.True(screen.PassUpdateThrough);
         Assert.Equal(0, fired); // hidden: the key does nothing
+    }
+
+    [Fact]
+    public void Untrusted_is_non_modal_dismissible_and_never_triggers()
+    {
+        var status = new FakeUpdateStatus { State = UpdateState.Untrusted };
+        var screen = NewScreen(status);
+        int fired = 0;
+        screen.Triggered += () => fired++;
+        var stack = new ScreenStack();
+        stack.Add(screen);
+
+        stack.Update(0.016f, OverlayTestInput.KeyFrame(Key.U));
+        Assert.True(screen.PassUpdateThrough);
+        Assert.Equal(0, fired);
+
+        stack.Update(0.016f, OverlayTestInput.KeyFrame(Key.Escape));
+        Assert.False(screen.View.IsShowing(status));
     }
 
     [Fact]

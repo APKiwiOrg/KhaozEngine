@@ -48,5 +48,70 @@ namespace KhaozEngine.Tests.Gui
             var c = new Vector4(0.1f, 0.2f, 0.3f, 0.9f);
             Assert.Equal(c, GuiDraw.WithOpacity(c, 1f));
         }
+
+        [Fact]
+        public void Single_coverage_border_shortens_vertical_strips_around_the_corners()
+        {
+            Rect[] strips = GuiDraw.BorderSingleCoverageGeometry(new Rect(0, 0, 20, 20), 2f);
+
+            Assert.Equal(4, strips.Length);
+            Assert.Equal(new Rect(0, 0, 20, 2), strips[0]);
+            Assert.Equal(new Rect(0, 18, 20, 2), strips[1]);
+            Assert.Equal(new Rect(0, 2, 2, 16), strips[2]);
+            Assert.Equal(new Rect(18, 2, 2, 16), strips[3]);
+            Assert.Equal(144f, TotalArea(strips), 3);
+        }
+
+        [Fact]
+        public void Single_coverage_border_consumes_the_rect_once_when_thickness_reaches_half_height()
+        {
+            Rect[] strips = GuiDraw.BorderSingleCoverageGeometry(new Rect(4, 8, 20, 20), 12f);
+
+            Assert.Equal(2, strips.Length);
+            Assert.Equal(new Rect(4, 8, 20, 12), strips[0]);
+            Assert.Equal(new Rect(4, 20, 20, 8), strips[1]);
+            Assert.Equal(400f, TotalArea(strips), 3);
+        }
+
+        [Theory]
+        [InlineData(0, 20, 2)]
+        [InlineData(-1, 20, 2)]
+        [InlineData(20, 0, 2)]
+        [InlineData(20, -1, 2)]
+        [InlineData(20, 20, 0)]
+        [InlineData(20, 20, -1)]
+        public void Single_coverage_border_returns_no_strips_for_non_positive_input(float width, float height, float thickness)
+        {
+            Assert.Empty(GuiDraw.BorderSingleCoverageGeometry(new Rect(1, 2, width, height), thickness));
+        }
+
+        [Fact]
+        public void Single_coverage_border_preserves_fractional_geometry_and_accepts_pixel_snapped_geometry()
+        {
+            Rect fractional = new Rect(0.25f, 1.75f, 9.5f, 6.5f);
+            Rect[] direct = GuiDraw.BorderSingleCoverageGeometry(fractional, 1.25f);
+            Assert.Equal(new Rect(0.25f, 1.75f, 9.5f, 1.25f), direct[0]);
+            Assert.Equal(new Rect(0.25f, 7f, 9.5f, 1.25f), direct[1]);
+
+            const float scale = 2f;
+            Rect snapped = ViewportMath.SnapRectToDevice(fractional, new Vector2(scale), Vector2.Zero);
+            float snappedThickness = ViewportMath.SnapLengthToDevice(1.25f, scale, 1f);
+            Rect[] strips = GuiDraw.BorderSingleCoverageGeometry(snapped, snappedThickness);
+
+            foreach (Rect strip in strips)
+            {
+                Assert.Equal(System.MathF.Round(strip.X * scale), strip.X * scale, 4);
+                Assert.Equal(System.MathF.Round(strip.Y * scale), strip.Y * scale, 4);
+                Assert.Equal(System.MathF.Round(strip.Right * scale), strip.Right * scale, 4);
+                Assert.Equal(System.MathF.Round(strip.Bottom * scale), strip.Bottom * scale, 4);
+            }
+        }
+
+        static float TotalArea(Rect[] rects)
+        {
+            float total = 0f;
+            foreach (Rect rect in rects) total += rect.Width * rect.Height;
+            return total;
+        }
     }
 }

@@ -568,14 +568,16 @@ namespace KhaozEngine.Game
             }
         }
 
-        // Shortest-path angle lerp: step the stored yaw toward the target by t (per-frame factor, clamped 0..1).
+        // Shortest-path angle lerp: clamp the per-frame factor, but leave the result unwrapped so stored yaw
+        // stays continuous. MathUtil.LerpAngle does not have this combination of endpoint and factor rules.
         static float LerpAngle(float current, float target, float t)
         {
             float delta = WrapPi(target - current);
             return current + delta * Math.Clamp(t, 0f, 1f);
         }
 
-        // Wrap an angle into (-pi, pi].
+        // Closed [-pi, pi]: retain the sign of an exact half-turn, including -pi. MathUtil.WrapAngle uses
+        // (-pi, pi], which would reverse the interpolation direction at that boundary.
         static float WrapPi(float a)
         {
             const float twoPi = MathF.PI * 2f;

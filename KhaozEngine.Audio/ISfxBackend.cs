@@ -53,6 +53,21 @@ public interface ISfxBackend : IDisposable
     void Play(int handle, float gain, float pitch, bool positional, Vector3 position, SfxPriority priority)
         => Play(handle, gain, pitch, positional, position);
 
+    /// <summary>
+    /// Play a positional one-shot with an explicit inverse-distance <paramref name="attenuation"/> curve.
+    /// AudioSystem calls this only for positional sounds. The default forwards to the priority overload, so an
+    /// existing backend keeps its prior behavior until it chooses to consume the curve.
+    /// </summary>
+    void Play(
+        int handle,
+        float gain,
+        float pitch,
+        bool positional,
+        Vector3 position,
+        SfxPriority priority,
+        SfxAttenuation attenuation)
+        => Play(handle, gain, pitch, positional, position, priority);
+
     /// <summary>Set the 3D listener pose (positional sounds attenuate / pan relative to this).</summary>
     void SetListener(Vector3 position, Vector3 forward, Vector3 up);
 

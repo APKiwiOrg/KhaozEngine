@@ -29,14 +29,19 @@ public sealed record ConvertResult(string Path, string Form, float TileSize, str
 /// world identity and a re-tile that changed it needs a coordinated client and server release.</summary>
 public sealed record RetileResult(string Path, float TileSize, string OldWorldHash, string NewWorldHash, string Warning);
 
-/// <summary>Result of validation: structural (semantic) validity and JSON-schema validity, each with its
-/// errors. The schema check is skipped (never run) when the document is structurally invalid, or when it is
-/// windowed (partial): <see cref="SchemaChecked"/> is false in both cases, and <see cref="SchemaValid"/> is
-/// always false alongside it, but that false means "not checked", not "checked and invalid". Read
-/// <see cref="SchemaValid"/> only when <see cref="SchemaChecked"/> is true. <see cref="SchemaErrors"/> carries
-/// the explanatory note either way.</summary>
+/// <summary>Result of validation. <see cref="SchemaScope"/> is <c>document</c> for a whole document,
+/// <c>loadedTiles</c> for a windowed tiled document, and <c>none</c> when structural errors prevented schema
+/// validation. Whole-world fields describe the optional on-disk <c>VerifyTiled</c> pass. <see cref="Valid"/>
+/// includes that pass only when the caller requested it.</summary>
 public sealed record ValidateResult(bool StructuralValid, IReadOnlyList<string> StructuralErrors,
-    bool SchemaChecked, bool SchemaValid, IReadOnlyList<string> SchemaErrors);
+    bool SchemaChecked, bool SchemaValid, IReadOnlyList<string> SchemaErrors)
+{
+    public bool Valid { get; init; }
+    public string SchemaScope { get; init; } = "none";
+    public bool WholeWorldChecked { get; init; }
+    public bool WholeWorldValid { get; init; }
+    public IReadOnlyList<string> WholeWorldErrors { get; init; } = System.Array.Empty<string>();
+}
 
 /// <summary>A flat snapshot of the open document: identity, bounds, terrain seed and water level, the feature
 /// types in fold order, layer and companion names, section counts, the player spawn ids, region names, and the

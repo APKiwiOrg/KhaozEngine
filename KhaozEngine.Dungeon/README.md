@@ -43,7 +43,10 @@ reserved for a future growth-heuristics/grammar layer.
 tolerant reads, deterministic byte-identical writes). The JSON matches the embedded schema
 (`DungeonSchema.GetJson()`, a `oneOf` over a `config` and a `layout` `$def`), which the package's tests
 validate against and which is available for editor/AI tooling. The load path itself enforces its own semantic
-checks, throwing `DungeonJsonException` naming the offending field in its own camelCase spelling.
+checks, throwing `DungeonJsonException` naming the offending field in its own camelCase spelling. Layout JSON
+preserves `CeilingMode` and the resolved `CeilingHeightMeters`. Older layouts without those optional fields load
+as `Open` with a zero ceiling height. Layout loading rejects a negative or non-finite persisted ceiling height
+before constructing the layout.
 
 ## Baking into a `MapDocument` (`DungeonMapDocEmitter`)
 
@@ -195,13 +198,9 @@ passable/blocked cell counts, then the whole space's connected-component count (
 CI gate ("does this layout produce a fully navigable space"). Connectivity counts both same-layer 8-neighbor
 grid adjacency (corner-cut prevented, matching `GridPathPlanner`'s own A* neighbor expansion) and every
 `NavSpace.Links` stair connection, so it agrees with what `GridPathPlanner` can actually traverse rather than
-just what looks adjacent on the grid. `nav` accepts `--yaw` for symmetry with `bake` but rejects any non-zero
-value: `DungeonNav.Bake` has no rotation concept (`NavGrid` is strictly axis-aligned), so a rotated plot would
-silently bake a `NavSpace` that does not match the rotated geometry (issue #140, deferred on purpose) rather
-than failing loudly, which is why this verb refuses the combination outright instead of pretending to support
-it. Note: `DungeonLayout.CeilingMode` is not part of the layout JSON (see `DungeonJson`), so every `--layout`
-file `nav` can load bakes `Open`, and `--agent-height` cannot demonstrate blocking a `Roofed` low-ceiling cell
-through this verb, only through `DungeonNav.Bake` called directly.
+just what looks adjacent on the grid. `nav --yaw` applies the same plot rotation as `bake --yaw`.
+Roofed layout JSON retains its ceiling height, so `--agent-height` affects file-backed nav baking when the
+requested agent does not fit below that ceiling.
 
 ## NPC pathfinding (`DungeonNav`)
 
@@ -210,13 +209,15 @@ layout into a navigable `NavSpace` for NPC pathfinding: one `NavGrid` layer per 
 stair `NavLink` connections a climber crosses between floors. Headroom-aware: in a `DungeonCeilingMode.Roofed`
 layout, a cell whose ceiling clearance is below `agentHeight` bakes blocked even though its cell kind is
 walkable. An `Open` layout never blocks on headroom. Render-free and deterministic: the same layout always
-bakes the same space.
+bakes the same space. The `Bake(layout, plot, agentHeight)` overload accepts a `DungeonPlotTransform`
+and shares its rotation and translation with the geometry sinks.
 
 ```csharp
 using KhaozEngine.Dungeon;
 using KhaozEngine.Navigation;
 
-NavSpace space = DungeonNav.Bake(layout, originX: 120f, originZ: 0f, baseY: 0f, agentHeight: 1.8f);
+var plot = new DungeonPlotTransform(120f, 0f, 0f, YawRadians: 0.5f);
+NavSpace space = DungeonNav.BakeTransformed(layout, plot, agentHeight: 1.8f);
 var planner = new GridPathPlanner(space);
 ```
 
@@ -224,9 +225,10 @@ Each floor f becomes one `NavGrid` layer covering the world-Y band `[baseY + f *
 (f + 1) * FloorHeightMeters]`, with a cell walkable exactly when `DungeonLayout.IsWalkable` is true for its
 `GetCell` kind on that floor AND, in a `Roofed` layout, its headroom to the ceiling (`CeilingHeightMeters`)
 clears `agentHeight` (default `DungeonNav.DefaultAgentHeight`, 1.8, the shipped character capsule height).
-The XZ plane is anchored at `(originX, originZ)` with cell size `DungeonLayout.CellSizeMeters`, matching the
-dungeon sinks' own tile-to-world mapping, so a baked `NavGrid` lines up cell-for-cell with the same layout's
-`MapDoc` bake and runtime stamp.
+The XZ grid uses `DungeonLayout.CellSizeMeters`, rotates around the plot origin by `YawRadians`,
+then translates to `(OriginX, OriginZ)`. Cell lookup, path smoothing and waypoint centers honor this
+transform, matching the same plot's `MapDoc` bake and runtime stamp. The original origin/baseY overload
+remains a zero-yaw convenience. Stair topology and local clearance do not change under rotation.
 
 Every stair run contributes a pair of directed links joining its top tread (`DungeonCellKind.StairUpper`, on
 the lower floor) to its landing (`DungeonCellKind.StairTop`, one cell past the top tread on the floor above):

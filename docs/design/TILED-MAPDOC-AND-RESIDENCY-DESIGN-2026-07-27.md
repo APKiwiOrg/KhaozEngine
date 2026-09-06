@@ -1445,6 +1445,39 @@ four corner lookups share the same tile for 30 of every 32 cells, so caching the
 probes by close to 4x. Both are filed rather than done here, because doing them now would be tuning against an
 unisolated mechanism.
 
+### Post-residency measurement and corner lookup decision (#339)
+
+The current Ruinborne resident field uses 4 m sculpt cells and an unload radius of four document tiles.
+A fully authored single-focus ring therefore holds at most 1,296 sculpt tiles. Multiple server foci can
+retain more. Its nav boot still builds a separate fully folded field, so document residency alone does
+not bound that bake. The original assumption above does not describe the current boot path.
+
+A controlled headless re-measure used the same terrain-to-physics sequence as the consumer's nav build:
+`TerrainChunkBuilder.Build`, `TerrainChunkCollision.Build`, and `BepuPhysicsWorld.AddStatic`. It held the
+sampled rect fixed at 448 m square, used 32 m chunks at LOD 2 and 4 m sculpt cells, and varied only the
+resident sculpt dictionary. It excluded props and the later nav-column bake so those cannot obscure
+sampling cost. Release medians on the development Mac, seven measured builds after three warmups:
+
+| Resident sculpt tiles | Four lookups (ms) | Shared-corner lookup (ms) |
+| --- | ---: | ---: |
+| 64 | 123.9 | 94.0 |
+| 640 | 110.5 | 119.5 |
+| 1,296 | 131.6 | 118.1 |
+| 6,400 | 197.3 | 115.8 |
+
+All cases allocated about 9.48 MB per build and recorded zero gen2 collections inside the timed builds.
+Small-set timings are noisy under concurrent development. The larger resident set still has a measurable
+sampling cost, and the local fast path removes most of its growth. A separate 16,384-tile sampler run
+measured 1,289.9 ms versus 700.9 ms per 1,048,576 samples in the same process. All 262,144 sampled points
+matched bit for bit, and the regression suite also covers negative coordinates, seams and missing tiles.
+These measurements isolate an engine cost. They do not attribute the original full-bake 13x growth or
+claim that the complete consumer bake now takes the terrain-only times above.
+
+The chosen change resolves one tile when all four bilinear corners share it, which happens in 31 of
+32 cells on each axis. Boundary samples retain the existing four-corner path and arithmetic order.
+There is no persistent sampler cache, so immutable snapshots remain safe to read from worker threads.
+Replacing the dictionary is unnecessary for this change. The corner lookup item is resolved by #339.
+
 ## 13. Release split
 
 Two releases, drawn so that release 1 is adoptable on its own and release 2 is purely additive.

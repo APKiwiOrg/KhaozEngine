@@ -24,6 +24,12 @@ public interface ITileWorldScene
     /// <summary>Queues one ground mesh at its world transform for this frame.</summary>
     void DrawMesh(MeshHandle handle, Matrix4x4 world);
 
+    /// <summary>Queues one translucent, unlit, depth-tested mesh in the overlay pass. An implementation that
+    /// cannot reach that pass refuses the call rather than silently drawing an opaque mesh.</summary>
+    /// <exception cref="NotSupportedException">This scene implementation has no overlay-mesh pass.</exception>
+    void DrawOverlayMesh(MeshHandle handle, Matrix4x4 world) =>
+        throw new NotSupportedException("This tile-world scene does not support translucent overlay meshes.");
+
     /// <summary>Queues one rigid mesh with a dissolve threshold, edge width and edge colour. Defaults to the
     /// solid draw so an implementation written before rigid dissolve support keeps compiling and keeps the body
     /// visible.</summary>
@@ -60,11 +66,15 @@ public interface ITileWorldScene
                   IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> parts,
                   Vector3 focus, float drawRadius);
 
-    /// <summary>Queues cached ground cover through rigid mesh instancing. Defaults to no draws for an older
+    /// <summary>Queues cached ground cover. Defaults to no draws for an older
     /// headless scene seam implementation.</summary>
     int DrawGroundCover(IReadOnlyList<GroundCoverInstance> cover,
                         IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> parts,
                         Vector3 focus, GroundCoverRenderOptions options) => 0;
+
+    /// <summary>Releases retained draw resources for one ground-cover batch. Defaults to a no-op for
+    /// scenes that use immediate draws or implement the older scene seam.</summary>
+    void ReleaseGroundCover(IReadOnlyList<GroundCoverInstance> cover) { }
 
     /// <summary>Queues one water surface for this frame, defaulting to a no-op so an implementation written
     /// before water existed keeps compiling and simply draws none.</summary>
@@ -101,6 +111,9 @@ public sealed class Scene3DTileWorldScene : ITileWorldScene
 
     /// <inheritdoc />
     public void DrawMesh(MeshHandle handle, Matrix4x4 world) => _scene.Draw(handle, world);
+
+    /// <inheritdoc />
+    public void DrawOverlayMesh(MeshHandle handle, Matrix4x4 world) => _scene.DrawOverlayMesh(handle, world);
 
     /// <inheritdoc />
     public void DrawMeshDissolved(MeshHandle handle, Matrix4x4 world, float dissolve, float edgeWidth, Color edgeColor) =>
@@ -144,6 +157,9 @@ public sealed class Scene3DTileWorldScene : ITileWorldScene
                                IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> parts,
                                Vector3 focus, GroundCoverRenderOptions options) =>
         _scene.DrawGroundCover(cover, parts, focus, options);
+
+    /// <inheritdoc />
+    public void ReleaseGroundCover(IReadOnlyList<GroundCoverInstance> cover) => _scene.ReleaseGroundCover(cover);
 
     /// <inheritdoc />
     public void DrawWater(in WaterPlane plane) => _scene.DrawWater(plane);

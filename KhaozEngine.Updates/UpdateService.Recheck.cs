@@ -10,7 +10,7 @@ public sealed partial class UpdateService
     // (RecheckInterval null or non-positive). Cached so the hot Tick path is field reads only.
     private readonly double recheckIntervalSeconds;
 
-    // Seconds of contiguous Idle time observed by Tick since the last check. Owned by the game-loop
+    // Seconds of contiguous resting-state time observed by Tick since the last check. Owned by the game-loop
     // thread that calls Tick. CheckForUpdateAsync also zeroes it so a manual check restarts the clock.
     private double recheckAccumulator;
 
@@ -21,9 +21,9 @@ public sealed partial class UpdateService
     /// Advances the opt-in periodic recheck clock by <paramref name="dtSeconds"/> and fires one re-check
     /// when it reaches <see cref="UpdateServiceOptions.RecheckInterval"/>. No-op unless that interval is
     /// set to a positive value and the service is still live. Time only accrues while the service is
-    /// <see cref="UpdateState.Idle"/>: any other state (an in-flight, offered, downloading, ready, applying,
-    /// or failed update) zeroes the clock, so a fresh full interval is required after the flow returns to
-    /// Idle rather than an instant re-probe. On reaching the interval it resets the clock and starts a
+    /// <see cref="UpdateState.Idle"/> or <see cref="UpdateState.Untrusted"/>: any other state (an in-flight,
+    /// offered, downloading, ready, applying, or failed update) zeroes the clock, so a fresh full interval is
+    /// required after the flow returns to a resting state rather than an instant re-probe. On reaching the interval it resets the clock and starts a
     /// fire-and-forget <see cref="CheckForUpdateAsync"/> with the usual failure-swallowing semantics (a
     /// down feed just rests at Idle). Call once per frame from the game loop thread. When
     /// <see cref="UpdateServiceOptions.RecheckInterval"/> is set, call <see cref="CheckForUpdateAsync"/>
@@ -37,8 +37,8 @@ public sealed partial class UpdateService
             return;
         }
 
-        // Only accrue contiguous Idle time. Any excursion zeroes the clock.
-        if (state != UpdateState.Idle)
+        // Only accrue contiguous resting time. An untrusted response can recover after a feed/key repair.
+        if (state is not (UpdateState.Idle or UpdateState.Untrusted))
         {
             recheckAccumulator = 0.0;
             return;

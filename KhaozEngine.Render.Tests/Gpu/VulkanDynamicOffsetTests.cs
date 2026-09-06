@@ -53,9 +53,8 @@ namespace KhaozEngine.Tests.Gpu
                 shapes.Add((name, harness.Set(name)));
             }
 
-            // 37 since #407 gave the GPU-skinned bone palette a layout of its own, after #727 split the tile-ground
-            // layout and #604 the splat one.
-            Assert.Equal(37, shapes.Count);
+            // Includes the retained foliage parameter layout.
+            Assert.Equal(38, shapes.Count);
 
             for (int segment = 0; segment < harness.Rings.FramesInFlight; segment++)
             {

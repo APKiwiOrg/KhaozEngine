@@ -109,16 +109,10 @@ namespace KhaozEngine.Render2D.Vfx
 
         /// <summary>Creates a 1x1 opaque white texture on <paramref name="surface"/>'s device (for solid VFX quads).</summary>
         public static Texture2D White(Render2DSurface surface)
-        {
-            ArgumentNullException.ThrowIfNull(surface);
-            return surface.CreateTexture(new byte[] { 255, 255, 255, 255 }, 1, 1);
-        }
+            => Render2DTextures.White(surface);
 
         /// <summary>Creates a 1x1 opaque white texture on the snapshot <paramref name="context"/>'s device.</summary>
         public static Texture2D White(Render2DContext context)
-        {
-            ArgumentNullException.ThrowIfNull(context);
-            return context.CreateTexture(new byte[] { 255, 255, 255, 255 }, 1, 1);
-        }
+            => Render2DTextures.White(context);
     }
 }

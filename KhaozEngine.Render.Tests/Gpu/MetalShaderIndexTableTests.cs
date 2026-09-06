@@ -64,7 +64,7 @@ namespace KhaozEngine.Tests.Gpu
             var disagreements = new List<string>();
             var stopwatch = Stopwatch.StartNew();
 
-            foreach (ShippedGraphicsProgram program in D3D11ShaderProgramCatalog.GraphicsPrograms())
+            foreach (ShippedGraphicsProgram program in ShippedShaderPrograms.GraphicsPrograms())
             {
                 // Building at all is four of the five assertions: every refusal class is a throw in here.
                 MetalMslProgram built = MetalShaderBuild.Pair(
@@ -74,7 +74,7 @@ namespace KhaozEngine.Tests.Gpu
                 programs++;
             }
 
-            foreach (ShippedComputeKernel kernel in D3D11ShaderProgramCatalog.ComputeKernels())
+            foreach (ShippedComputeKernel kernel in ShippedShaderPrograms.ComputeKernels())
             {
                 (MetalMslProgram built, uint x, uint y, uint z) = MetalShaderBuild.Compute(
                     kernel.ComputeGlsl, null, kernel.Name);
@@ -134,7 +134,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             var names = new HashSet<string>(StringComparer.Ordinal);
 
-            foreach (ShippedGraphicsProgram program in D3D11ShaderProgramCatalog.GraphicsPrograms())
+            foreach (ShippedGraphicsProgram program in ShippedShaderPrograms.GraphicsPrograms())
             {
                 MetalMslProgram built = MetalShaderBuild.Pair(
                     program.VertexGlsl, program.FragmentGlsl, null, program.Name);

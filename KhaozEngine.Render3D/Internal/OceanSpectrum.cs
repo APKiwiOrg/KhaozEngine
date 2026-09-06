@@ -391,6 +391,8 @@ namespace KhaozEngine.Render3D.Internal
             return x;
         }
 
+        // Closed [-pi, pi], including the negative endpoint. Preserve this seeded spectrum convention rather
+        // than replacing it with MathUtil.WrapAngle's half-open (-pi, pi] interval.
         static float WrapAngle(float a)
         {
             float t = a % TwoPi;

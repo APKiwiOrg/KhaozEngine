@@ -59,19 +59,19 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.True(problems.Count == 0,
                 "The committed shader corpus no longer describes the shipped shader set. A program was added to "
-                + $"or removed from {nameof(D3D11ShaderProgramCatalog)} without rebuilding it. Rebuild with "
+                + $"or removed from {nameof(ShippedShaderPrograms)} without rebuilding it. Rebuild with "
                 + $"{WriteEnvVar}=1 and commit, reading the diff first.\n"
                 + string.Join("\n", problems));
         }
 
         /// <summary>
         /// The historical table, the one taken under <c>Veldrid.SPIRV</c> before the swap, is asserted to still
-        /// be there and to describe the same key set. It is the OTHER half of the comparison and there is no way
+        /// be there and to describe the preserved post-swap key set. It is the OTHER half of the comparison and there is no way
         /// to reproduce it: the toolchain that emitted it is gone from the tree, so a deleted file is a
         /// measurement that cannot be retaken.
         /// </summary>
         [Fact]
-        public void TheHistoricalVeldridCorpus_IsStillPresentAndDescribesTheSameSet()
+        public void TheHistoricalVeldridCorpus_IsStillPresentAndComparable()
         {
             Dictionary<string, string> historical = ReadTable(HistoricalTablePath());
             Assert.True(historical.Count > 0,
@@ -79,13 +79,13 @@ namespace KhaozEngine.Tests.Gpu
                 + "1.0.15 emitted for the shipped set on 2026-08-23, and the toolchain that produced it is no "
                 + "longer referenced anywhere in the tree, so it cannot be regenerated. Restore it from git.");
 
-            Dictionary<string, string> current = ReadTable(TablePath());
+            Dictionary<string, string> current = ReadTable(MigrationTablePath());
             IEnumerable<string> drift = historical.Keys.Except(current.Keys, StringComparer.Ordinal)
                 .Concat(current.Keys.Except(historical.Keys, StringComparer.Ordinal))
                 .OrderBy(k => k, StringComparer.Ordinal);
             Assert.True(!drift.Any(),
-                "The pre-swap corpus and the current one describe different shader sets, so they are no longer "
-                + "comparable and the swap's evidence has lost its base. Keys present in one only:\n  "
+                "The preserved pre-swap and post-swap measurements describe different shader sets. "
+                + "Restore the historical comparison from git. Keys present in one only:\n  "
                 + string.Join("\n  ", drift));
         }
 
@@ -109,7 +109,7 @@ namespace KhaozEngine.Tests.Gpu
         public void TheLayoutsReflectedByBothToolchains_HaveTheSameShapeOnceNamesAreStripped()
         {
             Dictionary<string, string> historical = ReadTable(HistoricalTablePath());
-            Dictionary<string, string> current = ReadTable(TablePath());
+            Dictionary<string, string> current = ReadTable(MigrationTablePath());
             var moved = new List<string>();
             foreach (string key in current.Keys.Where(k => k.Contains(".layout.", StringComparison.Ordinal))
                          .OrderBy(k => k, StringComparer.Ordinal))
@@ -142,6 +142,9 @@ namespace KhaozEngine.Tests.Gpu
             => Path.Combine(Path.GetDirectoryName(thisFile)!, "shader-corpus");
 
         static string TablePath() => Path.Combine(CorpusDir(), "corpus.txt");
+
+        // Keep both migration measurements immutable while the live corpus gains new shipped programs.
+        static string MigrationTablePath() => Path.Combine(CorpusDir(), "corpus.khaoz-shaders-migration.txt");
 
         static string HistoricalTablePath() => Path.Combine(CorpusDir(), "corpus.veldrid-spirv.txt");
 

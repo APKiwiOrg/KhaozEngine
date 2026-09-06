@@ -56,16 +56,17 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
     // are seeded only when a rescue is honored and cleared on leave.
     private double selfRescueClock;
     private readonly Dictionary<int, double> selfRescueReadyAt = new();
-    // Per-tick scratch: the pre-step state of each owned player whose command we routed this frame, so we can
-    // measure the authoritative correction after the cells step. Reused across ticks (single-threaded orchestration).
-    private readonly List<(int slot, PlayerMoveState prev)> correctionScratch = new();
+    // Per-tick scratch: the pre-step state and original cell tick count of each owned player whose command we routed,
+    // so correction sampling follows that player's fixed step even when cell accumulators are out of phase.
+    // Reused across ticks (single-threaded orchestration).
+    private readonly List<(int slot, PlayerMoveState prev, CellSim cell, long tickCount)> correctionScratch = new();
     // Per-tick scratch, reused across ticks so the steady-state serve loop allocates nothing for its own
     // bookkeeping (#134): the slot list the tick iterates, the per-client interest set (cleared between clients,
     // never retained by the delta replicator), and the online-snapshot rebuild buffer.
     private readonly List<int> tickSlots = new();
     private readonly HashSet<long> interestScratch = new();
     private readonly OnlineSnapshotPublisher onlinePublisher = new();
-    private readonly DrainController drain = new();
+    private readonly KhaozEngine.Simulation.Hosting.DrainController drain = new();
     private readonly AdminCommandBuffer admin = new();
     private readonly IBanStore? banStore;
     private readonly MoveTuning tuning;
@@ -367,7 +368,6 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
     public void Poll()
     {
         net.Poll();
-        foreach (RateLimiter limiter in rateBySlot.Values) limiter.Refill();   // one budget top-up per poll
         while (net.TryDequeueEvent(out ServerSessionEvent ev))
         {
             switch (ev.Kind)
@@ -493,7 +493,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
                 if (trackCorrection && cell.World.TryGet(e, out ReplicatedPosition rp))
                 {
                     cell.World.TryGet(e, out MovementState ms);
-                    correctionScratch.Add((slot, PlayerMoveState.From(rp.Value, ms)));
+                    correctionScratch.Add((slot, PlayerMoveState.From(rp.Value, ms), cell, cell.TickCount));
                 }
             }
         }
@@ -507,19 +507,28 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         long cellTicksBefore = TotalCellTicks();
         host.Tick(dt, maxTicksPerFrame: 1);
         bool movementRan = TotalCellTicks() != cellTicksBefore;
+        if (movementRan)
+            foreach (RateLimiter limiter in rateBySlot.Values) limiter.Refill();
 
         // 4. Authority follows entities across boundaries (exactly-once), then refresh border ghosts.
         host.ProcessHandoffs();
+        ApplyDesiredSpeedScales();
         boundPlayerCellsVersion++;   // a handoff can move a bound player's home cell: the eviction cache must re-read
         host.SyncGhosts();
 
         // 4b. Movement-correction anomaly: compare each routed player's post-step position to its intended move.
-        foreach ((int slot, PlayerMoveState prev) in correctionScratch)
+        // A skipped accumulator frame is neither a corrected nor a clean movement tick, so it must leave the
+        // consecutive-tick streak untouched.
+        if (movementRan)
         {
-            if (!TryGetPlayerState(slot, out PlayerMoveState after)) continue;
-            float correction = MovementAnomaly.CorrectionDistance(prev, after, dt);
-            if (MovementAnomaly.RegisterCorrection(correctionStreakBySlot, slot, correction, config.AntiCheat))
-                Raise(slot, SuspiciousReason.MovementCorrection, correction);
+            foreach ((int slot, PlayerMoveState prev, CellSim cell, long tickCount) in correctionScratch)
+            {
+                if (cell.TickCount == tickCount) continue;
+                if (!TryGetPlayerState(slot, out PlayerMoveState after)) continue;
+                float correction = MovementAnomaly.CorrectionDistance(prev, after, cell.TickSeconds);
+                if (MovementAnomaly.RegisterCorrection(correctionStreakBySlot, slot, correction, config.AntiCheat))
+                    Raise(slot, SuspiciousReason.MovementCorrection, correction);
+            }
         }
 
         // 5. Serve each client its home-cell area-of-interest, framed for the WorldClient. Delta-capable clients get a
@@ -601,9 +610,10 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
     /// notion of what granted it: the game drives all of that and ends a buff by calling this again with
     /// <c>1f</c>, exactly as <see cref="Teleport"/> moves a player without owning any concept of why. Two buffs at
     /// once are the caller's product to compute.</para>
-    /// Queued like every other authoritative mutation and applied on the host thread at the top of the next
+    /// Queued like every other authoritative mutation and recorded on the host thread at the top of the next
     /// <see cref="Tick"/>, so it is safe to call from any thread (a game-message handler, an ability system, an
-    /// expiry timer) and lands at one deterministic point in the tick. No-op for an unknown player.
+    /// expiry timer). The desired value is retained by the player's stable net id and retried after handoffs until
+    /// its owned entity resolves. No-op for an unknown player.
     /// <para><paramref name="scale"/> is clamped to <c>[0, MovementState.MaxSpeedScale]</c> and quantized to the
     /// wire's 1/16 granularity BEFORE it reaches the sim, so the server never runs a speed its clients cannot be
     /// told about: a requested 1.1x becomes 1.125x on both heads rather than 1.1x on one and 1.125x on the other.
@@ -649,19 +659,9 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
             }
             case AdminCommandKind.SpeedScale:
             {
-                // Write the quantized multiplier straight onto the owning cell's component rather than going through
-                // SetPlayerState: that path also rewrites ReplicatedPosition from a read taken before this drain, and
-                // a speed change has no business touching position. The per-cell PlayerMovementSystem decodes this
-                // field back into MoveState.SpeedScale every tick, so quantizing here is what keeps the authoritative
-                // sim running the exact value the client is told.
                 int slot = ResolveSlot(cmd.Target);
-                if (slot >= 0 && netIdBySlot.TryGetValue(slot, out long netId)
-                    && host.TryGetOwner(netId, out CellSim cell, out Entity e)
-                    && cell.World.TryGet(e, out MovementState ms))
-                {
-                    ms.SpeedScaleQ = MovementState.QuantizeSpeedScale(cmd.Scale);
-                    cell.World.Set(e, ms);
-                }
+                if (slot >= 0 && netIdBySlot.TryGetValue(slot, out long netId))
+                    SetDesiredSpeedScale(netId, cmd.Scale);
                 break;
             }
             case AdminCommandKind.Kick:
@@ -758,6 +758,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
     {
         if (netIdBySlot.TryGetValue(slot, out long netId))
         {
+            desiredSpeedScaleByNetId.Remove(netId);
             if (accountIdBySlot.TryGetValue(slot, out string? acct) && TryGetPlayerState(slot, out PlayerMoveState final))
                 PlayerLeaving?.Invoke(slot, acct, final);
             if (host.TryGetOwner(netId, out CellSim cell, out Entity e) && cell.World.IsAlive(e))

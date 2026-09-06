@@ -5,6 +5,210 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.30.0
+
+Server-owned tile actors can use registered traversal topologies while existing actors retain the default map.
+
+- `TileActorTraversalProfile` is an opaque game key registered through
+  `TileActorHost.RegisterTraversalProfile(profile, map)`. Definitions and direct spawns select it through
+  additive init properties, with zero preserving existing construction and movement.
+- The selected topology governs destination validation, pathfinding, committed steps, blocked-route repathing,
+  chase, wander, leash return, respawn placement, region handoff and the attacker's final adjacent reach check.
+  Player movement and client prediction remain on the constructor map.
+- Unknown profiles are rejected by actor spawn doors. An unresolved ECS tag freezes and consumes its pending
+  command instead of falling back to another topology. Profile registration closes before the first server tick.
+- `TileCollisionBaker.Bake(doc, catalogs, groundBlocked)` lets a game replace only the ground pass using absolute
+  world tile coordinates and a zero-based plane. Solid, diagonal, wall and wall-corner object passes remain
+  unchanged, including on ground the callback opens.
+- Headless regressions cover default compatibility, mixed profiles, registration and destination failures,
+  routing, committed steps, repathing, wandering, chase and combat reach, leash return, respawn, region handoff,
+  unknown-profile handling and preserved object collision.
+
+## 18.29.0
+
+Persistent GPU foliage adds shader wind and actor bending while removing per-blade CPU frame preparation (#841).
+
+- `Scene3D.CreateFoliageBatch` uploads immutable `FoliageInstance` transforms once. Spatial patches use
+  conservative distance prefixes and the final render camera for culling. Exact distance fading runs in
+  the vertex shader. `FoliageBatch.Dispose` safely retires buffers, and scene disposal frees remaining batches.
+- `FoliageRenderSettings` controls density, draw distance, rooted height fading and height-relative wind.
+  Up to four `FoliageInteractor` values bend nearby blades with a smooth falloff. The host advances
+  `Scene3D.EffectTimeSeconds`. Authored mesh roots stay planted, including meshes whose minimum Y is offset.
+  Foliage receives existing material lighting and alpha masks, and casts no dynamic shadows.
+- `LastFoliageStats` reports tested and submitted patches, candidate instances and upload bytes. Candidate
+  counts include blades rejected in the shader. These counters do not claim GPU execution time.
+- `GroundCoverRenderOptions.UseGpuBatches` opts immutable `GroundCoverBatch` values into this path with
+  `HeightScale` fading and shadows off. Other policies keep their existing CPU path. Live model binding
+  changes rebuild retained buffers, while settings and render-origin changes leave transforms resident.
+- `TileWorldViewOptions.AnimatedFoliageArchetypes` selects existing placed ground props for the same shader.
+  Short cover and selected tall grass retain separate density policies and share wind and interaction inputs.
+  `ITileWorldScene.ReleaseGroundCover` adds a compatible default lifecycle hook for rebuilds and unloads.
+- Pixel comparisons cover wind, player bending, rooted fading, camera changes, render origins and independent
+  uniform slots. The shipped shader registry includes foliage on all three translation paths, and native GPU
+  CI includes its image and upload checks on each push.
+
+## 18.28.0
+
+Twenty backlog fixes improve restore accuracy, command handling, authoring tools and rendering regression coverage.
+
+- `PersistenceBinding<TState>.RestoreDistance` compares restores in binding-native coordinates. Tile restores
+  compare integer X, Z and plane coordinates without losing adjacent tiles at large positions (#808).
+- `ITileCombatRules.CanAttack` rejects forbidden targets before player or actor commands establish a lock,
+  chase or attack roll. Existing rule implementations retain permissive admission (#802).
+- Command-rate budgets refill from simulated time rather than transport polls on world, sharded and tile hosts.
+  Extra polling cannot multiply the per-tick allowance, while fixed-step catch-up earns each elapsed tick (#681).
+- `CellPersistence.CellRestoreApplied` reports successfully applied snapshots after ownership, retained frames
+  and the NetId high-water are ready. Missing, stale and rejected loads do not signal success (#360).
+- `WorldPickups.Rehydrate(world)` re-adopts restored owned pickups with their saved payload and owner. Radius,
+  lifetime and offer history restart from configured defaults, and repeated adoption is idempotent (#660).
+- `Simulation.Hosting.DrainController` owns the countdown shared by world and tile servers. The existing NetWorld
+  type forwards to it, preserving source imports and public calls (#698).
+- `InMemoryTransportHub` provides a public multi-client local transport with copied payloads, staged delivery,
+  targeted disconnects and disposal. Both former test-only copies now use this implementation (#710).
+- Stair handoffs seed an empty climb smoothing accumulator from the migrated quantized signal, preserving
+  continuity without adding the full-precision float to observer or migration payloads (#57).
+- `AutomationOptions.CommandTimeout` retires commands left queued by a stalled frame loop and removes expired
+  steps. Connections recover after timeout. An already executing synchronous callback returns its real result (#816).
+- OIDC detailed validation separates discovery, JWKS and transport outages from refused credentials. Caller
+  cancellation propagates even with cached metadata or a wrapped transport failure (#791).
+- Browser and loopback adapters move to `KhaozEngine.Identity.Interactive` for all providers. OIDC keeps forwarding
+  wrappers under its old names without introducing ambiguous existing namespace imports (#709).
+- `PngReader` decodes non-interlaced 8/16-bit grayscale, gray-alpha, RGB and RGBA, preserving sample precision
+  and transparency. Tile height import accepts PNG alongside PGM through the same undoable command (#650).
+- Landing map lists scroll under a clip while title, New Map, status and Quit stay fixed. Every discovered
+  map remains reachable and scrolling does not activate a row (#361).
+- Ground-decal sparkle keeps its absolute phase across render-origin changes. A tighter GPU regression
+  detects the former shader behavior, and all three shader translation hash tables track the change (#345).
+- glTF and prop ingress rejects malformed indices with asset identity, bad index and vertex count.
+  `HlodMergeStats.MalformedCornersDropped` reports bounds-safe containment in live HLOD building (#403).
+- Six structural frame-upload tests now run headlessly through fake resources and command recording.
+  Compute skinning tests retain real-device coverage (#414).
+- A dedicated large, off-centre water golden pins the shipped grid-focus default with real Metal, Direct3D11
+  and Vulkan baselines, visible-water checks and a uniform-grid negative control (#298).
+- `SafeAreaInsets` and safe-area `Layout.Resolve` keep anchored UI inside host-supplied design-space insets.
+  `Layout.ResolveFractional` adds fractional positioning using the same child and parent anchor fractions (#238).
+- `DungeonNav.BakeTransformed` follows `DungeonPlotTransform` translation and yaw. Grid lookup, path smoothing,
+  stairs and the `ke-dungeon nav --yaw` path align with placed geometry, preserving existing Bake calls (#140).
+- Four nullable glint overrides complete `WaterLook` preset coverage. `OceanPresets.ApplyToLook` applies the
+  complete weather bundle per plane while leaving wave source, shore and unrelated settings intact (#372).
+
+## 18.27.0
+
+Another backlog batch fixes update trust reporting, tiled-world lifecycle bugs and GPU cleanup, and adds small audio, GUI and rendering APIs.
+
+- Dense ground cover resolves each model once per batch submission, refreshing live handles each frame.
+  Rigid instance grouping reuses its first-pass mesh indices, and surviving non-casters reuse their early
+  camera visibility result. Placements, draw order, shadow coverage and warmed allocation behavior stay
+  unchanged (#839).
+- `AntiAliasing.Msaa(samples, postFxaa: true)` keeps the FXAA post filter after multisample resolve,
+  allowing low-sample geometry antialiasing with smoother fine edges. `UsesFxaa` reports the combined
+  choice. Existing factories, resolution policy and device fallbacks retain their behavior.
+- `UpdateState.Untrusted` makes unsigned, wrong-key, tampered and malformed signed manifests visible through
+  a dismissible localized overlay. It offers no download or apply action and permits later checks (#819).
+- `SfxAttenuation` and `AudioSystem.DefineBus(id, attenuation)` configure positional falloff per bus.
+  Existing volume, priority and non-positional behavior stay intact. Legacy backends retain a forwarding
+  default, and the implicit curve remains reference 1, rolloff 1, maximum 50 (#824).
+- `LabelSegment` and `ContextMenuEntry.Segmented` support separately localized, colored label parts in caller
+  order (#818). Context menus accept later taps whose press and release arrive in the same frame while
+  preserving opening-gesture protection (#760).
+- `Render2DTextures.White` creates a caller-owned white pixel without a Vfx dependency (#804).
+  `SpriteBatch.Flush` provides an ordering boundary within an active batch while preserving its state (#401).
+- Ground-item caps count drops restored from evicted cells (#811). Actor spawners retire a frozen former
+  actor before creating its replacement, preserving the countdown and avoiding duplicate ownership (#812).
+- Tile movement reuses separate player and actor pathfinding scratch per cell, including interact, follow
+  and blocked-route searches, while shared simulators remain stateless (#809).
+- `DiagnosticsOverlay.NetworkSection(NetTransportStats)` and `DiagnosticsHud.SetTransportStatsSource`
+  provide transport ping, loss and disconnected status without invented replication metrics (#806).
+- Sharded correction detection only updates its streak when that player's cell ran, using its fixed tick duration (#435). Desired player
+  speed scales survive temporarily unresolved ownership and are removed when that player leaves (#431).
+- Both `Scene3DChunkSink` constructors expose the render mesh's `snowLine`, defaulting to 60 and preserving
+  collision behavior (#375). Residue circles respect `VoidFallback` and `VoidDim` (#12).
+- Skinned shadow culling retains casters beyond a cascade's near plane for depth clamping, while main-pass,
+  lateral and far-plane rejection stay active (#395). Vulkan unmap closes bookkeeping after device loss
+  without flushing memory on the dead device (#807).
+- `ShippedShaderPrograms` names the shared backend validation catalog (#555). Native Metal pixel readback
+  proves conditional, out-of-binding-order texture samples. The old sampling-order restriction is retired,
+  while authored-index validation remains active and shipped shader strings remain unchanged (#729).
+- Tiled map saves hold exclusive directory writer access through cleanup. Overlapping saves fail before
+  modifying tiles, and ownership is released on completion, failure or process exit (#350).
+- Terrain sculpt interpolation resolves shared interior corners with one dictionary lookup, preserving
+  bit-exact boundary and missing-tile results. Headless measurements cover resident sets and isolate the
+  terrain-to-physics build from GC and the later consumer nav bake (#339).
+- Angle-wrap comments explain the intentionally retained negative half-turn and ocean spectrum boundaries
+  rather than changing deterministic behavior (#785).
+- Transport overflow tests wait for server-side evictions and verify the retained disconnect and newest
+  ordered payload (#837). Shadow re-fit tests check caster and cascade coverage, with depth-atlas parity
+  against an uncompacted full-draw reference instead of a historical minimum draw count (#838).
+
+## 18.26.0
+
+Dense ground cover avoids invisible uploads and gains a smooth rooted fade.
+
+- Rigid instances with `CastsShadows = false` are camera-culled before grouping and GPU upload. Visible
+  instances compact without changing mesh order, culling counters or offscreen shadow casters. Grouping
+  reuses its cursor buffer above 64 mesh runs instead of allocating every frame (#836).
+- Ground cover supports a smooth `HeightScale` fade that keeps roots fixed and avoids fragment cutout
+  noise, with a configurable `InstanceFadeBandWidth`. Optional `DensityRadius` separates the dense area
+  from the outer draw distance. The default dissolve remains available.
+  `GroundCoverBatch` caches conservative range bounds so distant cover can skip placement walks (#836).
+
+## 18.25.0
+
+Scrollable lists can yield drag gestures to their contents, and exact full-overlay boundaries no longer bleed
+their hidden underlay into neighbouring ground.
+
+- `ScrollablePanel.DragScrollingEnabled` defaults to true for compatibility. Setting it to false disables
+  pointer drag-panning while leaving wheel scrolling, clipping, input blocking and header resizing unchanged.
+- `TileGroundMesher.CornerMaterial`, `CornerColor` and `CornerJitter` exclude an underlay hidden by a drawn full
+  overlay. Exposed ground now meets full floor and road overlays at a sharp material boundary. `NoDraw` tiles
+  still contribute their underlay for object-floor continuity.
+
+Consumer: https://github.com/APKiwiOrg/Grimhollow
+
+## 18.24.0
+
+A backlog batch improves GUI customization, tile-world editing and captures, validation, and test reliability.
+
+- `SlotGrid.RightPressedSlot` exposes independent right-button held state with the same press-origin and
+  visibility rules as left-button input (#798). `ChoiceOption` separates localized property-choice labels
+  from stable string values, including language switches and external getter refresh (#797).
+- `GuiDraw.BorderSingleCoverage` draws translucent borders without double-painted corners, retaining the
+  existing `Border` behavior (#833). `TabBarItem` adds disabled tabs, and `TabBar` can opt into fixed dimensions,
+  column wrapping, and spacing while retaining its default evenly split row (#825).
+- `ScreenStack.AdvanceTransitionsBehindModal` optionally advances covered on/off transitions without updating
+  covered screens or passing input through the modal (#266). `GuiTheme` owns the Primary and Active surface
+  palettes, preserving all existing preset defaults and the independent Modern style (#831).
+- Tile presentation recognizes packed negative player IDs and uses the shared no-player sentinel (#813).
+  Source-backed `RemoveRegion` performs safe unload bookkeeping. Explicit `DeleteRegion` preserves permanent
+  editor deletion and undo, including dirty regions and source marker indexes (#810).
+- `TilePrefabs.Extract(..., includeDerivedHeights: false)` leaves unauthored upper-plane heights derived from
+  the destination terrain. Explicit authored layers remain authored, and existing extraction defaults stay
+  unchanged (#658).
+- Tile-world snapshots accept a per-frame `drawFrame` callback for caller-owned meshes (#706).
+  `ITileWorldScene.DrawOverlayMesh` forwards the translucent overlay pass, with a clear refusal from custom
+  implementations that do not support it (#734). Tile-ground material slots clamp to the actual layer count
+  as well as the shader uniform bound (#675).
+- Dungeon layout JSON preserves ceiling mode and height while old files retain open-top defaults (#314).
+  `map_validate` schema-checks current loaded tiles, including newly authored coordinates, and can verify
+  the saved tiled world with `verifyWholeWorld`. Result fields expose the checked scope and failures (#346).
+- Metal validation warns for each missing requested instrument, including shader-only arming (#634).
+  Texture-transfer refusals distinguish invalid mip levels from invalid array layers (#795).
+- Rejected non-finite movement ticks clear stale step impulses while retaining the last good pose (#434).
+  GPU-provider tests isolate the process-wide registry (#814), PixelLab cleanup tests inspect their own
+  extraction directory (#796), and deterministic RNG tests retain distinct coverage without duplicates (#792).
+- GPU dependency documentation names the current Silk shader toolchain (#815). The FFT shader comment limits
+  its variance-preservation claim to decorrelated sector taps (#333).
+
+## 18.23.0
+
+Configurable localized composer options for retained chat.
+
+- `ChatBox.ComposerPlaceholder` exposes the composer's `LocalizedText` placeholder without exposing the internal
+  `TextInput` or adding a raw string API. It resolves against the current catalog when drawn.
+- `ChatBox.MaxInputLength` exposes the composer's positive character limit and preserves the existing default of
+  32. Lowering the limit immediately reclamps existing text through `TextInput.SetText`, so normal change
+  detection still observes the edit.
+
 ## 18.22.0
 
 Painted ground cover for authored worlds, drawn between gameplay tiles.

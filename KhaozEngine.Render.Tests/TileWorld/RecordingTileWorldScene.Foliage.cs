@@ -14,6 +14,9 @@ public sealed record TileFoliageDrawRecord(
 public sealed partial class RecordingTileWorldScene
 {
     public List<TileFoliageDrawRecord> FoliageDraws { get; } = new();
+    public List<IReadOnlyList<GroundCoverInstance>> FoliageReleases { get; } = new();
+
+    public void ReleaseGroundCover(IReadOnlyList<GroundCoverInstance> cover) => FoliageReleases.Add(cover);
 
     public int DrawGroundCover(
         IReadOnlyList<GroundCoverInstance> cover,

@@ -548,7 +548,7 @@ namespace KhaozEngine.Tests.Game
             return MathF.Atan2(f.X, f.Z);
         }
 
-        // Wrap into (-pi, pi], mirroring the source's private WrapPi so the wrap assertions are self-contained.
+        // Wrap into [-pi, pi], mirroring the source's private WrapPi so the wrap assertions are self-contained.
         static float WrapPi(float a)
         {
             const float twoPi = MathF.PI * 2f;

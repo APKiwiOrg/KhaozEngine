@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.Windowing;
 
@@ -22,6 +24,15 @@ namespace KhaozEngine.Automation
         /// <summary>One queued command: the request, its parsed arguments, and the reply nobody has produced yet.</summary>
         sealed class PendingCommand
         {
+            const int Queued = 0;
+            const int Executing = 1;
+            const int Waiting = 2;
+            const int Finished = 3;
+
+            int _state;
+            int _deadlineElapsed;
+            Timer? _timer;
+
             public required AutomationRequest Request { get; init; }
             public TaskCompletionSource<AutomationReply> Completion { get; } =
                 new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -31,6 +42,52 @@ namespace KhaozEngine.Automation
             public JsonElement VerbArguments { get; init; }
             /// <summary>The frame a <c>step</c> replies on. Set when the command is applied, not when it is queued.</summary>
             public long DueFrame { get; set; }
+
+            public bool TryBegin() => Interlocked.CompareExchange(ref _state, Executing, Queued) == Queued;
+
+            public bool TryPark() => Interlocked.CompareExchange(ref _state, Waiting, Executing) == Executing;
+
+            public bool DeadlineElapsed => Volatile.Read(ref _deadlineElapsed) != 0;
+
+            public bool TryExpireQueued() =>
+                Interlocked.CompareExchange(ref _state, Finished, Queued) == Queued;
+
+            public bool TryExpireWaiting() =>
+                Interlocked.CompareExchange(ref _state, Finished, Waiting) == Waiting;
+
+            public void MarkDeadlineElapsed() => Interlocked.Exchange(ref _deadlineElapsed, 1);
+
+            public void StartTimeout(TimeSpan timeout, Action expire)
+            {
+                var timer = new Timer(_ => expire(), null, timeout, Timeout.InfiniteTimeSpan);
+                Timer? replaced = Interlocked.CompareExchange(ref _timer, timer, null);
+                if (replaced is not null || Volatile.Read(ref _state) == Finished)
+                {
+                    if (replaced is not null) timer.Dispose();
+                    else StopTimer();
+                }
+            }
+
+            public bool TryFinish(AutomationReply reply)
+            {
+                while (true)
+                {
+                    int state = Volatile.Read(ref _state);
+                    if (state == Finished) return false;
+                    if (Interlocked.CompareExchange(ref _state, Finished, state) != state) continue;
+                    StopTimer();
+                    Completion.TrySetResult(reply);
+                    return true;
+                }
+            }
+
+            void StopTimer() => Interlocked.Exchange(ref _timer, null)?.Dispose();
+
+            public void CompleteFinished(AutomationReply reply)
+            {
+                StopTimer();
+                Completion.TrySetResult(reply);
+            }
         }
 
         /// <summary>One <c>input</c> command's parsed intent, so the window thread applies values rather than JSON.</summary>
@@ -160,13 +217,20 @@ namespace KhaozEngine.Automation
             {
                 case "input":
                     ApplyInput(pending.Input, frame);
-                    pending.Completion.TrySetResult(AutomationReply.Success(request.Id, frame, new JsonObject()));
+                    pending.TryFinish(AutomationReply.Success(request.Id, frame, new JsonObject()));
                     break;
 
                 case "step":
                     // Counted inclusive of this frame, so "step 1" replies on the frame it landed on.
                     pending.DueFrame = frame + pending.Frames - 1;
-                    lock (_waitingLock) _waiting.Add(pending);
+                    bool expired;
+                    lock (_waitingLock)
+                    {
+                        expired = pending.DeadlineElapsed;
+                        if (!expired && pending.TryPark()) _waiting.Add(pending);
+                    }
+                    if (expired)
+                        pending.TryFinish(AutomationReply.Failure(request.Id, frame, TimedOutError));
                     break;
 
                 case "state":
@@ -222,7 +286,7 @@ namespace KhaozEngine.Automation
                 {
                     PendingCommand pending = _waiting[i];
                     if (pending.DueFrame > frame) continue;
-                    pending.Completion.TrySetResult(AutomationReply.Success(pending.Request.Id, frame, new JsonObject()));
+                    pending.TryFinish(AutomationReply.Success(pending.Request.Id, frame, new JsonObject()));
                     _waiting.RemoveAt(i);
                 }
             }
@@ -234,16 +298,62 @@ namespace KhaozEngine.Automation
         {
             try
             {
-                pending.Completion.TrySetResult(AutomationReply.Success(pending.Request.Id, frame, produce()));
+                pending.TryFinish(AutomationReply.Success(pending.Request.Id, frame, produce()));
             }
             catch (Exception ex)
             {
-                pending.Completion.TrySetResult(AutomationReply.Failure(pending.Request.Id, frame, ex.Message));
+                pending.TryFinish(AutomationReply.Failure(pending.Request.Id, frame, ex.Message));
             }
         }
 
         /// <summary>Reply with a failure on the frame the command was applied.</summary>
         static void Fail(PendingCommand pending, long frame, string error) =>
-            pending.Completion.TrySetResult(AutomationReply.Failure(pending.Request.Id, frame, error));
+            pending.TryFinish(AutomationReply.Failure(pending.Request.Id, frame, error));
+
+        bool TryTakeIncoming(out PendingCommand? pending)
+        {
+            while (true)
+            {
+                lock (_submitLock)
+                {
+                    LinkedListNode<PendingCommand>? first = _incoming.First;
+                    if (first is null) { pending = null; return false; }
+                    pending = first.Value;
+                    _incoming.RemoveFirst();
+                    if (pending.TryBegin()) return true;
+                }
+            }
+        }
+
+        /// <summary>Retire an expired command and remove it from the step wait list if it reached that stage.</summary>
+        void Expire(PendingCommand pending)
+        {
+            bool expired = false;
+            lock (_submitLock)
+            {
+                if (pending.TryExpireQueued())
+                {
+                    _incoming.Remove(pending);
+                    expired = true;
+                }
+            }
+            if (!expired)
+            {
+                lock (_waitingLock)
+                {
+                    if (pending.TryExpireWaiting())
+                    {
+                        _waiting.Remove(pending);
+                        expired = true;
+                    }
+                    else
+                    {
+                        pending.MarkDeadlineElapsed();
+                    }
+                }
+            }
+            if (expired)
+                pending.CompleteFinished(AutomationReply.Failure(pending.Request.Id, Frame, TimedOutError));
+        }
     }
 }

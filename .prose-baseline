@@ -37,11 +37,11 @@
 832 CHANGELOG.md
 301 docs/USING-KHAOZENGINE.md
 32 KhaozEngine.NetWorld/README.md
-29 README.md
 26 docs/SECURITY-BASELINE.md
+26 README.md
 22 KhaozEngine.Render3D/README.md
-22 KhaozEngine.Gui/README.md
 21 KhaozEngine.Updates/README.md
+21 KhaozEngine.Gui/README.md
 20 KhaozEngine.Windowing/README.md
 14 KhaozEngine.Game.Render3D/README.md
 13 docs/UPDATER.md
@@ -99,8 +99,6 @@
 1 KhaozEngine.Progression/README.md
 1 KhaozEngine.Persistence/README.md
 1 KhaozEngine.Particles/README.md
-1 KhaozEngine.Identity/README.md
-1 KhaozEngine.Identity.Oidc/README.md
 1 KhaozEngine.Identity.Discord/README.md
 1 KhaozEngine.Ecs/README.md
 1 KhaozEngine.Content/README.md

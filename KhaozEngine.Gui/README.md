@@ -24,7 +24,16 @@ and explicit raw player names or messages stay distinguishable.
 colours, and a single-line composer. Enter opens the composer, a later Enter submits trimmed non-empty text,
 and Escape clears and closes it. `Update` reserves the full `Bounds` through `Pointer`, including movement and
 wheel input over the box. Call it before world picking and draw it with the same white texture used by the
-other retained widgets.
+other retained widgets. The composer stays internal. Configure it through these placement-neutral properties:
+
+```csharp
+public LocalizedText ComposerPlaceholder { get; set; }
+public int MaxInputLength { get; set; }
+```
+
+`ComposerPlaceholder` resolves lazily through the current localization catalog and defaults to empty.
+`MaxInputLength` defaults to 32 and rejects zero or negative values. Lowering it reclamps any existing composer
+text immediately through the normal `TextInput.SetText` path.
 
 ```csharp
 using System;
@@ -35,6 +44,8 @@ using KhaozEngine.Primitives;
 var history = new ChatHistory(capacity: 100);
 var chat = new ChatBox(history, new Rect(16, 420, 460, 284), font)
 {
+    ComposerPlaceholder = Strings.ChatPlaceholder,
+    MaxInputLength = 160,
     ShowTimestamps = settings.ShowChatTimestamps,
     Submitted = SendNearbyChat
 };
@@ -69,6 +80,9 @@ chat.Draw(batch, white);
   screen pulled out mid-frame (its own transition-off completing, or another screen's `Update` removing it)
   cannot get one more `Update` out of the loop's scratch copy after its content is gone. Re-adding that same
   instance remounts it and re-runs its entry transition.
+  `AdvanceTransitionsBehindModal` is an opt-in flag, false by default. When true, screens below a modal update
+  break advance transition-on and transition-off clocks without receiving input or running `Screen.Update`.
+  Finished transition-off screens are removed normally while covered.
   `PressBeganOverUi` carries the press-origin invariant across the UI boundary: true while the current gesture
   began over a region the screens had reserved, latched at the press and held until the next fresh press. The
   stack drives its own pointer, so a reservation here is invisible to a game's world-picking pointer, and there
@@ -105,8 +119,12 @@ chat.Draw(batch, white);
   `CornerRadius`/`BorderThickness`). `SelectionFill` is the fill under a selected row (a list's current item, a
   `Dropdown`'s chosen option) and `FocusFill` the fill under the keyboard cursor row, a shade under it. The
   `Dropdown` used to hardcode that pair, so a rebranded palette still drew a blue selected row. Both presets
-  carry the same two values, so `GuiTheme.Legacy` does not move either row. Set the ambient
-  `GuiTheme.Default` ONCE at startup (before building widgets) to
+  carry the same two values, so `GuiTheme.Legacy` does not move either row. Set
+  `PrimaryFill`, `PrimaryHover`, `PrimaryPress`, `PrimaryBorder`, and `PrimarySelectedFill` to
+  rebrand `GuiStyle.Primary`. The parallel `ActiveFill`, `ActiveHover`, `ActivePress`, `ActiveBorder`,
+  `ActiveText`, and `ActiveSelectedFill` fields drive `GuiStyle.Active`. Both built-in themes retain the prior
+  preset values, and `GuiStyle.Legacy` plus `GuiStyle.Modern` remain independent. Set the ambient
+  `GuiTheme.Default` once at startup (before building widgets) to
   rebrand the whole UI; set it to `GuiTheme.Legacy` to keep the pre-10.11.0 flat blue-grey look. `GuiStyle` carries
   the button palette + the modern-affordance knobs, with presets: `Default` (crisp, == `Primary`), `Secondary`
   (muted), `Danger` (red), `Active` (bright-accent selected), `Modern` (rounded + glow + shadow), and `Legacy` (the
@@ -239,12 +257,14 @@ chat.Draw(batch, white);
     label, text only: the rects, the row fills, the chevron and the hit-testing are unchanged. Pointer actions
     that open, close, select or dismiss consume their gesture, so controls behind the trigger or open list cannot
     act on the same release.
-  - `TabBar` - horizontal tab bar / segmented control: N evenly-split tabs, exactly one active. A valid tap
-    activates a tab and raises `ChangedThisFrame` for one frame (and `Update` returns true), so the caller swaps
-    the panel body only on a real change. `ActiveIndex` is settable to restore/persist the selection without
-    raising the change signal. Active tab uses `ActiveStyle` (`GuiStyle.Active`), inactive tabs `InactiveStyle`
-    (`GuiStyle.Secondary`), labels are `LocalizedText`, and `TabRect(i)` is the pure per-tab layout, independent of
-    `TextScale` (default `1f`, scales every tab label only). `Opacity` fades the whole bar for a host transition.
+  - `TabBar` - tab bar / segmented control with exactly one active tab. The original
+    `IReadOnlyList<LocalizedText>` constructor keeps one row of evenly split tabs. The `TabBarItem` overload adds
+    per-tab `Enabled` state. Disabled tabs use the style's disabled colours and swallow taps without changing the
+    selection. Positive `TabWidth` and `TabHeight` opt into fixed-size layout. `Columns` controls left-to-right
+    wrapping and `Spacing` sets both gutters. `ContentBounds` reports and reserves the resulting footprint.
+    `ActiveIndex` is settable to restore or persist selection without raising the change signal. Active tabs use
+    `ActiveStyle` (`GuiStyle.Active`), inactive tabs use `InactiveStyle` (`GuiStyle.Secondary`), and `TabRect(i)`
+    exposes the active layout. `TextScale` scales every label only. `Opacity` fades the whole bar.
   - **Keyboard/gamepad control (opt-in, additive)** on `Toggle`/`Slider`/`Dropdown`: each has an
     `Update(InputManager, bool focused, PlayerIndex? = null)` overload that layers `InputManager` menu actions on
     top of the pointer path (only when `focused`), mirroring `FocusNavigator`. So a settings row is fully
@@ -283,10 +303,13 @@ chat.Draw(batch, white);
     rule and the viewport clamp are shared by both modes.
   - `ContextMenu` (18.2.0) - a right-click option menu anchored at a screen point: a title band over a stack of
     selectable rows, the OSRS-style option list. `Open(title, entries, screenPoint)` shows it (reopening while
-    open just replaces the content and the anchor), `Update(Pointer)` drives one frame, `Draw(batch, white)`
-    paints it. Text is `LocalizedText` throughout, resolved ONCE: the title in `Open`, each row through
+    open just replaces the content and the anchor), `Update(Pointer)` drives one frame, and `Draw(batch, white)`
+    paints it. Entries accept caller-ordered `LabelSegment` values through
+    `ContextMenuEntry.Segmented(...)`, so separately localized verb and target text can use independent colors
+    without splitting translated strings. Legacy text resolves once: the title in `Open`, each row through
     `ContextMenuEntry.Of(label, rightDetail, ...)` at construction (the `TooltipLine.Of` precedent), so the draw
-    path never re-resolves and a runtime locale switch means rebuilding the entries. A row carries an optional
+    path never re-resolves and a runtime locale switch means rebuilding legacy entries. Segments carry
+    `LocalizedText` and resolve during layout and draw. A row carries an optional
     right-aligned `RightDetail`, per-row `LabelColor` / `DetailColor` overrides, an opaque `long Tag` that rides
     through selection, and an `Enabled` flag (a disabled row draws at `DisabledColor`, whatever the caller
     tinted it, and refuses both hover and selection). Results are one-frame flags in the `Dropdown.WasChanged`
@@ -304,7 +327,8 @@ chat.Draw(batch, white);
     rather than sit at it. A menu too big for that box pins to the left and top margins and overflows the right
     and bottom edges. An open menu reserves its bounds through `Pointer.BlockRegion` (the `Dropdown`
     precedent) so the world beneath cannot be clicked through it, and the gesture that OPENED the menu can
-    neither dismiss it nor select a row in it. Assign `Viewport` (the design size) before updating or drawing:
+    neither dismiss it nor select a row in it. Call `Open` before `Update` in the opening frame. If a caller
+    updates first, opening-frame protection applies to the next update instead. Assign `Viewport` (the design size) before updating or drawing:
     `Draw` throws while it is `Vector2.Zero` rather than silently pinning the menu into the corner, and throws
     too on a menu built through the measure-only `ContextMenu(ITextMeasurer, ITextMeasurer)` constructor, which
     exists so a headless test can drive the whole interaction with no GPU device and no baked font.
@@ -331,8 +355,9 @@ chat.Draw(batch, white);
     footer callback is safe to mutate the list mid-fire (for example closing the dialog from inside the very
     action it just ran). An empty `FooterButtons` list leaves the classic dismiss/primary footer completely
     unchanged, so every existing consumer stays byte-identical.
-  - `ScrollablePanel` - wheel/drag scrolling fixed-height list; rows drawn between `BeginClip`/`EndClip` (scissor),
-    hit-test with `TappedItemIndex`. Opt-in overlay chrome (all default to no-ops, so existing callers are
+  - `ScrollablePanel` - wheel/drag scrolling fixed-height list. Set `DragScrollingEnabled = false` when row
+    content owns pointer dragging and the wheel must remain available. It defaults to true. Rows are drawn
+    between `BeginClip`/`EndClip` (scissor), and hit-tested with `TappedItemIndex`. Opt-in overlay chrome (all default to no-ops, so existing callers are
     byte-identical): a header band (`HeaderHeight` + `DrawHeader`, whose title is a `LocalizedText` with the old
     `string` overload kept `[Obsolete]`) above the scroll region; a slide-up animation
     driven by an external `TransitionAlpha` from a docked bottom edge (`SlideFromBottom`); drag-to-resize the header
@@ -375,8 +400,9 @@ chat.Draw(batch, white);
     only, so a dense tree fits more text per row without changing `RowHeight`, `Indent` or any hit-testing.
   - `PropertyGrid` - a vertical stack of `PropertyRow`s split label/editor at `LabelFraction`, scrolling like
     `ScrollablePanel` (wheel + scissor clip). Built-in rows: `FloatRow` (a `NumberField`), `BoolRow` (a
-    `Toggle`), `TextRow` (a `TextInput`), `ChoiceRow` (a `Dropdown` over a fixed set of option strings, get/set
-    delegates over the selected option like `TextRow`), `ReadOnlyRow` (a polled display string, no input).
+    `Toggle`), `TextRow` (a `TextInput`), `ChoiceRow` (a `Dropdown` over either raw strings or localized
+    `ChoiceOption` display content with a separate stable string value), `ReadOnlyRow` (a polled display string,
+    no input).
     Each row polls its getter every `Update` unless the user is mid-edit/scrub/focus on that row's child widget
     (a `ChoiceRow` polls only while its list is closed, so an in-progress pick is never stomped), so external
     changes (undo, another editor) stay in sync without a change-event bus. A `ChoiceRow`'s setter fires only on
@@ -427,6 +453,7 @@ chat.Draw(batch, white);
     `GuiDraw.FillStyled` against `EditorStyle` so it picks up `GuiStyle.Modern`'s rounded corners.
 - `UpdateOverlayView` / `UpdateOverlayScreen` (+ `UpdateOverlayTheme`) - the in-game auto-updater popup, a pure
   presenter over `KhaozEngine.Updates`' `IUpdateStatus`: it announces an available update, shows download
+  progress, and shows a dismissible, non-modal `Untrusted` panel when the client cannot authenticate the feed.
   progress, and prompts the restart-and-apply, driven by the theme's trigger key/button (default U / gamepad Y).
   Its dim scrim (like any opaque `Screen.BackgroundColor` via `Screen.DrawBackground`) fills the viewport's
   `WindowBounds`, so under a letterbox scale it covers the whole window instead of leaving the bars showing the
@@ -503,7 +530,8 @@ chat.Draw(batch, white);
   `SetSections`; `Update(InputState, dt)` toggles on `Theme.ToggleKey` (default F1; optional
   gamepad button) and fades (headless-testable, `InputState.Empty` inert); `Draw` renders a corner panel
   (`Theme.Corner`) of titles + right-aligned values. `PerformanceSection(FrameStats)` /
-  `PassTimingsSection(PassTimings)` / `NetworkSection(in ClientNetStats)` populators cover the common cases
+  `PassTimingsSection(PassTimings)` / `NetworkSection(in ClientNetStats)` /
+  `NetworkSection(in NetTransportStats)` populators cover the common cases
   (from `KhaozEngine.Diagnostics`). `DrawStatsSection(in RenderFrameStats)` (the `Primitives` frame counters)
   adds a "Draw stats" section (draw calls, instances, triangles, quads, flushes, texture switches, upload KB).
   `PassTimingsSection` lists one row per pass name (in first-sampled order)
@@ -516,8 +544,10 @@ chat.Draw(batch, white);
   assembles the Performance / Draw-stats / Pass-timings / (optional) Network sections. Call `Update(input, dt)`
   once per frame (samples FPS, handles the toggle + fade), feed `SetDrawStats(in RenderFrameStats)` the aggregate
   and (3D) sample its `PassTimings`, then `Draw`. Hidden by default, and while hidden the provider builds nothing,
-  so the only cost is the surfaces' always-on counter increments. `SetNetStatsSource(Func<ClientNetStats?>)` opts a
-  Network section in and out with the active screen. `AddSection(Func<OverlaySection?>)` is the composition seam
+  so the only cost is the surfaces' always-on counter increments. `SetNetStatsSource(Func<ClientNetStats?>?)` opts a
+  rich Network section in and out with the active screen. `SetTransportStatsSource(Func<NetTransportStats?>?)` is
+  the link-health form for clients that measure ping and loss without rate windows or correction metres. Each
+  setter replaces the active network source, and passing null removes it. `AddSection(Func<OverlaySection?>)` is the composition seam
   for a section of the GAME's own: it renders after the built-in ones instead of replacing them, is polled on the
   same throttled refresh, and returning null omits it for that refresh. Registration order is render order, and
   `ClearSections()` drops the added ones. Reaching past this to `Overlay.SetSectionsProvider` installs a provider
@@ -540,10 +570,11 @@ chat.Draw(batch, white);
   (three ASCII dots, binary-searched against the caller-supplied measure function, e.g.
   `s => font.Measure(s).X`, so it is pure and headless-testable). When not even the dots fit, `"..."` is still
   returned. `PropertyGrid` cell/label text and the map editor's status strip draw through it.
-- `GuiDraw.Fill(batch, white, rect, color)`, `GuiDraw.Border(batch, white, rect, thickness, color)` and
+- `GuiDraw.Fill(batch, white, rect, color)`, `GuiDraw.Border(batch, white, rect, thickness, color)`,
+  `GuiDraw.BorderSingleCoverage(batch, white, rect, thickness, color)` and
   `GuiDraw.Line(batch, white, a, b, thickness, color)` - the 2D primitives, public alongside
   `TruncateWithEllipsis` so a game drawing its own chrome in its own pass calls the engine helper instead of
-  hand-building four rects. All three take a 1x1 white texture (Render2D has no primitive renderer). `Fill`
+  hand-building four rects. All four take a 1x1 white texture (Render2D has no primitive renderer). `Fill`
   draws the rect verbatim, `Border` strokes a `thickness`-wide outline just inside it and snaps rect and
   thickness to whole device pixels in a point-space pass (a no-op elsewhere), and `Line` is a single rotated
   quad between two points. Everything else on `GuiDraw` (`FillStyled`, the skin path, the glow, the widget
@@ -599,6 +630,11 @@ var grid = new PropertyGrid(inspectorRect);
 grid.Rows.Add(new FloatRow(Strings.PosX, () => obj.Position.X, v => obj.Position = obj.Position with { X = v },
     dragScale: 0.1f));
 grid.Rows.Add(new BoolRow(Strings.Visible, () => obj.Visible, v => obj.Visible = v));
+grid.Rows.Add(new ChoiceRow(Strings.Difficulty, new[]
+{
+    new ChoiceOption(Strings.DifficultyEasy, "easy"),
+    new ChoiceOption(Strings.DifficultyHard, "hard"),
+}, () => obj.Difficulty, v => obj.Difficulty = v));
 grid.Rows.Add(new ReadOnlyRow(Strings.ObjectId, () => obj.Id.ToString()));
 grid.Update(input, dt);   // polls getters, runs the focused row's child widget, writes back on a real change
 grid.Draw(batch, white, font);
@@ -630,3 +666,18 @@ math is headless-testable). Clipping uses `SpriteBatch` scissor (`SetScissor`/`C
 nesting: a clipping widget drawn inside another clipping widget is bounded by both). Ported
 from `KhaozEngine.Screens`/`UI` (game-specific layout coupling dropped). Built on `KhaozEngine.Windowing`
 (Pointer/Input) + `KhaozEngine.Render2D` (SpriteBatch/SpriteFont/Texture2D). Part of the MonoGame-free engine.
+
+## Anchored and safe-area layout
+
+`Layout.Resolve(parent, anchor, width, height, marginX, marginY)` supports nine anchors and stretch.
+Apply `SafeAreaInsets` from Primitives to the viewport bounds first to keep UI clear of a notch or
+system overlay. The host supplies insets in design units, there is no automatic platform probing.
+
+```csharp
+Rect safe = new SafeAreaInsets(top: 24, bottom: 12, left: 0, right: 0).Apply(viewport.DesignBounds);
+Rect button = Layout.Resolve(safe, Anchor.BottomRight, 120, 40, 16, 16);
+Rect marker = Layout.ResolveFractional(safe, 0.25f, 0.75f, 0, 0);
+```
+
+`ResolveFractional` aligns the same fraction of the child with its parent. Fractions are finite values
+in [0, 1]. A zero-size child resolves a point. Its optional offsets move the result after anchoring.

@@ -274,7 +274,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
             if (arming.ShaderValidationSetInProcessOnly)
                 log.Warn(MetalValidation.SetInProcessWarning(MetalValidation.ShaderValidationVar));
 
-            if (arming.RequestedMoreThanArmed) log.Warn(MetalValidation.NotArmedWarning(arming.Requested));
+            if (arming.RequestedRequirementsMissing)
+            {
+                log.Warn(MetalValidation.NotArmedWarning(
+                    arming.Requested, arming.DebugLayerArmed, arming.ShaderValidationArmed));
+            }
         }
 
         [SupportedOSPlatform("macos")]

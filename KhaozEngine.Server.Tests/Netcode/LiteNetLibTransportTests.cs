@@ -43,10 +43,10 @@ public class LiteNetLibTransportTests
 
     [Trait("Category", "LiveSocket")]
     [Fact]
-    public void ServerInbox_UnderOverflow_KeepsTheDisconnect_NotTheNewerEvent()
+    public void ServerInbox_UnderOverflow_KeepsTheDisconnectAndNewestData()
     {
-        // A cap of 1 makes one later event enough to overflow the inbox, so the eviction a real flood causes is
-        // reproducible without pushing thousands of packets through a socket.
+        // Terminal events do not consume capacity. A second connection fills the cap, then two ordered payloads
+        // evict that connection event and the older payload while the disconnect must survive both evictions.
         using LiteNetLibServerTransport? server = LiveSocketSupport.TryBindServer(out int port, maxQueuedEvents: 1);
         if (server is null) { output.WriteLine(LiveSocketSupport.NoFreePortReason); return; }
 
@@ -58,23 +58,31 @@ public class LiteNetLibTransportTests
         // Drop the peer from the SERVER side: LiteNetLib raises the local Disconnected on the next poll, with no
         // packet to wait on, so it is in the inbox before anything newer can arrive.
         server.Disconnect(firstId);
-        for (int i = 0; i < 4; i++) { server.Poll(); Thread.Sleep(15); }
+        server.Poll();
 
-        // A second client's Connected is the newer event that overflows the cap-1 inbox. Its arrival is observed
-        // on the CLIENT's inbox so the server's stays undrained, which is the whole point.
+        // The client becoming connected permits Send, but does not prove the server processed its callback.
+        // Keep the server inbox undrained until its own drop counter proves both payloads reached it.
         using var second = new LiteNetLibClientTransport("127.0.0.1", port);
+        NetConnectionId secondServer = PumpUntilId(server, second,
+            () => TryFind(second, NetEventType.Connected, out NetConnectionId id) ? id : (NetConnectionId?)null)
+            ?? throw new Exception("second client never connected");
+        second.Send(secondServer, new byte[] { 41 }, NetChannelReliability.ReliableOrdered);
+        second.Send(secondServer, new byte[] { 42 }, NetChannelReliability.ReliableOrdered);
         Assert.NotNull(PumpUntil(server, second,
-            () => TryFind(second, NetEventType.Connected, out _) ? "up" : null));
+            () => server.DroppedEventCount >= 2 ? "overflowed" : null));
 
         var drained = new System.Collections.Generic.List<NetEvent>();
         while (server.TryDequeueEvent(out NetEvent ev)) drained.Add(ev);
 
         // The Disconnected is the OLDEST buffered event, so drop-oldest is exactly what would throw it away, and
         // NetServer releases the peer's slot off this event and off nothing else.
-        Assert.NotEmpty(drained);
+        Assert.Equal(2, drained.Count);
         Assert.Equal(NetEventType.Disconnected, drained[0].Type);
         Assert.Equal(firstId, drained[0].Connection);
-        Assert.Contains(drained, e => e.Type == NetEventType.Connected);
+        Assert.Equal(NetEventType.Data, drained[1].Type);
+        Assert.Equal(new byte[] { 42 }, drained[1].Data);
+        Assert.Equal(NetChannelReliability.ReliableOrdered, drained[1].Reliability);
+        Assert.Equal(2L, server.DroppedEventCount);
     }
 
     // Pumps both transports up to a bounded time budget until the selector returns non-null.

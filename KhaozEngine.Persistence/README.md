@@ -55,6 +55,17 @@ storage.Flush();                             // writes are queued: flush before 
 MyGameState loaded = storage.Load<MyGameState>("save.json");
 ```
 
+For a portable root or a test that must not create the current user's application-data directory, pass an explicit
+`AppDataPaths` into the existing facade constructor. The same `GameStorageOptions` remain available.
+
+```csharp
+using KhaozEngine.App;
+
+var storage = new GameStorage(
+    AppDataPaths.FromDirectory(temporaryDirectory),
+    new GameStorageOptions { BackupGenerations = 2 });
+```
+
 `GameStorageOptions.TamperPolicy`, like the encoder itself, is about detecting and recovering from
 tampering and corruption, not stopping a determined attacker: the HMAC key ships in the game binary
 either way (see above).
@@ -225,13 +236,16 @@ surface "recovered from backup" or "settings reset" instead of silently swallowi
 using KhaozEngine.App;
 using KhaozEngine.Persistence;
 
-var paths = new AppDataPaths("MyGame");
+var paths = new AppDataPaths("MyStudio", "MyGame");
 var storage = new FileSettingsStorage(paths, persistenceQueue);   // queue supplied by the host
 var settings = new SettingsManager<MySettings>(storage, Log.For<SettingsManager<MySettings>>());
 
 settings.Settings.MasterVolume = 0.8f;
 settings.Save();
 ```
+
+Use `AppDataPaths.FromDirectory(temporaryDirectory)` in the same construction when settings must live under an
+explicit fully-qualified root. Save, existence checks, loads, and backup recovery then stay inside that directory.
 
 ### Schema migration & downgrade safety
 

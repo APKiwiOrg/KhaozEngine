@@ -21,13 +21,14 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// it. The connection lifecycle, residency and rate-limiting plumbing here is therefore a re-implementation rather
 /// than an extraction, which is a known and accepted cost. When the two servers are seen to converge, the generic
 /// core comes out of BOTH of them rather than out of the shipping one alone.</para>
-/// <para>Partial across six files, because "the world ticks", "connections come and go", "a click resolves" and "a
+/// <para>Partial across seven files, because "the world ticks", "connections come and go", "a click resolves" and "a
 /// swing lands" are separate seams and one file for all of them would grow past the size ratchet as each filled in.
 /// This file is construction, the host, the player index and state access. <c>TileWorldServer.Tick.cs</c> is the
 /// tick order and the serve, <c>TileWorldServer.Sessions.cs</c> the session lifecycle and the persistence-host
 /// surface, <c>TileWorldServer.Actions.cs</c> the pending-action resolution, <c>TileWorldServer.Actors.cs</c> the
 /// actor lifecycle and the <see cref="TileActorHost"/> this file constructs, and
-/// <c>TileWorldServer.Combat.cs</c> the hit pipeline and death.</para>
+/// <c>TileWorldServer.Combat.cs</c> the hit pipeline and death. <c>TileWorldServer.Observability.cs</c> forwards the
+/// connection health counters.</para>
 /// </summary>
 public sealed partial class TileWorldServer : IDisposable
 {
@@ -151,7 +152,8 @@ public sealed partial class TileWorldServer : IDisposable
         // client cannot tell the two paths apart and needs one branch rather than two.
         IConnectionAuthenticator door = authenticator ?? new AllowAllAuthenticator();
         if (config.IsBanned is not null) door = new BanGateAuthenticator(door, config.IsBanned);
-        net = new NetServer(transport, config.MaxPlayers, door, duplicateSessions: config.DuplicateSessions);
+        net = new NetServer(transport, config.MaxPlayers, door, duplicateSessions: config.DuplicateSessions,
+            maxPendingConnections: config.MaxPendingConnections);
         host = new ShardHost(config.CellSize, config.TickSeconds, this.registry, config.InterestRadius,
             config.OverlapMargin, PositionOf);
         // Both halves are event driven, and CellCreated is documented to fire synchronously before the new cell can

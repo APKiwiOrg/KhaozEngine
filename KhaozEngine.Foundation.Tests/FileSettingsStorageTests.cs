@@ -162,6 +162,37 @@ public class FileSettingsStorageTests
     }
 
     [Fact]
+    public void ExplicitDirectory_RoundTripsChecksAndRecoversInsideThatDirectory()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "ke-explicit-settings-" + Path.GetRandomFileName());
+        try
+        {
+            AppDataPaths paths = AppDataPaths.FromDirectory(root);
+            using var queue = new PersistenceQueue(backupGenerations: 2);
+            var storage = new FileSettingsStorage(paths, queue);
+
+            Assert.False(storage.SettingsExist());
+            storage.SaveSettings(new Sample { Score = 1, Name = "backup" });
+            queue.Flush();
+            storage.SaveSettings(new Sample { Score = 2, Name = "primary" });
+            queue.Flush();
+
+            Assert.True(storage.SettingsExist());
+            Assert.Equal(2, storage.LoadSettings<Sample>().Score);
+            Assert.True(File.Exists(Path.Combine(root, "settings.json.bak1")));
+            File.WriteAllText(Path.Combine(root, "settings.json"), "{ corrupt");
+
+            SaveLoadResult<Sample> recovered = storage.LoadSettingsDetailed<Sample>();
+
+            Assert.Equal(SaveLoadOutcome.RecoveredFromBackup, recovered.Outcome);
+            Assert.Equal(1, recovered.RecoveredGeneration);
+            Assert.Equal(1, recovered.Value.Score);
+            Assert.Equal("backup", recovered.Value.Name);
+        }
+        finally { Cleanup(root); }
+    }
+
+    [Fact]
     public void LoadSettingsDetailed_NoFile_ReturnsFreshDefault()
     {
         AppDataPaths paths = TempPaths(out string root);

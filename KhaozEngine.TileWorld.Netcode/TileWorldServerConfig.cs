@@ -43,6 +43,12 @@ public sealed record TileWorldServerConfig
     /// <summary>Session slot capacity, and the ceiling on how many players the command queue tracks.</summary>
     public int MaxPlayers { get; init; } = 200;
 
+    /// <summary>Global cap on connections accepted but still waiting to complete their Hello handshake. Zero, the
+    /// default, leaves pending connections unlimited. A positive cap refuses excess connects before they can hold
+    /// server state. Watch <see cref="TileWorldServer.RefusedPendingConnectionCount"/> to tell a flood being shed
+    /// from a cap set below the world's real concurrent-join burst.</summary>
+    public int MaxPendingConnections { get; init; }
+
     /// <summary>Planes the world has, used to refuse a command naming one it does not. It is the world's number
     /// rather than the protocol's: the wire carries a plane in one byte, so a document with more planes than this
     /// would be refused at the decoder long before it got here.

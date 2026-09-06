@@ -5,6 +5,22 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.20.0
+
+Explicit storage roots and bounded pending connections for tile-world hosts.
+
+- `AppDataPaths.FromDirectory(string baseDirectory)` uses a caller-selected absolute data root. It
+  normalizes the path immediately and creates it on first access. `GameStorage` and `FileSettingsStorage`
+  can use the same resolver for isolated runs without touching the normal OS application directory
+  (closes #799).
+- `TileWorldServerConfig.MaxPendingConnections` forwards the existing session cap. Zero keeps the
+  unlimited default. `TileWorldServer.PendingConnectionCount` and `RefusedPendingConnectionCount`
+  expose the live pending count and total refused connections (closes #800).
+- A handshake queued before a pending-cap rejection cannot subsequently join or reserve a player slot.
+  `NetServer` accepts a pre-session Hello only while its connection is still pending.
+
+Consumer batch: https://github.com/APKiwiOrg/Grimhollow/milestone/1
+
 ## 18.19.0
 
 Four shared APIs remove Grimhollow's input, rendering and interaction workarounds.

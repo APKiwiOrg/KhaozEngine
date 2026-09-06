@@ -282,7 +282,9 @@ remote address, which `INetTransport` deliberately does not expose.
 
 The refusal is a BARE disconnect, not the framed `Reject` above: a cap whose job is to shed a flood must not answer
 every flooded connect with bytes of its own. A legitimate client refused this way reads a plain drop and comes back
-on its backoff, which is right for a transient capacity limit. Two counters make it visible:
+on its backoff, which is right for a transient capacity limit. A pre-slot `Hello` is accepted only while its
+connection remains in the pending set, so one already queued behind a cap-refused connect cannot claim a player
+slot after the disconnect. Two counters make it visible:
 `PendingConnectionCount` (connections in flight toward a join right now) and `RefusedPendingConnectionCount` (total
 refused by the cap). Both are forwarded by `WorldServer` and `ShardedWorldServer`, which take the cap itself as
 `MaxPendingConnections` on their configs. Size it above the concurrent-join burst a launch or a restart produces,

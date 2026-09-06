@@ -255,10 +255,12 @@ it steps through the same `TileMoveSimulator` for free and can never move in a w
   exactly where it was put.
 - **`ITileCombatRules`** / **`TileAttackContext`** / **`TileAttackOutcome`** - where the GAME plugs into the hit
   pipeline. The engine owns whether a swing is DUE (the cooldown) and whether it is LEGAL (adjacency through
-  `TileReach`). This owns what it DOES. `Roll` is called once per eligible attacker per tick, in the engine's fixed
-  order and BEFORE any of the tick's damage is applied, so no roll sees another roll's result, and `AttackTicks`
-  is the per-attacker cadence. Build an outcome through `Hit` or `Miss`: the two fields are read independently, so
-  a hand-built `new TileAttackOutcome(false, 50, 0)` is a miss that takes 50 health.
+  `TileReach`). `CanAttack(attackerNetId, targetNetId)` is the admission rule for acquiring a target. A false answer
+  is rewritten to `Continue` before a player command or actor latch can create a lock, chase, swing, or roll. Its
+  default permits every target for source compatibility. `Roll` is called once per eligible attacker per tick, in
+  the engine's fixed order and BEFORE any of the tick's damage is applied, so no roll sees another roll's result,
+  and `AttackTicks` is the per-attacker cadence. Build an outcome through `Hit` or `Miss`: the two fields are read
+  independently, so a hand-built `new TileAttackOutcome(false, 50, 0)` is a miss that takes 50 health.
 - **`TileCombatEvent`** - one resolved swing, explicit rather than derived. `Amount` is the ROLLED damage, so an
   overkill reports more than was taken (award experience off the target's health, not off this), and `Killed`
   rides the blow that caused the death so a client never has to notice an absence to know something died.

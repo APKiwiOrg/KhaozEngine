@@ -18,6 +18,7 @@ namespace KhaozEngine.Tests.Gpu
     /// which is precisely the attribution the whole rollout depended on.
     /// </para>
     /// </summary>
+    [Collection("GpuBackendProvidersSerial")]
     public sealed class GpuBackendProvidersTests
     {
         // The appended member itself, which decision I1 reserved ordinal 4 for and which now exists. Used ONLY in

@@ -293,6 +293,10 @@ dropped about 63 minutes of runner time from a full dispatch.
   | `MTL_SHADER_VALIDATION=1` alone | `The device class is MTLGPUDebugDevice`, no warning. Hosted `macos-26` answers `MTLLegacySVDevice` for the same environment, see below |
   | `MTL_DEBUG_LAYER=1 MTL_CAPTURE_ENABLED=1` | `The device class is CaptureMTLDevice`, plus the WARN that the run `is probably NOT validated` |
 
+  These rows describe device-class disambiguation. The separate `KE_METAL_VALIDATION` request checks each
+  required launch variable: `on` requires the debug layer, and `shaders` requires both layers. A shader-only
+  device is correctly reported as validated while still warning if a requested debug layer is missing.
+
   **Shader validation alone has TWO class spellings, and that is what
   [#628](https://github.com/APKiwiOrg/KhaozEngine/issues/628) turned out to be about.** That issue was filed on
   run `31874140088`, where hosted `macos-26` under `MTL_SHADER_VALIDATION=1` alone reported `MTLLegacySVDevice`

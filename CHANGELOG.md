@@ -5,6 +5,40 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.24.0
+
+A backlog batch improves GUI customization, tile-world editing and captures, validation, and test reliability.
+
+- `SlotGrid.RightPressedSlot` exposes independent right-button held state with the same press-origin and
+  visibility rules as left-button input (#798). `ChoiceOption` separates localized property-choice labels
+  from stable string values, including language switches and external getter refresh (#797).
+- `GuiDraw.BorderSingleCoverage` draws translucent borders without double-painted corners, retaining the
+  existing `Border` behavior (#833). `TabBarItem` adds disabled tabs, and `TabBar` can opt into fixed dimensions,
+  column wrapping, and spacing while retaining its default evenly split row (#825).
+- `ScreenStack.AdvanceTransitionsBehindModal` optionally advances covered on/off transitions without updating
+  covered screens or passing input through the modal (#266). `GuiTheme` owns the Primary and Active surface
+  palettes, preserving all existing preset defaults and the independent Modern style (#831).
+- Tile presentation recognizes packed negative player IDs and uses the shared no-player sentinel (#813).
+  Source-backed `RemoveRegion` performs safe unload bookkeeping. Explicit `DeleteRegion` preserves permanent
+  editor deletion and undo, including dirty regions and source marker indexes (#810).
+- `TilePrefabs.Extract(..., includeDerivedHeights: false)` leaves unauthored upper-plane heights derived from
+  the destination terrain. Explicit authored layers remain authored, and existing extraction defaults stay
+  unchanged (#658).
+- Tile-world snapshots accept a per-frame `drawFrame` callback for caller-owned meshes (#706).
+  `ITileWorldScene.DrawOverlayMesh` forwards the translucent overlay pass, with a clear refusal from custom
+  implementations that do not support it (#734). Tile-ground material slots clamp to the actual layer count
+  as well as the shader uniform bound (#675).
+- Dungeon layout JSON preserves ceiling mode and height while old files retain open-top defaults (#314).
+  `map_validate` schema-checks current loaded tiles, including newly authored coordinates, and can verify
+  the saved tiled world with `verifyWholeWorld`. Result fields expose the checked scope and failures (#346).
+- Metal validation warns for each missing requested instrument, including shader-only arming (#634).
+  Texture-transfer refusals distinguish invalid mip levels from invalid array layers (#795).
+- Rejected non-finite movement ticks clear stale step impulses while retaining the last good pose (#434).
+  GPU-provider tests isolate the process-wide registry (#814), PixelLab cleanup tests inspect their own
+  extraction directory (#796), and deterministic RNG tests retain distinct coverage without duplicates (#792).
+- GPU dependency documentation names the current Silk shader toolchain (#815). The FFT shader comment limits
+  its variance-preservation claim to decorrelated sector taps (#333).
+
 ## 18.23.0
 
 Configurable localized composer options for retained chat.

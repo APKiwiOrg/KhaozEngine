@@ -160,6 +160,47 @@ namespace KhaozEngine.Tests.Gui
             Assert.Equal(Vector4.One, full.LabelColor.Value);
         }
 
+        [Fact]
+        public void Segmented_label_width_is_the_sum_of_caller_ordered_segments()
+        {
+            var entry = ContextMenuEntry.Segmented(new[]
+            {
+                new LabelSegment(LocalizedText.Raw("Goblin "), new Vector4(0f, 1f, 0f, 1f)),
+                new LabelSegment(LocalizedText.Raw("Attack"), new Vector4(1f, 0f, 0f, 1f)),
+            }, tag: 42);
+
+            Rect bounds = ContextMenu.ComputeBounds(Font, "", Font, new[] { entry },
+                new Vector2(100, 100), View, M);
+            ContextMenu.LabelRun[] runs = ContextMenu.LayoutLabel(entry, Font, 100f, Vector4.One, Vector4.Zero);
+
+            Assert.Equal(130f + M.PadX * 2f, bounds.Width);
+            Assert.Equal("Goblin ", runs[0].Text);
+            Assert.Equal(100f, runs[0].X);
+            Assert.Equal(new Vector4(0f, 1f, 0f, 1f), runs[0].Color);
+            Assert.Equal("Attack", runs[1].Text);
+            Assert.Equal(170f, runs[1].X);
+            Assert.Equal(new Vector4(1f, 0f, 0f, 1f), runs[1].Color);
+            Assert.Equal(42L, entry.Tag);
+        }
+
+        [Fact]
+        public void Segmented_label_matches_legacy_layout_for_the_same_resolved_text()
+        {
+            var legacy = new ContextMenuEntry("Attack Goblin");
+            var segmented = ContextMenuEntry.Segmented(new[]
+            {
+                new LabelSegment(LocalizedText.Raw("Attack ")),
+                new LabelSegment(LocalizedText.Raw("Goblin")),
+            });
+
+            Rect legacyBounds = ContextMenu.ComputeBounds(Font, "", Font, new[] { legacy },
+                new Vector2(100, 100), View, M);
+            Rect segmentedBounds = ContextMenu.ComputeBounds(Font, "", Font, new[] { segmented },
+                new Vector2(100, 100), View, M);
+
+            Assert.Equal(legacyBounds, segmentedBounds);
+        }
+
         // ---- interaction ----------------------------------------------------
         //
         // The interaction fixture is a three-row menu opened at (300,200) in the 960x540 viewport. With the
@@ -192,6 +233,13 @@ namespace KhaozEngine.Tests.Gui
             var (edgePressed, edgeReleased) = _mouse.Advance(b);
             return new InputState(new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
                 b, edgePressed, pos, Vector2.Zero, 0, 960, 540, mouseReleased: edgeReleased);
+        }
+
+        static InputState SameFrameTap(Vector2 pos)
+        {
+            var edge = new HashSet<MouseButton> { MouseButton.Left };
+            return new InputState(new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
+                new HashSet<MouseButton>(), edge, pos, Vector2.Zero, 0, 960, 540, mouseReleased: edge);
         }
 
         static ContextMenu OpenMenu(ContextMenuEntry[] entries, Vector2 point)
@@ -288,6 +336,24 @@ namespace KhaozEngine.Tests.Gui
             Assert.Equal(1, menu.SelectedIndex);
             Assert.False(menu.IsOpen);
             Assert.False(menu.WasDismissed);
+        }
+
+        [Fact]
+        public void Tap_on_a_segmented_row_selects_its_tag_unchanged()
+        {
+            var entry = ContextMenuEntry.Segmented(new[]
+            {
+                new LabelSegment(LocalizedText.Raw("Attack ")),
+                new LabelSegment(LocalizedText.Raw("Goblin")),
+            }, tag: 77);
+            ContextMenu menu = OpenMenu(new[] { entry }, Point);
+            var p = new Pointer();
+
+            Tap(menu, p, Row0Pt);
+
+            Assert.True(menu.WasSelected);
+            Assert.Equal(77L, menu.SelectedTag);
+            Assert.Equal(0, menu.SelectedIndex);
         }
 
         [Fact]
@@ -579,6 +645,53 @@ namespace KhaozEngine.Tests.Gui
             Assert.Equal(9, menu.SelectedIndex);
             Assert.Equal(109L, menu.SelectedTag);
             Assert.False(menu.IsOpen);
+        }
+
+        [Fact]
+        public void Same_frame_tap_after_opening_frame_selects_a_row()
+        {
+            ContextMenu menu = OpenMenu(Three(), Point);
+            var p = new Pointer();
+            Idle(menu, p, Row0Pt);
+
+            p.Update(SameFrameTap(Row0Pt));
+            Assert.True(p.IsPressOriginFresh);
+            Assert.True(menu.Update(p));
+
+            Assert.True(menu.WasSelected);
+            Assert.Equal(11L, menu.SelectedTag);
+            Assert.False(menu.IsOpen);
+        }
+
+        [Fact]
+        public void Same_frame_tap_after_opening_frame_dismisses_outside()
+        {
+            ContextMenu menu = OpenMenu(Three(), Point);
+            var p = new Pointer();
+            Idle(menu, p, Row0Pt);
+
+            p.Update(SameFrameTap(Outside));
+            menu.Update(p);
+
+            Assert.True(menu.WasDismissed);
+            Assert.Equal(Outside, menu.DismissPress);
+            Assert.False(menu.IsOpen);
+        }
+
+        [Fact]
+        public void Update_before_Open_defers_opening_gesture_protection_to_the_next_update()
+        {
+            var menu = new ContextMenu(Font, Font) { Viewport = View };
+            var p = new Pointer();
+            p.Update(SameFrameTap(Point));
+            menu.Update(p);
+            menu.Open(LocalizedText.Raw("Options"), Three(), Point);
+
+            p.Update(SameFrameTap(Row0Pt));
+            Assert.False(menu.Update(p));
+
+            Assert.True(menu.IsOpen);
+            Assert.False(menu.WasSelected);
         }
     }
 }

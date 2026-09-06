@@ -257,7 +257,7 @@ void main() {
         // Called by the host/snapshot each frame before the user's draw callback.
         internal void NewFrame(IGpuCommandList cl, int viewportW, int viewportH)
         {
-            _cl = cl; _vw = viewportW; _vh = viewportH; _flushIndex = 0; _beginIndex = 0;
+            _cl = cl; _vw = viewportW; _vh = viewportH; _flushIndex = 0; _beginIndex = 0; _batchActive = false;
             _frame++; _stats.Reset(); _lastBoundTex = null; _scissorStack.Clear();
             _retire.BeginFrame();   // frees what the GPU has provably finished with, and never stalls doing it
             EvictStaleSets();
@@ -581,15 +581,19 @@ void main() {
             return dests;
         }
 
-        /// <summary>Flush the current batch.</summary>
-        public void End() => Flush();
+        /// <summary>Flush the current batch and close it.</summary>
+        public void End()
+        {
+            FlushCore();
+            _batchActive = false;
+        }
 
         /// <summary>
         /// Draw the accumulated runs (in submission order) and clear them, keeping the current transform and
         /// scissor. Used by <see cref="End"/> and by the scissor calls so a clip can be applied mid-batch
         /// without a <see cref="Begin(KhaozEngine.Render2D.Camera2D, KhaozEngine.Render2D.SamplerMode)"/> that would reset the design-viewport transform.
         /// </summary>
-        void Flush()
+        void FlushCore()
         {
             var f = _gd.Factory;
 
@@ -728,7 +732,7 @@ void main() {
         // Every Begin overload sets _vp (clip-corrected) and then calls this, so uploading the view-projection here
         // covers all Begins from one place: a fresh batch always claims and writes its own UBO slot. _cl is live
         // (set by NewFrame before the user's draw callback runs any Begin).
-        void ResetBatches() { _runs.Reset(); _blend = BlendMode.Alpha; _groupByTexture = false; _deviceScale = Vector2.Zero; _deviceOffset = Vector2.Zero; UploadViewProj(); }
+        void ResetBatches() { _runs.Reset(); _blend = BlendMode.Alpha; _groupByTexture = false; _deviceScale = Vector2.Zero; _deviceOffset = Vector2.Zero; _batchActive = true; UploadViewProj(); }
 
         // Arm device-pixel snapping for this pass iff the viewport is a point-space one (UiViewport). A fractional
         // design viewport, or any other Begin, leaves the frame cleared (Vector2.Zero) so snapping is a no-op.

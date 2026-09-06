@@ -303,10 +303,13 @@ chat.Draw(batch, white);
     rule and the viewport clamp are shared by both modes.
   - `ContextMenu` (18.2.0) - a right-click option menu anchored at a screen point: a title band over a stack of
     selectable rows, the OSRS-style option list. `Open(title, entries, screenPoint)` shows it (reopening while
-    open just replaces the content and the anchor), `Update(Pointer)` drives one frame, `Draw(batch, white)`
-    paints it. Text is `LocalizedText` throughout, resolved ONCE: the title in `Open`, each row through
+    open just replaces the content and the anchor), `Update(Pointer)` drives one frame, and `Draw(batch, white)`
+    paints it. Entries accept caller-ordered `LabelSegment` values through
+    `ContextMenuEntry.Segmented(...)`, so separately localized verb and target text can use independent colors
+    without splitting translated strings. Legacy text resolves once: the title in `Open`, each row through
     `ContextMenuEntry.Of(label, rightDetail, ...)` at construction (the `TooltipLine.Of` precedent), so the draw
-    path never re-resolves and a runtime locale switch means rebuilding the entries. A row carries an optional
+    path never re-resolves and a runtime locale switch means rebuilding legacy entries. Segments carry
+    `LocalizedText` and resolve during layout and draw. A row carries an optional
     right-aligned `RightDetail`, per-row `LabelColor` / `DetailColor` overrides, an opaque `long Tag` that rides
     through selection, and an `Enabled` flag (a disabled row draws at `DisabledColor`, whatever the caller
     tinted it, and refuses both hover and selection). Results are one-frame flags in the `Dropdown.WasChanged`
@@ -324,7 +327,8 @@ chat.Draw(batch, white);
     rather than sit at it. A menu too big for that box pins to the left and top margins and overflows the right
     and bottom edges. An open menu reserves its bounds through `Pointer.BlockRegion` (the `Dropdown`
     precedent) so the world beneath cannot be clicked through it, and the gesture that OPENED the menu can
-    neither dismiss it nor select a row in it. Assign `Viewport` (the design size) before updating or drawing:
+    neither dismiss it nor select a row in it. Call `Open` before `Update` in the opening frame. If a caller
+    updates first, opening-frame protection applies to the next update instead. Assign `Viewport` (the design size) before updating or drawing:
     `Draw` throws while it is `Vector2.Zero` rather than silently pinning the menu into the corner, and throws
     too on a menu built through the measure-only `ContextMenu(ITextMeasurer, ITextMeasurer)` constructor, which
     exists so a headless test can drive the whole interaction with no GPU device and no baked font.
@@ -449,6 +453,7 @@ chat.Draw(batch, white);
     `GuiDraw.FillStyled` against `EditorStyle` so it picks up `GuiStyle.Modern`'s rounded corners.
 - `UpdateOverlayView` / `UpdateOverlayScreen` (+ `UpdateOverlayTheme`) - the in-game auto-updater popup, a pure
   presenter over `KhaozEngine.Updates`' `IUpdateStatus`: it announces an available update, shows download
+  progress, and shows a dismissible, non-modal `Untrusted` panel when the client cannot authenticate the feed.
   progress, and prompts the restart-and-apply, driven by the theme's trigger key/button (default U / gamepad Y).
   Its dim scrim (like any opaque `Screen.BackgroundColor` via `Screen.DrawBackground`) fills the viewport's
   `WindowBounds`, so under a letterbox scale it covers the whole window instead of leaving the bars showing the

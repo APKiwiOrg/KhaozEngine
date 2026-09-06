@@ -83,7 +83,7 @@ namespace KhaozEngine.Render2D
         /// </summary>
         public void SetScissor(Rect rect)
         {
-            Flush();
+            FlushCore();
             var (fbw, fbh) = FramebufferSize();
             var region = ComputeScissor(rect, _viewport, _vw, _vh, (int)fbw, (int)fbh);
             if (_scissorStack.Count > 0) region = IntersectScissor(_scissorStack[^1], region);
@@ -98,7 +98,7 @@ namespace KhaozEngine.Render2D
         /// </summary>
         public void ClearScissor()
         {
-            Flush();
+            FlushCore();
             if (_scissorStack.Count > 0) _scissorStack.RemoveAt(_scissorStack.Count - 1);
             var (fbw, fbh) = FramebufferSize();
             var region = _scissorStack.Count > 0 ? _scissorStack[^1] : (X: 0u, Y: 0u, Width: fbw, Height: fbh);

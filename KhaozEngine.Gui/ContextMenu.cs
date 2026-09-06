@@ -21,6 +21,11 @@ namespace KhaozEngine.Gui
         long Tag = 0, bool Enabled = true)
     {
         /// <summary>
+        /// Caller-ordered localized label parts, or null for the legacy single <see cref="Label"/> string.
+        /// </summary>
+        public IReadOnlyList<LabelSegment>? LabelSegments { get; init; }
+
+        /// <summary>
         /// Build an entry from localized text, resolved now against the ambient catalog.
         /// <paramref name="rightDetail"/> defaults to <c>default(LocalizedText)</c>, which resolves to the empty
         /// string, so a row with no right-hand detail needs no extra ceremony.
@@ -28,6 +33,27 @@ namespace KhaozEngine.Gui
         public static ContextMenuEntry Of(LocalizedText label, LocalizedText rightDetail = default,
             Vector4? labelColor = null, Vector4? detailColor = null, long tag = 0, bool enabled = true) =>
             new(label.Resolve() ?? "", rightDetail.Resolve() ?? "", labelColor, detailColor, tag, enabled);
+
+        /// <summary>
+        /// Builds an entry whose left label is measured and drawn as caller-ordered localized segments.
+        /// Segments are copied so later mutations of the source list cannot change an open menu.
+        /// </summary>
+        public static ContextMenuEntry Segmented(
+            IReadOnlyList<LabelSegment> labelSegments,
+            LocalizedText rightDetail = default,
+            Vector4? labelColor = null,
+            Vector4? detailColor = null,
+            long tag = 0,
+            bool enabled = true)
+        {
+            ArgumentNullException.ThrowIfNull(labelSegments);
+            var copy = new LabelSegment[labelSegments.Count];
+            for (int i = 0; i < copy.Length; i++) copy[i] = labelSegments[i];
+            return new ContextMenuEntry("", rightDetail.Resolve() ?? "", labelColor, detailColor, tag, enabled)
+            {
+                LabelSegments = copy,
+            };
+        }
     }
 
     /// <summary>Spacing and padding knobs for context-menu auto-sizing and edge clamping.</summary>
@@ -55,7 +81,7 @@ namespace KhaozEngine.Gui
     /// functions over <see cref="ITextMeasurer"/>, so the whole geometry is headless-testable with a fake
     /// measurer, exactly as <see cref="Tooltip.ComputeBounds(ITextMeasurer, string, ITextMeasurer, IReadOnlyList{TooltipLine}, Vector2, Vector2, TooltipMetrics)"/> is.
     /// </summary>
-    public sealed class ContextMenu
+    public sealed partial class ContextMenu
     {
         readonly ITextMeasurer _titleMeasure, _bodyMeasure;
         readonly SpriteFont? _titleFont, _bodyFont;
@@ -166,8 +192,8 @@ namespace KhaozEngine.Gui
         /// moves the menu the gesture reads either as a release outside the menu it just opened (a dismissal) or
         /// as a tap on a row the menu dropped under the cursor (a selection). Neither is deliberate: a press that
         /// began before the menu existed cannot be an act on it. The latch disarms on the first
-        /// <see cref="Pointer.IsJustPressed"/> landing on a frame AFTER the opening one, and that press is then
-        /// read normally from its own edge, so the opening gesture can neither dismiss the menu nor select a row
+        /// <see cref="Pointer.IsPressOriginFresh"/> landing on a frame AFTER the opening one, including a tap
+        /// completed within one frame. That gesture is then read normally, so the opening gesture can neither dismiss the menu nor select a row
         /// in it. Menu-cancel via <see cref="Update(InputManager, PlayerIndex?)"/> stays live throughout,
         /// since the keyboard was not the opening gesture.
         /// </para>
@@ -209,7 +235,7 @@ namespace KhaozEngine.Gui
         /// an ENABLED row (setting <see cref="WasSelected"/> / <see cref="SelectedTag"/> /
         /// <see cref="SelectedIndex"/> and closing), and dismisses on a release outside the bounds (setting
         /// <see cref="WasDismissed"/> and <see cref="DismissPress"/>). BOTH of those are suppressed while the
-        /// opening-gesture latch from <see cref="Open"/> is armed, which lasts until a press edge lands on a
+        /// opening-gesture latch from <see cref="Open"/> is armed, which lasts until a fresh gesture lands on a
         /// frame after the opening one. <see cref="HoverIndex"/> and the <see cref="Pointer.BlockRegion"/>
         /// reservation are computed either way, so a latched frame still highlights and blocks exactly like any
         /// other open frame. A tap inside the menu that hits the title band or a disabled row does nothing and
@@ -222,11 +248,10 @@ namespace KhaozEngine.Gui
 
             bool openingFrame = _openedThisFrame;
             _openedThisFrame = false;
-            // A press edge on a LATER frame began when the menu already existed, so it is the user's first
-            // deliberate gesture at it: disarm, and read that same press normally from its own edge below. A
-            // press edge on the opening frame itself belongs to the gesture that opened the menu, and leaving
-            // the latch armed there is what carries it across a press-open gesture's release a frame later.
-            if (_openGestureLatch && !openingFrame && pointer.IsJustPressed) _openGestureLatch = false;
+            // A fresh gesture on a LATER frame began when the menu already existed, so it is the user's first
+            // deliberate gesture at it. IsPressOriginFresh includes a tap completed within one frame, which has
+            // no IsJustPressed edge. A fresh gesture on the opening frame still belongs to the open operation.
+            if (_openGestureLatch && !openingFrame && pointer.IsPressOriginFresh) _openGestureLatch = false;
 
             Rect bounds = Bounds();
             pointer.BlockRegion(bounds);
@@ -321,10 +346,14 @@ namespace KhaozEngine.Gui
                 Rect r = RowBounds(b, _titleMeasure, _bodyMeasure, i, Metrics);
                 if (e.Enabled && i == HoverIndex) GuiDraw.Fill(batch, white, r, HoverColor);
 
-                Vector4 label = e.Enabled ? e.LabelColor ?? TextColor : DisabledColor;
                 Vector4 detail = e.Enabled ? e.DetailColor ?? DetailColor : DisabledColor;
                 float y = MathF.Floor(r.Y + Metrics.RowPadY);
-                batch.DrawString(_bodyFont, e.Label, new Vector2(textX, y), (Color)label);
+                LabelRun[] runs = LayoutLabel(e, _bodyFont, textX, TextColor, DisabledColor);
+                for (int segment = 0; segment < runs.Length; segment++)
+                {
+                    LabelRun run = runs[segment];
+                    batch.DrawString(_bodyFont, run.Text, new Vector2(run.X, y), (Color)run.Color);
+                }
                 if (!string.IsNullOrEmpty(e.RightDetail))
                 {
                     float dw = _bodyFont.Measure(e.RightDetail).X;
@@ -360,7 +389,7 @@ namespace KhaozEngine.Gui
             for (int i = 0; i < entries.Count; i++)
             {
                 ContextMenuEntry e = entries[i];
-                float rowW = bodyFont.Measure(e.Label).X;
+                float rowW = MeasureLabel(bodyFont, e);
                 if (!string.IsNullOrEmpty(e.RightDetail))
                     rowW += m.DetailGap + bodyFont.Measure(e.RightDetail).X;
                 contentW = MathF.Max(contentW, rowW);

@@ -77,6 +77,7 @@ public sealed partial class UpdateService
                     return ApplyOrFail();
 
                 case UpdateState.Failed:
+                case UpdateState.Untrusted:
                     return new UpdateGateResult(UpdateGateOutcome.Failed, remoteVersion, errorMessage);
 
                 default:

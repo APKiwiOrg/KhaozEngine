@@ -1,6 +1,12 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
+using KhaozEngine.Gpu;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
+using KhaozEngine.Render2D.Internal;
+using KhaozEngine.Tests.Gpu;
 using Xunit;
 
 namespace KhaozEngine.Tests.Render2D
@@ -18,6 +24,37 @@ namespace KhaozEngine.Tests.Render2D
         static readonly object TexA = new();
         static readonly object TexB = new();
         static readonly object TexC = new();
+
+        sealed class BatchHarness : IDisposable
+        {
+            readonly FakeGpuDevice _device = new();
+            readonly Render2DCore _core;
+
+            public BatchHarness()
+            {
+                var output = new GpuOutputDescription(null, new[] { GpuPixelFormat.R8G8B8A8UNorm });
+                _core = new Render2DCore(_device, output, ownsDevice: false);
+                Commands = new RecordingGpuCommandList(new NullGpuCommandList());
+                Batch = _core.Batch;
+                Batch.NewFrame(Commands, 64, 64);
+                A = _core.CreateTexture(new byte[] { 255, 0, 0, 255 }, 1, 1);
+                B = _core.CreateTexture(new byte[] { 0, 0, 255, 255 }, 1, 1);
+            }
+
+            public SpriteBatch Batch { get; }
+            public RecordingGpuCommandList Commands { get; }
+            public Texture2D A { get; }
+            public Texture2D B { get; }
+
+            public void Dispose()
+            {
+                A.Dispose();
+                B.Dispose();
+                Commands.Dispose();
+                _core.Dispose();
+                _device.Dispose();
+            }
+        }
 
         // A run's items, read back through the (Start, Count) slice into Items - the shape every real
         // consumer (SpriteBatch.Flush) reads through, now that runs no longer carry their own List<T>.
@@ -144,6 +181,62 @@ namespace KhaozEngine.Tests.Render2D
             // Stale groups from the prior build (A, B) must not leak into the new build's key list.
             Assert.Equal(new object[] { TexC }, keys);
             Assert.Equal(new[] { 0 }, b.RunIndicesForGroup(TexC));
+        }
+
+        [Fact]
+        public void PublicFlushScopesGroupingAndLeavesBatchOpen()
+        {
+            using var h = new BatchHarness();
+            h.Batch.Begin();
+            h.Batch.GroupByTexture = true;
+            h.Batch.Draw(h.A, new Vector2(0, 0), Color.White);
+            h.Batch.Draw(h.B, new Vector2(1, 0), Color.White);
+            h.Batch.Draw(h.A, new Vector2(2, 0), Color.White);
+
+            h.Batch.Flush();
+
+            Assert.Equal(2, h.Commands.DrawCount);
+            Assert.Equal(1, h.Batch.FrameStats.Flushes);
+
+            h.Batch.GroupByTexture = false;
+            h.Batch.Draw(h.A, new Vector2(0, 1), Color.White);
+            h.Batch.Draw(h.B, new Vector2(1, 1), Color.White);
+            h.Batch.Draw(h.A, new Vector2(2, 1), Color.White);
+            h.Batch.End();
+
+            Assert.Equal(5, h.Commands.DrawCount);
+            Assert.Equal(2, h.Batch.FrameStats.Flushes);
+        }
+
+        [Fact]
+        public void EmptyAndRepeatedFlushesKeepTheActiveBatchReusable()
+        {
+            using var h = new BatchHarness();
+            h.Batch.Begin();
+
+            h.Batch.Flush();
+            h.Batch.Flush();
+            Assert.Equal(0, h.Batch.FrameStats.Flushes);
+
+            h.Batch.Draw(h.A, Vector2.Zero, Color.White);
+            h.Batch.Flush();
+            h.Batch.Flush();
+            Assert.Equal(1, h.Batch.FrameStats.Flushes);
+
+            h.Batch.Draw(h.B, Vector2.One, Color.White);
+            h.Batch.End();
+            Assert.Equal(2, h.Batch.FrameStats.Flushes);
+        }
+
+        [Fact]
+        public void FlushRequiresAnActiveBatch()
+        {
+            using var h = new BatchHarness();
+
+            Assert.Throws<InvalidOperationException>(() => h.Batch.Flush());
+            h.Batch.Begin();
+            h.Batch.End();
+            Assert.Throws<InvalidOperationException>(() => h.Batch.Flush());
         }
     }
 }

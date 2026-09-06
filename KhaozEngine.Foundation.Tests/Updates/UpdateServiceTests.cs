@@ -505,7 +505,7 @@ public sealed class UpdateServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task Check_UnsignedManifest_DoesNotOfferUpdate()
+    public async Task Check_UnsignedManifest_ReportsUntrusted()
     {
         // Publish manifest bytes + Latest but NO ".sig" entry.
         var remote = new UpdateManifest { Version = "2.0.0", Platform = "win-x64" };
@@ -516,11 +516,12 @@ public sealed class UpdateServiceTests : IDisposable
 
         await svc.CheckForUpdateAsync();
 
-        Assert.Equal(UpdateState.Idle, svc.State);
+        Assert.Equal(UpdateState.Untrusted, svc.State);
+        Assert.Equal("This build cannot verify updates.", svc.ErrorMessage);
     }
 
     [Fact]
-    public async Task Check_WrongKeySignature_DoesNotOfferUpdate()
+    public async Task Check_WrongKeySignature_ReportsUntrusted()
     {
         using var otherKey = System.Security.Cryptography.RSA.Create(2048);
         var remote = new UpdateManifest { Version = "2.0.0", Platform = "win-x64" };
@@ -531,7 +532,26 @@ public sealed class UpdateServiceTests : IDisposable
 
         await svc.CheckForUpdateAsync();
 
-        Assert.Equal(UpdateState.Idle, svc.State);
+        Assert.Equal(UpdateState.Untrusted, svc.State);
+        Assert.Equal("This build cannot verify updates.", svc.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task Check_TamperedManifest_ReportsUntrustedAndRaisesStateChanged()
+    {
+        var remote = new UpdateManifest { Version = "2.0.0", Platform = "win-x64" };
+        remote.Files.Add(new ManifestFileEntry { Path = "game.dll", Sha256 = FakeUpdateSource.Sha("v2"), Size = 2 });
+        source.PublishSigned(remote, ManifestUrl, PrivPem);
+        source.Bytes[ManifestUrl] = Encoding.UTF8.GetBytes(remote.Serialize().Replace("game.dll", "other.dll", StringComparison.Ordinal));
+        using UpdateService svc = Build();
+        var states = new List<UpdateState>();
+        svc.StateChanged += () => states.Add(svc.State);
+
+        await svc.CheckForUpdateAsync();
+
+        Assert.Equal(UpdateState.Untrusted, svc.State);
+        Assert.Equal("This build cannot verify updates.", svc.ErrorMessage);
+        Assert.Contains(UpdateState.Untrusted, states);
     }
 
     [Fact]

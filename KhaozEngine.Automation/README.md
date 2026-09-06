@@ -154,8 +154,12 @@ Nothing here touches a Silk or GLFW static. `AppWindow` remains the only class i
 
 ## Public API
 
-- `AutomationOptions(bool Enabled, string HandshakeDirectory)` with the init-only `Log`, `FirstLineTimeout` and
-  `IdleTimeout`, plus `AutomationOptions.Off`.
+- `AutomationOptions(bool Enabled, string HandshakeDirectory)` with the init-only `Log`, `FirstLineTimeout`,
+  `IdleTimeout` and `CommandTimeout`, plus `AutomationOptions.Off`. `CommandTimeout` defaults to 5 seconds and
+  must be positive and within the runtime timer range of about 49.7 days. An expired queued command is removed
+  before the window thread can apply it, and an expired `step` leaves the wait list. A synchronous state provider,
+  verb, or quit callback already running at the deadline cannot be cancelled safely, so it finishes and returns
+  its actual success or failure instead of a false timeout reply.
 - `AutomationHost`: `Start`, `Pump`, `Submit`, `Register`, `Dispose`, `StateProvider`, `QuitRequested`, `Frame`,
   `IsRunning`, `Port`, `Token`, `HandshakeFilePath`, `EnvironmentAllows`, and the constants
   `EnvironmentVariable`, `EnabledValue`, `HandshakeFileName`, `MaxRequestLineBytes`.

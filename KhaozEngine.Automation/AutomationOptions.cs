@@ -4,8 +4,7 @@ namespace KhaozEngine.Automation
 {
     /// <summary>
     /// How an <see cref="AutomationHost"/> is configured. Two required fields, because the endpoint deliberately has
-    /// no knobs a shipping build could turn on by accident, plus three optional ones for the diagnostics and the read
-    /// deadlines a head may want to move.
+    /// no knobs a shipping build could turn on by accident, plus optional ones for diagnostics and deadlines.
     /// </summary>
     /// <param name="Enabled">
     /// The head's explicit opt-in, gate 2's first half. False means the host is inert whatever the environment
@@ -49,5 +48,13 @@ namespace KhaozEngine.Automation
         /// a reconnect. Zero or less means no deadline.
         /// </summary>
         public TimeSpan IdleTimeout { get; init; } = TimeSpan.FromSeconds(60);
+
+        /// <summary>
+        /// How long a queued command may wait for the window thread to apply or finish it. The default is 5 seconds.
+        /// The value must be positive and no larger than the runtime timer limit (about 49.7 days). An expired
+        /// queued command receives an error and is retired, so it cannot run when a stalled frame loop resumes. A
+        /// synchronous callback already executing at the deadline is allowed to finish and returns its real result.
+        /// </summary>
+        public TimeSpan CommandTimeout { get; init; } = TimeSpan.FromSeconds(5);
     }
 }

@@ -1,5 +1,9 @@
 # KhaozEngine.Render2D
 
+`Render2DTextures.White(surface)` and `Render2DTextures.White(context)` create the standard 1x1 opaque white
+texture for solid panels, bars, primitives, and tintable sprites. `VfxTextures.White` remains as a compatibility
+forward for existing effects code.
+
 2D rendering on the custom MonoGame-free foundation (engine-owned `KhaozEngine.Gpu` abstraction, `System.Numerics`).
 
 - `SpriteBatch` - batched textured quads, alpha blend + tint, submission-ordered runs (consecutive same

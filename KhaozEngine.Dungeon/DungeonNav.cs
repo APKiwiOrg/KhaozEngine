@@ -67,14 +67,14 @@ public static class DungeonNav
     public static NavSpace Bake(
         DungeonLayout layout, float originX = 0f, float originZ = 0f, float baseY = 0f,
         float agentHeight = DefaultAgentHeight)
-        => Bake(layout, new DungeonPlotTransform(originX, originZ, baseY, 0), agentHeight);
+        => BakeTransformed(layout, new DungeonPlotTransform(originX, originZ, baseY, 0), agentHeight);
 
     /// <summary>
     /// Bakes navigation at the same translation and yaw as the dungeon geometry sinks. Cell centers,
     /// world-space queries and path smoothing use the plot transform. Stair links keep local cell
     /// coordinates and floor heights use <see cref="DungeonPlotTransform.BaseY"/>.
     /// </summary>
-    public static NavSpace Bake(DungeonLayout layout, DungeonPlotTransform plot,
+    public static NavSpace BakeTransformed(DungeonLayout layout, DungeonPlotTransform plot,
         float agentHeight = DefaultAgentHeight)
     {
         ArgumentNullException.ThrowIfNull(layout);

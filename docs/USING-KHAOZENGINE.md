@@ -3282,7 +3282,7 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
   `Moderate` being closest to `WaterSettings`' own defaults). It deliberately leaves `GridMode`, the clipmap
   fields, `Bathymetry` and the surf fields alone: those describe the water body's geometry and shoreline rather
   than its weather, so a preset pick never undoes your clipmap or bathymetry wiring.
-  `OceanPresets.Apply(kind, look)` applies the full bundle to a `WaterLook`, including glint. It leaves
+  `OceanPresets.ApplyToLook(kind, look)` applies the full bundle to a `WaterLook`, including glint. It leaves
   `WaveSource` and unrelated overrides untouched. Set a lake's source to `Procedural` explicitly if wanted.
 - **Bloom** (`Post.Bloom`, a `BloomSettings`, **default off**): an opt-in threshold + separable-blur bloom pass
   so beams, emissive materials, and bright billboards read as a glow instead of flat. Default `Bloom.Enabled = false`,
@@ -5471,7 +5471,7 @@ above. Headroom-aware: in a `DungeonCeilingMode.Roofed` layout, a cell whose cei
 character capsule height) bakes blocked even though its cell kind is walkable. An `Open` layout never blocks
 on headroom, matching its pre-headroom-awareness behavior exactly.
 
-Use `DungeonNav.Bake(layout, plot, agentHeight)` with the same `DungeonPlotTransform` passed to the
+Use `DungeonNav.BakeTransformed(layout, plot, agentHeight)` with the same `DungeonPlotTransform` passed to the
 geometry sinks when the plot has nonzero yaw. `NavGrid.FromWalkable` and `FromSurfaces` also accept
 optional `yawRadians`, default zero. Cell lookup, path smoothing and waypoint centers use the rotated
 mapping. Sample callbacks and stair links still address local cells, surface heights remain world Y.
@@ -6628,6 +6628,12 @@ distance. `Scaled(1f)` is the identity, and a multiplier below 1 (or NaN, or inf
 multiplying the fields yourself: a blind per-field multiply lands on a set `Validate()` rejects.
 
 ### Far props: HLOD merged clusters
+
+`Scene3DChunkSink.MergeStats` returns cumulative `HlodMergeStats`. `MalformedCornersDropped` counts each
+out-of-range source corner contained during HLOD building, including repeated placements. A nonzero count
+identifies malformed source content even when containment keeps the live client running. At authoring ingress,
+`GltfLoader` and every `PropLoader` path reject invalid indices with asset identity, bad index and vertex count.
+
 
 The decor ring makes far *terrain* visible for free, but its props still pop in only at the gameplay radius. HLOD
 (hierarchical LOD) closes that gap: past a configurable distance a chunk cluster's individual props collapse into
@@ -8020,8 +8026,9 @@ during its own shutdown to drain the coalesced write. A `--map <path>` launch fl
 push `MapEditorScene` directly ABOVE the landing scene instead of going through New Map/Open Recent, so
 Close still returns to the menu. `DiscoverMaps` renders a further Open Map section below Open Recent for
 paths the head knows about but the recents store does not: deduplicated against `Recent`, deterministically
-ordered, and capped with a reported remainder, re-queried on scene enter and on re-exposure rather than every
-frame since it is head file IO. See the `KhaozEngine.MapEditor` README's "Landing scene and recent files"
+ordered, and re-queried on scene enter and on re-exposure rather than every frame since it is head file IO.
+Open Recent and Open Map share a clipped scroll region with every row reachable. Title, New Map, status and
+Quit remain fixed outside that region. See the `KhaozEngine.MapEditor` README's "Landing scene and recent files"
 section for the full mechanics.
 
 **Tool modes** (`EditorToolController.Mode`, also the toolbar tab bar): `Select` (pick a placement or spawn
@@ -13320,6 +13327,10 @@ that never completed report `ProviderUnavailable`, everything else non-success r
 while invalid signatures and claims report `Refused`. Caller cancellation still propagates, including when
 metadata is cached. `result.Detail` is a developer-facing note, never shown to a player.
 
+Shared browser and loopback adapters live in `KhaozEngine.Identity.Interactive`, so Discord and custom
+providers can use them without referencing OIDC. Existing `KhaozEngine.Identity.Oidc` adapter names remain
+forwarding wrappers. Import the shared namespace when using those adapters with another provider.
+
 ### Offline grace
 
 `IdentitySession.RestoreAsync` implements a small state machine off the cached session's
@@ -13714,6 +13725,11 @@ Two bounds sit ahead of the token check, because the token travels inside the re
 `AutomationHost.MaxRequestLineBytes` (64 KiB) is refused and the connection closes, without the rest of it ever being
 buffered. A connection gets `FirstLineTimeout` (5 seconds) for its first complete line and `IdleTimeout` (60 seconds)
 between lines after that, both settable on the options and both off when set to zero or less.
+
+`CommandTimeout` defaults to 5 seconds and must be positive, up to the runtime timer limit of about 49.7 days.
+An expired queued command gets a timeout reply and is removed so it cannot execute after the frame loop resumes.
+An expired `step` is also removed from the wait list, and the connection stays usable. A synchronous callback
+already executing at its deadline cannot be preempted safely and returns its actual success or failure.
 
 The state provider and every verb run on the WINDOW thread at the frame boundary, so they may touch the live camera,
 the screen stack and the world directly with no locking. A verb that throws becomes an error reply rather than taking

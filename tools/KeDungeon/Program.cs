@@ -200,7 +200,7 @@ public static class Program
         bool requireConnected = HasFlag(args, "--require-connected");
 
         DungeonLayout layout = DungeonJson.LoadLayout(File.ReadAllText(layoutPath));
-        NavSpace space = DungeonNav.Bake(layout, new DungeonPlotTransform(originX, originZ, baseY, yaw), agentHeight);
+        NavSpace space = DungeonNav.BakeTransformed(layout, new DungeonPlotTransform(originX, originZ, baseY, yaw), agentHeight);
 
         int componentCount = NavReport.Print(space);
 

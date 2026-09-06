@@ -9,6 +9,16 @@ namespace KhaozEngine.Tests.Navigation;
 
 public class DungeonNavRotationTests
 {
+    [Fact]
+    public void ExistingBake_DefaultOriginLiteralRemainsUnambiguous()
+    {
+        DungeonLayout layout = StairLayout();
+        NavSpace actual = DungeonNav.Bake(layout, default);
+        NavSpace expected = DungeonNav.Bake(layout, 0f);
+        Assert.Equal(expected.Layers.Count, actual.Layers.Count);
+        Assert.Equal(expected.Layers[0].CellCenter(0, 0), actual.Layers[0].CellCenter(0, 0));
+    }
+
     [Theory]
     [InlineData(MathF.PI / 2)]
     [InlineData(-0.7f)]
@@ -16,7 +26,7 @@ public class DungeonNavRotationTests
     {
         DungeonLayout layout = StairLayout();
         var plot = new DungeonPlotTransform(120, -83, 15, yaw);
-        NavSpace space = DungeonNav.Bake(layout, plot);
+        NavSpace space = DungeonNav.BakeTransformed(layout, plot);
         for (int f = 0; f < layout.Floors; f++)
         {
             NavGrid grid = space.Layers[f];

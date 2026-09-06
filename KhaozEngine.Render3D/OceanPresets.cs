@@ -29,11 +29,11 @@ namespace KhaozEngine.Render3D
         /// Applies the complete swell, ripple, foam and glint bundle to one plane's look. Leaves its
         /// wave source and all geometry, shore and unrelated appearance overrides unchanged.
         /// </summary>
-        public static void Apply(OceanPresetKind kind, WaterLook look)
+        public static void ApplyToLook(OceanPresetKind kind, WaterLook look)
         {
             ArgumentNullException.ThrowIfNull(look);
             // Presets are authoring-time configuration. Resolve the canonical bundle once so the
-            // scene and per-plane overloads cannot drift into different definitions of the same sea.
+            // scene and per-plane APIs cannot drift into different definitions of the same sea.
             var preset = new WaterSettings();
             Apply(kind, preset);
             look.SwellAmplitude = preset.SwellAmplitude;

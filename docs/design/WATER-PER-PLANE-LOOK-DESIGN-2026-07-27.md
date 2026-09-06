@@ -188,7 +188,7 @@ adding `GlintStrength`, `GlintRoughness`, `GlintDistantRoughness` and `GlintExpo
 and colour remain scene-wide. Only the existing per-plane uniform scalars change, with no resource
 or pipeline changes. Reflection weights remain outside the look.
 
-`OceanPresets.Apply(kind, WaterLook)` can therefore apply the complete existing weather bundle. It
+`OceanPresets.ApplyToLook(kind, WaterLook)` can therefore apply the complete existing weather bundle. It
 leaves `WaveSource` unchanged so a preset never silently switches a plane between FFT and procedural
 water. It also retains unrelated shore and appearance overrides. The original scope table above
 records the initial design, the package README is the current API reference.

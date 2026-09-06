@@ -565,7 +565,7 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   `OceanPresets.Apply(kind, post.Water)` writes one coherent group of `Calm`/`Moderate`/`Rough` values: the
   Gerstner swell (`SwellAmplitude`, `SwellWavelength`, `SwellSteepness`, `SwellSpeed`), `NormalStrength`, the
   whitecap foam (`FoamStrength`, `FoamCrestCoverage`) and the sun glint (`GlintStrength`, `GlintRoughness`).
-  `OceanPresets.Apply(kind, look)` applies that whole bundle to a `WaterLook`, including glint. It keeps
+  `OceanPresets.ApplyToLook(kind, look)` applies that whole bundle to a `WaterLook`, including glint. It keeps
   `WaveSource` unchanged, so the caller explicitly chooses whether a lake leaves the shared FFT ocean.
   It deliberately leaves `GridMode`, the clipmap fields, `Bathymetry` and the surf fields ALONE: those describe
   the water body's geometry and shoreline rather than its weather, so a preset pick never undoes a consumer's

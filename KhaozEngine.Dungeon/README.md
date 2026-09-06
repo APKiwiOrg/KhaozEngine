@@ -217,7 +217,7 @@ using KhaozEngine.Dungeon;
 using KhaozEngine.Navigation;
 
 var plot = new DungeonPlotTransform(120f, 0f, 0f, YawRadians: 0.5f);
-NavSpace space = DungeonNav.Bake(layout, plot, agentHeight: 1.8f);
+NavSpace space = DungeonNav.BakeTransformed(layout, plot, agentHeight: 1.8f);
 var planner = new GridPathPlanner(space);
 ```
 

@@ -5,6 +5,7 @@ using System.Numerics;
 using KhaozEngine.Game;
 using KhaozEngine.Gui;
 using KhaozEngine.MapEditor;
+using KhaozEngine.Primitives;
 using KhaozEngine.Windowing;
 using Xunit;
 
@@ -16,7 +17,7 @@ namespace KhaozEngine.Tests.MapEditor
     /// Map section (issue 359): normalizing and sorting a head's <c>DiscoverMaps</c> result, filtering out a path
     /// already in the recents store, activating a discovered map (migrating it into Open Recent, or re-querying with
     /// a note when the file has vanished), the unwired (null hook) case, a real tap driven through
-    /// <c>SceneManager.Update</c>, the re-query-on-re-expose requirement, and the <c>MaxDiscoveredShown</c> cap. The
+    /// <c>SceneManager.Update</c>, the re-query-on-re-expose requirement, and a long scrollable list. The
     /// scene's widget-drive is viewport-gated (null <c>UiViewport</c> headless), so these drive the internal action
     /// seams the buttons and the Enter key both call, the way <c>MapEditorSceneTests</c> drives
     /// <c>SaveDocument</c>.</summary>
@@ -493,21 +494,70 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
-        public void Landing_DiscoveredCap_ShowsFirstNAndReportsTheRest()
+        public void Landing_LongMapLists_KeepChromeVisible_AndLastMapCanBeTappedAfterScroll()
         {
-            // A head with a large map directory must not render an unbounded panel: cap at MaxDiscoveredShown and
-            // report the remainder via DiscoveredHiddenCount instead of truncating silently.
-            int total = MapEditorLandingScene.MaxDiscoveredShown + 3;
-            var paths = new string[total];
-            for (int i = 0; i < total; i++)
-                paths[i] = Path.Combine(Path.GetTempPath(), "map-" + i.ToString("D3") + ".map.json");
+            string root = Path.Combine(Path.GetTempPath(), "ke-landing-scroll-" + Path.GetRandomFileName());
+            Directory.CreateDirectory(root);
+            try
+            {
+                EditorRecentFiles store = NewStore();
+                var discovered = new string[15];
+                for (int i = 0; i < 10; i++)
+                {
+                    string path = Path.Combine(root, "recent-" + i.ToString("D2") + ".map.json");
+                    File.WriteAllText(path, "{}");
+                    store.Touch(path);
+                }
+                for (int i = 0; i < discovered.Length; i++)
+                {
+                    discovered[i] = Path.Combine(root, "world-" + i.ToString("D2") + ".map.json");
+                    File.WriteAllText(discovered[i], "{}");
+                }
 
-            var scene = Landing(new MapEditorLandingOptions { DiscoverMaps = () => paths });
-            var m = new SceneManager();
-            m.Push(scene);
+                string? opened = null;
+                var scene = Landing(new MapEditorLandingOptions
+                {
+                    Recent = store,
+                    DiscoverMaps = () => discovered,
+                    OpenEditor = path => { opened = path; return new StubEditorScene(); },
+                });
+                var m = new SceneManager { UiViewport = new UiViewport(1280, 720, 1280, 720) };
+                m.Push(scene);
+                m.Input = MouseFrame(Vector2.Zero, false, width: 1280, height: 720);
+                m.Update(0.016f);
 
-            Assert.Equal(MapEditorLandingScene.MaxDiscoveredShown, scene.DiscoveredButtonCount);
-            Assert.Equal(3, scene.DiscoveredHiddenCount);
+                Assert.Equal(discovered.Length, scene.DiscoveredButtonCount);
+                Assert.True(scene.NameInput.Bounds.Y >= 0f);
+                Assert.True(scene.CreateButton.Bounds.Bottom <= 720f);
+                Assert.True(scene.QuitButton.Bounds.Bottom <= 720f);
+
+                Rect list = scene.MapListBounds;
+                var overList = new Vector2(list.X + list.Width * 0.5f, list.Y + list.Height * 0.5f);
+                m.Input = MouseFrame(overList, false, scrollDelta: -20f, width: 1280, height: 720);
+                m.Update(0.016f);
+
+                Button firstRecent = scene.RecentButtonAt(0) ?? throw new InvalidOperationException("expected a recent button");
+                Assert.True(firstRecent.Bounds.Bottom <= list.Y);
+                var hidden = new Vector2(firstRecent.Bounds.X + firstRecent.Bounds.Width * 0.5f,
+                    firstRecent.Bounds.Y + firstRecent.Bounds.Height * 0.5f);
+                m.Input = MouseFrame(hidden, false, width: 1280, height: 720); m.Update(0.016f);
+                m.Input = MouseFrame(hidden, true, width: 1280, height: 720); m.Update(0.016f);
+                m.Input = MouseFrame(hidden, false, width: 1280, height: 720); m.Update(0.016f);
+                Assert.Null(opened);
+
+                Button last = scene.DiscoveredButtonAt(discovered.Length - 1)
+                    ?? throw new InvalidOperationException("expected the final discovered button");
+                Assert.True(last.Bounds.Y >= list.Y);
+                Assert.True(last.Bounds.Bottom <= list.Bottom);
+                var at = new Vector2(last.Bounds.X + last.Bounds.Width * 0.5f, last.Bounds.Y + last.Bounds.Height * 0.5f);
+                m.Input = MouseFrame(at, false, width: 1280, height: 720); m.Update(0.016f);
+                m.Input = MouseFrame(at, true, width: 1280, height: 720); m.Update(0.016f);
+                m.Input = MouseFrame(at, false, width: 1280, height: 720); m.Update(0.016f);
+
+                Assert.Equal(discovered[^1], opened);
+                Assert.Equal(2, m.Count);
+            }
+            finally { Directory.Delete(root, recursive: true); }
         }
 
         // A minimal mouse frame for driving the scene's real OnUpdate headless (mirrors the MapEditorSceneTests
@@ -516,13 +566,13 @@ namespace KhaozEngine.Tests.MapEditor
         // release edges derive from this test's own frame sequence and nothing crosses between tests.
         readonly MouseFrames _mouse = new();
 
-        InputState MouseFrame(Vector2 pos, bool leftDown)
+        InputState MouseFrame(Vector2 pos, bool leftDown, float scrollDelta = 0f, int width = 800, int height = 600)
         {
             var down = new HashSet<MouseButton>();
             if (leftDown) down.Add(MouseButton.Left);
             var (edgePressed, edgeReleased) = _mouse.Advance(down);
             return new InputState(new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
-                down, edgePressed, pos, Vector2.Zero, 0, 800, 600, mouseReleased: edgeReleased);
+                down, edgePressed, pos, Vector2.Zero, scrollDelta, width, height, mouseReleased: edgeReleased);
         }
 
         // A keyboard frame: the given keys fire their press edge this frame (and read as held).

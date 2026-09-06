@@ -237,18 +237,29 @@ public sealed class InMemoryMutationJournalStore : IMutationJournalStore, IMutat
 
             var page = new List<JournalStoredEvent>();
             int bytes = 0;
+            bool stoppedByByteLimit = false;
             foreach (JournalStoredEvent storedEvent in stream.Events)
             {
                 if (storedEvent.StreamVersion <= read.AfterVersion) continue;
                 if (storedEvent.StreamVersion > throughVersion || page.Count == read.MaxEvents) break;
                 int nextBytes = checked(bytes + storedEvent.Payload.Length);
-                if (nextBytes > read.MaxBytes) break;
+                if (nextBytes > read.MaxBytes)
+                {
+                    stoppedByByteLimit = true;
+                    break;
+                }
                 if (!storedEvent.HasValidChecksum) throw Corrupt(read.StreamKey, "Stored event checksum does not match its payload.");
                 page.Add(storedEvent);
                 bytes = nextBytes;
             }
-            long lastVersion = page.Count == 0 ? read.AfterVersion : page[^1].StreamVersion;
-            return Task.FromResult(new JournalEventPage(JournalEventPageStatus.Success, read.StreamKey, throughVersion, page, lastVersion >= throughVersion));
+            bool reachedThroughVersion = JournalValidation.ValidateEventPageContinuity(
+                read.StreamKey,
+                read.AfterVersion,
+                throughVersion,
+                page,
+                page.Count == read.MaxEvents,
+                stoppedByByteLimit);
+            return Task.FromResult(new JournalEventPage(JournalEventPageStatus.Success, read.StreamKey, throughVersion, page, reachedThroughVersion));
         }
     }
 

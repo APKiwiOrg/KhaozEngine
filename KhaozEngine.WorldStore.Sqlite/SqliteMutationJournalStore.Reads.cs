@@ -83,12 +83,17 @@ public sealed partial class SqliteMutationJournalStore
             Add(command, "$limit", read.MaxEvents);
             var events = new List<JournalStoredEvent>();
             int bytes = 0;
+            bool stoppedByByteLimit = false;
             await using (SqliteDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
             {
                 while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
                 {
                     byte[] payload = reader.GetFieldValue<byte[]>(5);
-                    if (checked(bytes + payload.Length) > read.MaxBytes) break;
+                    if (checked(bytes + payload.Length) > read.MaxBytes)
+                    {
+                        stoppedByByteLimit = true;
+                        break;
+                    }
                     byte[] checksum = reader.GetFieldValue<byte[]>(6);
                     if (!JournalCanonicalizer.VerifySha256(payload, checksum))
                         throw Corrupt(new[] { read.StreamKey }, "Stored journal event checksum does not match its payload.");
@@ -107,8 +112,14 @@ public sealed partial class SqliteMutationJournalStore
                 }
             }
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
-            long lastVersion = events.Count == 0 ? read.AfterVersion : events[^1].StreamVersion;
-            return new JournalEventPage(JournalEventPageStatus.Success, read.StreamKey, throughVersion, events, lastVersion >= throughVersion);
+            bool reachedThroughVersion = JournalValidation.ValidateEventPageContinuity(
+                read.StreamKey,
+                read.AfterVersion,
+                throughVersion,
+                events,
+                events.Count == read.MaxEvents,
+                stoppedByByteLimit);
+            return new JournalEventPage(JournalEventPageStatus.Success, read.StreamKey, throughVersion, events, reachedThroughVersion);
         }
         catch (SqliteException exception)
         {

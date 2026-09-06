@@ -138,4 +138,34 @@ internal static class JournalValidation
 
     internal static bool HashMatches(ReadOnlySpan<byte> value, ReadOnlySpan<byte> expected)
         => expected.Length == SHA256.HashSizeInBytes && CryptographicOperations.FixedTimeEquals(Hash(value), expected);
+
+    internal static bool ValidateEventPageContinuity(
+        string streamKey,
+        long afterVersion,
+        long throughVersion,
+        IReadOnlyList<JournalStoredEvent> events,
+        bool stoppedByCountLimit,
+        bool stoppedByByteLimit)
+    {
+        long expectedVersion = afterVersion;
+        foreach (JournalStoredEvent storedEvent in events)
+        {
+            expectedVersion = checked(expectedVersion + 1);
+            if (storedEvent.StreamVersion != expectedVersion)
+                throw CorruptEventSequence(streamKey);
+        }
+
+        bool reachedThroughVersion = expectedVersion >= throughVersion;
+        if (!reachedThroughVersion && !stoppedByCountLimit && !stoppedByByteLimit)
+            throw CorruptEventSequence(streamKey);
+        return reachedThroughVersion;
+    }
+
+    private static JournalStoreException CorruptEventSequence(string streamKey)
+        => new(
+            JournalStoreFailureKind.CorruptData,
+            JournalStoreFailureCertainty.CommittedDataUnreadable,
+            JournalStoreFailureScope.OperationStreams,
+            new[] { streamKey },
+            "Stored journal event sequence is not contiguous.");
 }

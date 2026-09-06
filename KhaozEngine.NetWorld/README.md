@@ -1025,12 +1025,17 @@ seam's state (the time-to-live, the clock, the offer records) lives in this proc
 a plain entity carrying `PickupState` that the seam knows nothing about, offered to nobody and expiring never.
 
 The mark is not a lock. `ClearTransient(pickupNetId)` after `Spawn` drops it and the next save writes the entity like
-any other, but what comes back is exactly that husk: nothing rehydrates the seam's tracking, so the restored orb is
-in no proximity scan, expires never, and no `Despawn` / `DespawnAll` / `ForgetCell` reaches it. Persistent ground
-loot needs a `WorldPickups.Rehydrate(world)` re-adopting restored `PickupState` entities into the seam, filed as
-[#660](https://github.com/APKiwiOrg/KhaozEngine/issues/660). Until then a collectible meant to outlive a restart
-belongs in the game's own content or save data, spawned again at boot, which is also the only place its payload still
-means anything.
+any other. Call **`WorldPickups.Rehydrate(world)`** after that cell restores to adopt its valid untracked
+`PickupState` entities. It preserves the persisted payload, owner, and position. Process-local state starts fresh:
+the radius and time-to-live use `WorldPickupsConfig` defaults, age starts at zero, and offer history is empty.
+Repeated calls are idempotent and do not reset an adopted pickup. Invalid entities, duplicate ids, ghosts, and
+entities the host does not own are skipped. Adopted pickups use every normal exit path, including collect, expiry,
+`Despawn`, and `ForgetCell`.
+
+For asynchronous store loads, subscribe to **`CellPersistence.CellRestoreApplied`**, resolve the event's coordinate
+to its cell, and pass that cell's `World` to `Rehydrate`. A caller with its own synchronous cache restore calls
+`Rehydrate` immediately after applying the cached snapshot. `Spawn` stays transient by default, so persistent ground
+loot remains an explicit per-pickup choice through `ClearTransient`.
 
 The same opt-out is reachable by hand for any other transient server-owned entity, a timed spawn or a wave of adds:
 **`ShardedWorldServer.MarkTransient(netId)`**, with **`ClearTransient`**, **`IsTransient`** and (since 17.39.0)

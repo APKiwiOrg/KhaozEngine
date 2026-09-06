@@ -140,7 +140,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
     private readonly InterestGrid interest;
     private readonly RemoteCommandQueue<MoveCommand> commands;
     private readonly PlayerMoveSimulator simulator;
-    private readonly DrainController drain = new();
+    private readonly KhaozEngine.Simulation.Hosting.DrainController drain = new();
     private readonly AdminCommandBuffer admin = new();
     private readonly IBanStore? banStore;
     // Per-client AoI delta encoder (null when DeltaReplication is off). A slot is served deltas only once it is in

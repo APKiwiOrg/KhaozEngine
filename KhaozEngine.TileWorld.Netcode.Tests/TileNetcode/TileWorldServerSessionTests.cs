@@ -364,6 +364,7 @@ public class TileWorldServerSessionTests
             s.SpawnPlayer(0, "a", "Ari");
             Assert.False(s.IsDraining);
             s.BeginDrain(TileServerReason.Draining, graceSeconds: 0.5f);
+            s.BeginDrain("game:second-notice", graceSeconds: 10f);
             Assert.True(s.IsDraining);
             Assert.False(s.IsDrainComplete);
             s.Tick(Dt);
@@ -444,6 +445,8 @@ public class TileWorldServerSessionTests
         Assert.Equal(0, s.PlayerCount);
         Assert.Empty(s.JoinedSlots);
         Assert.Equal(0, s.Actions.PendingCount);
+        s.Tick(Dt);
+        Assert.Equal(new[] { "a", "b" }, left.OrderBy(a => a).ToArray());
     }
 
     [Fact]

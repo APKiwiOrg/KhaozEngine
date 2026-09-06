@@ -336,6 +336,9 @@ No render, window, or GPU dependency: the servers are headless and the client gl
 renders a capsule per `EntityRenderState`). `WorldServer` is the single-`World` slice; `ShardedWorldServer` is
 the multi-cell variant (overworld sub-project 6b).
 
+Both server drains use `KhaozEngine.Simulation.Hosting.DrainController` for their deterministic tick-driven grace. The
+public `KhaozEngine.NetWorld.DrainController` remains as a source-compatible forwarding facade for existing code.
+
 ## Game messages (since 9.27.0)
 
 A generic, game-defined message channel alongside the movement protocol, so a game (attack, interaction, pick-up,

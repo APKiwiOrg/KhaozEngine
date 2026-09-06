@@ -660,7 +660,9 @@ low for normal traffic.
 
 `BeginDrain(TileServerReason.Draining, graceSeconds)` on SIGINT announces the token to every client at once, keeps
 ticking through the grace so a player mid walk finishes it, and raises `IsDrainComplete` once the grace is spent
-AND the sessions are closed. Flush persistence there, then exit.
+AND the sessions are closed. Flush persistence there, then exit. The countdown is the shared
+`KhaozEngine.Simulation.Hosting.DrainController`. A second `BeginDrain` remains an idempotent no-op for this server, so it
+does not resend the notice or restart the grace.
 
 ## A client, in ten lines
 

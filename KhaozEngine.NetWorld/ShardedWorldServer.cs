@@ -66,7 +66,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
     private readonly List<int> tickSlots = new();
     private readonly HashSet<long> interestScratch = new();
     private readonly OnlineSnapshotPublisher onlinePublisher = new();
-    private readonly DrainController drain = new();
+    private readonly KhaozEngine.Simulation.Hosting.DrainController drain = new();
     private readonly AdminCommandBuffer admin = new();
     private readonly IBanStore? banStore;
     private readonly MoveTuning tuning;

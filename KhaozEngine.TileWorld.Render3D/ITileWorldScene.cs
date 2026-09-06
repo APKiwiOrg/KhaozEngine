@@ -24,6 +24,12 @@ public interface ITileWorldScene
     /// <summary>Queues one ground mesh at its world transform for this frame.</summary>
     void DrawMesh(MeshHandle handle, Matrix4x4 world);
 
+    /// <summary>Queues one rigid mesh with a dissolve threshold, edge width and edge colour. Defaults to the
+    /// solid draw so an implementation written before rigid dissolve support keeps compiling and keeps the body
+    /// visible.</summary>
+    void DrawMeshDissolved(MeshHandle handle, Matrix4x4 world, float dissolve, float edgeWidth, Color edgeColor) =>
+        DrawMesh(handle, world);
+
     /// <summary>Uploads the ground material set every region-plane mesh of this world is drawn with, once per
     /// view, and returns its handle. Defaults to an invalid handle so an implementation written before textured
     /// ground existed keeps compiling and keeps drawing through the untextured upload below.</summary>
@@ -89,6 +95,10 @@ public sealed class Scene3DTileWorldScene : ITileWorldScene
 
     /// <inheritdoc />
     public void DrawMesh(MeshHandle handle, Matrix4x4 world) => _scene.Draw(handle, world);
+
+    /// <inheritdoc />
+    public void DrawMeshDissolved(MeshHandle handle, Matrix4x4 world, float dissolve, float edgeWidth, Color edgeColor) =>
+        _scene.Draw(handle, world, Color.White, Material.None, dissolve, edgeWidth, edgeColor);
 
     /// <inheritdoc />
     public void DrawMeshSilhouette(MeshHandle handle, Matrix4x4 world, Color color, float widthMetres) =>

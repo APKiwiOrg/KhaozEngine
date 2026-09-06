@@ -7,7 +7,13 @@ namespace KhaozEngine.Tests;
 /// <summary>In-memory <see cref="ISfxBackend"/> recording calls for headless AudioSystem SFX tests.</summary>
 internal sealed class FakeSfxBackend : ISfxBackend
 {
-    public readonly record struct PlayCall(int Handle, float Gain, float Pitch, bool Positional, Vector3 Position);
+    public readonly record struct PlayCall(
+        int Handle,
+        float Gain,
+        float Pitch,
+        bool Positional,
+        Vector3 Position,
+        SfxAttenuation? Attenuation = null);
     public readonly record struct ListenerCall(Vector3 Position, Vector3 Forward, Vector3 Up);
 
     public List<string> LoadedPaths { get; } = new();
@@ -45,6 +51,19 @@ internal sealed class FakeSfxBackend : ISfxBackend
     {
         PlayPriorities.Add(priority);
         Play(handle, gain, pitch, positional, position);
+    }
+
+    public void Play(
+        int handle,
+        float gain,
+        float pitch,
+        bool positional,
+        Vector3 position,
+        SfxPriority priority,
+        SfxAttenuation attenuation)
+    {
+        PlayPriorities.Add(priority);
+        Plays.Add(new PlayCall(handle, gain, pitch, positional, position, attenuation));
     }
 
     public void SetListener(Vector3 position, Vector3 forward, Vector3 up)

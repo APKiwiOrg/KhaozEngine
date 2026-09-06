@@ -18,6 +18,15 @@ public sealed class NullSfxBackend : ISfxBackend
 
     public void Play(int handle, float gain, float pitch, bool positional, Vector3 position) { }
 
+    public void Play(
+        int handle,
+        float gain,
+        float pitch,
+        bool positional,
+        Vector3 position,
+        SfxPriority priority,
+        SfxAttenuation attenuation) { }
+
     public void SetListener(Vector3 position, Vector3 forward, Vector3 up) { }
 
     public void StopAll() { }

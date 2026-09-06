@@ -14,6 +14,7 @@ public sealed partial class AudioSystem
     // 1.0, so a Play with no bus (or an unknown bus) composes exactly master*sfx*volume as before. A defined
     // bus scales that by its current volume. Unknown-bus plays fall back to the default bus with a warn-once.
     private readonly Dictionary<string, float> _busVolumes = new();
+    private readonly Dictionary<string, SfxAttenuation> _busAttenuations = new();
     private readonly HashSet<string> _warnedUnknownBus = new();  // warn-once per unknown bus id seen on Play
 
     /// <summary>
@@ -33,6 +34,19 @@ public sealed partial class AudioSystem
         EnsureOwningThread();
         if (string.IsNullOrEmpty(id)) return;
         if (!_busVolumes.ContainsKey(id)) _busVolumes[id] = 1f;
+    }
+
+    /// <summary>
+    /// Registers an SFX bus with the positional <paramref name="attenuation"/> sent to the backend for 3D
+    /// one-shots. Existing bus volume is preserved. Re-defining the bus replaces its attenuation for later
+    /// plays. Non-positional plays ignore the curve.
+    /// </summary>
+    public void DefineBus(string id, SfxAttenuation attenuation)
+    {
+        EnsureOwningThread();
+        if (string.IsNullOrEmpty(id)) return;
+        if (!_busVolumes.ContainsKey(id)) _busVolumes[id] = 1f;
+        _busAttenuations[id] = attenuation;
     }
 
     /// <summary>
@@ -69,4 +83,9 @@ public sealed partial class AudioSystem
         if (_warnedUnknownBus.Add(bus)) _logger.Debug($"PlaySfx unknown bus '{bus}'; using default bus (1.0). Call DefineBus first.");
         return 1f;
     }
+
+    private SfxAttenuation ResolveBusAttenuation(string? bus)
+        => !string.IsNullOrEmpty(bus) && _busAttenuations.TryGetValue(bus, out SfxAttenuation attenuation)
+            ? attenuation
+            : SfxAttenuation.Default;
 }

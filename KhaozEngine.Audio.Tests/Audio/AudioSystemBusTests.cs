@@ -188,4 +188,58 @@ public sealed class AudioSystemBusTests : IDisposable
         var call = Assert.Single(sfx.Plays);
         Assert.Equal(0.5f * 0.8f * 0.6f * 0.9f, call.Gain, 4);
     }
+
+    [Fact]
+    public void PositionalPlayOnDefaultBusUsesLegacyAttenuation()
+    {
+        var (audio, sfx) = NewLoaded();
+
+        audio.PlaySfx3D("blip", Vector3.One);
+
+        Assert.Equal(new SfxAttenuation(1f, 1f, 50f), Assert.Single(sfx.Plays).Attenuation);
+    }
+
+    [Fact]
+    public void PositionalPlayOnDefinedBusCarriesCustomAttenuation()
+    {
+        var (audio, sfx) = NewLoaded();
+        var attenuation = new SfxAttenuation(8f, 0.4f, 120f);
+        audio.DefineBus("world", attenuation);
+
+        audio.PlaySfx3D("blip", Vector3.One, bus: "world");
+
+        Assert.Equal(attenuation, Assert.Single(sfx.Plays).Attenuation);
+    }
+
+    [Fact]
+    public void PositionalPlayOnUnknownBusUsesLegacyAttenuation()
+    {
+        var (audio, sfx) = NewLoaded();
+
+        audio.PlaySfx3D("blip", Vector3.One, bus: "missing");
+
+        Assert.Equal(SfxAttenuation.Default, Assert.Single(sfx.Plays).Attenuation);
+    }
+
+    [Fact]
+    public void NonPositionalPlayDoesNotSendAttenuation()
+    {
+        var (audio, sfx) = NewLoaded();
+        audio.DefineBus("ui", new SfxAttenuation(8f, 0.4f, 120f));
+
+        audio.PlaySfx("blip", bus: "ui");
+
+        Assert.Null(Assert.Single(sfx.Plays).Attenuation);
+    }
+
+    [Theory]
+    [InlineData(0f, 1f, 50f)]
+    [InlineData(-1f, 1f, 50f)]
+    [InlineData(1f, -1f, 50f)]
+    [InlineData(2f, 1f, 1f)]
+    public void AttenuationRejectsInvalidCurve(float referenceDistance, float rolloffFactor, float maxDistance)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new SfxAttenuation(referenceDistance, rolloffFactor, maxDistance));
+    }
 }

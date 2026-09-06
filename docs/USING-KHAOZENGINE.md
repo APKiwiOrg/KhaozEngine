@@ -5953,7 +5953,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.19.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.20.0" />
 ```
 
 ```csharp
@@ -8883,12 +8883,14 @@ server.OnSuspiciousActivity += a =>
 
 **Bounding a connection flood.** A connection the transport accepted holds no slot until a valid handshake arrives,
 and the per-connection rate limiter above does not engage until it does. Set `MaxPendingConnections` on
-`WorldServerConfig` / `ShardedWorldServerConfig` (0, the default, is unlimited) to cap how many such connections the
+`WorldServerConfig`, `ShardedWorldServerConfig` or `TileWorldServerConfig` (0, the default, is unlimited) to cap how many such connections the
 server holds at once, so a flood degrades to refused handshakes rather than unbounded server-side state. Size it
 above the concurrent-join burst a launch or a restart produces, not at `MaxPlayers`. Watch
 `server.PendingConnectionCount` (in flight right now) and `server.RefusedPendingConnectionCount` (total shed) to
 tell a flood being refused from a cap set below your real join burst. This is the one flood mitigation available
 without a remote address, which the transport seam deliberately does not expose.
+The tile-world server exposes the same two counters. A rejected connection cannot complete a handshake
+that was already queued before the cap disconnected it.
 
 **Bounding the session inbox.** `MaxQueuedEvents` on `WorldServerConfig` / `ShardedWorldServerConfig` caps how many
 undrained session events the inner `NetServer` holds, defaulting to `BoundedEventQueue<T>.DefaultCapacity` (the
@@ -11094,7 +11096,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.19.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.20.0" />
 ```
 
 ```csharp
@@ -11130,7 +11132,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.19.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.20.0" />
 ```
 
 ```csharp
@@ -11372,7 +11374,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.19.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.20.0" />
 ```
 
 ```csharp
@@ -13190,6 +13192,11 @@ those files ambiguous.
 `AppDataPaths`, a coalesced atomic `PersistenceQueue`, a `FileSettingsStorage`, and an optional
 `SaveEncoder`. See the package README for the full API. This section covers the consumer-facing decisions.
 
+For an isolated run or a test, pass `AppDataPaths.FromDirectory(absoluteRoot)` to the existing
+`GameStorage(AppDataPaths, GameStorageOptions?)` constructor. The same resolver works with
+`FileSettingsStorage`. It uses exactly that root and creates it lazily, without probing the OS application
+data directory. Relative paths are rejected.
+
 ```csharp
 using KhaozEngine.Persistence;
 
@@ -13408,7 +13415,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="18.19.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="18.20.0" />
 </ItemGroup>
 ```
 

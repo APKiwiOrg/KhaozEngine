@@ -307,6 +307,11 @@ public static class DungeonJson
             throw new DungeonJsonException("floorHeightMeters: must be greater than zero.");
         }
 
+        if (dto.CeilingHeightMeters < 0f || !float.IsFinite(dto.CeilingHeightMeters))
+        {
+            throw new DungeonJsonException("ceilingHeightMeters: must be non-negative and finite.");
+        }
+
         if (dto.Grid is null)
         {
             throw new DungeonJsonException("grid: must not be null.");

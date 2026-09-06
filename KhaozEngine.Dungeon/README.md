@@ -45,7 +45,8 @@ tolerant reads, deterministic byte-identical writes). The JSON matches the embed
 validate against and which is available for editor/AI tooling. The load path itself enforces its own semantic
 checks, throwing `DungeonJsonException` naming the offending field in its own camelCase spelling. Layout JSON
 preserves `CeilingMode` and the resolved `CeilingHeightMeters`. Older layouts without those optional fields load
-as `Open` with a zero ceiling height.
+as `Open` with a zero ceiling height. Layout loading rejects a negative or non-finite persisted ceiling height
+before constructing the layout.
 
 ## Baking into a `MapDocument` (`DungeonMapDocEmitter`)
 

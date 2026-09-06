@@ -9,8 +9,10 @@ using KhaozEngine.Primitives;
 namespace KhaozEngine.Gui
 {
     /// <summary>
-    /// A horizontal tab bar (segmented control) over <see cref="Pointer"/>: N evenly-split tabs within
-    /// <see cref="Bounds"/>, exactly one active at a time. Clicking a tab makes it active and raises
+    /// A tab bar (segmented control) over <see cref="Pointer"/>. By default, N tabs are evenly split within
+    /// <see cref="Bounds"/>. Setting positive <see cref="TabWidth"/> and <see cref="TabHeight"/> opts into fixed-size
+    /// tabs that wrap through <see cref="Columns"/> with <see cref="Spacing"/>. Clicking an enabled tab makes it
+    /// active and raises
     /// <see cref="ChangedThisFrame"/> for that one frame, so the caller swaps the panel body only on an actual
     /// change. The strip draws as a crisp flat segmented control (<see cref="GuiDraw.TabStripDrawGeometry"/>): flat
     /// per-tab fills carry the hover / press / active state, and a SINGLE shared border grid (one outer frame plus
@@ -20,7 +22,7 @@ namespace KhaozEngine.Gui
     /// <see cref="GuiStyle.Active"/> look), inactive tabs use the muted <see cref="InactiveStyle"/>
     /// (<see cref="GuiStyle.Secondary"/>). Labels are <see cref="LocalizedText"/> (localized copy or a raw escape
     /// hatch). Call <see cref="Update"/> then <see cref="Draw"/> each frame; <see cref="Update"/> reserves
-    /// <see cref="Bounds"/> on the pointer (the click-through gate) so a layer beneath can check
+    /// <see cref="ContentBounds"/> on the pointer (the click-through gate) so a layer beneath can check
     /// <see cref="Pointer.IsBlocked"/>.
     /// </summary>
     public sealed class TabBar
@@ -51,12 +53,52 @@ namespace KhaozEngine.Gui
         /// </summary>
         public float TextScale = 1f;
 
+        float _tabWidth;
+        float _tabHeight;
+        float _spacing;
+        int _columns;
+
+        /// <summary>Fixed tab width. Zero keeps the even-split layout. Both width and height must be positive to opt in.</summary>
+        public float TabWidth
+        {
+            get => _tabWidth;
+            set => _tabWidth = float.IsFinite(value) && value >= 0f
+                ? value : throw new ArgumentOutOfRangeException(nameof(value));
+        }
+
+        /// <summary>Fixed tab height. Zero keeps the even-split layout. Both width and height must be positive to opt in.</summary>
+        public float TabHeight
+        {
+            get => _tabHeight;
+            set => _tabHeight = float.IsFinite(value) && value >= 0f
+                ? value : throw new ArgumentOutOfRangeException(nameof(value));
+        }
+
+        /// <summary>Tabs per row in fixed-size layout. Zero uses all tabs in one row.</summary>
+        public int Columns
+        {
+            get => _columns;
+            set => _columns = value >= 0 ? value : throw new ArgumentOutOfRangeException(nameof(value));
+        }
+
+        /// <summary>Horizontal and vertical gap between fixed-size tabs. Default zero.</summary>
+        public float Spacing
+        {
+            get => _spacing;
+            set => _spacing = float.IsFinite(value) && value >= 0f
+                ? value : throw new ArgumentOutOfRangeException(nameof(value));
+        }
+
+        readonly TabBarItem[] _items;
         readonly LocalizedText[] _labels;
         int _activeIndex;
         int _hoverIndex = -1, _pressIndex = -1;
 
         /// <summary>The tab labels, in layout order (left to right).</summary>
         public IReadOnlyList<LocalizedText> Labels => _labels;
+
+        /// <summary>The tab descriptors, in layout order.</summary>
+        public IReadOnlyList<TabBarItem> Items => _items;
 
         /// <summary>The number of tabs.</summary>
         public int Count => _labels.Length;
@@ -74,15 +116,42 @@ namespace KhaozEngine.Gui
         /// <summary>True only on the frame the active tab changed via an input tap (never via the setter).</summary>
         public bool ChangedThisFrame { get; private set; }
 
+        /// <summary>The rectangle reserved and drawn by the current layout. Equals <see cref="Bounds"/> in the
+        /// default even-split layout and is derived from the tab size, columns, spacing, and count in fixed layout.</summary>
+        public Rect ContentBounds
+        {
+            get
+            {
+                if (!UsesFixedLayout) return Bounds;
+                int columns = EffectiveColumns;
+                int rows = (_items.Length + columns - 1) / columns;
+                float width = columns * TabWidth + (columns - 1) * Spacing;
+                float height = rows * TabHeight + (rows - 1) * Spacing;
+                return new Rect(Bounds.X, Bounds.Y, width, height);
+            }
+        }
+
         /// <summary>Create a tab bar from at least one localized label.</summary>
         /// <exception cref="ArgumentNullException"><paramref name="tabLabels"/> is null.</exception>
         /// <exception cref="ArgumentException"><paramref name="tabLabels"/> is empty.</exception>
         public TabBar(IReadOnlyList<LocalizedText> tabLabels, SpriteFont? font = null, Rect bounds = default)
+            : this(ToItems(tabLabels), font, bounds)
         {
-            if (tabLabels == null) throw new ArgumentNullException(nameof(tabLabels));
-            if (tabLabels.Count == 0) throw new ArgumentException("A TabBar needs at least one tab.", nameof(tabLabels));
-            _labels = new LocalizedText[tabLabels.Count];
-            for (int i = 0; i < tabLabels.Count; i++) _labels[i] = tabLabels[i];
+        }
+
+        /// <summary>Create a tab bar from at least one item. Disabled items draw with disabled theme colours and
+        /// consume taps without changing the active index.</summary>
+        public TabBar(IReadOnlyList<TabBarItem> items, SpriteFont? font = null, Rect bounds = default)
+        {
+            if (items == null) throw new ArgumentNullException(nameof(items));
+            if (items.Count == 0) throw new ArgumentException("A TabBar needs at least one tab.", nameof(items));
+            _items = new TabBarItem[items.Count];
+            _labels = new LocalizedText[items.Count];
+            for (int i = 0; i < items.Count; i++)
+            {
+                _items[i] = items[i];
+                _labels[i] = items[i].Label;
+            }
             Font = font;
             Bounds = bounds;
         }
@@ -97,8 +166,19 @@ namespace KhaozEngine.Gui
         {
             if (index < 0 || index >= _labels.Length)
                 throw new ArgumentOutOfRangeException(nameof(index));
-            float left = Bounds.X + Bounds.Width * index / _labels.Length;
-            float right = Bounds.X + Bounds.Width * (index + 1) / _labels.Length;
+            if (UsesFixedLayout)
+            {
+                int columns = EffectiveColumns;
+                int column = index % columns;
+                int row = index / columns;
+                return new Rect(
+                    Bounds.X + column * (TabWidth + Spacing),
+                    Bounds.Y + row * (TabHeight + Spacing),
+                    TabWidth,
+                    TabHeight);
+            }
+            float left = Bounds.X + Bounds.Width * index / _items.Length;
+            float right = Bounds.X + Bounds.Width * (index + 1) / _items.Length;
             return new Rect(left, Bounds.Y, right - left, Bounds.Height);
         }
 
@@ -111,7 +191,7 @@ namespace KhaozEngine.Gui
         public bool Update(Pointer pointer)
         {
             ChangedThisFrame = false;
-            pointer.BlockRegion(Bounds);
+            pointer.BlockRegion(ContentBounds);
             _hoverIndex = _pressIndex = -1;
             bool changed = false;
             for (int i = 0; i < _labels.Length; i++)
@@ -119,7 +199,13 @@ namespace KhaozEngine.Gui
                 Rect r = TabRect(i);
                 if (pointer.IsHoveringIn(r)) _hoverIndex = i;
                 if (pointer.IsPressingIn(r)) _pressIndex = i;
-                if (pointer.IsTapIn(r) && i != _activeIndex)
+                if (!pointer.IsTapIn(r)) continue;
+                if (!_items[i].Enabled)
+                {
+                    pointer.ConsumeGesture();
+                    continue;
+                }
+                if (i != _activeIndex)
                 {
                     _activeIndex = i;
                     ChangedThisFrame = true;
@@ -139,6 +225,18 @@ namespace KhaozEngine.Gui
             GuiStyle active = ActiveStyle.Faded(Opacity);
             GuiStyle inactive = InactiveStyle.Faded(Opacity);
 
+            if (UsesFixedLayout)
+            {
+                for (int i = 0; i < _items.Length; i++)
+                {
+                    bool selected = i == _activeIndex;
+                    GuiDraw.DrawButton(batch, white, Font, TabRect(i), _items[i].Label,
+                        selected ? active : inactive, _items[i].Enabled, selected,
+                        _hoverIndex == i, _pressIndex == i, TextScale);
+                }
+                return;
+            }
+
             // Whole-unit draw geometry: a shared frame + integer seam edges (see GuiDraw.TabStripDrawGeometry). This
             // removes the sub-pixel blur of fractional TabRect edges in a non-snapping design pass; BodyRect's
             // batch.SnapRect and the SnapLength below add device-pixel snapping on top in a point-space UI pass (both
@@ -150,7 +248,8 @@ namespace KhaozEngine.Gui
             for (int i = 0; i < _labels.Length; i++)
             {
                 GuiStyle s = i == _activeIndex ? active : inactive;
-                Vector4 fill = i == _activeIndex ? s.SelectedFill
+                Vector4 fill = !_items[i].Enabled ? s.DisabledFill
+                    : i == _activeIndex ? s.SelectedFill
                     : _pressIndex == i ? s.Press
                     : _hoverIndex == i ? s.Hover
                     : s.Fill;
@@ -162,18 +261,20 @@ namespace KhaozEngine.Gui
             GuiDraw.Border(batch, white, frame, 1f, inactive.Border);
             for (int i = 1; i < _labels.Length; i++)
             {
-                if (i == _activeIndex || i == _activeIndex + 1) continue;   // owned by the active accent border
+                if (_items[_activeIndex].Enabled && (i == _activeIndex || i == _activeIndex + 1)) continue;
                 GuiDraw.Fill(batch, white, batch.SnapRect(new Rect(edges[i], frame.Y, t, frame.Height)), inactive.Border);
             }
 
             // 3) Active tab accent border on top, so it reads cleanly over the shared frame.
-            GuiDraw.Border(batch, white, BodyRect(batch, frame, edges, _activeIndex), 1f, active.SelectedBorder);
+            if (_items[_activeIndex].Enabled)
+                GuiDraw.Border(batch, white, BodyRect(batch, frame, edges, _activeIndex), 1f, active.SelectedBorder);
 
             // 4) Centred labels per snapped body.
             for (int i = 0; i < _labels.Length; i++)
             {
                 Rect body = BodyRect(batch, frame, edges, i);
-                Vector4 text = (i == _activeIndex ? active : inactive).Text;
+                GuiStyle style = i == _activeIndex ? active : inactive;
+                Vector4 text = _items[i].Enabled ? style.Text : style.DisabledText;
                 string str = _labels[i].Resolve();
                 Vector2 pos = GuiDraw.AlignedTextPos(body, Font.Measure(str), Font.LineHeight, GuiAlign.Center, TextScale);
                 batch.DrawString(Font, str, pos, (Color)text, TextScale);
@@ -184,5 +285,30 @@ namespace KhaozEngine.Gui
         // extent. A no-op snap outside a point-space UI pass, so the design-space rect is the whole-unit geometry.
         static Rect BodyRect(SpriteBatch batch, Rect frame, float[] edges, int index) =>
             batch.SnapRect(new Rect(edges[index], frame.Y, edges[index + 1] - edges[index], frame.Height));
+
+        bool UsesFixedLayout => TabWidth > 0f && TabHeight > 0f;
+
+        int EffectiveColumns => Columns > 0 ? Math.Min(Columns, _items.Length) : _items.Length;
+
+        internal (Vector4 Fill, Vector4 Text) ResolveVisual(int index)
+        {
+            if (index < 0 || index >= _items.Length) throw new ArgumentOutOfRangeException(nameof(index));
+            bool selected = index == _activeIndex;
+            GuiStyle style = (selected ? ActiveStyle : InactiveStyle).Faded(Opacity);
+            Vector4 fill = !_items[index].Enabled ? style.DisabledFill
+                : selected ? style.SelectedFill
+                : _pressIndex == index ? style.Press
+                : _hoverIndex == index ? style.Hover
+                : style.Fill;
+            return (fill, _items[index].Enabled ? style.Text : style.DisabledText);
+        }
+
+        static IReadOnlyList<TabBarItem> ToItems(IReadOnlyList<LocalizedText> labels)
+        {
+            if (labels == null) throw new ArgumentNullException(nameof(labels));
+            var items = new TabBarItem[labels.Count];
+            for (int i = 0; i < labels.Count; i++) items[i] = new TabBarItem(labels[i]);
+            return items;
+        }
     }
 }

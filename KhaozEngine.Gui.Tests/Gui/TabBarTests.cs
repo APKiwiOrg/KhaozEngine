@@ -226,5 +226,99 @@ namespace KhaozEngine.Tests.Gui
             Assert.Equal(before1, bar.TabRect(1));
             Assert.Equal(before2, bar.TabRect(2));
         }
+
+        [Fact]
+        public void Fixed_size_layout_wraps_left_to_right_with_spacing()
+        {
+            var items = new TabBarItem[10];
+            for (int i = 0; i < items.Length; i++) items[i] = new TabBarItem(LocalizedText.Raw($"Tab {i}"));
+            var bar = new TabBar(items, bounds: new Rect(20, 30, 999, 999))
+            {
+                TabWidth = 56f,
+                TabHeight = 28f,
+                Columns = 5,
+                Spacing = 2f,
+            };
+
+            Assert.Equal(new Rect(20, 30, 56, 28), bar.TabRect(0));
+            Assert.Equal(new Rect(252, 30, 56, 28), bar.TabRect(4));
+            Assert.Equal(new Rect(20, 60, 56, 28), bar.TabRect(5));
+            Assert.Equal(new Rect(252, 60, 56, 28), bar.TabRect(9));
+            Assert.Equal(new Rect(20, 30, 288, 58), bar.ContentBounds);
+        }
+
+        [Fact]
+        public void Fixed_size_layout_reserves_its_derived_footprint()
+        {
+            var bar = new TabBar(new[]
+            {
+                new TabBarItem(LocalizedText.Raw("A")),
+                new TabBarItem(LocalizedText.Raw("B")),
+                new TabBarItem(LocalizedText.Raw("C")),
+            }, bounds: new Rect(100, 100, 1, 1))
+            {
+                TabWidth = 40f,
+                TabHeight = 20f,
+                Columns = 2,
+                Spacing = 4f,
+            };
+            var pointer = new Pointer();
+            pointer.Update(Frame(new Vector2(120, 126), false));
+
+            bar.Update(pointer);
+
+            Assert.True(pointer.IsBlocked(new Vector2(120, 126)));
+            Assert.False(pointer.IsBlocked(new Vector2(190, 126)));
+        }
+
+        [Fact]
+        public void Disabled_tab_swallows_its_tap_without_changing_selection()
+        {
+            var bar = new TabBar(new[]
+            {
+                new TabBarItem(LocalizedText.Raw("Live")),
+                new TabBarItem(LocalizedText.Raw("Soon"), Enabled: false),
+            }, bounds: new Rect(100, 100, 200, 40));
+            var pointer = new Pointer();
+
+            bool changed = Tap(bar, pointer, CenterOf(bar.TabRect(1)));
+
+            Assert.False(changed);
+            Assert.Equal(0, bar.ActiveIndex);
+            Assert.False(bar.ChangedThisFrame);
+            Assert.True(pointer.IsConsumed);
+            Assert.Equal(bar.InactiveStyle.DisabledFill, bar.ResolveVisual(1).Fill);
+            Assert.Equal(bar.InactiveStyle.DisabledText, bar.ResolveVisual(1).Text);
+        }
+
+        [Fact]
+        public void Label_constructor_keeps_even_split_defaults_and_enabled_items()
+        {
+            var bar = NewBar();
+
+            Assert.Equal(Bar, bar.ContentBounds);
+            Assert.Equal(0f, bar.TabWidth);
+            Assert.Equal(0f, bar.TabHeight);
+            Assert.All(bar.Items, item => Assert.True(item.Enabled));
+            Assert.Equal(Labels, bar.Labels);
+        }
+
+        [Fact]
+        public void Fixed_layout_rejects_negative_knobs_and_uses_all_tabs_when_columns_is_zero()
+        {
+            var bar = NewBar();
+            Assert.Throws<ArgumentOutOfRangeException>(() => bar.TabWidth = -1f);
+            Assert.Throws<ArgumentOutOfRangeException>(() => bar.TabHeight = -1f);
+            Assert.Throws<ArgumentOutOfRangeException>(() => bar.Columns = -1);
+            Assert.Throws<ArgumentOutOfRangeException>(() => bar.Spacing = -1f);
+            Assert.Throws<ArgumentOutOfRangeException>(() => bar.TabWidth = float.PositiveInfinity);
+            Assert.Throws<ArgumentOutOfRangeException>(() => bar.TabHeight = float.NaN);
+            Assert.Throws<ArgumentOutOfRangeException>(() => bar.Spacing = float.PositiveInfinity);
+
+            bar.TabWidth = 30f;
+            bar.TabHeight = 20f;
+            Assert.Equal(new Rect(160, 100, 30, 20), bar.TabRect(2));
+            Assert.Equal(new Rect(100, 100, 90, 20), bar.ContentBounds);
+        }
     }
 }

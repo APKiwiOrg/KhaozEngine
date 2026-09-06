@@ -239,12 +239,14 @@ chat.Draw(batch, white);
     label, text only: the rects, the row fills, the chevron and the hit-testing are unchanged. Pointer actions
     that open, close, select or dismiss consume their gesture, so controls behind the trigger or open list cannot
     act on the same release.
-  - `TabBar` - horizontal tab bar / segmented control: N evenly-split tabs, exactly one active. A valid tap
-    activates a tab and raises `ChangedThisFrame` for one frame (and `Update` returns true), so the caller swaps
-    the panel body only on a real change. `ActiveIndex` is settable to restore/persist the selection without
-    raising the change signal. Active tab uses `ActiveStyle` (`GuiStyle.Active`), inactive tabs `InactiveStyle`
-    (`GuiStyle.Secondary`), labels are `LocalizedText`, and `TabRect(i)` is the pure per-tab layout, independent of
-    `TextScale` (default `1f`, scales every tab label only). `Opacity` fades the whole bar for a host transition.
+  - `TabBar` - tab bar / segmented control with exactly one active tab. The original
+    `IReadOnlyList<LocalizedText>` constructor keeps one row of evenly split tabs. The `TabBarItem` overload adds
+    per-tab `Enabled` state. Disabled tabs use the style's disabled colours and swallow taps without changing the
+    selection. Positive `TabWidth` and `TabHeight` opt into fixed-size layout. `Columns` controls left-to-right
+    wrapping and `Spacing` sets both gutters. `ContentBounds` reports and reserves the resulting footprint.
+    `ActiveIndex` is settable to restore or persist selection without raising the change signal. Active tabs use
+    `ActiveStyle` (`GuiStyle.Active`), inactive tabs use `InactiveStyle` (`GuiStyle.Secondary`), and `TabRect(i)`
+    exposes the active layout. `TextScale` scales every label only. `Opacity` fades the whole bar.
   - **Keyboard/gamepad control (opt-in, additive)** on `Toggle`/`Slider`/`Dropdown`: each has an
     `Update(InputManager, bool focused, PlayerIndex? = null)` overload that layers `InputManager` menu actions on
     top of the pointer path (only when `focused`), mirroring `FocusNavigator`. So a settings row is fully

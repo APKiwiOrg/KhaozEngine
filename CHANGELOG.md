@@ -8,6 +8,7 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 ## 18.33.0
 
 Durable journal replay retention can now use provider database time from receipt creation through bounded purge (#844).
+Tile-world clients can also target the visible water surface instead of the carved bed beneath it.
 
 - `IMutationJournalAgeMaintenance.PurgeOperationsByAgeAsync` accepts a minimum receipt age and positive operation
   bound. The provider enforces the longer of that age or its configured `MinimumRetryHorizon`.
@@ -26,6 +27,9 @@ Durable journal replay retention can now use provider database time from receipt
 - Headless tests cover positive and negative process clock skew, the exact horizon boundary, oldest-first bounded
   deletion, concurrent commits, conservative migration, unguarded mixed-version deletion, and guard reset on
   failed transactions.
+- `TileWorldView.PickSurface` compares drawable terrain in loaded regions with the exact cached water rectangles
+  submitted by the view. Oblique rays return the tile under the visible crossing, while unloaded and `NoDraw`
+  terrain remain untargetable. Direction length does not affect the returned world-metre distance.
 
 ## 18.32.0
 

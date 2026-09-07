@@ -13,6 +13,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="KhaozEngine.TileWorld.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.TileWorld.Editing" />
+    <InternalsVisibleTo Include="KhaozEngine.TileWorld.Render3D" />
     <None Include="README.md" Pack="true" PackagePath="\" />
     <EmbeddedResource Include="tileworld.catalog.schema.json" />
   </ItemGroup>

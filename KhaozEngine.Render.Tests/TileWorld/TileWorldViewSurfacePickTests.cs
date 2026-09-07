@@ -175,4 +175,64 @@ public class TileWorldViewSurfacePickTests
             new Vector3(31.5f, 5f, -10.5f),
             -Vector3.UnitY));
     }
+
+    [Fact]
+    public void Terrain_in_an_unloaded_region_is_not_a_visible_surface()
+    {
+        TileWorldDocument document = TileRenderTestData.RiverWorld();
+        var unloaded = new RegionCoord(1, 0);
+        document.GetOrCreateRegion(unloaded);
+        document.SetUnderlay(unloaded.OriginX, 10, 0, TileRenderTestData.Grass);
+        using TileWorldView view = View(document);
+
+        Assert.NotNull(TileRaycast.Pick(
+            document,
+            0,
+            new Vector3(unloaded.OriginX + 0.5f, 5f, -10.5f),
+            -Vector3.UnitY));
+        Assert.Null(view.PickSurface(
+            0,
+            new Vector3(unloaded.OriginX + 0.5f, 5f, -10.5f),
+            -Vector3.UnitY));
+    }
+
+    [Fact]
+    public void Picking_continues_past_a_no_draw_tile_to_the_next_rendered_tile()
+    {
+        var document = new TileWorldDocument { Id = "surface-pick-filter", DisplayName = "Surface pick filter" };
+        document.GetOrCreateRegion(Origin);
+        document.SetUnderlay(1, 1, 0, TileRenderTestData.Grass);
+        document.SetSettings(1, 1, 0, TileSettings.NoDraw);
+        document.SetCornerHeightCm(1, 1, 0, 200);
+        document.SetCornerHeightCm(2, 1, 0, 200);
+        document.SetCornerHeightCm(1, 2, 0, 200);
+        document.SetCornerHeightCm(2, 2, 0, 200);
+        document.SetUnderlay(3, 1, 0, TileRenderTestData.Grass);
+        using TileWorldView view = View(document);
+        var origin = new Vector3(0.5f, 3f, -1.5f);
+        var direction = new Vector3(1f, -1f, 0f);
+
+        TileHit authored = Assert.IsType<TileHit>(TileRaycast.Pick(document, 0, origin, direction));
+        TileHit visible = Assert.IsType<TileHit>(view.PickSurface(0, origin, direction));
+
+        Assert.Equal((1, 1), (authored.X, authored.Z));
+        Assert.Equal((3, 1), (visible.X, visible.Z));
+        Assert.Equal(0f, visible.Point.Y, 3);
+    }
+
+    [Fact]
+    public void Picker_cache_is_released_when_its_region_unloads_without_a_draw()
+    {
+        using TileWorldView view = RiverView(out _);
+
+        Assert.NotNull(view.PickSurface(
+            0,
+            new Vector3(31.5f, 5f, -10.5f),
+            -Vector3.UnitY));
+        Assert.Equal(1, view.WaterCacheCount);
+
+        view.UnloadRegion(Origin);
+
+        Assert.Equal(0, view.WaterCacheCount);
+    }
 }

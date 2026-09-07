@@ -14,6 +14,19 @@ public static class TileRaycast
     /// <summary>The first ground hit along the ray on this plane, or null when it crosses no solid tile.
     /// <paramref name="direction"/> need not be normalised, and the reported distance is in world units.</summary>
     public static TileHit? Pick(TileWorldDocument doc, int plane, Vector3 origin, Vector3 direction, float maxDistance = 2000f)
+        => PickCore(doc, plane, origin, direction, maxDistance, includeTile: null);
+
+    // Render-facing seam for a view that has to skip terrain it did not draw. Kept internal so the public
+    // document raycast retains its exact authored-world contract, including NoDraw tiles an editor may inspect.
+    internal static TileHit? Pick(TileWorldDocument doc, int plane, Vector3 origin, Vector3 direction,
+                                  float maxDistance, Func<int, int, int, bool> includeTile)
+    {
+        ArgumentNullException.ThrowIfNull(includeTile);
+        return PickCore(doc, plane, origin, direction, maxDistance, includeTile);
+    }
+
+    static TileHit? PickCore(TileWorldDocument doc, int plane, Vector3 origin, Vector3 direction, float maxDistance,
+                             Func<int, int, int, bool>? includeTile)
     {
         ArgumentNullException.ThrowIfNull(doc);
         if (direction.LengthSquared() < 1e-12f) return null;
@@ -38,7 +51,9 @@ public static class TileRaycast
         int guard = 0;
         while (travelled <= maxDistance && guard++ < 100_000)
         {
-            if (TestTile(doc, plane, tx, tz, origin, dir, maxDistance, out TileHit hit)) return hit;
+            if ((includeTile is null || includeTile(tx, tz, plane))
+                && TestTile(doc, plane, tx, tz, origin, dir, maxDistance, out TileHit hit))
+                return hit;
             if (vertical) return null;
             if (tMaxX < tMaxZ) { tx += stepX; travelled = tMaxX; tMaxX += tDeltaX; }
             else { tz += stepZ; travelled = tMaxZ; tMaxZ += tDeltaZ; }

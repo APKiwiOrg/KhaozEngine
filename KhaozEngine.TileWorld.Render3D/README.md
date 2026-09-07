@@ -132,12 +132,13 @@ for the depth read to darken against. Collision, pathing, the raycast and the to
 `TileRaycast.Pick` still lands on the bed, which is what an editor click wants.
 
 `TileWorldView.PickSurface(plane, origin, direction, maxDistance?)` is the picture-side tile pick for a game.
-It compares that authored terrain hit with the exact cached `WaterPlane` rectangles the view draws for its loaded
-regions and returns the nearer one as the existing `TileHit`. This makes an oblique click on a river name the tile
-under the visible water crossing rather than the farther tile where the ray reaches the carved bed. Direction does
-not need normalising, distance is in world metres, the maximum is inclusive, and authored terrain wins an exact
-depth tie where it hides the plane. The call does not flush pending edits. A cached surface moves only after its
-region-plane mesh is rebuilt or its water look changes, the same invalidation rules used by the draw path.
+It compares drawable authored terrain in regions the view has loaded with the exact cached `WaterPlane` rectangles
+the view draws there, then returns the nearer one as the existing `TileHit`. Unloaded and `NoDraw` terrain are not
+targets. This makes an oblique click on a river name the tile under the visible water crossing rather than the
+farther tile where the ray reaches the carved bed. Direction does not need normalising, distance is in world metres,
+the maximum is inclusive, and authored terrain wins an exact depth tie where it hides the plane. The call does not
+flush pending edits. A cached surface moves only after its region-plane mesh is rebuilt or its water look changes,
+the same invalidation rules used by the draw path.
 
 `TileWaterPlanes.Collect(doc, catalogs, region, plane, look?)` returns every `WaterPlane` one region-plane
 contributes, in a deterministic order.

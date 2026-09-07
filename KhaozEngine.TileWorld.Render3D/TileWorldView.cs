@@ -112,6 +112,7 @@ public sealed partial class TileWorldView : IDisposable
     readonly TileWorldDocument _doc;
     readonly TileWorldCatalogs _catalogs;
     readonly TileWorldViewOptions _options;
+    readonly Func<int, int, int, bool> _terrainPickFilter;
     readonly Dictionary<string, IReadOnlyList<MeshHandle>> _propMeshes = new(StringComparer.Ordinal);
     readonly Dictionary<RegionCoord, RegionHandles> _loaded = new();
     // The rebuild queue is a pair on purpose: the set is the dedup (a stroke marks the same region-plane a
@@ -151,6 +152,7 @@ public sealed partial class TileWorldView : IDisposable
         _catalogs = catalogs;
         _options = options ?? new TileWorldViewOptions();
         _planes = Math.Max(0, doc.PlaneCount);
+        _terrainPickFilter = IsRenderedTerrain;
 
         // A throw part way through frees the sets already uploaded, because a constructor that throws never
         // produces the object whose Dispose would have freed them. The resolver is caller code and the upload is a
@@ -295,7 +297,10 @@ public sealed partial class TileWorldView : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         for (int plane = 0; plane < _planes; plane++)
+        {
             if (_dirty.Remove((region, plane))) _dirtyOrder.Remove((region, plane));
+            _water.Remove((region, plane));
+        }
         if (!_loaded.Remove(region, out RegionHandles? handles)) return;
         GeneratedCoverCount -= handles.Cover.Count;
         FreeMeshes(handles);
@@ -503,6 +508,7 @@ public sealed partial class TileWorldView : IDisposable
 
         foreach (RegionHandles handles in _loaded.Values) FreeMeshes(handles);
         _loaded.Clear();
+        _water.Clear();
         _dirty.Clear();
         _dirtyOrder.Clear();
 

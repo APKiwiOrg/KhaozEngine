@@ -9,10 +9,10 @@ namespace KhaozEngine.TileWorld;
 public sealed partial class TileWorldView
 {
     /// <summary>The nearest visible ground or water surface on one plane, or null when the ray misses.
-    /// <para>The ground candidate is the authored terrain from <see cref="TileRaycast"/>. Water candidates are
-    /// the exact cached <see cref="WaterPlane"/> rectangles this view draws for its loaded regions. Like the
-    /// draw path, picking reuses that cache until the affected mesh is rebuilt or its water look
-    /// changes, matching the surface the next draw will submit.</para>
+    /// <para>The ground candidate is the authored terrain from <see cref="TileRaycast"/>, limited to drawable
+    /// tiles in regions this view has loaded. Water candidates are the exact cached <see cref="WaterPlane"/>
+    /// rectangles this view draws for those regions. Like the draw path, picking reuses that cache until the
+    /// affected mesh is rebuilt or its water look changes, matching the surface the next draw will submit.</para>
     /// <para><paramref name="direction"/> need not be normalised. The reported distance and
     /// <paramref name="maxDistance"/> are in world metres. Authored terrain wins an exact distance tie, because
     /// it depth-occludes a water plane at the same point.</para></summary>
@@ -24,13 +24,14 @@ public sealed partial class TileWorldView
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        TileHit? terrain = TileRaycast.Pick(_doc, plane, origin, direction, maxDistance);
         float lengthSquared = direction.LengthSquared();
         if (plane < 0 || plane >= _planes || !(maxDistance >= 0f)
-            || !(lengthSquared >= 1e-12f) || !float.IsFinite(lengthSquared))
-            return terrain;
+            || !(lengthSquared >= 1e-12f) || !float.IsFinite(lengthSquared)
+            || !IsFinite(origin))
+            return null;
 
         Vector3 ray = Vector3.Normalize(direction);
+        TileHit? terrain = TileRaycast.Pick(_doc, plane, origin, ray, maxDistance, _terrainPickFilter);
         TileHit? water = null;
         foreach (KeyValuePair<RegionCoord, RegionHandles> entry in _loaded)
         {
@@ -51,6 +52,14 @@ public sealed partial class TileWorldView
             ? nearestWater
             : terrain;
     }
+
+    bool IsRenderedTerrain(int x, int z, int plane) =>
+        _loaded.TryGetValue(RegionCoord.Of(x, z), out RegionHandles? handles)
+        && handles.Meshes[plane] is not null
+        && TileGroundMesher.IsDrawable(_doc, x, z, plane);
+
+    static bool IsFinite(in Vector3 value) =>
+        float.IsFinite(value.X) && float.IsFinite(value.Y) && float.IsFinite(value.Z);
 
     static bool IntersectWaterPlane(in WaterPlane plane, Vector3 origin, Vector3 direction, float maxDistance,
                                     out float distance)

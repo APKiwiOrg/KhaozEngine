@@ -83,11 +83,15 @@ public class IdentitySessionTests
             "session",
             T0.AddHours(1),
             T0,
-            "user-42");
+            "user-42")
+        {
+            DisplayName = "Display Name",
+        };
         IdentityState s = await Build(c, T0.AddMinutes(30)).RestoreAsync(CancellationToken.None);
         Assert.Equal(IdentityStatus.SignedIn, s.Status);
         Assert.Equal("session", s.SessionToken);
         Assert.Equal("user-42", s.Subject);
+        Assert.Equal("Display Name", s.DisplayName);
     }
 
     [Fact]
@@ -99,10 +103,14 @@ public class IdentitySessionTests
             "session",
             T0.AddHours(1),
             T0,
-            "user-42");
+            "user-42")
+        {
+            DisplayName = "Display Name",
+        };
         IdentityState s = await Build(c, T0.AddDays(5)).RestoreAsync(CancellationToken.None);
         Assert.Equal(IdentityStatus.OfflineGrace, s.Status);
         Assert.Equal("user-42", s.Subject);
+        Assert.Equal("Display Name", s.DisplayName);
     }
 
     [Fact]
@@ -148,6 +156,7 @@ public class IdentitySessionTests
         Assert.NotNull(c.Value);
         Assert.Equal("user-99", c.Value!.Value.Subject);
         Assert.Equal("session-tok", c.Value.Value.SessionToken);
+        Assert.Equal("Display Name", c.Value.Value.DisplayName);
     }
 
     [Fact]
@@ -225,7 +234,10 @@ public class IdentitySessionTests
         MemCache c = new();
         IdentitySession session = new(new RotatingProvider(), c, Opts, () => T0.AddHours(1));
         c.Value = new CachedSession(
-            new ProviderCredential("rot", "access-0", "r0", T0), "sess", T0, T0, "sub");
+            new ProviderCredential("rot", "access-0", "r0", T0), "sess", T0, T0, "sub")
+        {
+            DisplayName = "Display Name",
+        };
         IdentityState restored = await session.RestoreAsync(CancellationToken.None);
         Assert.Equal(IdentityStatus.OfflineGrace, restored.Status);
 
@@ -238,8 +250,27 @@ public class IdentitySessionTests
         Assert.Equal("sess", c.Value!.Value.SessionToken);           // session slot preserved
         Assert.Equal(T0, c.Value!.Value.SessionTokenExpiresUtc);
         Assert.Equal("sub", c.Value!.Value.Subject);
+        Assert.Equal("Display Name", c.Value.Value.DisplayName);
         Assert.Equal(IdentityStatus.OfflineGrace, session.Current.Status);   // status unchanged
+        Assert.Equal("Display Name", session.Current.DisplayName);
         Assert.Equal("r1", session.Current.Credential!.Value.RefreshToken);  // Current carries the rotated cred
+    }
+
+    [Fact]
+    public async Task Refresh_with_empty_cache_rebuilds_cached_display_name_from_current()
+    {
+        MemCache c = new();
+        IdentitySession session = new(new RotatingProvider(), c, Opts, () => T0);
+        await session.SignInAsync(CancellationToken.None);
+        await session.AttachSessionTokenAsync(
+            "sub", "Display Name", "sess", T0.AddHours(1), CancellationToken.None);
+        c.Value = null;
+
+        CredentialRefreshResult result = await session.RefreshCredentialAsync(CancellationToken.None);
+
+        Assert.Equal(CredentialRefreshOutcome.Refreshed, result.Outcome);
+        Assert.NotNull(c.Value);
+        Assert.Equal("Display Name", c.Value!.Value.DisplayName);
     }
 
     /// <summary>The provider says the chain is dead (null). The outcome is Rejected and neither the cache nor

@@ -1,5 +1,6 @@
 using System;
 using System.Data;
+using System.Runtime.ExceptionServices;
 using System.Threading.Tasks;
 using KhaozEngine.WorldStore.Journal;
 using KhaozEngine.WorldStore.Sqlite;
@@ -508,19 +509,67 @@ public sealed class MutationJournalDatabaseClockPurgeTests
         Assert.True(await SqlServerRetentionColumnExistsAsync(scope.ConnectionString));
     }
 
+    [Fact]
+    public async Task Sql_server_test_cleanup_failure_preserves_the_primary_failure()
+    {
+        var primary = new Task6InjectedFailure();
+        var cleanup = new InvalidOperationException("cleanup failed");
+
+        AggregateException failure = await Assert.ThrowsAsync<AggregateException>(() =>
+            RunWithCleanupAsync(
+                () => Task.FromException(primary),
+                () => Task.FromException(cleanup)));
+
+        Assert.Collection(
+            failure.InnerExceptions,
+            value => Assert.Same(primary, value),
+            value => Assert.Same(cleanup, value));
+    }
+
     private static async Task WithSqlServerVersionOneSchemaAsync(
         string connectionString,
         Func<Task> testBody)
     {
+        await RunWithCleanupAsync(
+            async () =>
+            {
+                await DowngradeSqlServerSchemaToVersionOneAsync(connectionString);
+                await testBody();
+            },
+            () =>
+            {
+                _ = new SqlServerMutationJournalStore(connectionString);
+                return Task.CompletedTask;
+            });
+    }
+
+    private static async Task RunWithCleanupAsync(Func<Task> operation, Func<Task> cleanup)
+    {
         try
         {
-            await DowngradeSqlServerSchemaToVersionOneAsync(connectionString);
-            await testBody();
+            await operation();
         }
-        finally
+        catch (Exception operationFailure)
         {
-            _ = new SqlServerMutationJournalStore(connectionString);
+            await RethrowAfterCleanupAsync(operationFailure, cleanup);
+            return;
         }
+
+        await cleanup();
+    }
+
+    private static async Task RethrowAfterCleanupAsync(Exception primaryFailure, Func<Task> cleanup)
+    {
+        try
+        {
+            await cleanup();
+        }
+        catch (Exception cleanupFailure)
+        {
+            throw new AggregateException(primaryFailure, cleanupFailure);
+        }
+
+        ExceptionDispatchInfo.Capture(primaryFailure).Throw();
     }
 
     private static async Task SetSqlServerOperationAgeAsync(string connectionString, Guid operationId, int ageMinutes)
@@ -591,10 +640,11 @@ public sealed class MutationJournalDatabaseClockPurgeTests
             await command.ExecuteNonQueryAsync();
             await transaction.CommitAsync();
         }
-        catch
+        catch (Exception ddlFailure)
         {
-            await transaction.RollbackAsync();
-            throw;
+            await RethrowAfterCleanupAsync(
+                ddlFailure,
+                async () => await transaction.RollbackAsync());
         }
     }
 

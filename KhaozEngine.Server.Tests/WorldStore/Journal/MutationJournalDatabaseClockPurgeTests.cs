@@ -454,9 +454,8 @@ public sealed class MutationJournalDatabaseClockPurgeTests
         SqlServerJournalPrefixStore store = scope.Open(retryHorizon: RetryHorizon);
         await store.InitializeAsync(Initialization(1));
         Guid operationId = store.PhysicalOperationId(MutationJournalTask6TestSupport.Identity(1).OperationId);
-        await DowngradeSqlServerSchemaToVersionOneAsync(scope.ConnectionString);
 
-        try
+        await WithSqlServerVersionOneSchemaAsync(scope.ConnectionString, async () =>
         {
             JournalStoreException validateOnly = Assert.Throws<JournalStoreException>(() =>
                 _ = new SqlServerMutationJournalStore(new SqlServerMutationJournalStoreOptions(scope.ConnectionString)
@@ -486,10 +485,41 @@ public sealed class MutationJournalDatabaseClockPurgeTests
             await store.AgeMaintenance.PurgeOperationsByAgeAsync(
                 new JournalOperationAgePurge(TimeSpan.Zero, 10));
             Assert.Equal(JournalOperationResolutionStatus.Replayed, (await store.ResolveOperationAsync(MutationJournalTask6TestSupport.Identity(1))).Status);
+        });
+    }
+
+    [SqlServerFact]
+    public async Task Sql_server_version_one_test_setup_restores_version_two_after_body_failure()
+    {
+        using var scope = new Task6SqlServerScope();
+        SqlServerJournalPrefixStore store = scope.Open(retryHorizon: RetryHorizon);
+        await store.InitializeAsync(Initialization(1));
+
+        await Assert.ThrowsAsync<Task6InjectedFailure>(() =>
+            WithSqlServerVersionOneSchemaAsync(
+                scope.ConnectionString,
+                () => throw new Task6InjectedFailure()));
+
+        _ = new SqlServerMutationJournalStore(new SqlServerMutationJournalStoreOptions(scope.ConnectionString)
+        {
+            SchemaMode = SqlServerJournalSchemaMode.ValidateOnly,
+        });
+        Assert.Equal(2, await ReadSqlServerSchemaVersionAsync(scope.ConnectionString));
+        Assert.True(await SqlServerRetentionColumnExistsAsync(scope.ConnectionString));
+    }
+
+    private static async Task WithSqlServerVersionOneSchemaAsync(
+        string connectionString,
+        Func<Task> testBody)
+    {
+        try
+        {
+            await DowngradeSqlServerSchemaToVersionOneAsync(connectionString);
+            await testBody();
         }
         finally
         {
-            _ = new SqlServerMutationJournalStore(scope.ConnectionString);
+            _ = new SqlServerMutationJournalStore(connectionString);
         }
     }
 
@@ -545,15 +575,27 @@ public sealed class MutationJournalDatabaseClockPurgeTests
     {
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync();
+        await using SqlTransaction transaction = (SqlTransaction)await connection.BeginTransactionAsync();
         await using SqlCommand command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText = """
             IF OBJECT_ID(N'dbo.trg_journal_operation_delete_guard', N'TR') IS NOT NULL
                 DROP TRIGGER dbo.trg_journal_operation_delete_guard;
             DROP INDEX ix_journal_operation_retention ON dbo.journal_operation;
+            ALTER TABLE dbo.journal_operation DROP CONSTRAINT df_journal_operation_retention;
             ALTER TABLE dbo.journal_operation DROP COLUMN retention_started_at_utc;
             UPDATE dbo.journal_metadata SET schema_version = 1 WHERE metadata_key = 1;
             """;
-        await command.ExecuteNonQueryAsync();
+        try
+        {
+            await command.ExecuteNonQueryAsync();
+            await transaction.CommitAsync();
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
     }
 
     private static async Task<DateTimeOffset> ReadSqlServerRetentionStartedAsync(string connectionString, Guid operationId)

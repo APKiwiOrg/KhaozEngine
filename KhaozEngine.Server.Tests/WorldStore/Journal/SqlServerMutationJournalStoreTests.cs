@@ -73,14 +73,26 @@ public sealed class SqlServerMutationJournalStoreTests : IDisposable
     public void Version_one_migration_is_split_at_the_added_retention_column_boundary()
     {
         IReadOnlyList<string> commands = SqlServerMutationJournalStore.VersionOneMigrationSqlForTest;
+        string[] responsibilities =
+        {
+            "ADD retention_started_at_utc",
+            "SET retention_started_at_utc",
+            "CREATE INDEX ix_journal_operation_retention",
+            "CREATE TRIGGER dbo.trg_journal_operation_delete_guard",
+            "SET schema_version = 2",
+        };
 
-        Assert.Collection(
-            commands,
-            add => Assert.Contains("ADD retention_started_at_utc", add, StringComparison.OrdinalIgnoreCase),
-            reset => Assert.Contains("SET retention_started_at_utc", reset, StringComparison.OrdinalIgnoreCase),
-            index => Assert.Contains("CREATE INDEX ix_journal_operation_retention", index, StringComparison.OrdinalIgnoreCase),
-            trigger => Assert.Contains("CREATE TRIGGER dbo.trg_journal_operation_delete_guard", trigger, StringComparison.OrdinalIgnoreCase),
-            metadata => Assert.Contains("SET schema_version = 2", metadata, StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(responsibilities.Length, commands.Count);
+        for (int commandIndex = 0; commandIndex < commands.Count; commandIndex++)
+        {
+            for (int responsibilityIndex = 0; responsibilityIndex < responsibilities.Length; responsibilityIndex++)
+            {
+                Action<string, string, StringComparison> assertion = commandIndex == responsibilityIndex
+                    ? Assert.Contains
+                    : Assert.DoesNotContain;
+                assertion(responsibilities[responsibilityIndex], commands[commandIndex], StringComparison.OrdinalIgnoreCase);
+            }
+        }
     }
 
     [Theory]

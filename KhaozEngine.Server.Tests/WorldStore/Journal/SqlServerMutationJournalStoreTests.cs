@@ -58,6 +58,8 @@ public sealed class SqlServerMutationJournalStoreTests : IDisposable
 
         Assert.Contains("Latin1_General_100_BIN2", sql, StringComparison.Ordinal);
         Assert.Contains("operation_id uniqueidentifier", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("retention_started_at_utc datetimeoffset(7) NOT NULL", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("DEFAULT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')", sql, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("fk_journal_event_operation", sql, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -83,7 +85,7 @@ public sealed class SqlServerMutationJournalStoreTests : IDisposable
     }
 
     [SqlServerFact]
-    public void Auto_create_is_idempotent_and_validate_only_accepts_version_one()
+    public void Auto_create_is_idempotent_and_validate_only_accepts_version_two()
     {
         _ = new SqlServerMutationJournalStore(DedicatedConnectionString);
         _ = new SqlServerMutationJournalStore(DedicatedConnectionString);

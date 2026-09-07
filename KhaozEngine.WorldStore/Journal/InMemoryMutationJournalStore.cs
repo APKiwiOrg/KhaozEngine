@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace KhaozEngine.WorldStore.Journal;
 
-public sealed class InMemoryMutationJournalStore : IMutationJournalStore, IMutationJournalMaintenance
+public sealed class InMemoryMutationJournalStore : IMutationJournalStore, IMutationJournalAgeMaintenance
 {
     private static readonly TimeSpan DefaultMinimumRetryHorizon = TimeSpan.FromHours(24);
     private readonly object gate = new();
@@ -372,9 +372,48 @@ public sealed class InMemoryMutationJournalStore : IMutationJournalStore, IMutat
             Invoke(JournalTestHookPhase.BeforeCommit);
             state = new StoreState(state.StoreEpoch, state.Streams, operations);
             Invoke(JournalTestHookPhase.AfterCommitBeforeResponse);
-            return Task.FromResult(new JournalOperationPurgeResult(candidates.Length, deleted, ineligible, oldest));
+            DateTimeOffset effectiveCutoff = purge.CutoffUtc < safeCutoff ? purge.CutoffUtc : safeCutoff;
+            return Task.FromResult(new JournalOperationPurgeResult(candidates.Length, deleted, ineligible, oldest, now, effectiveCutoff));
         }
     }
+
+    public Task<JournalOperationPurgeResult> PurgeOperationsByAgeAsync(
+        JournalOperationAgePurge purge,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(purge);
+        cancellationToken.ThrowIfCancellationRequested();
+        Invoke(JournalTestHookPhase.BeforeTransaction);
+        lock (gate)
+        {
+            DateTimeOffset now = timeProvider.GetUtcNow();
+            TimeSpan effectiveAge = purge.MinimumAge > minimumRetryHorizon ? purge.MinimumAge : minimumRetryHorizon;
+            DateTimeOffset effectiveCutoff = SubtractOrMinimum(now, effectiveAge);
+            OperationState[] candidates = state.Operations.Values
+                .Where(value => value.Receipt.CommittedAtUtc <= effectiveCutoff)
+                .OrderBy(value => value.Receipt.CommittedAtUtc)
+                .ThenBy(value => value.Receipt.OperationId)
+                .Take(purge.MaxOperations)
+                .ToArray();
+            var operations = new Dictionary<Guid, OperationState>(state.Operations);
+            foreach (OperationState operation in candidates)
+                operations.Remove(operation.Receipt.OperationId);
+            DateTimeOffset? oldest = operations.Count == 0 ? null : operations.Values.Min(value => value.Receipt.CommittedAtUtc);
+            Invoke(JournalTestHookPhase.BeforeCommit);
+            state = new StoreState(state.StoreEpoch, state.Streams, operations);
+            Invoke(JournalTestHookPhase.AfterCommitBeforeResponse);
+            return Task.FromResult(new JournalOperationPurgeResult(
+                candidates.Length,
+                candidates.Length,
+                0,
+                oldest,
+                now,
+                effectiveCutoff));
+        }
+    }
+
+    private static DateTimeOffset SubtractOrMinimum(DateTimeOffset value, TimeSpan duration)
+        => duration > value - DateTimeOffset.MinValue ? DateTimeOffset.MinValue : value - duration;
 
     public Task<Guid> RotateStoreEpochAsync(CancellationToken cancellationToken = default)
     {

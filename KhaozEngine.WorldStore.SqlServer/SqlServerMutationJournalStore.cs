@@ -27,7 +27,7 @@ public sealed record SqlServerMutationJournalStoreOptions(string ConnectionStrin
     public TimeProvider TimeProvider { get; init; } = TimeProvider.System;
 }
 
-public sealed partial class SqlServerMutationJournalStore : IMutationJournalStore, IMutationJournalMaintenance
+public sealed partial class SqlServerMutationJournalStore : IMutationJournalStore, IMutationJournalAgeMaintenance
 {
     private readonly string connectionString;
     private readonly int commandTimeoutSeconds;
@@ -348,6 +348,7 @@ public sealed partial class SqlServerMutationJournalStore : IMutationJournalStor
         => SqlServerJournalSchema.ApplicationLockFailure(returnCode);
 
     internal static string SchemaSqlForTest => SqlServerJournalSchema.SchemaSql;
+    internal static string VersionOneSchemaSqlForTest => SqlServerJournalSchema.VersionOneSchemaSql;
 
     private enum OperationLookupStatus
     {

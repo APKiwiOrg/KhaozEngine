@@ -28,10 +28,10 @@ transaction, so it is still one connection's worth of setup instead of one per r
 
 ## Mutation journal
 
-`SqlServerMutationJournalStore` implements `IMutationJournalStore` and `IMutationJournalMaintenance` for
-durable player mutations. It uses serializable SQL transactions, binary collations for stream and section
-identity, checksummed event and snapshot payloads, replay receipts, projection cursors, compaction, operation
-retention, and store epoch rotation.
+`SqlServerMutationJournalStore` implements `IMutationJournalStore`, `IMutationJournalMaintenance`, and the additive
+`IMutationJournalAgeMaintenance` capability for durable player mutations. It uses serializable SQL transactions,
+binary collations for stream and section identity, checksummed event and snapshot payloads, replay receipts,
+projection cursors, compaction, operation retention, and store epoch rotation.
 
 ```csharp
 using KhaozEngine.WorldStore.Journal;
@@ -47,24 +47,29 @@ var journal = new SqlServerMutationJournalStore(
     });
 ```
 
-`AutoCreate` creates version one only when no journal objects exist. It is intended for fresh databases and
-development. `ValidateOnly` performs no DDL and is the production mode when the application principal does not
-have schema permissions. A partial, malformed, older, or newer journal schema fails with `SchemaMismatch` and
-names the required migration.
+`AutoCreate` creates version two when no journal objects exist. It also migrates a valid version-one journal by
+adding a database-owned operation-retention timestamp. Existing replay rows start a fresh retention horizon at
+migration time, so upgrade cannot expire one early. A database default also stamps inserts from an already-running
+version-one writer during rollout. Restarted hosts must support version two. `ValidateOnly` performs no DDL and is the production mode when
+the application principal does not have schema permissions. A partial, malformed, older, or newer journal schema
+fails with `SchemaMismatch` and names the required migration.
 
-The package embeds `JournalSchemaV1.sql`. Deployments may apply that script before starting a validate-only
+The package embeds `JournalSchemaV2.sql` for fresh deployments and retains `JournalSchemaV1.sql` for controlled
+upgrade tooling and compatibility tests. Deployments apply the version-two script before starting a validate-only
 host. Initialization is serialized with a transaction-owned SQL application lock. Normal writes share a
 maintenance gate, while compaction, replay retention, and epoch rotation take the exclusive side.
 
-Use a migration identity with schema DDL rights to apply `JournalSchemaV1.sql`. A `ValidateOnly` runtime identity
+Use a migration identity with schema DDL rights to create version two or run one `AutoCreate` boot over version one.
+A `ValidateOnly` runtime identity
 does not need DDL. It needs database connect, catalog visibility for schema validation, membership in the `public`
 fixed database role used by `sys.sp_getapplock`, and `SELECT`, `INSERT`, `UPDATE`, and `DELETE` on every
 `dbo.journal_*` table. Grant only the game host and controlled operators access to journal data. Prefer a managed
 identity or a secret from the deployment secret store. Do not commit connection strings or print them in logs.
 
 `CommandTimeout` applies to commands and schema locking. `MinimumRetryHorizon` prevents maintenance from deleting
-replay rows which may still be retried. `Limits` can lower any core journal maximum. `TimeProvider` exists for
-deterministic hosts and tests. Each operation uses a short-lived pooled SQL connection.
+replay rows which may still be retried. `Limits` can lower any core journal maximum. `TimeProvider` controls public
+journal timestamps for deterministic hosts and tests. It does not control `PurgeOperationsByAgeAsync`, whose
+retention timestamps and cutoff come from SQL Server. Each operation uses a short-lived pooled SQL connection.
 
 Back up every journal table as one unit. After a point-in-time restore, stop all journal hosts, rotate the epoch with
 `IMutationJournalMaintenance.RotateStoreEpochAsync`, verify snapshot checksums and stream continuity, reconcile any
@@ -72,7 +77,8 @@ external consumer, then reopen traffic. Every prior projection cursor will retur
 
 Use snapshot-only compaction in the first release. Pass no event prune boundary. Pruning needs a game retention
 policy and proof that every durable external consumer has passed the boundary. Purge replay rows in bounded batches
-and keep `MinimumRetryHorizon` at least as long as the maximum retry window for clients and durable server causes.
+with `PurgeOperationsByAgeAsync` and keep `MinimumRetryHorizon` at least as long as the maximum retry window for
+clients and durable server causes.
 
 Live provider tests require `KE_SQLSERVER_TEST_CONNSTRING`. Each test owns a unique stream prefix and cleanup
 removes only rows under that prefix. Because cursor epoch rotation and operation retention are database-global,

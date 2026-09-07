@@ -202,6 +202,13 @@ public interface IMutationJournalMaintenance
     Task<Guid> RotateStoreEpochAsync(
         CancellationToken cancellationToken = default);
 }
+
+public interface IMutationJournalAgeMaintenance : IMutationJournalMaintenance
+{
+    Task<JournalOperationPurgeResult> PurgeOperationsByAgeAsync(
+        JournalOperationAgePurge purge,
+        CancellationToken cancellationToken = default);
+}
 ```
 
 `JournalOperationIdentity` contains a `Guid` operation ID, an authenticated scope, an action kind, and opaque
@@ -561,12 +568,17 @@ R1 defaults to snapshot-only compaction. Event pruning is enabled only when the 
 retention policy and proves all durable external consumers have passed N. Projection sections are not rebuilt
 from pruned events during an admin read.
 
-Operation retention uses a separate `IMutationJournalMaintenance.PurgeOperationsAsync` API. A purge accepts a
-UTC cutoff and bounded batch size, refuses anything younger than the configured minimum retry
-horizon, and selects through the committed-time index. Replay retention is independent of event retention
+Operation retention uses `IMutationJournalAgeMaintenance.PurgeOperationsByAgeAsync`. A production purge accepts a
+minimum age and bounded batch size. Durable providers record a separate retention start with the database clock,
+derive the cutoff from that clock inside the purge transaction, enforce the longer of caller age and configured
+minimum retry horizon, and select through the retention-time index. Version-one rows migrate with retention starting
+at migration time, so an upgrade cannot expire a replay receipt early. Public receipt timestamps keep their existing
+host `TimeProvider` meaning. The cutoff-based API remains for compatibility with controlled callers.
+Replay retention is independent of event retention
 because events deliberately keep operation IDs without a foreign key. The transaction deletes
 `journal_operation_stream` rows before their operation rows while leaving any retained events untouched. The
-purge reports scanned, deleted, and ineligible counts plus its oldest retained timestamp. Metrics expose
+purge reports scanned, deleted, and ineligible counts plus its oldest retained timestamp, database evaluation time,
+and effective cutoff. Metrics expose
 retention age and backlog. Conformance pins the no-younger-than-horizon rule and bounded deletion order.
 
 Snapshot cadence is based on events and bytes, not wall-clock player scans. Suggested starting thresholds are

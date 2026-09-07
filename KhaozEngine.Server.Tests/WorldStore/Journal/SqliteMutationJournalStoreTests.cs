@@ -96,7 +96,7 @@ public sealed class SqliteMutationJournalStoreTests : MutationJournalStoreConfor
     }
 
     [Fact]
-    public void Auto_create_is_idempotent_and_validate_only_accepts_version_one()
+    public void Auto_create_is_idempotent_and_validate_only_accepts_version_two()
     {
         string path = database.NewPath();
         using (database.Open(path)) { }
@@ -112,9 +112,13 @@ public sealed class SqliteMutationJournalStoreTests : MutationJournalStoreConfor
             path,
             "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name LIKE 'journal_%';");
         long schemaVersion = database.ScalarLong(path, "SELECT schema_version FROM journal_metadata WHERE metadata_key = 1;");
+        long retentionNotNull = database.ScalarLong(
+            path,
+            "SELECT [notnull] FROM pragma_table_info('journal_operation') WHERE name = 'retention_started_at_utc';");
 
         Assert.Equal(7, tableCount);
-        Assert.Equal(1, schemaVersion);
+        Assert.Equal(2, schemaVersion);
+        Assert.Equal(1, retentionNotNull);
     }
 
     [Fact]

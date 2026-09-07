@@ -373,9 +373,11 @@ public sealed partial class SqliteMutationJournalStore
             INSERT INTO journal_operation(
                 operation_id, operation_kind, intent_fingerprint_format, intent_fingerprint,
                 execution_fingerprint_format, execution_fingerprint, result_schema,
-                result_schema_version, result_data, result_sha256, committed_at_utc)
+                result_schema_version, result_data, result_sha256, committed_at_utc,
+                retention_started_at_utc)
             VALUES ($id, $kind, $intentFormat, $intent, $executionFormat, $execution,
-                    $resultSchema, $resultSchemaVersion, $result, $resultChecksum, $now);
+                    $resultSchema, $resultSchemaVersion, $result, $resultChecksum, $now,
+                    CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER));
             """))
         {
             Add(operation, "$id", OperationId(identity.OperationId));

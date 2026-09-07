@@ -6065,7 +6065,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.32.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.33.0" />
 ```
 
 ```csharp
@@ -11448,7 +11448,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.32.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.33.0" />
 ```
 
 ```csharp
@@ -11484,7 +11484,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.32.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.33.0" />
 ```
 
 ```csharp
@@ -11726,7 +11726,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.32.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.33.0" />
 ```
 
 ```csharp
@@ -13771,7 +13771,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="18.32.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="18.33.0" />
 </ItemGroup>
 ```
 
@@ -15185,9 +15185,10 @@ host loss. `IWorldStore` remains checkpoint persistence. `BatchedWriter<T>` rema
 Neither is an ownership authority.
 
 The core package provides the immutable values, `IMutationJournalStore`, `IMutationJournalMaintenance`,
-`InMemoryMutationJournalStore`, and `MutationJournalExecutor`. The SQLite and SQL Server provider packages implement
-the same store and maintenance seams. Their package READMEs cover schema modes and permissions. The complete public
-type and limit reference is in [`KhaozEngine.WorldStore/README.md`](../KhaozEngine.WorldStore/README.md).
+`IMutationJournalAgeMaintenance`, `InMemoryMutationJournalStore`, and `MutationJournalExecutor`. The SQLite and SQL
+Server provider packages implement the same store and maintenance seams. Their package READMEs cover schema modes
+and permissions. The complete public type and limit reference is in
+[`KhaozEngine.WorldStore/README.md`](../KhaozEngine.WorldStore/README.md).
 
 The host flow is fixed:
 
@@ -15267,6 +15268,15 @@ After operation-row purge, `ResolveOperationAsync` may return `NotFound` for a c
 remain. Durable game-domain state, expected-version checks, and consumed-source validation prevent duplicates after
 the operation-retention horizon. This does not weaken unknown-outcome handling: reuse the identical frozen identity
 and intent throughout that protocol and never allocate a replacement operation ID.
+
+Production maintenance requires `IMutationJournalAgeMaintenance` and calls
+`PurgeOperationsByAgeAsync(new JournalOperationAgePurge(age, maxOperations))`.
+The caller supplies a retention duration and a positive batch bound, never a host-clock cutoff. SQL Server and
+SQLite stamp a separate retention start from their database clock, read that clock again inside the locked purge
+transaction, and enforce the longer of the requested age or `MinimumRetryHorizon`. Version-one databases migrate
+to schema version two by assigning every existing receipt the migration time, which conservatively restarts its
+retention horizon. `JournalOperationPurgeResult.EvaluatedAtUtc` and `EffectiveCutoffUtc` support retention metrics.
+The older cutoff API remains available for compatibility with controlled maintenance code.
 
 Every executor needs explicit positive operation-count and owned-byte capacities. Accepted work remains charged and
 its streams remain reserved until acknowledgement. `StopAsync` rejects new work, gives admitted work a bounded drain

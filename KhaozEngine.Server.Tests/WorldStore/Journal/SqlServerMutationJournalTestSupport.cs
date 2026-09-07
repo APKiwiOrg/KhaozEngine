@@ -36,6 +36,7 @@ internal sealed class SqlServerJournalPrefixStore : IMutationJournalStore
 
     internal string Prefix { get; }
     internal IMutationJournalMaintenance Maintenance => inner;
+    internal IMutationJournalAgeMaintenance AgeMaintenance => inner;
     internal TimeProvider TimeProvider { get; }
     internal IReadOnlyCollection<Guid> OwnedOperationIds
     {

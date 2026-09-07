@@ -70,14 +70,16 @@ applying the effect twice.
 | `ReadProjectionsAsync(query, ct)` | Reads one selected stream. Returns `Success`, `ResetRequired`, or `NotFound`. |
 | `CompactAsync(compaction, ct)` | Replaces a verified snapshot and optionally prunes an eligible event prefix. Returns `Compacted`, `NotFound`, or `VersionConflict`. |
 
-`IMutationJournalMaintenance` is a separate operational seam:
+`IMutationJournalMaintenance` is a separate operational seam. Providers which can evaluate receipt age against
+their own authoritative clock also implement the additive `IMutationJournalAgeMaintenance` capability:
 
 | Method | Contract |
 |---|---|
 | `PurgeOperationsAsync(purge, ct)` | Deletes a bounded batch of replay rows at or before the requested UTC cutoff. The configured minimum retry horizon is enforced against provider time. Events remain. |
+| `IMutationJournalAgeMaintenance.PurgeOperationsByAgeAsync(purge, ct)` | Deletes an oldest-first bounded batch by age. SQL Server and SQLite derive the cutoff from their database UTC clock and enforce the longer of the requested age or configured minimum retry horizon. Events remain. |
 | `RotateStoreEpochAsync(ct)` | Replaces the store epoch while writers are quiesced. Every cursor from the prior history then requires reset. |
 
-The in-memory reference store implements both interfaces:
+The in-memory reference store implements the store and both maintenance interfaces:
 
 ```csharp
 using KhaozEngine.WorldStore.Journal;
@@ -133,7 +135,8 @@ uses the `KJIF`, `KJEF`, and `KJNF` tagged binary envelopes. A game should not i
 | `JournalCompaction` | Complete snapshot through a version and an optional prune-through version no greater than it. |
 | `JournalCompactionResult` | Status, prior snapshot version, stored snapshot version, and pruned event count. |
 | `JournalOperationPurge` | UTC cutoff and positive batch limit. |
-| `JournalOperationPurgeResult` | Scanned, deleted, ineligible, and oldest-retained readings. |
+| `JournalOperationAgePurge` | Minimum receipt age and positive batch limit. |
+| `JournalOperationPurgeResult` | Scanned, deleted, ineligible, oldest-retained, evaluation-time, and effective-cutoff readings. The two clock readings are populated by the age API. |
 
 Recovery loads the latest snapshot, verifies it, then reads events in bounded pages. The first page captures a
 fixed `ThroughVersion`. Every continuation repeats that value. A sequence gap, checksum failure, or unsupported
@@ -290,7 +293,12 @@ Replay-row retention is separate from event retention. Configure a retry horizon
 a client or durable server cause may retry the same intent. Never purge operation rows inside that horizon. After
 purge, `ResolveOperationAsync` may return `NotFound` for a committed operation. Its events remain. Durable game-domain
 state, expected-version checks, and consumed-source validation are the permanent duplicate defense after replay
-rows expire. A consumed loot source must stay consumed.
+rows expire. A consumed loot source must stay consumed. Production retention requires
+`IMutationJournalAgeMaintenance` and uses `PurgeOperationsByAgeAsync`, which receives a duration rather than a host
+timestamp. Durable providers record a
+separate database-owned retention start and derive the effective cutoff from that same database clock. Public
+receipt and event timestamps keep their existing `TimeProvider` semantics. The cutoff API remains for compatibility
+with controlled callers, but it does not provide database-clock policy isolation.
 
 After a point-in-time restore, quiesce all journal hosts, rotate the store epoch, verify snapshots and stream
 continuity, reconcile external consumers, then reopen writers. This makes every old admin cursor return

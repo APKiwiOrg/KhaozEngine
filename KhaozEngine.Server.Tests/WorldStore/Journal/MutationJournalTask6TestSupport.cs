@@ -146,16 +146,18 @@ internal sealed class Task6SqlServerScope : IDisposable
 
     internal SqlServerJournalPrefixStore Open(
         SqlServerJournalTestHook? hook = null,
-        TimeSpan? retryHorizon = null)
+        TimeSpan? retryHorizon = null,
+        Task6ManualTimeProvider? clock = null)
     {
+        Task6ManualTimeProvider selectedClock = clock ?? Clock;
         var inner = new SqlServerMutationJournalStore(
             new SqlServerMutationJournalStoreOptions(connectionString)
             {
                 MinimumRetryHorizon = retryHorizon ?? TimeSpan.FromHours(24),
-                TimeProvider = Clock,
+                TimeProvider = selectedClock,
             },
             hook);
-        var store = new SqlServerJournalPrefixStore(inner, Prefix, Clock);
+        var store = new SqlServerJournalPrefixStore(inner, Prefix, selectedClock);
         stores.Add(store);
         return store;
     }

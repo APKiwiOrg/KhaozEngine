@@ -14,8 +14,8 @@ public enum SqliteJournalSchemaMode
 
 internal static class SqliteJournalSchema
 {
-    internal const int CurrentVersion = 1;
-    internal const string RequiredMigration = "sqlite-journal-v1-create";
+    internal const int CurrentVersion = 2;
+    internal const string RequiredMigration = "sqlite-journal-v2-operation-retention";
 
     private const string Tables = """
         CREATE TABLE IF NOT EXISTS journal_metadata (
@@ -55,8 +55,18 @@ internal static class SqliteJournalSchema
             result_schema_version INTEGER NOT NULL CHECK (result_schema_version > 0),
             result_data BLOB NOT NULL CHECK (length(result_data) <= 65536),
             result_sha256 BLOB NOT NULL CHECK (length(result_sha256) = 32),
-            committed_at_utc INTEGER NOT NULL);
+            committed_at_utc INTEGER NOT NULL,
+            retention_started_at_utc INTEGER NOT NULL DEFAULT 9223372036854775807);
         CREATE INDEX IF NOT EXISTS ix_journal_operation_commit ON journal_operation(committed_at_utc, operation_id);
+        CREATE INDEX IF NOT EXISTS ix_journal_operation_retention ON journal_operation(retention_started_at_utc, operation_id);
+        CREATE TRIGGER IF NOT EXISTS trg_journal_operation_retention
+        AFTER INSERT ON journal_operation
+        WHEN NEW.retention_started_at_utc = 9223372036854775807
+        BEGIN
+            UPDATE journal_operation
+            SET retention_started_at_utc = CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)
+            WHERE operation_id = NEW.operation_id;
+        END;
 
         CREATE TABLE IF NOT EXISTS journal_operation_stream (
             operation_id TEXT COLLATE BINARY NOT NULL,
@@ -92,8 +102,25 @@ internal static class SqliteJournalSchema
         CREATE INDEX IF NOT EXISTS ix_journal_projection_version ON journal_projection(stream_key, source_version);
 
         INSERT OR IGNORE INTO journal_metadata(metadata_key, schema_version, store_epoch, updated_at_utc)
-        VALUES (1, 1, lower(hex(randomblob(16))), CAST(strftime('%s', 'now') AS INTEGER) * 1000);
+        VALUES (1, 2, lower(hex(randomblob(16))), CAST(strftime('%s', 'now') AS INTEGER) * 1000);
         """;
+
+    internal static string VersionOneSchemaSqlForTest => VersionOneTables;
+
+    private static string VersionOneTables => Tables
+        .Replace(",\n    retention_started_at_utc INTEGER NOT NULL DEFAULT 9223372036854775807", string.Empty, StringComparison.Ordinal)
+        .Replace("CREATE INDEX IF NOT EXISTS ix_journal_operation_retention ON journal_operation(retention_started_at_utc, operation_id);\n", string.Empty, StringComparison.Ordinal)
+        .Replace("""
+CREATE TRIGGER IF NOT EXISTS trg_journal_operation_retention
+AFTER INSERT ON journal_operation
+WHEN NEW.retention_started_at_utc = 9223372036854775807
+BEGIN
+    UPDATE journal_operation
+    SET retention_started_at_utc = CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)
+    WHERE operation_id = NEW.operation_id;
+END;
+""", string.Empty, StringComparison.Ordinal)
+        .Replace("VALUES (1, 2, lower(hex(randomblob(16)))", "VALUES (1, 1, lower(hex(randomblob(16)))", StringComparison.Ordinal);
 
     internal static string BootstrapSql(SqliteMutationJournalStoreOptions options)
     {
@@ -116,13 +143,19 @@ internal static class SqliteJournalSchema
                 actual = ReadSchemaObjects(connection);
             }
 
-            ValidateSchemaObjects(actual);
+            long version = ReadSchemaVersion(connection);
+            if (version == 1)
+            {
+                ValidateSchemaObjects(actual, VersionOneTables, 1);
+                if (mode == SqliteJournalSchemaMode.ValidateOnly) throw Mismatch("unsupported version '1'");
+                MigrateVersionOne(connection);
+                actual = ReadSchemaObjects(connection);
+                version = ReadSchemaVersion(connection);
+            }
+            if (version != CurrentVersion) throw Mismatch($"unsupported version '{version}'");
+            ValidateSchemaObjects(actual, Tables, CurrentVersion);
 
             using SqliteCommand command = connection.CreateCommand();
-            command.CommandText = "SELECT schema_version FROM journal_metadata WHERE metadata_key = 1;";
-            object? raw = command.ExecuteScalar();
-            if (raw is not long version || version != CurrentVersion)
-                throw Mismatch(raw is null or DBNull ? "missing" : Convert.ToString(raw) ?? "unknown");
 
             command.CommandText = "PRAGMA foreign_keys;";
             if (Convert.ToInt32(command.ExecuteScalar()) != 1)
@@ -152,6 +185,7 @@ internal static class SqliteJournalSchema
             FROM sqlite_master
             WHERE (type = 'table' AND lower(name) LIKE 'journal_%')
                OR (type = 'index' AND lower(name) LIKE 'ix_journal_%')
+               OR (type = 'trigger' AND lower(name) LIKE 'trg_journal_%')
             ORDER BY type, name COLLATE BINARY;
             """;
         using SqliteDataReader reader = command.ExecuteReader();
@@ -160,13 +194,55 @@ internal static class SqliteJournalSchema
         return objects;
     }
 
-    private static void ValidateSchemaObjects(IReadOnlyDictionary<string, string> actual)
+    private static long ReadSchemaVersion(SqliteConnection connection)
+    {
+        using SqliteCommand command = connection.CreateCommand();
+        command.CommandText = "SELECT schema_version FROM journal_metadata WHERE metadata_key = 1;";
+        object? raw = command.ExecuteScalar();
+        return raw is long version
+            ? version
+            : throw Mismatch(raw is null or DBNull ? "missing" : Convert.ToString(raw) ?? "unknown");
+    }
+
+    private static void MigrateVersionOne(SqliteConnection connection)
+    {
+        using SqliteTransaction transaction = connection.BeginTransaction(deferred: false);
+        using SqliteCommand command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            ALTER TABLE journal_operation
+            ADD COLUMN retention_started_at_utc INTEGER NOT NULL DEFAULT 9223372036854775807;
+            CREATE INDEX ix_journal_operation_retention
+            ON journal_operation(retention_started_at_utc, operation_id);
+            UPDATE journal_operation
+            SET retention_started_at_utc = CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER);
+            CREATE TRIGGER trg_journal_operation_retention
+            AFTER INSERT ON journal_operation
+            WHEN NEW.retention_started_at_utc = 9223372036854775807
+            BEGIN
+                UPDATE journal_operation
+                SET retention_started_at_utc = CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)
+                WHERE operation_id = NEW.operation_id;
+            END;
+            UPDATE journal_metadata
+            SET schema_version = 2,
+                updated_at_utc = CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)
+            WHERE metadata_key = 1 AND schema_version = 1;
+            """;
+        command.ExecuteNonQuery();
+        transaction.Commit();
+    }
+
+    private static void ValidateSchemaObjects(
+        IReadOnlyDictionary<string, string> actual,
+        string expectedTables,
+        int expectedVersion)
     {
         using var reference = new SqliteConnection("Data Source=:memory:");
         reference.Open();
         using (SqliteCommand create = reference.CreateCommand())
         {
-            create.CommandText = Tables;
+            create.CommandText = expectedTables;
             create.ExecuteNonQuery();
         }
         IReadOnlyDictionary<string, string> expected = ReadSchemaObjects(reference);
@@ -175,7 +251,7 @@ internal static class SqliteJournalSchema
         foreach ((string name, string expectedSql) in expected)
         {
             if (!actual.TryGetValue(name, out string? actualSql) || !StringComparer.Ordinal.Equals(actualSql, expectedSql))
-                throw Mismatch($"version 1 object '{name}' does not match the supported shape");
+                throw Mismatch($"version {expectedVersion} object '{name}' does not match the supported shape");
         }
     }
 

@@ -83,9 +83,34 @@ public sealed class JournalOperationPurge
     public int MaxOperations { get; }
 }
 
+public sealed class JournalOperationAgePurge
+{
+    public JournalOperationAgePurge(TimeSpan minimumAge, int maxOperations)
+    {
+        if (minimumAge < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(minimumAge));
+        JournalValidation.Positive(maxOperations, nameof(maxOperations));
+        MinimumAge = minimumAge;
+        MaxOperations = maxOperations;
+    }
+
+    public TimeSpan MinimumAge { get; }
+    public int MaxOperations { get; }
+}
+
 public sealed class JournalOperationPurgeResult
 {
     public JournalOperationPurgeResult(int scannedCount, int deletedCount, int ineligibleCount, DateTimeOffset? oldestRetainedAtUtc)
+        : this(scannedCount, deletedCount, ineligibleCount, oldestRetainedAtUtc, null, null)
+    {
+    }
+
+    public JournalOperationPurgeResult(
+        int scannedCount,
+        int deletedCount,
+        int ineligibleCount,
+        DateTimeOffset? oldestRetainedAtUtc,
+        DateTimeOffset? evaluatedAtUtc,
+        DateTimeOffset? effectiveCutoffUtc)
     {
         if (scannedCount < 0) throw new ArgumentOutOfRangeException(nameof(scannedCount));
         if (deletedCount < 0 || deletedCount > scannedCount) throw new ArgumentOutOfRangeException(nameof(deletedCount));
@@ -94,10 +119,14 @@ public sealed class JournalOperationPurgeResult
         DeletedCount = deletedCount;
         IneligibleCount = ineligibleCount;
         OldestRetainedAtUtc = oldestRetainedAtUtc;
+        EvaluatedAtUtc = evaluatedAtUtc;
+        EffectiveCutoffUtc = effectiveCutoffUtc;
     }
 
     public int ScannedCount { get; }
     public int DeletedCount { get; }
     public int IneligibleCount { get; }
     public DateTimeOffset? OldestRetainedAtUtc { get; }
+    public DateTimeOffset? EvaluatedAtUtc { get; }
+    public DateTimeOffset? EffectiveCutoffUtc { get; }
 }

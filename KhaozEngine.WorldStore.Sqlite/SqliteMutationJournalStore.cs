@@ -18,8 +18,10 @@ public sealed record SqliteMutationJournalStoreOptions(string ConnectionString)
     public TimeProvider TimeProvider { get; init; } = TimeProvider.System;
 }
 
-public sealed partial class SqliteMutationJournalStore : IMutationJournalStore, IMutationJournalMaintenance, IDisposable
+public sealed partial class SqliteMutationJournalStore : IMutationJournalStore, IMutationJournalAgeMaintenance, IDisposable
 {
+    internal static string VersionOneSchemaSqlForTest => SqliteJournalSchema.VersionOneSchemaSqlForTest;
+
     private readonly SqliteStoreConnection db;
     private readonly JournalLimits limits;
     private readonly TimeSpan minimumRetryHorizon;

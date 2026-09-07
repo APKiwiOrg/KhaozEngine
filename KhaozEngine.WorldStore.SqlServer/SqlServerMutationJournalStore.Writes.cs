@@ -367,9 +367,11 @@ public sealed partial class SqlServerMutationJournalStore
             INSERT INTO dbo.journal_operation(
                 operation_id, operation_kind, intent_fingerprint_format, intent_fingerprint,
                 execution_fingerprint_format, execution_fingerprint, result_schema,
-                result_schema_version, result_data, result_sha256, committed_at_utc)
+                result_schema_version, result_data, result_sha256, committed_at_utc,
+                retention_started_at_utc)
             VALUES (@id, @kind, @intentFormat, @intent, @executionFormat, @execution,
-                    @resultSchema, @resultSchemaVersion, @result, @resultChecksum, @now);
+                    @resultSchema, @resultSchemaVersion, @result, @resultChecksum, @now,
+                    TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'));
             """))
         {
             Add(operation, "@id", identity.OperationId);

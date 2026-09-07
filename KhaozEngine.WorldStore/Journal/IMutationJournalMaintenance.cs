@@ -9,3 +9,10 @@ public interface IMutationJournalMaintenance
     Task<JournalOperationPurgeResult> PurgeOperationsAsync(JournalOperationPurge purge, CancellationToken cancellationToken = default);
     Task<Guid> RotateStoreEpochAsync(CancellationToken cancellationToken = default);
 }
+
+public interface IMutationJournalAgeMaintenance : IMutationJournalMaintenance
+{
+    Task<JournalOperationPurgeResult> PurgeOperationsByAgeAsync(
+        JournalOperationAgePurge purge,
+        CancellationToken cancellationToken = default);
+}

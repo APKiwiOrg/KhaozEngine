@@ -13,11 +13,12 @@ namespace KhaozEngine.WorldStore.SqlServer;
 
 internal static class SqlServerJournalSchema
 {
-    internal const int CurrentVersion = 1;
-    internal const string RequiredMigration = "sqlserver-journal-v1-create";
+    internal const int CurrentVersion = 2;
+    internal const string RequiredMigration = "sqlserver-journal-v2-operation-retention";
     private const string ApplicationLockResource = "KhaozEngine.WorldStore.SqlServer.JournalSchema";
 
-    internal static string SchemaSql { get; } = LoadSchemaSql();
+    internal static string SchemaSql { get; } = LoadSchemaSql("JournalSchemaV2.sql");
+    internal static string VersionOneSchemaSql { get; } = LoadSchemaSql("JournalSchemaV1.sql");
 
     internal static async Task InitializeAsync(
         string connectionString,
@@ -86,7 +87,20 @@ internal static class SqlServerJournalSchema
 
             if (testHook is not null)
                 await testHook.InvokeAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
-            await ValidateShapeAsync(connection, transaction, commandTimeoutSeconds, cancellationToken).ConfigureAwait(false);
+            int declaredVersion = await ReadDeclaredVersionAsync(
+                connection,
+                transaction,
+                commandTimeoutSeconds,
+                cancellationToken).ConfigureAwait(false);
+            if (declaredVersion == 1)
+            {
+                await ValidateShapeAsync(connection, transaction, commandTimeoutSeconds, 1, cancellationToken).ConfigureAwait(false);
+                if (mode == SqlServerJournalSchemaMode.ValidateOnly) throw Mismatch("unsupported version '1'");
+                await MigrateVersionOneAsync(connection, transaction, commandTimeoutSeconds, cancellationToken).ConfigureAwait(false);
+                declaredVersion = CurrentVersion;
+            }
+            if (declaredVersion != CurrentVersion) throw Mismatch($"unsupported version '{declaredVersion}'");
+            await ValidateShapeAsync(connection, transaction, commandTimeoutSeconds, CurrentVersion, cancellationToken).ConfigureAwait(false);
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
             completed = true;
         }
@@ -126,12 +140,75 @@ internal static class SqlServerJournalSchema
             },
             $"SQL Server journal schema application lock failed with return code {returnCode}.");
 
-    private static async Task ValidateShapeAsync(
+    private static async Task<int> ReadDeclaredVersionAsync(
         SqlConnection connection,
         SqlTransaction transaction,
         int commandTimeoutSeconds,
         CancellationToken cancellationToken)
     {
+        await using (SqlCommand shape = Command(
+            connection,
+            transaction,
+            commandTimeoutSeconds,
+            """
+            SELECT COUNT(*)
+            FROM sys.tables t
+            JOIN sys.columns c ON c.object_id = t.object_id
+            WHERE t.schema_id = SCHEMA_ID(N'dbo')
+              AND t.name = N'journal_metadata'
+              AND c.name = N'schema_version';
+            """))
+        {
+            if (Convert.ToInt32(await shape.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false)) != 1)
+                throw Mismatch("missing or malformed metadata version");
+        }
+
+        await using SqlCommand command = Command(
+            connection,
+            transaction,
+            commandTimeoutSeconds,
+            "SELECT schema_version FROM dbo.journal_metadata WHERE metadata_key = 1;");
+        object? value = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+        return value is int version
+            ? version
+            : throw Mismatch(value is null or DBNull ? "missing metadata" : "malformed metadata version");
+    }
+
+    private static async Task MigrateVersionOneAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        int commandTimeoutSeconds,
+        CancellationToken cancellationToken)
+    {
+        await using SqlCommand command = Command(connection, transaction, commandTimeoutSeconds, """
+            ALTER TABLE dbo.journal_operation
+            ADD retention_started_at_utc datetimeoffset(7) NOT NULL
+                CONSTRAINT df_journal_operation_retention
+                DEFAULT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') WITH VALUES;
+
+            CREATE INDEX ix_journal_operation_retention
+            ON dbo.journal_operation(retention_started_at_utc, operation_id);
+
+            UPDATE dbo.journal_operation
+            SET retention_started_at_utc = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00');
+
+            UPDATE dbo.journal_metadata
+            SET schema_version = 2,
+                updated_at_utc = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')
+            WHERE metadata_key = 1 AND schema_version = 1;
+            """);
+        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task ValidateShapeAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        int commandTimeoutSeconds,
+        int expectedVersion,
+        CancellationToken cancellationToken)
+    {
+        HashSet<string> expectedColumns = expectedVersion == 1 ? ExpectedColumnsV1 : ExpectedColumns;
+        HashSet<string> expectedIndexes = expectedVersion == 1 ? ExpectedIndexesV1 : ExpectedIndexes;
         var actualColumns = new HashSet<string>(StringComparer.Ordinal);
         await using (SqlCommand columns = Command(connection, transaction, commandTimeoutSeconds, """
             SELECT t.name, c.name, ty.name, c.max_length, c.is_nullable,
@@ -146,7 +223,7 @@ internal static class SqlServerJournalSchema
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
                 actualColumns.Add(Column(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetInt16(3), reader.GetBoolean(4), reader.GetString(5)));
         }
-        if (!actualColumns.SetEquals(ExpectedColumns))
+        if (!actualColumns.SetEquals(expectedColumns))
             throw Mismatch("partial, malformed, or contains unsupported columns");
 
         var indexes = new HashSet<string>(StringComparer.Ordinal);
@@ -168,7 +245,7 @@ internal static class SqlServerJournalSchema
                     reader.GetString(0), reader.GetString(1), reader.GetBoolean(2), reader.GetBoolean(3),
                     reader.GetString(4), reader.GetByte(5), reader.GetString(6), reader.GetBoolean(7), reader.GetBoolean(8)));
         }
-        if (!indexes.SetEquals(ExpectedIndexes)) throw Mismatch("version 1 indexes do not match the supported shape");
+        if (!indexes.SetEquals(expectedIndexes)) throw Mismatch($"version {expectedVersion} indexes do not match the supported shape");
 
         var foreignKeys = new HashSet<string>(StringComparer.Ordinal);
         await using (SqlCommand command = Command(connection, transaction, commandTimeoutSeconds, """
@@ -190,7 +267,7 @@ internal static class SqlServerJournalSchema
                     reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4),
                     reader.GetString(5), reader.GetString(6), reader.GetBoolean(7), reader.GetBoolean(8), reader.GetInt32(9)));
         }
-        if (!foreignKeys.SetEquals(ExpectedForeignKeys)) throw Mismatch("version 1 foreign keys do not match the supported shape");
+        if (!foreignKeys.SetEquals(ExpectedForeignKeys)) throw Mismatch($"version {expectedVersion} foreign keys do not match the supported shape");
 
         var constraints = new HashSet<string>(StringComparer.Ordinal);
         await using (SqlCommand command = Command(connection, transaction, commandTimeoutSeconds, """
@@ -203,8 +280,9 @@ internal static class SqlServerJournalSchema
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
                 constraints.Add(Check(reader.GetString(0), reader.GetString(1), reader.GetBoolean(2), reader.GetBoolean(3)));
         }
-        if (!constraints.SetEquals(ExpectedChecks)) throw Mismatch("version 1 check constraints do not match the supported shape");
+        if (!constraints.SetEquals(ExpectedChecks)) throw Mismatch($"version {expectedVersion} check constraints do not match the supported shape");
 
+        HashSet<string> expectedDefaults = expectedVersion == 1 ? ExpectedDefaultsV1 : ExpectedDefaults;
         var defaults = new HashSet<string>(StringComparer.Ordinal);
         await using (SqlCommand command = Command(connection, transaction, commandTimeoutSeconds, """
             SELECT dc.name, t.name, c.name, dc.definition
@@ -218,14 +296,14 @@ internal static class SqlServerJournalSchema
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
                 defaults.Add(Default(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3)));
         }
-        if (!defaults.SetEquals(ExpectedDefaults)) throw Mismatch("version 1 defaults do not match the supported shape");
+        if (!defaults.SetEquals(expectedDefaults)) throw Mismatch($"version {expectedVersion} defaults do not match the supported shape");
 
         await using SqlCommand metadata = Command(connection, transaction, commandTimeoutSeconds, "SELECT schema_version, store_epoch FROM dbo.journal_metadata WHERE metadata_key = 1;");
         await using SqlDataReader metadataReader = await metadata.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
         if (!await metadataReader.ReadAsync(cancellationToken).ConfigureAwait(false)) throw Mismatch("missing metadata");
         int version = metadataReader.GetInt32(0);
         Guid epoch = metadataReader.GetGuid(1);
-        if (version != CurrentVersion) throw Mismatch($"unsupported version '{version}'");
+        if (version != expectedVersion) throw Mismatch($"unsupported version '{version}'");
         if (epoch == Guid.Empty) throw Mismatch("metadata has an empty store epoch");
     }
 
@@ -259,6 +337,7 @@ internal static class SqlServerJournalSchema
         Column("journal_operation", "result_data", "varbinary", -1, false, ""),
         Column("journal_operation", "result_sha256", "binary", 32, false, ""),
         Column("journal_operation", "committed_at_utc", "datetimeoffset", 10, false, ""),
+        Column("journal_operation", "retention_started_at_utc", "datetimeoffset", 10, false, ""),
         Column("journal_operation_stream", "operation_id", "uniqueidentifier", 16, false, ""),
         Column("journal_operation_stream", "stream_key", "nvarchar", 512, false, "Latin1_General_100_BIN2"),
         Column("journal_operation_stream", "before_version", "bigint", 8, false, ""),
@@ -291,6 +370,8 @@ internal static class SqlServerJournalSchema
         Index("journal_operation", "pk_journal_operation", true, true, "CLUSTERED", 1, "operation_id", false, false),
         Index("journal_operation", "ix_journal_operation_commit", false, false, "NONCLUSTERED", 1, "committed_at_utc", false, false),
         Index("journal_operation", "ix_journal_operation_commit", false, false, "NONCLUSTERED", 2, "operation_id", false, false),
+        Index("journal_operation", "ix_journal_operation_retention", false, false, "NONCLUSTERED", 1, "retention_started_at_utc", false, false),
+        Index("journal_operation", "ix_journal_operation_retention", false, false, "NONCLUSTERED", 2, "operation_id", false, false),
         Index("journal_operation_stream", "pk_journal_operation_stream", true, true, "CLUSTERED", 1, "operation_id", false, false),
         Index("journal_operation_stream", "pk_journal_operation_stream", true, true, "CLUSTERED", 2, "stream_key", false, false),
         Index("journal_snapshot", "pk_journal_snapshot", true, true, "CLUSTERED", 1, "stream_key", false, false),
@@ -308,6 +389,15 @@ internal static class SqlServerJournalSchema
         ForeignKey("fk_journal_snapshot_stream", "journal_snapshot", "stream_key", "journal_stream", "stream_key", "NO_ACTION", "NO_ACTION", false, false, 1),
         ForeignKey("fk_journal_projection_stream", "journal_projection", "stream_key", "journal_stream", "stream_key", "NO_ACTION", "NO_ACTION", false, false, 1),
     };
+
+    private static readonly HashSet<string> ExpectedColumnsV1 = Without(
+        ExpectedColumns,
+        Column("journal_operation", "retention_started_at_utc", "datetimeoffset", 10, false, ""));
+
+    private static readonly HashSet<string> ExpectedIndexesV1 = Without(
+        ExpectedIndexes,
+        Index("journal_operation", "ix_journal_operation_retention", false, false, "NONCLUSTERED", 1, "retention_started_at_utc", false, false),
+        Index("journal_operation", "ix_journal_operation_retention", false, false, "NONCLUSTERED", 2, "operation_id", false, false));
 
     private static readonly HashSet<string> ExpectedChecks = new(StringComparer.Ordinal)
     {
@@ -336,7 +426,20 @@ internal static class SqlServerJournalSchema
     private static readonly HashSet<string> ExpectedDefaults = new(StringComparer.Ordinal)
     {
         Default("df_journal_stream_floor", "journal_stream", "retained_floor", "((0))"),
+        Default(
+            "df_journal_operation_retention",
+            "journal_operation",
+            "retention_started_at_utc",
+            "(todatetimeoffset(sysutcdatetime(),'+00:00'))"),
     };
+
+    private static readonly HashSet<string> ExpectedDefaultsV1 = Without(
+        ExpectedDefaults,
+        Default(
+            "df_journal_operation_retention",
+            "journal_operation",
+            "retention_started_at_utc",
+            "(todatetimeoffset(sysutcdatetime(),'+00:00'))"));
 
     private static string Column(string table, string column, string type, int length, bool nullable, string collation)
         => $"{table}.{column}|{type}|{length}|{nullable}|{collation}";
@@ -371,6 +474,13 @@ internal static class SqlServerJournalSchema
 
     private static string Default(string name, string table, string column, string definition)
         => $"{name}|{table}.{column}|{NormalizeSql(definition)}";
+
+    private static HashSet<string> Without(HashSet<string> source, params string[] removed)
+    {
+        var result = new HashSet<string>(source, StringComparer.Ordinal);
+        result.ExceptWith(removed);
+        return result;
+    }
 
     private static string NormalizeSql(string sql)
         => string.Concat(sql.Where(value => !char.IsWhiteSpace(value))).ToUpperInvariant();
@@ -424,10 +534,10 @@ internal static class SqlServerJournalSchema
         }
     }
 
-    private static string LoadSchemaSql()
+    private static string LoadSchemaSql(string suffix)
     {
         Assembly assembly = typeof(SqlServerJournalSchema).Assembly;
-        string resourceName = assembly.GetManifestResourceNames().Single(name => name.EndsWith("JournalSchemaV1.sql", StringComparison.Ordinal));
+        string resourceName = assembly.GetManifestResourceNames().Single(name => name.EndsWith(suffix, StringComparison.Ordinal));
         using Stream stream = assembly.GetManifestResourceStream(resourceName)
             ?? throw new InvalidOperationException("Embedded SQL Server journal schema is missing.");
         using var reader = new StreamReader(stream);

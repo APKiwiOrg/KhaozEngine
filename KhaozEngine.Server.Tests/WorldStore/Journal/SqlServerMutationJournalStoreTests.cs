@@ -95,6 +95,15 @@ public sealed class SqlServerMutationJournalStoreTests : IDisposable
         }
     }
 
+    [Fact]
+    public void Test_database_ages_operations_with_supported_dateadd()
+    {
+        string sql = SqlServerJournalTestDatabase.AgeOperationsSql;
+
+        Assert.Contains("DATEADD(millisecond", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("DATEADD_BIG", sql, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Theory]
     [InlineData("Server=tcp:production.invalid;Initial Catalog=grimhollow-db;Integrated Security=true;")]
     [InlineData("Server=tcp:production.invalid;Database=journal-test;Integrated Security=true;")]

@@ -361,7 +361,7 @@ public sealed partial class SqlServerMutationJournalFailureTests : IDisposable
             schemaTestHook: hook));
 
         Assert.Equal(JournalStoreFailureKind.SchemaMismatch, exception.Kind);
-        Assert.Contains("sqlserver-journal-v1-create", exception.Message, StringComparison.Ordinal);
+        Assert.Contains(SqlServerJournalSchema.RequiredMigration, exception.Message, StringComparison.Ordinal);
         Assert.True(await SqlServerJournalTestDatabase.IndexExistsAsync(
             DedicatedConnectionString,
             "ix_journal_projection_version"));

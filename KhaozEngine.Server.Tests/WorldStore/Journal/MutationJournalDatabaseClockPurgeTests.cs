@@ -1,5 +1,6 @@
 using System;
 using System.Data;
+using System.Runtime.ExceptionServices;
 using System.Threading.Tasks;
 using KhaozEngine.WorldStore.Journal;
 using KhaozEngine.WorldStore.Sqlite;
@@ -454,9 +455,8 @@ public sealed class MutationJournalDatabaseClockPurgeTests
         SqlServerJournalPrefixStore store = scope.Open(retryHorizon: RetryHorizon);
         await store.InitializeAsync(Initialization(1));
         Guid operationId = store.PhysicalOperationId(MutationJournalTask6TestSupport.Identity(1).OperationId);
-        await DowngradeSqlServerSchemaToVersionOneAsync(scope.ConnectionString);
 
-        try
+        await WithSqlServerVersionOneSchemaAsync(scope.ConnectionString, async () =>
         {
             JournalStoreException validateOnly = Assert.Throws<JournalStoreException>(() =>
                 _ = new SqlServerMutationJournalStore(new SqlServerMutationJournalStoreOptions(scope.ConnectionString)
@@ -486,11 +486,90 @@ public sealed class MutationJournalDatabaseClockPurgeTests
             await store.AgeMaintenance.PurgeOperationsByAgeAsync(
                 new JournalOperationAgePurge(TimeSpan.Zero, 10));
             Assert.Equal(JournalOperationResolutionStatus.Replayed, (await store.ResolveOperationAsync(MutationJournalTask6TestSupport.Identity(1))).Status);
-        }
-        finally
+        });
+    }
+
+    [SqlServerFact]
+    public async Task Sql_server_version_one_test_setup_restores_version_two_after_body_failure()
+    {
+        using var scope = new Task6SqlServerScope();
+        SqlServerJournalPrefixStore store = scope.Open(retryHorizon: RetryHorizon);
+        await store.InitializeAsync(Initialization(1));
+
+        await Assert.ThrowsAsync<Task6InjectedFailure>(() =>
+            WithSqlServerVersionOneSchemaAsync(
+                scope.ConnectionString,
+                () => throw new Task6InjectedFailure()));
+
+        _ = new SqlServerMutationJournalStore(new SqlServerMutationJournalStoreOptions(scope.ConnectionString)
         {
-            _ = new SqlServerMutationJournalStore(scope.ConnectionString);
+            SchemaMode = SqlServerJournalSchemaMode.ValidateOnly,
+        });
+        Assert.Equal(2, await ReadSqlServerSchemaVersionAsync(scope.ConnectionString));
+        Assert.True(await SqlServerRetentionColumnExistsAsync(scope.ConnectionString));
+    }
+
+    [Fact]
+    public async Task Sql_server_test_cleanup_failure_preserves_the_primary_failure()
+    {
+        var primary = new Task6InjectedFailure();
+        var cleanup = new InvalidOperationException("cleanup failed");
+
+        AggregateException failure = await Assert.ThrowsAsync<AggregateException>(() =>
+            RunWithCleanupAsync(
+                () => Task.FromException(primary),
+                () => Task.FromException(cleanup)));
+
+        Assert.Collection(
+            failure.InnerExceptions,
+            value => Assert.Same(primary, value),
+            value => Assert.Same(cleanup, value));
+    }
+
+    private static async Task WithSqlServerVersionOneSchemaAsync(
+        string connectionString,
+        Func<Task> testBody)
+    {
+        await RunWithCleanupAsync(
+            async () =>
+            {
+                await DowngradeSqlServerSchemaToVersionOneAsync(connectionString);
+                await testBody();
+            },
+            () =>
+            {
+                _ = new SqlServerMutationJournalStore(connectionString);
+                return Task.CompletedTask;
+            });
+    }
+
+    private static async Task RunWithCleanupAsync(Func<Task> operation, Func<Task> cleanup)
+    {
+        try
+        {
+            await operation();
         }
+        catch (Exception operationFailure)
+        {
+            await RethrowAfterCleanupAsync(operationFailure, cleanup);
+            return;
+        }
+
+        await cleanup();
+    }
+
+    private static async Task RethrowAfterCleanupAsync(Exception primaryFailure, Func<Task> cleanup)
+    {
+        try
+        {
+            await cleanup();
+        }
+        catch (Exception cleanupFailure)
+        {
+            throw new AggregateException(primaryFailure, cleanupFailure);
+        }
+
+        ExceptionDispatchInfo.Capture(primaryFailure).Throw();
     }
 
     private static async Task SetSqlServerOperationAgeAsync(string connectionString, Guid operationId, int ageMinutes)
@@ -545,15 +624,28 @@ public sealed class MutationJournalDatabaseClockPurgeTests
     {
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync();
+        await using SqlTransaction transaction = (SqlTransaction)await connection.BeginTransactionAsync();
         await using SqlCommand command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText = """
             IF OBJECT_ID(N'dbo.trg_journal_operation_delete_guard', N'TR') IS NOT NULL
                 DROP TRIGGER dbo.trg_journal_operation_delete_guard;
             DROP INDEX ix_journal_operation_retention ON dbo.journal_operation;
+            ALTER TABLE dbo.journal_operation DROP CONSTRAINT df_journal_operation_retention;
             ALTER TABLE dbo.journal_operation DROP COLUMN retention_started_at_utc;
             UPDATE dbo.journal_metadata SET schema_version = 1 WHERE metadata_key = 1;
             """;
-        await command.ExecuteNonQueryAsync();
+        try
+        {
+            await command.ExecuteNonQueryAsync();
+            await transaction.CommitAsync();
+        }
+        catch (Exception ddlFailure)
+        {
+            await RethrowAfterCleanupAsync(
+                ddlFailure,
+                async () => await transaction.RollbackAsync());
+        }
     }
 
     private static async Task<DateTimeOffset> ReadSqlServerRetentionStartedAsync(string connectionString, Guid operationId)

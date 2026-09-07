@@ -69,6 +69,41 @@ public sealed class SqlServerMutationJournalStoreTests : IDisposable
         Assert.DoesNotContain("fk_journal_event_operation", sql, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void Version_one_migration_is_split_at_the_added_retention_column_boundary()
+    {
+        IReadOnlyList<string> commands = SqlServerMutationJournalStore.VersionOneMigrationSqlForTest;
+        string[] responsibilities =
+        {
+            "ADD retention_started_at_utc",
+            "SET retention_started_at_utc",
+            "CREATE INDEX ix_journal_operation_retention",
+            "CREATE TRIGGER dbo.trg_journal_operation_delete_guard",
+            "SET schema_version = 2",
+        };
+
+        Assert.Equal(responsibilities.Length, commands.Count);
+        for (int commandIndex = 0; commandIndex < commands.Count; commandIndex++)
+        {
+            for (int responsibilityIndex = 0; responsibilityIndex < responsibilities.Length; responsibilityIndex++)
+            {
+                Action<string, string, StringComparison> assertion = commandIndex == responsibilityIndex
+                    ? Assert.Contains
+                    : Assert.DoesNotContain;
+                assertion(responsibilities[responsibilityIndex], commands[commandIndex], StringComparison.OrdinalIgnoreCase);
+            }
+        }
+    }
+
+    [Fact]
+    public void Test_database_ages_operations_with_supported_dateadd()
+    {
+        string sql = SqlServerJournalTestDatabase.AgeOperationsSql;
+
+        Assert.Contains("DATEADD(millisecond", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("DATEADD_BIG", sql, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Theory]
     [InlineData("Server=tcp:production.invalid;Initial Catalog=grimhollow-db;Integrated Security=true;")]
     [InlineData("Server=tcp:production.invalid;Database=journal-test;Integrated Security=true;")]

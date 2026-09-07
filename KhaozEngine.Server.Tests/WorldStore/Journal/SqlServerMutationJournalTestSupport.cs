@@ -170,6 +170,12 @@ internal sealed class SqlServerJournalPrefixStore : IMutationJournalStore
 
 internal static class SqlServerJournalTestDatabase
 {
+    internal const string AgeOperationsSql = """
+        UPDATE dbo.journal_operation
+        SET retention_started_at_utc = DATEADD(millisecond, @elapsed, retention_started_at_utc)
+        WHERE operation_id = @id;
+        """;
+
     private const string DedicatedDatabaseMarker = "-journal-test-";
 
     internal static string RequireDedicatedTestDatabase(string? connectionString)
@@ -298,15 +304,12 @@ internal static class SqlServerJournalTestDatabase
     {
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync();
+        int elapsedMilliseconds = checked(-(int)duration.TotalMilliseconds);
         foreach (Guid operationId in operationIds)
         {
             await using SqlCommand command = connection.CreateCommand();
-            command.CommandText = """
-                UPDATE dbo.journal_operation
-                SET retention_started_at_utc = DATEADD_BIG(millisecond, @elapsed, retention_started_at_utc)
-                WHERE operation_id = @id;
-                """;
-            command.Parameters.Add("@elapsed", SqlDbType.BigInt).Value = -checked((long)duration.TotalMilliseconds);
+            command.CommandText = AgeOperationsSql;
+            command.Parameters.Add("@elapsed", SqlDbType.Int).Value = elapsedMilliseconds;
             command.Parameters.Add("@id", SqlDbType.UniqueIdentifier).Value = operationId;
             await command.ExecuteNonQueryAsync();
         }

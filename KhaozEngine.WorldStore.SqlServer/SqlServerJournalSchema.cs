@@ -19,6 +19,40 @@ internal static class SqlServerJournalSchema
 
     internal static string SchemaSql { get; } = LoadSchemaSql("JournalSchemaV2.sql");
     internal static string VersionOneSchemaSql { get; } = LoadSchemaSql("JournalSchemaV1.sql");
+    internal static IReadOnlyList<string> VersionOneMigrationSql { get; } = Array.AsReadOnly(new[]
+    {
+        """
+        ALTER TABLE dbo.journal_operation
+        ADD retention_started_at_utc datetimeoffset(7) NOT NULL
+            CONSTRAINT df_journal_operation_retention
+            DEFAULT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') WITH VALUES;
+        """,
+        """
+        UPDATE dbo.journal_operation
+        SET retention_started_at_utc = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00');
+        """,
+        """
+        CREATE INDEX ix_journal_operation_retention
+        ON dbo.journal_operation(retention_started_at_utc, operation_id);
+        """,
+        """
+        EXEC(N'CREATE TRIGGER dbo.trg_journal_operation_delete_guard
+        ON dbo.journal_operation
+        AFTER DELETE
+        AS
+        BEGIN
+            SET NOCOUNT ON;
+            IF OBJECT_ID(N''tempdb..#khaoz_journal_operation_delete_guard'', N''U'') IS NULL
+                THROW 51000, ''journal operation delete requires guarded maintenance'', 1;
+        END');
+        """,
+        """
+        UPDATE dbo.journal_metadata
+        SET schema_version = 2,
+            updated_at_utc = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')
+        WHERE metadata_key = 1 AND schema_version = 1;
+        """,
+    });
 
     internal static async Task InitializeAsync(
         string connectionString,
@@ -180,34 +214,11 @@ internal static class SqlServerJournalSchema
         int commandTimeoutSeconds,
         CancellationToken cancellationToken)
     {
-        await using SqlCommand command = Command(connection, transaction, commandTimeoutSeconds, """
-            ALTER TABLE dbo.journal_operation
-            ADD retention_started_at_utc datetimeoffset(7) NOT NULL
-                CONSTRAINT df_journal_operation_retention
-                DEFAULT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') WITH VALUES;
-
-            CREATE INDEX ix_journal_operation_retention
-            ON dbo.journal_operation(retention_started_at_utc, operation_id);
-
-            UPDATE dbo.journal_operation
-            SET retention_started_at_utc = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00');
-
-            EXEC(N'CREATE TRIGGER dbo.trg_journal_operation_delete_guard
-            ON dbo.journal_operation
-            AFTER DELETE
-            AS
-            BEGIN
-                SET NOCOUNT ON;
-                IF OBJECT_ID(N''tempdb..#khaoz_journal_operation_delete_guard'', N''U'') IS NULL
-                    THROW 51000, ''journal operation delete requires guarded maintenance'', 1;
-            END');
-
-            UPDATE dbo.journal_metadata
-            SET schema_version = 2,
-                updated_at_utc = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')
-            WHERE metadata_key = 1 AND schema_version = 1;
-            """);
-        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        foreach (string sql in VersionOneMigrationSql)
+        {
+            await using SqlCommand command = Command(connection, transaction, commandTimeoutSeconds, sql);
+            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
     }
 
     private static async Task ValidateShapeAsync(

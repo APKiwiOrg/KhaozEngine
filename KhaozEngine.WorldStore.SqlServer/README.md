@@ -48,11 +48,12 @@ var journal = new SqlServerMutationJournalStore(
 ```
 
 `AutoCreate` creates version two when no journal objects exist. It also migrates a valid version-one journal by
-adding a database-owned operation-retention timestamp. Existing replay rows start a fresh retention horizon at
-migration time, so upgrade cannot expire one early. A database default also stamps inserts from an already-running
-version-one writer during rollout. A database trigger rejects operation deletion unless current maintenance opens
-its transaction-local guard. A still-running version-one maintenance host therefore rolls back both its child and
-parent deletes after migration. Restarted hosts must support version two. `ValidateOnly` performs no DDL and is the production mode when
+adding a database-owned operation-retention timestamp through separate commands in one transaction. Existing replay
+rows start a fresh retention horizon at migration time, so upgrade cannot expire one early. A database default also
+stamps inserts from an already-running version-one writer during rollout. A database trigger rejects operation
+deletion unless current maintenance opens its transaction-local guard. A still-running version-one maintenance
+host therefore rolls back both its child and parent deletes after migration. Restarted hosts must support version
+two. `ValidateOnly` performs no DDL and is the production mode when
 the application principal does not have schema permissions. A partial, malformed, older, or newer journal schema
 fails with `SchemaMismatch` and names the required migration.
 

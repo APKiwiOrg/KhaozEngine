@@ -349,6 +349,7 @@ public sealed partial class SqlServerMutationJournalStore : IMutationJournalStor
 
     internal static string SchemaSqlForTest => SqlServerJournalSchema.SchemaSql;
     internal static string VersionOneSchemaSqlForTest => SqlServerJournalSchema.VersionOneSchemaSql;
+    internal static IReadOnlyList<string> VersionOneMigrationSqlForTest => SqlServerJournalSchema.VersionOneMigrationSql;
 
     private enum OperationLookupStatus
     {

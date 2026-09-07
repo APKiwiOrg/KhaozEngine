@@ -23,6 +23,9 @@ Durable journal replay retention can now use provider database time from receipt
   version-one database transactionally and starts every existing row at migration time, so upgrade cannot expire a
   receipt early. Database-side compatibility population keeps already-running version-one writers safe while hosts
   roll forward. `ValidateOnly` requires version two.
+- SQL Server runs the version-one column add, retention reset, index, delete guard, and metadata move as separate
+  commands inside the same transaction. Azure SQL does not compile a new-column reference against the version-one
+  batch shape (#846).
 - Headless tests cover positive and negative process clock skew, the exact horizon boundary, oldest-first bounded
   deletion, concurrent commits, conservative migration, unguarded mixed-version deletion, and guard reset on
   failed transactions.

@@ -69,6 +69,20 @@ public sealed class SqlServerMutationJournalStoreTests : IDisposable
         Assert.DoesNotContain("fk_journal_event_operation", sql, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void Version_one_migration_is_split_at_the_added_retention_column_boundary()
+    {
+        IReadOnlyList<string> commands = SqlServerMutationJournalStore.VersionOneMigrationSqlForTest;
+
+        Assert.Collection(
+            commands,
+            add => Assert.Contains("ADD retention_started_at_utc", add, StringComparison.OrdinalIgnoreCase),
+            reset => Assert.Contains("SET retention_started_at_utc", reset, StringComparison.OrdinalIgnoreCase),
+            index => Assert.Contains("CREATE INDEX ix_journal_operation_retention", index, StringComparison.OrdinalIgnoreCase),
+            trigger => Assert.Contains("CREATE TRIGGER dbo.trg_journal_operation_delete_guard", trigger, StringComparison.OrdinalIgnoreCase),
+            metadata => Assert.Contains("SET schema_version = 2", metadata, StringComparison.OrdinalIgnoreCase));
+    }
+
     [Theory]
     [InlineData("Server=tcp:production.invalid;Initial Catalog=grimhollow-db;Integrated Security=true;")]
     [InlineData("Server=tcp:production.invalid;Database=journal-test;Integrated Security=true;")]

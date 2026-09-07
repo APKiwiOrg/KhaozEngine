@@ -7635,6 +7635,20 @@ var options = new TileWorldViewOptions
 them. An overlay in a water material gets no surface (a fraction of a tile has no rim), and `TileRaycast.Pick`
 still lands on the bed, which is what an editor click wants.
 
+For a player-facing ground click, use the view's visible-surface picker instead:
+
+```csharp
+TileHit? hit = view.PickSurface(plane, rayOrigin, rayDirection, maxDistance: 2000f);
+```
+
+`PickSurface` compares the ordinary authored terrain hit with the exact cached `WaterPlane` rectangles drawn for
+the view's loaded regions. It returns whichever is nearer as a `TileHit`, so an oblique river click names the tile
+under the visible water crossing instead of a farther tile on the lowered bed. Direction does not need normalising
+and distances are world metres. The maximum is inclusive. Authored terrain wins an exact depth tie where it
+occludes water. The picker does not call `Flush`, so an announced edit keeps picking the plane still on screen
+until that region-plane mesh is rebuilt. Changing the water look invalidates the cache too, exactly as it does
+for the draw path.
+
 **Two conventions carry over from the document.** World z is MINUS tile z (`TileWorldSpace`), so a region-local
 ground mesh runs from 0 to minus 64 tiles on z and `TileGroundMesher.WorldMatrix` translates it into place, and
 an object's yaw is NEGATIVE per quarter turn, which is what makes `Matrix4x4.CreateRotationY` turn clockwise seen

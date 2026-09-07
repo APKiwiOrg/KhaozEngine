@@ -75,7 +75,7 @@ their own authoritative clock also implement the additive `IMutationJournalAgeMa
 
 | Method | Contract |
 |---|---|
-| `PurgeOperationsAsync(purge, ct)` | Deletes a bounded batch of replay rows at or before the requested UTC cutoff. The configured minimum retry horizon is enforced against provider time. Events remain. |
+| `PurgeOperationsAsync(purge, ct)` | Deletes a bounded batch of replay rows at or before the requested UTC cutoff. SQL Server and SQLite clip that cutoff to database UTC minus the configured minimum retry horizon. Events remain. |
 | `IMutationJournalAgeMaintenance.PurgeOperationsByAgeAsync(purge, ct)` | Deletes an oldest-first bounded batch by age. SQL Server and SQLite derive the cutoff from their database UTC clock and enforce the longer of the requested age or configured minimum retry horizon. Events remain. |
 | `RotateStoreEpochAsync(ct)` | Replaces the store epoch while writers are quiesced. Every cursor from the prior history then requires reset. |
 
@@ -298,7 +298,10 @@ rows expire. A consumed loot source must stay consumed. Production retention req
 timestamp. Durable providers record a
 separate database-owned retention start and derive the effective cutoff from that same database clock. Public
 receipt and event timestamps keep their existing `TimeProvider` semantics. The cutoff API remains for compatibility
-with controlled callers, but it does not provide database-clock policy isolation.
+with controlled callers. Durable providers clip its absolute cutoff to their database clock and retry horizon, but
+the by-age API remains the production policy seam because it accepts the intended duration directly. Provider
+delete guards reject operation-row deletion outside a current purge transaction. This makes a still-running
+version-one maintenance host roll back its child and parent deletes after migration.
 
 After a point-in-time restore, quiesce all journal hosts, rotate the store epoch, verify snapshots and stream
 continuity, reconcile external consumers, then reopen writers. This makes every old admin cursor return

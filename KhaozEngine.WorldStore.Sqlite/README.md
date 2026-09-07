@@ -47,7 +47,9 @@ The default `AutoCreate` schema mode creates a fresh version-two journal for dev
 also migrates a valid version-one journal by adding a database-owned operation-retention timestamp. Existing replay
 rows start a fresh retention horizon at migration time, so upgrade cannot expire one early.
 The migrated schema also stamps inserts from an already-running version-one writer with SQLite time. Restarted hosts
-must support version two.
+must support version two. A database trigger rejects operation deletion unless current maintenance opens its
+connection-local guard inside the purge transaction. A still-running version-one maintenance host therefore rolls
+back both its child and parent deletes after migration.
 Production hosts can select `SqliteJournalSchemaMode.ValidateOnly` through
 `SqliteMutationJournalStoreOptions.SchemaMode` when the application identity has no DDL permission. Missing or
 unsupported schemas fail startup with `SchemaMismatch` and name the required migration. Version-two validation
@@ -57,8 +59,9 @@ from event retention, so purging replay receipts leaves committed events in plac
 `BusyTimeout` controls how long the held connection waits on a locked database. `MinimumRetryHorizon` prevents
 maintenance from deleting replay rows which may still be retried. `Limits` can lower any core journal maximum.
 `TimeProvider` controls public journal timestamps for deterministic hosts and tests. It does not control
-`PurgeOperationsByAgeAsync`, whose retention timestamps and cutoff come from SQLite. Dispose the journal to clear
-the provider pool and release the database file.
+`PurgeOperationsByAgeAsync`, whose retention timestamps and cutoff come from SQLite. The older cutoff purge is also
+clipped to SQLite UTC minus `MinimumRetryHorizon`. Dispose the journal to clear the provider pool and release the
+database file.
 
 The process identity needs read, write, create, lock, and rename access to the database, WAL, and shared-memory
 files. In `ValidateOnly`, deploy the version-two schema with a controlled migration process before boot and keep the

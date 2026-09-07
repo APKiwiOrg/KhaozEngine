@@ -67,6 +67,12 @@ internal static class SqliteJournalSchema
             SET retention_started_at_utc = CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)
             WHERE operation_id = NEW.operation_id;
         END;
+        CREATE TRIGGER IF NOT EXISTS trg_journal_operation_delete_guard
+        BEFORE DELETE ON journal_operation
+        WHEN khaoz_journal_operation_delete_allowed() <> 1
+        BEGIN
+            SELECT RAISE(ABORT, 'journal operation delete requires guarded maintenance');
+        END;
 
         CREATE TABLE IF NOT EXISTS journal_operation_stream (
             operation_id TEXT COLLATE BINARY NOT NULL,
@@ -118,6 +124,14 @@ BEGIN
     UPDATE journal_operation
     SET retention_started_at_utc = CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)
     WHERE operation_id = NEW.operation_id;
+END;
+""", string.Empty, StringComparison.Ordinal)
+        .Replace("""
+CREATE TRIGGER IF NOT EXISTS trg_journal_operation_delete_guard
+BEFORE DELETE ON journal_operation
+WHEN khaoz_journal_operation_delete_allowed() <> 1
+BEGIN
+    SELECT RAISE(ABORT, 'journal operation delete requires guarded maintenance');
 END;
 """, string.Empty, StringComparison.Ordinal)
         .Replace("VALUES (1, 2, lower(hex(randomblob(16)))", "VALUES (1, 1, lower(hex(randomblob(16)))", StringComparison.Ordinal);
@@ -223,6 +237,12 @@ END;
                 UPDATE journal_operation
                 SET retention_started_at_utc = CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)
                 WHERE operation_id = NEW.operation_id;
+            END;
+            CREATE TRIGGER trg_journal_operation_delete_guard
+            BEFORE DELETE ON journal_operation
+            WHEN khaoz_journal_operation_delete_allowed() <> 1
+            BEGIN
+                SELECT RAISE(ABORT, 'journal operation delete requires guarded maintenance');
             END;
             UPDATE journal_metadata
             SET schema_version = 2,

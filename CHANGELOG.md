@@ -14,14 +14,18 @@ Durable journal replay retention can now use provider database time from receipt
 - SQL Server and SQLite record a separate operation retention timestamp from their database clock, then derive the
   effective purge cutoff from that clock inside the locked purge transaction. Process clock skew cannot shorten the
   replay horizon or alter the requested retention policy.
+- Database delete guards reject operation-row deletion outside an 18.33 purge transaction. A still-running
+  version-one maintenance host therefore rolls back its child and parent deletes after the schema migrates.
 - `JournalOperationPurgeResult` now reports the database evaluation time and effective cutoff for retention metrics.
-  The existing cutoff API and public receipt timestamps keep their compatibility behavior.
+  The existing cutoff API keeps its absolute cutoff behavior but clips it to database UTC minus
+  `MinimumRetryHorizon`. Public receipt timestamps keep their compatibility behavior.
 - Journal schema version two adds the retention timestamp and its oldest-first index. `AutoCreate` upgrades a valid
   version-one database transactionally and starts every existing row at migration time, so upgrade cannot expire a
   receipt early. Database-side compatibility population keeps already-running version-one writers safe while hosts
   roll forward. `ValidateOnly` requires version two.
 - Headless tests cover positive and negative process clock skew, the exact horizon boundary, oldest-first bounded
-  deletion, concurrent commits, conservative SQLite migration, and guarded SQL Server migration.
+  deletion, concurrent commits, conservative migration, unguarded mixed-version deletion, and guard reset on
+  failed transactions.
 
 ## 18.32.0
 

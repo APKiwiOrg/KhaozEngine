@@ -97,28 +97,31 @@ public sealed partial class SqlServerMutationJournalStore
         {
             transaction = await BeginTransactionAsync(connection, cancellationToken).ConfigureAwait(false);
             await AcquireMaintenanceLockAsync(transaction, exclusive: true, cancellationToken).ConfigureAwait(false);
+            await OpenOperationDeleteGuardAsync(transaction, cancellationToken).ConfigureAwait(false);
+            DateTimeOffset databaseNow = await ReadDatabaseUtcNowAsync(transaction, cancellationToken).ConfigureAwait(false);
+            DateTimeOffset safeCutoff = SubtractOrMinimum(databaseNow, minimumRetryHorizon);
+            DateTimeOffset effectiveCutoff = purge.CutoffUtc < safeCutoff ? purge.CutoffUtc : safeCutoff;
             using SqlCommand select = CreateCommand(transaction, """
-                SELECT TOP (@limit) operation_id, committed_at_utc
+                SELECT TOP (@limit) operation_id, retention_started_at_utc
                 FROM dbo.journal_operation WITH (UPDLOCK, HOLDLOCK)
                 WHERE committed_at_utc <= @cutoff
                 ORDER BY committed_at_utc,
                          CONVERT(char(36), operation_id) COLLATE Latin1_General_100_BIN2;
                 """);
-            Add(select, "@cutoff", Timestamp(purge.CutoffUtc));
+            Add(select, "@cutoff", Timestamp(effectiveCutoff));
             Add(select, "@limit", purge.MaxOperations);
-            var candidates = new List<(Guid OperationId, DateTimeOffset CommittedAt)>();
+            var candidates = new List<(Guid OperationId, DateTimeOffset RetentionStartedAt)>();
             await using (SqlDataReader reader = await select.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
             {
                 while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
                     candidates.Add((reader.GetGuid(0), reader.GetFieldValue<DateTimeOffset>(1)));
             }
 
-            DateTimeOffset safeCutoff = Timestamp(UtcNow() - minimumRetryHorizon);
             int ineligible = 0;
             int deleted = 0;
-            foreach ((Guid operationId, DateTimeOffset committedAt) in candidates)
+            foreach ((Guid operationId, DateTimeOffset retentionStartedAt) in candidates)
             {
-                if (committedAt > safeCutoff)
+                if (retentionStartedAt > safeCutoff)
                 {
                     ineligible++;
                     continue;
@@ -137,11 +140,12 @@ public sealed partial class SqlServerMutationJournalStore
             object? oldestRaw = await oldestCommand.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
             DateTimeOffset? oldest = oldestRaw is null or DBNull ? null : (DateTimeOffset)oldestRaw;
             Invoke(JournalTestHookPhase.BeforeCommit);
+            await CloseOperationDeleteGuardAsync(transaction, cancellationToken).ConfigureAwait(false);
             commitStarted = true;
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
             committed = true;
             Invoke(JournalTestHookPhase.AfterCommitBeforeResponse);
-            return new JournalOperationPurgeResult(candidates.Count, deleted, ineligible, oldest);
+            return new JournalOperationPurgeResult(candidates.Count, deleted, ineligible, oldest, databaseNow, effectiveCutoff);
         }
         catch (Exception exception)
         {

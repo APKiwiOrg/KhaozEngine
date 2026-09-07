@@ -15276,7 +15276,10 @@ SQLite stamp a separate retention start from their database clock, read that clo
 transaction, and enforce the longer of the requested age or `MinimumRetryHorizon`. Version-one databases migrate
 to schema version two by assigning every existing receipt the migration time, which conservatively restarts its
 retention horizon. `JournalOperationPurgeResult.EvaluatedAtUtc` and `EffectiveCutoffUtc` support retention metrics.
-The older cutoff API remains available for compatibility with controlled maintenance code.
+The older cutoff API remains available for compatibility with controlled maintenance code. Durable providers clip
+its cutoff to database UTC minus `MinimumRetryHorizon`. Their version-two schemas also reject operation deletion
+unless current maintenance opens a transaction-local guard. This forces a still-running version-one maintenance
+host to roll back its child and parent deletes after migration.
 
 Every executor needs explicit positive operation-count and owned-byte capacities. Accepted work remains charged and
 its streams remain reserved until acknowledgement. `StopAsync` rejects new work, gives admitted work a bounded drain

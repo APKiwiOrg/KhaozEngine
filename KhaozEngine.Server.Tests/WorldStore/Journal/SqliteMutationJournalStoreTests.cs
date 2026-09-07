@@ -25,8 +25,19 @@ public sealed class SqliteMutationJournalStoreTests : MutationJournalStoreConfor
                 MinimumRetryHorizon = minimumRetryHorizon ?? TimeSpan.FromHours(24),
                 TimeProvider = clock,
             });
-        return new MutationJournalStoreHarness(store, store, clock.GetUtcNow, clock.Advance, operationId =>
-            database.ExecuteAsync(path, "UPDATE journal_operation SET result_sha256 = zeroblob(32) WHERE operation_id = $id;", ("$id", operationId.ToString("D"))));
+        return new MutationJournalStoreHarness(
+            store,
+            store,
+            clock.GetUtcNow,
+            clock.Advance,
+            operationId => database.ExecuteAsync(
+                path,
+                "UPDATE journal_operation SET result_sha256 = zeroblob(32) WHERE operation_id = $id;",
+                ("$id", operationId.ToString("D"))),
+            duration => database.ExecuteAsync(
+                path,
+                "UPDATE journal_operation SET retention_started_at_utc = retention_started_at_utc - $elapsed;",
+                ("$elapsed", checked((long)duration.TotalMilliseconds))));
     }
 
     [Fact]

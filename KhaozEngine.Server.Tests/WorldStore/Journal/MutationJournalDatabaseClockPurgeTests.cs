@@ -5,6 +5,7 @@ using KhaozEngine.WorldStore.Journal;
 using KhaozEngine.WorldStore.Sqlite;
 using KhaozEngine.WorldStore.SqlServer;
 using Microsoft.Data.SqlClient;
+using Microsoft.Data.Sqlite;
 using Xunit;
 using static KhaozEngine.Tests.WorldStore.Journal.MutationJournalTask6TestSupport;
 
@@ -164,12 +165,175 @@ public sealed class MutationJournalDatabaseClockPurgeTests
         Assert.Equal(JournalOperationResolutionStatus.Replayed, (await first.ResolveOperationAsync(MutationJournalTask6TestSupport.Identity(2))).Status);
     }
 
+    [Fact]
+    public async Task Sqlite_cutoff_purge_clips_against_database_time_under_process_clock_skew()
+    {
+        using var scope = new Task6SqliteScope();
+        var processClock = new Task6ManualTimeProvider(DateTimeOffset.UtcNow.AddDays(365));
+        using SqliteMutationJournalStore store = scope.Database.Open(
+            scope.Path,
+            new SqliteMutationJournalStoreOptions(scope.Database.ConnectionString(scope.Path))
+            {
+                MinimumRetryHorizon = RetryHorizon,
+                TimeProvider = processClock,
+            });
+        await store.InitializeAsync(Initialization(1));
+        await store.CommitAsync(Commit(2, 0, new byte[] { 2 }, 2));
+        await SetSqliteCommittedAgeAsync(scope, 1, "-2 hours");
+        await SetSqliteCommittedAgeAsync(scope, 2, "-30 minutes");
+        await SetSqliteRetentionAgeAsync(scope, 1, "-2 hours");
+        await SetSqliteRetentionAgeAsync(scope, 2, "-30 minutes");
+
+        JournalOperationPurgeResult result = await store.PurgeOperationsAsync(
+            new JournalOperationPurge(DateTimeOffset.MaxValue, 10));
+
+        Assert.Equal((1, 1, 0), (result.ScannedCount, result.DeletedCount, result.IneligibleCount));
+        Assert.InRange(result.EvaluatedAtUtc!.Value, DateTimeOffset.UtcNow.AddSeconds(-10), DateTimeOffset.UtcNow.AddSeconds(10));
+        Assert.Equal(result.EvaluatedAtUtc - RetryHorizon, result.EffectiveCutoffUtc);
+        Assert.Equal(JournalOperationResolutionStatus.NotFound, (await store.ResolveOperationAsync(MutationJournalTask6TestSupport.Identity(1))).Status);
+        Assert.Equal(JournalOperationResolutionStatus.Replayed, (await store.ResolveOperationAsync(MutationJournalTask6TestSupport.Identity(2))).Status);
+    }
+
+    [Fact]
+    public async Task Sqlite_unguarded_legacy_delete_rolls_back_children_and_parent()
+    {
+        using var scope = new Task6SqliteScope();
+        using SqliteMutationJournalStore store = scope.Open(retryHorizon: TimeSpan.Zero);
+        await store.InitializeAsync(Initialization(1));
+
+        Assert.Throws<SqliteException>(() => scope.Database.Execute(
+            scope.Path,
+            """
+            BEGIN IMMEDIATE;
+            DELETE FROM journal_operation_stream WHERE operation_id = $id;
+            DELETE FROM journal_operation WHERE operation_id = $id;
+            COMMIT;
+            """,
+            ("$id", (object)MutationJournalTask6TestSupport.Identity(1).OperationId.ToString("D"))));
+
+        Assert.Equal(JournalOperationResolutionStatus.Replayed, (await store.ResolveOperationAsync(MutationJournalTask6TestSupport.Identity(1))).Status);
+    }
+
+    [Fact]
+    public async Task Sqlite_purge_guard_resets_after_a_transaction_failure()
+    {
+        using var scope = new Task6SqliteScope();
+        bool armed = false;
+        var hook = new SqliteJournalTestHook(phase =>
+        {
+            if (armed && phase == JournalTestHookPhase.BeforeCommit) throw new Task6InjectedFailure();
+        });
+        using SqliteMutationJournalStore store = scope.Open(hook, TimeSpan.Zero);
+        await store.InitializeAsync(Initialization(1));
+        armed = true;
+
+        await Assert.ThrowsAsync<Task6InjectedFailure>(() =>
+            store.PurgeOperationsByAgeAsync(new JournalOperationAgePurge(TimeSpan.Zero, 10)));
+        armed = false;
+        JournalOperationPurgeResult retry = await store.PurgeOperationsByAgeAsync(
+            new JournalOperationAgePurge(TimeSpan.Zero, 10));
+
+        Assert.Equal(1, retry.DeletedCount);
+    }
+
     [SqlServerFact]
     public async Task Sql_server_age_purge_uses_database_time_under_process_clock_skew()
     {
         await AssertSqlServerDatabaseClockPurgeAsync(-365);
         await AssertSqlServerDatabaseClockPurgeAsync(365);
     }
+
+    [SqlServerFact]
+    public async Task Sql_server_cutoff_purge_clips_against_database_time_under_process_clock_skew()
+    {
+        using var scope = new Task6SqlServerScope();
+        var processClock = new Task6ManualTimeProvider(DateTimeOffset.UtcNow.AddDays(365));
+        SqlServerJournalPrefixStore store = scope.Open(retryHorizon: RetryHorizon, clock: processClock);
+        await store.InitializeAsync(Initialization(1));
+        await store.CommitAsync(Commit(2, 0, new byte[] { 2 }, 2));
+        await SetSqlServerCommittedAgeAsync(
+            scope.ConnectionString,
+            store.PhysicalOperationId(MutationJournalTask6TestSupport.Identity(1).OperationId),
+            -120);
+        await SetSqlServerCommittedAgeAsync(
+            scope.ConnectionString,
+            store.PhysicalOperationId(MutationJournalTask6TestSupport.Identity(2).OperationId),
+            -30);
+        await SetSqlServerOperationAgeAsync(
+            scope.ConnectionString,
+            store.PhysicalOperationId(MutationJournalTask6TestSupport.Identity(1).OperationId),
+            -120);
+        await SetSqlServerOperationAgeAsync(
+            scope.ConnectionString,
+            store.PhysicalOperationId(MutationJournalTask6TestSupport.Identity(2).OperationId),
+            -30);
+
+        JournalOperationPurgeResult result = await store.Maintenance.PurgeOperationsAsync(
+            new JournalOperationPurge(DateTimeOffset.MaxValue, 10));
+
+        Assert.Equal((1, 1, 0), (result.ScannedCount, result.DeletedCount, result.IneligibleCount));
+        Assert.InRange(result.EvaluatedAtUtc!.Value, DateTimeOffset.UtcNow.AddSeconds(-10), DateTimeOffset.UtcNow.AddSeconds(10));
+        Assert.Equal(result.EvaluatedAtUtc - RetryHorizon, result.EffectiveCutoffUtc);
+        Assert.Equal(JournalOperationResolutionStatus.NotFound, (await store.ResolveOperationAsync(MutationJournalTask6TestSupport.Identity(1))).Status);
+        Assert.Equal(JournalOperationResolutionStatus.Replayed, (await store.ResolveOperationAsync(MutationJournalTask6TestSupport.Identity(2))).Status);
+    }
+
+    [SqlServerFact]
+    public async Task Sql_server_unguarded_legacy_delete_rolls_back_children_and_parent()
+    {
+        using var scope = new Task6SqlServerScope();
+        SqlServerJournalPrefixStore store = scope.Open(retryHorizon: TimeSpan.Zero);
+        await store.InitializeAsync(Initialization(1));
+        Guid operationId = store.PhysicalOperationId(MutationJournalTask6TestSupport.Identity(1).OperationId);
+
+        await AssertSqlServerLegacyDeleteRejectedAsync(scope.ConnectionString, operationId);
+
+        Assert.Equal(JournalOperationResolutionStatus.Replayed, (await store.ResolveOperationAsync(MutationJournalTask6TestSupport.Identity(1))).Status);
+    }
+
+    [SqlServerFact]
+    public async Task Sql_server_purge_guard_resets_after_a_transaction_failure()
+    {
+        using var scope = new Task6SqlServerScope();
+        bool armed = false;
+        var hook = new SqlServerJournalTestHook(phase =>
+        {
+            if (armed && phase == JournalTestHookPhase.BeforeCommit) throw new Task6InjectedFailure();
+        });
+        SqlServerJournalPrefixStore store = scope.Open(hook, TimeSpan.Zero);
+        await store.InitializeAsync(Initialization(1));
+        armed = true;
+
+        await Assert.ThrowsAsync<Task6InjectedFailure>(() =>
+            store.AgeMaintenance.PurgeOperationsByAgeAsync(new JournalOperationAgePurge(TimeSpan.Zero, 10)));
+        armed = false;
+        JournalOperationPurgeResult retry = await store.AgeMaintenance.PurgeOperationsByAgeAsync(
+            new JournalOperationAgePurge(TimeSpan.Zero, 10));
+
+        Assert.Equal(1, retry.DeletedCount);
+    }
+
+    private static Task SetSqliteCommittedAgeAsync(Task6SqliteScope scope, int identity, string modifier)
+        => scope.Database.ExecuteAsync(
+            scope.Path,
+            """
+            UPDATE journal_operation
+            SET committed_at_utc = CAST((julianday('now', $age) - 2440587.5) * 86400000 AS INTEGER)
+            WHERE operation_id = $id;
+            """,
+            ("$age", (object)modifier),
+            ("$id", MutationJournalTask6TestSupport.Identity(identity).OperationId.ToString("D")));
+
+    private static Task SetSqliteRetentionAgeAsync(Task6SqliteScope scope, int identity, string modifier)
+        => scope.Database.ExecuteAsync(
+            scope.Path,
+            """
+            UPDATE journal_operation
+            SET retention_started_at_utc = CAST((julianday('now', $age) - 2440587.5) * 86400000 AS INTEGER)
+            WHERE operation_id = $id;
+            """,
+            ("$age", (object)modifier),
+            ("$id", MutationJournalTask6TestSupport.Identity(identity).OperationId.ToString("D")));
 
     private static async Task AssertSqlServerDatabaseClockPurgeAsync(int processClockDays)
     {
@@ -252,6 +416,7 @@ public sealed class MutationJournalDatabaseClockPurgeTests
             new JournalOperationAgePurge(TimeSpan.Zero, 10));
 
         Assert.Equal(2, database.ScalarLong(path, "SELECT schema_version FROM journal_metadata WHERE metadata_key = 1;"));
+        Assert.Equal(1, database.ScalarLong(path, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'trigger' AND name = 'trg_journal_operation_delete_guard';"));
         Assert.Equal(0, result.DeletedCount);
         Assert.Equal(2, database.ScalarLong(path, "SELECT COUNT(*) FROM journal_operation;"));
         long retentionStarted = database.ScalarLong(path, "SELECT retention_started_at_utc FROM journal_operation;");
@@ -308,6 +473,8 @@ public sealed class MutationJournalDatabaseClockPurgeTests
                 MinimumRetryHorizon = RetryHorizon,
             });
 
+            await AssertSqlServerLegacyDeleteRejectedAsync(scope.ConnectionString, operationId);
+
             DateTimeOffset retentionStarted = await ReadSqlServerRetentionStartedAsync(scope.ConnectionString, operationId);
             Assert.InRange(retentionStarted, DateTimeOffset.UtcNow.AddSeconds(-10), DateTimeOffset.UtcNow.AddSeconds(10));
             Guid rollingWriterOperation = store.PhysicalOperationId(Guid.NewGuid());
@@ -337,12 +504,51 @@ public sealed class MutationJournalDatabaseClockPurgeTests
         Assert.Equal(1, await command.ExecuteNonQueryAsync());
     }
 
+    private static async Task SetSqlServerCommittedAgeAsync(string connectionString, Guid operationId, int ageMinutes)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using SqlCommand command = connection.CreateCommand();
+        command.CommandText = "UPDATE dbo.journal_operation SET committed_at_utc = DATEADD(minute, @minutes, SYSUTCDATETIME()) WHERE operation_id = @id;";
+        command.Parameters.Add("@minutes", SqlDbType.Int).Value = ageMinutes;
+        command.Parameters.Add("@id", SqlDbType.UniqueIdentifier).Value = operationId;
+        Assert.Equal(1, await command.ExecuteNonQueryAsync());
+    }
+
+    private static async Task AssertSqlServerLegacyDeleteRejectedAsync(string connectionString, Guid operationId)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using SqlTransaction transaction = (SqlTransaction)await connection.BeginTransactionAsync();
+        try
+        {
+            await using (SqlCommand children = connection.CreateCommand())
+            {
+                children.Transaction = transaction;
+                children.CommandText = "DELETE FROM dbo.journal_operation_stream WHERE operation_id = @id;";
+                children.Parameters.Add("@id", SqlDbType.UniqueIdentifier).Value = operationId;
+                await children.ExecuteNonQueryAsync();
+            }
+            await using SqlCommand parent = connection.CreateCommand();
+            parent.Transaction = transaction;
+            parent.CommandText = "DELETE FROM dbo.journal_operation WHERE operation_id = @id;";
+            parent.Parameters.Add("@id", SqlDbType.UniqueIdentifier).Value = operationId;
+            await Assert.ThrowsAsync<SqlException>(() => parent.ExecuteNonQueryAsync());
+        }
+        finally
+        {
+            await transaction.RollbackAsync();
+        }
+    }
+
     private static async Task DowngradeSqlServerSchemaToVersionOneAsync(string connectionString)
     {
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync();
         await using SqlCommand command = connection.CreateCommand();
         command.CommandText = """
+            IF OBJECT_ID(N'dbo.trg_journal_operation_delete_guard', N'TR') IS NOT NULL
+                DROP TRIGGER dbo.trg_journal_operation_delete_guard;
             DROP INDEX ix_journal_operation_retention ON dbo.journal_operation;
             ALTER TABLE dbo.journal_operation DROP COLUMN retention_started_at_utc;
             UPDATE dbo.journal_metadata SET schema_version = 1 WHERE metadata_key = 1;

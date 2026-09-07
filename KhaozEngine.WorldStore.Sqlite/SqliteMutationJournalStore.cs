@@ -20,6 +20,7 @@ public sealed record SqliteMutationJournalStoreOptions(string ConnectionString)
 
 public sealed partial class SqliteMutationJournalStore : IMutationJournalStore, IMutationJournalAgeMaintenance, IDisposable
 {
+    private const string OperationDeleteGuardFunction = "khaoz_journal_operation_delete_allowed";
     internal static string VersionOneSchemaSqlForTest => SqliteJournalSchema.VersionOneSchemaSqlForTest;
 
     private readonly SqliteStoreConnection db;
@@ -27,6 +28,7 @@ public sealed partial class SqliteMutationJournalStore : IMutationJournalStore, 
     private readonly TimeSpan minimumRetryHorizon;
     private readonly TimeProvider timeProvider;
     private readonly SqliteJournalTestHook? testHook;
+    private bool operationDeleteGuardOpen;
 
     public SqliteMutationJournalStore(string connectionString)
         : this(new SqliteMutationJournalStoreOptions(connectionString), null)
@@ -57,6 +59,10 @@ public sealed partial class SqliteMutationJournalStore : IMutationJournalStore, 
         {
             connection = new SqliteStoreConnection(options.ConnectionString, SqliteJournalSchema.BootstrapSql(options));
             connection.Connection.DefaultTimeout = checked((int)Math.Ceiling(options.BusyTimeout.TotalSeconds));
+            connection.Connection.CreateFunction(
+                OperationDeleteGuardFunction,
+                () => operationDeleteGuardOpen ? 1 : 0,
+                isDeterministic: false);
             SqliteJournalSchema.Initialize(connection.Connection, options.SchemaMode);
             db = connection;
         }
@@ -71,6 +77,15 @@ public sealed partial class SqliteMutationJournalStore : IMutationJournalStore, 
             throw MapProviderFailure(exception, Array.Empty<string>(), transactionStarted: false, commitStarted: false, rollbackConfirmed: false);
         }
     }
+
+    private void OpenOperationDeleteGuard()
+    {
+        if (operationDeleteGuardOpen)
+            throw Corrupt(Array.Empty<string>(), "SQLite operation delete guard was already open.");
+        operationDeleteGuardOpen = true;
+    }
+
+    private void CloseOperationDeleteGuard() => operationDeleteGuardOpen = false;
 
     public async Task<JournalOperationResolution> ResolveOperationAsync(
         JournalOperationIdentity identity,

@@ -246,6 +246,12 @@ internal static class SqlServerJournalTestDatabase
         await using SqlTransaction transaction = (SqlTransaction)await connection.BeginTransactionAsync();
         try
         {
+            await using (SqlCommand guard = connection.CreateCommand())
+            {
+                guard.Transaction = transaction;
+                guard.CommandText = "CREATE TABLE #khaoz_journal_operation_delete_guard (guard bit NOT NULL);";
+                await guard.ExecuteNonQueryAsync();
+            }
             string escapedPrefix = EscapeLike(prefix) + "%";
             foreach (string table in new[] { "journal_projection", "journal_snapshot", "journal_event", "journal_operation_stream" })
             {
@@ -270,12 +276,39 @@ internal static class SqlServerJournalTestDatabase
                 operation.Parameters.Add("@id", SqlDbType.UniqueIdentifier).Value = operationId;
                 await operation.ExecuteNonQueryAsync();
             }
+            await using (SqlCommand guard = connection.CreateCommand())
+            {
+                guard.Transaction = transaction;
+                guard.CommandText = "DROP TABLE #khaoz_journal_operation_delete_guard;";
+                await guard.ExecuteNonQueryAsync();
+            }
             await transaction.CommitAsync();
         }
         catch
         {
             await transaction.RollbackAsync();
             throw;
+        }
+    }
+
+    internal static async Task AgeOperationsAsync(
+        string connectionString,
+        IReadOnlyCollection<Guid> operationIds,
+        TimeSpan duration)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+        foreach (Guid operationId in operationIds)
+        {
+            await using SqlCommand command = connection.CreateCommand();
+            command.CommandText = """
+                UPDATE dbo.journal_operation
+                SET retention_started_at_utc = DATEADD_BIG(millisecond, @elapsed, retention_started_at_utc)
+                WHERE operation_id = @id;
+                """;
+            command.Parameters.Add("@elapsed", SqlDbType.BigInt).Value = -checked((long)duration.TotalMilliseconds);
+            command.Parameters.Add("@id", SqlDbType.UniqueIdentifier).Value = operationId;
+            await command.ExecuteNonQueryAsync();
         }
     }
 

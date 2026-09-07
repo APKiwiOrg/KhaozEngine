@@ -95,28 +95,32 @@ public sealed partial class SqliteMutationJournalStore
         try
         {
             transaction = db.Connection.BeginTransaction(deferred: false);
+            OpenOperationDeleteGuard();
+            DateTimeOffset databaseNow = await ReadDatabaseUtcNowAsync(transaction, cancellationToken).ConfigureAwait(false);
+            DateTimeOffset safeCutoff = SubtractOrMinimum(databaseNow, minimumRetryHorizon);
+            DateTimeOffset effectiveCutoff = purge.CutoffUtc < safeCutoff ? purge.CutoffUtc : safeCutoff;
             using SqliteCommand select = CreateCommand(transaction, """
-                SELECT operation_id, committed_at_utc
+                SELECT operation_id, retention_started_at_utc
                 FROM journal_operation
                 WHERE committed_at_utc <= $cutoff
                 ORDER BY committed_at_utc, operation_id COLLATE BINARY
                 LIMIT $limit;
                 """);
-            Add(select, "$cutoff", Timestamp(purge.CutoffUtc));
+            Add(select, "$cutoff", Timestamp(effectiveCutoff));
             Add(select, "$limit", purge.MaxOperations);
-            var candidates = new List<(string OperationId, long CommittedAt)>();
+            var candidates = new List<(string OperationId, long RetentionStartedAt)>();
             await using (SqliteDataReader reader = await select.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
             {
                 while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
                     candidates.Add((reader.GetString(0), reader.GetInt64(1)));
             }
 
-            long safeCutoff = Timestamp(UtcNow() - minimumRetryHorizon);
+            long safeCutoffTimestamp = Timestamp(safeCutoff);
             int ineligible = 0;
             int deleted = 0;
-            foreach ((string operationId, long committedAt) in candidates)
+            foreach ((string operationId, long retentionStartedAt) in candidates)
             {
-                if (committedAt > safeCutoff)
+                if (retentionStartedAt > safeCutoffTimestamp)
                 {
                     ineligible++;
                     continue;
@@ -139,7 +143,7 @@ public sealed partial class SqliteMutationJournalStore
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
             committed = true;
             Invoke(JournalTestHookPhase.AfterCommitBeforeResponse);
-            return new JournalOperationPurgeResult(candidates.Count, deleted, ineligible, oldest);
+            return new JournalOperationPurgeResult(candidates.Count, deleted, ineligible, oldest, databaseNow, effectiveCutoff);
         }
         catch (Exception exception)
         {
@@ -148,6 +152,7 @@ public sealed partial class SqliteMutationJournalStore
         }
         finally
         {
+            CloseOperationDeleteGuard();
             transaction?.Dispose();
         }
     }

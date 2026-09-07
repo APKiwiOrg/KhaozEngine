@@ -192,6 +192,16 @@ internal static class SqlServerJournalSchema
             UPDATE dbo.journal_operation
             SET retention_started_at_utc = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00');
 
+            EXEC(N'CREATE TRIGGER dbo.trg_journal_operation_delete_guard
+            ON dbo.journal_operation
+            AFTER DELETE
+            AS
+            BEGIN
+                SET NOCOUNT ON;
+                IF OBJECT_ID(N''tempdb..#khaoz_journal_operation_delete_guard'', N''U'') IS NULL
+                    THROW 51000, ''journal operation delete requires guarded maintenance'', 1;
+            END');
+
             UPDATE dbo.journal_metadata
             SET schema_version = 2,
                 updated_at_utc = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')
@@ -297,6 +307,22 @@ internal static class SqlServerJournalSchema
                 defaults.Add(Default(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3)));
         }
         if (!defaults.SetEquals(expectedDefaults)) throw Mismatch($"version {expectedVersion} defaults do not match the supported shape");
+
+        var triggers = new HashSet<string>(StringComparer.Ordinal);
+        await using (SqlCommand command = Command(connection, transaction, commandTimeoutSeconds, """
+            SELECT tr.name, t.name, sm.definition, tr.is_disabled
+            FROM sys.triggers tr
+            JOIN sys.tables t ON t.object_id = tr.parent_id
+            JOIN sys.sql_modules sm ON sm.object_id = tr.object_id
+            WHERE t.schema_id = SCHEMA_ID(N'dbo') AND t.name LIKE N'journal[_]%';
+            """))
+        await using (SqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
+        {
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                triggers.Add(Trigger(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetBoolean(3)));
+        }
+        HashSet<string> expectedTriggers = expectedVersion == 1 ? ExpectedTriggersV1 : ExpectedTriggers;
+        if (!triggers.SetEquals(expectedTriggers)) throw Mismatch($"version {expectedVersion} triggers do not match the supported shape");
 
         await using SqlCommand metadata = Command(connection, transaction, commandTimeoutSeconds, "SELECT schema_version, store_epoch FROM dbo.journal_metadata WHERE metadata_key = 1;");
         await using SqlDataReader metadataReader = await metadata.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
@@ -441,6 +467,27 @@ internal static class SqlServerJournalSchema
             "retention_started_at_utc",
             "(todatetimeoffset(sysutcdatetime(),'+00:00'))"));
 
+    private static readonly HashSet<string> ExpectedTriggers = new(StringComparer.Ordinal)
+    {
+        Trigger(
+            "trg_journal_operation_delete_guard",
+            "journal_operation",
+            """
+            CREATE TRIGGER dbo.trg_journal_operation_delete_guard
+            ON dbo.journal_operation
+            AFTER DELETE
+            AS
+            BEGIN
+                SET NOCOUNT ON;
+                IF OBJECT_ID(N'tempdb..#khaoz_journal_operation_delete_guard', N'U') IS NULL
+                    THROW 51000, 'journal operation delete requires guarded maintenance', 1;
+            END
+            """,
+            false),
+    };
+
+    private static readonly HashSet<string> ExpectedTriggersV1 = new(StringComparer.Ordinal);
+
     private static string Column(string table, string column, string type, int length, bool nullable, string collation)
         => $"{table}.{column}|{type}|{length}|{nullable}|{collation}";
 
@@ -474,6 +521,9 @@ internal static class SqlServerJournalSchema
 
     private static string Default(string name, string table, string column, string definition)
         => $"{name}|{table}.{column}|{NormalizeSql(definition)}";
+
+    private static string Trigger(string name, string table, string definition, bool disabled)
+        => $"{name}|{table}|{NormalizeSql(definition)}|{disabled}";
 
     private static HashSet<string> Without(HashSet<string> source, params string[] removed)
     {

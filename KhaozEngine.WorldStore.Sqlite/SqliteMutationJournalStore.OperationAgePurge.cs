@@ -24,6 +24,7 @@ public sealed partial class SqliteMutationJournalStore
         try
         {
             transaction = db.Connection.BeginTransaction(deferred: false);
+            OpenOperationDeleteGuard();
             DateTimeOffset databaseNow = await ReadDatabaseUtcNowAsync(transaction, cancellationToken).ConfigureAwait(false);
             TimeSpan effectiveAge = purge.MinimumAge > minimumRetryHorizon ? purge.MinimumAge : minimumRetryHorizon;
             DateTimeOffset effectiveCutoff = SubtractOrMinimum(databaseNow, effectiveAge);
@@ -74,6 +75,7 @@ public sealed partial class SqliteMutationJournalStore
         }
         finally
         {
+            CloseOperationDeleteGuard();
             transaction?.Dispose();
         }
     }

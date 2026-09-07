@@ -53,6 +53,15 @@ CREATE TABLE dbo.journal_operation (
     CONSTRAINT ck_journal_operation_result CHECK (DATALENGTH(result_data) <= 65536));
 CREATE INDEX ix_journal_operation_commit ON dbo.journal_operation(committed_at_utc, operation_id);
 CREATE INDEX ix_journal_operation_retention ON dbo.journal_operation(retention_started_at_utc, operation_id);
+EXEC(N'CREATE TRIGGER dbo.trg_journal_operation_delete_guard
+ON dbo.journal_operation
+AFTER DELETE
+AS
+BEGIN
+    SET NOCOUNT ON;
+    IF OBJECT_ID(N''tempdb..#khaoz_journal_operation_delete_guard'', N''U'') IS NULL
+        THROW 51000, ''journal operation delete requires guarded maintenance'', 1;
+END');
 
 CREATE TABLE dbo.journal_operation_stream (
     operation_id uniqueidentifier NOT NULL,

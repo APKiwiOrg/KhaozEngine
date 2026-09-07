@@ -33,7 +33,7 @@ public abstract class MutationJournalStoreConformance
         JournalInitialization initialization = Initialization(Operation(1), "player/a", result: Bytes(31));
 
         JournalInitializeResult first = await harness.Store.InitializeAsync(initialization);
-        harness.Advance(TimeSpan.FromMinutes(1));
+        await harness.AdvanceAsync(TimeSpan.FromMinutes(1));
         JournalInitializeResult replay = await harness.Store.InitializeAsync(initialization);
 
         Assert.Equal(JournalInitializeStatus.Replayed, replay.Status);
@@ -356,7 +356,7 @@ public abstract class MutationJournalStoreConformance
         await harness.Store.InitializeAsync(Initialization(Operation(3), "player/c"));
         await harness.Store.InitializeAsync(Initialization(Operation(1), "player/a"));
         await harness.Store.InitializeAsync(Initialization(Operation(2), "player/b"));
-        harness.Advance(TimeSpan.FromMinutes(20));
+        await harness.AdvanceAsync(TimeSpan.FromMinutes(20));
 
         JournalOperationPurgeResult first = await harness.Maintenance.PurgeOperationsAsync(new JournalOperationPurge(harness.UtcNow, 2));
 
@@ -378,7 +378,7 @@ public abstract class MutationJournalStoreConformance
         MutationJournalStoreHarness harness = CreateStore(TimeSpan.Zero);
         await harness.Store.InitializeAsync(Initialization(Operation(1), "player/a"));
         await harness.Store.CommitAsync(Commit(Operation(2), Mutation("player/a", 0, Event(7))));
-        harness.Advance(TimeSpan.FromSeconds(1));
+        await harness.AdvanceAsync(TimeSpan.FromSeconds(1));
 
         JournalOperationPurgeResult result = await harness.Maintenance.PurgeOperationsAsync(new JournalOperationPurge(harness.UtcNow, 10));
 
@@ -463,6 +463,7 @@ public abstract class MutationJournalStoreConformance
 public sealed class MutationJournalStoreHarness
 {
     private readonly Action<TimeSpan> advance;
+    private readonly Func<TimeSpan, Task> advanceRetentionAsync;
     private readonly Func<Guid, Task> corruptStoredResultAsync;
     private readonly Func<DateTimeOffset> getUtcNow;
 
@@ -471,18 +472,24 @@ public sealed class MutationJournalStoreHarness
         IMutationJournalMaintenance maintenance,
         Func<DateTimeOffset> getUtcNow,
         Action<TimeSpan> advance,
-        Func<Guid, Task> corruptStoredResultAsync)
+        Func<Guid, Task> corruptStoredResultAsync,
+        Func<TimeSpan, Task>? advanceRetentionAsync = null)
     {
         Store = store;
         Maintenance = maintenance;
         this.getUtcNow = getUtcNow;
         this.advance = advance;
+        this.advanceRetentionAsync = advanceRetentionAsync ?? (_ => Task.CompletedTask);
         this.corruptStoredResultAsync = corruptStoredResultAsync;
     }
 
     public IMutationJournalStore Store { get; }
     public IMutationJournalMaintenance Maintenance { get; }
     public DateTimeOffset UtcNow => getUtcNow();
-    public void Advance(TimeSpan duration) => advance(duration);
+    public async Task AdvanceAsync(TimeSpan duration)
+    {
+        advance(duration);
+        await advanceRetentionAsync(duration);
+    }
     public Task CorruptStoredResultAsync(Guid operationId) => corruptStoredResultAsync(operationId);
 }

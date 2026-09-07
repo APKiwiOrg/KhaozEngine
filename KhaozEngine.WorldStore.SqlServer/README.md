@@ -50,7 +50,9 @@ var journal = new SqlServerMutationJournalStore(
 `AutoCreate` creates version two when no journal objects exist. It also migrates a valid version-one journal by
 adding a database-owned operation-retention timestamp. Existing replay rows start a fresh retention horizon at
 migration time, so upgrade cannot expire one early. A database default also stamps inserts from an already-running
-version-one writer during rollout. Restarted hosts must support version two. `ValidateOnly` performs no DDL and is the production mode when
+version-one writer during rollout. A database trigger rejects operation deletion unless current maintenance opens
+its transaction-local guard. A still-running version-one maintenance host therefore rolls back both its child and
+parent deletes after migration. Restarted hosts must support version two. `ValidateOnly` performs no DDL and is the production mode when
 the application principal does not have schema permissions. A partial, malformed, older, or newer journal schema
 fails with `SchemaMismatch` and names the required migration.
 
@@ -69,7 +71,8 @@ identity or a secret from the deployment secret store. Do not commit connection 
 `CommandTimeout` applies to commands and schema locking. `MinimumRetryHorizon` prevents maintenance from deleting
 replay rows which may still be retried. `Limits` can lower any core journal maximum. `TimeProvider` controls public
 journal timestamps for deterministic hosts and tests. It does not control `PurgeOperationsByAgeAsync`, whose
-retention timestamps and cutoff come from SQL Server. Each operation uses a short-lived pooled SQL connection.
+retention timestamps and cutoff come from SQL Server. The older cutoff purge is also clipped to SQL Server UTC
+minus `MinimumRetryHorizon`. Each operation uses a short-lived pooled SQL connection.
 
 Back up every journal table as one unit. After a point-in-time restore, stop all journal hosts, rotate the epoch with
 `IMutationJournalMaintenance.RotateStoreEpochAsync`, verify snapshot checksums and stream continuity, reconcile any

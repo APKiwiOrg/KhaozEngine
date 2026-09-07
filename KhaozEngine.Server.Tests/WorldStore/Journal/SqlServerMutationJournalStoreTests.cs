@@ -31,7 +31,11 @@ public sealed class SqlServerMutationJournalStoreTests : IDisposable
             clock.Advance,
             operationId => SqlServerJournalTestDatabase.CorruptResultChecksumAsync(
                 DedicatedConnectionString,
-                store.PhysicalOperationId(operationId)));
+                store.PhysicalOperationId(operationId)),
+            duration => SqlServerJournalTestDatabase.AgeOperationsAsync(
+                DedicatedConnectionString,
+                store.OwnedOperationIds,
+                duration));
     }
 
     private SqlServerJournalPrefixStore CreatePrefixedStore(
@@ -60,6 +64,8 @@ public sealed class SqlServerMutationJournalStoreTests : IDisposable
         Assert.Contains("operation_id uniqueidentifier", sql, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("retention_started_at_utc datetimeoffset(7) NOT NULL", sql, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("DEFAULT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("trg_journal_operation_delete_guard", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("#khaoz_journal_operation_delete_guard", sql, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("fk_journal_event_operation", sql, StringComparison.OrdinalIgnoreCase);
     }
 

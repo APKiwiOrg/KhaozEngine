@@ -24,6 +24,7 @@ public sealed partial class SqlServerMutationJournalStore
         {
             transaction = await BeginTransactionAsync(connection, cancellationToken).ConfigureAwait(false);
             await AcquireMaintenanceLockAsync(transaction, exclusive: true, cancellationToken).ConfigureAwait(false);
+            await OpenOperationDeleteGuardAsync(transaction, cancellationToken).ConfigureAwait(false);
             DateTimeOffset databaseNow = await ReadDatabaseUtcNowAsync(transaction, cancellationToken).ConfigureAwait(false);
             TimeSpan effectiveAge = purge.MinimumAge > minimumRetryHorizon ? purge.MinimumAge : minimumRetryHorizon;
             DateTimeOffset effectiveCutoff = SubtractOrMinimum(databaseNow, effectiveAge);
@@ -60,6 +61,7 @@ public sealed partial class SqlServerMutationJournalStore
             object? oldestRaw = await oldestCommand.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
             DateTimeOffset? oldest = oldestRaw is null or DBNull ? null : (DateTimeOffset)oldestRaw;
             Invoke(JournalTestHookPhase.BeforeCommit);
+            await CloseOperationDeleteGuardAsync(transaction, cancellationToken).ConfigureAwait(false);
             commitStarted = true;
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
             committed = true;

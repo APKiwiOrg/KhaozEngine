@@ -574,6 +574,10 @@ derive the cutoff from that clock inside the purge transaction, enforce the long
 minimum retry horizon, and select through the retention-time index. Version-one rows migrate with retention starting
 at migration time, so an upgrade cannot expire a replay receipt early. Public receipt timestamps keep their existing
 host `TimeProvider` meaning. The cutoff-based API remains for compatibility with controlled callers.
+Durable providers clip that absolute cutoff to database UTC minus the configured minimum retry horizon. Their
+version-two schemas reject operation-row deletion unless current maintenance opens a transaction-local guard after
+acquiring the exclusive purge lock. A still-running version-one host can keep writing safely through the database
+retention default, but its legacy child and parent delete transaction rolls back.
 Replay retention is independent of event retention
 because events deliberately keep operation IDs without a foreign key. The transaction deletes
 `journal_operation_stream` rows before their operation rows while leaving any retained events untouched. The

@@ -20,9 +20,10 @@ namespace KhaozEngine.Tests.Gpu
     /// measuring, so this test is what gives an eventual fix a before and an after.
     /// </para>
     /// <para>
-    /// <see cref="ShadowPassDiagnostics.ResolutionChanged"/> has no row here on purpose:
-    /// <c>ShadowSettings.ShadowMapResolution</c> is a construction-time knob, so no running scene can change it
-    /// between two passes. Every test below asserts it stays false, and the bit itself is covered headless.
+    /// <see cref="ShadowPassDiagnostics.ResolutionChanged"/> has no row here on purpose. A live layout request
+    /// invalidates the prior atlas before the replacement's first depth pass, so that pass reports no previous
+    /// atlas rather than comparing two resolutions. <see cref="ShadowReconfigureGpuTests"/> covers that transition,
+    /// and the diagnostics bit itself remains covered headless.
     /// </para>
     /// </summary>
     public sealed class ShadowPassDiagnosticsGpuTests
@@ -43,7 +44,7 @@ namespace KhaozEngine.Tests.Gpu
         static void AssertOnlyReason(ShadowPassDiagnostics d, string reason)
         {
             Assert.True(d.Active, "the shadow tier must resolve to ShadowMap for these tests to mean anything");
-            Assert.False(d.ResolutionChanged, "the atlas resolution cannot change on a live scene");
+            Assert.False(d.ResolutionChanged, "none of these frames replaces the shadow atlas");
             if (reason != nameof(d.AnySkinnedCaster)) Assert.False(d.AnySkinnedCaster);
             if (reason != nameof(d.LightMatrixChanged)) Assert.False(d.LightMatrixChanged);
             if (reason != nameof(d.CasterDataChanged)) Assert.False(d.CasterDataChanged);

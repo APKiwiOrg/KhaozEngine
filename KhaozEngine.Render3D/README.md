@@ -228,10 +228,17 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   `ShadowMaxDistance` (default `130`, the far reach, `ResolvedMaxDistance` clamps it `>= ShadowNearDistance`).
   `ShadowCascadeBlend` (default `0.15`, the cross-cascade blend band width as a UV fraction, `0` restores the hard
   cut). `ShadowMapResolution` (default `2048`, the PER-CASCADE resolution, so the atlas is `ShadowCascadeCount *
-  ShadowMapResolution^2 * 4` bytes). `ShadowMapResolution` and `ShadowCascadeCount` are **construction-time** knobs sized
-  as the scene builds its atlas (its handle is bound into every material set), so pass them through the `ShadowSettings`
-  construction seam - `new Render3DSurface(window, shadows)` / `Render3DPreview` / `Render3DSnapshot.Capture(..., shadows)`
-  / `GameApp3D` `base(options, shadows)` - and a write to either on a live scene throws instead of silently no-opping.
+  ShadowMapResolution^2 * 4` bytes). Seed `ShadowMapResolution` and `ShadowCascadeCount` through the `ShadowSettings`
+  construction seam: `new Render3DSurface(window, shadows)` / `Render3DPreview` /
+  `Render3DSnapshot.Capture(..., shadows)` / `GameApp3D` `base(options, shadows)`. To change an existing scene, call
+  `Scene3D.RequestShadowMapDetail(ShadowMapDetail)` for the standard Low, Default, and High profiles, or
+  `Scene3D.RequestShadowMapLayout(resolution, cascadeCount)` for a custom layout. Requests validate immediately and
+  the latest request wins when several arrive before the next `Scene3D.Begin()`. That frame boundary applies the
+  request before any command list begins. An unchanged layout allocates nothing. A changed layout pays one GPU idle
+  wait, builds the replacement atlas and every receiver binding as one transaction, then swaps them together. If the
+  device rejects the replacement, the scene logs one error for that request and keeps the old drawable layout.
+  Requests change only the atlas layout. The current shadow mode and the other live shadow settings stay unchanged.
+  Direct writes to either committed property still throw. The explicit request methods are the only live resize path.
   `ShadowStrength`, and
   the acne biases `ShadowNormalOffset` (default `2.5` texels, the extent-aware normal-offset bias, scaled PER CASCADE
   so far cascades do not acne and near ones do not detach) plus the tiny residual depth biases

@@ -3016,14 +3016,27 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       invisible instead of a hard seam. `0` restores the hard cut. `ShadowMapResolution` is the **per-cascade**
       resolution, so the atlas costs `ShadowCascadeCount * ShadowMapResolution^2 * 4` bytes (~48 MB at the defaults) -
       drop the count or the resolution for a lower-end profile.
-    - **Construction-time atlas knobs.** `ShadowMapResolution` (default `2048`, per cascade) and `ShadowCascadeCount`
-      size the shadow atlas ONCE as the `Scene3D` allocates it, and its handle is bound into every material set, so they
-      must be supplied BEFORE construction rather than set on `Scene.Post` afterwards: pass a `ShadowSettings` to
+    - **Atlas layout and live requests.** `ShadowMapResolution` (default `2048`, per cascade) and
+      `ShadowCascadeCount` shape the atlas. Supply the initial values in the `ShadowSettings` passed to
       `new Render3DSurface(window, shadows)` / `Render3DPreview` / `Render3DSnapshot.Capture(..., shadows)`, or for a
-      `GameApp3D` game to the `base(options, shadows)` ctor (e.g. `new ShadowSettings { Mode = ShadowMode.ShadowMap,
-      ShadowCascadeCount = 4 }`). Writing `ShadowMapResolution` or `ShadowCascadeCount` on a live scene's `ShadowSettings`
-      now throws `InvalidOperationException` instead of silently no-opping. Drop the count or resolution to 1024/512 for a
-      low-end profile. Recreate the scene to change atlas sizing at runtime.
+      `GameApp3D` game to the `base(options, shadows)` constructor. Writing either property directly after the scene
+      commits its atlas still throws `InvalidOperationException`. Direct assignment is not the live resize API.
+
+      Request a live change through the scene instead:
+
+      ```csharp
+      scene.RequestShadowMapDetail(ShadowMapDetail.High);
+      scene.RequestShadowMapLayout(resolution: 1536, cascadeCount: 2);
+      ```
+
+      Both calls validate before queueing. If several valid requests arrive before the next frame, only the latest
+      layout is kept. `Scene3D.Begin()` applies it before any command list begins. An unchanged layout is a no-op. A
+      changed layout waits for submitted GPU work once at that frame boundary, builds a complete atlas and replacement
+      bindings for rigid, skinned, splat, and tile-ground receivers, then swaps the graph as one transaction. This is
+      a rare settings-change hitch, not work added to ordinary frames. If allocation or binding creation fails, the
+      current atlas and committed property values remain active. The scene logs one error for that failed request and
+      remains drawable. A request changes only the atlas layout. The current shadow mode, strength, bias, distance,
+      blend, and filtering settings stay unchanged.
     - **Persisted detail setting.** Persist `ShadowMapDetail` in the game's graphics settings, not its numeric atlas
       resolution. Map that enum through `ShadowSettings.ForDetail` before the `GameApp3D` base constructor builds the
       scene:
@@ -3042,8 +3055,10 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       ```
 
       Each profile selects `ShadowMode.ShadowMap`: `Low` uses 1024, `Default` uses 2048, and `High` uses 3072 pixels
-      per cascade. A settings screen must save a changed detail choice and restart the game, or explicitly rebuild the
-      scene, because the atlas resolution is frozen after construction.
+      per cascade. Use `ShadowSettings.ForDetail` to seed the scene at construction. After construction, save the same
+      enum and call `scene.RequestShadowMapDetail(settings.ShadowDetail)` so the choice takes effect at the next frame
+      boundary without rebuilding the scene or process. Use `RequestShadowMapLayout` only when the game deliberately
+      exposes custom resolution and cascade values.
     - Other knobs (all on `ShadowSettings`, runtime-mutable): `ShadowNearDistance` (default `16`, the near cascade's view-depth
       reach from the camera - smaller packs texels onto the near action, at the cost of handing off to a coarser
       cascade sooner). `ShadowStrength` (0..1 shadow darkness, default `0.85`).

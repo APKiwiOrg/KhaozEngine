@@ -51,7 +51,7 @@ public sealed class GltfMeshResolver : ITileMeshResolver
     readonly Dictionary<string, IReadOnlyList<GltfMeshPart>?> _fullPartsCache = new(StringComparer.Ordinal);
     readonly Dictionary<string, IReadOnlyList<GltfMeshPart>?> _lodPartsCache = new(StringComparer.Ordinal);
     readonly Dictionary<string, GltfMesh?> _flatCache = new(StringComparer.Ordinal);
-    readonly HashSet<string> _loggedFailures = new(StringComparer.Ordinal);
+    readonly HashSet<(LoadPurpose Purpose, string Path)> _loggedFailures = new();
 
     enum LoadPurpose
     {
@@ -185,7 +185,7 @@ public sealed class GltfMeshResolver : ITileMeshResolver
             // deserves a reason a reader can act on, not whatever the loader throws for an absent file.
             if (!File.Exists(path))
             {
-                LogFailure(meshRef, path, "file not found", archetype, purpose);
+                LogFailure(path, "file not found", archetype, purpose);
                 return null;
             }
             // Wrapped before it leaves, so a caller cannot write through the handed-out list into the cache.
@@ -196,7 +196,7 @@ public sealed class GltfMeshResolver : ITileMeshResolver
             // Deliberately broad: a corrupt or unsupported glb, or a ref no path API will accept, surfaces as
             // anything from a format exception to an IO one, and none of them is worth taking the whole world
             // down for when a greybox box will do.
-            LogFailure(meshRef, path, ex.Message, archetype, purpose);
+            LogFailure(path, ex.Message, archetype, purpose);
             return null;
         }
     }
@@ -209,14 +209,14 @@ public sealed class GltfMeshResolver : ITileMeshResolver
             path = PathFor(meshRef);
             if (!File.Exists(path))
             {
-                LogFailure(meshRef, path, "file not found", archetype, purpose);
+                LogFailure(path, "file not found", archetype, purpose);
                 return null;
             }
             return GltfLoader.LoadFlattenedAlbedo(path);
         }
         catch (Exception ex)
         {
-            LogFailure(meshRef, path, ex.Message, archetype, purpose);
+            LogFailure(path, ex.Message, archetype, purpose);
             return null;
         }
     }
@@ -225,13 +225,12 @@ public sealed class GltfMeshResolver : ITileMeshResolver
     // is the FIRST caller's archetype either way: the line is written once per mesh reference, so a second
     // archetype on the same broken reference is answered off the cached failure and never reaches here.
     void LogFailure(
-        string meshRef,
         string path,
         string reason,
         TileObjectArchetype? archetype,
         LoadPurpose purpose)
     {
-        if (!_loggedFailures.Add(meshRef)) return;
+        if (!_loggedFailures.Add((purpose, path))) return;
         string prefix = archetype is null ? "tile world:" : $"tile world: archetype '{archetype.Id}'";
         _log?.Invoke(purpose switch
         {

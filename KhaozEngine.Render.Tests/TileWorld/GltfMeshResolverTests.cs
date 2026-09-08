@@ -328,6 +328,26 @@ public class GltfMeshResolverTests : IDisposable
     }
 
     [Fact]
+    public void Equal_missing_full_and_lod_refs_log_once_for_each_independent_tier()
+    {
+        var resolver = new GltfMeshResolver(_root, Greybox(), _log.Add);
+        TileObjectArchetype tree = Archetype("tree", "kit/tree.glb", "kit/tree.glb");
+        string path = Path.Combine(_root, "kit", "tree.glb");
+
+        Assert.NotNull(resolver.Resolve(tree));
+        Assert.Null(resolver.ResolveLod(tree));
+        Assert.NotNull(resolver.Resolve(tree));
+        Assert.Null(resolver.ResolveLod(tree));
+
+        Assert.Equal(new[]
+        {
+            $"tile world: archetype 'tree' could not load mesh '{path}' (file not found), falling back.",
+            $"tile world: archetype 'tree' could not load optional LOD mesh '{path}' " +
+            "(file not found), retaining LOD0.",
+        }, _log);
+    }
+
+    [Fact]
     public void A_malformed_optional_lod_returns_null_and_logs_the_loader_failure_once()
     {
         string path = Path.Combine(_root, "kit", "tree-lod.glb");

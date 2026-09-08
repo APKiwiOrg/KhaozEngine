@@ -2,6 +2,7 @@ using System;
 using System.Numerics;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D;
+using KhaozEngine.Tests.Gpu;
 using Xunit;
 
 namespace KhaozEngine.Tests.Render3D
@@ -194,6 +195,25 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(4, s.ShadowCascadeCount);
             Assert.Throws<InvalidOperationException>(() => s.ShadowMapResolution = 1024);
             Assert.Throws<InvalidOperationException>(() => s.ShadowCascadeCount = 2);
+        }
+
+        [Fact]
+        public void Public_scene_request_updates_committed_knobs_without_unlocking_direct_setters()
+        {
+            using var device = new FakeGpuDevice();
+            using IGpuTexture targetTexture = device.Factory.CreateTexture(GpuTextureDescription.Texture2D(
+                16, 16, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget));
+            using IGpuFramebuffer target = device.Factory.CreateFramebuffer(null, targetTexture);
+            var settings = new ShadowSettings { ShadowMapResolution = 2048, ShadowCascadeCount = 3 };
+            using var scene = new Scene3D(device, target.Outputs, settings);
+
+            scene.RequestShadowMapLayout(3072, 4);
+            scene.Begin();
+
+            Assert.Equal(3072, settings.ShadowMapResolution);
+            Assert.Equal(4, settings.ShadowCascadeCount);
+            Assert.Throws<InvalidOperationException>(() => settings.ShadowMapResolution = 1024);
+            Assert.Throws<InvalidOperationException>(() => settings.ShadowCascadeCount = 2);
         }
 
         [Fact]

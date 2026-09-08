@@ -257,6 +257,21 @@ namespace KhaozEngine.Render3D
         public const int MinCascades = 1;
         /// <summary>Maximum cascade count (matches the fixed-size cascade arrays in the frame UBO / shaders).</summary>
         public const int MaxCascades = 4;
+        internal const int MinShadowMapResolution = 256;
+
+        internal static void ValidateShadowMapResolution(int resolution)
+        {
+            if (resolution < MinShadowMapResolution)
+                throw new ArgumentOutOfRangeException(nameof(resolution), resolution,
+                    $"Shadow-map resolution must be at least {MinShadowMapResolution}.");
+        }
+
+        internal static void ValidateShadowCascadeCount(int cascadeCount)
+        {
+            if (cascadeCount < MinCascades || cascadeCount > MaxCascades)
+                throw new ArgumentOutOfRangeException(nameof(cascadeCount), cascadeCount,
+                    $"Shadow cascade count must be in [{MinCascades}, {MaxCascades}].");
+        }
 
         /// <summary><see cref="ShadowCascadeCount"/> clamped to the supported <see cref="MinCascades"/>..<see cref="MaxCascades"/>
         /// range, so a menu value out of range degrades to the nearest valid count instead of over-running the

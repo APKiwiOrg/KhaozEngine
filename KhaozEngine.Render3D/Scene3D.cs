@@ -838,10 +838,10 @@ namespace KhaozEngine.Render3D
         /// <summary>Skinned draws queued this frame. Internal: lets tests assert Begin clears the queue.</summary>
         internal int SkinnedInstanceCount => _skinnedInstances.Items.Count;
 
-        /// <summary>Start a frame: latch <see cref="RenderOrigin"/>, then clear the instance queue, the point-light
-        /// queue, the debug-line queue, the filled-overlay queue, and the billboard queues. Call before submitting.</summary>
+        /// <summary>Start a frame: apply pending scene changes, latch <see cref="RenderOrigin"/>, and clear the per-frame draw queues.</summary>
         public void Begin()
         {
+            ApplyPendingShadowLayout();
             _retired.BeginFrame();   // frees mid-life mesh buffers whose retirement fence has signaled (no stall)
             LatchRenderOrigin();
             _instances.Begin();
@@ -2322,9 +2322,9 @@ namespace KhaozEngine.Render3D
 
         public void Dispose()
         {
-            // Drain in-flight GPU work before destroying anything: a test or streaming path may Dispose the
-            // scene with uploads/draws still queued on the device's async submission thread (Mesa lavapipe
-            // executes queued commands on its own thread and segfaults on destroyed resources).
+            // Drain in-flight GPU work before destroying anything because uploads or draws may still be queued on
+            // the device's async submission thread (Mesa lavapipe can segfault on destroyed resources).
+            DisposeShadowReconfiguration();
             _gd.WaitForIdle();
             _retired.Dispose();    // flushes the retired tail (it would outlive the scene) and frees the fence barrier
             DisposeFoliage();

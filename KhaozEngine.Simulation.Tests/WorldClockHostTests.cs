@@ -208,6 +208,41 @@ public class WorldClockHostTests
     }
 
     [Fact]
+    public void TryEnqueueCommand_NegativeTimeScaleClampsToZeroOnTick()
+    {
+        WorldClockHost host = CreateHost(new WorldClock(600f, 0.35f));
+        byte[] command = WorldClockCodec.EncodeCommand(
+            new WorldClockCommand(WorldClockCommandKind.SetTimeScale, -2f));
+
+        bool accepted = host.TryEnqueueCommand(command);
+        host.Tick(0f);
+
+        Assert.True(accepted);
+        Assert.Equal(0f, host.Snapshot.TimeScale);
+    }
+
+    [Theory]
+    [InlineData(0f)]
+    [InlineData(-120f)]
+    public void TryEnqueueCommand_NonPositiveDayLengthClampsToConfiguredMinimumOnTick(float dayLength)
+    {
+        WorldClockHostOptions options = new()
+        {
+            BroadcastIntervalSeconds = LongBroadcastIntervalSeconds,
+            MinDayLengthSeconds = 120f,
+        };
+        WorldClockHost host = CreateHost(new WorldClock(600f, 0.35f), options);
+        byte[] command = WorldClockCodec.EncodeCommand(
+            new WorldClockCommand(WorldClockCommandKind.SetDayLength, dayLength));
+
+        bool accepted = host.TryEnqueueCommand(command);
+        host.Tick(0f);
+
+        Assert.True(accepted);
+        Assert.Equal(120f, host.Snapshot.DayLengthSeconds);
+    }
+
+    [Fact]
     public void PushTo_DefersSendUntilTickAndUsesPostAdvanceState()
     {
         List<(int Slot, byte[] Payload)> sends = [];

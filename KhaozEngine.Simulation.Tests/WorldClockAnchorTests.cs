@@ -8,6 +8,25 @@ namespace KhaozEngine.Tests.Simulation;
 public class WorldClockAnchorTests
 {
     [Fact]
+    public void EncodeDecode_MatchesVersionOneGoldenVector()
+    {
+        WorldClockAnchor anchor = new(1d, 0.75f);
+        byte[] expected =
+        [
+            0x4b, 0x57, 0x43, 0x41,
+            0x01, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf0, 0x3f,
+            0x00, 0x00, 0x40, 0x3f,
+        ];
+
+        byte[] encoded = anchor.Encode();
+        WorldClockAnchor? decoded = WorldClockAnchor.Decode(expected);
+
+        Assert.Equal(expected, encoded);
+        Assert.Equal(anchor, decoded);
+    }
+
+    [Fact]
     public void EncodeDecode_RoundTripsExactlyInTwentyBytes()
     {
         WorldClockAnchor anchor = new(1_753_000_000.125d, 0.6789f);

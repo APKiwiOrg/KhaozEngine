@@ -125,7 +125,10 @@ public class WorldClockCodecTests
     [Theory]
     [InlineData(WorldClockCommandKind.SetTimeOfDay, 0.75f)]
     [InlineData(WorldClockCommandKind.SetTimeScale, 0f)]
+    [InlineData(WorldClockCommandKind.SetTimeScale, -1f)]
     [InlineData(WorldClockCommandKind.SetDayLength, 900f)]
+    [InlineData(WorldClockCommandKind.SetDayLength, 0f)]
+    [InlineData(WorldClockCommandKind.SetDayLength, -1f)]
     public void TryDecodeCommand_ValidPayloadRoundTripsAllFields(WorldClockCommandKind kind, float value)
     {
         WorldClockCommand command = new(kind, value);
@@ -180,20 +183,4 @@ public class WorldClockCodecTests
         Assert.Equal(default, decoded);
     }
 
-    [Theory]
-    [InlineData(WorldClockCommandKind.SetDayLength, 0f)]
-    [InlineData(WorldClockCommandKind.SetDayLength, -1f)]
-    [InlineData(WorldClockCommandKind.SetTimeScale, -1f)]
-    public void TryDecodeCommand_ValueOutsideKindDomainReturnsFalseAndDefault(
-        WorldClockCommandKind kind,
-        float invalidValue)
-    {
-        byte[] encoded = WorldClockCodec.EncodeCommand(new WorldClockCommand(kind, invalidValue));
-        WorldClockCommand decoded = new(WorldClockCommandKind.SetTimeScale, 2f);
-
-        bool decodedSuccessfully = WorldClockCodec.TryDecodeCommand(encoded, out decoded);
-
-        Assert.False(decodedSuccessfully);
-        Assert.Equal(default, decoded);
-    }
 }

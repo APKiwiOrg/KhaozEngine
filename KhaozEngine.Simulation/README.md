@@ -29,8 +29,9 @@ if (wait > 0f) Thread.Sleep(TimeSpan.FromSeconds(wait)); else Thread.Yield();
 `WorldClockState(TimeOfDay, DayLengthSeconds, TimeScale)` is the immutable state contract. Time of day is
 normalized to `[0, 1)`, day length is finite and greater than zero, and time scale is finite and non-negative.
 `WorldClockCommand(WorldClockCommandKind Kind, float Value)` carries one mutation. Its kinds are
-`SetTimeOfDay`, `SetTimeScale`, and `SetDayLength`. Set-time values wrap after validation, set-scale values must
-be non-negative, and set-day-length values must be greater than zero.
+`SetTimeOfDay`, `SetTimeScale`, and `SetDayLength`. The command codec validates exact length, known kind, and
+finiteness. The host is the single policy authority for typed and wire commands. It wraps set-time values,
+clamps set-scale values, and clamps set-day-length values.
 
 `WorldClockHostOptions` exposes `BroadcastIntervalSeconds` (default `5`, finite and greater than zero),
 `MaxTimeScale` (default `1000`, finite and non-negative), and `MinDayLengthSeconds` (default `60`, finite and

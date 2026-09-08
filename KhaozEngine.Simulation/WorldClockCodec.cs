@@ -69,18 +69,15 @@ public static class WorldClockCodec
 
         WorldClockCommandKind kind = (WorldClockCommandKind)data[0];
         float value = BinaryPrimitives.ReadSingleLittleEndian(data.Slice(1, 4));
-        if (!float.IsFinite(value) || !IsValid(kind, value))
+        if (!float.IsFinite(value) || !IsKnownKind(kind))
             return false;
 
         command = new WorldClockCommand(kind, value);
         return true;
     }
 
-    private static bool IsValid(WorldClockCommandKind kind, float value) => kind switch
-    {
-        WorldClockCommandKind.SetTimeOfDay => true,
-        WorldClockCommandKind.SetTimeScale => value >= 0f,
-        WorldClockCommandKind.SetDayLength => value > 0f,
-        _ => false,
-    };
+    private static bool IsKnownKind(WorldClockCommandKind kind) => kind is
+        WorldClockCommandKind.SetTimeOfDay or
+        WorldClockCommandKind.SetTimeScale or
+        WorldClockCommandKind.SetDayLength;
 }

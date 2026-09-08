@@ -14560,8 +14560,8 @@ storage.
 The immutable replication contract is `WorldClockState(TimeOfDay, DayLengthSeconds, TimeScale)`. A decoded state
 requires finite values, normalized time in `[0, 1)`, a day length greater than zero, and a non-negative scale.
 Commands use `WorldClockCommand(WorldClockCommandKind Kind, float Value)`. The three kinds are `SetTimeOfDay`,
-`SetTimeScale`, and `SetDayLength`. Set-time accepts any finite value and wraps it into normalized time.
-Set-scale requires a finite non-negative value. Set-day-length requires a finite value greater than zero.
+`SetTimeScale`, and `SetDayLength`. The command codec validates exact length, known kind, and finiteness. It does
+not apply operational bounds.
 
 `WorldClockHostOptions` has three init properties:
 
@@ -14569,8 +14569,9 @@ Set-scale requires a finite non-negative value. Set-day-length requires a finite
 - `MaxTimeScale`, default `1000`, must be finite and non-negative
 - `MinDayLengthSeconds`, default `60`, must be finite and greater than zero
 
-The host constructor rejects invalid options. Valid scale commands clamp to `[0, MaxTimeScale]`, and valid
-day-length commands clamp up to `MinDayLengthSeconds`.
+The host constructor rejects invalid options. The host is the single policy authority for typed and wire
+commands. It wraps finite set-time values into `[0, 1)`, clamps finite scale values to `[0, MaxTimeScale]`, and
+clamps finite day-length values up to `MinDayLengthSeconds`.
 
 ```csharp
 const ushort WorldClockStateMessage = 40;

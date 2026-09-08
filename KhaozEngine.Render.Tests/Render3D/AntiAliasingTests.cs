@@ -1,3 +1,5 @@
+using System;
+using System.Threading.Tasks;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D;
 using Xunit;
@@ -66,6 +68,18 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(AntiAliasing.Fxaa, AntiAliasing.Msaa(3).ResolveFor(sparse));
             Assert.Equal(4, AntiAliasing.Msaa(4).ResolveFor(sparse).MsaaSamples);
             Assert.Equal(4, AntiAliasing.Msaa(8).ResolveFor(sparse).MsaaSamples);
+        }
+
+        [Fact]
+        public async Task ResolveFor_returns_for_requests_at_and_above_the_signed_overflow_boundary()
+        {
+            Task<AntiAliasing[]> resolving = Task.WhenAll(
+                Task.Run(() => AntiAliasing.Msaa(1 << 30).ResolveFor(Caps(8))),
+                Task.Run(() => AntiAliasing.Msaa(int.MaxValue).ResolveFor(Caps(8))));
+
+            AntiAliasing[] resolved = await resolving.WaitAsync(TimeSpan.FromSeconds(2));
+
+            Assert.All(resolved, aa => Assert.Equal(AntiAliasing.Msaa(8), aa));
         }
 
         [Fact]

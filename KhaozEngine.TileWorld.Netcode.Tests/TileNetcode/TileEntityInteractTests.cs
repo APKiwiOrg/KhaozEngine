@@ -81,6 +81,40 @@ public class TileEntityInteractTests
     }
 
     [Fact]
+    public void A_valid_entity_interaction_replaces_a_live_combat_lock_without_a_cannot_reach_notice()
+    {
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        using var h = new TileCombatHarness(doc, new TileCoord(20, 20, 0));
+        h.Frames(8);
+        long oldTarget = h.Server.SpawnActor(new TileCoord(21, 20, 0),
+            new TileActorSpawn(10, AttackTicks: 4, TileDirection.W));
+        long interactionTarget = h.Server.SpawnActor(new TileCoord(20, 21, 0),
+            new TileActorSpawn(10, AttackTicks: 4, TileDirection.S));
+        h.Frames(8);
+        Assert.True(h.Server.TryGetPlayerState(0, out TileMoveState fighting));
+        fighting.CombatTarget = oldTarget;
+        h.Server.SetPlayerState(0, fighting);
+        h.Frames(8);
+
+        var interactions = new List<long>();
+        var refused = new List<long>();
+        int clientNotices = 0;
+        h.Server.OnInteractEntity += (_, _, target) => interactions.Add(target);
+        h.Server.OnCannotReach += (_, target) => refused.Add(target);
+        h.Client.CannotReach += () => clientNotices++;
+
+        h.Client.Queue(TileCommand.InteractEntity(interactionTarget, TileMoveMode.Run));
+        for (int i = 0; i < 40 && interactions.Count == 0; i++) h.Frames(1);
+        h.Frames(2);
+
+        Assert.Equal(new[] { interactionTarget }, interactions);
+        Assert.Empty(refused);
+        Assert.Equal(0, clientNotices);
+        Assert.True(h.Server.TryGetPlayerState(0, out TileMoveState interacted));
+        Assert.Equal(0, interacted.CombatTarget);
+    }
+
+    [Fact]
     public void The_server_refuses_zero_missing_and_cross_plane_entity_targets_before_the_action_queue()
     {
         TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();

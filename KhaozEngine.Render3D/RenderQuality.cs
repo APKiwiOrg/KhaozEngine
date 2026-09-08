@@ -96,8 +96,7 @@ namespace KhaozEngine.Render3D
             switch (Mode)
             {
                 case AntiAliasingMode.Msaa:
-                    int want = LargestPowerOfTwoAtMost(Math.Max(1, MsaaSamples));
-                    int supported = caps.HighestSupportedMsaaSampleCountAtMost(want);
+                    int supported = caps.HighestSupportedMsaaSampleCountAtMost(MsaaSamples);
                     if (supported <= 1) return Fxaa;                 // device can't satisfy this request with MSAA
                     return Msaa(supported, _postFxaa);
                 case AntiAliasingMode.Ssaa:
@@ -105,13 +104,6 @@ namespace KhaozEngine.Render3D
                 default:
                     return this;                                     // None / Fxaa always available
             }
-        }
-
-        static int LargestPowerOfTwoAtMost(int n)
-        {
-            int p = 1;
-            while (p * 2 <= n) p *= 2;
-            return p;
         }
 
         public bool Equals(AntiAliasing other) =>

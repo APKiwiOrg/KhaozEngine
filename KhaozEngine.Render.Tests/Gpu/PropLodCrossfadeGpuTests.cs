@@ -61,13 +61,20 @@ namespace KhaozEngine.Tests.Gpu
             int nearCoverage = CoveredPixels(near);
             int midpointCoverage = CoveredPixels(midpoint);
             int farCoverage = CoveredPixels(far);
+            int midpointRed = RedPixels(midpoint);
+            int midpointBlue = BluePixels(midpoint);
             _output.WriteLine($"color coverage near={nearCoverage}, midpoint={midpointCoverage}, far={farCoverage}");
+            _output.WriteLine($"midpoint ownership red={midpointRed}, blue={midpointBlue}");
             _output.WriteLine($"shadow coverage solid={solidShadow}, midpoint={midpointShadow}");
 
             Assert.True(RedPixels(near) > 500, "LOD0 is not visibly red at the near endpoint");
             Assert.True(BluePixels(far) > 500, "LOD1 is not visibly blue at the far endpoint");
             Assert.InRange(midpointCoverage, (int)(nearCoverage * 0.95f), (int)(nearCoverage * 1.05f));
             Assert.InRange(midpointCoverage, (int)(farCoverage * 0.95f), (int)(farCoverage * 1.05f));
+            Assert.True(midpointRed >= midpointCoverage * 0.2f,
+                $"LOD0 owns only {midpointRed} of {midpointCoverage} midpoint pixels");
+            Assert.True(midpointBlue >= midpointCoverage * 0.2f,
+                $"LOD1 owns only {midpointBlue} of {midpointCoverage} midpoint pixels");
             AssertWithinEndpointBrightness(near, midpoint, far);
             Assert.True(solidShadow > 1000, $"the solid panel records only {solidShadow} shadow texels");
             Assert.True(midpointShadow >= solidShadow * 0.95f,

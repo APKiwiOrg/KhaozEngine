@@ -107,6 +107,7 @@ namespace KhaozEngine.Render3D
                         Emissive = dissolving ? inst.DissolveEdge : inst.Material.Emissive,
                         SpecParams = new Vector4(inst.Material.Specular, inst.Material.Shininess, 0f, 0f),
                         Dissolve = dissolving ? new Vector2(inst.DissolveThreshold, inst.DissolveEdgeWidth) : Vector2.Zero,
+                        DissolveComplement = dissolving ? inst.DissolveComplement : 0f,
                     };
                 }
             }

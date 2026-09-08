@@ -110,14 +110,14 @@ namespace KhaozEngine.Tests.Render3D
         // ---- Model instance stream (InstanceData) + the dynamic-geometry decal tag (issue #235) ----
 
         [Fact]
-        public void InstanceData_MarshalSize_EqualsDeclaredSizeInBytes_124()
+        public void InstanceData_MarshalSize_EqualsDeclaredSizeInBytes_128()
         {
             // The per-instance vertex stream is Model (mat4, 64) + Tint + Emissive + SpecParams (3*16) + IsDynamic
-            // (float, 4) + Dissolve (Vector2, 8) = 124 bytes. ModelRenderer's instance vertex layout uses
+            // (float, 4) + Dissolve (Vector2, 8) + DissolveComplement (float, 4) = 128 bytes. ModelRenderer's instance vertex layout uses
             // InstanceData.SizeInBytes as the stride and adds an IDynamic Float1 (location 12) then an IDissolve
             // Float2 (location 13) for the two trailing fields. If the struct and the constant drift, the instanced
             // draws fetch each instance at the wrong offset (garbled transforms/tints).
-            Assert.Equal(124, (int)ModelRenderer.InstanceData.SizeInBytes);
+            Assert.Equal(128, (int)ModelRenderer.InstanceData.SizeInBytes);
             Assert.Equal((int)ModelRenderer.InstanceData.SizeInBytes, Marshal.SizeOf<ModelRenderer.InstanceData>());
         }
 
@@ -134,6 +134,7 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(96, (int)Marshal.OffsetOf<ModelRenderer.InstanceData>(nameof(ModelRenderer.InstanceData.SpecParams)));
             Assert.Equal(112, (int)Marshal.OffsetOf<ModelRenderer.InstanceData>(nameof(ModelRenderer.InstanceData.IsDynamic)));
             Assert.Equal(116, (int)Marshal.OffsetOf<ModelRenderer.InstanceData>(nameof(ModelRenderer.InstanceData.Dissolve)));
+            Assert.Equal(124, (int)Marshal.OffsetOf<ModelRenderer.InstanceData>(nameof(ModelRenderer.InstanceData.DissolveComplement)));
         }
 
         [Fact]
@@ -162,8 +163,10 @@ namespace KhaozEngine.Tests.Render3D
             // The interpolant sits at 9 rather than 10 since issue #301 dropped vDepth from the block.
             Assert.Contains("layout(location=13) in vec2 IDissolve;", ShaderSources.ModelVert);
             Assert.Contains("vDissolve = IDissolve;", ShaderSources.ModelVert);
+            Assert.Contains("layout(location=14) in float IDissolveComplement;", ShaderSources.ModelVert);
+            Assert.Contains("vDissolveComplement = IDissolveComplement;", ShaderSources.ModelVert);
             Assert.Contains("layout(location=9) in vec2 vDissolve;", ShaderSources.ModelFrag);
-            Assert.Contains("if (vDissolve.x > 0.0)", ShaderSources.ModelFrag);
+            Assert.Contains("if (vDissolve.x > 0.0 || vDissolveComplement > 0.5)", ShaderSources.ModelFrag);
         }
 
         // ---- Splat material params tail ----

@@ -136,9 +136,11 @@ layout(location=10) in vec4 IEmissive;
 layout(location=11) in vec4 ISpecParams;
 layout(location=12) in float IDynamic;
 layout(location=13) in vec2 IDissolve;            // x = threshold (0 = solid .. 1 = gone), y = edge width (unused here)
+layout(location=14) in float IDissolveComplement; // 0 = ordinary keep set, 1 = exact complement for a LOD handoff
 layout(location=0) out float vLightDepth;
 layout(location=1) out vec3 vNoisePos;            // ABSOLUTE world position pre-scaled by this cascade's noise scale
 layout(location=2) out vec2 vDissolve;
+layout(location=3) out float vDissolveComplement;
 void main() {
     mat4 Model = mat4(IModel0, IModel1, IModel2, IModel3);
     vec4 world = Model * vec4(Position, 1.0);
@@ -152,6 +154,7 @@ void main() {
     gl_Position = lightClip;
     vNoisePos = (world.xyz + RenderOrigin.xyz) * DissolveParams.x;
     vDissolve = IDissolve;
+    vDissolveComplement = IDissolveComplement;
 }";
 
         // The dissolve depth fragments' shared prologue: the interpolants plus the SAME hash/noise as ModelFrag's
@@ -162,6 +165,7 @@ void main() {
 layout(location=0) in float vLightDepth;
 layout(location=1) in vec3 vNoisePos;
 layout(location=2) in vec2 vDissolve;
+layout(location=3) in float vDissolveComplement;
 layout(location=0) out vec4 oDepth;
 float dhash(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
 float dnoise(vec3 p) {
@@ -179,10 +183,11 @@ float dnoise(vec3 p) {
 void main() {
     // Gated exactly like ModelFrag: threshold 0 writes depth unconditionally, so an instance carrying no dissolve
     // records the same depth this pipeline's plain sibling would.
-    if (vDissolve.x > 0.0) {
+    if (vDissolve.x > 0.0 || vDissolveComplement > 0.5) {
         float threshold = clamp(vDissolve.x, 0.0, 1.0);
         float mask = dnoise(vNoisePos);
-        if (mask < threshold) discard;            // dissolved away: no depth, so no shadow from this fragment
+        bool keep = vDissolveComplement > 0.5 ? mask < threshold : mask >= threshold;
+        if (!keep) discard;
     }
     oDepth = vec4(max(vLightDepth, 0.0), 0.0, 0.0, 1.0);   // near-plane pancake, as ShadowDepthFrag
 }";

@@ -44,6 +44,15 @@ namespace KhaozEngine.Render3D
             => _items.Add(new Instance(mesh, world, tint, material, dissolveThreshold, dissolveEdgeWidth, dissolveEdge,
                 castsShadows, invertShadowDissolve));
 
+        /// <summary>As the dissolve overload, plus the complementary coverage phase used by a LOD handoff.
+        /// A value of 0 keeps the ordinary noise ownership. A value of 1 keeps its exact complement in both the
+        /// color and shadow passes.</summary>
+        public void Add(MeshHandle mesh, Matrix4x4 world, Color tint, Material material,
+            float dissolveThreshold, float dissolveEdgeWidth, Color dissolveEdge, bool castsShadows,
+            bool invertShadowDissolve, float dissolveComplement)
+            => _items.Add(new Instance(mesh, world, tint, material, dissolveThreshold, dissolveEdgeWidth, dissolveEdge,
+                castsShadows, invertShadowDissolve, dissolveComplement));
+
         public readonly struct Instance
         {
             public MeshHandle Mesh { get; }
@@ -69,18 +78,33 @@ namespace KhaozEngine.Render3D
             /// GPU instance stream, so the uploaded bytes and the whole COLOUR pass are identical either way. Only
             /// meaningful while <see cref="Dissolving"/>.</summary>
             public bool InvertShadowDissolve { get; }
+            /// <summary>Complementary rigid-dissolve phase. Zero uses the ordinary keep decision. One inverts it in
+            /// both color and shadow so two instances at the same threshold own every noise sample exactly once.</summary>
+            public float DissolveComplement { get; }
             public Instance(MeshHandle mesh, Matrix4x4 world, Color tint) : this(mesh, world, tint, Material.None) { }
             public Instance(MeshHandle mesh, Matrix4x4 world, Color tint, Material material,
                 float dissolveThreshold = 0f, float dissolveEdgeWidth = 0f, Vector4 dissolveEdge = default,
-                bool castsShadows = true, bool invertShadowDissolve = false)
+                bool castsShadows = true, bool invertShadowDissolve = false, float dissolveComplement = 0f)
             {
                 Mesh = mesh; World = world; Tint = tint; Material = material;
                 DissolveThreshold = dissolveThreshold; DissolveEdgeWidth = dissolveEdgeWidth; DissolveEdge = dissolveEdge;
                 CastsShadows = castsShadows; InvertShadowDissolve = invertShadowDissolve;
+                DissolveComplement = dissolveComplement;
             }
 
             /// <summary>True when this draw carries a dissolve (routes through the gated ModelFrag term).</summary>
-            public bool Dissolving => DissolveThreshold > 0f;
+            public bool Dissolving => DissolveThreshold > 0f || DissolveComplement > 0f;
         }
+    }
+
+    public sealed partial class Scene3D
+    {
+        /// <summary>Queue one rigid dissolve instance with an explicit complementary coverage phase. The phase is
+        /// shared by the color and shadow paths. The separate shadow-only inversion remains available for HLOD.</summary>
+        public void Draw(MeshHandle mesh, Matrix4x4 world, Color tint, Material material,
+            float dissolve, float edgeWidth, Color edgeColor, bool castsShadows, bool invertShadowDissolve,
+            float dissolveComplement)
+            => _instances.Add(mesh, world, tint, material, dissolve, edgeWidth, edgeColor, castsShadows,
+                invertShadowDissolve, dissolveComplement);
     }
 }

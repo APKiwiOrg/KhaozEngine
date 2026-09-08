@@ -29,6 +29,8 @@ namespace KhaozEngine.Tests.Render3D
         // interpolated depth across a triangle crossing the near plane and under-shadow.
         const string VertexPancakeGlsl = "lightClip.z = max(lightClip.z, 0.0);";
         const string FragmentPancakeGlsl = "max(vLightDepth, 0.0)";
+        const string ComplementKeepGlsl =
+            "bool keep = vDissolveComplement > 0.5 ? mask < threshold : mask >= threshold;";
 
         [Fact]
         public void ProjectCascade_RejectsBothDepthBounds_MatchingSelectCascade()
@@ -108,10 +110,43 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(expected, ShadowMapMath.PancakeDepth(clipDepth), 6);
         }
 
+        [Fact]
+        public void RigidColorAndShadowDepthCarryTheSameComplementPhase()
+        {
+            Assert.Contains("layout(location=14) in float IDissolveComplement;", ShaderSources.ModelVert);
+            Assert.Contains("vDissolveComplement = IDissolveComplement;", ShaderSources.ModelVert);
+            Assert.Contains("layout(location=10) in float vDissolveComplement;", ShaderSources.ModelFrag);
+            Assert.Contains(ComplementKeepGlsl, ShaderSources.ModelFrag, StringComparison.Ordinal);
+
+            Assert.Contains("layout(location=14) in float IDissolveComplement;", ShaderSources.ShadowDepthDissolveVert);
+            Assert.Contains("vDissolveComplement = IDissolveComplement;", ShaderSources.ShadowDepthDissolveVert);
+            Assert.Contains("layout(location=3) in float vDissolveComplement;", ShaderSources.ShadowDepthDissolveFrag);
+            Assert.Contains(ComplementKeepGlsl, ShaderSources.ShadowDepthDissolveFrag, StringComparison.Ordinal);
+        }
+
+        [Theory]
+        [InlineData(0.00f, 0.00f)]
+        [InlineData(0.10f, 0.25f)]
+        [InlineData(0.25f, 0.25f)]
+        [InlineData(0.49f, 0.50f)]
+        [InlineData(0.50f, 0.50f)]
+        [InlineData(0.90f, 0.75f)]
+        [InlineData(1.00f, 1.00f)]
+        public void ComplementPhaseAssignsEveryNoiseSampleToExactlyOneRepresentation(float mask, float transition)
+        {
+            bool lod0Keeps = Keeps(mask, transition, complement: false);
+            bool lod1Keeps = Keeps(mask, transition, complement: true);
+
+            Assert.NotEqual(lod0Keeps, lod1Keeps);
+        }
+
         static float ClipZ(in Matrix4x4 mat, Vector3 p)
         {
             Vector4 lc = Vector4.Transform(new Vector4(p, 1f), mat);
             return lc.Z / lc.W;
         }
+
+        static bool Keeps(float mask, float threshold, bool complement) =>
+            complement ? mask < threshold : mask >= threshold;
     }
 }

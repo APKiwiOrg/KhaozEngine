@@ -110,7 +110,7 @@ namespace KhaozEngine.Render3D.Rendering
         readonly Vector4[] _lightPosRadius = new Vector4[MaxPointLights];
         readonly Vector4[] _lightColorIntensity = new Vector4[MaxPointLights];
 
-        /// <summary>Per-instance vertex stream (buffer slot 1, instanceStepRate 1). 64 + 48 + 4 + 8 = 124 bytes. The
+        /// <summary>Per-instance vertex stream (buffer slot 1, instanceStepRate 1). 64 + 48 + 4 + 8 + 4 = 128 bytes. The
         /// Model matrix is a System.Numerics Matrix4x4 (row-major), read in the shader as four Float4 rows.</summary>
         public struct InstanceData
         {
@@ -136,7 +136,10 @@ namespace KhaozEngine.Render3D.Rendering
             // Float2 attribute (location 13). The splat pipeline shares this layout and ignores it (terrain never
             // dissolves), and the CharDissolve pipeline (ModelDissolveFrag) also ignores it (it reads SpecParams.z/w).
             public Vector2 Dissolve;      // 8
-            public const uint SizeInBytes = 124;
+            // Complementary rigid-dissolve phase. Zero uses the ordinary keep set and one uses its inverse. Appended
+            // so every existing field offset stays fixed and zero-filled callers preserve the old render path.
+            public float DissolveComplement; // 4
+            public const uint SizeInBytes = 128;
         }
 
         readonly IGpuDevice _gd;
@@ -321,7 +324,7 @@ namespace KhaozEngine.Render3D.Rendering
                 new GpuVertexElement("TexCoord", GpuVertexElementFormat.Float2),
                 new GpuVertexElement("Tangent", GpuVertexElementFormat.Float4));
 
-            // Slot 1: per-instance data (locations 5..13), one step per instance. SPIRV binds these by location
+            // Slot 1: per-instance data (locations 5..14), one step per instance. SPIRV binds these by location
             // order, so the names are placeholders.
             var instanceLayout = new GpuVertexLayoutDescription(
                 stride: InstanceData.SizeInBytes,
@@ -347,6 +350,8 @@ namespace KhaozEngine.Render3D.Rendering
                     // by ModelVert (passed to ModelFrag, which gates on x > 0). The splat, tile-ground and
                     // CharDissolve pipelines all share this layout and ignore this trailing input.
                     new GpuVertexElement("IDissolve", GpuVertexElementFormat.Float2),
+                    // Location 14: complementary dissolve phase shared by rigid color and shadow depth.
+                    new GpuVertexElement("IDissolveComplement", GpuVertexElementFormat.Float1),
                 });
 
             _pipeline = factory.CreateGraphicsPipeline(new GpuPipelineDescription

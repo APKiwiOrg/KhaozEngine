@@ -241,7 +241,7 @@ namespace KhaozEngine.Render3D.Rendering
 
         // Build a rigid caster depth pipeline. <paramref name="dissolve"/> false is the plain depth-only pipeline,
         // unchanged. True is the issue #287 dissolve-aware variant, which differs ONLY in its shader set and in
-        // declaring the model pass's two trailing instance elements (locations 12..13) so its vertex can read the
+        // declaring the model pass's trailing instance elements (locations 12..14) so its vertex can read the
         // per-instance dissolve. Everything else - raster state, outputs, resource layout, the shared instance
         // stride - is identical, so a span drawn through either records the same depth when the dissolve is 0.
         // <paramref name="invertedDissolve"/> picks the issue #391 fragment that keeps what the plain dissolve
@@ -257,7 +257,7 @@ namespace KhaozEngine.Render3D.Rendering
                 new GpuVertexElement("Color", GpuVertexElementFormat.Float4),
                 new GpuVertexElement("TexCoord", GpuVertexElementFormat.Float2),
                 new GpuVertexElement("Tangent", GpuVertexElementFormat.Float4));
-            // Slot 1: the model pass's per-instance stream (locations 5..11, plus 12..13 on the dissolve variant),
+            // Slot 1: the model pass's per-instance stream (locations 5..11, plus 12..14 on the dissolve variant),
             // reused verbatim - no second upload. The stride is the full InstanceData either way, so the trailing
             // elements the plain pipeline omits are simply not fetched.
             var instanceElements = new List<GpuVertexElement>
@@ -274,6 +274,7 @@ namespace KhaozEngine.Render3D.Rendering
             {
                 instanceElements.Add(new GpuVertexElement("IDynamic", GpuVertexElementFormat.Float1));
                 instanceElements.Add(new GpuVertexElement("IDissolve", GpuVertexElementFormat.Float2));
+                instanceElements.Add(new GpuVertexElement("IDissolveComplement", GpuVertexElementFormat.Float1));
             }
             var instanceLayout = new GpuVertexLayoutDescription(
                 stride: ModelRenderer.InstanceData.SizeInBytes,

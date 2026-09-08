@@ -89,6 +89,10 @@ namespace KhaozEngine.Terrain
         /// <see cref="LodMeshes"/> / <see cref="LodPartMeshes"/>). Default 0 = never switch (every prop draws its full
         /// mesh, unchanged behaviour). Only meaningful when the layer carries LOD variants.</summary>
         public float LodDistance { get; }
+        /// <summary>Width of the complementary dissolve band centred on <see cref="LodDistance"/>. Inside the band
+        /// LOD0 and LOD1 share one deterministic distance transition and opposite coverage phases. Default 0 keeps
+        /// the existing hard swap.</summary>
+        public float LodCrossfadeWidth { get; }
 
         /// <summary>Per-kit FLAT source meshes for the layer's HLOD merge (the <c>PropLoader.LoadProp</c> vertex-colour
         /// form, or an authored low-poly proxy). Null when the layer has no HLOD (the default). When set with a positive
@@ -140,7 +144,7 @@ namespace KhaozEngine.Terrain
                   float hlodDistance = 0f, float hlodWeldCell = 0f, float hlodCrossfadeWidth = 0f,
                   IReadOnlyList<PropPlacement>? placements = null, bool registerColliders = true,
                   IPlacementSource? placementSource = null, bool castsShadows = true,
-                  IReadOnlyDictionary<string, float>? blobRadii = null)
+                  IReadOnlyDictionary<string, float>? blobRadii = null, float lodCrossfadeWidth = 0f)
         {
             Scatter = scatter;
             Companions = companions;
@@ -152,6 +156,7 @@ namespace KhaozEngine.Terrain
             LodMeshes = lodMeshes;
             LodPartMeshes = lodPartMeshes;
             LodDistance = lodDistance;
+            LodCrossfadeWidth = lodCrossfadeWidth;
             HlodSourceMeshes = hlodSourceMeshes;
             HlodDistance = hlodDistance;
             HlodWeldCell = hlodWeldCell;
@@ -175,8 +180,16 @@ namespace KhaozEngine.Terrain
             if (sourceMeshes == null) throw new ArgumentNullException(nameof(sourceMeshes));
             return new PropLayer(Scatter, Companions, HostLayerIndex, Meshes, PartMeshes, DrawRadius, FadeBandWidth,
                 LodMeshes, LodPartMeshes, LodDistance, sourceMeshes, hlodDistance, weldCell, crossfadeWidth,
-                Placements, RegisterColliders, PlacementSource, CastsShadows, BlobRadii);
+                Placements, RegisterColliders, PlacementSource, CastsShadows, BlobRadii, LodCrossfadeWidth);
         }
+
+        /// <summary>This layer with an opt-in complementary LOD0 to LOD1 crossfade of
+        /// <paramref name="crossfadeWidth"/> metres. Zero preserves the hard swap.</summary>
+        public PropLayer WithLodCrossfade(float crossfadeWidth) =>
+            new(Scatter, Companions, HostLayerIndex, Meshes, PartMeshes, DrawRadius, FadeBandWidth,
+                LodMeshes, LodPartMeshes, LodDistance, HlodSourceMeshes, HlodDistance, HlodWeldCell,
+                HlodCrossfadeWidth, Placements, RegisterColliders, PlacementSource, CastsShadows, BlobRadii,
+                crossfadeWidth);
 
         /// <summary>A scatter layer driven by its own <see cref="ScatterConfig"/> (single-handle mesh set).
         /// <paramref name="fadeBandWidth"/> (default 0 = hard cut) is the dissolve fade band just inside

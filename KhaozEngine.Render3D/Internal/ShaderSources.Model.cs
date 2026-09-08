@@ -55,6 +55,7 @@ layout(location=10) in vec4 IEmissive;
 layout(location=11) in vec4 ISpecParams;
 layout(location=12) in float IDynamic;   // dynamic-geometry decal mask (0 static world / 1 skinned); see InstanceData
 layout(location=13) in vec2 IDissolve;   // per-instance rigid dissolve (issue #253): x = threshold, y = edge width
+layout(location=14) in float IDissolveComplement; // 0 = ordinary keep set, 1 = exact complement for a LOD handoff
 layout(location=0) out vec3 vNormalW;
 layout(location=1) out vec4 vColor;
 layout(location=2) out vec3 vWorldPos;
@@ -65,6 +66,7 @@ layout(location=6) out vec4 vSpecParams;
 layout(location=7) out vec4 vTangent;
 layout(location=8) out float vDynamic;
 layout(location=9) out vec2 vDissolve;
+layout(location=10) out float vDissolveComplement;
 void main() {
     mat4 Model = mat4(IModel0, IModel1, IModel2, IModel3);
     vec4 world = Model * vec4(Position, 1.0);
@@ -79,6 +81,7 @@ void main() {
     vTangent = vec4(mat3(Model) * Tangent.xyz, Tangent.w); // rotate tangent to world; preserve handedness
     vDynamic = IDynamic;
     vDissolve = IDissolve;
+    vDissolveComplement = IDissolveComplement;
 }";
 
         public const string ModelFrag = @"#version 450
@@ -115,6 +118,7 @@ layout(location=6) in vec4 vSpecParams; // x = specular strength, y = shininess 
 layout(location=7) in vec4 vTangent;    // world-space tangent (xyz) + handedness (w); zero => geometric normal
 layout(location=8) in float vDynamic;   // dynamic-geometry decal mask (0 static / 1 skinned); written to oNormal.a
 layout(location=9) in vec2 vDissolve;   // per-instance rigid dissolve (issue #253): x = threshold (0 = solid .. 1 = gone), y = edge width
+layout(location=10) in float vDissolveComplement;
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oNormal;
 layout(location=2) out vec4 oDepth;
@@ -179,11 +183,12 @@ void main() {
     // When dissolving, vEmissive carries the emissive EDGE colour (substituted engine-side in the Draw overload), so
     // the base emissive is dropped and only a bright band just above the discard threshold is added - the same trade
     // ModelDissolveFrag makes. World-space noise so the pattern is stable as instances move.
-    if (vDissolve.x > 0.0) {
+    if (vDissolve.x > 0.0 || vDissolveComplement > 0.5) {
         float threshold = clamp(vDissolve.x, 0.0, 1.0);
         float edgeW = max(vDissolve.y, 1e-3);
         float mask = dnoise((vWorldPos + RenderOrigin.xyz) * " + ShadowDissolveNoise.BaseScaleGlsl + @");
-        if (mask < threshold) discard;          // dissolved away
+        bool keep = vDissolveComplement > 0.5 ? mask < threshold : mask >= threshold;
+        if (!keep) discard;
         float edge = 1.0 - smoothstep(threshold, threshold + edgeW, mask);
         lit += vEmissive.rgb * edge;
     } else {

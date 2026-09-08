@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Primitives;
@@ -255,6 +256,86 @@ namespace KhaozEngine.Tests.Terrain
             PropRenderer.Queue(si, placements, Parts(("tree", new[] { 1, 2, 3 })), Vector3.Zero,
                                drawRadius: 400f, lodParts: Parts(("tree", new[] { 90 })), lodDistance: 100f);
             Assert.Equal(3, si.Items.Count);         // near: all three full parts
+        }
+
+        static SceneInstances.Instance[] LodItemsAtDistance(float dist, float width)
+        {
+            var placements = new List<PropPlacement> { new PropPlacement("pine_a", dist, 0f, 0f, 1f, 0f, 0) };
+            var si = new SceneInstances();
+            PropRenderer.Queue(si, placements, Meshes(("pine_a", 7)), Vector3.Zero, drawRadius: 400f,
+                lodMeshes: Meshes(("pine_a", 50)), lodDistance: 64f, lodCrossfadeWidth: width);
+            var result = new SceneInstances.Instance[si.Items.Count];
+            for (int i = 0; i < result.Length; i++) result[i] = si.Items[i];
+            return result;
+        }
+
+        [Theory]
+        [InlineData(55.99f, 1, 7)]
+        [InlineData(56f, 2, 7)]
+        [InlineData(64f, 2, 7)]
+        [InlineData(71.99f, 2, 7)]
+        [InlineData(72f, 1, 50)]
+        public void LodCrossfade_SubmitsOnlyTheRepresentationsOwnedByTheBand(float distance, int count, int firstSlot)
+        {
+            SceneInstances.Instance[] items = LodItemsAtDistance(distance, width: 16f);
+
+            Assert.Equal(count, items.Length);
+            Assert.Equal(firstSlot, items[0].Mesh.Index);
+            if (count == 2) Assert.Equal(50, items[1].Mesh.Index);
+        }
+
+        [Fact]
+        public void LodCrossfade_MidpointUsesEqualThresholdsAndComplementaryPhases()
+        {
+            SceneInstances.Instance[] items = LodItemsAtDistance(64f, width: 16f);
+
+            Assert.Equal(0.5f, items[0].DissolveThreshold, 5);
+            Assert.Equal(0.5f, items[1].DissolveThreshold, 5);
+            Assert.Equal(0f, items[0].DissolveComplement);
+            Assert.Equal(1f, items[1].DissolveComplement);
+        }
+
+        [Fact]
+        public void LodCrossfade_BandEdgesKeepComplementaryOwnership()
+        {
+            SceneInstances.Instance[] start = LodItemsAtDistance(56f, width: 16f);
+            Assert.Equal(0f, start[0].DissolveThreshold, 5);
+            Assert.Equal(0f, start[1].DissolveThreshold, 5);
+            Assert.Equal(0f, start[0].DissolveComplement);
+            Assert.Equal(1f, start[1].DissolveComplement);
+
+            SceneInstances.Instance[] end = LodItemsAtDistance(71.99f, width: 16f);
+            Assert.InRange(end[0].DissolveThreshold, 0.9993f, 0.9994f);
+            Assert.Equal(end[0].DissolveThreshold, end[1].DissolveThreshold);
+            Assert.Equal(0f, end[0].DissolveComplement);
+            Assert.Equal(1f, end[1].DissolveComplement);
+        }
+
+        [Fact]
+        public void LodCrossfade_ZeroWidthPreservesTheHardSwap()
+        {
+            SceneInstances.Instance[] at = LodItemsAtDistance(64f, width: 0f);
+            SceneInstances.Instance[] beyond = LodItemsAtDistance(64.01f, width: 0f);
+
+            Assert.Single(at);
+            Assert.Equal(7, at[0].Mesh.Index);
+            Assert.Equal(0f, at[0].DissolveThreshold);
+            Assert.Equal(0f, at[0].DissolveComplement);
+            Assert.Single(beyond);
+            Assert.Equal(50, beyond[0].Mesh.Index);
+            Assert.Equal(0f, beyond[0].DissolveThreshold);
+            Assert.Equal(0f, beyond[0].DissolveComplement);
+        }
+
+        [Fact]
+        public void PropLayer_CarriesLodCrossfadeWidthThroughHlodCopy()
+        {
+            PropLayer layer = PropLayer.PlacementLayer(Array.Empty<PropPlacement>(), Meshes(("pine_a", 7)), 400f,
+                lodMeshes: Meshes(("pine_a", 50)), lodDistance: 64f).WithLodCrossfade(16f);
+            PropLayer hlod = layer.WithHlod(new Dictionary<string, GltfMesh>(), 192f, 1.5f, 32f);
+
+            Assert.Equal(16f, layer.LodCrossfadeWidth);
+            Assert.Equal(16f, hlod.LodCrossfadeWidth);
         }
 
         // ---- HLOD crossfade dissolveFloor: raises every prop's minimum dissolve (the whole-cluster fade-out seam) ----

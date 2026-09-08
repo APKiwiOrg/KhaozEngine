@@ -30,15 +30,12 @@ jobs:
           echo "VK_ICD_FILENAMES=$icd" >> "$GITHUB_ENV"
           echo "VK_DRIVER_FILES=$icd" >> "$GITHUB_ENV"
           mkdir -p local-feed artifacts/fxaa-probe
-      - name: Compare current and original shader
+      - name: Verify repaired Vulkan paths
         shell: bash
         run: |
-          set +e
+          set -o pipefail
           vulkaninfo > artifacts/fxaa-probe/vulkaninfo.txt 2>&1
-          for samples in 1 2 4; do
-            KE_FXAA_PROBE_SAMPLES="$samples" KE_FXAA_PROBE_DIR="$PWD/artifacts/fxaa-probe/samples-$samples" dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter FullyQualifiedName~MsaaPostFxaaGpuTests --logger "console;verbosity=detailed" > "artifacts/fxaa-probe/samples-$samples.log" 2>&1
-            echo "samples=$samples exit=$?" >> artifacts/fxaa-probe/outcomes.txt
-          done
+          dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter 'FullyQualifiedName~MsaaPostFxaaGpuTests|FullyQualifiedName~MsaaGpuTests|FullyQualifiedName~SparseMsaaFallbackGpuTests|FullyQualifiedName~GpuCapabilitiesDiagTests.ContextAndDeviceReportTheSameCapabilities|FullyQualifiedName~WaterFlatPlaneGoldenTests' --logger "console;verbosity=detailed" 2>&1 | tee artifacts/fxaa-probe/repaired.log
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:

@@ -170,14 +170,20 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void Atlas_knobs_throw_after_commit()
+        public void Atlas_knobs_throw_after_commit_and_name_the_live_request_apis()
         {
             // After CommitAtlas (the scene has sized its atlas), a write to a construction-time knob fails loudly rather
             // than silently no-opping - the old inert behaviour issue #27 was filed against.
             var s = new ShadowSettings { ShadowMapResolution = 2048, ShadowCascadeCount = 3 };
             s.CommitAtlas();
-            Assert.Throws<InvalidOperationException>(() => s.ShadowMapResolution = 1024);
-            Assert.Throws<InvalidOperationException>(() => s.ShadowCascadeCount = 4);
+            InvalidOperationException resolutionError =
+                Assert.Throws<InvalidOperationException>(() => s.ShadowMapResolution = 1024);
+            InvalidOperationException cascadeError =
+                Assert.Throws<InvalidOperationException>(() => s.ShadowCascadeCount = 4);
+            Assert.Contains(nameof(Scene3D.RequestShadowMapDetail), resolutionError.Message, StringComparison.Ordinal);
+            Assert.Contains(nameof(Scene3D.RequestShadowMapLayout), resolutionError.Message, StringComparison.Ordinal);
+            Assert.Contains(nameof(Scene3D.RequestShadowMapDetail), cascadeError.Message, StringComparison.Ordinal);
+            Assert.Contains(nameof(Scene3D.RequestShadowMapLayout), cascadeError.Message, StringComparison.Ordinal);
             // The knobs keep the values they were built with (the throw did not corrupt them).
             Assert.Equal(2048, s.ShadowMapResolution);
             Assert.Equal(3, s.ShadowCascadeCount);

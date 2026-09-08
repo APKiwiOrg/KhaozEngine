@@ -122,7 +122,8 @@ namespace KhaozEngine.Render3D
         /// handle is bound into every material set, so set this BEFORE construction via the <see cref="ShadowSettings"/>
         /// passed to the Render3DSurface / Render3DPreview / Render3DSnapshot / GameApp3D construction seam. Writing it
         /// after the scene has committed its atlas throws <see cref="InvalidOperationException"/> rather than silently
-        /// no-opping (the old behaviour this replaced). Recreate the scene to change it at runtime.</para></summary>
+        /// no-opping (the old behaviour this replaced). Call <see cref="Scene3D.RequestShadowMapDetail"/> for a named
+        /// live profile, or <see cref="Scene3D.RequestShadowMapLayout"/> for a custom live layout.</para></summary>
         public int ShadowMapResolution
         {
             get => _shadowMapResolution;
@@ -147,9 +148,11 @@ namespace KhaozEngine.Render3D
         /// <see cref="ShadowMapResolution"/> square, so the memory is
         /// <c>ShadowCascadeCount * ShadowMapResolution^2 * 4</c> bytes (3 x 2048 = ~48 MB). A low-end profile drops the
         /// count or the resolution. <c>1</c> is the single-map path (plus the edge fade).
-        /// <para><b>Construction-time knob</b> (like <see cref="ShadowMapResolution"/>). Set it BEFORE the
-        /// <see cref="Scene3D"/> is built via the construction seam. A post-construction write throws
-        /// <see cref="InvalidOperationException"/> rather than silently no-opping.</para></summary>
+        /// <para><b>Committed atlas knob</b> (like <see cref="ShadowMapResolution"/>). Set its initial value BEFORE
+        /// the <see cref="Scene3D"/> is built via the construction seam. A post-construction write throws
+        /// <see cref="InvalidOperationException"/> rather than silently no-opping. Use
+        /// <see cref="Scene3D.RequestShadowMapDetail"/> or <see cref="Scene3D.RequestShadowMapLayout"/> to resize a
+        /// live scene explicitly.</para></summary>
         public int ShadowCascadeCount
         {
             get => _shadowCascadeCount;
@@ -306,8 +309,9 @@ namespace KhaozEngine.Render3D
                 throw new InvalidOperationException(
                     $"ShadowSettings.{knob} is a construction-time shadow-atlas knob. Set it BEFORE the scene allocates " +
                     "its atlas, via the ShadowSettings passed to the Render3DSurface / Render3DPreview / Render3DSnapshot " +
-                    "/ GameApp3D construction seam. Changing it after construction is not supported because the atlas is " +
-                    "bound into every material set. Recreate the scene to change it.");
+                    "/ GameApp3D construction seam. Direct assignment after construction is not supported because the " +
+                    "atlas is bound into every material set. For a live scene, call Scene3D.RequestShadowMapDetail or " +
+                    "Scene3D.RequestShadowMapLayout instead.");
         }
 
         /// <summary>

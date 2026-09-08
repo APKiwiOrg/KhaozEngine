@@ -1,6 +1,6 @@
 # Live shadow-map detail reconfiguration
 
-Status: Approved for implementation. Program issue
+Status: Implemented. Release pending in the shared HLOD engine batch. No engine version assigned yet. Program issue
 [397](https://github.com/APKiwiOrg/KhaozEngine/issues/397). Grimhollow
 [158](https://github.com/APKiwiOrg/Grimhollow/issues/158) is the active consumer.
 

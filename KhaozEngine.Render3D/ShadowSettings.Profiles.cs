@@ -3,8 +3,9 @@ namespace KhaozEngine.Render3D
     /// <summary>
     /// Selects the fidelity of a full directional shadow map. This does not select between the
     /// <see cref="ShadowMode.Off"/>, <see cref="ShadowMode.Blob"/>, and <see cref="ShadowMode.ShadowMap"/>
-    /// techniques. Apply the selected profile before scene construction. Changing it later requires a scene rebuild
-    /// or restart because the shadow atlas is committed during construction.
+    /// techniques. Use <see cref="ShadowSettings.ForDetail"/> to seed a scene before construction, or
+    /// <see cref="Scene3D.RequestShadowMapDetail"/> to request the equivalent atlas layout on a live scene. A live
+    /// request applies when the next <see cref="Scene3D.Begin"/> starts a frame.
     /// </summary>
     public enum ShadowMapDetail
     {
@@ -17,8 +18,9 @@ namespace KhaozEngine.Render3D
     {
         /// <summary>
         /// Creates fresh settings for the requested full directional shadow-map fidelity. The result uses
-        /// <see cref="ShadowMode.ShadowMap"/> and must be supplied before scene construction. Applying another
-        /// profile after construction requires a scene rebuild or restart.
+        /// <see cref="ShadowMode.ShadowMap"/> and can seed a scene before construction. To apply the profile's atlas
+        /// layout to an existing scene, call <see cref="Scene3D.RequestShadowMapDetail"/>. That request preserves the
+        /// live scene's current shadow mode and other shadow settings.
         /// </summary>
         public static ShadowSettings ForDetail(ShadowMapDetail detail)
         {

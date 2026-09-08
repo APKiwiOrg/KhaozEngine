@@ -122,6 +122,7 @@ public sealed partial class TileWorldView
         if (_propClusters.IsEnabled)
         {
             handles.Props[o.Plane] = _propClusters.Build(_doc, region, o.Plane, OverrideLookup());
+            _propClusters.Request(handles.Props[o.Plane]);
             ReleaseAnimatedFoliage(handles, o.Plane);
             return true;
         }
@@ -143,6 +144,7 @@ public sealed partial class TileWorldView
         {
             RegionHandles handles = _loaded[region];
             handles.Props[plane] = _propClusters.Build(_doc, region, plane, lookup);
+            _propClusters.Request(handles.Props[plane]);
             ReleaseAnimatedFoliage(handles, plane);
         }
     }

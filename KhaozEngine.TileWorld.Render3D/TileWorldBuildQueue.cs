@@ -14,7 +14,8 @@ internal enum TileWorldBuildKind
     Hlod,
 }
 
-internal readonly record struct TileWorldBuildKey(RegionCoord Region, int Plane, TileWorldBuildKind Kind);
+internal readonly record struct TileWorldBuildKey(
+    RegionCoord Region, int Plane, TileWorldBuildKind Kind, string LayerId = "");
 
 internal sealed record TileWorldBuildRequest<TInput>(TileWorldBuildKey Key, long Generation, TInput Input);
 
@@ -266,7 +267,8 @@ internal sealed class TileWorldBuildQueue<TInput, TOutput> : IDisposable
         if (a.Key.Region.Rz != b.Key.Region.Rz) return a.Key.Region.Rz.CompareTo(b.Key.Region.Rz);
         if (a.Key.Region.Rx != b.Key.Region.Rx) return a.Key.Region.Rx.CompareTo(b.Key.Region.Rx);
         if (a.Key.Plane != b.Key.Plane) return a.Key.Plane.CompareTo(b.Key.Plane);
-        return a.Key.Kind.CompareTo(b.Key.Kind);
+        if (a.Key.Kind != b.Key.Kind) return a.Key.Kind.CompareTo(b.Key.Kind);
+        return string.CompareOrdinal(a.Key.LayerId, b.Key.LayerId);
     }
 
     static int Distance(RegionCoord region, RegionCoord focus) =>

@@ -3,11 +3,34 @@ using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
+using KhaozEngine.TileWorld.Render3D;
 
 namespace KhaozEngine.TileWorld;
 
 public sealed partial class TileWorldView
 {
+    /// <summary>Names the full authored objects intersected by a ray inside Gameplay regions. Decor HLOD is a
+    /// render representation only and never contributes a target. The bounds source remains the full resolved
+    /// object mesh, so entering Gameplay changes eligibility rather than click shape.</summary>
+    public int PickObjects(int plane, Vector3 origin, Vector3 direction, float maxDistance,
+                           TileObjectRaycast.BoundsSource bounds, List<TileObjectHit> hits)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        int count = TileObjectRaycast.Pick(_doc, _catalogs, plane, origin, direction, maxDistance, bounds, hits);
+        int kept = 0;
+        for (int i = 0; i < count; i++)
+        {
+            TileObjectHit hit = hits[i];
+            if (_doc.FindObject(hit.ObjectId) is not { } o ||
+                !_loaded.TryGetValue(RegionCoord.Of(o.X, o.Z), out RegionHandles? handles) ||
+                handles.Residency != TileRegionResidencyState.Gameplay)
+                continue;
+            hits[kept++] = hit;
+        }
+        if (kept < hits.Count) hits.RemoveRange(kept, hits.Count - kept);
+        return kept;
+    }
+
     /// <summary>The nearest visible ground or water surface on one plane, or null when the ray misses.
     /// <para>The ground candidate is the authored terrain from <see cref="TileRaycast"/>, limited to drawable
     /// tiles in regions this view holds at <see cref="TileRegionResidencyState.Gameplay"/> residency. Water

@@ -19,7 +19,7 @@ namespace KhaozEngine.Terrain
         MeshHandle LoadMesh(GltfMesh mesh);
         void UnloadMesh(MeshHandle handle);
         void DrawProps(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus, float dissolveFloor);
-        void DrawMerged(MeshHandle handle, PropLayer layer, float dissolve);
+        void DrawMerged(MeshHandle handle, PropLayer layer, float dissolve, bool invertShadowDissolve);
     }
 
     /// <summary>Owns CPU HLOD builds, retained GPU handles, generation replacement, and prop cluster drawing.</summary>
@@ -206,12 +206,26 @@ namespace KhaozEngine.Terrain
                     float distance = MathF.Sqrt(dx * dx + dz * dz);
                     if (cluster.Handle is { } merged)
                     {
+                        if (distance >= cluster.Layer.DrawRadius) continue;
                         float t = PropHlod.CrossfadeAt(distance, cluster.Layer.HlodDistance,
                                                        cluster.Layer.HlodCrossfadeWidth);
                         if (PropHlod.DrawsHlodProps(t))
                             _backend.DrawProps(cluster.Placements, cluster.Layer, focus, t);
-                        if (PropHlod.DrawsHlodMerged(t))
-                            _backend.DrawMerged(merged, cluster.Layer, 1f - t);
+                        float exitStart = MathF.Max(0f, cluster.Layer.DrawRadius - cluster.Layer.FadeBandWidth);
+                        bool exiting = cluster.Layer.FadeBandWidth > 0f && distance >= exitStart;
+                        if (exiting)
+                        {
+                            // The exit band wins when configuration overlaps the HLOD entrance. Disappearing
+                            // safely at the declared radius matters more than preserving an entrance complement
+                            // that cannot complete before the layer is gone.
+                            float exitWidth = cluster.Layer.DrawRadius - exitStart;
+                            float dissolve = exitWidth <= 0f
+                                ? 0f
+                                : Math.Clamp((distance - exitStart) / exitWidth, 0f, 1f);
+                            _backend.DrawMerged(merged, cluster.Layer, dissolve, invertShadowDissolve: false);
+                        }
+                        else if (PropHlod.DrawsHlodMerged(t))
+                            _backend.DrawMerged(merged, cluster.Layer, 1f - t, invertShadowDissolve: true);
                     }
                     else
                     {
@@ -308,11 +322,11 @@ namespace KhaozEngine.Terrain
                         lodCrossfadeWidth: layer.LodCrossfadeWidth);
             }
 
-            public void DrawMerged(MeshHandle handle, PropLayer layer, float dissolve)
+            public void DrawMerged(MeshHandle handle, PropLayer layer, float dissolve, bool invertShadowDissolve)
             {
                 if (dissolve > 0f || !layer.CastsShadows)
                     _scene.Draw(handle, Matrix4x4.Identity, Color.White, Material.None, dissolve, 0f, default,
-                        layer.CastsShadows, invertShadowDissolve: true);
+                        layer.CastsShadows, invertShadowDissolve);
                 else
                     _scene.Draw(handle, Matrix4x4.Identity, Color.White);
             }
@@ -325,7 +339,8 @@ namespace KhaozEngine.Terrain
             public void UnloadMesh(MeshHandle handle) => throw NoScene();
             public void DrawProps(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus,
                                   float dissolveFloor) => throw NoScene();
-            public void DrawMerged(MeshHandle handle, PropLayer layer, float dissolve) => throw NoScene();
+            public void DrawMerged(MeshHandle handle, PropLayer layer, float dissolve, bool invertShadowDissolve) =>
+                throw NoScene();
         }
     }
 }

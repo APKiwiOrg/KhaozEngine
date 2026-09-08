@@ -8,6 +8,25 @@ using TileGroundMaterialHandle = KhaozEngine.Render3D.Scene3D.TileGroundMaterial
 
 namespace KhaozEngine.TileWorld;
 
+/// <summary>One TileWorld view's adapter around the shared prop-cluster renderer.</summary>
+public interface ITileWorldPropClusterOwner : IDisposable
+{
+    /// <summary>Build one detached cluster generation without GPU access.</summary>
+    PropClusterCpuBuild BuildCpu(PropClusterBuildRequest request);
+
+    /// <summary>Apply one completed generation on the scene thread.</summary>
+    void Apply(PropClusterKey key, PropClusterCpuBuild build);
+
+    /// <summary>Force the next accepted build to replace the current generation.</summary>
+    void Invalidate(PropClusterKey key);
+
+    /// <summary>Release one region-plane layer.</summary>
+    void Unload(PropClusterKey key);
+
+    /// <summary>Draw all retained layers once for this frame.</summary>
+    void Draw(Vector3 focus);
+}
+
 /// <summary>The slice of a 3D scene a tile world draws through: upload and free a ground mesh, draw one at a
 /// world transform, upload and free an archetype's prop parts, and queue a placement list through the prop path.
 /// Shaped exactly on what <see cref="Scene3D"/> and the prop renderer already offer, because its job is to let
@@ -15,6 +34,10 @@ namespace KhaozEngine.TileWorld;
 /// is <see cref="Scene3DTileWorldScene"/>, and the tests drive a recording fake.</summary>
 public interface ITileWorldScene
 {
+    /// <summary>Create one view-owned adapter around the shared prop-cluster renderer.</summary>
+    ITileWorldPropClusterOwner CreatePropClusterOwner() =>
+        throw new NotSupportedException("This tile-world scene does not support prop clusters.");
+
     /// <summary>Uploads one region-plane's ground mesh and returns its handle.</summary>
     MeshHandle LoadMesh(GltfMesh mesh);
 
@@ -104,6 +127,9 @@ public sealed class Scene3DTileWorldScene : ITileWorldScene
     public Scene3D Scene => _scene;
 
     /// <inheritdoc />
+    public ITileWorldPropClusterOwner CreatePropClusterOwner() => new ScenePropClusterOwner(_scene);
+
+    /// <inheritdoc />
     public MeshHandle LoadMesh(GltfMesh mesh) => _scene.LoadMesh(mesh);
 
     /// <inheritdoc />
@@ -163,4 +189,17 @@ public sealed class Scene3DTileWorldScene : ITileWorldScene
 
     /// <inheritdoc />
     public void DrawWater(in WaterPlane plane) => _scene.DrawWater(plane);
+
+    sealed class ScenePropClusterOwner : ITileWorldPropClusterOwner
+    {
+        readonly PropClusterRenderer _renderer;
+
+        public ScenePropClusterOwner(Scene3D scene) => _renderer = new PropClusterRenderer(scene);
+        public PropClusterCpuBuild BuildCpu(PropClusterBuildRequest request) => _renderer.BuildCpu(request);
+        public void Apply(PropClusterKey key, PropClusterCpuBuild build) => _renderer.Apply(key, build);
+        public void Invalidate(PropClusterKey key) => _renderer.Invalidate(key);
+        public void Unload(PropClusterKey key) => _renderer.Unload(key);
+        public void Draw(Vector3 focus) => _renderer.Draw(focus);
+        public void Dispose() => _renderer.Dispose();
+    }
 }

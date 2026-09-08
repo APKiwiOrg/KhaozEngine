@@ -248,6 +248,68 @@ namespace KhaozEngine.Tests.Terrain
             Assert.NotNull(build.MergedMesh);
         }
 
+        [Fact]
+        public void Merged_hlod_uses_an_ordinary_exit_fade_and_stops_at_the_exact_draw_radius()
+        {
+            using var rig = new PropClusterRig();
+            PropClusterKey key = new("trees", 0, 0, 0);
+            PropLayer layer = PropClusterRig.ExitLayer(drawRadius: 500f, fadeWidth: 40f,
+                                                       hlodDistance: 100f, hlodWidth: 40f);
+            rig.Apply(key, rig.Build(key, generation: 1, layer));
+
+            rig.ResetDraws();
+            rig.Renderer.Draw(Focus(460f));
+            Assert.Equal(1, rig.MergedDrawCount);
+            Assert.Equal(0f, rig.LastMergedDissolve);
+            Assert.False(rig.LastMergedInvertShadow);
+
+            rig.ResetDraws();
+            rig.Renderer.Draw(Focus(480f));
+            Assert.Equal(1, rig.MergedDrawCount);
+            Assert.Equal(0.5f, rig.LastMergedDissolve, 5);
+            Assert.False(rig.LastMergedInvertShadow);
+
+            rig.ResetDraws();
+            rig.Renderer.Draw(Focus(500f));
+            Assert.Equal(0, rig.MergedDrawCount);
+        }
+
+        [Fact]
+        public void Merged_hlod_entrance_keeps_its_inverted_shadow_dissolve()
+        {
+            using var rig = new PropClusterRig();
+            PropClusterKey key = new("trees", 0, 0, 0);
+            PropLayer layer = PropClusterRig.ExitLayer(drawRadius: 500f, fadeWidth: 40f,
+                                                       hlodDistance: 100f, hlodWidth: 40f);
+            rig.Apply(key, rig.Build(key, generation: 1, layer));
+
+            rig.ResetDraws();
+            rig.Renderer.Draw(Focus(100f));
+
+            Assert.Equal(1, rig.MergedDrawCount);
+            Assert.Equal(0.5f, rig.LastMergedDissolve, 5);
+            Assert.True(rig.LastMergedInvertShadow);
+        }
+
+        [Fact]
+        public void Exit_fade_takes_precedence_when_it_overlaps_the_hlod_entrance()
+        {
+            using var rig = new PropClusterRig();
+            PropClusterKey key = new("trees", 0, 0, 0);
+            PropLayer layer = PropClusterRig.ExitLayer(drawRadius: 120f, fadeWidth: 40f,
+                                                       hlodDistance: 100f, hlodWidth: 40f);
+            rig.Apply(key, rig.Build(key, generation: 1, layer));
+
+            rig.ResetDraws();
+            rig.Renderer.Draw(Focus(100f));
+
+            Assert.Equal(1, rig.MergedDrawCount);
+            Assert.Equal(0.5f, rig.LastMergedDissolve, 5);
+            Assert.False(rig.LastMergedInvertShadow);
+        }
+
+        static Vector3 Focus(float clusterDistance) => new(32f + clusterDistance, 0f, 32f);
+
         sealed class PropClusterRig : IDisposable
         {
             public static readonly PropPlacement Placement = new("oak", 1f, 0f, 1f, 1f, 0f, 0);
@@ -278,20 +340,45 @@ namespace KhaozEngine.Tests.Terrain
             public int UnloadCount => _backend.UnloadCount;
             public float LastDrawX => _backend.LastDrawX;
             public int DrawCount => _backend.DrawCount;
+            public int MergedDrawCount => _backend.MergedDrawCount;
+            public float LastMergedDissolve => _backend.LastMergedDissolve;
+            public bool LastMergedInvertShadow => _backend.LastMergedInvertShadow;
+
+            public static PropLayer ExitLayer(float drawRadius, float fadeWidth,
+                                              float hlodDistance, float hlodWidth) =>
+                PropLayer.PlacementLayer(
+                        new[] { Placement },
+                        new Dictionary<string, MeshHandle> { ["oak"] = new MeshHandle(90) },
+                        drawRadius,
+                        fadeWidth)
+                    .WithHlod(
+                        new Dictionary<string, GltfMesh> { ["oak"] = MeshPrimitives.Box(1f) },
+                        hlodDistance,
+                        weldCell: 0f,
+                        crossfadeWidth: hlodWidth);
 
             public PropClusterCpuBuild Build(PropClusterKey key, long generation)
                 => Build(key, generation, Placement);
 
             public PropClusterCpuBuild Build(PropClusterKey key, long generation, PropPlacement placement)
+                => Build(key, generation, Layer, placement);
+
+            public PropClusterCpuBuild Build(PropClusterKey key, long generation, PropLayer layer)
+                => Build(key, generation, layer, Placement);
+
+            PropClusterCpuBuild Build(PropClusterKey key, long generation, PropLayer layer,
+                                      PropPlacement placement)
             {
                 var request = new PropClusterBuildRequest(
                     key,
                     generation,
                     new RectArea(key.X * 64f, key.Z * 64f, (key.X + 1) * 64f, (key.Z + 1) * 64f),
-                    Layer,
+                    layer,
                     new[] { placement });
                 return Renderer.BuildCpu(request);
             }
+
+            public void ResetDraws() => _backend.ResetDraws();
 
             public void Apply(PropClusterKey key, PropClusterCpuBuild build) => Renderer.Apply(key, build);
             public long GenerationOf(PropClusterKey key) => Renderer.GenerationOf(key);
@@ -320,6 +407,9 @@ namespace KhaozEngine.Tests.Terrain
             public int UnloadCount;
             public float LastDrawX;
             public int DrawCount;
+            public int MergedDrawCount;
+            public float LastMergedDissolve;
+            public bool LastMergedInvertShadow;
 
             public MeshHandle LoadMesh(GltfMesh mesh)
             {
@@ -345,9 +435,20 @@ namespace KhaozEngine.Tests.Terrain
                 }
             }
 
-            public void DrawMerged(MeshHandle handle, PropLayer layer, float dissolve)
+            public void DrawMerged(MeshHandle handle, PropLayer layer, float dissolve, bool invertShadowDissolve)
             {
                 DrawCount++;
+                MergedDrawCount++;
+                LastMergedDissolve = dissolve;
+                LastMergedInvertShadow = invertShadowDissolve;
+            }
+
+            public void ResetDraws()
+            {
+                DrawCount = 0;
+                MergedDrawCount = 0;
+                LastMergedDissolve = 0f;
+                LastMergedInvertShadow = false;
             }
         }
 

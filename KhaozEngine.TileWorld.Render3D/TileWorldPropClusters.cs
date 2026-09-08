@@ -6,9 +6,9 @@ using KhaozEngine.Terrain;
 
 namespace KhaozEngine.TileWorld;
 
-/// <summary>Validates TileWorld prop-layer definitions, resolves their mesh data, and publishes detached
-/// region-plane snapshots. It does not schedule workers or draw live clusters.</summary>
-public sealed class TileWorldPropClusters : IDisposable
+/// <summary>Validates TileWorld prop-layer definitions, resolves their mesh data, publishes detached
+/// region-plane snapshots, and routes their background builds and frame draws through the shared cluster owner.</summary>
+public sealed partial class TileWorldPropClusters : IDisposable
 {
     readonly ITileWorldScene _scene;
     readonly TileWorldCatalogs _catalogs;
@@ -19,7 +19,9 @@ public sealed class TileWorldPropClusters : IDisposable
 
     internal TileWorldPropClusters(ITileWorldScene scene, TileWorldCatalogs catalogs, ITileMeshResolver resolver,
                                    IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> fullMeshes,
-                                   ValidatedLayers validated)
+                                   ValidatedLayers validated, float tileSize,
+                                   TileWorldBuildQueueOptions? buildQueueOptions,
+                                   IChunkBuildDispatcher? dispatcher)
     {
         _scene = scene;
         _catalogs = catalogs;
@@ -30,9 +32,11 @@ public sealed class TileWorldPropClusters : IDisposable
         {
             for (int i = 0; i < validated.Layers.Length; i++)
                 _layers[i] = Resolve(validated.Layers[i], lodResolver, fullMeshes);
+            InitializeRendering(tileSize, buildQueueOptions, dispatcher);
         }
         catch
         {
+            DisposeRendering();
             for (int i = 0; i < _layers.Length; i++) _layers[i]?.Dispose(_scene);
             throw;
         }
@@ -229,6 +233,7 @@ public sealed class TileWorldPropClusters : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        DisposeRendering();
         foreach (LayerResources layer in _layers) layer.Dispose(_scene);
         _generations.Clear();
     }

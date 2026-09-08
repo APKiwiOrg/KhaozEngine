@@ -33,6 +33,7 @@ public sealed partial class TileWorldView
             new MeshHandle?[_planes], props, cover, residency,
             new long[_planes]);
         _loaded[region] = handles;
+        RequestPropClusters(props);
         GeneratedCoverCount += cover.Count;
         RequestGround(region, handles,
             residency == TileRegionResidencyState.Gameplay ? TileGroundLod.Full : TileGroundLod.Coarse4);

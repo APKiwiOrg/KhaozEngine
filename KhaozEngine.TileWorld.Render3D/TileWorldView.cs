@@ -194,7 +194,8 @@ public sealed partial class TileWorldView : IDisposable
                 }
                 _propMeshes[entry.Key] = scene.LoadPropMeshes(parts);
             }
-            _propClusters = new TileWorldPropClusters(scene, catalogs, resolver, _propMeshes, validatedPropLayers);
+            _propClusters = new TileWorldPropClusters(scene, catalogs, resolver, _propMeshes, validatedPropLayers,
+                doc.TileSize, buildQueueOptions, dispatcher);
         }
         catch
         {
@@ -368,6 +369,7 @@ public sealed partial class TileWorldView : IDisposable
         _loaded[region] = new RegionHandles(
             meshes, snapshots, cover, TileRegionResidencyState.Gameplay,
             new long[_planes]);
+        RequestPropClusters(snapshots);
         GeneratedCoverCount += cover.Count;
     }
 
@@ -392,6 +394,7 @@ public sealed partial class TileWorldView : IDisposable
             if (_dirty.Remove((region, plane))) _dirtyOrder.Remove((region, plane));
             _water.Remove((region, plane));
             CancelGround(region, plane);
+            _propClusters.Unload(region, plane);
         }
         if (!_loaded.Remove(region, out RegionHandles? handles)) return;
         GeneratedCoverCount -= handles.Cover.Count;
@@ -497,6 +500,7 @@ public sealed partial class TileWorldView : IDisposable
                 if (handles.Meshes[plane] is { } old) _scene.UnloadMesh(old);
                 handles.Meshes[plane] = rebuilt;
                 handles.Props[plane] = _propClusters.Build(_doc, region, plane, OverrideLookup());
+                _propClusters.Request(handles.Props[plane]);
                 ReleaseAnimatedFoliage(handles, plane);
                 RebuildCover(region, handles);
                 // Only a mesh that was actually built counts. The budget exists to bound uploads and handle
@@ -523,6 +527,7 @@ public sealed partial class TileWorldView : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         Flush();
         PumpGround(focus);
+        _propClusters.Pump(focus);
 
         int drawn = 0;
         foreach (KeyValuePair<RegionCoord, RegionHandles> entry in _loaded)
@@ -545,6 +550,7 @@ public sealed partial class TileWorldView : IDisposable
                 }
             }
         }
+        _propClusters.Draw(focus);
         LastDrawnProps = drawn;
         DrawCover(focus);
         // Water rides the same frame: the planes are cached per region-plane and re-collected only when that
@@ -738,6 +744,12 @@ public sealed partial class TileWorldView : IDisposable
             if (meshes[plane] is { } mesh) _scene.UnloadMesh(mesh);
             meshes[plane] = null;
         }
+    }
+
+    void RequestPropClusters(IReadOnlyList<TileRegionProps> snapshots)
+    {
+        for (int plane = 0; plane < snapshots.Count; plane++)
+            _propClusters.Request(snapshots[plane]);
     }
 
     // One loaded region: the ground mesh handle of each plane (null where the plane has no drawable tile) and

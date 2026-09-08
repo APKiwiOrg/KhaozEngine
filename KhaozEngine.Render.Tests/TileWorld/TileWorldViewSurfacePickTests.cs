@@ -1,6 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
+using KhaozEngine.Render3D;
+using KhaozEngine.Terrain;
 using KhaozEngine.TileWorld;
+using KhaozEngine.TileWorld.Render3D;
 using Xunit;
 
 namespace KhaozEngine.Tests.TileWorld;
@@ -234,5 +238,75 @@ public class TileWorldViewSurfacePickTests
         view.UnloadRegion(Origin);
 
         Assert.Equal(0, view.WaterCacheCount);
+    }
+
+    [Fact]
+    public void Far_hlod_is_not_pickable_until_its_full_object_enters_gameplay_residency()
+    {
+        var document = new TileWorldDocument
+        {
+            Id = "hlod-pick",
+            DisplayName = "HLOD pick",
+            PlaneCount = 1,
+        };
+        var far = new RegionCoord(4, 0);
+        document.GetOrCreateRegion(far);
+        document.SetUnderlay(far.OriginX, far.OriginZ, 0, TileRenderTestData.Grass);
+        TileObject tree = document.AddObject("tree", far.OriginX + 32, far.OriginZ + 32, 0, 0);
+        var scene = new RecordingTileWorldScene();
+        var resolver = new HlodPickResolver();
+        var bounds = new TileObjectBoundsCache(resolver);
+        var options = new TileWorldViewOptions
+        {
+            PropLayers = new[]
+            {
+                new TilePropLayerDefinition
+                {
+                    Id = "trees",
+                    ArchetypeIds = new HashSet<string>(StringComparer.Ordinal) { "tree" },
+                    DrawRadius = 576f,
+                    LodDistance = 64f,
+                    LodCrossfadeWidth = 16f,
+                    HlodDistance = 192f,
+                    HlodCrossfadeWidth = 32f,
+                    HlodWeldCell = 1.5f,
+                },
+            },
+        };
+        using var view = new TileWorldView(scene, document, TileRenderTestData.Catalogs, resolver, options,
+            new TileWorldBuildQueueOptions(), new ImmediateDispatcher());
+        view.LoadRegion(far, TileRegionResidencyState.Decor);
+        view.Draw(Vector3.Zero);
+        Assert.Equal(1, scene.LiveClusterMeshCount);
+
+        TileObjectArchetype archetype = TileRenderTestData.Catalogs.Archetype("tree")!;
+        Vector3 at = TileObjectProps.AnchorPosition(document, archetype, tree);
+        var hits = new List<TileObjectHit>();
+
+        Assert.Equal(0, view.PickObjects(0, at + Vector3.UnitY * 10f, -Vector3.UnitY, 20f,
+            bounds.TryGetBounds, hits));
+
+        view.LoadRegion(far, TileRegionResidencyState.Gameplay);
+
+        Assert.Equal(1, view.PickObjects(0, at + Vector3.UnitY * 10f, -Vector3.UnitY, 20f,
+            bounds.TryGetBounds, hits));
+        Assert.Equal(tree.Id, hits[0].ObjectId);
+        Assert.Equal("tree", hits[0].ArchetypeId);
+    }
+
+    sealed class HlodPickResolver : ITileMeshResolver, ITileLodMeshResolver
+    {
+        readonly GltfMesh _mesh = MeshPrimitives.Box(4f);
+        public IReadOnlyList<GltfMeshPart>? Resolve(TileObjectArchetype archetype) =>
+            new[] { new GltfMeshPart(_mesh, default) };
+        public IReadOnlyList<GltfMeshPart>? ResolveLod(TileObjectArchetype archetype) =>
+            new[] { new GltfMeshPart(_mesh, default) };
+        public GltfMesh? ResolveFlatForHlod(TileObjectArchetype archetype) => _mesh;
+    }
+
+    sealed class ImmediateDispatcher : IChunkBuildDispatcher
+    {
+        public void Schedule(Action build) => build();
+        public void Drain() { }
     }
 }

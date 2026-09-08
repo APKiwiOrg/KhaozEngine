@@ -5,6 +5,16 @@ using KhaozEngine.Netcode;
 
 namespace KhaozEngine.TileWorld.Netcode;
 
+/// <summary>Which overlapping id domain <see cref="TileMoveState.InteractTarget"/> belongs to.</summary>
+public enum TileInteractionDomain : byte
+{
+    /// <summary>An authored <c>TileObject.Id</c>. Zero so every legacy and default state keeps this meaning.</summary>
+    AuthoredObject = 0,
+
+    /// <summary>An entity NET ID.</summary>
+    Entity = 1,
+}
+
 /// <summary>
 /// One player's discrete movement state: which tile they stand on, which way they face, how far through the
 /// current step they are, and the route they are walking. Both an <see cref="IPredictedState{TSelf}"/> (so
@@ -17,10 +27,11 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// same state lands on byte-identical output on any machine, which server-authoritative movement depends on.</para>
 /// <para>A STEP COMMITS ITS TILE WHEN IT STARTS. <see cref="Tile"/> names the tile the step is walking INTO from the
 /// moment the step begins, and <see cref="StepFrom"/> names the one it is leaving, so the simulation owns the
-/// destination for the whole of the walk into it and the drawn body arrives afterwards. Every rules question (reach,
+/// destination for the whole of the walk into it and this state's derived <see cref="Position"/> arrives afterwards. Every rules question (reach,
 /// region, occupancy, what a click resolves against) is therefore answered about the tile the player is committed to
 /// rather than the one they are half off, which is what makes a 250 ms tick feel immediate. The body is at most one
-/// step behind the answer, never a whole tile, because the commit and the glide start on the same tick.</para>
+/// grid step behind the answer. The local client's render pose adds inter-tick prediction and active
+/// reconciliation-offset terms outside this state, documented on <c>TileWorldClient.LocalPose</c>.</para>
 /// <para><see cref="Position"/> is DERIVED: the glide from <see cref="StepFrom"/> to <see cref="Tile"/> by the
 /// fraction of the current step already spent, in TILE units. <see cref="Vertical"/> is the PLANE INDEX as a float
 /// rather than a height in metres, so the state stays document-free and the simulator can produce it without loading
@@ -87,9 +98,15 @@ public struct TileMoveState : IPredictedState<TileMoveState>, IComponent, IEquat
     /// <see cref="TeleportEpoch"/>, which is what tells the client to cut rather than glide.</summary>
     public uint Epoch;
 
-    /// <summary>The interaction target this route is heading to, 0 when none. Cleared when the action is raised or
-    /// the route is replaced, so a target can never outlive the walk that was chasing it.</summary>
+    /// <summary>The interaction target this route is heading to, 0 when none. Interpreted through
+    /// <see cref="InteractDomain"/> because authored object ids and entity net ids can contain the same 64 bits.
+    /// Cleared when the action is raised or the route is replaced.</summary>
     public long InteractTarget;
+
+    /// <summary>The id domain of <see cref="InteractTarget"/>. Authored object is zero so a legacy 41-byte state
+    /// and a default value keep their original meaning. Entity is carried as one optional trailing wire byte only
+    /// while an entity interaction is pending.</summary>
+    public TileInteractionDomain InteractDomain;
 
     /// <summary>The entity this state is locked onto and chasing, 0 when not fighting. A NET ID, from the entity
     /// space, never an object id: the two spaces overlap exactly, which is why the command kind is the
@@ -214,6 +231,7 @@ public struct TileMoveState : IPredictedState<TileMoveState>, IComponent, IEquat
         Tile.Equals(other.Tile) && StepFrom.Equals(other.StepFrom) && Facing == other.Facing && Mode == other.Mode
         && StepTicks == other.StepTicks && StepTotal == other.StepTotal
         && Route.Equals(other.Route) && Epoch == other.Epoch && InteractTarget == other.InteractTarget
+        && InteractDomain == other.InteractDomain
         && CombatTarget == other.CombatTarget;
 
     /// <inheritdoc/>
@@ -224,7 +242,7 @@ public struct TileMoveState : IPredictedState<TileMoveState>, IComponent, IEquat
     /// ninth field regroups the existing call rather than being appended to it.</remarks>
     public readonly override int GetHashCode() =>
         HashCode.Combine(HashCode.Combine(Tile, StepFrom), HashCode.Combine(Facing, Mode, StepTicks, StepTotal),
-            Route, Epoch, InteractTarget, CombatTarget);
+            Route, Epoch, HashCode.Combine(InteractTarget, InteractDomain), CombatTarget);
 
     /// <summary>Equality operator over <see cref="Equals(TileMoveState)"/>.</summary>
     public static bool operator ==(TileMoveState a, TileMoveState b) => a.Equals(b);

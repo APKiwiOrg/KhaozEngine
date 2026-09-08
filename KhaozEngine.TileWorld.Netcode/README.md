@@ -11,8 +11,9 @@ and correct only on a genuine disagreement.
 
 **A step commits its tile when it STARTS.** `TileMoveState.Tile` names the tile the simulation OWNS, from the tick
 the step into it begins, and `TileMoveState.StepFrom` names the one being left. The remaining ticks of the step
-glide the DRAWN body from one to the other, so the rules run ahead of the picture by strictly less than one step
-and a click is always answered against the tile the player is committed to. That is what makes a 250 ms tick feel
+glide the sampled state from one to the other, so the rules lead that state by at most one grid step. The local
+render pose adds the prediction layer's inter-tick easing, which can add one tick of travel to the lag. A click is
+always answered against the tile the player is committed to. That is what makes a 250 ms tick feel
 immediate rather than laggy, and it is why an interaction resolves as the walk's LAST step starts rather than when
 the avatar gets there. Draw through `TilePresenter`, never off `Tile`.
 
@@ -49,12 +50,26 @@ fixed-seconds glide window (which stutters, structurally) and a damped chase (wh
 wrong). `docs/design/TILE-WORLD-NETCODE-DESIGN-2026-08-22.md` section 5.2 carries the four rounds with the
 measurements.
 
-**THE INVARIANT: the drawn body lags its committed tile by up to one STEP.** Half a tile on average, zero at the
-instant it lands, never ahead. Combat, reach, occupancy and what a click resolves against are all answered about
-the committed tile, so a design that reads committed tiles is reading something a player watching the avatar
-cannot see. A REMOTE's BODY adds the delayed timeline `TileWorldClientConfig.InterpolationDelayTicks` names on
-top, two ticks by default and a whole tick each: at a 1/6 s tick that is 0.33 s more. Size a design that DRAWS
-other players against the SUM. Its committed TILE need not pay that second half, see the two reads below.
+**THE ZERO-CORRECTION MOTION INVARIANT has two body bounds.** A remote body is at most one grid step behind the committed tile read from
+the same delayed timeline. With no active reconciliation offset, the local body is at most one grid step plus one local command tick of travel behind
+`Prediction.PredictedState.Tile`, because `ClientPrediction.RenderedState` eases from the previous predicted
+position between command ticks. At the default four-tick walk and two-tick run cadences those local bounds are
+1.25 and 1.5 grid steps. Grid step means Chebyshev distance on the tile lattice. A diagonal step is `sqrt(2)` tile
+sizes in Euclidean world distance, so a world-space radius multiplies these bounds by `sqrt(2)`. The loopback tests
+observe 1.225 walking and 1.45 running because their first sampled frame has already advanced one tenth of a tick.
+The theoretical instant remains the base motion bound.
+
+`LocalPose` also carries the prediction layer's active planar reconciliation offset. That term preserves visual
+continuity across an ordinary correction below `HardSnapDistance`, then decays toward zero. It can point away from
+the newly committed tile and add to the base motion lag. A conservative instantaneous bound is the base motion
+term plus the magnitude of the active offset. The offset has no separate fixed cap because repeated sub-snap
+corrections can re-anchor it. A hard snap or teleport clears it. Combat, reach, occupancy and clicks use the
+committed tile and never this presentation position.
+
+A remote compared with the current server truth also adds the delayed timeline
+`TileWorldClientConfig.InterpolationDelayTicks` names, two ticks by default and a whole tick each. At a 1/6 s tick
+that is 0.33 s more. Size a design that draws other players against the sum. Its committed tile need not pay that
+second term, see the two reads below.
 
 **The mitigation is VISIBILITY, and it is the game's to draw.** Shrinking the lag is the wrong axis and was tried
 twice: at any lag the invisible truth is still invisible, and the motion has to be distorted to buy it. Drawing
@@ -97,7 +112,8 @@ so it walks visibly under the winner rather than vanishing a step before it gets
   `CombatTarget`, the NET ID this entity is locked onto and the reason the chase lives inside the one stepper both
   heads run rather than in a second movement authority a client cannot predict. `CombatTarget` and
   `InteractTarget` are mutually exclusive, each clearing the other, and a `WalkTo` clears both, which is how
-  anything on this lattice disengages. 41 payload bytes on the wire. `IsStepping`
+  anything on this lattice disengages. The state is 41 payload bytes on the wire, plus one optional domain byte
+  while an `InteractEntity` is pending. A legacy 41-byte state defaults to the authored-object domain. `IsStepping`
   (`StepFrom != Tile`) is the one definition of "a step is in flight", and it is NOT the same question as a live
   route: a route empties on the tick its last step starts. The direction the body is WALKING is
   `TileRoute.Direction(StepFrom, Tile)`, never `Facing`: `Facing` is where the player is LOOKING, and the arrival
@@ -111,13 +127,14 @@ so it walks visibly under the winner rather than vanishing a step before it gets
   Its own component because it is owner-only (plus Persist and Migrate): an observer does not need it, and the
   owner does, since a reconciliation basis without its route stands the player still.
 - **`TileCommand`** / **`TileCommandKind`** - one tick of intent: `None` (keep going), `WalkTo` (path to a goal and
-  walk it), `Interact` (route to a reach tile of a target, face it, act as the last step commits) or `Attack`
-  (lock onto a target and chase it while it moves). The MODE
+  walk it), `Interact` or its explicit alias `InteractObject` (route to an authored object), `InteractEntity`
+  (route to an entity), or `Attack` (lock onto an entity and chase it while it moves). The MODE
   rides on every command, `None` included, so the run toggle lives on the tick stream rather than on the click.
-  `Attack` needs a KIND of its own rather than a flag on `Interact`, because `Target` spans two id spaces that
-  overlap EXACTLY: a `TileObject.Id` is a document counter from 1 and a net id is `(nodeId << 48) | counter` from
-  1, so object id 7 and the seventh spawned entity are the same 64 bits and one resolver could not tell which
-  space a click meant. The kind is the discriminator.
+  Every entity operation needs a KIND of its own because `Target` spans two id spaces that overlap EXACTLY: a
+  `TileObject.Id` is a document counter from 1 and a net id is `(nodeId << 48) | counter` from 1, so object id 7
+  and the seventh spawned entity are the same 64 bits. `Interact` always means an authored object and keeps its
+  original bytes. `InteractEntity` writes kind 4 into the same 24-byte frame. A pre-addition server rejects that
+  kind as unknown rather than resolving its target through the object domain.
 - **`TileMoveMode`** - walk or run, a two-value selector rather than a speed.
 - **`TileStepTicks`** - ticks per step, per mode. Both heads must hold the same pair, or a step commits a tick
   apart and every step reads as a misprediction.
@@ -135,8 +152,9 @@ so it walks visibly under the winner rather than vanishing a step before it gets
 - **`TileMoveSimulator`** - the ONE discrete stepper both heads run, pure over its inputs and integer-only.
   `Accepts` is THE definition of whether a command applies at all, `Step` advances one tick, and `BeginWalk`,
   `BeginInteract` and `BeginAttack` are the three route starts. It takes TWO target seams, `targets` for the
-  object space and `combatTargets` for the entity space, the second appended LAST in the constructor so an
-  existing positional call keeps meaning what it said. `Follow` runs at the top of every `Advance`: while a
+  object space and `combatTargets` for the entity space used by both `InteractEntity` and `Attack`, the second
+  appended LAST in the constructor so an existing positional call keeps meaning what it said. An entity interaction
+  is accepted only while that net id resolves on the actor's plane. `Follow` runs at the top of every `Advance`: while a
   `CombatTarget` is held it re-paths to a reach tile whenever the target's committed tile moved, stands when it is
   already in reach, STEPS OFF the target's own tile when a catch left it standing there (a tile inside the footprint
   is not in reach, so holding it is a fight that can never start), and clears the lock when the target stops
@@ -242,6 +260,12 @@ understand. Its registered traversal profile can give that algorithm a different
   down, then every live actor gets its decision translated into a command, plus the tag and
   `PendingTileCommand` rewrite above. It iterates its own net id list rather than an ECS query on the tag,
   because a query over the tag cannot see the one actor that most needs the write.
+  The actor loop resolves each normal actor's owner once and reuses that cell and entity for movement state,
+  combat state, health and the two unconditional writes. Caller callbacks can despawn or hand off the actor while
+  deciding, so a dead, ghosted or migrating cached entity falls back to one fresh owner resolution before any
+  post-callback combat read or write.
+  In the 576-actor idle-behaviour workload this reduced the median complete server tick from 0.461 ms to 0.310 ms,
+  with five 1,000-tick runs after 100 warmup ticks.
 - **`ITileActorBehaviour`** / **`TileActorIntent`** / **`TileActorIntentKind`** / **`TileActorContext`** - the one
   decision seam. An intent names a TILE (`WalkTo`), a TARGET (`Attack`), `Break` (drop the target, walk home, and
   drop the damage record with it), `Stand` (cancel the route, hold the tile, KEEP the damage record: waiting for
@@ -336,7 +360,8 @@ always keep the constructor map.
 
 - **`TileWorldServer`** (+ **`TileWorldServerConfig`**) - the authoritative server, a `ShardHost` whose cell grid is
   the tile region grid. `Poll` pumps the transport, `Tick` runs the world, and the seams are `OnBeforeTick`,
-  `OnInteract`, `OnGameMessage`, `OnCannotReach`, `PlayerJoined` and `PlayerLeaving`. It is also the
+  `OnInteract`, `OnInteractEntity`, `OnGameMessage`, `OnCannotReach`, `PlayerJoined` and `PlayerLeaving`.
+  `OnInteract` carries authored object ids and `OnInteractEntity` carries entity net ids. It is also the
   `IPersistenceHost<TileMoveState>`. The seat index reads BOTH ways, `TryGetPlayerNetId` and `TryGetPlayerSlot`,
   because the combat seams all name net ids while a game's per-seat state is keyed by slot. The reverse answers
   false for an actor's id and forgets a seat on the same leave that frees it. **The tick is EIGHT steps**, not five, with the head's own systems ahead of
@@ -391,6 +416,10 @@ always keep the constructor map.
   file in the package that consults `TileWorldSpace`. Two answers, and mixing them up is the one mistake here.
   `Pose(state, extraTicks)` is the BODY: the linear glide from `StepFrom` into `Tile` by the step's own tick
   count, carried forward by the fraction of a tick since the state was sampled and clamped at the end of the step.
+  Against that same sample its bound is one Chebyshev grid step. `LocalPose(prediction)` additionally carries the
+  prediction layer's inter-tick easing. With no active reconciliation offset, its bound against
+  `PredictedState.Tile` is one grid step plus one local command tick of travel. An active offset adds its current
+  magnitude to that conservative bound until it decays or a hard snap clears it.
   `StepFraction(state, extraTicks)` is the fraction that glide interpolates on, exposed so a rule that must run in
   lockstep with a body (a fade, a squash, a footfall) measures the number the body is drawn at rather than a second
   estimate of it, and it reads 1 for a body at rest.
@@ -693,6 +722,7 @@ var server = new TileWorldServer(
     registry);
 
 server.OnInteract += (slot, netId, target) => game.Interact(slot, target);
+server.OnInteractEntity += (slot, netId, targetNetId) => game.InteractEntity(slot, targetNetId);
 
 while (running)                                    // any frame clock: the server accumulates its own ticks
 {
@@ -829,8 +859,9 @@ fixed size cannot carry these notices, because the padding it adds is length the
 - **The ban check is a `Func<string,bool>` predicate, not a store.** `IBanStore` lives in `KhaozEngine.NetWorld`,
   which this package must never reference. Unifying the two ban seams is
   [#678](https://github.com/APKiwiOrg/KhaozEngine/issues/678).
-- **No actions beyond the seam.** `TileActionKind` ships one kind, `Interact`, and `OnInteract` is where a game
-  takes over. The engine knows nothing about what an interaction DOES.
+- **No actions beyond the seam.** `TileActionKind` distinguishes authored-object and entity interactions so their
+  overlapping ids reach `OnInteract` and `OnInteractEntity` respectively. The engine knows nothing about what an
+  interaction does after the callback.
 - **Both parties in a fight are 1x1.** `TileReach` states three times that its set is anchor tiles for a ONE TILE
   actor, and `AgentSize` is a property of the SIMULATOR rather than of the entity, so a larger monster is two
   structural changes rather than a size field. `TileWorldServerConfig.ActorMove` is deliberately the seam the

@@ -83,8 +83,9 @@ public sealed class TilePresenter
     /// <paramref name="extraTicks"/> says.</para>
     /// <para>This is the BODY's answer, not the RULES'. A step commits its tile when it STARTS, so the tile the
     /// simulation has committed this player to is <see cref="TileMoveState.Tile"/> and the body drawn here is up to
-    /// one step behind it. An overlay that has to show where the player IS (a true-tile marker, a minimap dot, a
-    /// server-side tool) reads <c>state.Tile</c> and maps it with
+    /// one Chebyshev grid step behind it. A diagonal grid step is <c>sqrt(2) * TileSize</c> in Euclidean world
+    /// distance. An overlay that has to show where the player IS (a true-tile marker, a minimap dot, a server-side
+    /// tool) reads <c>state.Tile</c> and maps it with
     /// <see cref="PoseAt(TileCoord, TileDirection)"/>.</para>
     /// </summary>
     /// <param name="state">The state to draw.</param>
@@ -130,6 +131,14 @@ public sealed class TilePresenter
     /// that override is the whole point of the prediction layer: it is a continuous position over a discrete
     /// lattice, and rounding it back to a tile here would throw away every frame of smoothing the layer just
     /// computed.
+    /// <para>The zero-correction local motion bound has one term beyond <see cref="Pose"/>. At the instant a new step commits,
+    /// <c>RenderedState</c> still starts from the previous predicted position, so the body may trail
+    /// <c>PredictedState.Tile</c> by one grid step plus one local command tick of travel. With a step cadence of N
+    /// ticks the bound is <c>1 + 1/N</c> grid steps. The default walk and run cadences therefore bound at 1.25 and
+    /// 1.5. Multiply by <c>sqrt(2) * TileSize</c> for the Euclidean world-space bound of diagonal travel. An active
+    /// reconciliation offset is an additional presentation term. The conservative instantaneous bound adds its
+    /// magnitude to this base motion bound. Ordinary corrections can re-anchor it, while a hard snap or teleport
+    /// clears it.</para>
     /// <para><see cref="TileWorldClient.LocalPose"/> is this call with the client's own prediction and presenter
     /// already in hand, and is what a head normally uses. This overload is for a head holding a
     /// <see cref="ClientPrediction{TState,TCommand}"/> of its own.</para>

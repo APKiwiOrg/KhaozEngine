@@ -11,9 +11,8 @@ namespace KhaozEngine.TileWorld;
 /// stops at the cap and everything it never reached is simply not part of the interior. The failure direction is
 /// a roof left visible, never a stalled frame and never a throw. <see cref="Truncated"/> reports it happened, and
 /// the view turns that into one log line.</para>
-/// <para>Internal because the roof rule is the only reader. What a caller needs is on the view:
-/// <c>TileWorldView.IsRoofHidden</c>, <c>TileWorldView.InteriorTileCount</c> and
-/// <c>TileWorldView.InteriorTruncated</c>.</para></summary>
+/// <para>Internal because callers read it through the view's roof and observer-interior queries rather than
+/// taking ownership of the mutable fill.</para></summary>
 sealed class TileInteriorFill
 {
     /// <summary>Most tiles one interior may hold. A generous building and then some: the largest OSRS-style

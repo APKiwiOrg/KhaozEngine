@@ -233,6 +233,16 @@ public sealed partial class TileWorldView : IDisposable
         get { EnsureInterior(); return _interior.Truncated; }
     }
 
+    /// <summary>Whether <paramref name="tile"/> is part of the observer's current 4-connected indoor area.
+    /// This is the interior query itself, independent of <see cref="RoofMode"/> and of whether a roof occupies
+    /// the tile. A tile on another plane is never in the observer's interior.</summary>
+    /// <param name="tile">The world tile to test, including its plane.</param>
+    public bool IsObserverInterior(TileCoord tile)
+    {
+        EnsureInterior();
+        return tile.Plane == _interior.Plane && _interior.Contains(tile.X, tile.Z);
+    }
+
     /// <summary>How many prop placements the last <see cref="Draw"/> queued, roofs included when shown.
     /// Animated foliage contributes conservative submitted candidates, including model parts.</summary>
     public int LastDrawnProps { get; private set; }
@@ -312,6 +322,7 @@ public sealed partial class TileWorldView : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (plane < 0 || plane >= _planes) return;
+        MarkInteriorDirty(region.Rect, plane);
         Queue(region, plane);
     }
 
@@ -324,6 +335,7 @@ public sealed partial class TileWorldView : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (worldRect.IsEmpty || plane < 0 || plane >= _planes) return;
+        MarkInteriorDirty(worldRect, plane);
         QueueBaseDependencies(worldRect, plane, excluded: null);
         QueueFoliageDependencies(worldRect, plane, excluded: null);
     }
@@ -586,12 +598,18 @@ public sealed partial class TileWorldView : IDisposable
 
     bool IndoorsAt(TileCoord tile) => (_doc.GetSettings(tile.X, tile.Z, tile.Plane) & TileSettings.Indoors) != 0;
 
+    // A complete fill can only change when an edit touches it or one of the four-connected tiles it could grow
+    // into. A truncated fill does not know the bounds of the interior it omitted, so every same-plane mark stays
+    // conservative there. Observer moves and the indoor flag under a stationary observer have their own gates.
+    void MarkInteriorDirty(TileRect worldRect, int plane)
+    {
+        if (_interiorStale || plane != _interior.Plane) return;
+        if (_interior.Truncated || _interior.Bounds.Expand(1).Intersects(worldRect)) _interiorStale = true;
+    }
+
     // The one place the dedup set and the order list are appended to, so they cannot drift apart.
     void Queue(RegionCoord region, int plane)
     {
-        // An edit reaches the view through MarkDirty and nowhere else, so this is also where the interior hears
-        // that the tiles it was filled over may have moved under it.
-        _interiorStale = true;
         if (_dirty.Add((region, plane))) _dirtyOrder.Add((region, plane));
     }
 

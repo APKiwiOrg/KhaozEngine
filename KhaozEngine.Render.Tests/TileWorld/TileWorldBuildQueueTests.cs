@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using KhaozEngine.Terrain;
 using KhaozEngine.TileWorld;
 using Xunit;
@@ -139,8 +141,86 @@ public class TileWorldBuildQueueTests
 
         queue.PrimeGameplay(default);
 
-        Assert.Equal(new[] { 1, 3, 4, 5 }, applied.ConvertAll(result => result.Key.Region.Rx));
-        Assert.Equal(2, queue.ReadyCount);
+        Assert.Equal(new[] { 3, 4 }, applied.ConvertAll(result => result.Key.Region.Rx));
+        Assert.Equal(4, queue.TrackedCount);
+        Assert.Equal(0, queue.ReadyCount);
+    }
+
+    [Fact]
+    public void PrimeGameplay_leaves_completed_decor_ready_for_a_later_Pump()
+    {
+        var dispatcher = new ManualDispatcher();
+        var applied = new List<TileWorldBuildResult<int>>();
+        using var queue = Queue(dispatcher, applied, maxConcurrency: 2);
+        queue.Request(Request(0, TileWorldBuildKind.CoarseGround, 1));
+        queue.Request(Request(1, TileWorldBuildKind.FullGround, 1));
+        dispatcher.RunAll();
+        queue.CollectCompleted();
+
+        queue.PrimeGameplay(default);
+
+        Assert.Equal(new[] { TileWorldBuildKind.FullGround },
+            applied.ConvertAll(result => result.Key.Kind));
+        Assert.Equal(1, queue.ReadyCount);
+
+        queue.Pump(default);
+        Assert.Equal(new[] { TileWorldBuildKind.FullGround, TileWorldBuildKind.CoarseGround },
+            applied.ConvertAll(result => result.Key.Kind));
+    }
+
+    [Fact]
+    public async Task PrimeGameplay_does_not_wait_for_blocked_decor_ahead_of_gameplay()
+    {
+        using var decorGate = new ManualResetEventSlim();
+        using var decorStarted = new ManualResetEventSlim();
+        var dispatcher = new ThreadDispatcher();
+        var applied = new List<(TileWorldBuildKind Kind, int Thread)>();
+        using var queue = new TileWorldBuildQueue<int, int>(
+            request =>
+            {
+                if (request.Key.Kind == TileWorldBuildKind.CoarseGround)
+                {
+                    decorStarted.Set();
+                    decorGate.Wait();
+                }
+                return request.Input;
+            },
+            result => applied.Add((result.Key.Kind, Environment.CurrentManagedThreadId)),
+            new TileWorldBuildQueueOptions
+            {
+                MaxConcurrentBuilds = 1,
+                MaxFullGroundAppliesPerPump = 1,
+                MaxCoarseGroundAppliesPerPump = 1,
+                MaxHlodAppliesPerPump = 1,
+            }, dispatcher);
+        queue.Request(Request(1, TileWorldBuildKind.CoarseGround, 1));
+        queue.Request(Request(0, TileWorldBuildKind.FullGround, 1));
+        queue.Request(Request(2, TileWorldBuildKind.CoarseGround, 1));
+        Assert.True(await Task.Run(() => decorStarted.Wait(TimeSpan.FromSeconds(5))));
+
+        int primeThread = 0;
+        Task prime = Task.Run(() =>
+        {
+            primeThread = Environment.CurrentManagedThreadId;
+            queue.PrimeGameplay(default);
+        });
+        Task early = await Task.WhenAny(prime, Task.Delay(TimeSpan.FromMilliseconds(500)));
+        bool returnedBeforeDecor = ReferenceEquals(early, prime);
+        decorGate.Set();
+        await prime.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(returnedBeforeDecor, "gameplay prime waited for blocked decor work");
+        Assert.Equal(new[] { (TileWorldBuildKind.FullGround, primeThread) }, applied);
+        Assert.Equal(2, queue.TrackedCount);
+
+        dispatcher.Drain();
+        queue.Pump(default);
+        Assert.Equal(2, applied.Count);
+        Assert.Equal(TileWorldBuildKind.CoarseGround, applied[1].Kind);
+        dispatcher.Drain();
+        queue.Pump(default);
+        Assert.Equal(3, applied.Count);
+        Assert.All(applied.GetRange(1, 2), result => Assert.Equal(TileWorldBuildKind.CoarseGround, result.Kind));
     }
 
     [Fact]
@@ -203,5 +283,28 @@ public class TileWorldBuildQueueTests
             while (_pending.Count > 0) RunAt(_pending.Count - 1);
         }
         public void Drain() => RunAll();
+    }
+
+    sealed class ThreadDispatcher : IChunkBuildDispatcher
+    {
+        readonly object _gate = new();
+        readonly List<Task> _tasks = new();
+
+        public void Schedule(Action build)
+        {
+            Task task = Task.Run(build);
+            lock (_gate) _tasks.Add(task);
+        }
+
+        public void Drain()
+        {
+            Task[] tasks;
+            lock (_gate)
+            {
+                tasks = _tasks.ToArray();
+                _tasks.Clear();
+            }
+            if (tasks.Length > 0) Task.WaitAll(tasks);
+        }
     }
 }

@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using KhaozEngine.Terrain;
 
 namespace KhaozEngine.TileWorld;
@@ -52,9 +54,32 @@ internal sealed class TileWorldBuildQueue<TInput, TOutput> : IDisposable
 
     enum WorkState { Pending, Running, Ready }
 
-    readonly record struct Slot(long Generation, WorkState State);
+    readonly record struct Slot(long Generation, WorkState State, ScheduledWork? Work);
 
-    readonly record struct Completion(TileWorldBuildKey Key, long Generation, TOutput Payload, Exception? Error);
+    readonly record struct Completion(
+        TileWorldBuildKey Key, long Generation, TOutput Payload, Exception? Error, bool CountsWorker);
+
+    sealed class ScheduledWork
+    {
+        readonly Action _body;
+        readonly TaskCompletionSource _finished = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int _claimed;
+
+        public ScheduledWork(Action body) => _body = body;
+
+        public void Run()
+        {
+            if (Interlocked.CompareExchange(ref _claimed, 1, 0) != 0) return;
+            try { _body(); }
+            finally { _finished.TrySetResult(); }
+        }
+
+        public void RunOrWait()
+        {
+            Run();
+            _finished.Task.GetAwaiter().GetResult();
+        }
+    }
 
     public TileWorldBuildQueue(Func<TileWorldBuildRequest<TInput>, TOutput> build,
                                Action<TileWorldBuildResult<TOutput>> apply,
@@ -76,7 +101,7 @@ internal sealed class TileWorldBuildQueue<TInput, TOutput> : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (request is null) throw new ArgumentNullException(nameof(request));
-        _tracked[request.Key] = new Slot(request.Generation, WorkState.Pending);
+        _tracked[request.Key] = new Slot(request.Generation, WorkState.Pending, Work: null);
         _ready.Remove(request.Key);
         _pending.Enqueue(request);
         DispatchAvailable();
@@ -108,15 +133,33 @@ internal sealed class TileWorldBuildQueue<TInput, TOutput> : IDisposable
     public void PrimeGameplay(RegionCoord focus)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        while (_running > 0 || PendingCurrentCount() > 0)
+        RunPendingGameplayInline();
+        FinishScheduledGameplay();
+        CollectCompletedCore(reportFailures: true);
+        ApplyReady(focus, int.MaxValue, coarseBudget: 0, hlodBudget: 0);
+    }
+
+    void RunPendingGameplayInline()
+    {
+        foreach (TileWorldBuildRequest<TInput> request in _pending)
         {
-            _dispatcher.Drain();
-            CollectCompletedCore(reportFailures: true);
-            DispatchAvailable();
+            if (request.Key.Kind != TileWorldBuildKind.FullGround ||
+                !_tracked.TryGetValue(request.Key, out Slot slot) ||
+                slot.Generation != request.Generation || slot.State != WorkState.Pending)
+                continue;
+            _tracked[request.Key] = slot with { State = WorkState.Running };
+            Build(request, countsWorker: false);
         }
-        ApplyReady(focus, int.MaxValue,
-            _options.MaxCoarseGroundAppliesPerPump,
-            _options.MaxHlodAppliesPerPump);
+    }
+
+    void FinishScheduledGameplay()
+    {
+        var running = new List<ScheduledWork>();
+        foreach (KeyValuePair<TileWorldBuildKey, Slot> item in _tracked)
+            if (item.Key.Kind == TileWorldBuildKind.FullGround &&
+                item.Value.State == WorkState.Running && item.Value.Work is { } work)
+                running.Add(work);
+        for (int i = 0; i < running.Count; i++) running[i].RunOrWait();
     }
 
     void ApplyReady(RegionCoord focus, int fullBudget, int coarseBudget, int hlodBudget)
@@ -158,11 +201,12 @@ internal sealed class TileWorldBuildQueue<TInput, TOutput> : IDisposable
                 slot.State != WorkState.Pending)
                 continue;
 
-            _tracked[request.Key] = slot with { State = WorkState.Running };
+            var work = new ScheduledWork(() => Build(request, countsWorker: true));
+            _tracked[request.Key] = slot with { State = WorkState.Running, Work = work };
             _running++;
             try
             {
-                _dispatcher.Schedule(() => Build(request));
+                _dispatcher.Schedule(work.Run);
             }
             catch
             {
@@ -174,20 +218,20 @@ internal sealed class TileWorldBuildQueue<TInput, TOutput> : IDisposable
         }
     }
 
-    void Build(TileWorldBuildRequest<TInput> request)
+    void Build(TileWorldBuildRequest<TInput> request, bool countsWorker)
     {
         TOutput payload = default!;
         Exception? error = null;
         try { payload = _build(request); }
         catch (Exception ex) { error = ex; }
-        _completed.Enqueue(new Completion(request.Key, request.Generation, payload, error));
+        _completed.Enqueue(new Completion(request.Key, request.Generation, payload, error, countsWorker));
     }
 
     void CollectCompletedCore(bool reportFailures)
     {
         while (_completed.TryDequeue(out Completion completion))
         {
-            _running--;
+            if (completion.CountsWorker) _running--;
             if (!_tracked.TryGetValue(completion.Key, out Slot slot) ||
                 slot.Generation != completion.Generation || slot.State != WorkState.Running)
                 continue;
@@ -235,11 +279,9 @@ internal sealed class TileWorldBuildQueue<TInput, TOutput> : IDisposable
         _pending.Clear();
         _tracked.Clear();
         _ready.Clear();
-        while (_running > 0)
-        {
-            _dispatcher.Drain();
-            while (_completed.TryDequeue(out _)) _running--;
-        }
+        _dispatcher.Drain();
+        while (_completed.TryDequeue(out Completion completion))
+            if (completion.CountsWorker) _running--;
         while (_completed.TryDequeue(out _)) { }
     }
 }

@@ -35,8 +35,8 @@
 # This file is per-repo and is NOT part of the verbatim template layer.
 
 832 CHANGELOG.md
-296 docs/USING-KHAOZENGINE.md
-32 KhaozEngine.NetWorld/README.md
+293 docs/USING-KHAOZENGINE.md
+31 KhaozEngine.NetWorld/README.md
 26 docs/SECURITY-BASELINE.md
 24 README.md
 22 KhaozEngine.Render3D/README.md
@@ -46,10 +46,10 @@
 14 KhaozEngine.Game.Render3D/README.md
 13 docs/UPDATER.md
 13 KhaozEngine.Physics.Bepu/README.md
-13 KhaozEngine.Netcode/README.md
 11 AGENTS.md
 10 docs/DEPENDENCY-SEAMS.md
 10 KhaozEngine.Replication/README.md
+10 KhaozEngine.Netcode/README.md
 9 KhaozEngine.Benchmarks/README.md
 8 KhaozEngine.Gui.Tests/Gui/Fixtures/RuinbornePlayChangelog.md
 8 KhaozEngine.App/README.md

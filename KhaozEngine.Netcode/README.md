@@ -354,21 +354,22 @@ not carry the edge, since a forged subject there only refuses the forger.
 ## SignedToken connect tokens
 
 `SignedToken` is a zero-dependency HMAC-SHA256 connect-token primitive binding a `subject` (the stable account/player
-id) to an expiry. The wire format is `v1.<subject>.<expUnix>.<sig>`, or `v2.<subject>.<nameB64>.<expUnix>.<sig>` which
-adds a base64url display-name claim (cosmetic, distinct from the verified subject). `Mint(subject, expiry, secret)` and
-`Mint(subject, displayName, expiry, secret)` issue tokens; `TryVerify(token, secret, now, out subject[, out displayName],
-out reason)` is the authoritative server-side check (fixed-time HMAC compare, then expiry). `HmacTokenAuthenticator`
-wraps `TryVerify` as an `IConnectionAuthenticator`.
+id) to an expiry. The wire formats are `v1.<subject>.<expUnix>.<sig>`,
+`v2.<subject>.<nameB64>.<expUnix>.<sig>`, and
+`v3.<subject>.<nameB64>.<persistenceKeyB64>.<expUnix>.<sig>`. V2 adds a cosmetic display-name claim. V3 adds an
+optional durable persistence-key claim without changing the subject used for authentication and duplicate-session
+policy. Every field before the signature is covered. Existing mint and verify overloads remain compatible and
+discard claims they do not surface. The widest overload returns subject, display name, persistence key, and reason.
+`HmacTokenAuthenticator` implements both optional claim companions after full verification.
 
 - **`TryParseUnverified(token, out subject, out expUnix, out displayName) -> bool`** (14.9.0)
   A **secret-free STRUCTURAL parse**: extracts the subject, expiry (Unix seconds), and optional v2 display name without
   the HMAC secret, for a **client-side shape pre-filter** (sanity-checking a pasted or launch-supplied token before a
   connect, where the secret lives only on the server). It does **NOT** verify the signature and does **NOT** check
   expiry, so a genuine, a tampered, and an expired token all parse the same - it is **not authentication**. Its
-  acceptance mirrors `TryVerify`'s own structural gate (non-empty; the v1 4-field / v2 5-field split with the matching
-  version prefix; a `NumberStyles.None` numeric expiry), so a consumer deferring to it cannot drift from the format if
-  a v3 is ever added. `displayName` is `null` for a v1 token, the empty string for a v2 empty-name claim, else the
-  decoded name.
+  acceptance mirrors `TryVerify`'s own structural gate for v1, v2, and v3, so a consumer deferring to it cannot drift
+  from the format. It validates the v3 claim shape but never surfaces the unverified persistence key. `displayName`
+  is `null` for v1, the empty string for an empty v2 or v3 name, else the decoded name.
 
 ## Connect-time gate: ConnectionGate + HandshakeToken (17.40.0)
 
@@ -422,6 +423,8 @@ takes and the one a game banned-player banner renders. The check here is a `Func
 `isBanned: store.IsBanned`, so the two can never disagree about who is banned.
 
 The three decorators are public and compose on their own when a head wants a different order, or only one of them.
+They forward both optional verified-claim companions. Version and world gates unwrap their own token layer before
+reading the inner display name or persistence key. The ban gate forwards the accepted inner token unchanged.
 
 `ConnectionGate.BuildToken(protocolVersion, worldHash, innerToken)` builds the version layer wrapping the world
 layer wrapping the real auth token. On a plain `NetServer` / `NetClient` pair that is the whole token a client

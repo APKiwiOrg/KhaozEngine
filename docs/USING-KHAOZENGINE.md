@@ -6274,7 +6274,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.36.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.37.0" />
 ```
 
 ```csharp
@@ -11696,7 +11696,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.36.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.37.0" />
 ```
 
 ```csharp
@@ -11732,7 +11732,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.36.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.37.0" />
 ```
 
 ```csharp
@@ -11974,7 +11974,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.36.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.37.0" />
 ```
 
 ```csharp
@@ -14022,7 +14022,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="18.36.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="18.37.0" />
 </ItemGroup>
 ```
 
@@ -15070,8 +15070,10 @@ client.Poll();
 while (client.TryDequeueEvent(out ClientSessionEvent ce)) { /* Joined(ce.Slot) / Rejected / Data / Disconnected */ }
 ```
 
-`SignedToken` is `v1.<subject>.<expUnix>.<base64url-HMACSHA256>` (the subject may not contain `.`); a re-issued
-token for the same account carries the same subject, so persistence keyed on the subject survives token rotation.
+`SignedToken` accepts three compatible formats: v1 carries subject and expiry, v2 adds a signed display name, and
+v3 adds a signed persistence-key claim. A re-issued token for the same account carries the same subject, so account
+policy survives token rotation. The v3 claim can select a separate character checkpoint without changing that
+subject. `HmacTokenAuthenticator` exposes it through `IConnectionPersistenceKey` only after full verification.
 `WorldServer`/`ShardedWorldServer` take the authenticator as an optional last constructor argument (default
 `AllowAllAuthenticator`) and use `ev.Subject` as the persisted `accountId`, falling back to `guest:{slot}` when it
 is empty. That fallback names a recycled seat rather than a player, so `WorldPersistence` stores nothing under it
@@ -15081,7 +15083,7 @@ would reach persistence reading as tokenless and lose the session silently.
 
 **Client-side shape pre-filter without the secret (`SignedToken.TryParseUnverified`, 14.9.0).** The HMAC secret
 lives only on the server, so a client that wants to sanity-check a pasted or launch-supplied token's SHAPE before
-attempting a connect uses the secret-free structural parse. It extracts the subject, expiry, and optional v2 name
+attempting a connect uses the secret-free structural parse. It extracts the subject, expiry, and optional name
 but does NOT verify the signature and does NOT check expiry, so it is NOT authentication - only the server's
 `TryVerify` is:
 
@@ -15089,8 +15091,8 @@ but does NOT verify the signature and does NOT check expiry, so it is NOT authen
 // e.g. gating a paste-a-token launch screen before dialing the server.
 if (SignedToken.TryParseUnverified(pastedToken, out string subject, out long expUnix, out string? displayName))
 {
-    // Structurally a v1/v2 token: subject + expUnix are populated (displayName is null for v1, "" for a v2 empty
-    // name, else the decoded name). Still UNVERIFIED - present it to the server as the connect token and let
+    // Structurally a v1, v2, or v3 token. The v3 persistence key is checked for shape but never exposed here.
+    // Still UNVERIFIED. Present it to the server as the connect token and let
     // HmacTokenAuthenticator.TryVerify pass judgement. Optionally warn locally if expUnix is already in the past.
     var client = new NetClient(clientTransport, pastedToken);
 }
@@ -15671,11 +15673,31 @@ all-player polling endpoint and no inventory, bank, skill, or quest snapshot on 
 `KhaozEngine.NetWorld.WorldPersistence` wires an `IWorldStore` into the `WorldServer` lifecycle so the
 authoritative world survives a restart. It is backend-agnostic (only `IWorldStore` + `KhaozEngine.Serialization`):
 **load-on-join** (spawn at the saved position, or the default if absent), **save-on-leave**, and a **periodic
-snapshot** of players whose state changed since their last save. Players are keyed `player:{accountId}`, where
-the `accountId` is the **verified subject** the `IConnectionAuthenticator` bound the connection to (with
-`AllowAllAuthenticator` that is the connect token decoded UTF-8; with `HmacTokenAuthenticator` it is the
-`SignedToken` subject, stable across token re-issue), or `guest:{slot}` when the subject is empty. The
-record is a forward-tolerant JSON `PlayerRecord` (adding fields later never breaks an old save).
+snapshot** of players whose state changed since their last save. The default key is `player:{accountId}`, where
+`accountId` is the verified subject. The record is a forward-tolerant JSON `PlayerRecord`.
+
+**A game can separate durable checkpoint identity from authenticated account identity.** Mint a v3 token carrying
+the character claim, then configure `WorldPersistenceConfig.PersistenceKeyResolver`. Both NetWorld heads call it
+once after authentication and before resume-spawn lookup, validate the returned key, refuse a second live subject
+targeting the same key, and keep it bound through `PlayerLeaving`. Authentication, bans, admin identity, and
+duplicate-session policy continue to use the verified subject.
+
+```csharp
+string sessionToken = SignedToken.Mint(
+    accountSubject, displayName, $"character:{characterId}", expires, secret);
+
+var persistence = new WorldPersistence(server, store, new WorldPersistenceConfig
+{
+    PersistenceKeyResolver = (in PersistenceKeyRequest request) =>
+        request.VerifiedPersistenceKey.StartsWith("character:", StringComparison.Ordinal)
+            ? request.VerifiedPersistenceKey
+            : throw new InvalidOperationException("A verified character persistence key is required."),
+});
+```
+
+The resolved value is the suffix under `player:` and must be non-empty, must not use the reserved `guest:` prefix,
+and must keep the complete store key within 450 characters. Resolver faults refuse the join before entity spawn.
+Tokenless guests never invoke it and retain the existing `PersistGuests` policy.
 
 **Since 17.40.0 the machinery is `KhaozEngine.WorldStore.StatePersistence<TState>` and `WorldPersistence` is the
 FLOAT binding of it.** Nothing below changed: the same config type and defaults, the same keys, the same
@@ -15691,6 +15713,7 @@ generic `SetPositionHintProvider`, and `ResumePositionCache` forwards to `Positi
 
 ```csharp
 using KhaozEngine.NetWorld;
+using KhaozEngine.WorldStore;
 using KhaozEngine.WorldStore.Sqlite;
 
 var server = new WorldServer(transport, config, groundHeight, MoveTuning.Default);
@@ -15706,10 +15729,9 @@ persistence.Update(dt);     // applies any load-on-join state (on this thread) +
 await persistence.FlushAsync();
 ```
 
-The client must present a **stable** account token for reconnect/restart to restore the same player. With the
-dev `AllowAllAuthenticator` the token *is* the account id; with `HmacTokenAuthenticator` the client presents a
-minted `SignedToken` whose subject is the account id (`SignedToken.Mint(accountId, expiry, secret)`), and the
-server keys on that verified subject either way:
+The client must present a stable account token and, when a resolver is configured, a stable signed persistence-key
+claim for reconnect and restart to restore the same player. With the dev `AllowAllAuthenticator` the token is the
+account id and the default account key remains in effect.
 
 ```csharp
 var client = new WorldClient(transport, groundHeight, MoveTuning.Default,
@@ -15733,10 +15755,12 @@ on the SAME dirty-tracking, interval save, flush-on-drain and load-on-join threa
 engine never deserializes the blob; the game owns its format.
 
 - **`CaptureGameState`** runs on the server thread at every save point (save-on-leave and the periodic dirty
-  pass). It is handed a `PlayerPersistenceContext` (`Slot` + `AccountId`), so it can read the live per-player
+  pass). It is handed a `PlayerPersistenceContext` (`Slot`, `AccountId`, and `AuthenticatedAccountId`), so it can
+  read the live per-player
   object by `Slot`, and returns the serialized bytes (or null / empty for "no game state" - position only).
-  `AccountId` is always the key the record is FILED under, never the runtime seat: under `PersistGuests` a tokenless
-  connection reaches the hook as its minted `guest:{guid}`, not as the `guest:{slot}` the head derived.
+  `AccountId` keeps its source-compatible meaning as the key the record is FILED under. `AuthenticatedAccountId`
+  is the verified subject, or empty for a tokenless guest. Under `PersistGuests`, a tokenless connection reaches
+  `AccountId` as its minted `guest:{guid}`, not as the `guest:{slot}` the head derived.
   **Returning null / empty is destructive: it means "no game state", not "keep the existing blob".** After a save
   has written bytes, returning null / empty marks the record dirty and **erases** the stored blob. Never return it
   just because the live object isn't loaded yet - return the last-known bytes, or the player's progression is wiped.
@@ -15744,8 +15768,8 @@ engine never deserializes the blob; the game owns its format.
   `FlushAsync`, never a background continuation). It gets the same context plus a `ReadOnlySpan<byte>` of exactly
   what capture returned; copy it (`blob.ToArray()`) to keep it. It is never called for a player with no saved blob.
 
-Both live in the one `player:{accountId}` record, so position and the game blob save atomically and a change to
-*either* re-saves. Because the record is account-keyed, the blob is **unaffected by cell handoff** (unlike
+Both live in the one `player:{persistenceKey}` record, so position and the game blob save atomically and a change
+to *either* re-saves. Because the record is player-keyed, the blob is **unaffected by cell handoff** (unlike
 registered components, which migrate cell-to-cell with the entity).
 
 **Load-on-join guards the SESSION against a clobbering save.** On a genuinely-async store (Azure SQL / Ruinborne),
@@ -15787,15 +15811,15 @@ re-resolves the seat's current occupant and **drops** a record whose account no 
 writing one player's position, teleport and durable blob onto another (#646). It drops a record whose join token is
 not the account's current one for the same reason: that read was issued for a session that has ended, and its bytes
 predate everything the live session has done (#654). Either drop is announced through
-**`WorldPersistence.OnLoadApplyDropped`** (`event Action<string, int>`, accountId + slot) and an `Info` log line
+**`WorldPersistence.OnLoadApplyDropped`** (`event Action<string, int>`, persistence key + slot) and an `Info` log line
 under the `WorldPersistence` category naming which of the two it was, and nothing at all is written: the dropped
 record is untouched in the store, and the drop never clears a guard itself. A SEAT drop leaves the record guarded
 until that account rejoins and its own next read clears it. A SESSION drop leaves the live session's load to answer
 for it, either still in flight and still guarding or already applied, which is what cleared the guard.
 
 ```csharp
-persistence.OnLoadApplyDropped += (accountId, slot) =>
-    Log.Info($"{accountId} was not the party slot {slot}'s record was read for, so the restore was dropped");
+persistence.OnLoadApplyDropped += (persistenceKey, slot) =>
+    Log.Info($"{persistenceKey} was not the party slot {slot}'s record was read for, so the restore was dropped");
 ```
 
 **A tokenless connection is not persisted at all** (default). Both heads key one `guest:{slot}`, and the slot is

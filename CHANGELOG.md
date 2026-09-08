@@ -5,6 +5,25 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.37.0
+
+Authenticated sessions can bind a separate durable checkpoint key before player spawn while account identity
+continues to govern authentication, bans, and duplicate sessions.
+
+- `SignedToken` v3 carries a signed optional persistence-key claim beside the subject and display name. Existing v1
+  and v2 formats and public overloads remain compatible. `HmacTokenAuthenticator` exposes the claim only after full
+  verification.
+- `IConnectionPersistenceKey` carries the verified claim through `NetServer`, `ConnectionGate`, the NetWorld wire
+  generation gate, and the legacy version wrapper. Standard decorators no longer strip the claim.
+- `PersistenceKeyResolver` binds one validated durable key after authentication and before resume-spawn lookup.
+  `WorldServer` and `ShardedWorldServer` reject resolver faults, invalid keys, and two live subjects targeting the
+  same durable key without changing subject-based duplicate-session policy.
+- `StatePersistence<TState>` uses the bound key for load, periodic and leave saves, prewarm, hints, quarantine,
+  game-state callbacks, and in-flight guards. Pending loads also retain the authenticated account subject to prevent
+  recycled-slot cross-apply.
+- `PlayerPersistenceContext.AuthenticatedAccountId` exposes the verified subject while `AccountId` retains its
+  source-compatible meaning as the durable record key. TileWorld passes the same resolver into the shared core.
+
 ## 18.36.0
 
 KhaozEngine.Gui adds an interaction-anchored radial menu and an opaque source-target use context.

@@ -27,13 +27,16 @@ periodic dirty snapshots, per-key ordering, guest policy, validation quarantine,
 `IPersistenceHost<TState>`, `PersistenceBinding<TState>`, and `PersistenceCoreConfig`. `WorldPersistence` in
 `KhaozEngine.NetWorld` and `TileWorldPersistence` in `KhaozEngine.TileWorld.Netcode` are its two bindings.
 
-- `IPersistenceHost<TState>` supplies join, leave, state lookup, account lookup, and position-hint hooks from the
-  server head.
+- `IPersistenceHost<TState>` supplies join, leave, state lookup, account lookup, durable-key lookup, and
+  position-hint hooks from the server head. Existing hosts keep using the account ID through default interface
+  members.
 - `PersistenceBinding<TState>` supplies `PositionOf`, `Encode`, `Decode`, and `Validate` for the game's record. A
   discrete binding can set `RestoreDistance` for its native coordinate type. Null preserves the continuous world's
   Euclidean `Vector3` behavior.
-- `PersistenceCoreConfig` supplies cadence, key prefixes, guest policy, hint capacity, state hooks, and the
-  dependency-free diagnostic sink.
+- `PersistenceCoreConfig` supplies cadence, key prefixes, guest policy, hint capacity, state hooks, the optional
+  `PersistenceKeyResolver`, and the dependency-free diagnostic sink. A capable host binds the resolver output once
+  after authentication and before spawn. The core then uses that immutable key for load, save, prewarm, hints,
+  quarantine, and in-flight ordering while retaining the authenticated account ID for stale-session checks.
 
 `PrewarmHintsAsync(max = 0, ct)` fills the bounded rejoin hints at boot when the store implements
 `IEnumerableWorldStore`. It decodes and validates each record before using its position, skips guests and quarantine

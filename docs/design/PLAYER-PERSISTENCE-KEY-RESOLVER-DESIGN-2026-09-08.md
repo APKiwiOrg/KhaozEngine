@@ -1,6 +1,6 @@
 # Player persistence key resolver design
 
-Status: approved for implementation under [#856](https://github.com/APKiwiOrg/KhaozEngine/issues/856).
+Status: implemented in 18.37.0 under [#856](https://github.com/APKiwiOrg/KhaozEngine/issues/856).
 Ruinborne [#467](https://github.com/APKiwiOrg/Ruinborne/issues/467) is the pinned and waiting consumer.
 
 ## Problem
@@ -146,6 +146,5 @@ the source rows, then opens only the named-staff canary. No game-local persisten
 
 ## Release
 
-The change rides staged 18.36.0 unless concurrent work claims that version. At finish the branch merges current
-main first, takes the next free staged version if needed, updates all guarded documentation, packs to local-feed,
-merges and pushes main, and tags immediately because Ruinborne is pinned and waiting.
+The change shipped in 18.37.0 after concurrent radial-menu work claimed 18.36.0. Ruinborne remained pinned and
+waiting, so the release was tagged immediately after the full verification and local-feed pack.

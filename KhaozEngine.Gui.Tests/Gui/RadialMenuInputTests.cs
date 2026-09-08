@@ -307,6 +307,11 @@ namespace KhaozEngine.Tests.Gui
                 [new RadialMenuEntry(LocalizedText.Raw("A"), 1, InitialChoiceTag: 99)],
                 Anchor,
                 Choices()));
+            Assert.Throws<ArgumentException>(() => menu.Open(
+                LocalizedText.Raw("Bad"),
+                [new RadialMenuEntry(LocalizedText.Raw("A"), 1, InitialChoiceTag: 12)],
+                Anchor,
+                Choices()));
         }
 
         [Fact]
@@ -380,6 +385,111 @@ namespace KhaozEngine.Tests.Gui
             input.Update(KeyFrame(Key.Enter, stationaryPointer));
             menu.Update(input, 1f / 60f, focused: true);
             Assert.Equal(new RadialMenuChoiceChange(101, 13), menu.ChoiceChange);
+        }
+
+        [Fact]
+        public void Pointer_hover_does_not_replace_retained_keyboard_wedge_focus()
+        {
+            RadialMenu menu = OpenRecipes();
+            var input = new InputManager();
+            Send(menu, input, Key.Right);
+
+            input.Update(KeyFrame(Key.F1, EntryPoint(3)));
+            menu.Update(input, 1f / 60f, focused: true);
+            Assert.Equal(3, menu.HoverIndex);
+            Assert.Equal(3, menu.ActiveIndex);
+
+            input.Update(KeyFrame(Key.Enter, EntryPoint(3)));
+            menu.Update(input, 1f / 60f, focused: true);
+
+            Assert.True(menu.WasSelected);
+            Assert.Equal(new RadialMenuSelection(102, 11), menu.Selection);
+        }
+
+        [Fact]
+        public void Pointer_hover_does_not_steal_retained_footer_focus()
+        {
+            RadialMenu menu = OpenRecipes();
+            var input = new InputManager();
+            Send(menu, input, Key.Right);
+            Send(menu, input, Key.Down);
+
+            input.Update(KeyFrame(Key.F1, EntryPoint(3)));
+            menu.Update(input, 1f / 60f, focused: true);
+            input.Update(KeyFrame(Key.Left, EntryPoint(3)));
+            menu.Update(input, 1f / 60f, focused: true);
+            input.Update(KeyFrame(Key.Enter, EntryPoint(3)));
+            menu.Update(input, 1f / 60f, focused: true);
+
+            Assert.True(menu.IsOpen);
+            Assert.True(menu.WasChoiceChanged);
+            Assert.Equal(new RadialMenuChoiceChange(102, 10), menu.ChoiceChange);
+        }
+
+        [Fact]
+        public void All_disabled_entries_keep_first_entry_inspectable_but_never_selectable()
+        {
+            var menu = new RadialMenu { SafeBounds = Safe };
+            menu.Open(
+                LocalizedText.Raw("Unavailable"),
+                [
+                    new RadialMenuEntry(LocalizedText.Raw("First"), 201, Enabled: false),
+                    new RadialMenuEntry(LocalizedText.Raw("Second"), 202, Enabled: false),
+                ],
+                Anchor);
+            var input = new InputManager();
+
+            Assert.Equal(0, menu.ActiveIndex);
+            Send(menu, input, Key.Right);
+            Assert.Equal(0, menu.ActiveIndex);
+            Send(menu, input, Key.Enter);
+            Assert.True(menu.IsOpen);
+            Assert.False(menu.WasSelected);
+
+            Send(menu, input, 0, GamepadButton.DpadLeft);
+            Assert.Equal(0, menu.ActiveIndex);
+            Send(menu, input, 0, GamepadButton.A);
+            Assert.True(menu.IsOpen);
+            Assert.False(menu.WasSelected);
+        }
+
+        [Fact]
+        public void All_disabled_footer_retains_default_zero_and_ignores_pointer_and_keyboard()
+        {
+            var menu = new RadialMenu { SafeBounds = Safe };
+            RadialMenuChoice[] disabledChoices =
+            [
+                new RadialMenuChoice(LocalizedText.Raw("One"), 0, Enabled: false),
+                new RadialMenuChoice(LocalizedText.Raw("Two"), 11, Enabled: false),
+            ];
+            menu.Open(
+                LocalizedText.Raw("Unavailable amounts"),
+                [new RadialMenuEntry(LocalizedText.Raw("Recipe"), 501)],
+                Anchor,
+                disabledChoices);
+            Assert.Equal(-1, menu.FocusedChoiceIndex);
+            var pointer = new Pointer();
+            Rect firstChoice = RadialMenu.ChoiceBounds(Anchor, disabledChoices.Length, 0, Metrics);
+            Vector2 firstChoicePoint = new(
+                firstChoice.X + firstChoice.Width / 2f,
+                firstChoice.Y + firstChoice.Height / 2f);
+
+            Tap(menu, pointer, firstChoicePoint);
+            Assert.True(menu.IsOpen);
+            Assert.False(menu.WasChoiceChanged);
+
+            var input = new InputManager();
+            Send(menu, input, Key.Down);
+            Send(menu, input, Key.Right);
+            Assert.Equal(-1, menu.FocusedChoiceIndex);
+            Send(menu, input, Key.Enter);
+            Assert.True(menu.IsOpen);
+            Assert.False(menu.WasChoiceChanged);
+
+            Send(menu, input, Key.Up);
+            Send(menu, input, Key.Enter);
+            Assert.True(menu.WasSelected);
+            Assert.Equal(new RadialMenuSelection(501, 0), menu.Selection);
         }
 
         [Fact]

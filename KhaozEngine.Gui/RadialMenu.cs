@@ -14,6 +14,8 @@ namespace KhaozEngine.Gui
         ResolvedRadialMenuChoice[] _choices = [];
         long[] _entryChoiceTags = [];
         Vector2 _center;
+        int _focusedEntryIndex = -1;
+        int _pointerEntryIndex = -1;
         int _focusedChoiceIndex = -1;
         bool _footerFocused;
         bool _openedThisFrame;
@@ -85,8 +87,10 @@ namespace KhaozEngine.Gui
             _entryChoiceTags = entryChoiceTags;
             _center = ComputeCenter(anchor, SafeBounds, entries.Count, choiceCount, Metrics);
             Bounds = ComputeBounds(_center, entries.Count, choiceCount, Metrics);
-            ActiveIndex = FindFirstEnabledEntry();
-            _focusedChoiceIndex = ChoiceIndexForActiveEntry();
+            _focusedEntryIndex = FindFirstEnabledEntry();
+            _pointerEntryIndex = -1;
+            ActiveIndex = _focusedEntryIndex;
+            _focusedChoiceIndex = ChoiceIndexForEntry(_focusedEntryIndex);
             _footerFocused = false;
             _openedThisFrame = true;
             _openingGestureLatch = true;
@@ -106,7 +110,7 @@ namespace KhaozEngine.Gui
                 return false;
 
             _entryChoiceTags[entryIndex] = choiceTag;
-            if (ActiveIndex == entryIndex)
+            if (_focusedEntryIndex == entryIndex)
                 _focusedChoiceIndex = choiceIndex;
             return true;
         }
@@ -134,7 +138,15 @@ namespace KhaozEngine.Gui
 
             HoverIndex = EntryAt(pointer.Position, _center, _entries.Length, Metrics);
             if (HoverIndex >= 0)
-                SetActiveEntry(HoverIndex);
+            {
+                _pointerEntryIndex = HoverIndex;
+                ActiveIndex = HoverIndex;
+            }
+            else if (!pointer.IsPointerIn(Bounds))
+            {
+                _pointerEntryIndex = -1;
+                ActiveIndex = _focusedEntryIndex;
+            }
 
             if (_openingGestureLatch)
                 return false;
@@ -180,7 +192,7 @@ namespace KhaozEngine.Gui
                 if (_choices.Length > 0 && ActiveIndex >= 0)
                 {
                     _footerFocused = true;
-                    _focusedChoiceIndex = ChoiceIndexForActiveEntry();
+                    _focusedChoiceIndex = ChoiceIndexForEntry(_focusedEntryIndex);
                 }
                 return false;
             }
@@ -190,7 +202,7 @@ namespace KhaozEngine.Gui
                 if (_footerFocused)
                     _focusedChoiceIndex = FindEnabledChoice(_focusedChoiceIndex, -1);
                 else
-                    SetActiveEntry(FindEnabledEntry(ActiveIndex, -1));
+                    SetFocusedEntry(FindEnabledEntry(_focusedEntryIndex, -1));
                 return false;
             }
 
@@ -199,7 +211,7 @@ namespace KhaozEngine.Gui
                 if (_footerFocused)
                     _focusedChoiceIndex = FindEnabledChoice(_focusedChoiceIndex, 1);
                 else
-                    SetActiveEntry(FindEnabledEntry(ActiveIndex, 1));
+                    SetFocusedEntry(FindEnabledEntry(_focusedEntryIndex, 1));
                 return false;
             }
 
@@ -212,9 +224,9 @@ namespace KhaozEngine.Gui
                 return false;
             }
 
-            if (ActiveIndex >= 0 && _entries[ActiveIndex].Enabled)
+            if (_focusedEntryIndex >= 0 && _entries[_focusedEntryIndex].Enabled)
             {
-                SelectEntry(ActiveIndex);
+                SelectEntry(_focusedEntryIndex);
                 return true;
             }
 
@@ -226,6 +238,8 @@ namespace KhaozEngine.Gui
             IsOpen = false;
             HoverIndex = -1;
             ActiveIndex = -1;
+            _focusedEntryIndex = -1;
+            _pointerEntryIndex = -1;
             _focusedChoiceIndex = -1;
             _footerFocused = false;
         }
@@ -241,7 +255,8 @@ namespace KhaozEngine.Gui
 
         bool ProcessFooterTap(Pointer pointer)
         {
-            if (ActiveIndex < 0)
+            int entryIndex = _pointerEntryIndex >= 0 ? _pointerEntryIndex : ActiveIndex;
+            if (entryIndex < 0)
                 return false;
 
             for (int i = 0; i < _choices.Length; i++)
@@ -253,9 +268,7 @@ namespace KhaozEngine.Gui
                 if (!pointer.IsTapIn(bounds))
                     continue;
 
-                _footerFocused = true;
-                _focusedChoiceIndex = i;
-                ChangeActiveChoice(_choices[i].Tag);
+                ChangeEntryChoice(entryIndex, _choices[i].Tag);
                 return true;
             }
 
@@ -272,7 +285,6 @@ namespace KhaozEngine.Gui
             if (pressedEntry < 0 || pressedEntry != releasedEntry)
                 return false;
 
-            SetActiveEntry(releasedEntry);
             if (!_entries[releasedEntry].Enabled)
                 return false;
 
@@ -290,28 +302,29 @@ namespace KhaozEngine.Gui
 
         void CommitFocusedChoice()
         {
-            if (ActiveIndex < 0 || _focusedChoiceIndex < 0 || !_choices[_focusedChoiceIndex].Enabled)
+            if (_focusedEntryIndex < 0 || _focusedChoiceIndex < 0 || !_choices[_focusedChoiceIndex].Enabled)
                 return;
-            ChangeActiveChoice(_choices[_focusedChoiceIndex].Tag);
+            ChangeEntryChoice(_focusedEntryIndex, _choices[_focusedChoiceIndex].Tag);
         }
 
-        void ChangeActiveChoice(long choiceTag)
+        void ChangeEntryChoice(int entryIndex, long choiceTag)
         {
-            if (_entryChoiceTags[ActiveIndex] == choiceTag)
+            if (_entryChoiceTags[entryIndex] == choiceTag)
                 return;
 
-            _entryChoiceTags[ActiveIndex] = choiceTag;
+            _entryChoiceTags[entryIndex] = choiceTag;
             WasChoiceChanged = true;
-            ChoiceChange = new RadialMenuChoiceChange(_entries[ActiveIndex].Tag, choiceTag);
+            ChoiceChange = new RadialMenuChoiceChange(_entries[entryIndex].Tag, choiceTag);
         }
 
-        void SetActiveEntry(int entryIndex)
+        void SetFocusedEntry(int entryIndex)
         {
-            if (entryIndex < 0 || entryIndex == ActiveIndex)
+            if (entryIndex < 0 || entryIndex == _focusedEntryIndex)
                 return;
-            ActiveIndex = entryIndex;
-            _footerFocused = false;
-            _focusedChoiceIndex = ChoiceIndexForActiveEntry();
+            _focusedEntryIndex = entryIndex;
+            _focusedChoiceIndex = ChoiceIndexForEntry(entryIndex);
+            if (_pointerEntryIndex < 0)
+                ActiveIndex = entryIndex;
         }
 
         int FindFirstEnabledEntry()
@@ -319,7 +332,7 @@ namespace KhaozEngine.Gui
             for (int i = 0; i < _entries.Length; i++)
                 if (_entries[i].Enabled)
                     return i;
-            return -1;
+            return 0;
         }
 
         int FindEnabledEntry(int current, int direction)
@@ -348,9 +361,13 @@ namespace KhaozEngine.Gui
             return current;
         }
 
-        int ChoiceIndexForActiveEntry() => ActiveIndex < 0
-            ? -1
-            : ChoiceIndexForTag(_entryChoiceTags[ActiveIndex]);
+        int ChoiceIndexForEntry(int entryIndex)
+        {
+            if (entryIndex < 0)
+                return -1;
+            int choiceIndex = ChoiceIndexForTag(_entryChoiceTags[entryIndex]);
+            return choiceIndex >= 0 && _choices[choiceIndex].Enabled ? choiceIndex : -1;
+        }
 
         int EntryIndexForTag(long entryTag)
         {
@@ -381,9 +398,10 @@ namespace KhaozEngine.Gui
             {
                 if (choices[i].Tag != requestedTag)
                     continue;
-                if (!choices[i].Enabled)
+                if (!choices[i].Enabled && requestedTag != 0)
                     throw new ArgumentException("An entry initial choice must be enabled.");
-                return requestedTag;
+                if (choices[i].Enabled)
+                    return requestedTag;
             }
 
             if (requestedTag == 0)
@@ -391,6 +409,7 @@ namespace KhaozEngine.Gui
                 for (int i = 0; i < choices.Length; i++)
                     if (choices[i].Enabled)
                         return choices[i].Tag;
+                return 0;
             }
 
             throw new ArgumentException("An entry initial choice must identify an enabled menu choice.");

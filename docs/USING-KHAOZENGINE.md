@@ -6065,7 +6065,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.33.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.34.0" />
 ```
 
 ```csharp
@@ -11462,7 +11462,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.33.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.34.0" />
 ```
 
 ```csharp
@@ -11498,7 +11498,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.33.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.34.0" />
 ```
 
 ```csharp
@@ -11740,7 +11740,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.33.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.34.0" />
 ```
 
 ```csharp
@@ -13449,11 +13449,14 @@ forwarding wrappers. Import the shared namespace when using those adapters with 
 ### Offline grace
 
 `IdentitySession.RestoreAsync` implements a small state machine off the cached session's
-`LastAuthenticatedUtc` and the session token's expiry: no cached session -> `RequiresSignIn`; an
-unexpired session token -> `SignedIn`; an expired token still within `IdentitySessionOptions
-.OfflineGraceWindow` (default 14 days) of the last successful authentication -> `OfflineGrace` (play
-continues offline); beyond the window -> `RequiresSignIn`. A game reads `IdentityState.Status` once at
-launch and again after any sign-in/exchange step; it never needs to poll the network to decide what to show.
+`LastAuthenticatedUtc` and the session token's expiry. No cached session means `RequiresSignIn`. An
+unexpired session token means `SignedIn`. An expired token still within `IdentitySessionOptions
+.OfflineGraceWindow` (default 14 days) of the last successful authentication means `OfflineGrace` (play
+continues offline). Beyond the window means `RequiresSignIn`. `AttachSessionTokenAsync` caches the verified
+subject and display name, so both restored states expose them through `IdentityState.Subject` and
+`IdentityState.DisplayName`. Older cache JSON without the nullable `CachedSession.DisplayName` property remains
+valid and restores it as null. A game reads `IdentityState.Status` once at launch and again after any
+sign-in/exchange step. It never needs to poll the network to decide what to show.
 
 ### Silent refresh (durable across days)
 
@@ -13495,9 +13498,9 @@ The durability comes from two contracts:
   invalidate the previous one the instant the refresh succeeds. `RefreshCredentialAsync` writes the rotated
   credential to the `ITokenCache` immediately, before the server exchange, so a crash in between cannot lose
   it and leave the next refresh presenting a dead token. Without this, silent reconnect works at most once.
-  The write replaces only the credential slot: the subject, session token, session-token expiry, and
-  `LastAuthenticatedUtc` are preserved, so a provider-level refresh never extends the offline-grace window.
-  Only a successful `AttachSessionTokenAsync` re-anchors that window.
+  The write replaces only the credential slot: the subject, display name, session token, session-token expiry,
+  and `LastAuthenticatedUtc` are preserved, so a provider-level refresh never extends the offline-grace
+  window. Only a successful `AttachSessionTokenAsync` re-anchors that window.
 - **Rejected vs transient.** A `Rejected` outcome (the provider returned null: a 400/401 `invalid_grant` on
   the refresh grant, or an empty stored refresh token) means the chain is dead and interactive sign-in is
   required. A thrown exception (a 5xx or a transport fault) is transient, so the consumer keeps the cached
@@ -13785,7 +13788,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="18.33.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="18.34.0" />
 </ItemGroup>
 ```
 

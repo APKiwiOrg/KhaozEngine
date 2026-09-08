@@ -5,6 +5,18 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.34.0
+
+Cached identity sessions now preserve server-verified display names across restarts (#849).
+
+- `CachedSession.DisplayName` adds an optional persisted name without changing the existing positional
+  constructor. Cache files written before this release still load with a null name.
+- `IdentitySession.AttachSessionTokenAsync` writes the verified display name beside the subject and session
+  token. Valid-token and offline-grace restores return it to the consumer.
+- Provider credential refresh preserves the display name through both the ordinary cache update and the
+  empty-cache recovery path.
+- Headless tests cover attachment, both restore states, both refresh paths, file round trips and legacy JSON.
+
 ## 18.33.0
 
 Durable journal replay retention can now use provider database time from receipt creation through bounded purge (#844).

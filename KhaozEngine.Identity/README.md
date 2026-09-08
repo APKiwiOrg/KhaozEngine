@@ -9,12 +9,12 @@ Pluggable player-identity seam: provider sign-in + server-side verified-subject 
 - **IIdentityProvider** - Client-side sign-in integration (e.g., OIDC, Discord)
 - **IIdentityValidator** - Server-side credential verification to a stable subject
 - **IdentityValidation** / **IdentityValidationOutcome** - The three-outcome result of `ValidateDetailedAsync`: `Verified`, `Refused`, or `ProviderUnavailable`
-- **ITokenCache** / **FileTokenCache** - Persisted sign-in session (provider credential + session token), so a returning player skips an interactive sign-in
+- **ITokenCache** / **FileTokenCache** - Persisted sign-in session (provider credential, session token, subject, and display name), so a returning player skips an interactive sign-in
 - **IBrowserLauncher** / **ILoopbackListener** - The OS and network seams an interactive sign-in flow drives
 - **Interactive.SystemBrowserLauncher** / **Interactive.HttpLoopbackListener** - Ready-to-use browser launch and loopback callback implementations shared by every provider. The child namespace avoids shadowing the source-compatible names in `KhaozEngine.Identity.Oidc`
 - **ProviderCredential** - Client sign-in result with refresh state
 - **VerifiedIdentity** - Server-verified subject + claims
-- **CachedSession** / **IdentityState** - The persisted and in-memory session shapes `IdentitySession` reads and writes
+- **CachedSession** / **IdentityState** - The persisted and in-memory session shapes `IdentitySession` reads and writes. `CachedSession.DisplayName` is nullable so cache files written before the property existed still load
 - **SessionToken** - A stateless HMAC-SHA256 session token: mint it on the server after validating a credential, verify it on every subsequent request
 - **IdentitySession** - The client-side orchestrator: restores the cached session at launch (`RequiresSignIn` / `OfflineGrace` / `SignedIn`), drives interactive sign-in, renews a lapsed credential silently via `RefreshCredentialAsync`, and completes the exchange handshake via `AttachSessionTokenAsync`
 - **CredentialRefreshResult** / **CredentialRefreshOutcome** - The result of `RefreshCredentialAsync`: `Refreshed` (a new rotated credential, already persisted) or `Rejected` (a dead chain, fall back to interactive sign-in)
@@ -56,6 +56,10 @@ if (verified is VerifiedIdentity identity)
     // return { token, expiry, identity.Subject, identity.DisplayName } to the client
 }
 ```
+
+`AttachSessionTokenAsync` persists the server-verified subject and display name. A later `RestoreAsync` returns
+both values for `SignedIn` and `OfflineGrace`, including after a provider credential refresh. Older cache JSON
+without `DisplayName` remains valid and restores it as null.
 
 ## Telling a refused credential from a provider outage
 
@@ -148,8 +152,9 @@ Two contracts make this durable across days and weeks:
   and invalidate the old one the instant the refresh succeeds. `RefreshCredentialAsync` writes the rotated
   credential to the `ITokenCache` immediately, before the server exchange, so a crash in between cannot lose
   it and leave the next refresh presenting a dead token. The write replaces only the credential slot: the
-  subject, session token, session-token expiry, and `LastAuthenticatedUtc` are preserved. A provider-level
-  refresh does not extend the offline-grace window, only a successful `AttachSessionTokenAsync` re-anchors it.
+  subject, display name, session token, session-token expiry, and `LastAuthenticatedUtc` are preserved. A
+  provider-level refresh does not extend the offline-grace window, only a successful `AttachSessionTokenAsync`
+  re-anchors it.
 - **Rejected vs transient.** A `Rejected` outcome (the provider returned null) means the chain is dead and
   interactive sign-in is required. A thrown exception (a 5xx or a transport fault) is transient: the consumer
   keeps the cached session and retries later rather than forcing a sign-in.

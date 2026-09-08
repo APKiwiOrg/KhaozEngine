@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading.Tasks;
 using KhaozEngine.Identity;
 using Xunit;
@@ -8,7 +10,16 @@ namespace KhaozEngine.Tests.Identity;
 
 public class FileTokenCacheTests : IDisposable
 {
+    private const string HmacKey = "KhaozEngine-Identity-v1";
     private readonly string path = Path.Combine(Path.GetTempPath(), $"keid-{Guid.NewGuid():N}.dat");
+
+    private static string EncodeCacheJson(string json)
+    {
+        string payload = Convert.ToBase64String(Encoding.UTF8.GetBytes(json));
+        using HMACSHA256 hmac = new(Encoding.UTF8.GetBytes(HmacKey));
+        string hash = Convert.ToHexStringLower(hmac.ComputeHash(Encoding.UTF8.GetBytes(payload)));
+        return $"KEID1:{hash}:{payload}";
+    }
 
     [Fact]
     public async Task Saves_and_loads_and_clears()
@@ -16,15 +27,44 @@ public class FileTokenCacheTests : IDisposable
         FileTokenCache cache = new(path);
         Assert.Null(await cache.LoadAsync());
         ProviderCredential cred = new("oidc", "tok", "refresh", DateTimeOffset.UtcNow.AddHours(1));
-        CachedSession s = new(cred, "session-tok", DateTimeOffset.UtcNow.AddHours(1), DateTimeOffset.UtcNow, "user-42");
+        CachedSession s = new(cred, "session-tok", DateTimeOffset.UtcNow.AddHours(1), DateTimeOffset.UtcNow, "user-42")
+        {
+            DisplayName = "Display Name",
+        };
         await cache.SaveAsync(s);
         CachedSession? loaded = await cache.LoadAsync();
         Assert.NotNull(loaded);
         Assert.Equal("tok", loaded!.Value.Credential.CredentialToken);
         Assert.Equal("session-tok", loaded.Value.SessionToken);
         Assert.Equal("user-42", loaded.Value.Subject);
+        Assert.Equal("Display Name", loaded.Value.DisplayName);
         await cache.ClearAsync();
         Assert.Null(await cache.LoadAsync());
+    }
+
+    [Fact]
+    public async Task Old_cache_json_without_display_name_loads_with_null_display_name()
+    {
+        const string json = """
+            {
+              "Credential": {
+                "ProviderId": "oidc",
+                "CredentialToken": "tok",
+                "RefreshToken": "refresh",
+                "ExpiresAtUtc": "2026-01-02T00:00:00+00:00"
+              },
+              "SessionToken": "session-tok",
+              "SessionTokenExpiresUtc": "2026-01-01T01:00:00+00:00",
+              "LastAuthenticatedUtc": "2026-01-01T00:00:00+00:00",
+              "Subject": "user-42"
+            }
+            """;
+        await File.WriteAllTextAsync(path, EncodeCacheJson(json));
+
+        CachedSession? loaded = await new FileTokenCache(path).LoadAsync();
+
+        Assert.NotNull(loaded);
+        Assert.Null(loaded.Value.DisplayName);
     }
 
     [Fact]

@@ -15,11 +15,12 @@ namespace KhaozEngine.Identity;
 /// <item>an expired session token beyond the grace window -> <see cref="IdentityStatus.RequiresSignIn"/></item>
 /// </list>
 ///
-/// <see cref="IdentityState.Subject"/> is always the server-verified subject from the <c>/auth/exchange</c>
-/// result, persisted on <see cref="CachedSession.Subject"/>. It is not known until that exchange completes, so
-/// <see cref="SignInAsync"/> leaves it null; the consumer performs the exchange out-of-band (this package stays
-/// HTTP-free) and calls <see cref="AttachSessionTokenAsync(string, string, string, System.DateTimeOffset, System.Threading.CancellationToken)"/>
-/// with the verified subject to reach <see cref="IdentityStatus.SignedIn"/>.
+/// <see cref="IdentityState.Subject"/> and <see cref="IdentityState.DisplayName"/> come from the server-verified
+/// <c>/auth/exchange</c> result and are persisted on <see cref="CachedSession"/>. They are not known until that
+/// exchange completes, so <see cref="SignInAsync"/> leaves them null. The consumer performs the exchange
+/// out-of-band (this package stays HTTP-free) and calls
+/// <see cref="AttachSessionTokenAsync(string, string, string, System.DateTimeOffset, System.Threading.CancellationToken)"/>
+/// with the verified identity to reach <see cref="IdentityStatus.SignedIn"/>.
 ///
 /// A lapsed session can be renewed silently: while a credential is held, <see cref="RefreshCredentialAsync"/>
 /// exchanges it with the provider for a fresh, rotated credential and persists it durably, so silent reconnect
@@ -51,20 +52,21 @@ public sealed class IdentitySession
         DateTimeOffset now = clock();
         bool tokenValid = s.SessionToken is not null && s.SessionTokenExpiresUtc is DateTimeOffset expiresUtc && now < expiresUtc;
         if (tokenValid)
-            return Set(new IdentityState(IdentityStatus.SignedIn, s.Subject, null, s.Credential, s.SessionToken));
+            return Set(new IdentityState(IdentityStatus.SignedIn, s.Subject, s.DisplayName, s.Credential, s.SessionToken));
 
         if (now - s.LastAuthenticatedUtc <= options.OfflineGraceWindow)
-            return Set(new IdentityState(IdentityStatus.OfflineGrace, s.Subject, null, s.Credential, s.SessionToken));
+            return Set(new IdentityState(IdentityStatus.OfflineGrace, s.Subject, s.DisplayName, s.Credential, s.SessionToken));
 
         return Set(new IdentityState(IdentityStatus.RequiresSignIn, null, null, null, null));
     }
 
     /// <summary>Runs the provider's interactive sign-in and persists the resulting credential. The verified
-    /// <see cref="IdentityState.Subject"/> is not yet known at this point (only the server exchange in
+    /// <see cref="IdentityState.Subject"/> and <see cref="IdentityState.DisplayName"/> are not yet known at this
+    /// point (only the server exchange in
     /// <see cref="AttachSessionTokenAsync(string, string, string, System.DateTimeOffset, System.Threading.CancellationToken)"/>
-    /// establishes it), so the resulting state is
-    /// <see cref="IdentityStatus.OfflineGrace"/> with a null subject: a credential is held, but no session token is
-    /// signed in yet. The consumer exchanges the credential with the server and calls
+    /// establishes them), so the resulting state is <see cref="IdentityStatus.OfflineGrace"/> with a null subject
+    /// and display name. A credential is held, but no session token is signed in yet. The consumer exchanges the
+    /// credential with the server and calls
     /// <see cref="AttachSessionTokenAsync(string, string, string, System.DateTimeOffset, System.Threading.CancellationToken)"/>
     /// to complete sign-in.</summary>
     public async Task<IdentityState> SignInAsync(CancellationToken ct)
@@ -78,9 +80,9 @@ public sealed class IdentitySession
 
     /// <summary>Completes sign-in after the consumer has exchanged the provider credential with the server, using
     /// the credential currently held in <see cref="Current"/>. Persists a <see cref="CachedSession"/> with the
-    /// verified <paramref name="subject"/>, the new session token, and <c>LastAuthenticatedUtc</c> refreshed to
-    /// now, then sets <see cref="Current"/> to <see cref="IdentityStatus.SignedIn"/> with that subject and
-    /// <paramref name="displayName"/>.
+    /// verified <paramref name="subject"/> and <paramref name="displayName"/>, the new session token, and
+    /// <c>LastAuthenticatedUtc</c> refreshed to now. It then sets <see cref="Current"/> to
+    /// <see cref="IdentityStatus.SignedIn"/> with that identity.
     ///
     /// This is the turn-key overload. It persists whatever credential <see cref="Current"/> holds, which is the
     /// rotated credential once <see cref="RefreshCredentialAsync"/> has run (that method updates
@@ -102,8 +104,9 @@ public sealed class IdentitySession
 
     /// <summary>Completes sign-in with an explicitly supplied provider <paramref name="credential"/>. Persists a
     /// <see cref="CachedSession"/> carrying THAT credential (not whatever <see cref="Current"/> held), the verified
-    /// <paramref name="subject"/>, the new session token, and <c>LastAuthenticatedUtc</c> refreshed to now, then
-    /// sets <see cref="Current"/> to <see cref="IdentityStatus.SignedIn"/> with the same credential.
+    /// <paramref name="subject"/> and <paramref name="displayName"/>, the new session token, and
+    /// <c>LastAuthenticatedUtc</c> refreshed to now. It then sets <see cref="Current"/> to
+    /// <see cref="IdentityStatus.SignedIn"/> with the same credential.
     ///
     /// Use this when the consumer runs its own provider refresh before the server exchange: passing the freshly
     /// refreshed credential persists the rotated token, so the NEXT silent refresh presents a live token. A
@@ -114,7 +117,10 @@ public sealed class IdentitySession
         DateTimeOffset expiryUtc, CancellationToken ct)
     {
         DateTimeOffset now = clock();
-        CachedSession session = new(credential, sessionToken, expiryUtc, now, subject);
+        CachedSession session = new(credential, sessionToken, expiryUtc, now, subject)
+        {
+            DisplayName = displayName,
+        };
         await cache.SaveAsync(session, ct).ConfigureAwait(false);
         return Set(new IdentityState(IdentityStatus.SignedIn, subject, displayName, credential, sessionToken));
     }
@@ -126,7 +132,7 @@ public sealed class IdentitySession
     /// <see cref="AttachSessionTokenAsync(string, string, string, System.DateTimeOffset, System.Threading.CancellationToken)"/>
     /// must not lose the rotated token, otherwise the next silent refresh presents a dead token and fails.
     ///
-    /// The cache write replaces only the credential slot. It preserves the subject, the session token, the
+    /// The cache write replaces only the credential slot. It preserves the subject, display name, session token,
     /// session-token expiry, and <c>LastAuthenticatedUtc</c> exactly. A provider-level refresh is not a server
     /// exchange, so it must NOT extend the offline-grace window. Only a successful
     /// <see cref="AttachSessionTokenAsync(string, string, string, System.DateTimeOffset, System.Threading.CancellationToken)"/>
@@ -163,13 +169,16 @@ public sealed class IdentitySession
             return new CredentialRefreshResult(CredentialRefreshOutcome.Rejected, Current);
 
         // Persist the rotated credential immediately, before any server exchange. Replace only the credential
-        // slot so the grace anchor (LastAuthenticatedUtc), the session token, and the subject are preserved. When
-        // the cache is empty there is no stored anchor to preserve, so build a session from Current's fields and
-        // anchor at now.
+        // slot so the grace anchor (LastAuthenticatedUtc), session token, and verified identity are preserved.
+        // When the cache is empty there is no stored anchor to preserve, so build a session from Current's fields
+        // and anchor at now.
         CachedSession? cached = await cache.LoadAsync(ct).ConfigureAwait(false);
         CachedSession updated = cached is CachedSession existing
             ? existing with { Credential = refreshed }
-            : new CachedSession(refreshed, Current.SessionToken, null, clock(), Current.Subject);
+            : new CachedSession(refreshed, Current.SessionToken, null, clock(), Current.Subject)
+            {
+                DisplayName = Current.DisplayName,
+            };
         await cache.SaveAsync(updated, ct).ConfigureAwait(false);
 
         IdentityState state = Set(Current with { Credential = refreshed });

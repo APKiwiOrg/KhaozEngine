@@ -373,8 +373,14 @@ chat.Draw(batch, white);
     panel is visible (e.g. a content-driven height recompute after ItemCount changes), `EffectiveHeight` eases
     toward the new target over that many seconds instead of snapping, via the new dt-fed
     `Update(Pointer, InputState, float dt)` overload (the legacy no-dt `Update(Pointer, InputState)` overload never
-    glides). Always snaps on the first update and whenever the panel is fully hidden (`TransitionAlpha <= 0`), and
-    never fights an active drag-resize.
+    glides). It always snaps on the first update and whenever the panel is fully hidden
+    (`TransitionAlpha <= 0`), and never fights an active drag-resize.
+    Opt-in drag-edge scrolling (`DragEdgeScrollingEnabled`, default false) lets a live `GuiDragContext` move a
+    long list through the `Update(pointer, input, dt, dragContext)` overload. The top and bottom bands come from
+    `ContentBounds`, so the header never scrolls. Speed grows linearly with edge penetration up to
+    `DragEdgeScrollSpeed`, uses `dt`, and clamps at both scroll limits. `DragEdgeScrollBand` defaults to 40 design
+    pixels and is clamped so the bands cannot overlap. An inactive drag, hidden panel or list without overflow is
+    a no-op.
   - `TreeView` - scrollable outline over `TreeNode` roots (a `LocalizedText` label, children, an `Expanded`
     flag, a caller-owned `Tag`). `VisibleRows()` is the depth-first walk skipping collapsed subtrees, rebuilt into
     a shared cached list on every call - materialize the result (`ToArray`/`ToList`) before the next call if you

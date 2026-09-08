@@ -142,6 +142,86 @@ namespace KhaozEngine.Tests.Gui
             Assert.True(p.IsBlocked(new Vector2(150, 200)));
         }
 
+        [Fact]
+        public void Active_drag_scrolls_proportionally_to_content_edge_penetration_and_dt()
+        {
+            var sp = Make();
+            sp.DragEdgeScrollingEnabled = true;
+            sp.DragEdgeScrollBand = 40f;
+            sp.DragEdgeScrollSpeed = 200f;
+            sp.ScrollTo(100f);
+            var p = new Pointer();
+            var drag = new GuiDragContext();
+
+            Vector2 bottom = new(150f, sp.ContentBounds.Bottom - 10f);
+            p.Update(Frame(bottom, true));
+            Assert.True(drag.Begin(p, new DragPayload("item"), new Rect(140, 200, 20, 20)));
+            drag.BeginFrame(p, 0.5f);
+            sp.Update(p, Frame(bottom, true), 0.5f, drag);
+            Assert.Equal(175f, sp.ScrollOffset, 3); // 75% penetration * 200px/s * 0.5s
+
+            Vector2 top = new(150f, sp.ContentBounds.Y + 20f);
+            p.Update(Frame(top, true));
+            drag.BeginFrame(p, 0.25f);
+            sp.Update(p, Frame(top, true), 0.25f, drag);
+            Assert.Equal(150f, sp.ScrollOffset, 3); // 50% penetration * 200px/s * 0.25s
+        }
+
+        [Fact]
+        public void Drag_edge_scroll_clamps_and_excludes_the_header()
+        {
+            var sp = Make();
+            sp.HeaderHeight = 40f;
+            sp.DragEdgeScrollingEnabled = true;
+            sp.DragEdgeScrollBand = 40f;
+            sp.DragEdgeScrollSpeed = 2000f;
+            var p = new Pointer();
+            var drag = new GuiDragContext();
+
+            Vector2 header = new(150f, sp.HeaderBounds.Y + 10f);
+            p.Update(Frame(header, true));
+            Assert.True(drag.Begin(p, new DragPayload("item"), new Rect(140, 200, 20, 20)));
+            drag.BeginFrame(p, 1f);
+            sp.Update(p, Frame(header, true), 1f, drag);
+            Assert.Equal(0f, sp.ScrollOffset);
+
+            Vector2 bottom = new(150f, sp.ContentBounds.Bottom - 1f);
+            p.Update(Frame(bottom, true));
+            drag.BeginFrame(p, 1f);
+            sp.Update(p, Frame(bottom, true), 1f, drag);
+            Assert.Equal(sp.MaxScroll, sp.ScrollOffset);
+
+            Vector2 top = new(150f, sp.ContentBounds.Y + 1f);
+            p.Update(Frame(top, true));
+            drag.BeginFrame(p, 1f);
+            sp.Update(p, Frame(top, true), 1f, drag);
+            Assert.Equal(0f, sp.ScrollOffset);
+        }
+
+        [Fact]
+        public void Drag_edge_scroll_is_a_noop_until_enabled_with_an_active_overflowing_drag()
+        {
+            var sp = Make();
+            var p = new Pointer();
+            var drag = new GuiDragContext();
+            Vector2 bottom = new(150f, sp.ContentBounds.Bottom - 1f);
+            p.Update(Frame(bottom, true));
+            drag.BeginFrame(p, 1f);
+
+            sp.Update(p, Frame(bottom, true), 1f, drag);
+            Assert.Equal(0f, sp.ScrollOffset); // opt-in remains off
+
+            sp.DragEdgeScrollingEnabled = true;
+            sp.Update(p, Frame(bottom, true), 1f, drag);
+            Assert.Equal(0f, sp.ScrollOffset); // no active drag
+
+            Assert.True(drag.Begin(p, new DragPayload("item"), new Rect(140, 200, 20, 20)));
+            drag.BeginFrame(p, 1f);
+            sp.ItemCount = 1;
+            sp.Update(p, Frame(bottom, true), 1f, drag);
+            Assert.Equal(0f, sp.ScrollOffset); // content does not overflow
+        }
+
         // ---- opt-in overlay chrome (9.21.0) --------------------------------------------------------------
 
         [Fact]

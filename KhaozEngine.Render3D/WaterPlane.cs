@@ -13,7 +13,10 @@ namespace KhaozEngine.Render3D
     /// The plane is centered at (<see cref="CenterX"/>, <see cref="SurfaceY"/>, <see cref="CenterZ"/>) and spans
     /// <see cref="HalfExtentX"/> / <see cref="HalfExtentZ"/> either side along X/Z. It is drawn as a tessellated
     /// grid (see <see cref="Internal.WaterMath.GridResolution"/>) whose vertices the vertex shader displaces by
-    /// the swell, so the grid IS the wave shape rather than merely a carrier for a per-pixel normal. That grid is
+    /// the swell, so the grid IS the wave shape rather than merely a carrier for a per-pixel normal. Under
+    /// <see cref="WaterGridMode.Clipmap"/>, an effective procedural <see cref="WaterSettings.SwellAmplitude"/> of
+    /// zero has no geometry to displace and uses one four-vertex quad. Displaced procedural and FFT planes keep
+    /// their full grids. The camera-focused grid is
     /// a FIXED vertex budget however large this plane is, spread non-uniformly toward the camera by
     /// <see cref="WaterSettings.GridFocusBias"/>; a very large plane therefore gets a very large plane's worth of
     /// resolution rather than a quadratic vertex count.

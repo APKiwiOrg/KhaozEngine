@@ -492,8 +492,10 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   ride the same gate) its breaking surf. The shared ocean itself now runs on DEMAND - it bakes when any queued
   plane's effective wave source is `FftOcean`, rather than off the scene's own default, so a `Procedural` scene
   with one ocean plane still gets a real ocean. Costs zero new UBO bytes (payload 672, slot 768), zero new GPU
-  resources, zero new pipelines: each plane already owned its slot in the water pass's uniform buffer, so an
-  override is a different set of numbers written into a slot that was being written anyway. Per-body sea states,
+  per-plane GPU resources and zero new pipelines: each plane already owned its slot in the water pass's uniform
+  buffer, so an override is a different set of numbers written into a slot that was being written anyway. The
+  first effective procedural zero-swell plane in clipmap mode lazily creates one shared four-vertex and six-index
+  buffer pair, then every such plane reuses it. Per-body sea states,
   bathymetry and grid modes stay deferred to [#275](https://github.com/APKiwiOrg/KhaozEngine/issues/275).
   Rationale, including why a per-plane sea state is refused rather than deferred:
   `docs/design/WATER-PER-PLANE-LOOK-DESIGN-2026-07-27.md`.
@@ -524,7 +526,9 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   band-limits each ring to its own Nyquist against the mipped cascade maps (`ClipmapBandLimitSamples`).
   `GridFocusBias` is inert under it. At the defaults it draws FEWER triangles than the grid it replaces and only
   rebuilds its buffers when a ring snaps (per plane: each plane owns a slice of the buffers, so one plane's rebuild
-  never invalidates another's). Its snap lattice is decided in ABSOLUTE world space and only then reduced by the
+  never invalidates another's). A plane whose effective look is procedural with `SwellAmplitude = 0` has no vertex
+  displacement, so it skips the lattice and draws one six-index quad through the regular water pipeline. FFT
+  planes and procedural planes with any swell keep the clipmap. Its snap lattice is decided in ABSOLUTE world space and only then reduced by the
   camera-relative `RenderOrigin`, so an origin rebase moves no ring. Since 17.3.0 `ClipmapGeomorphBand` (0.5, `0`
   restores the 16.12.0 grid exactly) fades each ring's outer band toward the next ring out's evaluation - sampled
   displacement and band-limit spacing both - instead of swapping level at the boundary; it subsumes the stitch

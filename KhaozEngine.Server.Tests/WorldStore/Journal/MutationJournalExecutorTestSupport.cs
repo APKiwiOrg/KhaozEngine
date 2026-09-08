@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Channels;
@@ -80,14 +81,16 @@ internal static class MutationJournalExecutorTestSupport
             executor.AcknowledgeCompletion(completion.OperationId, JournalCompletionAcknowledgement.Handled);
     }
 
-    internal static async Task WaitUntilAsync(Func<bool> condition)
+    internal static async Task WaitUntilAsync(Func<bool> condition, TimeSpan? timeout = null)
     {
-        for (int i = 0; i < 100_000; i++)
+        TimeSpan budget = timeout ?? TimeSpan.FromSeconds(10);
+        long started = Stopwatch.GetTimestamp();
+        while (!condition())
         {
-            if (condition()) return;
-            await Task.Yield();
+            if (Stopwatch.GetElapsedTime(started) >= budget)
+                Assert.Fail($"The asynchronous condition did not become true within {budget}.");
+            await Task.Delay(1).ConfigureAwait(false);
         }
-        Assert.Fail("The deterministic asynchronous condition did not become true.");
     }
 
     internal sealed class ControlledDelay

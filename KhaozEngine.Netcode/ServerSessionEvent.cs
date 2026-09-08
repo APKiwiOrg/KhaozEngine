@@ -9,7 +9,7 @@ public enum ServerSessionEventKind { Joined, Left, Data }
 public readonly struct ServerSessionEvent
 {
     public ServerSessionEvent(ServerSessionEventKind kind, int slot, byte[] data, NetChannelReliability reliability,
-        string subject = "", string displayName = "")
+        string subject = "", string displayName = "", string persistenceKey = "")
     {
         Kind = kind;
         Slot = slot;
@@ -17,6 +17,7 @@ public readonly struct ServerSessionEvent
         Reliability = reliability;
         Subject = subject ?? string.Empty;
         DisplayName = displayName ?? string.Empty;
+        PersistenceKey = persistenceKey ?? string.Empty;
     }
 
     /// <summary>The event kind.</summary>
@@ -44,11 +45,24 @@ public readonly struct ServerSessionEvent
     /// Empty for the other event kinds.</summary>
     public string DisplayName { get; }
 
-    /// <summary>A player joined; <paramref name="token"/> is the connect token from their Hello (carried in Data),
-    /// <paramref name="subject"/> the verified identity the authenticator bound the connection to, and
-    /// <paramref name="displayName"/> the optional verified display name from the token.</summary>
+    /// <summary>
+    /// For a <see cref="ServerSessionEventKind.Joined"/> event, the optional verified durable persistence-key claim
+    /// surfaced by <see cref="IConnectionPersistenceKey"/>. This is separate from the authenticated
+    /// <see cref="Subject"/>. Empty for other event kinds or when the authenticator provides no claim.
+    /// </summary>
+    public string PersistenceKey { get; }
+
+    /// <summary>A player joined. <paramref name="token"/> is the connect token from their Hello (carried in Data),
+    /// <paramref name="subject"/> is the verified identity, and <paramref name="displayName"/> and
+    /// <paramref name="persistenceKey"/> are optional verified token claims.</summary>
+    public static ServerSessionEvent Joined(int slot, byte[] token, string subject, string displayName,
+        string persistenceKey) =>
+        new(ServerSessionEventKind.Joined, slot, token ?? Array.Empty<byte>(),
+            NetChannelReliability.ReliableOrdered, subject, displayName, persistenceKey);
+
+    /// <summary>A player joined with a verified subject and optional display name but no persistence-key claim.</summary>
     public static ServerSessionEvent Joined(int slot, byte[] token, string subject, string displayName) =>
-        new(ServerSessionEventKind.Joined, slot, token ?? Array.Empty<byte>(), NetChannelReliability.ReliableOrdered, subject, displayName);
+        Joined(slot, token, subject, displayName, string.Empty);
 
     /// <summary>A player joined; <paramref name="token"/> is the connect token from their Hello (carried in Data),
     /// <paramref name="subject"/> the verified identity the authenticator bound the connection to.</summary>

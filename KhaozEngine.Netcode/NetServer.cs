@@ -189,7 +189,10 @@ public sealed class NetServer
         transport.Send(ev.Connection, SessionFrame.Write(SessionOpcode.Welcome, slotBytes), NetChannelReliability.ReliableOrdered);
         // Surface a verified display name from the token when the authenticator can provide one (opt-in seam).
         string displayName = authenticator is IConnectionDisplayName named ? named.ReadDisplayName(token) : string.Empty;
-        inbox.Enqueue(ServerSessionEvent.Joined(newSlot, token, subject, displayName));
+        string persistenceKey = authenticator is IConnectionPersistenceKey keyed
+            ? keyed.ReadPersistenceKey(token)
+            : string.Empty;
+        inbox.Enqueue(ServerSessionEvent.Joined(newSlot, token, subject, displayName, persistenceKey));
     }
 
     // Ends a subject's older session so its successor can take the seat, BEFORE the successor is admitted. The Left

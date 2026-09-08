@@ -25,8 +25,8 @@ public interface IConnectionAuthenticator
 /// <see cref="IConnectionAuthenticator.TryAuthenticate"/>, <see cref="NetServer"/> probes the authenticator for this
 /// interface and, when present, reads the display name from the SAME token and includes it on the Joined event
 /// (<see cref="ServerSessionEvent.DisplayName"/>). The display name is cosmetic and independent of the verified
-/// <c>subject</c>/account id; an authenticator that does not implement this yields an empty display name.
-/// <see cref="HmacTokenAuthenticator"/> implements it (a v2 <see cref="SignedToken"/> claim);
+/// <c>subject</c>/account id. An authenticator that does not implement this yields an empty display name.
+/// <see cref="HmacTokenAuthenticator"/> implements it with a v2 or v3 <see cref="SignedToken"/> claim.
 /// <see cref="AllowAllAuthenticator"/> does not.
 /// </summary>
 public interface IConnectionDisplayName
@@ -35,6 +35,20 @@ public interface IConnectionDisplayName
     /// the token carries none). Only called after <see cref="IConnectionAuthenticator.TryAuthenticate"/> accepted the
     /// same token, so the name has been verified alongside the subject.</summary>
     string ReadDisplayName(ReadOnlySpan<byte> token);
+}
+
+/// <summary>
+/// Optional companion to <see cref="IConnectionAuthenticator"/> for an authenticator that can surface a verified
+/// durable persistence-key claim from an accepted connect token. The claim is independent of the authenticated
+/// subject and does not change authentication or duplicate-session identity.
+/// </summary>
+public interface IConnectionPersistenceKey
+{
+    /// <summary>
+    /// Reads the verified persistence-key claim carried by an already-accepted <paramref name="token"/>. Returns an
+    /// empty string when the token carries no claim.
+    /// </summary>
+    string ReadPersistenceKey(ReadOnlySpan<byte> token);
 }
 
 /// <summary>

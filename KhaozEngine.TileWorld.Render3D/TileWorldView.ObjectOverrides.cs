@@ -66,15 +66,22 @@ public sealed partial class TileWorldView
         return RebuildObjectProp(objectId);
     }
 
-    /// <summary>Drops every override at once and rebuilds the prop list of every loaded region-plane, which is
-    /// what a head does on a disconnect or a world change rather than walking its own list of them. Cheap when
-    /// there were none: it does nothing at all.</summary>
+    /// <summary>Drops every override at once and rebuilds only the loaded region-planes those overrides touched.
+    /// This is what a head does on a disconnect or a world change rather than clearing each override separately.
+    /// Cheap when there were none: it does nothing at all.</summary>
     public void ClearOverrides()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (_archetypeOverrides.Count == 0) return;
+        var affected = new HashSet<(RegionCoord Region, int Plane)>();
+        foreach (long objectId in _archetypeOverrides.Keys)
+        {
+            if (_doc.FindObject(objectId) is not { } o || o.Plane < 0 || o.Plane >= _planes) continue;
+            RegionCoord region = RegionCoord.Of(o.X, o.Z);
+            if (_loaded.ContainsKey(region)) affected.Add((region, o.Plane));
+        }
         _archetypeOverrides.Clear();
-        RebuildAllProps();
+        RebuildProps(affected);
     }
 
     /// <summary>The archetype one object is being drawn as, when it is overridden at all.</summary>
@@ -128,12 +135,15 @@ public sealed partial class TileWorldView
         return true;
     }
 
-    // Every loaded region-plane's props, for the wholesale clear. The mesh is untouched here too.
-    void RebuildAllProps()
+    // Only region-planes that held an override, for the wholesale clear. The mesh is untouched here too.
+    void RebuildProps(IReadOnlyCollection<(RegionCoord Region, int Plane)> affected)
     {
         Func<long, string?>? lookup = OverrideLookup();
-        foreach (KeyValuePair<RegionCoord, RegionHandles> entry in _loaded)
-            for (int plane = 0; plane < _planes; plane++)
-                entry.Value.Props[plane] = _propClusters.Build(_doc, entry.Key, plane, lookup);
+        foreach ((RegionCoord region, int plane) in affected)
+        {
+            RegionHandles handles = _loaded[region];
+            handles.Props[plane] = _propClusters.Build(_doc, region, plane, lookup);
+            ReleaseAnimatedFoliage(handles, plane);
+        }
     }
 }

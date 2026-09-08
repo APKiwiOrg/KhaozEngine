@@ -157,7 +157,8 @@ public sealed partial class TileWorldView : IDisposable
         _catalogs = catalogs;
         _options = options ?? new TileWorldViewOptions();
         ArgumentNullException.ThrowIfNull(_options.PropLayers);
-        TileWorldPropClusters.Validate(catalogs, _options.PropLayers);
+        TileWorldPropClusters.ValidatedLayers validatedPropLayers =
+            TileWorldPropClusters.Validate(catalogs, _options.PropLayers);
         _planes = Math.Max(0, doc.PlaneCount);
         _terrainPickFilter = IsRenderedTerrain;
 
@@ -184,7 +185,7 @@ public sealed partial class TileWorldView : IDisposable
                 }
                 _propMeshes[entry.Key] = scene.LoadPropMeshes(parts);
             }
-            _propClusters = new TileWorldPropClusters(scene, catalogs, resolver, _propMeshes, _options.PropLayers);
+            _propClusters = new TileWorldPropClusters(scene, catalogs, resolver, _propMeshes, validatedPropLayers);
         }
         catch
         {

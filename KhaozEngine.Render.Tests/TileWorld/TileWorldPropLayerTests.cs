@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.Render3D;
@@ -60,6 +61,17 @@ public class TileWorldPropLayerTests
         Assert.Contains("tree", error.Message, StringComparison.Ordinal);
         Assert.Empty(scene.MaterialLoads);
         Assert.Empty(scene.PropMeshLoads);
+    }
+
+    [Fact]
+    public void Successful_view_construction_enumerates_each_definition_set_once()
+    {
+        var archetypes = new SingleEnumerationSet("tree");
+        TilePropLayerDefinition trees = Trees() with { ArchetypeIds = archetypes };
+
+        using TileWorldView view = ViewWith(trees);
+
+        Assert.Equal(1, archetypes.EnumerationCount);
     }
 
     [Theory]
@@ -210,6 +222,77 @@ public class TileWorldPropLayerTests
         Assert.DoesNotContain(scene.PropDraws.SelectMany(draw => draw.Placements), placement => placement.Id == "tree");
     }
 
+    [Fact]
+    public void Selected_props_reach_neither_ordinary_nor_animated_foliage_draws_when_both_select_them()
+    {
+        TileWorldDocument doc = TileRenderTestData.HillWorld();
+        doc.AddObject("tree", 25, 25, 0, 0);
+        var scene = new RecordingTileWorldScene();
+        var options = new TileWorldViewOptions
+        {
+            PropLayers = new[] { Trees() },
+            AnimatedFoliageArchetypes = new HashSet<string>(StringComparer.Ordinal) { "tree" },
+        };
+        using var view = new TileWorldView(scene, doc, TileRenderTestData.Catalogs,
+            new SnapshotResolver(), options);
+        view.LoadRegion(TileRenderTestData.Region);
+
+        view.Draw(Vector3.Zero);
+
+        Assert.DoesNotContain(scene.PropDraws.SelectMany(draw => draw.Placements), placement => placement.Id == "tree");
+        Assert.DoesNotContain(scene.FoliageDraws.SelectMany(draw => draw.Instances), instance => instance.ModelId == "tree");
+    }
+
+    [Fact]
+    public void Clear_all_rebuilds_only_region_planes_that_held_overrides()
+    {
+        TileWorldDocument doc = TileRenderTestData.HouseWorld();
+        var secondRegion = new RegionCoord(1, 0);
+        doc.GetOrCreateRegion(secondRegion);
+        TileObject first = doc.AddObject("tree", 25, 25, 0, 0);
+        TileObject second = doc.AddObject("tree", secondRegion.OriginX + 2, 2, 1, 0);
+        using var view = new TileWorldView(new RecordingTileWorldScene(), doc, TileRenderTestData.Catalogs,
+            new SnapshotResolver(), new TileWorldViewOptions { PropLayers = new[] { Trees() } });
+        view.LoadRegion(TileRenderTestData.Region);
+        view.LoadRegion(secondRegion);
+        view.OverrideArchetype(first.Id, "bush");
+        view.OverrideArchetype(second.Id, "bush");
+
+        var before = Snapshots(view, TileRenderTestData.Region, secondRegion);
+        view.ClearOverrides();
+        var after = Snapshots(view, TileRenderTestData.Region, secondRegion);
+
+        foreach (KeyValuePair<(RegionCoord Region, int Plane), TileRegionProps> item in before)
+        {
+            TileRegionProps current = after[item.Key];
+            bool affected = item.Key is { Region: var region, Plane: var plane } &&
+                (region == TileRenderTestData.Region && plane == 0 || region == secondRegion && plane == 1);
+            if (affected)
+            {
+                Assert.Equal(item.Value.Generation + 1, current.Generation);
+                Assert.NotSame(item.Value, current);
+            }
+            else
+            {
+                Assert.Equal(item.Value.Generation, current.Generation);
+                Assert.Same(item.Value, current);
+            }
+        }
+    }
+
+    static Dictionary<(RegionCoord Region, int Plane), TileRegionProps> Snapshots(
+        TileWorldView view, params RegionCoord[] regions)
+    {
+        var snapshots = new Dictionary<(RegionCoord Region, int Plane), TileRegionProps>();
+        foreach (RegionCoord region in regions)
+            for (int plane = 0; plane < TileWorldDocument.DefaultPlaneCount; plane++)
+            {
+                Assert.True(view.TryGetRegionProps(region, plane, out TileRegionProps snapshot));
+                snapshots.Add((region, plane), snapshot);
+            }
+        return snapshots;
+    }
+
     static TileWorldView ViewWith(TilePropLayerDefinition layer) => new(
         new RecordingTileWorldScene(), TileRenderTestData.HouseWorld(), TileRenderTestData.Catalogs,
         new GreyboxMeshResolver(), new TileWorldViewOptions { PropLayers = new[] { layer } });
@@ -233,5 +316,29 @@ public class TileWorldPropLayerTests
             FlatCalls++;
             return _inner.Resolve(archetype)?[0].Mesh;
         }
+    }
+
+    sealed class SingleEnumerationSet : IReadOnlySet<string>
+    {
+        readonly HashSet<string> _values;
+        public SingleEnumerationSet(params string[] values) =>
+            _values = new HashSet<string>(values, StringComparer.Ordinal);
+        public int EnumerationCount { get; private set; }
+        public int Count => _values.Count;
+        public bool Contains(string item) => _values.Contains(item);
+        public bool IsProperSubsetOf(IEnumerable<string> other) => _values.IsProperSubsetOf(other);
+        public bool IsProperSupersetOf(IEnumerable<string> other) => _values.IsProperSupersetOf(other);
+        public bool IsSubsetOf(IEnumerable<string> other) => _values.IsSubsetOf(other);
+        public bool IsSupersetOf(IEnumerable<string> other) => _values.IsSupersetOf(other);
+        public bool Overlaps(IEnumerable<string> other) => _values.Overlaps(other);
+        public bool SetEquals(IEnumerable<string> other) => _values.SetEquals(other);
+        public IEnumerator<string> GetEnumerator()
+        {
+            EnumerationCount++;
+            if (EnumerationCount > 1)
+                throw new InvalidOperationException("the archetype set was enumerated more than once");
+            return _values.GetEnumerator();
+        }
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
 }

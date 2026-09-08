@@ -19,17 +19,17 @@ public sealed class TileWorldPropClusters : IDisposable
 
     internal TileWorldPropClusters(ITileWorldScene scene, TileWorldCatalogs catalogs, ITileMeshResolver resolver,
                                    IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> fullMeshes,
-                                   IReadOnlyList<TilePropLayerDefinition> definitions)
+                                   ValidatedLayers validated)
     {
         _scene = scene;
         _catalogs = catalogs;
-        _archetypeLayers = Validate(catalogs, definitions);
-        _layers = new LayerResources[definitions.Count];
+        _archetypeLayers = validated.ArchetypeLayers;
+        _layers = new LayerResources[validated.Layers.Length];
         ITileLodMeshResolver? lodResolver = resolver as ITileLodMeshResolver;
         try
         {
-            for (int i = 0; i < definitions.Count; i++)
-                _layers[i] = Resolve(definitions[i], lodResolver, fullMeshes);
+            for (int i = 0; i < validated.Layers.Length; i++)
+                _layers[i] = Resolve(validated.Layers[i], lodResolver, fullMeshes);
         }
         catch
         {
@@ -41,13 +41,14 @@ public sealed class TileWorldPropClusters : IDisposable
     /// <summary>Whether any archetype has opted into a selected layer.</summary>
     public bool IsEnabled => _layers.Length > 0;
 
-    internal static Dictionary<string, int> Validate(TileWorldCatalogs catalogs,
-                                                     IReadOnlyList<TilePropLayerDefinition> definitions)
+    internal static ValidatedLayers Validate(TileWorldCatalogs catalogs,
+                                             IReadOnlyList<TilePropLayerDefinition> definitions)
     {
         ArgumentNullException.ThrowIfNull(catalogs);
         ArgumentNullException.ThrowIfNull(definitions);
         var layerIds = new HashSet<string>(StringComparer.Ordinal);
         var selected = new Dictionary<string, int>(StringComparer.Ordinal);
+        var layers = new ValidatedLayer[definitions.Count];
         for (int i = 0; i < definitions.Count; i++)
         {
             TilePropLayerDefinition definition = definitions[i]
@@ -69,6 +70,8 @@ public sealed class TileWorldPropClusters : IDisposable
                 definition.HlodDistance > 0f && definition.LodDistance >= definition.HlodDistance)
                 throw new ArgumentOutOfRangeException(nameof(definitions),
                     $"Prop layer '{definition.Id}' distances must satisfy LOD < HLOD <= draw radius.");
+            var archetypeIds = new string[definition.ArchetypeIds.Count];
+            int archetypeIndex = 0;
             foreach (string archetypeId in definition.ArchetypeIds)
             {
                 if (string.IsNullOrWhiteSpace(archetypeId) || catalogs.Archetype(archetypeId) is null)
@@ -77,9 +80,11 @@ public sealed class TileWorldPropClusters : IDisposable
                 if (!selected.TryAdd(archetypeId, i))
                     throw new ArgumentException($"Archetype '{archetypeId}' is selected by more than one prop layer.",
                         nameof(definitions));
+                archetypeIds[archetypeIndex++] = archetypeId;
             }
+            layers[i] = new ValidatedLayer(definition, archetypeIds);
         }
-        return selected;
+        return new ValidatedLayers(layers, selected);
     }
 
     /// <summary>Builds one detached snapshot from the document's current presentation state.</summary>
@@ -181,9 +186,10 @@ public sealed class TileWorldPropClusters : IDisposable
         }
     }
 
-    LayerResources Resolve(TilePropLayerDefinition definition, ITileLodMeshResolver? resolver,
+    LayerResources Resolve(ValidatedLayer validated, ITileLodMeshResolver? resolver,
                            IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> fullMeshes)
     {
+        TilePropLayerDefinition definition = validated.Definition;
         var full = new Dictionary<string, IReadOnlyList<MeshHandle>>(StringComparer.Ordinal);
         var lod = new Dictionary<string, IReadOnlyList<MeshHandle>>(StringComparer.Ordinal);
         var flat = new Dictionary<string, GltfMesh>(StringComparer.Ordinal);
@@ -191,7 +197,7 @@ public sealed class TileWorldPropClusters : IDisposable
         var uploaded = new List<IReadOnlyList<MeshHandle>>();
         try
         {
-            foreach (string id in definition.ArchetypeIds)
+            foreach (string id in validated.ArchetypeIds)
             {
                 full.Add(id, fullMeshes[id]);
                 TileObjectArchetype archetype = _catalogs.Archetype(id)!;
@@ -236,6 +242,10 @@ public sealed class TileWorldPropClusters : IDisposable
     {
         if (!float.IsFinite(value) || value < 0f) throw new ArgumentOutOfRangeException(name);
     }
+
+    internal sealed record ValidatedLayers(ValidatedLayer[] Layers, Dictionary<string, int> ArchetypeLayers);
+
+    internal sealed record ValidatedLayer(TilePropLayerDefinition Definition, string[] ArchetypeIds);
 
     sealed class LayerResources
     {

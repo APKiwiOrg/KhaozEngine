@@ -120,9 +120,8 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   construction and streams it through the exact same per-chunk path, so every knob above applies unchanged.
   `colliders` (default true) registers a static body for the layer's placements at ANY layer index. Pass
   `colliders: false` to keep it render-only when the game registers that zone's physics itself outside the
-  sink. Scatter and companion layers keep the older layer-0-only collider rule (issue #288): only a layer at
-  index 0 registers colliders. A placement layer instead follows its `colliders` flag regardless of where it
-  sits in the list.
+  sink. Every scatter and companion layer registers its shaped props regardless of layer index. A placement
+  layer follows its `colliders` flag regardless of where it sits in the list.
   - **`PlacementLayer(source, meshes, drawRadius, ...)`** (both overloads) takes an
     `IPlacementSource` (`KhaozEngine.Terrain`) instead of a frozen list, exposed as `PropLayer.PlacementSource`.
     The sink then queries the source at EVERY chunk build rather than bucketing once at construction, which is

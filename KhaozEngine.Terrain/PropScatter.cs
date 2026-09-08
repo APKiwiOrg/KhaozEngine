@@ -137,7 +137,7 @@ namespace KhaozEngine.Terrain
     /// empty (empty means every host placement matches). Every value (count, ring angle/radius, kind, scale, yaw)
     /// hashes off the host's centimetre-quantized world XZ + per-channel salts, so it is deterministic and
     /// tiling-invariant (the host set is tiling-invariant and each host maps independently to its companions).
-    /// Render-only: companion ids carry no collider.</summary>
+    /// A companion id registers a static collider when the chunk sink's shape map contains that id.</summary>
     public sealed class CompanionConfig
     {
         public int Seed = 1337;
@@ -250,7 +250,7 @@ namespace KhaozEngine.Terrain
         /// count/angle/radius/kind/scale/yaw hash off the host's
         /// centimetre-quantized world XZ + per-channel salts (never the host's list index, which is not
         /// tiling-invariant), so the result is deterministic and the union over any tiling of the hosts equals
-        /// the whole. Render-only - companion placements carry no collider.</summary>
+        /// the whole. The chunk sink registers a collider only when the companion id has a mapped shape.</summary>
         public static IReadOnlyList<PropPlacement> GenerateCompanions(
             TerrainField field, IReadOnlyList<PropPlacement> hosts, CompanionConfig config)
         {

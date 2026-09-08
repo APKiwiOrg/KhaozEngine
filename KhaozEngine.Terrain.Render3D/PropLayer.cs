@@ -38,7 +38,7 @@ namespace KhaozEngine.Terrain
         /// placement layer. See <see cref="IPlacementSource"/> for the build-thread contract.</summary>
         public IPlacementSource? PlacementSource { get; }
         /// <summary>Whether this layer's props register physics colliders in the sink. True for every scatter and
-        /// companion layer (unchanged behaviour) and true by default for a placement layer. A placement layer opts
+        /// companion layer and true by default for a placement layer. A placement layer opts
         /// out via <c>colliders: false</c> on its factory when the placements are render-only and the consuming
         /// game registers their physics separately (issue #286).</summary>
         public bool RegisterColliders { get; }

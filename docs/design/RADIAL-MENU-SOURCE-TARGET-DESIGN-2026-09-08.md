@@ -2,7 +2,7 @@
 
 Date: 2026-09-08
 
-Status: Approved for implementation
+Status: Complete in 18.36.0
 
 Program: [#854](https://github.com/APKiwiOrg/KhaozEngine/issues/854)
 
@@ -123,9 +123,10 @@ public sealed partial class RadialMenu
 }
 ```
 
-The exact declarations may be split across focused partial files, but the names and meanings above are the public
-contract. `SetEntryChoice` changes stored widget state without firing a player-change event. It is the server-sync
-path for a consumer that receives preferences after constructing entries.
+The declarations above are the accepted core shape. The complete shipped surface, including retained-label accessors,
+pure geometry helpers, metrics, and theme fields, lives in `KhaozEngine.Gui/README.md` and
+`docs/USING-KHAOZENGINE.md`. `SetEntryChoice` changes stored widget state without firing a player-change event. It
+is the server-sync path for a consumer that receives preferences after constructing entries.
 
 ## Geometry and anchoring
 
@@ -138,7 +139,7 @@ radius, outer radius, and angular gap. The inner disc carries the title and the 
 the middle radius and labels sit below them within the same wedge. A missing icon leaves the text centred rather
 than drawing a fallback. Icon fallback remains the caller's `IconAtlas` policy.
 
-`RadialMenuMetrics` owns the inner and outer radii, angular gap, icon size, label scale, centre padding, footer gap,
+`RadialMenuMetrics` owns the inner and outer radii, angular gap, icon size, label scale, detail gap, footer gap,
 footer button size, composition margin, border thickness, shadow offset, and sheen speed. Defaults must fit inside
 a 960 by 540 design surface with eight entries and four footer choices.
 
@@ -250,8 +251,8 @@ responsibilities.
 ## Localization and accessibility
 
 Every displayed title, entry, detail, and footer choice is a `LocalizedText` sink. Icon keys and opaque tags are
-explicitly non-localized. Text is measured using the supplied font and wrapped or ellipsized inside a bounded wedge
-label region. No raw display string overload ships in the new API.
+explicitly non-localized. Text is measured using the supplied font and placed at the fixed entry and footer positions,
+so callers choose copy that fits their configured metrics. No raw display string overload ships in the new API.
 
 Disabled state is communicated through more than colour. Its label and detail remain readable, and the widget can
 show the caller's reason text. Keyboard and gamepad navigation can inspect disabled entries even though selection
@@ -279,12 +280,11 @@ the existing Render2D snapshot path. No cross-backend golden family is needed be
 
 ## Documentation and release
 
-The implementation updates `KhaozEngine.Gui/README.md`, the Gui catalog row in the root `README.md`, and the Gui
-usage section in `docs/USING-KHAOZENGINE.md`. XML documentation carries the full per-member contract.
+The public API and examples live in `KhaozEngine.Gui/README.md`, the Gui catalog row in the root `README.md`, and
+the Gui usage section in `docs/USING-KHAOZENGINE.md`. This document retains the rationale and accepted boundaries.
 
-The public API is additive, so it takes the next free engine minor release. Grimhollow is pinned and waiting, which
-activates the engine repository's sanctioned immediate tag rule after the implementation is merged, packed, and
-verified.
+The additive public API is implemented in engine version `18.36.0`. Grimhollow is pinned and waiting, which activates
+the engine repository's sanctioned immediate tag rule after the implementation is merged, packed, and verified.
 
 ## Non-goals
 
@@ -292,3 +292,7 @@ This program does not add crafting, recipes, item catalogs, inventories, station
 network messages, persistence, per-character settings, backdrop blur, refraction, arbitrary wedge counts, radial
 drag selection, or a new GUI framework. It does not alter `ContextMenu`, `Dropdown`, `GuiDragContext`, `SlotGrid`,
 `Screen`, or `ScreenStack` behaviour.
+
+The caller owns category paging beyond eight entries, persistence of choices or active source state, and every action
+produced from the returned tags and opaque payloads. The Render2D presentation performs no blur, refraction,
+distortion, or framebuffer sampling.

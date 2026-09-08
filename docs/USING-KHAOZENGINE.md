@@ -19,6 +19,7 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [Gui (`KhaozEngine.Gui`)](#gui-khaozenginegui)
 - [Retained chat (`ChatHistory` / `ChatBox`, 18.21.0)](#retained-chat-chathistory--chatbox-18210)
 - [Drag and drop across widgets (`GuiDragContext` / `DragPayload`)](#drag-and-drop-across-widgets-guidragcontext--dragpayload-1790)
+- [Interaction radial menus and source-target use (`RadialMenu` / `GuiUseContext`, 18.36.0)](#interaction-radial-menus-and-source-target-use-radialmenu--guiusecontext-18360)
 - [Toast notifications (`ToastStack` / `ToastView` / `ToastTheme`)](#toast-notifications-toaststack-toastview-toasttheme)
 - [Action-bar icons and cooldowns (SlotContent + CooldownOverlay)](#action-bar-icons-and-cooldowns-slotcontent-cooldownoverlay)
 - [Number + duration formatting (`NumberFormatter` / `TimeFormatter`)](#number-duration-formatting-numberformatter-timeformatter)
@@ -1678,6 +1679,163 @@ and no baked font, and `Draw` throws on a menu built that way.
 `menu.Bounds` and `menu.EntryBounds(index)` expose live geometry for adornments. Invalid row indices and
 null layout inputs are rejected at the boundary. Default `ContextMenuEntry` and `TooltipLine` values lay
 out empty text safely. Menu-cancel through `InputManager` is ignored while the window is unfocused.
+
+---
+
+## Interaction radial menus and source-target use (`RadialMenu` / `GuiUseContext`, 18.36.0)
+
+`RadialMenu` is the retained wheel for an action list anchored to an interaction point. The Gui package owns
+polar layout, safe-area clamping, input routing, localization, icons, and themed drawing. The caller owns what
+an entry or footer choice means. A page accepts one through eight entries and zero through eight footer choices.
+For a larger catalog, the caller groups entries into categories and opens another page.
+
+Entry zero starts at twelve o'clock and caller order continues clockwise. Each entry carries an opaque `long`
+tag and its own current footer tag. Footer choices are also opaque `long` tags. They do not have built-in
+quantity or mode semantics. Player-facing title, label, detail, and footer text use `LocalizedText` and resolve
+when `Open` runs. Icon ids stay caller-owned tokens resolved through the optional `IconAtlas` supplied to `Draw`.
+
+This example uses caller-defined action tags and generic footer tags:
+
+```csharp
+enum InteractionAction : long
+{
+    Chop = 101,
+    Examine = 102,
+    Mark = 103,
+}
+
+static class FooterTag
+{
+    public const long Primary = 10;
+    public const long Careful = 11;
+    public const long Fast = 12;
+}
+
+RadialMenuEntry[] actions =
+[
+    new(Strings.Chop, (long)InteractionAction.Chop, ItemIcons.Hatchet,
+        Detail: Strings.ChopDetail, InitialChoiceTag: FooterTag.Primary),
+    new(Strings.Examine, (long)InteractionAction.Examine, ItemIcons.Search,
+        Detail: Strings.ExamineDetail, InitialChoiceTag: FooterTag.Careful),
+    new(Strings.Mark, (long)InteractionAction.Mark, ItemIcons.Pin,
+        Enabled: canMark, Detail: Strings.MarkDetail, InitialChoiceTag: FooterTag.Primary),
+];
+
+RadialMenuChoice[] modes =
+[
+    new(Strings.Primary, FooterTag.Primary),
+    new(Strings.Careful, FooterTag.Careful),
+    new(Strings.Fast, FooterTag.Fast, Enabled: canUseFastMode),
+];
+
+var radial = new RadialMenu { SafeBounds = viewport.DesignBounds };
+
+if (pointer.IsRightTapIn(targetBounds))
+{
+    radial.Open(Strings.Actions, actions, pointer.Position, modes);
+    pointer.ConsumeRightGesture();
+}
+
+radial.Update(input, dt, focused: true);
+
+if (radial.WasChoiceChanged)
+    currentModes[radial.ChoiceChange.EntryTag] = radial.ChoiceChange.ChoiceTag;
+
+if (radial.WasSelected)
+    QueueAction((InteractionAction)radial.Selection.EntryTag, radial.Selection.ChoiceTag);
+
+radial.Draw(batch, white, font, icons);
+```
+
+The opening gesture is latched, so the right-click release that caused `Open` cannot immediately select or
+dismiss the menu. While open, its complete `Bounds` is blocked through the shared `Pointer`. A fresh tap on an
+enabled wedge selects it and closes. A footer tap changes the active entry's choice and keeps the menu open. A
+release outside dismisses. Disabled wedges can become active for their detail text but cannot be selected.
+Disabled footer choices cannot be applied.
+
+The `InputManager` overload runs the pointer path first, then adds focused keyboard or gamepad navigation. Left
+and Right cycle enabled wedges. Down enters the footer, Up returns to the wheel, Left and Right then cycle enabled
+footer choices, menu-select commits, and menu-cancel closes. Navigation wraps and accepts an optional
+`PlayerIndex`.
+
+`WasSelected`, `Selection`, `WasChoiceChanged`, `ChoiceChange`, and `WasDismissed` are one-frame results. Read
+them after `Update`. The next update clears them even when the menu is closed. `SetEntryChoice` restores an
+entry's current footer choice without raising `WasChoiceChanged`, which is useful for preferences or server
+state received after the caller built its entry list.
+
+`Open` validates unique entry and footer tags. `InitialChoiceTag` must name an enabled footer choice. Its default
+`0` selects the first enabled choice, or remains `0` when there is no footer. `HoverIndex` is the pointer wedge.
+`ActiveIndex` is the wedge whose detail and footer state are visible. `Bounds` covers the entire clamped wheel
+and footer. `ResolvedTitle`, `ResolvedEntryLabel`, `ResolvedEntryDetail`, and `ResolvedChoiceLabel` expose the
+strings retained at the latest open.
+
+`RadialMenuMetrics` is a public value that controls inner and outer radius, wedge gap, icon size, label scale,
+detail gap, footer gap and button size, composition margin, border thickness, shadow offset, and sheen speed.
+The matching pure geometry is public through `ComputeCenter`, `ComputeBounds`, `WedgeAngles`, `EntryAt`,
+`ChoiceBounds`, and `LabelPoint`. `RadialMenuTheme` supplies the shadow, surface, upper highlight, borders,
+accent, text, disabled alpha, and sheen colors. A fresh default derives from the ambient `GuiTheme.Default`.
+
+The glass-like default is ordinary Render2D geometry with translucent colors, highlights, a shadow, borders,
+and a low-alpha moving sheen. It has no background blur, refraction, distortion, or framebuffer sampling. A
+consumer that needs those effects must compose them in its own render pipeline.
+
+### Opaque source-target use between widgets
+
+`GuiUseContext` is the click counterpart to `GuiDragContext`. It carries an opaque source selected in one
+gesture into a later target gesture without teaching Gui about items, recipes, tools, or actions. Build one per
+screen or interaction scope and call `BeginFrame` before the participating widgets update.
+
+This example carries a source object and slot from one `SlotGrid` to a target slot in another:
+
+```csharp
+var use = new GuiUseContext();
+
+// Per frame.
+use.BeginFrame();
+
+int sourceIndex = bag.Update(pointer);
+if (sourceIndex >= 0 && bagItems[sourceIndex] is { } item)
+{
+    use.Begin(pointer, new UsePayload(
+        Token: item,
+        SourceId: bag,
+        SourceIndex: sourceIndex));
+}
+
+int targetIndex = stations.Update(pointer);
+if (targetIndex >= 0 && use.IsActive)
+{
+    bool accepted = CanUse(use.Payload.Token, stationItems[targetIndex]);
+    use.Complete(pointer, stations, targetIndex, accepted);
+}
+
+if (use.WasCompleted)
+{
+    UseResult result = use.LastUse;
+    ApplyUse(
+        result.Source.Token,
+        result.Source.SourceId,
+        result.Source.SourceIndex,
+        result.Target.TargetId,
+        result.Target.TargetIndex);
+}
+
+if (input.IsMenuCancel(null, out _))
+    use.Cancel();
+```
+
+`Begin(pointer, payload)` replaces an existing source and consumes the new source gesture. `UsePayload.Token`,
+`SourceId`, and `SourceIndex` are preserved exactly. `Complete(pointer, targetId, targetIndex, accepted)` returns
+false while idle or refused. A refusal keeps the source active and does not consume the target gesture. Success
+records both halves in `LastUse`, sets `WasCompleted`, consumes the target gesture, and clears the active source.
+`CompleteIn` adds `Pointer.IsTapIn` over a supplied `Rect` for a bare target. `Cancel` records
+`CancelledPayload`, sets `WasCancelled`, and clears the source. `BeginFrame` clears the two result flags without
+clearing an active source.
+
+Categories and paging beyond eight entries, persistence of footer preferences or active use state, and every
+resulting action remain caller responsibilities. The caller also owns source highlighting, target validation,
+refusal feedback, and when cancellation happens. `GuiUseContext` draws nothing and never serializes or interprets
+its opaque values.
 
 ---
 

@@ -1,4 +1,6 @@
 using System.IO;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using KhaozEngine.TileWorld;
 using Xunit;
 
@@ -66,6 +68,79 @@ public class TileWorldCatalogsTests
         var ex = Assert.Throws<TileWorldException>(() =>
             TileWorldCatalogs.LoadJson("""{ "materials": [ { "id": 1, "name": "x", "color": "#000000", "kind": "Lava" } ] }""", "bad.json"));
         Assert.Contains("bad.json", ex.Message);
+    }
+
+    [Fact]
+    public void LodMeshRef_loads_and_round_trips_as_optional_catalog_content()
+    {
+        const string json = """
+            { "archetypes": [ { "id": "tree", "name": "Tree", "meshRef": "kit/tree.glb",
+                                "lodMeshRef": "kit/lod/tree.glb" } ] }
+            """;
+        TileObjectArchetype loaded = TileWorldCatalogs.LoadJson(json, "trees.json").Archetype("tree")!;
+
+        Assert.Equal("kit/lod/tree.glb", loaded.LodMeshRef);
+
+        string written = JsonSerializer.Serialize(
+            new { archetypes = new[] { loaded } },
+            CatalogWriteOptions());
+        Assert.Equal("kit/lod/tree.glb",
+            TileWorldCatalogs.LoadJson(written, "round-trip.json").Archetype("tree")!.LodMeshRef);
+    }
+
+    static JsonSerializerOptions CatalogWriteOptions()
+    {
+        var options = new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+            };
+        options.Converters.Add(new JsonStringEnumConverter());
+        return options;
+    }
+
+    [Theory]
+    [InlineData("42")]
+    [InlineData("true")]
+    [InlineData("{}")]
+    public void Schema_rejects_a_non_string_lodMeshRef(string value)
+    {
+        var ex = Assert.Throws<TileWorldException>(() => TileWorldCatalogs.LoadJson(
+            $$"""{ "archetypes": [ { "id": "tree", "name": "Tree", "meshRef": "kit/tree.glb", "lodMeshRef": {{value}} } ] }""",
+            "bad-lod.json"));
+        Assert.Contains("does not match the schema", ex.Message);
+        Assert.Contains("bad-lod.json", ex.Message);
+    }
+
+    [Fact]
+    public void An_omitted_or_blank_lodMeshRef_is_absent()
+    {
+        TileWorldCatalogs c = TileWorldCatalogs.LoadJson("""
+            { "archetypes": [ { "id": "omitted", "name": "Omitted", "meshRef": "kit/tree.glb" },
+                              { "id": "blank", "name": "Blank", "meshRef": "kit/tree.glb", "lodMeshRef": "   " } ] }
+            """, "optional-lod.json");
+
+        Assert.Null(c.Archetype("omitted")!.LodMeshRef);
+        Assert.Null(c.Archetype("blank")!.LodMeshRef);
+    }
+
+    [Fact]
+    public void Catalog_hash_applies_the_existing_cosmetic_mesh_policy_to_the_lod_mesh()
+    {
+        TileWorldCatalogs baseline = TileWorldCatalogs.LoadJson("""
+            { "archetypes": [ { "id": "tree", "name": "Tree", "meshRef": "kit/tree.glb" } ] }
+            """, "baseline.json");
+        TileWorldCatalogs changedFull = TileWorldCatalogs.LoadJson("""
+            { "archetypes": [ { "id": "tree", "name": "Tree", "meshRef": "kit/tree-v2.glb" } ] }
+            """, "full.json");
+        TileWorldCatalogs changedLod = TileWorldCatalogs.LoadJson("""
+            { "archetypes": [ { "id": "tree", "name": "Tree", "meshRef": "kit/tree.glb",
+                                "lodMeshRef": "kit/lod/tree.glb" } ] }
+            """, "lod.json");
+
+        string baselineHash = TileWorldHash.OfCatalogs(baseline);
+        Assert.NotEqual(baselineHash, TileWorldHash.OfCatalogs(changedFull));
+        Assert.NotEqual(baselineHash, TileWorldHash.OfCatalogs(changedLod));
     }
 
     [Fact]

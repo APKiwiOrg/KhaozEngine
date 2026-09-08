@@ -122,9 +122,13 @@ Malformed or duplicate content throws a `TileWorldException` naming the source f
 `TileWorldSchema.GetCatalogJson()` returns the embedded catalog schema. `GroundMaterial` is
 `{ Id, Name, Color, Texture, Kind, TilesPerMetre }` (`Ground` or `Water`, id 0 reserved for void) and
 `TileObjectArchetype` is
-`{ Id, Name, MeshRef, SizeX, SizeZ, CollisionKind, IsRoof, Interactive, YawOffsetDegrees, Tags }`, with
+`{ Id, Name, MeshRef, LodMeshRef, SizeX, SizeZ, CollisionKind, IsRoof, Interactive, YawOffsetDegrees, Tags }`, with
 `TileCollisionKind` one of `None`, `Solid`, `Wall`, `WallCorner`, `Diagonal`. `TileFootprint.Rotated` and
 `TileFootprint.Of` give the rotated footprint size and the world rect an instance covers.
+
+`LodMeshRef` is the optional authored render LOD for an archetype. A missing or blank value means the archetype
+has no simplified tier. Both mesh references participate in the canonical catalog hash, while collision and
+pathing continue to use the archetype footprint and `CollisionKind`.
 
 `TilesPerMetre` is the optional `tilesPerMetre` catalog field, the texture repeats per metre the textured ground
 path gives that material, null to take the renderer default of 0.5. `MaterialSource(id)` returns the catalog

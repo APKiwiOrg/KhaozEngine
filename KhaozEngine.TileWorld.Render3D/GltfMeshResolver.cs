@@ -8,8 +8,9 @@ using KhaozEngine.Render3D;
 namespace KhaozEngine.TileWorld;
 
 /// <summary>A resolver backed by real content: it maps an archetype's <see cref="TileObjectArchetype.MeshRef"/>
-/// to a glb under a kit root and loads it through <see cref="GltfLoader.LoadPartsWithMaterials"/>, so a tile
-/// world draws its authored kit instead of <see cref="GreyboxMeshResolver"/>'s boxes. A mesh reference is
+/// and optional <see cref="TileObjectArchetype.LodMeshRef"/> to glbs under a kit root. Drawable parts load
+/// through <see cref="GltfLoader.LoadPartsWithMaterials"/>, while the HLOD source loads through
+/// <see cref="GltfLoader.LoadFlattenedAlbedo"/>. A mesh reference is
 /// authored with forward slashes and relative to the root (<c>kit/wall.glb</c>), normalized to the platform
 /// separator here, and an already-absolute reference is used as it stands.
 ///
@@ -48,7 +49,9 @@ public sealed class GltfMeshResolver : ITileMeshResolver
     // Keyed by mesh reference, which is what lets the two overloads share an entry. Null is a CACHED answer here,
     // not a miss, and it is what makes the log-once rule hold: a reference that failed to load is recorded as
     // having no parts of its own, and the fallback is asked per call because its answer belongs to the archetype.
-    readonly Dictionary<string, IReadOnlyList<GltfMeshPart>?> _cache = new(StringComparer.Ordinal);
+    readonly Dictionary<string, IReadOnlyList<GltfMeshPart>?> _partsCache = new(StringComparer.Ordinal);
+    readonly Dictionary<string, GltfMesh?> _flatCache = new(StringComparer.Ordinal);
+    readonly HashSet<string> _loggedFailures = new(StringComparer.Ordinal);
 
     /// <summary>A resolver that loads each archetype's <c>MeshRef</c> from under <paramref name="rootDirectory"/>,
     /// answering with <paramref name="fallback"/> (null when none) whenever a glb is missing or fails to load, and
@@ -82,14 +85,55 @@ public sealed class GltfMeshResolver : ITileMeshResolver
         return Resolve(meshRef, archetype: null);
     }
 
+    /// <summary>The optional authored LOD parts for this archetype. A blank, missing, or malformed LOD answers
+    /// null without consulting the required-mesh fallback, so a caller can retain LOD0. Failures are cached and
+    /// logged once. Never throws over bad content.</summary>
+    /// <exception cref="ArgumentNullException"><paramref name="archetype"/> is null.</exception>
+    public IReadOnlyList<GltfMeshPart>? ResolveLod(TileObjectArchetype archetype)
+    {
+        ArgumentNullException.ThrowIfNull(archetype);
+        return string.IsNullOrWhiteSpace(archetype.LodMeshRef)
+            ? null
+            : ResolveParts(archetype.LodMeshRef, archetype);
+    }
+
+    /// <summary>The flattened CPU mesh used to build HLOD for this archetype. The authored LOD is preferred when
+    /// present and valid, otherwise the full mesh is tried. Missing or malformed content answers null when neither
+    /// source loads, so individual geometry can remain visible. Results and failures are cached per mesh reference.
+    /// Never throws over bad content.</summary>
+    /// <exception cref="ArgumentNullException"><paramref name="archetype"/> is null.</exception>
+    public GltfMesh? ResolveFlatForHlod(TileObjectArchetype archetype)
+    {
+        ArgumentNullException.ThrowIfNull(archetype);
+        if (!string.IsNullOrWhiteSpace(archetype.LodMeshRef))
+        {
+            GltfMesh? lod = ResolveFlat(archetype.LodMeshRef, archetype);
+            if (lod is not null) return lod;
+        }
+        return string.IsNullOrWhiteSpace(archetype.MeshRef) ? null : ResolveFlat(archetype.MeshRef, archetype);
+    }
+
     IReadOnlyList<GltfMeshPart>? Resolve(string meshRef, TileObjectArchetype? archetype)
     {
         // Not authored yet is not a failure, so an empty reference goes straight to the fallback: no log line, no
         // disk, and nothing cached, because there is no content behind the key to remember.
         if (string.IsNullOrWhiteSpace(meshRef)) return FallBack(meshRef, archetype);
-        if (!_cache.TryGetValue(meshRef, out IReadOnlyList<GltfMeshPart>? cached))
-            _cache[meshRef] = cached = LoadOnce(meshRef, archetype);
+        IReadOnlyList<GltfMeshPart>? cached = ResolveParts(meshRef, archetype);
         return cached ?? FallBack(meshRef, archetype);
+    }
+
+    IReadOnlyList<GltfMeshPart>? ResolveParts(string meshRef, TileObjectArchetype? archetype)
+    {
+        if (!_partsCache.TryGetValue(meshRef, out IReadOnlyList<GltfMeshPart>? cached))
+            _partsCache[meshRef] = cached = LoadPartsOnce(meshRef, archetype);
+        return cached;
+    }
+
+    GltfMesh? ResolveFlat(string meshRef, TileObjectArchetype archetype)
+    {
+        if (!_flatCache.TryGetValue(meshRef, out GltfMesh? cached))
+            _flatCache[meshRef] = cached = LoadFlatOnce(meshRef, archetype);
+        return cached;
     }
 
     /// <summary>The absolute path an archetype's mesh reference names under this resolver's root. An absolute
@@ -104,7 +148,7 @@ public sealed class GltfMeshResolver : ITileMeshResolver
     }
 
     // Null means this reference has no parts of its own, which is the cached failure the log-once rule keys on.
-    IReadOnlyList<GltfMeshPart>? LoadOnce(string meshRef, TileObjectArchetype? archetype)
+    IReadOnlyList<GltfMeshPart>? LoadPartsOnce(string meshRef, TileObjectArchetype? archetype)
     {
         // PathFor is INSIDE the try on purpose: a MeshRef out of a corrupt catalog can carry a character
         // Path.GetFullPath rejects (an embedded NUL throws ArgumentException), and a bad ref must never fault the
@@ -115,7 +159,11 @@ public sealed class GltfMeshResolver : ITileMeshResolver
             path = PathFor(meshRef);
             // Probed rather than caught, because a missing kit piece is the ordinary half-authored case and
             // deserves a reason a reader can act on, not whatever the loader throws for an absent file.
-            if (!File.Exists(path)) return LogFailure(path, "file not found", archetype);
+            if (!File.Exists(path))
+            {
+                LogFailure(meshRef, path, "file not found", archetype);
+                return null;
+            }
             // Wrapped before it leaves, so a caller cannot write through the handed-out list into the cache.
             return new ReadOnlyCollection<GltfMeshPart>(GltfLoader.LoadPartsWithMaterials(path).ToArray());
         }
@@ -124,19 +172,40 @@ public sealed class GltfMeshResolver : ITileMeshResolver
             // Deliberately broad: a corrupt or unsupported glb, or a ref no path API will accept, surfaces as
             // anything from a format exception to an IO one, and none of them is worth taking the whole world
             // down for when a greybox box will do.
-            return LogFailure(path, ex.Message, archetype);
+            LogFailure(meshRef, path, ex.Message, archetype);
+            return null;
+        }
+    }
+
+    GltfMesh? LoadFlatOnce(string meshRef, TileObjectArchetype archetype)
+    {
+        string path = meshRef;
+        try
+        {
+            path = PathFor(meshRef);
+            if (!File.Exists(path))
+            {
+                LogFailure(meshRef, path, "file not found", archetype);
+                return null;
+            }
+            return GltfLoader.LoadFlattenedAlbedo(path);
+        }
+        catch (Exception ex)
+        {
+            LogFailure(meshRef, path, ex.Message, archetype);
+            return null;
         }
     }
 
     // The archetype is named when there is one, because a catalog id is what a reader fixes the content under. It
     // is the FIRST caller's archetype either way: the line is written once per mesh reference, so a second
     // archetype on the same broken reference is answered off the cached failure and never reaches here.
-    IReadOnlyList<GltfMeshPart>? LogFailure(string path, string reason, TileObjectArchetype? archetype)
+    void LogFailure(string meshRef, string path, string reason, TileObjectArchetype? archetype)
     {
+        if (!_loggedFailures.Add(meshRef)) return;
         _log?.Invoke(archetype is null
             ? $"tile world: could not load mesh '{path}' ({reason}), falling back."
             : $"tile world: archetype '{archetype.Id}' could not load mesh '{path}' ({reason}), falling back.");
-        return null;
     }
 
     IReadOnlyList<GltfMeshPart>? FallBack(string meshRef, TileObjectArchetype? archetype) =>

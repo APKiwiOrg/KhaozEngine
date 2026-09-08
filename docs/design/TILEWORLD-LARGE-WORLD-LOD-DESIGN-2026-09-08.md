@@ -106,8 +106,9 @@ tiers are not added until a measured consumer needs them.
 exists and falls back to LOD0. A missing or malformed LOD logs once and keeps LOD0. A missing flattened source
 keeps individual geometry and marks that cluster ineligible for HLOD-only decor. It never creates a visual hole.
 
-Catalog hashing follows the existing cosmetic mesh policy. Adding or changing `lodMeshRef` does not alter
-server collision or pathing compatibility.
+Catalog hashing follows the existing cosmetic mesh policy, so `lodMeshRef` participates in the canonical
+catalog digest and advances its scheme. Collision and pathing still derive from the full authored objects, not
+from either render mesh reference.
 
 ## TileWorld prop-layer definitions
 

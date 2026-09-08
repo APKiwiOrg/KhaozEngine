@@ -16,7 +16,7 @@ namespace KhaozEngine.TileWorld;
 public static class TileWorldHash
 {
     /// <summary>Folded into every digest. Bump on any canonicalisation change, on purpose.</summary>
-    public const int SchemeVersion = 1;
+    public const int SchemeVersion = 2;
     const string Domain = "ketw/";
 
     /// <summary>Lower-hex SHA-256 of a region file's exact bytes.</summary>
@@ -109,6 +109,7 @@ public static class TileWorldHash
             Text(sb, a.Id);
             Text(sb, a.Name);
             Text(sb, a.MeshRef);
+            Text(sb, a.LodMeshRef);
             sb.Append(Inv(a.SizeX)).Append(' ').Append(Inv(a.SizeZ)).Append(' ');
             sb.Append(a.CollisionKind).Append(' ');
             sb.Append(a.IsRoof ? '1' : '0').Append(a.Interactive ? '1' : '0').Append(' ');

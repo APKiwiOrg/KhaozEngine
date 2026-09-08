@@ -125,6 +125,17 @@ public class TileWorldHashTests
         Assert.NotEqual(h, TileWorldHash.OfCatalogs(after));
     }
 
+    [Fact]
+    public void Catalog_hash_moves_when_only_the_authored_lod_mesh_changes()
+    {
+        TileWorldCatalogs catalogs = TileWorldCatalogs.Greybox();
+        string h = TileWorldHash.OfCatalogs(catalogs);
+
+        catalogs.Archetype("tree")!.LodMeshRef = "kit/lod/tree.glb";
+
+        Assert.NotEqual(h, TileWorldHash.OfCatalogs(catalogs));
+    }
+
     // Load order is a caller's business, the digest is not. Two catalogs holding the same content merged from parts
     // in either order are one identity, exactly as the region composition sorts its rows.
     [Fact]

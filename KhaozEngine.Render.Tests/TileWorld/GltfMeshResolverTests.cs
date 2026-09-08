@@ -12,6 +12,7 @@ namespace KhaozEngine.Tests.TileWorld;
 public class GltfMeshResolverTests : IDisposable
 {
     static string SourceAsset => Path.Combine(AppContext.BaseDirectory, "assets", "testmodel.glb");
+    static string LodSourceAsset => Path.Combine(AppContext.BaseDirectory, "assets", "asteroid.glb");
 
     readonly string _root;
     readonly List<string> _log = new();
@@ -19,6 +20,7 @@ public class GltfMeshResolverTests : IDisposable
     public GltfMeshResolverTests()
     {
         Assert.True(File.Exists(SourceAsset), $"test asset missing at {SourceAsset}");
+        Assert.True(File.Exists(LodSourceAsset), $"LOD test asset missing at {LodSourceAsset}");
         _root = Path.Combine(Path.GetTempPath(), "ke-gltf-resolver-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(Path.Combine(_root, "kit"));
     }
@@ -29,8 +31,8 @@ public class GltfMeshResolverTests : IDisposable
         GC.SuppressFinalize(this);
     }
 
-    static TileObjectArchetype Archetype(string id, string meshRef) =>
-        new() { Id = id, Name = id, MeshRef = meshRef };
+    static TileObjectArchetype Archetype(string id, string meshRef, string? lodMeshRef = null) =>
+        new() { Id = id, Name = id, MeshRef = meshRef, LodMeshRef = lodMeshRef };
 
     static GreyboxMeshResolver Greybox() => new();
 
@@ -41,10 +43,10 @@ public class GltfMeshResolverTests : IDisposable
         return total;
     }
 
-    string CopyKitPiece(string name)
+    string CopyKitPiece(string name, string? source = null)
     {
         string path = Path.Combine(_root, "kit", name + ".glb");
-        File.Copy(SourceAsset, path);
+        File.Copy(source ?? SourceAsset, path);
         return path;
     }
 
@@ -272,6 +274,128 @@ public class GltfMeshResolverTests : IDisposable
         Assert.NotNull(parts);
         Assert.IsNotType<List<GltfMeshPart>>(parts);
         Assert.True(parts is System.Collections.IList { IsReadOnly: true }, "the cached list is writable");
+    }
+
+    [Fact]
+    public void Full_and_lod_parts_are_cached_by_their_own_mesh_references()
+    {
+        CopyKitPiece("tree");
+        CopyKitPiece("tree-lod", LodSourceAsset);
+        var resolver = new GltfMeshResolver(_root, Greybox(), _log.Add);
+        TileObjectArchetype tree = Archetype("tree", "kit/tree.glb", "kit/tree-lod.glb");
+
+        IReadOnlyList<GltfMeshPart>? full = resolver.Resolve(tree);
+        IReadOnlyList<GltfMeshPart>? lod = resolver.ResolveLod(tree);
+
+        Assert.NotNull(full);
+        Assert.NotNull(lod);
+        Assert.Same(full, resolver.Resolve(tree));
+        Assert.Same(lod, resolver.ResolveLod(tree));
+        Assert.Equal(VertexCount(GltfLoader.LoadPartsWithMaterials(SourceAsset)), VertexCount(full));
+        Assert.Equal(VertexCount(GltfLoader.LoadPartsWithMaterials(LodSourceAsset)), VertexCount(lod));
+        Assert.Empty(_log);
+    }
+
+    [Fact]
+    public void An_absent_optional_lod_returns_null_without_a_placeholder_or_log()
+    {
+        var resolver = new GltfMeshResolver(Path.Combine(_root, "nowhere"), Greybox(), _log.Add);
+        TileObjectArchetype tree = Archetype("tree", "kit/tree.glb");
+
+        Assert.Null(resolver.ResolveLod(tree));
+        Assert.Null(resolver.ResolveLod(tree));
+        Assert.Empty(_log);
+    }
+
+    [Fact]
+    public void A_missing_optional_lod_returns_null_and_logs_once_without_a_placeholder()
+    {
+        var resolver = new GltfMeshResolver(_root, Greybox(), _log.Add);
+        TileObjectArchetype tree = Archetype("tree", "kit/tree.glb", "kit/tree-lod.glb");
+
+        Assert.Null(resolver.ResolveLod(tree));
+        Assert.Null(resolver.ResolveLod(tree));
+
+        string line = Assert.Single(_log);
+        Assert.Contains("tree-lod.glb", line, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_malformed_optional_lod_returns_null_and_logs_the_loader_failure_once()
+    {
+        string path = Path.Combine(_root, "kit", "tree-lod.glb");
+        File.WriteAllBytes(path, new byte[] { 0x6E, 0x6F, 0x74, 0x20, 0x61, 0x20, 0x67, 0x6C, 0x62, 0x21 });
+        var resolver = new GltfMeshResolver(_root, Greybox(), _log.Add);
+        TileObjectArchetype tree = Archetype("tree", "kit/tree.glb", "kit/tree-lod.glb");
+
+        Assert.Null(resolver.ResolveLod(tree));
+        Assert.Null(resolver.ResolveLod(tree));
+
+        string line = Assert.Single(_log);
+        Assert.Contains(ExpectedLoaderMessage(path), line, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Flattened_hlod_prefers_the_authored_lod_and_caches_it()
+    {
+        CopyKitPiece("tree");
+        CopyKitPiece("tree-lod", LodSourceAsset);
+        var resolver = new GltfMeshResolver(_root, Greybox(), _log.Add);
+        TileObjectArchetype tree = Archetype("tree", "kit/tree.glb", "kit/tree-lod.glb");
+
+        GltfMesh? flat = resolver.ResolveFlatForHlod(tree);
+
+        Assert.NotNull(flat);
+        Assert.Same(flat, resolver.ResolveFlatForHlod(tree));
+        Assert.Equal(GltfLoader.LoadFlattenedAlbedo(LodSourceAsset).Vertices.Length, flat.Vertices.Length);
+        Assert.Empty(_log);
+    }
+
+    [Fact]
+    public void Flattened_hlod_falls_back_to_lod0_when_the_authored_lod_is_missing()
+    {
+        CopyKitPiece("tree");
+        var resolver = new GltfMeshResolver(_root, Greybox(), _log.Add);
+        TileObjectArchetype tree = Archetype("tree", "kit/tree.glb", "kit/tree-lod.glb");
+
+        GltfMesh? flat = resolver.ResolveFlatForHlod(tree);
+
+        Assert.NotNull(flat);
+        Assert.Same(flat, resolver.ResolveFlatForHlod(tree));
+        Assert.Equal(GltfLoader.LoadFlattenedAlbedo(SourceAsset).Vertices.Length, flat.Vertices.Length);
+        string line = Assert.Single(_log);
+        Assert.Contains("tree-lod.glb", line, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Flattened_hlod_falls_back_to_lod0_when_the_authored_lod_is_malformed()
+    {
+        CopyKitPiece("tree");
+        string lodPath = Path.Combine(_root, "kit", "tree-lod.glb");
+        File.WriteAllBytes(lodPath, new byte[] { 0x6E, 0x6F, 0x74, 0x20, 0x61, 0x20, 0x67, 0x6C, 0x62, 0x21 });
+        var resolver = new GltfMeshResolver(_root, Greybox(), _log.Add);
+        TileObjectArchetype tree = Archetype("tree", "kit/tree.glb", "kit/tree-lod.glb");
+
+        GltfMesh? flat = resolver.ResolveFlatForHlod(tree);
+
+        Assert.NotNull(flat);
+        Assert.Equal(GltfLoader.LoadFlattenedAlbedo(SourceAsset).Vertices.Length, flat.Vertices.Length);
+        Assert.Single(_log);
+    }
+
+    [Fact]
+    public void A_flattened_loader_failure_returns_null_and_logs_once()
+    {
+        string path = Path.Combine(_root, "kit", "tree.glb");
+        File.WriteAllBytes(path, new byte[] { 0x6E, 0x6F, 0x74, 0x20, 0x61, 0x20, 0x67, 0x6C, 0x62, 0x21 });
+        var resolver = new GltfMeshResolver(_root, Greybox(), _log.Add);
+        TileObjectArchetype tree = Archetype("tree", "kit/tree.glb");
+
+        Assert.Null(resolver.ResolveFlatForHlod(tree));
+        Assert.Null(resolver.ResolveFlatForHlod(tree));
+
+        string line = Assert.Single(_log);
+        Assert.Contains(path, line, StringComparison.Ordinal);
     }
 
     // The loader's own message for this file, read from the loader rather than hard-coded, so the assertion pins

@@ -30,6 +30,7 @@
           "id": { "type": "string", "minLength": 1 },
           "name": { "type": "string", "minLength": 1 },
           "meshRef": { "type": "string", "minLength": 1 },
+          "lodMeshRef": { "type": "string" },
           "sizeX": { "type": "integer", "minimum": 1, "maximum": 64 },
           "sizeZ": { "type": "integer", "minimum": 1, "maximum": 64 },
           "collisionKind": { "type": "string", "enum": ["None", "Solid", "Wall", "WallCorner", "Diagonal"] },

@@ -60,6 +60,8 @@ public sealed class TileObjectArchetype
     public string Name { get; set; } = "";
     /// <summary>Mesh this archetype draws with, resolved by the game's content pipeline.</summary>
     public string MeshRef { get; set; } = "";
+    /// <summary>Optional simplified mesh used for authored render LOD, null when none.</summary>
+    public string? LodMeshRef { get; set; }
     /// <summary>Unrotated footprint width in tiles, east.</summary>
     public int SizeX { get; set; } = 1;
     /// <summary>Unrotated footprint depth in tiles, north.</summary>
@@ -215,6 +217,7 @@ public sealed class TileWorldCatalogs
         if (string.IsNullOrWhiteSpace(a.Id)) throw new TileWorldException($"{source}: an archetype has no id");
         if (_archetypes.ContainsKey(a.Id))
             throw new TileWorldException($"{source}: archetype '{a.Id}' is already defined in {_archetypeSources[a.Id]}");
+        if (string.IsNullOrWhiteSpace(a.LodMeshRef)) a.LodMeshRef = null;
         _archetypes.Add(a.Id, a);
         _archetypeSources[a.Id] = source;
     }

@@ -183,6 +183,20 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
+        public void Successful_internal_replacement_updates_committed_atlas_knobs_without_unlocking_setters()
+        {
+            var s = new ShadowSettings { ShadowMapResolution = 2048, ShadowCascadeCount = 3 };
+            s.CommitAtlas();
+
+            s.CommitAtlasReplacement(3072, 4);
+
+            Assert.Equal(3072, s.ShadowMapResolution);
+            Assert.Equal(4, s.ShadowCascadeCount);
+            Assert.Throws<InvalidOperationException>(() => s.ShadowMapResolution = 1024);
+            Assert.Throws<InvalidOperationException>(() => s.ShadowCascadeCount = 2);
+        }
+
+        [Fact]
         public void ResolvedCascadeCount_clamps_to_one_through_four()
         {
             Assert.Equal(1, new ShadowSettings { ShadowCascadeCount = 0 }.ResolvedCascadeCount);

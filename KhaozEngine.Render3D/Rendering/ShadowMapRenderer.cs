@@ -24,7 +24,8 @@ namespace KhaozEngine.Render3D.Rendering
     /// per-cascade world-&gt;light-clip matrices ride in ONE dynamic-offset uniform buffer (a 256-byte-aligned slot per
     /// cascade), so a cascade is selected by a per-draw dynamic offset - the same one-buffer pattern the skinned crowd
     /// uses, avoiding interleaved buffer updates mid-pass. The atlas is allocated once for the configured
-    /// resolution/count and reused every frame, and a change to either reallocates it (<see cref="EnsureLayout"/>). It is
+    /// resolution/count and reused every frame. A live layout change builds a complete replacement while this graph
+    /// remains drawable, then swaps only after every receiver binding is ready. It is
     /// created up front (even before the tier is switched on) so the material resource sets can bind a STABLE texture
     /// handle - the shader gates on <c>ShadowParams.y</c> (strength), so an inactive frame never taps it and stays
     /// byte-identical to ShadowMode.Off. The depth pass reuses the model pass's instance buffer (no second upload).
@@ -57,7 +58,6 @@ namespace KhaozEngine.Render3D.Rendering
         readonly byte[] _lightImage = new byte[MaxCascades * CascadeSlotBytes];
         readonly IGpuResourceSet _set;          // 64-byte window over _lightUbo, rebased per cascade by a dynamic offset
         readonly IGpuSampler _sampler;          // clamp/POINT sampler the RECEIVERS use to PCF-sample the atlas (owned)
-        IGpuPipeline _pipeline = null!;
 
         // Dissolve-aware depth pipeline (issue #287): the same layout/outputs/raster state as _pipeline, with the
         // instance layout extended to the model pass's locations 12..13 and a fragment that noise-discards by the
@@ -67,7 +67,6 @@ namespace KhaozEngine.Render3D.Rendering
         // dissolve noise scale (offset 80).
         readonly IGpuShaderSet _dissolveShaders;
         readonly IGpuResourceSet _dissolveSet;
-        IGpuPipeline _dissolvePipeline = null!;   // rebuilt in EnsureLayout alongside _pipeline
 
         // INVERTED dissolve depth pipeline (issue #391): the same vertex, layout, outputs, raster state and UBO
         // window as _dissolvePipeline, differing ONLY in a fragment that keeps what the plain one discards. Bound
@@ -75,13 +74,11 @@ namespace KhaozEngine.Render3D.Rendering
         // their union covers the whole mask across the band. A scene that never marks a caster inverted never
         // binds it. Shares _dissolveSet (same UBO window) - only the pipeline differs.
         readonly IGpuShaderSet _dissolveInvertedShaders;
-        IGpuPipeline _dissolveInvertedPipeline = null!;   // rebuilt in EnsureLayout alongside _pipeline
 
         // GPU-skinning depth pipeline (mirrors _pipeline for skinned casters) + its light-matrix grow-with-retire buffer.
         readonly IGpuShaderSet _skinnedShaders;
         readonly IGpuResourceLayout _skinnedLayout;   // set 0: { LightMvp } dynamic UBO, vertex only
         readonly SkinnedBonePalette _bonePalette;     // set 1: the shared per-caster palette, OWNED BY ModelRenderer
-        IGpuPipeline _skinnedPipeline = null!;         // rebuilt in EnsureLayout alongside _pipeline
         IGpuBuffer? _skinnedUbo; uint _skinnedSlots; IGpuResourceSet? _skinnedSet;
         // Persistent CPU image of the complete skinned-depth UBO. D3D11 takes its cheap UpdateSubresource route only
         // for a whole uniform-buffer write from offset 0, so every cascade/caster slot is packed here before one
@@ -89,15 +86,11 @@ namespace KhaozEngine.Render3D.Rendering
         byte[] _skinnedImage = Array.Empty<byte>();
         readonly List<IDisposable> _retiredSkinned = new();   // grown-out light-matrix UBOs/sets (a prior frame may still read them)
 
-        IGpuTexture _atlas = null!;             // R32F: all cascades' light-space depth side by side (the map the receivers sample)
-        IGpuTexture _depthStencil = null!;      // depth-test buffer for the depth pass (never sampled), atlas-sized
-        IGpuFramebuffer _fb = null!;
-        int _perCascadeRes;
-        int _cascadeCount;
+        ShadowLayoutReplacement _graph = null!;
 
         /// <summary>The shadow atlas the receivers sample (R32F light-space depth, <see cref="CascadeCount"/> columns).
-        /// Stable handle across frames, reallocated only on a resolution/count change (see <see cref="EnsureLayout"/>).</summary>
-        public IGpuTexture ShadowTexture => _atlas;
+        /// Stable handle across frames, replaced only by a committed layout transaction.</summary>
+        public IGpuTexture ShadowTexture => _graph.ShadowTexture;
 
         /// <summary>The clamp/POINT sampler the receivers PCF-sample the atlas with (owned here). Point is required,
         /// not preferred: the receivers compare depths themselves, so any pre-compare filtering blends the clear
@@ -105,10 +98,10 @@ namespace KhaozEngine.Render3D.Rendering
         public IGpuSampler ShadowSampler => _sampler;
 
         /// <summary>The current per-cascade allocated resolution per axis (one atlas column).</summary>
-        public int Resolution => _perCascadeRes;
+        public int Resolution => _graph.Resolution;
 
         /// <summary>The current number of cascade columns in the atlas.</summary>
-        public int CascadeCount => _cascadeCount;
+        public int CascadeCount => _graph.CascadeCount;
 
         // bonePalette is the frame's shared GPU-skinned bone palettes, created and disposed by ModelRenderer. This
         // pass binds the same layout and the same set the model pass does, so a caster's palette is uploaded once
@@ -136,7 +129,7 @@ namespace KhaozEngine.Render3D.Rendering
             _dissolveSet = f.CreateResourceSet(new GpuResourceSetDescription(_layout, new GpuBufferRange(_lightUbo, 0, CascadeSlotBytes)));
 
             // GPU-skinning depth shaders/layout (the fragment is the shared ShadowDepthFrag). Set 0 = { LightMvp }
-            // dynamic UBO, vertex only, and set 1 = the shared per-caster palette. Built per layout in EnsureLayout.
+            // dynamic UBO, vertex only, and set 1 = the shared per-caster palette. Built per shadow layout.
             _skinnedShaders = f.CreateShadersFromSpirv(ShaderSources.SkinnedShadowDepthVert, ShaderSources.ShadowDepthFrag);
             _skinnedLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 new GpuResourceLayoutElement("VBlock", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex, dynamic: true)));
@@ -159,45 +152,62 @@ namespace KhaozEngine.Render3D.Rendering
                 GpuSamplerFilter.MinPointMagPointMipPoint,
                 GpuSamplerAddress.Clamp, GpuSamplerAddress.Clamp, GpuSamplerAddress.Clamp));
 
-            _perCascadeRes = 0;
-            _cascadeCount = 0;
-            EnsureLayout(resolution, cascadeCount);
+            _graph = BuildReplacement(resolution, cascadeCount);
         }
 
-        /// <summary>(Re)allocate the atlas targets + pipelines for <paramref name="resolution"/> (per cascade, clamped
-        /// to a sane minimum) x <paramref name="cascadeCount"/> columns if either changed. The atlas handle changes on
-        /// a realloc, so callers that bound the old texture into a resource set must rebuild it (ModelRenderer rebuilds
-        /// its material sets' shadow binding).</summary>
-        public void EnsureLayout(int resolution, int cascadeCount)
-        {
-            int res = Math.Max(MinResolution, resolution);
-            int count = Math.Clamp(cascadeCount, 1, MaxCascades);
-            if (res == _perCascadeRes && count == _cascadeCount) return;
-            _gd.WaitForIdle();   // a prior frame's pass may still reference the old targets; a layout change is rare
-            _pipeline?.Dispose();
-            _dissolvePipeline?.Dispose();
-            _dissolveInvertedPipeline?.Dispose();
-            _skinnedPipeline?.Dispose();
-            _fb?.Dispose();
-            _atlas?.Dispose();
-            _depthStencil?.Dispose();
+        internal bool MatchesLayout(int resolution, int cascadeCount) =>
+            Resolution == NormalizeResolution(resolution) && CascadeCount == NormalizeCascadeCount(cascadeCount);
 
-            _perCascadeRes = res;
-            _cascadeCount = count;
+        internal ShadowLayoutReplacement BuildReplacement(int resolution, int cascadeCount)
+        {
+            int res = NormalizeResolution(resolution);
+            int count = NormalizeCascadeCount(cascadeCount);
             uint w = (uint)(res * count);   // atlas width = one column per cascade
             uint h = (uint)res;
             var f = _gd.Factory;
-            _atlas = f.CreateTexture(GpuTextureDescription.Texture2D(
-                w, h, GpuPixelFormat.R32Float, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
-            _depthStencil = f.CreateTexture(GpuTextureDescription.Texture2D(
-                w, h, GpuPixelFormat.D32FloatS8UInt, GpuTextureUsage.DepthStencil));
-            _fb = f.CreateFramebuffer(_depthStencil, _atlas);
-
-            _pipeline = BuildPipeline(f, _fb.Outputs);
-            _dissolvePipeline = BuildPipeline(f, _fb.Outputs, dissolve: true);
-            _dissolveInvertedPipeline = BuildPipeline(f, _fb.Outputs, dissolve: true, invertedDissolve: true);
-            _skinnedPipeline = BuildSkinnedPipeline(f, _fb.Outputs);
+            IGpuTexture? atlas = null;
+            IGpuTexture? depthStencil = null;
+            IGpuFramebuffer? framebuffer = null;
+            IGpuPipeline? pipeline = null;
+            IGpuPipeline? dissolvePipeline = null;
+            IGpuPipeline? dissolveInvertedPipeline = null;
+            IGpuPipeline? skinnedPipeline = null;
+            try
+            {
+                atlas = f.CreateTexture(GpuTextureDescription.Texture2D(
+                    w, h, GpuPixelFormat.R32Float, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
+                depthStencil = f.CreateTexture(GpuTextureDescription.Texture2D(
+                    w, h, GpuPixelFormat.D32FloatS8UInt, GpuTextureUsage.DepthStencil));
+                framebuffer = f.CreateFramebuffer(depthStencil, atlas);
+                pipeline = BuildPipeline(f, framebuffer.Outputs);
+                dissolvePipeline = BuildPipeline(f, framebuffer.Outputs, dissolve: true);
+                dissolveInvertedPipeline = BuildPipeline(f, framebuffer.Outputs, dissolve: true, invertedDissolve: true);
+                skinnedPipeline = BuildSkinnedPipeline(f, framebuffer.Outputs);
+                return new ShadowLayoutReplacement(res, count, atlas, depthStencil, framebuffer, pipeline,
+                    dissolvePipeline, dissolveInvertedPipeline, skinnedPipeline);
+            }
+            catch
+            {
+                skinnedPipeline?.Dispose();
+                dissolveInvertedPipeline?.Dispose();
+                dissolvePipeline?.Dispose();
+                pipeline?.Dispose();
+                framebuffer?.Dispose();
+                atlas?.Dispose();
+                depthStencil?.Dispose();
+                throw;
+            }
         }
+
+        internal ShadowLayoutReplacement CommitReplacement(ShadowLayoutReplacement replacement)
+        {
+            ShadowLayoutReplacement previous = _graph;
+            _graph = replacement;
+            return previous;
+        }
+
+        static int NormalizeResolution(int resolution) => Math.Max(MinResolution, resolution);
+        static int NormalizeCascadeCount(int cascadeCount) => Math.Clamp(cascadeCount, 1, MaxCascades);
 
         // GPU-skinning depth pipeline: the rest-pose SkinnedVertex stream (locations 0..6) at slot 0, the
         // { LightMvp } dynamic UBO at set 0 and the shared per-caster palette at set 1. Front-face cull (the same second-depth trick as the rigid
@@ -309,7 +319,7 @@ namespace KhaozEngine.Render3D.Rendering
         public void BeginDepthPass(IGpuCommandList cl, ReadOnlySpan<Matrix4x4> depthMats, int cascadeCount,
             Vector3 renderOrigin, ReadOnlySpan<float> noiseScales)
         {
-            int count = Math.Min(cascadeCount, _cascadeCount);
+            int count = Math.Min(cascadeCount, CascadeCount);
             var origin = new Vector4(renderOrigin, 0f);
             Span<byte> image = _lightImage;
             for (int i = 0; i < count; i++)
@@ -330,10 +340,10 @@ namespace KhaozEngine.Render3D.Rendering
             // whole-buffer write escapes the partial-uniform-write staging route the incumbent had, which Mapped the
             // immediate context and stalled on the GPU (see the _frameImage note in ModelRenderer.FrameUbo.cs).
             cl.UpdateBuffer(_lightUbo, 0, (ReadOnlySpan<byte>)_lightImage);
-            cl.SetFramebuffer(_fb);
+            cl.SetFramebuffer(_graph.Framebuffer);
             cl.ClearColorTarget(0, new Color(1f, 1f, 1f, 1f));  // 1.0 = far plane = no caster (whole atlas)
             cl.ClearDepthStencil(1f);
-            cl.SetPipeline(_pipeline);
+            cl.SetPipeline(_graph.Pipeline);
         }
 
         /// <summary>Bind cascade <paramref name="cascade"/> for the RIGID (and CPU-skinned) caster draws: scissor the
@@ -341,7 +351,7 @@ namespace KhaozEngine.Render3D.Rendering
         /// each cascade's caster runs. <see cref="BeginDepthPass"/> must be bound.</summary>
         public void BeginCascadeRigid(IGpuCommandList cl, int cascade)
         {
-            cl.SetPipeline(_pipeline);
+            cl.SetPipeline(_graph.Pipeline);
             SetCascadeScissor(cl, cascade);
             cl.SetGraphicsResourceSet(0, _set, (uint)cascade * CascadeSlotBytes);
         }
@@ -352,7 +362,7 @@ namespace KhaozEngine.Render3D.Rendering
         /// Switch back with <see cref="BeginCascadeRigid"/> for the plain spans.</summary>
         public void BeginCascadeRigidDissolve(IGpuCommandList cl, int cascade)
         {
-            cl.SetPipeline(_dissolvePipeline);
+            cl.SetPipeline(_graph.DissolvePipeline);
             SetCascadeScissor(cl, cascade);
             cl.SetGraphicsResourceSet(0, _dissolveSet, (uint)cascade * CascadeSlotBytes);
         }
@@ -363,14 +373,14 @@ namespace KhaozEngine.Render3D.Rendering
         /// must complement the fading props' rather than nest inside it.</summary>
         public void BeginCascadeRigidDissolveInverted(IGpuCommandList cl, int cascade)
         {
-            cl.SetPipeline(_dissolveInvertedPipeline);
+            cl.SetPipeline(_graph.DissolveInvertedPipeline);
             SetCascadeScissor(cl, cascade);
             cl.SetGraphicsResourceSet(0, _dissolveSet, (uint)cascade * CascadeSlotBytes);
         }
 
         void SetCascadeScissor(IGpuCommandList cl, int cascade)
         {
-            uint res = (uint)_perCascadeRes;
+            uint res = (uint)Resolution;
             cl.SetScissorRect(0, (uint)cascade * res, 0, res, res);
         }
 
@@ -447,7 +457,7 @@ namespace KhaozEngine.Render3D.Rendering
         /// casters (<see cref="BeginDepthPass"/> must be bound). Both window sets are bound per draw.</summary>
         public void BindCascadeSkinned(IGpuCommandList cl, int cascade)
         {
-            cl.SetPipeline(_skinnedPipeline);
+            cl.SetPipeline(_graph.SkinnedPipeline);
             SetCascadeScissor(cl, cascade);
             cl.SetGraphicsResourceSet(0, _skinnedSet!, 0);   // rebound per draw with the slot's dynamic offset below
             cl.SetGraphicsResourceSet(1, _bonePalette.Set, 0);   // likewise, with the caster's palette offset
@@ -469,13 +479,7 @@ namespace KhaozEngine.Render3D.Rendering
 
         public void Dispose()
         {
-            _pipeline?.Dispose();
-            _dissolvePipeline?.Dispose();
-            _dissolveInvertedPipeline?.Dispose();
-            _skinnedPipeline?.Dispose();
-            _fb?.Dispose();
-            _atlas?.Dispose();
-            _depthStencil?.Dispose();
+            _graph.Dispose();
             _set.Dispose();
             _dissolveSet.Dispose();
             _dissolveShaders.Dispose();
@@ -490,6 +494,45 @@ namespace KhaozEngine.Render3D.Rendering
             _skinnedSet?.Dispose();
             foreach (var r in _retiredSkinned) r.Dispose();
             _retiredSkinned.Clear();
+        }
+
+        internal sealed class ShadowLayoutReplacement : IDisposable
+        {
+            internal ShadowLayoutReplacement(int resolution, int cascadeCount, IGpuTexture shadowTexture,
+                IGpuTexture depthStencil, IGpuFramebuffer framebuffer, IGpuPipeline pipeline,
+                IGpuPipeline dissolvePipeline, IGpuPipeline dissolveInvertedPipeline, IGpuPipeline skinnedPipeline)
+            {
+                Resolution = resolution;
+                CascadeCount = cascadeCount;
+                ShadowTexture = shadowTexture;
+                DepthStencil = depthStencil;
+                Framebuffer = framebuffer;
+                Pipeline = pipeline;
+                DissolvePipeline = dissolvePipeline;
+                DissolveInvertedPipeline = dissolveInvertedPipeline;
+                SkinnedPipeline = skinnedPipeline;
+            }
+
+            internal int Resolution { get; }
+            internal int CascadeCount { get; }
+            internal IGpuTexture ShadowTexture { get; }
+            internal IGpuTexture DepthStencil { get; }
+            internal IGpuFramebuffer Framebuffer { get; }
+            internal IGpuPipeline Pipeline { get; }
+            internal IGpuPipeline DissolvePipeline { get; }
+            internal IGpuPipeline DissolveInvertedPipeline { get; }
+            internal IGpuPipeline SkinnedPipeline { get; }
+
+            public void Dispose()
+            {
+                SkinnedPipeline.Dispose();
+                DissolveInvertedPipeline.Dispose();
+                DissolvePipeline.Dispose();
+                Pipeline.Dispose();
+                Framebuffer.Dispose();
+                ShadowTexture.Dispose();
+                DepthStencil.Dispose();
+            }
         }
     }
 }

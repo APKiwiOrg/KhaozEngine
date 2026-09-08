@@ -110,9 +110,8 @@ namespace KhaozEngine.Render3D.Rendering
         /// <summary>As above, but binds an explicit <paramref name="sampler"/> instead of the shared default one
         /// (used by a material that overrides its <see cref="TerrainSamplerConfig"/>). The caller owns that sampler.</summary>
         public IGpuResourceSet CreateTileGroundMaterialSet(IGpuBuffer paramsUbo, IGpuTexture albedoArray, IGpuSampler sampler) =>
-            _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(
-                _tileGroundMaterialLayout, paramsUbo, albedoArray, sampler,
-                _shadowMap.ShadowTexture, _shadowMap.ShadowSampler));
+            CreateShadowSamplingSet(_tileGroundMaterialLayout, _shadowMap.ShadowTexture,
+                paramsUbo, albedoArray, sampler);
 
         /// <summary>Bind the tile-ground pipeline for the tile-ground pass (call once before its draw loop). The
         /// frame block it reads is the shared one <see cref="SetFrameUniforms"/> already uploaded this frame, so

@@ -48,9 +48,7 @@ namespace KhaozEngine.Render3D
             // A material that overrides the sampler gets its own (owned, disposed with the material); otherwise the
             // set binds the renderer's shared default sampler and nothing extra is owned here.
             IGpuSampler? ownedSampler = sampler.HasValue ? _model.CreateTerrainSampler(sampler.Value) : null;
-            var set = ownedSampler is null
-                ? _model.CreateSplatMaterialSet(ubo, albedo, normal)
-                : _model.CreateSplatMaterialSet(ubo, albedo, normal, ownedSampler);
+            var set = _model.CreateTrackedSplatMaterialSet(ubo, albedo, normal, ownedSampler);
             _splatMaterials.Add(new SplatMaterialEntry(albedo, normal, ubo, set, ownedSampler));
             return new SplatMaterialHandle(_splatMaterials.Count - 1);
         }
@@ -120,10 +118,11 @@ namespace KhaozEngine.Render3D
         {
             public readonly IGpuTexture AlbedoArray, NormalArray;
             public readonly IGpuBuffer Ubo;
-            public readonly IGpuResourceSet Set;
+            public IGpuResourceSet Set { get; private set; }
             readonly IGpuSampler? _ownedSampler;   // non-null only when the material overrode the shared sampler
             public SplatMaterialEntry(IGpuTexture albedo, IGpuTexture normal, IGpuBuffer ubo, IGpuResourceSet set, IGpuSampler? ownedSampler = null)
             { AlbedoArray = albedo; NormalArray = normal; Ubo = ubo; Set = set; _ownedSampler = ownedSampler; }
+            public void ReplaceSet(IGpuResourceSet set) => Set = set;
             public void Dispose() { Set.Dispose(); AlbedoArray.Dispose(); NormalArray.Dispose(); Ubo.Dispose(); _ownedSampler?.Dispose(); }
         }
     }

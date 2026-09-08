@@ -146,7 +146,7 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuTexture _white;            // 1x1 white default; white*vColor*vTint == vColor*vTint (untextured invariant)
         readonly IGpuTexture _flatNormal;       // 1x1 (128,128,255): tangent-space (0,0,1); no-map normal default
         readonly IGpuTexture _defaultRough;     // 1x1 (0,0,0): roughness 0 (fully smooth); no-map spec default
-        readonly IGpuResourceSet _defaultSet;   // UBO + white + flatNormal + defaultRough + sampler; bound for meshes with no material set
+        IGpuResourceSet _defaultSet;   // UBO + white + flatNormal + defaultRough + sampler; bound for meshes with no material set
         IGpuPipeline _pipeline = null!;         // rebuilt by SetOutputs when the MRT sample count (MSAA) changes (set via BuildPipelines)
         readonly IGpuShaderSet _shaders;
         // Teleport CharDissolve variant: the SAME layout + vertex/instance layouts + outputs as _pipeline, only the
@@ -159,10 +159,9 @@ namespace KhaozEngine.Render3D.Rendering
         // wrap + anisotropic (trilinear fallback), OWNED here, so it is disposed once for both.
         readonly IGpuSampler _terrainSampler;
 
-        // The key-light shadow map. Owned here so its stable texture handle can be bound into every material set
+        // The key-light shadow map. Owned here so its current texture handle can be bound into every material set
         // (the model fragment samples it at set 0 bindings 5/6, the splat and skinned fragments at set 1's last
-        // two). Allocated at a fixed resolution for the scene's lifetime (see the ctor), so material sets never
-        // need rebuilding on a resolution change.
+        // two). A live layout replacement rebuilds all of those sets before it commits the candidate atlas.
         readonly ShadowMapRenderer _shadowMap;
         /// <summary>The key-light shadow map (depth-only pass over instanced casters + the R32F depth target the
         /// receivers sample). Scene3D drives its per-frame depth pass and hands the light matrix / params in.</summary>
@@ -195,7 +194,7 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuShaderSet _skinnedDissolveShaders;
         IGpuPipeline _skinnedPipeline = null!;              // rebuilt by SetOutputs alongside _pipeline
         IGpuPipeline _skinnedDissolvePipeline = null!;
-        readonly IGpuResourceSet _skinnedDefaultFragSet;   // white/flat/rough defaults + shadow map (untextured skinned mesh)
+        IGpuResourceSet _skinnedDefaultFragSet;   // white/flat/rough defaults + shadow map (untextured skinned mesh)
         IGpuBuffer? _skinnedMainUbo; uint _skinnedMainSlots; IGpuResourceSet? _skinnedMainSet; // grow-with-retire per-draw UBO + single-slot window set
         // Persistent CPU image of the complete skinned per-draw UBO. D3D11 takes its cheap UpdateSubresource route
         // only when a uniform-buffer upload covers the entire destination from offset 0, so all slots are packed
@@ -253,8 +252,8 @@ namespace KhaozEngine.Render3D.Rendering
                 1, 1, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled));
             gd.UpdateTexture(_defaultRough, DefaultMaps.ZeroRoughnessTexel(), 0, 0, 1, 1);
 
-            _defaultSet = factory.CreateResourceSet(new GpuResourceSetDescription(_layout, _ubo, _white, _flatNormal, _defaultRough, _sampler,
-                _shadowMap.ShadowTexture, _shadowMap.ShadowSampler));
+            _defaultSet = CreateShadowSamplingSet(_layout, _shadowMap.ShadowTexture,
+                _ubo, _white, _flatNormal, _defaultRough, _sampler);
 
             _shaders = factory.CreateShadersFromSpirv(ShaderSources.ModelVert, ShaderSources.ModelFrag);
             _dissolveShaders = factory.CreateShadersFromSpirv(ShaderSources.ModelVert, ShaderSources.ModelDissolveFrag);
@@ -279,9 +278,8 @@ namespace KhaozEngine.Render3D.Rendering
                 new GpuResourceLayoutElement("ShadowSamp", GpuResourceKind.Sampler, GpuShaderStages.Fragment)));
             _skinnedShaders = factory.CreateShadersFromSpirv(ShaderSources.SkinnedModelVert, ShaderSources.SkinnedModelFrag);
             _skinnedDissolveShaders = factory.CreateShadersFromSpirv(ShaderSources.SkinnedModelVert, ShaderSources.SkinnedModelDissolveFrag);
-            _skinnedDefaultFragSet = factory.CreateResourceSet(new GpuResourceSetDescription(
-                _skinnedFragLayout, _white, _flatNormal, _defaultRough, _sampler,
-                _shadowMap.ShadowTexture, _shadowMap.ShadowSampler));
+            _skinnedDefaultFragSet = CreateShadowSamplingSet(_skinnedFragLayout, _shadowMap.ShadowTexture,
+                _white, _flatNormal, _defaultRough, _sampler);
 
             // Tileable detail textures REPEAT across the world, so wrap addressing; anisotropic for grazing ground
             // (CreateSampler falls back to trilinear when the backend lacks anisotropy). 16x anisotropy + a +1 mip
@@ -471,9 +469,8 @@ namespace KhaozEngine.Render3D.Rendering
         /// sampler. Owned by the caller (Scene3D) and disposed when the mesh unloads. Passing only an albedo
         /// reproduces the pre-PBR single-texture material exactly.</summary>
         public IGpuResourceSet CreateMaterialSet(IGpuTexture? albedo = null, IGpuTexture? normal = null, IGpuTexture? roughness = null) =>
-            _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(
-                _layout, _ubo, albedo ?? _white, normal ?? _flatNormal, roughness ?? _defaultRough, _sampler,
-                _shadowMap.ShadowTexture, _shadowMap.ShadowSampler));
+            CreateShadowSamplingSet(_layout, _shadowMap.ShadowTexture,
+                _ubo, albedo ?? _white, normal ?? _flatNormal, roughness ?? _defaultRough, _sampler);
 
         /// <summary>Create a wrap-addressed terrain sampler from <paramref name="cfg"/> (anisotropy/trilinear/point +
         /// mip LOD bias). The caller owns and disposes it. Mirrors the shared default sampler this renderer builds at
@@ -610,9 +607,8 @@ namespace KhaozEngine.Render3D.Rendering
         /// white/flat/zero so an untextured skinned mesh matches the CPU path. Owned by the caller (Scene3D), disposed
         /// when the mesh unloads.</summary>
         public IGpuResourceSet CreateSkinnedMaterialSet(IGpuTexture? albedo = null, IGpuTexture? normal = null, IGpuTexture? roughness = null) =>
-            _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(
-                _skinnedFragLayout, albedo ?? _white, normal ?? _flatNormal, roughness ?? _defaultRough, _sampler,
-                _shadowMap.ShadowTexture, _shadowMap.ShadowSampler));
+            CreateShadowSamplingSet(_skinnedFragLayout, _shadowMap.ShadowTexture,
+                albedo ?? _white, normal ?? _flatNormal, roughness ?? _defaultRough, _sampler);
 
         /// <summary>Ensure the per-draw main UBO holds at least <paramref name="slotCount"/> slots (each
         /// <see cref="SkinnedMainSlotBytes"/>), growing geometrically and retiring the old buffer + its set. Rebuilds

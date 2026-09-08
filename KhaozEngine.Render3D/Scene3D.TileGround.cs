@@ -157,10 +157,11 @@ namespace KhaozEngine.Render3D
         {
             public readonly IGpuTexture AlbedoArray;
             public readonly IGpuBuffer Ubo;
-            public readonly IGpuResourceSet Set;
+            public IGpuResourceSet Set { get; private set; }
             readonly IGpuSampler? _ownedSampler;   // non-null only when the material overrode the shared sampler
             public TileGroundMaterialEntry(IGpuTexture albedo, IGpuBuffer ubo, IGpuResourceSet set, IGpuSampler? ownedSampler = null)
             { AlbedoArray = albedo; Ubo = ubo; Set = set; _ownedSampler = ownedSampler; }
+            public void ReplaceSet(IGpuResourceSet set) => Set = set;
             public void Dispose() { Set.Dispose(); AlbedoArray.Dispose(); Ubo.Dispose(); _ownedSampler?.Dispose(); }
         }
     }

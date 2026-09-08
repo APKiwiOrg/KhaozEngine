@@ -26,6 +26,17 @@ if (wait > 0f) Thread.Sleep(TimeSpan.FromSeconds(wait)); else Thread.Yield();
   versioned restart record. The game still owns message kinds, delivery reliability, authorization, and the
   storage adapter.
 
+`WorldClockState(TimeOfDay, DayLengthSeconds, TimeScale)` is the immutable state contract. Time of day is
+normalized to `[0, 1)`, day length is finite and greater than zero, and time scale is finite and non-negative.
+`WorldClockCommand(WorldClockCommandKind Kind, float Value)` carries one mutation. Its kinds are
+`SetTimeOfDay`, `SetTimeScale`, and `SetDayLength`. Set-time values wrap after validation, set-scale values must
+be non-negative, and set-day-length values must be greater than zero.
+
+`WorldClockHostOptions` exposes `BroadcastIntervalSeconds` (default `5`, finite and greater than zero),
+`MaxTimeScale` (default `1000`, finite and non-negative), and `MinDayLengthSeconds` (default `60`, finite and
+greater than zero). The host constructor rejects invalid options. Applied scale commands clamp to
+`[0, MaxTimeScale]`, while day-length commands clamp up to `MinDayLengthSeconds`.
+
 ```csharp
 const ushort WorldClockStateMessage = 40;
 

@@ -14557,6 +14557,21 @@ whose mark is stale would reject the new player's seq-0-onward input and freeze 
 owns normalized time math and payload validation. The game owns the protocol envelope, authorization, and durable
 storage.
 
+The immutable replication contract is `WorldClockState(TimeOfDay, DayLengthSeconds, TimeScale)`. A decoded state
+requires finite values, normalized time in `[0, 1)`, a day length greater than zero, and a non-negative scale.
+Commands use `WorldClockCommand(WorldClockCommandKind Kind, float Value)`. The three kinds are `SetTimeOfDay`,
+`SetTimeScale`, and `SetDayLength`. Set-time accepts any finite value and wraps it into normalized time.
+Set-scale requires a finite non-negative value. Set-day-length requires a finite value greater than zero.
+
+`WorldClockHostOptions` has three init properties:
+
+- `BroadcastIntervalSeconds`, default `5`, must be finite and greater than zero
+- `MaxTimeScale`, default `1000`, must be finite and non-negative
+- `MinDayLengthSeconds`, default `60`, must be finite and greater than zero
+
+The host constructor rejects invalid options. Valid scale commands clamp to `[0, MaxTimeScale]`, and valid
+day-length commands clamp up to `MinDayLengthSeconds`.
+
 ```csharp
 const ushort WorldClockStateMessage = 40;
 const ushort WorldClockCommandMessage = 41;
@@ -14615,9 +14630,7 @@ void UpdateLighting(float realDeltaSeconds)
 }
 ```
 
-Defaults are a state broadcast every 5 real seconds, a maximum time scale of 1000, and a minimum day length of
-60 real seconds. Override them through `WorldClockHostOptions`. Zero time scale freezes the clock. Periodic state
-messages snap the client mirror back to authority.
+Zero time scale freezes the clock. Periodic state messages snap the client mirror back to authority.
 
 `WorldClockAnchor` is the durable restart boundary. It encodes a UTC Unix-seconds instant and normalized time as
 a versioned 20-byte record. The engine owns that record and the downtime calculation. A game using

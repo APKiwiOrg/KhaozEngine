@@ -84,11 +84,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// rather than those two numbers so a factory that has to validate against a third later needs no signature
         /// change.</param>
         /// <param name="minUniformBufferOffsetAlignment">The device limit the ring stride is rounded to.</param>
+        /// <param name="spirvBytes">The opened front-end disk cache, or null for no cache.</param>
         internal VulkanResourceFactory(VulkanResourceOwner owner, VulkanRingAllocator rings,
             VulkanSetupCommands setup, VulkanDescriptors descriptors, VulkanShaderModuleCache modules,
             VulkanPipelines pipelines, Func<IGpuCommandList> createCommandList, Func<IGpuFence> createFence,
             in GpuCapabilities capabilities,
-            ulong minUniformBufferOffsetAlignment = VulkanRingStride.OffsetAlignmentFloor)
+            ulong minUniformBufferOffsetAlignment = VulkanRingStride.OffsetAlignmentFloor,
+            SpirvBytesCache? spirvBytes = null)
         {
             ArgumentNullException.ThrowIfNull(owner);
             ArgumentNullException.ThrowIfNull(rings);
@@ -104,7 +106,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             _setup = setup;
             _descriptors = descriptors;
             _modules = modules;
-            _spirvBytes = SpirvBytesCache.FromEnvironment();
+            _spirvBytes = spirvBytes;
             _pipelines = pipelines;
             _createCommandList = createCommandList;
             _createFence = createFence;

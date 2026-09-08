@@ -235,6 +235,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     // engine-version folders, which is exactly why it is a caller's call: a device built over
                     // fake seams by the test hook passes null and sweeps nothing.
                     VulkanPipelineCacheFile.FromEnvironment(read.PipelineCacheIdentity),
+                    // THE DEVICE-FREE SPIR-V CACHE, opened beside the device cache for the same reason: opening
+                    // prunes old version folders, so fake-seam devices and resource-factory tests pass null and
+                    // cannot sweep a developer's cache as a side effect.
+                    SpirvBytesCache.FromEnvironment(),
                     // The device's own maxDescriptorSetUniformBuffersDynamic, read off the SAME physical-device
                     // read the support probe gated on, so 8.3's third and fourth defences measure against one
                     // number rather than two reads that can disagree.

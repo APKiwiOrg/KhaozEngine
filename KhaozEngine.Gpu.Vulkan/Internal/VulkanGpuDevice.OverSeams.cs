@@ -108,6 +108,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 shaderApi,
                 pipelineApi,
                 pipelineCache: null,
+                spirvBytes: null,
                 maxDynamicUniformBuffers,
                 framesInFlight,
                 windowed: null);

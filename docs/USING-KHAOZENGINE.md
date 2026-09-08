@@ -3210,7 +3210,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       a rare settings-change hitch, not work added to ordinary frames. If allocation or binding creation fails, the
       current atlas and committed property values remain active. The scene logs one error for that failed request and
       remains drawable. A request changes only the atlas layout. The current shadow mode, strength, bias, distance,
-      blend, and filtering settings stay unchanged.
+      blend, and filtering settings stay unchanged. Issue requests on the scene thread, like every other `Scene3D`
+      mutation. No cross-thread lock is added. A request after scene disposal throws `ObjectDisposedException`.
+      Disposal clears an unapplied request and frees the current graph exactly once.
     - **Persisted detail setting.** Persist `ShadowMapDetail` in the game's graphics settings, not its numeric atlas
       resolution. Map that enum through `ShadowSettings.ForDetail` before the `GameApp3D` base constructor builds the
       scene:
@@ -6289,7 +6291,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.37.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.38.0" />
 ```
 
 ```csharp
@@ -6853,7 +6855,8 @@ multiplying the fields yourself: a blind per-field multiply lands on a set `Vali
 
 ### Far props: HLOD merged clusters
 
-`Scene3DChunkSink.MergeStats` returns cumulative `HlodMergeStats`. `MalformedCornersDropped` counts each
+`PropClusterRenderer` is the shared owner behind terrain streaming and TileWorld far props.
+`Scene3DChunkSink.MergeStats` forwards its cumulative `HlodMergeStats`. `MalformedCornersDropped` counts each
 out-of-range source corner contained during HLOD building, including repeated placements. A nonzero count
 identifies malformed source content even when containment keeps the live client running. At authoring ingress,
 `GltfLoader` and every `PropLoader` path reject invalid indices with asset identity, bad index and vertex count.
@@ -6871,8 +6874,13 @@ var hlodSource = new Dictionary<string, GltfMesh>();
 foreach (AssetEntry e in manifest.Props) hlodSource[e.Id] = PropLoader.LoadProp(e);
 
 var treeLayer = PropLayer.ScatterLayer(forest, treeMeshes, drawRadius: 320f, fadeBandWidth: 40f)
+    .WithLodCrossfade(16f)
     .WithHlod(hlodSource, hlodDistance: 220f, weldCell: 1.5f, crossfadeWidth: 40f);
 ```
+
+`WithLodCrossfade(width)` changes the authored LOD0 to LOD1 handoff from a hard swap to complementary dissolve
+coverage centred on `LodDistance`. Both meshes share one deterministic distance transition with opposite phases,
+and the shadow pass reads the same phases. Zero keeps the old hard swap.
 
 Beyond `hlodDistance` (chunk-centre to focus, in metres) the cluster draws its merged mesh instead of the props.
 Across `crossfadeWidth` the two crossfade - the props dissolve out and the merged mesh dissolves in, both through
@@ -6881,10 +6889,17 @@ the 14.5.0 rigid-dissolve primitive, deterministic by distance with no per-frame
 blobby, canopy shape and colour hold), 0 keeps the full-detail merge. Decor-ring chunks show the merged mesh too,
 so the far field is visible forest rather than bare terrain, while staying render-only for physics (no scatter, no
 prop colliders). The bake is a **runtime** merge+weld at chunk load (`PropHlod.BuildMergedMesh`, pure and
-deterministic), cached per cluster in the chunk handle and freed on unload - there is no offline artifact to
-generate and no manifest field to stamp. Everything defaults off, so a layer without `WithHlod` draws its props at
-every distance exactly as before. `PropHlod.Merge` / `Weld` / `CrossfadeAt` are public if you want the pieces
-directly (a bake tool, a custom sink).
+deterministic), built through `PropClusterRenderer.BuildCpu` without GPU access and applied on the scene thread.
+There is no offline artifact to generate and no manifest field to stamp. Everything defaults off, so a layer
+without `WithHlod` draws its props at every distance exactly as before. `PropHlod.Merge` / `Weld` /
+`CrossfadeAt` are public if you want the pieces directly (a bake tool, a custom sink).
+
+`PropClusterBuildRequest` carries detached placements, `PropClusterKey`, content generation, cluster area and
+`PropLayer`. The owner retains accepted HLOD handles across focus movement and pure ground re-LOD. Apply rejects
+stale generations and work completed after unload. Initial build failure retries three times, logs once for that
+key and generation, and retains individual props. A failed rebuild keeps the last accepted HLOD handle. Upload,
+replacement, invalidation, draw and unload stay on the scene thread. `Unload` is idempotent. `Dispose` releases
+every retained handle exactly once.
 
 Under `ShadowMode.ShadowMap`, both halves of the crossfade now cast in proportion to their dissolve (issue #287):
 the props' shadow thins out as the merged mesh's thins in, instead of both casting at full strength across the whole
@@ -7775,12 +7790,19 @@ var resolver = new GltfMeshResolver(kitRoot, new GreyboxMeshResolver(doc.TileSiz
 
 A missing file or a loader throw logs ONE line naming the archetype, the resolved path and the reason, then
 answers with the fallback, so the boxes stand in exactly where a glb is not there yet. That failure is cached like
-any other result, so the same reference never logs twice or touches the disk twice. An empty `MeshRef` skips
+any other result, so the same cache entry does not touch the disk twice. Diagnostics deduplicate by load purpose
+and normalized path. Full parts, LOD parts, flattened LOD1 and flattened LOD0 may each report their own recovery
+once without repeating it for another archetype or path alias. An empty `MeshRef` skips
 straight to the fallback with no log line at all, an absolute `MeshRef` is used as it stands, and a `MeshRef` no
 path API will accept falls back like any other bad ref rather than faulting the view. Nothing about bad content
 throws out of `Resolve`, and the parts it hands out are read-only. The cache is keyed by MESH REFERENCE and has no
 eviction, so two archetypes sharing a `MeshRef` hold one copy between them and every cached part's decoded pixels
 stay resident for the resolver's life.
+
+`TileObjectArchetype.LodMeshRef` names one optional authored LOD1 glb and participates in catalog hash scheme 2.
+`ResolveLod` keeps LOD0 when that file is blank, missing or malformed. `ResolveFlatForHlod` prefers flattened
+LOD1, falls back to flattened LOD0, and returns null only when neither can supply an HLOD source. Missing render
+LOD never changes the full authored footprint, collision, pathing, object identity or server representation.
 
 **Drawing something that is not a tile object.** `ITileMeshResolver.Resolve(meshRef)` takes the reference on its
 own, for a player avatar, an NPC or a dropped item, so reaching a resolver's cache and its fallback no longer means
@@ -7799,6 +7821,80 @@ shapes are built to: the origin at the footprint CENTRE on the piece's own floor
 plane. Colours come from the glb's materials or from per-vertex `COLOR_0`, which `GltfLoader` multiplies into the
 material base colour, so a palette-painted kit needs no textures. The full contract is in the
 `KhaozEngine.TileWorld.Render3D` package README.
+
+### Large TileWorld LOD, HLOD and region residency (18.38.0)
+
+The default stays the existing synchronous region ring and ordinary props at `PropDrawRadius` 96 m. Opt selected
+archetypes into the shared cluster owner through `TileWorldViewOptions.PropLayers`, then give the residency the
+three-state profile:
+
+```csharp
+var treeLayer = new TilePropLayerDefinition
+{
+    Id = "trees",
+    ArchetypeIds = new HashSet<string> { "oak", "pine" },
+    DrawRadius = 576f,
+    LodDistance = 64f,
+    LodCrossfadeWidth = 16f,
+    HlodDistance = 192f,
+    HlodCrossfadeWidth = 32f,
+    HlodWeldCell = 1.5f,
+    CastsShadows = true,
+};
+var options = new TileWorldViewOptions { PropLayers = new[] { treeLayer } };
+using var view = new TileWorldView(scene, doc, catalogs, resolver, options);
+var regions = new TileRegionResidency(
+    source,
+    view,
+    TileResidencyConfig.Default,
+    new TileRegionResidencyProfile(GameplayRadius: 4, DecorRadius: 10, UnloadRadius: 12));
+```
+
+Each definition owns a disjoint, non-empty archetype set. The view validates finite distances, unique layer IDs,
+known archetypes, and that LOD and HLOD do not exceed the draw radius. When HLOD is enabled, its positive distance
+must also exceed `LodDistance`. A selected object is removed from ordinary prop submission and
+appears in exactly one `TilePropLayerSnapshot`, so it cannot double-draw. `TileRegionProps` is an immutable,
+generation-tagged region-plane snapshot. It carries object IDs and detached placements in stable order. Worker
+builds read that snapshot and resolved CPU mesh data only. They never read the live document, overrides, resolver
+caches or scene.
+
+| Stage | Range | Representation |
+|---|---:|---|
+| LOD0 | 0 to 56 m | Full textured parts |
+| LOD crossfade | 56 to 72 m | Complementary LOD0 and LOD1 dissolve |
+| LOD1 | 72 to 176 m | Authored simplified parts |
+| HLOD crossfade | 176 to 208 m | Individual LOD1 to region HLOD |
+| HLOD | 208 to 544 m | One welded mesh per region and layer |
+| Exit fade | 544 to 576 m | HLOD dissolve to empty |
+
+That table is the first shared profile for one-metre tiles and 64-metre regions. Its values are draw radius 576 m,
+LOD distance 64 m with 16 m crossfade, HLOD distance 192 m with 32 m crossfade, HLOD weld cell 1.5 m, gameplay
+radius 4 regions, decor radius 10 regions and unload radius 12 regions.
+
+`TileRegionResidencyState.Gameplay` holds full ground, ordinary props, LOD0 and LOD1, ground cover, water and
+picking. `Decor` holds `TileGroundLod.Coarse4` plus HLOD clusters, with no ordinary prop batch, ground cover or
+picking cache. `Unloaded` retains no region snapshot or GPU handle. An already resident region stays decor through
+the unload radius, which is the hysteresis against border churn. These are render states only. The source still
+loads whole authored regions, and collision, navigation, simulation, replication and hashes continue to use the
+full document.
+
+`Coarse4` replaces a compatible four by four interior with one triangle pair over global lattice corners. A cell
+falls back to full tile triangulation when any tile is void or `NoDraw`, when water and ground mix, or when it
+contains a bridge, overlay, shaped cut or material change. Transition edges retain canonical lattice points.
+Roads, rivers, bridge approaches, material boundaries, voids and region seams therefore keep their authored
+shape while large uniform interiors collapse.
+
+CPU ground and HLOD builds run on background workers. The scene thread applies completed generations nearest
+first with independent caps for full ground, coarse ground and HLOD. `PrimeAround` may drain gameplay full ground
+synchronously after a teleport, but decor stays budgeted. Missing LOD1 retains LOD0. A missing flattened HLOD
+source retains individual geometry instead of creating a hole. An initial HLOD build retries three times and
+then logs once. A rebuild failure retains the last accepted handle. An override replaces only its region snapshot
+and rejects stale work before upload.
+
+Picking always uses full object bounds and stable document IDs inside gameplay residency. HLOD is never a hover,
+click or collision target. On unload, the view cancels queued work and releases ground, cover, cluster and snapshot
+state. View disposal drains the workers, rejects late completions and frees every live handle. The scene remains
+caller-owned.
 
 **The ground materials are one set per view.** `TileGroundMaterials.Build(catalogs, load?)` gives every catalog
 material a layer of the `TileGroundMaterialSet`, in ascending id order, with one reserved magenta layer last for
@@ -11711,7 +11807,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.37.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.38.0" />
 ```
 
 ```csharp
@@ -11747,7 +11843,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.37.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.38.0" />
 ```
 
 ```csharp
@@ -11989,7 +12085,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.37.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.38.0" />
 ```
 
 ```csharp
@@ -14037,7 +14133,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="18.37.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="18.38.0" />
 </ItemGroup>
 ```
 

@@ -498,8 +498,10 @@ KhaozEngine.Game3D -> KhaozEngine.TileWorld.Render3D             (umbrella Proje
 ```
 
 All six are forward edges onto packages that already sit below it, and nothing references back. The
-`Terrain.Render3D` edge is the one worth naming: the tile world reuses the prop renderer outright (LOD, instancing,
-distance dissolve) and the ground-cover renderer outright rather than growing a second placement path. The
+`Terrain.Render3D` edge is the one worth naming: the tile world reuses `PropRenderer` for instancing and
+complementary LOD transitions, `PropClusterRenderer` for generation-safe HLOD build, apply, draw and lifetime,
+and the ground-cover renderer rather than growing a second placement path. `Scene3DChunkSink` and TileWorld now
+delegate cluster ownership to the same component. The
 render-free `Terrain` edge exists only for the generic distribution and sample records. This is why these edges
 exist when there is no dependency from `TileWorld` to `Terrain`. `TileWorldView` reaches the scene
 through its own `ITileWorldScene` seam rather than a `Scene3D` field, so every view and residency rule is testable
@@ -509,9 +511,7 @@ without a device, and `Scene3DTileWorldScene` is the one place the two meet.
 Its default is a no-op for existing scene fakes and adapters. `Scene3DTileWorldScene` forwards to the
 Terrain.Render3D cache, which owns `Scene3D` foliage batches. This adds no new package dependency.
 
-**The seam grew four members for textured ground and water (17.38.0), a fifth for silhouettes (18.3.0),
-a sixth for rigid mesh dissolve (18.19.0), a seventh for authored ground cover, and an eighth for
-translucent overlay meshes, all DEFAULT interface implementations.**
+**The seam's additive members remain default interface implementations.**
 `LoadTileGroundMaterial(TileGroundMaterialSet)` (defaults to an invalid handle),
 `UnloadTileGroundMaterial(TileGroundMaterialHandle)` (a no-op), `LoadMesh(GltfMesh,
 TileGroundMaterialHandle)` (falls through to the material-free `LoadMesh`, so the same geometry renders through
@@ -521,12 +521,16 @@ the model path), `DrawWater(in WaterPlane)` (a no-op, so no water is drawn) and
 the existing noise dissolve and shadow mask when the scene supports it. `DrawGroundCover` forwards cached
 ground-cover instances to the scene and defaults to drawing none. `DrawOverlayMesh(MeshHandle, Matrix4x4)`
 forwards the unlit, depth-tested, alpha-blended overlay pass. Its default throws `NotSupportedException`,
-so a custom scene cannot silently turn a translucent request into an opaque mesh. Defaults
+so a custom scene cannot silently turn a translucent request into an opaque mesh.
+`CreatePropClusterOwner()` returns the view-owned `ITileWorldPropClusterOwner` used for detached CPU builds,
+scene-thread apply and draw, invalidation, unload and disposal. Its default also throws `NotSupportedException`.
+An older custom scene can still host the default empty `TileWorldViewOptions.PropLayers`, while an opted-in
+large-world view reports the missing capability at construction instead of drawing a partial horizon. Defaults
 rather than abstract
 members because two implementations sit outside this repo's control (a consumer's own, and Grimhollow's test
 fake), and the alternative is a compile break in a downstream game for a feature it has not adopted. The seam
-still adds no abstraction of its own: each of the eight is `Scene3D` API forwarded straight through by
-`Scene3DTileWorldScene`. The mesher takes a second, smaller seam for the same headless reason,
+still adds no rendering policy of its own. `Scene3DTileWorldScene` forwards the draw members straight through and
+adapts `CreatePropClusterOwner` onto Terrain.Render3D's `PropClusterRenderer`. The mesher takes a second, smaller seam for the same headless reason,
 `ITileGroundSlotMap` (`SlotOf(materialId)`, `MissingSlot`), which is what lets a slot map be swapped for a stub in
 a test. `TileGroundMaterialSet` implements it, and `IdentitySlotMap` is the shipped stand-in for a caller that has
 not built a set.

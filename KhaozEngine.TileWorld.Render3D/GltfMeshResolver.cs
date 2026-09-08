@@ -15,19 +15,21 @@ namespace KhaozEngine.TileWorld;
 /// separator here, and an already-absolute reference is used as it stands.
 ///
 /// <para>Content outlives a kit edit, so a missing file, a loader throw, or a mesh reference no path API will
-/// even accept is NOT fatal: it logs ONE line naming the archetype, the path and the reason, then answers with
-/// the fallback resolver's mesh. NOTHING here throws out of either <c>Resolve</c> overload for bad content. Pass a
+/// even accept is NOT fatal. A required full mesh logs the archetype, path and reason, then answers with
+/// the fallback resolver's mesh. Optional LOD and flattened loads log the representation they retained or tried
+/// next. NOTHING here throws out of either <c>Resolve</c> overload for bad content. Pass a
 /// <see cref="GreyboxMeshResolver"/> as the fallback and a half-authored kit renders as boxes where the glb is
 /// missing and as the real mesh everywhere else. With no fallback the answer is null, which the view draws as its
 /// placeholder box plus a line of its own. An archetype with an EMPTY mesh reference is not a failure at all (it
 /// is simply not authored yet), so it goes straight to the fallback with no log line and without touching the
 /// disk.</para>
 ///
-/// <para>Every result is cached per MESH REFERENCE, failures included, so a later call for a failed reference hands
-/// back the same answer without re-logging or probing the disk again, and the two <c>Resolve</c> overloads share
-/// one entry: an avatar drawn through <see cref="Resolve(string)"/> and an archetype pointing at the same glb parse
-/// it once between them. Two archetypes sharing one <c>MeshRef</c> likewise hold one copy rather than two, and a
-/// missing file logs once per FILE rather than once per archetype. The cache is a plain dictionary, so resolve on
+/// <para>Full parts, LOD parts and flattened sources have separate caches per mesh reference, failures included,
+/// so a later call for the same representation hands back the same answer without probing disk again. The two
+/// full <c>Resolve</c> overloads share one entry: an avatar drawn through <see cref="Resolve(string)"/> and an
+/// archetype pointing at the same glb parse it once between them. Diagnostics are deduplicated per load purpose
+/// and normalized path, so each recovery can speak once without repeating for path aliases or later archetypes.
+/// The cache is a plain dictionary, so resolve on
 /// one thread, exactly as <see cref="GreyboxMeshResolver"/> documents, and the list handed out is read-only, so a
 /// caller cannot write through it into the shared cache. What is NOT cached here is the fallback's answer, because
 /// it is the ARCHETYPE's rather than the reference's: a missing glb asks the fallback again on every call, and both
@@ -62,8 +64,8 @@ public sealed class GltfMeshResolver : ITileMeshResolver, ITileLodMeshResolver
     }
 
     /// <summary>A resolver that loads each archetype's <c>MeshRef</c> from under <paramref name="rootDirectory"/>,
-    /// answering with <paramref name="fallback"/> (null when none) whenever a glb is missing or fails to load, and
-    /// reporting each such archetype once through <paramref name="log"/>.</summary>
+    /// answering with <paramref name="fallback"/> (null when none) whenever a required glb is missing or fails to
+    /// load, and reporting failures once per load purpose and normalized path through <paramref name="log"/>.</summary>
     public GltfMeshResolver(string rootDirectory, ITileMeshResolver? fallback = null, Action<string>? log = null)
     {
         ArgumentNullException.ThrowIfNull(rootDirectory);
@@ -94,8 +96,8 @@ public sealed class GltfMeshResolver : ITileMeshResolver, ITileLodMeshResolver
     }
 
     /// <summary>The optional authored LOD parts for this archetype. A blank, missing, or malformed LOD answers
-    /// null without consulting the required-mesh fallback, so a caller can retain LOD0. Failures are cached and
-    /// logged once. Never throws over bad content.</summary>
+    /// null without consulting the required-mesh fallback, so a caller can retain LOD0. Failures are cached, with
+    /// diagnostics deduplicated for the LOD-parts purpose and normalized path. Never throws over bad content.</summary>
     /// <exception cref="ArgumentNullException"><paramref name="archetype"/> is null.</exception>
     public IReadOnlyList<GltfMeshPart>? ResolveLod(TileObjectArchetype archetype)
     {
@@ -107,8 +109,9 @@ public sealed class GltfMeshResolver : ITileMeshResolver, ITileLodMeshResolver
 
     /// <summary>The flattened CPU mesh used to build HLOD for this archetype. The authored LOD is preferred when
     /// present and valid, otherwise the full mesh is tried. Missing or malformed content answers null when neither
-    /// source loads, so individual geometry can remain visible. Results and failures are cached per mesh reference.
-    /// Never throws over bad content.</summary>
+    /// source loads, so individual geometry can remain visible. Results and failures are cached per mesh reference,
+    /// with diagnostics deduplicated separately for flattened LOD1 and LOD0 by normalized path. Never throws over
+    /// bad content.</summary>
     /// <exception cref="ArgumentNullException"><paramref name="archetype"/> is null.</exception>
     public GltfMesh? ResolveFlatForHlod(TileObjectArchetype archetype)
     {
@@ -222,8 +225,9 @@ public sealed class GltfMeshResolver : ITileMeshResolver, ITileLodMeshResolver
     }
 
     // The archetype is named when there is one, because a catalog id is what a reader fixes the content under. It
-    // is the FIRST caller's archetype either way: the line is written once per mesh reference, so a second
-    // archetype on the same broken reference is answered off the cached failure and never reaches here.
+    // is the FIRST caller's archetype for this load purpose and normalized path. Diagnostics are deduplicated by
+    // that pair, so full parts, LOD parts and flattened sources can each report the failure they are recovering
+    // from without repeating it for aliases or later archetypes that resolve to the same path.
     void LogFailure(
         string path,
         string reason,

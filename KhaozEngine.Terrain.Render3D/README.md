@@ -107,7 +107,10 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   one of a layer's `Meshes`/`PartMeshes` is set, and its LOD set matches that representation
   (`LodMeshes`/`LodPartMeshes`). `FadeBandWidth` (default 0 = hard cut) dissolves props across the band just
   inside `DrawRadius`. A positive `LodDistance` with LOD variants swaps a kit to its far mesh past that
-  distance. `CastsShadows` (default true) is the layer's shadow policy: pass `castsShadows: false` to ANY of the
+  distance. `WithLodCrossfade(width)` opts into a complementary LOD0 to LOD1 dissolve centred on
+  `LodDistance`. Its default width of zero preserves the old hard swap. The colour and shadow paths use the same
+  deterministic coverage phase, so the handoff does not double-brighten the body or double-cast its shadow.
+  `CastsShadows` (default true) is the layer's shadow policy: pass `castsShadows: false` to ANY of the
   factories and the layer's props (and its merged HLOD mesh) stop writing into the key light's shadow depth pass
   while still drawing and still RECEIVING shadows - what a dense short-radius ground-cover or understory layer wants
   when hundreds of small casters pop on the draw-radius circle (issue #287). `Scene3DChunkSink.Draw` reads whichever
@@ -144,7 +147,9 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   (the 14.5.0 opaque-noise-discard primitive, so overlapping fades never sort-fight) ramps deterministically
   0..1 by horizontal distance over `[drawRadius - fadeBandWidth, drawRadius]`, so props thin out instead of
   popping; and `lodMeshes`/`lodParts` + `lodDistance` swap a kit to an author-supplied far LOD mesh past
-  `lodDistance` (per-kit opt-in, an id with no variant keeps its full mesh). A third knob, `castsShadows`
+  `lodDistance` (per-kit opt-in, an id with no variant keeps its full mesh). `lodCrossfadeWidth` opts both
+  overloads into the same complementary LOD0 to LOD1 handoff used by `PropLayer.WithLodCrossfade`. Zero keeps
+  the hard swap. A third knob, `castsShadows`
   (default true), is policy rather than presentation: false stamps every queued prop as a non-caster (issue #287).
   Left true, a prop inside the fade band now also thins its SHADOW as it dissolves, instead of casting solid up to
   the cull radius. See
@@ -177,6 +182,17 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   Wind strength is relative to mesh height. Advance `Scene3D.EffectTimeSeconds` each frame. Other cover
   policies keep the CPU path described above. `scene.ReleaseGroundCover(batch)` retires retained data
   when that source is no longer needed. Changed model bindings recreate the buffer automatically.
+- **`PropClusterRenderer`** - the shared runtime owner for terrain and TileWorld prop clusters.
+  `BuildCpu(PropClusterBuildRequest)` accepts detached placements, a stable `PropClusterKey`, a content
+  generation, a cluster area and its `PropLayer`. It performs the pure `PropHlod` merge on a worker with no GPU
+  access. `Apply(key, build)`, `Draw(focus)`, `Invalidate(key)` and `Unload(key)` belong on the scene thread. Apply
+  discards stale generations and results completed after unload. An initial HLOD failure retries three times,
+  logs once for that key and generation, and retains individual props. A rebuild failure keeps the last accepted
+  merged handle. A successful replacement uploads first and retires the old handle after the new generation is
+  accepted. `MergeStats` reports cumulative builds, uploads, bytes and malformed corners. `Unload` is idempotent,
+  and `Dispose` frees every retained handle exactly once. `Scene3DChunkSink` delegates this ownership while keeping
+  terrain, physics, water and chunk orchestration itself, so existing `PropLayer.WithHlod` callers need no format
+  or game-code migration.
 - **`PropHlod`** - author-agnostic HLOD (hierarchical LOD) merge+weld for a chunk cluster's props.
   `PropHlod.Merge(placements, sourceMeshes)` transforms each placement's flat source mesh to world space and
   concatenates into one `GltfMesh` (per-kit opt-in, an id with no source mesh contributes nothing).
@@ -185,9 +201,9 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   silhouettes and canopy colour hold at range (the spike measured a 41-prop cluster 139,608 -> 16,178 tris at a
   1.5 m cell). `PropHlod.BuildMergedMesh(placements, sourceMeshes, weldCellSize)` is the one-call bake (merge, then
   weld when the cell is positive), and `PropHlod.CrossfadeAt(distance, hlodDistance, crossfadeWidth)` is the 0..1
-  distance crossfade curve. All pure and deterministic, so the bake reproduces byte-for-byte - `Scene3DChunkSink`
-  runs it as a RUNTIME bake at chunk load (cached per cluster in the chunk handle, freed on unload, rebuilt only
-  on an Invalidate field rebuild), and the same function is offline-ready if a future artifact bake wants it. The
+  distance crossfade curve. All pure and deterministic, so the bake reproduces byte-for-byte.
+  `PropClusterRenderer` runs it as a runtime build and keeps the accepted generation until invalidation or unload.
+  The same function remains offline-ready if a future artifact bake wants it. The
   merged mesh keeps flat **vertex-colour** albedo (from the `PropLoader.LoadProp` source form), so it renders
   through the existing untextured `Scene3D.Draw` path with no atlas, no impostor card, and no new shader.
   Malformed source corners still collapse to a safe degenerate corner for live containment.

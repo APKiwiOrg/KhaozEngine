@@ -1,6 +1,6 @@
 # Shared large-world LOD and HLOD for TileWorld
 
-Status: Approved for implementation. Program issue
+Status: Complete. Implemented in `18.38.0`. Program issue
 [855](https://github.com/APKiwiOrg/KhaozEngine/issues/855). Grimhollow
 [158](https://github.com/APKiwiOrg/Grimhollow/issues/158) is the active consumer.
 

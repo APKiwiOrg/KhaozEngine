@@ -130,6 +130,19 @@ Malformed or duplicate content throws a `TileWorldException` naming the source f
 has no simplified tier. Both mesh references participate in the canonical catalog hash, while collision and
 pathing continue to use the archetype footprint and `CollisionKind`.
 
+```json
+{
+  "id": "oak",
+  "name": "Oak",
+  "meshRef": "models/oak.glb",
+  "lodMeshRef": "models/lod/oak.glb"
+}
+```
+
+This is one authored render tier only. It does not change the object's footprint, stable ID, collision, pathing,
+world-region bytes or server representation. Catalog hash scheme 2 includes `lodMeshRef`, so client and server
+catalog gates detect a different LOD reference even though gameplay authority still comes from the full object.
+
 `TilesPerMetre` is the optional `tilesPerMetre` catalog field, the texture repeats per metre the textured ground
 path gives that material, null to take the renderer default of 0.5. `MaterialSource(id)` returns the catalog
 FILE a material was loaded from, or null when the catalog came from `LoadJson`, `Merge` or `Greybox` rather than

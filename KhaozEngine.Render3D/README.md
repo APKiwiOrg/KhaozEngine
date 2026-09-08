@@ -239,6 +239,10 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   device rejects the replacement, the scene logs one error for that request and keeps the old drawable layout.
   Requests change only the atlas layout. The current shadow mode and the other live shadow settings stay unchanged.
   Direct writes to either committed property still throw. The explicit request methods are the only live resize path.
+  Requests follow the rest of `Scene3D` and originate on the scene thread. No cross-thread mutation lock is added.
+  A request after disposal throws `ObjectDisposedException`. Disposal clears an unapplied request and frees only
+  the current resource graph, while a successful swap disposes the old atlas and receiver sets after the idle
+  boundary that made them safe.
   `ShadowStrength`, and
   the acne biases `ShadowNormalOffset` (default `2.5` texels, the extent-aware normal-offset bias, scaled PER CASCADE
   so far cascades do not acne and near ones do not detach) plus the tiny residual depth biases

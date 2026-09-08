@@ -2,11 +2,12 @@
 
 The render arm of [KhaozEngine.TileWorld](../KhaozEngine.TileWorld): meshes a tile world's ground into
 `Render3D` meshes for the tile-ground pipeline, builds that pipeline's material set from the ground catalog,
-places its objects through the `Terrain.Render3D` prop path, puts its water bodies through the engine's water
-pass, and owns the
-per-region scene handles, region streaming and headless snapshot capture on top. Kept separate from the
+places its objects through the `Terrain.Render3D` prop and shared cluster paths, puts its water bodies through the
+engine's water pass, and owns full or coarse ground, gameplay or decor residency, per-region scene handles,
+background builds and headless snapshot capture on top. Kept separate from the
 render-free document so a server or tool never drags in `Render3D`. In the `Game3D` umbrella. Design:
-[docs/design/TILE-WORLD-DESIGN-2026-08-15.md](../docs/design/TILE-WORLD-DESIGN-2026-08-15.md).
+[docs/design/TILE-WORLD-DESIGN-2026-08-15.md](../docs/design/TILE-WORLD-DESIGN-2026-08-15.md), extended by
+[docs/design/TILEWORLD-LARGE-WORLD-LOD-DESIGN-2026-09-08.md](../docs/design/TILEWORLD-LARGE-WORLD-LOD-DESIGN-2026-09-08.md).
 
 ## World z is minus tile z
 
@@ -21,8 +22,9 @@ quarter turn.
 
 ## Ground (`TileGroundMesher`, `ITileGroundSlotMap`, `TileColors`)
 
-`TileGroundMesher.Build(doc, catalogs, region, plane, options)` returns the `GltfMesh` of one region-plane, or
-null when the region-plane has no drawable tile (underlay 0, or `TileSettings.NoDraw`). The mesh is REGION LOCAL,
+`TileGroundMesher.Build(doc, catalogs, region, plane, options)` returns the full `GltfMesh` of one region-plane,
+or null when the region-plane has no drawable tile (underlay 0, or `TileSettings.NoDraw`). The overload taking a
+`TileGroundLod` selects `Full` or `Coarse4`. The mesh is REGION LOCAL,
 so draw it at `TileGroundMesher.WorldMatrix(doc, region)`, a pure translation to the region's lowest tile corner
 with Y left at 0 because the vertices already carry absolute corner heights. Vertices are the existing
 `ModelVertex`, with its fields repurposed for the tile-ground pipeline (`Scene3D.LoadTileGroundMaterial`), so
@@ -66,6 +68,13 @@ nothing in the upload path moves.
   flat normal per triangle instead. Vertices are never shared between triangles, because two triangles of one tile
   can carry different slots and weights (an overlay paints some of them and not others), so the mesher emits
   per-triangle vertices.
+- **`TileGroundLod.Coarse4` preserves authored boundaries.** Each compatible four by four cell becomes one coarse
+  triangle pair from retained global lattice corners. A cell stays full when any tile is void or `NoDraw`, when
+  water and ground would mix, when it carries a bridge, overlay or shaped cut, or when the visible material is
+  not uniform. Roads, river edges, bridge approaches, material changes and void edges therefore retain their
+  authored per-tile triangulation. A compatible cell beside an incompatible or differently surfaced cell adds
+  canonical edge points so the two representations meet without a crack. Positions, central-difference normals,
+  material slots and brightness still come from the global lattice, keeping adjacent region seams bit-identical.
 
 ## Ground materials (`TileGroundMaterials`, `TileGroundMaterialSet`)
 
@@ -222,10 +231,12 @@ view draws through, greybox fallback included.
 ### Real meshes (`GltfMeshResolver`)
 
 `GltfMeshResolver(string rootDirectory, ITileMeshResolver? fallback = null, Action<string>? log = null)` is the
-content-backed resolver. It maps an archetype's `MeshRef` to `Path.GetFullPath(Path.Combine(rootDirectory,
-meshRef))`, loads that glb once through `GltfLoader.LoadPartsWithMaterials`, and caches the parts per MESH
-REFERENCE, which is the entry both `Resolve` overloads share: an avatar drawn through `Resolve(meshRef)` and an
-archetype pointing at the same glb parse it once between them, as do two archetypes sharing one `MeshRef`.
+content-backed resolver. It maps an archetype's `MeshRef` and optional `LodMeshRef` to
+`Path.GetFullPath(Path.Combine(rootDirectory, meshRef))`. Full and authored-LOD parts load through
+`GltfLoader.LoadPartsWithMaterials`. Flattened HLOD sources load through `GltfLoader.LoadFlattenedAlbedo`.
+Full, LOD and flattened results have separate caches per mesh reference. The two full `Resolve` overloads share
+their entry, so an avatar drawn through `Resolve(meshRef)` and an archetype pointing at the same glb parse it once
+between them, as do two archetypes sharing one `MeshRef`.
 A `MeshRef` is authored RELATIVE with forward slashes (`kit/wall.glb`), normalized to the platform separator
 here, and an already-absolute one is used as it stands. `PathFor(meshRef)` is public, for a tool that wants to
 check a kit before a world is built. The cache is a plain dictionary, so resolve on one thread, as with the
@@ -237,23 +248,26 @@ Chain it over the greybox one and a half-authored kit still renders:
 var resolver = new GltfMeshResolver(kitRoot, new GreyboxMeshResolver(doc.TileSize, doc.PlaneHeight), log);
 ```
 
-- **A missing file or a loader throw falls back and logs ONCE.** The line names the archetype (the path alone
+- **A missing full mesh or a loader throw falls back.** The line names the archetype (the path alone
   through `Resolve(meshRef)`, which has no archetype behind it), the resolved path and the reason, and then the
   answer is `fallback?.Resolve(archetype)`: the greybox box where the glb is not there yet, the real mesh
   everywhere else. With no fallback the answer is null, which the view already draws as its placeholder box with a
   line of its own.
-- **The failure is cached like any other result**, so the second call for that reference re-logs nothing and does
-  not go near the disk again. One line per mesh reference is the whole budget, however many times a world reloads
-  the region it stands in, and however many archetypes point at it. What is NOT cached is the fallback's answer,
-  which belongs to the ARCHETYPE rather than the reference, so a missing glb asks the fallback again per call.
-  Both shipped fallbacks cache, so the same list still comes back.
+- **Optional LOD and HLOD failures keep a visible representation.** `ResolveLod(archetype)` returns null for a
+  blank, missing or malformed `LodMeshRef` without consulting the required-mesh fallback, so that archetype keeps
+  LOD0. `ResolveFlatForHlod(archetype)` prefers flattened LOD1, falls back to flattened LOD0, and returns null only
+  when neither loads. A TileWorld layer with an unresolved flattened source stays on its individual geometry and
+  does not enter an HLOD-only decor transition.
+- **Failures are cached and diagnostics are bounded.** A failed cache entry does not probe disk again.
+  Diagnostics deduplicate by load purpose and normalized path, so full parts, LOD parts, flattened LOD1 and
+  flattened LOD0 can each explain their own fallback once without repeating for later archetypes or path aliases.
+  What is not cached is the required full mesh fallback's answer, which belongs to the archetype rather than the
+  reference. Both shipped fallbacks cache, so the same list still comes back.
 - **An empty `MeshRef` is not a failure.** It goes straight to the fallback, silently, without building or
   probing a path, because an archetype nobody has modelled yet is an ordinary authoring state.
 - **A `MeshRef` no path API will accept falls back too.** `Path.GetFullPath` throws on an embedded NUL, which a
   JSON catalog can carry, so the path mapping runs inside the same guard as the load. Nothing about bad content
   throws out of `Resolve`. `PathFor` is the unguarded form, for a tool that wants the exception.
-- **The cache is keyed by archetype id, not by resolved path.** Two archetypes sharing one `MeshRef` parse that
-  glb twice and hold two copies of it, and one missing file logs once per archetype rather than once per file.
 - **There is no eviction.** Every cached part holds its decoded RGBA8 `GltfMaterialMaps` pixels for the
   resolver's lifetime, still resident after the view has uploaded them to the GPU, and a glb regenerated while
   the app is running is never picked up.
@@ -287,8 +301,10 @@ edgeColor)` queues a rigid mesh through `Scene3D`'s existing dissolve path with 
 `DrawOverlayMesh(handle, world)` reaches `Scene3D`'s translucent, unlit overlay pass. Its default implementation
 throws `NotSupportedException`, so a legacy scene reports that it cannot provide translucency instead of silently
 drawing an opaque mesh.
-These six ship as DEFAULT interface implementations (an invalid handle, a no-op, a fall-through to the
-material-free upload, two no-ops, and a fall-through to the solid mesh draw), so an implementation written before
+`CreatePropClusterOwner()` is the opt-in cluster seam. Its default throws `NotSupportedException`, so a custom
+scene can continue to host an ordinary view and fails clearly only when `PropLayers` asks it for large-world
+clusters. `Scene3DTileWorldScene` adapts the shared Terrain.Render3D `PropClusterRenderer` directly.
+The older optional members remain default interface implementations, so an implementation written before
 textured ground, water, silhouettes or rigid dissolves existed keeps compiling. It draws untextured ground, no
 water, no rims, and a solid body where a dissolve was requested. The view's own door is
 `TileWorldView.SetSilhouettedObject(long objectId, Color color, float widthMetres = 0.05f)` /
@@ -311,6 +327,15 @@ catalog archetype up front, so a region load is placements alone.
   view points `Options.Mesher.Slots` at whichever set it ends up with, because the slots a vertex names only mean
   anything against the set the mesh is drawn with, and it reads back as `GroundMaterials`. Every region-plane mesh
   goes up bound to it, and `Dispose` frees it.
+- **Large-world prop layers are opt-in and disjoint.** `TileWorldViewOptions.PropLayers` defaults empty, preserving
+  ordinary `PropDrawRadius` submission. Each `TilePropLayerDefinition` names a stable `Id`, a non-empty set of
+  `ArchetypeIds`, `DrawRadius`, `LodDistance`, `LodCrossfadeWidth`, `HlodDistance`, `HlodCrossfadeWidth`,
+  `HlodWeldCell`, and `CastsShadows` (default true). Construction rejects missing archetypes, duplicate layer IDs,
+  duplicate archetype selection, non-finite or negative tuning, and a LOD or HLOD distance past the draw radius.
+  When HLOD is enabled, its positive distance must also be greater than `LodDistance`.
+  A selected object leaves the ordinary prop list and enters exactly one `TilePropLayerSnapshot`, so it cannot
+  double-submit. `TileRegionProps` publishes these detached, object-ID-ordered batches with region, plane and
+  content generation. Worker builds never read the live document, override table, resolver cache or scene.
 - **Water is queued every frame, collected once per mesh.** `Draw` calls `DrawWaterPlanes()` after the ground and
   the props unless `TileWorldViewOptions.DrawWater` is false, and
   `TileWorldViewOptions.WaterLook` (default `TileWaterLooks.River`, null for the scene's own water settings) is
@@ -383,7 +408,9 @@ catalog archetype up front, so a region load is placements alone.
   for a full prop rebuild and 31.6 ms for the region-plane remesh a `MarkDirty` plus `Flush` would have paid. It
   falls back to rebuilding that region-plane's PROPS (still no remesh) for the three ORDER questions it cannot
   settle: the object has no entry in this region-plane, the new archetype does not resolve, or the swap changes
-  whether the object is a roof.
+  whether the object is a roof. A selected-layer override also replaces that region-plane snapshot, increments
+  its generation and invalidates the cluster. A stale worker result is rejected before GPU upload, so a chopped
+  tree cannot replace a newer stump with its old HLOD.
 - An override for an object no loaded region holds is RECORDED and applies when the region streams in, the
   `SetSilhouettedObject` contract, so a server message that beat its region is not lost. One naming an archetype
   the catalogs do not hold draws nothing for that object, the same answer an unresolvable authored archetype
@@ -396,7 +423,8 @@ catalog archetype up front, so a region load is placements alone.
 - The splice is O(placements on the region-plane) and copies the affected list, so N changes in one snapshot
   cost N splices rather than one. Fine at the rate a game depletes resource nodes, worth knowing before driving
   a whole-region seasonal swap through it: call `TileObjectProps.Build` once instead. There is no batch door.
-- `Dispose` frees every region and every archetype mesh set the view uploaded. The scene is not owned.
+- `Dispose` cancels and drains the background queues, releases region ground, cover and cluster state, frees the
+  optional LOD uploads and every archetype mesh set, and disposes the shared cluster owner. The scene is not owned.
 
 ## Animated authored grass
 
@@ -419,10 +447,23 @@ distance, so `LoadRadius` 1 is the 3x3 block around the observer's own region. `
 loading and unloading the same column on alternate frames. Use `TileResidencyConfig.Default`, because a defaulted
 struct is all zeroes and the constructor refuses it.
 
+The overload taking `TileRegionResidencyProfile` opts into three states. `Gameplay` carries full ground, ordinary
+props, LOD0 and LOD1, picking bounds, water and the existing interactive view behavior. `Decor` carries
+`TileGroundLod.Coarse4` and selected far prop clusters without ordinary prop batches, cover or picking. `Unloaded`
+retains no region snapshot or GPU handle. `GameplayRadius < DecorRadius < UnloadRadius` is required, and an
+already resident region remains `Decor` through the outer radius as hysteresis. The source still materializes
+whole authored regions. These states choose only the client representation and do not change the world format,
+collision, navigation, simulation, replication or hashes.
+
 - `Update(observer)` drops what has fallen past `UnloadRadius`, then loads up to `MaxLoadsPerUpdate` (default 2)
   of what is missing, nearest first with a deterministic tie-break.
-- `PrimeAround(observer)` fills the whole ring IGNORING the budget and finishes with an unbudgeted flush, so a
-  teleport settles in one call instead of drawing cracked borders for several frames.
+- `PrimeAround(observer)` fills the whole legacy ring ignoring the budget. Under a three-state profile it drains
+  gameplay full-ground work synchronously, while coarse ground and HLOD remain budgeted. A teleport therefore
+  restores the interactive ring immediately without making the far decor horizon one blocking frame.
+- Ground and HLOD CPU work runs on background workers over detached snapshots. Completed generations are applied
+  on the scene thread, nearest region first, with independent full-ground, coarse-ground and HLOD caps. A pure
+  focus move reuses accepted clusters. Replacement failures keep the last accepted HLOD handle. Initial failures
+  retry three times, log once, and keep individual geometry where it is resident.
 - **Streaming a region dirties its dependants** in both directions. Ground meshes rebuild across their fixed
   border reach. Ground-cover caches also rebuild where a streamed solid footprint, upper roof or tagged door can
   change eligibility, including regions reached by the door clearance.
@@ -430,6 +471,23 @@ struct is all zeroes and the constructor refuses it.
   ring and says so once through `Log`. Regions the manifest does not list are skipped and do not spend the budget.
 - A torn region file throws `TileWorldException` straight out of `Update`. A world whose files no longer match
   what wrote them is not something a streaming loop should paper over by drawing a hole.
+
+The first shared one-metre-tile profile is:
+
+| Stage | Range | Representation |
+|---|---:|---|
+| LOD0 | 0 to 56 m | Full textured parts |
+| LOD crossfade | 56 to 72 m | Complementary LOD0 and LOD1 dissolve |
+| LOD1 | 72 to 176 m | Authored simplified parts |
+| HLOD crossfade | 176 to 208 m | Individual LOD1 to region HLOD |
+| HLOD | 208 to 544 m | One welded mesh per region and layer |
+| Exit fade | 544 to 576 m | HLOD dissolve to empty |
+
+Configure it with draw radius 576 m, LOD distance 64 m with 16 m crossfade, HLOD distance 192 m with
+32 m crossfade, HLOD weld cell 1.5 m, gameplay radius 4 regions, decor radius 10 regions and unload radius
+12 regions. The defaults remain the legacy synchronous ring and ordinary 96 m prop draws. HLOD never supplies a
+pick identity. `PickSurface`, `TileObjectRaycast`, collision and interaction continue to use full authored data
+inside the gameplay ring.
 
 ## Headless capture (`TileWorldSnapshot`)
 

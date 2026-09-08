@@ -5,6 +5,48 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.38.0
+
+Live shadow-map layout changes and shared large-world TileWorld LOD keep a wide authored horizon populated without
+restarting the scene or turning render distance into gameplay authority (#397, #855).
+
+- `Scene3D.RequestShadowMapDetail(ShadowMapDetail)` and `RequestShadowMapLayout(resolution, cascadeCount)` validate
+  and coalesce scene-thread requests, then apply the latest at the next `Begin` boundary. Low, Default and High use
+  1024, 2048 and 3072 pixels per cascade. Direct writes to committed atlas-shaping properties still throw.
+- A changed shadow layout pays one explicit GPU idle wait and builds the replacement atlas, cascade targets,
+  pipelines and every rigid, skinned, splat and tile-ground sampling set as one transaction. Allocation or binding
+  failure logs once and retains the old drawable graph and committed values. An unchanged layout allocates nothing.
+  Disposal clears pending work and frees the current graph once.
+- `PropClusterRenderer` is the shared Terrain.Render3D owner for detached CPU HLOD builds, generation-safe
+  scene-thread apply, retained handles, retry, invalidation, draw, unload and disposal. `Scene3DChunkSink` delegates
+  its prop clusters to it without changing existing Ruinborne placement or `PropLayer.WithHlod` wiring.
+- `PropLayer.WithLodCrossfade(width)` and matching `PropRenderer` arguments add deterministic complementary LOD0
+  and LOD1 coverage in both colour and shadow paths. Width zero preserves the prior hard swap.
+- `TileObjectArchetype.LodMeshRef` and catalog `lodMeshRef` name one optional authored LOD1 tier and participate in
+  catalog hash scheme 2. `GltfMeshResolver` caches full, LOD and flattened HLOD forms. Missing LOD1 keeps LOD0.
+  Flattened HLOD resolution prefers LOD1, falls back to LOD0, and keeps individual geometry when neither loads.
+  Diagnostics deduplicate per load purpose and normalized path.
+- `TilePropLayerDefinition` opts a disjoint archetype set into full, LOD and region HLOD drawing with draw, LOD,
+  crossfade, HLOD, weld and shadow policy. `TileWorldViewOptions.PropLayers` defaults empty. Validation prevents
+  duplicate selection, so a chosen object leaves ordinary submission and draws through exactly one cluster layer.
+- `TileRegionProps` and `TilePropLayerSnapshot` publish immutable, generation-tagged region-plane data for worker
+  builds. Completed full-ground, coarse-ground and HLOD work applies nearest first under independent frame caps.
+  Overrides invalidate one region generation, and stale results are rejected before upload.
+- `TileRegionResidencyProfile` adds `Gameplay`, `Decor` and `Unloaded` states with strict Chebyshev radii and unload
+  hysteresis. Gameplay retains the complete interactive view. Decor retains coarse ground and far prop clusters
+  without ordinary prop batches, cover or picking. The legacy synchronous ring remains the default.
+- `TileGroundLod.Coarse4` collapses a compatible four by four interior to one triangle pair from global lattice
+  corners. Void, water, bridge, overlay, material and shaped-boundary cells retain full triangulation, with
+  transition edges preserving region seams. Picking, collision, navigation, object identities, replication and
+  hashes continue to use full authored data.
+- Initial HLOD failures retry three times and log once. Rebuild failures retain the last accepted handle. Unload
+  cancels queued generations and frees region ground, cluster and snapshot state. View disposal drains workers,
+  rejects late completions and releases every retained handle exactly once.
+- Headless tests cover shadow transaction and fallback behavior, shared prop-cluster replacement and lifetime,
+  catalog and resolver caching, residency transitions, apply budgets, no-double-submit selection, stale override
+  rejection, full-object picking and Coarse4 boundaries. Native GPU tests cover live shadow receivers, complementary
+  LOD colour and shadow coverage, far TileWorld HLOD over coarse ground, and settled handle lifetime.
+
 ## 18.37.0
 
 Authenticated sessions can bind a separate durable checkpoint key before player spawn while account identity

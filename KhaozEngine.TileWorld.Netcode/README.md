@@ -244,6 +244,11 @@ understand. Its registered traversal profile can give that algorithm a different
   down, then every live actor gets its decision translated into a command, plus the tag and
   `PendingTileCommand` rewrite above. It iterates its own net id list rather than an ECS query on the tag,
   because a query over the tag cannot see the one actor that most needs the write.
+  The actor loop resolves each normal actor's owner once and reuses that cell and entity for movement state,
+  combat state, health and the two unconditional writes. Caller callbacks can despawn or hand off the actor while
+  deciding, so a dead, ghosted or migrating cached entity falls back to one fresh owner resolution before a write.
+  In the 576-actor idle-behaviour workload this reduced the median complete server tick from 0.461 ms to 0.310 ms,
+  with five 1,000-tick runs after 100 warmup ticks.
 - **`ITileActorBehaviour`** / **`TileActorIntent`** / **`TileActorIntentKind`** / **`TileActorContext`** - the one
   decision seam. An intent names a TILE (`WalkTo`), a TARGET (`Attack`), `Break` (drop the target, walk home, and
   drop the damage record with it), `Stand` (cancel the route, hold the tile, KEEP the damage record: waiting for

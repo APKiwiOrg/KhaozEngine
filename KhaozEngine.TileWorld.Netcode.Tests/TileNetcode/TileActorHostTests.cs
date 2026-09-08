@@ -144,6 +144,50 @@ public class TileActorHostTests
         Assert.True(cell.World.Has<TileActor>(e));
     }
 
+    [Fact]
+    public void A_behaviour_that_removes_its_actor_does_not_restore_or_write_it_after_the_callback()
+    {
+        var hub = new InMemoryTransportHub();
+        using TileWorldServer s = Server(TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(5, 5, 0));
+        long actor = s.SpawnActor(new TileCoord(20, 20, 0), new TileActorSpawn(30, 10, TileDirection.S));
+        s.Actors.Behaviour = new CallbackBehaviour(context =>
+        {
+            Assert.True(s.DespawnActor(context.NetId));
+            return TileActorIntent.WalkTo(new TileCoord(24, 20, 0));
+        });
+
+        s.Tick(Dt);
+
+        Assert.Equal(0, s.ActorCount);
+        Assert.False(s.Host.TryGetOwner(actor, out _, out _));
+    }
+
+    [Fact]
+    public void A_behaviour_triggered_handoff_writes_the_command_and_tag_to_the_new_owner()
+    {
+        var hub = new InMemoryTransportHub();
+        using TileWorldServer s = Server(TwoRegions(), hub.Server, new TileCoord(5, 5, 0));
+        long actor = s.SpawnActor(new TileCoord(60, 10, 0), new TileActorSpawn(30, 10, TileDirection.S));
+        bool crossed = false;
+        s.Actors.Behaviour = new CallbackBehaviour(context =>
+        {
+            if (crossed) return TileActorIntent.Idle;
+            crossed = true;
+            Assert.True(s.Host.TryGetOwner(context.NetId, out CellSim cell, out Entity entity));
+            cell.World.Set(entity, TileMoveState.At(new TileCoord(68, 10, 0), TileDirection.E));
+            cell.World.Set(entity, new TileRouteState { Remaining = Array.Empty<TileDirection>() });
+            s.Host.ProcessHandoffs();
+            return TileActorIntent.Idle;
+        });
+
+        s.Tick(Dt);
+
+        Assert.True(s.Host.TryGetOwner(actor, out CellSim owner, out Entity moved));
+        Assert.Equal(new CellCoord(1, 0), owner.Coord);
+        Assert.True(owner.World.Has<TileActor>(moved));
+        Assert.True(owner.World.Has<PendingTileCommand>(moved));
+    }
+
     // The test that would go red if actors ever grew a movement rule of their own. Options matched on purpose (see
     // the harness), so what is being pinned is the STEPPER rather than the tuning.
     [Fact]
@@ -435,6 +479,11 @@ public class TileActorHostTests
     {
         Assert.True(world.TryGet(e, out TileRouteState route));
         return route.Remaining?.Length ?? -1;
+    }
+
+    sealed class CallbackBehaviour(Func<TileActorContext, TileActorIntent> decide) : ITileActorBehaviour
+    {
+        public TileActorIntent Decide(in TileActorContext context) => decide(context);
     }
 
     // The despawn is the moment the actor stops existing, so every index keyed on its net id has to answer for that

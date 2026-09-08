@@ -9,6 +9,64 @@ public class WorldClockHostTests
 {
     private const float LongBroadcastIntervalSeconds = 100000f;
 
+    [Theory]
+    [InlineData(float.NaN)]
+    [InlineData(float.PositiveInfinity)]
+    [InlineData(float.NegativeInfinity)]
+    [InlineData(0f)]
+    [InlineData(-1f)]
+    public void Constructor_InvalidBroadcastIntervalThrows(float invalidValue)
+    {
+        WorldClockHostOptions options = new() { BroadcastIntervalSeconds = invalidValue };
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => CreateHost(new WorldClock(600f), options));
+    }
+
+    [Theory]
+    [InlineData(float.NaN)]
+    [InlineData(float.PositiveInfinity)]
+    [InlineData(float.NegativeInfinity)]
+    [InlineData(0f)]
+    [InlineData(-1f)]
+    public void Constructor_InvalidMinimumDayLengthThrows(float invalidValue)
+    {
+        WorldClockHostOptions options = new() { MinDayLengthSeconds = invalidValue };
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => CreateHost(new WorldClock(600f), options));
+    }
+
+    [Theory]
+    [InlineData(float.NaN)]
+    [InlineData(float.PositiveInfinity)]
+    [InlineData(float.NegativeInfinity)]
+    [InlineData(-1f)]
+    public void Constructor_InvalidMaximumTimeScaleThrows(float invalidValue)
+    {
+        WorldClockHostOptions options = new() { MaxTimeScale = invalidValue };
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => CreateHost(new WorldClock(600f), options));
+    }
+
+    [Theory]
+    [InlineData(float.Epsilon, float.Epsilon, 0f)]
+    [InlineData(float.MaxValue, float.MaxValue, float.MaxValue)]
+    public void Constructor_ValidOptionBoundariesAreAccepted(
+        float broadcastIntervalSeconds,
+        float minimumDayLengthSeconds,
+        float maximumTimeScale)
+    {
+        WorldClockHostOptions options = new()
+        {
+            BroadcastIntervalSeconds = broadcastIntervalSeconds,
+            MinDayLengthSeconds = minimumDayLengthSeconds,
+            MaxTimeScale = maximumTimeScale,
+        };
+
+        WorldClockHost host = CreateHost(new WorldClock(600f, 0.25f), options);
+
+        Assert.Equal(new WorldClockState(0.25f, 600f, 1f), host.Snapshot);
+    }
+
     [Fact]
     public void Tick_AdvancesClockAndPublishesSnapshot()
     {
@@ -194,6 +252,9 @@ public class WorldClockHostTests
 
     private static WorldClockHost CreateHost(WorldClock clock) =>
         new(clock, _ => { }, (_, _) => { }, LongIntervalOptions());
+
+    private static WorldClockHost CreateHost(WorldClock clock, WorldClockHostOptions options) =>
+        new(clock, _ => { }, (_, _) => { }, options);
 
     private static WorldClockHostOptions LongIntervalOptions() => new()
     {

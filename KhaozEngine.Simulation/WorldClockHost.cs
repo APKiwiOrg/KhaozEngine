@@ -41,6 +41,7 @@ public sealed class WorldClockHost
         this.broadcast = broadcast ?? throw new ArgumentNullException(nameof(broadcast));
         this.sendTo = sendTo ?? throw new ArgumentNullException(nameof(sendTo));
         this.options = options ?? new WorldClockHostOptions();
+        ValidateOptions(this.options);
         publishedSnapshot = Clock.Snapshot;
     }
 
@@ -111,6 +112,33 @@ public sealed class WorldClockHost
                 return true;
             default:
                 return false;
+        }
+    }
+
+    private static void ValidateOptions(WorldClockHostOptions options)
+    {
+        if (!float.IsFinite(options.BroadcastIntervalSeconds) || options.BroadcastIntervalSeconds <= 0f)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(WorldClockHostOptions.BroadcastIntervalSeconds),
+                options.BroadcastIntervalSeconds,
+                "Value must be finite and greater than zero.");
+        }
+
+        if (!float.IsFinite(options.MinDayLengthSeconds) || options.MinDayLengthSeconds <= 0f)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(WorldClockHostOptions.MinDayLengthSeconds),
+                options.MinDayLengthSeconds,
+                "Value must be finite and greater than zero.");
+        }
+
+        if (!float.IsFinite(options.MaxTimeScale) || options.MaxTimeScale < 0f)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(WorldClockHostOptions.MaxTimeScale),
+                options.MaxTimeScale,
+                "Value must be finite and non-negative.");
         }
     }
 }

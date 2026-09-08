@@ -57,7 +57,9 @@ sceneManager.Push(new MapEditorScene().Init(scene, whiteTexture, dpiFont, option
   this search budget, and whole-document loads do not search. The six-argument `MapDocumentWindowing.Load`
   keeps its signature and uses the default budget. A seven-argument overload accepts an explicit budget.
   The editor starts its camera near the chosen spawn so the loaded window is visible. A fallback window
-  starts near the bounds center. Whole-document camera startup keeps its existing position.
+  starts near the bounds center. The camera aims at that anchor, and whole-document camera startup keeps
+  its existing pose. Candidate selection scans manifest metadata with storage bounded by the search budget,
+  then sorts only those retained candidates before reading tile content.
 - `ManifestPaths` are the same `AssetManifest` files the game's own prop-kit loading reads, so the
   editor's palette and picking heights match what the game actually renders.
 - `Registry` defaults to `MapDocRegistry.CreateDefault()`. Pass your own to add custom terrain feature

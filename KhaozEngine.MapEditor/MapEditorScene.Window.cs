@@ -2,11 +2,19 @@ using System;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.MapDoc;
+using KhaozEngine.Render3D;
 
 namespace KhaozEngine.MapEditor;
 
 public partial class MapEditorScene
 {
+    FlyCamera3D CreateInitialCamera() => new()
+    {
+        Position = WindowCameraStart(),
+        Pitch = _window is null ? -.5f : -MathF.Atan2(24, 32),
+        FarPlane = _options.RenderDistance.FarClip,
+    };
+
     Vector3 WindowCameraStart()
     {
         var offset = new Vector3(0, 24, -32);

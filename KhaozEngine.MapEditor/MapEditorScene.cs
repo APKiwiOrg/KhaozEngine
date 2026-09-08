@@ -280,7 +280,7 @@ public partial class MapEditorScene : GameScene, IGameScene3D
             ScatterLayerVisible = _visibility.GetLayer, RenderDistance = _options.RenderDistance,
             TexturedPropsEnabled = () => _options.TexturedProps,
         };
-        _camera = new FlyCamera3D { Position = WindowCameraStart(), Pitch = -0.5f, FarPlane = _options.RenderDistance.FarClip };
+        _camera = CreateInitialCamera();
         _camController = new FlyCameraController(_camera);
         ApplyRenderDistance();   // the persisted multiplier, before the first BuildWorld primes a ring from it
 

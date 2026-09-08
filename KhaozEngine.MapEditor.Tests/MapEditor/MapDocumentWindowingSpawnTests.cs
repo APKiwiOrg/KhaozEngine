@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Numerics;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapEditor;
 using Xunit;
@@ -144,6 +145,9 @@ public sealed class MapDocumentWindowingSpawnTests
                 Assert.Equal(new MapTileCoord(3, 0), scene.Window!.Value.Min);
                 Assert.Equal(Spawn("start", 3).X, scene.Camera.Position.X);
                 Assert.Equal(5 - 32, scene.Camera.Position.Z);
+                Assert.True(scene.Camera.WorldToScreen(new Vector3(Spawn("start", 3).X, 0, 5),
+                    800, 600, out Vector2 screen));
+                Assert.InRange(Vector2.Distance(screen, new Vector2(400, 300)), 0, .1f);
             }
             finally { scene.OnExit(); }
         });
@@ -165,6 +169,8 @@ public sealed class MapDocumentWindowingSpawnTests
                 scene.OnEnter();
                 Assert.Equal(new MapTileCoord(0, 0), scene.Window!.Value.Min);
                 Assert.Equal(0, scene.Camera.Position.X);
+                Assert.True(scene.Camera.WorldToScreen(Vector3.Zero, 800, 600, out Vector2 screen));
+                Assert.InRange(Vector2.Distance(screen, new Vector2(400, 300)), 0, .1f);
             }
             finally { scene.OnExit(); }
         });

@@ -74,9 +74,7 @@ public static class MapDocumentWindowing
 
     static MapTileCoord FindSpawnTile(MapDocumentSource source, MapTileCoord fallback, int budget)
     {
-        foreach (MapTileEntry entry in source.Tiles.Entries
-            .OrderBy(entry => DistanceSquared(entry.Coord, fallback))
-            .ThenBy(entry => entry.Coord.Z).ThenBy(entry => entry.Coord.X).Take(budget))
+        foreach (MapTileEntry entry in MapWindowSpawnSearch.Nearest(source.Tiles.Entries, fallback, budget))
         {
             MapPlayerSpawn? spawn = source.ReadTile(entry.Coord).PlayerSpawns
                 .Where(spawn => spawn.Enabled).OrderBy(spawn => spawn.Id, StringComparer.Ordinal).FirstOrDefault();
@@ -85,9 +83,4 @@ public static class MapDocumentWindowing
         return fallback;
     }
 
-    static double DistanceSquared(MapTileCoord tile, MapTileCoord center)
-    {
-        double x = (double)tile.X - center.X, z = (double)tile.Z - center.Z;
-        return x * x + z * z;
-    }
 }

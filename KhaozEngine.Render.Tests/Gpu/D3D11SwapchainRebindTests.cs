@@ -53,7 +53,7 @@ namespace KhaozEngine.Tests.Gpu
                     "ClearState()",
                     $"OMSetRenderTargets({log.Id(framebuffer)})",
                     "RSSetViewports(1,0,0,1600,900,0,1)",
-                    "RSSetScissorRects(all:1,0,0,1600,900)",
+                    "RSSetScissorRects(count:1,[0,0,1600,900])",
                 },
                 log.Trace);
         }

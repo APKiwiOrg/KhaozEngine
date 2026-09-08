@@ -14,7 +14,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// caches of R6, the batching of the vertex streams, the schedule of R5, the precise scrub of R8, the
     /// framebuffer-guarded viewport of W6) is taken inside <see cref="D3D11DeviceState"/>,
     /// <see cref="D3D11BindFlush"/>, <see cref="D3D11VertexStreams"/> and <see cref="D3D11SetActivation"/>, which
-    /// this type uses unchanged, and every REFUSAL a stream can earn (the scissor index, a buffer or a framebuffer
+    /// this type uses unchanged, and every REFUSAL a stream can earn (a buffer or a framebuffer
     /// from another backend, a clear against no target or against an attachment the bound framebuffer does not
     /// have) is taken inside <see cref="D3D11BindResolve"/>, which the trace emitter asks in the same order. What
     /// is left here is the translation into a Vortice call, plus two casts that cannot be pushed down: the
@@ -220,11 +220,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <c>ClearState</c> that opens the next replay.</summary>
         public void SetScissorRect(uint index, uint x, uint y, uint width, uint height)
         {
-            D3D11BindResolve.RequireSingleScissorRect(index);
-
-            Span<RawRect> rect = stackalloc RawRect[1];
-            rect[0] = new RawRect((int)x, (int)y, (int)(x + width), (int)(y + height));
-            Native.RSSetScissorRects(rect);
+            IssueScissors(_state.Scissors.Set(index, x, y, width, height));
         }
 
         /// <summary>Reset the scissor to the bound framebuffer's full extent, which is what a framebuffer change
@@ -234,9 +230,18 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             // Refused in the one place both emitters ask, so the two cannot drift in wording or in condition.
             IGpuFramebuffer framebuffer = D3D11BindResolve.RequireScissorExtent(_state.BoundFramebuffer);
 
-            Span<RawRect> rect = stackalloc RawRect[1];
-            rect[0] = new RawRect(0, 0, (int)framebuffer.Width, (int)framebuffer.Height);
-            Native.RSSetScissorRects(rect);
+            IssueScissors(_state.Scissors.SetFull(framebuffer.Width, framebuffer.Height));
+        }
+
+        void IssueScissors(ReadOnlySpan<D3D11ScissorRect> tracked)
+        {
+            Span<RawRect> native = stackalloc RawRect[tracked.Length];
+            for (int i = 0; i < tracked.Length; i++)
+            {
+                D3D11ScissorRect rect = tracked[i];
+                native[i] = new RawRect(rect.Left, rect.Top, rect.Right, rect.Bottom);
+            }
+            Native.RSSetScissorRects(native);
         }
 
         /// <summary>

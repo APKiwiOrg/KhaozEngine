@@ -404,10 +404,10 @@ namespace KhaozEngine.Tests.Terrain
             Scene3DChunkSink Sink(params PropLayer[] layers) =>
                 new Scene3DChunkSink(scene: null!, field, layers, chunkSize: ZoneChunk);
 
-            // Scatter layers keep the long-standing rule: only layer 0's props register.
+            // Every scatter layer registers its shaped props.
             var twoScatter = Sink(PropLayer.ScatterLayer(cfg, NoMeshes(), 90f), PropLayer.ScatterLayer(cfg, NoMeshes(), 40f));
             Assert.True(twoScatter.LayerRegistersColliders(0));
-            Assert.False(twoScatter.LayerRegistersColliders(1));
+            Assert.True(twoScatter.LayerRegistersColliders(1));
 
             // A placement layer follows its own flag, wherever it sits.
             var placementOn = Sink(PropLayer.PlacementLayer(placements, NoMeshes(), 90f));
@@ -426,7 +426,7 @@ namespace KhaozEngine.Tests.Terrain
                 PropLayer.ScatterLayer(cfg, NoMeshes(), 90f),
                 PropLayer.CompanionLayer(0, comp, NoMeshes(), 40f));
             Assert.True(scatterThenCompanion.LayerRegistersColliders(0));
-            Assert.False(scatterThenCompanion.LayerRegistersColliders(1));
+            Assert.True(scatterThenCompanion.LayerRegistersColliders(1));
         }
 
         [Fact]
@@ -636,6 +636,67 @@ namespace KhaozEngine.Tests.Terrain
             Assert.NotEmpty(loadOff.Statics);                               // layer 0's scatter statics, unchanged
             Assert.Equal(loadOn.Statics.Count, onWorld.Added.Count);
             Assert.Equal(loadOff.Statics.Count, offWorld.Added.Count);
+        });
+
+        [GpuFact]
+        public void GeneratedLayerStaticsSurviveTierChangesAndRetireAcrossRebuildRingAndUnload() => WithScene(scene =>
+        {
+            TerrainField field = Flat(5f);
+            ScatterConfig trees = NoJitterKind("pine_a", seed: 3, cell: ZoneCell);
+            ScatterConfig rocks = NoJitterKind("rock", seed: 9, cell: ZoneCell);
+            var companions = new CompanionConfig
+            {
+                Seed = 7,
+                HostKinds = ["pine_a"],
+                Kinds = [new PropKind("bush", 1f)],
+                CountMin = 1,
+                CountMax = 1,
+            };
+            var manual = new[] { new PropPlacement("manual", 5f, 5f, 5f, 1f, 0f, 0) };
+            var shapes = new Dictionary<string, PhysicsShape>
+            {
+                ["pine_a"] = new BoxShape(new Vector3(0.5f, 1f, 0.5f)),
+                ["rock"] = new BoxShape(new Vector3(0.4f)),
+                ["bush"] = new BoxShape(new Vector3(0.3f)),
+                ["manual"] = new BoxShape(new Vector3(0.2f)),
+            };
+            var world = new FakePhysicsWorld();
+            var sink = new Scene3DChunkSink(scene, field, new[]
+            {
+                PropLayer.ScatterLayer(trees, NoMeshes(), 90f),
+                PropLayer.ScatterLayer(rocks, NoMeshes(), 60f),
+                PropLayer.CompanionLayer(0, companions, NoMeshes(), 40f),
+                PropLayer.PlacementLayer(manual, NoMeshes(), 30f, colliders: false),
+            }, chunkSize: ZoneChunk, physics: world, collisionShapes: shapes);
+            var coord = new ChunkCoord(0, 0);
+
+            object handle = sink.Load(coord, lod: 0, ring: ChunkRing.Gameplay);
+            var load = (Scene3DChunkSink.ChunkLoad)handle;
+            int generated = load.LayerProps[0].Count + load.LayerProps[1].Count + load.LayerProps[2].Count;
+            Assert.True(load.LayerProps[1].Count > 0 && load.LayerProps[2].Count > 0);
+            Assert.Single(load.LayerProps[3]);
+            Assert.Equal(generated, load.Statics.Count);
+            Assert.Equal(generated, world.Added.Count);
+
+            StaticHandle[] firstHandles = load.Statics.ToArray();
+            sink.ReLod(coord, handle, lod: 1, ring: ChunkRing.Gameplay);
+            Assert.Equal(firstHandles, load.Statics);
+            Assert.Empty(world.Removed);
+
+            sink.UpdateField(Flat(6f));
+            sink.ReLod(coord, handle, lod: 1, ring: ChunkRing.Gameplay);
+            Assert.Equal(generated, world.Removed.Count);
+            Assert.Equal(generated, load.Statics.Count);
+
+            sink.ReLod(coord, handle, lod: 2, ring: ChunkRing.Decor);
+            Assert.Empty(load.Statics);
+            Assert.Equal(generated * 2, world.Removed.Count);
+
+            sink.ReLod(coord, handle, lod: 0, ring: ChunkRing.Gameplay);
+            Assert.Equal(generated, load.Statics.Count);
+            sink.Unload(coord, handle);
+            Assert.Empty(load.Statics);
+            Assert.Equal(generated * 3, world.Removed.Count);
         });
     }
 }

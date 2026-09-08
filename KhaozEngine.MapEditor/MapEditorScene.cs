@@ -293,11 +293,7 @@ public partial class MapEditorScene : GameScene, IGameScene3D
         _controller.PlaceKind = DefaultPlaceKind();
         _controller.PlaceFeatureType = DefaultFeatureType();
 
-        _document.DocumentChanged += OnDocumentChanged;
-        _document.CommandApplied += OnCommandVisibilityForward;
-        _document.CommandRedone += OnCommandVisibilityForward;
-        _document.CommandUndone += OnCommandVisibilityInverse;
-        _document.Selection.Changed += OnSelectionChanged;
+        SubscribeDocument(_document);
 
         BuildWorld();
         RebuildOutline();
@@ -312,11 +308,7 @@ public partial class MapEditorScene : GameScene, IGameScene3D
     {
         if (!_built) return;
         _built = false;
-        _document.DocumentChanged -= OnDocumentChanged;
-        _document.CommandApplied -= OnCommandVisibilityForward;
-        _document.CommandRedone -= OnCommandVisibilityForward;
-        _document.CommandUndone -= OnCommandVisibilityInverse;
-        _document.Selection.Changed -= OnSelectionChanged;
+        UnsubscribeDocument(_document);
         TeardownWorld();
     }
 

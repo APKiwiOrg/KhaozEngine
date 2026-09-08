@@ -369,12 +369,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 deviceName: read.ReportedDeviceName,
                 samplerAnisotropy: features.SamplerAnisotropy,
                 supportsShadowMaps: read.SupportsShadowMapFormat,
-                // THE INCUMBENT'S OWN COMPUTATION, REPRODUCED (V-C5), rather than either draft's invented
-                // formula: the minimum over the engine's three MRT targets of the highest sample count each
-                // supports, read through vkGetPhysicalDeviceImageFormatProperties exactly as
-                // VkGraphicsDevice.GetSampleCountLimit does. See VulkanMsaaLimit for the citation and for what
-                // the design document says about this that turned out to be wrong.
-                maxMsaaSampleCount: read.MaxMsaaSampleCount);
+                // The intersection over the engine's three MRT targets, preserving holes such as lavapipe's
+                // 1x and 4x with no 2x.
+                supportedMsaaSampleCounts: read.SupportedMsaaSampleCounts);
 
         static PhysicalDevice[] EnumeratePhysicalDevices(Vk vk, Instance instance)
         {

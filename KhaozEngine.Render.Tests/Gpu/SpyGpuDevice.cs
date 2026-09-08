@@ -38,9 +38,10 @@ namespace KhaozEngine.Tests.Gpu
             {
                 GpuCapabilities c = _inner.Capabilities;
                 if (!_suppressFences) return c;
-                return new GpuCapabilities(c.ClipSpaceYInverted, c.DepthRangeZeroToOne, c.DeviceName,
-                    c.SamplerAnisotropy, c.SamplerLodBias, c.MaxMsaaSampleCount, c.SupportsShadowMaps,
-                    c.SupportsCompute, supportsCompletionFences: false);
+                return GpuCapabilities.FromSupportedMsaaSampleCounts(
+                    c.ClipSpaceYInverted, c.DepthRangeZeroToOne, c.SupportedMsaaSampleCounts, c.DeviceName,
+                    c.SamplerAnisotropy, c.SamplerLodBias, c.SupportsShadowMaps, c.SupportsCompute,
+                    supportsCompletionFences: false);
             }
         }
 

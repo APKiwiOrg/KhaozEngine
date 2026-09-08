@@ -63,7 +63,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             using GpuDeviceContext ctx = GpuDeviceContext.CreateHeadless();
             IGpuDevice gd = ctx.GpuDevice;
-            Assert.True(gd.Capabilities.MaxMsaaSampleCount >= 2,
+            Assert.True(gd.Capabilities.HighestSupportedMsaaSampleCountAtMost(4) >= 2,
                 "this device reports no MSAA, and without a multisampled normal target the blob pass samples the "
                 + "model pass's own attachment rather than the previous frame's resolve, which is the whole fault "
                 + "being pinned");

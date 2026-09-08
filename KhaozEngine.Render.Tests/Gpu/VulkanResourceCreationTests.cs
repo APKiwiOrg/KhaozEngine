@@ -486,6 +486,23 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(4u, Assert.Single(multisampled.ResourceApi.Images).SampleCount);
         }
 
+        [Fact]
+        public void ASampleCountMissingFromASparseMaskIsRefusedBeforeImageCreation()
+        {
+            var fixture = new VulkanResourceFixture(
+                supportedMsaaSampleCounts: GpuSampleCounts.One | GpuSampleCounts.Four);
+
+            ArgumentException ex = Assert.Throws<ArgumentException>(() => fixture.Factory.CreateTexture(
+                VulkanResourceFixture.Texture(8, 8, GpuTextureUsage.RenderTarget, sampleCount: 2)));
+
+            Assert.Contains("supports 1, 4 samples", ex.Message, StringComparison.Ordinal);
+            Assert.Empty(fixture.ResourceApi.Events);
+
+            using IGpuTexture accepted = fixture.Factory.CreateTexture(
+                VulkanResourceFixture.Texture(8, 8, GpuTextureUsage.RenderTarget, sampleCount: 4));
+            Assert.Equal(4u, Assert.Single(fixture.ResourceApi.Images).SampleCount);
+        }
+
         /// <summary>
         /// THE REFUSAL COVERAGE IS HONEST, which the hand-written list above cannot be on its own. Every method on
         /// <see cref="IGpuResourceFactory"/> is either a member THIS row brought alive or a member that refuses by

@@ -19,10 +19,13 @@ namespace KhaozEngine.Tests.Gpu
         public void Device_reports_an_msaa_limit()
         {
             using GpuDeviceContext ctx = GpuDeviceContext.CreateHeadless();
-            // Every desktop GPU the engine targets supports at least 4x MSAA; the limit is a power of two >= 1.
-            int max = ctx.GpuDevice.Capabilities.MaxMsaaSampleCount;
+            GpuCapabilities caps = ctx.GpuDevice.Capabilities;
+            int max = caps.MaxMsaaSampleCount;
+            Assert.True(caps.SupportsMsaaSampleCount(1));
             Assert.True(max >= 2, $"device should support MSAA, MaxMsaaSampleCount={max}");
             Assert.True((max & (max - 1)) == 0, $"MaxMsaaSampleCount should be a power of two, got {max}");
+            Assert.True(caps.SupportsMsaaSampleCount(max));
+            Assert.Equal(max, caps.HighestSupportedMsaaSampleCountAtMost(int.MaxValue));
         }
 
         // Trivial fullscreen-triangle shaders (one solid colour), so the test exercises the real DRAW -> resolve path
@@ -39,7 +42,7 @@ layout(location=0) out vec4 o; void main() { o = vec4(0.1, 0.6, 0.7, 1.0); }";
             IGpuDevice gd = ctx.GpuDevice;
             var f = gd.Factory;
 
-            uint samples = (uint)System.Math.Min(4, gd.Capabilities.MaxMsaaSampleCount);
+            uint samples = (uint)gd.Capabilities.HighestSupportedMsaaSampleCountAtMost(4);
             Assert.True(samples >= 2);
 
             // Multisampled colour target (render target only; a multisampled texture cannot be sampled directly)...

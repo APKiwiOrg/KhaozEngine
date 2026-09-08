@@ -25,7 +25,7 @@ namespace KhaozEngine.Render3D
         /// <see cref="PixelPostProcessSettings.Quality"/> asked for MSAA and the device could give it. Internal so
         /// a test can assert the MSAA path was ACTUALLY taken, which matters because
         /// <see cref="AntiAliasing.ResolveFor"/> silently downgrades to Fxaa on a device whose
-        /// <see cref="GpuCapabilities.MaxMsaaSampleCount"/> is below the request, and a test that did not check
+        /// <see cref="GpuCapabilities.SupportedMsaaSampleCounts"/> cannot satisfy the request, and a test that did not check
         /// would compare the single-sample path against itself and pass having measured nothing.
         /// </summary>
         internal int RenderTargetSampleCount => _res.SampleCount;

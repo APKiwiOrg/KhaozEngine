@@ -9,8 +9,7 @@ using Xunit;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// <c>GpuCapabilities.MaxMsaaSampleCount</c> AS THE INCUMBENT COMPUTES IT (V-C5), device-free. Work-breakdown
-    /// row 15 (https://github.com/APKiwiOrg/KhaozEngine/issues/525).
+    /// The full Vulkan sample-count set shared by the engine's MRT attachments, device-free.
     ///
     /// <para><b>WHAT THIS PINS IS THE SHAPE OF THE QUESTION, NOT AN ANSWER.</b> Row 18's parity test
     /// (https://github.com/APKiwiOrg/KhaozEngine/issues/528) asserts the two backends agree on a real device, and
@@ -23,9 +22,8 @@ namespace KhaozEngine.Tests.Gpu
     public sealed class VulkanMsaaLimitTests
     {
         /// <summary>
-        /// THE FOLD IS THE MINIMUM OVER THE ENGINE'S THREE MRT TARGETS, because every attachment of a
-        /// multi-target pass has to support the count. A device generous about colour and stingy about depth
-        /// answers the depth number.
+        /// THE FOLD IS THE INTERSECTION OVER THE ENGINE'S THREE MRT TARGETS, because every attachment of a
+        /// multi-target pass has to support the count.
         /// </summary>
         [Fact]
         public void TheLimit_IsTheMinimumOverTheThreeTargets()
@@ -41,6 +39,28 @@ namespace KhaozEngine.Tests.Gpu
 
             answers[GpuPixelFormat.R32Float] = All(1);
             Assert.Equal(1, VulkanMsaaLimit.MinOverTheEngineTargets((format, _) => answers[format]));
+        }
+
+        [Fact]
+        public void SparseMasksAreIntersectedWithoutInventingTheMissingTwoSampleCount()
+        {
+            SampleCountFlags sparse = SampleCountFlags.Count1Bit | SampleCountFlags.Count4Bit;
+
+            GpuSampleCounts supported = VulkanMsaaLimit.SupportedOverTheEngineTargets((_, _) => sparse);
+
+            Assert.Equal(GpuSampleCounts.One | GpuSampleCounts.Four, supported);
+            Assert.Equal(4, VulkanMsaaLimit.MinOverTheEngineTargets((_, _) => sparse));
+        }
+
+        [Fact]
+        public void FramebufferLimitsParticipateInTheSupportedIntersection()
+        {
+            SampleCountFlags sparse = SampleCountFlags.Count1Bit | SampleCountFlags.Count4Bit;
+
+            GpuSampleCounts supported = VulkanMsaaLimit.SupportedIncludingFramebufferLimits(
+                sparse, sparse, sparse, (_, _) => All(4));
+
+            Assert.Equal(GpuSampleCounts.One | GpuSampleCounts.Four, supported);
         }
 
         /// <summary>

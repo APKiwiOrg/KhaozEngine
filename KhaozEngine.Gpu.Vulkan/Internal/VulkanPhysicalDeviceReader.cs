@@ -25,10 +25,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// right for a log and is a capability DIFFERENCE against an incumbent that does not make it, so the two
     /// answers are kept apart rather than shared (V-G1, and see
     /// <see cref="VulkanCapabilityRead.ReportedDeviceName"/>).</param>
-    /// <param name="MaxMsaaSampleCount">The incumbent's own computation reproduced (V-C5): the minimum, over the
-    /// three formats the 3D scene's MRT renders into, of the highest sample count each supports. See
-    /// <see cref="VulkanMsaaLimit"/> for the citation and for why neither draft's invented formula is
-    /// taken.</param>
+    /// <param name="SupportedMsaaSampleCounts">The intersection of sample-count support across the three formats
+    /// in the 3D scene's MRT. It preserves holes in the Vulkan masks.</param>
     /// <param name="Memory">Every memory type plus the three limits the block suballocator's and the uniform
     /// ring's arithmetic need (sections 9.1 and 9.2). Read here rather than at the allocator because it is the
     /// same walk
@@ -46,7 +44,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         bool IsLlvmpipe,
         uint GraphicsQueueFamily,
         bool SupportsShadowMapFormat,
-        int MaxMsaaSampleCount,
+        GpuSampleCounts SupportedMsaaSampleCounts,
         VulkanMemoryFacts Memory,
         VulkanPipelineCacheIdentity PipelineCacheIdentity,
         string ReportedDeviceName);
@@ -117,7 +115,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 IsLlvmpipe(vk, device, clearsVersionFloor, name),
                 graphicsFamily,
                 SupportsShadowMapFormat(vk, device),
-                MaxMsaaSampleCount(vk, device),
+                SupportedMsaaSampleCounts(vk, device, properties.Limits.FramebufferColorSampleCounts,
+                    properties.Limits.FramebufferDepthSampleCounts,
+                    properties.Limits.FramebufferStencilSampleCounts),
                 memory,
                 ReadPipelineCacheIdentity(&properties),
                 reportedName);
@@ -317,19 +317,22 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             return SupportsShadowMapFormat(properties.OptimalTilingFeatures);
         }
 
-        // GpuCapabilities.MaxMsaaSampleCount (V-C5), which is the INCUMBENT'S computation and not one of its
-        // two drafts': vkGetPhysicalDeviceImageFormatProperties per format with the usage that format is used
-        // under, reduced to the highest supported bit, minimised over the engine's three MRT targets. The fold,
-        // the reduction and the three-format table are VulkanMsaaLimit's and are device-free. This is the one
-        // line that names the driver call.
+        // GpuCapabilities.SupportedMsaaSampleCounts: vkGetPhysicalDeviceImageFormatProperties per format with the
+        // usage that format is used under, intersected over the engine's three MRT targets. The fold and format
+        // table are VulkanMsaaLimit's and are device-free. This is the one line that names the driver call.
         //
         // A FAILED QUERY ANSWERS "NO MSAA" RATHER THAN THROWING, which is the incumbent's answer arrived at
         // explicitly. It ignores the result entirely, so a failure leaves it reading a zeroed structure whose
-        // sampleCounts is 0, which its ladder reduces to 1. Checking the result and saying 1 is the same
+        // sampleCounts is 0, which the supported-set normalization reduces to 1. Checking the result and saying
+        // 1 is the same
         // observable value with the reason written down: a format the device cannot make an image of at all
         // supports no multisampling of it either.
-        static int MaxMsaaSampleCount(Vk vk, PhysicalDevice device)
-            => VulkanMsaaLimit.MinOverTheEngineTargets((format, depthAttachment) =>
+        static GpuSampleCounts SupportedMsaaSampleCounts(Vk vk, PhysicalDevice device,
+            SampleCountFlags framebufferColor, SampleCountFlags framebufferDepth,
+            SampleCountFlags framebufferStencil)
+            => VulkanMsaaLimit.SupportedIncludingFramebufferLimits(
+                framebufferColor, framebufferDepth, framebufferStencil,
+                (format, depthAttachment) =>
             {
                 ImageUsageFlags usage = ImageUsageFlags.SampledBit
                     | (depthAttachment

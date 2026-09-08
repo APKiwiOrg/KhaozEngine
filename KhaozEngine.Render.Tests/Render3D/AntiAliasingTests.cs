@@ -57,6 +57,18 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
+        public void ResolveFor_skips_holes_in_the_supported_sample_counts()
+        {
+            GpuCapabilities sparse = GpuCapabilities.FromSupportedMsaaSampleCounts(
+                false, true, GpuSampleCounts.One | GpuSampleCounts.Four);
+
+            Assert.Equal(AntiAliasing.Fxaa, AntiAliasing.Msaa(2).ResolveFor(sparse));
+            Assert.Equal(AntiAliasing.Fxaa, AntiAliasing.Msaa(3).ResolveFor(sparse));
+            Assert.Equal(4, AntiAliasing.Msaa(4).ResolveFor(sparse).MsaaSamples);
+            Assert.Equal(4, AntiAliasing.Msaa(8).ResolveFor(sparse).MsaaSamples);
+        }
+
+        [Fact]
         public void ResolveFor_falls_back_to_fxaa_when_the_device_cannot_msaa()
         {
             AntiAliasing r = AntiAliasing.Msaa(4).ResolveFor(Caps(1)); // no MSAA support

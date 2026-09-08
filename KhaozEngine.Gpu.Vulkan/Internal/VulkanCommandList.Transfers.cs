@@ -179,10 +179,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// transitioned to the transfer layouts and left there for <c>End</c> to restore (V-F7). No MSAA on the
         /// swapchain, matching the incumbent, so the destination is always a real texture.
         /// <para>
-        /// AN OUT-OF-RANGE SAMPLE COUNT IS REFUSED AT TEXTURE CREATION rather than here and rather than clamped,
-        /// which is C4's departure inherited for the same reason: the engine clamps upstream against
-        /// <see cref="GpuCapabilities.MaxMsaaSampleCount"/> so nothing legitimate reaches the throw, and a silent
-        /// MSAA downgrade presents as a golden mismatch that reads like a rendering bug.
+        /// AN UNSUPPORTED SAMPLE COUNT IS REFUSED AT TEXTURE CREATION rather than here and rather than clamped.
+        /// The engine selects upstream from <see cref="GpuCapabilities.SupportedMsaaSampleCounts"/>, including
+        /// sparse masks, so nothing legitimate reaches the throw.
         /// </para>
         /// </remarks>
         public void ResolveTexture(IGpuTexture src, IGpuTexture dst)

@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.Gpu;
 using KhaozEngine.Tests.Gpu;
 using Xunit;
 
@@ -79,18 +80,20 @@ namespace KhaozEngine.Tests.Gpu
         // AntiAliasing.ResolveFor, so a test that asks for MSAA and does not check would compare the single-sample
         // path against itself and pass having measured nothing. The named skip is what stops that being invisible.
         [Theory]
-        [InlineData(4, false)]
-        [InlineData(8, false)]
-        [InlineData(2, true)]
-        [InlineData(1, true)]
-        public void Four_sample_msaa_skip_fires_only_below_four_samples(int maxMsaa, bool expectSkip)
+        [InlineData(GpuSampleCounts.One | GpuSampleCounts.Two | GpuSampleCounts.Four, false)]
+        [InlineData(GpuSampleCounts.One | GpuSampleCounts.Four, false)]
+        [InlineData(GpuSampleCounts.One | GpuSampleCounts.Two | GpuSampleCounts.Eight, true)]
+        [InlineData(GpuSampleCounts.One | GpuSampleCounts.Two, true)]
+        [InlineData(GpuSampleCounts.One, true)]
+        public void Four_sample_msaa_skip_requires_four_in_the_supported_set(
+            GpuSampleCounts supported, bool expectSkip)
         {
-            string? reason = GpuFactAttribute.FourSampleMsaaSkipReason(("Vulkan", maxMsaa));
+            string? reason = GpuFactAttribute.FourSampleMsaaSkipReason(("Vulkan", supported));
             Assert.Equal(expectSkip, reason != null);
             if (expectSkip)
             {
                 Assert.Contains("Vulkan", reason!, StringComparison.Ordinal);
-                Assert.Contains("MaxMsaaSampleCount", reason!, StringComparison.Ordinal);
+                Assert.Contains("SupportedMsaaSampleCounts", reason!, StringComparison.Ordinal);
             }
         }
 

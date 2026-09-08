@@ -13,8 +13,8 @@ public sealed class MsaaPostFxaaGpuTests
     {
         var reference = Capture(postFxaa: false);
         var result = Capture(postFxaa: true);
-        Assert.Equal(2, reference.Samples);
-        Assert.Equal(2, result.Samples);
+        Assert.Equal(4, reference.Samples);
+        Assert.Equal(4, result.Samples);
         byte[] unfiltered = reference.Pixels;
         byte[] filtered = result.Pixels;
         int changed = 0;
@@ -44,7 +44,7 @@ public sealed class MsaaPostFxaaGpuTests
             {
                 scene.Post.UseSmoothPreset();
                 scene.Post.RenderScale = RenderScale.MatchViewport;
-                scene.Post.Quality.AntiAliasing = AntiAliasing.Msaa(2, postFxaa);
+                scene.Post.Quality.AntiAliasing = AntiAliasing.Msaa(4, postFxaa);
                 scene.Post.AmbientColor = Color.White;
                 scene.Camera.Azimuth = 0f;
                 scene.Camera.Elevation = 0f;

@@ -39,9 +39,12 @@ namespace KhaozEngine.Tests.Gpu
         /// live cache with no disk behind it, which is what almost every test wants: the file half has its own
         /// suite (<c>VulkanPipelineCacheTests</c>) and nothing else should be writing to a user's cache directory
         /// during <c>dotnet test</c>.</param>
+        /// <param name="supportedMsaaSampleCounts">Optional sparse count set. Null preserves the legacy
+        /// contiguous-through-maximum fixture.</param>
         internal VulkanResourceFixture(int framesInFlight = 3, bool samplerAnisotropy = true,
             int maxMsaaSampleCount = 1, object? setupLock = null, uint maxDynamicUniformBuffers = 0,
-            VulkanPipelineCacheFile? pipelineCacheFile = null)
+            VulkanPipelineCacheFile? pipelineCacheFile = null,
+            GpuSampleCounts? supportedMsaaSampleCounts = null)
         {
             FramesInFlight = framesInFlight;
             SubmitLock = new object();
@@ -87,16 +90,27 @@ namespace KhaozEngine.Tests.Gpu
                 Liveness,
                 SetupLock);
 
-            Capabilities = new GpuCapabilities(
-                clipSpaceYInverted: false,
-                depthRangeZeroToOne: true,
-                deviceName: "Fake Vulkan device",
-                samplerAnisotropy: samplerAnisotropy,
-                samplerLodBias: true,
-                maxMsaaSampleCount: maxMsaaSampleCount,
-                supportsShadowMaps: true,
-                supportsCompute: true,
-                supportsCompletionFences: true);
+            Capabilities = supportedMsaaSampleCounts is { } supported
+                ? GpuCapabilities.FromSupportedMsaaSampleCounts(
+                    clipSpaceYInverted: false,
+                    depthRangeZeroToOne: true,
+                    supportedMsaaSampleCounts: supported,
+                    deviceName: "Fake Vulkan device",
+                    samplerAnisotropy: samplerAnisotropy,
+                    samplerLodBias: true,
+                    supportsShadowMaps: true,
+                    supportsCompute: true,
+                    supportsCompletionFences: true)
+                : new GpuCapabilities(
+                    clipSpaceYInverted: false,
+                    depthRangeZeroToOne: true,
+                    deviceName: "Fake Vulkan device",
+                    samplerAnisotropy: samplerAnisotropy,
+                    samplerLodBias: true,
+                    maxMsaaSampleCount: maxMsaaSampleCount,
+                    supportsShadowMaps: true,
+                    supportsCompute: true,
+                    supportsCompletionFences: true);
 
             DescriptorApi = new FakeVulkanDescriptorApi();
             DescriptorOwner = new VulkanDescriptorOwner(DescriptorApi, Timeline, Retired);

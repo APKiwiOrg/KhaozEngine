@@ -383,13 +383,13 @@ namespace KhaozEngine.Render3D
         /// but only the first <see cref="MaxPointLights"/> queued are uploaded (extras are dropped); the host is
         /// expected to pick the N nearest per frame so a dense bullet-hell stays within budget.</summary>
         public const int MaxPointLights = ModelRenderer.MaxPointLights;
-
-        internal Scene3D(IGpuDevice gd, GpuOutputDescription targetOutput, ShadowSettings? initialShadows = null)
+        internal Scene3D(IGpuDevice gd, GpuOutputDescription targetOutput, ShadowSettings? initialShadows = null, KhaozEngine.Diagnostics.ILogger? shadowReconfigureLogger = null)
         {
             _gd = gd;
             // Bound once, here, to a method group: the delegate object is allocated exactly once for this Scene3D's
             // lifetime rather than once per frame (see the field doc comment above and AlphaCutoffFor below).
             _alphaCutoffLookup = AlphaCutoffFor;
+            _shadowReconfigureLogger = shadowReconfigureLogger ?? KhaozEngine.Diagnostics.Log.For<Scene3D>();
             // Fence-polled ripeness where the backend can signal on GPU completion (Metal, Vulkan), the frame-count
             // drain everywhere else, valve sized off the backend's frames-in-flight knob. See Create (#424, #661).
             _retired = GpuRetireQueue.Create(gd, maxSealedBatches: GpuRetireQueue.SealedBatchCapFor(gd));

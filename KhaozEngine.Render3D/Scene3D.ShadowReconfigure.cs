@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.Diagnostics;
 
 namespace KhaozEngine.Render3D;
 
@@ -6,6 +7,7 @@ public sealed partial class Scene3D
 {
     ShadowLayoutRequest? _pendingShadowLayout;
     bool _shadowReconfigureDisposed;
+    readonly ILogger _shadowReconfigureLogger;
 
     /// <summary>Request one of the standard shadow-map layouts. The latest request is applied when the next
     /// <see cref="Begin"/> call starts a scene frame.</summary>
@@ -35,7 +37,15 @@ public sealed partial class Scene3D
         if (captured is null) return;
 
         _pendingShadowLayout = null;
-        ReplaceShadowLayout(captured.Value.Resolution, captured.Value.CascadeCount);
+        ShadowLayoutReplacementResult result = ReplaceShadowLayoutWithResult(
+            captured.Value.Resolution, captured.Value.CascadeCount);
+        if (result == ShadowLayoutReplacementResult.Failed)
+        {
+            ShadowSettings retained = Post.Quality.Shadows;
+            _shadowReconfigureLogger.Error(
+                $"Shadow-map layout replacement to {captured.Value.Resolution} with {captured.Value.CascadeCount} " +
+                $"cascades failed. Retaining {retained.ShadowMapResolution} with {retained.ShadowCascadeCount} cascades.");
+        }
     }
 
     void DisposeShadowReconfiguration()

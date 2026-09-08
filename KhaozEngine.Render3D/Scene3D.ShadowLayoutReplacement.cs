@@ -6,9 +6,13 @@ namespace KhaozEngine.Render3D;
 
 public sealed partial class Scene3D
 {
-    internal bool ReplaceShadowLayout(int resolution, int cascadeCount)
+    internal bool ReplaceShadowLayout(int resolution, int cascadeCount) =>
+        ReplaceShadowLayoutWithResult(resolution, cascadeCount) == ShadowLayoutReplacementResult.Replaced;
+
+    internal ShadowLayoutReplacementResult ReplaceShadowLayoutWithResult(int resolution, int cascadeCount)
     {
-        if (_model.ShadowMap.MatchesLayout(resolution, cascadeCount)) return false;
+        if (_model.ShadowMap.MatchesLayout(resolution, cascadeCount))
+            return ShadowLayoutReplacementResult.Unchanged;
 
         var liveSets = new List<IGpuResourceSet>();
         foreach (Mesh? mesh in _meshes)
@@ -23,13 +27,14 @@ public sealed partial class Scene3D
         foreach (TileGroundMaterialEntry? material in _tileGroundMaterials)
             if (material is not null) liveSets.Add(material.Set);
 
-        return _model.ReplaceShadowLayout(
+        bool replaced = _model.ReplaceShadowLayout(
             resolution,
             cascadeCount,
             Post.Quality.Shadows,
             liveSets,
             CommitMaterialSets,
             () => _shadowPassRendered = false);
+        return replaced ? ShadowLayoutReplacementResult.Replaced : ShadowLayoutReplacementResult.Failed;
     }
 
     void CommitMaterialSets(Func<IGpuResourceSet, IGpuResourceSet> replacementFor)
@@ -57,6 +62,13 @@ public sealed partial class Scene3D
         foreach (TileGroundMaterialEntry? material in _tileGroundMaterials)
             if (material is not null) material.ReplaceSet(replacementFor(material.Set));
     }
+}
+
+internal enum ShadowLayoutReplacementResult
+{
+    Unchanged,
+    Replaced,
+    Failed,
 }
 
 public sealed partial class ShadowSettings

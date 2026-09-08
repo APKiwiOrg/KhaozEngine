@@ -71,6 +71,9 @@ public sealed class ShadowReconfigureRequestTests
 
         Assert.Equal(2048, rig.Settings.ShadowMapResolution);
         Assert.Equal(3, rig.Settings.ShadowCascadeCount);
+        string error = Assert.Single(rig.Logger.Errors);
+        Assert.Contains("3072", error, StringComparison.Ordinal);
+        Assert.Contains("2048", error, StringComparison.Ordinal);
         int textures = rig.TextureCreates;
         int sets = rig.ResourceSetCreates;
         int replacements = rig.ReplacementCount;
@@ -82,6 +85,11 @@ public sealed class ShadowReconfigureRequestTests
         Assert.Equal(textures, rig.TextureCreates);
         Assert.Equal(sets, rig.ResourceSetCreates);
         Assert.Equal(replacements, rig.ReplacementCount);
+        Assert.Single(rig.Logger.Errors);
+
+        rig.Scene.RequestShadowMapLayout(2048, 3);
+        rig.BeginFrame();
+        Assert.Single(rig.Logger.Errors);
     }
 
     [Fact]
@@ -148,11 +156,13 @@ public sealed class ShadowReconfigureRequestTests
                 ShadowMapResolution = 2048,
                 ShadowCascadeCount = 3,
             };
-            Scene = new Scene3D(_device, _target.Outputs, Settings);
+            Logger = new RecordingLogger();
+            Scene = new Scene3D(_device, _target.Outputs, Settings, Logger);
         }
 
         internal Scene3D Scene { get; }
         internal ShadowSettings Settings { get; }
+        internal RecordingLogger Logger { get; }
         internal int ReplacementCount => _device.WaitForIdleCalls;
         internal int TextureCreates => _device.CountingFactory.TextureCreates;
         internal int ResourceSetCreates => _device.CountingFactory.ResourceSetCreates;

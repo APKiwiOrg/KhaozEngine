@@ -123,26 +123,27 @@ public static partial class TileGroundMesher
     static int SlotAt(in TileMeshContext c, int cornerX, int cornerZ) =>
         c.Options.Slots.SlotOf(CornerMaterial(c.Doc, cornerX, cornerZ, c.Plane));
 
-    // The material slot of one collapsible four by four cell, or null when any authored boundary inside it
-    // requires the existing per-tile triangulation. Kept pure so classification never changes document state.
-    static int? Coarse4Material(in TileMeshContext c, int lx, int lz)
+    // One four by four cell's compatibility and surface material. Kept pure so classification never changes
+    // document state, including when the caller asks about a cell across a region boundary.
+    static Coarse4CellInfo ClassifyCoarse4Cell(in TileMeshContext c, int worldX, int worldZ)
     {
         ushort firstSurface = 0;
         GroundMaterialKind? firstKind = null;
         for (int dz = 0; dz < 4; dz++)
             for (int dx = 0; dx < 4; dx++)
             {
-                int x = c.OriginX + lx + dx;
-                int z = c.OriginZ + lz + dz;
-                if (!IsDrawable(c.Doc, x, z, c.Plane)) return null;
-                if ((c.Doc.GetSettings(x, z, c.Plane) & TileSettings.Bridge) != 0) return null;
+                int x = worldX + dx;
+                int z = worldZ + dz;
+                if (!IsDrawable(c.Doc, x, z, c.Plane)) return default;
+                if ((c.Doc.GetSettings(x, z, c.Plane) & TileSettings.Bridge) != 0) return default;
 
                 ushort underlay = c.Doc.GetUnderlay(x, z, c.Plane);
                 GroundMaterialKind kind = c.Catalogs.Material(underlay)?.Kind ?? GroundMaterialKind.Ground;
                 ushort overlay = c.Doc.GetOverlay(x, z, c.Plane);
+                if (overlay != 0) return default;
                 TileOverlayShape shape = c.Doc.GetOverlayShape(x, z, c.Plane);
-                if (shape != TileOverlayShape.Full) return null;
-                ushort surface = overlay == 0 ? underlay : overlay;
+                if (shape != TileOverlayShape.Full) return default;
+                ushort surface = underlay;
 
                 if (firstSurface == 0)
                 {
@@ -151,10 +152,10 @@ public static partial class TileGroundMesher
                 }
                 else if (surface != firstSurface || kind != firstKind)
                 {
-                    return null;
+                    return default;
                 }
             }
-        return c.Options.Slots.SlotOf(firstSurface);
+        return new Coarse4CellInfo(true, firstSurface);
     }
 
     /// <summary>A corner point's weights: all of them on its own corner, none on the other three. The corner is

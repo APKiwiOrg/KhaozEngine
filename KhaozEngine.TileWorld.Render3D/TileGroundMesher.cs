@@ -42,6 +42,18 @@ public sealed class TileGroundMesherOptions
 /// the same material at the same weight from every tile and every region that touches it.</summary>
 public static partial class TileGroundMesher
 {
+    [Flags]
+    enum Coarse4Transition
+    {
+        None = 0,
+        South = 1,
+        East = 2,
+        North = 4,
+        West = 8,
+    }
+
+    readonly record struct Coarse4CellInfo(bool Compatible, ushort Surface);
+
     /// <summary>What a material id missing from the catalogs reads as, so a dangling id is visible rather than
     /// invisible: the colour the headless readers paint it, and the colour a material set fills its reserved
     /// <see cref="ITileGroundSlotMap.MissingSlot"/> layer with.</summary>
@@ -94,9 +106,11 @@ public static partial class TileGroundMesher
         for (int lz = 0; lz < TileRegion.Size; lz += cellSize)
             for (int lx = 0; lx < TileRegion.Size; lx += cellSize)
             {
-                if (Coarse4Material(context, lx, lz) is int materialSlot)
+                Coarse4CellInfo cell = ClassifyCoarse4Cell(
+                    context, context.OriginX + lx, context.OriginZ + lz);
+                if (cell.Compatible)
                 {
-                    AddCoarseCell(mesh, context, lx, lz, cellSize, materialSlot);
+                    AddCoarseCell(mesh, context, lx, lz, cellSize, Transitions(context, lx, lz, cell.Surface));
                     continue;
                 }
 
@@ -109,6 +123,25 @@ public static partial class TileGroundMesher
                         AddTile(mesh, context, lx + dx, lz + dz);
                     }
             }
+    }
+
+    static Coarse4Transition Transitions(in TileMeshContext c, int lx, int lz, ushort surface)
+    {
+        int x = c.OriginX + lx;
+        int z = c.OriginZ + lz;
+        Coarse4Transition result = Coarse4Transition.None;
+        if (NeedsTransition(c, x, z - 4, surface)) result |= Coarse4Transition.South;
+        if (NeedsTransition(c, x + 4, z, surface)) result |= Coarse4Transition.East;
+        if (NeedsTransition(c, x, z + 4, surface)) result |= Coarse4Transition.North;
+        if (NeedsTransition(c, x - 4, z, surface)) result |= Coarse4Transition.West;
+        return result;
+    }
+
+    static bool NeedsTransition(in TileMeshContext c, int neighbourX, int neighbourZ, ushort surface)
+    {
+        if (c.Doc.GetRegion(RegionCoord.Of(neighbourX, neighbourZ)) is null) return false;
+        Coarse4CellInfo neighbour = ClassifyCoarse4Cell(c, neighbourX, neighbourZ);
+        return !neighbour.Compatible || neighbour.Surface != surface;
     }
 
     /// <summary>Where a region's mesh sits in the world: the corner of its lowest tile coordinates, with Y left

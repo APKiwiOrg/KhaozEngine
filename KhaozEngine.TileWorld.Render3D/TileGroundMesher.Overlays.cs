@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Render3D;
 
@@ -78,9 +79,15 @@ public static partial class TileGroundMesher
         => CellCorner(c, lx, lz, dx, dz, dx, dz, slots);
 
     static void AddCoarseCell(
-        MeshAccumulator mesh, in TileMeshContext c, int lx, int lz, int size, int materialSlot)
+        MeshAccumulator mesh, in TileMeshContext c, int lx, int lz, int size, Coarse4Transition transitions)
     {
-        TileCornerSlots slots = TileCornerSlots.Uniform(materialSlot);
+        if (transitions != Coarse4Transition.None)
+        {
+            AddCoarseTransitionCell(mesh, c, lx, lz, size, transitions);
+            return;
+        }
+
+        TileCornerSlots slots = CoarseCellSlots(c, lx, lz, size);
         LatticePoint sw = CellCorner(c, lx, lz, 0, 0, 0, 0, slots);
         LatticePoint se = CellCorner(c, lx, lz, size, 0, 1, 0, slots);
         LatticePoint nw = CellCorner(c, lx, lz, 0, size, 0, 1, slots);
@@ -99,6 +106,71 @@ public static partial class TileGroundMesher
             AddTriangle(mesh, c, sw.ToVertex(null), se.ToVertex(null), nw.ToVertex(null));
             AddTriangle(mesh, c, se.ToVertex(null), ne.ToVertex(null), nw.ToVertex(null));
         }
+    }
+
+    static void AddCoarseTransitionCell(
+        MeshAccumulator mesh, in TileMeshContext c, int lx, int lz, int size, Coarse4Transition transitions)
+    {
+        var perimeter = new List<LatticePoint>(16)
+        {
+            CanonicalPoint(c, lx, lz, 0, 0),
+        };
+        AddEdgePoints(perimeter, c, lx, lz, size, transitions, Coarse4Transition.South);
+        perimeter.Add(CanonicalPoint(c, lx, lz, size, 0));
+        AddEdgePoints(perimeter, c, lx, lz, size, transitions, Coarse4Transition.East);
+        perimeter.Add(CanonicalPoint(c, lx, lz, size, size));
+        AddEdgePoints(perimeter, c, lx, lz, size, transitions, Coarse4Transition.North);
+        perimeter.Add(CanonicalPoint(c, lx, lz, 0, size));
+        AddEdgePoints(perimeter, c, lx, lz, size, transitions, Coarse4Transition.West);
+
+        LatticePoint centre = CanonicalPoint(c, lx, lz, size / 2, size / 2);
+        for (int i = 0; i < perimeter.Count; i++)
+            AddTriangle(mesh, c, centre.ToVertex(null), perimeter[i].ToVertex(null),
+                perimeter[(i + 1) % perimeter.Count].ToVertex(null));
+    }
+
+    static void AddEdgePoints(
+        List<LatticePoint> points, in TileMeshContext c, int lx, int lz, int size,
+        Coarse4Transition transitions, Coarse4Transition edge)
+    {
+        if ((transitions & edge) == 0) return;
+        for (int step = 1; step < size; step++)
+        {
+            (int dx, int dz) = edge switch
+            {
+                Coarse4Transition.South => (step, 0),
+                Coarse4Transition.East => (size, step),
+                Coarse4Transition.North => (size - step, size),
+                _ => (0, size - step),
+            };
+            points.Add(CanonicalPoint(c, lx, lz, dx, dz));
+        }
+    }
+
+    static TileCornerSlots CoarseCellSlots(in TileMeshContext c, int lx, int lz, int size) =>
+        new(
+            SlotAt(c, c.OriginX + lx, c.OriginZ + lz),
+            SlotAt(c, c.OriginX + lx + size, c.OriginZ + lz),
+            SlotAt(c, c.OriginX + lx, c.OriginZ + lz + size),
+            SlotAt(c, c.OriginX + lx + size, c.OriginZ + lz + size));
+
+    static LatticePoint CanonicalPoint(in TileMeshContext c, int lx, int lz, int dx, int dz)
+    {
+        int cx = c.OriginX + lx + dx;
+        int cz = c.OriginZ + lz + dz;
+        TileCornerSlots slots = TileCornerSlots.Uniform(SlotAt(c, cx, cz));
+        Vector3 position = TileWorldSpace.ToWorld(
+            lx + dx,
+            c.Doc.CornerHeightCm(cx, cz, c.Plane) * 0.01f,
+            lz + dz,
+            c.TileSize);
+        Vector3 normal = c.Options.SmoothNormals ? CornerNormal(c.Doc, cx, cz, c.Plane) : Vector3.UnitY;
+        return new LatticePoint(
+            position,
+            normal,
+            slots,
+            OverlayWeights,
+            CornerJitter(c.Doc, cx, cz, c.Plane, c.Options.JitterAmplitude));
     }
 
     static LatticePoint CellCorner(

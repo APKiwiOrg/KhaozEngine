@@ -10,8 +10,9 @@ public sealed partial class TileWorldView
 {
     /// <summary>The nearest visible ground or water surface on one plane, or null when the ray misses.
     /// <para>The ground candidate is the authored terrain from <see cref="TileRaycast"/>, limited to drawable
-    /// tiles in regions this view has loaded. Water candidates are the exact cached <see cref="WaterPlane"/>
-    /// rectangles this view draws for those regions. Like the draw path, picking reuses that cache until the
+    /// tiles in regions this view holds at <see cref="TileRegionResidencyState.Gameplay"/> residency. Water
+    /// candidates are the exact cached <see cref="WaterPlane"/> rectangles this view draws for those Gameplay
+    /// regions. Like the draw path, picking reuses that cache until the
     /// affected mesh is rebuilt or its water look changes, matching the surface the next draw will submit.</para>
     /// <para><paramref name="direction"/> need not be normalised. The reported distance and
     /// <paramref name="maxDistance"/> are in world metres. Authored terrain wins an exact distance tie, because
@@ -35,6 +36,7 @@ public sealed partial class TileWorldView
         TileHit? water = null;
         foreach (KeyValuePair<RegionCoord, RegionHandles> entry in _loaded)
         {
+            if (entry.Value.Residency != TileRegionResidencyState.Gameplay) continue;
             IReadOnlyList<WaterPlane> planes = WaterOf(entry.Key, plane, entry.Value.Meshes[plane]);
             for (int i = 0; i < planes.Count; i++)
             {
@@ -55,6 +57,7 @@ public sealed partial class TileWorldView
 
     bool IsRenderedTerrain(int x, int z, int plane) =>
         _loaded.TryGetValue(RegionCoord.Of(x, z), out RegionHandles? handles)
+        && handles.Residency == TileRegionResidencyState.Gameplay
         && handles.Meshes[plane] is not null
         && TileGroundMesher.IsDrawable(_doc, x, z, plane);
 

@@ -166,9 +166,11 @@ public readonly record struct RadialMenuMetrics(
 `SurfaceHighlight`, `Border`, `BorderActive`, `Accent`, `Text`, `TextMuted`, `Disabled`, and `Sheen`.
 `RadialMenuTheme.Default` returns a fresh theme built from the ambient `GuiTheme.Default` values.
 
-`Open` rejects duplicate entry or choice tags. An `InitialChoiceTag` must identify an enabled footer choice.
-The default tag `0` selects the first enabled choice, or remains `0` when the menu has no footer. Disabled wedges
-remain available for inspection but cannot be selected. Disabled footer choices cannot be applied.
+`Open` rejects duplicate entry or choice tags. An explicit nonzero `InitialChoiceTag` must identify an enabled
+footer choice. Tag `0` selects the first enabled choice, or remains `0` when the footer is absent or every supplied
+footer choice is disabled. An all-disabled footer accepts no pointer or navigation choice change. Disabled wedges
+remain available for inspection but cannot be selected. When every entry is disabled, index zero remains
+inspectable but no selection can occur.
 `SetEntryChoice(entryTag, choiceTag)` changes retained state without raising `WasChoiceChanged`, which makes it
 the restore or server-sync path.
 

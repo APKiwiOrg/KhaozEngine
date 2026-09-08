@@ -1751,7 +1751,7 @@ The opening gesture is latched, so the right-click release that caused `Open` ca
 dismiss the menu. While open, its complete `Bounds` is blocked through the shared `Pointer`. A fresh tap on an
 enabled wedge selects it and closes. A footer tap changes the active entry's choice and keeps the menu open. A
 release outside dismisses. Disabled wedges can become active for their detail text but cannot be selected.
-Disabled footer choices cannot be applied.
+When every entry is disabled, index zero remains active for inspection but no selection can occur.
 
 The `InputManager` overload runs the pointer path first, then adds focused keyboard or gamepad navigation. Left
 and Right cycle enabled wedges. Down enters the footer, Up returns to the wheel, Left and Right then cycle enabled
@@ -1763,8 +1763,10 @@ them after `Update`. The next update clears them even when the menu is closed. `
 entry's current footer choice without raising `WasChoiceChanged`, which is useful for preferences or server
 state received after the caller built its entry list.
 
-`Open` validates unique entry and footer tags. `InitialChoiceTag` must name an enabled footer choice. Its default
-`0` selects the first enabled choice, or remains `0` when there is no footer. `HoverIndex` is the pointer wedge.
+`Open` validates unique entry and footer tags. An explicit nonzero `InitialChoiceTag` must name an enabled footer
+choice. Tag `0` selects the first enabled choice, or remains `0` when the footer is absent or every supplied footer
+choice is disabled. An all-disabled footer accepts no pointer or navigation choice change. An enabled wedge selected
+in that state returns choice tag `0`. `HoverIndex` is the pointer wedge.
 `ActiveIndex` is the wedge whose detail and footer state are visible. `Bounds` covers the entire clamped wheel
 and footer. `ResolvedTitle`, `ResolvedEntryLabel`, `ResolvedEntryDetail`, and `ResolvedChoiceLabel` expose the
 strings retained at the latest open.

@@ -39,9 +39,9 @@ Foliage.fragment.msl c91b8755a509ea9efdc6f6bc3a8410c86c03408d91b03256db44712cb73
 Foliage.fragment.spirv feadba67513c17e5b8eba5b9e669e4db4e828faa097fffbd85ee6f83625f5d3e 15668
 Foliage.layout.hlsl 9f14caaef43ca90281c4daebdd56e5e0cfa171bf96e15e379e54165a59814d21 18 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]|set1[<unnamed>:UniformBuffer:V]
 Foliage.layout.msl 9f14caaef43ca90281c4daebdd56e5e0cfa171bf96e15e379e54165a59814d21 18 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]|set1[<unnamed>:UniformBuffer:V]
-Foliage.vertex.hlsl ec81b77f38b0dfc3fffe53f16c6526e1406582336b8a7466313fe1fbd76a973d 6333
-Foliage.vertex.msl eaf785dc664f749b5f6d6ba9c7edd3768d592b828886f78e0c8d440d4c1f95d7 5151
-Foliage.vertex.spirv a096d0c6167396dd367aa201df6ece2c2fb5fe99701489e6d52d2b820c455704 8360
+Foliage.vertex.hlsl d9cf3047ed31f66986adcee6c17ebbb39502840edc812710569ddb768e821357 6428
+Foliage.vertex.msl 0aaa2e6a77199f9360a20559bf15bc49808908d61626112455ded5756aefa0ff 5206
+Foliage.vertex.spirv 3cc0f6217f9b6be9878bbec58c338cc343fb6935bfd84ff9512e034b9fa92660 8408
 GroundDecal.fragment.hlsl d8f530b2273d190194c673891568208fbed2ef655046b2d453f178b915cf3e0a 31871
 GroundDecal.fragment.msl 73f29f574cabb38483acac295416f5f7cefe400cc1252d7957232f5aa7e535ef 31726
 GroundDecal.fragment.spirv 6520c514f2ebce390582b35e22640a9dd046352b4bdf320f286d7b12a1904367 32140

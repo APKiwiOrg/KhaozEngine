@@ -40,6 +40,7 @@ layout(location=6) out vec4 vSpecParams;
 layout(location=7) out vec4 vTangent;
 layout(location=8) out float vDynamic;
 layout(location=9) out vec2 vDissolve;
+layout(location=10) out float vDissolveComplement;
 void main() {
     float rank = FoliageParameters.x;
     float distanceToFocus = length(IModel3.xz - FocusRadius.xz);
@@ -86,5 +87,6 @@ void main() {
     vTangent = vec4(mat3(Model) * Tangent.xyz, Tangent.w);
     vDynamic = 0.0;
     vDissolve = vec2(0.0);
+    vDissolveComplement = 0.0;
 }";
 }

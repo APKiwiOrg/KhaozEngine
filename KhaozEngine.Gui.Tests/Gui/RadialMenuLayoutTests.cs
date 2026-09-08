@@ -91,18 +91,30 @@ namespace KhaozEngine.Tests.Gui
         }
 
         [Fact]
-        public void Exact_visible_wedge_boundaries_remain_part_of_the_wedge()
+        public void Visible_side_of_canonical_wedge_boundaries_remains_part_of_the_wedge()
         {
-            Vector2 centre = new(480f, 270f);
-            float start = -3f * MathF.PI / 4f + 0.035f / 2f;
-            float end = -MathF.PI / 4f - 0.035f / 2f;
-            Vector2 startPoint = centre + new Vector2(MathF.Cos(start), MathF.Sin(start)) * 100f;
-            Vector2 endPoint = centre + new Vector2(MathF.Cos(end), MathF.Sin(end)) * 100f;
+            Vector2 centre = Vector2.Zero;
+            (float start, float end) = RadialMenu.WedgeAngles(0, 4, Metrics);
+            float insideStart = start + 0.000001f;
+            float insideEnd = end - 0.000001f;
+            Vector2 startPoint = centre + new Vector2(MathF.Cos(insideStart), MathF.Sin(insideStart)) * 100f;
+            Vector2 endPoint = centre + new Vector2(MathF.Cos(insideEnd), MathF.Sin(insideEnd)) * 100f;
 
             int startEntry = RadialMenu.EntryAt(startPoint, centre, 4, Metrics);
             int endEntry = RadialMenu.EntryAt(endPoint, centre, 4, Metrics);
             Assert.True(startEntry == 0 && endEntry == 0,
                 $"Expected entry 0 at both boundaries, got {startEntry} and {endEntry}.");
+        }
+
+        [Fact]
+        public void Point_inside_configured_gap_near_visible_boundary_has_no_entry()
+        {
+            Vector2 centre = Vector2.Zero;
+            (float start, _) = RadialMenu.WedgeAngles(0, 4, Metrics);
+            float insideGap = start - 0.0000005f;
+            Vector2 point = centre + new Vector2(MathF.Cos(insideGap), MathF.Sin(insideGap)) * 100f;
+
+            Assert.Equal(-1, RadialMenu.EntryAt(point, centre, 4, Metrics));
         }
 
         [Fact]

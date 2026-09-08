@@ -9,7 +9,6 @@ namespace KhaozEngine.Gui
         const int MaximumEntryCount = 8;
         const int MaximumChoiceCount = 8;
         const float Tau = 2f * MathF.PI;
-        const float AngularEpsilon = 0.000001f;
 
         public static void ValidateEntryCount(int count)
         {
@@ -101,8 +100,7 @@ namespace KhaozEngine.Gui
             int entryIndex = Math.Min((int)(angleFromFirstEdge / step), entryCount - 1);
             float angleWithinWedge = angleFromFirstEdge - entryIndex * step;
             float halfGap = metrics.WedgeGap / 2f;
-            if (angleWithinWedge + AngularEpsilon < halfGap ||
-                angleWithinWedge - AngularEpsilon > step - halfGap)
+            if (angleWithinWedge < halfGap || angleWithinWedge > step - halfGap)
                 return -1;
 
             return entryIndex;

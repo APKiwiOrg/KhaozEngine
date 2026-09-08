@@ -64,10 +64,28 @@ maintenance gate, while compaction, replay retention, and epoch rotation take th
 
 Use a migration identity with schema DDL rights to create version two or run one `AutoCreate` boot over version one.
 A `ValidateOnly` runtime identity
-does not need DDL. It needs database connect, catalog visibility for schema validation, membership in the `public`
+does not need DDL. It needs database connect, `VIEW DEFINITION` on every journal table for schema validation, membership in the `public`
 fixed database role used by `sys.sp_getapplock`, and `SELECT`, `INSERT`, `UPDATE`, and `DELETE` on every
 `dbo.journal_*` table. Grant only the game host and controlled operators access to journal data. Prefer a managed
 identity or a secret from the deployment secret store. Do not commit connection strings or print them in logs.
+
+Data permissions alone do not expose constraint or trigger definitions. Grant `VIEW DEFINITION` on each of the
+seven tables to the runtime database principal, substituting its name for `journal_runtime` below:
+
+```sql
+GRANT VIEW DEFINITION ON OBJECT::dbo.journal_metadata TO [journal_runtime];
+GRANT VIEW DEFINITION ON OBJECT::dbo.journal_stream TO [journal_runtime];
+GRANT VIEW DEFINITION ON OBJECT::dbo.journal_event TO [journal_runtime];
+GRANT VIEW DEFINITION ON OBJECT::dbo.journal_operation TO [journal_runtime];
+GRANT VIEW DEFINITION ON OBJECT::dbo.journal_operation_stream TO [journal_runtime];
+GRANT VIEW DEFINITION ON OBJECT::dbo.journal_snapshot TO [journal_runtime];
+GRANT VIEW DEFINITION ON OBJECT::dbo.journal_projection TO [journal_runtime];
+```
+
+Schema-wide metadata permissions are unnecessary. A hidden or encrypted constraint or trigger definition fails
+validation with a whole-store `JournalStoreException` of kind `SchemaMismatch`, naming the unreadable object and
+the required permission. Validation never accepts a schema whose definition it cannot inspect. See SQL Server's
+[metadata visibility rules](https://learn.microsoft.com/sql/relational-databases/security/metadata-visibility-configuration).
 
 `CommandTimeout` applies to commands and schema locking. `MinimumRetryHorizon` prevents maintenance from deleting
 replay rows which may still be retried. `Limits` can lower any core journal maximum. `TimeProvider` controls public

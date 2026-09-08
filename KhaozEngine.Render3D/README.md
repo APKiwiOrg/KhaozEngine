@@ -171,7 +171,8 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   `RenderScale.FixedInternal` (the default) keeps a single bilinear tap on its final downscale for byte-stable
   goldens, which under-samples on a window smaller than the fixed internal target. Opt into the same mip-filtered
   blit machinery there too with `PixelPostProcessSettings.MipFilterFixedInternalDownscale` (default `false`), or
-  switch to `RenderScale.MatchViewport` outright.
+  switch to `RenderScale.MatchViewport` outright. FXAA reads only the current base mip of intermediate post
+  targets. The final downscale generates and samples their mip chain after FXAA has finished.
 - Shadows: `PixelPostProcessSettings.Quality.Shadows` (a `ShadowSettings`) picks the shadow tier via `Shadows.Mode`
   - `ShadowMode.Off` (default, byte-stable), `ShadowMode.Blob` (soft dark ground blob under each caster), or
   `ShadowMode.ShadowMap` (key-light directional PCF shadow map). For the blob tier the scene submits one request per

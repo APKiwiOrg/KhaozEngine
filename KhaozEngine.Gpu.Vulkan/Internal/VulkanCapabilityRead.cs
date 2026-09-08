@@ -19,8 +19,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// </para>
     /// <para>
     /// PARITY WITH THE INCUMBENT WAS THE POINT, AND ZERO MEMBERS WERE PERMITTED TO DIFFER (V-G1), which was a
-    /// stricter bar than the Direct3D 11 backend's and was the correct one here: that backend had a capability
-    /// defect to correct, and this one does not, because
+    /// stricter bar than the Direct3D 11 backend's. Issue #853 later found one loss in the shared maximum-only
+    /// capability model, where a sparse Vulkan sample-count mask could not survive into this answer. The other
+    /// members still retain the parity recorded here. The original comparison was against
     /// <c>KhaozEngine.Gpu.Internal.VeldridMap.SupportsCompletionFences</c> (deleted in 18.0.0) already answered
     /// true for <c>GraphicsBackend.Vulkan</c>. <c>VeldridMap.ReadCapabilities</c> was what the incumbent
     /// answered and this read was matched against it member for member, with
@@ -29,14 +30,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// incumbent in 18.0.0.
     /// </para>
     /// <para>
-    /// <b><see cref="GpuCapabilities.MaxMsaaSampleCount"/> IS THE ONE MEMBER THIS TYPE DOES NOT DECIDE</b>, and it takes it as a
-    /// parameter for that reason. V-C5 rules that the computation is READ OFF the incumbent's own
-    /// <c>GetSampleCountLimit</c> and reproduced with its citation pinned, which is work-breakdown row 15
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/525). That row landed, so the caller passes what
-    /// <see cref="VulkanMsaaLimit.MinOverTheEngineTargets"/> read off the driver, and
-    /// <see cref="NoMultisampling"/> is the floor that computation lands on rather than a stand-in for it.
-    /// Reading it off the incumbent instead of inventing a formula is the decision: two drafts of the design
-    /// each invented one, the two differ, and both then asserted equality with the incumbent as a test.
+    /// <b>THE SAMPLE-COUNT SET IS PASSED IN.</b> The caller owns the per-format driver queries and
+    /// <see cref="VulkanMsaaLimit.SupportedOverTheEngineTargets"/> owns their intersection. This type copies that
+    /// set into the shared capability value and derives the compatibility maximum from it.
     /// </para>
     /// </summary>
     internal static class VulkanCapabilityRead
@@ -118,21 +114,19 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// sampled image, off <c>vkGetPhysicalDeviceFormatProperties</c>. That pair, and not the depth-stencil one
         /// the capability's name suggests, is what the shadow pass needs and what the incumbent asked
         /// (<see cref="VulkanPhysicalDeviceReader.ShadowMapFormatFeatures"/>).</param>
-        /// <param name="maxMsaaSampleCount">Row 15's reproduction of the incumbent's own computation
-        /// (<see cref="VulkanMsaaLimit.MinOverTheEngineTargets"/>), which floors at
-        /// <see cref="NoMultisampling"/> on a device that multisamples none of the engine's targets.</param>
+        /// <param name="supportedMsaaSampleCounts">Sample counts shared by every engine MRT attachment.</param>
         internal static GpuCapabilities Assemble(
             string? deviceName,
             bool samplerAnisotropy,
             bool supportsShadowMaps,
-            int maxMsaaSampleCount)
-            => new(
+            GpuSampleCounts supportedMsaaSampleCounts)
+            => GpuCapabilities.FromSupportedMsaaSampleCounts(
                 clipSpaceYInverted: ClipSpaceYInverted,
                 depthRangeZeroToOne: DepthRangeZeroToOne,
+                supportedMsaaSampleCounts: supportedMsaaSampleCounts,
                 deviceName: ReportedDeviceName(deviceName),
                 samplerAnisotropy: samplerAnisotropy,
                 samplerLodBias: SamplerLodBias,
-                maxMsaaSampleCount: maxMsaaSampleCount,
                 supportsShadowMaps: supportsShadowMaps,
                 supportsCompute: SupportsCompute,
                 supportsCompletionFences: SupportsCompletionFences);

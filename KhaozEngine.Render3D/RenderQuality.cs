@@ -81,9 +81,9 @@ namespace KhaozEngine.Render3D
         /// Return a copy clamped to what <paramref name="caps"/> supports, so an unsupported request degrades
         /// gracefully instead of throwing or failing device creation:
         /// <list type="bullet">
-        /// <item><see cref="AntiAliasingMode.Msaa"/> is clamped DOWN to the largest supported power-of-two that is
-        ///   &lt;= <see cref="GpuCapabilities.MaxMsaaSampleCount"/>; if the device supports no MSAA (max &lt;= 1) it
-        ///   falls back to <see cref="Fxaa"/> (a cheap AA that always works).</item>
+        /// <item><see cref="AntiAliasingMode.Msaa"/> is clamped DOWN to the largest member of
+        ///   <see cref="GpuCapabilities.SupportedMsaaSampleCounts"/> no greater than the request. If none is above
+        ///   one it falls back to <see cref="Fxaa"/>.</item>
         /// <item><see cref="AntiAliasingMode.Ssaa"/> keeps its factor (clamped to at least 1; the target size is
         ///   separately capped by <see cref="PixelPostProcessSettings.MaxRenderWidth"/>/<c>Height</c>).</item>
         /// <item><see cref="AntiAliasingMode.None"/> / <see cref="AntiAliasingMode.Fxaa"/> are unchanged (always
@@ -96,10 +96,10 @@ namespace KhaozEngine.Render3D
             switch (Mode)
             {
                 case AntiAliasingMode.Msaa:
-                    int max = Math.Max(1, caps.MaxMsaaSampleCount);
-                    if (max <= 1) return Fxaa;                       // device can't MSAA: degrade to a cheap AA that works
-                    int want = Math.Clamp(MsaaSamples, 1, max);
-                    return Msaa(LargestPowerOfTwoAtMost(want), _postFxaa);
+                    int want = LargestPowerOfTwoAtMost(Math.Max(1, MsaaSamples));
+                    int supported = caps.HighestSupportedMsaaSampleCountAtMost(want);
+                    if (supported <= 1) return Fxaa;                 // device can't satisfy this request with MSAA
+                    return Msaa(supported, _postFxaa);
                 case AntiAliasingMode.Ssaa:
                     return Ssaa(SsaaFactor);                          // factor already >= 1; target size capped elsewhere
                 default:

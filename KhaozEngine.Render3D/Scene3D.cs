@@ -1451,8 +1451,8 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>The anti-aliasing selection resolved against THIS device's capabilities (never throws): an MSAA
-        /// request is clamped to <see cref="GpuCapabilities.MaxMsaaSampleCount"/> or falls back to FXAA if the device
-        /// can't MSAA at all; SSAA/FXAA/None pass through. Read fresh each frame (Post is mutable).</summary>
+        /// request is clamped to a member of <see cref="GpuCapabilities.SupportedMsaaSampleCounts"/> or falls back
+        /// to FXAA if the device cannot satisfy it; SSAA/FXAA/None pass through. Read fresh each frame (Post is mutable).</summary>
         AntiAliasing ResolvedAa() => Post.EffectiveAaMode == AntiAliasingMode.None
             ? AntiAliasing.Off
             : Post.Quality.AntiAliasing.ResolveFor(_gd.Capabilities);

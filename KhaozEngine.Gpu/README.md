@@ -258,8 +258,8 @@ What it owns today:
 - **`GpuCapabilities`** - `ClipSpaceYInverted` / `DepthRangeZeroToOne` (so renderers derive clip-Y / depth
   handling from the active backend instead of a baked Metal assumption), plus diagnostics: `DeviceName` (the GPU
   adapter/driver), `SamplerAnisotropy`, `SamplerLodBias` (whether those sampler levers are supported),
-  `MaxMsaaSampleCount` (the largest MSAA sample count the engine's MRT formats support, for building/clamping an AA
-  menu), `SupportsShadowMaps` (whether the device can render + sample an R32_Float depth target, gating the
+  `SupportedMsaaSampleCounts` (the full shared set across the engine's MRT formats, including sparse masks) and
+  `MaxMsaaSampleCount` (its largest member, kept for compatibility), `SupportsShadowMaps` (whether the device can render + sample an R32_Float depth target, gating the
   `ShadowMode.ShadowMap` tier in Render3D), and `SupportsCompletionFences` (see **Completion fences** below).
   Read off the live device.
 - **MSAA plumbing** - `GpuTextureDescription.SampleCount` (and `IGpuTexture.SampleCount`) make a multisampled render

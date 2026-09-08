@@ -193,17 +193,24 @@ public class TileWorldBuildQueueTests
                 MaxCoarseGroundAppliesPerPump = 1,
                 MaxHlodAppliesPerPump = 1,
             }, dispatcher);
+        // Using declarations unwind in reverse order. This opens the gate before queue disposal drains the worker,
+        // including when a timing assertion exits before the explicit Set below.
+        using var releaseDecorBeforeQueue = new GateRelease(decorGate);
         queue.Request(Request(1, TileWorldBuildKind.CoarseGround, 1));
         queue.Request(Request(0, TileWorldBuildKind.FullGround, 1));
         queue.Request(Request(2, TileWorldBuildKind.CoarseGround, 1));
-        Assert.True(await Task.Run(() => decorStarted.Wait(TimeSpan.FromSeconds(5))));
+        Assert.True(decorStarted.Wait(TimeSpan.FromSeconds(5)));
 
         int primeThread = 0;
-        Task prime = Task.Run(() =>
-        {
-            primeThread = Environment.CurrentManagedThreadId;
-            queue.PrimeGameplay(default);
-        });
+        Task prime = Task.Factory.StartNew(
+            () =>
+            {
+                primeThread = Environment.CurrentManagedThreadId;
+                queue.PrimeGameplay(default);
+            },
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
         Task early = await Task.WhenAny(prime, Task.Delay(TimeSpan.FromMilliseconds(500)));
         bool returnedBeforeDecor = ReferenceEquals(early, prime);
         decorGate.Set();
@@ -221,6 +228,41 @@ public class TileWorldBuildQueueTests
         queue.Pump(default);
         Assert.Equal(3, applied.Count);
         Assert.All(applied.GetRange(1, 2), result => Assert.Equal(TileWorldBuildKind.CoarseGround, result.Kind));
+    }
+
+    [Fact]
+    public async Task Blocked_decor_cleanup_releases_the_worker_when_the_test_body_unwinds_early()
+    {
+        Task<Exception> unwind = Task.Factory.StartNew(
+            () => Record.Exception(RunBlockedDecorHarnessUntilPlannedFailure),
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
+
+        Exception? error = await unwind.WaitAsync(TimeSpan.FromSeconds(1));
+
+        Assert.IsType<PlannedCleanupException>(error);
+    }
+
+    static void RunBlockedDecorHarnessUntilPlannedFailure()
+    {
+        using var decorGate = new ManualResetEventSlim();
+        using var decorStarted = new ManualResetEventSlim();
+        var dispatcher = new ThreadDispatcher();
+        using var queue = new TileWorldBuildQueue<int, int>(
+            request =>
+            {
+                decorStarted.Set();
+                decorGate.Wait();
+                return request.Input;
+            },
+            _ => { },
+            new TileWorldBuildQueueOptions { MaxConcurrentBuilds = 1 }, dispatcher);
+        using var releaseDecorBeforeQueue = new GateRelease(decorGate);
+        queue.Request(Request(1, TileWorldBuildKind.CoarseGround, 1));
+        Assert.True(decorStarted.Wait(TimeSpan.FromSeconds(5)));
+
+        throw new PlannedCleanupException();
     }
 
     [Fact]
@@ -292,7 +334,11 @@ public class TileWorldBuildQueueTests
 
         public void Schedule(Action build)
         {
-            Task task = Task.Run(build);
+            Task task = Task.Factory.StartNew(
+                build,
+                CancellationToken.None,
+                TaskCreationOptions.LongRunning,
+                TaskScheduler.Default);
             lock (_gate) _tasks.Add(task);
         }
 
@@ -306,5 +352,16 @@ public class TileWorldBuildQueueTests
             }
             if (tasks.Length > 0) Task.WaitAll(tasks);
         }
+    }
+
+    sealed class PlannedCleanupException : Exception;
+
+    sealed class GateRelease : IDisposable
+    {
+        readonly ManualResetEventSlim _gate;
+
+        public GateRelease(ManualResetEventSlim gate) => _gate = gate;
+
+        public void Dispose() => _gate.Set();
     }
 }

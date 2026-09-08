@@ -1360,6 +1360,20 @@ The glide always snaps (no easing) on the first update and whenever the panel is
 `Resizable` drag. The legacy `Update(pointer, input)` overload never feeds dt, so it never glides regardless of
 `HeightGlideSeconds`.
 
+**Drag-edge scrolling.** A cross-widget drag can scroll a panel without letting go of its payload:
+
+```csharp
+panel.DragEdgeScrollingEnabled = true;
+panel.DragEdgeScrollBand = 40f;
+panel.DragEdgeScrollSpeed = 360f;
+panel.Update(pointer, input, dt, dragContext);
+```
+
+The feature defaults off. While `GuiDragContext.IsDragging` is true, pointer depth in the top or bottom
+content band controls scroll speed, scaled by `dt` and clamped to the panel's scroll extent. The header is
+excluded, and a hidden panel or content without overflow does not scroll. Ordinary drag-pan is suppressed
+while that cross-widget drag is active.
+
 **HUD widgets: `SlotGrid` + `ProgressBar` (10.78.0)** - two additive widgets for inventory / status HUDs. `SlotGrid`
 lays out `Count` uniform slots wrapping at `Columns` (`Bounds`.X/Y is the origin, and the footprint is
 `ContentSize` / `ContentBounds`, derived from `SlotWidth` / `SlotHeight` / `Spacing`). It hit-tests each slot
@@ -1580,13 +1594,7 @@ position plus a button read is against the one hard input rule. `ConsumeRightGes
 mirror `ConsumeGesture()` / `IsConsumed` and are tracked separately, so consuming a left gesture cannot blind
 a right-click and consuming the right-click that opened a menu cannot cancel an unrelated left tap.
 
-```csharp
-if (pointer.IsRightTapIn(slotRect))
-{
-    OpenContextMenu(pointer.Position);
-    pointer.ConsumeRightGesture();   // the menu that just appeared must not act on this same release
-}
-```
+The complete `ContextMenu.Open` example below uses these bounds helpers to open the real control.
 
 ### Context menus (`ContextMenu`, 18.2.0)
 
@@ -1666,6 +1674,10 @@ edges. Assign `Viewport` (the design size) before you update or draw an open men
 it is `Vector2.Zero` rather than quietly pinning the menu into the top-left corner. For a headless test the
 measure-only `ContextMenu(ITextMeasurer, ITextMeasurer)` constructor drives `Open` / `Update` with no GPU device
 and no baked font, and `Draw` throws on a menu built that way.
+
+`menu.Bounds` and `menu.EntryBounds(index)` expose live geometry for adornments. Invalid row indices and
+null layout inputs are rejected at the boundary. Default `ContextMenuEntry` and `TooltipLine` values lay
+out empty text safely. Menu-cancel through `InputManager` is ignored while the window is unfocused.
 
 ---
 
@@ -2944,8 +2956,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
 - Anti-aliasing options (the AA dropdown): `Post.Quality.AntiAliasing` picks a configuration -
   `AntiAliasing.Off` (default), `.Fxaa` (cheap one-pass edge smoother), `.Msaa(2|4|8)` (hardware multisample,
   geometry edges only), or `.Ssaa(factor)` (supersample the whole image, the strongest, also kills shaded-interior
-  shimmer). Build a menu from `AppWindow.Capabilities.MaxMsaaSampleCount` and validate a choice with
-  `aa.ResolveFor(caps)` (clamps an unsupported MSAA level down, or falls back to FXAA; never throws). `Ssaa(f)` is
+  shimmer). Build a menu from `AppWindow.Capabilities.SupportedMsaaSampleCounts` and validate a choice with
+  `aa.ResolveFor(caps)`, which selects a supported count or falls back to FXAA. The maximum alone does not
+  imply every lower count is supported. `Ssaa(f)` is
   the high-level equivalent of `RenderScale.MatchViewport` + `Supersample = f`; the raw fields remain and, with AA
   `Off`, still govern (so existing scenes are unchanged). The `Pixelated` retro path forces AA off. Costs: SSAA is
   ~factor^2 fragment shading, MSAA adds a per-frame resolve, FXAA one pass - keep AA off by default and measure.
@@ -3544,7 +3557,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     and each component's speed comes from the deep-water dispersion relation, so long rollers genuinely overtake
     the short chop. `SwellSteepness` is capped at 1, the point past which the surface would fold through itself.
   - **Surface grid** (`GridMode`, a `WaterGridMode`) - two layouts, and which one you want depends on whether the
-    camera moves much:
+    camera moves much. Clipmap mode uses a four-vertex, six-index quad for an effective `Procedural` source
+    with zero `SwellAmplitude`. Ripples still shade it. FFT and nonzero-swell planes retain displaced
+    clipmaps, including in a mixed frame. The two layouts are:
     - `WaterGridMode.CameraFocused` (the default): a fixed 97x97 budget (9,409 vertices, 18,432 triangles, one
       draw per plane), spread NON-uniformly by `GridFocusBias` toward the camera. That matters because the plane
       is whatever size the consumer asks for: at a 600-unit half-extent a uniform grid puts vertices 12 units
@@ -6085,7 +6100,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.35.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.36.0" />
 ```
 
 ```csharp
@@ -6770,9 +6785,9 @@ re-freeze or re-supply the placements to match. A companion layer hosted off a p
 inherit that immunity: companion generation resamples the field's height per companion, so after a field
 swap a frozen host keeps its stale Y while its companions re-ground to the new surface.
 
-**Colliders default on** (`colliders: true`), registering a static body for every placement at ANY layer
-index - unlike a scatter or companion layer, which only ever registers at layer 0 (the long-standing rule,
-issue #288). Pass `colliders: false` to keep a layer render-only when the game builds that zone's physics
+**Colliders default on** (`colliders: true`), registering mapped static bodies at every layer index.
+Scatter and companion layers also register their shaped props at every index. Pass `colliders: false` on
+a placement layer to keep it render-only when the game builds that zone's physics
 once outside the sink instead: both heads need the identical body set for client prediction to match server
 authority, and a headless server has no `Scene3D` to build a `Scene3DChunkSink` from in the first place, so
 building the bodies once from the same frozen list both heads already share is the only path that works
@@ -8255,7 +8270,7 @@ A hidden element is neither drawn nor pickable from the viewport, but stays sele
 (which reads straight off the document), so hiding something is always reversible. See the
 `KhaozEngine.MapEditor` README's "Visibility" section for the full mechanics.
 
-**Keys.** Ctrl+Z undo, Ctrl+Shift+Z or Ctrl+Y redo, Ctrl+S save, Ctrl+D duplicates the current selection
+**Keys.** Ctrl+Z undo, Ctrl+Shift+Z or Ctrl+Y redo, Ctrl+S save, Ctrl+R reload, Ctrl+D duplicates the current selection
 (see Duplicate below), Ctrl+Shift+F freezes the whole zone's procedural scatter into placements (see
 Freeze zone below), Delete removes the current selection, R snaps the selected placement to the ground
 (undoable, a no-op when already grounded or nothing placement-shaped is selected), Ctrl+Up / Ctrl+Down
@@ -8365,14 +8380,26 @@ also calls `EditorDocument.MarkSaved()`, clearing the dirty flag (the status str
 sealing the current gesture, so a later same-gesture edit can never merge into the just-saved command and
 hide itself from `IsDirty`.
 
+**Reload from disk.** Ctrl+R (Cmd+R on macOS) reloads a clean document explicitly. It refuses unsaved edits
+and does not run while an inspector or filter field owns keyboard focus. Loading and building a replacement
+happen before the live document and viewport are swapped, so a failed replacement retains the current scene.
+Successful reload clears history and selection, preserves the current camera and tool choices, and uses the
+current `PlayerSpawnSearchTileLimit`. No watcher or background polling is involved.
+
 **Tiled documents.** `MapEditorOptions.DocumentPath` may name a `.map.json` file OR a tiled document
 directory: `CreateDocument` dispatches on `MapDocumentFile.DetectForm` (never `File.Exists`, which is
 false for a directory and used to fall through to a blank untitled document, silently discarding whatever
 Ctrl+S then overwrote). Below `MapEditorOptions.WholeWorldTileLimit` occupied tiles (default 512) a tiled
 document loads whole, exactly like a monolithic one. Above it the editor opens a WINDOW instead (see
-`MapDocumentWindowing`), centered on the tile containing the document bounds' midpoint,
+`MapDocumentWindowing`), centered on a nearby enabled player spawn with the bounds' midpoint as fallback,
 `MapEditorOptions.EditorWindowRadius` tiles either side (default 2), and the status strip's `window:
-(minX,minZ)-(maxX,maxZ)` segment (`MapEditorScene.Window`, tile coordinates) shows the loaded extent. Ctrl+S
+(minX,minZ)-(maxX,maxZ)` segment (`MapEditorScene.Window`, tile coordinates) shows the loaded extent.
+`MapEditorOptions.PlayerSpawnSearchTileLimit` caps the initial search at 32 occupied tile reads by default.
+Tiles are searched by squared distance from the bounds-center tile, then Z and X for ties, and enabled spawns
+within a tile use ordinal ID order. Zero disables searching. The final window load is separate from that
+budget. The camera starts near the selected spawn or fallback center, so the loaded slice is visible. The
+existing six-argument `MapDocumentWindowing.Load` uses the default budget, and its seven-argument overload
+accepts an explicit budget before the two output parameters. Ctrl+S
 always saves back in the form and directory the document was opened from (`MapDocumentFile.SaveAuto`),
 never converting implicitly: a plain `.map.json` load-then-save round-trips as monolithic, a tiled
 directory round-trips as tiled, touching only the tiles that actually changed. Moving content into a tile
@@ -8465,8 +8492,9 @@ into the thrown message on failure, so the in-session document is never left inv
 editor: `map_open` dispatches on `MapDocumentFile.DetectForm` (a directory loads tiled, a file loads
 monolithic), and a tiled document at or under `MapEditSession.WholeWorldTileLimit` occupied tiles (default
 512, matching `MapEditorOptions.WholeWorldTileLimit`) loads WHOLE. Above it, `map_open` windows instead:
-the manifest plus only the tiles inside a square centered on the document bounds, radius
-`EditorWindowRadius` tiles (default 2). `map_save` always writes back in the form and directory the
+the manifest plus the tiles inside a square around a nearby enabled player spawn, radius
+`EditorWindowRadius` tiles (default 2). The shared policy searches at most 32 occupied tiles nearest the bounds
+center and uses that center if no enabled spawn is found. `map_save` always writes back in the form and directory the
 document came from (`MapDocumentFile.SaveAuto`), never converting implicitly. `window_status` reports the
 loaded window's tile and world rect plus the occupied/loaded tile counts (`Tiled` false for a monolithic
 document). `set_window(minX, minZ, maxX, maxZ, discard?)` moves the window: it refuses with unsaved
@@ -9292,7 +9320,7 @@ and the inverse is what a click needs, because a ray lands on a ground tile rath
 // to the same id, and two overlapping targets resolve to the lower id on BOTH heads.
 if (TileRaycast.Pick(document, plane, rayOrigin, rayDirection) is TileHit hit
     && targets.TryGetTargetAt(new TileCoord(hit.X, hit.Z, hit.Plane), out long target))
-    client.Queue(TileCommand.Interact(target, TileMoveMode.Run));
+    client.Queue(TileCommand.InteractObject(target, TileMoveMode.Run));
 ```
 
 `TileReach` is the rule over what it resolves: the reach set of a footprint is every tile CARDINALLY adjacent to a
@@ -9332,6 +9360,7 @@ var persistence = new TileWorldPersistence(server, store, map, new TileWorldPers
 
 server.OnBeforeTick += dt => game.StepNpcs(dt);            // runs BEFORE movement, ships in the same snapshot
 server.OnInteract   += (slot, netId, target) => game.Interact(slot, target);
+server.OnInteractEntity += (slot, netId, targetNetId) => game.InteractEntity(slot, targetNetId);
 server.OnGameMessage += (slot, kind, payload) => game.Receive(slot, kind, payload);
 
 while (running)
@@ -9405,7 +9434,8 @@ client.Teleported += camera.SnapToPlayer;                  // discontinuous plac
 // per frame
 client.RunMode = runToggle ? TileMoveMode.Run : TileMoveMode.Walk;
 if (clickedTile is TileCoord goal) client.Queue(TileCommand.WalkTo(goal, client.RunMode));
-if (clickedObject is long id)      client.Queue(TileCommand.Interact(id, client.RunMode));
+if (clickedObject is long id)      client.Queue(TileCommand.InteractObject(id, client.RunMode));
+if (clickedActor is long actorId)  client.Queue(TileCommand.InteractEntity(actorId, client.RunMode));
 
 client.Poll();
 client.Tick(dt);
@@ -9416,6 +9446,13 @@ Draw(playerMesh, me.Position, me.Yaw);
 foreach (long netId in client.RemoteNetIds)
     if (client.TryGetRemotePose(netId, out TilePose pose)) Draw(remoteMesh, pose.Position, pose.Yaw);
 ```
+
+`InteractObject` and the compatible legacy `Interact` factory name authored-object IDs. `InteractEntity`
+names entity net IDs and resolves through the entity snapshot, never through authored objects. Their server
+callbacks are separate because the numeric ID spaces overlap. Existing object command bytes and signed object
+IDs remain compatible. Client and server must adopt the new entity command kind together, and an older server
+rejects it. Pending entity interactions add one optional domain byte inside the framed movement component,
+while legacy payloads retain their layout and decode as authored-object interactions.
 
 **Both heads take the same `ReplicationRegistry`.** Each constructor takes one and each defaults to
 `TileProtocol.CreateRegistry()`, so a game registering its own components at or above
@@ -9464,14 +9501,17 @@ client.TryGetRemotePose(netId, out TilePose them);              // everybody els
 - **It is presentation only.** The simulation, the replay, the reconciliation and the wire read the step's tick
   count, never the drawn position, so two heads replay byte-identically whatever anybody draws.
 
-**THE INVARIANT, and it is the thing to design against: the drawn body LAGS its committed tile by up to one
-step.** Half a tile on average, zero at the instant it lands, and never ahead. Combat, reach, occupancy and what
-a click resolves against are all answered about the committed tile, so a player reading the avatar alone is
-reading something the rules moved on from. **A REMOTE's BODY adds `InterpolationDelayTicks` on top**, a whole
-tick per delay tick and two by default: at a 1/6 s tick that is 0.33 s more. Size a design that draws other
-players against the SUM. Its committed TILE need not pay that second half: `TryGetLatestRemoteTile` reads the
-newest applied snapshot rather than the delayed timeline, so a rule about a remote is behind the transport and
-one snapshot interval only. See the two-reads bullet below for which to use where.
+A remote body is at most one grid step behind the committed tile on the same delayed timeline. With no active
+reconciliation offset, the local body is at most one grid step plus one local command tick of travel behind
+`Prediction.PredictedState.Tile`, because `ClientPrediction.RenderedState` eases between command ticks. At the
+default four-tick walk and two-tick run cadences those local base bounds are 1.25 and 1.5 grid steps. Grid
+step means Chebyshev distance. A diagonal step spans `sqrt(2) * TileSize` in Euclidean world distance.
+
+`LocalPose` also carries the active planar reconciliation offset. It can point away from the committed tile,
+so a conservative instantaneous bound adds its current magnitude to the base motion term. Repeated
+sub-hard-snap corrections can re-anchor the offset, giving it no separate fixed cap. A hard snap or teleport
+clears it. A remote compared with current server truth separately adds `InterpolationDelayTicks`. Rules use
+committed tiles, while presentation includes every active term.
 
 **The mitigation is VISIBILITY, and it is yours to draw.** Do not try to shrink the lag: that was tried twice and
 the motion is worse both times. Draw the truth instead, so the lead is something the player reads rather than
@@ -11482,7 +11522,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.35.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.36.0" />
 ```
 
 ```csharp
@@ -11518,7 +11558,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.35.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.36.0" />
 ```
 
 ```csharp
@@ -11760,7 +11800,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.35.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.36.0" />
 ```
 
 ```csharp
@@ -12312,11 +12352,11 @@ device was always refused, and losing one now is too: the host-visible memory a 
 went with the device, so the pointer would dangle. There is no recovery path, so a run that wants to read back
 again creates a new device.
 
-**A sample count above the device's `GpuCapabilities.MaxMsaaSampleCount` is REFUSED at texture creation rather
-than rounded down to one.** `AntiAliasing.ResolveFor` is the one place a request is meant to be clamped, so a
-count arriving at the factory above the maximum came from a caller that skipped it, and a framebuffer that is
-quietly not multisampled reads as a rendering bug rather than as a missing clamp. Clamp upstream, which the
-engine's own renderers already do.
+**A sample count missing from `GpuCapabilities.SupportedMsaaSampleCounts` is refused at Vulkan texture
+creation.** The set can have holes. Lavapipe supports 1x and 4x without 2x, so checking only the maximum would
+allow a black render target. Use `AntiAliasing.ResolveFor` to choose the largest supported member no greater
+than the request, or FXAA when no multisample member fits. The native factory rejects unsupported direct
+requests before creating an image.
 
 **`GpuBufferUsage.Dynamic` does NOT make a buffer CPU-mappable there, where it does on `GpuBackendKind.Vulkan`.**
 Only `GpuBufferUsage.Staging` buffers and staging textures can be mapped on the native backend. The reason is the
@@ -13808,7 +13848,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="18.35.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="18.36.0" />
 </ItemGroup>
 ```
 
@@ -14003,26 +14043,27 @@ the process apart. What you get for free:
 - **A level reload, a second window, an editor preview or a headless capture stops paying for shaders.** The memo
   is process-wide rather than per device, because SPIR-V is device-free, so a fresh device is as cheap as a warm
   one.
-- **Cold start still pays once.** Nothing is cached to disk here (the three native backends have their own disk
-  caches for their own emissions, see `KE_METAL_MSL_CACHE` and friends), so the first scene in a process compiles
-  the sources it needs.
+- **A cold cache still pays once.** This memo is memory-only. Native backends check their disk caches before
+  reaching it, including Vulkan's GLSL-to-SPIR-V byte cache, so a warm disk cache can avoid the first compile
+  in a new process as well.
 - **`KE_SPIRV_CACHE=off` turns it off** for the run, taking the same five disable words the disk caches take
   (`off`, `0`, `false`, `no`, `none`). Reach for it if you are chasing a miscompile and need to state that every
   module in the run came out of the compiler rather than out of a dictionary.
 
-**On a native backend, that switch alone does not buy you a fresh compile.** The native Metal and Direct3D 11
-backends answer a repeat out of their own shader disk cache BEFORE the front end is reached, so with a warm cache
+**On a native backend, that switch alone does not buy you a fresh compile.** Each native backend answers a repeat out of its own shader disk cache before the front end is reached, so with a warm cache
 they compile nothing whether or not this memo is off, and the run is not the fresh one you asked for. Set the
 backend's own variable alongside it:
 
 ```bash
 KE_SPIRV_CACHE=off KE_METAL_MSL_CACHE=off      # native Metal
 KE_SPIRV_CACHE=off KE_D3D11_SHADER_CACHE=off   # native Direct3D 11
+KE_SPIRV_CACHE=off KE_VULKAN_SPIRV_CACHE=off  # native Vulkan
 ```
 
-The native Vulkan backend needs only `KE_SPIRV_CACHE=off`, because nothing on that path sits in front of the
-compiler (the Vulkan disk cache holds pipelines, which is after it). `cross-platform-gpu.yml`'s
-`disableGpuDiskCache` dispatch sets them together for this reason.
+`KE_VULKAN_SPIRV_CACHE` accepts a cache directory or the same disable words. The cache validates stored
+SPIR-V bytes and keys them by source, stage, engine and compiler identity. Invalid entries compile again.
+Vulkan's separate pipeline cache is later in the path. `cross-platform-gpu.yml`'s `disableGpuDiskCache`
+dispatch disables all of these caches together.
 
 The cache holds 512 distinct modules and then stops inserting, which is far above what any engine-owned run
 reaches. If your game GENERATES shader sources at runtime rather than shipping them as constants, that bound is

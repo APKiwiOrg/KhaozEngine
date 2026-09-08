@@ -151,14 +151,14 @@ public sealed partial class TileWorldServer
             TileCommand admitted = Admit(cmd, arrived, state, slot, netId);
             cell.World.Set(e, new PendingTileCommand { Command = admitted });
             // The lock this player will hold going INTO the movement pass, unless this tick's own command is what
-            // breaks it. A WalkTo or an Interact is the player DISENGAGING, which is not a failure to reach and must
-            // not produce a notice. An Attack is watched by the target it NAMES rather than by the one on the state,
-            // because the click's own tick is the commonest tick for a lock to be refused on: the simulator sets the
-            // lock and the follow can clear it again inside that same Advance. See ReportBrokenLocks in
-            // TileWorldServer.Combat.cs.
+            // breaks it. A WalkTo or either Interact kind is the player DISENGAGING, which is not a failure to reach
+            // and must not produce a notice. An Attack is watched by the target it NAMES rather than by the one on
+            // the state, because the click's own tick is the commonest tick for a lock to be refused on: the
+            // simulator sets the lock and the follow can clear it again inside that same Advance. See
+            // ReportBrokenLocks in TileWorldServer.Combat.cs.
             if (admitted.Kind == TileCommandKind.Attack) watchedLocks.Add((slot, admitted.Target, true));
             else if (state.CombatTarget != 0 && admitted.Kind != TileCommandKind.WalkTo
-                && admitted.Kind != TileCommandKind.Interact)
+                && admitted.Kind != TileCommandKind.Interact && admitted.Kind != TileCommandKind.InteractEntity)
                 watchedLocks.Add((slot, state.CombatTarget, false));
         }
 
@@ -299,6 +299,14 @@ public sealed partial class TileWorldServer
                 // resolves on the player's own plane with no reachable tile, both DO reach the queue, because
                 // CannotReach is exactly their answer.
                 if (simulator.Accepts(state, cmd)) actions.Issue(slot, cmd.Target, TickCount);
+                return cmd;
+
+            case TileCommandKind.InteractEntity:
+                // Entity interaction has an explicit domain and refuses a missing, malformed or cross-plane
+                // target before it can enter the object action path. The mode still applies through Continue,
+                // matching the client admission path for a command whose target disappeared after the click.
+                if (!simulator.Accepts(state, cmd)) return TileCommand.Continue(cmd.Mode);
+                actions.Issue(slot, cmd.Target, TileActionKind.InteractEntity, TickCount);
                 return cmd;
 
             case TileCommandKind.Attack:

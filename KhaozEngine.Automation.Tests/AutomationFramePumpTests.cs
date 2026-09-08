@@ -167,17 +167,36 @@ public class AutomationFramePumpTests
             release.Wait(TimeSpan.FromSeconds(5));
             return new JsonObject { ["done"] = true };
         });
-        Task<AutomationReply> reply = host.Submit(AutomationTestKit.Parse(
-            "{\"id\":9,\"cmd\":\"call\",\"name\":\"slow\"}"));
-        Task pump = Task.Run(() => host.Pump(Frame));
+        Task<AutomationReply>? reply = null;
+        var finished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var pump = new Thread(() =>
+        {
+            try
+            {
+                // Submit on the running pump thread so queue scheduling cannot consume the timeout.
+                reply = host.Submit(AutomationTestKit.Parse(
+                    "{\"id\":9,\"cmd\":\"call\",\"name\":\"slow\"}"));
+                host.Pump(Frame);
+                finished.SetResult();
+            }
+            catch (Exception exception) { finished.SetException(exception); }
+        }) { IsBackground = true };
+        pump.Start();
 
-        Assert.True(entered.Wait(TimeSpan.FromSeconds(2)));
-        await Task.Delay(150);
-        Assert.False(reply.IsCompleted);
+        try
+        {
+            Assert.True(entered.Wait(TimeSpan.FromSeconds(2)));
+            await Task.Delay(150);
+            Assert.NotNull(reply);
+            Assert.False(reply.IsCompleted);
+        }
+        finally
+        {
+            release.Set();
+            await finished.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        }
 
-        release.Set();
-        await pump.WaitAsync(TimeSpan.FromSeconds(2));
-        AutomationReply result = await reply;
+        AutomationReply result = await reply!;
         Assert.True(result.IsSuccess);
         Assert.True(result.Ok!["done"]!.GetValue<bool>());
     }

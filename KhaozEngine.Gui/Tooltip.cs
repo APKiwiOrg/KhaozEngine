@@ -335,13 +335,15 @@ namespace KhaozEngine.Gui
             for (int i = 0; i < lines.Count; i++)
             {
                 TooltipLine line = lines[i];
+                string text = line.Text ?? "";
+                line = new TooltipLine(text, line.Color, line.Scale);
                 float budget = bounded ? maxContentWidth / (line.Scale > 0f ? line.Scale : 1f) : maxContentWidth;
-                if (!bounded || bodyFont.Measure(line.Text).X <= budget)
+                if (!bounded || bodyFont.Measure(text).X <= budget)
                 {
                     outLines.Add(line);
                     continue;
                 }
-                foreach (string wrapped in TextLayout.Wrap(bodyFont, line.Text, budget, hardBreak: true))
+                foreach (string wrapped in TextLayout.Wrap(bodyFont, text, budget, hardBreak: true))
                     outLines.Add(new TooltipLine(wrapped, line.Color, line.Scale));
             }
             return outLines;

@@ -203,7 +203,8 @@ public sealed class TileActorHost
         for (int i = 0; i < tickActors.Count; i++)
         {
             long netId = tickActors[i];
-            if (!server.TryGetActorState(netId, out TileMoveState state)) continue;
+            if (!server.TryOpenActorTick(netId, out TileActorTickAccess actor)) continue;
+            TileMoveState state = actor.State;
             spawnerByActor.TryGetValue(netId, out TileActorSpawner? spawner);
             // THE MODE THE ACTOR IS ALREADY STANDING AT, never a per-tick restatement of the definition's. The
             // definition's cadence is written onto the state at spawn, so this IS that cadence until something
@@ -216,22 +217,23 @@ public sealed class TileActorHost
             // (a scripted event, a boss phase, a test) without replacing the behaviour for all of them.
             TileCommand command = nextCommand.Remove(netId, out TileCommand latched)
                 ? latched
-                : Decide(netId, state, spawner, mode, server.TickCount);
+                : Decide(netId, actor, state, spawner, mode, server.TickCount);
             command = server.AdmitActorAttack(netId, command);
 
-            server.WriteActorCommand(netId, command);
-            RestoreOnArrival(netId, state, spawner);
+            if (server.WriteActorTickCommand(netId, actor, command, out TileActorTickAccess current))
+                RestoreOnArrival(netId, current, state, spawner);
         }
     }
 
-    TileCommand Decide(long netId, in TileMoveState state, TileActorSpawner? spawner, TileMoveMode mode, long tick)
+    TileCommand Decide(long netId, in TileActorTickAccess actor, in TileMoveState state,
+        TileActorSpawner? spawner, TileMoveMode mode, long tick)
     {
         if (Behaviour is null) return TileCommand.Continue(mode);
 
         // Both reads answer false for an entity that carries neither component, which leaves the out parameter at
         // default, which is exactly the right view to hand a behaviour for one.
-        server.TryGetCombatState(netId, out TileCombatState combat);
-        server.TryGetHealth(netId, out TileHealth health);
+        TileWorldServer.ReadActorTickCombat(actor, out TileCombatState combat);
+        TileWorldServer.ReadActorTickHealth(actor, out TileHealth health);
         // A spawner's authored tile, or the tile this actor was born on, and NEVER the tile it is standing on now.
         // The last of those three is a home that moves with the actor, which is no home at all. The final fallback
         // is only reached for an actor whose spawn this host never saw, which nothing in this package produces.
@@ -297,7 +299,7 @@ public sealed class TileActorHost
                 // inside the window for any leash the walk home fits in. That re-acquire also clears Returning, so
                 // the arrival restore never fired and the heal was lost for that break. A player who stopped
                 // attacking got the monster back anyway.
-                ForgetAttacker(netId);
+                ForgetAttacker(netId, actor);
                 // ALREADY WALKING THERE, read BEFORE the flag below is set, because the flag IS the memo. Break is
                 // re-decided on every tick the actor is outside its leash, and a WalkTo re-paths through
                 // TilePathfinder.FindPath unconditionally, so re-issuing it costs one path per tick per leashed
@@ -348,9 +350,10 @@ public sealed class TileActorHost
     // rule both write is the same one and it is stated once, on TileCombatState.LastDamagedBy: forgetting is the
     // attacker and the tick going to zero together. This one is not routed through that door because it sits on the
     // leash's per-tick path, where the read above is what keeps the tick free.
-    void ForgetAttacker(long netId)
+    void ForgetAttacker(long netId, in TileActorTickAccess actor)
     {
-        if (!server.TryGetCombatState(netId, out TileCombatState combat)) return;
+        if (!server.ReadCurrentActorTickCombat(netId, actor, out TileActorTickAccess current,
+                out TileCombatState combat)) return;
         if (combat.LastDamagedBy == 0L && combat.LastDamagedTick == 0L
             && combat.LastAttackedBy == 0L && combat.LastAttackedTick == 0L) return;
         combat.LastDamagedBy = 0L;
@@ -360,7 +363,7 @@ public sealed class TileActorHost
         // exactly as the damage-based one used to.
         combat.LastAttackedBy = 0L;
         combat.LastAttackedTick = 0L;
-        server.SetCombatState(netId, combat);
+        server.WriteActorTickCombat(netId, current, combat);
     }
 
     // The arrival half of a leash break: full health when it is HOME with nothing left to walk, never when it broke.
@@ -370,13 +373,14 @@ public sealed class TileActorHost
     // pending-action pass uses (a walk resolves on the tick its last step STARTS). It also has to be, because this
     // reads the TICK-START state: a gate on the step being over would first be true on the tick after the one every
     // other reader of the server already sees the actor standing at home on.
-    void RestoreOnArrival(long netId, in TileMoveState state, TileActorSpawner? spawner)
+    void RestoreOnArrival(long netId, in TileActorTickAccess actor, in TileMoveState state,
+        TileActorSpawner? spawner)
     {
         if (spawner is null || !spawner.Returning) return;
         if (!state.Tile.Equals(spawner.Home) || !state.Route.IsIdle) return;
         spawner.Returning = false;
-        if (server.TryGetHealth(netId, out TileHealth health) && health.Current < health.Max)
-            server.SetHealth(netId, new TileHealth { Current = health.Max, Max = health.Max });
+        if (TileWorldServer.ReadActorTickHealth(actor, out TileHealth health) && health.Current < health.Max)
+            server.WriteActorTickHealth(netId, actor, new TileHealth { Current = health.Max, Max = health.Max });
     }
 
     void TickSpawner(TileActorSpawner spawner)

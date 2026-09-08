@@ -75,8 +75,8 @@ reasoning is what makes the code readable. Nothing selects it any more.
 > telemetry session header. And since
 > [#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525) IT DRAWS: the vertex and index binds, both `Draw`
 > overloads, `DrawIndexed`, `Dispatch`, both texture copies, the buffer copy, `GenerateMipmaps` and
-> `ResolveTexture` are all live, so `IGpuCommandList` has no refusing member left, `MaxMsaaSampleCount` is the
-> incumbent's own computation reproduced rather than a pinned 1, and a windowed run presents a frame the backend
+> `ResolveTexture` are all live, so `IGpuCommandList` has no refusing member left. The full supported MSAA mask is
+> read from the device, and a windowed run presents a frame the backend
 > really rendered. The
 > backend IS nameable: `GpuBackendKind.VulkanNative` and the `vulkan-native` / `vk-native` tokens
 > landed with [#513](https://github.com/APKiwiOrg/KhaozEngine/issues/513). And since
@@ -1022,6 +1022,13 @@ declared state past the last colour output throws away a state the caller wrote 
 site declares exactly that, so enforcing the contract costs nothing and only fires on a description that was
 already wrong.
 
+**GLSL to SPIR-V is cached across processes.** Each compiled stage is stored under
+`<local-app-data>/KhaozEngine/vulkan-spirv/<engine version>`. The key covers the source, stage, engine version,
+shaderc package version and pinned front-end options. Each entry carries an authenticated payload and a checked
+SPIR-V header. A missing, unreadable or corrupt entry compiles normally, and a corrupt file is removed before
+the replacement is written. `KE_VULKAN_SPIRV_CACHE=<directory>` relocates the cache and
+`KE_VULKAN_SPIRV_CACHE=off` disables it for cache diagnosis.
+
 **The `VkPipelineCache` is persisted, and a corrupt file cannot crash a launch.** The incumbent passed
 `VkPipelineCache.Null` at both of its creation sites, so every launch recompiled every pipeline from SPIR-V,
 across considerably more permutations than programs because everything except viewport and scissor is baked in.
@@ -1281,16 +1288,14 @@ level N to `TRANSFER_DST_OPTIMAL` at each step, so the two ranges are DISJOINT e
 shape the layout tracker answers per level and then collapses when the whole chain is sampled.
 
 **`ResolveTexture` is `vkCmdResolveImage` at mip 0 layer 0, outside a render pass instance**, with both images
-transitioned to the transfer layouts and left for `End` to restore. An out-of-range sample count is refused at
-TEXTURE CREATION rather than here and rather than clamped, because the engine clamps upstream against
-`MaxMsaaSampleCount` so nothing legitimate reaches the throw, and a silent MSAA downgrade presents as a golden
-mismatch that reads like a rendering bug.
+transitioned to the transfer layouts and left for `End` to restore. An unsupported sample count is refused at
+TEXTURE CREATION rather than here and rather than clamped, because the engine selects upstream from
+`SupportedMsaaSampleCounts`. A silent MSAA downgrade presents as a rendering bug.
 
-**`MaxMsaaSampleCount` is the incumbent's own computation reproduced**, not a formula invented here: the minimum
-over the engine's three MRT targets of the highest sample count each supports, read through
-`vkGetPhysicalDeviceImageFormatProperties` exactly as `VkGraphicsDevice.GetSampleCountLimit` did, with the
-citation pinned in a constant so the two sources could be diffed. That is what made the capability parity test's
-asserted identical satisfiable by construction rather than by luck.
+**`SupportedMsaaSampleCounts` preserves the full shared mask across the engine's MRT attachments.** Issue #853
+measured lavapipe reporting 1x and 4x with no 2x. A maximum of 4 lost that hole and let 2x reach image creation,
+where it rendered a black frame. The backend now intersects the masks returned by
+`vkGetPhysicalDeviceImageFormatProperties`. `MaxMsaaSampleCount` remains the highest member for compatibility.
 
 **Both buffer-copy offsets must be multiples of four, and Vulkan is not what asks for it (17.40.0).** This
 backend took an unaligned offset happily and native Metal could not, because macOS requires the alignment of its
@@ -1498,14 +1503,10 @@ reports that bit for it. The pass wants this pair anyway, since `ShadowMapRender
 `R32Float` with `RenderTarget | Sampled` and hangs a separate depth-stencil off it, and it was also the parity
 answer, since `VeldridMap.SupportsShadowMaps` asked `GetPixelFormatSupport` for the same two.
 
-**`MaxMsaaSampleCount` is a real driver reading**, since row 15
-([#525](https://github.com/APKiwiOrg/KhaozEngine/issues/525)) reproduced the incumbent's own
-`GetSampleCountLimit`: the minimum over the engine's three MRT targets of the highest sample count each supports,
-read through `vkGetPhysicalDeviceImageFormatProperties` with the citation pinned in a constant. It was pinned to
-one sample before that row, and the pin was a ruling rather than an omission: two drafts of the design each
-invented a formula, the two differ, and both then asserted equality with the incumbent as a test, so at most one
-of them could have been measuring anything. Pinning under-promised until there was a reading to promise, and
-`AntiAliasing.ResolveFor` clamps a request rather than throwing on one either way.
+**The supported MSAA set is a real driver reading.** The backend asks
+`vkGetPhysicalDeviceImageFormatProperties` for each MRT format and intersects the returned sample-count masks.
+`AntiAliasing.ResolveFor` chooses the largest supported member no greater than the request, while a direct texture
+request for a missing member throws before image creation.
 
 **The counter fill is nine READINGS.** The drain pair comes off the timeline, the backpressure pair off the one
 accumulator both the command lists and the uniform ring stall into, the off-timeline pair off the ring's pending

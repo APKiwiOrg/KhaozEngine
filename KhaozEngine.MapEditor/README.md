@@ -36,7 +36,8 @@ sceneManager.Push(new MapEditorScene().Init(scene, whiteTexture, dpiFont, option
   (`MapDocumentFile.SaveAuto`, never converting implicitly).
 - `WholeWorldTileLimit` (default 512 occupied tiles) and `EditorWindowRadius` (default 2 tiles) govern a
   tiled document: at or under the limit it loads whole, above it the editor opens a WINDOW instead (see
-  `MapDocumentWindowing`), centered on the document bounds, and the status strip's `window:
+  `MapDocumentWindowing`), centered on a nearby enabled player spawn with the document bounds center as
+  fallback, and the status strip's `window:
   (minX,minZ)-(maxX,maxZ)` segment (`MapEditorScene.Window`) shows the loaded extent. Moving content into a
   tile the window never covered surfaces Ctrl+S's failure as an ordinary status message, not a crash. There
   is no in-editor window-move affordance: `convert_to_tiled`/`convert_to_single`/`retile`
@@ -49,6 +50,16 @@ sceneManager.Push(new MapEditorScene().Init(scene, whiteTexture, dpiFont, option
   reach outside the loaded window. That is degradation, not breakage: the streamer neither clamps its ring to
   the window nor throws at its edge, it meshes the unauthored analytic base out there, since the authored
   sculpt tiles that would have modified it were never read.
+- `PlayerSpawnSearchTileLimit` (default 32) caps occupied tile reads when choosing that window anchor.
+  Tiles are searched by distance from the bounds-center tile, then Z and X for ties. The first enabled
+  spawn in ordinal ID order in the first matching tile wins. Zero disables searching. Finding no enabled
+  spawn within the budget retains the bounds-center fallback. Loading the chosen window is separate from
+  this search budget, and whole-document loads do not search. The six-argument `MapDocumentWindowing.Load`
+  keeps its signature and uses the default budget. A seven-argument overload accepts an explicit budget.
+  The editor starts its camera near the chosen spawn so the loaded window is visible. A fallback window
+  starts near the bounds center. The camera aims at that anchor, and whole-document camera startup keeps
+  its existing pose. Candidate selection scans manifest metadata with storage bounded by the search budget,
+  then sorts only those retained candidates before reading tile content.
 - `ManifestPaths` are the same `AssetManifest` files the game's own prop-kit loading reads, so the
   editor's palette and picking heights match what the game actually renders.
 - `Registry` defaults to `MapDocRegistry.CreateDefault()`. Pass your own to add custom terrain feature
@@ -110,7 +121,8 @@ See `KhaozEngine.Showcase/RoomMapEditor.cs` for a worked example (`RoomMapEditor
 
 ## Keys
 
-Ctrl+Z undo, Ctrl+Shift+Z or Ctrl+Y redo, Ctrl+S save, Ctrl+D duplicates the current selection (see
+Ctrl+Z undo, Ctrl+Shift+Z or Ctrl+Y redo, Ctrl+S save, Ctrl+R reloads the current document from disk,
+Ctrl+D duplicates the current selection (see
 Duplicate below), Ctrl+Shift+F freezes the whole zone's procedural scatter into placements (see Freeze
 zone below), Delete removes the current selection. R snaps the selected placement to the ground (an
 undoable re-move with a null Y, a no-op when nothing placement-shaped is selected or the placement is
@@ -123,7 +135,7 @@ the tool layer would consume this frame's Escape BEFORE the tool step runs, sinc
 handler sees the key the gesture is already cancelled and the mode is back to Select, so asking then would let
 the same press both cancel a drag and pop the menu open. Every Ctrl chord above also fires on Cmd
 (Super): `InputState.IsCommandDown` treats the two as the same modifier, so the Windows/Linux chords work
-unmodified on a Mac (Cmd+S and Cmd+D also suppress the fly camera for that one frame, since both chords
+unmodified on a Mac (Cmd+S, Cmd+R and Cmd+D also suppress the fly camera for that one frame, since those chords
 carry a WASD letter, see Camera bookmarks below for the Command-modifier suppression). All of them, plus the
 bare R hotkey and the bookmark digits, are suppressed while an inspector field, the kit-palette filter, or
 the spawn filter holds keyboard focus (`PropertyGrid.HasActiveEditor` ORed with the two filters' own
@@ -142,6 +154,15 @@ every frame, so a one-shot draw / bake tool returning to Select on completion (o
 re-highlights the Select tab on its own, without a tap. A Save button sits at the right end of the toolbar
 (after the tab bar), its label showing `Save*` while the document is dirty and plain `Save` once clean, as
 an always-visible alternative to Ctrl+S/Cmd+S.
+
+Ctrl+R and Cmd+R explicitly reload the document from its current path. Reload is refused while the document has
+unsaved edits or an inspector or filter field owns keyboard focus. The editor reads and validates a replacement,
+builds a replacement viewport, then swaps it into the scene. A read, validation or viewport-build failure leaves
+the current document and viewport in place and reports the failure in the status strip. Reload uses the same
+whole-document or bounded-window policy as first open. It does not watch the filesystem or poll for changes.
+Reload status text resolves the `mapeditor.reload.done`, `mapeditor.reload.unsaved`,
+`mapeditor.reload.focused`, `mapeditor.reload.missing` and `mapeditor.reload.failed` keys through the ambient
+catalog, with built-in English fallback text when the host does not provide them.
 
 ## Exit dialog
 

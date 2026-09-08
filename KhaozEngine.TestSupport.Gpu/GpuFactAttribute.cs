@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.Gpu;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
@@ -65,7 +66,7 @@ namespace KhaozEngine.Tests.Gpu
         // deliberately does NOT skip - see RequiresCompletionFences.
         static readonly Lazy<(string Backend, bool Fences)?> Caps = new(ProbeCapabilities);
         static readonly Lazy<string?> DeviceName = new(ProbeDeviceName);
-        static readonly Lazy<(string Backend, int MaxMsaa)?> MsaaCaps = new(ProbeMsaa);
+        static readonly Lazy<(string Backend, GpuSampleCounts Supported)?> MsaaCaps = new(ProbeMsaa);
 
         public GpuFactAttribute()
         {
@@ -234,7 +235,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <para>
         /// THE QUIET OUTCOME IS THE ONE THIS EXISTS FOR. <c>AntiAliasing.ResolveFor</c> (KhaozEngine.Render3D,
         /// which this assembly deliberately does not reference) DOWNGRADES an MSAA request to Fxaa on a device whose
-        /// <see cref="KhaozEngine.Gpu.GpuCapabilities.MaxMsaaSampleCount"/> is below it, so a test that asks for
+        /// <see cref="KhaozEngine.Gpu.GpuCapabilities.SupportedMsaaSampleCounts"/> omits it, so a test that asks for
         /// MSAA and gets the single-sample path back still runs, still passes, and has compared that path against
         /// itself. That is the exact failure shape
         /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/603">#603</see> is about, one layer down, so
@@ -261,19 +262,20 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>Pure decision for <see cref="RequiresFourSampleMsaa"/>: the skip reason for the probed
         /// <paramref name="caps"/>, or null to RUN. Factored out to be unit-tested headlessly, exactly like
         /// <see cref="SkipReason"/> and <see cref="CompletionFenceSkipReason"/>.</summary>
-        internal static string? FourSampleMsaaSkipReason((string Backend, int MaxMsaa)? caps)
-            => caps is { } c && c.MaxMsaa < 4
-                ? $"the {c.Backend} device reports MaxMsaaSampleCount = {c.MaxMsaa}, below the 4 this test asks "
-                    + "for, so AntiAliasing.ResolveFor would downgrade the request to Fxaa and the test would "
-                    + "compare the single-sample path against itself"
+        internal static string? FourSampleMsaaSkipReason(
+            (string Backend, GpuSampleCounts Supported)? caps)
+            => caps is { } c && (c.Supported & GpuSampleCounts.Four) == 0
+                ? $"the {c.Backend} device reports SupportedMsaaSampleCounts = {c.Supported}, without the 4 this "
+                    + "test asks for, so AntiAliasing.ResolveFor would downgrade the request and the test would "
+                    + "measure a different sample count"
                 : null;
 
-        static (string Backend, int MaxMsaa)? ProbeMsaa()
+        static (string Backend, GpuSampleCounts Supported)? ProbeMsaa()
         {
             try
             {
                 using var ctx = KhaozEngine.Gpu.GpuDeviceContext.CreateHeadless();
-                return (ctx.GpuDevice.Backend.ToString(), ctx.Capabilities.MaxMsaaSampleCount);
+                return (ctx.GpuDevice.Backend.ToString(), ctx.Capabilities.SupportedMsaaSampleCounts);
             }
             catch
             {

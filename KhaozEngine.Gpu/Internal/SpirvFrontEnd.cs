@@ -81,13 +81,20 @@ namespace KhaozEngine.Gpu.Internal
                 // flipped, which is the run where a reader most needs the names to be right. Every call site names
                 // one source, so carrying it costs no entries.
                 return SpirvCompileCache.Shared.GetOrCompile(
-                    SpirvFrontEndPin.Identity + ";label=" + tag, stage, glsl,
+                    OptionsIdentity(tag), stage, glsl,
                     () => Compile(glsl, kind, $"{tag}.{stage}"));
             }
             catch (Exception ex)
             {
                 throw new ShaderValidationException($"{tag}: {stage} GLSL to SPIR-V failed: {ex.Message}", ex);
             }
+        }
+
+        /// <summary>The complete front-end option identity for one labelled compile.</summary>
+        internal static string OptionsIdentity(string label)
+        {
+            ArgumentNullException.ThrowIfNull(label);
+            return SpirvFrontEndPin.Identity + ";label=" + label;
         }
 
         /// <summary>

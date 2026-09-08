@@ -315,12 +315,13 @@ layout(location=0) out vec4 oColor;
 float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
 void main() {
     vec2 inv = Rcp.xy;
-    vec4 M = texture(sampler2D(Src, Samp), vUv);
+    // Only mip zero is current here. The final blit generates the chain after FXAA.
+    vec4 M = textureLod(sampler2D(Src, Samp), vUv, 0.0);
     vec3 rgbM = M.rgb;
-    vec3 rgbNW = texture(sampler2D(Src, Samp), vUv + vec2(-1.0, -1.0) * inv).rgb;
-    vec3 rgbNE = texture(sampler2D(Src, Samp), vUv + vec2( 1.0, -1.0) * inv).rgb;
-    vec3 rgbSW = texture(sampler2D(Src, Samp), vUv + vec2(-1.0,  1.0) * inv).rgb;
-    vec3 rgbSE = texture(sampler2D(Src, Samp), vUv + vec2( 1.0,  1.0) * inv).rgb;
+    vec3 rgbNW = textureLod(sampler2D(Src, Samp), vUv + vec2(-1.0, -1.0) * inv, 0.0).rgb;
+    vec3 rgbNE = textureLod(sampler2D(Src, Samp), vUv + vec2( 1.0, -1.0) * inv, 0.0).rgb;
+    vec3 rgbSW = textureLod(sampler2D(Src, Samp), vUv + vec2(-1.0,  1.0) * inv, 0.0).rgb;
+    vec3 rgbSE = textureLod(sampler2D(Src, Samp), vUv + vec2( 1.0,  1.0) * inv, 0.0).rgb;
     float lM = luma(rgbM), lNW = luma(rgbNW), lNE = luma(rgbNE), lSW = luma(rgbSW), lSE = luma(rgbSE);
     float lMin = min(lM, min(min(lNW, lNE), min(lSW, lSE)));
     float lMax = max(lM, max(max(lNW, lNE), max(lSW, lSE)));
@@ -333,10 +334,10 @@ void main() {
     float dirReduce = max((lNW + lNE + lSW + lSE) * (0.25 * 0.125), 1.0 / 128.0);
     float rcpDirMin = 1.0 / (min(abs(dir.x), abs(dir.y)) + dirReduce);
     dir = clamp(dir * rcpDirMin, vec2(-8.0), vec2(8.0)) * inv;
-    vec3 rgbA = 0.5 * (texture(sampler2D(Src, Samp), vUv + dir * (1.0 / 3.0 - 0.5)).rgb
-                     + texture(sampler2D(Src, Samp), vUv + dir * (2.0 / 3.0 - 0.5)).rgb);
-    vec3 rgbB = rgbA * 0.5 + 0.25 * (texture(sampler2D(Src, Samp), vUv + dir * -0.5).rgb
-                                   + texture(sampler2D(Src, Samp), vUv + dir *  0.5).rgb);
+    vec3 rgbA = 0.5 * (textureLod(sampler2D(Src, Samp), vUv + dir * (1.0 / 3.0 - 0.5), 0.0).rgb
+                     + textureLod(sampler2D(Src, Samp), vUv + dir * (2.0 / 3.0 - 0.5), 0.0).rgb);
+    vec3 rgbB = rgbA * 0.5 + 0.25 * (textureLod(sampler2D(Src, Samp), vUv + dir * -0.5, 0.0).rgb
+                                   + textureLod(sampler2D(Src, Samp), vUv + dir *  0.5, 0.0).rgb);
     float lB = luma(rgbB);
     vec3 outRgb = (lB < lMin || lB > lMax) ? rgbA : rgbB;   // reject an over-blurred tap
     oColor = vec4(outRgb, M.a);

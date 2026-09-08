@@ -292,17 +292,20 @@ OSRS reached for the same reason. It is a CONSUMER-side overlay, deliberately: a
 a mesh, a material and an art direction none of which are the engine's to choose. What the engine owes is clean
 reads, and section 9 lists them.
 
-**THE INVARIANT, in the shape the glide gives it: the drawn body lags its committed tile by up to one STEP.** Half
-a tile on average, exactly zero at the instant the body lands, and never ahead. Every rules question (combat,
-reach, region, occupancy, what a click resolves against) is answered about `TileMoveState.Tile`, which the body is
-still walking into. That is the trade the reversal in 5.1 bought and it is not smoothed away.
+Against the committed tile on the same delayed timeline, a remote body lags by at most one grid step.
+With no active reconciliation offset, local inter-tick easing adds up to one command tick of travel. The
+local base bound is `1 + 1 / StepTicks` grid steps, or 1.25 walking and 1.5 running at the default cadences.
+Grid step is Chebyshev distance. A diagonal step spans `sqrt(2) * TileSize` in Euclidean world distance.
 
-**State the second term, every time the first one is stated.** The step above is the LOCAL player's whole
-divergence. A REMOTE is drawn off the `InterpolationDelayTicks` delayed timeline, a whole tick per delay tick and
-two by default: at a 1/6 s tick that is 0.33 s on top, which is more than the step's own term at run cadence. A
-boss telegraph built on the step alone and read against other players' bodies is built against something narrower
-than what ships. The fix is to tighten `InterpolationDelayTicks` alongside it, or to size the design against the
-sum. This section is what Grimhollow's combat contract cites, so the sum is what it states.
+Active reconciliation adds a local term. `ClientPrediction.RenderedState` adds its planar `renderOffset`
+after inter-tick easing. An ordinary correction below `HardSnapDistance` re-anchors it to preserve the old
+drawn position. A conservative instantaneous bound adds the current offset magnitude to the base motion
+bound. Repeated corrections have no separate fixed offset cap. A hard snap or teleport clears it. Rules
+read `PredictedState.Tile` and never this presentation offset.
+
+`TryGetRemotePose` and `TryGetRemoteTile` share the delayed timeline, so their mutual bound is one grid step.
+Compared with current server truth they both add `InterpolationDelayTicks`. `TryGetLatestRemoteTile` omits
+that presentation delay and is the rule-facing read, still subject to transport and snapshot age.
 
 **Where the state lives: nowhere, which is the point.** Round three's chase was STATEFUL, so it needed a per-body
 instance on the client, a construction path for the local player and another for each remote, a discontinuity rule

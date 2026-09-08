@@ -88,6 +88,7 @@ namespace KhaozEngine.Tests.Gpu
             _uploads.Clear();
             _resolves.Clear();
             _textureCopies.Clear();
+            ClearDraws();
             _draws = 0;
             ClearReads();
         }
@@ -124,7 +125,7 @@ namespace KhaozEngine.Tests.Gpu
         public void SetFramebuffer(IGpuFramebuffer fb) => Inner.SetFramebuffer(fb);
         public void ClearColorTarget(uint index, Color rgba) => Inner.ClearColorTarget(index, rgba);
         public void ClearDepthStencil(float depth) => Inner.ClearDepthStencil(depth);
-        public void SetPipeline(IGpuPipeline p) => Inner.SetPipeline(p);
+        public void SetPipeline(IGpuPipeline p) { NotePipeline(p); Inner.SetPipeline(p); }
         public void SetGraphicsResourceSet(uint slot, IGpuResourceSet set)
         {
             NoteGraphicsSet(slot, set, 0);
@@ -135,9 +136,9 @@ namespace KhaozEngine.Tests.Gpu
             NoteGraphicsSet(slot, set, dynamicOffset);
             Inner.SetGraphicsResourceSet(slot, set, dynamicOffset);
         }
-        public void SetVertexBuffer(uint slot, IGpuBuffer b) => Inner.SetVertexBuffer(slot, b);
-        public void SetVertexBuffer(uint slot, IGpuBuffer b, uint offsetBytes) => Inner.SetVertexBuffer(slot, b, offsetBytes);
-        public void SetIndexBuffer(IGpuBuffer b, GpuIndexFormat fmt) => Inner.SetIndexBuffer(b, fmt);
+        public void SetVertexBuffer(uint slot, IGpuBuffer b) { NoteVertexBuffer(slot, b); Inner.SetVertexBuffer(slot, b); }
+        public void SetVertexBuffer(uint slot, IGpuBuffer b, uint offsetBytes) { NoteVertexBuffer(slot, b); Inner.SetVertexBuffer(slot, b, offsetBytes); }
+        public void SetIndexBuffer(IGpuBuffer b, GpuIndexFormat fmt) { NoteIndexBuffer(b); Inner.SetIndexBuffer(b, fmt); }
         public void SetScissorRect(uint index, uint x, uint y, uint w, uint h) => Inner.SetScissorRect(index, x, y, w, h);
         public void SetFullScissorRects() => Inner.SetFullScissorRects();
         public void Draw(uint vertexCount, uint instanceCount, uint vertexStart, uint instanceStart)
@@ -155,6 +156,7 @@ namespace KhaozEngine.Tests.Gpu
         public void DrawIndexed(uint indexCount, uint instanceCount, uint indexStart, int vertexOffset, uint instanceStart)
         {
             NoteGraphicsReads();
+            NoteIndexedDraw(indexCount);
             _draws++;
             Inner.DrawIndexed(indexCount, instanceCount, indexStart, vertexOffset, instanceStart);
         }

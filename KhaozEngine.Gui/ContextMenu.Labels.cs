@@ -20,7 +20,7 @@ public sealed partial class ContextMenu
         if (segments is null)
         {
             Vector4 color = entry.Enabled ? entry.LabelColor ?? defaultColor : disabledColor;
-            return new[] { new LabelRun(entry.Label, startX, color) };
+            return new[] { new LabelRun(entry.Label ?? "", startX, color) };
         }
 
         var runs = new LabelRun[segments.Count];
@@ -39,7 +39,7 @@ public sealed partial class ContextMenu
     private static float MeasureLabel(ITextMeasurer font, ContextMenuEntry entry)
     {
         IReadOnlyList<LabelSegment>? segments = entry.LabelSegments;
-        if (segments is null) return font.Measure(entry.Label).X;
+        if (segments is null) return font.Measure(entry.Label ?? "").X;
 
         float width = 0f;
         for (int i = 0; i < segments.Count; i++)

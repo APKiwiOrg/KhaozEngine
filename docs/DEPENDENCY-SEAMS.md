@@ -624,6 +624,15 @@ standable surface in a column with its headroom to the hit above it, the same ST
 `INavColumnProvider.SampleColumn` with a one-line delegate. No new package, no new dependency edge either
 direction.
 
+## GPU multisample capability contract
+
+`GpuSampleCounts` is an engine-owned flags type, exposed through `GpuCapabilities.SupportedMsaaSampleCounts`.
+Backends can supply sparse support through the named `FromSupportedMsaaSampleCounts` factory without changing
+the existing constructor signature or exposing a native enum. `MaxMsaaSampleCount` is the highest member and
+is a diagnostic, not proof that lower members exist. `AntiAliasing.ResolveFor` consumes the complete set.
+Vulkan intersects framebuffer and per-format masks before populating it, and direct texture creation rejects
+missing counts. Default capabilities describe the safe single-sample floor consistently.
+
 ## GPU backend-selection provenance: one new edge, `Gpu -> Diagnostics`
 
 Since 17.21.0 `KhaozEngine.Gpu` references `KhaozEngine.Diagnostics`, so `GpuDeviceContext` can log which

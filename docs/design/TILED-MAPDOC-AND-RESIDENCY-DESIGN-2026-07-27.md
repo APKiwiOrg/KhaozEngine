@@ -888,6 +888,11 @@ enabled player spawn or the restored camera bookmark and shows the window extent
 world that opens today keeps opening: Ruinborne's island spans four 512 m tiles because the grid is origin
 anchored and the bounds are -256 to 254, well under any limit.
 
+Implementation follow-up (#347): the spawn search is bounded to 32 occupied tile reads by default, nearest
+the bounds-center tile first, with coordinate and spawn-ID tie breaking. This closes the spawn anchor gap
+without making a spawn-less world pay for a whole content scan. A zero budget restores the original
+bounds-center policy. Camera bookmarks remain session-only, so no bookmark is restored at document open.
+
 Alternatives weighed. **Always whole-load in the editor**: simplest, but it hands the editor the same 6.4 s and
 2.2 GB the spec exists to remove, and it makes region-scoped editing a rewrite later rather than a widening.
 **Refuse to open a large world**: honest but useless, and it makes the tiled format unauthorable by the editor

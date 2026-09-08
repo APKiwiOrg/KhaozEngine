@@ -207,6 +207,29 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
+        /// The native emitter passes the tracked prefix count to Direct3D and a full reset drops that count back
+        /// to one. Rectangle values are pinned device-free through the shared state. This readback covers the
+        /// Vortice call boundary the trace cannot execute.
+        /// </summary>
+        [GpuFact]
+        public void IndexedScissorPrefixCountReachesTheNativeContext()
+        {
+            if (!KhaozEngineD3D11.IsPlatformSupported)
+            {
+                _out.WriteLine(NotWindows);
+                return;
+            }
+
+            if (!GpuBackendSelector.IsBackendSupported(GpuBackendKind.Direct3D11Native))
+            {
+                _out.WriteLine(NotCapable);
+                return;
+            }
+
+            IndexedScissorWindows(_out);
+        }
+
+        /// <summary>
         /// THE <c>ConstantCount</c> DEFECT, PINNED ON A DEVICE. A real 1008-byte uniform buffer
         /// (<see cref="ModelRenderer.UboBytes"/>, the shipped size the runtime was dropping) goes through the
         /// PRODUCTION path end to end: a real layout, a real resource set, and <see cref="D3D11SetActivation"/>
@@ -254,6 +277,28 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         // ---- the Windows bodies -----------------------------------------------------------------------------
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        [SupportedOSPlatform("windows")]
+        static void IndexedScissorWindows(ITestOutputHelper output)
+        {
+            using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless(GpuBackendKind.Direct3D11Native);
+            IGpuDevice device = gpu.GpuDevice;
+            var backend = (D3D11GpuDevice)device;
+            var emitter = new D3D11NativeEmitter(backend.State, backend.EmitterContext);
+            using IGpuTexture target = device.Factory.CreateTexture(GpuTextureDescription.Texture2D(
+                32, 24, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget));
+            using IGpuFramebuffer framebuffer = device.Factory.CreateFramebuffer(null, target);
+
+            emitter.Begin();
+            emitter.SetFramebuffer(framebuffer);
+            emitter.SetScissorRect(2, 2, 3, 4, 5);
+            Assert.Equal(3, backend.EmitterContext.Context.RSGetScissorRects());
+
+            emitter.SetFullScissorRects();
+            Assert.Equal(1, backend.EmitterContext.Context.RSGetScissorRects());
+            output.WriteLine("RSSetScissorRects bound a three-rectangle prefix, then reset to one.");
+        }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         [SupportedOSPlatform("windows")]

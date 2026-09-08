@@ -35,7 +35,7 @@ public partial class MapEditorScene
 
         MapDocument doc = MapDocumentWindowing.Load(_options.DocumentPath,
             new MapDocumentLoadOptions { Registry = registry },
-            _options.WholeWorldTileLimit, EffectiveWindowRadius,
+            _options.WholeWorldTileLimit, EffectiveWindowRadius, _options.PlayerSpawnSearchTileLimit,
             out _, out MapTileRect? window);
         _window = window;
         return doc;

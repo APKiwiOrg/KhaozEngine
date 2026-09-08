@@ -1,3 +1,5 @@
+using System;
+using System.Threading.Tasks;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D;
 using Xunit;
@@ -54,6 +56,30 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(4, AntiAliasing.Msaa(4).ResolveFor(Caps(4)).MsaaSamples);   // exactly the max
             Assert.Equal(2, AntiAliasing.Msaa(3).ResolveFor(Caps(8)).MsaaSamples);   // 3 -> largest pow2 <= 3 = 2
             Assert.Equal(8, AntiAliasing.Msaa(16).ResolveFor(Caps(8)).MsaaSamples);  // clamps to device max 8
+        }
+
+        [Fact]
+        public void ResolveFor_skips_holes_in_the_supported_sample_counts()
+        {
+            GpuCapabilities sparse = GpuCapabilities.FromSupportedMsaaSampleCounts(
+                false, true, GpuSampleCounts.One | GpuSampleCounts.Four);
+
+            Assert.Equal(AntiAliasing.Fxaa, AntiAliasing.Msaa(2).ResolveFor(sparse));
+            Assert.Equal(AntiAliasing.Fxaa, AntiAliasing.Msaa(3).ResolveFor(sparse));
+            Assert.Equal(4, AntiAliasing.Msaa(4).ResolveFor(sparse).MsaaSamples);
+            Assert.Equal(4, AntiAliasing.Msaa(8).ResolveFor(sparse).MsaaSamples);
+        }
+
+        [Fact]
+        public async Task ResolveFor_returns_for_requests_at_and_above_the_signed_overflow_boundary()
+        {
+            Task<AntiAliasing[]> resolving = Task.WhenAll(
+                Task.Run(() => AntiAliasing.Msaa(1 << 30).ResolveFor(Caps(8))),
+                Task.Run(() => AntiAliasing.Msaa(int.MaxValue).ResolveFor(Caps(8))));
+
+            AntiAliasing[] resolved = await resolving.WaitAsync(TimeSpan.FromSeconds(2));
+
+            Assert.All(resolved, aa => Assert.Equal(AntiAliasing.Msaa(8), aa));
         }
 
         [Fact]

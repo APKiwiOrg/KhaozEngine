@@ -299,7 +299,8 @@ internal static class SqlServerJournalSchema
         await using (SqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
         {
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-                constraints.Add(Check(reader.GetString(0), reader.GetString(1), reader.GetBoolean(2), reader.GetBoolean(3)));
+                constraints.Add(Check(reader.GetString(0),
+                    SqlServerJournalMetadata.ReadDefinition(reader, 1, reader.GetString(0)), reader.GetBoolean(2), reader.GetBoolean(3)));
         }
         if (!constraints.SetEquals(ExpectedChecks)) throw Mismatch($"version {expectedVersion} check constraints do not match the supported shape");
 
@@ -315,7 +316,8 @@ internal static class SqlServerJournalSchema
         await using (SqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
         {
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-                defaults.Add(Default(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3)));
+                defaults.Add(Default(reader.GetString(0), reader.GetString(1), reader.GetString(2),
+                    SqlServerJournalMetadata.ReadDefinition(reader, 3, reader.GetString(0))));
         }
         if (!defaults.SetEquals(expectedDefaults)) throw Mismatch($"version {expectedVersion} defaults do not match the supported shape");
 
@@ -330,7 +332,8 @@ internal static class SqlServerJournalSchema
         await using (SqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
         {
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-                triggers.Add(Trigger(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetBoolean(3)));
+                triggers.Add(Trigger(reader.GetString(0), reader.GetString(1),
+                    SqlServerJournalMetadata.ReadDefinition(reader, 2, reader.GetString(0)), reader.GetBoolean(3)));
         }
         HashSet<string> expectedTriggers = expectedVersion == 1 ? ExpectedTriggersV1 : ExpectedTriggers;
         if (!triggers.SetEquals(expectedTriggers)) throw Mismatch($"version {expectedVersion} triggers do not match the supported shape");

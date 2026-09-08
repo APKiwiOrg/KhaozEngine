@@ -96,6 +96,11 @@ public sealed class MapEditorOptions
     /// <see cref="RenderDistance"/> for the verified behaviour and the test that pins it (#363).</para></summary>
     public int EditorWindowRadius = MapDocumentWindowing.DefaultEditorWindowRadius;
 
+    /// <summary>Maximum occupied tiles searched for an enabled player spawn before opening a tiled window.
+    /// Default 32. Zero skips the search and anchors at the document bounds center. The final window's tile
+    /// reads are separate from this search budget.</summary>
+    public int PlayerSpawnSearchTileLimit = MapDocumentWindowing.DefaultPlayerSpawnSearchTileLimit;
+
     /// <summary>When true (the default) the editor OWNS the host <c>Scene3D</c>'s look: it applies its own sky,
     /// lighting, and water settings to that scene's post-process block from the settings menu (preset plus slider
     /// overrides), re-applying only when a setting actually changed. This is what gives a freshly opened editor a

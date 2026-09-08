@@ -280,7 +280,7 @@ public partial class MapEditorScene : GameScene, IGameScene3D
             ScatterLayerVisible = _visibility.GetLayer, RenderDistance = _options.RenderDistance,
             TexturedPropsEnabled = () => _options.TexturedProps,
         };
-        _camera = new FlyCamera3D { Position = new Vector3(0f, 24f, -32f), Pitch = -0.5f, FarPlane = _options.RenderDistance.FarClip };
+        _camera = CreateInitialCamera();
         _camController = new FlyCameraController(_camera);
         ApplyRenderDistance();   // the persisted multiplier, before the first BuildWorld primes a ring from it
 
@@ -293,11 +293,7 @@ public partial class MapEditorScene : GameScene, IGameScene3D
         _controller.PlaceKind = DefaultPlaceKind();
         _controller.PlaceFeatureType = DefaultFeatureType();
 
-        _document.DocumentChanged += OnDocumentChanged;
-        _document.CommandApplied += OnCommandVisibilityForward;
-        _document.CommandRedone += OnCommandVisibilityForward;
-        _document.CommandUndone += OnCommandVisibilityInverse;
-        _document.Selection.Changed += OnSelectionChanged;
+        SubscribeDocument(_document);
 
         BuildWorld();
         RebuildOutline();
@@ -312,11 +308,7 @@ public partial class MapEditorScene : GameScene, IGameScene3D
     {
         if (!_built) return;
         _built = false;
-        _document.DocumentChanged -= OnDocumentChanged;
-        _document.CommandApplied -= OnCommandVisibilityForward;
-        _document.CommandRedone -= OnCommandVisibilityForward;
-        _document.CommandUndone -= OnCommandVisibilityInverse;
-        _document.Selection.Changed -= OnSelectionChanged;
+        UnsubscribeDocument(_document);
         TeardownWorld();
     }
 

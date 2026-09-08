@@ -53,12 +53,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         readonly VulkanSetupCommands _setup;
         readonly VulkanDescriptors _descriptors;
         readonly VulkanShaderModuleCache _modules;
+        readonly SpirvBytesCache? _spirvBytes;
         readonly VulkanPipelines _pipelines;
         readonly Func<IGpuCommandList> _createCommandList;
         readonly Func<IGpuFence> _createFence;
         readonly ulong _minUniformBufferOffsetAlignment;
         readonly bool _samplerAnisotropy;
-        readonly int _maxMsaaSampleCount;
+        readonly GpuCapabilities _capabilities;
 
         /// <param name="owner">The device's resource seam, allocator, timeline and retire list.</param>
         /// <param name="rings">The device's ONE ring allocator, which a uniform buffer cuts a ring out of.</param>
@@ -78,16 +79,18 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// and the backpressure accumulator a list gates on are all the device's, and threading them through this
         /// factory would put them in every signature.</param>
         /// <param name="createFence">The device's timeline fence factory, for the same reason.</param>
-        /// <param name="capabilities">The device's own capability set. Two members are read: the MSAA ceiling for
-        /// the sample-count refusal, and the anisotropy feature for the sampler degradation. The whole set is taken
+        /// <param name="capabilities">The device's own capability set. Its complete MSAA count set drives the
+        /// sample-count refusal, and the anisotropy feature drives sampler degradation. The whole set is taken
         /// rather than those two numbers so a factory that has to validate against a third later needs no signature
         /// change.</param>
         /// <param name="minUniformBufferOffsetAlignment">The device limit the ring stride is rounded to.</param>
+        /// <param name="spirvBytes">The opened front-end disk cache, or null for no cache.</param>
         internal VulkanResourceFactory(VulkanResourceOwner owner, VulkanRingAllocator rings,
             VulkanSetupCommands setup, VulkanDescriptors descriptors, VulkanShaderModuleCache modules,
             VulkanPipelines pipelines, Func<IGpuCommandList> createCommandList, Func<IGpuFence> createFence,
             in GpuCapabilities capabilities,
-            ulong minUniformBufferOffsetAlignment = VulkanRingStride.OffsetAlignmentFloor)
+            ulong minUniformBufferOffsetAlignment = VulkanRingStride.OffsetAlignmentFloor,
+            SpirvBytesCache? spirvBytes = null)
         {
             ArgumentNullException.ThrowIfNull(owner);
             ArgumentNullException.ThrowIfNull(rings);
@@ -103,12 +106,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             _setup = setup;
             _descriptors = descriptors;
             _modules = modules;
+            _spirvBytes = spirvBytes;
             _pipelines = pipelines;
             _createCommandList = createCommandList;
             _createFence = createFence;
             _minUniformBufferOffsetAlignment = minUniformBufferOffsetAlignment;
             _samplerAnisotropy = capabilities.SamplerAnisotropy;
-            _maxMsaaSampleCount = capabilities.MaxMsaaSampleCount;
+            _capabilities = capabilities;
         }
 
         /// <inheritdoc/>
@@ -123,38 +127,38 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         /// <inheritdoc/>
         /// <exception cref="ArgumentException">
-        /// <see cref="GpuTextureDescription.SampleCount"/> is above this device's
-        /// <see cref="GpuCapabilities.MaxMsaaSampleCount"/>. It THROWS rather than rounding down, which is decision
+        /// <see cref="GpuTextureDescription.SampleCount"/> is not in this device's
+        /// <see cref="GpuCapabilities.SupportedMsaaSampleCounts"/>. It THROWS rather than rounding down, which is decision
         /// C4's departure inherited for the reason it gives: the engine already has the one place a request is
         /// meant to be clamped (<c>AntiAliasing.ResolveFor</c> in KhaozEngine.Render3D), so a count arriving here
-        /// above the maximum came from a caller that skipped it, and rounding down would hide that behind a
+        /// unsupported came from a caller that skipped it, and rounding down would hide that behind a
         /// framebuffer that is quietly not multisampled.
         /// <para>
-        /// THE CEILING IS THE DRIVER'S OWN ANSWER, not a pin. <see cref="VulkanMsaaLimit.MinOverTheEngineTargets"/>
-        /// reduces each of the engine's three MRT formats to the highest sample bit
-        /// <c>vkGetPhysicalDeviceImageFormatProperties</c> reports for the usage that format is used under, and
-        /// takes the minimum, which is the incumbent's own <c>GetSampleCountLimit</c> fold reproduced (V-C5). It
-        /// reaches this type as <see cref="GpuCapabilities.MaxMsaaSampleCount"/> through
+        /// THE SET IS THE DRIVER'S OWN ANSWER, not a pin. <see cref="VulkanMsaaLimit.SupportedOverTheEngineTargets"/>
+        /// intersects what <c>vkGetPhysicalDeviceImageFormatProperties</c> reports for each engine MRT target. It
+        /// reaches this type through <see cref="GpuCapabilities.SupportedMsaaSampleCounts"/> and
         /// <c>VulkanPhysicalDeviceReader</c>, so a refusal here is a real device limit and never a number the
         /// engine invented for <c>AntiAliasing.ResolveFor</c> to act on.
         /// </para>
         /// </exception>
         public IGpuTexture CreateTexture(in GpuTextureDescription d)
         {
-            if (d.SampleCount > (uint)_maxMsaaSampleCount)
+            if (!_capabilities.SupportsMsaaSampleCount((int)d.SampleCount))
             {
                 throw new ArgumentException(
                     "A texture was created with a sample count of "
                     + d.SampleCount.ToString(CultureInfo.InvariantCulture)
-                    + " on a native Vulkan device whose MaxMsaaSampleCount is "
-                    + _maxMsaaSampleCount.ToString(CultureInfo.InvariantCulture)
+                    + " on a native Vulkan device that supports "
+                    + GpuSampleCountSet.Describe(_capabilities.SupportedMsaaSampleCounts)
+                    + " samples (MaxMsaaSampleCount is "
+                    + _capabilities.MaxMsaaSampleCount.ToString(CultureInfo.InvariantCulture)
+                    + ")"
                     + ". It is refused rather than rounded down, because the engine clamps upstream in "
                     + "AntiAliasing.ResolveFor and a silent downgrade presents as a golden mismatch that reads "
                     + "like a rendering bug. That ceiling is what this driver reported, not an engine pin: "
                     + "vkGetPhysicalDeviceImageFormatProperties is asked for each of the engine's three MRT "
                     + "targets (R8G8B8A8_UNorm, R32_Float and D32_Float_S8_UInt) with the usage that target is "
-                    + "used under, each answer is reduced to its highest supported sample bit, and the minimum "
-                    + "of the three is the device's MaxMsaaSampleCount.",
+                    + "used under, and the shared bits are the supported set.",
                     nameof(d));
             }
 
@@ -250,7 +254,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// </remarks>
         /// <exception cref="ShaderValidationException">A source failed to compile to SPIR-V.</exception>
         public IGpuShaderSet CreateShadersFromSpirv(string vertGlsl, string fragGlsl)
-            => new VulkanShaderSet(_modules, vertGlsl, fragGlsl);
+            => new VulkanShaderSet(_modules, vertGlsl, fragGlsl, bytesCache: _spirvBytes);
 
         /// <inheritdoc/>
         /// <remarks>The compute twin, with the workgroup size read out of the module itself rather than taken
@@ -260,7 +264,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <exception cref="ShaderValidationException">The source failed to compile to SPIR-V, or declares no
         /// resolvable workgroup size.</exception>
         public IGpuComputeShader CreateComputeShaderFromSpirv(string computeGlsl)
-            => new VulkanComputeShader(_modules, computeGlsl);
+            => new VulkanComputeShader(_modules, computeGlsl, bytesCache: _spirvBytes);
 
         /// <inheritdoc/>
         /// <remarks>

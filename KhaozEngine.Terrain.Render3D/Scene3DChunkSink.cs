@@ -92,9 +92,9 @@ namespace KhaozEngine.Terrain
         /// <paramref name="ownsMaterial"/> is set (see the class remarks). When <paramref name="physics"/> is
         /// given, each registering layer's props are added as static bodies on chunk load and removed on unload
         /// (using the per-prop-id shapes in <paramref name="collisionShapes"/>, so a prop id with no shape entry
-        /// registers nothing). A placement layer follows its <see cref="PropLayer.RegisterColliders"/> flag at
-        /// any index, while any other layer registers only at index 0, so a scatter or companion layer above
-        /// index 0 registers no colliders (issue #288). Null physics means no collision. See
+        /// registers nothing). Scatter and companion layers register at every index. A placement layer follows
+        /// its <see cref="PropLayer.RegisterColliders"/> flag, preserving its render-only opt-out. Null physics
+        /// means no collision. See
         /// <see cref="LayerRegistersColliders"/>.
         /// When <paramref name="dynamicsSource"/> is given (physics must also be set), the game-supplied source
         /// yields dynamic bodies per chunk that are registered on load and removed on unload (mechanism only:
@@ -347,11 +347,10 @@ namespace KhaozEngine.Terrain
 
         /// <summary>Whether layer <paramref name="layerIndex"/>'s props register static collision bodies. A placement
         /// layer follows its own <see cref="PropLayer.RegisterColliders"/> flag (on by default, off via
-        /// <c>colliders: false</c> when the game registers that zone's physics itself). Every other layer keeps the
-        /// long-standing rule that only layer 0 registers, so a scatter or companion layer above index 0 contributes
-        /// nothing (issue #288). Pure, so the rule is headless-testable without a physics world.</summary>
-        internal bool LayerRegistersColliders(int layerIndex) =>
-            _layers[layerIndex].IsPlacement ? _layers[layerIndex].RegisterColliders : layerIndex == 0;
+        /// <c>colliders: false</c> when the game registers that zone's physics itself). Scatter and companion
+        /// factories always set the flag, so every generated layer registers. Pure, so the rule is
+        /// headless-testable without a physics world.</summary>
+        internal bool LayerRegistersColliders(int layerIndex) => _layers[layerIndex].RegisterColliders;
 
         // Register this chunk's prop static bodies, one pass over the layers that take colliders (see
         // LayerRegistersColliders). ChunkStatics.AddAll filters per prop id against the shape map, so a layer whose

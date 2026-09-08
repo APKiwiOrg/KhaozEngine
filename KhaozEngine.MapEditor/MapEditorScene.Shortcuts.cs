@@ -45,7 +45,8 @@ public partial class MapEditorScene
             else HandleBookmarkChord(s, shift);   // bare / Shift+1..9 (decision 9)
             return;
         }
-        if (s.WasPressed(Key.Z)) { if (shift) _document.Redo(); else _document.Undo(); }
+        if (s.WasPressed(Key.R)) ReloadDocument();
+        else if (s.WasPressed(Key.Z)) { if (shift) _document.Redo(); else _document.Undo(); }
         else if (s.WasPressed(Key.Y)) _document.Redo();
         else if (s.WasPressed(Key.S)) SaveDocument();
         else if (s.WasPressed(Key.D)) DuplicateSelectionChord();       // Cmd+D (decision 8)

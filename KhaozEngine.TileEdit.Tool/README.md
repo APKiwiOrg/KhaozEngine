@@ -55,6 +55,11 @@ One world open at a time (`TileEditSession`): the `TileEditingDocument` being ed
 from, and the catalog paths it resolved. All members lock internally, so a query sees one consistent world even
 while another call is mid-edit.
 
+**Tool calls execute in transport arrival order.** A batch of newline-delimited `tools/call` requests may be
+written to stdin without waiting for each response. The server completes each call before starting the next, so
+later edits observe earlier edits and a final `world_save` persists every mutation before it. Other protocol
+messages remain independent, including request cancellation.
+
 **The world is self-describing.** `world_open(path)` takes a directory and reads its `world.json`, which names
 the catalogs, so opening is one argument. `world_create` stores the catalog paths in the manifest EXACTLY as
 given, so a relative entry keeps the world portable. `world_open` replaces whatever was open with no dirty

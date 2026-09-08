@@ -121,7 +121,8 @@ See `KhaozEngine.Showcase/RoomMapEditor.cs` for a worked example (`RoomMapEditor
 
 ## Keys
 
-Ctrl+Z undo, Ctrl+Shift+Z or Ctrl+Y redo, Ctrl+S save, Ctrl+D duplicates the current selection (see
+Ctrl+Z undo, Ctrl+Shift+Z or Ctrl+Y redo, Ctrl+S save, Ctrl+R reloads the current document from disk,
+Ctrl+D duplicates the current selection (see
 Duplicate below), Ctrl+Shift+F freezes the whole zone's procedural scatter into placements (see Freeze
 zone below), Delete removes the current selection. R snaps the selected placement to the ground (an
 undoable re-move with a null Y, a no-op when nothing placement-shaped is selected or the placement is
@@ -134,7 +135,7 @@ the tool layer would consume this frame's Escape BEFORE the tool step runs, sinc
 handler sees the key the gesture is already cancelled and the mode is back to Select, so asking then would let
 the same press both cancel a drag and pop the menu open. Every Ctrl chord above also fires on Cmd
 (Super): `InputState.IsCommandDown` treats the two as the same modifier, so the Windows/Linux chords work
-unmodified on a Mac (Cmd+S and Cmd+D also suppress the fly camera for that one frame, since both chords
+unmodified on a Mac (Cmd+S, Cmd+R and Cmd+D also suppress the fly camera for that one frame, since those chords
 carry a WASD letter, see Camera bookmarks below for the Command-modifier suppression). All of them, plus the
 bare R hotkey and the bookmark digits, are suppressed while an inspector field, the kit-palette filter, or
 the spawn filter holds keyboard focus (`PropertyGrid.HasActiveEditor` ORed with the two filters' own
@@ -153,6 +154,15 @@ every frame, so a one-shot draw / bake tool returning to Select on completion (o
 re-highlights the Select tab on its own, without a tap. A Save button sits at the right end of the toolbar
 (after the tab bar), its label showing `Save*` while the document is dirty and plain `Save` once clean, as
 an always-visible alternative to Ctrl+S/Cmd+S.
+
+Ctrl+R and Cmd+R explicitly reload the document from its current path. Reload is refused while the document has
+unsaved edits or an inspector or filter field owns keyboard focus. The editor reads and validates a replacement,
+builds a replacement viewport, then swaps it into the scene. A read, validation or viewport-build failure leaves
+the current document and viewport in place and reports the failure in the status strip. Reload uses the same
+whole-document or bounded-window policy as first open. It does not watch the filesystem or poll for changes.
+Reload status text resolves the `mapeditor.reload.done`, `mapeditor.reload.unsaved`,
+`mapeditor.reload.focused`, `mapeditor.reload.missing` and `mapeditor.reload.failed` keys through the ambient
+catalog, with built-in English fallback text when the host does not provide them.
 
 ## Exit dialog
 

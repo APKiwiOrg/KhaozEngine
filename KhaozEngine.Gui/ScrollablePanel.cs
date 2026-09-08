@@ -29,7 +29,7 @@ namespace KhaozEngine.Gui
     /// dt overload; the legacy <see cref="Update(Pointer,InputState)"/> overload never glides.
     /// </para>
     /// </summary>
-    public sealed class ScrollablePanel
+    public sealed partial class ScrollablePanel
     {
         /// <summary>The docked, fully-open panel rect the caller owns. Overlay knobs slide/resize a copy of it
         /// (<see cref="CurrentBounds"/>); with no knobs set <see cref="CurrentBounds"/> equals this exactly.</summary>

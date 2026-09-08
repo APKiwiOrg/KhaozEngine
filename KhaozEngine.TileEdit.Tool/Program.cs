@@ -13,6 +13,7 @@ builder.Logging.AddConsole(o => o.LogToStandardErrorThreshold = LogLevel.Trace);
 builder.Services.AddTileEditServices();
 builder.Services.AddMcpServer()
     .WithStdioServerTransport()
+    .WithArrivalOrderedToolCalls()
     .WithTileEditTools();
 await builder.Build().RunAsync();
 return 0;

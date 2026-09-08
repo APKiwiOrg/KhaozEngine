@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.IO;
 using System.IO.Pipelines;
 using System.Linq;
@@ -16,6 +17,7 @@ using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 using Xunit;
 
 namespace KhaozEngine.Tests.TileEdit;
@@ -109,6 +111,32 @@ public class McpAdapterTests
         // open world survive from one call to the next.
         var session = harness.Services.GetRequiredService<TileEditSession>();
         Assert.Equal(world, session.DocumentPath);
+    }
+
+    [Fact]
+    public async Task ToolCalls_ExecuteInTransportArrivalOrder()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var probe = new OrderingProbe();
+        await using McpHarness harness = await McpHarness.StartAsync(cts.Token, probe);
+
+        ValueTask<CallToolResult> first = harness.CallAsync("ordering_probe", cts.Token, ("position", 1));
+        await probe.FirstEntered.Task.WaitAsync(cts.Token);
+        ValueTask<CallToolResult> second = harness.CallAsync("ordering_probe", cts.Token, ("position", 2));
+
+        try
+        {
+            await Assert.ThrowsAsync<TimeoutException>(async () =>
+                await probe.SecondEntered.Task.WaitAsync(TimeSpan.FromMilliseconds(250), cts.Token));
+        }
+        finally
+        {
+            probe.ReleaseFirst.TrySetResult();
+        }
+
+        await first;
+        await second;
+        Assert.Equal(new[] { "start-1", "finish-1", "start-2", "finish-2" }, probe.Events);
     }
 
     [Fact]
@@ -372,7 +400,8 @@ public class McpAdapterTests
             Client = client;
         }
 
-        public static async Task<McpHarness> StartAsync(CancellationToken cancellationToken)
+        public static async Task<McpHarness> StartAsync(CancellationToken cancellationToken,
+            OrderingProbe? orderingProbe = null)
         {
             var clientToServer = new Pipe();
             var serverToClient = new Pipe();
@@ -380,9 +409,12 @@ public class McpAdapterTests
             HostApplicationBuilder builder = Host.CreateApplicationBuilder();
             builder.Logging.ClearProviders();
             builder.Services.AddTileEditServices();
-            builder.Services.AddMcpServer()
+            IMcpServerBuilder server = builder.Services.AddMcpServer()
                 .WithStreamServerTransport(clientToServer.Reader.AsStream(), serverToClient.Writer.AsStream())
+                .WithArrivalOrderedToolCalls()
                 .WithTileEditTools();
+            if (orderingProbe is not null)
+                server.WithTools(new OrderingProbeTools(orderingProbe));
 
             IHost host = builder.Build();
             await host.StartAsync(cancellationToken);
@@ -417,6 +449,47 @@ public class McpAdapterTests
             await _host.StopAsync();
             _host.Dispose();
         }
+    }
+
+    sealed class OrderingProbe
+    {
+        readonly object _lock = new();
+
+        public TaskCompletionSource FirstEntered { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource SecondEntered { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource ReleaseFirst { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public List<string> Events { get; } = new();
+
+        public async Task RunAsync(int position, CancellationToken cancellationToken)
+        {
+            Add($"start-{position}");
+            if (position == 1)
+            {
+                FirstEntered.TrySetResult();
+                await ReleaseFirst.Task.WaitAsync(cancellationToken);
+            }
+            else
+            {
+                SecondEntered.TrySetResult();
+            }
+            Add($"finish-{position}");
+        }
+
+        void Add(string value)
+        {
+            lock (_lock) Events.Add(value);
+        }
+    }
+
+    [McpServerToolType]
+    sealed class OrderingProbeTools(OrderingProbe probe)
+    {
+        [McpServerTool(Name = "ordering_probe"), Description("Blocks the first call so transport ordering can be observed.")]
+        public Task Probe(int position, CancellationToken cancellationToken) =>
+            probe.RunAsync(position, cancellationToken);
     }
 }
 

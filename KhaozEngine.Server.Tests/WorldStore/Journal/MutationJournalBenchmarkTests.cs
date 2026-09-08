@@ -249,7 +249,7 @@ public sealed class MutationJournalBenchmarkTests
         }
         finally
         {
-            DeleteDatabase(database);
+            await DeleteDatabaseAsync(database);
         }
     }
 
@@ -276,7 +276,7 @@ public sealed class MutationJournalBenchmarkTests
         }
         finally
         {
-            DeleteDatabase(database);
+            await DeleteDatabaseAsync(database);
         }
     }
 
@@ -315,7 +315,7 @@ public sealed class MutationJournalBenchmarkTests
         }
         finally
         {
-            DeleteDatabase(database);
+            await DeleteDatabaseAsync(database);
         }
     }
 
@@ -339,7 +339,7 @@ public sealed class MutationJournalBenchmarkTests
         }
         finally
         {
-            DeleteDatabase(database);
+            await DeleteDatabaseAsync(database);
         }
     }
 
@@ -366,7 +366,7 @@ public sealed class MutationJournalBenchmarkTests
         }
         finally
         {
-            DeleteDatabase(database);
+            await DeleteDatabaseAsync(database);
         }
     }
 
@@ -393,6 +393,7 @@ public sealed class MutationJournalBenchmarkTests
         string database = TemporaryDatabasePath();
         Guid operationId = Guid.NewGuid();
         Process? child = null;
+        RecoveredOperation? recovered = null;
         try
         {
             child = StartCrashProbe(database, operationId, phase);
@@ -405,7 +406,7 @@ public sealed class MutationJournalBenchmarkTests
             child.Kill(entireProcessTree: true);
             await child.WaitForExitAsync(timeout.Token);
 
-            await using RecoveredOperation recovered = await ReopenAndResolveAsync(database, operationId);
+            recovered = await ReopenAndResolveAsync(database, operationId);
             Assert.Equal(JournalOperationResolutionStatus.Replayed, recovered.Resolution.Status);
             JournalCommitReceipt receipt = Assert.IsType<JournalCommitReceipt>(recovered.Resolution.Receipt);
             JournalStreamVersionRange range = Assert.Single(receipt.Streams);
@@ -421,14 +422,51 @@ public sealed class MutationJournalBenchmarkTests
         }
         finally
         {
+            if (recovered is not null)
+                await recovered.DisposeAsync();
             if (child is { HasExited: false })
             {
                 child.Kill(entireProcessTree: true);
                 await child.WaitForExitAsync();
             }
             child?.Dispose();
-            DeleteDatabase(database);
+            await DeleteDatabaseAsync(database);
         }
+    }
+
+    [Fact]
+    public async Task Database_cleanup_retries_transient_Windows_share_violations_and_removes_sidecars()
+    {
+        string database = TemporaryDatabasePath();
+        string[] paths = new[] { database, database + "-shm", database + "-wal" };
+        foreach (string path in paths) await File.WriteAllTextAsync(path, "fixture");
+        var attempts = paths.ToDictionary(static path => path, static _ => 0, StringComparer.Ordinal);
+
+        await DeleteDatabaseAsync(database, path =>
+        {
+            attempts[path]++;
+            if (attempts[path] == 1)
+                throw new IOException("simulated Windows share violation");
+            File.Delete(path);
+            return Task.CompletedTask;
+        }, TimeSpan.Zero);
+
+        Assert.All(paths, path => Assert.False(File.Exists(path)));
+        Assert.All(attempts.Values, count => Assert.Equal(2, count));
+    }
+
+    [Fact]
+    public async Task Database_cleanup_rethrows_the_last_share_violation_after_its_bound()
+    {
+        string database = TemporaryDatabasePath();
+        await File.WriteAllTextAsync(database, "fixture");
+        var failure = new IOException("persistent Windows share violation");
+
+        IOException actual = await Assert.ThrowsAsync<IOException>(() =>
+            DeleteDatabaseAsync(database, _ => Task.FromException(failure), TimeSpan.Zero, maxAttempts: 3));
+
+        Assert.Same(failure, actual);
+        File.Delete(database);
     }
 
     private static Process StartCrashProbe(string database, Guid operationId, string phase)
@@ -501,12 +539,32 @@ public sealed class MutationJournalBenchmarkTests
             ProgressInterval = progressInterval,
         };
 
-    private static void DeleteDatabase(string database)
+    private static async Task DeleteDatabaseAsync(string database, Func<string, Task>? delete = null,
+        TimeSpan? retryDelay = null, int maxAttempts = 20)
     {
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxAttempts, 1);
+        delete ??= static path =>
+        {
+            File.Delete(path);
+            return Task.CompletedTask;
+        };
+        TimeSpan delay = retryDelay ?? TimeSpan.FromMilliseconds(50);
         foreach (string suffix in new[] { string.Empty, "-shm", "-wal" })
         {
             string path = database + suffix;
-            if (File.Exists(path)) File.Delete(path);
+            if (!File.Exists(path)) continue;
+            for (int attempt = 1; ; attempt++)
+            {
+                try
+                {
+                    await delete(path);
+                    break;
+                }
+                catch (IOException) when (attempt < maxAttempts)
+                {
+                    if (delay > TimeSpan.Zero) await Task.Delay(delay);
+                }
+            }
         }
     }
 

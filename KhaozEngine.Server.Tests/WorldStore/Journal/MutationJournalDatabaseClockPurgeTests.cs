@@ -429,6 +429,26 @@ public sealed class MutationJournalDatabaseClockPurgeTests
     }
 
     [Fact]
+    public void Sqlite_version_one_fixture_removes_v2_objects_with_Windows_line_endings()
+    {
+        using var database = new SqliteJournalTestDatabase();
+        string path = database.NewPath();
+        database.CreateEmpty(path);
+        string schema = SqliteMutationJournalStore.VersionOneSchemaSqlForTestWithLineEndings("\r\n");
+
+        Assert.Contains("\r\n", schema, StringComparison.Ordinal);
+        database.Execute(path, schema);
+
+        Assert.Equal(1, database.ScalarLong(path,
+            "SELECT schema_version FROM journal_metadata WHERE metadata_key = 1;"));
+        Assert.Equal(0, database.ScalarLong(path,
+            "SELECT COUNT(*) FROM pragma_table_info('journal_operation') WHERE name = 'retention_started_at_utc';"));
+        Assert.Equal(0, database.ScalarLong(path,
+            "SELECT COUNT(*) FROM sqlite_master WHERE name IN ('ix_journal_operation_retention', " +
+            "'trg_journal_operation_retention', 'trg_journal_operation_delete_guard');"));
+    }
+
+    [Fact]
     public void Sqlite_validate_only_rejects_version_one_without_mutating_it()
     {
         using var database = new SqliteJournalTestDatabase();

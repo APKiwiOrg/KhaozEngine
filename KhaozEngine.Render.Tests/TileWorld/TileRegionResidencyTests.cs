@@ -310,4 +310,136 @@ public class TileRegionResidencyTests
         // A defaulted struct is all zeroes, which is the degenerate band above rather than the defaults.
         Assert.Throws<ArgumentException>(() => new TileRegionResidency(source, view, default));
     }
+
+    [Fact]
+    public void Explicit_profile_classifies_every_ring_boundary_in_all_directions()
+    {
+        var profile = new TileRegionResidencyProfile(GameplayRadius: 2, DecorRadius: 5, UnloadRadius: 7);
+        var centre = new RegionCoord(10, -4);
+        (int X, int Z)[] directions =
+        {
+            (1, 0), (-1, 0), (0, 1), (0, -1),
+            (1, 1), (1, -1), (-1, 1), (-1, -1),
+        };
+
+        foreach ((int x, int z) in directions)
+        {
+            RegionCoord AtDistance(int distance) =>
+                new(centre.Rx + x * distance, centre.Rz + z * distance);
+
+            Assert.Equal(TileRegionResidencyState.Gameplay,
+                profile.Classify(AtDistance(2), centre, currentlyResident: false));
+            Assert.Equal(TileRegionResidencyState.Decor,
+                profile.Classify(AtDistance(3), centre, currentlyResident: false));
+            Assert.Equal(TileRegionResidencyState.Decor,
+                profile.Classify(AtDistance(5), centre, currentlyResident: false));
+            Assert.Equal(TileRegionResidencyState.Unloaded,
+                profile.Classify(AtDistance(6), centre, currentlyResident: false));
+            Assert.Equal(TileRegionResidencyState.Decor,
+                profile.Classify(AtDistance(6), centre, currentlyResident: true));
+            Assert.Equal(TileRegionResidencyState.Decor,
+                profile.Classify(AtDistance(7), centre, currentlyResident: true));
+            Assert.Equal(TileRegionResidencyState.Unloaded,
+                profile.Classify(AtDistance(8), centre, currentlyResident: true));
+        }
+    }
+
+    [Fact]
+    public void Explicit_profile_transitions_between_gameplay_decor_and_unloaded()
+    {
+        using var tmp = new TempDir();
+        TileWorldSource source = TileWorldSource.Open(TileRenderTestData.SaveGrid(tmp, 15, 1));
+        var scene = new RecordingTileWorldScene();
+        using TileWorldView view = View(scene, source);
+        var profile = new TileRegionResidencyProfile(GameplayRadius: 1, DecorRadius: 3, UnloadRadius: 5);
+        var residency = new TileRegionResidency(source, view,
+            new TileResidencyConfig(LoadRadius: 1, UnloadRadius: 2, MaxLoadsPerUpdate: 100), profile);
+        var origin = new RegionCoord(2, 0);
+
+        residency.PrimeAround(At(2, 0));
+        Assert.Equal(TileRegionResidencyState.Gameplay, view.ResidencyOf(origin));
+
+        residency.Update(At(4, 0));
+        Assert.Equal(TileRegionResidencyState.Decor, view.ResidencyOf(origin));
+        residency.Update(At(7, 0));
+        Assert.Equal(TileRegionResidencyState.Decor, view.ResidencyOf(origin));
+
+        residency.Update(At(8, 0));
+        Assert.Equal(TileRegionResidencyState.Unloaded, view.ResidencyOf(origin));
+        Assert.False(source.IsLoaded(origin));
+
+        residency.Update(At(3, 0));
+        Assert.Equal(TileRegionResidencyState.Gameplay, view.ResidencyOf(origin));
+    }
+
+    [Fact]
+    public void Explicit_profile_keeps_dirty_decor_past_the_unload_boundary()
+    {
+        using var tmp = new TempDir();
+        TileWorldSource source = TileWorldSource.Open(TileRenderTestData.SaveGrid(tmp, 12, 1));
+        var scene = new RecordingTileWorldScene();
+        using TileWorldView view = View(scene, source);
+        var profile = new TileRegionResidencyProfile(GameplayRadius: 1, DecorRadius: 3, UnloadRadius: 4);
+        var residency = new TileRegionResidency(source, view,
+            new TileResidencyConfig(LoadRadius: 1, UnloadRadius: 2, MaxLoadsPerUpdate: 100), profile);
+        var kept = new RegionCoord(2, 0);
+
+        residency.PrimeAround(At(2, 0));
+        source.Document.GetRegion(kept)!.Dirty = true;
+        residency.Update(At(10, 0));
+
+        Assert.Equal(TileRegionResidencyState.Decor, view.ResidencyOf(kept));
+        Assert.True(source.IsLoaded(kept));
+    }
+
+    [Fact]
+    public void Explicit_profile_prime_builds_gameplay_synchronously_without_full_decor_meshes()
+    {
+        using var tmp = new TempDir();
+        TileWorldSource source = TileWorldSource.Open(TileRenderTestData.SaveGrid(tmp, 9, 1));
+        var scene = new RecordingTileWorldScene();
+        using TileWorldView view = View(scene, source);
+        var profile = new TileRegionResidencyProfile(GameplayRadius: 1, DecorRadius: 3, UnloadRadius: 5);
+        var residency = new TileRegionResidency(source, view,
+            new TileResidencyConfig(LoadRadius: 1, UnloadRadius: 2, MaxLoadsPerUpdate: 100), profile);
+
+        residency.PrimeAround(At(4, 0));
+
+        Assert.Equal(3, residency.Resident.Count(c => view.ResidencyOf(c) == TileRegionResidencyState.Gameplay));
+        Assert.Equal(4, residency.Resident.Count(c => view.ResidencyOf(c) == TileRegionResidencyState.Decor));
+        Assert.All(new[] { new RegionCoord(1, 0), new RegionCoord(2, 0), new RegionCoord(6, 0), new RegionCoord(7, 0) },
+            region =>
+            {
+                Assert.Equal(TileRegionResidencyState.Decor, view.ResidencyOf(region));
+                Assert.True(view.TryGetRegionProps(region, 0, out _));
+            });
+        scene.ClearFrame();
+        view.Draw(Focus);
+        Assert.Equal(3, scene.Drawn.Count);
+    }
+
+    [Theory]
+    [InlineData(-1, 2, 3)]
+    [InlineData(2, 1, 3)]
+    [InlineData(1, 3, 3)]
+    public void Explicit_profile_refuses_invalid_rings(int gameplay, int decor, int unload)
+    {
+        var profile = new TileRegionResidencyProfile(gameplay, decor, unload);
+        Assert.Throws<ArgumentException>(() => profile.Validate(nameof(profile)));
+    }
+
+    [Fact]
+    public void Absent_profile_keeps_every_legacy_resident_in_gameplay_state()
+    {
+        using var tmp = new TempDir();
+        TileWorldSource source = TileWorldSource.Open(TileRenderTestData.SaveGrid(tmp, 3, 1));
+        using TileWorldView view = View(new RecordingTileWorldScene(), source);
+        var residency = new TileRegionResidency(source, view, TileResidencyConfig.Default);
+
+        residency.PrimeAround(At(1, 0));
+
+        Assert.Null(residency.Profile);
+        Assert.All(residency.Resident,
+            region => Assert.Equal(TileRegionResidencyState.Gameplay, view.ResidencyOf(region)));
+    }
 }

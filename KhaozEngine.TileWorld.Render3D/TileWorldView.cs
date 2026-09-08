@@ -259,6 +259,14 @@ public sealed partial class TileWorldView : IDisposable
     /// <summary>How many regions are loaded right now.</summary>
     public int LoadedRegionCount => _loaded.Count;
 
+    /// <summary>The representation currently retained for <paramref name="region"/>, or
+    /// <see cref="TileRegionResidencyState.Unloaded"/> when the view does not hold it.</summary>
+    /// <param name="region">Region to inspect.</param>
+    public TileRegionResidencyState ResidencyOf(RegionCoord region) =>
+        _loaded.TryGetValue(region, out RegionHandles? handles)
+            ? handles.Residency
+            : TileRegionResidencyState.Unloaded;
+
     /// <summary>How many region-planes are queued for a rebuild, including marks on regions that are not loaded
     /// and will simply be dropped. Non-zero after a flush means the budget deferred work to the next one.</summary>
     public int PendingRebuilds => _dirtyOrder.Count;
@@ -298,15 +306,45 @@ public sealed partial class TileWorldView : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         UnloadRegion(region);
 
+        LoadGameplayRegion(region, props: null);
+    }
+
+    internal void LoadRegion(RegionCoord region, TileRegionResidencyState residency)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (residency == TileRegionResidencyState.Unloaded)
+        {
+            UnloadRegion(region);
+            return;
+        }
+        if (_loaded.TryGetValue(region, out RegionHandles? existing))
+        {
+            if (existing.Residency == residency) return;
+            if (residency == TileRegionResidencyState.Decor)
+            {
+                DemoteToDecor(region, existing);
+                return;
+            }
+            _loaded.Remove(region);
+            LoadGameplayRegion(region, existing.Props);
+            return;
+        }
+        if (residency == TileRegionResidencyState.Decor) LoadDecorRegion(region);
+        else LoadGameplayRegion(region, props: null);
+    }
+
+    void LoadGameplayRegion(RegionCoord region, TileRegionProps[]? props)
+    {
         var meshes = new MeshHandle?[_planes];
-        var props = new TileRegionProps[_planes];
+        TileRegionProps[] snapshots = props ?? new TileRegionProps[_planes];
         IReadOnlyList<GroundCoverInstance> cover;
         try
         {
             for (int plane = 0; plane < _planes; plane++)
             {
                 meshes[plane] = BuildMesh(region, plane);
-                props[plane] = _propClusters.Build(_doc, region, plane, OverrideLookup());
+                if (props is null)
+                    snapshots[plane] = _propClusters.Build(_doc, region, plane, OverrideLookup());
             }
             cover = BuildCover(region);
         }
@@ -319,8 +357,30 @@ public sealed partial class TileWorldView : IDisposable
             FreeMeshes(meshes);
             throw;
         }
-        _loaded[region] = new RegionHandles(meshes, props, cover);
+        _loaded[region] = new RegionHandles(
+            meshes, snapshots, cover, TileRegionResidencyState.Gameplay);
         GeneratedCoverCount += cover.Count;
+    }
+
+    void LoadDecorRegion(RegionCoord region)
+    {
+        var props = new TileRegionProps[_planes];
+        for (int plane = 0; plane < _planes; plane++)
+            props[plane] = _propClusters.Build(_doc, region, plane, OverrideLookup());
+        _loaded[region] = new RegionHandles(
+            new MeshHandle?[_planes], props, Array.Empty<GroundCoverInstance>(),
+            TileRegionResidencyState.Decor);
+    }
+
+    void DemoteToDecor(RegionCoord region, RegionHandles handles)
+    {
+        GeneratedCoverCount -= handles.Cover.Count;
+        _scene.ReleaseGroundCover(handles.Cover);
+        handles.Cover = Array.Empty<GroundCoverInstance>();
+        ReleaseAnimatedFoliage(handles);
+        FreeMeshes(handles.Meshes);
+        for (int plane = 0; plane < _planes; plane++) _water.Remove((region, plane));
+        handles.Residency = TileRegionResidencyState.Decor;
     }
 
     /// <summary>Frees every mesh handle of one region and forgets it, along with any rebuild it had queued.
@@ -420,6 +480,13 @@ public sealed partial class TileWorldView : IDisposable
                 if (!_loaded.TryGetValue(region, out RegionHandles? handles)) continue;
                 // Build BEFORE freeing. A mesher that throws must leave the old handle live and drawable rather
                 // than a freed one in the slot, which would be a use-after-free on the next frame.
+                if (handles.Residency == TileRegionResidencyState.Decor)
+                {
+                    // Stream dependency marks exist to rebuild full ground against arriving neighbours. A decor
+                    // snapshot has no neighbour-derived data. Its coarse and HLOD work enters through the
+                    // background queue instead of running here on the view thread.
+                    continue;
+                }
                 MeshHandle? rebuilt = BuildMesh(region, plane);
                 if (handles.Meshes[plane] is { } old) _scene.UnloadMesh(old);
                 handles.Meshes[plane] = rebuilt;
@@ -454,6 +521,7 @@ public sealed partial class TileWorldView : IDisposable
         {
             Matrix4x4 world = TileGroundMesher.WorldMatrix(_doc, entry.Key);
             RegionHandles handles = entry.Value;
+            if (handles.Residency != TileRegionResidencyState.Gameplay) continue;
             for (int plane = 0; plane < _planes; plane++)
             {
                 if (handles.Meshes[plane] is { } mesh) _scene.DrawMesh(mesh, world);
@@ -668,12 +736,15 @@ public sealed partial class TileWorldView : IDisposable
         public MeshHandle?[] Meshes { get; }
         public TileRegionProps[] Props { get; }
         public IReadOnlyList<GroundCoverInstance> Cover { get; set; }
+        public TileRegionResidencyState Residency { get; set; }
 
-        public RegionHandles(MeshHandle?[] meshes, TileRegionProps[] props, IReadOnlyList<GroundCoverInstance> cover)
+        public RegionHandles(MeshHandle?[] meshes, TileRegionProps[] props, IReadOnlyList<GroundCoverInstance> cover,
+                             TileRegionResidencyState residency)
         {
             Meshes = meshes;
             Props = props;
             Cover = cover;
+            Residency = residency;
         }
     }
 }

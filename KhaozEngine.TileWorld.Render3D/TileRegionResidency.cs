@@ -87,6 +87,7 @@ public sealed class TileRegionResidency
     readonly TileWorldSource _source;
     readonly TileWorldView _view;
     readonly TileResidencyConfig _config;
+    readonly TileRegionResidencyProfile? _profile;
 
     // Regions already reported as dirty-and-kept, so an observer standing still logs one line rather than one an
     // update. A region drops out of here when it leaves for real, and also when it comes back INSIDE the unload
@@ -109,13 +110,27 @@ public sealed class TileRegionResidency
     /// <param name="config">The ring's tuning, validated here.</param>
     /// <exception cref="ArgumentException">The config is degenerate, see <see cref="TileResidencyConfig.Validate"/>.</exception>
     public TileRegionResidency(TileWorldSource source, TileWorldView view, TileResidencyConfig config)
+        : this(source, view, config, profile: null)
+    {
+    }
+
+    /// <summary>Binds an opt-in gameplay, decor and unload profile to a source and view. The existing config
+    /// continues to own the per-update arrival budget.</summary>
+    /// <param name="source">The world on disk regions are materialised from.</param>
+    /// <param name="view">The view that owns each region representation.</param>
+    /// <param name="config">Existing streaming tuning. Its load budget remains active.</param>
+    /// <param name="profile">Three-state ring tuning, or null for the legacy synchronous ring.</param>
+    public TileRegionResidency(TileWorldSource source, TileWorldView view, TileResidencyConfig config,
+                        TileRegionResidencyProfile? profile)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(view);
         config.Validate(nameof(config));
+        profile?.Validate(nameof(profile));
         _source = source;
         _view = view;
         _config = config;
+        _profile = profile;
     }
 
     /// <summary>Where a region kept resident because it is dirty is reported, once per region. Null discards the
@@ -125,6 +140,9 @@ public sealed class TileRegionResidency
 
     /// <summary>The tuning this ring runs on.</summary>
     public TileResidencyConfig Config => _config;
+
+    /// <summary>The opt-in three-state profile, or null when this is the legacy synchronous ring.</summary>
+    public TileRegionResidencyProfile? Profile => _profile;
 
     /// <summary>The resident regions, straight from the view, which is the single authority on what is loaded.
     /// A snapshot rather than a live view, so a caller may load or unload while walking it.</summary>
@@ -138,7 +156,11 @@ public sealed class TileRegionResidency
     /// after a teleport. A discontinuous move leaves the observer standing in a region that is several updates
     /// away from loading, so a jump runs <see cref="PrimeAround"/> instead.</para></summary>
     /// <param name="observer">The tile the ring is centred on.</param>
-    public void Update(TileCoord observer) => Move(observer, _config.MaxLoadsPerUpdate);
+    public void Update(TileCoord observer)
+    {
+        if (_profile is null) MoveLegacy(observer, _config.MaxLoadsPerUpdate);
+        else MoveProfile(observer, _config.MaxLoadsPerUpdate);
+    }
 
     /// <summary>Fills the whole ring around the observer in one call, ignoring the per-update budget, drops what
     /// the move left behind, and settles every border the streaming just dirtied. The loading-moment form: a
@@ -152,11 +174,12 @@ public sealed class TileRegionResidency
     /// <param name="observer">The tile the ring is centred on.</param>
     public void PrimeAround(TileCoord observer)
     {
-        Move(observer, int.MaxValue);
+        if (_profile is null) MoveLegacy(observer, int.MaxValue);
+        else MoveProfile(observer, int.MaxValue);
         _view.Flush(int.MaxValue);
     }
 
-    void Move(TileCoord observer, int budget)
+    void MoveLegacy(TileCoord observer, int budget)
     {
         RegionCoord centre = RegionCoord.Of(observer.X, observer.Z);
 
@@ -165,6 +188,87 @@ public sealed class TileRegionResidency
 
         DropDeparted(centre);
         LoadArrivals(centre, budget);
+    }
+
+    void MoveProfile(TileCoord observer, int budget)
+    {
+        TileRegionResidencyProfile profile = _profile!;
+        RegionCoord centre = RegionCoord.Of(observer.X, observer.Z);
+
+        _loaded.Clear();
+        foreach (RegionCoord region in _view.LoadedRegions) _loaded.Add(region);
+
+        DropProfileDeparted(centre, profile);
+        TransitionProfileResidents(centre, profile);
+        LoadProfileArrivals(centre, profile, budget);
+    }
+
+    void DropProfileDeparted(RegionCoord centre, TileRegionResidencyProfile profile)
+    {
+        _departing.Clear();
+        foreach (RegionCoord region in _loaded)
+        {
+            if (profile.Classify(region, centre, currentlyResident: true) == TileRegionResidencyState.Unloaded)
+                _departing.Add(region);
+            else
+                _dirtyReported.Remove(region);
+        }
+
+        for (int i = 0; i < _departing.Count; i++)
+        {
+            RegionCoord region = _departing[i];
+            if (_source.Document.GetRegion(region)?.Dirty == true)
+            {
+                _view.LoadRegion(region, TileRegionResidencyState.Decor);
+                if (_dirtyReported.Add(region))
+                    Log?.Invoke($"tile world: region {region} has unsaved changes and is kept resident past the unload radius. Save the world to let it stream out.");
+                continue;
+            }
+            _view.UnloadRegion(region);
+            _view.MarkRegionStreamed(region);
+            _source.Unload(region);
+            _loaded.Remove(region);
+            _dirtyReported.Remove(region);
+        }
+    }
+
+    void TransitionProfileResidents(RegionCoord centre, TileRegionResidencyProfile profile)
+    {
+        foreach (RegionCoord region in _loaded)
+        {
+            TileRegionResidencyState wanted = profile.Classify(region, centre, currentlyResident: true);
+            if (wanted == TileRegionResidencyState.Unloaded || wanted == _view.ResidencyOf(region)) continue;
+            _view.LoadRegion(region, wanted);
+            if (wanted == TileRegionResidencyState.Gameplay) _view.MarkRegionStreamed(region);
+        }
+    }
+
+    void LoadProfileArrivals(RegionCoord centre, TileRegionResidencyProfile profile, int budget)
+    {
+        _candidates.Clear();
+        int radius = profile.DecorRadius;
+        for (int dz = -radius; dz <= radius; dz++)
+            for (int dx = -radius; dx <= radius; dx++)
+            {
+                var region = new RegionCoord(centre.Rx + dx, centre.Rz + dz);
+                if (_loaded.Contains(region) || !_source.IsKnown(region)) continue;
+                _candidates.Add(new Candidate(region, Math.Max(Math.Abs(dx), Math.Abs(dz))));
+            }
+        _candidates.Sort(NearestFirst);
+
+        int taken = 0;
+        for (int i = 0; i < _candidates.Count && taken < budget; i++)
+        {
+            Candidate candidate = _candidates[i];
+            if (_source.EnsureLoaded(candidate.Region) is null) continue;
+            TileRegionResidencyState state = candidate.Distance <= profile.GameplayRadius
+                ? TileRegionResidencyState.Gameplay
+                : TileRegionResidencyState.Decor;
+            _view.LoadRegion(candidate.Region, state);
+            _view.MarkRegionStreamed(candidate.Region);
+            _loaded.Add(candidate.Region);
+            taken++;
+        }
     }
 
     void DropDeparted(RegionCoord centre)

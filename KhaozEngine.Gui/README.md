@@ -320,7 +320,7 @@ chat.Draw(batch, white);
     outside an open menu does nothing to it and a caller wanting right-click-to-reopen watches
     `Pointer.IsRightTapIn` itself and calls `Open` again at the new point.
     `Update(InputManager, PlayerIndex? = null)` layers menu-cancel (Escape / gamepad B / Back)
-    dismissal on top, and cancel is live from the first frame. `ComputeBounds` / `RowBounds` are pure layout over
+    dismissal on top, and cancel is live from the first focused frame. `ComputeBounds` / `RowBounds` are pure layout over
     `ITextMeasurer`: the menu's top-left sits at the point and opens down-right, flips to put its BOTTOM at the
     point when the bottom would overflow, and the viewport clamp runs LAST and wins over the flip, so a point too
     close to an edge yields a menu pinned inside the `ContextMenuMetrics.Margin` box that may cover the point
@@ -331,7 +331,13 @@ chat.Draw(batch, white);
     updates first, opening-frame protection applies to the next update instead. Assign `Viewport` (the design size) before updating or drawing:
     `Draw` throws while it is `Vector2.Zero` rather than silently pinning the menu into the corner, and throws
     too on a menu built through the measure-only `ContextMenu(ITextMeasurer, ITextMeasurer)` constructor, which
-    exists so a headless test can drive the whole interaction with no GPU device and no baked font.
+    exists so a headless test can drive the whole interaction with no GPU device and no baked font. `Bounds` and
+    `EntryBounds(index)` expose the same live geometry used for hit-testing and drawing. Invalid entry indices,
+    null entry collections and null constructor fonts throw an argument exception. A default
+    `ContextMenuEntry` and a default `TooltipLine` lay out as empty text. Both `ContextMenu` constructors reject
+    null fonts. Code that deliberately passes a null literal to test one overload must cast it to `SpriteFont`
+    or `ITextMeasurer`, because those source-compatible overloads otherwise make the literal ambiguous.
+    Menu-cancel input is ignored while `InputState.WindowFocused` is false.
   - `PopupPanel` - modal dialog: scrim + title + `PopupRow` content + dismiss/primary footer. `Update` reserves
     the whole `ScrimRect` (the full viewport the scrim dims) through `Pointer.BlockRegion`, not just the panel,
     so a click on the dimmed area cannot reach the UI underneath. That only matters when the popup is driven

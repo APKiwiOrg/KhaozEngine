@@ -84,7 +84,7 @@ namespace KhaozEngine.Gui
     public sealed partial class ContextMenu
     {
         readonly ITextMeasurer _titleMeasure, _bodyMeasure;
-        readonly SpriteFont? _titleFont, _bodyFont;
+        readonly SpriteFont? _titleSpriteFont, _bodySpriteFont;
 
         readonly List<ContextMenuEntry> _entries = new();
         string _title = "";
@@ -98,7 +98,9 @@ namespace KhaozEngine.Gui
         /// <summary>Build a menu that measures and draws its title band with <paramref name="titleFont"/> and its entry rows with <paramref name="bodyFont"/>.</summary>
         public ContextMenu(SpriteFont titleFont, SpriteFont bodyFont)
         {
-            _titleFont = titleFont; _bodyFont = bodyFont;
+            ArgumentNullException.ThrowIfNull(titleFont);
+            ArgumentNullException.ThrowIfNull(bodyFont);
+            _titleSpriteFont = titleFont; _bodySpriteFont = bodyFont;
             _titleMeasure = titleFont; _bodyMeasure = bodyFont;
         }
 
@@ -110,6 +112,8 @@ namespace KhaozEngine.Gui
         /// </summary>
         public ContextMenu(ITextMeasurer titleFont, ITextMeasurer bodyFont)
         {
+            ArgumentNullException.ThrowIfNull(titleFont);
+            ArgumentNullException.ThrowIfNull(bodyFont);
             _titleMeasure = titleFont; _bodyMeasure = bodyFont;
         }
 
@@ -253,15 +257,19 @@ namespace KhaozEngine.Gui
             // no IsJustPressed edge. A fresh gesture on the opening frame still belongs to the open operation.
             if (_openGestureLatch && !openingFrame && pointer.IsPressOriginFresh) _openGestureLatch = false;
 
-            Rect bounds = Bounds();
+            Rect bounds = Bounds;
             pointer.BlockRegion(bounds);
 
             HoverIndex = -1;
+            int tapIndex = -1;
             for (int i = 0; i < _entries.Count; i++)
             {
                 if (!_entries[i].Enabled) continue;
-                if (!pointer.IsPointerIn(RowBounds(bounds, _titleMeasure, _bodyMeasure, i, Metrics))) continue;
+                Rect row = RowBounds(bounds, _titleMeasure, _bodyMeasure, i, Metrics);
+                if (!pointer.IsPointerIn(row)) continue;
                 HoverIndex = i;
+                if (!_openGestureLatch && pointer.IsTapIn(row))
+                    tapIndex = i;
                 break;
             }
 
@@ -272,13 +280,11 @@ namespace KhaozEngine.Gui
             // gates the tap queries only, so the menu carries its own latch and gates both paths here.
             if (_openGestureLatch) return false;
 
-            for (int i = 0; i < _entries.Count; i++)
+            if (tapIndex >= 0)
             {
-                ContextMenuEntry e = _entries[i];
-                if (!e.Enabled) continue;
-                if (!pointer.IsTapIn(RowBounds(bounds, _titleMeasure, _bodyMeasure, i, Metrics))) continue;
+                ContextMenuEntry e = _entries[tapIndex];
                 WasSelected = true;
-                SelectedIndex = i;
+                SelectedIndex = tapIndex;
                 SelectedTag = e.Tag;
                 Close();
                 return true;
@@ -304,7 +310,7 @@ namespace KhaozEngine.Gui
         public bool Update(InputManager input, PlayerIndex? player = null)
         {
             bool selected = Update(input.Pointer);
-            if (IsOpen && input.IsMenuCancel(player, out _))
+            if (IsOpen && input.State.WindowFocused && input.IsMenuCancel(player, out _))
             {
                 WasDismissed = true;
                 DismissPress = null;
@@ -325,17 +331,17 @@ namespace KhaozEngine.Gui
             if (Viewport == Vector2.Zero)
                 throw new InvalidOperationException(
                     "ContextMenu.Viewport is unset (Vector2.Zero). Assign the design viewport size before draw.");
-            if (_titleFont == null || _bodyFont == null)
+            if (_titleSpriteFont == null || _bodySpriteFont == null)
                 throw new InvalidOperationException(
                     "ContextMenu was built measure-only, via the ITextMeasurer constructor. Build it with SpriteFonts to draw.");
 
-            Rect b = Bounds();
+            Rect b = Bounds;
             GuiDraw.Fill(batch, white, b, Background);
             GuiDraw.Border(batch, white, b, 1f, Border);
 
             float textX = MathF.Floor(b.X + Metrics.PadX);
             if (!string.IsNullOrEmpty(_title))
-                batch.DrawString(_titleFont, _title, new Vector2(textX, MathF.Floor(b.Y + Metrics.RowPadY)), (Color)TitleColor);
+                batch.DrawString(_titleSpriteFont, _title, new Vector2(textX, MathF.Floor(b.Y + Metrics.RowPadY)), (Color)TitleColor);
             // Centred in the TitleGap band under the title text, above where the first row starts.
             float sepY = MathF.Floor(b.Y + TitleBandHeight(_titleMeasure, Metrics) - Metrics.TitleGap * 0.5f);
             GuiDraw.Fill(batch, white, new Rect(textX, sepY, MathF.Max(0f, b.Width - Metrics.PadX * 2f), 1f), Border);
@@ -348,23 +354,32 @@ namespace KhaozEngine.Gui
 
                 Vector4 detail = e.Enabled ? e.DetailColor ?? DetailColor : DisabledColor;
                 float y = MathF.Floor(r.Y + Metrics.RowPadY);
-                LabelRun[] runs = LayoutLabel(e, _bodyFont, textX, TextColor, DisabledColor);
+                LabelRun[] runs = LayoutLabel(e, _bodySpriteFont, textX, TextColor, DisabledColor);
                 for (int segment = 0; segment < runs.Length; segment++)
                 {
                     LabelRun run = runs[segment];
-                    batch.DrawString(_bodyFont, run.Text, new Vector2(run.X, y), (Color)run.Color);
+                    batch.DrawString(_bodySpriteFont, run.Text, new Vector2(run.X, y), (Color)run.Color);
                 }
                 if (!string.IsNullOrEmpty(e.RightDetail))
                 {
-                    float dw = _bodyFont.Measure(e.RightDetail).X;
-                    batch.DrawString(_bodyFont, e.RightDetail,
+                    float dw = _bodySpriteFont.Measure(e.RightDetail).X;
+                    batch.DrawString(_bodySpriteFont, e.RightDetail,
                         new Vector2(MathF.Floor(r.Right - Metrics.PadX - dw), y), (Color)detail);
                 }
             }
         }
 
-        /// <summary>The current menu rect, from the live title, entries and anchor point. One layout source for hit-testing and drawing.</summary>
-        Rect Bounds() => ComputeBounds(_titleMeasure, _title, _bodyMeasure, _entries, _point, Viewport, Metrics);
+        /// <summary>The current menu rect, from the live title, entries, anchor point, viewport and metrics.</summary>
+        public Rect Bounds => ComputeBounds(_titleMeasure, _title, _bodyMeasure, _entries, _point, Viewport, Metrics);
+
+        /// <summary>The current rect of entry <paramref name="i"/>. Throws when the index is outside the menu.</summary>
+        public Rect EntryBounds(int i)
+        {
+            ArgumentOutOfRangeException.ThrowIfNegative(i);
+            if (i >= _entries.Count)
+                throw new ArgumentOutOfRangeException(nameof(i), i, "The entry index is outside the menu.");
+            return RowBounds(Bounds, _titleMeasure, _bodyMeasure, i, Metrics);
+        }
 
         /// <summary>
         /// Pure layout: the on-screen rect for a menu with this title and these entries opened at
@@ -385,6 +400,9 @@ namespace KhaozEngine.Gui
         public static Rect ComputeBounds(ITextMeasurer titleFont, string title, ITextMeasurer bodyFont,
             IReadOnlyList<ContextMenuEntry> entries, Vector2 point, Vector2 viewport, ContextMenuMetrics m)
         {
+            ArgumentNullException.ThrowIfNull(titleFont);
+            ArgumentNullException.ThrowIfNull(bodyFont);
+            ArgumentNullException.ThrowIfNull(entries);
             float contentW = string.IsNullOrEmpty(title) ? 0f : titleFont.Measure(title).X;
             for (int i = 0; i < entries.Count; i++)
             {
@@ -416,8 +434,15 @@ namespace KhaozEngine.Gui
         public static Rect RowBounds(Rect bounds, ITextMeasurer titleFont, ITextMeasurer bodyFont, int i,
             ContextMenuMetrics m)
         {
+            ArgumentNullException.ThrowIfNull(titleFont);
+            ArgumentNullException.ThrowIfNull(bodyFont);
+            ArgumentOutOfRangeException.ThrowIfNegative(i);
             float rowH = RowHeight(bodyFont, m);
-            return new Rect(bounds.X, bounds.Y + TitleBandHeight(titleFont, m) + i * rowH, bounds.Width, rowH);
+            var row = new Rect(bounds.X, bounds.Y + TitleBandHeight(titleFont, m) + i * rowH,
+                bounds.Width, rowH);
+            if (row.Bottom > bounds.Bottom + 0.001f)
+                throw new ArgumentOutOfRangeException(nameof(i), i, "The row lies outside the menu bounds.");
+            return row;
         }
 
         /// <summary>Height of the always-present title band, including the gap under it.</summary>

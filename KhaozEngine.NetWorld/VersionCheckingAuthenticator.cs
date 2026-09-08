@@ -20,7 +20,8 @@ namespace KhaozEngine.NetWorld;
 /// are unchanged, and a consumer that does not reference this package composes the
 /// <see cref="VersionGateAuthenticator"/> directly.</para>
 /// </summary>
-public sealed class VersionCheckingAuthenticator : IConnectionAuthenticator, IConnectionDisplayName
+public sealed class VersionCheckingAuthenticator : IConnectionAuthenticator, IConnectionDisplayName,
+    IConnectionPersistenceKey
 {
     private readonly VersionGateAuthenticator gate;
 
@@ -37,4 +38,6 @@ public sealed class VersionCheckingAuthenticator : IConnectionAuthenticator, ICo
         gate.TryAuthenticate(token, out subject, out rejectReason);
 
     public string ReadDisplayName(ReadOnlySpan<byte> token) => gate.ReadDisplayName(token);
+
+    public string ReadPersistenceKey(ReadOnlySpan<byte> token) => gate.ReadPersistenceKey(token);
 }

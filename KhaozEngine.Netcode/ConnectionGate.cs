@@ -3,7 +3,8 @@ using System;
 namespace KhaozEngine.Netcode;
 
 /// <summary>Refuses a peer on a protocol-version mismatch before anything else runs.</summary>
-public sealed class VersionGateAuthenticator : IConnectionAuthenticator, IConnectionDisplayName
+public sealed class VersionGateAuthenticator : IConnectionAuthenticator, IConnectionDisplayName,
+    IConnectionPersistenceKey
 {
     readonly string serverVersion;
     readonly Func<string, bool> isCompatible;
@@ -37,12 +38,20 @@ public sealed class VersionGateAuthenticator : IConnectionAuthenticator, IConnec
         HandshakeToken.TryUnwrap(token, out _, out byte[] innerToken);
         return inner is IConnectionDisplayName named ? named.ReadDisplayName(innerToken) : string.Empty;
     }
+
+    /// <inheritdoc/>
+    public string ReadPersistenceKey(ReadOnlySpan<byte> token)
+    {
+        HandshakeToken.TryUnwrap(token, out _, out byte[] innerToken);
+        return inner is IConnectionPersistenceKey keyed ? keyed.ReadPersistenceKey(innerToken) : string.Empty;
+    }
 }
 
 /// <summary>Refuses a peer built against a different WORLD, so it can never join and render its own map while the
 /// server simulates another. Distinct from the version gate on purpose: a patch that leaves the world alone still
 /// interoperates.</summary>
-public sealed class WorldIdentityGateAuthenticator : IConnectionAuthenticator, IConnectionDisplayName
+public sealed class WorldIdentityGateAuthenticator : IConnectionAuthenticator, IConnectionDisplayName,
+    IConnectionPersistenceKey
 {
     readonly string worldHash;
     readonly IConnectionAuthenticator inner;
@@ -78,6 +87,13 @@ public sealed class WorldIdentityGateAuthenticator : IConnectionAuthenticator, I
         HandshakeToken.TryUnwrap(token, out _, out byte[] innerToken);
         return inner is IConnectionDisplayName named ? named.ReadDisplayName(innerToken) : string.Empty;
     }
+
+    /// <inheritdoc/>
+    public string ReadPersistenceKey(ReadOnlySpan<byte> token)
+    {
+        HandshakeToken.TryUnwrap(token, out _, out byte[] innerToken);
+        return inner is IConnectionPersistenceKey keyed ? keyed.ReadPersistenceKey(innerToken) : string.Empty;
+    }
 }
 
 /// <summary>Refuses a banned account. Runs OUTSIDE-IN last, because a ban keys on the VERIFIED subject and only
@@ -93,7 +109,8 @@ public sealed class WorldIdentityGateAuthenticator : IConnectionAuthenticator, I
 /// an <c>IBanStore</c> because <c>IBanStore</c> lives in <c>KhaozEngine.NetWorld</c>, which this package cannot
 /// reference. A <c>WorldServer</c> game that wants both wires the SAME store behind both, passing it as
 /// <c>banStore:</c> and handing its <c>IsBanned</c> in here, so the two can never disagree about who is banned.</para></summary>
-public sealed class BanGateAuthenticator : IConnectionAuthenticator, IConnectionDisplayName
+public sealed class BanGateAuthenticator : IConnectionAuthenticator, IConnectionDisplayName,
+    IConnectionPersistenceKey
 {
     readonly IConnectionAuthenticator inner;
     readonly Func<string, bool> isBanned;
@@ -124,6 +141,10 @@ public sealed class BanGateAuthenticator : IConnectionAuthenticator, IConnection
     /// <inheritdoc/>
     public string ReadDisplayName(ReadOnlySpan<byte> token) =>
         inner is IConnectionDisplayName named ? named.ReadDisplayName(token) : string.Empty;
+
+    /// <inheritdoc/>
+    public string ReadPersistenceKey(ReadOnlySpan<byte> token) =>
+        inner is IConnectionPersistenceKey keyed ? keyed.ReadPersistenceKey(token) : string.Empty;
 }
 
 /// <summary>

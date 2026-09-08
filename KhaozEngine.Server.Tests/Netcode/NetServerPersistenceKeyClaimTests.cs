@@ -1,6 +1,7 @@
 using System;
 using System.Text;
 using KhaozEngine.Netcode;
+using KhaozEngine.NetWorld;
 using Xunit;
 
 namespace KhaozEngine.Tests.Netcode;
@@ -88,8 +89,57 @@ public class NetServerPersistenceKeyClaimTests
             Encoding.UTF8.GetString(SessionFrame.ReadBody(reason!)));
     }
 
+    [Fact]
+    public void Automatic_NetWorld_Wire_Wrapper_Preserves_The_V3_Persistence_Key()
+    {
+        var transport = new RecordingTransport();
+        var hmac = new HmacTokenAuthenticator(Secret, () => Now);
+        var consumerVersion = new VersionCheckingAuthenticator("game:1", v => v == "game:1", hmac);
+        IConnectionAuthenticator authenticator = WireGenerationAuthenticator.Install(consumerVersion);
+        var server = new NetServer(transport, maxPlayers: 4, authenticator);
+        string signed = SignedToken.Mint("acct:42", "Ada", "character:9001", Now.AddHours(1), Secret);
+        byte[] token = ProtocolHandshake.BuildClientToken(MoveProtocol.WireProtocolVersion, "game:1",
+            Encoding.UTF8.GetBytes(signed));
+
+        ServerSessionEvent joined = Join(server, transport, connection: 1, token);
+
+        Assert.Equal("acct:42", joined.Subject);
+        Assert.Equal("character:9001", joined.PersistenceKey);
+    }
+
+    [Fact]
+    public void ConnectionGate_Wrap_Preserves_The_Claim_And_Deduplicates_By_Subject()
+    {
+        var transport = new RecordingTransport();
+        var hmac = new HmacTokenAuthenticator(Secret, () => Now);
+        IConnectionAuthenticator authenticator = ConnectionGate.Wrap(hmac, "game:1", "world:7",
+            isBanned: _ => false);
+        var server = new NetServer(transport, maxPlayers: 4, authenticator,
+            duplicateSessions: DuplicateSessionPolicy.RefuseNewer);
+        string firstSigned = SignedToken.Mint("acct:42", "Ada", "character:9001", Now.AddHours(1), Secret);
+        string secondSigned = SignedToken.Mint("acct:42", "Ada", "character:9002", Now.AddHours(1), Secret);
+        byte[] firstToken = ConnectionGate.BuildToken("game:1", "world:7", Encoding.UTF8.GetBytes(firstSigned));
+        byte[] secondToken = ConnectionGate.BuildToken("game:1", "world:7", Encoding.UTF8.GetBytes(secondSigned));
+
+        ServerSessionEvent first = Join(server, transport, connection: 1, firstToken);
+        SendHello(server, transport, connection: 2, secondToken);
+
+        Assert.Equal("acct:42", first.Subject);
+        Assert.Equal("character:9001", first.PersistenceKey);
+        Assert.False(server.TryDequeueEvent(out _));
+        (NetConnectionId target, byte[]? reason) = Assert.Single(transport.Disconnects);
+        Assert.Equal(new NetConnectionId(2), target);
+        Assert.NotNull(reason);
+        Assert.Equal(SessionRejectReason.AlreadySignedIn,
+            Encoding.UTF8.GetString(SessionFrame.ReadBody(reason!)));
+    }
+
     private static ServerSessionEvent Join(NetServer server, RecordingTransport transport, int connection,
         string token)
+        => Join(server, transport, connection, Encoding.UTF8.GetBytes(token));
+
+    private static ServerSessionEvent Join(NetServer server, RecordingTransport transport, int connection,
+        byte[] token)
     {
         SendHello(server, transport, connection, token);
         Assert.True(server.TryDequeueEvent(out ServerSessionEvent joined));
@@ -99,11 +149,14 @@ public class NetServerPersistenceKeyClaimTests
     }
 
     private static void SendHello(NetServer server, RecordingTransport transport, int connection, string token)
+        => SendHello(server, transport, connection, Encoding.UTF8.GetBytes(token));
+
+    private static void SendHello(NetServer server, RecordingTransport transport, int connection, byte[] token)
     {
         var id = new NetConnectionId(connection);
         transport.Deliver(NetEvent.Connected(id));
         transport.Deliver(NetEvent.FromData(id,
-            SessionFrame.Write(SessionOpcode.Hello, Encoding.UTF8.GetBytes(token)),
+            SessionFrame.Write(SessionOpcode.Hello, token),
             NetChannelReliability.ReliableOrdered));
         server.Poll();
     }

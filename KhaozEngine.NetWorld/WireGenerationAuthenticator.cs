@@ -19,7 +19,8 @@ namespace KhaozEngine.NetWorld;
 /// explicitly to override the expected generation (tests use this to simulate a wire-skewed peer); the servers then
 /// respect it as-is rather than double-wrapping.
 /// </summary>
-public sealed class WireGenerationAuthenticator : IConnectionAuthenticator, IConnectionDisplayName
+public sealed class WireGenerationAuthenticator : IConnectionAuthenticator, IConnectionDisplayName,
+    IConnectionPersistenceKey
 {
     private readonly IConnectionAuthenticator inner;
     private readonly string requiredLabel;
@@ -68,5 +69,11 @@ public sealed class WireGenerationAuthenticator : IConnectionAuthenticator, ICon
         // consumer-version layer in turn). Only called after TryAuthenticate accepted the same token.
         ProtocolHandshake.TryUnwrapToken(token, out _, out byte[] innerToken);
         return inner is IConnectionDisplayName named ? named.ReadDisplayName(innerToken) : string.Empty;
+    }
+
+    public string ReadPersistenceKey(ReadOnlySpan<byte> token)
+    {
+        ProtocolHandshake.TryUnwrapToken(token, out _, out byte[] innerToken);
+        return inner is IConnectionPersistenceKey keyed ? keyed.ReadPersistenceKey(innerToken) : string.Empty;
     }
 }

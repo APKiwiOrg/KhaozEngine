@@ -73,8 +73,10 @@ nothing in the upload path moves.
   water and ground would mix, when it carries a bridge, overlay or shaped cut, or when the visible material is
   not uniform. Roads, river edges, bridge approaches, material changes and void edges therefore retain their
   authored per-tile triangulation. A compatible cell beside an incompatible or differently surfaced cell adds
-  canonical edge points so the two representations meet without a crack. Positions, central-difference normals,
-  material slots and brightness still come from the global lattice, keeping adjacent region seams bit-identical.
+  canonical edge points so the two representations meet without a crack. Every region perimeter also retains its
+  one-metre lattice points, so a Coarse4 region meets a Full same-material neighbour exactly even on a non-linear
+  shared edge. The extra triangles stay on the perimeter and compatible interior cells remain one pair. Positions,
+  central-difference normals, material slots, weights and brightness still come from the global lattice.
 
 ## Ground materials (`TileGroundMaterials`, `TileGroundMaterialSet`)
 
@@ -256,8 +258,9 @@ var resolver = new GltfMeshResolver(kitRoot, new GreyboxMeshResolver(doc.TileSiz
 - **Optional LOD and HLOD failures keep a visible representation.** `ResolveLod(archetype)` returns null for a
   blank, missing or malformed `LodMeshRef` without consulting the required-mesh fallback, so that archetype keeps
   LOD0. `ResolveFlatForHlod(archetype)` prefers flattened LOD1, falls back to flattened LOD0, and returns null only
-  when neither loads. A TileWorld layer with an unresolved flattened source stays on its individual geometry and
-  does not enter an HLOD-only decor transition.
+  when neither loads. Available flattened sources remain usable by other archetypes in the layer. HLOD eligibility
+  is decided per region-plane cluster from its detached placements. A cluster that places an unresolved type stays
+  on individual geometry in both Gameplay and Decor, while another cluster using only resolved types still merges.
 - **Failures are cached and diagnostics are bounded.** A failed cache entry does not probe disk again.
   Diagnostics deduplicate by load purpose and normalized path, so full parts, LOD parts, flattened LOD1 and
   flattened LOD0 can each explain their own fallback once without repeating for later archetypes or path aliases.
@@ -331,7 +334,8 @@ catalog archetype up front, so a region load is placements alone.
   ordinary `PropDrawRadius` submission. Each `TilePropLayerDefinition` names a stable `Id`, a non-empty set of
   `ArchetypeIds`, `DrawRadius`, `LodDistance`, `LodCrossfadeWidth`, `HlodDistance`, `HlodCrossfadeWidth`,
   `HlodWeldCell`, and `CastsShadows` (default true). Construction rejects missing archetypes, duplicate layer IDs,
-  duplicate archetype selection, non-finite or negative tuning, and a LOD or HLOD distance past the draw radius.
+  duplicate archetype selection, roof archetypes, non-finite or negative tuning, and a LOD or HLOD distance past
+  the draw radius. Roofs stay on the ordinary visibility-aware path and cannot join a prop layer.
   When HLOD is enabled, its positive distance must also be greater than `LodDistance`.
   A selected object leaves the ordinary prop list and enters exactly one `TilePropLayerSnapshot`, so it cannot
   double-submit. `TileRegionProps` publishes these detached, object-ID-ordered batches with region, plane and

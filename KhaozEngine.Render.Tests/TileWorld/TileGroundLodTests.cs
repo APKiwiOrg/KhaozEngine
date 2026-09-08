@@ -26,8 +26,9 @@ public sealed class TileGroundLodTests
         GltfMesh full = Require(doc, Origin, TileGroundLod.Full);
         GltfMesh coarse = Require(doc, Origin, TileGroundLod.Coarse4);
 
-        Assert.Equal(16 * 16 * 2, coarse.TriangleCount);
-        Assert.True(coarse.TriangleCount <= full.TriangleCount / 10);
+        Assert.Equal(824, coarse.TriangleCount);
+        Assert.Equal(392, InteriorTriangleCount(coarse));
+        Assert.True(coarse.TriangleCount <= full.TriangleCount / 9);
         Assert.Equal(0f, coarse.Vertices.Min(v => v.Position.X));
         Assert.Equal(64f, coarse.Vertices.Max(v => v.Position.X));
         Assert.Equal(-64f, coarse.Vertices.Min(v => v.Position.Z));
@@ -36,6 +37,40 @@ public sealed class TileGroundLodTests
         AssertCornerHeight(coarse, 64f, 0f, 0.50f);
         AssertCornerHeight(coarse, 0f, -64f, 0.75f);
         AssertCornerHeight(coarse, 64f, -64f, 1f);
+    }
+
+    [Fact]
+    public void Coarse4_perimeter_matches_a_full_same_material_neighbour_on_a_non_linear_edge()
+    {
+        var east = new RegionCoord(1, 0);
+        TileWorldDocument doc = FlatWorld(Origin, east);
+        short[] profile = [0, 120, -40, 210, 35];
+        for (int z = 0; z < TileRegion.Size; z++)
+            doc.SetCornerHeightCm(TileRegion.Size, z, 0, profile[z % profile.Length]);
+
+        GltfMesh coarseMesh = Require(doc, Origin, TileGroundLod.Coarse4);
+        GltfMesh fullMesh = Require(doc, east, TileGroundLod.Full);
+        VertexSignature[] coarse = EdgeSignatures(coarseMesh, doc, Origin, TileRegion.Size);
+        VertexSignature[] full = EdgeSignatures(fullMesh, doc, east, 0f);
+
+        Vector3[] coarsePositions = coarse.Select(value => value.Position).Distinct().ToArray();
+        Vector3[] fullPositions = full.Select(value => value.Position).Distinct().ToArray();
+        Assert.Equal(65, coarsePositions.Length);
+        Assert.Equal(fullPositions, coarsePositions);
+        foreach (Vector3 position in coarsePositions)
+        {
+            VertexSignature coarsePoint = coarse.First(value => value.Position == position);
+            VertexSignature[] fullPoints = full.Where(value => value.Position == position).ToArray();
+            Assert.NotEmpty(fullPoints);
+            Assert.All(fullPoints, fullPoint =>
+            {
+                Assert.Equal(coarsePoint.Normal, fullPoint.Normal);
+                Assert.Equal(coarsePoint.Slots23AndJitter.Z, fullPoint.Slots23AndJitter.Z);
+                Assert.Equal(1f, WeightSum(fullPoint.Weights), 5);
+                Assert.Equal(ActiveSlot(coarsePoint), ActiveSlot(fullPoint));
+            });
+            Assert.Equal(1f, WeightSum(coarsePoint.Weights), 5);
+        }
     }
 
     [Fact]
@@ -48,7 +83,7 @@ public sealed class TileGroundLodTests
             doc.SetOverlayShape(1, z, 0, TileOverlayShape.Full);
         }
 
-        Assert.Equal(552, Require(doc, Origin, TileGroundLod.Coarse4).TriangleCount);
+        Assert.Equal(852, Require(doc, Origin, TileGroundLod.Coarse4).TriangleCount);
     }
 
     [Fact]
@@ -73,7 +108,7 @@ public sealed class TileGroundLodTests
             for (int x = 0; x < 2; x++)
                 doc.SetUnderlay(x, z, 0, TileRenderTestData.Water);
 
-        Assert.Equal(552, Require(doc, Origin, TileGroundLod.Coarse4).TriangleCount);
+        Assert.Equal(852, Require(doc, Origin, TileGroundLod.Coarse4).TriangleCount);
     }
 
     [Fact]
@@ -82,7 +117,7 @@ public sealed class TileGroundLodTests
         TileWorldDocument doc = FlatWorld(Origin);
         doc.SetUnderlay(1, 1, 0, 0);
 
-        Assert.Equal(550, Require(doc, Origin, TileGroundLod.Coarse4).TriangleCount);
+        Assert.Equal(850, Require(doc, Origin, TileGroundLod.Coarse4).TriangleCount);
     }
 
     [Fact]
@@ -92,7 +127,7 @@ public sealed class TileGroundLodTests
         doc.SetOverlay(1, 1, 0, TileRenderTestData.Road);
         doc.SetOverlayShape(1, 1, 0, TileOverlayShape.DiagonalHalf);
 
-        Assert.Equal(552, Require(doc, Origin, TileGroundLod.Coarse4).TriangleCount);
+        Assert.Equal(852, Require(doc, Origin, TileGroundLod.Coarse4).TriangleCount);
     }
 
     [Fact]
@@ -103,7 +138,7 @@ public sealed class TileGroundLodTests
             for (int x = 0; x < 2; x++)
                 doc.SetUnderlay(x, z, 0, 2);
 
-        Assert.Equal(552, Require(doc, Origin, TileGroundLod.Coarse4).TriangleCount);
+        Assert.Equal(852, Require(doc, Origin, TileGroundLod.Coarse4).TriangleCount);
     }
 
     [Fact]
@@ -112,7 +147,7 @@ public sealed class TileGroundLodTests
         TileWorldDocument doc = FlatWorld(Origin);
         doc.SetSettings(1, 1, 0, TileSettings.Bridge | TileSettings.NoDraw);
 
-        Assert.Equal(550, Require(doc, Origin, TileGroundLod.Coarse4).TriangleCount);
+        Assert.Equal(850, Require(doc, Origin, TileGroundLod.Coarse4).TriangleCount);
     }
 
     [Fact]
@@ -192,7 +227,7 @@ public sealed class TileGroundLodTests
         view.Draw(Vector3.Zero);
 
         MeshHandle handle = Assert.Single(scene.Drawn).Handle;
-        Assert.Equal(512, scene.GroundMeshes[handle.Index].TriangleCount);
+        Assert.Equal(824, scene.GroundMeshes[handle.Index].TriangleCount);
     }
 
     [Fact]
@@ -370,6 +405,43 @@ public sealed class TileGroundLodTests
 
     static (Vector3 Position, Vector3 Normal, float Jitter) SignatureWithoutEncoding(VertexSignature value) =>
         (value.Position, value.Normal, value.Slots23AndJitter.Z);
+
+    static int InteriorTriangleCount(GltfMesh mesh)
+    {
+        int count = 0;
+        for (int triangle = 0; triangle < mesh.TriangleCount; triangle++)
+        {
+            Vector3 a = mesh.Vertices[mesh.Indices32[triangle * 3]].Position;
+            Vector3 b = mesh.Vertices[mesh.Indices32[triangle * 3 + 1]].Position;
+            Vector3 c = mesh.Vertices[mesh.Indices32[triangle * 3 + 2]].Position;
+            Vector3 centre = (a + b + c) / 3f;
+            float tileZ = -centre.Z;
+            if (centre.X >= 4f && centre.X < 60f && tileZ >= 4f && tileZ < 60f) count++;
+        }
+        return count;
+    }
+
+    static float WeightSum(Vector4 weights) => weights.X + weights.Y + weights.Z + weights.W;
+
+    static int ActiveSlot(VertexSignature value)
+    {
+        int[] slots =
+        [
+            (int)value.Slots01.X,
+            (int)value.Slots01.Y,
+            (int)value.Slots23AndJitter.X,
+            (int)value.Slots23AndJitter.Y,
+        ];
+        float[] weights = [value.Weights.X, value.Weights.Y, value.Weights.Z, value.Weights.W];
+        int slot = -1;
+        for (int i = 0; i < weights.Length; i++)
+        {
+            if (weights[i] <= 0f) continue;
+            if (slot < 0) slot = slots[i];
+            else Assert.Equal(slot, slots[i]);
+        }
+        return slot;
+    }
 
     readonly record struct VertexSignature(
         Vector3 Position, Vector3 Normal, Vector4 Weights, Vector2 Slots01, Vector4 Slots23AndJitter);

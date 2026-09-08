@@ -21,14 +21,16 @@ restarting the scene or turning render distance into gameplay authority (#397, #
   scene-thread apply, retained handles, retry, invalidation, draw, unload and disposal. `Scene3DChunkSink` delegates
   its prop clusters to it without changing existing Ruinborne placement or `PropLayer.WithHlod` wiring.
 - `PropLayer.WithLodCrossfade(width)` and matching `PropRenderer` arguments add deterministic complementary LOD0
-  and LOD1 coverage in both colour and shadow paths. Width zero preserves the prior hard swap.
+  and LOD1 coverage in both colour and shadow paths. Overlapping draw-radius and HLOD fades compose without
+  restoring removed coverage. Width zero preserves the prior hard swap.
 - `TileObjectArchetype.LodMeshRef` and catalog `lodMeshRef` name one optional authored LOD1 tier and participate in
   catalog hash scheme 2. `GltfMeshResolver` caches full, LOD and flattened HLOD forms. Missing LOD1 keeps LOD0.
   Flattened HLOD resolution prefers LOD1, falls back to LOD0, and keeps individual geometry when neither loads.
   Diagnostics deduplicate per load purpose and normalized path.
 - `TilePropLayerDefinition` opts a disjoint archetype set into full, LOD and region HLOD drawing with draw, LOD,
   crossfade, HLOD, weld and shadow policy. `TileWorldViewOptions.PropLayers` defaults empty. Validation prevents
-  duplicate selection, so a chosen object leaves ordinary submission and draws through exactly one cluster layer.
+  duplicate selection and rejects roofs, so a chosen non-roof object leaves ordinary submission and draws through
+  exactly one cluster layer while roofs stay on the visibility-aware path.
 - `TileRegionProps` and `TilePropLayerSnapshot` publish immutable, generation-tagged region-plane data for worker
   builds. Completed full-ground, coarse-ground and HLOD work applies nearest first under independent frame caps.
   Overrides invalidate one region generation, and stale results are rejected before upload.
@@ -37,9 +39,11 @@ restarting the scene or turning render distance into gameplay authority (#397, #
   without ordinary prop batches, cover or picking. The legacy synchronous ring remains the default.
 - `TileGroundLod.Coarse4` collapses a compatible four by four interior to one triangle pair from global lattice
   corners. Void, water, bridge, overlay, material and shaped-boundary cells retain full triangulation, with
-  transition edges preserving region seams. Picking, collision, navigation, object identities, replication and
-  hashes continue to use full authored data.
-- Initial HLOD failures retry three times and log once. Rebuild failures retain the last accepted handle. Unload
+  one-metre perimeter vertices preserving seams against Full neighbours. Picking, collision, navigation, object
+  identities, replication and hashes continue to use full authored data.
+- Flattened HLOD eligibility is per cluster, so an unused missing variant does not disable complete clusters and a
+  cluster that places it keeps individual geometry in Decor. Initial HLOD failures retry three times and log once.
+  Rebuild failures retain the last accepted handle while adopting current individual placements. Unload
   cancels queued generations and frees region ground, cluster and snapshot state. View disposal drains workers,
   rejects late completions and releases every retained handle exactly once.
 - Headless tests cover shadow transaction and fallback behavior, shared prop-cluster replacement and lifetime,

@@ -8,7 +8,7 @@ public sealed record TilePropLayerDefinition
     /// <summary>Stable layer identity used in region cluster keys.</summary>
     public required string Id { get; init; }
 
-    /// <summary>Archetypes represented by this layer instead of the ordinary TileWorld prop draw.</summary>
+    /// <summary>Non-roof archetypes represented by this layer instead of the ordinary TileWorld prop draw.</summary>
     public required IReadOnlySet<string> ArchetypeIds { get; init; }
 
     /// <summary>Horizontal distance at which the layer has fully faded out.</summary>

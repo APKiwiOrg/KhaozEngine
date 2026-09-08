@@ -296,6 +296,44 @@ namespace KhaozEngine.Tests.Terrain
         }
 
         [Fact]
+        public void LodCrossfade_ComposesTheOuterFadeWithoutRestoringCoverage()
+        {
+            var placements = new[] { new PropPlacement("pine_a", 80f, 0f, 0f, 1f, 0f, 0) };
+            var instances = new SceneInstances();
+
+            PropRenderer.Queue(instances, placements, Meshes(("pine_a", 7)), Vector3.Zero,
+                drawRadius: 100f, lodCrossfadeWidth: 40f, fadeBandWidth: 40f,
+                lodMeshes: Meshes(("pine_a", 50)), lodDistance: 80f);
+
+            Assert.Equal(2, instances.Items.Count);
+            Assert.Equal(0.75f, instances.Items[0].DissolveThreshold, 5);
+            Assert.Equal(0f, instances.Items[0].DissolveComplement);
+            Assert.Equal(0.25f, instances.Items[1].DissolveThreshold, 5);
+            Assert.Equal(1f, instances.Items[1].DissolveComplement);
+        }
+
+        [Fact]
+        public void MultipartLodCrossfade_ComposesTheHlodFloorWithoutRestoringCoverage()
+        {
+            var placements = new[] { new PropPlacement("tree", 70f, 0f, 0f, 1f, 0f, 0) };
+            var instances = new SceneInstances();
+
+            PropRenderer.Queue(instances, placements, Parts(("tree", new[] { 1, 2 })), Vector3.Zero,
+                drawRadius: 200f, lodCrossfadeWidth: 40f,
+                lodParts: Parts(("tree", new[] { 90 })), lodDistance: 80f, dissolveFloor: 0.6f);
+
+            Assert.Equal(3, instances.Items.Count);
+            for (int i = 0; i < 2; i++)
+            {
+                SceneInstances.Instance item = instances.Items[i];
+                Assert.Equal(0.7f, item.DissolveThreshold, 5);
+                Assert.Equal(0f, item.DissolveComplement);
+            }
+            Assert.Equal(0.1f, instances.Items[2].DissolveThreshold, 5);
+            Assert.Equal(1f, instances.Items[2].DissolveComplement);
+        }
+
+        [Fact]
         public void LodCrossfade_BandEdgesKeepComplementaryOwnership()
         {
             SceneInstances.Instance[] start = LodItemsAtDistance(56f, width: 16f);

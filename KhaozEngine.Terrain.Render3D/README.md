@@ -109,7 +109,9 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   inside `DrawRadius`. A positive `LodDistance` with LOD variants swaps a kit to its far mesh past that
   distance. `WithLodCrossfade(width)` opts into a complementary LOD0 to LOD1 dissolve centred on
   `LodDistance`. Its default width of zero preserves the old hard swap. The colour and shadow paths use the same
-  deterministic coverage phase, so the handoff does not double-brighten the body or double-cast its shadow.
+  deterministic coverage phase, so the handoff does not double-brighten the body or double-cast its shadow. An
+  overlapping draw-radius fade or HLOD dissolve floor carves one shared gap between the complementary LOD sets.
+  The pair therefore cannot restore coverage that the independent fade already removed.
   `CastsShadows` (default true) is the layer's shadow policy: pass `castsShadows: false` to ANY of the
   factories and the layer's props (and its merged HLOD mesh) stop writing into the key light's shadow depth pass
   while still drawing and still RECEIVING shadows - what a dense short-radius ground-cover or understory layer wants
@@ -188,8 +190,9 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   access. `Apply(key, build)`, `Draw(focus)`, `Invalidate(key)` and `Unload(key)` belong on the scene thread. Apply
   discards stale generations and results completed after unload. An initial HLOD failure retries three times,
   logs once for that key and generation, and retains individual props. A rebuild failure keeps the last accepted
-  merged handle. A successful replacement uploads first and retires the old handle after the new generation is
-  accepted. `MergeStats` reports cumulative builds, uploads, bytes and malformed corners. `Unload` is idempotent,
+  merged handle while adopting the failed request's current individual placements and layer. A successful
+  replacement uploads first and retires the old handle after the new generation is accepted. `MergeStats` reports
+  cumulative builds, uploads, bytes and malformed corners. `Unload` is idempotent,
   and `Dispose` frees every retained handle exactly once. `Scene3DChunkSink` delegates this ownership while keeping
   terrain, physics, water and chunk orchestration itself, so existing `PropLayer.WithHlod` callers need no format
   or game-code migration.

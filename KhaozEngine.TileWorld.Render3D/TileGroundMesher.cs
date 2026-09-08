@@ -130,10 +130,12 @@ public static partial class TileGroundMesher
         int x = c.OriginX + lx;
         int z = c.OriginZ + lz;
         Coarse4Transition result = Coarse4Transition.None;
-        if (NeedsTransition(c, x, z - 4, surface)) result |= Coarse4Transition.South;
-        if (NeedsTransition(c, x + 4, z, surface)) result |= Coarse4Transition.East;
-        if (NeedsTransition(c, x, z + 4, surface)) result |= Coarse4Transition.North;
-        if (NeedsTransition(c, x - 4, z, surface)) result |= Coarse4Transition.West;
+        if (lz == 0 || NeedsTransition(c, x, z - 4, surface)) result |= Coarse4Transition.South;
+        if (lx + 4 == TileRegion.Size || NeedsTransition(c, x + 4, z, surface))
+            result |= Coarse4Transition.East;
+        if (lz + 4 == TileRegion.Size || NeedsTransition(c, x, z + 4, surface))
+            result |= Coarse4Transition.North;
+        if (lx == 0 || NeedsTransition(c, x - 4, z, surface)) result |= Coarse4Transition.West;
         return result;
     }
 

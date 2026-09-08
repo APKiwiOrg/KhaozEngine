@@ -144,6 +144,9 @@ namespace KhaozEngine.Terrain
                     if (old is null)
                         _clusters[key] = new Cluster(build.Generation, build.Area, build.Layer,
                             build.PlacementBatch, handle: null);
+                    else
+                        _clusters[key] = new Cluster(old.Generation, build.Area, build.Layer,
+                            build.PlacementBatch, old.Handle);
                     return;
                 }
                 if (build.ReusesCurrent)

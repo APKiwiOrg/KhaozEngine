@@ -81,9 +81,10 @@ namespace KhaozEngine.Terrain
         /// Out-of-range and unknown-id placements are skipped. <paramref name="fadeBandWidth"/> (default 0 = hard cut)
         /// dissolves props across the band just inside the radius; <paramref name="lodMeshes"/> plus a positive
         /// <paramref name="lodDistance"/> swap a kit to its far LOD variant beyond that distance.
-        /// <paramref name="dissolveFloor"/> (default 0) raises the MINIMUM dissolve applied to every emitted prop
-        /// (combined with the per-placement fade via max), the seam the HLOD crossfade uses to dissolve a whole
-        /// chunk's props out uniformly. <paramref name="castsShadows"/> (default true, unchanged) queues these props
+        /// <paramref name="dissolveFloor"/> (default 0) removes coverage independently of the per-placement fade,
+        /// the seam the HLOD crossfade uses to dissolve a whole chunk's props out uniformly. During a complementary
+        /// LOD crossfade that removed coverage becomes one shared gap between the two representations.
+        /// <paramref name="castsShadows"/> (default true, unchanged) queues these props
         /// as non-casters when false, so a dense decorative layer draws and receives shadows without writing
         /// hundreds of small ones into the cascade atlas (issue #287). Returns the number queued.</summary>
         public static int Queue(SceneInstances instances, IReadOnlyList<PropPlacement> placements,
@@ -109,7 +110,8 @@ namespace KhaozEngine.Terrain
 
         /// <summary>Scene3D convenience: queue the in-range props into the scene's instance buffer for this frame
         /// (same cull + matrix + fade band + LOD selection as <see cref="Queue(SceneInstances, IReadOnlyList{PropPlacement}, IReadOnlyDictionary{string, MeshHandle}, Vector3, float, Color?, float, IReadOnlyDictionary{string, MeshHandle}, float, float, bool)"/>). <paramref name="dissolveFloor"/>
-        /// (default 0) raises every prop's minimum dissolve, the HLOD crossfade seam. <paramref name="castsShadows"/>
+        /// (default 0) removes coverage independently, including through a complementary LOD handoff, and is the
+        /// HLOD crossfade seam. <paramref name="castsShadows"/>
         /// (default true) draws these props as non-casters when false (issue #287). <paramref name="blobRadii"/>
         /// (default null, issue #388) registers a <see cref="ShadowBlob"/> per surviving placement whose id has an
         /// entry, scaled by the placement's <see cref="PropPlacement.Scale"/>, but ONLY when <paramref name="scene"/>'s
@@ -147,9 +149,9 @@ namespace KhaozEngine.Terrain
         /// the placement's shared scale/yaw/translation transform, so the whole prop instances as a unit and each
         /// (id, part) batches through the same <see cref="SceneInstances"/> path as the single-mesh form (no new
         /// per-instance shader indexing). The fade band and (<paramref name="lodParts"/>, <paramref name="lodDistance"/>)
-        /// LOD swap work exactly as on the single-mesh form, applied to the whole prop (every part shares the one
-        /// dissolve value and switches to the LOD variant together). A single-part list queues exactly one instance per
-        /// placement, byte-identical to <see cref="Queue(SceneInstances, IReadOnlyList{PropPlacement}, IReadOnlyDictionary{string, MeshHandle}, Vector3, float, Color?, float, IReadOnlyDictionary{string, MeshHandle}, float, float, bool)"/>. Returns the number of PLACEMENTS drawn (not part submissions).</summary>
+        /// LOD swap work exactly as on the single-mesh form, applied to the whole prop. Every part of one
+        /// representation shares its dissolve value and switches to the LOD variant together. A single-part list
+        /// queues exactly one instance per placement, byte-identical to <see cref="Queue(SceneInstances, IReadOnlyList{PropPlacement}, IReadOnlyDictionary{string, MeshHandle}, Vector3, float, Color?, float, IReadOnlyDictionary{string, MeshHandle}, float, float, bool)"/>. Returns the number of PLACEMENTS drawn (not part submissions).</summary>
         public static int Queue(SceneInstances instances, IReadOnlyList<PropPlacement> placements,
                                 IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> parts, Vector3 focus,
                                 float drawRadius, Color? tint = null, float fadeBandWidth = 0f,
@@ -279,8 +281,10 @@ namespace KhaozEngine.Terrain
                     else
                     {
                         float transition = Math.Clamp((dist - lodInner) / lodBand, 0f, 1f);
-                        sink(state, handle, world, transition, 0f);
-                        sink(state, lodHandle, world, transition, 1f);
+                        (float nearDissolve, float farDissolve) =
+                            ComposeLodDissolve(transition, dissolve);
+                        sink(state, handle, world, nearDissolve, 0f);
+                        sink(state, lodHandle, world, farDissolve, 1f);
                     }
                 }
                 else
@@ -364,8 +368,12 @@ namespace KhaozEngine.Terrain
                     else
                     {
                         float transition = Math.Clamp((dist - lodInner) / lodBand, 0f, 1f);
-                        for (int j = 0; j < handles.Count; j++) sink(state, handles[j], world, transition, 0f);
-                        for (int j = 0; j < lodHandles!.Count; j++) sink(state, lodHandles[j], world, transition, 1f);
+                        (float nearDissolve, float farDissolve) =
+                            ComposeLodDissolve(transition, dissolve);
+                        for (int j = 0; j < handles.Count; j++)
+                            sink(state, handles[j], world, nearDissolve, 0f);
+                        for (int j = 0; j < lodHandles!.Count; j++)
+                            sink(state, lodHandles[j], world, farDissolve, 1f);
                     }
                 }
                 else
@@ -380,6 +388,16 @@ namespace KhaozEngine.Terrain
                 count++;
             }
             return count;
+        }
+
+        // Reserve one gap of independent dissolve coverage between the complementary LOD intervals. LOD1 owns
+        // mask values below farDissolve and LOD0 owns values at or above nearDissolve. The gap between them is
+        // exactly independentDissolve, so an outer fade or HLOD handoff cannot be filled back in by the LOD pair.
+        static (float Near, float Far) ComposeLodDissolve(float transition, float independentDissolve)
+        {
+            float fade = Math.Clamp(independentDissolve, 0f, 1f);
+            float far = transition * (1f - fade);
+            return (fade + far, far);
         }
     }
 }

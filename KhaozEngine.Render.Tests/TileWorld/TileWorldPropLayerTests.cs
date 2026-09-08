@@ -63,6 +63,33 @@ public class TileWorldPropLayerTests
         Assert.Empty(scene.PropMeshLoads);
     }
 
+    [Theory]
+    [InlineData(RoofVisibility.Interior)]
+    [InlineData(RoofVisibility.AlwaysHidden)]
+    public void Roof_archetypes_cannot_join_a_prop_layer_that_bypasses_visibility(RoofVisibility mode)
+    {
+        TileWorldDocument doc = TileRenderTestData.HouseWorld();
+        TilePropLayerDefinition roofs = Trees() with
+        {
+            Id = "roofs",
+            ArchetypeIds = new HashSet<string>(StringComparer.Ordinal) { "roof_flat" },
+        };
+
+        ArgumentException error = Assert.Throws<ArgumentException>(() =>
+            TileWorldPropClusters.Validate(TileRenderTestData.Catalogs, new[] { roofs }));
+        Assert.Contains("roof_flat", error.Message, StringComparison.Ordinal);
+
+        var scene = new RecordingTileWorldScene();
+        using var view = new TileWorldView(scene, doc, TileRenderTestData.Catalogs, new GreyboxMeshResolver());
+        view.LoadRegion(TileRenderTestData.Region);
+        view.RoofMode = mode;
+        view.Observer = new TileCoord(TileRenderTestData.HouseMinX, TileRenderTestData.HouseMinZ, 0);
+        view.Draw(Vector3.Zero);
+
+        Assert.DoesNotContain(scene.PropDraws.SelectMany(draw => draw.Placements),
+            placement => placement.Id == "roof_flat");
+    }
+
     [Fact]
     public void Successful_view_construction_enumerates_each_definition_set_once()
     {
@@ -208,6 +235,46 @@ public class TileWorldPropLayerTests
     }
 
     [Fact]
+    public void Missing_flattened_variant_disables_only_clusters_that_place_it()
+    {
+        TileWorldDocument doc = TileRenderTestData.HouseWorld();
+        var second = new RegionCoord(1, 0);
+        doc.GetOrCreateRegion(second);
+        doc.AddObject("tree", 25, 25, 0, 0);
+        doc.AddObject("bush", second.OriginX + 25, 25, 0, 0);
+        var scene = new RecordingTileWorldScene();
+        TilePropLayerDefinition mixed = Trees() with
+        {
+            ArchetypeIds = new HashSet<string>(StringComparer.Ordinal) { "tree", "bush" },
+        };
+        using var view = new TileWorldView(scene, doc, TileRenderTestData.Catalogs,
+            new MissingBushFlatResolver(), new TileWorldViewOptions { PropLayers = new[] { mixed } },
+            new TileWorldBuildQueueOptions { MaxConcurrentBuilds = 16, MaxHlodAppliesPerPump = 16 },
+            new ImmediateDispatcher());
+        view.LoadRegion(TileRenderTestData.Region, TileRegionResidencyState.Gameplay);
+        view.LoadRegion(second, TileRegionResidencyState.Gameplay);
+        view.Draw(Vector3.Zero);
+
+        Assert.True(view.TryGetRegionProps(TileRenderTestData.Region, 0, out TileRegionProps firstProps));
+        Assert.True(view.TryGetRegionProps(second, 0, out TileRegionProps secondProps));
+        Assert.True(firstProps.Layers["trees"].Layer.HasHlod);
+        Assert.False(secondProps.Layers["trees"].Layer.HasHlod);
+        Assert.Equal(1, scene.LiveClusterMeshCount);
+
+        Vector3 secondFocus = new(second.OriginX + 32f, 0f, -32f);
+        int gameplayDraws = scene.ClusterPropDraws.Count;
+        view.Draw(secondFocus);
+        Assert.Contains(scene.ClusterPropDraws.Skip(gameplayDraws).SelectMany(draw => draw.Placements),
+            placement => placement.Id == "bush");
+
+        view.LoadRegion(second, TileRegionResidencyState.Decor);
+        int decorDraws = scene.ClusterPropDraws.Count;
+        view.Draw(secondFocus);
+        Assert.Contains(scene.ClusterPropDraws.Skip(decorDraws).SelectMany(draw => draw.Placements),
+            placement => placement.Id == "bush");
+    }
+
+    [Fact]
     public void Selected_props_never_reach_ordinary_draws()
     {
         TileWorldDocument doc = TileRenderTestData.HouseWorld();
@@ -316,6 +383,21 @@ public class TileWorldPropLayerTests
             FlatCalls++;
             return _inner.Resolve(archetype)?[0].Mesh;
         }
+    }
+
+    sealed class MissingBushFlatResolver : ITileMeshResolver, ITileLodMeshResolver
+    {
+        readonly GreyboxMeshResolver _inner = new();
+        public IReadOnlyList<GltfMeshPart>? Resolve(TileObjectArchetype archetype) => _inner.Resolve(archetype);
+        public IReadOnlyList<GltfMeshPart>? ResolveLod(TileObjectArchetype archetype) => _inner.Resolve(archetype);
+        public GltfMesh? ResolveFlatForHlod(TileObjectArchetype archetype) =>
+            archetype.Id == "bush" ? null : _inner.Resolve(archetype)?[0].Mesh;
+    }
+
+    sealed class ImmediateDispatcher : IChunkBuildDispatcher
+    {
+        public void Schedule(Action build) => build();
+        public void Drain() { }
     }
 
     sealed class SingleEnumerationSet : IReadOnlySet<string>

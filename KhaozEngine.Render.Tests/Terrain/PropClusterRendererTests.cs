@@ -91,6 +91,26 @@ namespace KhaozEngine.Tests.Terrain
         }
 
         [Fact]
+        public void Failed_rebuild_adopts_current_individual_placements_but_keeps_the_accepted_hlod_handle()
+        {
+            using var rig = new PropClusterRig();
+            PropClusterKey key = new("trees", 0, 0, 0);
+            rig.Apply(key, rig.Build(key, generation: 1));
+            int acceptedHandle = rig.HandleIndexOf(key);
+            rig.Renderer.Invalidate(key);
+            rig.FailEveryMerge = true;
+            var stump = new PropPlacement("stump", 9f, 0f, 1f, 1f, 0f, 0);
+
+            rig.Apply(key, rig.Build(key, generation: 2, stump));
+            rig.Renderer.Draw(new Vector3(32f, 0f, 32f));
+
+            Assert.Equal(9f, rig.LastDrawX);
+            Assert.Equal(acceptedHandle, rig.HandleIndexOf(key));
+            Assert.Equal(1, rig.LiveHandleCount);
+            Assert.Equal(0, rig.UnloadCount);
+        }
+
+        [Fact]
         public void Failed_new_generation_still_rejects_an_older_completed_build()
         {
             using var rig = new PropClusterRig();

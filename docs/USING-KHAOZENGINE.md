@@ -6880,7 +6880,9 @@ var treeLayer = PropLayer.ScatterLayer(forest, treeMeshes, drawRadius: 320f, fad
 
 `WithLodCrossfade(width)` changes the authored LOD0 to LOD1 handoff from a hard swap to complementary dissolve
 coverage centred on `LodDistance`. Both meshes share one deterministic distance transition with opposite phases,
-and the shadow pass reads the same phases. Zero keeps the old hard swap.
+and the shadow pass reads the same phases. If the LOD band overlaps the draw-radius fade or an HLOD dissolve floor,
+the independent fade becomes one shared gap between the two complementary sets. The LOD pair cannot fill coverage
+that was already removed. Zero keeps the old hard swap.
 
 Beyond `hlodDistance` (chunk-centre to focus, in metres) the cluster draws its merged mesh instead of the props.
 Across `crossfadeWidth` the two crossfade - the props dissolve out and the merged mesh dissolves in, both through
@@ -6897,8 +6899,9 @@ without `WithHlod` draws its props at every distance exactly as before. `PropHlo
 `PropClusterBuildRequest` carries detached placements, `PropClusterKey`, content generation, cluster area and
 `PropLayer`. The owner retains accepted HLOD handles across focus movement and pure ground re-LOD. Apply rejects
 stale generations and work completed after unload. Initial build failure retries three times, logs once for that
-key and generation, and retains individual props. A failed rebuild keeps the last accepted HLOD handle. Upload,
-replacement, invalidation, draw and unload stay on the scene thread. `Unload` is idempotent. `Dispose` releases
+key and generation, and retains individual props. A failed rebuild keeps the last accepted HLOD handle but adopts
+the failed request's current individual placements and layer for near drawing. Upload, replacement,
+invalidation, draw and unload stay on the scene thread. `Unload` is idempotent. `Dispose` releases
 every retained handle exactly once.
 
 Under `ShadowMode.ShadowMap`, both halves of the crossfade now cast in proportion to their dissolve (issue #287):
@@ -7851,8 +7854,9 @@ var regions = new TileRegionResidency(
 ```
 
 Each definition owns a disjoint, non-empty archetype set. The view validates finite distances, unique layer IDs,
-known archetypes, and that LOD and HLOD do not exceed the draw radius. When HLOD is enabled, its positive distance
-must also exceed `LodDistance`. A selected object is removed from ordinary prop submission and
+known non-roof archetypes, and that LOD and HLOD do not exceed the draw radius. Roof archetypes are rejected so
+they stay on the ordinary path governed by `RoofVisibility`. When HLOD is enabled, its positive distance must
+also exceed `LodDistance`. A selected object is removed from ordinary prop submission and
 appears in exactly one `TilePropLayerSnapshot`, so it cannot double-draw. `TileRegionProps` is an immutable,
 generation-tagged region-plane snapshot. It carries object IDs and detached placements in stable order. Worker
 builds read that snapshot and resolved CPU mesh data only. They never read the live document, overrides, resolver
@@ -7878,18 +7882,22 @@ the unload radius, which is the hysteresis against border churn. These are rende
 loads whole authored regions, and collision, navigation, simulation, replication and hashes continue to use the
 full document.
 
-`Coarse4` replaces a compatible four by four interior with one triangle pair over global lattice corners. A cell
-falls back to full tile triangulation when any tile is void or `NoDraw`, when water and ground mix, or when it
+`Coarse4` replaces a compatible four by four interior with one triangle pair over global lattice corners. Every
+region perimeter retains one-metre canonical points, so it meets a Full same-material neighbour exactly on a
+non-linear shared edge. The perimeter pays the extra triangles while compatible interior cells remain one pair. A
+cell falls back to full tile triangulation when any tile is void or `NoDraw`, when water and ground mix, or when it
 contains a bridge, overlay, shaped cut or material change. Transition edges retain canonical lattice points.
 Roads, rivers, bridge approaches, material boundaries, voids and region seams therefore keep their authored
 shape while large uniform interiors collapse.
 
 CPU ground and HLOD builds run on background workers. The scene thread applies completed generations nearest
 first with independent caps for full ground, coarse ground and HLOD. `PrimeAround` may drain gameplay full ground
-synchronously after a teleport, but decor stays budgeted. Missing LOD1 retains LOD0. A missing flattened HLOD
-source retains individual geometry instead of creating a hole. An initial HLOD build retries three times and
-then logs once. A rebuild failure retains the last accepted handle. An override replaces only its region snapshot
-and rejects stale work before upload.
+synchronously after a teleport, but decor stays budgeted. Missing LOD1 retains LOD0. Flattened HLOD availability
+is decided per cluster from the archetypes it actually places. A cluster containing a missing source retains
+individual geometry in Gameplay and Decor instead of creating a hole, without disabling another cluster whose
+placed sources are complete. An initial HLOD build retries three times and then logs once. A rebuild failure
+retains the last accepted handle while adopting current individual placements. An override replaces only its
+region snapshot and rejects stale work before upload.
 
 Picking always uses full object bounds and stable document IDs inside gameplay residency. HLOD is never a hover,
 click or collision target. On unload, the view cancels queued work and releases ground, cover, cluster and snapshot

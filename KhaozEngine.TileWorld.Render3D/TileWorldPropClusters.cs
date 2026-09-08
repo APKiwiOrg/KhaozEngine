@@ -78,8 +78,13 @@ public sealed partial class TileWorldPropClusters : IDisposable
             int archetypeIndex = 0;
             foreach (string archetypeId in definition.ArchetypeIds)
             {
-                if (string.IsNullOrWhiteSpace(archetypeId) || catalogs.Archetype(archetypeId) is null)
+                TileObjectArchetype? archetype = catalogs.Archetype(archetypeId);
+                if (string.IsNullOrWhiteSpace(archetypeId) || archetype is null)
                     throw new ArgumentException($"Prop layer '{definition.Id}' names unknown archetype '{archetypeId}'.",
+                        nameof(definitions));
+                if (archetype.IsRoof)
+                    throw new ArgumentException(
+                        $"Prop layer '{definition.Id}' cannot select roof archetype '{archetypeId}'. Roofs must stay on the visibility-aware ordinary path.",
                         nameof(definitions));
                 if (!selected.TryAdd(archetypeId, i))
                     throw new ArgumentException($"Archetype '{archetypeId}' is selected by more than one prop layer.",
@@ -197,7 +202,6 @@ public sealed partial class TileWorldPropClusters : IDisposable
         var full = new Dictionary<string, IReadOnlyList<MeshHandle>>(StringComparer.Ordinal);
         var lod = new Dictionary<string, IReadOnlyList<MeshHandle>>(StringComparer.Ordinal);
         var flat = new Dictionary<string, GltfMesh>(StringComparer.Ordinal);
-        bool allFlat = resolver is not null;
         var uploaded = new List<IReadOnlyList<MeshHandle>>();
         try
         {
@@ -212,8 +216,7 @@ public sealed partial class TileWorldPropClusters : IDisposable
                     uploaded.Add(handles);
                 }
                 GltfMesh? source = resolver?.ResolveFlatForHlod(archetype);
-                if (source is null) allFlat = false;
-                else flat.Add(id, source);
+                if (source is not null) flat.Add(id, source);
             }
         }
         catch
@@ -224,7 +227,7 @@ public sealed partial class TileWorldPropClusters : IDisposable
         return new LayerResources(definition,
             new ReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>(full),
             lod.Count == 0 ? null : new ReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>(lod),
-            allFlat ? new ReadOnlyDictionary<string, GltfMesh>(flat) : null,
+            new ReadOnlyDictionary<string, GltfMesh>(flat),
             uploaded);
     }
 
@@ -258,12 +261,12 @@ public sealed partial class TileWorldPropClusters : IDisposable
         public TilePropLayerDefinition Definition { get; }
         public IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> Full { get; }
         public IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>? Lod { get; }
-        public IReadOnlyDictionary<string, GltfMesh>? Flat { get; }
+        public IReadOnlyDictionary<string, GltfMesh> Flat { get; }
 
         public LayerResources(TilePropLayerDefinition definition,
                               IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> full,
                               IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>? lod,
-                              IReadOnlyDictionary<string, GltfMesh>? flat,
+                              IReadOnlyDictionary<string, GltfMesh> flat,
                               IReadOnlyList<IReadOnlyList<MeshHandle>> uploadedLod)
         {
             Definition = definition;
@@ -278,7 +281,10 @@ public sealed partial class TileWorldPropClusters : IDisposable
             PropLayer layer = PropLayer.PlacementLayer(placements, Full, Definition.DrawRadius,
                 Definition.HlodCrossfadeWidth, Lod, Definition.LodDistance, colliders: false,
                 castsShadows: Definition.CastsShadows).WithLodCrossfade(Definition.LodCrossfadeWidth);
-            return Flat is null || Definition.HlodDistance <= 0f
+            bool hasEverySource = placements.Count > 0;
+            for (int i = 0; i < placements.Count && hasEverySource; i++)
+                hasEverySource = Flat.ContainsKey(placements[i].Id);
+            return !hasEverySource || Definition.HlodDistance <= 0f
                 ? layer
                 : layer.WithHlod(Flat, Definition.HlodDistance, Definition.HlodWeldCell,
                     Definition.HlodCrossfadeWidth);

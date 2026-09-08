@@ -76,11 +76,14 @@ namespace KhaozEngine.Tests.Gpu
                 W, H, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
             using IGpuFramebuffer framebuffer = gd.Factory.CreateFramebuffer(null, target);
 
+            long initial = SpirvCompileCache.Shared.CompileCount;
             using (var warm = new Scene3D(gd, framebuffer.Outputs, null)) { }
 
             long before = SpirvCompileCache.Shared.CompileCount;
             using (var second = new Scene3D(gd, framebuffer.Outputs, null)) { }
             long after = SpirvCompileCache.Shared.CompileCount;
+
+            _output.WriteLine($"Initial scene compiles: {before - initial}. Second scene compiles: {after - before}.");
 
             AssertMemoDidItsJob(gpu.Backend, before, after);
         }

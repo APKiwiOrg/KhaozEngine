@@ -453,10 +453,10 @@ validation gate passing while validating nothing.
 
 **A dispatch can run the whole matrix with the GPU shader caches OFF** (`disableGpuDiskCache`, default
 false). The three backends' DISK caches are one mechanism, `KhaozEngine.Gpu/Internal/GpuDiskCache`, reached through
-`KE_METAL_MSL_CACHE`, `KE_D3D11_SHADER_CACHE` and `KE_VULKAN_PIPELINE_CACHE`. Each takes a directory path
+`KE_METAL_MSL_CACHE`, `KE_D3D11_SHADER_CACHE`, `KE_VULKAN_SPIRV_CACHE` and `KE_VULKAN_PIPELINE_CACHE`. Each takes a directory path
 verbatim, treats blank as the default location under local app data, and recognises five disable words
 (`off`, `0`, `false`, `no`, `none`, trimmed and case-insensitive), which is why anything else, a typo included,
-is read as a directory name and caches happily under it. The input sets all three to `off` on every leg and on
+is read as a directory name and caches happily under it. The input sets every backend cache to `off` on every leg and on
 the sync job, so a cacheless run is uniform and nothing in it is left comparing a cacheless leg against a
 cached one. Empty is the shipped default rather than a third state, so every push, the cron and every dispatch
 that leaves the box unticked behave exactly as before the input existed.
@@ -465,7 +465,12 @@ which is not a disk cache at all: it is the process-wide memo in front of glslan
 boots and cannot serve the stale entry #614 is looking for. It is on the switch because it CAN serve one bad
 emission to every test in a process, which a cacheless A/B has to be able to rule out, and because a run
 described as cacheless that still memoized would be describing itself falsely.
-It exists for [#614](https://github.com/APKiwiOrg/KhaozEngine/issues/614), where the metal-native leg fails
+
+A normal Vulkan dispatch also verifies its front-end disk cache in three fresh test processes. A temporary
+cache starts cold, the next process reuses it, and a third disables both caching layers. Compiler counters
+must show work only in the first cold scene, no work in the warm process, and work in both disabled-cache
+scenes. `disableGpuDiskCache` skips this separate cache-on exercise so its requested run stays cacheless.
+The cacheless dispatch exists for [#614](https://github.com/APKiwiOrg/KhaozEngine/issues/614), where the metal-native leg fails
 roughly one varying GPU test per boot on the hosted paravirtual adapter, bit-identically wrong when it is
 wrong, while the same commit passes on real Metal locally. A warm
 cache entry read back on an unhealthy boot would be a stable wrong answer, and an adapter fault would not have

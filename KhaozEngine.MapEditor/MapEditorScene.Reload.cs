@@ -36,7 +36,7 @@ public partial class MapEditorScene
         {
             MapDocument replacementMap = MapDocumentWindowing.Load(_options.DocumentPath,
                 new MapDocumentLoadOptions { Registry = _document.Registry },
-                _options.WholeWorldTileLimit, EffectiveWindowRadius,
+                _options.WholeWorldTileLimit, EffectiveWindowRadius, _options.PlayerSpawnSearchTileLimit,
                 out _, out replacementWindow);
             replacementDocument = new EditorDocument(replacementMap, _document.Registry);
             replacementViewport = BuildReloadViewport(replacementDocument);

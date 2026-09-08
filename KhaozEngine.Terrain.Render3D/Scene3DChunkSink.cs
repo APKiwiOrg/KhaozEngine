@@ -1,10 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Linq;
 using System.Numerics;
 using System.Threading;
 using KhaozEngine.Physics;
-using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 
 namespace KhaozEngine.Terrain
@@ -49,7 +49,7 @@ namespace KhaozEngine.Terrain
         readonly int _collisionLod;
         readonly Func<TerrainSplatContext, TerrainSplatWeights>? _splatRule;
         readonly float _snowLine;
-        readonly bool _anyHlod;
+        readonly PropClusterRenderer _propClusters;
         /// <summary>The HLOD merge gate, non-null exactly when some layer bakes an HLOD mesh. See
         /// <see cref="HlodBuildGate"/>: it is what keeps a tier re-LOD or a ring change from merging a cluster whose
         /// result the apply would only throw away.</summary>
@@ -64,25 +64,14 @@ namespace KhaozEngine.Terrain
         /// so the split never has to be redone. See <see cref="PlacementBuckets"/>.</summary>
         readonly Dictionary<ChunkCoord, PropPlacement[]>[]? _placementBuckets;
         readonly Dictionary<ChunkCoord, ChunkLoad> _loaded = new();
-        // Cumulative HLOD merge counters (see HlodMergeStats). Built is bumped from the background build thread and
-        // uploaded from the frame thread, so both go through Interlocked rather than a plain add.
-        long _hlodBuilt, _hlodBuiltBytes, _hlodUploaded, _hlodUploadedBytes, _hlodMalformedCornersDropped;
+        readonly ConcurrentDictionary<PropClusterKey, long> _propGenerations = new();
         bool _disposed;
 
         /// <summary>Cumulative HLOD merge totals for this sink: clusters merged versus clusters an apply actually
         /// consumed, with the byte totals. Always on and allocation-free. A steady difference between the two is
         /// merge work being thrown away, so <see cref="HlodMergeStats.DiscardedBytes"/> is the signal to watch.
         /// Zero on every field when the sink has no HLOD layer.</summary>
-        public HlodMergeStats MergeStats => new(
-            Interlocked.Read(ref _hlodBuilt), Interlocked.Read(ref _hlodBuiltBytes),
-            Interlocked.Read(ref _hlodUploaded), Interlocked.Read(ref _hlodUploadedBytes),
-            Interlocked.Read(ref _hlodMalformedCornersDropped));
-
-        /// <summary>Merged-mesh size in bytes: vertices at their interleaved stride plus 4 bytes per 32-bit index.
-        /// A null (empty-cluster) mesh is 0, so an empty cluster still counts as a build and an upload of 0 bytes
-        /// and the built/uploaded totals stay comparable.</summary>
-        static long MeshBytes(GltfMesh? mesh) =>
-            mesh is null ? 0L : (long)mesh.Vertices.Length * ModelVertex.SizeInBytes + (long)mesh.Indices32.Length * sizeof(uint);
+        public HlodMergeStats MergeStats => _propClusters.MergeStats;
 
         /// <summary>Multi-layer sink. Each <see cref="PropLayer"/> is a scatter layer, a companion layer, or a
         /// placement layer (issue #286, a frozen author-supplied list bucketed by chunk here at construction). A
@@ -190,9 +179,11 @@ namespace KhaozEngine.Terrain
             _snowLine = snowLine;
             // Whether any layer bakes an HLOD merged mesh. When none does, BuildCpu / Apply / Draw skip the HLOD path
             // entirely, so a sink with no HLOD layer is byte-identical to the pre-HLOD sink.
+            bool anyHlod = false;
             for (int i = 0; i < snapshot.Length; i++)
-                if (snapshot[i].HasHlod) { _anyHlod = true; break; }
-            if (_anyHlod) _hlodGate = new HlodBuildGate();
+                if (snapshot[i].HasHlod) { anyHlod = true; break; }
+            if (anyHlod) _hlodGate = new HlodBuildGate();
+            _propClusters = scene is null ? PropClusterRenderer.CreateCpuOnly() : new PropClusterRenderer(scene);
         }
 
         /// <summary>Single-layer sink (back-compat): one scatter config, one mesh set, one draw radius. The splat
@@ -343,6 +334,8 @@ namespace KhaozEngine.Terrain
             /// off the analytic scatter (deterministic per chunk + field) for BOTH rings, since a decor chunk renders
             /// the merged mesh in place of the props it never scatters. CPU-only - the GPU upload happens in Apply.</summary>
             public GltfMesh?[]? HlodMeshes;
+            /// <summary>Shared-owner payloads, one per layer when that layer needs applying.</summary>
+            internal PropClusterCpuBuild?[]? PropClusters;
         }
 
         /// <summary>Whether layer <paramref name="layerIndex"/>'s props register static collision bodies. A placement
@@ -428,25 +421,34 @@ namespace KhaozEngine.Terrain
             // (deterministic per chunk + field, so a runtime bake at load reproduces). Built for both rings, and only
             // when the apply is going to consume it. A null HlodMeshes is the payload's own signal to Apply that this
             // build carries no fresh merge and the uploaded handles must be kept as they are.
-            if (buildHlod)
+            var clusterBuilds = new PropClusterCpuBuild?[_layers.Count];
+            bool anyClusterBuild = false;
+            GltfMesh?[]? hlod = buildHlod ? new GltfMesh?[_layers.Count] : null;
+            for (int i = 0; i < _layers.Count; i++)
             {
-                var hlod = new GltfMesh?[_layers.Count];
-                for (int i = 0; i < _layers.Count; i++)
-                {
-                    PropLayer layer = _layers[i];
-                    if (!layer.HasHlod) continue;
-                    GltfMesh m = PropHlod.BuildMergedMeshMeasured(scatter![i], layer.HlodSourceMeshes!,
-                                                                 layer.HlodWeldCell,
-                                                                 out long malformedCornersDropped);
-                    hlod[i] = m.TriangleCount > 0 ? m : null;   // an empty cluster uploads nothing
-                    Interlocked.Increment(ref _hlodBuilt);
-                    Interlocked.Add(ref _hlodBuiltBytes, MeshBytes(hlod[i]));
-                    Interlocked.Add(ref _hlodMalformedCornersDropped, malformedCornersDropped);
-                }
-                cpu.HlodMeshes = hlod;
+                PropLayer layer = _layers[i];
+                if (layer.HasHlod && !buildHlod) continue;
+                IReadOnlyList<PropPlacement> mergePlacements = scatter?[i] ?? Array.Empty<PropPlacement>();
+                PropClusterKey key = ClusterKey(coord, i);
+                long generation = layer.HasHlod
+                    ? _propGenerations.AddOrUpdate(key, 1, static (_, current) => current + 1)
+                    : 0;
+                if (layer.HasHlod) _propClusters.Invalidate(key);
+                PropClusterCpuBuild cluster = _propClusters.BuildCpu(new PropClusterBuildRequest(
+                    key, generation, ChunkGrid.AreaOf(coord, _chunkSize), layer, mergePlacements));
+                if (ring != ChunkRing.Gameplay)
+                    cluster = cluster.WithPlacementBatch(Array.Empty<PropPlacement>());
+                clusterBuilds[i] = cluster;
+                anyClusterBuild = true;
+                if (layer.HasHlod) hlod![i] = cluster.MergedMesh;
             }
+            cpu.PropClusters = anyClusterBuild ? clusterBuilds : null;
+            cpu.HlodMeshes = hlod;
             return cpu;
         }
+
+        static PropClusterKey ClusterKey(ChunkCoord coord, int layerIndex) =>
+            new(layerIndex.ToString(System.Globalization.CultureInfo.InvariantCulture), coord.X, coord.Z, 0);
 
         /// <summary>Turn a completed CPU build into live GPU + physics state on the frame thread. Fresh load when
         /// <paramref name="existing"/> is null (create the mesh buffers, and for a gameplay chunk register props +
@@ -480,7 +482,7 @@ namespace KhaozEngine.Terrain
                 }
                 // Decor chunk: render-only for physics. No scatter (LayerProps is empty), no statics/dynamics/terrain
                 // collider - but its HLOD merged mesh IS uploaded (a decor chunk shows the far forest as one instance).
-                UploadHlod(load, cpu);
+                ApplyPropClusters(coord, load, cpu);
                 _hlodGate?.MarkApplied(coord, lod, ring);
                 return load;
             }
@@ -554,38 +556,38 @@ namespace KhaozEngine.Terrain
             // second copy of the rule that could drift from the one that actually spent the work.
             if (cpu.HlodMeshes is not null)
             {
-                UnloadHlod(relod);
-                UploadHlod(relod, cpu);
+                ApplyPropClusters(coord, relod, cpu);
+            }
+            else if (cpu.PropClusters is not null)
+            {
+                ApplyPropClusters(coord, relod, cpu);
             }
             _hlodGate?.MarkApplied(coord, lod, ring);
             return relod;
         }
 
-        // Upload each layer's freshly built HLOD merged mesh into its own MeshHandle (the vertex-colour untextured
-        // path, one instanced draw). A no-op when the sink has no HLOD layer. Called on a fresh load and on a field
-        // rebuild; the caller unloads the previous handles first on a rebuild.
-        void UploadHlod(ChunkLoad load, CpuBuild cpu)
+        void ApplyPropClusters(ChunkCoord coord, ChunkLoad load, CpuBuild cpu)
         {
-            if (!_anyHlod || cpu.HlodMeshes is null) return;
-            load.HlodMeshHandles = new MeshHandle?[_layers.Count];
+            if (cpu.PropClusters is null) return;
+            MeshHandle?[]? handles = _hlodGate is null ? null : new MeshHandle?[_layers.Count];
             for (int i = 0; i < _layers.Count; i++)
             {
-                if (!_layers[i].HasHlod) continue;
-                // Counted per HLOD LAYER, matching how BuildCpu counts, so an empty cluster (no mesh to upload)
-                // still balances the built side at 0 bytes instead of showing as permanent waste.
-                Interlocked.Increment(ref _hlodUploaded);
-                Interlocked.Add(ref _hlodUploadedBytes, MeshBytes(cpu.HlodMeshes[i]));
-                if (cpu.HlodMeshes[i] is { } mesh)
-                    load.HlodMeshHandles[i] = _scene.LoadMesh(mesh);
+                if (cpu.PropClusters[i] is { } build)
+                    _propClusters.Apply(ClusterKey(coord, i), build);
+                if (handles is not null && _layers[i].HasHlod)
+                    handles[i] = _propClusters.HandleOf(ClusterKey(coord, i));
             }
+            load.HlodMeshHandles = handles;
         }
 
-        // Free a chunk's uploaded HLOD meshes and clear the handle array. Idempotent (null handles / already cleared).
-        void UnloadHlod(ChunkLoad load)
+        void UnloadPropClusters(ChunkCoord coord, ChunkLoad load)
         {
-            if (load.HlodMeshHandles is null) return;
-            for (int i = 0; i < load.HlodMeshHandles.Length; i++)
-                if (load.HlodMeshHandles[i] is { } handle) _scene.UnloadMesh(handle);
+            for (int i = 0; i < _layers.Count; i++)
+            {
+                PropClusterKey key = ClusterKey(coord, i);
+                _propClusters.Unload(key);
+                _propGenerations.TryRemove(key, out _);
+            }
             load.HlodMeshHandles = null;
         }
 
@@ -605,7 +607,7 @@ namespace KhaozEngine.Terrain
                 ChunkTerrainCollision.Remove(_physics, load.HasTerrainCollider, load.TerrainCollider);
                 load.HasTerrainCollider = false;
             }
-            UnloadHlod(load);
+            UnloadPropClusters(coord, load);
             _scene.UnloadMesh(load.Mesh);
             _loaded.Remove(coord);
             // The merged mesh went with it, so the next load of this chunk merges again.
@@ -623,78 +625,8 @@ namespace KhaozEngine.Terrain
             {
                 ChunkLoad load = kv.Value;
                 _scene.DrawTerrainChunk(load.Mesh, load.Region);
-
-                // Chunk-centre horizontal distance drives the per-cluster HLOD crossfade (one merged mesh per chunk,
-                // so the swap is decided per chunk, not per placement). Only computed when a layer needs it.
-                Vector2 center = ChunkGrid.CenterOf(kv.Key, _chunkSize);
-                float cdx = center.X - focus.X, cdz = center.Y - focus.Z;
-                float chunkDist = MathF.Sqrt(cdx * cdx + cdz * cdz);
-
-                for (int i = 0; i < _layers.Count; i++)
-                {
-                    PropLayer layer = _layers[i];
-                    MeshHandle? hlodHandle = layer.HasHlod && load.HlodMeshHandles is { } hh ? hh[i] : null;
-                    if (hlodHandle is { } merged)
-                    {
-                        // Crossfade: props dissolve out (floor = t) up to the far edge, the merged mesh dissolves in
-                        // (1 - t) from the near edge. Skip whichever side is fully gone so the common near/far case is
-                        // one draw, and the band draws both complementary halves. The gates are tightened a little
-                        // past the literal 0/1 ends (issue #405, PropHlod.DrawsHlodProps/DrawsHlodMerged): near
-                        // either edge the not-yet-fully-gone side's dither has already discarded well over 97 percent
-                        // of its fragments, so drawing it still paid full vertex/triangle cost for a sliver of
-                        // surviving pixels. The thresholds are provably invisible (see PropHlod's derivation) and
-                        // apply to the SAME call that also feeds the shadow-caster registration for that half, so
-                        // color and shadow are skipped together with no separate shadow-side gate.
-                        float t = PropHlod.CrossfadeAt(chunkDist, layer.HlodDistance, layer.HlodCrossfadeWidth);
-                        if (PropHlod.DrawsHlodProps(t))
-                            DrawLayerProps(load.LayerProps[i], layer, focus, dissolveFloor: t);
-                        if (PropHlod.DrawsHlodMerged(t))
-                        {
-                            // The merged mesh follows the layer's own casts-shadows policy, so the policy does not
-                            // flip at the HLOD swap. Across the crossfade band both halves dissolve in the depth pass
-                            // too (props out, merged in), instead of both casting at full strength (issue #287), and
-                            // the merged half's SHADOW dither is INVERTED (issue #391) so it keeps exactly what the
-                            // fading props' dither discards. Without that the two keep-sets nest rather than
-                            // complement (both discard mask < threshold, at t and 1 - t), and the union of the two
-                            // shadows bottoms out at half the mask at band centre - the canopy visibly thinning
-                            // mid-band. The COLOUR halves stay on the plain rule: they are different geometry in
-                            // different places, so they need not complement, and inverting one would change the look.
-                            float hlodDissolve = 1f - t;
-                            if (hlodDissolve > 0f || !layer.CastsShadows)
-                                _scene.Draw(merged, Matrix4x4.Identity, Color.White, Material.None, hlodDissolve, 0f, default,
-                                    layer.CastsShadows, invertShadowDissolve: true);
-                            else
-                                _scene.Draw(merged, Matrix4x4.Identity, Color.White);
-                        }
-                    }
-                    else
-                    {
-                        DrawLayerProps(load.LayerProps[i], layer, focus, dissolveFloor: 0f);
-                    }
-                }
             }
-        }
-
-        // Draw one layer's in-range props. A multi-part layer draws every kit id's sub-meshes as a unit; a single-handle
-        // layer draws one mesh per id (byte-identical to before). Exactly one representation is set per layer. Each
-        // layer's fade band + far LOD variants (both defaulting to the old hard-cut, full-mesh behaviour) ride through,
-        // plus the uniform HLOD crossfade dissolveFloor (0 = unchanged) when the cluster is fading out to its HLOD mesh,
-        // the layer's casts-shadows policy (true = unchanged, false keeps the props out of the depth pass), and the
-        // layer's blob-radii table (issue #388, null = unchanged, no ShadowBlob registration). This is the ONLY branch
-        // that passes BlobRadii through: the merged-HLOD branch in Draw() above calls _scene.Draw directly on the
-        // single merged mesh with no per-placement data, so a layer's blobs stop at the HLOD swap automatically.
-        void DrawLayerProps(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus, float dissolveFloor)
-        {
-            if (layer.PartMeshes is { } partMeshes)
-                _scene.DrawProps(placements, partMeshes, focus, layer.DrawRadius,
-                    tint: null, fadeBandWidth: layer.FadeBandWidth, lodParts: layer.LodPartMeshes,
-                    lodDistance: layer.LodDistance, dissolveFloor: dissolveFloor, castsShadows: layer.CastsShadows,
-                    blobRadii: layer.BlobRadii);
-            else
-                _scene.DrawProps(placements, layer.Meshes, focus, layer.DrawRadius,
-                    tint: null, fadeBandWidth: layer.FadeBandWidth, lodMeshes: layer.LodMeshes,
-                    lodDistance: layer.LodDistance, dissolveFloor: dissolveFloor, castsShadows: layer.CastsShadows,
-                    blobRadii: layer.BlobRadii);
+            _propClusters.Draw(focus);
         }
 
         /// <summary>Free every still-loaded chunk's GPU mesh and clear the ring, so a sink teardown while the same
@@ -705,8 +637,9 @@ namespace KhaozEngine.Terrain
         {
             if (_disposed) return;
             _disposed = true;
-            foreach (ChunkLoad load in _loaded.Values)
+            foreach (KeyValuePair<ChunkCoord, ChunkLoad> item in _loaded)
             {
+                ChunkLoad load = item.Value;
                 // Remove this chunk's prop static bodies too, so a teardown while the physics world survives
                 // (rebuild streaming reusing the same world) frees the ring's colliders instead of leaking them.
                 if (_physics is not null)
@@ -716,9 +649,9 @@ namespace KhaozEngine.Terrain
                     ChunkTerrainCollision.Remove(_physics, load.HasTerrainCollider, load.TerrainCollider);
                     load.HasTerrainCollider = false;
                 }
-                UnloadHlod(load);
                 _scene.UnloadMesh(load.Mesh);
             }
+            _propClusters.Dispose();
             _loaded.Clear();
             _hlodGate?.Clear();
             if (_ownsMaterial && _material.IsValid)

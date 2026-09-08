@@ -150,15 +150,16 @@ namespace KhaozEngine.Tests.Gpu
                 Assert.Equal(m.Stats.BufferUpdateBytes, m.Stats.UploadBytesPartitioned);
             }
 
-            // 1. The rigid instance stream is exactly the queued instance count times the 124-byte record, and it does
-            //    not move when characters are added. This is the claim the issue's premise turns on.
-            long expectedInstanceBytes = (long)(ChunkMeshes + HlodMeshes + PropInstances) * 124;
+            // 1. The rigid instance stream is exactly the queued instance count times the 128-byte record, hand-derived
+            //    as 64 + 48 + 4 + 8 + 4 from its fields rather than read from runtime stats. It therefore still catches
+            //    wrong upload accounting, and it does not move when characters are added.
+            long expectedInstanceBytes = (long)(ChunkMeshes + HlodMeshes + PropInstances) * 128;
             foreach (int n in CharacterCounts)
                 Assert.Equal(expectedInstanceBytes, byCount[n].InstanceUploadBytes);
 
             // 2. The CPU-skinned stream is linear in the characters' VERTEX count, at 64 bytes per vertex plus one
-            //    124-byte instance record per draw. That is the term that reaches megabytes.
-            long perCharacter = (long)CharacterVertices * 64 + 124;
+            //    current 128-byte instance record per draw. That is the term that reaches megabytes.
+            long perCharacter = (long)CharacterVertices * 64 + 128;
             foreach (int n in CharacterCounts)
                 Assert.Equal(perCharacter * n, byCount[n].SkinnedUploadBytes);
 
@@ -228,7 +229,8 @@ namespace KhaozEngine.Tests.Gpu
                            $"{Kb(churned.Stats.InstanceUploadBytes)} KB (delta {Kb(delta)} KB), skinned stream unchanged at " +
                            $"{Kb(churned.Stats.SkinnedUploadBytes)} KB");
 
-            Assert.Equal(64L * 124, delta);
+            // Each removed rigid instance contributes one current 128-byte record.
+            Assert.Equal(64L * 128, delta);
             Assert.Equal(full.Stats.SkinnedUploadBytes, churned.Stats.SkinnedUploadBytes);
             Assert.Equal(churned.Stats.BufferUpdateBytes, churned.Stats.UploadBytesPartitioned);
         }

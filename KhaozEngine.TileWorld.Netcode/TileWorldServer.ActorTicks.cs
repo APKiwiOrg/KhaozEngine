@@ -34,6 +34,13 @@ public sealed partial class TileWorldServer
         return access.Cell.World.IsAlive(access.Entity) && access.Cell.World.TryGet(access.Entity, out combat);
     }
 
+    internal bool ReadCurrentActorTickCombat(long netId, in TileActorTickAccess opened,
+        out TileActorTickAccess current, out TileCombatState combat)
+    {
+        combat = default;
+        return TryCurrentActorTick(netId, opened, out current) && ReadActorTickCombat(current, out combat);
+    }
+
     // A behaviour is caller code and may remove or hand off the actor while deciding. The ordinary path uses the
     // tick-local access with no second owner lookup. A dead, ghosted or migrating source falls back to the current
     // owner so callback-triggered lifecycle work keeps the semantics the old fresh lookup provided.

@@ -352,7 +352,8 @@ public sealed class TileActorHost
     // leash's per-tick path, where the read above is what keeps the tick free.
     void ForgetAttacker(long netId, in TileActorTickAccess actor)
     {
-        if (!TileWorldServer.ReadActorTickCombat(actor, out TileCombatState combat)) return;
+        if (!server.ReadCurrentActorTickCombat(netId, actor, out TileActorTickAccess current,
+                out TileCombatState combat)) return;
         if (combat.LastDamagedBy == 0L && combat.LastDamagedTick == 0L
             && combat.LastAttackedBy == 0L && combat.LastAttackedTick == 0L) return;
         combat.LastDamagedBy = 0L;
@@ -362,7 +363,7 @@ public sealed class TileActorHost
         // exactly as the damage-based one used to.
         combat.LastAttackedBy = 0L;
         combat.LastAttackedTick = 0L;
-        server.WriteActorTickCombat(netId, actor, combat);
+        server.WriteActorTickCombat(netId, current, combat);
     }
 
     // The arrival half of a leash break: full health when it is HOME with nothing left to walk, never when it broke.

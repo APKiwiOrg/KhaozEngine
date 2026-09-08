@@ -188,6 +188,53 @@ public class TileActorHostTests
         Assert.True(owner.World.Has<PendingTileCommand>(moved));
     }
 
+    [Fact]
+    public void A_break_after_a_behaviour_handoff_clears_combat_memory_on_the_destination()
+    {
+        var hub = new InMemoryTransportHub();
+        TileWorldDocument doc = TwoRegions();
+        TileCollisionMap map = TileMoveSimulatorTests.Bake(doc);
+        using TileWorldServer s = Server(doc, hub.Server, new TileCoord(70, 10, 0));
+        long attacker = s.SpawnPlayer(0, "a", "Ari");
+        TileActorSpawner spawner = s.Actors.Add(Rat, new TileCoord(60, 10, 0));
+        s.Tick(Dt);
+        long actor = spawner.ActorNetId;
+        Assert.True(s.TryGetCombatState(actor, out TileCombatState memory));
+        memory.LastDamagedBy = attacker;
+        memory.LastDamagedTick = s.TickCount;
+        memory.LastAttackedBy = attacker;
+        memory.LastAttackedTick = s.TickCount;
+        Assert.True(s.SetCombatState(actor, memory));
+
+        bool crossed = false;
+        var fallback = new TileWanderBehaviour(map, retaliateWindowTicks: 40);
+        s.Actors.Behaviour = new CallbackBehaviour(context =>
+        {
+            if (crossed) return fallback.Decide(context);
+            crossed = true;
+            Assert.True(s.Host.TryGetOwner(context.NetId, out CellSim cell, out Entity entity));
+            cell.World.Set(entity, TileMoveState.At(new TileCoord(68, 10, 0), TileDirection.W));
+            cell.World.Set(entity, new TileRouteState { Remaining = Array.Empty<TileDirection>() });
+            s.Host.ProcessHandoffs();
+            return TileActorIntent.Break;
+        });
+
+        s.Tick(Dt);
+
+        Assert.True(s.Host.TryGetOwner(actor, out CellSim destination, out _));
+        Assert.Equal(new CellCoord(1, 0), destination.Coord);
+        Assert.True(s.TryGetCombatState(actor, out TileCombatState cleared));
+        Assert.Equal(0, cleared.LastDamagedBy);
+        Assert.Equal(0, cleared.LastDamagedTick);
+        Assert.Equal(0, cleared.LastAttackedBy);
+        Assert.Equal(0, cleared.LastAttackedTick);
+
+        // The next default decision cannot rebuild the lock from either retaliation record.
+        s.Tick(Dt);
+        Assert.True(s.TryGetActorState(actor, out TileMoveState after));
+        Assert.Equal(0, after.CombatTarget);
+    }
+
     // The test that would go red if actors ever grew a movement rule of their own. Options matched on purpose (see
     // the harness), so what is being pinned is the STEPPER rather than the tuning.
     [Fact]

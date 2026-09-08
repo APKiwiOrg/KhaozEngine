@@ -438,8 +438,8 @@ refused by name.
 that, and `D3D11BindResolve` is the device-free half of the bind: it unwraps a `GpuBufferRange` to its buffer,
 refuses a resource whose declared usage never earned it the view its layout asks for (naming the HLSL register
 letter), passes a null through as the HOLE an array bind legitimately has, and transposes a span of binds into
-the parallel arrays `*SetConstantBuffers1` takes. It is also where a REFUSAL both emitters owe lives: the
-scissor index, a buffer from another backend, and the framebuffer a clear names an attachment of (none bound, no
+the parallel arrays `*SetConstantBuffers1` takes. It is also where a REFUSAL both emitters owe lives: a buffer
+from another backend, and the framebuffer a clear names an attachment of (none bound, no
 colour attachment at that index, no depth attachment at all). A refusal kept in the real emitter alone means the
 trace accepts a stream the device throws on, and neither side of that is reachable by a test here. All of it
 runs under a plain `dotnet test` on macOS, which is the point: the emitter is left with a cast and a call. The
@@ -459,11 +459,10 @@ assertion with it. Every value-typed call argument is a local or a `stackalloc`.
 outside compute, and `OMSetRenderTargetsAndUnorderedAccessViews` is deliberately not implemented here. The
 emitter inherits that refusal from `D3D11NativeCallName` rather than re-deciding it.
 
-**So is a non-zero scissor rectangle index, and that one WAS a difference from the deleted incumbent.**
-`RSSetScissorRects` takes a count and always starts at rectangle 0, so honouring an index means tracking the
-whole array and re-issuing every rectangle below it. Veldrid kept that array and this backend does not. Every
-shipped call site passes zero and no shipped shader writes `SV_ViewportArrayIndex`, so the path is refused
-loudly rather than scissoring the wrong output silently.
+**All 16 scissor rectangle slots are tracked.** `RSSetScissorRects` takes a count and always starts at rectangle
+0, so changing rectangle N reissues the retained prefix through N. A framebuffer change resets the array to its
+full extent and a redundant rebind leaves the explicit rectangles intact. This matches the deleted incumbent's
+indexed behavior and keeps the device-free trace on the same state as the native emitter.
 
 ## Compute, the two ordering rules, and staging readback
 

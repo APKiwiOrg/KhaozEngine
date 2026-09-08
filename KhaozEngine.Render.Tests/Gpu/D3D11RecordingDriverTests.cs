@@ -610,7 +610,7 @@ namespace KhaozEngine.Tests.Gpu
             list.SetVertexBuffer(0, f.Vertices);
             list.SetVertexBuffer(1, f.Vertices, 64);
             list.SetIndexBuffer(f.Indices, GpuIndexFormat.UInt32);
-            list.SetScissorRect(0, 4, 8, 16, 32);
+            list.SetScissorRect(2, 4, 8, 16, 32);
             list.SetFullScissorRects();
             list.Draw(3);
             list.Draw(6, 2, 1, 3);
@@ -649,7 +649,7 @@ namespace KhaozEngine.Tests.Gpu
             $"SetVertexBuffer(0,{log.Id(f.Vertices)},0)",
             $"SetVertexBuffer(1,{log.Id(f.Vertices)},64)",
             $"SetIndexBuffer({log.Id(f.Indices)},UInt32)",
-            "SetScissorRect(0,4,8,16,32)",
+            "SetScissorRect(2,4,8,16,32)",
             "SetFullScissorRects()",
             "Draw(3,1,0,0)",
             "Draw(6,2,1,3)",

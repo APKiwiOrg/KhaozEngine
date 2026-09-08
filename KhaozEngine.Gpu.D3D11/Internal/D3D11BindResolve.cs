@@ -19,8 +19,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// <para>
     /// IT IS ALSO WHERE A REFUSAL BOTH EMITTERS OWE LIVES. A rule enforced in the real emitter alone accepts a
     /// stream in the trace that the device would have thrown on, so the two disagree about what the seam permits
-    /// and neither refusal is reachable by a test on this machine. The scissor index, the buffer that came from
-    /// another backend and the framebuffer a clear names an attachment of are all refused here, once, and both
+    /// and neither refusal is reachable by a test on this machine. A buffer that came from another backend and
+    /// the framebuffer a clear names an attachment of are refused here, once, and both
     /// emitters ask.
     /// </para>
     /// <para>
@@ -121,8 +121,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// place both emitters ask. <paramref name="bound"/> is <see cref="D3D11DeviceState.BoundFramebuffer"/>,
         /// which is where the knowledge lives.
         /// <para>
-        /// The refusal is shared for the reason <see cref="RequireSingleScissorRect"/> is: a stream one emitter
-        /// accepts and the other refuses is a difference the device-free trace cannot model, and a clear against
+        /// The refusal is shared because a stream one emitter accepts and the other refuses is a difference the
+        /// device-free trace cannot model, and a clear against
         /// no target would otherwise be a null dereference inside the runtime.
         /// </para>
         /// <para>
@@ -235,31 +235,6 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                         + "loses every other register in the same span.", nameof(binds));
                 }
             }
-        }
-
-        /// <summary>
-        /// THE SCISSOR INDEX BOTH EMITTERS ACCEPT, which is zero and only zero, refused here so the device-free
-        /// trace and the real call cannot disagree about it.
-        /// <para>
-        /// The seam carries an index and Direct3D 11 has no way to honour one on its own.
-        /// <c>RSSetScissorRects</c> takes a COUNT and always starts at rectangle 0, so setting rectangle N means
-        /// re-issuing every rectangle below it, which means tracking the whole array. Nothing needs that: a
-        /// non-zero rectangle is selected per output by <c>SV_ViewportArrayIndex</c>, no shipped shader writes
-        /// one, and all three shipped call sites (<c>SpriteBatch</c> twice, <c>ShadowMapRenderer</c> once) pass
-        /// zero. So the path is refused by name rather than silently setting rectangle 0 for an index that asked
-        /// for another, and it is filed rather than built here (issue #495).
-        /// </para>
-        /// </summary>
-        internal static void RequireSingleScissorRect(uint index)
-        {
-            if (index == 0) return;
-
-            throw new ArgumentOutOfRangeException(nameof(index), index,
-                "The native Direct3D 11 backend sets scissor rectangle 0 only. RSSetScissorRects takes a count "
-                + "and always starts at rectangle 0, so setting a higher one means tracking and re-issuing every "
-                + "rectangle below it, and a non-zero rectangle is selected per output by SV_ViewportArrayIndex, "
-                + "which no shipped shader writes. Setting rectangle 0 instead would scissor the wrong output "
-                + "silently, so this is refused until something needs it.");
         }
 
         /// <summary>

@@ -51,7 +51,7 @@ namespace KhaozEngine.Tests.Gpu
                     "ClearState()",
                     $"OMSetRenderTargets({log.Id(target)})",
                     "RSSetViewports(1,0,0,640,480,0,1)",
-                    "RSSetScissorRects(all:1,0,0,640,480)",
+                    "RSSetScissorRects(count:1,[0,0,640,480])",
                 },
                 log.Trace);
         }
@@ -107,12 +107,62 @@ namespace KhaozEngine.Tests.Gpu
                     "ClearState()",
                     $"OMSetRenderTargets({log.Id(target)})",
                     "RSSetViewports(1,0,0,640,480,0,1)",
-                    "RSSetScissorRects(all:1,0,0,640,480)",
-                    "RSSetScissorRects(out0:1,4,8,20,40)",
+                    "RSSetScissorRects(count:1,[0,0,640,480])",
+                    "RSSetScissorRects(count:1,[4,8,20,40])",
                     "DrawInstanced(3,1,0,0)",
                     "DrawInstanced(6,1,0,0)",
                 },
                 log.Trace);
+        }
+
+        [Fact]
+        public void IndexedScissorsReissueTheWholePrefixAndFullResetDropsItBackToOne()
+        {
+            var log = new D3D11NativeCallLog();
+            var emitter = new D3D11NativeTraceEmitter(new D3D11DeviceState(), log);
+            FakeFramebuffer target = Framebuffer(640, 480);
+
+            emitter.Begin();
+            emitter.SetFramebuffer(target);
+            emitter.SetScissorRect(2, 10, 12, 20, 24);
+            emitter.SetScissorRect(0, 4, 8, 16, 32);
+            emitter.SetFullScissorRects();
+
+            Assert.Equal(
+                new[]
+                {
+                    "RSSetScissorRects(count:1,[0,0,640,480])",
+                    "RSSetScissorRects(count:3,[0,0,640,480],[0,0,640,480],[10,12,30,36])",
+                    "RSSetScissorRects(count:3,[4,8,20,40],[0,0,640,480],[10,12,30,36])",
+                    "RSSetScissorRects(count:1,[0,0,640,480])",
+                },
+                log.Trace.Where(line => line.StartsWith("RSSetScissorRects", StringComparison.Ordinal)));
+        }
+
+        [Fact]
+        public void FramebufferChangeResetsEveryTrackedScissorAndRedundantRebindPreservesThem()
+        {
+            var log = new D3D11NativeCallLog();
+            var emitter = new D3D11NativeTraceEmitter(new D3D11DeviceState(), log);
+            FakeFramebuffer first = Framebuffer(640, 480);
+            FakeFramebuffer second = Framebuffer(256, 128);
+
+            emitter.Begin();
+            emitter.SetFramebuffer(first);
+            emitter.SetScissorRect(2, 10, 12, 20, 24);
+            emitter.SetFramebuffer(second);
+            emitter.SetFramebuffer(second);
+            emitter.SetScissorRect(1, 4, 6, 8, 10);
+
+            Assert.Equal(
+                new[]
+                {
+                    "RSSetScissorRects(count:1,[0,0,640,480])",
+                    "RSSetScissorRects(count:3,[0,0,640,480],[0,0,640,480],[10,12,30,36])",
+                    "RSSetScissorRects(count:1,[0,0,256,128])",
+                    "RSSetScissorRects(count:2,[0,0,256,128],[4,6,12,16])",
+                },
+                log.Trace.Where(line => line.StartsWith("RSSetScissorRects", StringComparison.Ordinal)));
         }
 
         /// <summary>A genuine change still resets the scissor, which is what makes the guard an IDENTITY guard

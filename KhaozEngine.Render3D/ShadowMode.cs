@@ -79,7 +79,7 @@ namespace KhaozEngine.Render3D
     /// capability-based degradation (<see cref="ResolveFor"/>) that never throws, and pure parameter-derivation
     /// helpers (<see cref="BlobFor"/>) that headless tests pin.
     /// </summary>
-    public sealed class ShadowSettings
+    public sealed partial class ShadowSettings
     {
         /// <summary>The shadow tier. Default <see cref="ShadowMode.Off"/> (no shadows, no cost, existing goldens
         /// byte-stable). Set from a menu, e.g. <c>Post.Quality.Shadows.Mode = ShadowMode.Blob</c>. Validate a menu

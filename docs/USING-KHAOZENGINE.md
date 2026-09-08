@@ -3011,6 +3011,26 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       ShadowCascadeCount = 4 }`). Writing `ShadowMapResolution` or `ShadowCascadeCount` on a live scene's `ShadowSettings`
       now throws `InvalidOperationException` instead of silently no-opping. Drop the count or resolution to 1024/512 for a
       low-end profile. Recreate the scene to change atlas sizing at runtime.
+    - **Persisted detail setting.** Persist `ShadowMapDetail` in the game's graphics settings, not its numeric atlas
+      resolution. Map that enum through `ShadowSettings.ForDetail` before the `GameApp3D` base constructor builds the
+      scene:
+
+      ```csharp
+      public sealed class GraphicsSettings
+      {
+          public ShadowMapDetail ShadowDetail { get; init; } = ShadowMapDetail.Default;
+      }
+
+      public sealed class MyGame3D : GameApp3D
+      {
+          public MyGame3D(GameAppOptions options, GraphicsSettings settings)
+              : base(options, ShadowSettings.ForDetail(settings.ShadowDetail)) { }
+      }
+      ```
+
+      Each profile selects `ShadowMode.ShadowMap`: `Low` uses 1024, `Default` uses 2048, and `High` uses 3072 pixels
+      per cascade. A settings screen must save a changed detail choice and restart the game, or explicitly rebuild the
+      scene, because the atlas resolution is frozen after construction.
     - Other knobs (all on `ShadowSettings`, runtime-mutable): `ShadowNearDistance` (default `16`, the near cascade's view-depth
       reach from the camera - smaller packs texels onto the near action, at the cost of handing off to a coarser
       cascade sooner). `ShadowStrength` (0..1 shadow darkness, default `0.85`).
@@ -6065,7 +6085,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.34.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.35.0" />
 ```
 
 ```csharp
@@ -11469,7 +11489,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.34.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.35.0" />
 ```
 
 ```csharp
@@ -11505,7 +11525,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.34.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.35.0" />
 ```
 
 ```csharp
@@ -11747,7 +11767,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.34.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.35.0" />
 ```
 
 ```csharp
@@ -13795,7 +13815,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="18.34.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="18.35.0" />
 </ItemGroup>
 ```
 
@@ -14537,6 +14557,116 @@ window or GPU. When a connection drops, call `commandQueue.Forget(slot)` before 
 connection: the queue rejects any seq at or below a slot's high-water mark (anti-replay), and a recycled slot
 whose mark is stale would reject the new player's seq-0-onward input and freeze them. (`WorldServer` and
 `ShardedWorldServer` do this for you.)
+
+### Shared authoritative world clock (`WorldClockHost` / `WorldClockMirror`, 18.35.0)
+
+`KhaozEngine.Simulation` provides one clock stack for a headless server, a 2D client, or a 3D client. The engine
+owns normalized time math and payload validation. The game owns the protocol envelope, authorization, and durable
+storage.
+
+The immutable replication contract is `WorldClockState(TimeOfDay, DayLengthSeconds, TimeScale)`. A decoded state
+requires finite values, normalized time in `[0, 1)`, a day length greater than zero, and a non-negative scale.
+Commands use `WorldClockCommand(WorldClockCommandKind Kind, float Value)`. The three kinds are `SetTimeOfDay`,
+`SetTimeScale`, and `SetDayLength`. The command codec validates exact length, known kind, and finiteness. It does
+not apply operational bounds.
+
+`WorldClockHostOptions` has three init properties:
+
+- `BroadcastIntervalSeconds`, default `5`, must be finite and greater than zero
+- `MaxTimeScale`, default `1000`, must be finite and non-negative
+- `MinDayLengthSeconds`, default `60`, must be finite and greater than zero
+
+The host constructor rejects invalid options. The host is the single policy authority for typed and wire
+commands. It wraps finite set-time values into `[0, 1)`, clamps finite scale values to `[0, MaxTimeScale]`, and
+clamps finite day-length values up to `MinDayLengthSeconds`.
+
+```csharp
+const ushort WorldClockStateMessage = 40;
+const ushort WorldClockCommandMessage = 41;
+
+var clockHost = new WorldClockHost(
+    new WorldClock(dayLengthSeconds: 1_200f, startTimeOfDay: 0.25f),
+    payload => server.BroadcastGameMessage(
+        WorldClockStateMessage, payload, NetChannelReliability.ReliableOrdered),
+    (slot, payload) => server.SendGameMessageTo(
+        slot, WorldClockStateMessage, payload, NetChannelReliability.ReliableOrdered));
+
+server.PlayerJoined += (slot, _) => clockHost.PushTo(slot);
+
+server.OnGameMessage += (slot, kind, payload) =>
+{
+    if (kind != WorldClockCommandMessage || !AuthorizedClockOperator(slot))
+        return;
+
+    clockHost.TryEnqueueCommand(payload);
+};
+
+fixedTickHost.Advance(realElapsedSeconds, _ =>
+{
+    server.Tick(fixedTickHost.TickSeconds);
+    clockHost.Tick(fixedTickHost.TickSeconds);
+});
+```
+
+`WorldClockHost` is tick-thread owned. The simulation thread alone calls `Tick` or directly reads and changes
+`Clock`. Network and admin threads may call `TryEnqueueCommand`, `EnqueueCommand`, and `PushTo`. These calls enter
+concurrent queues and are drained on the next tick. Cross-thread status and admin reads use the lock-free
+`Snapshot`, which is the last fully published tick state.
+
+Authorization happens before enqueue. A client payload that decodes correctly still has no authority by itself.
+An authenticated game session or admin endpoint proves the caller may control time, then hands the payload or
+typed command to the host. The host validates again and applies its operational bounds.
+
+The game owns both message kinds and delivery settings. `WorldClockCodec` emits a 12-byte little-endian state
+payload and a 5-byte little-endian command payload. Wrap them in the game's existing message envelope and send
+state with reliable ordered delivery. The package deliberately does not depend on `Netcode`.
+
+On the client, keep authored fallback lighting until the first valid state arrives. After that, advance the mirror
+with real frame delta and use its normalized time with the renderer's lighting curve:
+
+```csharp
+var clockMirror = new WorldClockMirror();
+
+void OnClockState(ReadOnlySpan<byte> payload) => clockMirror.Apply(payload);
+
+void UpdateLighting(float realDeltaSeconds)
+{
+    clockMirror.Advance(realDeltaSeconds);
+    float timeOfDay = clockMirror.HasState ? clockMirror.State.TimeOfDay : 0.5f;
+    SunCycleState sun = SunCycle.Evaluate(timeOfDay, sunSettings);
+    ApplySun(sun);
+}
+```
+
+Zero time scale freezes the clock. Periodic state messages snap the client mirror back to authority.
+
+`WorldClockAnchor` is the durable restart boundary. It encodes a UTC Unix-seconds instant and normalized time as
+a versioned 20-byte record. The engine owns that record and the downtime calculation. A game using
+`KhaozEngine.WorldStore.IWorldStore` owns a small adapter around it:
+
+```csharp
+const string ClockAnchorKey = "world-clock";
+
+async Task SaveClockAnchorAsync(IWorldStore store, WorldClockState state, double nowUnixSeconds,
+    CancellationToken cancellationToken)
+{
+    var anchor = new WorldClockAnchor(nowUnixSeconds, state.TimeOfDay);
+    await store.SaveAsync(ClockAnchorKey, anchor.Encode(), cancellationToken);
+}
+
+async Task<float?> LoadClockTimeAsync(IWorldStore store, double nowUnixSeconds,
+    float configuredDayLengthSeconds, CancellationToken cancellationToken)
+{
+    byte[]? data = await store.LoadAsync(ClockAnchorKey, cancellationToken);
+    WorldClockAnchor? anchor = WorldClockAnchor.Decode(data);
+    return anchor?.RecomputeTimeOfDay(nowUnixSeconds, configuredDayLengthSeconds);
+}
+```
+
+Load once before constructing the host. Save periodically and once more during the shutdown drain. The adapter
+owns the stable key, retries, and cancellation. On restart, recompute with the configured boot day length and
+construct the clock with its default scale of 1. Live day-length and time-scale controls are not persisted, which
+prevents an accelerated operator setting from surviving a deployment.
 
 ### Parsing the address a player typed (`NetEndpoint`)
 

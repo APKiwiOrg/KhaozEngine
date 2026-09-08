@@ -112,6 +112,13 @@ public sealed partial class TileWorldView
         RegionCoord region = RegionCoord.Of(o.X, o.Z);
         if (!_loaded.TryGetValue(region, out RegionHandles? handles)) return false;
 
+        if (_propClusters.IsEnabled)
+        {
+            handles.Props[o.Plane] = _propClusters.Build(_doc, region, o.Plane, OverrideLookup());
+            ReleaseAnimatedFoliage(handles, o.Plane);
+            return true;
+        }
+
         TileRegionProps? spliced =
             TileObjectProps.TryReplaceObject(_doc, _catalogs, handles.Props[o.Plane], o, ArchetypeFor(o));
         // The region-plane's PROPS alone, never its mesh: an archetype swap changes no ground vertex, so the
@@ -127,6 +134,6 @@ public sealed partial class TileWorldView
         Func<long, string?>? lookup = OverrideLookup();
         foreach (KeyValuePair<RegionCoord, RegionHandles> entry in _loaded)
             for (int plane = 0; plane < _planes; plane++)
-                entry.Value.Props[plane] = TileObjectProps.Build(_doc, _catalogs, entry.Key, plane, lookup);
+                entry.Value.Props[plane] = _propClusters.Build(_doc, entry.Key, plane, lookup);
     }
 }

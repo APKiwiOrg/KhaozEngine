@@ -29,6 +29,10 @@ public sealed class TileWorldViewOptions
     /// <summary>Horizontal radius in metres around the draw focus inside which a prop is drawn.</summary>
     public float PropDrawRadius { get; set; } = 96f;
 
+    /// <summary>Opt-in disjoint archetype groups represented by shared LOD and HLOD clusters. Empty preserves
+    /// ordinary prop drawing.</summary>
+    public IReadOnlyList<TilePropLayerDefinition> PropLayers { get; set; } = Array.Empty<TilePropLayerDefinition>();
+
     /// <summary>Live distance, quality and shadow policy for authored ground cover.</summary>
     public GroundCoverRenderOptions GroundCover { get; set; } = new();
 
@@ -114,6 +118,7 @@ public sealed partial class TileWorldView : IDisposable
     readonly TileWorldViewOptions _options;
     readonly Func<int, int, int, bool> _terrainPickFilter;
     readonly Dictionary<string, IReadOnlyList<MeshHandle>> _propMeshes = new(StringComparer.Ordinal);
+    readonly TileWorldPropClusters _propClusters;
     readonly Dictionary<RegionCoord, RegionHandles> _loaded = new();
     // The rebuild queue is a pair on purpose: the set is the dedup (a stroke marks the same region-plane a
     // hundred times) and the list is the ORDER, which matters once a flush is budgeted, because the oldest mark
@@ -151,6 +156,8 @@ public sealed partial class TileWorldView : IDisposable
         _doc = doc;
         _catalogs = catalogs;
         _options = options ?? new TileWorldViewOptions();
+        ArgumentNullException.ThrowIfNull(_options.PropLayers);
+        TileWorldPropClusters.Validate(catalogs, _options.PropLayers);
         _planes = Math.Max(0, doc.PlaneCount);
         _terrainPickFilter = IsRenderedTerrain;
 
@@ -177,6 +184,7 @@ public sealed partial class TileWorldView : IDisposable
                 }
                 _propMeshes[entry.Key] = scene.LoadPropMeshes(parts);
             }
+            _propClusters = new TileWorldPropClusters(scene, catalogs, resolver, _propMeshes, _options.PropLayers);
         }
         catch
         {
@@ -266,6 +274,19 @@ public sealed partial class TileWorldView : IDisposable
         }
     }
 
+    /// <summary>Gets the immutable prop snapshot retained for one loaded region-plane.</summary>
+    public bool TryGetRegionProps(RegionCoord region, int plane, out TileRegionProps snapshot)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if ((uint)plane < (uint)_planes && _loaded.TryGetValue(region, out RegionHandles? handles))
+        {
+            snapshot = handles.Props[plane];
+            return true;
+        }
+        snapshot = null!;
+        return false;
+    }
+
     /// <summary>Builds and uploads every plane of one region. Loading a region that is already loaded rebuilds it
     /// from the document rather than doubling up, so a caller may use this as a whole-region refresh.
     /// <para>A throw part way through the region leaves nothing loaded and nothing uploaded: the planes already
@@ -284,7 +305,7 @@ public sealed partial class TileWorldView : IDisposable
             for (int plane = 0; plane < _planes; plane++)
             {
                 meshes[plane] = BuildMesh(region, plane);
-                props[plane] = TileObjectProps.Build(_doc, _catalogs, region, plane, OverrideLookup());
+                props[plane] = _propClusters.Build(_doc, region, plane, OverrideLookup());
             }
             cover = BuildCover(region);
         }
@@ -401,7 +422,7 @@ public sealed partial class TileWorldView : IDisposable
                 MeshHandle? rebuilt = BuildMesh(region, plane);
                 if (handles.Meshes[plane] is { } old) _scene.UnloadMesh(old);
                 handles.Meshes[plane] = rebuilt;
-                handles.Props[plane] = TileObjectProps.Build(_doc, _catalogs, region, plane, OverrideLookup());
+                handles.Props[plane] = _propClusters.Build(_doc, region, plane, OverrideLookup());
                 ReleaseAnimatedFoliage(handles, plane);
                 RebuildCover(region, handles);
                 // Only a mesh that was actually built counts. The budget exists to bound uploads and handle
@@ -523,6 +544,8 @@ public sealed partial class TileWorldView : IDisposable
         _water.Clear();
         _dirty.Clear();
         _dirtyOrder.Clear();
+
+        _propClusters.Dispose();
 
         foreach (IReadOnlyList<MeshHandle> parts in _propMeshes.Values) _scene.UnloadPropMeshes(parts);
         _propMeshes.Clear();

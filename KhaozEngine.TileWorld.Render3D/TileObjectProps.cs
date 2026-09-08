@@ -5,35 +5,6 @@ using KhaozEngine.Terrain;
 
 namespace KhaozEngine.TileWorld;
 
-/// <summary>The prop placements of one region-plane, split by the roof rule so a view can hide the roofs over
-/// the building the camera subject stands in and keep drawing everything else.</summary>
-/// <param name="Ground">Placements for every non-roof object of the region-plane.</param>
-/// <param name="Roofs">Placements for the region-plane's roof objects, drawn only when the roofs are shown.</param>
-public sealed record TileRegionProps(IReadOnlyList<PropPlacement> Ground, IReadOnlyList<PropPlacement> Roofs)
-{
-    /// <summary>The world tile footprint of each <see cref="Roofs"/> entry, same order and same length. A
-    /// placement carries a world POSITION and no extent, and the roof rule has to know which tiles a roof covers
-    /// to decide whether it belongs to the observer's building, so the footprints ride alongside.
-    /// <para>Empty by default, which keeps a record built by hand compiling: a roof this list does not reach is
-    /// never hidden by the interior rule (<c>RoofVisibility.AlwaysHidden</c> still hides it), the same
-    /// hide-nothing-you-cannot-place direction the interior fill's cap takes.
-    /// <see cref="TileObjectProps.Build"/> always fills it.</para></summary>
-    public IReadOnlyList<TileRect> RoofFootprints { get; init; } = Array.Empty<TileRect>();
-
-    /// <summary>The <c>TileObject.Id</c> behind each <see cref="Ground"/> entry, same order and same length. A
-    /// placement carries an ARCHETYPE id and nothing that names the object it came from, so without this there
-    /// is no way to find the one entry a per-object change touches and the only correct answer is to rebuild the
-    /// whole region-plane.
-    /// <para>Empty by default, which keeps a record built by hand compiling: an entry this list does not reach
-    /// simply cannot be found by object id, and <see cref="TileObjectProps.TryReplaceObject"/> answers null
-    /// rather than guessing. <see cref="TileObjectProps.Build"/> always fills it.</para></summary>
-    public IReadOnlyList<long> GroundObjectIds { get; init; } = Array.Empty<long>();
-
-    /// <summary>The <c>TileObject.Id</c> behind each <see cref="Roofs"/> entry, same order and same length. The
-    /// roof half of <see cref="GroundObjectIds"/>.</summary>
-    public IReadOnlyList<long> RoofObjectIds { get; init; } = Array.Empty<long>();
-}
-
 /// <summary>Turns a region-plane's <see cref="TileObject"/>s into the <see cref="PropPlacement"/>s the existing
 /// prop path draws: one placement per object, anchored at the centre of its rotated footprint with the
 /// document's ground height, yawed by the tile-world rotation convention, and split into roofs and everything
@@ -70,7 +41,7 @@ public static class TileObjectProps
         var groundIds = new List<long>();
         var roofIds = new List<long>();
         TileRegion? data = doc.GetRegion(region);
-        if (data is null) return new TileRegionProps(ground, roofs);
+        if (data is null) return new TileRegionProps(Freeze(ground), Freeze(roofs));
 
         foreach (TileObject o in data.Objects)
         {
@@ -86,11 +57,11 @@ public static class TileObjectProps
             roofIds.Add(o.Id);
             roofFootprints.Add(TileFootprint.Of(a, o.X, o.Z, o.Rotation));
         }
-        return new TileRegionProps(ground, roofs)
+        return new TileRegionProps(Freeze(ground), Freeze(roofs))
         {
-            RoofFootprints = roofFootprints,
-            GroundObjectIds = groundIds,
-            RoofObjectIds = roofIds,
+            RoofFootprints = Freeze(roofFootprints),
+            GroundObjectIds = Freeze(groundIds),
+            RoofObjectIds = Freeze(roofIds),
         };
     }
 
@@ -147,7 +118,7 @@ public static class TileObjectProps
         {
             List<PropPlacement> ground = Copy(props.Ground);
             ground[groundAt] = placement;
-            return props with { Ground = ground };
+            return props with { Ground = Freeze(ground) };
         }
 
         List<PropPlacement> roofsCopy = Copy(props.Roofs);
@@ -155,10 +126,10 @@ public static class TileObjectProps
         // The footprint rides with the roof and is read by the interior rule, so a stump-for-roof swap that
         // changed the footprint would otherwise hide the wrong tiles. A hand-built record whose footprint list
         // is short keeps the hide-nothing-you-cannot-place direction TileRegionProps already takes.
-        if (roofAt >= props.RoofFootprints.Count) return props with { Roofs = roofsCopy };
+        if (roofAt >= props.RoofFootprints.Count) return props with { Roofs = Freeze(roofsCopy) };
         var footprints = new List<TileRect>(props.RoofFootprints);
         footprints[roofAt] = TileFootprint.Of(a, o.X, o.Z, o.Rotation);
-        return props with { Roofs = roofsCopy, RoofFootprints = footprints };
+        return props with { Roofs = Freeze(roofsCopy), RoofFootprints = Freeze(footprints) };
     }
 
     static List<PropPlacement> Copy(IReadOnlyList<PropPlacement> from)
@@ -166,6 +137,13 @@ public static class TileObjectProps
         var copy = new List<PropPlacement>(from.Count);
         for (int i = 0; i < from.Count; i++) copy.Add(from[i]);
         return copy;
+    }
+
+    internal static IReadOnlyList<T> Freeze<T>(IReadOnlyList<T> source)
+    {
+        var copy = new T[source.Count];
+        for (int i = 0; i < source.Count; i++) copy[i] = source[i];
+        return Array.AsReadOnly(copy);
     }
 
     // Indexed rather than IndexOf on the interface, which has none, and rather than LINQ, which would allocate

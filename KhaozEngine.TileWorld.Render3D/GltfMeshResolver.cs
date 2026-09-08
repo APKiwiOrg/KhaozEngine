@@ -40,7 +40,7 @@ namespace KhaozEngine.TileWorld;
 /// contract it has to meet is the one <see cref="GreyboxMeshResolver"/> builds to, and it is spelled out in this
 /// package's README: the origin sits at the footprint CENTRE on the piece's own floor, x is east, minus z is
 /// north, and 1 unit is 1 metre.</para></summary>
-public sealed class GltfMeshResolver : ITileMeshResolver
+public sealed class GltfMeshResolver : ITileMeshResolver, ITileLodMeshResolver
 {
     readonly string _rootDirectory;
     readonly ITileMeshResolver? _fallback;

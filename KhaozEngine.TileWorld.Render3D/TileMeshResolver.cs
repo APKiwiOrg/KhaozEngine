@@ -35,6 +35,18 @@ public interface ITileMeshResolver
     }
 }
 
+/// <summary>Optional TileWorld mesh-resolver capability for authored prop LOD and flattened HLOD CPU data.
+/// A resolver that implements only <see cref="ITileMeshResolver"/> remains valid. Its selected prop layers keep
+/// LOD0 and do not build merged HLOD.</summary>
+public interface ITileLodMeshResolver
+{
+    /// <summary>The optional authored LOD parts, or null when LOD0 must remain in use.</summary>
+    IReadOnlyList<GltfMeshPart>? ResolveLod(TileObjectArchetype archetype);
+
+    /// <summary>A flattened source mesh for HLOD merging, or null when this archetype is HLOD-ineligible.</summary>
+    GltfMesh? ResolveFlatForHlod(TileObjectArchetype archetype);
+}
+
 /// <summary>A resolver with no content behind it: one procedural vertex-coloured box per archetype, sized from
 /// the archetype's footprint and shaped by its collision kind, so a world renders recognisably before any mesh
 /// is authored. Boxes are centred on the footprint in x and z with their base at y 0, matching the anchor the

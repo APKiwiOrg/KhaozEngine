@@ -27,6 +27,16 @@ public sealed class MsaaPostFxaaGpuTests
             after += b;
         }
 
+        string? probeDirectory = Environment.GetEnvironmentVariable("KE_FXAA_PROBE_DIR");
+        if (!string.IsNullOrEmpty(probeDirectory))
+        {
+            System.IO.Directory.CreateDirectory(probeDirectory);
+            System.IO.File.WriteAllBytes(System.IO.Path.Combine(probeDirectory, "unfiltered.png"),
+                KhaozEngine.Imaging.PngWriter.Encode(unfiltered, 160, 160));
+            System.IO.File.WriteAllBytes(System.IO.Path.Combine(probeDirectory, "filtered.png"),
+                KhaozEngine.Imaging.PngWriter.Encode(filtered, 160, 160));
+            Console.WriteLine($"FXAA probe changed={changed}, beforeMean={before / (filtered.Length / 4)}, afterMean={after / (filtered.Length / 4)}");
+        }
         Assert.True(changed > 100, $"FXAA must filter the resolved edges, changed pixels: {changed}");
         Assert.True(before / (filtered.Length / 4) > 10, "The reference must contain visible geometry.");
         Assert.InRange(after / before, 0.95, 1.05);

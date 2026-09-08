@@ -134,7 +134,9 @@ public class GltfMeshResolverTests : IDisposable
         Assert.NotNull(parts);
         Assert.NotEmpty(parts);
         string line = Assert.Single(_log);
-        Assert.Contains(Path.Combine(_root, "kit", "wall.glb"), line, StringComparison.Ordinal);
+        Assert.Equal(
+            $"tile world: could not load mesh '{Path.Combine(_root, "kit", "wall.glb")}' (file not found), falling back.",
+            line);
 
         Assert.Same(parts, resolver.Resolve("kit/wall.glb"));
         Assert.Single(_log);
@@ -166,8 +168,10 @@ public class GltfMeshResolverTests : IDisposable
         Assert.NotNull(parts);
         Assert.Equal(Greybox().Resolve(archetype)!.Count, parts.Count);
         string line = Assert.Single(_log);
-        Assert.Contains("wall", line, StringComparison.Ordinal);
-        Assert.Contains(Path.Combine(_root, "kit", "wall.glb"), line, StringComparison.Ordinal);
+        Assert.Equal(
+            $"tile world: archetype 'wall' could not load mesh '{Path.Combine(_root, "kit", "wall.glb")}' " +
+            "(file not found), falling back.",
+            line);
 
         // The cached failure answers the second call: no second log line, and nothing goes near the disk again.
         Assert.Same(parts, resolver.Resolve(archetype));
@@ -277,12 +281,11 @@ public class GltfMeshResolverTests : IDisposable
     }
 
     [Fact]
-    public void Full_and_lod_parts_are_cached_by_their_own_mesh_references()
+    public void Full_and_lod_parts_use_separate_caches_even_when_their_references_match()
     {
         CopyKitPiece("tree");
-        CopyKitPiece("tree-lod", LodSourceAsset);
         var resolver = new GltfMeshResolver(_root, Greybox(), _log.Add);
-        TileObjectArchetype tree = Archetype("tree", "kit/tree.glb", "kit/tree-lod.glb");
+        TileObjectArchetype tree = Archetype("tree", "kit/tree.glb", "kit/tree.glb");
 
         IReadOnlyList<GltfMeshPart>? full = resolver.Resolve(tree);
         IReadOnlyList<GltfMeshPart>? lod = resolver.ResolveLod(tree);
@@ -291,8 +294,9 @@ public class GltfMeshResolverTests : IDisposable
         Assert.NotNull(lod);
         Assert.Same(full, resolver.Resolve(tree));
         Assert.Same(lod, resolver.ResolveLod(tree));
+        Assert.NotSame(full, lod);
         Assert.Equal(VertexCount(GltfLoader.LoadPartsWithMaterials(SourceAsset)), VertexCount(full));
-        Assert.Equal(VertexCount(GltfLoader.LoadPartsWithMaterials(LodSourceAsset)), VertexCount(lod));
+        Assert.Equal(VertexCount(GltfLoader.LoadPartsWithMaterials(SourceAsset)), VertexCount(lod));
         Assert.Empty(_log);
     }
 
@@ -317,7 +321,10 @@ public class GltfMeshResolverTests : IDisposable
         Assert.Null(resolver.ResolveLod(tree));
 
         string line = Assert.Single(_log);
-        Assert.Contains("tree-lod.glb", line, StringComparison.Ordinal);
+        Assert.Equal(
+            $"tile world: archetype 'tree' could not load optional LOD mesh " +
+            $"'{Path.Combine(_root, "kit", "tree-lod.glb")}' (file not found), retaining LOD0.",
+            line);
     }
 
     [Fact]
@@ -332,7 +339,10 @@ public class GltfMeshResolverTests : IDisposable
         Assert.Null(resolver.ResolveLod(tree));
 
         string line = Assert.Single(_log);
-        Assert.Contains(ExpectedLoaderMessage(path), line, StringComparison.Ordinal);
+        Assert.Equal(
+            $"tile world: archetype 'tree' could not load optional LOD mesh '{path}' " +
+            $"({ExpectedLoaderMessage(path)}), retaining LOD0.",
+            line);
     }
 
     [Fact]
@@ -364,7 +374,10 @@ public class GltfMeshResolverTests : IDisposable
         Assert.Same(flat, resolver.ResolveFlatForHlod(tree));
         Assert.Equal(GltfLoader.LoadFlattenedAlbedo(SourceAsset).Vertices.Length, flat.Vertices.Length);
         string line = Assert.Single(_log);
-        Assert.Contains("tree-lod.glb", line, StringComparison.Ordinal);
+        Assert.Equal(
+            $"tile world: archetype 'tree' could not load flattened LOD1 mesh " +
+            $"'{Path.Combine(_root, "kit", "tree-lod.glb")}' (file not found), trying LOD0.",
+            line);
     }
 
     [Fact]
@@ -380,7 +393,10 @@ public class GltfMeshResolverTests : IDisposable
 
         Assert.NotNull(flat);
         Assert.Equal(GltfLoader.LoadFlattenedAlbedo(SourceAsset).Vertices.Length, flat.Vertices.Length);
-        Assert.Single(_log);
+        Assert.Equal(
+            $"tile world: archetype 'tree' could not load flattened LOD1 mesh '{lodPath}' " +
+            $"({ExpectedLoaderMessage(lodPath)}), trying LOD0.",
+            Assert.Single(_log));
     }
 
     [Fact]
@@ -395,7 +411,10 @@ public class GltfMeshResolverTests : IDisposable
         Assert.Null(resolver.ResolveFlatForHlod(tree));
 
         string line = Assert.Single(_log);
-        Assert.Contains(path, line, StringComparison.Ordinal);
+        Assert.Equal(
+            $"tile world: archetype 'tree' could not load flattened LOD0 mesh '{path}' " +
+            $"({ExpectedLoaderMessage(path)}), retaining individual geometry.",
+            line);
     }
 
     // The loader's own message for this file, read from the loader rather than hard-coded, so the assertion pins

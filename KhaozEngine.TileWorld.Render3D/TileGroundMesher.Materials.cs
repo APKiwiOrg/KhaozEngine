@@ -123,6 +123,40 @@ public static partial class TileGroundMesher
     static int SlotAt(in TileMeshContext c, int cornerX, int cornerZ) =>
         c.Options.Slots.SlotOf(CornerMaterial(c.Doc, cornerX, cornerZ, c.Plane));
 
+    // The material slot of one collapsible four by four cell, or null when any authored boundary inside it
+    // requires the existing per-tile triangulation. Kept pure so classification never changes document state.
+    static int? Coarse4Material(in TileMeshContext c, int lx, int lz)
+    {
+        ushort firstSurface = 0;
+        GroundMaterialKind? firstKind = null;
+        for (int dz = 0; dz < 4; dz++)
+            for (int dx = 0; dx < 4; dx++)
+            {
+                int x = c.OriginX + lx + dx;
+                int z = c.OriginZ + lz + dz;
+                if (!IsDrawable(c.Doc, x, z, c.Plane)) return null;
+                if ((c.Doc.GetSettings(x, z, c.Plane) & TileSettings.Bridge) != 0) return null;
+
+                ushort underlay = c.Doc.GetUnderlay(x, z, c.Plane);
+                GroundMaterialKind kind = c.Catalogs.Material(underlay)?.Kind ?? GroundMaterialKind.Ground;
+                ushort overlay = c.Doc.GetOverlay(x, z, c.Plane);
+                TileOverlayShape shape = c.Doc.GetOverlayShape(x, z, c.Plane);
+                if (shape != TileOverlayShape.Full) return null;
+                ushort surface = overlay == 0 ? underlay : overlay;
+
+                if (firstSurface == 0)
+                {
+                    firstSurface = surface;
+                    firstKind = kind;
+                }
+                else if (surface != firstSurface || kind != firstKind)
+                {
+                    return null;
+                }
+            }
+        return c.Options.Slots.SlotOf(firstSurface);
+    }
+
     /// <summary>A corner point's weights: all of them on its own corner, none on the other three. The corner is
     /// numbered the way the slots are, SW 0, SE 1, NW 2, NE 3, which is dz * 2 + dx over the corner's own
     /// 0-or-1 step on each axis.</summary>

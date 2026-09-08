@@ -75,6 +75,35 @@ public static partial class TileGroundMesher
     /// the tile's four <paramref name="slots"/>. Its weights are one-hot on its own corner and its jitter is the
     /// corner's own, both of which every tile touching that corner computes identically.</summary>
     static LatticePoint Corner(in TileMeshContext c, int lx, int lz, int dx, int dz, in TileCornerSlots slots)
+        => CellCorner(c, lx, lz, dx, dz, dx, dz, slots);
+
+    static void AddCoarseCell(
+        MeshAccumulator mesh, in TileMeshContext c, int lx, int lz, int size, int materialSlot)
+    {
+        TileCornerSlots slots = TileCornerSlots.Uniform(materialSlot);
+        LatticePoint sw = CellCorner(c, lx, lz, 0, 0, 0, 0, slots);
+        LatticePoint se = CellCorner(c, lx, lz, size, 0, 1, 0, slots);
+        LatticePoint nw = CellCorner(c, lx, lz, 0, size, 0, 1, slots);
+        LatticePoint ne = CellCorner(c, lx, lz, size, size, 1, 1, slots);
+        short h00 = c.Doc.CornerHeightCm(c.OriginX + lx, c.OriginZ + lz, c.Plane);
+        short h10 = c.Doc.CornerHeightCm(c.OriginX + lx + size, c.OriginZ + lz, c.Plane);
+        short h01 = c.Doc.CornerHeightCm(c.OriginX + lx, c.OriginZ + lz + size, c.Plane);
+        short h11 = c.Doc.CornerHeightCm(c.OriginX + lx + size, c.OriginZ + lz + size, c.Plane);
+        if (TileTriangulation.SplitSwNe(h00, h10, h01, h11, TileOverlayShape.Full, 0))
+        {
+            AddTriangle(mesh, c, sw.ToVertex(null), se.ToVertex(null), ne.ToVertex(null));
+            AddTriangle(mesh, c, sw.ToVertex(null), ne.ToVertex(null), nw.ToVertex(null));
+        }
+        else
+        {
+            AddTriangle(mesh, c, sw.ToVertex(null), se.ToVertex(null), nw.ToVertex(null));
+            AddTriangle(mesh, c, se.ToVertex(null), ne.ToVertex(null), nw.ToVertex(null));
+        }
+    }
+
+    static LatticePoint CellCorner(
+        in TileMeshContext c, int lx, int lz, int dx, int dz, int weightX, int weightZ,
+        in TileCornerSlots slots)
     {
         int cx = c.OriginX + lx + dx;
         int cz = c.OriginZ + lz + dz;
@@ -88,7 +117,7 @@ public static partial class TileGroundMesher
             position,
             normal,
             slots,
-            CornerWeights(dz * 2 + dx),
+            CornerWeights(weightZ * 2 + weightX),
             CornerJitter(c.Doc, cx, cz, c.Plane, c.Options.JitterAmplitude));
     }
 

@@ -55,12 +55,30 @@ public static partial class TileGroundMesher
         RegionCoord region,
         int plane,
         TileGroundMesherOptions? options = null)
+        => Build(doc, catalogs, region, plane, TileGroundLod.Full, options);
+
+    /// <summary>The ground mesh of one region-plane at the requested detail, in region-local coordinates, or
+    /// null when the region-plane has no drawable tile.</summary>
+    public static GltfMesh? Build(
+        TileWorldDocument doc,
+        TileWorldCatalogs catalogs,
+        RegionCoord region,
+        int plane,
+        TileGroundLod lod,
+        TileGroundMesherOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(doc);
         ArgumentNullException.ThrowIfNull(catalogs);
+        if (lod is not TileGroundLod.Full and not TileGroundLod.Coarse4)
+            throw new ArgumentOutOfRangeException(nameof(lod));
 
         var context = new TileMeshContext(doc, catalogs, options ?? new TileGroundMesherOptions(), region, plane);
         var mesh = new MeshAccumulator();
+        if (lod == TileGroundLod.Coarse4)
+        {
+            AddCoarse4(mesh, context);
+            return mesh.ToMesh();
+        }
         for (int lz = 0; lz < TileRegion.Size; lz++)
             for (int lx = 0; lx < TileRegion.Size; lx++)
             {
@@ -68,6 +86,29 @@ public static partial class TileGroundMesher
                 AddTile(mesh, context, lx, lz);
             }
         return mesh.ToMesh();
+    }
+
+    static void AddCoarse4(MeshAccumulator mesh, in TileMeshContext context)
+    {
+        const int cellSize = 4;
+        for (int lz = 0; lz < TileRegion.Size; lz += cellSize)
+            for (int lx = 0; lx < TileRegion.Size; lx += cellSize)
+            {
+                if (Coarse4Material(context, lx, lz) is int materialSlot)
+                {
+                    AddCoarseCell(mesh, context, lx, lz, cellSize, materialSlot);
+                    continue;
+                }
+
+                for (int dz = 0; dz < cellSize; dz++)
+                    for (int dx = 0; dx < cellSize; dx++)
+                    {
+                        if (!IsDrawable(context.Doc, context.OriginX + lx + dx, context.OriginZ + lz + dz,
+                                        context.Plane))
+                            continue;
+                        AddTile(mesh, context, lx + dx, lz + dz);
+                    }
+            }
     }
 
     /// <summary>Where a region's mesh sits in the world: the corner of its lowest tile coordinates, with Y left

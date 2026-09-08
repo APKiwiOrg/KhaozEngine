@@ -146,6 +146,13 @@ public sealed partial class TileWorldView : IDisposable
     /// mid-frame call: the upload builds a mip chain on a command list of its own (#424).</para></summary>
     public TileWorldView(ITileWorldScene scene, TileWorldDocument doc, TileWorldCatalogs catalogs,
                          ITileMeshResolver resolver, TileWorldViewOptions? options = null)
+        : this(scene, doc, catalogs, resolver, options, buildQueueOptions: null, dispatcher: null)
+    {
+    }
+
+    internal TileWorldView(ITileWorldScene scene, TileWorldDocument doc, TileWorldCatalogs catalogs,
+                           ITileMeshResolver resolver, TileWorldViewOptions? options,
+                           TileWorldBuildQueueOptions? buildQueueOptions, IChunkBuildDispatcher? dispatcher)
     {
         ArgumentNullException.ThrowIfNull(scene);
         ArgumentNullException.ThrowIfNull(doc);
@@ -161,6 +168,8 @@ public sealed partial class TileWorldView : IDisposable
             TileWorldPropClusters.Validate(catalogs, _options.PropLayers);
         _planes = Math.Max(0, doc.PlaneCount);
         _terrainPickFilter = IsRenderedTerrain;
+        _groundBuilds = new TileWorldBuildQueue<TileGroundBuildInput, GltfMesh?>(
+            BuildGroundCpu, ApplyGroundBuild, buildQueueOptions, dispatcher);
 
         // A throw part way through frees the sets already uploaded, because a constructor that throws never
         // produces the object whose Dispose would have freed them. The resolver is caller code and the upload is a
@@ -189,6 +198,7 @@ public sealed partial class TileWorldView : IDisposable
         }
         catch
         {
+            _groundBuilds.Dispose();
             foreach (IReadOnlyList<MeshHandle> uploaded in _propMeshes.Values) _scene.UnloadPropMeshes(uploaded);
             _propMeshes.Clear();
             // The material is uploaded before the archetypes, so it is the one thing already on the device when
@@ -325,12 +335,10 @@ public sealed partial class TileWorldView : IDisposable
                 DemoteToDecor(region, existing);
                 return;
             }
-            _loaded.Remove(region);
-            LoadGameplayRegion(region, existing.Props);
+            PromoteToGameplay(region, existing);
             return;
         }
-        if (residency == TileRegionResidencyState.Decor) LoadDecorRegion(region);
-        else LoadGameplayRegion(region, props: null);
+        LoadProfileRegion(region, residency);
     }
 
     void LoadGameplayRegion(RegionCoord region, TileRegionProps[]? props)
@@ -358,18 +366,9 @@ public sealed partial class TileWorldView : IDisposable
             throw;
         }
         _loaded[region] = new RegionHandles(
-            meshes, snapshots, cover, TileRegionResidencyState.Gameplay);
+            meshes, snapshots, cover, TileRegionResidencyState.Gameplay,
+            new long[_planes]);
         GeneratedCoverCount += cover.Count;
-    }
-
-    void LoadDecorRegion(RegionCoord region)
-    {
-        var props = new TileRegionProps[_planes];
-        for (int plane = 0; plane < _planes; plane++)
-            props[plane] = _propClusters.Build(_doc, region, plane, OverrideLookup());
-        _loaded[region] = new RegionHandles(
-            new MeshHandle?[_planes], props, Array.Empty<GroundCoverInstance>(),
-            TileRegionResidencyState.Decor);
     }
 
     void DemoteToDecor(RegionCoord region, RegionHandles handles)
@@ -378,9 +377,9 @@ public sealed partial class TileWorldView : IDisposable
         _scene.ReleaseGroundCover(handles.Cover);
         handles.Cover = Array.Empty<GroundCoverInstance>();
         ReleaseAnimatedFoliage(handles);
-        FreeMeshes(handles.Meshes);
         for (int plane = 0; plane < _planes; plane++) _water.Remove((region, plane));
         handles.Residency = TileRegionResidencyState.Decor;
+        RequestGround(region, handles, TileGroundLod.Coarse4);
     }
 
     /// <summary>Frees every mesh handle of one region and forgets it, along with any rebuild it had queued.
@@ -392,6 +391,7 @@ public sealed partial class TileWorldView : IDisposable
         {
             if (_dirty.Remove((region, plane))) _dirtyOrder.Remove((region, plane));
             _water.Remove((region, plane));
+            CancelGround(region, plane);
         }
         if (!_loaded.Remove(region, out RegionHandles? handles)) return;
         GeneratedCoverCount -= handles.Cover.Count;
@@ -463,7 +463,11 @@ public sealed partial class TileWorldView : IDisposable
         if (indoors != ObserverIndoors) _interiorStale = true;
         ObserverIndoors = indoors;
         EnsureInterior();
-        if (_dirtyOrder.Count == 0) return;
+        if (_dirtyOrder.Count == 0)
+        {
+            PrimeGroundIfRequested(maxRebuilds);
+            return;
+        }
 
         int budget = Math.Max(1, maxRebuilds);
         int taken = 0;
@@ -485,8 +489,10 @@ public sealed partial class TileWorldView : IDisposable
                     // Stream dependency marks exist to rebuild full ground against arriving neighbours. A decor
                     // snapshot has no neighbour-derived data. Its coarse and HLOD work enters through the
                     // background queue instead of running here on the view thread.
+                    RequestGroundPlane(region, handles, plane, TileGroundLod.Coarse4);
                     continue;
                 }
+                InvalidateGround(region, handles, plane);
                 MeshHandle? rebuilt = BuildMesh(region, plane);
                 if (handles.Meshes[plane] is { } old) _scene.UnloadMesh(old);
                 handles.Meshes[plane] = rebuilt;
@@ -504,6 +510,7 @@ public sealed partial class TileWorldView : IDisposable
             // later MarkDirty push a duplicate of an entry the list still holds.
             _dirtyOrder.RemoveRange(0, scanned);
         }
+        PrimeGroundIfRequested(maxRebuilds);
     }
 
     /// <summary>Flushes pending rebuilds, then queues every loaded region: each plane's ground mesh at the
@@ -515,16 +522,18 @@ public sealed partial class TileWorldView : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         Flush();
+        PumpGround(focus);
 
         int drawn = 0;
         foreach (KeyValuePair<RegionCoord, RegionHandles> entry in _loaded)
         {
             Matrix4x4 world = TileGroundMesher.WorldMatrix(_doc, entry.Key);
             RegionHandles handles = entry.Value;
-            if (handles.Residency != TileRegionResidencyState.Gameplay) continue;
             for (int plane = 0; plane < _planes; plane++)
             {
                 if (handles.Meshes[plane] is { } mesh) _scene.DrawMesh(mesh, world);
+
+                if (handles.Residency != TileRegionResidencyState.Gameplay) continue;
 
                 TileRegionProps props = handles.Props[plane];
                 drawn += DrawGroundProps(handles, plane, focus);
@@ -613,6 +622,8 @@ public sealed partial class TileWorldView : IDisposable
         _water.Clear();
         _dirty.Clear();
         _dirtyOrder.Clear();
+
+        _groundBuilds.Dispose();
 
         _propClusters.Dispose();
 
@@ -737,14 +748,16 @@ public sealed partial class TileWorldView : IDisposable
         public TileRegionProps[] Props { get; }
         public IReadOnlyList<GroundCoverInstance> Cover { get; set; }
         public TileRegionResidencyState Residency { get; set; }
+        public long[] GroundGenerations { get; }
 
         public RegionHandles(MeshHandle?[] meshes, TileRegionProps[] props, IReadOnlyList<GroundCoverInstance> cover,
-                             TileRegionResidencyState residency)
+                             TileRegionResidencyState residency, long[] groundGenerations)
         {
             Meshes = meshes;
             Props = props;
             Cover = cover;
             Residency = residency;
+            GroundGenerations = groundGenerations;
         }
     }
 }

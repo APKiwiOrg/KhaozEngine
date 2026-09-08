@@ -34,12 +34,11 @@ jobs:
         shell: bash
         run: |
           set +e
-          KE_FXAA_PROBE_DIR="$PWD/artifacts/fxaa-probe/current" dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter FullyQualifiedName~MsaaPostFxaaGpuTests --logger "console;verbosity=detailed" > artifacts/fxaa-probe/current.log 2>&1
-          current=$?
-          git show b37da4b7:KhaozEngine.Render3D/Internal/ShaderSources.Post.cs > KhaozEngine.Render3D/Internal/ShaderSources.Post.cs
-          KE_FXAA_PROBE_DIR="$PWD/artifacts/fxaa-probe/original" dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-restore --filter FullyQualifiedName~MsaaPostFxaaGpuTests --logger "console;verbosity=detailed" > artifacts/fxaa-probe/original.log 2>&1
-          original=$?
-          echo "current=$current original=$original" > artifacts/fxaa-probe/outcomes.txt
+          vulkaninfo > artifacts/fxaa-probe/vulkaninfo.txt 2>&1
+          for samples in 1 2 4; do
+            KE_FXAA_PROBE_SAMPLES="$samples" KE_FXAA_PROBE_DIR="$PWD/artifacts/fxaa-probe/samples-$samples" dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter FullyQualifiedName~MsaaPostFxaaGpuTests --logger "console;verbosity=detailed" > "artifacts/fxaa-probe/samples-$samples.log" 2>&1
+            echo "samples=$samples exit=$?" >> artifacts/fxaa-probe/outcomes.txt
+          done
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:

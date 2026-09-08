@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using System.Text;
 using System.Threading.Tasks;
@@ -355,6 +356,7 @@ public class WorldPersistenceKeyResolverTests
     private sealed class HeadRig : IDisposable
     {
         private readonly Action step;
+        private readonly Func<int> entityCount;
         private readonly IDisposable? disposableHost;
         public InMemoryTransportHub Hub { get; }
         public IWorldPersistenceHost Host { get; }
@@ -362,6 +364,7 @@ public class WorldPersistenceKeyResolverTests
         public List<PersistenceKeyRequest> Requests { get; } = new();
         public List<NetClient> Clients { get; } = new();
         public List<INetTransport> ClientTransports { get; } = new();
+        public int EntityCount => entityCount();
 
         public HeadRig(bool sharded, PersistenceKeyResolver? resolver = null,
             DuplicateSessionPolicy duplicateSessions = DuplicateSessionPolicy.KickOlder)
@@ -383,6 +386,7 @@ public class WorldPersistenceKeyResolverTests
                 Host = server;
                 disposableHost = server;
                 step = () => { server.Poll(); server.Tick(Dt); };
+                entityCount = () => server.Host.Cells.Sum(cell => cell.World.Query().Entities().Count());
             }
             else
             {
@@ -395,6 +399,7 @@ public class WorldPersistenceKeyResolverTests
                 }, static (_, _) => 0f, MoveTuning.Default, authenticator: authenticator);
                 Host = server;
                 step = () => { server.Poll(); server.Tick(Dt); };
+                entityCount = () => server.World.Query().Entities().Count();
             }
 
             PersistenceKeyResolver effective = (in PersistenceKeyRequest request) =>
@@ -499,6 +504,42 @@ public class WorldPersistenceKeyResolverTests
         Assert.Single(rig.Requests);
         Assert.False(rig.Host.TryGetPersistenceKey(slot, out _));
         Assert.Single(rig.Requests);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ThrowingPlayerLeavingStillTearsDownAndReleasesThePersistenceKey(bool sharded)
+    {
+        using var rig = new HeadRig(sharded);
+        NetClient first = rig.Connect("acct:4", "character:9");
+        rig.Pump(() => first.Slot >= 0 && rig.Host.JoinedSlots.Count == 1);
+        int oldSlot = first.Slot;
+        bool throwOnce = true;
+        rig.Host.PlayerLeaving += (_, _, _) =>
+        {
+            if (!throwOnce) return;
+            throwOnce = false;
+            throw new InvalidOperationException("leave callback failed");
+        };
+
+        rig.Drop(first);
+        InvalidOperationException error = Assert.Throws<InvalidOperationException>(
+            () => rig.Pump(() => rig.Host.JoinedSlots.Count == 0));
+
+        Assert.Equal("leave callback failed", error.Message);
+        Assert.Equal(0, rig.EntityCount);
+        Assert.Empty(rig.Host.JoinedSlots);
+        Assert.False(rig.Host.TryGetPersistenceKey(oldSlot, out _));
+
+        NetClient second = rig.Connect("acct:4", "character:9");
+        rig.Pump(() => second.Slot >= 0 && rig.Host.JoinedSlots.Count == 1);
+
+        Assert.Equal(2, rig.Requests.Count);
+        int newSlot = Assert.Single(rig.Host.JoinedSlots);
+        Assert.Equal(1, rig.EntityCount);
+        Assert.True(rig.Host.TryGetPersistenceKey(newSlot, out string key));
+        Assert.Equal("character:9", key);
     }
 
     [Theory]

@@ -755,39 +755,40 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         PlayerJoined?.Invoke(slot, accountId);
     }
 
-    // Idempotent by design: safe to call more than once for the same slot. The TryGetValue guards below make a repeat
-    // call a no-op (PlayerLeaving cannot double-fire, save-on-leave cannot double-persist), and every Remove is a
-    // no-op on a missing key. This is load-bearing: Disconnect(slot) calls OnLeave synchronously, and a real transport
-    // may later surface a Left event for the same slot through Poll, calling OnLeave a second time.
+    // Idempotent: Disconnect calls this synchronously, and a transport may later surface the same Left event.
+    // Cleanup stays in finally because PlayerLeaving includes consumer callbacks that may throw.
     private void OnLeave(int slot)
     {
-        if (netIdBySlot.TryGetValue(slot, out long netId))
+        bool joined = netIdBySlot.TryGetValue(slot, out long netId);
+        try
         {
-            desiredSpeedScaleByNetId.Remove(netId);
-            if (accountIdBySlot.TryGetValue(slot, out string? acct) && TryGetPlayerState(slot, out PlayerMoveState final))
-                PlayerLeaving?.Invoke(slot, acct, final);
+            if (joined)
+            {
+                desiredSpeedScaleByNetId.Remove(netId);
+                if (accountIdBySlot.TryGetValue(slot, out string? acct) && TryGetPlayerState(slot, out PlayerMoveState final))
+                    PlayerLeaving?.Invoke(slot, acct, final);
+            }
+        }
+        finally
+        {
             ReleasePersistenceKey(slot);
-            if (host.TryGetOwner(netId, out CellSim cell, out Entity e) && cell.World.IsAlive(e))
+            if (joined && host.TryGetOwner(netId, out CellSim cell, out Entity e) && cell.World.IsAlive(e))
             {
                 cell.UnregisterOwned(netId); // eager: drop it from the ownership index before despawning
                 cell.World.Despawn(e);
             }
+            host.UnbindClient(slot);
+            boundPlayerCellsVersion++;
+            netIdBySlot.Remove(slot);
+            lastAckBySlot.Remove(slot);
+            accountIdBySlot.Remove(slot);
+            rateBySlot.Remove(slot);
+            correctionStreakBySlot.Remove(slot);
+            selfRescueReadyAt.Remove(slot);
+            deltaReplicator?.Forget(slot);
+            deltaCapableSlots.Remove(slot);
+            commands.Forget(slot);
         }
-        host.UnbindClient(slot);
-        boundPlayerCellsVersion++;   // a leave changes the bound-player-cells set the eviction cache serves
-        netIdBySlot.Remove(slot);
-        lastAckBySlot.Remove(slot);
-        accountIdBySlot.Remove(slot);
-        rateBySlot.Remove(slot);
-        correctionStreakBySlot.Remove(slot);
-        selfRescueReadyAt.Remove(slot);
-        // Drop the slot's delta baseline + capability so the recycled slot starts clean (see OnJoin).
-        deltaReplicator?.Forget(slot);
-        deltaCapableSlots.Remove(slot);
-        // Drop the slot's command-queue state too. The SlotAllocator recycles this slot to the next connection,
-        // whose seqs legitimately restart at 0; without this the stale high-water mark rejects every command and
-        // freezes the recycled player (it self-heals only once their seq crawls past the dead mark, minutes later).
-        commands.Forget(slot);
     }
 
     private static bool PositionAccessor(World world, Entity e, out float x, out float y)

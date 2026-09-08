@@ -8350,9 +8350,15 @@ directory: `CreateDocument` dispatches on `MapDocumentFile.DetectForm` (never `F
 false for a directory and used to fall through to a blank untitled document, silently discarding whatever
 Ctrl+S then overwrote). Below `MapEditorOptions.WholeWorldTileLimit` occupied tiles (default 512) a tiled
 document loads whole, exactly like a monolithic one. Above it the editor opens a WINDOW instead (see
-`MapDocumentWindowing`), centered on the tile containing the document bounds' midpoint,
+`MapDocumentWindowing`), centered on a nearby enabled player spawn with the bounds' midpoint as fallback,
 `MapEditorOptions.EditorWindowRadius` tiles either side (default 2), and the status strip's `window:
-(minX,minZ)-(maxX,maxZ)` segment (`MapEditorScene.Window`, tile coordinates) shows the loaded extent. Ctrl+S
+(minX,minZ)-(maxX,maxZ)` segment (`MapEditorScene.Window`, tile coordinates) shows the loaded extent.
+`MapEditorOptions.PlayerSpawnSearchTileLimit` caps the initial search at 32 occupied tile reads by default.
+Tiles are searched by squared distance from the bounds-center tile, then Z and X for ties, and enabled spawns
+within a tile use ordinal ID order. Zero disables searching. The final window load is separate from that
+budget. The camera starts near the selected spawn or fallback center, so the loaded slice is visible. The
+existing six-argument `MapDocumentWindowing.Load` uses the default budget, and its seven-argument overload
+accepts an explicit budget before the two output parameters. Ctrl+S
 always saves back in the form and directory the document was opened from (`MapDocumentFile.SaveAuto`),
 never converting implicitly: a plain `.map.json` load-then-save round-trips as monolithic, a tiled
 directory round-trips as tiled, touching only the tiles that actually changed. Moving content into a tile
@@ -8445,8 +8451,9 @@ into the thrown message on failure, so the in-session document is never left inv
 editor: `map_open` dispatches on `MapDocumentFile.DetectForm` (a directory loads tiled, a file loads
 monolithic), and a tiled document at or under `MapEditSession.WholeWorldTileLimit` occupied tiles (default
 512, matching `MapEditorOptions.WholeWorldTileLimit`) loads WHOLE. Above it, `map_open` windows instead:
-the manifest plus only the tiles inside a square centered on the document bounds, radius
-`EditorWindowRadius` tiles (default 2). `map_save` always writes back in the form and directory the
+the manifest plus the tiles inside a square around a nearby enabled player spawn, radius
+`EditorWindowRadius` tiles (default 2). The shared policy searches at most 32 occupied tiles nearest the bounds
+center and uses that center if no enabled spawn is found. `map_save` always writes back in the form and directory the
 document came from (`MapDocumentFile.SaveAuto`), never converting implicitly. `window_status` reports the
 loaded window's tile and world rect plus the occupied/loaded tile counts (`Tiled` false for a monolithic
 document). `set_window(minX, minZ, maxX, maxZ, discard?)` moves the window: it refuses with unsaved

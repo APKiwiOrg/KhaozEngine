@@ -64,8 +64,10 @@ failure, so the in-session document is never left invalid.
 `map_open` and `map_save` are form-aware, matching the GUI editor: `map_open` dispatches on
 `MapDocumentFile.DetectForm` (a directory loads tiled, a file loads monolithic), and a tiled document at
 or under `MapEditSession.WholeWorldTileLimit` occupied tiles (default 512) loads WHOLE. Above it,
-`map_open` windows instead: the manifest plus only the tiles inside a square centered on the document
-bounds, radius `EditorWindowRadius` tiles (default 2, `MapDocumentWindowing.DefaultEditorWindowRadius`).
+`map_open` windows instead: the manifest plus the tiles inside a square around a nearby enabled player spawn,
+radius `EditorWindowRadius` tiles (default 2, `MapDocumentWindowing.DefaultEditorWindowRadius`). The shared
+`MapDocumentWindowing` policy searches at most 32 occupied tiles nearest the bounds center, with deterministic
+coordinate ordering, and falls back to the bounds center if that search finds no enabled spawn.
 `map_save` always writes back in the form and directory the document came from
 (`MapDocumentFile.SaveAuto`), never converting implicitly. `window_status` reports the loaded window's
 tile and world rect plus the occupied/loaded tile counts, `Tiled` false for a monolithic or in-memory

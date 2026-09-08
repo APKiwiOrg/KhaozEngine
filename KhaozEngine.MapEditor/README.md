@@ -36,7 +36,8 @@ sceneManager.Push(new MapEditorScene().Init(scene, whiteTexture, dpiFont, option
   (`MapDocumentFile.SaveAuto`, never converting implicitly).
 - `WholeWorldTileLimit` (default 512 occupied tiles) and `EditorWindowRadius` (default 2 tiles) govern a
   tiled document: at or under the limit it loads whole, above it the editor opens a WINDOW instead (see
-  `MapDocumentWindowing`), centered on the document bounds, and the status strip's `window:
+  `MapDocumentWindowing`), centered on a nearby enabled player spawn with the document bounds center as
+  fallback, and the status strip's `window:
   (minX,minZ)-(maxX,maxZ)` segment (`MapEditorScene.Window`) shows the loaded extent. Moving content into a
   tile the window never covered surfaces Ctrl+S's failure as an ordinary status message, not a crash. There
   is no in-editor window-move affordance: `convert_to_tiled`/`convert_to_single`/`retile`
@@ -49,6 +50,14 @@ sceneManager.Push(new MapEditorScene().Init(scene, whiteTexture, dpiFont, option
   reach outside the loaded window. That is degradation, not breakage: the streamer neither clamps its ring to
   the window nor throws at its edge, it meshes the unauthored analytic base out there, since the authored
   sculpt tiles that would have modified it were never read.
+- `PlayerSpawnSearchTileLimit` (default 32) caps occupied tile reads when choosing that window anchor.
+  Tiles are searched by distance from the bounds-center tile, then Z and X for ties. The first enabled
+  spawn in ordinal ID order in the first matching tile wins. Zero disables searching. Finding no enabled
+  spawn within the budget retains the bounds-center fallback. Loading the chosen window is separate from
+  this search budget, and whole-document loads do not search. The six-argument `MapDocumentWindowing.Load`
+  keeps its signature and uses the default budget. A seven-argument overload accepts an explicit budget.
+  The editor starts its camera near the chosen spawn so the loaded window is visible. A fallback window
+  starts near the bounds center. Whole-document camera startup keeps its existing position.
 - `ManifestPaths` are the same `AssetManifest` files the game's own prop-kit loading reads, so the
   editor's palette and picking heights match what the game actually renders.
 - `Registry` defaults to `MapDocRegistry.CreateDefault()`. Pass your own to add custom terrain feature

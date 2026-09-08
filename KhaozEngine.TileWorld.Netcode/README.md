@@ -50,14 +50,21 @@ fixed-seconds glide window (which stutters, structurally) and a damped chase (wh
 wrong). `docs/design/TILE-WORLD-NETCODE-DESIGN-2026-08-22.md` section 5.2 carries the four rounds with the
 measurements.
 
-**THE INVARIANT has two body bounds.** A remote body is at most one grid step behind the committed tile read from
-the same delayed timeline. The local body is at most one grid step plus one local command tick of travel behind
+**THE ZERO-CORRECTION MOTION INVARIANT has two body bounds.** A remote body is at most one grid step behind the committed tile read from
+the same delayed timeline. With no active reconciliation offset, the local body is at most one grid step plus one local command tick of travel behind
 `Prediction.PredictedState.Tile`, because `ClientPrediction.RenderedState` eases from the previous predicted
 position between command ticks. At the default four-tick walk and two-tick run cadences those local bounds are
 1.25 and 1.5 grid steps. Grid step means Chebyshev distance on the tile lattice. A diagonal step is `sqrt(2)` tile
 sizes in Euclidean world distance, so a world-space radius multiplies these bounds by `sqrt(2)`. The loopback tests
 observe 1.225 walking and 1.45 running because their first sampled frame has already advanced one tenth of a tick.
-The theoretical instant remains the design bound. Combat, reach, occupancy and clicks use the committed tile.
+The theoretical instant remains the base motion bound.
+
+`LocalPose` also carries the prediction layer's active planar reconciliation offset. That term preserves visual
+continuity across an ordinary correction below `HardSnapDistance`, then decays toward zero. It can point away from
+the newly committed tile and add to the base motion lag. A conservative instantaneous bound is the base motion
+term plus the magnitude of the active offset. The offset has no separate fixed cap because repeated sub-snap
+corrections can re-anchor it. A hard snap or teleport clears it. Combat, reach, occupancy and clicks use the
+committed tile and never this presentation position.
 
 A remote compared with the current server truth also adds the delayed timeline
 `TileWorldClientConfig.InterpolationDelayTicks` names, two ticks by default and a whole tick each. At a 1/6 s tick
@@ -255,7 +262,8 @@ understand. Its registered traversal profile can give that algorithm a different
   because a query over the tag cannot see the one actor that most needs the write.
   The actor loop resolves each normal actor's owner once and reuses that cell and entity for movement state,
   combat state, health and the two unconditional writes. Caller callbacks can despawn or hand off the actor while
-  deciding, so a dead, ghosted or migrating cached entity falls back to one fresh owner resolution before a write.
+  deciding, so a dead, ghosted or migrating cached entity falls back to one fresh owner resolution before any
+  post-callback combat read or write.
   In the 576-actor idle-behaviour workload this reduced the median complete server tick from 0.461 ms to 0.310 ms,
   with five 1,000-tick runs after 100 warmup ticks.
 - **`ITileActorBehaviour`** / **`TileActorIntent`** / **`TileActorIntentKind`** / **`TileActorContext`** - the one
@@ -409,8 +417,9 @@ always keep the constructor map.
   `Pose(state, extraTicks)` is the BODY: the linear glide from `StepFrom` into `Tile` by the step's own tick
   count, carried forward by the fraction of a tick since the state was sampled and clamped at the end of the step.
   Against that same sample its bound is one Chebyshev grid step. `LocalPose(prediction)` additionally carries the
-  prediction layer's inter-tick easing, so its bound against `PredictedState.Tile` is one grid step plus one local
-  command tick of travel.
+  prediction layer's inter-tick easing. With no active reconciliation offset, its bound against
+  `PredictedState.Tile` is one grid step plus one local command tick of travel. An active offset adds its current
+  magnitude to that conservative bound until it decays or a hard snap clears it.
   `StepFraction(state, extraTicks)` is the fraction that glide interpolates on, exposed so a rule that must run in
   lockstep with a body (a fade, a squash, a footfall) measures the number the body is drawn at rather than a second
   estimate of it, and it reads 1 for a body at rest.

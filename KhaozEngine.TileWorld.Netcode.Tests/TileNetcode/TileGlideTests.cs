@@ -444,6 +444,48 @@ public class TileGlideTests
             Assert.InRange(maxEuclidean, firstObservable - 1e-4f, firstObservable + 1e-4f);
     }
 
+    [Fact]
+    public void An_active_sub_snap_reconciliation_offset_adds_to_the_clean_local_motion_bound()
+    {
+        var simulator = new TileMoveSimulator(
+            TileMoveSimulatorTests.Bake(TileMoveSimulatorTests.FlatWorld()),
+            new TileStepTicks(walk: 4, run: 2));
+        var prediction = new ClientPrediction<TileMoveState, TileCommand>(simulator,
+            new PredictionSettings(Tick, MaxPendingCommands: 64, HardSnapDistance: 0.5f,
+                CorrectionRate: 8f, CorrectionDeadZone: 0.01f));
+        var from = new TileCoord(10, 10, 0);
+        var committed = new TileCoord(10, 11, 0);
+        var next = new TileCoord(10, 12, 0);
+        TileMoveState predicted = TileMoveState.At(committed, TileDirection.N);
+        predicted.StepFrom = from;
+        predicted.StepTotal = 10;
+        predicted.StepTicks = 0;
+        prediction.Reset(predicted);
+
+        // Move the authoritative body 0.4 tiles toward the committed tile without changing that tile. The pure
+        // prediction error stays below the 0.5 hard-snap threshold, so reconcile preserves the old drawn position
+        // by carrying a smoothing offset pointing away from the walk.
+        TileMoveState corrected = predicted;
+        corrected.StepTicks = 4;
+        corrected.Route = new TileRoute(new[] { next }, 0);
+        ReconciliationResult result = prediction.Reconcile(0, corrected, lastAcknowledgedSeq: -1);
+        Assert.False(result.HardSnapApplied);
+        Assert.Equal(0.4f, result.PositionError, 3);
+
+        // Do not advance presentation, so the active offset remains measurable. Six command ticks land the
+        // corrected long step and commit the next ordinary walking step.
+        for (int i = 0; i < 6; i++) prediction.Predict(TileCommand.Continue(TileMoveMode.Walk));
+        Assert.Equal(next, prediction.PredictedState.Tile);
+        Assert.Equal(4, prediction.PredictedState.StepTotal);
+
+        var presenter = new TilePresenter(tileSize: 1f, planeHeight: 4f);
+        (float actualLag, _) = Lag(next, presenter.LocalPose(prediction).Position);
+        const float cleanWalkBound = 1.25f;
+        Assert.True(actualLag > cleanWalkBound,
+            $"active correction lag {actualLag} did not exceed the zero-offset bound {cleanWalkBound}");
+        Assert.Equal(1.5f, actualLag, 3);
+    }
+
     [Theory]
     [InlineData(TileMoveMode.Walk, false)]
     [InlineData(TileMoveMode.Run, false)]

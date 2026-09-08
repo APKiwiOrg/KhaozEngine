@@ -46,8 +46,10 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// <see cref="TileWorldClientConfig.InterpolationDelayTicks"/> before its body arrived, which is a remote
 /// vanishing into a tile it is visibly still two ticks away from. Neither read is the drawn POSITION: a body
 /// commits its tile when the step starts and glides in afterwards. A remote's delayed tile leads its body by up
-/// to one grid step. The local predicted tile can lead by one grid step plus one command tick of travel because
-/// its render pose eases between predicted ticks. The weight is what closes that lead.</para>
+/// to one grid step. With no active correction offset, the local predicted tile can lead by one grid step plus one
+/// command tick of travel because its render pose eases between predicted ticks. Reconciliation can move the
+/// rendered body beyond that base motion bound while preserving continuity. Winner selection stays on committed
+/// tiles because presentation offsets are never rules inputs. The weight is what closes the step lead.</para>
 /// <para>THE LOCAL PLAYER CLAIMS BOTH TILES OF A STEP IN FLIGHT, and that is what makes the own-body guarantee
 /// hold while walking. <see cref="TileMoveState"/> commits the destination on the tick the step STARTS and the
 /// body glides in over the rest of it, so through the whole step the drawn local body is somewhere between

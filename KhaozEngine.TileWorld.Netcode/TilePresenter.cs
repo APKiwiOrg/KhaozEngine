@@ -131,11 +131,14 @@ public sealed class TilePresenter
     /// that override is the whole point of the prediction layer: it is a continuous position over a discrete
     /// lattice, and rounding it back to a tile here would throw away every frame of smoothing the layer just
     /// computed.
-    /// <para>The local bound has one term beyond <see cref="Pose"/>. At the instant a new step commits,
+    /// <para>The zero-correction local motion bound has one term beyond <see cref="Pose"/>. At the instant a new step commits,
     /// <c>RenderedState</c> still starts from the previous predicted position, so the body may trail
     /// <c>PredictedState.Tile</c> by one grid step plus one local command tick of travel. With a step cadence of N
     /// ticks the bound is <c>1 + 1/N</c> grid steps. The default walk and run cadences therefore bound at 1.25 and
-    /// 1.5. Multiply by <c>sqrt(2) * TileSize</c> for the Euclidean world-space bound of diagonal travel.</para>
+    /// 1.5. Multiply by <c>sqrt(2) * TileSize</c> for the Euclidean world-space bound of diagonal travel. An active
+    /// reconciliation offset is an additional presentation term. The conservative instantaneous bound adds its
+    /// magnitude to this base motion bound. Ordinary corrections can re-anchor it, while a hard snap or teleport
+    /// clears it.</para>
     /// <para><see cref="TileWorldClient.LocalPose"/> is this call with the client's own prediction and presenter
     /// already in hand, and is what a head normally uses. This overload is for a head holding a
     /// <see cref="ClientPrediction{TState,TCommand}"/> of its own.</para>

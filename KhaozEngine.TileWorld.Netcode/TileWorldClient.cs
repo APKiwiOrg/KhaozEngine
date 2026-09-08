@@ -126,9 +126,12 @@ public sealed partial class TileWorldClient : IDisposable
     /// anything else off this client. A step commits its tile when it STARTS, so the rules answer every question
     /// (reach, occupancy, what a click resolves against) about <see cref="ClientPrediction{TState,TCommand}.PredictedState"/>'s
     /// <see cref="TileMoveState.Tile"/> while this pose is still walking into it. The raw step glide is at most one
-    /// Chebyshev grid step behind. Inter-tick easing can add one local command tick of travel, for a total bound of
+    /// Chebyshev grid step behind. With no active reconciliation offset, inter-tick easing can add one local command tick of travel, for a base motion bound of
     /// <c>1 + 1 / StepTicks</c> grid steps. This is 1.25 walking and 1.5 running at the default 4 and 2 tick
-    /// cadences. A diagonal step is <c>sqrt(2)</c> tile sizes in Euclidean world distance. The lag is the price of
+    /// cadences. A diagonal step is <c>sqrt(2)</c> tile sizes in Euclidean world distance. An active planar
+    /// reconciliation offset adds another term until it decays. A conservative instantaneous bound is the base
+    /// motion term plus that offset's magnitude. Repeated sub-snap corrections can re-anchor the offset, so it has
+    /// no separate fixed cap. A hard snap or teleport clears it. The lag is the price of
     /// the responsiveness the lead commit buys. The mitigation is VISIBILITY, and it is the game's to
     /// draw: a true-tile marker on <c>PredictedState.Tile</c> and a highlight over the remaining
     /// <see cref="TileMoveState.Route"/>, both mapped with <see cref="TilePresenter.PoseAt(TileCoord, TileDirection)"/>.

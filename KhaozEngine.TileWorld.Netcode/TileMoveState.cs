@@ -30,8 +30,8 @@ public enum TileInteractionDomain : byte
 /// destination for the whole of the walk into it and this state's derived <see cref="Position"/> arrives afterwards. Every rules question (reach,
 /// region, occupancy, what a click resolves against) is therefore answered about the tile the player is committed to
 /// rather than the one they are half off, which is what makes a 250 ms tick feel immediate. The body is at most one
-/// grid step behind the answer. The local client's render pose adds an inter-tick prediction term outside this
-/// state, documented on <c>TileWorldClient.LocalPose</c>.</para>
+/// grid step behind the answer. The local client's render pose adds inter-tick prediction and active
+/// reconciliation-offset terms outside this state, documented on <c>TileWorldClient.LocalPose</c>.</para>
 /// <para><see cref="Position"/> is DERIVED: the glide from <see cref="StepFrom"/> to <see cref="Tile"/> by the
 /// fraction of the current step already spent, in TILE units. <see cref="Vertical"/> is the PLANE INDEX as a float
 /// rather than a height in metres, so the state stays document-free and the simulator can produce it without loading

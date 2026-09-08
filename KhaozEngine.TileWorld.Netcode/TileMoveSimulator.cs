@@ -14,7 +14,8 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// tile being left, the facing takes the step's direction and the route pops. The remaining ticks of the step are
 /// spent gliding this state's derived position from one to the other, so the simulation leads that position by at
 /// most one grid step and every rules question is answered about the tile the player is committed to. The local
-/// client's inter-tick render easing adds one tick of travel outside this simulator. That is the
+/// client's inter-tick render easing adds one tick of travel outside this simulator, and an active reconciliation
+/// offset adds a separate presentation term. That is the
 /// trade a slow tick asks for: a click resolves against where the player is GOING, which is what makes 250 ms
 /// gameplay feel like a response rather than a wait. A blocker that appeared in front of the step is caught at the
 /// moment it would start rather than at the moment the foot lands: the route is re-pathed ONCE from the current

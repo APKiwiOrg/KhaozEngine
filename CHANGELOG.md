@@ -5,6 +5,19 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.39.0
+
+Native Metal foliage pipeline creation works again after the shared Model fragment interface gained its LOD
+dissolve-complement input (#859).
+
+- A real Grimhollow window on native Metal crashed because the foliage vertex shader omitted the shared Model
+  fragment shader's location-10 dissolve-complement output. Foliage now writes the ordinary non-complement `0.0`
+  value on every vertex without changing its layout, wind, density, material, shadow or LOD behaviour.
+- A real native Metal foliage-pipeline test constructs and draws the shipped `FoliageInstanceData` layout through
+  the shared Model fragment shader, preventing the interface mismatch from recurring.
+- Two stale frame-upload attribution tests that assumed a 124-byte instance record now track the current 128-byte
+  record, including the dissolve-complement field.
+
 ## 18.38.0
 
 Live shadow-map layout changes and shared large-world TileWorld LOD keep a wide authored horizon populated without

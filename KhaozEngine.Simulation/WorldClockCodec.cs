@@ -40,7 +40,7 @@ public static class WorldClockCodec
         float timeOfDay = BinaryPrimitives.ReadSingleLittleEndian(data.Slice(0, 4));
         float dayLengthSeconds = BinaryPrimitives.ReadSingleLittleEndian(data.Slice(4, 4));
         float timeScale = BinaryPrimitives.ReadSingleLittleEndian(data.Slice(8, 4));
-        if (!float.IsFinite(timeOfDay) ||
+        if (!float.IsFinite(timeOfDay) || timeOfDay < 0f || timeOfDay >= 1f ||
             !float.IsFinite(dayLengthSeconds) || dayLengthSeconds <= 0f ||
             !float.IsFinite(timeScale) || timeScale < 0f)
         {

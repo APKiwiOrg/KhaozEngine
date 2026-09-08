@@ -72,6 +72,21 @@ public class WorldClockCodecTests
     }
 
     [Theory]
+    [InlineData(-0.25f)]
+    [InlineData(1f)]
+    [InlineData(1.25f)]
+    public void TryDecodeState_TimeOfDayOutsideNormalizedRangeReturnsFalseAndDefault(float invalidTimeOfDay)
+    {
+        byte[] encoded = WorldClockCodec.EncodeState(new WorldClockState(invalidTimeOfDay, 300f, 2f));
+        WorldClockState decoded = new(0.5f, 300f, 2f);
+
+        bool decodedSuccessfully = WorldClockCodec.TryDecodeState(encoded, out decoded);
+
+        Assert.False(decodedSuccessfully);
+        Assert.Equal(default, decoded);
+    }
+
+    [Theory]
     [InlineData(0f)]
     [InlineData(-1f)]
     public void TryDecodeState_NonPositiveDayLengthReturnsFalseAndDefault(float invalidDayLength)

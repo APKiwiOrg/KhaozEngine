@@ -109,6 +109,39 @@ public class TileEntityInteractTests
         Assert.Equal(TileMoveMode.Run, state.Mode);
     }
 
+    [Fact]
+    public void Entity_interaction_domain_survives_a_cell_crossing_and_cancellation_normalizes_it()
+    {
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld(4, new RegionCoord(0, 0), new RegionCoord(1, 0));
+        var hub = new InMemoryTransportHub();
+        using TileWorldServer server = TileWorldServerTickTests.Server(doc, hub.Server, new TileCoord(60, 10, 0));
+        long player = server.SpawnPlayer(0, "a", "Ari");
+        long actor = server.SpawnActor(new TileCoord(70, 10, 0),
+            new TileActorSpawn(10, AttackTicks: 4, TileDirection.W));
+        var entities = new List<long>();
+        server.OnInteractEntity += (_, _, target) => entities.Add(target);
+
+        server.Enqueue(0, 0, TileCommand.InteractEntity(actor, TileMoveMode.Run));
+        server.Tick(TileCombatHarness.Tick);
+        Assert.True(server.TryGetPlayerState(0, out TileMoveState approaching));
+        Assert.Equal(actor, approaching.InteractTarget);
+        Assert.Equal(TileInteractionDomain.Entity, approaching.InteractDomain);
+        Assert.True(server.CancelPendingAction(0));
+        Assert.True(server.TryGetPlayerState(0, out TileMoveState cancelled));
+        Assert.Equal(0, cancelled.InteractTarget);
+        Assert.Equal(TileInteractionDomain.AuthoredObject, cancelled.InteractDomain);
+
+        server.Enqueue(0, 1, TileCommand.InteractEntity(actor, TileMoveMode.Run));
+        for (int i = 0; i < 40 && entities.Count == 0; i++) server.Tick(TileCombatHarness.Tick);
+
+        Assert.Equal(new[] { actor }, entities);
+        Assert.True(server.Host.TryGetOwner(player, out KhaozEngine.Sharding.CellSim owner, out _));
+        Assert.Equal(new KhaozEngine.Sharding.CellCoord(1, 0), owner.Coord);
+        Assert.True(server.TryGetPlayerState(0, out TileMoveState arrived));
+        Assert.Equal(0, arrived.InteractTarget);
+        Assert.Equal(TileInteractionDomain.AuthoredObject, arrived.InteractDomain);
+    }
+
     sealed class FixedTarget(long id, TileRect footprint, int plane) : ITileTargets
     {
         public bool TryGetFootprint(long target, out TileRect found, out int foundPlane)

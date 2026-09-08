@@ -105,6 +105,21 @@ public class TileReplicationTests
             entityClient.Query().With<TileMoveState>().Entities().Single());
         Assert.Equal(7, decodedEntity.InteractTarget);
         Assert.Equal(TileInteractionDomain.Entity, decodedEntity.InteractDomain);
+
+        // The old codec consumes its original 41 bytes and returns. Extension framing advances over the optional
+        // tail before reading the next component, so a new entity-interaction state does not misalign an old view.
+        var legacyRegistry = new ReplicationRegistry();
+        legacyRegistry.Register<TileMoveState>(TileProtocol.TileMoveStateTypeId,
+            static (_, _) => { },
+            static reader =>
+            {
+                Assert.Equal(41, reader.ReadBytes(41).Length);
+                return TileMoveState.At(default, TileDirection.S);
+            },
+            discreteSample: true);
+        var legacyClient = new World();
+        Assert.True(new ClientReplicationView(legacyRegistry).TryApply(legacyClient, entitySnapshot, out _));
+        Assert.Single(legacyClient.Query().With<TileMoveState>().Entities());
     }
 
     // The glide's origin has no plane of its own on the wire: a step never changes plane, so it takes the tile's.

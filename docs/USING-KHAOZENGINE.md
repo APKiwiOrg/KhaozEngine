@@ -3011,6 +3011,26 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       ShadowCascadeCount = 4 }`). Writing `ShadowMapResolution` or `ShadowCascadeCount` on a live scene's `ShadowSettings`
       now throws `InvalidOperationException` instead of silently no-opping. Drop the count or resolution to 1024/512 for a
       low-end profile. Recreate the scene to change atlas sizing at runtime.
+    - **Persisted detail setting.** Persist `ShadowMapDetail` in the game's graphics settings, not its numeric atlas
+      resolution. Map that enum through `ShadowSettings.ForDetail` before the `GameApp3D` base constructor builds the
+      scene:
+
+      ```csharp
+      public sealed class GraphicsSettings
+      {
+          public ShadowMapDetail ShadowDetail { get; init; } = ShadowMapDetail.Default;
+      }
+
+      public sealed class MyGame3D : GameApp3D
+      {
+          public MyGame3D(GameAppOptions options, GraphicsSettings settings)
+              : base(options, ShadowSettings.ForDetail(settings.ShadowDetail)) { }
+      }
+      ```
+
+      Each profile selects `ShadowMode.ShadowMap`: `Low` uses 1024, `Default` uses 2048, and `High` uses 3072 pixels
+      per cascade. A settings screen must save a changed detail choice and restart the game, or explicitly rebuild the
+      scene, because the atlas resolution is frozen after construction.
     - Other knobs (all on `ShadowSettings`, runtime-mutable): `ShadowNearDistance` (default `16`, the near cascade's view-depth
       reach from the camera - smaller packs texels onto the near action, at the cost of handing off to a coarser
       cascade sooner). `ShadowStrength` (0..1 shadow darkness, default `0.85`).

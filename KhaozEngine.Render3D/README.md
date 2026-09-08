@@ -182,6 +182,20 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   own blob (ground-receiver-only: terrain and rigid props receive the blob, characters do not - the Y-band never
   repaints a character's legs). Radius follows the caster footprint. Strength fades with height above ground
   (`ShadowSettings.BlobFadeHeight`) so a jumping caster's blob shrinks + lightens.
+  - `ShadowSettings.ForDetail(ShadowMapDetail)` creates the full directional shadow-map profiles below. Every profile
+    selects `ShadowMode.ShadowMap`.
+
+    | Detail | Per-cascade resolution |
+    | --- | ---: |
+    | `ShadowMapDetail.Low` | 1024 |
+    | `ShadowMapDetail.Default` | 2048 |
+    | `ShadowMapDetail.High` | 3072 |
+
+    ```csharp
+    ShadowSettings shadows = ShadowSettings.ForDetail(ShadowMapDetail.Default);
+    var game = new MyGame(options, shadows);
+    ```
+
   - `ShadowMode.ShadowMap`: a depth-only pass renders the instanced casters (models cast, and splat terrain receives
   only unless `Scene3D.TerrainCastsShadows` is set) into
   a CASCADED ortho light-space depth atlas - `ShadowCascadeCount` cascades (default 3) side by side in one R32F

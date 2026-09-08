@@ -427,20 +427,29 @@ namespace KhaozEngine.Terrain
             for (int i = 0; i < _layers.Count; i++)
             {
                 PropLayer layer = _layers[i];
-                if (layer.HasHlod && !buildHlod) continue;
                 IReadOnlyList<PropPlacement> mergePlacements = scatter?[i] ?? Array.Empty<PropPlacement>();
                 PropClusterKey key = ClusterKey(coord, i);
-                long generation = layer.HasHlod
-                    ? _propGenerations.AddOrUpdate(key, 1, static (_, current) => current + 1)
-                    : 0;
-                if (layer.HasHlod) _propClusters.Invalidate(key);
+                long generation;
+                if (layer.HasHlod && buildHlod)
+                {
+                    generation = _propGenerations.AddOrUpdate(key, 1, static (_, current) => current + 1);
+                    _propClusters.Invalidate(key);
+                }
+                else if (layer.HasHlod)
+                {
+                    if (!_propGenerations.TryGetValue(key, out generation)) continue;
+                }
+                else
+                {
+                    generation = 0;
+                }
                 PropClusterCpuBuild cluster = _propClusters.BuildCpu(new PropClusterBuildRequest(
                     key, generation, ChunkGrid.AreaOf(coord, _chunkSize), layer, mergePlacements));
                 if (ring != ChunkRing.Gameplay)
                     cluster = cluster.WithPlacementBatch(Array.Empty<PropPlacement>());
                 clusterBuilds[i] = cluster;
                 anyClusterBuild = true;
-                if (layer.HasHlod) hlod![i] = cluster.MergedMesh;
+                if (buildHlod && layer.HasHlod) hlod![i] = cluster.MergedMesh;
             }
             cpu.PropClusters = anyClusterBuild ? clusterBuilds : null;
             cpu.HlodMeshes = hlod;

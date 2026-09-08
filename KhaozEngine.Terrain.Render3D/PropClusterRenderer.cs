@@ -33,6 +33,8 @@ namespace KhaozEngine.Terrain
         readonly Action<string, Exception> _logFailure;
         readonly Dictionary<PropClusterKey, Cluster> _clusters = new();
         readonly Dictionary<PropClusterKey, long> _latestGenerations = new();
+        readonly Dictionary<PropClusterKey, long> _epochs = new();
+        readonly HashSet<PropClusterKey> _retired = new();
         readonly HashSet<PropClusterKey> _invalidated = new();
         readonly HashSet<(PropClusterKey Key, long Generation)> _loggedFailures = new();
         long _hlodBuilt;
@@ -77,17 +79,21 @@ namespace KhaozEngine.Terrain
 
             PropLayer layer = request.Layer;
             PropPlacement[] placements = Copy(request.Placements);
+            long epoch;
             lock (_sync)
             {
+                if (!_epochs.TryGetValue(request.Key, out epoch))
+                    _epochs[request.Key] = epoch = 0;
+                _retired.Remove(request.Key);
                 if (_clusters.TryGetValue(request.Key, out Cluster? current) &&
                     current.Generation == request.Generation && !_invalidated.Contains(request.Key))
                     return new PropClusterCpuBuild(request.Key, request.Generation, request.Area, layer,
-                        placements, null, reusesCurrent: true, countsHlod: layer.HasHlod, failure: null);
+                        placements, null, reusesCurrent: true, countsHlod: layer.HasHlod, failure: null, epoch);
             }
 
             if (!layer.HasHlod)
                 return new PropClusterCpuBuild(request.Key, request.Generation, request.Area, layer,
-                    placements, null, reusesCurrent: false, countsHlod: false, failure: null);
+                    placements, null, reusesCurrent: false, countsHlod: false, failure: null, epoch);
 
             Exception? failure = null;
             for (int attempt = 1; attempt <= MaxBuildAttempts; attempt++)
@@ -101,7 +107,7 @@ namespace KhaozEngine.Terrain
                     Interlocked.Add(ref _hlodBuiltBytes, MeshBytes(result));
                     Interlocked.Add(ref _hlodMalformedCornersDropped, malformedCornersDropped);
                     return new PropClusterCpuBuild(request.Key, request.Generation, request.Area, layer,
-                        placements, result, reusesCurrent: false, countsHlod: true, failure: null);
+                        placements, result, reusesCurrent: false, countsHlod: true, failure: null, epoch);
                 }
                 catch (Exception ex)
                 {
@@ -115,7 +121,7 @@ namespace KhaozEngine.Terrain
                     _logFailure($"Prop cluster '{request.Key.LayerId}' generation {request.Generation} failed after {MaxBuildAttempts} attempts", failure!);
             }
             return new PropClusterCpuBuild(request.Key, request.Generation, request.Area, layer,
-                placements, null, reusesCurrent: false, countsHlod: true, failure: failure);
+                placements, null, reusesCurrent: false, countsHlod: true, failure: failure, epoch);
         }
 
         /// <summary>Apply a completed CPU build on the scene thread.</summary>
@@ -128,6 +134,7 @@ namespace KhaozEngine.Terrain
 
             lock (_sync)
             {
+                if (!_epochs.TryGetValue(key, out long epoch) || build.Epoch != epoch || _retired.Contains(key)) return;
                 if (_latestGenerations.TryGetValue(key, out long latest) && build.Generation < latest) return;
                 if (!_latestGenerations.TryGetValue(key, out latest) || build.Generation > latest)
                     _latestGenerations[key] = build.Generation;
@@ -174,6 +181,8 @@ namespace KhaozEngine.Terrain
             if (_disposed) return;
             lock (_sync)
             {
+                _epochs[key] = _epochs.TryGetValue(key, out long epoch) ? epoch + 1 : 1;
+                _retired.Add(key);
                 if (_clusters.Remove(key, out Cluster? cluster) && cluster.Handle is { } handle)
                     _backend.UnloadMesh(handle);
                 _invalidated.Remove(key);
@@ -232,6 +241,8 @@ namespace KhaozEngine.Terrain
                     if (cluster.Handle is { } handle) _backend.UnloadMesh(handle);
                 _clusters.Clear();
                 _latestGenerations.Clear();
+                _epochs.Clear();
+                _retired.Clear();
                 _invalidated.Clear();
                 _loggedFailures.Clear();
             }

@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 using KhaozEngine.Terrain;
+using KhaozEngine.Tests.Gpu;
 using Xunit;
 
 namespace KhaozEngine.Tests.Terrain
@@ -153,6 +155,84 @@ namespace KhaozEngine.Tests.Terrain
         }
 
         [Fact]
+        public void Unload_rejects_a_completed_pre_unload_build()
+        {
+            using var rig = new PropClusterRig();
+            PropClusterKey key = new("trees", 0, 0, 0);
+            PropClusterCpuBuild completed = rig.Build(key, generation: 1);
+
+            rig.Renderer.Unload(key);
+            rig.Apply(key, completed);
+            rig.Renderer.Draw(Vector3.Zero);
+
+            Assert.Equal(0, rig.LoadCount);
+            Assert.Equal(0, rig.LiveHandleCount);
+            Assert.Null(rig.Renderer.HandleOf(key));
+            Assert.Equal(0, rig.DrawCount);
+        }
+
+        [Fact]
+        public void Fresh_build_after_unload_reopens_the_key()
+        {
+            using var rig = new PropClusterRig();
+            PropClusterKey key = new("trees", 0, 0, 0);
+            PropClusterCpuBuild retired = rig.Build(key, generation: 1);
+            rig.Renderer.Unload(key);
+            rig.Apply(key, retired);
+
+            rig.Apply(key, rig.Build(key, generation: 1));
+
+            Assert.Equal(1, rig.LoadCount);
+            Assert.Equal(1, rig.LiveHandleCount);
+        }
+
+        [GpuFact]
+        public void Decor_first_then_gameplay_refreshes_props_without_replacing_the_hlod_handle()
+        {
+            const float chunkSize = 64f;
+            var placement = new PropPlacement("oak", 8f, 1f, 8f, 1f, 0f, 0);
+            GltfMesh mesh = MeshPrimitives.Box(1f);
+            Scene3DChunkSink sink = null!;
+            bool handleReused = false;
+            int gameplayProps = 0;
+            RenderFrameStats stats = default;
+
+            Render3DSnapshot.Capture(64, 64,
+                setup: scene =>
+                {
+                    scene.FrustumCulling = false;
+                    scene.Post.Starfield = false;
+                    scene.Post.Outline = false;
+                    var meshes = new Dictionary<string, MeshHandle> { ["oak"] = scene.LoadMesh(mesh) };
+                    var sources = new Dictionary<string, GltfMesh> { ["oak"] = mesh };
+                    PropLayer layer = PropLayer.PlacementLayer(new[] { placement }, meshes, drawRadius: 500f)
+                        .WithHlod(sources, hlodDistance: 100f, weldCell: 0f);
+                    sink = new Scene3DChunkSink(scene, Flat(1f), new[] { layer }, chunkSize);
+                    var coord = new ChunkCoord(0, 0);
+                    object handle = sink.Load(coord, lod: 2, ring: ChunkRing.Decor);
+                    var load = (Scene3DChunkSink.ChunkLoad)handle;
+                    MeshHandle before = load.HlodMeshHandles![0]!.Value;
+
+                    sink.ReLod(coord, handle, lod: 0, ring: ChunkRing.Gameplay);
+
+                    MeshHandle after = load.HlodMeshHandles![0]!.Value;
+                    handleReused = before.Index == after.Index && before.Generation == after.Generation;
+                    gameplayProps = load.LayerProps[0].Count;
+                    scene.Camera.Frame(new Vector3(8f, 3f, 8f), new Vector3(20f, 12f, 20f));
+                },
+                drawFrame: scene =>
+                {
+                    sink.Draw(new Vector3(8f, 1f, 8f));
+                    stats = scene.LastFrameStats;
+                },
+                frames: 2);
+
+            Assert.True(handleReused);
+            Assert.Equal(1, gameplayProps);
+            Assert.Equal(2, stats.Instances);
+        }
+
+        [Fact]
         public void BuildCpu_detaches_the_request_lists_and_contains_no_gpu_handle()
         {
             using var rig = new PropClusterRig();
@@ -197,6 +277,7 @@ namespace KhaozEngine.Tests.Terrain
             public int LoadCount => _backend.LoadCount;
             public int UnloadCount => _backend.UnloadCount;
             public float LastDrawX => _backend.LastDrawX;
+            public int DrawCount => _backend.DrawCount;
 
             public PropClusterCpuBuild Build(PropClusterKey key, long generation)
                 => Build(key, generation, Placement);
@@ -238,6 +319,7 @@ namespace KhaozEngine.Tests.Terrain
             public int LoadCount;
             public int UnloadCount;
             public float LastDrawX;
+            public int DrawCount;
 
             public MeshHandle LoadMesh(GltfMesh mesh)
             {
@@ -256,12 +338,33 @@ namespace KhaozEngine.Tests.Terrain
             public void DrawProps(IReadOnlyList<PropPlacement> placements, PropLayer layer, Vector3 focus,
                                   float dissolveFloor)
             {
-                if (placements.Count > 0) LastDrawX = placements[0].X;
+                if (placements.Count > 0)
+                {
+                    LastDrawX = placements[0].X;
+                    DrawCount++;
+                }
             }
 
             public void DrawMerged(MeshHandle handle, PropLayer layer, float dissolve)
             {
+                DrawCount++;
             }
         }
+
+        static TerrainField Flat(float height) => new(new TerrainConfig
+        {
+            WaterLevel = 0f,
+            Biomes = new[]
+            {
+                new BiomeBand
+                {
+                    Start = float.NegativeInfinity,
+                    End = float.PositiveInfinity,
+                    Biome = BiomeId.Meadow,
+                    BaseHeight = height,
+                    HillAmplitude = 0f,
+                },
+            },
+        });
     }
 }

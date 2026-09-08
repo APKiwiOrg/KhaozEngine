@@ -18,10 +18,11 @@ namespace KhaozEngine.Terrain
         internal bool ReusesCurrent { get; }
         internal bool CountsHlod { get; }
         internal Exception? Failure { get; }
+        internal long Epoch { get; }
 
         internal PropClusterCpuBuild(PropClusterKey key, long generation, RectArea area, PropLayer layer,
                                      IReadOnlyList<PropPlacement> placements, GltfMesh? mergedMesh,
-                                     bool reusesCurrent, bool countsHlod, Exception? failure)
+                                     bool reusesCurrent, bool countsHlod, Exception? failure, long epoch)
         {
             Key = key;
             Generation = generation;
@@ -32,9 +33,10 @@ namespace KhaozEngine.Terrain
             ReusesCurrent = reusesCurrent;
             CountsHlod = countsHlod;
             Failure = failure;
+            Epoch = epoch;
         }
 
         internal PropClusterCpuBuild WithPlacementBatch(IReadOnlyList<PropPlacement> placements) =>
-            new(Key, Generation, Area, Layer, placements, MergedMesh, ReusesCurrent, CountsHlod, Failure);
+            new(Key, Generation, Area, Layer, placements, MergedMesh, ReusesCurrent, CountsHlod, Failure, Epoch);
     }
 }

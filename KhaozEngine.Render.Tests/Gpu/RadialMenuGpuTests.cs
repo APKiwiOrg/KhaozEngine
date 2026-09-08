@@ -28,10 +28,12 @@ namespace KhaozEngine.Tests.Gpu
             Rgba enabled = Pixel(rgba, 336, 220);
             Rgba disabled = Pixel(rgba, 256, 300);
             Rgba selected = Pixel(rgba, 157, 385);
+            Rgba centerPlate = Pixel(rgba, 256, 220);
 
             Assert.True(CountNonTransparent(rgba) > 20000, "the radial composition must paint visible coverage");
             Assert.True(active.A > 0 && enabled.A > 0 && disabled.A > 0 && selected.A > 0,
                 "each sampled state must paint a nontransparent pixel");
+            Assert.True(centerPlate.A > 0, "the centre plate must paint behind its retained text");
             Assert.NotEqual(enabled, disabled);
             Assert.NotEqual(enabled, active);
             Assert.NotEqual(enabled, selected);
@@ -51,9 +53,28 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuFact]
+        public void SafeBounds_change_between_update_and_draw_matches_a_fresh_current_layout()
+        {
+            Assert.Equal(CaptureWithCurrentSafeBounds(liveChange: false), CaptureWithCurrentSafeBounds(liveChange: true));
+        }
+
+        [GpuFact]
         public void Disabled_alpha_applies_to_every_wedge_visual_channel()
         {
-            Assert.Equal(0, CountNonTransparent(CaptureFullyDisabled()));
+            byte[] rgba = CaptureFullyDisabled();
+            Rgba surface = Pixel(rgba, 256, 220);
+            Rgba highlight = Pixel(rgba, 306, 220);
+            Rgba border = Pixel(rgba, 308, 220);
+            Rgba shadow = Pixel(rgba, 296, 260);
+
+            Assert.True(CountNonTransparentInsideCircle(rgba, Center, 60f) > 5000,
+                "the independent centre plate must remain visible");
+            Assert.Equal(0, CountNonTransparentOutsideCircle(rgba, Center, 60f));
+            Assert.True(surface.A > 0 && highlight.A > 0 && border.A > 0 && shadow.A > 0,
+                $"centre layers must paint, got {surface}, {highlight}, {border}, and {shadow}");
+            Assert.NotEqual(surface, highlight);
+            Assert.NotEqual(highlight, border);
+            Assert.NotEqual(surface, shadow);
         }
 
         [GpuFact]
@@ -112,6 +133,32 @@ namespace KhaozEngine.Tests.Gpu
 
                 menu.Theme = TestTheme();
                 menu = ReopenMenu(menu, "unknown");
+                ctx.Batch.Begin(viewport);
+                menu.Draw(ctx.Batch, white, font, icons);
+                ctx.Batch.End();
+            });
+
+        static byte[] CaptureWithCurrentSafeBounds(bool liveChange) =>
+            Render2DSnapshot.Capture(Width, Height, Color.Transparent, ctx =>
+            {
+                SpriteFont font = ctx.LoadFont(FontPath, 18f, oversample: 1);
+                Texture2D white = ctx.CreateTexture([255, 255, 255, 255], 1, 1);
+                IconAtlas icons = IconAtlas.Bake(ctx, cell: 32);
+                var currentSafeBounds = new Rect(0f, 0f, 360f, Height);
+                var menu = new RadialMenu
+                {
+                    SafeBounds = liveChange
+                        ? new Rect(0f, 0f, Width, Height)
+                        : currentSafeBounds,
+                    Theme = TestTheme(),
+                };
+                ReopenMenu(menu, westIcon: null);
+                menu.Update(new Pointer(), 2f);
+                if (liveChange)
+                    menu.SafeBounds = currentSafeBounds;
+
+                var viewport = new DesignViewport(Width, Height, ScaleMode.Fit);
+                viewport.Update(Width, Height);
                 ctx.Batch.Begin(viewport);
                 menu.Draw(ctx.Batch, white, font, icons);
                 ctx.Batch.End();
@@ -211,6 +258,30 @@ namespace KhaozEngine.Tests.Gpu
             int count = 0;
             for (int i = 3; i < rgba.Length; i += 4)
                 if (rgba[i] != 0) count++;
+            return count;
+        }
+
+        static int CountNonTransparentInsideCircle(byte[] rgba, Vector2 center, float radius) =>
+            CountNonTransparentByCircle(rgba, center, radius, inside: true);
+
+        static int CountNonTransparentOutsideCircle(byte[] rgba, Vector2 center, float radius) =>
+            CountNonTransparentByCircle(rgba, center, radius, inside: false);
+
+        static int CountNonTransparentByCircle(byte[] rgba, Vector2 center, float radius, bool inside)
+        {
+            int count = 0;
+            float radiusSquared = radius * radius;
+            for (int y = 0; y < Height; y++)
+            {
+                for (int x = 0; x < Width; x++)
+                {
+                    float distanceSquared = Vector2.DistanceSquared(new Vector2(x, y), center);
+                    if ((distanceSquared <= radiusSquared) != inside)
+                        continue;
+                    if (rgba[(y * Width + x) * 4 + 3] != 0)
+                        count++;
+                }
+            }
             return count;
         }
 

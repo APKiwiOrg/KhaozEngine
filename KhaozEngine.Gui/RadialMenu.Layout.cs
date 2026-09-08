@@ -29,6 +29,7 @@ namespace KhaozEngine.Gui
         {
             ValidateEntryCount(entryCount);
             ValidateIndex(entryIndex, entryCount, nameof(entryIndex));
+            ValidateGeometry(metrics, entryCount);
 
             float step = Tau / entryCount;
             float centre = -MathF.PI / 2f + entryIndex * step;
@@ -43,7 +44,15 @@ namespace KhaozEngine.Gui
             int choiceCount,
             RadialMenuMetrics metrics)
         {
-            Rect bounds = ComputeBounds(requestedCenter, entryCount, choiceCount, metrics);
+            ValidateEntryCount(entryCount);
+            ValidateChoiceCount(choiceCount);
+            ValidateGeometry(metrics, entryCount);
+            ValidatePoint(requestedCenter, nameof(requestedCenter));
+            ValidateRectangle(safeArea, nameof(safeArea));
+
+            Rect bounds = ComputeBoundsCore(requestedCenter, choiceCount, metrics);
+            ValidateRectangle(bounds, nameof(metrics));
+            ValidateSafeAreaCanContain(bounds, safeArea, metrics);
             float minimumX = safeArea.X + metrics.Margin;
             float maximumX = safeArea.Right - metrics.Margin;
             float minimumY = safeArea.Y + metrics.Margin;
@@ -51,7 +60,9 @@ namespace KhaozEngine.Gui
 
             float shiftX = ClampShift(bounds.X, bounds.Right, minimumX, maximumX);
             float shiftY = ClampShift(bounds.Y, bounds.Bottom, minimumY, maximumY);
-            return requestedCenter + new Vector2(shiftX, shiftY);
+            Vector2 center = requestedCenter + new Vector2(shiftX, shiftY);
+            ValidatePoint(center, nameof(requestedCenter));
+            return center;
         }
 
         public static Rect ComputeBounds(
@@ -62,7 +73,19 @@ namespace KhaozEngine.Gui
         {
             ValidateEntryCount(entryCount);
             ValidateChoiceCount(choiceCount);
+            ValidateGeometry(metrics, entryCount);
+            ValidatePoint(center, nameof(center));
 
+            Rect bounds = ComputeBoundsCore(center, choiceCount, metrics);
+            ValidateRectangle(bounds, nameof(metrics));
+            return bounds;
+        }
+
+        static Rect ComputeBoundsCore(
+            Vector2 center,
+            int choiceCount,
+            RadialMenuMetrics metrics)
+        {
             float left = center.X - metrics.OuterRadius;
             float top = center.Y - metrics.OuterRadius;
             float right = center.X + metrics.OuterRadius;
@@ -70,8 +93,8 @@ namespace KhaozEngine.Gui
 
             if (choiceCount > 0)
             {
-                Rect first = ChoiceBounds(center, choiceCount, 0, metrics);
-                Rect last = ChoiceBounds(center, choiceCount, choiceCount - 1, metrics);
+                Rect first = ChoiceBoundsCore(center, choiceCount, 0, metrics);
+                Rect last = ChoiceBoundsCore(center, choiceCount, choiceCount - 1, metrics);
                 left = MathF.Min(left, first.X);
                 right = MathF.Max(right, last.Right);
                 bottom = last.Bottom;
@@ -87,6 +110,9 @@ namespace KhaozEngine.Gui
             RadialMenuMetrics metrics)
         {
             ValidateEntryCount(entryCount);
+            ValidateGeometry(metrics, entryCount);
+            ValidatePoint(point, nameof(point));
+            ValidatePoint(center, nameof(center));
 
             Vector2 offset = point - center;
             float radiusSquared = offset.LengthSquared();
@@ -114,7 +140,20 @@ namespace KhaozEngine.Gui
         {
             ValidateChoiceCount(choiceCount);
             ValidateIndex(choiceIndex, choiceCount, nameof(choiceIndex));
+            ValidateGeometry(metrics);
+            ValidatePoint(center, nameof(center));
 
+            Rect bounds = ChoiceBoundsCore(center, choiceCount, choiceIndex, metrics);
+            ValidateRectangle(bounds, nameof(metrics));
+            return bounds;
+        }
+
+        static Rect ChoiceBoundsCore(
+            Vector2 center,
+            int choiceCount,
+            int choiceIndex,
+            RadialMenuMetrics metrics)
+        {
             float width = choiceCount * metrics.FooterButtonSize.X + (choiceCount - 1) * metrics.FooterGap;
             float x = center.X - width / 2f + choiceIndex * (metrics.FooterButtonSize.X + metrics.FooterGap);
             float y = center.Y + metrics.OuterRadius + metrics.FooterGap;
@@ -129,10 +168,14 @@ namespace KhaozEngine.Gui
         {
             ValidateEntryCount(entryCount);
             ValidateIndex(entryIndex, entryCount, nameof(entryIndex));
+            ValidateGeometry(metrics, entryCount);
+            ValidatePoint(center, nameof(center));
 
             float angle = -MathF.PI / 2f + entryIndex * Tau / entryCount;
             float radius = (metrics.InnerRadius + metrics.OuterRadius) / 2f;
-            return center + new Vector2(MathF.Cos(angle), MathF.Sin(angle)) * radius;
+            Vector2 point = center + new Vector2(MathF.Cos(angle), MathF.Sin(angle)) * radius;
+            ValidatePoint(point, nameof(metrics));
+            return point;
         }
 
         static float ClampShift(float start, float end, float minimum, float maximum)

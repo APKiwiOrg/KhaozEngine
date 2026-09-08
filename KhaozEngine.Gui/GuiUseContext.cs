@@ -1,3 +1,4 @@
+using System;
 using KhaozEngine.Primitives;
 using KhaozEngine.Windowing;
 
@@ -31,6 +32,7 @@ namespace KhaozEngine.Gui
 
         public bool Begin(Pointer pointer, in UsePayload payload)
         {
+            ArgumentNullException.ThrowIfNull(pointer);
             Payload = payload;
             IsActive = true;
             pointer.ConsumeGesture();
@@ -39,6 +41,7 @@ namespace KhaozEngine.Gui
 
         public bool Complete(Pointer pointer, object? targetId, int targetIndex = -1, bool accepted = true)
         {
+            ArgumentNullException.ThrowIfNull(pointer);
             if (!IsActive || !accepted) return false;
 
             LastUse = new UseResult(Payload, new UseTarget(targetId, targetIndex));
@@ -56,6 +59,7 @@ namespace KhaozEngine.Gui
             int targetIndex = -1,
             bool accepted = true)
         {
+            ArgumentNullException.ThrowIfNull(pointer);
             if (!IsActive || !accepted || !pointer.IsTapIn(bounds)) return false;
             return Complete(pointer, targetId, targetIndex);
         }

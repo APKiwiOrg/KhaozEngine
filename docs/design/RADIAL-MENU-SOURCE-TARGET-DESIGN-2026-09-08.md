@@ -133,6 +133,10 @@ is the server-sync path for a consumer that receives preferences after construct
 The requested anchor is normally the interaction pointer or projected world target. The wheel computes one centre
 that keeps its outer radius, detail line, and entire choice strip inside `SafeBounds` plus the configured margin.
 Clamping moves the whole composition together. It never clips the footer separately or changes wedge order.
+The requested anchor is retained for the lifetime of the open menu. Valid live changes to `Metrics` or `SafeBounds`
+immediately reclamp from that anchor, replace the complete `Bounds`, and invalidate every affected draw cache.
+When a setter follows `Update` in the same frame, the new bounds are also reserved on that frame's pointer.
+Rejected setters leave their prior value and the current layout unchanged.
 
 Entry zero begins at twelve o'clock and entries proceed clockwise in caller order. Every wedge shares one inner
 radius, outer radius, and angular gap. The inner disc carries the title and the active entry detail. Icons sit near
@@ -145,6 +149,10 @@ a 960 by 540 design surface with eight entries and four footer choices.
 
 Pure helpers calculate the clamped centre, complete bounds, wedge angle range, wedge label point, footer button
 rectangles, and entry at a point. The draw and update paths consume those helpers rather than restating geometry.
+They share the validation path used by `Open`. Non-finite points, rectangles, and metric fields are rejected.
+Radii, wedge spacing, sizes, gaps, margin, border thickness, shadow offset, and sheen speed obey their public range
+contracts. Negative rectangle dimensions are rejected. A safe area that cannot hold the complete composition plus
+both margins is invalid rather than an invitation to overflow.
 
 ## Pointer interaction
 
@@ -183,15 +191,16 @@ visual precedence without destroying the keyboard focus position.
 The requested look is a themed illusion, not a backdrop compositor. The widget draws:
 
 1. a soft offset shadow beneath every wedge and the centre disc
-2. a translucent surface band
+2. a translucent surface band and centre surface
 3. a faint upper-edge highlight and inner rim
 4. the configured border
 5. an accent wash on hover or focus
 6. a slow, low-alpha sheen travelling around the ring
 
-The footer uses the same translucent surface, border, selected accent, and shadow. Disabled options reduce text,
-icon, border, and fill alpha together. The default palette comes from `GuiTheme`. Grimhollow will supply its own
-stone, timber, and brass colours.
+The footer uses the same translucent surface, border, selected accent, and shadow. The centre plate is independent
+of entry enablement, so it and its text backing remain visible when every wedge is disabled. Disabled options reduce
+their text, icon, border, and fill alpha together. The default palette comes from `GuiTheme`. Grimhollow will supply
+its own stone, timber, and brass colours.
 
 There is no framebuffer sampling, background blur, refraction, distortion pass, new blend mode, or shader. The
 result must render through every existing backend because it is ordinary Render2D geometry.
@@ -243,6 +252,7 @@ the caller's pre-validation says the target is accepted. Success consumes the ta
 halves, clears the active source, and raises a one-frame flag. A refused target leaves the source active and does
 not consume. `CompleteIn` adds the press-origin-safe rectangle hit test. A world raycast caller uses `Complete`
 after its own hit test.
+All three pointer-taking methods reject null before reading or mutating context state, so a failed call is atomic.
 
 `Cancel` records the cancelled payload, clears the source, and is safe when idle. The context draws nothing. Source
 highlighting, hover text, invalid-combination feedback, target meaning, and every resulting action remain caller
@@ -265,18 +275,22 @@ Headless tests cover:
 - one through eight entry geometry, zero through eight choices, and both upper-bound refusals
 - twelve-o'clock entry zero and clockwise stable ordering
 - clamping of the wheel and footer as one composition on every edge and corner
+- live radius, footer, and safe-area changes across layout, hit testing, blocking, dismissal, and clamping
+- invalid and non-finite geometry, exact valid edges, undersized safe bounds, and atomic setter refusal
 - polar hit testing at boundaries, gaps, the inner disc, and outside the ring
 - disabled entry and choice refusal
 - opening-gesture latching, outside dismissal, click-through blocking, and gesture consumption
 - entry-local choice memory, `SetEntryChoice`, and the combined selection result
 - keyboard and gamepad focus movement, wrapping, disabled-option skipping, select, and cancel
 - every one-frame flag clearing on the next update
-- `GuiUseContext` replacement, completion, refusal, cancellation, rectangle targeting, and opaque payload identity
+- `GuiUseContext` replacement, completion, refusal, cancellation, rectangle targeting, opaque payload identity, and
+  atomic null rejection
 - zero steady-state update allocation after warmup
 
-A focused render test draws the default wheel with icons, disabled state, selected footer choice, hover accent, and
-nonzero sheen time. It asserts visible alpha coverage and distinct enabled, disabled, and selected samples through
-the existing Render2D snapshot path. No cross-backend golden family is needed because no backend or shader changes.
+A focused render test draws the default wheel and centre plate with icons, disabled state, selected footer choice,
+hover accent, and nonzero sheen time. It asserts visible centre coverage, persistent centre coverage when every
+entry channel is transparent, and distinct enabled, disabled, and selected samples through the existing Render2D
+snapshot path. No cross-backend golden family is needed because no backend or shader changes.
 
 ## Documentation and release
 

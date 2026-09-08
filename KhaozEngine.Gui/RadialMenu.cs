@@ -13,6 +13,7 @@ namespace KhaozEngine.Gui
         ResolvedRadialMenuEntry[] _entries = [];
         ResolvedRadialMenuChoice[] _choices = [];
         long[] _entryChoiceTags = [];
+        Vector2 _requestedAnchor;
         Vector2 _center;
         int _focusedEntryIndex = -1;
         int _pointerEntryIndex = -1;
@@ -21,9 +22,43 @@ namespace KhaozEngine.Gui
         bool _openedThisFrame;
         bool _openingGestureLatch;
         float _sheenPhase;
+        Pointer? _blockingPointer;
+        RadialMenuMetrics _metrics = RadialMenuMetrics.Default;
+        Rect _safeBounds;
 
-        public RadialMenuMetrics Metrics { get; set; } = RadialMenuMetrics.Default;
-        public Rect SafeBounds { get; set; }
+        public RadialMenuMetrics Metrics
+        {
+            get => _metrics;
+            set
+            {
+                ValidateGeometry(value);
+                if (IsOpen)
+                {
+                    (Vector2 center, Rect bounds) = ComputeLayout(_requestedAnchor, _safeBounds, value);
+                    _metrics = value;
+                    ApplyLayout(center, bounds);
+                    return;
+                }
+                _metrics = value;
+            }
+        }
+
+        public Rect SafeBounds
+        {
+            get => _safeBounds;
+            set
+            {
+                ValidateRectangle(value, nameof(SafeBounds));
+                if (IsOpen)
+                {
+                    (Vector2 center, Rect bounds) = ComputeLayout(_requestedAnchor, value, _metrics);
+                    _safeBounds = value;
+                    ApplyLayout(center, bounds);
+                    return;
+                }
+                _safeBounds = value;
+            }
+        }
         public bool IsOpen { get; private set; }
         public int HoverIndex { get; private set; } = -1;
         public int ActiveIndex { get; private set; } = -1;
@@ -56,6 +91,9 @@ namespace KhaozEngine.Gui
             ValidateUniqueEntryTags(entries);
             if (choices != null) ValidateUniqueChoiceTags(choices);
 
+            Vector2 center = ComputeCenter(anchor, SafeBounds, entries.Count, choiceCount, Metrics);
+            Rect bounds = ComputeBounds(center, entries.Count, choiceCount, Metrics);
+
             var resolvedEntries = new ResolvedRadialMenuEntry[entries.Count];
             var resolvedChoices = new ResolvedRadialMenuChoice[choiceCount];
             var entryChoiceTags = new long[entries.Count];
@@ -85,8 +123,9 @@ namespace KhaozEngine.Gui
             _entries = resolvedEntries;
             _choices = resolvedChoices;
             _entryChoiceTags = entryChoiceTags;
-            _center = ComputeCenter(anchor, SafeBounds, entries.Count, choiceCount, Metrics);
-            Bounds = ComputeBounds(_center, entries.Count, choiceCount, Metrics);
+            _requestedAnchor = anchor;
+            _center = center;
+            Bounds = bounds;
             _focusedEntryIndex = FindFirstEnabledEntry();
             _pointerEntryIndex = -1;
             ActiveIndex = _focusedEntryIndex;
@@ -95,9 +134,28 @@ namespace KhaozEngine.Gui
             _openedThisFrame = true;
             _openingGestureLatch = true;
             _sheenPhase = 0f;
+            _blockingPointer = null;
             IsOpen = true;
             HoverIndex = -1;
             ClearFrameFlags();
+        }
+
+        (Vector2 Center, Rect Bounds) ComputeLayout(
+            Vector2 anchor,
+            Rect safeBounds,
+            RadialMenuMetrics metrics)
+        {
+            Vector2 center = ComputeCenter(anchor, safeBounds, _entries.Length, _choices.Length, metrics);
+            Rect bounds = ComputeBounds(center, _entries.Length, _choices.Length, metrics);
+            return (center, bounds);
+        }
+
+        void ApplyLayout(Vector2 center, Rect bounds)
+        {
+            _center = center;
+            Bounds = bounds;
+            InvalidateDrawLayoutCache();
+            _blockingPointer?.BlockRegion(bounds);
         }
 
         public bool SetEntryChoice(long entryTag, long choiceTag)
@@ -121,6 +179,7 @@ namespace KhaozEngine.Gui
             ClearFrameFlags();
             if (!IsOpen)
             {
+                _blockingPointer = null;
                 HoverIndex = -1;
                 _openedThisFrame = false;
                 _openingGestureLatch = false;
@@ -134,6 +193,7 @@ namespace KhaozEngine.Gui
             if (_openingGestureLatch && !openingFrame && pointer.IsPressOriginFresh)
                 _openingGestureLatch = false;
 
+            _blockingPointer = pointer;
             pointer.BlockRegion(Bounds);
 
             HoverIndex = EntryAt(pointer.Position, _center, _entries.Length, Metrics);
@@ -242,6 +302,7 @@ namespace KhaozEngine.Gui
             _pointerEntryIndex = -1;
             _focusedChoiceIndex = -1;
             _footerFocused = false;
+            _blockingPointer = null;
         }
 
         void ClearFrameFlags()

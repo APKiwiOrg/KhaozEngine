@@ -1777,8 +1777,21 @@ The matching pure geometry is public through `ComputeCenter`, `ComputeBounds`, `
 `ChoiceBounds`, and `LabelPoint`. `RadialMenuTheme` supplies the shadow, surface, upper highlight, borders,
 accent, text, disabled alpha, and sheen colors. A fresh default derives from the ambient `GuiTheme.Default`.
 
-The glass-like default is ordinary Render2D geometry with translucent colors, highlights, a shadow, borders,
-and a low-alpha moving sheen. It has no background blur, refraction, distortion, or framebuffer sampling. A
+`Metrics` and `SafeBounds` can change while the menu is open. Each valid assignment immediately reclamps from the
+anchor passed to `Open`, updates the complete `Bounds`, refreshes cached draw layout, and keeps the new bounds
+blocked when the assignment follows `Update` in the same frame. A rejected assignment leaves the previous property
+and layout intact.
+
+The public helpers and `Open` share one geometry validation boundary. Points, rectangles, and all metric fields must
+be finite. Radii, gaps, icon size, margin, border thickness, and sheen speed obey their nonnegative or positive
+contracts. The wedge gap must stay below the angular step for the active entry count. Footer button dimensions must
+be positive, rectangle dimensions cannot be negative, and the safe area must fit the full composition plus both
+margins.
+
+The glass-like default is ordinary Render2D geometry with translucent colors, highlights, a shadow, borders, and a
+low-alpha moving sheen. Its independent centre plate draws a shadow, translucent surface, inner highlight, and
+border behind the retained text. The plate stays visible when every entry is disabled, while disabled alpha still
+applies to each entry channel. It has no background blur, refraction, distortion, or framebuffer sampling. A
 consumer that needs those effects must compose them in its own render pipeline.
 
 ### Opaque source-target use between widgets
@@ -1833,6 +1846,7 @@ records both halves in `LastUse`, sets `WasCompleted`, consumes the target gestu
 `CompleteIn` adds `Pointer.IsTapIn` over a supplied `Rect` for a bare target. `Cancel` records
 `CancelledPayload`, sets `WasCancelled`, and clears the source. `BeginFrame` clears the two result flags without
 clearing an active source.
+`Begin`, `Complete`, and `CompleteIn` throw for a null pointer before inspecting or changing context state.
 
 Categories and paging beyond eight entries, persistence of footer preferences or active use state, and every
 resulting action remain caller responsibilities. The caller also owns source highlighting, target validation,

@@ -15,13 +15,16 @@ Backlog fixes cover tile interactions, GPU correctness, editor workflows, and te
   generic footer choices. Each entry retains its own choice tag, and selection returns both opaque tags.
 - The wheel clamps as one composition inside caller-supplied safe bounds. It latches the opening gesture, blocks its
   complete bounds, preserves the press-origin invariant, supports pointer plus focused keyboard and gamepad input,
-  skips disabled choices, and reports selection, choice changes, and dismissal as one-frame results.
+  skips disabled choices, and reports selection, choice changes, and dismissal as one-frame results. Live metrics
+  and safe bounds reclamp from the requested anchor and update draw, hit, dismissal, and block geometry together.
 - `RadialMenuMetrics` and `RadialMenuTheme` expose the layout and semantic palette. The glass-like default uses
-  ordinary Render2D geometry, translucent layers, borders, a shadow, and a low-alpha sheen. It performs no blur,
+  ordinary Render2D geometry, translucent layers, borders, a shadow, and a low-alpha sheen. An independent centre
+  plate stays visible behind retained text when entries are disabled. Public geometry rejects non-finite or invalid
+  metrics, points, rectangles, and safe areas that cannot hold the composition. Drawing performs no blur,
   refraction, distortion, or framebuffer sampling.
 - `GuiUseContext` carries an opaque source token, source identity, and index into a later target gesture. Accepted
   completion consumes the target gesture and records both halves. Refusal preserves the active source, and
-  cancellation reports the payload it cleared.
+  cancellation reports the payload it cleared. Pointer null failures leave every public state value unchanged.
 - Callers own category paging beyond eight entries, persistence of footer choices or active-use state, target
   validation, and every resulting action. Headless coverage pins geometry, clamping, input, localization,
   source-target lifecycle, and steady-state allocation. A focused GPU test covers the Render2D presentation.

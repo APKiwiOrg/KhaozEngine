@@ -190,9 +190,23 @@ at the most recent open.
 `RadialMenuMetrics` controls the two radii, wedge gap, icon and label sizing, detail and footer spacing, footer
 button size, safe-area margin, border width, shadow offset, and sheen speed. `ComputeCenter`, `ComputeBounds`,
 `WedgeAngles`, `EntryAt`, `ChoiceBounds`, and `LabelPoint` expose the exact pure geometry used by input and draw.
+`Metrics` and `SafeBounds` stay live while the menu is open. A valid assignment immediately reclamps the menu from
+the anchor requested by `Open`, updates `Bounds`, and invalidates the retained draw layout. A change after `Update`
+also reserves the new bounds on that frame's pointer. A rejected assignment leaves both the property and open
+layout unchanged.
+
+All geometry helpers and `Open` apply the same validation. Every metric field and point coordinate must be finite.
+The inner radius, icon size, detail gap, footer gap, margin, border thickness, and sheen speed are nonnegative. The
+outer radius must exceed the inner radius, label scale and both footer button dimensions must be positive, and the
+wedge gap must be nonnegative and smaller than one active entry's angular step. Rectangles reject negative or
+non-finite dimensions. `ComputeCenter` and `Open` reject a safe area that cannot contain the complete wheel and
+footer plus both margins.
+
 `RadialMenuTheme` carries the shadow, surface, highlight, border, accent, text, disabled, and sheen colors. Its
-defaults derive from `GuiTheme.Default`. `Draw` uses ordinary Render2D geometry. It performs no blur, refraction,
-distortion, or framebuffer sampling.
+defaults derive from `GuiTheme.Default`. `Draw` uses ordinary Render2D geometry. The centre plate has its own
+shadow, translucent surface, inner highlight, and border, and remains visible when every entry is disabled.
+Disabled alpha applies to the entry channels. Drawing performs no blur, refraction, distortion, or framebuffer
+sampling.
 
 `GuiUseContext` carries one opaque source selection into a later target gesture. It draws nothing and has no
 widget dependency, so callers can thread the same context between any pair of controls. This example starts from
@@ -270,6 +284,7 @@ raises `WasCompleted`. Refusal returns false without consuming the gesture or cl
 `CompleteIn(pointer, bounds, targetId, targetIndex, accepted)` adds the press-origin-safe rectangle test for a
 bare target region. `Cancel` records `CancelledPayload`, raises `WasCancelled`, and clears the active source.
 `BeginFrame` clears both result flags without clearing an active source.
+`Begin`, `Complete`, and `CompleteIn` reject a null pointer before reading or changing context state.
 
 The caller owns categories or paging beyond eight entries, every persisted choice or active-use state, and every
 action produced from returned tags and payloads. The caller also owns source highlighting, target acceptance,

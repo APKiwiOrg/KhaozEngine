@@ -48,6 +48,13 @@ namespace KhaozEngine.Gui
         /// <summary>Returns a footer label resolved and retained by the most recent <see cref="Open"/> call.</summary>
         public string ResolvedChoiceLabel(int choiceIndex) => ResolvedChoice(choiceIndex).Content;
 
+        void InvalidateDrawLayoutCache()
+        {
+            _drawEntryCount = -1;
+            _drawChoiceCount = -1;
+            _drawDetailEntry = -2;
+        }
+
         /// <summary>Draws the open radial menu through the shared Render2D batch.</summary>
         public void Draw(
             SpriteBatch batch,
@@ -65,10 +72,14 @@ namespace KhaozEngine.Gui
             PrimitiveRenderer primitives = _drawPrimitives!;
 
             DrawWheelBands(primitives, batch, _center + Metrics.ShadowOffset, Theme.Shadow, activeOnly: false);
+            DrawCenterPlateShadow(primitives, batch);
             DrawWheelBands(primitives, batch, _center, Theme.Surface, activeOnly: false);
+            DrawCenterPlateSurface(primitives, batch);
             DrawWheelBands(primitives, batch, _center, Theme.Accent, activeOnly: true);
             DrawUpperHighlights(primitives, batch);
+            DrawCenterPlateHighlight(primitives, batch);
             DrawBorders(primitives, batch);
+            DrawCenterPlateBorder(primitives, batch);
             DrawIcons(batch);
             DrawLabels(batch, font);
             DrawCenterText(batch, font);
@@ -243,6 +254,29 @@ namespace KhaozEngine.Gui
                 primitives.DrawLine(batch, _drawInnerStarts[i], _drawOuterStarts[i], color, Metrics.BorderThickness);
                 primitives.DrawLine(batch, _drawInnerEnds[i], _drawOuterEnds[i], color, Metrics.BorderThickness);
             }
+        }
+
+        void DrawCenterPlateShadow(PrimitiveRenderer primitives, SpriteBatch batch) =>
+            primitives.DrawFilledCircle(
+                batch,
+                _center + Metrics.ShadowOffset,
+                Metrics.InnerRadius,
+                (Color)Theme.Shadow);
+
+        void DrawCenterPlateSurface(PrimitiveRenderer primitives, SpriteBatch batch) =>
+            primitives.DrawFilledCircle(batch, _center, Metrics.InnerRadius, (Color)Theme.Surface);
+
+        void DrawCenterPlateHighlight(PrimitiveRenderer primitives, SpriteBatch batch)
+        {
+            float radius = Metrics.InnerRadius - MathF.Max(2f, Metrics.BorderThickness * 2f);
+            float thickness = MathF.Max(1f, Metrics.BorderThickness * 0.75f);
+            primitives.DrawRing(batch, _center, radius, thickness, (Color)Theme.SurfaceHighlight);
+        }
+
+        void DrawCenterPlateBorder(PrimitiveRenderer primitives, SpriteBatch batch)
+        {
+            float radius = Metrics.InnerRadius - Metrics.BorderThickness * 0.5f;
+            primitives.DrawRing(batch, _center, radius, Metrics.BorderThickness, (Color)Theme.Border);
         }
 
         void DrawIcons(SpriteBatch batch)

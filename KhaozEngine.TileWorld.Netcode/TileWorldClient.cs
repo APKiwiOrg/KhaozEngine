@@ -49,9 +49,10 @@ public sealed partial class TileWorldClient : IDisposable
     /// <param name="targets">Resolves interaction targets, null on a head with no interactions wired. When it is
     /// null an <see cref="TileCommandKind.Interact"/> is still sent and still answered by the server, it is simply
     /// not predicted, which reads as the click taking one round trip to land. This is the OBJECT space only. The
-    /// second seam, the ENTITY space a <see cref="TileCommandKind.Attack"/> names, is not a parameter: the client
-    /// builds its own <see cref="TileRemoteTargets"/> over itself, because the only honest answer to "where is that
-    /// entity" on a client is the client's own newest snapshot.</param>
+    /// second seam, the ENTITY space named by <see cref="TileCommandKind.InteractEntity"/> and
+    /// <see cref="TileCommandKind.Attack"/>, is not a parameter: the client builds its own
+    /// <see cref="TileRemoteTargets"/> over itself, because the only honest answer to where an entity is on a client
+    /// is that client's own newest snapshot.</param>
     /// <param name="connectToken">The token the door reads, from <see cref="TileProtocol.BuildConnectToken"/>.
     /// Null presents an empty token, which only a server with no gate admits.</param>
     /// <param name="registry">The replication registry both heads share, the mirror of
@@ -349,6 +350,7 @@ public sealed partial class TileWorldClient : IDisposable
     TileCommand Admit(in TileCommand cmd) =>
         (cmd.Kind == TileCommandKind.WalkTo && !GoalInRange(Prediction.PredictedState, cmd.Goal))
         || (cmd.Kind == TileCommandKind.Attack && cmd.Target == 0)
+        || (cmd.Kind == TileCommandKind.InteractEntity && !Simulator.Accepts(Prediction.PredictedState, cmd))
             ? TileCommand.Continue(cmd.Mode)
             : cmd;
 

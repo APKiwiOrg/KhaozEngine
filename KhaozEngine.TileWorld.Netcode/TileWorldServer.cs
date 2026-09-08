@@ -204,6 +204,10 @@ public sealed partial class TileWorldServer : IDisposable
     /// engine knows nothing about what an interaction DOES, so this is where a game takes over.</summary>
     public event Action<int, long, long>? OnInteract;
 
+    /// <summary>Raised as (slot, playerNetId, targetNetId) when an entity interaction reaches the target. This is
+    /// separate from <see cref="OnInteract"/> because authored object ids and entity net ids overlap exactly.</summary>
+    public event Action<int, long, long>? OnInteractEntity;
+
     /// <summary>The one-deep pending action per player. The test seam for the abandonment rule, which is a
     /// property of the COMMAND PATH rather than of the queue: the queue cannot see a walk, so nothing inside it can
     /// prove it was cleared by one.</summary>

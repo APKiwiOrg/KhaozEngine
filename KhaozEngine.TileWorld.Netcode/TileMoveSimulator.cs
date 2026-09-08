@@ -61,10 +61,10 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
     /// <param name="stepTicks">Ticks per step, per mode.</param>
     /// <param name="targets">Resolves interaction targets, null on a head that has no interactions wired.</param>
     /// <param name="options">Pathfinder knobs, null for the defaults.</param>
-    /// <param name="combatTargets">Resolves combat targets in the ENTITY space, null on a head with no combat
-    /// wired. Deliberately a SECOND seam rather than a second lookup inside the first: object ids and net ids
-    /// overlap exactly, so one resolver could not tell which space a target named. Appended last rather than placed
-    /// beside <paramref name="targets"/> so an existing positional call keeps meaning what it said.</param>
+    /// <param name="combatTargets">Resolves combat and entity-interaction targets in the ENTITY space, null on a
+    /// head with neither wired. Deliberately a SECOND seam rather than a second lookup inside the first: object ids
+    /// and net ids overlap exactly, so one resolver could not tell which space a target named. Appended last rather
+    /// than placed beside <paramref name="targets"/> so an existing positional call keeps meaning what it said.</param>
     /// <exception cref="ArgumentNullException"><paramref name="map"/> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="options"/> asks for an agent smaller than
     /// one tile, for a path radius outside the range <see cref="TilePathfinder.FindPath"/> accepts, or for a route
@@ -126,9 +126,9 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
     /// </summary>
     /// <param name="state">The state the command would be applied to. Only its tile's plane is consulted.</param>
     /// <param name="command">The command to weigh.</param>
-    /// <returns>False for a cross-plane walk goal, a resolved cross-plane interaction target or a resolved
-    /// cross-plane combat target, true otherwise, <see cref="TileCommandKind.None"/> included (its mode is always
-    /// applied).</returns>
+    /// <returns>False for a cross-plane walk goal, a resolved cross-plane object interaction, an entity
+    /// interaction that does not resolve on this plane, or a resolved cross-plane combat target. True otherwise,
+    /// including <see cref="TileCommandKind.None"/> because its mode is always applied.</returns>
     public bool Accepts(in TileMoveState state, in TileCommand command) => command.Kind switch
     {
         TileCommandKind.WalkTo => command.Goal.Plane == state.Tile.Plane,
@@ -136,6 +136,11 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
             targets is null
             || !targets.TryGetFootprint(command.Target, out _, out int plane)
             || plane == state.Tile.Plane,
+        TileCommandKind.InteractEntity =>
+            command.Target > 0
+            && combatTargets is not null
+            && combatTargets.TryGetFootprint(command.Target, out _, out int entityPlane)
+            && entityPlane == state.Tile.Plane,
         // A distinct out name because the arms of a switch expression share one scope. The rule is the interaction's
         // rule over the OTHER seam: a target this head cannot resolve at all is accepted and answered later, and one
         // resolved on another plane is refused outright.
@@ -202,7 +207,11 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
                 s.CombatTarget = 0;
                 break;
             case TileCommandKind.Interact:
-                s = BeginInteract(s, command.Target, command.Mode, scratch);
+                s = BeginInteract(s, command.Target, command.Mode, TileCommandKind.Interact, targets, scratch);
+                break;
+            case TileCommandKind.InteractEntity:
+                s = BeginInteract(s, command.Target, command.Mode, TileCommandKind.InteractEntity, combatTargets,
+                    scratch);
                 break;
             case TileCommandKind.Attack:
                 s = BeginAttack(s, command.Target, command.Mode);
@@ -255,10 +264,9 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
         return s;
     }
 
-    // Routes to a reach tile of the target and remembers it, so the tick the walk's last step starts faces the
-    // target and raises the action. An unknown target, or a same-plane one with no reachable tile at all, drops the
-    // route and clears the target: the server answers that case with a CannotReach game message, and the client
-    // pre-checks the same map on click.
+    // Routes to a reach tile of the target and remembers both its id and domain, so the tick the walk's last step
+    // starts faces it through the same resolver. An unknown object target, or a same-plane target with no reachable
+    // tile at all, drops the route and clears the target. Entity targets are required to resolve at admission.
     //
     // The reach search runs from TileMoveState.Tile, exactly as BeginWalk's path does, and that tile is the one the
     // step in flight is walking INTO, so a booth clicked mid-glide is measured from where the foot is about to land.
@@ -272,16 +280,17 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
     // Continue at the mode already held. Reserving the cleared-route answer for a target on the player's OWN plane
     // is what keeps it meaningful: CannotReach then says "I know what you clicked and you cannot get to it", never
     // "that was on another floor". The refusal itself is Accepts, which is the one definition of it.
-    TileMoveState BeginInteract(in TileMoveState state, long target, TileMoveMode mode,
-        TilePathfinderScratch? scratch)
+    TileMoveState BeginInteract(in TileMoveState state, long target, TileMoveMode mode, TileCommandKind kind,
+        ITileTargets? resolver, TilePathfinderScratch? scratch)
     {
         TileMoveState s = state;
-        if (!Accepts(s, TileCommand.Interact(target, mode))) return s;
+        var command = new TileCommand(kind, default, mode, target);
+        if (!Accepts(s, command)) return s;
         // Seeded, because the resolve is short circuited on a null seam and the compiler cannot see that the
         // branches below only read these once it answered true.
         TileRect footprint = default;
         int plane = 0;
-        bool resolved = targets is not null && targets.TryGetFootprint(target, out footprint, out plane);
+        bool resolved = resolver is not null && resolver.TryGetFootprint(target, out footprint, out plane);
 
         s.Mode = mode;
         s.InteractTarget = 0;
@@ -301,7 +310,7 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
         // interaction faces the target here because no step will ever run to set the facing for it. Zero step
         // includes the click made while gliding INTO a reach tile: that tile is already committed, so the turn and
         // the action are both due now.
-        s.InteractTarget = target;
+        s.InteractTarget = TileInteractionTarget.Encode(kind, target);
         s.Route = RouteFor(path);
         if (s.Route.IsIdle) s.Facing = TileReach.FacingToward(Map, footprint, plane, reachTile);
         return s;
@@ -518,7 +527,9 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
     TileMoveState FaceTarget(in TileMoveState state)
     {
         TileMoveState s = state;
-        if (targets is null || !targets.TryGetFootprint(s.InteractTarget, out TileRect footprint, out int plane))
+        ITileTargets? resolver = TileInteractionTarget.IsEntity(s.InteractTarget) ? combatTargets : targets;
+        long target = TileInteractionTarget.Decode(s.InteractTarget);
+        if (resolver is null || !resolver.TryGetFootprint(target, out TileRect footprint, out int plane))
         {
             // The target stopped resolving part way through the walk (deleted, despawned, no longer interactive).
             s.InteractTarget = 0;

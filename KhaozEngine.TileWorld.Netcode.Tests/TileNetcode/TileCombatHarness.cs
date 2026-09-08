@@ -35,8 +35,11 @@ internal sealed class TileCombatHarness : IDisposable
     /// test can make the serve itself fail: a send is the one thing inside the serve loop a test owns. The client's
     /// transport is never wrapped, so a failing link here is the server's own send failing rather than a broken hub.
     /// </param>
+    /// <param name="predictObjectInteractions">Whether the client receives the document's authored-object target
+    /// resolver. False preserves the harness default where object actions wait for the authoritative round trip.</param>
     public TileCombatHarness(TileWorldDocument doc, TileCoord spawn, float clientPhase = 0.06f,
-        TileWorldServerConfig? config = null, Func<INetTransport, INetTransport>? wrapServer = null)
+        TileWorldServerConfig? config = null, Func<INetTransport, INetTransport>? wrapServer = null,
+        bool predictObjectInteractions = false)
     {
         hub = new InMemoryTransportHub();
         INetTransport serverTransport = wrapServer is null ? hub.Server : wrapServer(hub.Server);
@@ -49,7 +52,9 @@ internal sealed class TileCombatHarness : IDisposable
         {
             TickSeconds = Tick,
             StepTicks = new TileStepTicks(walk: 4, run: 2),
-        }, TileMoveSimulatorTests.Bake(doc), registry: TileProtocol.CreateRegistry());
+        }, TileMoveSimulatorTests.Bake(doc),
+            predictObjectInteractions ? new TileDocumentTargets(doc, TileMoveSimulatorTests.Catalogs) : null,
+            registry: TileProtocol.CreateRegistry());
         Client.Tick(clientPhase);
         Client.Poll();
     }

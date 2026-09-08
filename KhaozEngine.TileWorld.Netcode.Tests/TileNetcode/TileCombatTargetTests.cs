@@ -54,9 +54,9 @@ public class TileCombatTargetTests
         Assert.Equal(7, seq);
         Assert.Equal(cmd, back);
 
-        // The kind ceiling moved by exactly one. A kind of 4 is still a malformed frame, because an unchecked byte
-        // cast into an enum reaches a switch that has no case for it.
-        frame[5] = 4;
+        // InteractEntity now owns kind 4. The next value is still malformed, because an unchecked byte cast into
+        // an enum reaches a switch that has no case for it.
+        frame[5] = 5;
         Assert.False(TileProtocol.TryDecodeCommand(frame, planeCount: 4, out _, out _));
     }
 

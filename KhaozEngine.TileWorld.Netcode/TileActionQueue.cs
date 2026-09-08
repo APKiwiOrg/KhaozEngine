@@ -2,18 +2,22 @@ using System.Collections.Generic;
 
 namespace KhaozEngine.TileWorld.Netcode;
 
-/// <summary>What a pending action does on arrival. R1 ships one kind and the seam for the rest, so the kind is
-/// already on the wire-free server state before a second one exists and adding one is not a shape change.</summary>
+/// <summary>What a pending action does on arrival. Wire-free server state whose kind keeps overlapping object and
+/// entity ids routed to distinct callbacks.</summary>
 public enum TileActionKind : byte
 {
     /// <summary>Raise <c>TileWorldServer.OnInteract</c> once the player is COMMITTED to a reach tile of the target,
     /// which is the tick their walk's last step starts rather than the tick the body finishes walking it.</summary>
     Interact = 0,
+
+    /// <summary>Raise <c>TileWorldServer.OnInteractEntity</c> for an entity NET ID. Kept distinct so an authored
+    /// object id with the same number can never reach the wrong callback.</summary>
+    InteractEntity = 1,
 }
 
 /// <summary>One player's pending action, the thing an arrival is checked against.</summary>
-/// <param name="Target">The object id the action runs against. An id rather than a tile, because the thing can move
-/// between the click and the arrival and the walk is chasing the OBJECT.</param>
+/// <param name="Target">The authored object id or entity NET ID the action runs against, interpreted through
+/// <see cref="Kind"/>. An id rather than a tile lets resolution confirm that a moving target is still in reach.</param>
 /// <param name="Kind">What to do on arrival.</param>
 /// <param name="IssuedTick">The server tick the command arrived on, which is what makes the action ORDERABLE: two
 /// actions that come ready on the same tick resolve oldest first. It is also the age the STALE-ACTION CAP is
@@ -40,8 +44,8 @@ public readonly record struct TilePendingAction(long Target, TileActionKind Kind
 /// <see cref="TileCommandKind.WalkTo"/>. <see cref="TileMoveSimulator"/> clears the state's own
 /// <c>InteractTarget</c> on a walk, and these are two records of ONE intent: an entry that outlives the state's
 /// copy is armed against every later step, so a player who clicks a booth and then walks a route passing through
-/// one of its reach tiles fires the action they visibly abandoned. The queue sees commands only through
-/// <see cref="Issue"/>, so it cannot notice the walk on its own, which is why the rule is written here rather than
+/// one of its reach tiles fires the action they visibly abandoned. The queue sees commands only through its Issue
+/// calls, so it cannot notice the walk on its own, which is why the rule is written here rather than
 /// implemented here.</para>
 /// </summary>
 public sealed class TileActionQueue
@@ -59,6 +63,14 @@ public sealed class TileActionQueue
     /// <param name="issuedTick">The server tick the command was applied on.</param>
     public void Issue(int slot, long target, long issuedTick) =>
         bySlot[slot] = new TilePendingAction(target, TileActionKind.Interact, issuedTick);
+
+    /// <summary>Sets or replaces a pending action with an explicit target domain.</summary>
+    /// <param name="slot">The player's connection slot.</param>
+    /// <param name="target">The authored object id or entity NET ID clicked.</param>
+    /// <param name="kind">Which target domain and callback own the id.</param>
+    /// <param name="issuedTick">The server tick the command was applied on.</param>
+    public void Issue(int slot, long target, TileActionKind kind, long issuedTick) =>
+        bySlot[slot] = new TilePendingAction(target, kind, issuedTick);
 
     /// <summary>Reads the pending action WITHOUT clearing it, because the common answer is "still walking" and an
     /// action is only spent once the player actually arrives.</summary>

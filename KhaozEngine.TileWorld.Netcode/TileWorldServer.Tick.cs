@@ -301,6 +301,14 @@ public sealed partial class TileWorldServer
                 if (simulator.Accepts(state, cmd)) actions.Issue(slot, cmd.Target, TickCount);
                 return cmd;
 
+            case TileCommandKind.InteractEntity:
+                // Entity interaction has an explicit domain and refuses a missing, malformed or cross-plane
+                // target before it can enter the object action path. The mode still applies through Continue,
+                // matching the client admission path for a command whose target disappeared after the click.
+                if (!simulator.Accepts(state, cmd)) return TileCommand.Continue(cmd.Mode);
+                actions.Issue(slot, cmd.Target, TileActionKind.InteractEntity, TickCount);
+                return cmd;
+
             case TileCommandKind.Attack:
                 // TARGET 0 IS NOT AN ID THE WORLD FAILED TO HOLD, it is TileMoveState.CombatTarget's own value for
                 // NOT FIGHTING, so an Attack carrying it is a malformed command rather than a click at something

@@ -3,8 +3,8 @@ using System;
 namespace KhaozEngine.TileWorld.Netcode;
 
 /// <summary>
-/// The CLIENT's half of the combat target seam: the same net id space <see cref="TileEntityTargets"/> answers on the
-/// server, resolved out of what this client actually holds. A remote comes off
+/// The CLIENT's half of the entity target seam: the same net id space <see cref="TileEntityTargets"/> answers on
+/// the server for combat and entity interactions, resolved out of what this client actually holds. A remote comes off
 /// <see cref="TileWorldClient.TryGetLatestRemoteTile(long, out TileCoord)"/> and the local player comes off its own
 /// prediction.
 /// <para>THE HONEST READ, never the delayed one. <c>TryGetRemoteTile</c> answers off the delayed render timeline the

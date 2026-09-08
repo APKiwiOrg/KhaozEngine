@@ -87,8 +87,9 @@ public struct TileMoveState : IPredictedState<TileMoveState>, IComponent, IEquat
     /// <see cref="TeleportEpoch"/>, which is what tells the client to cut rather than glide.</summary>
     public uint Epoch;
 
-    /// <summary>The interaction target this route is heading to, 0 when none. Cleared when the action is raised or
-    /// the route is replaced, so a target can never outlive the walk that was chasing it.</summary>
+    /// <summary>The interaction target this route is heading to, 0 when none. Authored object ids retain their
+    /// positive value. Entity net ids are held in the negative half so later Continue ticks keep the target domain
+    /// without widening this replicated state. Cleared when the action is raised or the route is replaced.</summary>
     public long InteractTarget;
 
     /// <summary>The entity this state is locked onto and chasing, 0 when not fighting. A NET ID, from the entity

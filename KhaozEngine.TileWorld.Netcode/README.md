@@ -111,13 +111,14 @@ so it walks visibly under the winner rather than vanishing a step before it gets
   Its own component because it is owner-only (plus Persist and Migrate): an observer does not need it, and the
   owner does, since a reconciliation basis without its route stands the player still.
 - **`TileCommand`** / **`TileCommandKind`** - one tick of intent: `None` (keep going), `WalkTo` (path to a goal and
-  walk it), `Interact` (route to a reach tile of a target, face it, act as the last step commits) or `Attack`
-  (lock onto a target and chase it while it moves). The MODE
+  walk it), `Interact` or its explicit alias `InteractObject` (route to an authored object), `InteractEntity`
+  (route to an entity), or `Attack` (lock onto an entity and chase it while it moves). The MODE
   rides on every command, `None` included, so the run toggle lives on the tick stream rather than on the click.
-  `Attack` needs a KIND of its own rather than a flag on `Interact`, because `Target` spans two id spaces that
-  overlap EXACTLY: a `TileObject.Id` is a document counter from 1 and a net id is `(nodeId << 48) | counter` from
-  1, so object id 7 and the seventh spawned entity are the same 64 bits and one resolver could not tell which
-  space a click meant. The kind is the discriminator.
+  Every entity operation needs a KIND of its own because `Target` spans two id spaces that overlap EXACTLY: a
+  `TileObject.Id` is a document counter from 1 and a net id is `(nodeId << 48) | counter` from 1, so object id 7
+  and the seventh spawned entity are the same 64 bits. `Interact` always means an authored object and keeps its
+  original bytes. `InteractEntity` writes kind 4 into the same 24-byte frame. A pre-addition server rejects that
+  kind as unknown rather than resolving its target through the object domain.
 - **`TileMoveMode`** - walk or run, a two-value selector rather than a speed.
 - **`TileStepTicks`** - ticks per step, per mode. Both heads must hold the same pair, or a step commits a tick
   apart and every step reads as a misprediction.
@@ -135,8 +136,9 @@ so it walks visibly under the winner rather than vanishing a step before it gets
 - **`TileMoveSimulator`** - the ONE discrete stepper both heads run, pure over its inputs and integer-only.
   `Accepts` is THE definition of whether a command applies at all, `Step` advances one tick, and `BeginWalk`,
   `BeginInteract` and `BeginAttack` are the three route starts. It takes TWO target seams, `targets` for the
-  object space and `combatTargets` for the entity space, the second appended LAST in the constructor so an
-  existing positional call keeps meaning what it said. `Follow` runs at the top of every `Advance`: while a
+  object space and `combatTargets` for the entity space used by both `InteractEntity` and `Attack`, the second
+  appended LAST in the constructor so an existing positional call keeps meaning what it said. An entity interaction
+  is accepted only while that net id resolves on the actor's plane. `Follow` runs at the top of every `Advance`: while a
   `CombatTarget` is held it re-paths to a reach tile whenever the target's committed tile moved, stands when it is
   already in reach, STEPS OFF the target's own tile when a catch left it standing there (a tile inside the footprint
   is not in reach, so holding it is a fight that can never start), and clears the lock when the target stops
@@ -336,7 +338,8 @@ always keep the constructor map.
 
 - **`TileWorldServer`** (+ **`TileWorldServerConfig`**) - the authoritative server, a `ShardHost` whose cell grid is
   the tile region grid. `Poll` pumps the transport, `Tick` runs the world, and the seams are `OnBeforeTick`,
-  `OnInteract`, `OnGameMessage`, `OnCannotReach`, `PlayerJoined` and `PlayerLeaving`. It is also the
+  `OnInteract`, `OnInteractEntity`, `OnGameMessage`, `OnCannotReach`, `PlayerJoined` and `PlayerLeaving`.
+  `OnInteract` carries authored object ids and `OnInteractEntity` carries entity net ids. It is also the
   `IPersistenceHost<TileMoveState>`. The seat index reads BOTH ways, `TryGetPlayerNetId` and `TryGetPlayerSlot`,
   because the combat seams all name net ids while a game's per-seat state is keyed by slot. The reverse answers
   false for an actor's id and forgets a seat on the same leave that frees it. **The tick is EIGHT steps**, not five, with the head's own systems ahead of
@@ -693,6 +696,7 @@ var server = new TileWorldServer(
     registry);
 
 server.OnInteract += (slot, netId, target) => game.Interact(slot, target);
+server.OnInteractEntity += (slot, netId, targetNetId) => game.InteractEntity(slot, targetNetId);
 
 while (running)                                    // any frame clock: the server accumulates its own ticks
 {
@@ -829,8 +833,9 @@ fixed size cannot carry these notices, because the padding it adds is length the
 - **The ban check is a `Func<string,bool>` predicate, not a store.** `IBanStore` lives in `KhaozEngine.NetWorld`,
   which this package must never reference. Unifying the two ban seams is
   [#678](https://github.com/APKiwiOrg/KhaozEngine/issues/678).
-- **No actions beyond the seam.** `TileActionKind` ships one kind, `Interact`, and `OnInteract` is where a game
-  takes over. The engine knows nothing about what an interaction DOES.
+- **No actions beyond the seam.** `TileActionKind` distinguishes authored-object and entity interactions so their
+  overlapping ids reach `OnInteract` and `OnInteractEntity` respectively. The engine knows nothing about what an
+  interaction does after the callback.
 - **Both parties in a fight are 1x1.** `TileReach` states three times that its set is anchor tiles for a ONE TILE
   actor, and `AgentSize` is a property of the SIMULATOR rather than of the entity, so a larger monster is two
   structural changes rather than a size field. `TileWorldServerConfig.ActorMove` is deliberately the seam the

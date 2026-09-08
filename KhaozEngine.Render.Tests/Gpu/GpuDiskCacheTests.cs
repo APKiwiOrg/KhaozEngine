@@ -7,15 +7,15 @@ using Xunit;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// THE SHARED FILE PLUMBING UNDER ALL THREE BACKEND CACHES, driven directly rather than through one of them.
+    /// THE SHARED FILE PLUMBING UNDER EVERY BACKEND CACHE, driven directly rather than through one of them.
     /// Row 18 of <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c> refused sharing the KEY and recorded
     /// the plumbing as duplicated at two copies, and the Metal MSL cache
     /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/592">#592</see>) made it three, which is the
     /// trigger <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/606">#606</see> named.
     ///
     /// <para>
-    /// THE THREE CALLERS' OWN TESTS STAY WHERE THEY ARE and are not thinned. <c>D3D11ShaderPathTests</c>,
-    /// <c>VulkanPipelineCacheTests</c> and <c>MetalMslCacheTests</c> each assert the behaviour THEIR cache
+    /// THE CALLERS' OWN TESTS STAY WHERE THEY ARE and are not thinned. <c>D3D11ShaderPathTests</c>,
+    /// <c>VulkanPipelineCacheTests</c>, <c>VulkanSpirvDiskCacheTests</c> and <c>MetalMslCacheTests</c> each assert the behaviour THEIR cache
     /// promises, which is what would catch a caller that stopped calling this correctly. What is here is the
     /// contract itself, once, including the two cases no caller can reach on purpose (a directory that is a file,
     /// and a delete of something that was never there).
@@ -130,7 +130,7 @@ namespace KhaozEngine.Tests.Gpu
         // ---- pruning the version folders earlier releases left behind (#611) -----------------------------
 
         /// <summary>
-        /// THE SWEEP AT CACHE OPEN. All three backends put the engine version in the PATH so an upgrade leaves
+        /// THE SWEEP AT CACHE OPEN. Every backend cache puts the engine version in the PATH so an upgrade leaves
         /// one obviously prunable folder, and until #611 nothing ever pruned one, so a machine accumulated a
         /// folder per engine version it had ever run. The running version's own folder survives, with everything
         /// in it, and so does anything under the parent that is not a directory.

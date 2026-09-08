@@ -39,7 +39,7 @@ namespace KhaozEngine.Gpu.Internal
     /// #611</see>). That prunability was real and no code exercised it, so the tree accumulated one folder per
     /// engine version a machine had ever run, forever, and only a user or a cleanup tool ever removed one.
     /// <see cref="OpenDirectory"/> sweeps the siblings at cache open, once per process per cache, which is what
-    /// makes the rule live in ONE place for all three backends rather than three times.
+    /// makes the rule live in ONE place for every cache rather than once per payload.
     /// </para>
     /// </summary>
     internal static class GpuDiskCache
@@ -50,7 +50,7 @@ namespace KhaozEngine.Gpu.Internal
         /// to run without a cache rather than to invent a path in the current directory.
         /// </summary>
         /// <param name="subfolder">The cache's own folder name, one per backend and payload
-        /// (<c>d3d11-dxbc</c>, <c>vulkan-pipeline-cache</c>, <c>metal-msl</c>).</param>
+        /// (<c>d3d11-dxbc</c>, <c>vulkan-pipeline-cache</c>, <c>vulkan-spirv</c>, <c>metal-msl</c>).</param>
         /// <param name="engineVersion">The engine version, read off the calling backend's own assembly so
         /// nothing is kept in sync by hand.</param>
         internal static string DefaultDirectory(string subfolder, string engineVersion)
@@ -95,7 +95,7 @@ namespace KhaozEngine.Gpu.Internal
         /// THE ONE MEMBER A CACHE CALLS AT OPEN: <see cref="ResolveDirectory"/>'s answer, with the stale sibling
         /// version folders swept when that answer is the DEFAULT location.
         /// <para>
-        /// THE SWEEP IS GATED ON BEING THE DEFAULT DIRECTORY, never on an explicitly configured one. The three
+        /// THE SWEEP IS GATED ON BEING THE DEFAULT DIRECTORY, never on an explicitly configured one. The cache
         /// environment variables take a directory path VERBATIM with no engine-version segment appended, so a
         /// caller-named directory has no sibling version folders to reason about and deleting anything beside it
         /// would be deleting whatever else the caller keeps there. The gate is a comparison against

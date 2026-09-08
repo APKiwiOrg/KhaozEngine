@@ -1022,6 +1022,13 @@ declared state past the last colour output throws away a state the caller wrote 
 site declares exactly that, so enforcing the contract costs nothing and only fires on a description that was
 already wrong.
 
+**GLSL to SPIR-V is cached across processes.** Each compiled stage is stored under
+`<local-app-data>/KhaozEngine/vulkan-spirv/<engine version>`. The key covers the source, stage, engine version,
+shaderc package version and pinned front-end options. Each entry carries an authenticated payload and a checked
+SPIR-V header. A missing, unreadable or corrupt entry compiles normally, and a corrupt file is removed before
+the replacement is written. `KE_VULKAN_SPIRV_CACHE=<directory>` relocates the cache and
+`KE_VULKAN_SPIRV_CACHE=off` disables it for cache diagnosis.
+
 **The `VkPipelineCache` is persisted, and a corrupt file cannot crash a launch.** The incumbent passed
 `VkPipelineCache.Null` at both of its creation sites, so every launch recompiled every pipeline from SPIR-V,
 across considerably more permutations than programs because everything except viewport and scissor is baked in.

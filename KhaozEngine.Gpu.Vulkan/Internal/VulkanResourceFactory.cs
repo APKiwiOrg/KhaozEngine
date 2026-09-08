@@ -53,6 +53,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         readonly VulkanSetupCommands _setup;
         readonly VulkanDescriptors _descriptors;
         readonly VulkanShaderModuleCache _modules;
+        readonly SpirvBytesCache? _spirvBytes;
         readonly VulkanPipelines _pipelines;
         readonly Func<IGpuCommandList> _createCommandList;
         readonly Func<IGpuFence> _createFence;
@@ -103,6 +104,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             _setup = setup;
             _descriptors = descriptors;
             _modules = modules;
+            _spirvBytes = SpirvBytesCache.FromEnvironment();
             _pipelines = pipelines;
             _createCommandList = createCommandList;
             _createFence = createFence;
@@ -250,7 +252,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// </remarks>
         /// <exception cref="ShaderValidationException">A source failed to compile to SPIR-V.</exception>
         public IGpuShaderSet CreateShadersFromSpirv(string vertGlsl, string fragGlsl)
-            => new VulkanShaderSet(_modules, vertGlsl, fragGlsl);
+            => new VulkanShaderSet(_modules, vertGlsl, fragGlsl, bytesCache: _spirvBytes);
 
         /// <inheritdoc/>
         /// <remarks>The compute twin, with the workgroup size read out of the module itself rather than taken
@@ -260,7 +262,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <exception cref="ShaderValidationException">The source failed to compile to SPIR-V, or declares no
         /// resolvable workgroup size.</exception>
         public IGpuComputeShader CreateComputeShaderFromSpirv(string computeGlsl)
-            => new VulkanComputeShader(_modules, computeGlsl);
+            => new VulkanComputeShader(_modules, computeGlsl, bytesCache: _spirvBytes);
 
         /// <inheritdoc/>
         /// <remarks>

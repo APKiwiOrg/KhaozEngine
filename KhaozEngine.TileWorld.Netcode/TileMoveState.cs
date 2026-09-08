@@ -5,6 +5,16 @@ using KhaozEngine.Netcode;
 
 namespace KhaozEngine.TileWorld.Netcode;
 
+/// <summary>Which overlapping id domain <see cref="TileMoveState.InteractTarget"/> belongs to.</summary>
+public enum TileInteractionDomain : byte
+{
+    /// <summary>An authored <c>TileObject.Id</c>. Zero so every legacy and default state keeps this meaning.</summary>
+    AuthoredObject = 0,
+
+    /// <summary>An entity NET ID.</summary>
+    Entity = 1,
+}
+
 /// <summary>
 /// One player's discrete movement state: which tile they stand on, which way they face, how far through the
 /// current step they are, and the route they are walking. Both an <see cref="IPredictedState{TSelf}"/> (so
@@ -87,10 +97,15 @@ public struct TileMoveState : IPredictedState<TileMoveState>, IComponent, IEquat
     /// <see cref="TeleportEpoch"/>, which is what tells the client to cut rather than glide.</summary>
     public uint Epoch;
 
-    /// <summary>The interaction target this route is heading to, 0 when none. Authored object ids retain their
-    /// positive value. Entity net ids are held in the negative half so later Continue ticks keep the target domain
-    /// without widening this replicated state. Cleared when the action is raised or the route is replaced.</summary>
+    /// <summary>The interaction target this route is heading to, 0 when none. Interpreted through
+    /// <see cref="InteractDomain"/> because authored object ids and entity net ids can contain the same 64 bits.
+    /// Cleared when the action is raised or the route is replaced.</summary>
     public long InteractTarget;
+
+    /// <summary>The id domain of <see cref="InteractTarget"/>. Authored object is zero so a legacy 41-byte state
+    /// and a default value keep their original meaning. Entity is carried as one optional trailing wire byte only
+    /// while an entity interaction is pending.</summary>
+    public TileInteractionDomain InteractDomain;
 
     /// <summary>The entity this state is locked onto and chasing, 0 when not fighting. A NET ID, from the entity
     /// space, never an object id: the two spaces overlap exactly, which is why the command kind is the
@@ -215,6 +230,7 @@ public struct TileMoveState : IPredictedState<TileMoveState>, IComponent, IEquat
         Tile.Equals(other.Tile) && StepFrom.Equals(other.StepFrom) && Facing == other.Facing && Mode == other.Mode
         && StepTicks == other.StepTicks && StepTotal == other.StepTotal
         && Route.Equals(other.Route) && Epoch == other.Epoch && InteractTarget == other.InteractTarget
+        && InteractDomain == other.InteractDomain
         && CombatTarget == other.CombatTarget;
 
     /// <inheritdoc/>
@@ -225,7 +241,7 @@ public struct TileMoveState : IPredictedState<TileMoveState>, IComponent, IEquat
     /// ninth field regroups the existing call rather than being appended to it.</remarks>
     public readonly override int GetHashCode() =>
         HashCode.Combine(HashCode.Combine(Tile, StepFrom), HashCode.Combine(Facing, Mode, StepTicks, StepTotal),
-            Route, Epoch, InteractTarget, CombatTarget);
+            Route, Epoch, HashCode.Combine(InteractTarget, InteractDomain), CombatTarget);
 
     /// <summary>Equality operator over <see cref="Equals(TileMoveState)"/>.</summary>
     public static bool operator ==(TileMoveState a, TileMoveState b) => a.Equals(b);

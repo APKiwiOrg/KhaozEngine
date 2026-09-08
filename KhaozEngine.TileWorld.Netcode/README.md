@@ -97,7 +97,8 @@ so it walks visibly under the winner rather than vanishing a step before it gets
   `CombatTarget`, the NET ID this entity is locked onto and the reason the chase lives inside the one stepper both
   heads run rather than in a second movement authority a client cannot predict. `CombatTarget` and
   `InteractTarget` are mutually exclusive, each clearing the other, and a `WalkTo` clears both, which is how
-  anything on this lattice disengages. 41 payload bytes on the wire. `IsStepping`
+  anything on this lattice disengages. The state is 41 payload bytes on the wire, plus one optional domain byte
+  while an `InteractEntity` is pending. A legacy 41-byte state defaults to the authored-object domain. `IsStepping`
   (`StepFrom != Tile`) is the one definition of "a step is in flight", and it is NOT the same question as a live
   route: a route empties on the tick its last step starts. The direction the body is WALKING is
   `TileRoute.Direction(StepFrom, Tile)`, never `Facing`: `Facing` is where the player is LOOKING, and the arrival

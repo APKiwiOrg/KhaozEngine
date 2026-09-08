@@ -201,6 +201,7 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
             case TileCommandKind.WalkTo when Accepts(s, command):
                 s = BeginWalk(s, command.Goal, command.Mode, scratch);
                 s.InteractTarget = 0;
+                s.InteractDomain = TileInteractionDomain.AuthoredObject;
                 // A WALK BREAKS A FIGHT, which is how a player disengages and is the same rule OSRS uses. Both
                 // targets go for one reason: each is a record of an intent the player has visibly replaced, and one
                 // that outlived the walk would keep steering the route back at something they walked away from.
@@ -294,6 +295,7 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
 
         s.Mode = mode;
         s.InteractTarget = 0;
+        s.InteractDomain = TileInteractionDomain.AuthoredObject;
         // The other half of the mutual exclusion BeginAttack states: an interaction and a fight are two records of
         // one intent, and a lock left set here would have the follow re-path the interaction's own route on this very
         // tick, since the follow runs inside the Advance below.
@@ -310,7 +312,8 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
         // interaction faces the target here because no step will ever run to set the facing for it. Zero step
         // includes the click made while gliding INTO a reach tile: that tile is already committed, so the turn and
         // the action are both due now.
-        s.InteractTarget = TileInteractionTarget.Encode(kind, target);
+        s.InteractTarget = target;
+        s.InteractDomain = TileInteractionTarget.DomainOf(kind);
         s.Route = RouteFor(path);
         if (s.Route.IsIdle) s.Facing = TileReach.FacingToward(Map, footprint, plane, reachTile);
         return s;
@@ -329,6 +332,7 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
         if (!Accepts(s, TileCommand.Attack(target, mode))) return s;
         s.Mode = mode;
         s.InteractTarget = 0;
+        s.InteractDomain = TileInteractionDomain.AuthoredObject;
         s.CombatTarget = target;
         return s;
     }
@@ -527,18 +531,19 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
     TileMoveState FaceTarget(in TileMoveState state)
     {
         TileMoveState s = state;
-        ITileTargets? resolver = TileInteractionTarget.IsEntity(s.InteractTarget) ? combatTargets : targets;
-        long target = TileInteractionTarget.Decode(s.InteractTarget);
-        if (resolver is null || !resolver.TryGetFootprint(target, out TileRect footprint, out int plane))
+        ITileTargets? resolver = s.InteractDomain == TileInteractionDomain.Entity ? combatTargets : targets;
+        if (resolver is null || !resolver.TryGetFootprint(s.InteractTarget, out TileRect footprint, out int plane))
         {
             // The target stopped resolving part way through the walk (deleted, despawned, no longer interactive).
             s.InteractTarget = 0;
+            s.InteractDomain = TileInteractionDomain.AuthoredObject;
             return s;
         }
         if (!TileReach.Contains(Map, footprint, plane, s.Tile))
         {
             // The walk ended off the reach set, which is what a route truncated at MaxRouteSteps leaves behind.
             s.InteractTarget = 0;
+            s.InteractDomain = TileInteractionDomain.AuthoredObject;
             return s;
         }
         s.Facing = TileReach.FacingToward(Map, footprint, plane, s.Tile);
@@ -570,7 +575,11 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
         s.StepTotal = StepTicks.For(s.Mode);
         TilePath path = TilePathfinder.FindPath(Map, s.Tile.Plane, s.Tile, end, AgentSize, MaxPathRadius, scratch);
         s.Route = RouteFor(path);
-        if (s.Route.IsIdle) s.InteractTarget = 0;
+        if (s.Route.IsIdle)
+        {
+            s.InteractTarget = 0;
+            s.InteractDomain = TileInteractionDomain.AuthoredObject;
+        }
         return s;
     }
 

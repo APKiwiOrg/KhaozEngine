@@ -44,6 +44,7 @@ public sealed partial class TileWorldServer
         if (!cell.World.TryGet(e, out TileMoveState state)) return false;
 
         state.InteractTarget = 0L;
+        state.InteractDomain = TileInteractionDomain.AuthoredObject;
         cell.World.Set(e, state);
         actions.Clear(slot);
         return true;
@@ -112,10 +113,10 @@ public sealed partial class TileWorldServer
             // The route ended. If the target went with it, the simulator could not get there: an unreachable click,
             // a target that resolves to nothing, or a re-path that failed. That is the CannotReach case, and it is
             // the one thing the player has to be told, because their own client is still showing a pending action.
-            TileCommandKind commandKind = pending.Kind == TileActionKind.InteractEntity
-                ? TileCommandKind.InteractEntity
-                : TileCommandKind.Interact;
-            if (state.InteractTarget != TileInteractionTarget.Encode(commandKind, pending.Target))
+            TileInteractionDomain pendingDomain = pending.Kind == TileActionKind.InteractEntity
+                ? TileInteractionDomain.Entity
+                : TileInteractionDomain.AuthoredObject;
+            if (state.InteractTarget != pending.Target || state.InteractDomain != pendingDomain)
             {
                 Refuse(slot, pending.Target);
                 continue;
@@ -141,6 +142,7 @@ public sealed partial class TileWorldServer
         if (!host.TryGetOwner(netId, out CellSim cell, out Entity e)) return false;
         if (!cell.World.TryGet(e, out TileMoveState live)) return false;
         live.InteractTarget = 0;
+        live.InteractDomain = TileInteractionDomain.AuthoredObject;
         cell.World.Set(e, live);
         return true;
     }

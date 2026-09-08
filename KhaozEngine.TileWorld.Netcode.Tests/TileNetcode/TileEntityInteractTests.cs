@@ -9,6 +9,25 @@ namespace KhaozEngine.Tests.TileNetcode;
 public class TileEntityInteractTests
 {
     [Fact]
+    public void A_negative_authored_object_id_remains_in_the_object_domain()
+    {
+        TileCollisionMap map = TileMoveSimulatorTests.Bake(TileMoveSimulatorTests.FlatWorld());
+        var objects = new FixedTarget(-7, new TileRect(10, 10, 1, 1), plane: 0);
+        var entities = new FixedTarget(7, new TileRect(30, 30, 1, 1), plane: 0);
+        var simulator = new TileMoveSimulator(map, new TileStepTicks(walk: 4, run: 2), objects,
+            combatTargets: entities);
+        TileMoveState state = TileMoveState.At(new TileCoord(5, 10, 0), TileDirection.W);
+
+        state = simulator.Step(state, TileCommand.InteractObject(-7, TileMoveMode.Walk), 0.25f);
+        for (int i = 0; i < 40 && !state.Route.IsIdle; i++)
+            state = simulator.Step(state, TileCommand.Continue(TileMoveMode.Walk), 0.25f);
+
+        Assert.Equal(-7, state.InteractTarget);
+        Assert.Equal(TileDirection.E, state.Facing);
+        Assert.True(state.Route.IsIdle);
+    }
+
+    [Fact]
     public void Colliding_object_and_actor_ids_route_to_distinct_callbacks()
     {
         TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
@@ -88,5 +107,15 @@ public class TileEntityInteractTests
         Assert.True(server.TryGetPlayerState(0, out TileMoveState state));
         Assert.Equal(0, state.InteractTarget);
         Assert.Equal(TileMoveMode.Run, state.Mode);
+    }
+
+    sealed class FixedTarget(long id, TileRect footprint, int plane) : ITileTargets
+    {
+        public bool TryGetFootprint(long target, out TileRect found, out int foundPlane)
+        {
+            found = footprint;
+            foundPlane = plane;
+            return target == id;
+        }
     }
 }

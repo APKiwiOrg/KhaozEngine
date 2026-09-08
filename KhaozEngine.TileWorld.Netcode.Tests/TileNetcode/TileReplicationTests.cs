@@ -61,6 +61,7 @@ public class TileReplicationTests
         Assert.Equal(sent.StepTotal, got.StepTotal);
         Assert.Equal(sent.Epoch, got.Epoch);
         Assert.Equal(sent.InteractTarget, got.InteractTarget);
+        Assert.Equal(TileInteractionDomain.AuthoredObject, got.InteractDomain);
         Assert.Equal("Ari", client.Get<TileIdentity>(e).DisplayName);
         Assert.Equal(sent.Route, TileRoute.FromSteps(got.Tile, client.Get<TileRouteState>(e).Remaining));
 
@@ -69,6 +70,41 @@ public class TileReplicationTests
         // The step in flight survives it, though, which is the whole reason the glide's two tiles ride the everyone
         // channel: a decoded state draws in exactly the place its owner draws it, with no route at all.
         Assert.Equal(sent.Position, got.Position);
+    }
+
+    [Fact]
+    public void Entity_interaction_adds_one_optional_domain_byte_and_legacy_payloads_default_to_objects()
+    {
+        ReplicationRegistry registry = TileProtocol.CreateRegistry();
+        TileMoveState authored = Walking();
+        authored.InteractTarget = -7;
+        TileMoveState entity = authored;
+        entity.InteractTarget = 7;
+        entity.InteractDomain = TileInteractionDomain.Entity;
+        Assert.NotEqual(authored, entity);
+
+        (World objectWorld, _) = Spawn(1, authored);
+        (World entityWorld, _) = Spawn(1, entity);
+        var interest = new HashSet<long> { 1 };
+        byte[] objectSnapshot = SnapshotWriter.WriteFiltered(objectWorld, registry, interest,
+            ReplicationChannels.Replicate, ownerNetId: 1);
+        byte[] entitySnapshot = SnapshotWriter.WriteFiltered(entityWorld, registry, interest,
+            ReplicationChannels.Replicate, ownerNetId: 1);
+        Assert.Equal(objectSnapshot.Length + 1, entitySnapshot.Length);
+
+        var objectClient = new World();
+        new ClientReplicationView(registry).Apply(objectClient, objectSnapshot);
+        TileMoveState decodedObject = objectClient.Get<TileMoveState>(
+            objectClient.Query().With<TileMoveState>().Entities().Single());
+        Assert.Equal(-7, decodedObject.InteractTarget);
+        Assert.Equal(TileInteractionDomain.AuthoredObject, decodedObject.InteractDomain);
+
+        var entityClient = new World();
+        new ClientReplicationView(registry).Apply(entityClient, entitySnapshot);
+        TileMoveState decodedEntity = entityClient.Get<TileMoveState>(
+            entityClient.Query().With<TileMoveState>().Entities().Single());
+        Assert.Equal(7, decodedEntity.InteractTarget);
+        Assert.Equal(TileInteractionDomain.Entity, decodedEntity.InteractDomain);
     }
 
     // The glide's origin has no plane of its own on the wire: a step never changes plane, so it takes the tile's.
@@ -329,6 +365,7 @@ public class TileReplicationTests
         // tile here, so the fraction is live rather than short-circuited and the clamp is what holds it in range.
         Assert.True(got.IsStepping);
         Assert.True(got.StepTicks <= got.StepTotal);
+        Assert.Equal(TileInteractionDomain.AuthoredObject, got.InteractDomain);
         Assert.InRange(got.StepFraction, 0f, 1f);
         Assert.Equal(1f, got.StepFraction);
         Assert.Equal(new Vector2(5f, 6f), got.Position);

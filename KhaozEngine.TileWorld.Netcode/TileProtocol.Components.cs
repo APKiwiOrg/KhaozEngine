@@ -157,8 +157,10 @@ public static partial class TileProtocol
         return s;
     }
 
-    // 41 fixed bytes. The plane rides in one byte, matching the command frame, so the two agree about what a plane
-    // index can be and a world deeper than 256 planes fails in one place rather than two.
+    // 41 bytes for every existing state, and one optional trailing byte while an entity interaction is pending.
+    // The component is an extension frame, so an older reader sees its own bounded 42-byte payload, consumes the
+    // 41 bytes it knows, and the replication reader advances over the full frame. A new reader defaults a 41-byte
+    // payload to AuthoredObject. Existing states therefore keep their exact bytes in both directions.
     //
     // StepFrom rides WITHOUT a plane of its own, and that is a rule rather than a saving: a step never changes
     // plane, so the glide's two tiles always share one, and a second plane byte would be a way to express a state
@@ -182,6 +184,8 @@ public static partial class TileProtocol
         w.Write(v.Epoch);
         w.Write(v.InteractTarget);
         w.Write(v.CombatTarget);
+        if (v.InteractTarget != 0 && v.InteractDomain == TileInteractionDomain.Entity)
+            w.Write((byte)TileInteractionDomain.Entity);
     }
 
     // Every byte here is attacker controlled, and a byte cast into an enum is not validated by the runtime, so the
@@ -209,6 +213,12 @@ public static partial class TileProtocol
         // reject. An id naming nothing simply stops resolving, which is the case the follow's rule 2 already handles
         // by clearing the lock, on both heads, on the first tick the resolver answers false.
         s.CombatTarget = r.ReadInt64();
+        if (r.BaseStream.Position < r.BaseStream.Length)
+        {
+            byte domain = r.ReadByte();
+            if (s.InteractTarget != 0 && domain == (byte)TileInteractionDomain.Entity)
+                s.InteractDomain = TileInteractionDomain.Entity;
+        }
         // At() seeded StepFrom onto the tile, which is what a frame naming anything but a STEP falls back to. A pair
         // that is not one tile apart is not a step: a teleport, a plane change, or a lie. Gliding between them would
         // walk the avatar over every tile in the gap, and it is a lie that costs, because Position is fed straight

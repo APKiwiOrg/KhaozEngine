@@ -12,7 +12,8 @@ namespace KhaozEngine.NetWorld;
 /// <para>Every member except <see cref="SetResumePositionProvider"/> is inherited verbatim from
 /// <see cref="IPersistenceHost{TState}"/> over <see cref="PlayerMoveState"/>, which is what lets one persistence
 /// core serve this package and the tile stack alike. The signatures did not change when it moved, so an existing
-/// implementer compiles untouched.</para>
+/// implementer compiles untouched. This includes the optional persistence-key resolver and the bound-key lookup,
+/// whose default members preserve account-key behavior for existing hosts.</para>
 /// </summary>
 public interface IWorldPersistenceHost : IPersistenceHost<PlayerMoveState>
 {

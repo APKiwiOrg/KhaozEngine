@@ -15,18 +15,28 @@ public readonly struct PlayerPersistenceContext
     /// <summary>The runtime slot of the player (the server-side handle; an index into the host).</summary>
     public int Slot { get; }
 
-    /// <summary>The durable account id the player's record is keyed by (stable across sessions and cell handoffs).
+    /// <summary>The durable key the player's record is keyed by (stable across sessions and cell handoffs).
     /// Always the key the record is actually filed under, never the runtime seat: on a server that set
     /// <c>WorldPersistenceConfig.PersistGuests</c>, a tokenless connection reaches the hooks under the
     /// <c>guest:{guid}</c> minted for that one session rather than the <c>guest:{slot}</c> the head derives, since a
     /// slot is a chair the next connection inherits (#647).</summary>
     public string AccountId { get; }
 
-    /// <summary>Constructs a context for the given runtime slot and durable account id.</summary>
+    /// <summary>The verified account subject used for authentication and live-session policy.</summary>
+    public string AuthenticatedAccountId { get; }
+
+    /// <summary>Constructs a context whose durable key and authenticated account id are the same value.</summary>
     public PlayerPersistenceContext(int slot, string accountId)
+        : this(slot, accountId, accountId)
+    {
+    }
+
+    /// <summary>Constructs a context with separate durable and authenticated identities.</summary>
+    public PlayerPersistenceContext(int slot, string accountId, string authenticatedAccountId)
     {
         Slot = slot;
         AccountId = accountId;
+        AuthenticatedAccountId = authenticatedAccountId;
     }
 }
 

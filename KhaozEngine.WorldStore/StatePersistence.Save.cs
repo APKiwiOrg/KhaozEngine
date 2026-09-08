@@ -16,7 +16,8 @@ public sealed partial class StatePersistence<TState>
     // the answer is the durable key minted for this session at join.
     private bool TryResolveKey(int slot, string accountId, out string key)
     {
-        if (!PositionHintCache.IsGuestAccount(accountId)) { key = accountId; return true; }
+        if (!PositionHintCache.IsGuestAccount(accountId))
+            return server.TryGetPersistenceKey(slot, out key) && !string.IsNullOrEmpty(key);
         if (config.PersistGuests && guestKeys.TryGetValue(slot, out string? minted)) { key = minted; return true; }
         key = string.Empty;
         return false;
@@ -43,7 +44,7 @@ public sealed partial class StatePersistence<TState>
         // rejoin at the default spawn and then take the restore teleport, which is the bug this exists to fix. The
         // hint is filed under the id the HOST will ask with at the next join, which for a guest key the cache
         // refuses outright - correctly, since nothing can present a minted guest id again.
-        hints.Record(accountId, binding.PositionOf(finalState));
+        hints.Record(key, binding.PositionOf(finalState));
         Task save = SaveIfDirtyAsync(key, BuildRecordBytes(slot, key, finalState));
         if (PositionHintCache.IsGuestAccount(key))
         {

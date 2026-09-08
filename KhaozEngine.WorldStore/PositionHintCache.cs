@@ -5,8 +5,8 @@ using System.Numerics;
 namespace KhaozEngine.WorldStore;
 
 /// <summary>
-/// Resolves where a JOINING player's entity should be built, by account id, before the first snapshot goes out.
-/// Returns false when nothing is known about that account, which leaves the join on
+/// Resolves where a JOINING player's entity should be built, by durable persistence key, before the first snapshot
+/// goes out. Returns false when nothing is known about that key, which leaves the join on
 /// <c>WorldServerConfig.SpawnPosition</c> (or the sharded equivalent) exactly as before.
 /// <para>Installed on a server head through <see cref="IPersistenceHost{TState}.SetPositionHintProvider"/>.
 /// <see cref="StatePersistence{TState}"/> installs one backed by its own <see cref="StatePersistence{TState}.Hints"/> cache,
@@ -16,13 +16,14 @@ namespace KhaozEngine.WorldStore;
 /// the authority: a persistence layer's asynchronous load-on-join still runs and still corrects the position when
 /// the two disagree.</para>
 /// </summary>
-/// <param name="accountId">The joining connection's account id (the same key persistence stores under).</param>
+/// <param name="accountId">The durable key persistence stores under. The parameter name is retained for source
+/// compatibility with callers from before account and persistence identity could differ.</param>
 /// <param name="position">The player's last known ABSOLUTE world position when the call returns true.</param>
 public delegate bool PositionHintProvider(string accountId, out Vector3 position);
 
 /// <summary>
-/// A bounded, in-process record of where each account was last seen, keyed by account id, so a REJOINING player's
-/// entity can be built where they left instead of at the configured spawn.
+/// A bounded, in-process record of where each durable player key was last seen, so a REJOINING player's entity can
+/// be built where they left instead of at the configured spawn.
 ///
 /// <para>This exists because the resume snapshot is what a client measures (see
 /// <c>WorldClient.LocalTeleported</c>): a server that spawns the rejoiner at its configured spawn and

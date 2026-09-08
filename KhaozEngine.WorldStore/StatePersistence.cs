@@ -123,7 +123,7 @@ public sealed partial class StatePersistence<TState>
     // Loaded records waiting to be validated + applied on the server thread (the drain below handles these): validate
     // (bounds, blob verdict, or a carried decode failure), then either quarantine the whole record or apply it -
     // position via SetPlayerState, then the opaque game blob via ApplyGameState. The raw bytes ride along so a
-    // quarantine copies them verbatim. AccountId rides along for the apply/quarantine context.
+    // quarantine copies them verbatim. Both authenticated subject and durable key ride along for the apply guard.
     private readonly ConcurrentQueue<PendingApply> applyQueue = new();
     // accountId -> last persisted bytes, for dirty comparison (covers position AND the game blob, since both are
     // in the same encoded record - a change to either marks the record dirty and re-saves). The load-on-join baseline
@@ -217,10 +217,12 @@ public sealed partial class StatePersistence<TState>
     // quarantine without ever touching State/Game.
     private readonly struct PendingApply
     {
-        public PendingApply(int slot, string accountId, long token, byte[] raw, TState state, byte[]? game, string? decodeFailure)
+        public PendingApply(int slot, string accountId, string persistenceKey, long token, byte[] raw, TState state,
+            byte[]? game, string? decodeFailure)
         {
             Slot = slot;
             AccountId = accountId;
+            PersistenceKey = persistenceKey;
             Token = token;
             Raw = raw;
             State = state;
@@ -230,6 +232,7 @@ public sealed partial class StatePersistence<TState>
 
         public int Slot { get; }
         public string AccountId { get; }
+        public string PersistenceKey { get; }
         /// <summary>The join this load was issued for. Compared against the account's CURRENT session at drain
         /// time, which is what tells a load apart from one its own account's earlier session left behind (#654).</summary>
         public long Token { get; }
@@ -254,6 +257,9 @@ public sealed partial class StatePersistence<TState>
         this.binding = binding ?? throw new ArgumentNullException(nameof(binding));
         this.config = config ?? new PersistenceCoreConfig();
         hints = new PositionHintCache(this.config.ResumeHintCapacity);
+        PersistenceKeyResolver? resolver = this.config.PersistenceKeyResolver is null ? null : ResolvePersistenceKey;
+        if (!server.TrySetPersistenceKeyResolver(resolver))
+            throw new InvalidOperationException("The persistence host cannot install the configured persistence-key resolver.");
         server.PlayerJoined += OnPlayerJoined;
         server.PlayerLeaving += OnPlayerLeaving;
         // Install the join seed BEFORE any join can arrive. A game with its own account store installs its own
@@ -271,6 +277,18 @@ public sealed partial class StatePersistence<TState>
     // The store key for a resolved persistence key (see TryResolveKey), which for any connection carrying a verified
     // subject is that account id.
     private string Key(string persistenceKey) => config.KeyPrefix + persistenceKey;
+
+    private string ResolvePersistenceKey(in PersistenceKeyRequest request)
+    {
+        string? persistenceKey = config.PersistenceKeyResolver!(request);
+        if (string.IsNullOrEmpty(persistenceKey))
+            throw new ArgumentException("The persistence-key resolver returned an empty key.");
+        if (PositionHintCache.IsGuestAccount(persistenceKey))
+            throw new ArgumentException("An authenticated persistence key cannot use the reserved guest prefix.");
+        if (Key(persistenceKey).Length > 450)
+            throw new ArgumentOutOfRangeException(nameof(request), "The resolved store key cannot exceed 450 characters.");
+        return persistenceKey;
+    }
 
     private void Track(Task task)
     {

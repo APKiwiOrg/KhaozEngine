@@ -113,7 +113,19 @@ internal static class SqliteJournalSchema
 
     internal static string VersionOneSchemaSqlForTest => VersionOneTables;
 
-    private static string VersionOneTables => Tables
+    internal static string VersionOneSchemaSqlForTestWithLineEndings(string lineEndings)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(lineEndings);
+        return CreateVersionOneTables(Tables.ReplaceLineEndings(lineEndings));
+    }
+
+    private static string VersionOneTables => CreateVersionOneTables(Tables);
+
+    private static string CreateVersionOneTables(string tables)
+    {
+        bool usesCrLf = tables.Contains("\r\n", StringComparison.Ordinal);
+        string normalized = tables.ReplaceLineEndings("\n");
+        string versionOne = normalized
         .Replace(",\n    retention_started_at_utc INTEGER NOT NULL DEFAULT 9223372036854775807", string.Empty, StringComparison.Ordinal)
         .Replace("CREATE INDEX IF NOT EXISTS ix_journal_operation_retention ON journal_operation(retention_started_at_utc, operation_id);\n", string.Empty, StringComparison.Ordinal)
         .Replace("""
@@ -125,7 +137,7 @@ BEGIN
     SET retention_started_at_utc = CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)
     WHERE operation_id = NEW.operation_id;
 END;
-""", string.Empty, StringComparison.Ordinal)
+""".ReplaceLineEndings("\n"), string.Empty, StringComparison.Ordinal)
         .Replace("""
 CREATE TRIGGER IF NOT EXISTS trg_journal_operation_delete_guard
 BEFORE DELETE ON journal_operation
@@ -133,8 +145,10 @@ WHEN khaoz_journal_operation_delete_allowed() <> 1
 BEGIN
     SELECT RAISE(ABORT, 'journal operation delete requires guarded maintenance');
 END;
-""", string.Empty, StringComparison.Ordinal)
+""".ReplaceLineEndings("\n"), string.Empty, StringComparison.Ordinal)
         .Replace("VALUES (1, 2, lower(hex(randomblob(16)))", "VALUES (1, 1, lower(hex(randomblob(16)))", StringComparison.Ordinal);
+        return usesCrLf ? versionOne.ReplaceLineEndings("\r\n") : versionOne;
+    }
 
     internal static string BootstrapSql(SqliteMutationJournalStoreOptions options)
     {

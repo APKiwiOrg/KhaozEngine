@@ -1,6 +1,6 @@
 namespace KhaozEngine.TileWorld.Netcode;
 
-/// <summary>What one tick's command asks for. Four values, and the wire form is one byte, because a tile world's
+/// <summary>What one tick's command asks for. Five values, and the wire form is one byte, because a tile world's
 /// entire input vocabulary is where to go, what to touch and what to fight.</summary>
 public enum TileCommandKind : byte
 {
@@ -30,6 +30,12 @@ public enum TileCommandKind : byte
     /// sometimes attack a player. The kind is the discriminator, and it is the only one available without widening
     /// the frame or tagging the ids.</para></summary>
     Attack = 3,
+
+    /// <summary>Route to a reach tile of <see cref="TileCommand.Target"/> as a NET ID and raise the entity
+    /// interaction on arrival. Distinct from <see cref="Interact"/> because authored object ids and entity net ids
+    /// overlap exactly. An older decoder rejects this value as unknown instead of resolving it in the object
+    /// domain.</summary>
+    InteractEntity = 4,
 }
 
 /// <summary>
@@ -46,9 +52,9 @@ public enum TileCommandKind : byte
 /// must be the player's own, or the command is dropped at apply.</param>
 /// <param name="Mode">Walk or run. Carried on every kind, so the run toggle rides the tick stream rather than the
 /// click, and a change takes effect at the start of the next step.</param>
-/// <param name="Target">The interaction target id for <see cref="TileCommandKind.Interact"/>, or the combat
-/// target's NET ID for <see cref="TileCommandKind.Attack"/>, otherwise 0. One field over two id spaces that
-/// overlap exactly, which is why <see cref="Kind"/> is what tells them apart.</param>
+/// <param name="Target">The authored object id for <see cref="TileCommandKind.Interact"/>, or the entity NET ID
+/// for <see cref="TileCommandKind.InteractEntity"/> and <see cref="TileCommandKind.Attack"/>, otherwise 0. One
+/// field over two id spaces that overlap exactly, which is why <see cref="Kind"/> is what tells them apart.</param>
 public readonly record struct TileCommand(TileCommandKind Kind, TileCoord Goal, TileMoveMode Mode, long Target)
 {
     /// <summary>Keep walking the current route, or keep standing, at <paramref name="mode"/>. THE factory a client
@@ -68,10 +74,22 @@ public readonly record struct TileCommand(TileCommandKind Kind, TileCoord Goal, 
     public static TileCommand WalkTo(TileCoord goal, TileMoveMode mode) =>
         new(TileCommandKind.WalkTo, goal, mode, 0);
 
-    /// <summary>Route to a reach tile of <paramref name="target"/> and interact as the walk COMMITS to it, which is
-    /// the tick the last step starts and not the tick the drawn body gets there.</summary>
+    /// <summary>Route to a reach tile of an authored object and interact as the walk COMMITS to it, which is the
+    /// tick the last step starts and not the tick the drawn body gets there. Kept as the source-compatible name for
+    /// <see cref="InteractObject"/>.</summary>
     public static TileCommand Interact(long target, TileMoveMode mode) =>
         new(TileCommandKind.Interact, default, mode, target);
+
+    /// <summary>The explicit authored-object form of <see cref="Interact"/>. Use this beside
+    /// <see cref="InteractEntity"/> so a call site states which overlapping id domain its target belongs to.</summary>
+    public static TileCommand InteractObject(long objectId, TileMoveMode mode) =>
+        Interact(objectId, mode);
+
+    /// <summary>Route to a reach tile of an entity NET ID and raise
+    /// <c>TileWorldServer.OnInteractEntity</c> on arrival. This never resolves through authored objects and never
+    /// raises <c>TileWorldServer.OnInteract</c>.</summary>
+    public static TileCommand InteractEntity(long netId, TileMoveMode mode) =>
+        new(TileCommandKind.InteractEntity, default, mode, netId);
 
     /// <summary>Lock onto <paramref name="netId"/> and chase it. Unlike <see cref="Interact"/> this routes nothing
     /// up front: the FOLLOW inside the stepper re-paths every tick the target's committed tile moved, which is what

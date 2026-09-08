@@ -83,7 +83,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
             _log.Record(D3D11NativeCall.OMSetRenderTargets, _log.Id(framebuffer));
             _log.Record(D3D11NativeCall.RSSetViewports, FullViewport(framebuffer));
-            _log.Record(D3D11NativeCall.RSSetScissorRects, FullScissor(framebuffer));
+            _log.Record(D3D11NativeCall.RSSetScissorRects,
+                D3D11ScissorState.Describe(_state.Scissors.SetFull(framebuffer.Width, framebuffer.Height)));
         }
 
         /// <summary>
@@ -199,18 +200,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// things that touch the scissor afterwards are another explicit call, a genuine framebuffer CHANGE, and
         /// the <c>ClearState</c> that opens the next replay.
         /// <para>
-        /// Traced as <c>out&lt;index&gt;:&lt;count&gt;,&lt;left&gt;,&lt;top&gt;,&lt;right&gt;,&lt;bottom&gt;</c>,
-        /// which is the D3D11 <c>RECT</c> rather than the seam's origin-plus-size, so a trace can be read
-        /// straight against a capture.
+        /// Traced as <c>count:&lt;count&gt;,[left,top,right,bottom],...</c>. The rectangles are the whole emitted
+        /// prefix from slot zero through the highest retained slot, in D3D11 <c>RECT</c> form rather than the
+        /// seam's origin-plus-size, so a trace can be read straight against a capture.
         /// </para>
         /// </summary>
         public void SetScissorRect(uint index, uint x, uint y, uint width, uint height)
         {
-            // Rectangle 0 or a refusal, decided in the one place both emitters ask, so a device-free trace cannot
-            // model an index the real call has no way to honour.
-            D3D11BindResolve.RequireSingleScissorRect(index);
             _log.Record(D3D11NativeCall.RSSetScissorRects,
-                $"out{N(index)}:1,{N(x)},{N(y)},{N(x + width)},{N(y + height)}");
+                D3D11ScissorState.Describe(_state.Scissors.Set(index, x, y, width, height)));
         }
 
         public void SetFullScissorRects()
@@ -218,7 +216,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             // Refused in the one place both emitters ask, so the two cannot drift in wording or in condition.
             IGpuFramebuffer framebuffer = D3D11BindResolve.RequireScissorExtent(_state.BoundFramebuffer);
 
-            _log.Record(D3D11NativeCall.RSSetScissorRects, FullScissor(framebuffer));
+            _log.Record(D3D11NativeCall.RSSetScissorRects,
+                D3D11ScissorState.Describe(_state.Scissors.SetFull(framebuffer.Width, framebuffer.Height)));
         }
 
         /// <summary>Decision R5, rule 2, in the order every draw path in this backend takes: the resource-set
@@ -460,10 +459,6 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         // SetFullViewports produces for a single output.
         static string FullViewport(IGpuFramebuffer framebuffer)
             => $"1,0,0,{N(framebuffer.Width)},{N(framebuffer.Height)},0,1";
-
-        // Every output at once, matching SetFullScissorRects, and the same RECT shape as an explicit rect.
-        static string FullScissor(IGpuFramebuffer framebuffer)
-            => $"all:1,0,0,{N(framebuffer.Width)},{N(framebuffer.Height)}";
 
         // A blend factor as the four components OMSetBlendState takes, so two pipelines that share a state object
         // and differ only here are visibly different in the trace.

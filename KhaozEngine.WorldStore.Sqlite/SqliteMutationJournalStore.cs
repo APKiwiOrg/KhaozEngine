@@ -22,6 +22,8 @@ public sealed partial class SqliteMutationJournalStore : IMutationJournalStore, 
 {
     private const string OperationDeleteGuardFunction = "khaoz_journal_operation_delete_allowed";
     internal static string VersionOneSchemaSqlForTest => SqliteJournalSchema.VersionOneSchemaSqlForTest;
+    internal static string VersionOneSchemaSqlForTestWithLineEndings(string lineEndings) =>
+        SqliteJournalSchema.VersionOneSchemaSqlForTestWithLineEndings(lineEndings);
 
     private readonly SqliteStoreConnection db;
     private readonly JournalLimits limits;

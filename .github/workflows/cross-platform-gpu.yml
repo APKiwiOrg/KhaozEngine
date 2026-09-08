@@ -168,7 +168,7 @@
 #   4. After that, the push/PR legs VERIFY what was baked, each leg against its own family.
 #
 # Running the matrix WITHOUT the GPU shader disk caches (#614):
-#   Dispatch with disableGpuDiskCache = true. Every leg's test step and the sync job then set all three
+#   Dispatch with disableGpuDiskCache = true. Every leg's test step and the sync job then set all backend
 #   cache variables to `off`, plus KE_SPIRV_CACHE for the in-memory front-end memo (#640), so no backend
 #   reads or writes an entry and nothing is compiled once and reused for the whole run. That is the A/B
 #   for a flake that could be a warm cache entry read back wrong: the same commit, cacheless. Every other
@@ -924,6 +924,37 @@ jobs:
       # guest leg, because a guest owned no family and could only have verified references being replaced
       # mid-run. From 17.41.0 every leg owns the family it reads (row 2 of #683), so every leg is a bake leg
       # and the condition is gone with the goldenGuest column it read.
+      - name: Vulkan shader cache cold warm and disabled verification
+        if: github.event_name == 'workflow_dispatch' && matrix.backend == 'vulkan-native' && !inputs.disableGpuDiskCache
+        env:
+          KE_GPU_TESTS: '1'
+          KE_GRAPHICS_BACKEND: vulkan-native
+          KE_SPIRV_CACHE: 'off'
+          KE_VULKAN_PIPELINE_CACHE: 'off'
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p TestResults
+          spirv_probe_cache=$(mktemp -d)
+          trap 'rm -rf "$spirv_probe_cache"' EXIT
+          for pass in cold warm; do
+            KE_VULKAN_SPIRV_CACHE="$spirv_probe_cache" dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --no-restore --filter FullyQualifiedName~A_second_scene_on_the_same_device_compiles_nothing_new --logger "console;verbosity=detailed" 2>&1 | tee "TestResults/spirv-cache-$pass.log"
+          done
+          KE_VULKAN_SPIRV_CACHE=off dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --no-restore --filter FullyQualifiedName~A_second_scene_on_the_same_device_compiles_nothing_new --logger "console;verbosity=detailed" 2>&1 | tee TestResults/spirv-cache-disabled.log
+          python3 - <<'PY'
+          import pathlib, re
+          def counts(mode):
+              output = pathlib.Path(f"TestResults/spirv-cache-{mode}.log").read_text()
+              match = re.search(r"Initial scene compiles: (\d+)\. Second scene compiles: (\d+)\.", output)
+              assert match, f"Missing compiler counters for {mode}"
+              return tuple(map(int, match.groups()))
+          cold, warm, disabled = counts("cold"), counts("warm"), counts("disabled")
+          assert cold[0] > 0 and cold[1] == 0, ("cold", cold)
+          assert warm == (0, 0), ("warm", warm)
+          assert disabled[0] > 0 and disabled[1] > 0, ("disabled", disabled)
+          print(f"SPIR-V compile counters: cold={cold}, warm={warm}, disabled={disabled}")
+          PY
+
       - name: Run test suite
         env:
           KE_GPU_TESTS: '1'
@@ -1083,16 +1114,18 @@ jobs:
           # the shipped default location, and `off` on a dispatch that asked for it. Each variable belongs to one
           # backend and is inert on the other two legs, so setting all three on every leg costs nothing and is
           # what makes the cacheless dispatch uniform: KE_METAL_MSL_CACHE is MetalMslCache's, KE_D3D11_SHADER_CACHE
-          # is D3D11DxbcCache's and KE_VULKAN_PIPELINE_CACHE is VulkanPipelineCacheFile's, and all three resolve
+          # is D3D11DxbcCache's, KE_VULKAN_SPIRV_CACHE is SpirvBytesCache's, and KE_VULKAN_PIPELINE_CACHE is
+          # VulkanPipelineCacheFile's. They resolve
           # through GpuDiskCache, which is where the disable words live.
           KE_METAL_MSL_CACHE: ${{ env.GPU_DISK_CACHE }}
           KE_D3D11_SHADER_CACHE: ${{ env.GPU_DISK_CACHE }}
           KE_VULKAN_PIPELINE_CACHE: ${{ env.GPU_DISK_CACHE }}
+          KE_VULKAN_SPIRV_CACHE: ${{ env.GPU_DISK_CACHE }}
           # AND THE IN-MEMORY ONE, from the same value (#640). SpirvCompileCache is not a disk cache and holds
           # nothing across boots, so it cannot serve the stale entry #614 is looking for. It CAN serve one bad
           # emission to every test in a process, which is a shape a cacheless A/B has to be able to rule out, and
           # a run described as cacheless that still memoized would be describing itself falsely. It takes the same
-          # five disable words, so the one value drives all four.
+          # five disable words, so the one value drives every cache.
           KE_SPIRV_CACHE: ${{ env.GPU_DISK_CACHE }}
           # ARMED ON EVERY LEG ON A BAKE DISPATCH since 17.41.0. It used to be held empty on the two guest legs
           # for every trigger (decisions I3 and V-T1), because GoldenCompare.BakeRefusal turns KE_UPDATE_GOLDENS=1
@@ -1531,8 +1564,9 @@ jobs:
           # THE SAME ONE VALUE THE MATRIX LEGS READ (#614). This job is part of the run, so a cacheless dispatch
           # that left it caching would make the dispatch's own description false, which is the same objection
           # this file already records against an artifact whose name is false. Only the Vulkan variable can do
-          # anything here, and it is the pipeline cache the native backend writes.
+          # anything here. Both its shader front-end cache and pipeline cache take the same switch.
           KE_VULKAN_PIPELINE_CACHE: ${{ env.GPU_DISK_CACHE }}
+          KE_VULKAN_SPIRV_CACHE: ${{ env.GPU_DISK_CACHE }}
           # The in-memory front-end memo, off on the same terms as the matrix legs (#640).
           KE_SPIRV_CACHE: ${{ env.GPU_DISK_CACHE }}
         # pipefail explicitly, for the reason the matrix job's test step states: this is a gating command and

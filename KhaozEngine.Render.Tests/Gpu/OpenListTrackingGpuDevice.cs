@@ -38,8 +38,9 @@ namespace KhaozEngine.Tests.Gpu
             _fences = completionFences;
             _factory = new TrackingFactory(_inner.Factory, this, completionFences);
             GpuCapabilities c = _inner.Capabilities;
-            Capabilities = new GpuCapabilities(c.ClipSpaceYInverted, c.DepthRangeZeroToOne, c.DeviceName,
-                c.SamplerAnisotropy, c.SamplerLodBias, c.MaxMsaaSampleCount, c.SupportsShadowMaps,
+            Capabilities = GpuCapabilities.FromSupportedMsaaSampleCounts(
+                c.ClipSpaceYInverted, c.DepthRangeZeroToOne, c.SupportedMsaaSampleCounts, c.DeviceName,
+                c.SamplerAnisotropy, c.SamplerLodBias, c.SupportsShadowMaps,
                 supportsCompute: true, supportsCompletionFences: completionFences);
         }
 

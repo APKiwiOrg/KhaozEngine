@@ -36,6 +36,26 @@ public class TileCommandCodecTests
     }
 
     [Fact]
+    public void Object_interaction_keeps_its_bytes_and_entity_interaction_uses_the_next_kind()
+    {
+        byte[] legacy = TileProtocol.EncodeCommand(9, TileCommand.Interact(7, TileMoveMode.Run));
+        byte[] namedObject = TileProtocol.EncodeCommand(9, TileCommand.InteractObject(7, TileMoveMode.Run));
+        byte[] entity = TileProtocol.EncodeCommand(9, TileCommand.InteractEntity(7, TileMoveMode.Run));
+
+        Assert.Equal(legacy, namedObject);
+        Assert.Equal((byte)TileCommandKind.Interact, legacy[5]);
+        Assert.Equal(4, entity[5]);
+        Assert.True(TileProtocol.TryDecodeCommand(entity, Planes, out int seq, out TileCommand decoded));
+        Assert.Equal(9, seq);
+        Assert.Equal(TileCommand.InteractEntity(7, TileMoveMode.Run), decoded);
+
+        // A server from before this addition rejects kind 4 at its old `kind > Attack` check. The current decoder
+        // admits 4 and still rejects the next unknown value rather than treating it as an object interaction.
+        entity[5] = 5;
+        Assert.False(TileProtocol.TryDecodeCommand(entity, Planes, out _, out _));
+    }
+
+    [Fact]
     public void An_unknown_kind_is_rejected()
     {
         byte[] frame = TileProtocol.EncodeCommand(1, TileCommand.WalkTo(new TileCoord(1, 1, 0), TileMoveMode.Walk));

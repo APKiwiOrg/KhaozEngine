@@ -3,6 +3,7 @@ using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.D3D11.Internal;
 using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Metal.Internal;
+using KhaozEngine.Gpu.Vulkan.Internal;
 using KhaozEngine.Render3D;
 using Xunit;
 using Xunit.Abstractions;
@@ -41,11 +42,13 @@ namespace KhaozEngine.Tests.Gpu
     /// run that uses it, and a switch nothing checks is how a cacheless run ends up quietly caching.
     /// </para>
     /// <para>
-    /// <b>WITH ONE LEGITIMATE ZERO, WHICH ONLY THE KILL SWITCH'S OWN A/B EVER REACHES.</b> Two backends answer a
+    /// <b>WITH ONE LEGITIMATE ZERO, WHICH ONLY THE KILL SWITCH'S OWN A/B EVER REACHES.</b> Every native backend
+    /// answers a
     /// repeat off DISK before the front end is reached at all, so on those the counter stands still whatever
     /// <c>KE_SPIRV_CACHE</c> says: <c>MetalShaderBuild.Pair</c> consults <c>MetalMslCache</c> ahead of
-    /// <c>SpirvFrontEnd.ToSpirv</c>, and <c>D3D11ShaderBuild.Pair</c> consults <c>D3D11DxbcCache</c> ahead of the
-    /// cross-compile that calls it. Skipping BOTH halves is the entire reason those caches exist. The cacheless
+    /// <c>SpirvFrontEnd.ToSpirv</c>, <c>D3D11ShaderBuild.Pair</c> consults <c>D3D11DxbcCache</c> ahead of the
+    /// cross-compile that calls it, and Vulkan checks <c>SpirvBytesCache</c> before glslang. Skipping that work is
+    /// the entire reason those caches exist. The cacheless
     /// dispatch never meets this, because it sets every cache variable together, but the switch's own documented
     /// A/B does, and it used to get two red rows accusing a cache that does not exist. So a zero delta is accepted
     /// when the running backend's disk cache is on, and asserted against when it is not.
@@ -73,11 +76,14 @@ namespace KhaozEngine.Tests.Gpu
                 W, H, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
             using IGpuFramebuffer framebuffer = gd.Factory.CreateFramebuffer(null, target);
 
+            long initial = SpirvCompileCache.Shared.CompileCount;
             using (var warm = new Scene3D(gd, framebuffer.Outputs, null)) { }
 
             long before = SpirvCompileCache.Shared.CompileCount;
             using (var second = new Scene3D(gd, framebuffer.Outputs, null)) { }
             long after = SpirvCompileCache.Shared.CompileCount;
+
+            _output.WriteLine($"Initial scene compiles: {before - initial}. Second scene compiles: {after - before}.");
 
             AssertMemoDidItsJob(gpu.Backend, before, after);
         }
@@ -150,9 +156,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <para>
         /// EACH CACHE'S OWN <c>Resolve</c> DECIDES, rather than a second copy of the disable-word list. Both are
         /// documented as the pure decision with no directory sweep, which is exactly what a caller wanting the
-        /// answer and no side effect needs. The native Vulkan backend is deliberately absent: its only disk cache
-        /// holds PIPELINES, and its shader path compiles every module through <c>SpirvFrontEnd</c> first because
-        /// the module hash is what its per-device dedup keys on.
+        /// answer and no side effect needs.
         /// </para>
         /// </summary>
         static string? ShaderDiskCacheAheadOfTheFrontEnd(GpuBackendKind backend) => backend switch
@@ -163,6 +167,9 @@ namespace KhaozEngine.Tests.Gpu
             GpuBackendKind.Direct3D11Native when D3D11DxbcCache.Resolve(
                 Environment.GetEnvironmentVariable(D3D11DxbcCache.EnvVarName)) is not null
                 => D3D11DxbcCache.EnvVarName,
+            GpuBackendKind.VulkanNative when SpirvBytesCache.Resolve(
+                Environment.GetEnvironmentVariable(SpirvBytesCache.EnvVarName)) is not null
+                => SpirvBytesCache.EnvVarName,
             _ => null,
         };
 

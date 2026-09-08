@@ -89,6 +89,9 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>Every buffer this factory has handed out, in creation order. See <see cref="Textures"/>.</summary>
         internal List<FakeBuffer> Buffers { get; } = new();
 
+        /// <summary>Every graphics pipeline request with the GLSL source carried by its real shader-set handle.</summary>
+        internal List<FakeGraphicsPipelineRequest> GraphicsPipelines { get; } = new();
+
         /// <summary>How many of <see cref="ResourceSets"/> have been disposed.</summary>
         internal int DisposedResourceSetCount
         {
@@ -134,8 +137,14 @@ namespace KhaozEngine.Tests.Gpu
             ResourceSets.Add(set);
             return set;
         }
-        public IGpuShaderSet CreateShadersFromSpirv(string vertGlsl, string fragGlsl) => new FakeShaderSet();
-        public IGpuPipeline CreateGraphicsPipeline(in GpuPipelineDescription d) => new FakePipeline();
+        public IGpuShaderSet CreateShadersFromSpirv(string vertGlsl, string fragGlsl)
+            => new FakeShaderSet(vertGlsl, fragGlsl);
+        public IGpuPipeline CreateGraphicsPipeline(in GpuPipelineDescription d)
+        {
+            if (d.ShaderSet is FakeShaderSet shaders)
+                GraphicsPipelines.Add(new FakeGraphicsPipelineRequest(shaders.VertexGlsl, shaders.FragmentGlsl, d));
+            return new FakePipeline();
+        }
         public IGpuCommandList CreateCommandList()
         {
             var cl = new NullGpuCommandList();
@@ -232,7 +241,21 @@ namespace KhaozEngine.Tests.Gpu
         public void Dispose() => Disposed = true;
     }
 
-    internal sealed class FakeShaderSet : IGpuShaderSet { public void Dispose() { } }
+    internal sealed class FakeShaderSet : IGpuShaderSet
+    {
+        internal FakeShaderSet(string vertexGlsl, string fragmentGlsl)
+        {
+            VertexGlsl = vertexGlsl;
+            FragmentGlsl = fragmentGlsl;
+        }
+
+        internal string VertexGlsl { get; }
+        internal string FragmentGlsl { get; }
+        public void Dispose() { }
+    }
+
+    internal readonly record struct FakeGraphicsPipelineRequest(
+        string VertexGlsl, string FragmentGlsl, GpuPipelineDescription Description);
     internal sealed class FakePipeline : IGpuPipeline { public void Dispose() { } }
 
     /// <summary>Drops every recorded command. The terminal sink <see cref="CommandTallyGpuCommandList"/> forwards

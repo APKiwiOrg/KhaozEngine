@@ -49,9 +49,10 @@ public sealed partial class TileWorldClient : IDisposable
     /// <param name="targets">Resolves interaction targets, null on a head with no interactions wired. When it is
     /// null an <see cref="TileCommandKind.Interact"/> is still sent and still answered by the server, it is simply
     /// not predicted, which reads as the click taking one round trip to land. This is the OBJECT space only. The
-    /// second seam, the ENTITY space a <see cref="TileCommandKind.Attack"/> names, is not a parameter: the client
-    /// builds its own <see cref="TileRemoteTargets"/> over itself, because the only honest answer to "where is that
-    /// entity" on a client is the client's own newest snapshot.</param>
+    /// second seam, the ENTITY space named by <see cref="TileCommandKind.InteractEntity"/> and
+    /// <see cref="TileCommandKind.Attack"/>, is not a parameter: the client builds its own
+    /// <see cref="TileRemoteTargets"/> over itself, because the only honest answer to where an entity is on a client
+    /// is that client's own newest snapshot.</param>
     /// <param name="connectToken">The token the door reads, from <see cref="TileProtocol.BuildConnectToken"/>.
     /// Null presents an empty token, which only a server with no gate admits.</param>
     /// <param name="registry">The replication registry both heads share, the mirror of
@@ -124,9 +125,14 @@ public sealed partial class TileWorldClient : IDisposable
     /// <para>THE BODY LAGS THE COMMITTED TILE, BY DESIGN, and this is the one thing to understand before drawing
     /// anything else off this client. A step commits its tile when it STARTS, so the rules answer every question
     /// (reach, occupancy, what a click resolves against) about <see cref="ClientPrediction{TState,TCommand}.PredictedState"/>'s
-    /// <see cref="TileMoveState.Tile"/> while this pose is still walking into it: up to one whole step behind, half
-    /// a tile on average, and zero at the instant the body lands. The lag is the price of the responsiveness the
-    /// lead commit buys, and it is NOT smoothed away here. The mitigation is VISIBILITY, and it is the game's to
+    /// <see cref="TileMoveState.Tile"/> while this pose is still walking into it. The raw step glide is at most one
+    /// Chebyshev grid step behind. With no active reconciliation offset, inter-tick easing can add one local command tick of travel, for a base motion bound of
+    /// <c>1 + 1 / StepTicks</c> grid steps. This is 1.25 walking and 1.5 running at the default 4 and 2 tick
+    /// cadences. A diagonal step is <c>sqrt(2)</c> tile sizes in Euclidean world distance. An active planar
+    /// reconciliation offset adds another term until it decays. A conservative instantaneous bound is the base
+    /// motion term plus that offset's magnitude. Repeated sub-snap corrections can re-anchor the offset, so it has
+    /// no separate fixed cap. A hard snap or teleport clears it. The lag is the price of
+    /// the responsiveness the lead commit buys. The mitigation is VISIBILITY, and it is the game's to
     /// draw: a true-tile marker on <c>PredictedState.Tile</c> and a highlight over the remaining
     /// <see cref="TileMoveState.Route"/>, both mapped with <see cref="TilePresenter.PoseAt(TileCoord, TileDirection)"/>.
     /// See <c>docs/USING-KHAOZENGINE.md</c> for the overlay reads and
@@ -349,6 +355,7 @@ public sealed partial class TileWorldClient : IDisposable
     TileCommand Admit(in TileCommand cmd) =>
         (cmd.Kind == TileCommandKind.WalkTo && !GoalInRange(Prediction.PredictedState, cmd.Goal))
         || (cmd.Kind == TileCommandKind.Attack && cmd.Target == 0)
+        || (cmd.Kind == TileCommandKind.InteractEntity && !Simulator.Accepts(Prediction.PredictedState, cmd))
             ? TileCommand.Continue(cmd.Mode)
             : cmd;
 

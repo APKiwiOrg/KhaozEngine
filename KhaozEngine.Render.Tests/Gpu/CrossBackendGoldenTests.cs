@@ -32,7 +32,7 @@ namespace KhaozEngine.Tests.Gpu
         /// </summary>
         const float MaxCrossBackendDiff = 0.20f;
 
-        [Fact]
+        [CrossBackendGoldenFact]
         public void Committed_goldens_agree_across_backends_within_a_generous_tolerance()
         {
             string dir = GoldensDir();
@@ -96,6 +96,15 @@ namespace KhaozEngine.Tests.Gpu
 
             if (failures.Length > 0)
                 Assert.Fail("Committed per-backend goldens diverge beyond the cross-backend tolerance:\n" + failures);
+        }
+
+        [Theory]
+        [InlineData(null, null)]
+        [InlineData("0", null)]
+        [InlineData("1", "cross-backend agreement is skipped while KE_UPDATE_GOLDENS=1 is baking one backend family")]
+        public void Bake_mode_skips_only_cross_backend_agreement(string? updateGoldens, string? expectedSkip)
+        {
+            Assert.Equal(expectedSkip, CrossBackendGoldenFactAttribute.SkipReason(updateGoldens));
         }
 
         // Parse a committed grid file (# header + one "r g b" line per cell) to a flat float array.

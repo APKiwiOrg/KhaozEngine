@@ -78,6 +78,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// </summary>
         internal D3D11VertexStreams Vertices { get; } = new();
 
+        /// <summary>The complete scissor array currently bound on the context.</summary>
+        internal D3D11ScissorState Scissors { get; } = new();
+
         /// <summary>The framebuffer the context is rendering into, or null when nothing is bound.</summary>
         internal IGpuFramebuffer? BoundFramebuffer => _framebuffer;
 
@@ -139,6 +142,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             _stencilReference = 0u;
             Binds.Reset();
             Vertices.Reset();
+            Scissors.Reset();
         }
 
         /// <summary>

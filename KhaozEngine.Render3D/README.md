@@ -160,8 +160,9 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   edge outline, cel bands, all independently toggleable (the smooth look is the default).
 - Anti-aliasing: `PixelPostProcessSettings.Quality.AntiAliasing` (a `RenderQuality` container) is the AA dropdown
   most games ship - `AntiAliasing.Off` / `.Fxaa` / `.Msaa(2|4|8)` / `.Ssaa(factor)`. Validate a menu choice against
-  the device with `AntiAliasing.ResolveFor(caps)` (clamps MSAA to `GpuCapabilities.MaxMsaaSampleCount` or falls back
-  to FXAA, never throws). Default `Off`, so the low-level `RenderScale` / `Supersample` fields still govern.
+  the device with `AntiAliasing.ResolveFor(caps)` (selects the largest member of
+  `GpuCapabilities.SupportedMsaaSampleCounts` no greater than the request, or falls back to FXAA). Default `Off`,
+  so the low-level `RenderScale` / `Supersample` fields still govern.
   SSAA supersamples the whole image (geometry AND shaded interiors, the only one that kills high-frequency terrain
   shimmer) and now downsamples correctly at ANY factor via a mip-filtered blit. FXAA is a cheap one-pass edge
   smoother. MSAA multisamples geometry edges only. `.Msaa(2, postFxaa: true)` keeps the FXAA post filter
@@ -183,6 +184,20 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   own blob (ground-receiver-only: terrain and rigid props receive the blob, characters do not - the Y-band never
   repaints a character's legs). Radius follows the caster footprint. Strength fades with height above ground
   (`ShadowSettings.BlobFadeHeight`) so a jumping caster's blob shrinks + lightens.
+  - `ShadowSettings.ForDetail(ShadowMapDetail)` creates the full directional shadow-map profiles below. Every profile
+    selects `ShadowMode.ShadowMap`.
+
+    | Detail | Per-cascade resolution |
+    | --- | ---: |
+    | `ShadowMapDetail.Low` | 1024 |
+    | `ShadowMapDetail.Default` | 2048 |
+    | `ShadowMapDetail.High` | 3072 |
+
+    ```csharp
+    ShadowSettings shadows = ShadowSettings.ForDetail(ShadowMapDetail.Default);
+    var game = new MyGame(options, shadows);
+    ```
+
   - `ShadowMode.ShadowMap`: a depth-only pass renders the instanced casters (models cast, and splat terrain receives
   only unless `Scene3D.TerrainCastsShadows` is set) into
   a CASCADED ortho light-space depth atlas - `ShadowCascadeCount` cascades (default 3) side by side in one R32F
@@ -493,8 +508,10 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   ride the same gate) its breaking surf. The shared ocean itself now runs on DEMAND - it bakes when any queued
   plane's effective wave source is `FftOcean`, rather than off the scene's own default, so a `Procedural` scene
   with one ocean plane still gets a real ocean. Costs zero new UBO bytes (payload 672, slot 768), zero new GPU
-  resources, zero new pipelines: each plane already owned its slot in the water pass's uniform buffer, so an
-  override is a different set of numbers written into a slot that was being written anyway. Per-body sea states,
+  per-plane GPU resources and zero new pipelines: each plane already owned its slot in the water pass's uniform
+  buffer, so an override is a different set of numbers written into a slot that was being written anyway. The
+  first effective procedural zero-swell plane in clipmap mode lazily creates one shared four-vertex and six-index
+  buffer pair, then every such plane reuses it. Per-body sea states,
   bathymetry and grid modes stay deferred to [#275](https://github.com/APKiwiOrg/KhaozEngine/issues/275).
   Rationale, including why a per-plane sea state is refused rather than deferred:
   `docs/design/WATER-PER-PLANE-LOOK-DESIGN-2026-07-27.md`.
@@ -525,7 +542,9 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   band-limits each ring to its own Nyquist against the mipped cascade maps (`ClipmapBandLimitSamples`).
   `GridFocusBias` is inert under it. At the defaults it draws FEWER triangles than the grid it replaces and only
   rebuilds its buffers when a ring snaps (per plane: each plane owns a slice of the buffers, so one plane's rebuild
-  never invalidates another's). Its snap lattice is decided in ABSOLUTE world space and only then reduced by the
+  never invalidates another's). A plane whose effective look is procedural with `SwellAmplitude = 0` has no vertex
+  displacement, so it skips the lattice and draws one six-index quad through the regular water pipeline. FFT
+  planes and procedural planes with any swell keep the clipmap. Its snap lattice is decided in ABSOLUTE world space and only then reduced by the
   camera-relative `RenderOrigin`, so an origin rebase moves no ring. Since 17.3.0 `ClipmapGeomorphBand` (0.5, `0`
   restores the 16.12.0 grid exactly) fades each ring's outer band toward the next ring out's evaluation - sampled
   displacement and band-limit spacing both - instead of swapping level at the boundary; it subsumes the stitch

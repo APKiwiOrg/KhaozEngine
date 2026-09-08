@@ -79,6 +79,18 @@ namespace KhaozEngine.Tests.Gui
         }
 
         [Fact]
+        public void Default_line_layouts_as_empty_text()
+        {
+            TooltipLine line = default;
+
+            Rect bounds = Tooltip.ComputeBounds(Font, "", Font, new[] { line },
+                new Vector2(300, 200), View, M);
+
+            Assert.Equal(M.PadX * 2f, bounds.Width);
+            Assert.Equal(M.PadY * 2f, bounds.Height);
+        }
+
+        [Fact]
         public void Flips_below_the_anchor_when_there_is_no_room_above()
         {
             var r = Tooltip.ComputeBounds(Font, "Hello", Font, One("World"), new Vector2(300, 30), View, M);

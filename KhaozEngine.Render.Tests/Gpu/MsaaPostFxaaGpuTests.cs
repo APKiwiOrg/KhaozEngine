@@ -13,8 +13,8 @@ public sealed class MsaaPostFxaaGpuTests
     {
         var reference = Capture(postFxaa: false);
         var result = Capture(postFxaa: true);
-        Assert.Equal(ProbeSamples, reference.Samples);
-        Assert.Equal(ProbeSamples, result.Samples);
+        Assert.Equal(4, reference.Samples);
+        Assert.Equal(4, result.Samples);
         byte[] unfiltered = reference.Pixels;
         byte[] filtered = result.Pixels;
         int changed = 0;
@@ -27,22 +27,10 @@ public sealed class MsaaPostFxaaGpuTests
             after += b;
         }
 
-        string? probeDirectory = Environment.GetEnvironmentVariable("KE_FXAA_PROBE_DIR");
-        if (!string.IsNullOrEmpty(probeDirectory))
-        {
-            System.IO.Directory.CreateDirectory(probeDirectory);
-            System.IO.File.WriteAllBytes(System.IO.Path.Combine(probeDirectory, "unfiltered.png"),
-                KhaozEngine.Imaging.PngWriter.Encode(unfiltered, 160, 160));
-            System.IO.File.WriteAllBytes(System.IO.Path.Combine(probeDirectory, "filtered.png"),
-                KhaozEngine.Imaging.PngWriter.Encode(filtered, 160, 160));
-            Console.WriteLine($"FXAA probe changed={changed}, beforeMean={before / (filtered.Length / 4)}, afterMean={after / (filtered.Length / 4)}");
-        }
         Assert.True(changed > 100, $"FXAA must filter the resolved edges, changed pixels: {changed}");
         Assert.True(before / (filtered.Length / 4) > 10, "The reference must contain visible geometry.");
         Assert.InRange(after / before, 0.95, 1.05);
     }
-
-    static int ProbeSamples => int.TryParse(Environment.GetEnvironmentVariable("KE_FXAA_PROBE_SAMPLES"), out int n) ? n : 2;
 
     static double Luma(byte[] pixels, int i) =>
         .299 * pixels[i] + .587 * pixels[i + 1] + .114 * pixels[i + 2];
@@ -56,7 +44,7 @@ public sealed class MsaaPostFxaaGpuTests
             {
                 scene.Post.UseSmoothPreset();
                 scene.Post.RenderScale = RenderScale.MatchViewport;
-                scene.Post.Quality.AntiAliasing = ProbeSamples == 1 ? (postFxaa ? AntiAliasing.Fxaa : AntiAliasing.Off) : AntiAliasing.Msaa(ProbeSamples, postFxaa);
+                scene.Post.Quality.AntiAliasing = AntiAliasing.Msaa(4, postFxaa);
                 scene.Post.AmbientColor = Color.White;
                 scene.Camera.Azimuth = 0f;
                 scene.Camera.Elevation = 0f;

@@ -109,17 +109,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// empties is returned behind the timeline rather than freed underneath a submission.
     /// </para>
     /// <para>
-    /// <b><see cref="Capabilities"/> IS <see cref="VulkanCapabilityRead"/>'s ANSWER, AND ALL NINE MEMBERS ARE
+    /// <b><see cref="Capabilities"/> IS <see cref="VulkanCapabilityRead"/>'s ANSWER
     /// FINAL</b> (row 18, https://github.com/APKiwiOrg/KhaozEngine/issues/528). The assembly moved off this
     /// creation path into a device-free type, so the five constants, the device-name normalisation and the
     /// sample-count floor are all plain <c>[Fact]</c>s on a machine with no loader, and
     /// <c>NativeVsVeldridVulkanCapabilityParityTests</c> held the whole set against the incumbent's with ZERO
     /// permitted differences (V-G1), a stricter bar than the Direct3D 11 backend's because there was no
     /// incumbent capability defect to correct here. That test went away with the incumbent in 18.0.0.
-    /// <c>MaxMsaaSampleCount</c>, the last member pinned to 1, landed with row 15
-    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/525) as the incumbent's OWN computation reproduced
-    /// rather than a formula invented here (V-C5), which is what kept the parity assertion satisfiable by
-    /// construction rather than by luck: see <see cref="VulkanMsaaLimit"/>.
+    /// <c>SupportedMsaaSampleCounts</c> now preserves the per-format mask intersection. The compatibility
+    /// <c>MaxMsaaSampleCount</c> is its highest member. See <see cref="VulkanMsaaLimit"/>.
     /// </para>
     /// <para>
     /// <b>TEARDOWN CALLS <c>vkDeviceWaitIdle</c> FIRST</b> (V-F10), unlike the incumbent, which destroyed the
@@ -194,7 +192,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             IVulkanDeviceMemoryApi memoryApi, VulkanMemoryFacts memoryFacts, IVulkanCommandApi commands,
             IVulkanResourceApi resourceApi, IVulkanSetupSink setupSink, IVulkanDescriptorApi descriptorApi,
             IVulkanShaderApi shaderApi, IVulkanPipelineApi pipelineApi,
-            VulkanPipelineCacheFile? pipelineCache, uint maxDynamicUniformBuffers, int framesInFlight,
+            VulkanPipelineCacheFile? pipelineCache, SpirvBytesCache? spirvBytes,
+            uint maxDynamicUniformBuffers, int framesInFlight,
             VulkanWindowedParts? windowed)
         {
             _instance = instance;
@@ -274,7 +273,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             _factory = new VulkanResourceFactory(_resources, _rings, _setup, _descriptors, _modules, _pipelines,
                 () => CreateCommandList(), () => _timeline.CreateFence(), capabilities,
-                memoryFacts.MinUniformBufferOffsetAlignment);
+                memoryFacts.MinUniformBufferOffsetAlignment, spirvBytes);
 
             // THE SHARED PAIR WRAPS ON ALL THREE AXES (section 14), built from VulkanSharedSamplers and NOT from
             // the identically named GpuSamplerDescription statics, which default every axis to CLAMP. Neither

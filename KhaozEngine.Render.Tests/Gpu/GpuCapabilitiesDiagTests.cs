@@ -54,6 +54,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(fromContext.SamplerAnisotropy, fromDevice.SamplerAnisotropy);
             Assert.Equal(fromContext.SamplerLodBias, fromDevice.SamplerLodBias);
             Assert.Equal(fromContext.MaxMsaaSampleCount, fromDevice.MaxMsaaSampleCount);
+            Assert.Equal(fromContext.SupportedMsaaSampleCounts, fromDevice.SupportedMsaaSampleCounts);
             Assert.Equal(fromContext.SupportsShadowMaps, fromDevice.SupportsShadowMaps);
             Assert.Equal(fromContext.SupportsCompute, fromDevice.SupportsCompute);
 

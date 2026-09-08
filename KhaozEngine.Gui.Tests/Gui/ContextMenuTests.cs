@@ -139,6 +139,60 @@ namespace KhaozEngine.Tests.Gui
         }
 
         [Fact]
+        public void RowBounds_rejects_negative_and_past_end_rows()
+        {
+            Rect bounds = ContextMenu.ComputeBounds(Font, "Options", Font, Two(),
+                new Vector2(100, 100), View, M);
+
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                ContextMenu.RowBounds(bounds, Font, Font, -1, M));
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                ContextMenu.RowBounds(bounds, Font, Font, 2, M));
+        }
+
+        [Fact]
+        public void Default_entry_layouts_as_empty_text()
+        {
+            ContextMenuEntry entry = default;
+
+            Rect bounds = ContextMenu.ComputeBounds(Font, "", Font, new[] { entry },
+                new Vector2(100, 100), View, M);
+            ContextMenu.LabelRun run = Assert.Single(
+                ContextMenu.LayoutLabel(entry, Font, 100f, Vector4.One, Vector4.Zero));
+
+            Assert.Equal(M.PadX * 2f, bounds.Width);
+            Assert.Equal("", run.Text);
+        }
+
+        [Fact]
+        public void ComputeBounds_rejects_a_null_entry_collection()
+        {
+            Assert.Throws<ArgumentNullException>(() => ContextMenu.ComputeBounds(
+                Font, "Options", Font, null!, new Vector2(100, 100), View, M));
+        }
+
+        [Fact]
+        public void Instance_geometry_exposes_the_live_menu_and_entry_rects()
+        {
+            ContextMenu menu = OpenMenu(Three(), Point);
+            Rect expected = ContextMenu.ComputeBounds(Font, "Options", Font, Three(), Point, View, M);
+
+            Assert.Equal(expected, menu.Bounds);
+            Assert.Equal(ContextMenu.RowBounds(expected, Font, Font, 1, M), menu.EntryBounds(1));
+            Assert.Throws<ArgumentOutOfRangeException>(() => menu.EntryBounds(-1));
+            Assert.Throws<ArgumentOutOfRangeException>(() => menu.EntryBounds(3));
+        }
+
+        [Fact]
+        public void Constructors_reject_null_fonts_after_an_explicit_overload_cast()
+        {
+            Assert.Throws<ArgumentNullException>(() =>
+                new ContextMenu((ITextMeasurer)null!, Font));
+            Assert.Throws<ArgumentNullException>(() =>
+                new ContextMenu((SpriteFont)null!, null!));
+        }
+
+        [Fact]
         public void Entry_Of_resolves_localized_text_and_a_default_detail_is_empty()
         {
             // default(LocalizedText).Resolve() is the empty string, so the optional detail needs no null guard.
@@ -419,6 +473,30 @@ namespace KhaozEngine.Tests.Gui
             Assert.True(menu.WasDismissed);
             Assert.False(menu.WasSelected);
             Assert.Null(menu.DismissPress);     // no outside press to reopen from
+        }
+
+        [Fact]
+        public void Menu_cancel_is_ignored_while_the_window_is_unfocused()
+        {
+            ContextMenu menu = OpenMenu(Three(), Point);
+            var input = new InputManager();
+            var escape = new HashSet<Key> { Key.Escape };
+            var emptyKeys = new HashSet<Key>();
+            var emptyButtons = new HashSet<MouseButton>();
+
+            input.Update(new InputState(escape, escape, emptyKeys, emptyButtons, emptyButtons,
+                Point, Vector2.Zero, 0f, 960, 540, windowFocused: false));
+            menu.Update(input);
+
+            Assert.True(menu.IsOpen);
+            Assert.False(menu.WasDismissed);
+
+            input.Update(new InputState(escape, escape, emptyKeys, emptyButtons, emptyButtons,
+                Point, Vector2.Zero, 0f, 960, 540, windowFocused: true));
+            menu.Update(input);
+
+            Assert.False(menu.IsOpen);
+            Assert.True(menu.WasDismissed);
         }
 
         [Fact]

@@ -260,6 +260,77 @@ public class TileWorldRoofModeTests
     }
 
     [Fact]
+    public void A_remote_dirty_region_does_not_refill_an_unrelated_complete_interior()
+    {
+        var scene = new RecordingTileWorldScene();
+        TileWorldDocument doc = TwoHouses();
+        using TileWorldView view = View(scene, doc);
+        view.Observer = Inside(HouseAMinX);
+        Assert.Equal(RoofsPerHouse, view.InteriorTileCount);
+
+        // Change the document without announcing this adjacent edit yet. A remote streaming mark must not make
+        // the fill observe it by accident, because that mark cannot affect the current interior.
+        for (int x = HouseAMaxX + 1; x < HouseBMinX; x++)
+            doc.SetSettings(x, HouseMinZ, 0, TileSettings.Indoors);
+        view.MarkDirty(new RegionCoord(20, 20), 0);
+        Assert.Equal(RoofsPerHouse, view.InteriorTileCount);
+
+        // Once the actual edit is announced, its first tile touches the current interior and the fill expands.
+        view.MarkDirty(new TileRect(HouseAMaxX + 1, HouseMinZ, HouseBMinX - HouseAMaxX - 1, 1), 0);
+        Assert.Equal(2 * RoofsPerHouse + (HouseBMinX - HouseAMaxX - 1), view.InteriorTileCount);
+    }
+
+    [Fact]
+    public void A_truncated_interior_conservatively_refills_for_any_same_plane_mark()
+    {
+        var scene = new RecordingTileWorldScene();
+        const int corridorZ = 10;
+        TileWorldDocument doc = Corridor(TileWorldView.MaxInteriorTiles + 200, corridorZ);
+        using TileWorldView view = View(scene, doc);
+        view.Observer = new TileCoord(0, corridorZ, 0);
+        Assert.True(view.InteriorTruncated);
+
+        // Break the corridor beside the observer without announcing that tile. A mark beyond the old bounds must
+        // still refill a truncated set, whose omitted continuation is deliberately unknown.
+        doc.SetSettings(1, corridorZ, 0, TileSettings.None);
+        view.MarkDirty(new RegionCoord(100, 0), 0);
+
+        Assert.Equal(1, view.InteriorTileCount);
+        Assert.False(view.InteriorTruncated);
+    }
+
+    [Fact]
+    public void The_observer_interior_query_is_plane_aware_and_independent_of_roof_mode()
+    {
+        var scene = new RecordingTileWorldScene();
+        using TileWorldView view = View(scene, TwoHouses());
+        view.RoofMode = RoofVisibility.AlwaysVisible;
+        view.Observer = Inside(HouseAMinX);
+
+        Assert.True(view.IsObserverInterior(new TileCoord(HouseAMaxX, HouseMaxZ, 0)));
+        Assert.False(view.IsObserverInterior(new TileCoord(HouseBMinX, HouseMinZ, 0)));
+        Assert.False(view.IsObserverInterior(new TileCoord(HouseAMinX, HouseMinZ, RoofPlane)));
+
+        view.Observer = Inside(HouseBMinX);
+        Assert.False(view.IsObserverInterior(new TileCoord(HouseAMinX, HouseMinZ, 0)));
+        Assert.True(view.IsObserverInterior(new TileCoord(HouseBMaxX, HouseMaxZ, 0)));
+    }
+
+    [Fact]
+    public void The_observer_interior_query_excludes_tiles_beyond_a_truncated_fill()
+    {
+        var scene = new RecordingTileWorldScene();
+        const int corridorZ = 10;
+        int length = TileWorldView.MaxInteriorTiles + 200;
+        using TileWorldView view = View(scene, Corridor(length, corridorZ));
+        view.Observer = new TileCoord(0, corridorZ, 0);
+
+        Assert.True(view.IsObserverInterior(new TileCoord(10, corridorZ, 0)));
+        Assert.False(view.IsObserverInterior(new TileCoord(length - 1, corridorZ, 0)));
+        Assert.True(view.InteriorTruncated);
+    }
+
+    [Fact]
     public void A_silhouetted_roof_over_another_building_still_draws_its_hull()
     {
         var scene = new RecordingTileWorldScene();

@@ -355,7 +355,8 @@ catalog archetype up front, so a region load is placements alone.
   ABOVE the observer's own AND cover the observer's own INTERIOR, which is the 4-connected flood fill of indoor
   tiles seeded from the observer's tile. So the storey the observer is on keeps its props, the ceiling between
   them and the camera goes, and the building next door keeps its roof. `IsRoofHidden(footprint, plane)` is the
-  predicate itself, and `InteriorTileCount` reports the size of the interior the answer came from.
+  roof predicate. `IsObserverInterior(tile)` exposes the same read-only, plane-aware set for ambience, minimaps,
+  path rules and lighting without depending on `RoofMode`. `InteriorTileCount` reports the size of the set.
 - **`RoofMode`** picks between `RoofVisibility.Interior` (the default above), `AlwaysVisible` (nothing is ever
   hidden, the map-authoring view) and `AlwaysHidden` (every roof on every plane goes, the OSRS "roofs off"
   setting, and the pre-18.10.0 indoor behaviour applied unconditionally). Wire it to the player's setting.
@@ -364,9 +365,10 @@ catalog archetype up front, so a region load is placements alone.
   the walk stops there and every tile it did not reach is outside the interior: the failure direction is a roof
   left visible, never a stalled frame and never a throw. `InteriorTruncated` says it happened and
   `TileWorldViewOptions.Log` gets one line for the view's life.
-- The interior is refilled lazily, when the observer's TILE changes, when the indoor flag under a stationary
-  observer flips, or when anything is marked dirty. `MarkDirty` is the only edit channel the document has (it
-  raises no events), so an editor painting `Indoors` gets the new interior on the next draw for free.
+- The interior is refilled lazily when the observer's TILE changes, when the indoor flag under a stationary
+  observer flips, or when a same-plane dirty area touches the current set or its one-tile growth edge. A truncated
+  fill conservatively refills for every same-plane mark because its omitted bounds are unknown. `MarkDirty` is the
+  only edit channel the document has, so an editor painting `Indoors` gets the new interior on the next draw.
 - **Per-object archetype overrides.** `OverrideArchetype(objectId, archetypeId)` draws one placed object as a
   different archetype, `ClearOverride(objectId)` puts it back, `ClearOverrides()` drops the lot,
   `TryGetOverride` reads one and `ArchetypeOverrideCount` counts them. The DOCUMENT is untouched, which is the

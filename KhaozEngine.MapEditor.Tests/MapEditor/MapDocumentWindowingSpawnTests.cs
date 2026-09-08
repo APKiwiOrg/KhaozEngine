@@ -176,6 +176,31 @@ public sealed class MapDocumentWindowingSpawnTests
         });
     }
 
+    [Fact]
+    public void Editor_reload_honors_the_current_search_budget()
+    {
+        WithWorld(doc => doc.PlayerSpawns.Add(Spawn("start", 3)), directory =>
+        {
+            var options = new MapEditorOptions
+            {
+                DocumentPath = directory, WholeWorldTileLimit = 1,
+                EditorWindowRadius = 0, PlayerSpawnSearchTileLimit = 0,
+            };
+            var scene = new HeadlessScene();
+            scene.Init(null!, null!, null!, options);
+            try
+            {
+                scene.OnEnter();
+                Assert.True(scene.ReloadDocument());
+                Assert.Equal(new MapTileCoord(0, 0), scene.Window!.Value.Min);
+                options.PlayerSpawnSearchTileLimit = 32;
+                Assert.True(scene.ReloadDocument());
+                Assert.Equal(new MapTileCoord(3, 0), scene.Window!.Value.Min);
+            }
+            finally { scene.OnExit(); }
+        });
+    }
+
     sealed class HeadlessScene : MapEditorScene
     {
         protected override void BuildWorld() { }

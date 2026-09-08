@@ -40,12 +40,11 @@ namespace KhaozEngine.Tests.Gpu
             model.UploadFoliageUniforms(commands, [default]);
             CaptureClipmapPipeline(device, framebuffer.Outputs, commands);
 
-            var expectedSources = ShippedShaderPrograms.GraphicsPrograms()
+            ShippedGraphicsProgram[] expectedPrograms = ShippedShaderPrograms.GraphicsPrograms()
                 .Where(program => Parse(program.VertexGlsl).Count > 0)
-                .GroupBy(program => program.VertexGlsl, StringComparer.Ordinal)
-                .ToDictionary(group => group.Key, group => string.Join("/", group.Select(program => program.Name)),
-                    StringComparer.Ordinal);
-            var capturedSources = new HashSet<string>(StringComparer.Ordinal);
+                .ToArray();
+            var namesByPair = expectedPrograms.ToDictionary(
+                program => PairOf(program), program => program.Name);
             var problems = new List<string>();
 
             foreach (FakeGraphicsPipelineRequest request in factory.GraphicsPipelines)
@@ -53,11 +52,11 @@ namespace KhaozEngine.Tests.Gpu
                 IReadOnlyList<VertexDeclaration> declared = Parse(request.VertexGlsl);
                 if (declared.Count == 0) continue;
 
-                capturedSources.Add(request.VertexGlsl);
+                ShaderPair pair = PairOf(request);
                 VulkanVertexInput.Build(request.Description.VertexLayouts,
                     out VulkanVertexAttribute[] attributes);
                 var byLocation = attributes.ToDictionary(attribute => attribute.Location);
-                string program = expectedSources.TryGetValue(request.VertexGlsl, out string? name)
+                string program = namesByPair.TryGetValue(pair, out string? name)
                     ? name
                     : "unknown shipped pipeline";
 
@@ -77,11 +76,43 @@ namespace KhaozEngine.Tests.Gpu
                 }
             }
 
-            foreach ((string source, string name) in expectedSources)
-                if (!capturedSources.Contains(source)) problems.Add($"{name}: no actual renderer pipeline was captured.");
+            foreach (string missing in MissingPrograms(expectedPrograms, factory.GraphicsPipelines))
+                problems.Add($"{missing}: no actual renderer pipeline was captured.");
 
             Assert.True(problems.Count == 0, string.Join(Environment.NewLine, problems));
         }
+
+        [Fact]
+        public void CompletenessDistinguishesProgramsThatShareAVertexSource()
+        {
+            ShippedGraphicsProgram model = ShippedShaderPrograms.GraphicsPrograms()
+                .Single(program => program.Name == "Model");
+            ShippedGraphicsProgram dissolve = ShippedShaderPrograms.GraphicsPrograms()
+                .Single(program => program.Name == "ModelDissolve");
+            FakeGraphicsPipelineRequest[] captured =
+            [
+                new FakeGraphicsPipelineRequest(model.VertexGlsl, model.FragmentGlsl, default),
+            ];
+
+            Assert.Equal(["ModelDissolve"], MissingPrograms([model, dissolve], captured));
+        }
+
+        static string[] MissingPrograms(IEnumerable<ShippedGraphicsProgram> programs,
+            IEnumerable<FakeGraphicsPipelineRequest> captured)
+        {
+            var capturedPairs = captured.Select(PairOf).ToHashSet();
+            return programs
+                .Where(program => Parse(program.VertexGlsl).Count > 0
+                    && !capturedPairs.Contains(PairOf(program)))
+                .Select(program => program.Name)
+                .ToArray();
+        }
+
+        static ShaderPair PairOf(ShippedGraphicsProgram program)
+            => new(program.VertexGlsl, program.FragmentGlsl);
+
+        static ShaderPair PairOf(FakeGraphicsPipelineRequest request)
+            => new(request.VertexGlsl, request.FragmentGlsl);
 
         static void CaptureClipmapPipeline(FakeGpuDevice device, GpuOutputDescription outputs,
             IGpuCommandList commands)
@@ -122,5 +153,6 @@ namespace KhaozEngine.Tests.Gpu
         };
 
         readonly record struct VertexDeclaration(uint Location, GpuVertexElementFormat Format, string Name);
+        readonly record struct ShaderPair(string VertexGlsl, string FragmentGlsl);
     }
 }

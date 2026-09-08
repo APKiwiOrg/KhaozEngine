@@ -200,9 +200,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// things that touch the scissor afterwards are another explicit call, a genuine framebuffer CHANGE, and
         /// the <c>ClearState</c> that opens the next replay.
         /// <para>
-        /// Traced as <c>out&lt;index&gt;:&lt;count&gt;,&lt;left&gt;,&lt;top&gt;,&lt;right&gt;,&lt;bottom&gt;</c>,
-        /// which is the D3D11 <c>RECT</c> rather than the seam's origin-plus-size, so a trace can be read
-        /// straight against a capture.
+        /// Traced as <c>count:&lt;count&gt;,[left,top,right,bottom],...</c>. The rectangles are the whole emitted
+        /// prefix from slot zero through the highest retained slot, in D3D11 <c>RECT</c> form rather than the
+        /// seam's origin-plus-size, so a trace can be read straight against a capture.
         /// </para>
         /// </summary>
         public void SetScissorRect(uint index, uint x, uint y, uint width, uint height)

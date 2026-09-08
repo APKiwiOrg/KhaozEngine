@@ -75,6 +75,37 @@ namespace KhaozEngine.Tests.Gui
         }
 
         [Fact]
+        public void Exact_inner_radius_is_part_of_the_dead_zone()
+        {
+            Vector2 centre = new(480f, 270f);
+
+            Assert.Equal(-1, RadialMenu.EntryAt(centre + new Vector2(0f, -54f), centre, 4, Metrics));
+        }
+
+        [Fact]
+        public void Exact_outer_radius_remains_part_of_a_visible_wedge()
+        {
+            Vector2 centre = new(480f, 270f);
+
+            Assert.Equal(0, RadialMenu.EntryAt(centre + new Vector2(0f, -148f), centre, 4, Metrics));
+        }
+
+        [Fact]
+        public void Exact_visible_wedge_boundaries_remain_part_of_the_wedge()
+        {
+            Vector2 centre = new(480f, 270f);
+            float start = -3f * MathF.PI / 4f + 0.035f / 2f;
+            float end = -MathF.PI / 4f - 0.035f / 2f;
+            Vector2 startPoint = centre + new Vector2(MathF.Cos(start), MathF.Sin(start)) * 100f;
+            Vector2 endPoint = centre + new Vector2(MathF.Cos(end), MathF.Sin(end)) * 100f;
+
+            int startEntry = RadialMenu.EntryAt(startPoint, centre, 4, Metrics);
+            int endEntry = RadialMenu.EntryAt(endPoint, centre, 4, Metrics);
+            Assert.True(startEntry == 0 && endEntry == 0,
+                $"Expected entry 0 at both boundaries, got {startEntry} and {endEntry}.");
+        }
+
+        [Fact]
         public void Label_point_is_midway_through_the_first_wedge()
         {
             Vector2 centre = new(480f, 270f);
@@ -121,6 +152,26 @@ namespace KhaozEngine.Tests.Gui
 
             Assert.Equal(Safe.X + Metrics.Margin, bounds.X);
             Assert.True(bounds.Right <= Safe.Right - Metrics.Margin);
+        }
+
+        [Theory]
+        [InlineData(0f, 270f)]
+        [InlineData(960f, 270f)]
+        [InlineData(480f, 0f)]
+        [InlineData(480f, 540f)]
+        [InlineData(0f, 0f)]
+        [InlineData(960f, 0f)]
+        [InlineData(0f, 540f)]
+        [InlineData(960f, 540f)]
+        public void Clamp_keeps_eight_choice_composition_inside_each_edge_and_corner(float x, float y)
+        {
+            Vector2 centre = RadialMenu.ComputeCenter(new Vector2(x, y), Safe, 8, 8, Metrics);
+            Rect bounds = RadialMenu.ComputeBounds(centre, 8, 8, Metrics);
+
+            Assert.True(bounds.X >= Safe.X + Metrics.Margin);
+            Assert.True(bounds.Y >= Safe.Y + Metrics.Margin);
+            Assert.True(bounds.Right <= Safe.Right - Metrics.Margin);
+            Assert.True(bounds.Bottom <= Safe.Bottom - Metrics.Margin);
         }
     }
 }

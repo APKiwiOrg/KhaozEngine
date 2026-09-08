@@ -9,6 +9,7 @@ namespace KhaozEngine.Gui
         const int MaximumEntryCount = 8;
         const int MaximumChoiceCount = 8;
         const float Tau = 2f * MathF.PI;
+        const float AngularEpsilon = 0.000001f;
 
         public static void ValidateEntryCount(int count)
         {
@@ -90,7 +91,7 @@ namespace KhaozEngine.Gui
 
             Vector2 offset = point - center;
             float radiusSquared = offset.LengthSquared();
-            if (radiusSquared < metrics.InnerRadius * metrics.InnerRadius ||
+            if (radiusSquared <= metrics.InnerRadius * metrics.InnerRadius ||
                 radiusSquared > metrics.OuterRadius * metrics.OuterRadius)
                 return -1;
 
@@ -100,7 +101,8 @@ namespace KhaozEngine.Gui
             int entryIndex = Math.Min((int)(angleFromFirstEdge / step), entryCount - 1);
             float angleWithinWedge = angleFromFirstEdge - entryIndex * step;
             float halfGap = metrics.WedgeGap / 2f;
-            if (angleWithinWedge < halfGap || angleWithinWedge > step - halfGap)
+            if (angleWithinWedge + AngularEpsilon < halfGap ||
+                angleWithinWedge - AngularEpsilon > step - halfGap)
                 return -1;
 
             return entryIndex;

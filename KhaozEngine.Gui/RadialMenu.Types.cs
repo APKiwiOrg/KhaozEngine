@@ -20,6 +20,18 @@ namespace KhaozEngine.Gui
 
     public readonly record struct RadialMenuChoiceChange(long EntryTag, long ChoiceTag);
 
+    internal readonly record struct ResolvedRadialMenuEntry(
+        string Content,
+        long Tag,
+        string? IconId,
+        bool Enabled,
+        string Detail);
+
+    internal readonly record struct ResolvedRadialMenuChoice(
+        string Content,
+        long Tag,
+        bool Enabled);
+
     public readonly record struct RadialMenuMetrics(
         float InnerRadius,
         float OuterRadius,

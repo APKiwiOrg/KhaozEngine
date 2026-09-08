@@ -405,12 +405,99 @@ public class TileGlideTests
         Assert.False(loop.Client.TryGetRemoteTile(9999, out _));
     }
 
+    [Theory]
+    [InlineData(TileMoveMode.Walk, 4, false)]
+    [InlineData(TileMoveMode.Run, 2, false)]
+    [InlineData(TileMoveMode.Walk, 4, true)]
+    [InlineData(TileMoveMode.Run, 2, true)]
+    public void The_local_body_lag_is_bounded_by_one_grid_step_plus_one_local_tick(
+        TileMoveMode mode, int cadence, bool diagonal)
+    {
+        using var loop = new Loop();
+        loop.Join();
+        TileCoord goal = diagonal ? new TileCoord(20, 20, 0) : new TileCoord(10, 20, 0);
+        loop.Client.Queue(TileCommand.WalkTo(goal, mode));
+        float bound = 1f + (1f / cadence);
+        float maxGrid = 0f;
+        float maxEuclidean = 0f;
+
+        for (int i = 0; i < 300; i++)
+        {
+            loop.Step();
+            TileMoveState state = loop.Client.Prediction.PredictedState;
+            (float grid, float euclidean) = Lag(state.Tile, loop.LocalDrawn);
+            maxGrid = Math.Max(maxGrid, grid);
+            maxEuclidean = Math.Max(maxEuclidean, euclidean);
+            Assert.True(grid <= bound + 1e-4f,
+                $"{mode} local lag reached {grid} grid steps, above the {bound} step-plus-tick bound");
+            if (state.Tile == goal && !state.IsStepping) break;
+        }
+
+        // Step() advances one 60 Hz presentation frame after the 6 Hz command tick, so the first observable frame
+        // has already spent one tenth of this tick term. The theoretical instant stays the upper bound.
+        float firstObservable = bound - ((Frame / Tick) / cadence);
+        Assert.InRange(maxGrid, firstObservable - 1e-4f, firstObservable + 1e-4f);
+        if (diagonal)
+            Assert.True(maxEuclidean > bound + 0.1f,
+                $"diagonal Euclidean lag {maxEuclidean} did not distinguish itself from grid distance {bound}");
+        else
+            Assert.InRange(maxEuclidean, firstObservable - 1e-4f, firstObservable + 1e-4f);
+    }
+
+    [Theory]
+    [InlineData(TileMoveMode.Walk, false)]
+    [InlineData(TileMoveMode.Run, false)]
+    [InlineData(TileMoveMode.Walk, true)]
+    [InlineData(TileMoveMode.Run, true)]
+    public void A_remote_body_stays_within_one_grid_step_of_its_delayed_committed_tile(
+        TileMoveMode mode, bool diagonal)
+    {
+        using var loop = new Loop();
+        loop.Join();
+        long remote = loop.Server.SpawnPlayer(slot: 1, "remote", "Rem");
+        var start = new TileCoord(12, 10, 0);
+        TileCoord goal = diagonal ? new TileCoord(22, 20, 0) : new TileCoord(12, 20, 0);
+        loop.Server.SetPlayerState(1, TileMoveState.At(start, TileDirection.N));
+        loop.Frames(20);
+        loop.Server.Enqueue(1, 0, TileCommand.WalkTo(goal, mode));
+        float maxGrid = 0f;
+        float maxEuclidean = 0f;
+
+        for (int i = 0; i < 300; i++)
+        {
+            loop.Step();
+            if (!loop.Client.TryGetRemoteTile(remote, out TileCoord tile)
+                || !loop.Client.TryGetRemotePose(remote, out TilePose pose)) continue;
+            (float grid, float euclidean) = Lag(tile, pose.Position);
+            maxGrid = Math.Max(maxGrid, grid);
+            maxEuclidean = Math.Max(maxEuclidean, euclidean);
+            Assert.True(grid <= 1f + 1e-4f,
+                $"{mode} remote lag reached {grid} grid steps against its delayed committed tile");
+        }
+
+        Assert.InRange(maxGrid, 0.99f, 1.0001f);
+        if (diagonal)
+            Assert.True(maxEuclidean > 1.3f,
+                $"diagonal Euclidean lag {maxEuclidean} did not expose the square-root-two step length");
+        else
+            Assert.InRange(maxEuclidean, 0.99f, 1.0001f);
+    }
+
     // ---------------------------------------------------------------------------------------------------------
     // Harness.
     // ---------------------------------------------------------------------------------------------------------
 
     // A pose names the tile CENTRE, so the half tile comes back off on the way to a tile coordinate.
     static float DrawnTileZ(float worldZ) => TileWorldSpace.TileZ(worldZ, 1f) - 0.5f;
+
+    static (float Grid, float Euclidean) Lag(TileCoord committed, Vector3 drawn)
+    {
+        float drawnX = TileWorldSpace.TileX(drawn.X, 1f) - 0.5f;
+        float drawnZ = DrawnTileZ(drawn.Z);
+        float dx = Math.Abs(committed.X - drawnX);
+        float dz = Math.Abs(committed.Z - drawnZ);
+        return (Math.Max(dx, dz), MathF.Sqrt((dx * dx) + (dz * dz)));
+    }
 
     // A real server and a real client over an in-memory transport, at the tick and frame rate this file is about.
     // The client's command tick is PHASE OFFSET from the server's, which is the loopback lesson: two hosts

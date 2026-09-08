@@ -11,8 +11,9 @@ and correct only on a genuine disagreement.
 
 **A step commits its tile when it STARTS.** `TileMoveState.Tile` names the tile the simulation OWNS, from the tick
 the step into it begins, and `TileMoveState.StepFrom` names the one being left. The remaining ticks of the step
-glide the DRAWN body from one to the other, so the rules run ahead of the picture by strictly less than one step
-and a click is always answered against the tile the player is committed to. That is what makes a 250 ms tick feel
+glide the sampled state from one to the other, so the rules lead that state by at most one grid step. The local
+render pose adds the prediction layer's inter-tick easing, which can add one tick of travel to the lag. A click is
+always answered against the tile the player is committed to. That is what makes a 250 ms tick feel
 immediate rather than laggy, and it is why an interaction resolves as the walk's LAST step starts rather than when
 the avatar gets there. Draw through `TilePresenter`, never off `Tile`.
 
@@ -49,12 +50,19 @@ fixed-seconds glide window (which stutters, structurally) and a damped chase (wh
 wrong). `docs/design/TILE-WORLD-NETCODE-DESIGN-2026-08-22.md` section 5.2 carries the four rounds with the
 measurements.
 
-**THE INVARIANT: the drawn body lags its committed tile by up to one STEP.** Half a tile on average, zero at the
-instant it lands, never ahead. Combat, reach, occupancy and what a click resolves against are all answered about
-the committed tile, so a design that reads committed tiles is reading something a player watching the avatar
-cannot see. A REMOTE's BODY adds the delayed timeline `TileWorldClientConfig.InterpolationDelayTicks` names on
-top, two ticks by default and a whole tick each: at a 1/6 s tick that is 0.33 s more. Size a design that DRAWS
-other players against the SUM. Its committed TILE need not pay that second half, see the two reads below.
+**THE INVARIANT has two body bounds.** A remote body is at most one grid step behind the committed tile read from
+the same delayed timeline. The local body is at most one grid step plus one local command tick of travel behind
+`Prediction.PredictedState.Tile`, because `ClientPrediction.RenderedState` eases from the previous predicted
+position between command ticks. At the default four-tick walk and two-tick run cadences those local bounds are
+1.25 and 1.5 grid steps. Grid step means Chebyshev distance on the tile lattice. A diagonal step is `sqrt(2)` tile
+sizes in Euclidean world distance, so a world-space radius multiplies these bounds by `sqrt(2)`. The loopback tests
+observe 1.225 walking and 1.45 running because their first sampled frame has already advanced one tenth of a tick.
+The theoretical instant remains the design bound. Combat, reach, occupancy and clicks use the committed tile.
+
+A remote compared with the current server truth also adds the delayed timeline
+`TileWorldClientConfig.InterpolationDelayTicks` names, two ticks by default and a whole tick each. At a 1/6 s tick
+that is 0.33 s more. Size a design that draws other players against the sum. Its committed tile need not pay that
+second term, see the two reads below.
 
 **The mitigation is VISIBILITY, and it is the game's to draw.** Shrinking the lag is the wrong axis and was tried
 twice: at any lag the invisible truth is still invisible, and the motion has to be distorted to buy it. Drawing
@@ -400,6 +408,9 @@ always keep the constructor map.
   file in the package that consults `TileWorldSpace`. Two answers, and mixing them up is the one mistake here.
   `Pose(state, extraTicks)` is the BODY: the linear glide from `StepFrom` into `Tile` by the step's own tick
   count, carried forward by the fraction of a tick since the state was sampled and clamped at the end of the step.
+  Against that same sample its bound is one Chebyshev grid step. `LocalPose(prediction)` additionally carries the
+  prediction layer's inter-tick easing, so its bound against `PredictedState.Tile` is one grid step plus one local
+  command tick of travel.
   `StepFraction(state, extraTicks)` is the fraction that glide interpolates on, exposed so a rule that must run in
   lockstep with a body (a fade, a squash, a footfall) measures the number the body is drawn at rather than a second
   estimate of it, and it reads 1 for a body at rest.

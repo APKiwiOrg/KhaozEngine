@@ -210,10 +210,10 @@ public sealed partial class TileWorldClient
     /// into <see cref="TileMoveState.Tile"/> and carried forward across the fraction of a tick that has passed
     /// since the sample was taken. False for an unknown net id and for the local player, who is drawn through
     /// <see cref="LocalPose"/> instead.
-    /// <para>A remote lags its own committed tile by the same step the local body does, and by
-    /// <see cref="TileWorldClientConfig.InterpolationDelayTicks"/> on top of it: it is read off a timeline held
-    /// that far behind live, which is what buys room for a lost snapshot. Size a design that reads other players'
-    /// tiles against the SUM, not against the step alone.</para>
+    /// <para>Against the committed tile from the SAME delayed timeline, a remote lags by at most one Chebyshev grid
+    /// step. Unlike <see cref="LocalPose"/>, it has no extra local prediction tick. Compared with current server
+    /// truth, both this pose and that delayed tile add <see cref="TileWorldClientConfig.InterpolationDelayTicks"/>,
+    /// which buys room for a lost snapshot. Size a design that reads other players against the sum.</para>
     /// </summary>
     /// <param name="netId">The remote's net id.</param>
     /// <param name="pose">Where and which way to draw it.</param>

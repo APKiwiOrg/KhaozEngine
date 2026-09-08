@@ -45,16 +45,16 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// <see cref="TileWorldClient.TryGetLatestRemoteTile(long, out TileCoord)"/> instead would hide it
 /// <see cref="TileWorldClientConfig.InterpolationDelayTicks"/> before its body arrived, which is a remote
 /// vanishing into a tile it is visibly still two ticks away from. Neither read is the drawn POSITION: a body
-/// commits its tile when the step starts and glides in afterwards, so a tile read leads the body it names by up
-/// to a whole step. The weight is what closes that lead, by spending it rather than by shortening it.</para>
+/// commits its tile when the step starts and glides in afterwards. A remote's delayed tile leads its body by up
+/// to one grid step. The local predicted tile can lead by one grid step plus one command tick of travel because
+/// its render pose eases between predicted ticks. The weight is what closes that lead.</para>
 /// <para>THE LOCAL PLAYER CLAIMS BOTH TILES OF A STEP IN FLIGHT, and that is what makes the own-body guarantee
 /// hold while walking. <see cref="TileMoveState"/> commits the destination on the tick the step STARTS and the
 /// body glides in over the rest of it, so through the whole step the drawn local body is somewhere between
-/// <see cref="TileMoveState.StepFrom"/> and <see cref="TileMoveState.Tile"/>. Claiming the destination alone
-/// leaves the tile being vacated to the highest net id standing on it, and on the tick the step commits that
-/// body draws at the same world position as the local one, which is the exact failure this class exists to
-/// remove. So while <see cref="TileMoveState.IsStepping"/> the local player wins the leaving tile as well as the
-/// entering one. The drawn body is inside that pair for the whole step, so nothing is ever drawn over it. Both
+/// the prior step's last tick and <see cref="TileMoveState.Tile"/>. That extra tick term remains inside the
+/// footprint of <see cref="TileMoveState.StepFrom"/>, so claiming the destination alone still leaves the tile
+/// under the body to the highest net id standing on it. While <see cref="TileMoveState.IsStepping"/> the local
+/// player therefore wins the leaving tile as well as the entering one. Both
 /// claims name the SAME net id, so the pair is one entry in <see cref="Drawn"/> and two in the tile map. The
 /// local player's own weight is pinned at 1 and never fades, because they are drawn unconditionally.</para>
 /// <para>A REMOTE KEEPS ONE TILE, deliberately, so the lead the local claim removes is still there for everybody
@@ -196,8 +196,8 @@ public sealed class TileDrawPriority
     /// this rule as it behaved before weights existed. Kept for a head that draws bodies it cannot fade and does
     /// not want to think about it.
     /// <para>Prefer <see cref="Rebuild(TileWorldClient, float)"/>. This overload hides an actor on the frame its
-    /// committed tile changes, which is up to a whole step before its body arrives there, so remotes walking onto
-    /// an occupied tile disappear in the open.</para>
+    /// committed tile changes. For a remote that can be one grid step before its body arrives, so remotes walking
+    /// onto an occupied tile disappear in the open.</para>
     /// </summary>
     /// <param name="client">The client to read. Not retained.</param>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is null.</exception>
@@ -245,8 +245,9 @@ public sealed class TileDrawPriority
     /// client.</param>
     /// <param name="localLeaving">The tile the local player's step in flight is walking OUT of
     /// (<see cref="TileMoveState.StepFrom"/> while <see cref="TileMoveState.IsStepping"/>), or null when they are
-    /// standing still. Claimed alongside <paramref name="localTile"/>, because the drawn body is between the two
-    /// for the whole step. Passing <paramref name="localTile"/> again is the same as passing null.</param>
+    /// standing still. Claimed alongside <paramref name="localTile"/>, because the drawn body remains within the
+    /// leaving tile while the inter-tick term is behind its centre, then glides toward the destination. Passing
+    /// <paramref name="localTile"/> again is the same as passing null.</param>
     /// <param name="others">Every other actor and the tile it is committed to, in any order. An entry whose net
     /// id is <paramref name="localNetId"/> is skipped, so a roster that includes the local player is fine.</param>
     public void Rebuild(long localNetId, TileCoord localTile, TileCoord? localLeaving,

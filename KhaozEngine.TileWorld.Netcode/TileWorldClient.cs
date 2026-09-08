@@ -125,9 +125,11 @@ public sealed partial class TileWorldClient : IDisposable
     /// <para>THE BODY LAGS THE COMMITTED TILE, BY DESIGN, and this is the one thing to understand before drawing
     /// anything else off this client. A step commits its tile when it STARTS, so the rules answer every question
     /// (reach, occupancy, what a click resolves against) about <see cref="ClientPrediction{TState,TCommand}.PredictedState"/>'s
-    /// <see cref="TileMoveState.Tile"/> while this pose is still walking into it: up to one whole step behind, half
-    /// a tile on average, and zero at the instant the body lands. The lag is the price of the responsiveness the
-    /// lead commit buys, and it is NOT smoothed away here. The mitigation is VISIBILITY, and it is the game's to
+    /// <see cref="TileMoveState.Tile"/> while this pose is still walking into it. The raw step glide is at most one
+    /// Chebyshev grid step behind. Inter-tick easing can add one local command tick of travel, for a total bound of
+    /// <c>1 + 1 / StepTicks</c> grid steps. This is 1.25 walking and 1.5 running at the default 4 and 2 tick
+    /// cadences. A diagonal step is <c>sqrt(2)</c> tile sizes in Euclidean world distance. The lag is the price of
+    /// the responsiveness the lead commit buys. The mitigation is VISIBILITY, and it is the game's to
     /// draw: a true-tile marker on <c>PredictedState.Tile</c> and a highlight over the remaining
     /// <see cref="TileMoveState.Route"/>, both mapped with <see cref="TilePresenter.PoseAt(TileCoord, TileDirection)"/>.
     /// See <c>docs/USING-KHAOZENGINE.md</c> for the overlay reads and

@@ -27,10 +27,11 @@ public enum TileInteractionDomain : byte
 /// same state lands on byte-identical output on any machine, which server-authoritative movement depends on.</para>
 /// <para>A STEP COMMITS ITS TILE WHEN IT STARTS. <see cref="Tile"/> names the tile the step is walking INTO from the
 /// moment the step begins, and <see cref="StepFrom"/> names the one it is leaving, so the simulation owns the
-/// destination for the whole of the walk into it and the drawn body arrives afterwards. Every rules question (reach,
+/// destination for the whole of the walk into it and this state's derived <see cref="Position"/> arrives afterwards. Every rules question (reach,
 /// region, occupancy, what a click resolves against) is therefore answered about the tile the player is committed to
 /// rather than the one they are half off, which is what makes a 250 ms tick feel immediate. The body is at most one
-/// step behind the answer, never a whole tile, because the commit and the glide start on the same tick.</para>
+/// grid step behind the answer. The local client's render pose adds an inter-tick prediction term outside this
+/// state, documented on <c>TileWorldClient.LocalPose</c>.</para>
 /// <para><see cref="Position"/> is DERIVED: the glide from <see cref="StepFrom"/> to <see cref="Tile"/> by the
 /// fraction of the current step already spent, in TILE units. <see cref="Vertical"/> is the PLANE INDEX as a float
 /// rather than a height in metres, so the state stays document-free and the simulator can produce it without loading

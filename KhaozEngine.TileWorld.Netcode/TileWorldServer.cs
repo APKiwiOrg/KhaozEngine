@@ -200,7 +200,8 @@ public sealed partial class TileWorldServer : IDisposable
     /// <summary>Raised as (slot, playerNetId, target) when a validated interaction resolves, which is the tick the
     /// player becomes COMMITTED to a reach tile of the thing they clicked. That is the tick their walk's last step
     /// starts, so a game's handler runs while the avatar is still drawn walking the last tile in, which is
-    /// deliberate: the tile is the simulation's from that tick and the picture catches up within one step. The
+    /// deliberate: the tile is the simulation's from that tick. A remote picture catches up within one grid step
+    /// on its delayed timeline, while the local prediction pose can add one command tick of travel. The
     /// engine knows nothing about what an interaction DOES, so this is where a game takes over.</summary>
     public event Action<int, long, long>? OnInteract;
 

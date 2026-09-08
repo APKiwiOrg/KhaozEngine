@@ -5,10 +5,48 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.37.0
+
+Authenticated sessions can bind a separate durable checkpoint key before player spawn while account identity
+continues to govern authentication, bans, and duplicate sessions.
+
+- `SignedToken` v3 carries a signed optional persistence-key claim beside the subject and display name. Existing v1
+  and v2 formats and public overloads remain compatible. `HmacTokenAuthenticator` exposes the claim only after full
+  verification.
+- `IConnectionPersistenceKey` carries the verified claim through `NetServer`, `ConnectionGate`, the NetWorld wire
+  generation gate, and the legacy version wrapper. Standard decorators no longer strip the claim.
+- `PersistenceKeyResolver` binds one validated durable key after authentication and before resume-spawn lookup.
+  `WorldServer` and `ShardedWorldServer` reject resolver faults, invalid keys, and two live subjects targeting the
+  same durable key without changing subject-based duplicate-session policy.
+- `StatePersistence<TState>` uses the bound key for load, periodic and leave saves, prewarm, hints, quarantine,
+  game-state callbacks, and in-flight guards. Pending loads also retain the authenticated account subject to prevent
+  recycled-slot cross-apply.
+- `PlayerPersistenceContext.AuthenticatedAccountId` exposes the verified subject while `AccountId` retains its
+  source-compatible meaning as the durable record key. TileWorld passes the same resolver into the shared core.
+
 ## 18.36.0
+
+KhaozEngine.Gui adds an interaction-anchored radial menu and an opaque source-target use context.
 
 Backlog fixes cover tile interactions, GPU correctness, editor workflows, and test reliability across 22 issues.
 
+- `RadialMenu` accepts one through eight caller-defined action entries and an optional strip of zero through eight
+  generic footer choices. Each entry retains its own choice tag, and selection returns both opaque tags.
+- The wheel clamps as one composition inside caller-supplied safe bounds. It latches the opening gesture, blocks its
+  complete bounds, preserves the press-origin invariant, supports pointer plus focused keyboard and gamepad input,
+  skips disabled choices, and reports selection, choice changes, and dismissal as one-frame results. Live metrics
+  and safe bounds reclamp from the requested anchor and update draw, hit, dismissal, and block geometry together.
+- `RadialMenuMetrics` and `RadialMenuTheme` expose the layout and semantic palette. The glass-like default uses
+  ordinary Render2D geometry, translucent layers, borders, a shadow, and a low-alpha sheen. An independent centre
+  plate stays visible behind retained text when entries are disabled. Public geometry rejects non-finite or invalid
+  metrics, points, rectangles, and safe areas that cannot hold the composition. Drawing performs no blur,
+  refraction, distortion, or framebuffer sampling.
+- `GuiUseContext` carries an opaque source token, source identity, and index into a later target gesture. Accepted
+  completion consumes the target gesture and records both halves. Refusal preserves the active source, and
+  cancellation reports the payload it cleared. Pointer null failures leave every public state value unchanged.
+- Callers own category paging beyond eight entries, persistence of footer choices or active-use state, target
+  validation, and every resulting action. Headless coverage pins geometry, clamping, input, localization,
+  source-target lifecycle, and steady-state allocation. A focused GPU test covers the Render2D presentation.
 - Tile commands now distinguish authored-object IDs from entity net IDs with `InteractObject`, `InteractEntity`,
   and separate server callbacks. Legacy object command bytes, signed object IDs, and framed movement readers
   remain compatible. Pending entity interactions carry an explicit domain (#801).

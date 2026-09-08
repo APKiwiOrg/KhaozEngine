@@ -17,6 +17,18 @@ namespace KhaozEngine.WorldStore;
 /// <param name="game">The game's opaque durable blob carried by the record, or null.</param>
 public delegate bool RecordDecoder<TState>(byte[] data, out TState state, out byte[]? game);
 
+/// <summary>The verified identities available while an authenticated player is being assigned a durable key.</summary>
+/// <param name="Slot">The runtime slot being admitted.</param>
+/// <param name="AuthenticatedAccountId">The verified subject used for authentication and live-session policy.</param>
+/// <param name="VerifiedPersistenceKey">The optional server-verified persistence-key claim.</param>
+public readonly record struct PersistenceKeyRequest(
+    int Slot,
+    string AuthenticatedAccountId,
+    string VerifiedPersistenceKey);
+
+/// <summary>Resolves one durable key for an authenticated session before its player entity is spawned.</summary>
+public delegate string PersistenceKeyResolver(in PersistenceKeyRequest request);
+
 /// <summary>
 /// Everything <see cref="StatePersistence{TState}"/> needs to know about a head's state that is not generic: how a
 /// state becomes stored bytes, how stored bytes become a state, where a state sits in space, and what makes a

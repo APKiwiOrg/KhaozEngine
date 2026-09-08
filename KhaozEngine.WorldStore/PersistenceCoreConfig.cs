@@ -13,6 +13,9 @@ namespace KhaozEngine.WorldStore;
 /// </summary>
 public sealed record PersistenceCoreConfig
 {
+    /// <summary>Optional authenticated-session durable-key resolver. Null keeps the verified account id as the key.</summary>
+    public PersistenceKeyResolver? PersistenceKeyResolver { get; init; }
+
     /// <summary>How often the periodic snapshot saves dirty players, seconds. A crash loses at most this much.</summary>
     public float SaveIntervalSeconds { get; init; } = 30f;
 
@@ -48,12 +51,12 @@ public sealed record PersistenceCoreConfig
     /// where the head's id is the seat and the key is the minted session id.</para></summary>
     public Func<int, string, byte[]?>? CaptureGameState { get; init; }
 
-    /// <summary>Re-attaches a previously captured blob at load-on-join, given the runtime slot, the account id and
+    /// <summary>Re-attaches a previously captured blob at load-on-join, given the runtime slot, the durable key and
     /// the blob. Raised on the server thread as the loaded position is applied, and never for a player with no
     /// stored blob. Null discards any stored blob on load.</summary>
     public Action<int, string, byte[]?>? ApplyGameState { get; init; }
 
-    /// <summary>Vets a loaded blob on the server thread before it is applied, given the runtime slot, the account id
+    /// <summary>Vets a loaded blob on the server thread before it is applied, given the runtime slot, the durable key
     /// and the blob. A non-null return is the quarantine reason and rejects the WHOLE record, position included.
     /// Only raised for a record that actually carries a blob. Null accepts any blob.
     /// <para>Separate from <see cref="PersistenceBinding{TState}.Validate"/> because the blob's verdict needs to know

@@ -2,7 +2,7 @@
 
 Date: 2026-09-08
 
-Status: Approved for implementation
+Status: Complete in 18.36.0
 
 Program: [#854](https://github.com/APKiwiOrg/KhaozEngine/issues/854)
 
@@ -123,27 +123,36 @@ public sealed partial class RadialMenu
 }
 ```
 
-The exact declarations may be split across focused partial files, but the names and meanings above are the public
-contract. `SetEntryChoice` changes stored widget state without firing a player-change event. It is the server-sync
-path for a consumer that receives preferences after constructing entries.
+The declarations above are the accepted core shape. The complete shipped surface, including retained-label accessors,
+pure geometry helpers, metrics, and theme fields, lives in `KhaozEngine.Gui/README.md` and
+`docs/USING-KHAOZENGINE.md`. `SetEntryChoice` changes stored widget state without firing a player-change event. It
+is the server-sync path for a consumer that receives preferences after constructing entries.
 
 ## Geometry and anchoring
 
 The requested anchor is normally the interaction pointer or projected world target. The wheel computes one centre
 that keeps its outer radius, detail line, and entire choice strip inside `SafeBounds` plus the configured margin.
 Clamping moves the whole composition together. It never clips the footer separately or changes wedge order.
+The requested anchor is retained for the lifetime of the open menu. Valid live changes to `Metrics` or `SafeBounds`
+immediately reclamp from that anchor, replace the complete `Bounds`, and invalidate every affected draw cache.
+When a setter follows `Update` in the same frame, the new bounds are also reserved on that frame's pointer.
+Rejected setters leave their prior value and the current layout unchanged.
 
 Entry zero begins at twelve o'clock and entries proceed clockwise in caller order. Every wedge shares one inner
 radius, outer radius, and angular gap. The inner disc carries the title and the active entry detail. Icons sit near
 the middle radius and labels sit below them within the same wedge. A missing icon leaves the text centred rather
 than drawing a fallback. Icon fallback remains the caller's `IconAtlas` policy.
 
-`RadialMenuMetrics` owns the inner and outer radii, angular gap, icon size, label scale, centre padding, footer gap,
+`RadialMenuMetrics` owns the inner and outer radii, angular gap, icon size, label scale, detail gap, footer gap,
 footer button size, composition margin, border thickness, shadow offset, and sheen speed. Defaults must fit inside
 a 960 by 540 design surface with eight entries and four footer choices.
 
 Pure helpers calculate the clamped centre, complete bounds, wedge angle range, wedge label point, footer button
 rectangles, and entry at a point. The draw and update paths consume those helpers rather than restating geometry.
+They share the validation path used by `Open`. Non-finite points, rectangles, and metric fields are rejected.
+Radii, wedge spacing, sizes, gaps, margin, border thickness, shadow offset, and sheen speed obey their public range
+contracts. Negative rectangle dimensions are rejected. A safe area that cannot hold the complete composition plus
+both margins is invalid rather than an invitation to overflow.
 
 ## Pointer interaction
 
@@ -182,15 +191,16 @@ visual precedence without destroying the keyboard focus position.
 The requested look is a themed illusion, not a backdrop compositor. The widget draws:
 
 1. a soft offset shadow beneath every wedge and the centre disc
-2. a translucent surface band
+2. a translucent surface band and centre surface
 3. a faint upper-edge highlight and inner rim
 4. the configured border
 5. an accent wash on hover or focus
 6. a slow, low-alpha sheen travelling around the ring
 
-The footer uses the same translucent surface, border, selected accent, and shadow. Disabled options reduce text,
-icon, border, and fill alpha together. The default palette comes from `GuiTheme`. Grimhollow will supply its own
-stone, timber, and brass colours.
+The footer uses the same translucent surface, border, selected accent, and shadow. The centre plate is independent
+of entry enablement, so it and its text backing remain visible when every wedge is disabled. Disabled options reduce
+their text, icon, border, and fill alpha together. The default palette comes from `GuiTheme`. Grimhollow will supply
+its own stone, timber, and brass colours.
 
 There is no framebuffer sampling, background blur, refraction, distortion pass, new blend mode, or shader. The
 result must render through every existing backend because it is ordinary Render2D geometry.
@@ -242,6 +252,7 @@ the caller's pre-validation says the target is accepted. Success consumes the ta
 halves, clears the active source, and raises a one-frame flag. A refused target leaves the source active and does
 not consume. `CompleteIn` adds the press-origin-safe rectangle hit test. A world raycast caller uses `Complete`
 after its own hit test.
+All three pointer-taking methods reject null before reading or mutating context state, so a failed call is atomic.
 
 `Cancel` records the cancelled payload, clears the source, and is safe when idle. The context draws nothing. Source
 highlighting, hover text, invalid-combination feedback, target meaning, and every resulting action remain caller
@@ -250,8 +261,8 @@ responsibilities.
 ## Localization and accessibility
 
 Every displayed title, entry, detail, and footer choice is a `LocalizedText` sink. Icon keys and opaque tags are
-explicitly non-localized. Text is measured using the supplied font and wrapped or ellipsized inside a bounded wedge
-label region. No raw display string overload ships in the new API.
+explicitly non-localized. Text is measured using the supplied font and placed at the fixed entry and footer positions,
+so callers choose copy that fits their configured metrics. No raw display string overload ships in the new API.
 
 Disabled state is communicated through more than colour. Its label and detail remain readable, and the widget can
 show the caller's reason text. Keyboard and gamepad navigation can inspect disabled entries even though selection
@@ -264,27 +275,30 @@ Headless tests cover:
 - one through eight entry geometry, zero through eight choices, and both upper-bound refusals
 - twelve-o'clock entry zero and clockwise stable ordering
 - clamping of the wheel and footer as one composition on every edge and corner
+- live radius, footer, and safe-area changes across layout, hit testing, blocking, dismissal, and clamping
+- invalid and non-finite geometry, exact valid edges, undersized safe bounds, and atomic setter refusal
 - polar hit testing at boundaries, gaps, the inner disc, and outside the ring
 - disabled entry and choice refusal
 - opening-gesture latching, outside dismissal, click-through blocking, and gesture consumption
 - entry-local choice memory, `SetEntryChoice`, and the combined selection result
 - keyboard and gamepad focus movement, wrapping, disabled-option skipping, select, and cancel
 - every one-frame flag clearing on the next update
-- `GuiUseContext` replacement, completion, refusal, cancellation, rectangle targeting, and opaque payload identity
+- `GuiUseContext` replacement, completion, refusal, cancellation, rectangle targeting, opaque payload identity, and
+  atomic null rejection
 - zero steady-state update allocation after warmup
 
-A focused render test draws the default wheel with icons, disabled state, selected footer choice, hover accent, and
-nonzero sheen time. It asserts visible alpha coverage and distinct enabled, disabled, and selected samples through
-the existing Render2D snapshot path. No cross-backend golden family is needed because no backend or shader changes.
+A focused render test draws the default wheel and centre plate with icons, disabled state, selected footer choice,
+hover accent, and nonzero sheen time. It asserts visible centre coverage, persistent centre coverage when every
+entry channel is transparent, and distinct enabled, disabled, and selected samples through the existing Render2D
+snapshot path. No cross-backend golden family is needed because no backend or shader changes.
 
 ## Documentation and release
 
-The implementation updates `KhaozEngine.Gui/README.md`, the Gui catalog row in the root `README.md`, and the Gui
-usage section in `docs/USING-KHAOZENGINE.md`. XML documentation carries the full per-member contract.
+The public API and examples live in `KhaozEngine.Gui/README.md`, the Gui catalog row in the root `README.md`, and
+the Gui usage section in `docs/USING-KHAOZENGINE.md`. This document retains the rationale and accepted boundaries.
 
-The public API is additive, so it takes the next free engine minor release. Grimhollow is pinned and waiting, which
-activates the engine repository's sanctioned immediate tag rule after the implementation is merged, packed, and
-verified.
+The additive public API is implemented in engine version `18.36.0`. Grimhollow is pinned and waiting, which activates
+the engine repository's sanctioned immediate tag rule after the implementation is merged, packed, and verified.
 
 ## Non-goals
 
@@ -292,3 +306,7 @@ This program does not add crafting, recipes, item catalogs, inventories, station
 network messages, persistence, per-character settings, backdrop blur, refraction, arbitrary wedge counts, radial
 drag selection, or a new GUI framework. It does not alter `ContextMenu`, `Dropdown`, `GuiDragContext`, `SlotGrid`,
 `Screen`, or `ScreenStack` behaviour.
+
+The caller owns category paging beyond eight entries, persistence of choices or active source state, and every action
+produced from the returned tags and opaque payloads. The Render2D presentation performs no blur, refraction,
+distortion, or framebuffer sampling.

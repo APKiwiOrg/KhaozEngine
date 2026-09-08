@@ -9,6 +9,9 @@ namespace KhaozEngine.NetWorld;
 /// <summary>Tunables and game-state hooks for <see cref="WorldPersistence"/>.</summary>
 public sealed class WorldPersistenceConfig
 {
+    /// <summary>Optional resolver that binds an authenticated session to its durable player key before spawn.</summary>
+    public PersistenceKeyResolver? PersistenceKeyResolver { get; init; }
+
     /// <summary>How often the periodic snapshot saves dirty players, seconds. A crash loses at most this much.</summary>
     public float SaveIntervalSeconds { get; init; } = 30f;
 
@@ -135,21 +138,23 @@ public sealed class WorldPersistence
         // local rather than a null-conditional so the captured delegate is provably non-null inside the lambda.
         Func<int, string, byte[]?>? capture = null;
         if (c.CaptureGameState is { } captureHook)
-            capture = (slot, key) => captureHook(new PlayerPersistenceContext(slot, key));
+            capture = (slot, key) => captureHook(new PlayerPersistenceContext(slot, key, AccountId(server, slot)));
         Action<int, string, byte[]?>? apply = null;
         if (c.ApplyGameState is { } applyHook)
-            apply = (slot, accountId, blob) => applyHook(new PlayerPersistenceContext(slot, accountId), blob);
+            apply = (slot, key, blob) => applyHook(new PlayerPersistenceContext(slot, key, AccountId(server, slot)), blob);
         Func<int, string, byte[]?, string?>? validate = null;
         if (c.ValidateGameState is { } validateHook)
-            validate = (slot, accountId, blob) =>
+            validate = (slot, key, blob) =>
             {
-                PlayerGameStateVerdict verdict = validateHook(new PlayerPersistenceContext(slot, accountId), blob);
+                PlayerGameStateVerdict verdict = validateHook(
+                    new PlayerPersistenceContext(slot, key, AccountId(server, slot)), blob);
                 return verdict.IsValid ? null : verdict.Reason ?? "invalid";
             };
 
         core = new StatePersistence<PlayerMoveState>(server, store, Binding(c), new PersistenceCoreConfig
         {
             SaveIntervalSeconds = c.SaveIntervalSeconds,
+            PersistenceKeyResolver = c.PersistenceKeyResolver,
             KeyPrefix = c.KeyPrefix,
             QuarantineKeyPrefix = c.QuarantineKeyPrefix,
             PersistGuests = c.PersistGuests,
@@ -164,6 +169,11 @@ public sealed class WorldPersistence
         });
         hints = new ResumePositionCache(core.Hints);
     }
+
+    private static string AccountId(IWorldPersistenceHost server, int slot) =>
+        server.TryGetAccountId(slot, out string accountId) && !PositionHintCache.IsGuestAccount(accountId)
+            ? accountId
+            : string.Empty;
 
     // What the core cannot know about a float player: where a state is, how it encodes, and what puts a loaded
     // position out of the play area. The bounds message is the one the quarantine event has always carried.

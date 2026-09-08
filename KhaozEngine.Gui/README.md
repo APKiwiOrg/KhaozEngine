@@ -13,6 +13,283 @@ but are `[Obsolete]`; the
 string argument is an icon-atlas key, not player text, so it is unchanged. See the App package for
 `StringId` / `LocalizedText` / `LocalizationContext`.
 
+## Radial menu and source-target use
+
+`RadialMenu` is a retained interaction menu anchored to a pointer or projected world position. It accepts one
+through eight caller-ordered entries and an optional strip of zero through eight caller-defined choices. Entry
+zero starts at twelve o'clock and ordering continues clockwise. The whole composition is clamped inside
+`SafeBounds`, including its footer. Tags and icon ids are opaque caller values. Every title, entry label, detail,
+and footer label is a `LocalizedText` sink that resolves and is retained when `Open` runs.
+
+The footer has no built-in quantity, mode, or category meaning. Each entry remembers its own current footer tag.
+Selecting a wedge returns both tags in one `RadialMenuSelection`:
+
+```csharp
+enum InteractionAction : long
+{
+    Chop = 101,
+    Examine = 102,
+    Mark = 103,
+}
+
+static class FooterTag
+{
+    public const long Primary = 10;
+    public const long Careful = 11;
+    public const long Fast = 12;
+}
+
+RadialMenuEntry[] actions =
+[
+    new(Strings.Chop, (long)InteractionAction.Chop, ItemIcons.Hatchet,
+        Detail: Strings.ChopDetail, InitialChoiceTag: FooterTag.Primary),
+    new(Strings.Examine, (long)InteractionAction.Examine, ItemIcons.Search,
+        Detail: Strings.ExamineDetail, InitialChoiceTag: FooterTag.Careful),
+    new(Strings.Mark, (long)InteractionAction.Mark, ItemIcons.Pin,
+        Enabled: canMark, Detail: Strings.MarkDetail, InitialChoiceTag: FooterTag.Primary),
+];
+
+RadialMenuChoice[] modes =
+[
+    new(Strings.Primary, FooterTag.Primary),
+    new(Strings.Careful, FooterTag.Careful),
+    new(Strings.Fast, FooterTag.Fast, Enabled: canUseFastMode),
+];
+
+var radial = new RadialMenu
+{
+    SafeBounds = safeBounds,
+};
+
+if (pointer.IsRightTapIn(targetBounds))
+{
+    radial.Open(Strings.Actions, actions, pointer.Position, modes);
+    pointer.ConsumeRightGesture();
+}
+
+radial.Update(input, dt, focused: true);
+
+if (radial.WasChoiceChanged)
+    currentModes[radial.ChoiceChange.EntryTag] = radial.ChoiceChange.ChoiceTag;
+
+if (radial.WasSelected)
+    QueueAction((InteractionAction)radial.Selection.EntryTag, radial.Selection.ChoiceTag);
+
+radial.Draw(batch, white, font, icons);
+```
+
+The complete retained menu surface is:
+
+```csharp
+public readonly record struct RadialMenuEntry(
+    LocalizedText Content,
+    long Tag,
+    string? IconId = null,
+    bool Enabled = true,
+    LocalizedText Detail = default,
+    long InitialChoiceTag = 0);
+
+public readonly record struct RadialMenuChoice(
+    LocalizedText Content,
+    long Tag,
+    bool Enabled = true);
+
+public readonly record struct RadialMenuSelection(long EntryTag, long ChoiceTag);
+public readonly record struct RadialMenuChoiceChange(long EntryTag, long ChoiceTag);
+
+public sealed partial class RadialMenu
+{
+    public RadialMenuMetrics Metrics { get; set; }
+    public RadialMenuTheme Theme { get; set; }
+    public Rect SafeBounds { get; set; }
+    public bool IsOpen { get; }
+    public int HoverIndex { get; }
+    public int ActiveIndex { get; }
+    public bool WasSelected { get; }
+    public RadialMenuSelection Selection { get; }
+    public bool WasChoiceChanged { get; }
+    public RadialMenuChoiceChange ChoiceChange { get; }
+    public bool WasDismissed { get; }
+    public Rect Bounds { get; }
+    public string ResolvedTitle { get; }
+
+    public void Open(
+        LocalizedText title,
+        IReadOnlyList<RadialMenuEntry> entries,
+        Vector2 anchor,
+        IReadOnlyList<RadialMenuChoice>? choices = null);
+    public bool SetEntryChoice(long entryTag, long choiceTag);
+    public bool Update(Pointer pointer, float dt);
+    public bool Update(InputManager input, float dt, bool focused, PlayerIndex? player = null);
+    public void Close();
+    public void Draw(SpriteBatch batch, Texture2D white, SpriteFont font, IconAtlas? icons = null);
+
+    public string ResolvedEntryLabel(int entryIndex);
+    public string ResolvedEntryDetail(int entryIndex);
+    public string ResolvedChoiceLabel(int choiceIndex);
+
+    public static void ValidateEntryCount(int count);
+    public static void ValidateChoiceCount(int count);
+    public static (float Start, float End) WedgeAngles(
+        int entryIndex, int entryCount, RadialMenuMetrics metrics);
+    public static Vector2 ComputeCenter(
+        Vector2 requestedCenter, Rect safeArea, int entryCount, int choiceCount, RadialMenuMetrics metrics);
+    public static Rect ComputeBounds(
+        Vector2 center, int entryCount, int choiceCount, RadialMenuMetrics metrics);
+    public static int EntryAt(
+        Vector2 point, Vector2 center, int entryCount, RadialMenuMetrics metrics);
+    public static Rect ChoiceBounds(
+        Vector2 center, int choiceCount, int choiceIndex, RadialMenuMetrics metrics);
+    public static Vector2 LabelPoint(
+        Vector2 center, int entryIndex, int entryCount, RadialMenuMetrics metrics);
+}
+
+public readonly record struct RadialMenuMetrics(
+    float InnerRadius,
+    float OuterRadius,
+    float WedgeGap,
+    float IconSize,
+    float LabelScale,
+    float DetailGap,
+    float FooterGap,
+    Vector2 FooterButtonSize,
+    float Margin,
+    float BorderThickness,
+    Vector2 ShadowOffset,
+    float SheenSpeed)
+{
+    public static RadialMenuMetrics Default { get; }
+}
+```
+
+`RadialMenuTheme` is a settable class with public `Vector4` fields named `Shadow`, `Surface`,
+`SurfaceHighlight`, `Border`, `BorderActive`, `Accent`, `Text`, `TextMuted`, `Disabled`, and `Sheen`.
+`RadialMenuTheme.Default` returns a fresh theme built from the ambient `GuiTheme.Default` values.
+
+`Open` rejects duplicate entry or choice tags. An explicit nonzero `InitialChoiceTag` must identify an enabled
+footer choice. Tag `0` selects the first enabled choice, or remains `0` when the footer is absent or every supplied
+footer choice is disabled. An all-disabled footer accepts no pointer or navigation choice change. Disabled wedges
+remain available for inspection but cannot be selected. When every entry is disabled, index zero remains
+inspectable but no selection can occur.
+`SetEntryChoice(entryTag, choiceTag)` changes retained state without raising `WasChoiceChanged`, which makes it
+the restore or server-sync path.
+
+`Update(Pointer, dt)` drives the pointer path. The gesture that opened the menu is latched and cannot select or
+dismiss it. While open, `Bounds` is blocked through `Pointer`. A valid wedge tap selects and closes. A footer tap
+changes only the active entry and leaves the menu open. A release outside dismisses and consumes the gesture.
+`Update(InputManager, dt, focused, player?)` keeps that pointer path and adds wrapping keyboard and gamepad
+navigation. Left and Right move within the wheel or footer, Down enters the footer, Up returns to the wheel,
+menu-select commits, and menu-cancel closes. Disabled choices are skipped by navigation.
+
+`WasSelected`, `Selection`, `WasChoiceChanged`, `ChoiceChange`, and `WasDismissed` are one-frame results cleared
+by the next `Update`, including while closed. `HoverIndex` tracks the wedge under the pointer. `ActiveIndex`
+tracks the wedge whose detail and footer state are shown. `Bounds` reports the complete live composition.
+`ResolvedTitle`, `ResolvedEntryLabel`, `ResolvedEntryDetail`, and `ResolvedChoiceLabel` expose the strings retained
+at the most recent open.
+
+`RadialMenuMetrics` controls the two radii, wedge gap, icon and label sizing, detail and footer spacing, footer
+button size, safe-area margin, border width, shadow offset, and sheen speed. `ComputeCenter`, `ComputeBounds`,
+`WedgeAngles`, `EntryAt`, `ChoiceBounds`, and `LabelPoint` expose the exact pure geometry used by input and draw.
+`Metrics` and `SafeBounds` stay live while the menu is open. A valid assignment immediately reclamps the menu from
+the anchor requested by `Open`, updates `Bounds`, and invalidates the retained draw layout. A change after `Update`
+also reserves the new bounds on that frame's pointer. A rejected assignment leaves both the property and open
+layout unchanged.
+
+All geometry helpers and `Open` apply the same validation. Every metric field and point coordinate must be finite.
+The inner radius, icon size, detail gap, footer gap, margin, border thickness, and sheen speed are nonnegative. The
+outer radius must exceed the inner radius, label scale and both footer button dimensions must be positive, and the
+wedge gap must be nonnegative and smaller than one active entry's angular step. Rectangles reject negative or
+non-finite dimensions. `ComputeCenter` and `Open` reject a safe area that cannot contain the complete wheel and
+footer plus both margins.
+
+`RadialMenuTheme` carries the shadow, surface, highlight, border, accent, text, disabled, and sheen colors. Its
+defaults derive from `GuiTheme.Default`. `Draw` uses ordinary Render2D geometry. The centre plate has its own
+shadow, translucent surface, inner highlight, and border, and remains visible when every entry is disabled.
+Disabled alpha applies to the entry channels. Drawing performs no blur, refraction, distortion, or framebuffer
+sampling.
+
+`GuiUseContext` carries one opaque source selection into a later target gesture. It draws nothing and has no
+widget dependency, so callers can thread the same context between any pair of controls. This example starts from
+one `SlotGrid` and completes on another:
+
+```csharp
+public readonly record struct UsePayload(object? Token, object? SourceId = null, int SourceIndex = -1);
+public readonly record struct UseTarget(object? TargetId, int TargetIndex = -1);
+public readonly record struct UseResult(UsePayload Source, UseTarget Target);
+
+public sealed class GuiUseContext
+{
+    public bool IsActive { get; }
+    public UsePayload Payload { get; }
+    public bool WasCompleted { get; }
+    public UseResult LastUse { get; }
+    public bool WasCancelled { get; }
+    public UsePayload CancelledPayload { get; }
+
+    public void BeginFrame();
+    public bool Begin(Pointer pointer, in UsePayload payload);
+    public bool Complete(Pointer pointer, object? targetId, int targetIndex = -1, bool accepted = true);
+    public bool CompleteIn(
+        Pointer pointer,
+        Rect bounds,
+        object? targetId,
+        int targetIndex = -1,
+        bool accepted = true);
+    public void Cancel();
+}
+```
+
+The context fits ordinary widget code without an adapter:
+
+```csharp
+var use = new GuiUseContext();
+
+// Per frame, before either widget handles its tap.
+use.BeginFrame();
+
+int sourceIndex = bag.Update(pointer);
+if (sourceIndex >= 0 && bagItems[sourceIndex] is { } item)
+{
+    use.Begin(pointer, new UsePayload(
+        Token: item,
+        SourceId: bag,
+        SourceIndex: sourceIndex));
+}
+
+int targetIndex = stations.Update(pointer);
+if (targetIndex >= 0 && use.IsActive)
+{
+    bool accepted = CanUse(use.Payload.Token, stationItems[targetIndex]);
+    use.Complete(pointer, stations, targetIndex, accepted);
+}
+
+if (use.WasCompleted)
+{
+    UseResult result = use.LastUse;
+    ApplyUse(
+        result.Source.Token,
+        result.Source.SourceId,
+        result.Source.SourceIndex,
+        result.Target.TargetId,
+        result.Target.TargetIndex);
+}
+
+if (input.IsMenuCancel(null, out _))
+    use.Cancel();
+```
+
+`Begin` replaces any active source and consumes its gesture. `Complete` succeeds only when the context is active
+and `accepted` is true. It consumes the target gesture, records a `UseResult`, clears the active payload, and
+raises `WasCompleted`. Refusal returns false without consuming the gesture or clearing the source.
+`CompleteIn(pointer, bounds, targetId, targetIndex, accepted)` adds the press-origin-safe rectangle test for a
+bare target region. `Cancel` records `CancelledPayload`, raises `WasCancelled`, and clears the active source.
+`BeginFrame` clears both result flags without clearing an active source.
+`Begin`, `Complete`, and `CompleteIn` reject a null pointer before reading or changing context state.
+
+The caller owns categories or paging beyond eight entries, every persisted choice or active-use state, and every
+action produced from returned tags and payloads. The caller also owns source highlighting, target acceptance,
+feedback, and cancellation policy. The engine never interprets or serializes the opaque values.
+
 ## Retained chat
 
 `ChatHistory` holds a bounded list of `ChatEntry` values. Adjacent entries collapse only when their kind,

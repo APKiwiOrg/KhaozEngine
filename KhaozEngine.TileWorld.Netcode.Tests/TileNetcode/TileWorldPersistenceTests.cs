@@ -31,11 +31,17 @@ public class TileWorldPersistenceTests
         public readonly Dictionary<int, string> Accounts = new();
         public readonly Dictionary<int, TileMoveState> States = new();
         public readonly List<(int slot, TileMoveState state, bool teleport)> Placed = new();
+        public PersistenceKeyResolver? InstalledResolver { get; private set; }
         public event Action<int, string>? PlayerJoined;
         public event Action<int, string, TileMoveState>? PlayerLeaving;
         public IReadOnlyCollection<int> JoinedSlots => Accounts.Keys;
         public bool TryGetAccountId(int slot, out string accountId) => Accounts.TryGetValue(slot, out accountId!);
         public bool TryGetPlayerState(int slot, out TileMoveState state) => States.TryGetValue(slot, out state);
+        public bool TrySetPersistenceKeyResolver(PersistenceKeyResolver? resolver)
+        {
+            InstalledResolver = resolver;
+            return true;
+        }
         public void SetPlayerState(int slot, in TileMoveState state, bool teleport = false)
         {
             States[slot] = state;
@@ -67,6 +73,31 @@ public class TileWorldPersistenceTests
     // One region, (0, 0), and four planes: the world every test here validates a loaded record against.
     static readonly TileWorldDocument World = TileMoveSimulatorTests.FlatWorld();
     static readonly TileCollisionMap Map = TileMoveSimulatorTests.Bake(World);
+
+    [Fact]
+    public void PersistenceKeyResolverIsPassedThroughToTheSharedCore()
+    {
+        var host = new FakeHost();
+        PersistenceKeyResolver resolver = (in PersistenceKeyRequest request) => request.VerifiedPersistenceKey;
+
+        _ = new TileWorldPersistence(host, new InMemoryWorldStore(), Map, new TileWorldPersistenceConfig
+        {
+            PersistenceKeyResolver = resolver,
+        });
+
+        Assert.NotNull(host.InstalledResolver);
+        Assert.Equal("character:4", host.InstalledResolver!(new PersistenceKeyRequest(4, "acct:4", "character:4")));
+    }
+
+    [Fact]
+    public void NullPersistenceKeyResolverKeepsTheDefaultConfiguration()
+    {
+        var host = new FakeHost();
+
+        _ = new TileWorldPersistence(host, new InMemoryWorldStore(), Map);
+
+        Assert.Null(host.InstalledResolver);
+    }
 
     [Fact]
     public async Task A_players_tile_round_trips_through_a_temp_sqlite_store()

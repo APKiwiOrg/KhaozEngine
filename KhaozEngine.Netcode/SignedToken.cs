@@ -7,10 +7,10 @@ namespace KhaozEngine.Netcode;
 
 /// <summary>
 /// Zero-dependency HMAC-SHA256 connect-token primitive: a stateless, self-verifying bearer token binding a
-/// <c>subject</c> (the stable account/player identity) to an expiry, signed with a shared secret. The wire format
-/// is <c>v1.&lt;subject&gt;.&lt;expUnix&gt;.&lt;base64url-HMACSHA256&gt;</c> where the signature covers
-/// <c>v1.&lt;subject&gt;.&lt;expUnix&gt;</c>; the <c>subject</c> may not contain a '.' so the four fields split
-/// cleanly. No allocations beyond the token string; pure BCL crypto (no external dependency). The matching
+/// <c>subject</c> (the stable account/player identity) to an expiry, signed with a shared secret. The base v1 format
+/// is <c>v1.&lt;subject&gt;.&lt;expUnix&gt;.&lt;base64url-HMACSHA256&gt;</c>. Later formats add base64url
+/// display-name and persistence-key claims before the expiry. Every field before the MAC is signed. The
+/// <c>subject</c> may not contain a '.' so every version splits cleanly. The matching
 /// <see cref="IConnectionAuthenticator"/> is <see cref="HmacTokenAuthenticator"/>.
 /// </summary>
 public static class SignedToken
@@ -21,6 +21,9 @@ public static class SignedToken
     // fields still split cleanly; the signature covers v2.<subject>.<nameB64>.<expUnix>. A v1 token (no name) is
     // unchanged and still verifies. The display name is cosmetic and distinct from the verified subject/account id.
     private const string Version2 = "v2";
+    // v3 adds a base64url persistence-key claim after the display name. The claim is a durable identity hint and
+    // does not replace the subject for authentication or duplicate-session admission.
+    private const string Version3 = "v3";
 
     /// <summary>
     /// Mints a signed token for <paramref name="subject"/> expiring at <paramref name="expiry"/>, signed with
@@ -61,34 +64,69 @@ public static class SignedToken
     }
 
     /// <summary>
+    /// Mints a v3 signed token carrying an optional durable <paramref name="persistenceKey"/> claim beside the
+    /// verified subject and display name. The claim is base64url-encoded and covered by the token signature.
+    /// </summary>
+    public static string Mint(string subject, string displayName, string persistenceKey, DateTimeOffset expiry,
+        byte[] secret)
+    {
+        ArgumentNullException.ThrowIfNull(subject);
+        ArgumentNullException.ThrowIfNull(displayName);
+        ArgumentNullException.ThrowIfNull(persistenceKey);
+        ArgumentNullException.ThrowIfNull(secret);
+        if (subject.Contains('.'))
+            throw new ArgumentException("subject must not contain '.'", nameof(subject));
+
+        long expUnix = expiry.ToUnixTimeSeconds();
+        string nameField = displayName.Length == 0 ? string.Empty : ToBase64Url(Encoding.UTF8.GetBytes(displayName));
+        string persistenceField = persistenceKey.Length == 0
+            ? string.Empty
+            : ToBase64Url(Encoding.UTF8.GetBytes(persistenceKey));
+        string signed = string.Concat(Version3, ".", subject, ".", nameField, ".", persistenceField, ".",
+            expUnix.ToString(CultureInfo.InvariantCulture));
+        string mac = ToBase64Url(Hmac(secret, signed));
+        return string.Concat(signed, ".", mac);
+    }
+
+    /// <summary>
     /// Verifies <paramref name="token"/> against <paramref name="secret"/> at instant <paramref name="now"/>.
     /// On success returns true with the embedded <paramref name="subject"/>; on failure returns false with an empty
     /// subject and a short <paramref name="reason"/> (<c>"malformed"</c>, <c>"bad signature"</c>, or
-    /// <c>"expired"</c>). Signature is checked before expiry, with a fixed-time HMAC compare. Accepts both v1 and v2
-    /// tokens (any display-name claim is verified but dropped; use the <c>out displayName</c> overload to read it).
+    /// <c>"expired"</c>). Signature is checked before expiry, with a fixed-time HMAC compare. Accepts v1, v2, and v3
+    /// tokens. Any additional verified claims are dropped by this overload.
     /// </summary>
     public static bool TryVerify(string token, byte[] secret, DateTimeOffset now, out string subject, out string reason) =>
-        TryVerify(token, secret, now, out subject, out _, out reason);
+        TryVerify(token, secret, now, out subject, out _, out _, out reason);
 
     /// <summary>
     /// As <see cref="TryVerify(string,byte[],DateTimeOffset,out string,out string)"/>, also surfacing the verified
-    /// <paramref name="displayName"/> claim (empty for a v1 token or a v2 token with no name). The name is covered by
-    /// the same signature as the subject, so a valid token's name is trustworthy.
+    /// <paramref name="displayName"/> claim (empty for a v1 token or a token with no name). Any persistence-key claim
+    /// is dropped by this overload. The name is covered by the same signature as the subject.
     /// </summary>
     public static bool TryVerify(string token, byte[] secret, DateTimeOffset now, out string subject, out string displayName, out string reason)
+        => TryVerify(token, secret, now, out subject, out displayName, out _, out reason);
+
+    /// <summary>
+    /// As <see cref="TryVerify(string,byte[],DateTimeOffset,out string,out string,out string)"/>, also surfacing the
+    /// verified <paramref name="persistenceKey"/> claim. The claim is empty for v1 and v2 tokens.
+    /// </summary>
+    public static bool TryVerify(string token, byte[] secret, DateTimeOffset now, out string subject,
+        out string displayName, out string persistenceKey, out string reason)
     {
         subject = string.Empty;
         displayName = string.Empty;
+        persistenceKey = string.Empty;
         reason = string.Empty;
         ArgumentNullException.ThrowIfNull(secret);
 
         if (string.IsNullOrEmpty(token)) { reason = "malformed"; return false; }
 
         string[] parts = token.Split('.');
-        // v1.<subject>.<expUnix>.<mac> (4) or v2.<subject>.<nameB64>.<expUnix>.<mac> (5).
-        int nameIndex, expIndex;
-        if (parts.Length == 4 && parts[0] == Version) { nameIndex = -1; expIndex = 2; }
-        else if (parts.Length == 5 && parts[0] == Version2) { nameIndex = 2; expIndex = 3; }
+        // v1 has 4 fields, v2 has 5, and v3 has 6.
+        int nameIndex, persistenceIndex, expIndex;
+        if (parts.Length == 4 && parts[0] == Version) { nameIndex = -1; persistenceIndex = -1; expIndex = 2; }
+        else if (parts.Length == 5 && parts[0] == Version2) { nameIndex = 2; persistenceIndex = -1; expIndex = 3; }
+        else if (parts.Length == 6 && parts[0] == Version3) { nameIndex = 2; persistenceIndex = 3; expIndex = 4; }
         else { reason = "malformed"; return false; }
 
         if (!long.TryParse(parts[expIndex], NumberStyles.None, CultureInfo.InvariantCulture, out long expUnix))
@@ -113,45 +151,48 @@ public static class SignedToken
             return false;
         }
 
-        subject = parts[1];
-        if (nameIndex >= 0 && parts[nameIndex].Length > 0)
+        string verifiedDisplayName = string.Empty;
+        if (nameIndex >= 0 && !TryDecodeClaim(parts[nameIndex], out verifiedDisplayName))
         {
-            // The name was inside the signed message, so it is verified; decode it only after the signature passed.
-            if (!TryFromBase64Url(parts[nameIndex], out byte[] nameBytes))
-            {
-                subject = string.Empty;
-                reason = "malformed";
-                return false;
-            }
-            displayName = Encoding.UTF8.GetString(nameBytes);
+            reason = "malformed";
+            return false;
         }
+
+        string verifiedPersistenceKey = string.Empty;
+        if (persistenceIndex >= 0 && !TryDecodeClaim(parts[persistenceIndex], out verifiedPersistenceKey))
+        {
+            reason = "malformed";
+            return false;
+        }
+
+        subject = parts[1];
+        displayName = verifiedDisplayName;
+        persistenceKey = verifiedPersistenceKey;
         return true;
     }
 
     /// <summary>
     /// Secret-free STRUCTURAL parse of a token: extracts the <paramref name="subject"/>, expiry
-    /// (<paramref name="expUnix"/>, Unix seconds), and optional v2 <paramref name="displayName"/> from a well-formed
-    /// <c>v1</c>/<c>v2</c> token WITHOUT the HMAC secret. This does NOT verify the signature and does NOT check
+    /// (<paramref name="expUnix"/>, Unix seconds), and optional <paramref name="displayName"/> from a well-formed
+    /// v1, v2, or v3 token WITHOUT the HMAC secret. This does NOT verify the signature and does NOT check
     /// expiry, so a true, a tampered, and an expired token are indistinguishable to it. It is NOT authentication: use
     /// it only as a cheap client-side shape pre-filter (e.g. sanity-checking a pasted or launch-supplied token before
     /// attempting a connect, where the secret lives only on the server). The authoritative check is always
     /// <see cref="TryVerify(string,byte[],DateTimeOffset,out string,out string)"/> on the server.
     /// <para>
-    /// Accepts EXACTLY the structure a future <see cref="TryVerify(string,byte[],DateTimeOffset,out string,out string,out string)"/>
-    /// would accept before it looks at the signature: a non-empty token that splits into the v1 4-field or v2 5-field
-    /// layout with the matching version prefix, and a numeric expiry field (<see cref="NumberStyles.None"/>, invariant
-    /// culture - no sign, no whitespace). It is derived from this type's own layout, not a consumer's copy, so a
-    /// consumer that defers to it cannot drift from the wire format if a v3 is ever added. The signature field is not
-    /// inspected at all.
+    /// Accepts the structure <see cref="TryVerify(string,byte[],DateTimeOffset,out string,out string,out string,out string)"/>
+    /// accepts before checking the signature: the matching version layout, numeric expiry, and decodable claim
+    /// fields. It is derived from this type's own layout rather than a consumer copy. The signature is not inspected,
+    /// and the v3 persistence-key claim is validated structurally but never surfaced.
     /// </para>
     /// </summary>
     /// <param name="token">The candidate token string.</param>
     /// <param name="subject">On success, the embedded subject (the account/player id); empty otherwise. NOT verified.</param>
     /// <param name="expUnix">On success, the embedded expiry in Unix seconds; 0 otherwise. NOT checked against a clock.</param>
-    /// <param name="displayName">On success, the v2 display-name claim: <c>null</c> for a v1 token (no name field at
-    /// all), the empty string for a v2 token with an empty name, or the decoded name for a v2 token that carries one.
+    /// <param name="displayName">On success, the display-name claim: <c>null</c> for a v1 token (no name field at
+    /// all), the empty string for a v2 or v3 token with an empty name, or the decoded name for a token that carries one.
     /// NOT verified (the signature is not checked, so the name is not trustworthy).</param>
-    /// <returns>True if the token is structurally a well-formed v1/v2 token; false otherwise.</returns>
+    /// <returns>True if the token is structurally a well-formed v1, v2, or v3 token. False otherwise.</returns>
     public static bool TryParseUnverified(string token, out string subject, out long expUnix, out string? displayName)
     {
         subject = string.Empty;
@@ -161,10 +202,11 @@ public static class SignedToken
         if (string.IsNullOrEmpty(token)) return false;
 
         string[] parts = token.Split('.');
-        // v1.<subject>.<expUnix>.<mac> (4) or v2.<subject>.<nameB64>.<expUnix>.<mac> (5) - the same split TryVerify does.
-        int nameIndex, expIndex;
-        if (parts.Length == 4 && parts[0] == Version) { nameIndex = -1; expIndex = 2; }
-        else if (parts.Length == 5 && parts[0] == Version2) { nameIndex = 2; expIndex = 3; }
+        // These are the same three layouts TryVerify accepts.
+        int nameIndex, persistenceIndex, expIndex;
+        if (parts.Length == 4 && parts[0] == Version) { nameIndex = -1; persistenceIndex = -1; expIndex = 2; }
+        else if (parts.Length == 5 && parts[0] == Version2) { nameIndex = 2; persistenceIndex = -1; expIndex = 3; }
+        else if (parts.Length == 6 && parts[0] == Version3) { nameIndex = 2; persistenceIndex = 3; expIndex = 4; }
         else return false;
 
         if (!long.TryParse(parts[expIndex], NumberStyles.None, CultureInfo.InvariantCulture, out expUnix))
@@ -173,27 +215,47 @@ public static class SignedToken
             return false;
         }
 
-        subject = parts[1];
+        string? parsedDisplayName = null;
         if (nameIndex >= 0)
         {
             if (parts[nameIndex].Length == 0)
             {
-                displayName = string.Empty;
+                parsedDisplayName = string.Empty;
             }
             else if (TryFromBase64Url(parts[nameIndex], out byte[] nameBytes))
             {
-                displayName = Encoding.UTF8.GetString(nameBytes);
+                parsedDisplayName = Encoding.UTF8.GetString(nameBytes);
             }
             else
             {
                 // A non-empty v2 name field that is not valid base64url is structurally malformed - TryVerify rejects
                 // it as "malformed" too (after the signature passes). Reset the fields so a false return yields no
                 // half-parsed values.
-                subject = string.Empty;
                 expUnix = 0;
                 return false;
             }
         }
+
+        // Validate the v3 claim field against the verifier's shape, then discard it. This parse is deliberately not
+        // an authentication surface and must not hand an unverified durable identity to a caller.
+        if (persistenceIndex >= 0 && parts[persistenceIndex].Length > 0
+            && !TryFromBase64Url(parts[persistenceIndex], out _))
+        {
+            expUnix = 0;
+            return false;
+        }
+
+        subject = parts[1];
+        displayName = parsedDisplayName;
+        return true;
+    }
+
+    private static bool TryDecodeClaim(string field, out string value)
+    {
+        value = string.Empty;
+        if (field.Length == 0) return true;
+        if (!TryFromBase64Url(field, out byte[] bytes)) return false;
+        value = Encoding.UTF8.GetString(bytes);
         return true;
     }
 
@@ -221,12 +283,13 @@ public static class SignedToken
 }
 
 /// <summary>
-/// <see cref="IConnectionAuthenticator"/> over <see cref="SignedToken.TryVerify(string, byte[], System.DateTimeOffset, out string, out string)"/>: accepts a connection iff its
+/// <see cref="IConnectionAuthenticator"/> over <see cref="SignedToken"/> verification. Accepts a connection iff its
 /// connect token is a valid, unexpired <see cref="SignedToken"/> for the configured secret, binding the connection
 /// to the token's verified subject. The clock is injected so it is deterministically testable (and so a host can
 /// supply a monotonic/NTP-corrected time source).
 /// </summary>
-public sealed class HmacTokenAuthenticator : IConnectionAuthenticator, IConnectionDisplayName
+public sealed class HmacTokenAuthenticator : IConnectionAuthenticator, IConnectionDisplayName,
+    IConnectionPersistenceKey
 {
     private readonly byte[] secret;
     private readonly Func<DateTimeOffset> clock;
@@ -250,5 +313,16 @@ public sealed class HmacTokenAuthenticator : IConnectionAuthenticator, IConnecti
         string tokenStr = token.Length > 0 ? Encoding.UTF8.GetString(token) : string.Empty;
         return SignedToken.TryVerify(tokenStr, secret, clock(), out _, out string displayName, out _)
             ? displayName : string.Empty;
+    }
+
+    /// <summary>
+    /// The verified v3 persistence-key claim on the token. Returns an empty string for v1, v2, an empty claim, or a
+    /// token that fails verification.
+    /// </summary>
+    public string ReadPersistenceKey(ReadOnlySpan<byte> token)
+    {
+        string tokenStr = token.Length > 0 ? Encoding.UTF8.GetString(token) : string.Empty;
+        return SignedToken.TryVerify(tokenStr, secret, clock(), out _, out _, out string persistenceKey, out _)
+            ? persistenceKey : string.Empty;
     }
 }

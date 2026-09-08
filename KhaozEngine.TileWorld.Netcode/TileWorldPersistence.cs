@@ -10,6 +10,9 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// knobs under their own names, so a game reads one config type rather than two.</summary>
 public sealed record TileWorldPersistenceConfig
 {
+    /// <summary>Optional resolver that binds an authenticated session to its durable player key before spawn.</summary>
+    public PersistenceKeyResolver? PersistenceKeyResolver { get; init; }
+
     /// <summary>Seconds between dirty-record save passes. A crash loses at most this much.</summary>
     public float SaveIntervalSeconds { get; init; } = 30f;
 
@@ -117,6 +120,7 @@ public sealed class TileWorldPersistence
         core = new StatePersistence<TileMoveState>(host, store, Binding(c, world), new PersistenceCoreConfig
         {
             SaveIntervalSeconds = c.SaveIntervalSeconds,
+            PersistenceKeyResolver = c.PersistenceKeyResolver,
             KeyPrefix = c.KeyPrefix,
             QuarantineKeyPrefix = c.QuarantineKeyPrefix,
             PersistGuests = c.PersistGuests,

@@ -54,31 +54,31 @@ public sealed partial class StatePersistence<TState>
         await foreach (WorldStoreEntry entry in enumerable.EnumerateAsync(config.KeyPrefix, cancellationToken)
             .ConfigureAwait(false))
         {
-            if (AccountIdOf(entry.Key) is not null) candidates.Add(entry);
+            if (PersistenceKeyOf(entry.Key) is not null) candidates.Add(entry);
         }
         // Newest first, because that is the half worth keeping when there are more records than the cache holds.
         candidates.Sort(static (a, b) => b.UpdatedAt.CompareTo(a.UpdatedAt));
 
-        var accepted = new List<(string AccountId, TState State)>();
+        var accepted = new List<(string PersistenceKey, TState State)>();
         foreach (WorldStoreEntry entry in candidates)
         {
             if (accepted.Count >= limit) break;
-            if (AccountIdOf(entry.Key) is not string accountId) continue;
+            if (PersistenceKeyOf(entry.Key) is not string persistenceKey) continue;
             byte[]? data = await store.LoadAsync(entry.Key, cancellationToken).ConfigureAwait(false);
             if (data is null) continue;   // deleted between the enumeration and the read
-            if (TryDecodeForHint(data, out TState state)) accepted.Add((accountId, state));
+            if (TryDecodeForHint(data, out TState state)) accepted.Add((persistenceKey, state));
         }
 
         // Recorded OLDEST first, so the cache's recency order matches the store's. Recording newest first would put
         // the newest account at the eviction end and make it the first casualty of the next live save.
         for (int i = accepted.Count - 1; i >= 0; i--)
-            hints.Record(accepted[i].AccountId, binding.PositionOf(accepted[i].State));
+            hints.Record(accepted[i].PersistenceKey, binding.PositionOf(accepted[i].State));
         return accepted.Count;
     }
 
     // The account id a stored key names, or null when the key is not one this layer would ever have written a
     // hintable record under.
-    private string? AccountIdOf(string key)
+    private string? PersistenceKeyOf(string key)
     {
         string prefix = config.KeyPrefix ?? string.Empty;
         if (prefix.Length > 0 && !key.StartsWith(prefix, StringComparison.Ordinal)) return null;

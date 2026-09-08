@@ -89,12 +89,16 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   [`IWorldStore`](../KhaozEngine.WorldStore) into the server lifecycle through **`IWorldPersistenceHost`** (the
   surface `WorldServer` and `ShardedWorldServer` both implement) so the world survives a restart: load-on-join
   (spawn at the saved position, default if absent), save-on-leave, and a periodic snapshot of players dirty since
-  their last save. Keyed `player:{accountId}`; backend-agnostic and cell-agnostic (a loaded player spawns at its
-  saved position in whatever cell contains it). Pick a backend: `KhaozEngine.WorldStore.Sqlite` (dev/test) or
+  their last save. By default it is keyed `player:{accountId}`. A game can set
+  `WorldPersistenceConfig.PersistenceKeyResolver` to bind a different durable key once after authentication and
+  before resume-spawn lookup. Both heads reject invalid results and live-key collisions before spawning an entity.
+  Authentication, bans, admin identity, and duplicate-session policy remain account-subject keyed. Storage stays
+  backend-agnostic and cell-agnostic. Pick `KhaozEngine.WorldStore.Sqlite` for dev/test or
   `KhaozEngine.WorldStore.SqlServer` (prod / Azure SQL). A game attaches its own **durable per-player state**
   (XP, skills, inventory, quest log) by setting `WorldPersistenceConfig.CaptureGameState` /
   `ApplyGameState` (`PlayerGameStateCapture` / `PlayerGameStateApply`, handed a `PlayerPersistenceContext` of
-  `Slot` + `AccountId`): an opaque blob that rides the SAME record (`PlayerRecord.Game`, base64 in the JSON),
+  `Slot`, durable `AccountId`, and verified `AuthenticatedAccountId`): an opaque blob that rides the SAME record
+  (`PlayerRecord.Game`, base64 in the JSON),
   dirty comparison, interval save, flush-on-drain and load-on-join thread-marshalling as position. Capture runs
   on the server thread at each save; apply runs on the server thread as the load-on-join position is applied. The
   engine never interprets the bytes - the game owns the format and its migration (run a

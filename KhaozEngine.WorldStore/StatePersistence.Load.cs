@@ -24,15 +24,18 @@ public sealed partial class StatePersistence<TState>
                 guestKeys[slot] = PositionHintCache.GuestAccountPrefix + Guid.NewGuid().ToString("N");
             return;
         }
+        if (!server.TryGetPersistenceKey(slot, out string persistenceKey) || string.IsNullOrEmpty(persistenceKey))
+            return;
         long token = Interlocked.Increment(ref nextJoinToken);
-        loadsInFlight[accountId] = token;                   // guard the account until THIS session's record applies (or its load returns null)
+        loadsInFlight[persistenceKey] = token;              // guard the durable key until THIS session's record applies (or its load returns null)
         // Read the account's outstanding write, if any, on the SERVER THREAD, before the load task starts: the
         // save-on-leave that has to be waited for was published from this same drain, one event earlier.
-        savesInFlight.TryGetValue(accountId, out Task? outstandingSave);
-        Track(LoadOnJoinAsync(slot, accountId, token, outstandingSave));
+        savesInFlight.TryGetValue(persistenceKey, out Task? outstandingSave);
+        Track(LoadOnJoinAsync(slot, accountId, persistenceKey, token, outstandingSave));
     }
 
-    private async Task LoadOnJoinAsync(int slot, string accountId, long token, Task? outstandingSave)
+    private async Task LoadOnJoinAsync(int slot, string accountId, string persistenceKey, long token,
+        Task? outstandingSave)
     {
         if (outstandingSave is not null)
         {
@@ -45,14 +48,15 @@ public sealed partial class StatePersistence<TState>
             catch (Exception ex)
             {
                 config.Diagnostic?.Invoke(
-                    $"the save outstanding for account '{accountId}' failed, so its load-on-join on slot {slot} "
-                    + "reads whatever the store still holds, which may predate that session's last state.", ex);
+                    $"the save outstanding for {IdentityDescription(accountId, persistenceKey)} failed, so its "
+                    + $"load-on-join on slot {slot} reads whatever the store still holds, which may predate that "
+                    + "session's last state.", ex);
             }
         }
-        byte[]? data = await store.LoadAsync(Key(accountId)).ConfigureAwait(false);
+        byte[]? data = await store.LoadAsync(Key(persistenceKey)).ConfigureAwait(false);
         if (data is null)                                  // no save -> keep wherever the join built them (spawn, or this account's hint)
         {
-            ClearGuard(accountId, token);                  // brand-new player: nothing stored to clobber, drop the guard now
+            ClearGuard(persistenceKey, token);             // brand-new player: nothing stored to clobber, drop the guard now
             return;
         }
         // The baseline is NOT set here any more: it moves to apply time (DrainApplyQueue), so a quarantined record is
@@ -67,16 +71,18 @@ public sealed partial class StatePersistence<TState>
             // faulting the task: a record that will not parse has to reach the drain to be quarantined.
             if (!binding.Decode(data, out state, out game))
             {
-                applyQueue.Enqueue(new PendingApply(slot, accountId, token, data, default!, null, "undecodable record"));
+                applyQueue.Enqueue(new PendingApply(slot, accountId, persistenceKey, token, data, default!, null,
+                    "undecodable record"));
                 return;                                    // guard stays set until the drain quarantines and clears it
             }
         }
         catch (Exception ex)
         {
-            applyQueue.Enqueue(new PendingApply(slot, accountId, token, data, default!, null, $"undecodable record: {ex.Message}"));
+            applyQueue.Enqueue(new PendingApply(slot, accountId, persistenceKey, token, data, default!, null,
+                $"undecodable record: {ex.Message}"));
             return;                                        // guard stays set until the drain quarantines and clears it
         }
-        applyQueue.Enqueue(new PendingApply(slot, accountId, token, data, state, game, null));   // validated + guard cleared in DrainApplyQueue
+        applyQueue.Enqueue(new PendingApply(slot, accountId, persistenceKey, token, data, state, game, null));
     }
 
     // Drops the guard only when it is still the one THIS session put there. A load left over from a superseded
@@ -108,7 +114,7 @@ public sealed partial class StatePersistence<TState>
             // it carries what the store held before the live session started, so applying it writes over everything
             // that session has done since, and clearing the guard on the way out would reopen the save window its
             // sibling load is still holding (#654). The guard is deliberately left exactly as it is.
-            bool guarded = loadsInFlight.TryGetValue(a.AccountId, out long current);
+            bool guarded = loadsInFlight.TryGetValue(a.PersistenceKey, out long current);
             if (!guarded || current != a.Token)
             {
                 // Name the state actually found, the way the seat check below does. The two halves reach here for
@@ -117,14 +123,15 @@ public sealed partial class StatePersistence<TState>
                 // already landed (or the account has since left). Reporting the first for both read as a guarantee
                 // in the landing-last case, where the guard is long gone by the time the stale load arrives.
                 config.Diagnostic?.Invoke(
-                    $"load-on-join for account '{a.AccountId}' dropped: it was read on slot {a.Slot} for an "
+                    $"load-on-join for {IdentityDescription(a.AccountId, a.PersistenceKey)} dropped: it was read "
+                    + $"on slot {a.Slot} for an "
                     + "earlier session that has since been superseded, so the stored record was not applied over "
                     + "newer live state, and "
                     + (guarded
                         ? "the current session's own load is still outstanding and still guards the account."
                         : "the account carries no guard any more, its current session's load having already landed."),
                     null);
-                OnLoadApplyDropped?.Invoke(a.AccountId, a.Slot);
+                OnLoadApplyDropped?.Invoke(a.PersistenceKey, a.Slot);
                 continue;
             }
 
@@ -137,16 +144,19 @@ public sealed partial class StatePersistence<TState>
             // belonging to a departed account simply stays in the store, un-quarantined, and is re-read (and then
             // quarantined) on that account's next join, which is the same shape a store outage already has.
             bool held = server.TryGetAccountId(a.Slot, out string occupant);
-            if (!held || !string.Equals(occupant, a.AccountId, StringComparison.Ordinal))
+            bool keyHeld = server.TryGetPersistenceKey(a.Slot, out string currentPersistenceKey);
+            if (!held || !string.Equals(occupant, a.AccountId, StringComparison.Ordinal)
+                || !keyHeld || !string.Equals(currentPersistenceKey, a.PersistenceKey, StringComparison.Ordinal))
             {
                 // Deliberately NOT clearing loadsInFlight: the record was never applied, so it is still the truth for
                 // that account and the guard is what stops live state overwriting it. The account is not connected
                 // under this slot any more, so the guard costs nothing until it rejoins and the retry clears it.
                 config.Diagnostic?.Invoke(
-                    $"load-on-join for account '{a.AccountId}' dropped: slot {a.Slot} now holds "
+                    $"load-on-join for {IdentityDescription(a.AccountId, a.PersistenceKey)} dropped: slot {a.Slot} "
+                    + "now holds "
                     + (held ? $"account '{occupant}'" : "no player")
                     + ", so the stored record was not applied and stays guarded for that account's next join.", null);
-                OnLoadApplyDropped?.Invoke(a.AccountId, a.Slot);
+                OnLoadApplyDropped?.Invoke(a.PersistenceKey, a.Slot);
                 continue;
             }
 
@@ -156,11 +166,11 @@ public sealed partial class StatePersistence<TState>
             string? failure = a.DecodeFailure;
             failure ??= binding.Validate(a.State, a.Game);
             if (failure is null && a.Game is { Length: > 0 } && config.ValidateGameState is { } validate)
-                failure = validate(a.Slot, a.AccountId, a.Game);
+                failure = validate(a.Slot, a.PersistenceKey, a.Game);
 
             if (failure is not null)
             {
-                Track(store.SaveAsync(config.QuarantineKeyPrefix + Key(a.AccountId), a.Raw));   // copy the bad record verbatim, awaited by FlushAsync
+                Track(store.SaveAsync(config.QuarantineKeyPrefix + Key(a.PersistenceKey), a.Raw));
                 // Reset to the configured spawn RATHER than simply declining to place the player. Before the join
                 // seed, "not applied" meant the player kept the spawn the join built them at and quarantine needed
                 // no placement at all. It does not mean that any more: a rejoin is built at the resume hint, which
@@ -169,11 +179,11 @@ public sealed partial class StatePersistence<TState>
                 // decode-failure and ValidateGameState triggers reach that state with no bounds divergence at all.
                 // Forget the hint first, so a further rejoin cannot re-seed the position this record was rejected
                 // for, and place as a genuine teleport: policy moved the player, and the client should cut.
-                hints.Forget(a.AccountId);
+                hints.Forget(a.PersistenceKey);
                 if (server.TryGetConfiguredSpawn(a.Slot, out TState spawn))
                     server.SetPlayerState(a.Slot, spawn, teleport: true);
-                ClearGuard(a.AccountId, a.Token);              // quarantined, so the account is now free to dirty-save the fresh spawn over the bad primary
-                OnRecordQuarantined?.Invoke(a.AccountId, failure);
+                ClearGuard(a.PersistenceKey, a.Token);
+                OnRecordQuarantined?.Invoke(a.PersistenceKey, failure);
                 continue;                                      // NOT applied, baseline NOT advanced
             }
 
@@ -189,10 +199,15 @@ public sealed partial class StatePersistence<TState>
                 > config.QuietRestoreDistance;
             server.SetPlayerState(a.Slot, a.State, teleport: moved);
             if (a.Game is { Length: > 0 } && config.ApplyGameState is { } apply)
-                apply(a.Slot, a.AccountId, a.Game);
-            lastSaved[a.AccountId] = a.Raw;                 // loaded == clean baseline, set at apply time (never for a quarantined record)
-            hints.Record(a.AccountId, binding.PositionOf(a.State));   // the restored position is now the account's last known one
-            ClearGuard(a.AccountId, a.Token);              // restore applied, the account is now safe to dirty-save
+                apply(a.Slot, a.PersistenceKey, a.Game);
+            lastSaved[a.PersistenceKey] = a.Raw;
+            hints.Record(a.PersistenceKey, binding.PositionOf(a.State));
+            ClearGuard(a.PersistenceKey, a.Token);
         }
     }
+
+    private static string IdentityDescription(string accountId, string persistenceKey) =>
+        string.Equals(accountId, persistenceKey, StringComparison.Ordinal)
+            ? $"account '{accountId}'"
+            : $"account '{accountId}' with persistence key '{persistenceKey}'";
 }

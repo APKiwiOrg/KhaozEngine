@@ -1,4 +1,6 @@
+using System.Collections.Generic;
 using System.Numerics;
+using KhaozEngine.WorldStore;
 using KhaozEngine.Locomotion;
 
 namespace KhaozEngine.NetWorld;
@@ -11,15 +13,60 @@ namespace KhaozEngine.NetWorld;
 public sealed partial class WorldServer
 {
     private ResumePositionProvider? resumePosition;
+    private PersistenceKeyResolver? persistenceKeyResolver;
+    private readonly Dictionary<int, string> persistenceKeyBySlot = new();
+    private readonly Dictionary<string, int> slotByPersistenceKey = new(System.StringComparer.Ordinal);
 
     /// <inheritdoc/>
     public void SetResumePositionProvider(ResumePositionProvider? provider) => resumePosition = provider;
 
+    /// <inheritdoc/>
+    public bool TrySetPersistenceKeyResolver(PersistenceKeyResolver? resolver)
+    {
+        if (resolver is null) return true;
+        if (persistenceKeyResolver is not null) return false;
+        persistenceKeyResolver = resolver;
+        return true;
+    }
+
+    /// <inheritdoc/>
+    public bool TryGetPersistenceKey(int slot, out string persistenceKey)
+    {
+        if (persistenceKeyBySlot.TryGetValue(slot, out persistenceKey!)) return true;
+        return TryGetAccountId(slot, out persistenceKey);
+    }
+
+    private bool TryBindPersistenceKey(int slot, string accountId, string verifiedPersistenceKey,
+        out string persistenceKey)
+    {
+        persistenceKey = accountId;
+        if (ResumePositionCache.IsGuestAccount(accountId) || persistenceKeyResolver is null) return true;
+        try
+        {
+            persistenceKey = persistenceKeyResolver(new PersistenceKeyRequest(slot, accountId, verifiedPersistenceKey));
+        }
+        catch (System.Exception)
+        {
+            persistenceKey = string.Empty;
+            return false;
+        }
+        if (slotByPersistenceKey.ContainsKey(persistenceKey)) return false;
+        persistenceKeyBySlot[slot] = persistenceKey;
+        slotByPersistenceKey[persistenceKey] = slot;
+        return true;
+    }
+
+    private void ReleasePersistenceKey(int slot)
+    {
+        if (!persistenceKeyBySlot.Remove(slot, out string? persistenceKey)) return;
+        slotByPersistenceKey.Remove(persistenceKey);
+    }
+
     // The ABSOLUTE spawn position for a joining slot: the resume hint for this account when one is known, else the
     // configured spawn, else the per-slot default spread. The caller ground-clamps it, so a hint from a record
     // written on other terrain still settles onto this server's ground rather than being taken literally.
-    private Vector3 JoinSpawn(int slot, string accountId) =>
-        resumePosition is not null && resumePosition(accountId, out Vector3 resumed)
+    private Vector3 JoinSpawn(int slot, string persistenceKey) =>
+        resumePosition is not null && resumePosition(persistenceKey, out Vector3 resumed)
             ? resumed
             : ConfiguredSpawn(slot);
 

@@ -47,6 +47,13 @@ public interface IPersistenceHost<TState>
     /// </summary>
     bool TryGetAccountId(int slot, out string accountId);
 
+    /// <summary>Installs the optional pre-spawn durable-key resolver. Hosts that do not support one accept null.</summary>
+    bool TrySetPersistenceKeyResolver(PersistenceKeyResolver? resolver) => resolver is null;
+
+    /// <summary>The durable persistence key bound to a joined slot. Existing hosts use their account id.</summary>
+    bool TryGetPersistenceKey(int slot, out string persistenceKey) =>
+        TryGetAccountId(slot, out persistenceKey);
+
     /// <summary>The current authoritative movement state for a joined slot.</summary>
     bool TryGetPlayerState(int slot, out TState state);
 

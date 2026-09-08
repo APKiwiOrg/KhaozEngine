@@ -407,7 +407,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
             switch (ev.Kind)
             {
                 case ServerSessionEventKind.Joined:
-                    OnJoin(ev.Slot, ev.Subject, ev.DisplayName);
+                    OnJoin(ev.Slot, ev.Subject, ev.DisplayName, ev.PersistenceKey);
                     break;
                 case ServerSessionEventKind.Left:
                     OnLeave(ev.Slot);
@@ -695,7 +695,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
         onlinePublisher.PublishIfChanged(admin);
     }
 
-    private void OnJoin(int slot, string subject, string displayName)
+    private void OnJoin(int slot, string subject, string displayName, string verifiedPersistenceKey)
     {
         // A VERIFIED subject may not sit inside the reserved guest namespace: it would read as tokenless to
         // persistence and lose the whole session silently (see ReservedSubjectGuard).
@@ -710,6 +710,11 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
             net.Disconnect(slot);
             return;
         }
+        if (!TryBindPersistenceKey(slot, accountId, verifiedPersistenceKey, out string persistenceKey))
+        {
+            net.Disconnect(slot);
+            return;
+        }
 
         // Belt-and-suspenders: clear any stale command-queue state on the (recycled) slot before spawning, in case
         // a prior occupant's Left was ever missed. A fresh session's seqs restart at 0; a stale high-water mark
@@ -720,7 +725,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
         deltaReplicator?.Forget(slot);
         deltaCapableSlots.Remove(slot);
 
-        Vector3 spawn = JoinSpawn(slot, accountId);   // a known rejoiner is built where it left (see JoinSpawn)
+        Vector3 spawn = JoinSpawn(slot, persistenceKey);   // a known rejoiner is built where it left (see JoinSpawn)
         // Ground-clamp the spawn (an idle step settles Y onto the terrain + half-height). The spawn position is
         // authored ABSOLUTE, so it converts into the island first: the clamp step queries the island's physics
         // world and samplers, which speak the island's space.
@@ -755,26 +760,28 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
     // may later surface a Left event for the same slot through Poll, calling OnLeave a second time.
     private void OnLeave(int slot)
     {
-        // The final state goes out ABSOLUTE: a persistence layer writes world metres, and a save that carried a
-        // runtime frame would break the moment the grid constant changed.
-        if (accountIdBySlot.TryGetValue(slot, out string? acct) && stateBySlot.TryGetValue(slot, out PlayerMoveState final))
-            PlayerLeaving?.Invoke(slot, acct, ToAbsolute(final));
-
-        if (entityBySlot.TryGetValue(slot, out Entity e) && world.IsAlive(e)) world.Despawn(e);
-        netIdBySlot.Remove(slot);
-        entityBySlot.Remove(slot);
-        stateBySlot.Remove(slot);
-        lastAckBySlot.Remove(slot);
-        accountIdBySlot.Remove(slot);
-        rateBySlot.Remove(slot);
-        correctionStreakBySlot.Remove(slot);
-        selfRescueReadyAt.Remove(slot);
-        // Drop the slot's delta baseline + capability so the recycled slot starts clean (see OnJoin).
-        deltaReplicator?.Forget(slot);
-        deltaCapableSlots.Remove(slot);
-        // Drop the slot's command-queue state too. The SlotAllocator recycles this slot to the next connection,
-        // whose seqs legitimately restart at 0; without this the stale high-water mark rejects every command and
-        // freezes the recycled player (it self-heals only once their seq crawls past the dead mark, minutes later).
-        commands.Forget(slot);
+        try
+        {
+            // The final state goes out ABSOLUTE: a persistence layer writes world metres, and a save that carried a
+            // runtime frame would break the moment the grid constant changed.
+            if (accountIdBySlot.TryGetValue(slot, out string? acct) && stateBySlot.TryGetValue(slot, out PlayerMoveState final))
+                PlayerLeaving?.Invoke(slot, acct, ToAbsolute(final));
+        }
+        finally
+        {
+            ReleasePersistenceKey(slot);
+            if (entityBySlot.TryGetValue(slot, out Entity e) && world.IsAlive(e)) world.Despawn(e);
+            netIdBySlot.Remove(slot);
+            entityBySlot.Remove(slot);
+            stateBySlot.Remove(slot);
+            lastAckBySlot.Remove(slot);
+            accountIdBySlot.Remove(slot);
+            rateBySlot.Remove(slot);
+            correctionStreakBySlot.Remove(slot);
+            selfRescueReadyAt.Remove(slot);
+            deltaReplicator?.Forget(slot);
+            deltaCapableSlots.Remove(slot);
+            commands.Forget(slot);
+        }
     }
 }

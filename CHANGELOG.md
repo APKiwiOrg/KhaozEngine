@@ -5,6 +5,55 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.36.0
+
+Backlog fixes cover tile interactions, GPU correctness, editor workflows, and test reliability across 22 issues.
+
+- Tile commands now distinguish authored-object IDs from entity net IDs with `InteractObject`, `InteractEntity`,
+  and separate server callbacks. Legacy object command bytes, signed object IDs, and framed movement readers
+  remain compatible. Pending entity interactions carry an explicit domain (#801).
+- Observer-interior queries are available independently of roof visibility. Remote dirty areas no longer refill
+  an unrelated complete interior, while adjacent edits and truncated fills retain conservative invalidation
+  (#793, #794).
+- Actor ticks reuse ownership reads and refresh stale accesses after callback-triggered lifecycle changes.
+  The final 576-actor benchmark median fell from 0.461 ms to 0.319 ms per tick (#748).
+- Tile presentation documents separate local and remote base motion bounds, diagonal distance conventions,
+  and the additional active reconciliation offset. Rules continue to use committed tiles (#735).
+- `ke-tileedit` executes pipelined tool calls in arrival order, including through cancelled and failed requests,
+  so ordered authoring batches cannot race their own save (#667).
+- Context menus and tooltips handle default text values safely. Context menus validate geometry and row indices,
+  expose instance bounds, reuse the row hit test, and ignore menu-cancel while the window is unfocused (#761).
+- Scrollable panels support opt-in, proportional drag-edge scrolling through a live `GuiDragContext`, with
+  content-only bands, elapsed-time scaling, and scroll-limit clamping (#377).
+- Large tiled maps use a bounded search for an enabled player spawn before opening a window. Search storage
+  and tile reads follow a configurable budget, with a bounds-center fallback and camera aimed at the anchor.
+  The budget also applies during explicit reload (#347).
+- Ctrl+R and Cmd+R reload a clean editor document from disk. Dirty documents and focused fields are protected,
+  and failed replacement loads or viewport builds retain the current editor state (#368).
+- SQL Server journal validation reports hidden constraint and trigger definitions as a controlled schema
+  failure. The package documents object-scoped `VIEW DEFINITION` grants for all seven journal tables (#848).
+- FXAA samples initialized mip zero before the final mip-filtered downscale. This removes native Metal color
+  corruption without changing the image goldens, with moving-frame GPU regression coverage (#840).
+- GPU capabilities preserve sparse MSAA sample sets. Vulkan intersects framebuffer and per-format support,
+  rejects unsupported direct texture requests, and resolves quality choices only to supported counts. Devices
+  with 1x and 4x support safely fall back from a 2x request. Existing capability constructors remain compatible
+  and default capabilities consistently describe the single-sample floor (#853).
+- Native Vulkan caches validated GLSL-to-SPIR-V output on disk. Cache keys include source, stage, engine and
+  compiler identity. Cold, warm and disabled-cache processes are checked by the native matrix (#763).
+- Procedural zero-swell planes in clipmap mode draw a four-vertex, six-index quad. FFT and displaced procedural
+  planes retain clipmap geometry, including when mixed in one frame (#406).
+- Every scatter and companion layer registers mapped static colliders. Placement-layer collider opt-out and
+  the existing rebuild, residency and disposal lifecycle are preserved (#288).
+- Native D3D11 supports all 16 scissor slots, with matching trace and native prefix updates, replay behavior,
+  and framebuffer reset semantics (#495).
+- Vertex-layout coverage compares actual renderer pipeline descriptions with every shipped shader pair.
+  Golden baking skips only cross-backend agreement over transitional references (#558, #307).
+- The executing-verb timeout regression uses a dedicated pump thread and retains its cancellation assertion
+  under thread-pool load (#843).
+- Journal tests use a bounded monotonic wait instead of a yield-count deadline. Windows fixtures normalize
+  CRLF schema text and handle transient database cleanup sharing violations without swallowing final failures
+  (#851, #852).
+
 ## 18.35.0
 
 Named directional shadow detail profiles and a shared authoritative world clock give games one construction-time

@@ -2956,8 +2956,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
 - Anti-aliasing options (the AA dropdown): `Post.Quality.AntiAliasing` picks a configuration -
   `AntiAliasing.Off` (default), `.Fxaa` (cheap one-pass edge smoother), `.Msaa(2|4|8)` (hardware multisample,
   geometry edges only), or `.Ssaa(factor)` (supersample the whole image, the strongest, also kills shaded-interior
-  shimmer). Build a menu from `AppWindow.Capabilities.MaxMsaaSampleCount` and validate a choice with
-  `aa.ResolveFor(caps)` (clamps an unsupported MSAA level down, or falls back to FXAA; never throws). `Ssaa(f)` is
+  shimmer). Build a menu from `AppWindow.Capabilities.SupportedMsaaSampleCounts` and validate a choice with
+  `aa.ResolveFor(caps)`, which selects a supported count or falls back to FXAA. The maximum alone does not
+  imply every lower count is supported. `Ssaa(f)` is
   the high-level equivalent of `RenderScale.MatchViewport` + `Supersample = f`; the raw fields remain and, with AA
   `Off`, still govern (so existing scenes are unchanged). The `Pixelated` retro path forces AA off. Costs: SSAA is
   ~factor^2 fragment shading, MSAA adds a per-frame resolve, FXAA one pass - keep AA off by default and measure.
@@ -6099,7 +6100,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.35.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.36.0" />
 ```
 
 ```csharp
@@ -11521,7 +11522,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.35.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.36.0" />
 ```
 
 ```csharp
@@ -11557,7 +11558,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.35.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.36.0" />
 ```
 
 ```csharp
@@ -11799,7 +11800,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.35.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.36.0" />
 ```
 
 ```csharp
@@ -12351,11 +12352,11 @@ device was always refused, and losing one now is too: the host-visible memory a 
 went with the device, so the pointer would dangle. There is no recovery path, so a run that wants to read back
 again creates a new device.
 
-**A sample count above the device's `GpuCapabilities.MaxMsaaSampleCount` is REFUSED at texture creation rather
-than rounded down to one.** `AntiAliasing.ResolveFor` is the one place a request is meant to be clamped, so a
-count arriving at the factory above the maximum came from a caller that skipped it, and a framebuffer that is
-quietly not multisampled reads as a rendering bug rather than as a missing clamp. Clamp upstream, which the
-engine's own renderers already do.
+**A sample count missing from `GpuCapabilities.SupportedMsaaSampleCounts` is refused at Vulkan texture
+creation.** The set can have holes. Lavapipe supports 1x and 4x without 2x, so checking only the maximum would
+allow a black render target. Use `AntiAliasing.ResolveFor` to choose the largest supported member no greater
+than the request, or FXAA when no multisample member fits. The native factory rejects unsupported direct
+requests before creating an image.
 
 **`GpuBufferUsage.Dynamic` does NOT make a buffer CPU-mappable there, where it does on `GpuBackendKind.Vulkan`.**
 Only `GpuBufferUsage.Staging` buffers and staging textures can be mapped on the native backend. The reason is the
@@ -13847,7 +13848,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="18.35.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="18.36.0" />
 </ItemGroup>
 ```
 

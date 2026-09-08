@@ -23,7 +23,7 @@
 - The opening gesture cannot select or dismiss the menu.
 - The whole wheel and choice strip clamp and block input as one composition.
 - Steady-state update and draw allocate zero bytes after opening and warming.
-- The public API is additive. Take the next free engine minor version at execution time.
+- The public API is additive. Ride an in-flight staged engine version when one exists. Otherwise take the next free engine minor version.
 - Grimhollow is pinned and waiting. Pack and tag the released engine version after merge.
 
 ---
@@ -440,7 +440,7 @@ git tag --list 'v*' --sort=-v:refname | head
 rg '<KhaozEngineVersion>' Directory.Build.props
 ~~~
 
-If 18.35.0 remains current and v18.36.0 is free, use 18.36.0. Otherwise take the next free minor. The changelog first sentence is: KhaozEngine.Gui adds an interaction-anchored radial menu and an opaque source-target use context.
+If KhaozEngineVersion is ahead of the newest tag, append to that staged version. Otherwise take the next free minor. The changelog first sentence is: KhaozEngine.Gui adds an interaction-anchored radial menu and an opaque source-target use context.
 
 - [ ] **Step 4: Mark the design and index row complete with the resolved version.**
 

@@ -60,6 +60,17 @@ public class WorldClockAnchorTests
         Assert.Null(WorldClockAnchor.Decode(encoded));
     }
 
+    [Theory]
+    [InlineData(-0.25f)]
+    [InlineData(1f)]
+    [InlineData(1.25f)]
+    public void Decode_OutOfRangeTimeOfDayReturnsNull(float corruptTimeOfDay)
+    {
+        byte[] encoded = new WorldClockAnchor(1_000d, corruptTimeOfDay).Encode();
+
+        Assert.Null(WorldClockAnchor.Decode(encoded));
+    }
+
     [Fact]
     public void RecomputeTimeOfDay_AdvancesDowntimeAtScaleOne()
     {

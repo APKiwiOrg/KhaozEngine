@@ -33,7 +33,10 @@ public readonly record struct WorldClockAnchor(double AnchorUnixSeconds, float T
 
         double anchorUnixSeconds = BinaryPrimitives.ReadDoubleLittleEndian(data.AsSpan(8, 8));
         float timeOfDayAtAnchor = BinaryPrimitives.ReadSingleLittleEndian(data.AsSpan(16, 4));
-        if (!double.IsFinite(anchorUnixSeconds) || !float.IsFinite(timeOfDayAtAnchor))
+        if (!double.IsFinite(anchorUnixSeconds) ||
+            !float.IsFinite(timeOfDayAtAnchor) ||
+            timeOfDayAtAnchor < 0f ||
+            timeOfDayAtAnchor >= 1f)
             return null;
 
         return new WorldClockAnchor(anchorUnixSeconds, timeOfDayAtAnchor);

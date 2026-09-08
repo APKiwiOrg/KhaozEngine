@@ -142,6 +142,34 @@ public class TileEntityInteractTests
         Assert.Equal(TileInteractionDomain.AuthoredObject, arrived.InteractDomain);
     }
 
+    [Fact]
+    public void Entity_interaction_domain_survives_continue_ticks_and_a_route_rebuild()
+    {
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        TileCollisionMap map = TileMoveSimulatorTests.Bake(doc);
+        var entities = new FixedTarget(7, new TileRect(10, 10, 1, 1), plane: 0);
+        var simulator = new TileMoveSimulator(map, new TileStepTicks(walk: 4, run: 2),
+            combatTargets: entities);
+        TileMoveState state = TileMoveState.At(new TileCoord(5, 10, 0), TileDirection.E);
+        state = simulator.Step(state, TileCommand.InteractEntity(7, TileMoveMode.Run), 0.25f);
+        Assert.Equal(new TileCoord(6, 10, 0), state.Tile);
+
+        // Block the next planned tile after the first step has committed. The landing tick must rebuild the route
+        // around it without losing which resolver owns target 7.
+        doc.AddObject("tree", 7, 10, 0, 0);
+        TileCollisionBaker.Rebake(map, doc, TileMoveSimulatorTests.Catalogs, new TileRect(6, 9, 3, 3), 0);
+        for (int i = 0; i < 40 && !state.Route.IsIdle; i++)
+        {
+            state = simulator.Step(state, TileCommand.Continue(TileMoveMode.Run), 0.25f);
+            if (state.InteractTarget != 0)
+                Assert.Equal(TileInteractionDomain.Entity, state.InteractDomain);
+        }
+
+        Assert.Equal(7, state.InteractTarget);
+        Assert.Equal(TileInteractionDomain.Entity, state.InteractDomain);
+        Assert.True(TileReach.Contains(map, new TileRect(10, 10, 1, 1), 0, state.Tile));
+    }
+
     sealed class FixedTarget(long id, TileRect footprint, int plane) : ITileTargets
     {
         public bool TryGetFootprint(long target, out TileRect found, out int foundPlane)

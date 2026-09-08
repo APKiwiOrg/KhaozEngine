@@ -20,6 +20,50 @@ float wait = FixedTickHost.ComputeIdleWaitSeconds(host.SecondsUntilNextTick, saf
 if (wait > 0f) Thread.Sleep(TimeSpan.FromSeconds(wait)); else Thread.Yield();
 ```
 
+- **World clock stack** - `WorldClock` is the normalized time kernel, `WorldClockHost` owns authority on the
+  server tick, and `WorldClockMirror` advances the last authoritative state on a client between messages.
+  `WorldClockCodec` supplies strict transport-free state and command payloads. `WorldClockAnchor` is the
+  versioned restart record. The game still owns message kinds, delivery reliability, authorization, and the
+  storage adapter.
+
+```csharp
+const ushort WorldClockStateMessage = 40;
+
+var clockHost = new WorldClockHost(
+    new WorldClock(dayLengthSeconds: 1_200f, startTimeOfDay: 0.25f),
+    payload => SendClockToAll(WorldClockStateMessage, payload),
+    (slot, payload) => SendClockTo(slot, WorldClockStateMessage, payload));
+
+// Network or admin thread. Authenticate and authorize before this call.
+void HandleClockCommand(Session session, ReadOnlySpan<byte> payload)
+{
+    if (session.CanControlWorldClock)
+        clockHost.TryEnqueueCommand(payload);
+}
+
+// Join callback. The state is sent from the next authoritative tick.
+void OnPlayerJoined(int slot) => clockHost.PushTo(slot);
+
+// Fixed authoritative tick.
+void Tick(float dt) => clockHost.Tick(dt);
+
+var clockMirror = new WorldClockMirror();
+void OnClockState(ReadOnlySpan<byte> payload) => clockMirror.Apply(payload);
+void UpdateClient(float realDt) => clockMirror.Advance(realDt);
+```
+
+The send callbacks are game-owned. Wrap the bytes in the game's message envelope and use its reliable ordered
+channel. Do not mutate `clockHost.Clock` from a network or admin thread. Those threads may enqueue authorized
+commands and late-join pushes, while the simulation thread alone calls `Tick`. Cross-thread readers use
+`clockHost.Snapshot`.
+
+Persistence is also a game boundary. A game that uses `KhaozEngine.WorldStore.IWorldStore` owns a small adapter
+that loads a stable key, passes the bytes to `WorldClockAnchor.Decode`, and constructs the boot clock from
+`anchor.RecomputeTimeOfDay(nowUnixSeconds, configuredDayLengthSeconds)`. It periodically saves
+`new WorldClockAnchor(nowUnixSeconds, clockHost.Snapshot.TimeOfDay).Encode()` and saves once more during shutdown
+drain. `Simulation` owns the record format and downtime math, while the adapter owns the key, store calls, retry
+policy, and cancellation. A restart uses the configured day length and resets time scale to 1.
+
 - **`Hosting.DrainController`** - a deterministic elapsed-time grace countdown shared by authoritative server heads.
   `Begin` starts or restarts it, `Advance(dt)` moves it from the host's own clock, and `HasBegun`, `IsDraining`, and
   `IsComplete` expose its lifecycle. It owns no notice, socket, or persistence behavior. Each head keeps those

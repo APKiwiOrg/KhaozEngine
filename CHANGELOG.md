@@ -5,6 +5,25 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.35.0
+
+Named directional shadow detail profiles and a shared authoritative world clock give games one construction-time
+shadow-quality choice and one transport-free time stack across server and client.
+
+- `ShadowSettings.ForDetail(ShadowMapDetail)` returns fresh full directional shadow-map settings at 1024, 2048,
+  or 3072 pixels per cascade for `Low`, `Default`, and `High`. Unknown enum values use `Default`. The setting is
+  applied before scene construction because changing atlas resolution requires a scene rebuild or restart.
+- `WorldClock` advances normalized time with mutable positive day length and non-negative scale.
+  `WorldClockCodec` strictly validates the 12-byte little-endian state payload and 5-byte command payload.
+- `WorldClockHost` keeps authority on the simulation tick while network and admin threads queue authorized
+  commands and late-join pushes. Game-owned callbacks wrap state in the chosen message envelope, while a
+  lock-free snapshot supports cross-thread status reads.
+- `WorldClockMirror` advances valid authoritative state between messages and remains absent until its first state.
+  `WorldClockAnchor` carries the versioned restart record and downtime math while the game retains ownership of
+  its `IWorldStore` adapter.
+- Headless tests cover the three shadow profiles, clock validation and wrapping, strict codecs, tick ordering,
+  operational bounds, periodic and immediate sends, late joins, mirror correction, and restart anchors.
+
 ## 18.34.0
 
 Cached identity sessions now preserve server-verified display names across restarts (#849).

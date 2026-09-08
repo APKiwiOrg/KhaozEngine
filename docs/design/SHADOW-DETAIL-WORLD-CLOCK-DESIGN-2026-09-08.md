@@ -2,6 +2,8 @@
 
 Date: 2026-09-08.
 
+Status: Implemented in 18.35.0.
+
 Grimhollow is waiting on two capabilities that already exist in pieces across the engine and Ruinborne:
 
 - full directional shadow maps can be configured at arbitrary resolutions, but the engine offers no named

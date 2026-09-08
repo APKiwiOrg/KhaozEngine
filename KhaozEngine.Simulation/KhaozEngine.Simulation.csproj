@@ -2,7 +2,7 @@
   <PropertyGroup>
     <PackageId>KhaozEngine.Simulation</PackageId>
     <Version>$(KhaozEngineVersion)</Version>
-    <Description>Headless simulation host primitives for an authoritative server: FixedTickHost, a fixed-timestep accumulator that converts variable real-elapsed time into a whole number of fixed-dt ticks, decoupling simulation rate from frame/render rate (with a spiral-of-death backlog guard). Deterministic and dependency-free. The foundation the authoritative server loop is built on.</Description>
+    <Description>Headless authoritative simulation primitives: FixedTickHost, the worker scheduling seam, and a transport-free world clock stack with a strict codec, tick-owned host, client mirror, command queue, and restart anchor. Deterministic and renderer-free.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>

@@ -6291,7 +6291,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.39.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.40.0" />
 ```
 
 ```csharp
@@ -9652,6 +9652,7 @@ var persistence = new TileWorldPersistence(server, store, map, new TileWorldPers
 });
 
 server.OnBeforeTick += dt => game.StepNpcs(dt);            // runs BEFORE movement, ships in the same snapshot
+server.OnAfterMovement += dt => game.StepActions(dt);      // sees this tick's commands before actions and combat
 server.OnInteract   += (slot, netId, target) => game.Interact(slot, target);
 server.OnInteractEntity += (slot, netId, targetNetId) => game.InteractEntity(slot, targetNetId);
 server.OnGameMessage += (slot, kind, payload) => game.Receive(slot, kind, payload);
@@ -9667,8 +9668,8 @@ while (running)
 **The order inside one tick** is fixed and worth knowing, because a game's own systems have to fit into it: the
 `OnBeforeTick` hook, then drain ONE command per player into its owning cell, then the ACTOR step (every spawner
 ticks and every live actor's decision becomes a command), then step every cell (movement and the arrival facing),
-then authority handoff and border ghosting, then the action queue, then COMBAT (roll, apply, die), then serve
-every client its plane-filtered area of interest, and last the despawn every actor killed this tick owes.
+then authority handoff and border ghosting, then `OnAfterMovement`, then the action queue, then COMBAT (roll, apply,
+die), then serve every client its plane-filtered area of interest, and last the despawn every actor killed this tick owes.
 Commands route before the step so a click lands on the tick it arrived on, the actor step sits between the two
 for both halves of that reason (after the drain so both kinds of entity carry the tick's commands, before the step
 so an actor's decision moves it on this tick rather than the next), handoff after the step because a step is what
@@ -9676,6 +9677,14 @@ carries a player over a region boundary, combat after all of it so a swing is ju
 the tick, and the serve last so a client sees a whole tick and never half of one. The one thing that FOLLOWS the
 serve is the actor despawn, held back so the corpse is still in the world when each viewer's interest set is
 built and the killing blow therefore reaches everyone watching the fight.
+
+Use `OnAfterMovement` when a consumer system must decide on this tick's admitted input before an interaction or
+combat consequence commits. `OnBeforeTick` still sees the prior `CombatTarget` and route because command drain has
+not happened yet. `OnAfterMovement` sees the applied `Attack` or `WalkTo`, the post-step player state, settled
+handoff ownership and refreshed border ghosts. A write made there is included in later action and combat passes and
+in a snapshot served from its owner cell on the same tick. Border ghosts receive the write on the next tick because
+their sync has already completed. The hook fires once per whole simulation tick and never on a frame that only adds
+to the server accumulator.
 
 **Shutdown is a drain, not a kill.** `BeginDrain(graceSeconds)` broadcasts the `ke:draining` notice at once, so
 every client has the whole grace to show a countdown, and the world keeps ticking through it so a player mid walk
@@ -11815,7 +11824,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.39.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.40.0" />
 ```
 
 ```csharp
@@ -11851,7 +11860,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.39.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.40.0" />
 ```
 
 ```csharp
@@ -12093,7 +12102,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.39.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.40.0" />
 ```
 
 ```csharp
@@ -14141,7 +14150,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="18.39.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="18.40.0" />
 </ItemGroup>
 ```
 

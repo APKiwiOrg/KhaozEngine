@@ -5,6 +5,22 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.40.0
+
+`TileWorldServer.OnAfterMovement` exposes settled same-tick movement state before actions and combat resolve
+(#858).
+
+- The additive `Action<float>` event fires once per whole server tick after cell movement, authority handoff and
+  border ghost sync. Same-tick `Attack` and `WalkTo` commands are visible through the ordinary authoritative
+  reads when the handler runs.
+- The handler remains ahead of pending interaction and combat resolution. State it writes reaches those later
+  passes and an owner-cell snapshot served on the same tick, giving consumer action systems a cancellation deadline
+  before they commit. Border ghosts refresh such a write on the next tick because sync has already completed.
+- Headless tests cover command visibility, whole-tick cadence, interaction and combat ordering, same-tick
+  replication, and settled ownership plus ghost state across a region handoff.
+- `Microsoft.SourceLink.GitHub` 10.0.303 replaces its vulnerable `Microsoft.Build.Tasks.Git` 8.0.0 build
+  dependency, restoring warning-clean audited builds after GHSA-23fw-v26w-5fgq (#862).
+
 ## 18.39.0
 
 Native Metal foliage pipeline creation works again after the shared Model fragment interface gained its LOD

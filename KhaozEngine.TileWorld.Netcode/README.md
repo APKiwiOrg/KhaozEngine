@@ -360,7 +360,8 @@ always keep the constructor map.
 
 - **`TileWorldServer`** (+ **`TileWorldServerConfig`**) - the authoritative server, a `ShardHost` whose cell grid is
   the tile region grid. `Poll` pumps the transport, `Tick` runs the world, and the seams are `OnBeforeTick`,
-  `OnInteract`, `OnInteractEntity`, `OnGameMessage`, `OnCannotReach`, `PlayerJoined` and `PlayerLeaving`.
+  `OnAfterMovement`, `OnInteract`, `OnInteractEntity`, `OnGameMessage`, `OnCannotReach`, `PlayerJoined` and
+  `PlayerLeaving`.
   `OnInteract` carries authored object ids and `OnInteractEntity` carries entity net ids. It is also the
   `IPersistenceHost<TileMoveState>`. The seat index reads BOTH ways, `TryGetPlayerNetId` and `TryGetPlayerSlot`,
   because the combat seams all name net ids while a game's per-seat state is keyed by slot. The reverse answers
@@ -371,6 +372,12 @@ always keep the constructor map.
   4b is gone before each viewer's interest set is built, so the killing blow would be filtered out of every frame
   and a head could only learn a monster died by noticing an absence. A throw inside the serve does not lose the
   reap, which is drained at the top of the next combat pass.
+
+  `OnAfterMovement` is the same-tick consumer deadline between border ghosting and action resolution. It fires once
+  per whole tick with the configured tick duration. A handler sees newly admitted `Attack` and `WalkTo` state plus
+  settled region ownership, and anything it writes still reaches interaction resolution, combat and an owner-cell
+  snapshot served that tick. Border ghosts refresh the write on the next tick because sync has already completed.
+  `OnBeforeTick` remains the earlier seam for systems that must author state before commands and movement.
 
   Actors are `Actors` (the `TileActorHost`, including its authored-spawner `SpawnAdmission` gate), `SpawnActor`,
   `DespawnActor`, `TryGetActorState`, `ActorCount`,
@@ -723,6 +730,7 @@ var server = new TileWorldServer(
 
 server.OnInteract += (slot, netId, target) => game.Interact(slot, target);
 server.OnInteractEntity += (slot, netId, targetNetId) => game.InteractEntity(slot, targetNetId);
+server.OnAfterMovement += dt => game.StepActions(dt);
 
 while (running)                                    // any frame clock: the server accumulates its own ticks
 {

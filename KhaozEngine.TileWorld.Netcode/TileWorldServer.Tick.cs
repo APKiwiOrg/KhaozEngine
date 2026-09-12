@@ -60,8 +60,8 @@ public sealed partial class TileWorldServer
     /// <para>The order inside one tick is the head's own systems, then drain ONE command per player into its owning
     /// cell, then the actor step (every spawner ticks and every live actor's command and tag are written), then step
     /// every cell (which is where movement and the arrival facing happen), then authority handoff and border
-    /// ghosting, then the action queue, then combat, then serve every client its area of interest, and last the
-    /// despawn every actor killed this tick owes. It is not
+    /// ghosting, then the post-movement hook, then the action queue, then combat, then serve every client its area
+    /// of interest, and last the despawn every actor killed this tick owes. It is not
     /// arbitrary. Commands are routed BEFORE the step so a click takes effect on the tick it arrived rather than
     /// the one after. The actor step sits between the two for both halves of that reason: it is after the drain so
     /// both kinds of entity carry the tick's commands, and before the step so an actor's decision moves it on this
@@ -181,6 +181,10 @@ public sealed partial class TileWorldServer
         // 3. Authority follows a step across a region boundary (exactly once), then refresh the border ghosts.
         host.ProcessHandoffs();
         host.SyncGhosts();
+
+        // 3b. The consumer deadline after movement has settled and before either engine-owned consequence pass.
+        //     Writes made here still reach actions, combat and an owner-cell snapshot served this tick.
+        OnAfterMovement?.Invoke(dt);
 
         // 4. Resolve any pending action whose player is now COMMITTED to a reach tile, which is the tick their
         //    walk's last step started rather than the tick their body gets there, and refuse any that cannot get

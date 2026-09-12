@@ -197,6 +197,12 @@ public sealed partial class TileWorldServer : IDisposable
     /// after.</summary>
     public event Action<float>? OnBeforeTick;
 
+    /// <summary>Runs after movement, authority handoff and ghost sync each tick, before pending actions and combat
+    /// resolve. Reads see the tick's applied commands and settled ownership. Writes reach those later passes and a
+    /// same-tick serve from the owner's cell. Border ghosts refresh on the next tick because sync has already
+    /// completed.</summary>
+    public event Action<float>? OnAfterMovement;
+
     /// <summary>Raised as (slot, playerNetId, target) when a validated interaction resolves, which is the tick the
     /// player becomes COMMITTED to a reach tile of the thing they clicked. That is the tick their walk's last step
     /// starts, so a game's handler runs while the avatar is still drawn walking the last tile in, which is

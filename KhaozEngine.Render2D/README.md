@@ -288,10 +288,10 @@ white RGB with the shape in alpha) that need no device, and the `BakeGlow` / `Ba
 overloads upload one to a `Render2DSurface` or a snapshot `Render2DContext`. Nothing here is a shipped asset.
 
 `BakeArcBandPixels(width, height, centre, innerRadius, outerRadius, startRadians, sweepRadians, featherPixels,
-roundCaps)` is the anti-aliased one, for HUD arcs, gauges and health crescents: the shapes `PrimitiveRenderer.
-DrawFilledArcBand` fills with rotated quads, which has no anti-aliasing (a 5 px band reads pixelated) and darkens
-a translucent colour wherever the quads overlap. The bake has neither problem, because it is one quad of one
-texture.
+roundCaps)` is the anti-aliased one, for HUD arcs, gauges and health crescents. The exact triangles from
+`PrimitiveRenderer.DrawFilledArcBand` keep the authored annulus footprint and avoid translucent overlap, but
+their edges have no anti-aliasing, so a 5 px band reads pixelated. The bake adds a feathered edge because it is
+one quad of one texture.
 
 Everything is in PIXELS of the target image and the sample point for pixel `(x, y)` is its own centre
 `(x + 0.5, y + 0.5)`, so `centre` (the centre of CURVATURE) may sit outside the image, which is what makes a

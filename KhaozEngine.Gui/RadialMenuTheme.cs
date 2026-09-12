@@ -16,6 +16,15 @@ namespace KhaozEngine.Gui
         public Vector4 Accent = WithAlpha(GuiTheme.Default.Accent, 0.32f);
         public Vector4 Text = GuiTheme.Default.Text;
         public Vector4 TextMuted = GuiTheme.Default.TextMuted;
+        /// <summary>
+        /// Compact requirement text drawn beneath disabled entry labels. Its RGB is used directly so a semantic
+        /// warning hue stays distinct from the disabled surface tint.
+        /// </summary>
+        public Vector4 DisabledDetail = GuiTheme.Default.Danger;
+        /// <summary>
+        /// Color for disabled icons and labels, plus the hue and alpha multiplier for disabled backgrounds and
+        /// borders. Background channels keep their source luminance so their contrast remains intact.
+        /// </summary>
         public Vector4 Disabled = WithAlpha(GuiTheme.Default.TextDisabled, 0.42f);
         public Vector4 Sheen = WithAlpha(GuiTheme.Default.Text, 0.08f);
 

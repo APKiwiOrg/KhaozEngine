@@ -5,6 +5,15 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.40.1
+
+Radial menus keep their fills inside the wheel and show distinct disabled colours and inline requirements.
+
+- Filled arc bands and sectors use exact triangle geometry instead of overlapping rectangle approximations.
+- `RadialMenuTheme.Disabled` applies its RGB tint as well as its alpha to unavailable entries.
+- Unavailable entry details render below their labels, styled through `RadialMenuTheme.DisabledDetail`.
+- Entry names and inline requirements fit within their wedges instead of crossing the centre or rim.
+
 ## 18.40.0
 
 `TileWorldServer.OnAfterMovement` exposes settled same-tick movement state before actions and combat resolve

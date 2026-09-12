@@ -304,8 +304,8 @@ namespace KhaozEngine.Render2D
         /// <summary>
         /// Draws a filled sector (pie wedge) centered at <paramref name="center"/>, facing
         /// <paramref name="dirAngle"/> radians, spanning +/- <paramref name="halfAngle"/>, out to
-        /// <paramref name="radius"/>. Built as a fan of thin overlapping triangles, each drawn as a rotated quad
-        /// (no triangle path in SpriteBatch). No-op when radius or sweep is non-positive.
+        /// <paramref name="radius"/>. Built as a fan of exact triangles through degenerate
+        /// <see cref="SpriteBatch.DrawQuad"/> calls. No-op when radius or sweep is non-positive.
         /// </summary>
         public void DrawFilledSector(SpriteBatch batch, Vector2 center, float dirAngle, float halfAngle, float radius, Color color)
         {
@@ -315,7 +315,7 @@ namespace KhaozEngine.Render2D
             for (int i = 1; i <= segs; i++)
             {
                 Vector2 cur = SectorRimPoint(center, dirAngle, halfAngle, radius, i / (float)segs);
-                FillTriangleQuad(batch, center, prev, cur, color);
+                FillTriangle(batch, center, prev, cur, color);
                 prev = cur;
             }
         }
@@ -339,30 +339,16 @@ namespace KhaozEngine.Render2D
                 float a = startAngle + i * step;
                 Pt(a, innerR, out var pi1);
                 Pt(a, outerR, out var po1);
-                // Two triangles per band segment, each as a rotated quad.
-                FillTriangleQuad(batch, pi0, po0, po1, color);
-                FillTriangleQuad(batch, pi0, po1, pi1, color);
+                FillTriangle(batch, pi0, po0, po1, color);
+                FillTriangle(batch, pi0, po1, pi1, color);
                 pi0 = pi1; po0 = po1;
             }
         }
 
-        // Approximate a filled triangle (a,b,c) by a rotated quad spanning its longest edge with height to the
-        // opposite vertex. Slight overdraw between adjacent fan triangles is harmless for translucent zones.
-        void FillTriangleQuad(SpriteBatch batch, Vector2 a, Vector2 b, Vector2 c, Color color)
-        {
-            // Use edge a->c as the base; place a quad of width=|ac|, height=2*distance(b, line ac), centered so it
-            // covers the triangle. For a fan this reduces to overlapping wedges that fill the sector.
-            Vector2 baseEdge = c - a;
-            float len = baseEdge.Length();
-            if (len <= 1e-4f) return;
-            float angle = MathF.Atan2(baseEdge.Y, baseEdge.X);
-            // Height: perpendicular distance from b to line ac.
-            Vector2 n = new(-baseEdge.Y / len, baseEdge.X / len);
-            float h = MathF.Abs(Vector2.Dot(b - a, n));
-            if (h <= 1e-4f) h = 1f;
-            // Rotated quad origin at a, extending along the base and half the height each side of it.
-            batch.Draw(_white, a - n * h, new Vector2(len, h * 2f), new Vector2(0f, 0.5f), angle, FullUV, color);
-        }
+        // SpriteBatch emits (tl, tr, br) and (tl, br, bl). Repeating the first point as bl leaves one exact
+        // triangle plus one zero-area triangle, with no rectangular spill or overlap outside the authored shape.
+        void FillTriangle(SpriteBatch batch, Vector2 a, Vector2 b, Vector2 c, Color color) =>
+            batch.DrawQuad(_white, a, b, c, a, FullUV, color);
 
         /// <summary>Disposes the owned 1x1 white pixel (no-op when constructed over a caller-supplied texture).</summary>
         public void Dispose()

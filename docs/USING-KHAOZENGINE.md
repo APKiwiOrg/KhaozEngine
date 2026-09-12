@@ -1775,7 +1775,11 @@ strings retained at the latest open.
 detail gap, footer gap and button size, composition margin, border thickness, shadow offset, and sheen speed.
 The matching pure geometry is public through `ComputeCenter`, `ComputeBounds`, `WedgeAngles`, `EntryAt`,
 `ChoiceBounds`, and `LabelPoint`. `RadialMenuTheme` supplies the shadow, surface, upper highlight, borders,
-accent, text, disabled alpha, and sheen colors. A fresh default derives from the ambient `GuiTheme.Default`.
+accent, text, disabled tint and alpha, disabled detail, and sheen colors. A fresh default derives from the
+ambient `GuiTheme.Default`. Disabled entry details draw compactly beneath their wedge label through
+`DisabledDetail`, and remain in the centre when that entry is active. Setting `Disabled.W` to zero hides every
+disabled wedge visual, including its detail. Disabled labels and icons use `Disabled` directly. Backgrounds and
+borders use its hue at their source luminance and multiply their source alpha by its alpha.
 
 `Metrics` and `SafeBounds` can change while the menu is open. Each valid assignment immediately reclamps from the
 anchor passed to `Open`, updates the complete `Bounds`, refreshes cached draw layout, and keeps the new bounds
@@ -2609,8 +2613,8 @@ vfx.DrawBeam(batch, from, to, BeamParams.ElectricArc with { JitterSeed = arcId }
   `BakeGlow`/`BakeRing`/`BakeArcBand`/`White` (upload to a `Render2DSurface` / `Render2DContext`).
   `BakeArcBandPixels(width, height, centre, innerRadius, outerRadius, startRadians, sweepRadians, featherPixels,
   roundCaps)` is the ANTI-ALIASED arc band, for HUD arcs, gauges and health crescents, and is what
-  `PrimitiveRenderer.DrawFilledArcBand` is not: that one fills the band with rotated quads, so a thin band reads
-  pixelated and the quad overlap darkens a translucent colour in blotches. Everything is in PIXELS of the target
+  `PrimitiveRenderer.DrawFilledArcBand` is not. Its exact triangles keep the authored annulus footprint without
+  translucent overlap, but a thin band still reads pixelated. Everything is in PIXELS of the target
   image (pixel `(x, y)` samples its own centre `(x + 0.5, y + 0.5)`), so the centre of CURVATURE may sit outside
   the image, which is how a shallow arc off a large radius is baked without a texture the size of its circle.
   Alpha is a signed distance to the annulus sector (radial distance to the band edges, angular distance to the
@@ -6291,7 +6295,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.40.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.40.1" />
 ```
 
 ```csharp
@@ -11824,7 +11828,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.40.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.40.1" />
 ```
 
 ```csharp
@@ -11860,7 +11864,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.40.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.40.1" />
 ```
 
 ```csharp
@@ -12102,7 +12106,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.40.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.40.1" />
 ```
 
 ```csharp
@@ -14150,7 +14154,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="18.40.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="18.40.1" />
 </ItemGroup>
 ```
 

@@ -202,11 +202,14 @@ wedge gap must be nonnegative and smaller than one active entry's angular step. 
 non-finite dimensions. `ComputeCenter` and `Open` reject a safe area that cannot contain the complete wheel and
 footer plus both margins.
 
-`RadialMenuTheme` carries the shadow, surface, highlight, border, accent, text, disabled, and sheen colors. Its
-defaults derive from `GuiTheme.Default`. `Draw` uses ordinary Render2D geometry. The centre plate has its own
+`RadialMenuTheme` carries the shadow, surface, highlight, border, accent, text, disabled tint and alpha,
+`DisabledDetail`, and sheen colors. Its defaults derive from `GuiTheme.Default`. A disabled entry draws its
+localized `Detail` compactly beneath the wedge label in `DisabledDetail`, while the active entry still shows the
+same detail in the centre. Disabled labels and icons use `Disabled` directly. Backgrounds and borders take its
+hue while retaining their source luminance, and multiply their source alpha by `Disabled.W`. Setting that alpha
+to zero hides all disabled entry channels. `Draw` uses ordinary Render2D geometry. The centre plate has its own
 shadow, translucent surface, inner highlight, and border, and remains visible when every entry is disabled.
-Disabled alpha applies to the entry channels. Drawing performs no blur, refraction, distortion, or framebuffer
-sampling.
+Drawing performs no blur, refraction, distortion, or framebuffer sampling.
 
 `GuiUseContext` carries one opaque source selection into a later target gesture. It draws nothing and has no
 widget dependency, so callers can thread the same context between any pair of controls. This example starts from

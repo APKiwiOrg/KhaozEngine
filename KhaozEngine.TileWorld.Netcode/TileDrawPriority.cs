@@ -9,6 +9,10 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// far through fading in or out of that answer each of them is, rebuilt from scratch every frame. The local
 /// player wins their own tile outright, and both tiles of a step while one is in flight. Every other tile goes to
 /// the HIGHEST net id on it.
+/// <para><see cref="Policy"/> preserves that rule by default. The opt-in
+/// <see cref="TileDrawPriorityPolicy.SettledStacksOnly"/> policy keeps every moving body wholly visible, collapses
+/// only bodies settled on the same tile, and lets the head compare those settled actors through
+/// <see cref="SettledComparison"/> without putting game classifications in the engine.</para>
 /// <para>WHY, and it is a presentation rule rather than a rules one. A tile game draws every body on the tile
 /// centre, so a stack of them is a smear of overlapping meshes that reads as one wrong-looking creature, and the
 /// body a player can least afford to lose in that smear is their own: standing under a bank crowd, an avatar the
@@ -90,7 +94,7 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// nameplates or click targets along with the body is making a second, separate decision and should make it
 /// deliberately, and a head that fades a nameplate on the body's weight should say so too.</para>
 /// </summary>
-public sealed class TileDrawPriority
+public sealed partial class TileDrawPriority
 {
     /// <summary>The one <c>localNetId</c> value that means "no local player", and the value
     /// <see cref="TileWorldClient.LocalNetId"/> carries until the first snapshot names the local actor.
@@ -231,6 +235,11 @@ public sealed class TileDrawPriority
         // The predicted state is read ONCE, so the tile claimed and the tile being left cannot come from two
         // different frames of prediction.
         TileMoveState local = client.Prediction.PredictedState;
+        if (Policy == TileDrawPriorityPolicy.SettledStacksOnly)
+        {
+            RebuildSettled(client, local, CollectionsMarshal.AsSpan(actors));
+            return;
+        }
         Rebuild(client.LocalNetId, local.Tile, local.IsStepping ? local.StepFrom : null,
             CollectionsMarshal.AsSpan(actors), dt, snap);
     }
@@ -255,6 +264,11 @@ public sealed class TileDrawPriority
     public void Rebuild(long localNetId, TileCoord localTile, TileCoord? localLeaving,
         ReadOnlySpan<(long NetId, TileCoord Tile)> others)
     {
+        if (Policy == TileDrawPriorityPolicy.SettledStacksOnly)
+        {
+            RebuildSettled(localNetId, localTile, localMoving: localLeaving.HasValue, others);
+            return;
+        }
         Select(localNetId, localTile, localLeaving, others, winners, drawn);
         Advance(localNetId, others, dt: 0f, snap: true);
     }
@@ -279,7 +293,14 @@ public sealed class TileDrawPriority
     /// <param name="dt">Seconds since the last rebuild, for the fades that have no step to ride.</param>
     public void Rebuild(long localNetId, TileCoord localTile, TileCoord? localLeaving,
         ReadOnlySpan<(long NetId, TileCoord Tile, float StepProgress)> others, float dt)
-        => Rebuild(localNetId, localTile, localLeaving, others, dt, snap: false);
+    {
+        if (Policy == TileDrawPriorityPolicy.SettledStacksOnly)
+        {
+            RebuildSettled(localNetId, localTile, localMoving: localLeaving.HasValue, others);
+            return;
+        }
+        Rebuild(localNetId, localTile, localLeaving, others, dt, snap: false);
+    }
 
     void Rebuild(long localNetId, TileCoord localTile, TileCoord? localLeaving,
         ReadOnlySpan<(long NetId, TileCoord Tile, float StepProgress)> others, float dt, bool snap)

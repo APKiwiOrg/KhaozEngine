@@ -6295,7 +6295,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.40.1" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.41.0" />
 ```
 
 ```csharp
@@ -9902,6 +9902,29 @@ collapses each tile to ONE drawn actor at rest: the local player on their own ti
 flight), and the highest net id everywhere else. OSRS answers the same question with PID and this is that shape
 with a stable key.
 
+For a game where walking bodies must remain whole and only idle stacks collapse, opt into the settled-stack
+policy and supply the game's rank through net ids:
+
+```csharp
+readonly TileDrawPriority priority = new()
+{
+    Policy = TileDrawPriorityPolicy.SettledStacksOnly,
+    SettledComparison = CompareSettledActors,
+};
+
+int CompareSettledActors(long first, long second)
+    => VisibilityRank(first).CompareTo(VisibilityRank(second));
+```
+
+A positive comparison means `first` wins. A negative comparison means `second` wins. Equal ranks fall back to
+the higher net id, giving the tile a stable winner. The engine passes ids only. Whether a body is a player, a
+friendly NPC, an enemy, in combat, or a particular level stays in the game that owns those facts.
+
+`Rebuild(client, dt)` reads remote movement from delayed presentation step progress and local movement from the
+prediction presentation. Every moving body remains at weight 1 and claims neither endpoint. The local player is
+always visible and takes their tile after settling. Other settled bodies on that tile then fall to 0. All weights
+in this policy are binary, and `FadeSeconds` has no effect on them.
+
 Since 18.15.0 the answer is a WEIGHT rather than a boolean, and that is what stops it popping. A tile commits when
 a step STARTS and the body glides in over the rest of it, so a body judged the frame its tile changes is judged a
 whole step before it arrives: enemies walking onto the player used to vanish in the open instead of walking under
@@ -11828,7 +11851,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.40.1" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.41.0" />
 ```
 
 ```csharp
@@ -11864,7 +11887,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.40.1" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.41.0" />
 ```
 
 ```csharp
@@ -12106,7 +12129,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.40.1" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.41.0" />
 ```
 
 ```csharp
@@ -14154,7 +14177,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="18.40.1" />
+  <PackageReference Include="KhaozEngine.Automation" Version="18.41.0" />
 </ItemGroup>
 ```
 

@@ -92,13 +92,15 @@ everybody at once, for a per-frame pass over the whole crowd, and `client.Collec
 read with each remote's step progress beside its tile, which is what a presentation rule pacing itself off the
 bodies needs. `docs/USING-KHAOZENGINE.md` carries the worked example.
 
-**A crowd on one tile draws ONE body.** Every body draws on the tile centre, so a stack of them is a smear of
+**A settled crowd on one tile can draw ONE body.** Every body draws on the tile centre, so a stack of them is a smear of
 overlapping meshes, and the body a player can least afford to lose in it is their own. `TileDrawPriority` picks
 the one to draw per tile: the local player on their own tile, and on both tiles of a step in flight, with the
 highest net id everywhere else. It is the OSRS PID ruling with a stable key, it is presentation only, and it is
 in the types list below. The answer is a WEIGHT rather than a boolean, because a tile commits when a step STARTS
 and the body glides in over the rest of it: a body that loses a tile spends what is left of its step fading out,
-so it walks visibly under the winner rather than vanishing a step before it gets there.
+so it walks visibly under the winner rather than vanishing a step before it gets there. The opt-in
+`SettledStacksOnly` policy instead leaves every moving body at full weight, gives moving bodies no tile claim,
+and cuts settled losers to zero through a caller-supplied comparison.
 
 ## The types
 
@@ -458,7 +460,11 @@ always keep the constructor map.
   tile and carries that one-step lead: a body on the tile a remote is leaving hides it until its step lands.
   "No local player" is the `NoLocalPlayer` sentinel rather than a negative id, because a packed net id can be
   negative. Allocation free per frame after the first rebuild, and presentation only: a hidden actor is still
-  replicated, still clickable and still swinging.
+  replicated, still clickable and still swinging. `Policy = TileDrawPriorityPolicy.SettledStacksOnly` changes
+  that answer to binary idle-stack visibility. Moving bodies stay at weight 1 and claim no destination or
+  departure tile. Once settled, the local player wins their tile, and `SettledComparison` chooses among all other
+  bodies. A positive comparison means its first net id wins. Zero falls back to the higher net id, so equal game
+  ranks remain stable. The callback sees only net ids, leaving all game classifications in the head.
 - **`TileClientMessageHandler`** - the delegate an opaque server message arrives on.
 
 **Persistence**

@@ -5,6 +5,21 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.41.0
+
+Tile draw priority can keep every moving body wholly visible while collapsing only settled stacks (#864).
+
+- `TileDrawPriorityPolicy.SettledStacksOnly` is an opt-in presentation policy. It gives moving bodies binary
+  weight 1 and no tile claim, then reduces bodies settled on the same tile to one winner at binary weight 1.
+- The local body remains visible throughout movement. It claims neither its departure nor destination tile until
+  its presentation settles, then wins the settled stack on its own tile.
+- `TileDrawPriority.SettledComparison` lets a game rank stationary actors through their net ids. A positive result
+  chooses the first actor, a negative result chooses the second, and an equal result falls back to the higher net
+  id for a stable answer. Actor kinds, combat state, levels and other gameplay classifications stay in the game.
+- Live rebuilds judge remotes from delayed presentation step samples and judge the local body from its prediction
+  presentation. Custom rosters can pass the local motion answer explicitly.
+- The existing one-body-per-tile policy remains the default, including its step and fixed-window fades.
+
 ## 18.40.1
 
 Radial menus keep their fills inside the wheel and show distinct disabled colours and inline requirements.

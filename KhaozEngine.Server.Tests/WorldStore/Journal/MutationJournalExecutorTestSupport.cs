@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
@@ -12,12 +13,13 @@ namespace KhaozEngine.Tests.WorldStore.Journal;
 internal static class MutationJournalExecutorTestSupport
 {
     internal static MutationJournalExecutor CreateExecutor(
-        ControlledStore store,
+        IMutationJournalStore store,
         int workerCount = 1,
         int operationCapacity = 4,
         long byteCapacity = 1_000_000,
         int maximumTransientRetries = 3,
-        Func<TimeSpan, CancellationToken, Task>? delay = null)
+        Func<TimeSpan, CancellationToken, Task>? delay = null,
+        int streamQueueDepth = 8)
     {
         var options = new JournalExecutorOptions(
             workerCount,
@@ -25,7 +27,8 @@ internal static class MutationJournalExecutorTestSupport
             byteCapacity,
             maximumTransientRetries,
             TimeSpan.Zero,
-            TimeSpan.Zero);
+            TimeSpan.Zero,
+            streamQueueDepth);
         return new MutationJournalExecutor(
             store,
             options,
@@ -39,9 +42,40 @@ internal static class MutationJournalExecutorTestSupport
 
     internal static JournalCommit Commit(Guid operationId, byte[] result, params string[] streams)
     {
-        var identity = new JournalOperationIdentity(operationId, "world/account", "bank.deposit", new byte[] { 7, 8 });
         JournalStreamMutation[] mutations = streams.Select(stream => JournalTestData.Mutation(stream)).ToArray();
-        return new JournalCommit(identity, mutations, Array.Empty<JournalProjectionWrite>(), "result.v1", 1, result);
+        return Build(operationId, mutations, Array.Empty<JournalProjectionWrite>(), result);
+    }
+
+    /// <summary>A commit that keeps the pre-queue answer, so a busy stream refuses it instead of queueing it.</summary>
+    internal static JournalCommit Refusing(Guid operationId, params string[] streams)
+    {
+        JournalStreamMutation[] mutations = streams.Select(stream => JournalTestData.Mutation(stream)).ToArray();
+        return Build(operationId, mutations, Array.Empty<JournalProjectionWrite>(), Array.Empty<byte>(), queueBehindAdmitted: false);
+    }
+
+    internal static JournalCommit Chained(
+        Guid operationId,
+        string stream,
+        long expectedVersion,
+        JournalProjectionWrite[]? projections = null,
+        bool presentAtCommit = false)
+        => Build(
+            operationId,
+            new[] { JournalTestData.Mutation(stream, expectedVersion) },
+            projections ?? Array.Empty<JournalProjectionWrite>(),
+            Array.Empty<byte>(),
+            presentAtCommit);
+
+    internal static JournalCommit Build(
+        Guid operationId,
+        IReadOnlyList<JournalStreamMutation> mutations,
+        IReadOnlyList<JournalProjectionWrite> projections,
+        byte[] result,
+        bool presentAtCommit = false,
+        bool queueBehindAdmitted = true)
+    {
+        var identity = new JournalOperationIdentity(operationId, "world/account", "bank.deposit", new byte[] { 7, 8 });
+        return new JournalCommit(identity, mutations, projections, "result.v1", 1, result, presentAtCommit, queueBehindAdmitted);
     }
 
     internal static JournalCommitResult Applied(JournalCommit commit)

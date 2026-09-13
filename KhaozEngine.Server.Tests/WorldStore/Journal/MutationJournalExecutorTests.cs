@@ -45,7 +45,7 @@ public sealed class MutationJournalExecutorTests
         Assert.Equal(before, (executor.Metrics.QueueOperations, executor.Metrics.QueueOwnedBytes, executor.Metrics.ReservedStreams,
             executor.Metrics.UnacknowledgedCompletions, executor.Metrics.Quarantined));
         Assert.IsType<KeyNotFoundException>(duplicate);
-        Assert.Equal(JournalSubmissionStatus.StreamBusy, executor.Submit(Commit(Guid.NewGuid(), "player/b")).Status);
+        Assert.Equal(JournalSubmissionStatus.StreamBusy, executor.Submit(Refusing(Guid.NewGuid(), "player/b")).Status);
         otherCall.Succeed(Applied(otherCall.Commit));
         executor.AcknowledgeCompletion((await TakeCompletionAsync(executor)).OperationId, JournalCompletionAcknowledgement.Handled);
         await executor.StopAsync(TimeSpan.Zero);
@@ -57,7 +57,7 @@ public sealed class MutationJournalExecutorTests
         var store = new ControlledStore();
         MutationJournalExecutor executor = CreateExecutor(store, workerCount: 2, operationCapacity: 2);
         JournalCommit first = Commit(Guid.Parse("10000000-0000-0000-0000-000000000001"), "player/a", "player/b");
-        JournalCommit overlaps = Commit(Guid.Parse("10000000-0000-0000-0000-000000000002"), "player/b", "player/c");
+        JournalCommit overlaps = Refusing(Guid.Parse("10000000-0000-0000-0000-000000000002"), "player/b", "player/c");
         JournalCommit disjoint = Commit(Guid.Parse("10000000-0000-0000-0000-000000000003"), "player/c");
 
         Assert.Equal(JournalSubmissionStatus.Accepted, executor.Submit(first).Status);
@@ -119,7 +119,7 @@ public sealed class MutationJournalExecutorTests
         Assert.Equal(1, executor.Metrics.QueueOperations);
         Assert.Equal(first.OwnedByteCount, executor.Metrics.QueueOwnedBytes);
         Assert.Equal(1, executor.Metrics.ReservedStreams);
-        Assert.Equal(JournalSubmissionStatus.StreamBusy, executor.Submit(Commit(Guid.Parse("30000000-0000-0000-0000-000000000002"), "player/a")).Status);
+        Assert.Equal(JournalSubmissionStatus.StreamBusy, executor.Submit(Refusing(Guid.Parse("30000000-0000-0000-0000-000000000002"), "player/a")).Status);
         Assert.Equal(JournalSubmissionStatus.Backpressure, executor.Submit(Commit(Guid.Parse("30000000-0000-0000-0000-000000000003"), "player/b")).Status);
 
         Assert.True(executor.TryDequeueCompletion(out JournalCompletion? completion));

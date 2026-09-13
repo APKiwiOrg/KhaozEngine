@@ -10,9 +10,10 @@ namespace KhaozEngine.Gui
     /// <summary>
     /// A single-line text field over <see cref="Pointer"/> + <see cref="TextEntry"/>: a tap inside focuses it,
     /// a tap outside unfocuses; while focused, this frame's typed keys edit <see cref="Text"/> (and Ctrl+V / Cmd+V
-    /// pastes the clipboard). Draws a bordered field with the text (or the <see cref="PlaceholderContent"/>) and a
-    /// blinking caret. Typed input comes from the headless key-mapping in TextEntry. <see cref="SetText"/> replaces
-    /// the buffer programmatically and is picked up (with <see cref="TextChanged"/>) on the next <see cref="Update"/>.
+    /// pastes the clipboard). Draws a bordered field with the non-editable <see cref="PrefixContent"/> followed by
+    /// the text or <see cref="PlaceholderContent"/>, then a blinking caret. Typed input comes from the headless
+    /// key-mapping in TextEntry. <see cref="SetText"/> replaces the buffer programmatically and is picked up with
+    /// <see cref="TextChanged"/> on the next <see cref="Update"/>.
     /// </summary>
     public sealed class TextInput
     {
@@ -26,6 +27,9 @@ namespace KhaozEngine.Gui
         /// multi-key frame or paste.</summary>
         public Func<string, char, bool>? CharFilter;
         public SpriteFont? Font;
+
+        /// <summary>The lazily resolved, non-editable text drawn before the placeholder or buffer. Defaults to empty.</summary>
+        public LocalizedText PrefixContent;
 
         /// <summary>The (lazily resolved) placeholder text drawn when the field is empty. Defaults to empty.</summary>
         public LocalizedText PlaceholderContent;
@@ -70,8 +74,8 @@ namespace KhaozEngine.Gui
         /// Uniform scale for the field's text and placeholder. Defaults to <c>1f</c> (today's rendering,
         /// byte-for-byte). Scales the TEXT only: <see cref="Bounds"/>, the box chrome, the caret sliver's own width
         /// and height, and all hit-testing are unchanged at any scale, so a compact field draws smaller text in the
-        /// same rect. Mirrors <see cref="TabBar.TextScale"/>. Every width term the draw derives rides the scale
-        /// (<see cref="DrawLayout"/>), so the caret still trails the last glyph and the overflow clip still engages
+        /// same rect. Mirrors <see cref="TabBar.TextScale"/>. Every width term the draw derives rides the scale,
+        /// so the caret still trails the last glyph and the overflow clip still engages
         /// at the point the drawn text actually reaches the right border.
         /// </summary>
         public float TextScale = 1f;
@@ -134,15 +138,17 @@ namespace KhaozEngine.Gui
             GuiDraw.FillStyled(batch, white, Bounds, Style with { BorderThickness = 1f },
                 GuiDraw.WithOpacity(Background, Opacity), GuiDraw.WithOpacity(IsFocused ? BorderFocused : Border, Opacity));
 
-            // A nine-slice skin's frame can be thicker than the fixed pad, so clear it (no-skin: PadX, unchanged).
-            float textX = Bounds.X + (Style.Skin != null ? MathF.Max(PadX, Style.ContentInsets(Bounds).X) : PadX);
-            bool empty = Text.Length == 0;
-            string shown = empty ? PlaceholderContent.Resolve() : Text;
-            TextInputLayout layout = DrawLayout(Font, Bounds, textX, shown, Text, TextScale);
+            string prefix = PrefixContent.Resolve();
+            TextInputLayout layout = DrawLayout(
+                Font, Bounds, Style, prefix, PlaceholderContent.Resolve(), Text, TextScale);
 
             if (layout.Clip) batch.SetScissor(Bounds);
-            batch.DrawString(Font, shown, new Vector2(MathF.Floor(layout.TextX), MathF.Floor(layout.TextY)),
-                (Color)GuiDraw.WithOpacity(empty ? PlaceholderColor : TextColor, Opacity), TextScale);
+            if (prefix.Length > 0)
+                batch.DrawString(Font, prefix, new Vector2(MathF.Floor(layout.TextX), MathF.Floor(layout.TextY)),
+                    (Color)GuiDraw.WithOpacity(TextColor, Opacity), TextScale);
+            batch.DrawString(Font, layout.VisibleContent,
+                new Vector2(MathF.Floor(layout.ContentX), MathF.Floor(layout.TextY)),
+                (Color)GuiDraw.WithOpacity(layout.ShowingPlaceholder ? PlaceholderColor : TextColor, Opacity), TextScale);
 
             if (IsFocused && CursorVisible)
                 GuiDraw.Fill(batch, white, new Rect(layout.CaretX, Bounds.Y + 4f, CaretWidth, Bounds.Height - 8f),
@@ -151,7 +157,14 @@ namespace KhaozEngine.Gui
         }
 
         /// <summary>Where <see cref="Draw"/> puts the text and the caret, and whether it has to scissor.</summary>
-        internal readonly record struct TextInputLayout(float TextX, float TextY, float CaretX, bool Clip);
+        internal readonly record struct TextInputLayout(
+            float TextX,
+            float ContentX,
+            float TextY,
+            float CaretX,
+            bool Clip,
+            string VisibleContent,
+            bool ShowingPlaceholder);
 
         /// <summary>
         /// The pure draw layout for one field, so the three places a text scale has to reach are one expression each
@@ -173,10 +186,33 @@ namespace KhaozEngine.Gui
         internal static TextInputLayout DrawLayout(ITextMeasurer font, Rect bounds, float textX,
             string shown, string text, float scale)
         {
+            return CalculateLayout(font, bounds, textX, "", shown, text, scale, text.Length == 0);
+        }
+
+        /// <summary>
+        /// Resolve the content inset and calculate prefix, visible-content, caret, and clipping positions for
+        /// <see cref="Draw"/>. A skin may move the content past the fixed horizontal pad. Text scale affects every
+        /// measured width without scaling the inset.
+        /// </summary>
+        internal static TextInputLayout DrawLayout(ITextMeasurer font, Rect bounds, GuiStyle style,
+            string prefix, string placeholder, string text, float scale)
+        {
+            float textX = bounds.X + (style.Skin != null ? MathF.Max(PadX, style.ContentInsets(bounds).X) : PadX);
+            bool showingPlaceholder = text.Length == 0;
+            string visibleContent = showingPlaceholder ? placeholder : text;
+            return CalculateLayout(font, bounds, textX, prefix, visibleContent, text, scale, showingPlaceholder);
+        }
+
+        static TextInputLayout CalculateLayout(ITextMeasurer font, Rect bounds, float textX,
+            string prefix, string visibleContent, string text, float scale, bool showingPlaceholder)
+        {
             float textY = GuiDraw.CenteredTextY(bounds.Y, bounds.Height, font.LineHeight, scale);
-            bool clip = textX + font.Measure(shown).X * scale + CaretWidth + 1f > bounds.Right;
-            float caretX = textX + (text.Length == 0 ? 0f : font.Measure(text).X * scale) + 1f;
-            return new TextInputLayout(textX, textY, caretX, clip);
+            float prefixWidth = prefix.Length == 0 ? 0f : font.Measure(prefix).X * scale;
+            float contentX = textX + prefixWidth;
+            bool clip = contentX + font.Measure(visibleContent).X * scale + CaretWidth + 1f > bounds.Right;
+            float caretX = contentX + (text.Length == 0 ? 0f : font.Measure(text).X * scale) + 1f;
+            return new TextInputLayout(
+                textX, contentX, textY, caretX, clip, visibleContent, showingPlaceholder);
         }
     }
 }

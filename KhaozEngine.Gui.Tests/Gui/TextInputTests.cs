@@ -1,12 +1,16 @@
 using System.Collections.Generic;
 using System.Numerics;
+using KhaozEngine.App;
 using KhaozEngine.Gui;
+using KhaozEngine.Render2D;
+using KhaozEngine.Tests.App;
 using KhaozEngine.Windowing;
 using Xunit;
 using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Tests.Gui
 {
+    [Collection("AmbientLocalization")]
     public class TextInputTests
     {
         static readonly Rect Field = new(100, 100, 200, 30);
@@ -90,6 +94,106 @@ namespace KhaozEngine.Tests.Gui
         }
 
         [Fact]
+        public void Prefix_is_localized_lazily_and_does_not_enter_the_editable_buffer()
+        {
+            IStringCatalog? previous = LocalizationContext.Catalog;
+            try
+            {
+                var field = new TextInput(Field)
+                {
+                    PrefixContent = new StringId("Chat.PlayerPrefix"),
+                    MaxLength = 2,
+                };
+                LocalizationContext.Catalog = new DictionaryCatalog().Add("Chat.PlayerPrefix", "Alice: ");
+                Assert.Equal("Alice: ", field.PrefixContent.Resolve());
+
+                LocalizationContext.Catalog = new DictionaryCatalog().Add("Chat.PlayerPrefix", "Alicia: ");
+                Assert.Equal("Alicia: ", field.PrefixContent.Resolve());
+
+                var pointer = new Pointer();
+                Tap(field, pointer, Inside);
+                foreach (Key key in new[] { Key.A, Key.B, Key.C })
+                    field.Update(pointer, Frame(Inside, false, pressed: new[] { key }), 0f);
+
+                Assert.Equal("ab", field.Text);
+            }
+            finally
+            {
+                LocalizationContext.Catalog = previous;
+            }
+        }
+
+        [Fact]
+        public void Draw_layout_places_prefix_before_placeholder_or_typed_text()
+        {
+            var font = new FixedMeasurer();
+            var style = new GuiStyle();
+
+            TextInput.TextInputLayout empty = TextInput.DrawLayout(
+                font, Field, style, "Me: ", "type here", "", 1f);
+            TextInput.TextInputLayout typed = TextInput.DrawLayout(
+                font, Field, style, "Me: ", "type here", "abc", 1f);
+
+            Assert.Equal("type here", empty.VisibleContent);
+            Assert.True(empty.ShowingPlaceholder);
+            Assert.Equal(108f, empty.TextX, 3);
+            Assert.Equal(148f, empty.ContentX, 3);
+            Assert.Equal(149f, empty.CaretX, 3);
+
+            Assert.Equal("abc", typed.VisibleContent);
+            Assert.False(typed.ShowingPlaceholder);
+            Assert.Equal(148f, typed.ContentX, 3);
+            Assert.Equal(179f, typed.CaretX, 3);
+        }
+
+        [Fact]
+        public void Draw_layout_applies_text_scale_and_skin_inset_to_prefix_content_and_caret()
+        {
+            var font = new FixedMeasurer();
+            var style = new GuiStyle
+            {
+                Skin = new GuiSkin
+                {
+                    InsetLeft = 18f,
+                    InsetTop = 4f,
+                    InsetRight = 6f,
+                    InsetBottom = 4f,
+                },
+            };
+
+            TextInput.TextInputLayout layout = TextInput.DrawLayout(
+                font, Field, style, "Me: ", "type here", "abc", 0.5f);
+
+            Assert.Equal(118f, layout.TextX, 3);
+            Assert.Equal(138f, layout.ContentX, 3);
+            Assert.Equal(154f, layout.CaretX, 3);
+        }
+
+        [Fact]
+        public void Draw_layout_clips_when_prefix_plus_visible_content_crosses_the_right_edge()
+        {
+            var font = new FixedMeasurer();
+
+            TextInput.TextInputLayout layout = TextInput.DrawLayout(
+                font, Field, new GuiStyle(), "0123456789", "", "abcdefghij", 1f);
+
+            Assert.True(layout.Clip);
+        }
+
+        [Fact]
+        public void Empty_prefix_preserves_the_existing_layout_exactly()
+        {
+            var font = new FixedMeasurer();
+            TextInput.TextInputLayout before = TextInput.DrawLayout(
+                font, Field, 108f, "type here", "", 0.5f);
+            TextInput.TextInputLayout after = TextInput.DrawLayout(
+                font, Field, new GuiStyle(), "", "type here", "", 0.5f);
+
+            Assert.Equal(before, after);
+            Assert.Equal("", new TextInput(Field).PrefixContent.Resolve());
+        }
+
+        [Fact]
         public void Cursor_blinks_off_after_the_blink_interval()
         {
             var field = new TextInput(Field);
@@ -98,6 +202,13 @@ namespace KhaozEngine.Tests.Gui
             Assert.True(field.CursorVisible);                       // visible right after focus
             field.Update(p, InputState.Empty, 0.6f);               // past the 0.5s blink interval
             Assert.False(field.CursorVisible);
+        }
+
+        sealed class FixedMeasurer : ITextMeasurer
+        {
+            public float LineHeight => 20f;
+
+            public Vector2 Measure(string text) => new(text.Length * 10f, LineHeight);
         }
     }
 }

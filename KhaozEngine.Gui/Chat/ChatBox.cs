@@ -69,6 +69,13 @@ public sealed class ChatBox
         set => Composer.PlaceholderContent = value;
     }
 
+    /// <summary>The localized, non-editable prefix drawn before the composer placeholder or text.</summary>
+    public LocalizedText ComposerPrefix
+    {
+        get => Composer.PrefixContent;
+        set => Composer.PrefixContent = value;
+    }
+
     /// <summary>
     /// Maximum number of characters accepted by the composer. Defaults to 32. Assigning a positive value
     /// reclamps any existing composer text immediately.

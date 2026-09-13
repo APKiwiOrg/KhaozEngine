@@ -167,7 +167,10 @@ internal sealed class TargetOutlineRenderer : IDisposable
             Mode = new Vector4(pixelated ? 1f : 0f,
                 pixelated ? 0f : MathF.Max(0f, MathF.Max(target.Width / (float)resources.Width,
                     target.Height / (float)resources.Height) - 1f),
-                0f, 0f),
+                _visibleCoverage!.MipLevels > 1
+                    ? MathF.Max(0f, MathF.Log2(MathF.Max(resources.Width / (float)target.Width,
+                        resources.Height / (float)target.Height))) : 0f,
+                0f),
         };
         EnsureCompositeSlot(styleIndex);
         cl.UpdateBuffer(_compositeUbos[styleIndex], 0, in composite);

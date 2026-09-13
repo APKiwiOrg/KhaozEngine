@@ -80,6 +80,15 @@ namespace KhaozEngine.Tests.Gpu
                 + "(decision S5).\n" + string.Join("\n", failures));
         }
 
+        [Fact]
+        public void Golden_TargetOutlineCompositeDynamicKernel_SurvivesFxc()
+        {
+            if (!KhaozEngineD3D11.IsPlatformSupported) return;
+
+            KhaozEngineD3D11.ValidateShaderPair(ShaderSources.FullscreenVert,
+                ShaderSources.TargetOutlineCompositeFrag, "TargetOutlineComposite");
+        }
+
         /// <summary>The compute kernels, across the four cascade resolutions shipped code can reach.</summary>
         [Fact]
         public void EveryShippedComputeKernel_SurvivesFxc()

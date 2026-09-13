@@ -96,11 +96,11 @@ void main() {
             vec2 sourceUv = uv + vec2(x, y) * pixel;
             float visible = Mode.x > 0.5
                 ? textureLod(sampler2D(VisibleCoverage, PointSamp), sourceUv, 0.0).r
-                : texture(sampler2D(VisibleCoverage, LinearSamp), sourceUv).r;
+                : textureLod(sampler2D(VisibleCoverage, LinearSamp), sourceUv, Mode.z).r;
             if (visible <= 0.001) continue;
-            float pointVisible = texture(sampler2D(VisibleCoverage, PointSamp), sourceUv).r;
+            float pointVisible = textureLod(sampler2D(VisibleCoverage, PointSamp), sourceUv, 0.0).r;
             if (pointVisible <= 0.001) continue;
-            float resolvedDepth = texture(sampler2D(VisibleDepth, PointSamp), sourceUv).r;
+            float resolvedDepth = textureLod(sampler2D(VisibleDepth, PointSamp), sourceUv, 0.0).r;
             float targetDepth = (resolvedDepth - (1.0 - pointVisible) * backgroundDepth) / pointVisible;
             if (!destinationIsBackground && targetDepth > sceneAtDestination + 0.0000002) continue;
             coverage = max(coverage, sqrt(visible) * radial);

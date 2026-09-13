@@ -35,10 +35,31 @@ public sealed class TargetOutlineRendererTests
         factory.ThrowOnTextureCreate = firstMaskTexture + 2;
 
         Assert.Throws<InvalidOperationException>(() =>
-            renderer.Render(commands, resources, target, Color.White, 1.25f, 0.025f, styleIndex: 0));
+            renderer.Render(commands, resources, target, Color.White, 1.25f, 0.025f, pixelated: false,
+                styleIndex: 0));
         Assert.True(factory.Textures[firstMaskTexture].Disposed);
 
         factory.ThrowOnTextureCreate = 0;
-        renderer.Render(commands, resources, target, Color.White, 1.25f, 0.025f, styleIndex: 0);
+        renderer.Render(commands, resources, target, Color.White, 1.25f, 0.025f, pixelated: false,
+            styleIndex: 0);
+    }
+
+    [Fact]
+    public void Draw_capacity_growth_can_retry_after_resource_set_creation_fails()
+    {
+        using var device = new FakeGpuDevice();
+        var factory = (FakeGpuResourceFactory)device.Factory;
+        using var renderer = new TargetOutlineRenderer(device,
+            new GpuOutputDescription(null, GpuPixelFormat.R8G8B8A8UNorm));
+        renderer.EnsureCapacity(1);
+        int buffersBefore = factory.Buffers.Count;
+        factory.ThrowOnResourceSetCreate = factory.ResourceSets.Count + 1;
+
+        Assert.Throws<InvalidOperationException>(() => renderer.EnsureCapacity(5));
+        Assert.True(factory.Buffers[^1].Disposed);
+
+        factory.ThrowOnResourceSetCreate = 0;
+        renderer.EnsureCapacity(5);
+        Assert.Equal(buffersBefore + 2, factory.Buffers.Count);
     }
 }

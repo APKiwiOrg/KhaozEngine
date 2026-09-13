@@ -88,6 +88,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>Absolute 1-based texture creation to fail, or zero for no injected failure.</summary>
         internal int ThrowOnTextureCreate { get; set; }
+        internal int ThrowOnResourceSetCreate { get; set; }
 
         /// <summary>Every buffer this factory has handed out, in creation order. See <see cref="Textures"/>.</summary>
         internal List<FakeBuffer> Buffers { get; } = new();
@@ -138,6 +139,8 @@ namespace KhaozEngine.Tests.Gpu
         public IGpuResourceLayout CreateResourceLayout(in GpuResourceLayoutDescription d) => new FakeResourceLayout();
         public IGpuResourceSet CreateResourceSet(in GpuResourceSetDescription d)
         {
+            if (ThrowOnResourceSetCreate == ResourceSets.Count + 1)
+                throw new InvalidOperationException("planned resource-set creation failure");
             var set = new FakeResourceSet();
             ResourceSets.Add(set);
             return set;

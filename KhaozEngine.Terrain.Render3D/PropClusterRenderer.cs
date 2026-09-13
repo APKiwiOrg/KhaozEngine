@@ -143,22 +143,23 @@ namespace KhaozEngine.Terrain
                 {
                     if (old is null)
                         _clusters[key] = new Cluster(build.Generation, build.Area, build.Layer,
-                            build.PlacementBatch, handle: null);
+                            build.PlacementBatch, handle: null, presentationGeneration: build.Generation);
                     else
                         _clusters[key] = new Cluster(old.Generation, build.Area, build.Layer,
-                            build.PlacementBatch, old.Handle);
+                            build.PlacementBatch, old.Handle, presentationGeneration: build.Generation);
                     return;
                 }
                 if (build.ReusesCurrent)
                 {
                     if (old is not null)
                         _clusters[key] = new Cluster(old.Generation, build.Area, build.Layer,
-                            build.PlacementBatch, old.Handle);
+                            build.PlacementBatch, old.Handle, presentationGeneration: build.Generation);
                     return;
                 }
 
                 MeshHandle? fresh = build.MergedMesh is { } mesh ? _backend.LoadMesh(mesh) : null;
-                var next = new Cluster(build.Generation, build.Area, build.Layer, build.PlacementBatch, fresh);
+                var next = new Cluster(build.Generation, build.Area, build.Layer, build.PlacementBatch, fresh,
+                    build.Generation);
                 _clusters[key] = next;
                 _invalidated.Remove(key);
                 _loggedFailures.Remove((key, build.Generation));
@@ -232,7 +233,8 @@ namespace KhaozEngine.Terrain
         static PropClusterDrawState ResolveDrawState(Cluster cluster, Vector3 focus)
         {
             if (cluster.Handle is null)
-                return new PropClusterDrawState(true, 0f, false, 0f, false, -1);
+                return new PropClusterDrawState(true, 0f, false, 0f, false,
+                    cluster.PresentationGeneration, -1);
 
             float centerX = (cluster.Area.MinX + cluster.Area.MaxX) * 0.5f;
             float centerZ = (cluster.Area.MinZ + cluster.Area.MaxZ) * 0.5f;
@@ -240,7 +242,8 @@ namespace KhaozEngine.Terrain
             float dz = centerZ - focus.Z;
             float distance = MathF.Sqrt(dx * dx + dz * dz);
             if (distance >= cluster.Layer.DrawRadius)
-                return new PropClusterDrawState(false, 0f, false, 0f, false, cluster.Generation);
+                return new PropClusterDrawState(false, 0f, false, 0f, false,
+                    cluster.PresentationGeneration, cluster.Generation);
 
             float t = PropHlod.CrossfadeAt(distance, cluster.Layer.HlodDistance,
                 cluster.Layer.HlodCrossfadeWidth);
@@ -253,11 +256,11 @@ namespace KhaozEngine.Terrain
                 float dissolve = exitWidth <= 0f ? 0f
                     : Math.Clamp((distance - exitStart) / exitWidth, 0f, 1f);
                 return new PropClusterDrawState(individuals, t, true, dissolve, false,
-                    cluster.Generation);
+                    cluster.PresentationGeneration, cluster.Generation);
             }
             bool merged = PropHlod.DrawsHlodMerged(t);
             return new PropClusterDrawState(individuals, t, merged, 1f - t, true,
-                cluster.Generation);
+                cluster.PresentationGeneration, cluster.Generation);
         }
 
         internal long GenerationOf(PropClusterKey key)
@@ -306,15 +309,18 @@ namespace KhaozEngine.Terrain
         sealed class Cluster
         {
             public readonly long Generation;
+            public readonly long PresentationGeneration;
             public readonly RectArea Area;
             public readonly PropLayer Layer;
             public readonly IReadOnlyList<PropPlacement> Placements;
             public readonly MeshHandle? Handle;
 
             public Cluster(long generation, RectArea area, PropLayer layer,
-                           IReadOnlyList<PropPlacement> placements, MeshHandle? handle)
+                           IReadOnlyList<PropPlacement> placements, MeshHandle? handle,
+                           long presentationGeneration)
             {
                 Generation = generation;
+                PresentationGeneration = presentationGeneration;
                 Area = area;
                 Layer = layer;
                 Placements = placements;

@@ -44,6 +44,23 @@ public sealed class TargetOutlineGoldenTests
         AssertOcclusion(AntiAliasing.Msaa(4));
     }
 
+    [GpuFact]
+    public void Golden3D_TargetOutline_MsaaCloseDepthWallReceivesNoOutlinePixels()
+    {
+        byte[] baseline = CaptureCloseWall(outlined: false);
+        byte[] outlined = CaptureCloseWall(outlined: true);
+        int wallPixels = 0;
+        int changed = 0;
+        for (int i = 0; i < baseline.Length; i += 4)
+        {
+            if (!IsBlue(baseline, i)) continue;
+            wallPixels++;
+            if (!SamePixel(baseline, outlined, i)) changed++;
+        }
+        Assert.True(wallPixels > 300, $"close-depth wall drew only {wallPixels} pixels");
+        Assert.Equal(0, changed);
+    }
+
     static void AssertOcclusion(AntiAliasing antiAliasing)
     {
         byte[] baseline = CaptureOcclusion(outlined: false, antiAliasing);
@@ -117,13 +134,18 @@ public sealed class TargetOutlineGoldenTests
         OutlineMetric small = MeasureOutline(scale: 0.65f, fixedWidth: 0, fixedHeight: 0);
         OutlineMetric large = MeasureOutline(scale: 1.5f, fixedWidth: 0, fixedHeight: 0);
         OutlineMetric upscale = MeasureOutline(scale: 1f, fixedWidth: W / 2, fixedHeight: H / 2);
+        OutlineMetric pixelated = MeasureOutline(scale: 1f, fixedWidth: W / 2, fixedHeight: H / 2,
+            pixelated: true);
 
-        float min = Math.Min(small.Thickness, Math.Min(large.Thickness, upscale.Thickness));
-        float max = Math.Max(small.Thickness, Math.Max(large.Thickness, upscale.Thickness));
+        float min = Math.Min(Math.Min(small.Thickness, large.Thickness),
+            Math.Min(upscale.Thickness, pixelated.Thickness));
+        float max = Math.Max(Math.Max(small.Thickness, large.Thickness),
+            Math.Max(upscale.Thickness, pixelated.Thickness));
         Assert.True(max < min * 1.75f,
-            $"physical thickness drifted: small {small.Thickness:0.00}, large {large.Thickness:0.00}, upscale {upscale.Thickness:0.00}");
-        Assert.True(small.TouchFraction > 0.9f && large.TouchFraction > 0.9f && upscale.TouchFraction > 0.85f,
-            $"rim detached: small {small.TouchFraction:0.00}, large {large.TouchFraction:0.00}, upscale {upscale.TouchFraction:0.00}");
+            $"physical thickness drifted: small {small.Thickness:0.00}, large {large.Thickness:0.00}, upscale {upscale.Thickness:0.00}, pixelated {pixelated.Thickness:0.00}");
+        Assert.True(small.TouchFraction > 0.9f && large.TouchFraction > 0.9f && upscale.TouchFraction > 0.85f
+            && pixelated.TouchFraction > 0.85f,
+            $"rim detached: small {small.TouchFraction:0.00}, large {large.TouchFraction:0.00}, upscale {upscale.TouchFraction:0.00}, pixelated {pixelated.TouchFraction:0.00}");
     }
 
     [GpuFact]
@@ -155,6 +177,31 @@ public sealed class TargetOutlineGoldenTests
                 scene.Draw(wall, Matrix4x4.CreateScale(0.7f, 2.6f, 0.5f)
                     * Matrix4x4.CreateTranslation(0.6f, 1.3f, 1.1f), new Color(0f, 0.2f, 1f, 1f),
                     Material.Glowing(new Color(0f, 0.2f, 1f, 1f)));
+            }, frames: 2);
+    }
+
+    static byte[] CaptureCloseWall(bool outlined)
+    {
+        MeshHandle target = default;
+        MeshHandle wall = default;
+        return Render3DSnapshot.Capture(W, H,
+            setup: scene =>
+            {
+                Configure(scene, AntiAliasing.Msaa(4));
+                target = scene.LoadMesh(MeshPrimitives.Box(1f));
+                wall = scene.LoadMesh(MeshPrimitives.Box(1f));
+            },
+            drawFrame: scene =>
+            {
+                Matrix4x4 targetWorld = Matrix4x4.CreateScale(1.5f, 2f, 0.8f)
+                    * Matrix4x4.CreateTranslation(0f, 1f, 0f);
+                scene.Draw(target, targetWorld, Body, Material.Glowing(Body));
+                if (outlined) scene.DrawMeshOutline(target, targetWorld, Rim, 1.25f);
+                Vector3 wallAt = new Vector3(0.55f, 1.1f, 0f) - scene.Camera.Forward * 0.01f;
+                Matrix4x4 wallWorld = Matrix4x4.CreateScale(0.65f, 2.2f, 0.45f)
+                    * Matrix4x4.CreateTranslation(wallAt);
+                var blue = new Color(0f, 0.2f, 1f, 1f);
+                scene.Draw(wall, wallWorld, blue, Material.Glowing(blue));
             }, frames: 2);
     }
 
@@ -200,14 +247,15 @@ public sealed class TargetOutlineGoldenTests
 
     static void AssertOutsideBaseline(AntiAliasing antiAliasing)
     {
+        byte[] empty = CaptureEmpty(antiAliasing);
         byte[] baseline = Capture(outlined: false, antiAliasing);
         byte[] outlined = Capture(outlined: true, antiAliasing);
         int rim = 0;
         for (int i = 0; i < outlined.Length; i += 4)
         {
-            if (!IsRim(outlined, i)) continue;
+            if (!IsRimDelta(baseline, outlined, i)) continue;
             rim++;
-            Assert.False(IsBody(baseline, i),
+            Assert.False(Contributes(baseline, empty, i),
                 $"{antiAliasing} outline painted baseline target coverage at pixel {i / 4}");
         }
         Assert.InRange(rim, 80, 1100);
@@ -231,10 +279,11 @@ public sealed class TargetOutlineGoldenTests
             }, frames: 2);
     }
 
-    static OutlineMetric MeasureOutline(float scale, int fixedWidth, int fixedHeight)
+    static OutlineMetric MeasureOutline(float scale, int fixedWidth, int fixedHeight, bool pixelated = false)
     {
-        byte[] baseline = CaptureScale(outlined: false, scale, fixedWidth, fixedHeight);
-        byte[] outlined = CaptureScale(outlined: true, scale, fixedWidth, fixedHeight);
+        byte[] empty = CaptureEmpty(AntiAliasing.Off, fixedWidth, fixedHeight, pixelated);
+        byte[] baseline = CaptureScale(outlined: false, scale, fixedWidth, fixedHeight, pixelated);
+        byte[] outlined = CaptureScale(outlined: true, scale, fixedWidth, fixedHeight, pixelated);
         int rimPixels = 0;
         int boundaryPixels = 0;
         int touchedBoundary = 0;
@@ -243,7 +292,8 @@ public sealed class TargetOutlineGoldenTests
             {
                 int i = (y * W + x) * 4;
                 if (IsRimDelta(baseline, outlined, i)) rimPixels++;
-                if (!IsBody(baseline, i) || AllBodyNeighbours(baseline, x, y)) continue;
+                if (!Contributes(baseline, empty, i)
+                    || AllContributionNeighbours(baseline, empty, x, y)) continue;
                 boundaryPixels++;
                 if (HasRimNear(baseline, outlined, x, y, 3)) touchedBoundary++;
             }
@@ -252,7 +302,8 @@ public sealed class TargetOutlineGoldenTests
         return new OutlineMetric((float)rimPixels / boundaryPixels, (float)touchedBoundary / boundaryPixels);
     }
 
-    static byte[] CaptureScale(bool outlined, float scale, int fixedWidth, int fixedHeight)
+    static byte[] CaptureScale(bool outlined, float scale, int fixedWidth, int fixedHeight,
+        bool pixelated = false)
     {
         MeshHandle box = default;
         return Render3DSnapshot.Capture(W, H,
@@ -265,6 +316,7 @@ public sealed class TargetOutlineGoldenTests
                     scene.Post.RenderWidth = fixedWidth;
                     scene.Post.RenderHeight = fixedHeight;
                 }
+                scene.Post.Pixelated = pixelated;
                 box = scene.LoadMesh(MeshPrimitives.Box(1f));
             },
             drawFrame: scene =>
@@ -275,6 +327,21 @@ public sealed class TargetOutlineGoldenTests
                 if (outlined) scene.DrawMeshOutline(box, world, Rim, 1.25f);
             }, frames: 2);
     }
+
+    static byte[] CaptureEmpty(AntiAliasing antiAliasing, int fixedWidth = 0, int fixedHeight = 0,
+        bool pixelated = false) =>
+        Render3DSnapshot.Capture(W, H,
+            setup: scene =>
+            {
+                Configure(scene, antiAliasing);
+                if (fixedWidth > 0)
+                {
+                    scene.Post.RenderScale = RenderScale.FixedInternal;
+                    scene.Post.RenderWidth = fixedWidth;
+                    scene.Post.RenderHeight = fixedHeight;
+                }
+                scene.Post.Pixelated = pixelated;
+            }, drawFrame: _ => { }, frames: 2);
 
     static byte[] CaptureDissolvedEnvelope(bool includeInvisiblePart)
     {
@@ -301,11 +368,11 @@ public sealed class TargetOutlineGoldenTests
             }, frames: 2);
     }
 
-    static bool AllBodyNeighbours(byte[] pixels, int x, int y)
+    static bool AllContributionNeighbours(byte[] baseline, byte[] empty, int x, int y)
     {
         for (int dy = -1; dy <= 1; dy++)
             for (int dx = -1; dx <= 1; dx++)
-                if (!IsBody(pixels, ((y + dy) * W + x + dx) * 4)) return false;
+                if (!Contributes(baseline, empty, ((y + dy) * W + x + dx) * 4)) return false;
         return true;
     }
 
@@ -320,6 +387,10 @@ public sealed class TargetOutlineGoldenTests
     static bool IsRimDelta(byte[] baseline, byte[] outlined, int i) =>
         outlined[i] > baseline[i] + 8
         && outlined[i] - outlined[i + 1] > baseline[i] - baseline[i + 1] + 8;
+
+    static bool Contributes(byte[] scene, byte[] empty, int i) =>
+        Math.Abs(scene[i] - empty[i]) > 2 || Math.Abs(scene[i + 1] - empty[i + 1]) > 2
+        || Math.Abs(scene[i + 2] - empty[i + 2]) > 2;
 
     static byte[] CaptureCutout(bool outlined)
     {

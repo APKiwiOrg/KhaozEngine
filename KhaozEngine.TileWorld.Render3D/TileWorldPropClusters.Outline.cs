@@ -28,12 +28,20 @@ public sealed partial class TileWorldPropClusters
             PropClusterKey key = Key(item.Key, regionProps.Region, regionProps.Plane);
             if (_clusterOwner is null || !_clusterOwner.TryGetDrawState(key, focus, out PropClusterDrawState state))
                 return true;
+            if (!_outlineSnapshots.TryGetValue(key,
+                out SortedDictionary<long, TilePropLayerSnapshot>? generations)) return true;
 
             MeshOutlineGroup group = _scene.BeginMeshOutline(color, widthPixels);
-            if (state.DrawsIndividuals)
-                DrawIndividualOutline(group, item.Value, placementIndex, focus, state.IndividualDissolveFloor);
+            if (state.DrawsIndividuals
+                && generations.TryGetValue(state.IndividualSourceGeneration, out TilePropLayerSnapshot? individual))
+            {
+                int individualIndex = IndexOf(individual.ObjectIds, objectId);
+                if (individualIndex >= 0)
+                    DrawIndividualOutline(group, individual, individualIndex, focus,
+                        state.IndividualDissolveFloor);
+            }
             if (state.DrawsMerged)
-                DrawMergedOutline(group, key, objectId, state);
+                DrawMergedOutline(group, key, objectId, state, generations);
             return true;
         }
         return false;
@@ -55,10 +63,9 @@ public sealed partial class TileWorldPropClusters
             complement > 0.5f);
 
     void DrawMergedOutline(MeshOutlineGroup group, PropClusterKey key, long objectId,
-        in PropClusterDrawState state)
+        in PropClusterDrawState state, SortedDictionary<long, TilePropLayerSnapshot> generations)
     {
-        if (!_outlineSnapshots.TryGetValue(key, out SortedDictionary<long, TilePropLayerSnapshot>? generations)
-            || !generations.TryGetValue(state.MergedSourceGeneration, out TilePropLayerSnapshot? accepted)) return;
+        if (!generations.TryGetValue(state.MergedSourceGeneration, out TilePropLayerSnapshot? accepted)) return;
         int placementIndex = IndexOf(accepted.ObjectIds, objectId);
         if (placementIndex < 0 || accepted.Layer.HlodSourceMeshes is null) return;
 
@@ -96,12 +103,18 @@ public sealed partial class TileWorldPropClusters
         {
             if (item.Value.Count <= 2) continue;
             long latest = LastKey(item.Value);
-            long accepted = _clusterOwner is not null
-                && _clusterOwner.TryGetDrawState(item.Key, focus, out PropClusterDrawState state)
-                ? state.MergedSourceGeneration : -1;
+            long accepted = -1;
+            long individual = -1;
+            if (_clusterOwner is not null
+                && _clusterOwner.TryGetDrawState(item.Key, focus, out PropClusterDrawState state))
+            {
+                accepted = state.MergedSourceGeneration;
+                individual = state.IndividualSourceGeneration;
+            }
             var remove = new List<long>();
             foreach (long generation in item.Value.Keys)
-                if (generation != latest && generation != accepted) remove.Add(generation);
+                if (generation != latest && generation != accepted && generation != individual)
+                    remove.Add(generation);
             foreach (long generation in remove) item.Value.Remove(generation);
         }
     }

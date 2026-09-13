@@ -7,4 +7,5 @@ public readonly record struct PropClusterDrawState(
     bool DrawsMerged,
     float MergedDissolve,
     bool MergedComplement,
+    long IndividualSourceGeneration,
     long MergedSourceGeneration);

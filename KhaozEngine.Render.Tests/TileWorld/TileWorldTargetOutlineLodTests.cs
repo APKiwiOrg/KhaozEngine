@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.Render3D;
@@ -45,6 +46,39 @@ public sealed class TileWorldTargetOutlineLodTests
         Assert.Equal(unloads + 1, scene.MeshUnloads.Count);
     }
 
+    [Fact]
+    public void Pending_override_keeps_the_outline_on_the_individual_snapshot_that_Draw_uses()
+    {
+        TileWorldDocument document = TileRenderTestData.HouseWorld();
+        TileObject tree = document.AddObject("tree", 25, 25, 0, 0);
+        var scene = new RecordingTileWorldScene();
+        var dispatcher = new ManualDispatcher();
+        TilePropLayerDefinition layer = TreeLayer() with
+        {
+            ArchetypeIds = new HashSet<string>(StringComparer.Ordinal) { "tree", "bush" },
+        };
+        using var view = new TileWorldView(scene, document, TileRenderTestData.Catalogs, new LodResolver(),
+            new TileWorldViewOptions { PropLayers = new[] { layer } },
+            new TileWorldBuildQueueOptions { MaxHlodAppliesPerPump = 4 }, dispatcher);
+        view.LoadRegion(TileRenderTestData.Region);
+        dispatcher.RunNext();
+        view.Draw(new Vector3(25.5f, 0f, -25.5f));
+        Assert.True(view.TryGetRegionProps(TileRenderTestData.Region, 0, out TileRegionProps accepted));
+        MeshHandle acceptedTree = accepted.Layers["trees"].Layer.PartMeshes!["tree"][0];
+
+        Assert.True(view.OverrideArchetype(tree.Id, "bush"));
+        Assert.True(view.TryGetRegionProps(TileRenderTestData.Region, 0, out TileRegionProps pending));
+        MeshHandle pendingBush = pending.Layers["trees"].Layer.PartMeshes!["bush"][0];
+        view.SetOutlinedObject(tree.Id, new KhaozEngine.Primitives.Color(1f, 0f, 0f, 1f));
+        scene.OutlineGroups.Clear();
+
+        view.Draw(new Vector3(25.5f, 0f, -25.5f));
+
+        RecordedOutlineGroup outline = Assert.Single(scene.OutlineGroups);
+        Assert.Contains(outline.Parts, part => part.Handle.Index == acceptedTree.Index);
+        Assert.DoesNotContain(outline.Parts, part => part.Handle.Index == pendingBush.Index);
+    }
+
     static TilePropLayerDefinition TreeLayer() => new()
     {
         Id = "trees",
@@ -69,5 +103,20 @@ public sealed class TileWorldTargetOutlineLodTests
     {
         public void Schedule(Action build) => build();
         public void Drain() { }
+    }
+
+    sealed class ManualDispatcher : IChunkBuildDispatcher
+    {
+        readonly ConcurrentQueue<Action> _pending = new();
+        public void Schedule(Action build) => _pending.Enqueue(build);
+        public void RunNext()
+        {
+            Assert.True(_pending.TryDequeue(out Action? build));
+            build();
+        }
+        public void Drain()
+        {
+            while (_pending.TryDequeue(out Action? build)) build();
+        }
     }
 }

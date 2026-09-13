@@ -112,7 +112,7 @@ public sealed partial class Scene3D
                 groupDraws++;
             }
             _targetOutlines.Render(cl, _res, target, group.Color, group.WidthPixels, Post.BackgroundColor.R,
-                groupIndex);
+                Post.Pixelated, groupIndex);
             _frameStats.DrawCalls += groupDraws * 2 + 1;
         }
     }

@@ -87,14 +87,29 @@ internal sealed class TargetOutlineRenderer : IDisposable
     public void EnsureCapacity(int drawCount)
     {
         if (_drawUbo != null && _capacity >= drawCount) return;
+        int freshCapacity = Math.Max(drawCount, _capacity == 0 ? 4 : _capacity * 2);
+        var freshImage = new byte[freshCapacity * DrawSlotBytes];
+        _drawImage.AsSpan().CopyTo(freshImage);
+        IGpuBuffer freshUbo = _gd.Factory.CreateBuffer(new GpuBufferDescription(
+            (uint)(freshCapacity * DrawSlotBytes), GpuBufferUsage.UniformBuffer));
+        IGpuResourceSet freshSet;
+        try
+        {
+            freshSet = _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(_drawLayout,
+                new GpuBufferRange(freshUbo, 0, DrawPayloadBytes)));
+        }
+        catch
+        {
+            freshUbo.Dispose();
+            throw;
+        }
+
         if (_drawUbo != null) _retired.Add(_drawUbo);
         if (_drawSet != null) _retired.Add(_drawSet);
-        _capacity = Math.Max(drawCount, _capacity == 0 ? 4 : _capacity * 2);
-        _drawUbo = _gd.Factory.CreateBuffer(new GpuBufferDescription((uint)(_capacity * DrawSlotBytes),
-            GpuBufferUsage.UniformBuffer));
-        _drawImage = new byte[_capacity * DrawSlotBytes];
-        _drawSet = _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(_drawLayout,
-            new GpuBufferRange(_drawUbo, 0, DrawPayloadBytes)));
+        _capacity = freshCapacity;
+        _drawUbo = freshUbo;
+        _drawSet = freshSet;
+        _drawImage = freshImage;
     }
 
     public void BeginGroup(Matrix4x4 clipViewProjection)
@@ -120,7 +135,7 @@ internal sealed class TargetOutlineRenderer : IDisposable
     }
 
     public void Render(IGpuCommandList cl, RenderResources resources, IGpuFramebuffer target,
-        Color color, float widthPixels, float backgroundDepth, int styleIndex)
+        Color color, float widthPixels, float backgroundDepth, bool pixelated, int styleIndex)
     {
         if (_queue.Count == 0) return;
         BindTargets(resources);
@@ -132,6 +147,7 @@ internal sealed class TargetOutlineRenderer : IDisposable
         DrawQueue(cl, _fullPipeline!);
         if (resources.Msaa)
             cl.ResolveTexture(_msFullCoverage!, _fullCoverage!);
+        if (_fullCoverage!.MipLevels > 1) cl.GenerateMipmaps(_fullCoverage);
 
         cl.SetFramebuffer(_visibleFramebuffer!);
         cl.ClearColorTarget(0, Color.Transparent);
@@ -142,11 +158,16 @@ internal sealed class TargetOutlineRenderer : IDisposable
             cl.ResolveTexture(_msVisibleCoverage!, _visibleCoverage!);
             cl.ResolveTexture(_msVisibleDepth!, _visibleDepth!);
         }
+        if (_visibleCoverage!.MipLevels > 1) cl.GenerateMipmaps(_visibleCoverage);
 
         var composite = new CompositeUbo
         {
             OutlineColor = color.ToVector4(),
             Params = new Vector4(1f / target.Width, 1f / target.Height, widthPixels, backgroundDepth),
+            Mode = new Vector4(pixelated ? 1f : 0f,
+                pixelated ? 0f : MathF.Max(0f, MathF.Max(target.Width / (float)resources.Width,
+                    target.Height / (float)resources.Height) - 1f),
+                0f, 0f),
         };
         EnsureCompositeSlot(styleIndex);
         cl.UpdateBuffer(_compositeUbos[styleIndex], 0, in composite);
@@ -192,11 +213,14 @@ internal sealed class TargetOutlineRenderer : IDisposable
         uint width = (uint)resources.Width;
         uint height = (uint)resources.Height;
         uint samples = (uint)resources.SampleCount;
+        uint coverageMips = resources.Mipped ? SplatMaterialConfig.MipLevelCount(resources.Width,
+            resources.Height) : 1u;
         var sampledTarget = GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled;
+        var coverageUsage = resources.Mipped ? sampledTarget | GpuTextureUsage.GenerateMipmaps : sampledTarget;
         _fullCoverage = f.CreateTexture(new GpuTextureDescription(width, height, GpuPixelFormat.R8UNorm,
-            sampledTarget, 1, 1, 1));
-        _visibleCoverage = f.CreateTexture(new GpuTextureDescription(width, height, GpuPixelFormat.R8UNorm,
-            sampledTarget, 1, 1, 1));
+            coverageUsage, coverageMips, 1, 1));
+        _visibleCoverage = f.CreateTexture(new GpuTextureDescription(width, height, GpuPixelFormat.R16G16Float,
+            coverageUsage, coverageMips, 1, 1));
         _visibleDepth = f.CreateTexture(new GpuTextureDescription(width, height, GpuPixelFormat.R32Float,
             sampledTarget, 1, 1, 1));
         _privateDepth = f.CreateTexture(new GpuTextureDescription(width, height, GpuPixelFormat.D32FloatS8UInt,
@@ -209,7 +233,7 @@ internal sealed class TargetOutlineRenderer : IDisposable
         {
             _msFullCoverage = f.CreateTexture(new GpuTextureDescription(width, height, GpuPixelFormat.R8UNorm,
                 GpuTextureUsage.RenderTarget, 1, 1, samples));
-            _msVisibleCoverage = f.CreateTexture(new GpuTextureDescription(width, height, GpuPixelFormat.R8UNorm,
+            _msVisibleCoverage = f.CreateTexture(new GpuTextureDescription(width, height, GpuPixelFormat.R16G16Float,
                 GpuTextureUsage.RenderTarget, 1, 1, samples));
             _msVisibleDepth = f.CreateTexture(new GpuTextureDescription(width, height, GpuPixelFormat.R32Float,
                 GpuTextureUsage.RenderTarget, 1, 1, samples));
@@ -228,7 +252,7 @@ internal sealed class TargetOutlineRenderer : IDisposable
     void EnsureCompositeSlot(int styleIndex)
     {
         while (_compositeUbos.Count <= styleIndex)
-            _compositeUbos.Add(_gd.Factory.CreateBuffer(new GpuBufferDescription(32,
+            _compositeUbos.Add(_gd.Factory.CreateBuffer(new GpuBufferDescription(48,
                 GpuBufferUsage.UniformBuffer)));
         while (_compositeSets.Count <= styleIndex)
         {
@@ -325,6 +349,7 @@ internal sealed class TargetOutlineRenderer : IDisposable
     {
         public Vector4 OutlineColor;
         public Vector4 Params;
+        public Vector4 Mode;
     }
 
     readonly record struct QueuedDraw(IGpuBuffer VertexBuffer, IGpuBuffer IndexBuffer, int IndexCount,

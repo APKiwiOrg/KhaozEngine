@@ -124,6 +124,7 @@ namespace KhaozEngine.Tests.Terrain
             Assert.True(rig.Renderer.TryGetDrawState(key, Focus(100f), out PropClusterDrawState state));
 
             Assert.Equal(1, state.MergedSourceGeneration);
+            Assert.Equal(2, state.IndividualSourceGeneration);
             Assert.True(state.DrawsIndividuals);
             Assert.True(state.DrawsMerged);
             Assert.Equal(0.5f, state.IndividualDissolveFloor, 5);

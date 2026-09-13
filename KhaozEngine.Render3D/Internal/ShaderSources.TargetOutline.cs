@@ -37,7 +37,7 @@ layout(set=1, binding=0) uniform texture2D Albedo;
 layout(set=1, binding=1) uniform sampler Samp;
 layout(location=0) in vec2 vUv;
 layout(location=1) in vec3 vWorldPos;
-layout(location=0) out float oCoverage;
+layout(location=0) out vec2 oCoverage;
 layout(location=1) out float oDepth;
 float dhash(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
 float dnoise(vec3 p) {
@@ -56,7 +56,7 @@ void main() {
         bool keep = Params.z > 0.5 ? mask < Params.y : mask >= Params.y;
         if (!keep) discard;
     }
-    oCoverage = 1.0;
+    oCoverage = vec2(1.0, 0.0);
     oDepth = gl_FragCoord.z;
 }";
 
@@ -67,18 +67,21 @@ layout(set=0, binding=2) uniform texture2D VisibleDepth;
 layout(set=0, binding=3) uniform texture2D SceneDepth;
 layout(set=0, binding=4) uniform sampler PointSamp;
 layout(set=0, binding=5) uniform sampler LinearSamp;
-layout(set=0, binding=6) uniform Composite { vec4 OutlineColor; vec4 Params; };
+layout(set=0, binding=6) uniform Composite { vec4 OutlineColor; vec4 Params; vec4 Mode; };
 layout(location=0) in vec2 vUv;
 layout(location=0) out vec4 oColor;
 void main() {
     vec2 uv = vec2(vUv.x, 1.0 - vUv.y);
-    if (texture(sampler2D(FullCoverage, LinearSamp), uv).r >= 0.5) {
+    float centerCoverage = Mode.x > 0.5
+        ? textureLod(sampler2D(FullCoverage, PointSamp), uv, 0.0).r
+        : texture(sampler2D(FullCoverage, LinearSamp), uv).r;
+    if (centerCoverage > 0.001) {
         oColor = vec4(0.0);
         return;
     }
 
     vec2 pixel = Params.xy;
-    float width = Params.z;
+    float width = Params.z + Mode.y;
     float backgroundDepth = Params.w;
     float sceneAtDestination = texture(sampler2D(SceneDepth, PointSamp), uv).r;
     bool destinationIsBackground = abs(sceneAtDestination - backgroundDepth) < 0.00001;
@@ -91,14 +94,16 @@ void main() {
             float radial = clamp(width + 0.5 - length(pixelDistance), 0.0, 1.0);
             if (radial <= 0.0) continue;
             vec2 sourceUv = uv + vec2(x, y) * pixel;
-            float visible = texture(sampler2D(VisibleCoverage, LinearSamp), sourceUv).r;
+            float visible = Mode.x > 0.5
+                ? textureLod(sampler2D(VisibleCoverage, PointSamp), sourceUv, 0.0).r
+                : texture(sampler2D(VisibleCoverage, LinearSamp), sourceUv).r;
             if (visible <= 0.001) continue;
             float pointVisible = texture(sampler2D(VisibleCoverage, PointSamp), sourceUv).r;
             if (pointVisible <= 0.001) continue;
             float resolvedDepth = texture(sampler2D(VisibleDepth, PointSamp), sourceUv).r;
             float targetDepth = (resolvedDepth - (1.0 - pointVisible) * backgroundDepth) / pointVisible;
-            if (!destinationIsBackground && targetDepth > sceneAtDestination + 0.00002) continue;
-            coverage = max(coverage, visible * radial);
+            if (!destinationIsBackground && targetDepth > sceneAtDestination + 0.0000002) continue;
+            coverage = max(coverage, sqrt(visible) * radial);
         }
     }
     oColor = vec4(OutlineColor.rgb, OutlineColor.a * coverage);

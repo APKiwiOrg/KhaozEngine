@@ -1,6 +1,6 @@
 # Screen-space target outlines
 
-Status: implementation and validation for [#879](https://github.com/APKiwiOrg/KhaozEngine/issues/879).
+Status: complete for `18.47.0`, tracked by [#879](https://github.com/APKiwiOrg/KhaozEngine/issues/879).
 Consumer: [Grimhollow #186](https://github.com/APKiwiOrg/Grimhollow/issues/186).
 
 ## Goal and contract

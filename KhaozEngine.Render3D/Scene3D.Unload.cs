@@ -45,7 +45,11 @@ namespace KhaozEngine.Render3D
             // device per unload stalled the frame thread on the terrain streaming path (every chunk leaving the ring
             // and every LOD flip lands here). The pool frees them behind one drain a few frames later. The per-mesh
             // material set goes too, but NOT the texture: that is owned in _textures and shared between meshes.
-            if (_meshes[h.Index] is { } mesh) _retired.Retire(mesh.Vb, mesh.Ib, mesh.MaterialSet);
+            if (_meshes[h.Index] is { } mesh)
+            {
+                _retired.Retire(mesh.Vb, mesh.OutlineNormalVb, mesh.Ib);
+                _retired.Retire(mesh.MaterialSet);
+            }
             _meshes[h.Index] = null;
         }
 

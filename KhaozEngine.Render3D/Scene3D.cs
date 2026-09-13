@@ -522,6 +522,9 @@ namespace KhaozEngine.Render3D
         /// requires the mesh to carry tangents (glTF meshes via <see cref="GltfLoader"/>, or
         /// MeshAssembler output); primitives have none and are lit by their geometric normal.</summary>
         public MeshHandle LoadMesh(GltfMesh mesh, SurfaceMaps maps)
+            => LoadMesh(mesh, maps, null);
+
+        MeshHandle LoadMesh(GltfMesh mesh, SurfaceMaps maps, Vector3[]? outlineNormals)
         {
             IGpuTexture? a = maps.Albedo.IsValid ? _textures[maps.Albedo.ListIndex] : null;
             IGpuTexture? n = maps.Normal.IsValid ? _textures[maps.Normal.ListIndex] : null;
@@ -529,7 +532,8 @@ namespace KhaozEngine.Render3D
             IGpuResourceSet? material = (a != null || n != null || r != null)
                 ? _model.CreateMaterialSet(a, n, r)
                 : null;
-            return LoadMeshInternal(mesh, material, alphaCutoff: maps.AlphaCutoff);
+            return LoadMeshInternal(mesh, material, alphaCutoff: maps.AlphaCutoff,
+                outlineNormals: outlineNormals);
         }
 
         /// <summary>Upload a mesh and draw it through the splat-terrain pipeline with <paramref name="material"/>
@@ -539,40 +543,6 @@ namespace KhaozEngine.Render3D
         {
             if (!material.IsValid) return LoadMesh(mesh);
             return LoadMeshInternal(mesh, null, material.ListIndex);
-        }
-
-        MeshHandle LoadMeshInternal(GltfMesh mesh, IGpuResourceSet? material, int splatMaterial = -1, float alphaCutoff = 0f, int tileGroundMaterial = -1)
-        {
-            var f = _gd.Factory;
-            var vb = f.CreateBuffer(new GpuBufferDescription((uint)(mesh.Vertices.Length * ModelVertex.SizeInBytes), GpuBufferUsage.VertexBuffer));
-            _gd.UpdateBuffer(vb, 0, mesh.Vertices);
-            var ib = CreateIndexBuffer(mesh.Indices32, mesh.IndexFormat);
-
-            MeshBounds bounds = MeshBounds.FromVertices(mesh.Vertices);
-            int index = _slots.Alloc(out int generation);
-            var slot = new Mesh(vb, ib, mesh.Indices32.Length, mesh.IndexFormat, in bounds, material, splatMaterial, alphaCutoff, tileGroundMaterial);
-            if (index < _meshes.Count) _meshes[index] = slot;   // reused freed slot
-            else _meshes.Add(slot);                              // fresh appended slot
-            return new MeshHandle(index, generation);
-        }
-
-        /// <summary>Create + fill a GPU index buffer matching the mesh's chosen <see cref="GpuIndexFormat"/>. A
-        /// 16-bit mesh uploads a narrowed <see cref="ushort"/> buffer (byte-identical to the pre-32-bit path, so
-        /// existing renders are unchanged); a 32-bit mesh uploads the full <see cref="uint"/> indices.</summary>
-        IGpuBuffer CreateIndexBuffer(uint[] indices32, GpuIndexFormat format)
-        {
-            var f = _gd.Factory;
-            if (format == GpuIndexFormat.UInt32)
-            {
-                var ib = f.CreateBuffer(new GpuBufferDescription((uint)(indices32.Length * sizeof(uint)), GpuBufferUsage.IndexBuffer));
-                _gd.UpdateBuffer(ib, 0, indices32);
-                return ib;
-            }
-            var i16 = new ushort[indices32.Length];
-            for (int i = 0; i < i16.Length; i++) i16[i] = (ushort)indices32[i];
-            var ib16 = f.CreateBuffer(new GpuBufferDescription((uint)(i16.Length * sizeof(ushort)), GpuBufferUsage.IndexBuffer));
-            _gd.UpdateBuffer(ib16, 0, i16);
-            return ib16;
         }
 
         /// <summary>Decode a PNG/JPG file into an albedo texture (RGBA8) and return a handle for
@@ -677,8 +647,22 @@ namespace KhaozEngine.Render3D
             if (parts == null) throw new ArgumentNullException(nameof(parts));
             if (parts.Count == 0) throw new ArgumentException("a prop needs at least one material part.", nameof(parts));
             var handles = new MeshHandle[parts.Count];
-            for (int i = 0; i < parts.Count; i++) handles[i] = LoadMesh(parts[i].Mesh, parts[i].Maps);
-            return handles;
+            Vector3[][] outlineNormals = OutlineNormalBuilder.Build(parts);
+            int loaded = 0;
+            try
+            {
+                for (; loaded < parts.Count; loaded++)
+                {
+                    SurfaceMaps maps = LoadSurfaceMaps(parts[loaded].Maps);
+                    handles[loaded] = LoadMesh(parts[loaded].Mesh, maps, outlineNormals[loaded]);
+                }
+                return handles;
+            }
+            catch
+            {
+                for (int i = 0; i < loaded; i++) UnloadMesh(handles[i]);
+                throw;
+            }
         }
 
         /// <summary>Queue every part of <paramref name="prop"/> at <paramref name="world"/> with a white tint. Each
@@ -2348,7 +2332,13 @@ namespace KhaozEngine.Render3D
             _silhouettes.Dispose();
             _res.Dispose();
             foreach (var m in _meshes)
-                if (m is { } mesh) { mesh.Vb.Dispose(); mesh.Ib.Dispose(); mesh.MaterialSet?.Dispose(); }
+                if (m is { } mesh)
+                {
+                    mesh.Vb.Dispose();
+                    mesh.OutlineNormalVb.Dispose();
+                    mesh.Ib.Dispose();
+                    mesh.MaterialSet?.Dispose();
+                }
             foreach (var m in _skinnedMeshes)
                 if (m is { } e) { e.Vb.Dispose(); e.Ib.Dispose(); e.MaterialSet?.Dispose(); e.SkinnedMaterialSet?.Dispose(); }
             foreach (var s in _texBillboardSets) s?.Dispose();
@@ -2361,7 +2351,7 @@ namespace KhaozEngine.Render3D
 
         readonly struct Mesh
         {
-            public readonly IGpuBuffer Vb, Ib;
+            public readonly IGpuBuffer Vb, OutlineNormalVb, Ib;
             public readonly int IndexCount;
             /// <summary>GPU index width of <see cref="Ib"/> (UInt16 for meshes up to 65,536 verts, else UInt32).</summary>
             public readonly GpuIndexFormat IndexFormat;
@@ -2384,9 +2374,13 @@ namespace KhaozEngine.Render3D
             /// this mesh's per-instance <c>SpecParams.z</c> by <c>ApplyAlphaCutoffs</c> so the model fragment
             /// discards texels below it (MASK foliage renders as its silhouette). 0 keeps the render byte-identical.</summary>
             public readonly float AlphaCutoff;
-            public Mesh(IGpuBuffer vb, IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat, in MeshBounds bounds, IGpuResourceSet? materialSet = null, int splatMaterial = -1, float alphaCutoff = 0f, int tileGroundMaterial = -1)
+            public Mesh(IGpuBuffer vb, IGpuBuffer outlineNormalVb, IGpuBuffer ib, int indexCount,
+                GpuIndexFormat indexFormat, in MeshBounds bounds, IGpuResourceSet? materialSet = null,
+                int splatMaterial = -1, float alphaCutoff = 0f, int tileGroundMaterial = -1)
             {
-                Vb = vb; Ib = ib; IndexCount = indexCount; IndexFormat = indexFormat; Bounds = bounds; MaterialSet = materialSet; SplatMaterial = splatMaterial; AlphaCutoff = alphaCutoff; TileGroundMaterial = tileGroundMaterial;
+                Vb = vb; OutlineNormalVb = outlineNormalVb; Ib = ib; IndexCount = indexCount;
+                IndexFormat = indexFormat; Bounds = bounds; MaterialSet = materialSet;
+                SplatMaterial = splatMaterial; AlphaCutoff = alphaCutoff; TileGroundMaterial = tileGroundMaterial;
             }
         }
 

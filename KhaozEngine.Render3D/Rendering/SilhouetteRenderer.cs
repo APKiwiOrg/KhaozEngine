@@ -11,7 +11,7 @@ namespace KhaozEngine.Render3D.Rendering
     /// <summary>
     /// Draws entity SILHOUETTES (the per-entity highlight: a clicked monster, a selected prop) as inverted
     /// hulls INTO the model MRT framebuffer, after the overlay meshes and before the depth/normal resolve. Each
-    /// queued draw re-renders a model mesh with its vertices pushed along their world normals by a width in
+    /// queued draw re-renders a model mesh with its vertices pushed along welded geometric normals by a width in
     /// metres, FRONT faces culled (the shadow pass's precedent, and the whole trick: the pushed-out back faces
     /// form a rim around the model's own silhouette), flat colour from the draw's uniform slot, depth tested
     /// less-or-equal without writing so nearer scene geometry occludes the rim and the rim never occludes the
@@ -63,12 +63,11 @@ namespace KhaozEngine.Render3D.Rendering
 
         IGpuPipeline BuildPipeline(IGpuResourceFactory f, GpuOutputDescription modelOutputs)
         {
-            var vertexLayout = new GpuVertexLayoutDescription(
-                new GpuVertexElement("Position", GpuVertexElementFormat.Float3),
-                new GpuVertexElement("Normal", GpuVertexElementFormat.Float3),
-                new GpuVertexElement("Color", GpuVertexElementFormat.Float4),
-                new GpuVertexElement("TexCoord", GpuVertexElementFormat.Float2),
-                new GpuVertexElement("Tangent", GpuVertexElementFormat.Float4));
+            var positionLayout = new GpuVertexLayoutDescription(
+                ModelVertex.SizeInBytes, 0,
+                new[] { new GpuVertexElement("Position", GpuVertexElementFormat.Float3) });
+            var normalLayout = new GpuVertexLayoutDescription(
+                new GpuVertexElement("Normal", GpuVertexElementFormat.Float3));
 
             return f.CreateGraphicsPipeline(new GpuPipelineDescription
             {
@@ -90,7 +89,7 @@ namespace KhaozEngine.Render3D.Rendering
                 Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _layout },
                 ShaderSet = _shaders,
-                VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout },
+                VertexLayouts = new List<GpuVertexLayoutDescription> { positionLayout, normalLayout },
                 Outputs = modelOutputs,
             });
         }
@@ -99,7 +98,8 @@ namespace KhaozEngine.Render3D.Rendering
         public void BeginFrame(Matrix4x4 clipCorrectedViewProj) => _viewProj = clipCorrectedViewProj;
 
         /// <summary>Queue one silhouette and pack its UBO slot. <see cref="Flush"/> uploads and records.</summary>
-        public void Enqueue(IGpuBuffer vb, IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat,
+        public void Enqueue(IGpuBuffer positionVb, IGpuBuffer normalVb, IGpuBuffer ib, int indexCount,
+            GpuIndexFormat indexFormat,
             int drawIndex, Matrix4x4 world, Color color, float widthMetres)
         {
             var slot = new DrawUbo
@@ -110,7 +110,7 @@ namespace KhaozEngine.Render3D.Rendering
                 Params = new Vector4(widthMetres, 0f, 0f, 0f),
             };
             MemoryMarshal.Write(_image.AsSpan(drawIndex * SlotBytes, SlotBytes), in slot);
-            _queue.Add(new QueuedDraw(vb, ib, indexCount, indexFormat, drawIndex));
+            _queue.Add(new QueuedDraw(positionVb, normalVb, ib, indexCount, indexFormat, drawIndex));
         }
 
         /// <summary>Upload every packed slot in ONE whole-buffer write, then record the queued draws into the
@@ -123,7 +123,8 @@ namespace KhaozEngine.Render3D.Rendering
             {
                 cl.SetPipeline(_pipeline);
                 cl.SetGraphicsResourceSet(0, _set!, (uint)(d.DrawIndex * SlotBytes));
-                cl.SetVertexBuffer(0, d.Vb);
+                cl.SetVertexBuffer(0, d.PositionVb);
+                cl.SetVertexBuffer(1, d.NormalVb);
                 cl.SetIndexBuffer(d.Ib, d.IndexFormat);
                 cl.DrawIndexed((uint)d.IndexCount, 1, 0, 0, 0);
             }
@@ -161,7 +162,8 @@ namespace KhaozEngine.Render3D.Rendering
             public Vector4 Params;   // x = width in metres
         }
 
-        readonly record struct QueuedDraw(IGpuBuffer Vb, IGpuBuffer Ib, int IndexCount, GpuIndexFormat IndexFormat, int DrawIndex);
+        readonly record struct QueuedDraw(IGpuBuffer PositionVb, IGpuBuffer NormalVb, IGpuBuffer Ib,
+            int IndexCount, GpuIndexFormat IndexFormat, int DrawIndex);
 
         public void Dispose()
         {

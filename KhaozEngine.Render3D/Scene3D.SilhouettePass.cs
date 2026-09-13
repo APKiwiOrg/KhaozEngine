@@ -17,7 +17,7 @@ namespace KhaozEngine.Render3D
         readonly List<(MeshHandle Mesh, Matrix4x4 World, Color Color, float Width)> _silhouetteDraws = new();
 
         /// <summary>Queue one per-entity SILHOUETTE: the mesh re-drawn as an inverted hull, vertices pushed
-        /// along their world normals by <paramref name="widthMetres"/>, front faces culled, in a flat
+        /// along welded geometric normals by <paramref name="widthMetres"/>, front faces culled, in a flat
         /// <paramref name="color"/> (alpha blends), depth tested without writing. The highlight for a clicked
         /// monster or a selected prop. The whole-scene edge post keeps the Outline name on
         /// <see cref="PixelPostProcessSettings"/>.</summary>
@@ -53,8 +53,8 @@ namespace KhaozEngine.Render3D
                 if (!_slots.IsValid(handle.Index, handle.Generation)) continue;   // stale handle: skip
                 var m = _meshes[handle.Index];
                 if (m is not { } mesh) continue;
-                _silhouettes.Enqueue(mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, i, ToRender(world),
-                    color, width);
+                _silhouettes.Enqueue(mesh.Vb, mesh.OutlineNormalVb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, i,
+                    ToRender(world), color, width);
                 _frameStats.DrawCalls++;
             }
             _silhouettes.Flush(cl);

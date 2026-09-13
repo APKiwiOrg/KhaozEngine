@@ -667,6 +667,14 @@ continues the walk already in progress. A client that also wants to stop its pre
 commands. The cancellation call does not touch `CombatTarget` or `TileCombatState`, so a game may cancel interaction
 intent and charge a combat cooldown independently.
 
+### Ending a fight from the game without a refusal
+
+A `SetPlayerState` write that drops or changes `CombatTarget` is the game ending that fight on purpose (a pause
+while an award commits, a scripted disengage), so the tick's broken-lock report skips it: no `OnCannotReach`
+and no `ke:cannot-reach` follow, even when the write happens inside the tick from `OnCombatEvent`, which
+`ResolveCombat` raises one step ahead of the report. The report covers only locks the simulator itself broke, an
+unreachable or vanished target. A write that keeps the same target changes nothing the report reads.
+
 ## Nearby player interest and verified names
 
 `CollectInterestSlots` exposes the same plane-filtered player set that the authoritative snapshot pass uses.

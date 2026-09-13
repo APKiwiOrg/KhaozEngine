@@ -5,6 +5,18 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.40.2
+
+`TileWorldServer.SetPlayerState` no longer lets a lock the game cleared be reported as a failure to reach
+(Grimhollow#166).
+
+- A write that drops or changes `TileMoveState.CombatTarget` removes that seat's entry from the tick's broken-lock
+  watch, so `ReportBrokenLocks` raises no `OnCannotReach` and sends no `ke:cannot-reach` for it. The report now
+  covers only locks the simulator itself broke.
+- The case that hit was a game pausing a fight from `OnCombatEvent`, which `ResolveCombat` raises one step ahead
+  of the report: the player's own landed blow was answered with a cannot-reach notice on every damaging hit.
+- Behaviour fix only. No API surface changed.
+
 ## 18.40.1
 
 Radial menus keep their fills inside the wheel and show distinct disabled colours and inline requirements.

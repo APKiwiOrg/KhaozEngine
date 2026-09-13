@@ -210,6 +210,13 @@ as the rotated `Draw` overload. The source UV corners `(u0,v0)`, `(u1,v0)`, `(u1
 four corners in order. Corners need not form a rectangle, and two coincident corners are allowed (the quad
 collapses to a triangle), which is how the Gui radial cooldown fan is built.
 
+The overload taking `top` and `bottom` colors assigns them to the first two and last two corners respectively.
+The GPU interpolates between those edges, retaining the same geometry, UVs, batching and blend behavior.
+
+`PrimitiveRenderer.DrawFilledArcBandGradient` draws an annulus slice with separate inner and outer colors.
+Each exact arc segment uses an interpolated quad, so neighboring segments share edges without translucent
+overlap or flat shading bands. Angles, segment sizing and winding match `DrawFilledArcBand`.
+
 ## 2D particles + ambient fields (`Vfx`)
 
 `Particle2DSystem` is a fixed-size, zero-allocation, deterministic (seeded `XorRng`) screen-space particle pool.

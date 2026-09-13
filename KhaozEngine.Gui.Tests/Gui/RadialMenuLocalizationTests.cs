@@ -74,6 +74,41 @@ namespace KhaozEngine.Tests.Gui
             }
         }
 
+        [Fact]
+        public void Open_resolves_choice_prompt_once_and_retains_the_resolved_value()
+        {
+            IStringCatalog? saved = LocalizationContext.Catalog;
+            var catalog = new CountingCatalog();
+            LocalizationContext.Catalog = catalog;
+            try
+            {
+                var menu = new RadialMenu
+                {
+                    SafeBounds = new Rect(0f, 0f, 960f, 540f),
+                    QuickSelectLabel = new StringId("radial.quickSelect"),
+                };
+                menu.Open(
+                    new StringId("radial.title"),
+                    [new RadialMenuEntry(new StringId("radial.entry"), 101, InitialChoiceTag: 10)],
+                    new Vector2(480f, 270f),
+                    [new RadialMenuChoice(new StringId("radial.choice"), 10)],
+                    new StringId("radial.choicePrompt"));
+
+                Assert.Equal(5, catalog.ResolveCount);
+                Assert.Equal("Choose quantity", menu.ResolvedChoicePrompt);
+                Assert.Equal("Quick craft last", menu.ResolvedQuickSelectLabel);
+
+                LocalizationContext.Catalog = null;
+                Assert.Equal("Choose quantity", menu.ResolvedChoicePrompt);
+                Assert.Equal("Quick craft last", menu.ResolvedQuickSelectLabel);
+                Assert.Equal(5, catalog.ResolveCount);
+            }
+            finally
+            {
+                LocalizationContext.Catalog = saved;
+            }
+        }
+
         sealed class CountingCatalog : IStringCatalog
         {
             public int ResolveCount { get; private set; }
@@ -87,6 +122,8 @@ namespace KhaozEngine.Tests.Gui
                     "radial.entry" => "Cook",
                     "radial.detail" => "Prepare a meal",
                     "radial.choice" => "One",
+                    "radial.choicePrompt" => "Choose quantity",
+                    "radial.quickSelect" => "Quick craft last",
                     _ => key,
                 };
             }

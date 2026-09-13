@@ -443,6 +443,40 @@ void main() {
         public void DrawQuad(Texture2D tex, Vector2 topLeft, Vector2 topRight, Vector2 bottomRight, Vector2 bottomLeft, Vector4 srcUV, Color color) =>
             EmitQuad(tex, topLeft, topRight, bottomRight, bottomLeft, srcUV, color);
 
+        /// <summary>
+        /// Draws an arbitrary convex quad through the same geometry and UV path as the single-color
+        /// <see cref="DrawQuad(Texture2D, Vector2, Vector2, Vector2, Vector2, Vector4, Color)"/> overload.
+        /// <paramref name="top"/> colors <paramref name="topLeft"/> and <paramref name="topRight"/>.
+        /// <paramref name="bottom"/> colors <paramref name="bottomRight"/> and <paramref name="bottomLeft"/>.
+        /// The GPU interpolates between the two edges across both constituent triangles. This allows a caller to
+        /// orient the gradient along any convex quad by choosing which geometric edges occupy the top and bottom
+        /// argument positions. Two coincident corners remain valid for a triangular fan slice.
+        /// </summary>
+        public void DrawQuad(
+            Texture2D tex,
+            Vector2 topLeft,
+            Vector2 topRight,
+            Vector2 bottomRight,
+            Vector2 bottomLeft,
+            Vector4 srcUV,
+            Color top,
+            Color bottom) =>
+            EmitQuad(
+                tex,
+                topLeft,
+                topRight,
+                bottomRight,
+                bottomLeft,
+                srcUV,
+                (Vector4)top,
+                (Vector4)bottom,
+                Vector2.Zero,
+                Vector2.Zero,
+                Vector2.Zero,
+                Vector2.Zero,
+                Vector4.Zero,
+                Vector2.Zero);
+
         // One quad corner in world space: rotate the local offset of normalized corner (cx, cy) about the pivot.
         // Internal so the rotated-corner geometry is unit-testable without a GPU.
         internal static Vector2 RotatedCorner(float cx, float cy, Vector2 position, Vector2 size, Vector2 origin, float cos, float sin)

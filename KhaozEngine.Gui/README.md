@@ -346,7 +346,7 @@ wheel input over the box. Call it before world picking and draw it with the same
 other retained widgets. Sparse history stays at the top of the history viewport by default. Set
 `HistoryAlignment` to `ChatHistoryAlignment.Bottom` when sparse rows should grow upward from the bottom. Full
 and overflowing histories keep the existing layout and scrolling. The composer stays internal. Configure the
-chatbox through these placement-neutral properties:
+chatbox through these public `ChatBox` properties:
 
 ```csharp
 public ChatHistoryAlignment HistoryAlignment { get; set; }

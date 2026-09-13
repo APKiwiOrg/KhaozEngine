@@ -1459,7 +1459,7 @@ composer, ordinary, own, system and timestamp colours. Sparse history is placed 
 by default. Set `HistoryAlignment` to `ChatHistoryAlignment.Bottom` to place sparse rows against the bottom and
 grow them upward as entries arrive. Full and overflowing histories retain the existing layout and scrolling.
 
-The composer remains internal. Its public configuration surface is:
+The composer remains internal. These are public `ChatBox` properties:
 
 ```csharp
 public ChatHistoryAlignment HistoryAlignment { get; set; }

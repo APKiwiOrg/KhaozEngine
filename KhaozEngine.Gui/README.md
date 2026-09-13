@@ -357,11 +357,14 @@ chatbox through these public `ChatBox` properties:
 ```csharp
 public ChatHistoryAlignment HistoryAlignment { get; set; }
 public LocalizedText ComposerPlaceholder { get; set; }
+public LocalizedText ComposerPrefix { get; set; }
 public int MaxInputLength { get; set; }
 ```
 
 `HistoryAlignment` defaults to `ChatHistoryAlignment.Top`. `ComposerPlaceholder` resolves lazily through the
-current localization catalog and defaults to empty.
+current localization catalog and defaults to empty. `ComposerPrefix` does the same and forwards to the internal
+`TextInput.PrefixContent`. The prefix is presentation only, so it cannot be edited and does not count toward
+`MaxInputLength`.
 `MaxInputLength` defaults to 32 and rejects zero or negative values. Lowering it reclamps any existing composer
 text immediately through the normal `TextInput.SetText` path.
 
@@ -376,6 +379,7 @@ var chat = new ChatBox(history, new Rect(16, 420, 460, 284), font)
 {
     HistoryAlignment = ChatHistoryAlignment.Bottom, // Optional. Top is the default.
     ComposerPlaceholder = Strings.ChatPlaceholder,
+    ComposerPrefix = LocalizedText.Of(Strings.ChatPlayerPrefix, playerName), // Optional localized prefix.
     MaxInputLength = 160,
     ShowTimestamps = settings.ShowChatTimestamps,
     Submitted = SendNearbyChat
@@ -610,13 +614,17 @@ chat.Draw(batch, white);
     A held key auto-repeats (Backspace deletes / a character keeps typing) at the OS repeat rate. `SetText(value)`
     replaces the buffer programmatically (clamped to `MaxLength`, seen as a change by the next `Update`); `Focus()` /
     `Unfocus()` drive focus directly. The placeholder is `LocalizedText` via `PlaceholderContent` (the former
-    `Placeholder` string is an `[Obsolete]` shim). `Opacity` fades the whole field for a host transition, and
-    `TextScale` (default `1f`) scales the text and placeholder only (the rect, the caret sliver and the
-    hit-testing are unchanged). The scale carries every width term the draw derives, so the caret still trails
-    the last glyph and the overflow clip engages where the drawn text actually reaches the border. Text
-    wider than the box is clipped to it (caret included) rather than painting over whatever is beside the field,
-    and the clip only engages when the content actually overflows, so a field that fits costs no extra flush.
-    `NumberField` clips the same way. Neither scrolls the visible window with the caret yet.
+    `Placeholder` string is an `[Obsolete]` shim). `PrefixContent` is an optional `LocalizedText` that defaults to
+    empty and resolves lazily through the current localization catalog. It draws in `TextColor` before either the
+    placeholder or typed text. It is presentation only, so editing and `MaxLength` apply solely to the text
+    buffer. `Opacity` fades the whole field for a host transition, and `TextScale` (default `1f`) scales the prefix,
+    text and placeholder only (the rect, the caret sliver and the hit-testing are unchanged). All three share the
+    field's content inset and overflow clip. The caret sits after the prefix plus typed text, or after the prefix
+    alone when the buffer is empty. The scale carries every width term the draw derives, so the overflow clip
+    engages where the drawn content actually reaches the border. Content wider than the box is clipped to it
+    (caret included) rather than painting over whatever is beside the field, and the clip only engages when the
+    content actually overflows, so a field that fits costs no extra flush. `NumberField` clips the same way.
+    Neither scrolls the visible window with the caret yet.
   - `Tooltip` - auto-sized floating bubble; `ComputeBounds` (flip/clamp) is a pure, testable layout function.
     Opt-in (default off): a two-column title (`Show(title, titleRight, ...)`), a `ShowTitleSeparator` rule under the
     title, a width cap (`MaxWidth` px and/or `MaxWidthFraction` of the viewport) that word-wraps long body lines

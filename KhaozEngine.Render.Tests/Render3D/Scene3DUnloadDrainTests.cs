@@ -113,7 +113,7 @@ namespace KhaozEngine.Tests.Render3D
         // completion fences there is no such policy to measure, so this skips with the backend named rather than
         // failing an assertion it can never satisfy (#423).
         [GpuFact(RequiresCompletionFences = true)]
-        public void RetiredMeshBuffers_OnAFencedDevice_AreFreedWithoutEverDraining()
+        public void Golden3D_RetiredMeshBuffers_OnAFencedDevice_AreFreedWithoutEverDraining()
         {
             var (gpu, spy, scene, tex, fb) = MakeScene();
             using (gpu) using (scene) using (tex) using (fb)
@@ -127,16 +127,22 @@ namespace KhaozEngine.Tests.Render3D
 
                 // Poll to ripeness. The batch is sealed on the first boundary and freed on the first boundary its
                 // fence has signaled, which may well be that same one: an empty submission behind an idle queue
-                // completes in microseconds. WHICH boundary it lands on is not the contract and is not asserted
-                // here (GpuRetireQueueTests drives a fence by hand for that). The bound is generous only so a
-                // loaded machine cannot flake it.
-                for (int i = 0; i < 200 && scene.RetiredResourceCount > 0; i++)
+                // often completes in microseconds. WHICH boundary it lands on is not the contract and is not
+                // asserted here (GpuRetireQueueTests drives a fence by hand for that). Wall time is the bound
+                // because an iteration is not a unit of time on strict lavapipe under a parallel full-suite load.
+                const int settleTimeoutMs = 10_000;
+                long settleStart = System.Diagnostics.Stopwatch.GetTimestamp();
+                double SettleMs() => (System.Diagnostics.Stopwatch.GetTimestamp() - settleStart) * 1000.0
+                    / System.Diagnostics.Stopwatch.Frequency;
+                while (scene.RetiredResourceCount > 0 && SettleMs() < settleTimeoutMs)
                 {
                     scene.Begin();
                     if (scene.RetiredResourceCount > 0) System.Threading.Thread.Sleep(1);
                 }
 
-                Assert.Equal(0, scene.RetiredResourceCount);
+                Assert.True(scene.RetiredResourceCount == 0,
+                    $"the retired pool still holds {scene.RetiredResourceCount} resources after {SettleMs():F0} ms, "
+                    + "so the retirement fence never signaled");
                 Assert.Equal(fencedBefore + 1, spy.FencedSubmitCalls);   // one fence sealed the whole batch
                 Assert.Equal(drainsBefore, spy.WaitForIdleCalls);        // the cycle stalled the CPU exactly never
             }

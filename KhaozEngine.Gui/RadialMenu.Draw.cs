@@ -36,9 +36,15 @@ namespace KhaozEngine.Gui
         Vector2 _drawCenter;
         Vector2 _drawTitlePosition;
         Vector2 _drawDetailPosition;
+        Vector2 _drawLockedFirstLinePosition;
+        Vector2 _drawLockedSecondLinePosition;
+        string? _drawLockedFirstLine;
+        string? _drawLockedSecondLine;
+        float _drawLockedLabelScale;
         int _drawEntryCount = -1;
         int _drawChoiceCount = -1;
         int _drawDetailEntry = -2;
+        int _drawLockedEntry = -2;
 
         public RadialMenuTheme Theme { get; set; } = RadialMenuTheme.Default;
 
@@ -59,6 +65,7 @@ namespace KhaozEngine.Gui
             _drawEntryCount = -1;
             _drawChoiceCount = -1;
             _drawDetailEntry = -2;
+            _drawLockedEntry = -2;
         }
 
         /// <summary>Draws the open radial menu through the shared Render2D batch.</summary>
@@ -128,6 +135,7 @@ namespace KhaozEngine.Gui
                 _drawEntriesSource = _entries;
                 _drawChoicesSource = _choices;
                 _drawDetailEntry = -2;
+                _drawLockedEntry = -2;
             }
 
             if (_drawDetailEntry != ActiveIndex)
@@ -139,6 +147,48 @@ namespace KhaozEngine.Gui
                     _center.Y + Metrics.DetailGap);
                 _drawDetailEntry = ActiveIndex;
             }
+
+            if (_drawLockedEntry != LockedEntryIndex)
+            {
+                CacheLockedEntryText(font);
+                _drawLockedEntry = LockedEntryIndex;
+            }
+        }
+
+        void CacheLockedEntryText(SpriteFont font)
+        {
+            if (LockedEntryIndex < 0)
+            {
+                _drawLockedFirstLine = null;
+                _drawLockedSecondLine = null;
+                return;
+            }
+
+            string label = _entries[LockedEntryIndex].Content;
+            float maximumWidth = Metrics.InnerRadius * 2f - 12f;
+            string firstLine = label;
+            string? secondLine = null;
+            float scale = FittedScale(font.Measure(label).X, Metrics.LabelScale, maximumWidth);
+            if (scale < Metrics.LabelScale * 0.75f &&
+                TrySplitLabel(font, label, out string first, out string second))
+            {
+                firstLine = first;
+                secondLine = second;
+                float widestLine = MathF.Max(font.Measure(first).X, font.Measure(second).X);
+                scale = FittedScale(widestLine, Metrics.LabelScale, maximumWidth);
+            }
+
+            Vector2 firstSize = font.Measure(firstLine) * scale;
+            Vector2 secondSize = secondLine is null ? Vector2.Zero : font.Measure(secondLine) * scale;
+            float blockHeight = firstSize.Y + (secondLine is null ? 0f : secondSize.Y + 1f);
+            float top = _center.Y - blockHeight * 0.5f;
+            _drawLockedFirstLine = firstLine;
+            _drawLockedSecondLine = secondLine;
+            _drawLockedLabelScale = scale;
+            _drawLockedFirstLinePosition = new Vector2(_center.X - firstSize.X * 0.5f, top);
+            _drawLockedSecondLinePosition = new Vector2(
+                _center.X - secondSize.X * 0.5f,
+                top + firstSize.Y + 1f);
         }
 
         void CacheGeometry()
@@ -262,7 +312,7 @@ namespace KhaozEngine.Gui
         {
             for (int i = 0; i < _entries.Length; i++)
             {
-                if (activeOnly && i != ActiveIndex)
+                if (activeOnly && i != HighlightedEntryIndex)
                     continue;
                 primitives.DrawFilledArcBand(
                     batch,
@@ -296,7 +346,9 @@ namespace KhaozEngine.Gui
         {
             for (int i = 0; i < _entries.Length; i++)
             {
-                Vector4 border = i == ActiveIndex ? Theme.BorderActive : Theme.Border;
+                Vector4 border = i == HighlightedEntryIndex
+                    ? Theme.BorderActive
+                    : Theme.Border;
                 Color color = DrawColor(border, _entries[i].Enabled);
                 primitives.DrawArc(batch, _center, Metrics.InnerRadius, Metrics.BorderThickness,
                     _drawStarts[i], _drawSweeps[i], color);
@@ -346,7 +398,9 @@ namespace KhaozEngine.Gui
         {
             for (int i = 0; i < _entries.Length; i++)
             {
-                Vector4 text = i == ActiveIndex ? Theme.Text : Theme.TextMuted;
+                Vector4 text = i == HighlightedEntryIndex
+                    ? Theme.Text
+                    : Theme.TextMuted;
                 batch.DrawString(font, _drawFirstLabelLines[i]!, _drawLabelPositions[i],
                     ForegroundColor(text, _entries[i].Enabled), _drawLabelScales[i]);
                 if (_drawSecondLabelLines[i] is { } secondLine)
@@ -368,6 +422,26 @@ namespace KhaozEngine.Gui
 
         void DrawCenterText(SpriteBatch batch, SpriteFont font)
         {
+            if (LockedEntryIndex >= 0)
+            {
+                batch.DrawString(
+                    font,
+                    _drawLockedFirstLine!,
+                    _drawLockedFirstLinePosition,
+                    (Color)Theme.Text,
+                    _drawLockedLabelScale);
+                if (_drawLockedSecondLine is { } secondLine)
+                {
+                    batch.DrawString(
+                        font,
+                        secondLine,
+                        _drawLockedSecondLinePosition,
+                        (Color)Theme.Text,
+                        _drawLockedLabelScale);
+                }
+                return;
+            }
+
             batch.DrawString(font, _title, _drawTitlePosition, (Color)Theme.Text);
             if (ActiveIndex < 0 || _entries[ActiveIndex].Detail.Length == 0)
                 return;
@@ -390,17 +464,23 @@ namespace KhaozEngine.Gui
                 primitives.DrawFilledRect(batch, shadow, DrawColor(Theme.Shadow, _choices[i].Enabled));
             }
 
-            long selectedTag = ActiveIndex >= 0 ? _entryChoiceTags[ActiveIndex] : 0;
+            int selectedEntryIndex = InteractionMode == RadialMenuInteractionMode.EntryThenChoice
+                ? LockedEntryIndex
+                : ActiveIndex;
+            long selectedTag = selectedEntryIndex >= 0 ? _entryChoiceTags[selectedEntryIndex] : 0;
+            bool footerActionable = InteractionMode != RadialMenuInteractionMode.EntryThenChoice ||
+                LockedEntryIndex >= 0;
             for (int i = 0; i < _choices.Length; i++)
             {
                 bool selected = _choices[i].Tag == selectedTag;
                 bool focused = _footerFocused && i == _focusedChoiceIndex;
+                bool enabled = _choices[i].Enabled && footerActionable;
                 Vector4 fill = selected ? Theme.Accent : Theme.Surface;
                 Vector4 border = selected || focused ? Theme.BorderActive : Theme.Border;
-                primitives.DrawFilledRect(batch, _drawChoiceBounds[i], DrawColor(fill, _choices[i].Enabled));
-                primitives.DrawRect(batch, _drawChoiceBounds[i], DrawColor(border, _choices[i].Enabled), Metrics.BorderThickness);
+                primitives.DrawFilledRect(batch, _drawChoiceBounds[i], DrawColor(fill, enabled));
+                primitives.DrawRect(batch, _drawChoiceBounds[i], DrawColor(border, enabled), Metrics.BorderThickness);
                 batch.DrawString(font, _choices[i].Content, _drawChoiceLabelPositions[i],
-                    ForegroundColor(selected ? Theme.Text : Theme.TextMuted, _choices[i].Enabled), Metrics.LabelScale);
+                    ForegroundColor(selected ? Theme.Text : Theme.TextMuted, enabled), Metrics.LabelScale);
             }
         }
 

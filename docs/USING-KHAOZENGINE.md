@@ -1694,6 +1694,12 @@ tag and its own current footer tag. Footer choices are also opaque `long` tags. 
 quantity or mode semantics. Player-facing title, label, detail, and footer text use `LocalizedText` and resolve
 when `Open` runs. Icon ids stay caller-owned tokens resolved through the optional `IconAtlas` supplied to `Draw`.
 
+`InteractionMode` defaults to `RadialMenuInteractionMode.Immediate`, which keeps the original one-click entry
+flow. Set it to `EntryThenChoice` when the footer is the confirmation step. An enabled entry selection then locks
+that entry without closing. An enabled footer choice commits the locked entry and choice together. The lock cannot
+be changed by pointer hover. Selecting a different enabled entry replaces it. Until an entry is locked, the footer
+is disabled. The locked wedge stays highlighted and its localized entry content is fitted inside the centre plate.
+
 This example uses caller-defined action tags and generic footer tags:
 
 ```csharp
@@ -1728,7 +1734,11 @@ RadialMenuChoice[] modes =
     new(Strings.Fast, FooterTag.Fast, Enabled: canUseFastMode),
 ];
 
-var radial = new RadialMenu { SafeBounds = viewport.DesignBounds };
+var radial = new RadialMenu
+{
+    SafeBounds = viewport.DesignBounds,
+    InteractionMode = RadialMenuInteractionMode.EntryThenChoice,
+};
 
 if (pointer.IsRightTapIn(targetBounds))
 {
@@ -1748,15 +1758,19 @@ radial.Draw(batch, white, font, icons);
 ```
 
 The opening gesture is latched, so the right-click release that caused `Open` cannot immediately select or
-dismiss the menu. While open, its complete `Bounds` is blocked through the shared `Pointer`. A fresh tap on an
-enabled wedge selects it and closes. A footer tap changes the active entry's choice and keeps the menu open. A
-release outside dismisses. Disabled wedges can become active for their detail text but cannot be selected.
-When every entry is disabled, index zero remains active for inspection but no selection can occur.
+dismiss the menu. While open, its complete `Bounds` is blocked through the shared `Pointer`. In `Immediate` mode,
+a fresh tap on an enabled wedge selects it and closes. A footer tap changes the active entry's choice and keeps
+the menu open. In `EntryThenChoice` mode, a fresh tap on an enabled wedge locks or replaces the entry. A footer tap
+does nothing before the lock. After the lock it raises `WasChoiceChanged` when the remembered choice changed,
+raises `WasSelected`, and closes. Pressing a wedge and releasing over the footer activates neither control. A
+release outside dismisses. Disabled wedges can become active for their detail text but cannot be selected. When
+every entry is disabled, index zero remains active for inspection but no selection can occur.
 
 The `InputManager` overload runs the pointer path first, then adds focused keyboard or gamepad navigation. Left
 and Right cycle enabled wedges. Down enters the footer, Up returns to the wheel, Left and Right then cycle enabled
 footer choices, menu-select commits, and menu-cancel closes. Navigation wraps and accepts an optional
-`PlayerIndex`.
+`PlayerIndex`. In `EntryThenChoice` mode, menu-select first locks the focused entry. Down becomes available after
+that lock, and menu-select on the footer commits and closes.
 
 `WasSelected`, `Selection`, `WasChoiceChanged`, `ChoiceChange`, and `WasDismissed` are one-frame results. Read
 them after `Update`. The next update clears them even when the menu is closed. `SetEntryChoice` restores an
@@ -1767,9 +1781,10 @@ state received after the caller built its entry list.
 choice. Tag `0` selects the first enabled choice, or remains `0` when the footer is absent or every supplied footer
 choice is disabled. An all-disabled footer accepts no pointer or navigation choice change. An enabled wedge selected
 in that state returns choice tag `0`. `HoverIndex` is the pointer wedge.
-`ActiveIndex` is the wedge whose detail and footer state are visible. `Bounds` covers the entire clamped wheel
-and footer. `ResolvedTitle`, `ResolvedEntryLabel`, `ResolvedEntryDetail`, and `ResolvedChoiceLabel` expose the
-strings retained at the latest open.
+`ActiveIndex` is the current pointer or navigation wedge. In `EntryThenChoice` mode, the locked wedge and footer
+target stay independent from that active hover. `Bounds` covers the entire clamped wheel and footer.
+`ResolvedTitle`, `ResolvedEntryLabel`, `ResolvedEntryDetail`, and `ResolvedChoiceLabel` expose the strings retained
+at the latest open.
 
 `RadialMenuMetrics` is a public value that controls inner and outer radius, wedge gap, icon size, label scale,
 detail gap, footer gap and button size, composition margin, border thickness, shadow offset, and sheen speed.
@@ -1797,6 +1812,9 @@ low-alpha moving sheen. Its independent centre plate draws a shadow, translucent
 border behind the retained text. The plate stays visible when every entry is disabled, while disabled alpha still
 applies to each entry channel. It has no background blur, refraction, distortion, or framebuffer sampling. A
 consumer that needs those effects must compose them in its own render pipeline.
+
+A menu without footer choices should use `Immediate` explicitly. This keeps a source or station picker on the
+one-click path while recipe or amount menus opt into `EntryThenChoice`.
 
 ### Opaque source-target use between widgets
 

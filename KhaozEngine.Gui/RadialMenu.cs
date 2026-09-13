@@ -17,6 +17,7 @@ namespace KhaozEngine.Gui
         Vector2 _center;
         int _focusedEntryIndex = -1;
         int _pointerEntryIndex = -1;
+        int _lockedEntryIndex = -1;
         int _focusedChoiceIndex = -1;
         bool _footerFocused;
         bool _openedThisFrame;
@@ -60,6 +61,8 @@ namespace KhaozEngine.Gui
             }
         }
         public bool IsOpen { get; private set; }
+        /// <summary>Controls whether entry selection commits immediately or waits for a footer choice.</summary>
+        public RadialMenuInteractionMode InteractionMode { get; set; }
         public int HoverIndex { get; private set; } = -1;
         public int ActiveIndex { get; private set; } = -1;
         public bool WasSelected { get; private set; }
@@ -75,6 +78,8 @@ namespace KhaozEngine.Gui
         internal Vector2 Center => _center;
         internal int FocusedChoiceIndex => _focusedChoiceIndex;
         internal bool FooterFocused => _footerFocused;
+        internal int HighlightedEntryIndex => _lockedEntryIndex >= 0 ? _lockedEntryIndex : ActiveIndex;
+        internal int LockedEntryIndex => _lockedEntryIndex;
         internal float SheenPhase => _sheenPhase;
 
         public void Open(
@@ -128,6 +133,7 @@ namespace KhaozEngine.Gui
             Bounds = bounds;
             _focusedEntryIndex = FindFirstEnabledEntry();
             _pointerEntryIndex = -1;
+            _lockedEntryIndex = -1;
             ActiveIndex = _focusedEntryIndex;
             _focusedChoiceIndex = ChoiceIndexForEntry(_focusedEntryIndex);
             _footerFocused = false;
@@ -212,7 +218,7 @@ namespace KhaozEngine.Gui
                 return false;
 
             if (ProcessFooterTap(pointer))
-                return false;
+                return WasSelected;
 
             if (ProcessWedgeTap(pointer))
                 return true;
@@ -249,10 +255,11 @@ namespace KhaozEngine.Gui
 
             if (input.IsMenuDown(player))
             {
-                if (_choices.Length > 0 && ActiveIndex >= 0)
+                int choiceEntryIndex = KeyboardChoiceEntryIndex();
+                if (_choices.Length > 0 && choiceEntryIndex >= 0)
                 {
                     _footerFocused = true;
-                    _focusedChoiceIndex = ChoiceIndexForEntry(_focusedEntryIndex);
+                    _focusedChoiceIndex = ChoiceIndexForEntry(choiceEntryIndex);
                 }
                 return false;
             }
@@ -281,11 +288,16 @@ namespace KhaozEngine.Gui
             if (_footerFocused)
             {
                 CommitFocusedChoice();
-                return false;
+                return WasSelected;
             }
 
             if (_focusedEntryIndex >= 0 && _entries[_focusedEntryIndex].Enabled)
             {
+                if (InteractionMode == RadialMenuInteractionMode.EntryThenChoice)
+                {
+                    LockEntry(_focusedEntryIndex);
+                    return false;
+                }
                 SelectEntry(_focusedEntryIndex);
                 return true;
             }
@@ -300,6 +312,7 @@ namespace KhaozEngine.Gui
             ActiveIndex = -1;
             _focusedEntryIndex = -1;
             _pointerEntryIndex = -1;
+            _lockedEntryIndex = -1;
             _focusedChoiceIndex = -1;
             _footerFocused = false;
             _blockingPointer = null;
@@ -316,7 +329,7 @@ namespace KhaozEngine.Gui
 
         bool ProcessFooterTap(Pointer pointer)
         {
-            int entryIndex = _pointerEntryIndex >= 0 ? _pointerEntryIndex : ActiveIndex;
+            int entryIndex = PointerChoiceEntryIndex();
             if (entryIndex < 0)
                 return false;
 
@@ -330,6 +343,8 @@ namespace KhaozEngine.Gui
                     continue;
 
                 ChangeEntryChoice(entryIndex, _choices[i].Tag);
+                if (InteractionMode == RadialMenuInteractionMode.EntryThenChoice)
+                    SelectEntry(entryIndex);
                 return true;
             }
 
@@ -349,8 +364,23 @@ namespace KhaozEngine.Gui
             if (!_entries[releasedEntry].Enabled)
                 return false;
 
+            if (InteractionMode == RadialMenuInteractionMode.EntryThenChoice)
+            {
+                LockEntry(releasedEntry);
+                return false;
+            }
+
             SelectEntry(releasedEntry);
             return true;
+        }
+
+        void LockEntry(int entryIndex)
+        {
+            _lockedEntryIndex = entryIndex;
+            _focusedEntryIndex = entryIndex;
+            _focusedChoiceIndex = ChoiceIndexForEntry(entryIndex);
+            _footerFocused = false;
+            ActiveIndex = entryIndex;
         }
 
         void SelectEntry(int entryIndex)
@@ -363,10 +393,21 @@ namespace KhaozEngine.Gui
 
         void CommitFocusedChoice()
         {
-            if (_focusedEntryIndex < 0 || _focusedChoiceIndex < 0 || !_choices[_focusedChoiceIndex].Enabled)
+            int entryIndex = KeyboardChoiceEntryIndex();
+            if (entryIndex < 0 || _focusedChoiceIndex < 0 || !_choices[_focusedChoiceIndex].Enabled)
                 return;
-            ChangeEntryChoice(_focusedEntryIndex, _choices[_focusedChoiceIndex].Tag);
+            ChangeEntryChoice(entryIndex, _choices[_focusedChoiceIndex].Tag);
+            if (InteractionMode == RadialMenuInteractionMode.EntryThenChoice)
+                SelectEntry(entryIndex);
         }
+
+        int PointerChoiceEntryIndex() => InteractionMode == RadialMenuInteractionMode.EntryThenChoice
+            ? _lockedEntryIndex
+            : (_pointerEntryIndex >= 0 ? _pointerEntryIndex : ActiveIndex);
+
+        int KeyboardChoiceEntryIndex() => InteractionMode == RadialMenuInteractionMode.EntryThenChoice
+            ? _lockedEntryIndex
+            : _focusedEntryIndex;
 
         void ChangeEntryChoice(int entryIndex, long choiceTag)
         {

@@ -20,6 +20,15 @@ Tile draw priority can keep every moving body wholly visible while collapsing on
   presentation. Custom rosters can pass the local motion answer explicitly.
 - The existing one-body-per-tile policy remains the default, including its step and fixed-window fades.
 
+## 18.40.2
+
+Radial menus can lock an entry before a footer choice commits it, preventing hover from retargeting an action.
+
+- `RadialMenu.InteractionMode` defaults to `Immediate`, preserving existing entry-click behaviour.
+- `EntryThenChoice` locks an enabled entry on click, then commits that entry and quantity from the footer.
+- Pointer hover keeps the locked entry, while clicking another enabled entry deliberately changes it.
+- The locked entry stays highlighted and named. Footer choices remain inactive until an entry is locked.
+
 ## 18.40.1
 
 Radial menus keep their fills inside the wheel and show distinct disabled colours and inline requirements.

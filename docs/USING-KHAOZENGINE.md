@@ -1042,11 +1042,13 @@ if (gui.Button(font, btnRect, Strings.Resume, style, scale: 1.5f)) Resume();    
 The retained widgets that draw text follow the same idiom, one scale field per widget defaulting to `1f`
 (label-only: the widget's rect, hit-test, and chrome never change with scale): `Button.LabelScale`,
 `TabBar.TextScale` (each tab label), `Dropdown.TextScale` (the trigger label and every option row),
-`TextInput.TextScale` (the text and the placeholder), `TreeView.TextScale` (the node labels),
+`TextInput.TextScale` (the prefix, text and placeholder), `TreeView.TextScale` (the node labels),
 `ProgressBar.OverlayTextScale` (the centred caption), and `Tooltip`'s per-line `TooltipLine.Scale` plus
 `Tooltip.TitleScale` for the title row, so a single shared font can render a whole size hierarchy.
-`TextInput` carries its scale through every width term the draw derives, so the caret still trails the last
-glyph and the overflow clip engages where the drawn text actually reaches the border.
+`TextInput.PrefixContent` is an optional `LocalizedText` that defaults to empty and resolves against the current
+catalog on each draw. The prefix uses `TextColor` and shares the field's scale, content inset and overflow clip
+with the placeholder or typed text. It is not part of the editable buffer or `MaxLength`. The caret trails the
+prefix plus typed text, or the prefix alone when the buffer is empty.
 
 ```csharp
 var compact = new Button(btnRect, Strings.Resume, font) { LabelScale = 0.56f };   // small label, same fixed rect
@@ -1464,14 +1466,17 @@ The composer remains internal. These are public `ChatBox` properties:
 ```csharp
 public ChatHistoryAlignment HistoryAlignment { get; set; }
 public LocalizedText ComposerPlaceholder { get; set; }
+public LocalizedText ComposerPrefix { get; set; }
 public int MaxInputLength { get; set; }
 ```
 
 `HistoryAlignment` defaults to `ChatHistoryAlignment.Top`. `ComposerPlaceholder` is lazily resolved, so switching
-the ambient catalog changes the placeholder on the next draw. It defaults to empty. `MaxInputLength` preserves the
-existing 32-character default and accepts only positive values. Assigning a lower limit immediately reclamps
-existing text through `TextInput.SetText`, preserving the normal change-detection path. There is no raw string
-placeholder overload on `ChatBox`.
+the ambient catalog changes the placeholder on the next draw. It defaults to empty. `ComposerPrefix` is also
+localized, lazily resolved and empty by default. It forwards to the internal `TextInput.PrefixContent`, so it draws
+before the placeholder or typed text without becoming editable or consuming `MaxInputLength`. `MaxInputLength`
+preserves the existing 32-character default and accepts only positive values. Assigning a lower limit immediately
+reclamps existing text through `TextInput.SetText`, preserving the normal change-detection path. There is no raw
+string placeholder or prefix overload on `ChatBox`.
 
 ```csharp
 using System;
@@ -1484,6 +1489,7 @@ var chat = new ChatBox(history, new Rect(16, 420, 460, 284), font)
 {
     HistoryAlignment = ChatHistoryAlignment.Bottom, // Optional. Top is the default.
     ComposerPlaceholder = Strings.ChatPlaceholder,
+    ComposerPrefix = LocalizedText.Of(Strings.ChatPlayerPrefix, playerName), // Optional localized prefix.
     MaxInputLength = 160,
     ShowTimestamps = settings.ShowChatTimestamps,
     Submitted = SendNearbyChat
@@ -2273,7 +2279,8 @@ wheel overload) to enable wheel + drag-to-scroll (scissor-clipped; `ScrollOffset
 tunes wheel speed). Set `WrapLongLabels = true` to wrap a stat row whose value is empty across the content width,
 `PopupRow.Stat(label, value, valueColor, iconColor)` for a colour swatch before the label, and `Opacity` (0..1) to
 fade the whole popup with a host screen transition. `Toggle` / `Slider` / `TextInput` carry the same `Opacity` knob;
-`TextInput` adds `SetText(value)`, public `Focus()` / `Unfocus()`, and a `LocalizedText` `PlaceholderContent`.
+`TextInput` adds `SetText(value)`, public `Focus()` / `Unfocus()`, and localized `PlaceholderContent` and
+`PrefixContent`. The optional prefix is non-editable and defaults to empty.
 
 **Tab bar / segmented control (`TabBar`, 10.25.0)** - a panel switcher with a horizontal row by default
 (Goals/Tree split, settings sub-pages, inventory categories). Construct it with the localized labels, assign
@@ -6355,7 +6362,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.43.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.44.0" />
 ```
 
 ```csharp
@@ -11947,7 +11954,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.43.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.44.0" />
 ```
 
 ```csharp
@@ -11983,7 +11990,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.43.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.44.0" />
 ```
 
 ```csharp
@@ -12225,7 +12232,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.43.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.44.0" />
 ```
 
 ```csharp
@@ -14273,7 +14280,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="18.43.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="18.44.0" />
 </ItemGroup>
 ```
 

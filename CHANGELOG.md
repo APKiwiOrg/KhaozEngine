@@ -5,6 +5,16 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.44.0
+
+Text inputs can draw a localized, non-editable prefix before their placeholder or typed content.
+
+- `TextInput.PrefixContent` defaults to empty and resolves lazily through the current localization catalog. The
+  prefix uses `TextColor` and shares `TextScale`, the content inset and clipping with the visible content.
+- The caret follows the prefix plus typed text, or the prefix alone when the buffer is empty. The prefix remains
+  outside the editable buffer and does not count toward `MaxLength`.
+- `ChatBox.ComposerPrefix` forwards the same optional prefix to the internal composer.
+
 ## 18.43.0
 
 The journal executor presents at admission and commits behind (#868), and a SQL Server journal operation commits in

@@ -14,7 +14,7 @@ namespace KhaozEngine.Tests.Gui
     /// so every existing caller renders byte-identically.
     /// <para>
     /// The layout math is here rather than on-device: <see cref="GuiDraw.CenteredTextY"/> is the one vertical
-    /// centring term all four share, and <see cref="TextInput.DrawLayout"/> is the field's three width terms (the
+    /// centring term all four share, and the text input draw layout is the field's three width terms (the
     /// caret x, the overflow-clip test, and the drawn text). TextInput is the trap of this set: it carries THREE
     /// width terms rather than one, and missing the clip test is silent (it under-clips or over-flushes instead of
     /// throwing). The forwards from each Draw into the scaled DrawString have their own on-device net

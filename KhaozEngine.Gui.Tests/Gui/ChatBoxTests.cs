@@ -51,6 +51,29 @@ public sealed class ChatBoxTests
     }
 
     [Fact]
+    public void Composer_prefix_defaults_empty_and_forwards_localized_content()
+    {
+        IStringCatalog? previous = LocalizationContext.Catalog;
+        try
+        {
+            var box = Box();
+            Assert.Equal("", box.ComposerPrefix.Resolve());
+
+            box.ComposerPrefix = new StringId("Chat.PlayerPrefix");
+            LocalizationContext.Catalog = new DictionaryCatalog().Add("Chat.PlayerPrefix", "Alice: ");
+            Assert.Equal("Alice: ", box.ComposerPrefix.Resolve());
+            Assert.Equal(box.ComposerPrefix, box.Composer.PrefixContent);
+
+            LocalizationContext.Catalog = new DictionaryCatalog().Add("Chat.PlayerPrefix", "Alicia: ");
+            Assert.Equal("Alicia: ", box.ComposerPrefix.Resolve());
+        }
+        finally
+        {
+            LocalizationContext.Catalog = previous;
+        }
+    }
+
+    [Fact]
     public void Max_input_length_limits_typed_composer_input()
     {
         var box = Box();
@@ -120,6 +143,30 @@ public sealed class ChatBoxTests
         Assert.Equal(new[] { "hello" }, sent);
         Assert.True(box.ComposerOpen);
         Assert.Equal("", box.Composer.Text);
+    }
+
+    [Fact]
+    public void Composer_prefix_does_not_open_focus_or_join_the_submitted_value()
+    {
+        var box = Box();
+        var pointer = new Pointer();
+        var sent = new List<string>();
+        box.ComposerPrefix = LocalizedText.Raw("Alice: ");
+        box.Submitted = sent.Add;
+
+        Assert.False(box.ComposerOpen);
+        Assert.False(box.OwnsKeyboard);
+
+        Update(box, pointer, Press(Key.Enter));
+        box.Composer.SetText("hello");
+        Update(box, pointer, Release(Key.Enter));
+        Update(box, pointer, Press(Key.Enter));
+
+        Assert.Equal(new[] { "hello" }, sent);
+        Assert.True(box.ComposerOpen);
+        Assert.True(box.OwnsKeyboard);
+        Assert.Equal("", box.Composer.Text);
+        Assert.Equal("Alice: ", box.ComposerPrefix.Resolve());
     }
 
     [Fact]

@@ -469,6 +469,41 @@ public class ClientPredictionTests
     }
 
     [Fact]
+    public void A_correction_speed_cap_walks_a_large_offset_off_at_a_constant_speed_instead_of_lurching()
+    {
+        // Tick 0.25 s, cap 4 units/sec: a correction may move at most 1 unit per tick's worth of render time however
+        // large it is, so a 3-unit misprediction resolves as a steady walk over several ticks rather than the damped
+        // decay's near-instant lurch.
+        const float tick = 0.25f, cap = 4f;
+        var settings = new PredictionSettings(tick, MaxPendingCommands: 64, HardSnapDistance: 100f,
+            CorrectionRate: 8f, CorrectionDeadZone: 0.01f, MaxCorrectionSpeed: cap);
+        var p = new ClientPrediction<FakeState, Vector2>(new MoveSimulator(), settings);
+        p.Reset(new FakeState(Vector2.Zero));
+
+        p.Predict(new Vector2(12f, 0f));                                  // predicted X = 3 (12 * 0.25)
+        p.AdvancePresentation(tick);                                      // rendered catches up to 3
+        // The server says X = 0: a 3-unit offset, well under the 100 hard snap, so it corrects rather than cuts.
+        var r = p.Reconcile(1, new FakeState(Vector2.Zero), lastAcknowledgedSeq: 0);
+        Assert.False(r.HardSnapApplied);
+
+        float previous = p.RenderedState.Position.X;                      // still ~3 the frame the snapshot lands
+        Assert.Equal(3f, previous, 2);
+        int frames = 0;
+        // Each 0.05 s frame may move the render at most cap * dt = 0.2 units, so no single frame lurches.
+        while (p.RenderedState.Position.X > 0.005f && frames < 400)
+        {
+            p.AdvancePresentation(0.05f);
+            float moved = previous - p.RenderedState.Position.X;
+            Assert.True(moved <= cap * 0.05f + 1e-4f, $"frame moved {moved}, over the {cap * 0.05f} speed cap");
+            previous = p.RenderedState.Position.X;
+            frames++;
+        }
+        // It did take the walk it was capped to (a lurch would have finished in one or two frames), and it arrived.
+        Assert.True(frames >= 12, $"resolved in {frames} frames, faster than the speed cap allows");
+        Assert.Equal(0f, p.RenderedState.Position.X, 2);
+    }
+
+    [Fact]
     public void First_reconcile_after_reset_reports_teleported_then_steady_does_not()
     {
         // The uniform join signal: the first reconcile after a Reset seed reports a teleport (so the consumer snaps

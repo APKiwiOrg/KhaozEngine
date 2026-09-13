@@ -9,12 +9,23 @@ namespace KhaozEngine.Netcode;
 /// offset snaps exactly onto the predicted state, so it settles instead of chasing float jitter forever. This is a
 /// presentation-side cleanup threshold, not a reconcile gate: every non-hard-snap correction is smoothed however
 /// small, so corrections glide rather than pop.</param>
+/// <param name="MaxCorrectionSpeed">The fastest the planar reconciliation offset may resolve, in POSITION units per
+/// second (the same units as <see cref="IPredictedState{TSelf}.Position"/>, so tiles per second for a tile client and
+/// world units per second for a continuous one). 0 (the default) leaves the critically-damped decay in charge, which
+/// resolves a correction in about <c>1 / CorrectionRate</c> seconds however large it is, so a whole-step correction
+/// lurches onto its answer. A positive value instead WALKS the offset off at a constant speed capped here until it is
+/// small enough for the damped ease to finish it, so a lattice step disagreement reads as one more walked step rather
+/// than a snap. Set it to the body's own step speed. It bounds only the PLANAR axis: the vertical stays on the damped
+/// decay, because a buoyancy spring emits a continuous stream of tiny vertical corrections a speed cap would make
+/// crawl. A hard snap and a teleport still cut regardless, so this only shapes the corrections that were going to
+/// glide anyway.</param>
 public readonly record struct PredictionSettings(
     float TickSeconds,
     int MaxPendingCommands,
     float HardSnapDistance,
     float CorrectionRate,
-    float CorrectionDeadZone)
+    float CorrectionDeadZone,
+    float MaxCorrectionSpeed = 0f)
 {
     /// <summary>Reasonable defaults for a 60 Hz action game: 60 Hz tick, 256-command buffer, 100u snap, rate 8,
     /// 0.03u (3 cm) dead-zone. The dead-zone is small so every human-scale latency misprediction smooths instead of

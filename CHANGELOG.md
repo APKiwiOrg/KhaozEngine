@@ -5,6 +5,32 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.46.0
+
+A tile client walks off a chase-arrival misprediction instead of snapping, and a stalled frame no longer leaves
+the server applying that client's input late for the rest of the session (#873, #874).
+
+- `PredictionSettings.MaxCorrectionSpeed` (default 0, off) caps how fast the planar reconciliation offset resolves,
+  in position units per second. Above zero the offset WALKS off at that constant speed until the damped ease is the
+  slower of the two near the end, so a lattice step disagreement reads as one more walked step rather than a lurch.
+  Only the planar axis is capped, and the vertical stays on the critically-damped decay. A hard snap and a teleport
+  still cut.
+- The tile client's default prediction now cuts only past a few tiles (`HardSnapDistance` 0.5 -> 2.5 tiles) and
+  sets `MaxCorrectionSpeed` to one walk step per step duration, so a chase misprediction near a moving target's
+  arrival walks the body onto the corrected tile while the rules already hold it there. A genuine disagreement
+  past a chase step still cuts, and a teleport cuts at any distance. The blunt half-tile cut that drew every chase
+  misprediction as a teleport is gone.
+- `TileWorldClient.Tick` runs at most ONE command tick per frame and sheds the rest keeping the sub-tick phase
+  (`FixedTickHost.Advance` gains `keepPhaseWhenShedding`, default false). A stalled client used to burst one command
+  per missed tick, and the one-per-tick server drain never worked that backlog off, so every click landed several
+  ticks late for good. The missed ticks were already synthesised by the server, so one command is enough.
+- Observability: `RemoteCommandQueue.Depth(slot)`, `TileWorldServer.InputDepth(slot)`,
+  `ClientPrediction.PendingCommandCount` and `TileWorldClient.PendingCommandCount`, the reads that show a backlog
+  on a diagnostics panel.
+- Tests: `TileArrivalCorrectionTests` (a diverged chase step is walked off not cut, a teleport still cuts),
+  `TileInputBacklogTests` (one command per stalled frame, no trail after), the speed-cap `ClientPrediction` and
+  `FixedTickHost` cases, and the `TileGlideTests` / loopback ruling tests updated from cut-a-step to walk-a-step.
+
 ## 18.45.0
 
 Networked characters support server-authored ballistic movement commitments through collision and prediction.

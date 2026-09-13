@@ -165,4 +165,10 @@ public sealed class RemoteCommandQueue<TCommand>
     /// <summary>The highest seq dequeued for <paramref name="slot"/> so far, or -1 if none.</summary>
     public int GetLastAcknowledgedSeq(int slot) =>
         lastAcknowledgedSeqBySlot.GetValueOrDefault(slot, -1);
+
+    /// <summary>How many commands are buffered (stored and not yet dequeued) for <paramref name="slot"/>, 0 for an
+    /// unknown slot. The host's input backlog for that slot: a steady one-per-tick sender sits at 0 or 1, and a value
+    /// that climbs and STAYS there is input the host is applying that many ticks late.</summary>
+    public int Depth(int slot) =>
+        queuesBySlot.TryGetValue(slot, out SortedList<int, TCommand>? queue) ? queue.Count : 0;
 }

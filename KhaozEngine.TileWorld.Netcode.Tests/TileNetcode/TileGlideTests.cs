@@ -150,35 +150,38 @@ public class TileGlideTests
     /// zeroes the offset instead of decaying one.</para>
     /// </summary>
     [Fact]
-    public void A_hard_snap_draws_the_body_on_its_corrected_tile_the_same_frame()
+    public void A_teleport_draws_the_body_on_its_corrected_tile_the_same_frame()
     {
-        TileWorldDocument serverDoc = TileMoveSimulatorTests.FlatWorld();
-        serverDoc.AddObject("tree", 10, 11, 0, 0);                  // only the SERVER knows about this
-        using var loop = new Loop(serverDoc);
+        // A one-step blocker disagreement is walked off now rather than cut (#873), so the remaining hard cut for a
+        // tile client is a TELEPORT: an authoritative epoch advance (a respawn, an admin move, a fast travel). It
+        // places the body outright rather than gliding, which is the invariant this pins.
+        using var loop = new Loop();
         loop.Join();
         int teleports = 0;
         loop.Client.Teleported += () => teleports++;
 
+        // Walk a little so the body is off its spawn and mid-motion, then teleport it far away.
         loop.Client.Queue(TileCommand.WalkTo(new TileCoord(10, 16, 0), TileMoveMode.Run));
+        loop.Frames(6);
+        Vector3 beforeSnap = loop.LocalDrawn;
+
+        int snaps = loop.Client.SnapCount;
+        loop.Server.SetPlayerState(0, TileMoveState.At(new TileCoord(20, 20, 0), TileDirection.S), teleport: true);
         int snapFrame = -1;
-        var beforeSnap = Vector3.Zero;
-        for (int i = 0; i < 120 && snapFrame < 0; i++)
+        for (int i = 0; i < 30 && snapFrame < 0; i++)
         {
-            Vector3 previous = loop.LocalDrawn;
-            int snaps = loop.Client.SnapCount;
             loop.Step();
-            if (loop.Client.SnapCount > snaps) { snapFrame = i; beforeSnap = previous; }
+            if (loop.Client.SnapCount > snaps) snapFrame = i;
         }
 
-        Assert.True(snapFrame >= 0, "the hidden blocker never produced a hard snap");
-        Assert.Equal(0, teleports);                                 // a cut step is not a teleport
-        // Not vacuous: the frame before the snap had the body a real distance from where the rules then put it,
-        // so what follows is a statement about the snap rather than about a body that was never anywhere else.
+        Assert.True(snapFrame >= 0, "the teleport never produced a hard snap");
+        Assert.Equal(1, teleports);                                 // a teleport IS reported as a discontinuity
+        // Not vacuous: the body was a real distance from where the teleport put it.
         Vector3 corrected = loop.Client.Presenter.PoseAt(loop.Client.Prediction.PredictedState.Tile).Position;
         Assert.True(Vector3.Distance(beforeSnap, corrected) > 0.2f,
             $"the body was already on the corrected tile before the snap, distance {Vector3.Distance(beforeSnap, corrected)}");
-        // And the frame the snap landed on drew the body ON the corrected position, with no decaying offset left
-        // to unwind: the prediction layer places rather than glides past the snap distance.
+        // The frame the snap landed on drew the body ON the corrected position, with no decaying offset left to
+        // unwind: the prediction layer places rather than glides past the cut distance.
         Assert.Equal(loop.Client.Presenter.LocalPose(loop.Client.Prediction).Position, loop.LocalDrawn);
         Assert.Equal(loop.Client.Prediction.PredictedState.Position,
             loop.Client.Prediction.RenderedState.RenderPosition);
@@ -208,8 +211,8 @@ public class TileGlideTests
 
         // The authority says the player is most of the way into the tile it is standing on, rather than parked on
         // it. A LONG step total keeps the disagreement sub-tile whatever the replay depth: the client's pending
-        // Continues advance the step by a hundredth of a tile each, so the position error stays comfortably inside
-        // the half-tile snap distance and comfortably outside the float-noise floor CorrectionCount is gated on.
+        // Continues advance the step by a hundredth of a tile each, so the position error stays comfortably inside the tile client's few-tile snap distance
+        // and comfortably outside the float-noise floor CorrectionCount is gated on.
         TileMoveState ahead = loop.Client.Prediction.PredictedState;
         ahead.StepFrom = new TileCoord(10, 9, 0);
         ahead.StepTotal = 100;

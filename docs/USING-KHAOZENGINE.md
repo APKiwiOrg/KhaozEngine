@@ -6362,7 +6362,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.45.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.46.0" />
 ```
 
 ```csharp
@@ -10145,7 +10145,7 @@ carries a player at most `MaxRouteSteps` further and re-clicking cannot ratchet 
 identically costs ZERO corrections, because both replay the same commands over the same tiles. `SnapCount` counts
 the reconciliations that CUT rather than glided, which means the two heads were on different SQUARES.
 `DroppedClickCount` counts clicks refused before they were ever sent (another plane, an unloaded region), and
-`DroppedSnapshotCount` counts snapshots the decoder refused whole.
+`DroppedSnapshotCount` counts snapshots the decoder refused whole. `PendingCommandCount` is the lag those two cannot see: how many commands this client has predicted and sent that the server has not acknowledged, 0 or 1 on a loopback and the round trip in ticks plus one on a real link, with a climbing-and-staying value meaning the server is applying this client's input late (its own side of that is `TileWorldServer.InputDepth(slot)`).
 
 **`client.NetStats` is the link half of that readout**, a live `NetTransportStats` forwarded from the transport:
 round trip, packet loss and the cumulative byte counters a HUD diffs into rates. Reading it pumps nothing, so ask
@@ -11954,7 +11954,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.45.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.46.0" />
 ```
 
 ```csharp
@@ -11990,7 +11990,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.45.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.46.0" />
 ```
 
 ```csharp
@@ -12232,7 +12232,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.45.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.46.0" />
 ```
 
 ```csharp
@@ -14280,7 +14280,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="18.45.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="18.46.0" />
 </ItemGroup>
 ```
 

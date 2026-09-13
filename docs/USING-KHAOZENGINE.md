@@ -13172,15 +13172,20 @@ area-of-interest-bounds overlay is a new type over the same `DrawOverlayMesh` ca
 ### Entity silhouettes (`DrawMeshSilhouette`, 18.3.0)
 
 The per-entity highlight rim, the RuneLite look: `Scene3D.DrawMeshSilhouette(MeshHandle mesh, Matrix4x4 world,
-Color color, float widthMetres)` re-draws an already-loaded mesh as an inverted hull, vertices pushed along
-their world normals by the width, front faces culled, in a flat alpha-blending color, depth tested without
-writing. Draw the model as usual AND queue its silhouette the same frame, and only the rim outside the model's own
-silhouette survives, occluded correctly by nearer geometry. This is not the whole-scene edge post
+Color color, float widthMetres)` re-draws an already-loaded mesh as an inverted hull. The hull uses an
+angle-weighted geometric normal shared by every vertex at the same exact position, including vertices split by
+hard shading, UV seams, or material parts. Front faces are culled and the flat alpha-blending color is depth
+tested without writing. Draw the model as usual AND queue its silhouette the same frame, and only the rim outside
+the model's own silhouette survives, occluded correctly by nearer geometry. The ordinary model stream keeps its
+authored normals and flat lighting. This is not the whole-scene edge post
 (`PixelPostProcessSettings.Outline`): a silhouette belongs to ONE entity, per frame, at the caller's color.
 
 For a body the game draws itself (an avatar, a monster), queue one silhouette per part at the body's world
 transform (uniform scale only: the shader pushes along the world-rotated normal, so a nonuniform scale bends
-the hull, and the fix is baking the scale into the mesh). For an authored tile-world object, the view owns the placement:
+the hull, and the fix is baking the scale into the mesh). Each rigid mesh upload carries a compact outline-normal
+stream of 12 bytes per vertex beside its unchanged model vertex stream. `LoadProp` and `LoadPropMeshes` build the
+normals across the complete part list before uploading each material part, so a material boundary does not open
+a seam. For an authored tile-world object, the view owns the placement:
 `TileWorldView.SetSilhouettedObject(long objectId, Color color, float widthMetres = 0.05f)` silhouettes that
 object's parts every frame until `ClearSilhouettedObject()`. An id no loaded region holds draws nothing and
 self-corrects when its region streams in, so a click handler may set it optimistically. The seam member

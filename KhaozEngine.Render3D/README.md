@@ -681,9 +681,13 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   before the pixel post.
 - `Scene3D.DrawMeshSilhouette(MeshHandle mesh, Matrix4x4 world, Color color, float widthMetres)` - the
   per-entity highlight rim (the RuneLite look): re-draws the mesh as an inverted hull, vertices pushed along
-  their world normals by the width, front faces culled, flat alpha-blending color, depth tested without
-  writing. Draw the model as usual and queue its silhouette the same frame, and only the rim survives. The
-  normal push assumes a UNIFORM world scale (bake a nonuniform scale into the mesh). The
+  angle-weighted geometric normals shared by exact-coincident positions. Hard shading, UV seams, and material
+  parts therefore stay closed while the ordinary model keeps its authored normals and flat lighting. Each rigid
+  mesh owns a compact 12-byte-per-vertex outline-normal stream. `LoadProp` and `LoadPropMeshes` compute that stream
+  across the complete part list before uploading its material parts. Front faces are culled, the flat
+  alpha-blending color is depth tested without writing, and nearer scene geometry still occludes the rim. Draw
+  the model as usual and queue its silhouette the same frame. The normal push assumes a UNIFORM world scale
+  (bake a nonuniform scale into the mesh). The
   whole-scene edge post keeps the Outline name on `PixelPostProcessSettings`.
 - Debug wire volumes: `Scene3D.DebugWireSphere` / `DebugWireDome` (hemisphere, flat side down) /
   `DebugWireCylinder` (vertical, `radius` + `halfHeight`) / `DebugWireCircle`, each `(..., Color color, float

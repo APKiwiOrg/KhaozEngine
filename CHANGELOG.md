@@ -5,6 +5,15 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.40.2
+
+Radial menus can lock an entry before a footer choice commits it, preventing hover from retargeting an action.
+
+- `RadialMenu.InteractionMode` defaults to `Immediate`, preserving existing entry-click behaviour.
+- `EntryThenChoice` locks an enabled entry on click, then commits that entry and quantity from the footer.
+- Pointer hover keeps the locked entry, while clicking another enabled entry deliberately changes it.
+- The locked entry stays highlighted and named. Footer choices remain inactive until an entry is locked.
+
 ## 18.40.1
 
 Radial menus keep their fills inside the wheel and show distinct disabled colours and inline requirements.

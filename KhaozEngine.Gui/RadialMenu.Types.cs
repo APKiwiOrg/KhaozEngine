@@ -3,6 +3,15 @@ using KhaozEngine.App;
 
 namespace KhaozEngine.Gui
 {
+    /// <summary>Controls whether an entry commits immediately or waits for a footer choice.</summary>
+    public enum RadialMenuInteractionMode
+    {
+        /// <summary>An enabled entry commits and closes the menu when selected.</summary>
+        Immediate,
+        /// <summary>An enabled entry locks first, then an enabled footer choice commits and closes the menu.</summary>
+        EntryThenChoice,
+    }
+
     public readonly record struct RadialMenuEntry(
         LocalizedText Content,
         long Tag,

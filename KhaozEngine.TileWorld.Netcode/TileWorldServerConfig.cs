@@ -136,6 +136,22 @@ public sealed record TileWorldServerConfig
     /// than an interface the engine would then have to define a schema for.</summary>
     public Func<string, bool>? IsBanned { get; init; }
 
+    /// <summary>Consulted in Admit for every command whose mode is <see cref="TileMoveMode.Run"/>, over the
+    /// player's SLOT. Null, the default, allows running for everyone and costs nothing.
+    /// <para>Returning false admits that tick's command at <see cref="TileMoveMode.Walk"/> instead, whatever the
+    /// client sent, and the change lands at the START OF THE NEXT STEP like any other mode change: the step
+    /// already under way keeps the cadence it was stamped with, so a gate that closes mid stride never cuts a
+    /// glide in half. The command is otherwise untouched, so its kind, goal and target still apply.</para>
+    /// <para>A game's run energy is the intended caller. The client is expected to drop its own toggle
+    /// cooperatively, which is what keeps the two heads predicting the same cadence, and this gate is the
+    /// AUTHORITY behind it: a client that keeps sending Run on an empty bar is stepped at a walk and reconciles.
+    /// <see cref="TileWorldServer.GatedRunCount"/> counts how often that happened.</para>
+    /// <para>Called on the TICK THREAD, once per tick per running player, so it must be cheap: read a number a
+    /// game already keeps, never a store or a lock. Nothing is caught, so a throw comes out of the tick and takes
+    /// it down for every player, which is the engine refusing to swallow a game's bug rather than an
+    /// oversight.</para></summary>
+    public Func<int, bool>? CanRun { get; init; }
+
     /// <summary>What a second live session for one account does. Kicking the older one is the default because the
     /// alternative refuses the player who is actually at the keyboard.</summary>
     public DuplicateSessionPolicy DuplicateSessions { get; init; } = DuplicateSessionPolicy.KickOlder;

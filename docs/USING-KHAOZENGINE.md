@@ -9734,6 +9734,7 @@ var config = new TileWorldServerConfig
     Spawn       = new TileCoord(64, 64, Plane: 0),
     InterestRadius = 15f,                                  // tiles a player sees other players
     MaxGoalRadius  = 64,                                   // farthest a single click may name
+    CanRun      = slot => energy.Has(slot),                // null allows everyone. See the run gate below
     IsBanned    = bans.IsBanned,
 };
 
@@ -9779,6 +9780,12 @@ carries a player over a region boundary, combat after all of it so a swing is ju
 the tick, and the serve last so a client sees a whole tick and never half of one. The one thing that FOLLOWS the
 serve is the actor despawn, held back so the corpse is still in the world when each viewer's interest set is
 built and the killing blow therefore reaches everyone watching the fight.
+
+**The run gate.** `CanRun` is consulted in admission for every command whose mode is `Run`, over the player's slot,
+and returning false steps that tick at `Walk` instead whatever the client sent, landing at the start of the next
+step exactly as a client's own toggle does. It is the authority behind a game's run energy rather than a
+replacement for the client's own cooperative toggle, it runs on the tick thread once per tick per running player
+so it must be cheap, and `server.GatedRunCount` counts the commands it downgraded.
 
 Use `OnAfterMovement` when a consumer system must decide on this tick's admitted input before an interaction or
 combat consequence commits. `OnBeforeTick` still sees the prior `CombatTarget` and route because command drain has

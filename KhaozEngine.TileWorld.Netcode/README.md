@@ -391,7 +391,9 @@ always keep the constructor map.
   `TryGetCombatState` as the reads and the one write, `ForgetAttacker` as the one field a game can drop (see
   what a dead player leaves behind, below), `DelayAttack` as the one number (see charging attack time, below), and
   `CancelPendingAction` as the quiet way a game abandons an interaction without exposing the action queue.
-  Connection pressure is visible through `PendingConnectionCount` and `RefusedPendingConnectionCount`.
+  Connection pressure is visible through `PendingConnectionCount` and `RefusedPendingConnectionCount`, and the run
+  gate through `GatedRunCount` (commands admitted at `Walk` because `TileWorldServerConfig.CanRun` refused the
+  slot a run, 0 with no gate configured).
   `TileWorldServerConfig.MaxPendingConnections` caps clients that connected but have not completed Hello. Zero keeps
   the prior unlimited behavior. A positive cap sheds excess connections before they can hold server state.
   `TileWorldServerConfig` gained `MaxActorsPerCell` (the
@@ -735,6 +737,7 @@ var server = new TileWorldServer(
         StepTicks = new TileStepTicks(walk: 4, run: 2),
         Spawn = new TileCoord(64, 64, Plane: 0),
         MaxPendingConnections = 128,
+        CanRun = slot => energy.Has(slot),         // null allows everyone. The authority behind run energy
         IsBanned = bans.IsBanned,
     },
     map,
@@ -830,6 +833,17 @@ of them turns every step into a correction:
 `PlaneCount` and `MaxGoalRadius` belong to it too, for a subtler reason: they are the server's two refusals of a
 walk goal, and it REWRITES a refused goal to `TileCommand.Continue` at the mode the command carried rather than
 dropping the tick. A client that does not mirror both predicts a walk the server never started.
+
+`CanRun` is the one knob that deliberately sits OUTSIDE that contract. It is consulted in admission for every
+command whose mode is `Run`, over the player's slot, and returning false admits that tick's command at `Walk`
+instead, whatever the client sent. Null, the default, allows running for everyone. The rewrite touches the mode and
+nothing else, so the kind, goal and target still apply, and it lands at the start of the NEXT step exactly as a
+client's own toggle does: the step already under way keeps the cadence it was stamped with. A game's run energy is
+the intended caller. The client is expected to drop its own toggle cooperatively, which is what keeps both heads
+predicting the same cadence, and the gate is the AUTHORITY behind that, so a patched client sending `Run` on an
+empty bar is stepped at a walk and reconciles. It runs on the TICK THREAD once per tick per running player, so it
+must be cheap, and nothing is caught: a throw comes out of the tick rather than being swallowed into a cadence
+nobody chose. Watch `TileWorldServer.GatedRunCount` for how often it fired.
 
 Two behaviours that surprise a first reader, both deliberate and both shared by the two heads:
 

@@ -259,8 +259,32 @@ public sealed partial class TileWorldServer
     }
 
     /// <summary>
-    /// What the simulator is actually stepped with, which is not always what the client sent. Three rules, all of
-    /// them consequences of the run toggle riding EVERY command:
+    /// What the simulator is actually stepped with, which is not always what the client sent: the four rules of
+    /// <see cref="AdmitCommand"/>, and then <see cref="TileWorldServerConfig.CanRun"/> over whatever they
+    /// produced.
+    /// <para>The gate runs LAST on purpose, so it sees every admitted command rather than only the ones a client
+    /// sent this tick. The starvation neutral is the case that needs it: a tick with no command is Continue at the
+    /// player's CURRENT mode, which is still Run for a player who was already running when the gate closed, and a
+    /// gate applied inside the switch would let that player run on for as long as their packets kept missing.</para>
+    /// <para>Only the MODE is rewritten. The kind, goal and target survive, so a click still walks and a lock still
+    /// fights, at a walking cadence. The step already under way is untouched, because
+    /// <c>TileMoveSimulator</c> stamps a step's cadence as it commits and re-reads the mode only at the next one:
+    /// a gate that closes mid stride therefore lands at the start of the next step exactly as a client's own
+    /// toggle does.</para>
+    /// </summary>
+    TileCommand Admit(in TileCommand cmd, bool arrived, in TileMoveState state, int slot, long attackerNetId)
+    {
+        TileCommand admitted = AdmitCommand(cmd, arrived, state, slot, attackerNetId);
+        // Nothing is caught. The callback is the game's, and swallowing a throw here would step every player at a
+        // cadence a broken energy rule chose while the tick carried on as though it had answered.
+        if (admitted.Mode != TileMoveMode.Run || config.CanRun is null || config.CanRun(slot)) return admitted;
+        GatedRunCount++;
+        return admitted with { Mode = TileMoveMode.Walk };
+    }
+
+    /// <summary>
+    /// The admission rules, before the run gate <see cref="Admit"/> applies over them. Three of them, all
+    /// consequences of the run toggle riding EVERY command:
     /// <list type="bullet">
     /// <item>A tick with no command from the client is <see cref="TileCommand.Continue"/> at the player's CURRENT
     /// mode, never <see cref="TileCommand.None"/>. None is Continue at walk, so a player whose packets stopped
@@ -280,7 +304,8 @@ public sealed partial class TileWorldServer
     /// <see cref="TileMoveSimulator.Accepts"/>, so the rule has one definition and the server holds no second copy
     /// of the target seam to re-derive it from.
     /// </summary>
-    TileCommand Admit(in TileCommand cmd, bool arrived, in TileMoveState state, int slot, long attackerNetId)
+    TileCommand AdmitCommand(in TileCommand cmd, bool arrived, in TileMoveState state, int slot,
+        long attackerNetId)
     {
         if (!arrived) return TileCommand.Continue(state.Mode);
 

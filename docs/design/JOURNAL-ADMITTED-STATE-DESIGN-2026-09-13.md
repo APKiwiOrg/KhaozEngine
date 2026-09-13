@@ -1,6 +1,6 @@
 # Journal admitted state design
 
-**Status:** In flight. Extends
+**Status:** Shipped in 18.43.0. Extends
 [`DURABLE-PLAYER-JOURNAL-DESIGN-2026-09-06.md`](DURABLE-PLAYER-JOURNAL-DESIGN-2026-09-06.md) sections 4.3, 4.4, 9
 and 11. Engine program [#868](https://github.com/APKiwiOrg/KhaozEngine/issues/868). Consumer decision record
 [Grimhollow #170](https://github.com/APKiwiOrg/Grimhollow/issues/170), taken by the owner on 2026-09-13. Shipped

@@ -5,6 +5,72 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.43.0
+
+The journal executor presents at admission and commits behind (#868), and a SQL Server journal operation commits in
+one round trip instead of about thirteen (#867).
+
+### Journal admitted state: present at admission, commit behind, correct on failure
+
+`MutationJournalExecutor` gains an admitted state layer, so a consumer can present an ownership change on the tick
+it is admitted while the durable commit follows behind it. Engine program #868, consumer decision record
+https://github.com/APKiwiOrg/Grimhollow/issues/170. Design rationale in
+`docs/design/JOURNAL-ADMITTED-STATE-DESIGN-2026-09-13.md`.
+
+Behaviour change: a `Submit` whose streams already carry an admitted operation now queues behind it in admission
+order instead of answering `StreamBusy`. An operation reaches the store only when it is at the head of every one of
+its stream queues, which happens once each operation ahead has reached a terminal result and been acknowledged, so
+one stream still commits in order. `ExpectedVersion` is checked against the admitted head version rather than the
+committed one, so a queued chain is contiguous and a stale plan is refused at admission with the new
+`VersionConflict` status. `StreamBusy` still answers a quarantined stream and a commit built with
+`queueBehindAdmitted: false`. A terminal failure (fatal, quarantined, `VersionConflict`, `OperationConflict`) rolls
+every touched stream back to its committed baseline plus the operations still queued ahead of it, refuses
+everything queued behind it with a `SupersededByFailure` completion that never reaches the store, and carries one
+`JournalCorrection` on the failed operation's own completion. Transient retries correct nothing. Admitted
+uncommitted operations die with the process, and `StopAsync` reports queued-but-never-started operations among its
+unresolved IDs.
+
+Public API added: `MutationJournalExecutor.SeedCommitted`, `ForgetStream`, `TryGetAdmittedProjection` and
+`TryGetAdmittedStream`. `JournalAdmittedSection`, `JournalAdmittedStream`, `JournalAdmittedStreamHead`,
+`JournalProjectionSectionKey`, `JournalCorrection` and `JournalCompletionKind`. `JournalSubmission.AdmittedStreams`
+and `ChangedSections`. `JournalCompletion.Kind`, `Correction`, `SupersededBy` and `IsSuperseded`.
+`JournalSubmissionStatus.VersionConflict`. `JournalExecutorOptions.StreamQueueDepth` (default 8, per-stream queue
+cap answered with `Backpressure`). `MutationJournalExecutorMetrics.AdmittedUncommittedOperations`,
+`AdmittedUncommittedPeakPerStream`, `OldestAdmittedUncommittedAge`, `Corrections`, `Superseded` and
+`AdmissionVersionConflict`.
+
+Public API changed: `JournalCommit`'s constructor takes optional `presentAtCommit` (default false) and
+`queueBehindAdmitted` (default true) flags, exposed as properties. Set `PresentAtCommit` for value moving between
+players, a trade or a contested loot claim: such an operation still queues, still reserves and still blocks what is
+behind it, and only the consumer's presentation contract changes. No store contract moved, so every backend and
+the store conformance suite are unaffected.
+
+### SQL Server journal: one round trip per operation
+
+A SQL Server journal operation commits in one round trip instead of about thirteen (#867).
+
+- `SqlServerMutationJournalStore` sends one parameterized T-SQL batch per initialization or commit inside its
+  serializable transaction, in place of a command each for the maintenance lock, the operation lookup, every
+  stream head read, every projection size check, every event insert, every head update, every projection upsert,
+  the operation row and every operation-stream row.
+- The batch keeps the ordinal stream-key lock order, so opposite-direction multi-stream operations still cannot
+  deadlock each other, and it keeps the same statements in the same order inside one transaction.
+- Every outcome stays distinguishable and none of them is parsed out of an error message. `Applied`, `Replayed`,
+  `VersionConflict`, `OperationConflict`, `ExistingStream`, the projection-limit refusal and an application-lock
+  failure come back through a result set. Provider errors rethrow inside the batch, so a duplicate key still
+  arrives as 2601 or 2627 and a deadlock victim still arrives as 1205 with its existing failure contract.
+- The caller still owns BEGIN and COMMIT, so no result is visible early and every failure boundary still rolls the
+  whole operation back.
+- Variable-length work is unrolled one bound parameter set per row, so there is no schema change and no new table
+  type. The engine's largest operation (16 streams, 128 events, 64 projection sections) binds 402 parameters,
+  against SQL Server's ceiling of 2100.
+- `commit.Validate(limits)` now runs before the operation lookup instead of after it. Unobservable at
+  `JournalLimits.Maximum`. A store whose limits were tightened below an already committed request would now refuse
+  that replay instead of returning its receipt.
+- `SqlServerMutationJournalStore.CommitStatistics` reports operations, commands executed on their own transaction,
+  and the worst case seen, so the round-trip count cannot drift back up unnoticed.
+- Group commit across disjoint streams is filed separately as #869.
+
 ## 18.42.0
 
 `ChatBox.HistoryAlignment` lets sparse chat history anchor to the top or bottom of its viewport.

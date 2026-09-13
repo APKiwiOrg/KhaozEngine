@@ -50,11 +50,14 @@ embedded development, tests, and single-node hosts. `KhaozEngine.WorldStore.SqlS
 
 ## Durable mutation journal
 
-The journal namespace is `KhaozEngine.WorldStore.Journal`. A server validates a command against committed live
-state, freezes one deterministic operation, submits it without waiting for storage, and applies it only after a
-durable completion. A successful client response is never sent before commit.
+The journal namespace is `KhaozEngine.WorldStore.Journal`. A server validates a command against the admitted view
+(committed state plus the operations already admitted on the stream), freezes one deterministic operation, submits
+it without waiting for storage, and may present it on the submitting tick while the durable commit follows behind.
+A commit built with `presentAtCommit: true` keeps the older contract, so nothing is shown and no client success is
+sent before commit. That is the fleet rule for value moving between players.
 
-Mutation completion is the durable commit boundary. Live state reflects committed results only. If a client
+Mutation completion is the durable commit boundary. Live state may run ahead of it by the admitted uncommitted
+operations, and a failed commit corrects the view and supersedes the operations queued behind it. If a client
 disconnects after commit, the mutation is still durable. While its operation receipt remains inside the configured
 retention horizon, a retry with the same stable operation ID and frozen intent returns the original result without
 applying the effect twice.

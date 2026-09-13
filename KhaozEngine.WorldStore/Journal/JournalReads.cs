@@ -219,6 +219,8 @@ public sealed class JournalProjectionSection
     public DateTimeOffset UpdatedAtUtc { get; }
     public bool HasValidChecksum => JournalValidation.HashMatches(data, dataChecksum);
 
+    internal ReadOnlySpan<byte> DataSpan => data;
+
     private static byte[] CopyChecksum(byte[] value, string parameterName)
     {
         byte[] copy = JournalValidation.CopyBytes(value, 32, parameterName);

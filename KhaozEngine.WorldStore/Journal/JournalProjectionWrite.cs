@@ -26,6 +26,8 @@ public sealed class JournalProjectionWrite
     public ReadOnlyMemory<byte> DataChecksum => JournalValidation.CopyForRead(dataChecksum);
     public int OwnedByteCount => data.Length;
 
+    internal ReadOnlySpan<byte> DataSpan => data;
+
     public void Validate(JournalLimits? limits = null)
     {
         limits ??= JournalLimits.Maximum;

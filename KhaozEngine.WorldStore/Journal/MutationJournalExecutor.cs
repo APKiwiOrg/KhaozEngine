@@ -17,12 +17,13 @@ public sealed class MutationJournalExecutor
     private readonly TimeProvider timeProvider;
     private readonly Func<TimeSpan, CancellationToken, Task> delayAsync;
     private readonly Func<double> retryJitter;
-    private readonly Channel<AdmittedOperation> pending;
+    private readonly Channel<AdmittedJournalOperation> pending;
     private readonly ConcurrentQueue<JournalCompletion> completions = new();
-    private readonly Dictionary<Guid, AdmittedOperation> admitted = new();
+    private readonly Dictionary<Guid, AdmittedJournalOperation> admitted = new();
     private readonly HashSet<string> reservedStreams = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Guid> quarantineByStream = new(StringComparer.Ordinal);
     private readonly Dictionary<Guid, HashSet<string>> quarantineGroups = new();
+    private readonly JournalAdmittedState admittedState;
     private readonly Task[] workers;
     private bool stopping;
     private long nextSequence;
@@ -51,7 +52,8 @@ public sealed class MutationJournalExecutor
         this.delayAsync = delayAsync ?? throw new ArgumentNullException(nameof(delayAsync));
         this.retryJitter = retryJitter ?? throw new ArgumentNullException(nameof(retryJitter));
         Metrics = new MutationJournalExecutorMetrics(timeProvider);
-        pending = Channel.CreateBounded<AdmittedOperation>(new BoundedChannelOptions(options.OperationCapacity)
+        admittedState = new JournalAdmittedState(options.StreamQueueDepth);
+        pending = Channel.CreateBounded<AdmittedJournalOperation>(new BoundedChannelOptions(options.OperationCapacity)
         {
             FullMode = BoundedChannelFullMode.Wait,
             SingleReader = options.WorkerCount == 1,
@@ -69,37 +71,68 @@ public sealed class MutationJournalExecutor
         JournalCommit owned = Freeze(commit);
         int bytes = owned.OwnedByteCount;
         Guid operationId = owned.Identity.OperationId;
-        JournalSubmissionStatus status;
+        JournalSubmission submission;
 
         lock (gate)
         {
-            if (stopping)
-            {
-                status = JournalSubmissionStatus.Stopping;
-            }
-            else if (admitted.ContainsKey(operationId) || HasBlockedStream(owned))
-            {
-                status = JournalSubmissionStatus.StreamBusy;
-            }
-            else if (admitted.Count >= options.OperationCapacity || bytes > options.OwnedByteCapacity - admittedBytes)
-            {
-                status = JournalSubmissionStatus.Backpressure;
-            }
-            else
-            {
-                var operation = new AdmittedOperation(owned, nextSequence++, bytes, timeProvider.GetUtcNow());
-                admitted.Add(operationId, operation);
-                admittedBytes += bytes;
-                foreach (JournalStreamMutation stream in owned.StreamMutations) reservedStreams.Add(stream.StreamKey);
-                UpdateAdmissionGauges();
-                if (!pending.Writer.TryWrite(operation))
-                    throw new InvalidOperationException("The bounded journal channel rejected reserved capacity.");
-                status = JournalSubmissionStatus.Accepted;
-            }
+            JournalSubmissionStatus status = Admit(owned, bytes, operationId, out AdmittedJournalOperation? operation);
+            submission = operation is null
+                ? new JournalSubmission(status, operationId, 0)
+                : new JournalSubmission(status, operationId, bytes, AdmittedHeads(operation), ChangedSections(owned));
         }
 
-        Metrics.RecordSubmission(status);
-        return new JournalSubmission(status, operationId, status == JournalSubmissionStatus.Accepted ? bytes : 0);
+        Metrics.RecordSubmission(submission.Status);
+        return submission;
+    }
+
+    /// <summary>
+    /// Declares what the store durably holds for one stream, which is what a consumer reads with
+    /// <c>ReadProjectionsAsync</c> when it loads that stream. The executor layers admitted operations over it and
+    /// advances it as commits are acknowledged <see cref="JournalCompletionAcknowledgement.Handled"/>. Seeding
+    /// again replaces the baseline and rebuilds the layer, which is how a stream is resynced after a correction or
+    /// a quarantine.
+    /// </summary>
+    public void SeedCommitted(string streamKey, long committedVersion, IReadOnlyList<JournalProjectionSection> sections)
+    {
+        string key = JournalValidation.StreamKey(streamKey, nameof(streamKey));
+        JournalValidation.NonNegative(committedVersion, nameof(committedVersion));
+        ArgumentNullException.ThrowIfNull(sections);
+        JournalValidation.Maximum(sections.Count, JournalLimits.EngineMaximumProjectionSectionsPerStream, nameof(sections));
+        foreach (JournalProjectionSection section in sections)
+        {
+            ArgumentNullException.ThrowIfNull(section);
+            if (!StringComparer.Ordinal.Equals(section.StreamKey, key))
+                throw new ArgumentException($"Section '{section.SectionName}' belongs to stream '{section.StreamKey}'.", nameof(sections));
+        }
+        lock (gate) admittedState.Seed(key, committedVersion, sections);
+    }
+
+    /// <summary>
+    /// Drops a seeded stream's baseline, for a player who logged out. Returns false when the executor holds no
+    /// view of it, and refuses while it still carries admitted operations.
+    /// </summary>
+    public bool ForgetStream(string streamKey)
+    {
+        string key = JournalValidation.StreamKey(streamKey, nameof(streamKey));
+        lock (gate) return admittedState.Forget(key);
+    }
+
+    /// <summary>
+    /// Reads one projection section as the executor currently sees it: the newest admitted uncommitted write over
+    /// it, or the committed baseline when nothing is in flight. Synchronous and safe from the simulation thread.
+    /// </summary>
+    public bool TryGetAdmittedProjection(string streamKey, string sectionName, [NotNullWhen(true)] out JournalAdmittedSection? section)
+    {
+        string key = JournalValidation.StreamKey(streamKey, nameof(streamKey));
+        string name = JournalValidation.Identity(sectionName, nameof(sectionName), JournalLimits.EngineMaximumIdentityCharacters);
+        lock (gate) return admittedState.TryGetSection(key, name, out section);
+    }
+
+    /// <summary>Reads the whole admitted view of one stream, its versions and every section it currently holds.</summary>
+    public bool TryGetAdmittedStream(string streamKey, [NotNullWhen(true)] out JournalAdmittedStream? stream)
+    {
+        string key = JournalValidation.StreamKey(streamKey, nameof(streamKey));
+        lock (gate) return admittedState.TryGetStream(key, out stream);
     }
 
     public bool TryDequeueCompletion([NotNullWhen(true)] out JournalCompletion? completion)
@@ -107,7 +140,7 @@ public sealed class MutationJournalExecutor
         lock (gate)
         {
             if (!completions.TryDequeue(out completion)) return false;
-            if (admitted.TryGetValue(completion.OperationId, out AdmittedOperation? operation))
+            if (admitted.TryGetValue(completion.OperationId, out AdmittedJournalOperation? operation))
                 operation.CompletionDequeued = true;
         }
         return true;
@@ -116,19 +149,29 @@ public sealed class MutationJournalExecutor
     public void AcknowledgeCompletion(Guid operationId, JournalCompletionAcknowledgement acknowledgement)
     {
         if (!Enum.IsDefined(acknowledgement)) throw new ArgumentOutOfRangeException(nameof(acknowledgement));
+        var released = new List<AdmittedJournalOperation>();
         lock (gate)
         {
-            if (!admitted.TryGetValue(operationId, out AdmittedOperation? operation))
+            if (!admitted.TryGetValue(operationId, out AdmittedJournalOperation? operation))
                 throw new KeyNotFoundException($"Operation '{operationId}' is not admitted.");
             if (operation.Completion is null || !operation.CompletionDequeued)
                 throw new InvalidOperationException("Only a dequeued terminal completion can be acknowledged.");
 
             if (acknowledgement == JournalCompletionAcknowledgement.Quarantined)
+            {
                 AddQuarantine(operation);
+                if (!operation.Withdrawn) SupersedeDependants(operation);
+            }
+
+            bool promote = acknowledgement == JournalCompletionAcknowledgement.Handled
+                && !operation.Withdrawn
+                && operation.Completion.Result?.Receipt is not null;
+            admittedState.Release(operation, promote, released);
             foreach (JournalStreamMutation stream in operation.Commit.StreamMutations)
                 reservedStreams.Remove(stream.StreamKey);
             admitted.Remove(operationId);
             admittedBytes -= operation.OwnedByteCount;
+            foreach (AdmittedJournalOperation next in released) Start(next);
             UpdateAdmissionGauges();
         }
         Metrics.CompletionAcknowledged();
@@ -191,13 +234,41 @@ public sealed class MutationJournalExecutor
         return SnapshotShutdown();
     }
 
+    private JournalSubmissionStatus Admit(JournalCommit owned, int bytes, Guid operationId, out AdmittedJournalOperation? operation)
+    {
+        operation = null;
+        if (stopping) return JournalSubmissionStatus.Stopping;
+        if (admitted.ContainsKey(operationId) || HasQuarantinedStream(owned)) return JournalSubmissionStatus.StreamBusy;
+        if (!owned.QueueBehindAdmitted && admittedState.HasBusyStream(owned)) return JournalSubmissionStatus.StreamBusy;
+        if (admitted.Count >= options.OperationCapacity || bytes > options.OwnedByteCapacity - admittedBytes)
+            return JournalSubmissionStatus.Backpressure;
+        if (admittedState.Refusal(owned) is JournalSubmissionStatus refusal) return refusal;
+
+        operation = new AdmittedJournalOperation(owned, nextSequence++, bytes, timeProvider.GetUtcNow());
+        admitted.Add(operationId, operation);
+        admittedBytes += bytes;
+        foreach (JournalStreamMutation stream in owned.StreamMutations) reservedStreams.Add(stream.StreamKey);
+        admittedState.Admit(operation);
+        if (admittedState.CanStart(operation)) Start(operation);
+        UpdateAdmissionGauges();
+        return JournalSubmissionStatus.Accepted;
+    }
+
+    private void Start(AdmittedJournalOperation operation)
+    {
+        if (stopping || !operation.CanStart) return;
+        operation.Started = true;
+        if (!pending.Writer.TryWrite(operation))
+            throw new InvalidOperationException("The bounded journal channel rejected reserved capacity.");
+    }
+
     private async Task RunWorkerAsync()
     {
-        await foreach (AdmittedOperation operation in pending.Reader.ReadAllAsync().ConfigureAwait(false))
+        await foreach (AdmittedJournalOperation operation in pending.Reader.ReadAllAsync().ConfigureAwait(false))
             await ExecuteAsync(operation).ConfigureAwait(false);
     }
 
-    private async Task ExecuteAsync(AdmittedOperation operation)
+    private async Task ExecuteAsync(AdmittedJournalOperation operation)
     {
         int transientRetries = 0;
         while (true)
@@ -252,7 +323,7 @@ public sealed class MutationJournalExecutor
         }
     }
 
-    private async Task<JournalOperationResolution?> ResolveUnknownAsync(AdmittedOperation operation)
+    private async Task<JournalOperationResolution?> ResolveUnknownAsync(AdmittedJournalOperation operation)
     {
         int attempt = 0;
         while (true)
@@ -270,31 +341,68 @@ public sealed class MutationJournalExecutor
         }
     }
 
-    private void Complete(AdmittedOperation operation, JournalCommitResult result)
+    private void Complete(AdmittedJournalOperation operation, JournalCommitResult result)
     {
         Metrics.RecordResult(result.Status);
-        QueueCompletion(operation, new JournalCompletion(operation.Commit, result, null), quarantine: false);
+        QueueCompletion(operation, result, null, quarantine: false);
     }
 
-    private void CompleteFailure(AdmittedOperation operation, Exception failure)
+    private void CompleteFailure(AdmittedJournalOperation operation, Exception failure)
     {
         Metrics.RecordFailed();
-        QueueCompletion(operation, new JournalCompletion(operation.Commit, null, failure), quarantine: true);
+        QueueCompletion(operation, null, failure, quarantine: true);
     }
 
-    private void QueueCompletion(AdmittedOperation operation, JournalCompletion completion, bool quarantine)
+    private void QueueCompletion(AdmittedJournalOperation operation, JournalCommitResult? result, Exception? failure, bool quarantine)
     {
         lock (gate)
         {
             if (operation.Completion is not null) return;
-            operation.Completion = completion;
             if (quarantine) AddQuarantine(operation);
+
+            JournalCorrection? correction = null;
+            List<AdmittedJournalOperation>? superseded = null;
+            if (IsTerminalFailure(result, failure))
+            {
+                superseded = new List<AdmittedJournalOperation>();
+                correction = admittedState.Withdraw(operation, superseded);
+                Metrics.RecordCorrection();
+            }
+
+            var completion = new JournalCompletion(operation.Commit, result, failure, correction);
+            operation.Completion = completion;
             completions.Enqueue(completion);
             Metrics.CompletionQueued();
+
+            if (superseded is not null && superseded.Count > 0)
+            {
+                Guid failedOperationId = operation.Commit.Identity.OperationId;
+                foreach (AdmittedJournalOperation dependant in superseded) QueueSuperseded(dependant, failedOperationId);
+                Metrics.RecordSuperseded(superseded.Count);
+            }
+            UpdateAdmissionGauges();
         }
     }
 
-    private void AddQuarantine(AdmittedOperation operation)
+    private void QueueSuperseded(AdmittedJournalOperation dependant, Guid failedOperationId)
+    {
+        var completion = new JournalCompletion(dependant.Commit, null, null, null, failedOperationId);
+        dependant.Completion = completion;
+        completions.Enqueue(completion);
+        Metrics.CompletionQueued();
+    }
+
+    private void SupersedeDependants(AdmittedJournalOperation operation)
+    {
+        var superseded = new List<AdmittedJournalOperation>();
+        admittedState.Withdraw(operation, superseded);
+        if (superseded.Count == 0) return;
+        Guid failedOperationId = operation.Commit.Identity.OperationId;
+        foreach (AdmittedJournalOperation dependant in superseded) QueueSuperseded(dependant, failedOperationId);
+        Metrics.RecordSuperseded(superseded.Count);
+    }
+
+    private void AddQuarantine(AdmittedJournalOperation operation)
     {
         if (quarantineGroups.ContainsKey(operation.Commit.Identity.OperationId)) return;
         var streams = new HashSet<string>(operation.Commit.StreamMutations.Select(stream => stream.StreamKey), StringComparer.Ordinal);
@@ -303,19 +411,35 @@ public sealed class MutationJournalExecutor
         Metrics.RecordQuarantined();
     }
 
-    private bool HasBlockedStream(JournalCommit commit)
+    private bool HasQuarantinedStream(JournalCommit commit)
     {
         foreach (JournalStreamMutation stream in commit.StreamMutations)
-            if (reservedStreams.Contains(stream.StreamKey) || quarantineByStream.ContainsKey(stream.StreamKey)) return true;
+            if (quarantineByStream.ContainsKey(stream.StreamKey)) return true;
         return false;
     }
 
     private void UpdateAdmissionGauges()
     {
         DateTimeOffset? oldest = null;
-        foreach (AdmittedOperation operation in admitted.Values)
+        DateTimeOffset? oldestUncommitted = null;
+        long uncommitted = 0;
+        foreach (AdmittedJournalOperation operation in admitted.Values)
+        {
             if (oldest is null || operation.AdmittedAtUtc < oldest) oldest = operation.AdmittedAtUtc;
+            if (operation.Completion is not null) continue;
+            uncommitted++;
+            if (oldestUncommitted is null || operation.AdmittedAtUtc < oldestUncommitted) oldestUncommitted = operation.AdmittedAtUtc;
+        }
         Metrics.SetAdmissionGauges(admitted.Count, admittedBytes, reservedStreams.Count, oldest);
+        Metrics.SetAdmittedGauges(uncommitted, admittedState.PeakStreamDepth, oldestUncommitted);
+    }
+
+    private JournalAdmittedStreamHead[] AdmittedHeads(AdmittedJournalOperation operation)
+    {
+        var heads = new JournalAdmittedStreamHead[operation.Commit.StreamMutations.Count];
+        for (int i = 0; i < heads.Length; i++)
+            heads[i] = new JournalAdmittedStreamHead(operation.Commit.StreamMutations[i].StreamKey, operation.AdmittedAfterVersions[i]);
+        return heads;
     }
 
     private JournalShutdownResult SnapshotShutdown()
@@ -335,6 +459,17 @@ public sealed class MutationJournalExecutor
         var delay = TimeSpan.FromMilliseconds(baseMilliseconds * (0.5 + sample));
         await delayAsync(delay, CancellationToken.None).ConfigureAwait(false);
     }
+
+    private static JournalProjectionSectionKey[] ChangedSections(JournalCommit commit)
+    {
+        var sections = new JournalProjectionSectionKey[commit.ProjectionWrites.Count];
+        for (int i = 0; i < sections.Length; i++)
+            sections[i] = new JournalProjectionSectionKey(commit.ProjectionWrites[i].StreamKey, commit.ProjectionWrites[i].SectionName);
+        return sections;
+    }
+
+    private static bool IsTerminalFailure(JournalCommitResult? result, Exception? failure)
+        => failure is not null || result?.Status is JournalCommitStatus.VersionConflict or JournalCommitStatus.OperationConflict;
 
     private static bool IsRetryable(JournalStoreException failure)
         => failure.Certainty == JournalStoreFailureCertainty.DefinitelyNotCommitted
@@ -370,24 +505,14 @@ public sealed class MutationJournalExecutor
             value.ProjectionSchema,
             value.ProjectionSchemaVersion,
             value.Data.ToArray())).ToArray();
-        return new JournalCommit(identity, streams, projections, commit.ResultSchema, commit.ResultSchemaVersion, commit.ResultData.ToArray());
-    }
-
-    private sealed class AdmittedOperation
-    {
-        internal AdmittedOperation(JournalCommit commit, long sequence, int ownedByteCount, DateTimeOffset admittedAtUtc)
-        {
-            Commit = commit;
-            Sequence = sequence;
-            OwnedByteCount = ownedByteCount;
-            AdmittedAtUtc = admittedAtUtc;
-        }
-
-        internal JournalCommit Commit { get; }
-        internal long Sequence { get; }
-        internal int OwnedByteCount { get; }
-        internal DateTimeOffset AdmittedAtUtc { get; }
-        internal JournalCompletion? Completion { get; set; }
-        internal bool CompletionDequeued { get; set; }
+        return new JournalCommit(
+            identity,
+            streams,
+            projections,
+            commit.ResultSchema,
+            commit.ResultSchemaVersion,
+            commit.ResultData.ToArray(),
+            commit.PresentAtCommit,
+            commit.QueueBehindAdmitted);
     }
 }

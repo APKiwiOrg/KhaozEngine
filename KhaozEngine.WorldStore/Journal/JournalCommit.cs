@@ -17,8 +17,12 @@ public sealed class JournalCommit
         IReadOnlyList<JournalProjectionWrite> projectionWrites,
         string resultSchema,
         int resultSchemaVersion,
-        byte[] resultData)
+        byte[] resultData,
+        bool presentAtCommit = false,
+        bool queueBehindAdmitted = true)
     {
+        PresentAtCommit = presentAtCommit;
+        QueueBehindAdmitted = queueBehindAdmitted;
         Identity = identity ?? throw new ArgumentNullException(nameof(identity));
         JournalStreamMutation[] streams = JournalValidation.CopyItems(streamMutations, JournalLimits.EngineMaximumStreamsPerOperation, nameof(streamMutations));
         if (streams.Length == 0) throw new ArgumentException("A commit must touch at least one stream.", nameof(streamMutations));
@@ -48,6 +52,22 @@ public sealed class JournalCommit
     public IReadOnlyList<JournalProjectionWrite> ProjectionWrites => projectionWrites;
     public string ResultSchema { get; }
     public int ResultSchemaVersion { get; }
+
+    /// <summary>
+    /// True when the consumer must not present this operation's outcome before its commit completes. It changes
+    /// nothing inside the executor: the operation still queues, still reserves its streams, still blocks whatever
+    /// is queued behind it and still moves the admitted view. Set it for value moving between players, which is a
+    /// trade or a contested loot claim.
+    /// </summary>
+    public bool PresentAtCommit { get; }
+
+    /// <summary>
+    /// True (the default) to queue behind the operations already admitted on this operation's streams. False asks
+    /// for the pre-queue answer instead, so a busy stream refuses the submission with
+    /// <see cref="JournalSubmissionStatus.StreamBusy"/> rather than making the player wait behind it.
+    /// </summary>
+    public bool QueueBehindAdmitted { get; }
+
     public ReadOnlyMemory<byte> ResultData => JournalValidation.CopyForRead(resultData);
     public ReadOnlyMemory<byte> ResultChecksum => JournalValidation.CopyForRead(resultChecksum);
     public int OwnedByteCount => CalculateOwnedByteCount();

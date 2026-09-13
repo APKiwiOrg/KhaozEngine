@@ -22,6 +22,12 @@ public sealed class MutationJournalExecutorMetrics
     private long failed;
     private long quarantined;
     private long queueOperations;
+    private long admittedUncommitted;
+    private long admittedUncommittedPeakPerStream;
+    private long oldestAdmittedUncommittedUtcTicks;
+    private long corrections;
+    private long superseded;
+    private long admissionVersionConflict;
     private long queueOwnedBytes;
     private long oldestAdmittedUtcTicks;
     private long unacknowledgedCompletions;
@@ -40,6 +46,9 @@ public sealed class MutationJournalExecutorMetrics
     public long StreamBusy => Interlocked.Read(ref streamBusy);
     public long Backpressure => Interlocked.Read(ref backpressure);
     public long Stopping => Interlocked.Read(ref stopping);
+
+    /// <summary>Submissions refused because a stream's expected version did not match its admitted head version.</summary>
+    public long AdmissionVersionConflict => Interlocked.Read(ref admissionVersionConflict);
     public long Applied => Interlocked.Read(ref applied);
     public long Replayed => Interlocked.Read(ref replayed);
     public long VersionConflict => Interlocked.Read(ref versionConflict);
@@ -47,6 +56,18 @@ public sealed class MutationJournalExecutorMetrics
     public long Failed => Interlocked.Read(ref failed);
     public long Quarantined => Interlocked.Read(ref quarantined);
     public long QueueOperations => Interlocked.Read(ref queueOperations);
+
+    /// <summary>Admitted operations that have not yet reached a terminal result, so their writes are live in the admitted view only.</summary>
+    public long AdmittedUncommittedOperations => Interlocked.Read(ref admittedUncommitted);
+
+    /// <summary>The deepest single-stream queue seen since the executor started, a high-water mark rather than a live maximum.</summary>
+    public long AdmittedUncommittedPeakPerStream => Interlocked.Read(ref admittedUncommittedPeakPerStream);
+
+    /// <summary>Terminal failures that rolled admitted state back.</summary>
+    public long Corrections => Interlocked.Read(ref corrections);
+
+    /// <summary>Operations refused behind a failure without ever reaching the store.</summary>
+    public long Superseded => Interlocked.Read(ref superseded);
     public long QueueOwnedBytes => Interlocked.Read(ref queueOwnedBytes);
     public long UnacknowledgedCompletions => Interlocked.Read(ref unacknowledgedCompletions);
     public long ReservedStreams => Interlocked.Read(ref reservedStreams);
@@ -57,15 +78,17 @@ public sealed class MutationJournalExecutorMetrics
     public TimeSpan ProjectionLatencyTotal => TimeSpan.FromTicks(Interlocked.Read(ref projectionLatencyTicks));
     public long ProjectionReadCount => Interlocked.Read(ref projectionReadCount);
 
-    public TimeSpan OldestPendingAge
+    public TimeSpan OldestPendingAge => AgeSince(ref oldestAdmittedUtcTicks);
+
+    /// <summary>How long the oldest admitted operation that has not reached a terminal result has been waiting.</summary>
+    public TimeSpan OldestAdmittedUncommittedAge => AgeSince(ref oldestAdmittedUncommittedUtcTicks);
+
+    private TimeSpan AgeSince(ref long utcTicks)
     {
-        get
-        {
-            long ticks = Interlocked.Read(ref oldestAdmittedUtcTicks);
-            if (ticks == 0) return TimeSpan.Zero;
-            long age = timeProvider.GetUtcNow().UtcTicks - ticks;
-            return age <= 0 ? TimeSpan.Zero : TimeSpan.FromTicks(age);
-        }
+        long ticks = Interlocked.Read(ref utcTicks);
+        if (ticks == 0) return TimeSpan.Zero;
+        long age = timeProvider.GetUtcNow().UtcTicks - ticks;
+        return age <= 0 ? TimeSpan.Zero : TimeSpan.FromTicks(age);
     }
 
     public long GetRetryCount(JournalStoreFailureKind kind) => Interlocked.Read(ref retries[(int)kind]);
@@ -104,6 +127,7 @@ public sealed class MutationJournalExecutorMetrics
             case JournalSubmissionStatus.StreamBusy: Interlocked.Increment(ref streamBusy); break;
             case JournalSubmissionStatus.Backpressure: Interlocked.Increment(ref backpressure); break;
             case JournalSubmissionStatus.Stopping: Interlocked.Increment(ref stopping); break;
+            case JournalSubmissionStatus.VersionConflict: Interlocked.Increment(ref admissionVersionConflict); break;
             default: throw new ArgumentOutOfRangeException(nameof(status));
         }
     }
@@ -115,6 +139,16 @@ public sealed class MutationJournalExecutorMetrics
         Interlocked.Exchange(ref reservedStreams, streams);
         Interlocked.Exchange(ref oldestAdmittedUtcTicks, oldest?.UtcTicks ?? 0);
     }
+
+    internal void SetAdmittedGauges(long uncommittedOperations, long peakStreamDepth, DateTimeOffset? oldestUncommitted)
+    {
+        Interlocked.Exchange(ref admittedUncommitted, uncommittedOperations);
+        Interlocked.Exchange(ref admittedUncommittedPeakPerStream, peakStreamDepth);
+        Interlocked.Exchange(ref oldestAdmittedUncommittedUtcTicks, oldestUncommitted?.UtcTicks ?? 0);
+    }
+
+    internal void RecordCorrection() => Interlocked.Increment(ref corrections);
+    internal void RecordSuperseded(long count) => Interlocked.Add(ref superseded, count);
 
     internal void RecordRetry(JournalStoreFailureKind kind) => Interlocked.Increment(ref retries[(int)kind]);
     internal void CompletionQueued() => Interlocked.Increment(ref unacknowledgedCompletions);

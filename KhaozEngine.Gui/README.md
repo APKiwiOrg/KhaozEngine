@@ -22,7 +22,12 @@ zero starts at twelve o'clock and ordering continues clockwise. The whole compos
 and footer label is a `LocalizedText` sink that resolves and is retained when `Open` runs.
 
 The footer has no built-in quantity, mode, or category meaning. Each entry remembers its own current footer tag.
-Selecting a wedge returns both tags in one `RadialMenuSelection`:
+`InteractionMode` defaults to `Immediate`, where selecting a wedge returns both tags in one
+`RadialMenuSelection` and closes the menu. `EntryThenChoice` is the opt-in two-step flow. Selecting an enabled
+wedge locks it without committing. An enabled footer choice then commits that locked entry and choice together.
+Hover cannot change the lock, while selecting another enabled wedge replaces it. The footer is disabled until a
+wedge is locked. The locked wedge stays highlighted and its localized entry content replaces the centre text so
+the footer target remains visible.
 
 ```csharp
 enum InteractionAction : long
@@ -59,6 +64,7 @@ RadialMenuChoice[] modes =
 var radial = new RadialMenu
 {
     SafeBounds = safeBounds,
+    InteractionMode = RadialMenuInteractionMode.EntryThenChoice,
 };
 
 if (pointer.IsRightTapIn(targetBounds))
@@ -97,11 +103,18 @@ public readonly record struct RadialMenuChoice(
 public readonly record struct RadialMenuSelection(long EntryTag, long ChoiceTag);
 public readonly record struct RadialMenuChoiceChange(long EntryTag, long ChoiceTag);
 
+public enum RadialMenuInteractionMode
+{
+    Immediate,
+    EntryThenChoice,
+}
+
 public sealed partial class RadialMenu
 {
     public RadialMenuMetrics Metrics { get; set; }
     public RadialMenuTheme Theme { get; set; }
     public Rect SafeBounds { get; set; }
+    public RadialMenuInteractionMode InteractionMode { get; set; }
     public bool IsOpen { get; }
     public int HoverIndex { get; }
     public int ActiveIndex { get; }
@@ -175,15 +188,21 @@ inspectable but no selection can occur.
 the restore or server-sync path.
 
 `Update(Pointer, dt)` drives the pointer path. The gesture that opened the menu is latched and cannot select or
-dismiss it. While open, `Bounds` is blocked through `Pointer`. A valid wedge tap selects and closes. A footer tap
-changes only the active entry and leaves the menu open. A release outside dismisses and consumes the gesture.
+dismiss it. While open, `Bounds` is blocked through `Pointer`. In `Immediate` mode, a valid wedge tap selects and
+closes, while a footer tap changes only the active entry and leaves the menu open. In `EntryThenChoice` mode, a
+valid wedge tap locks or replaces the entry. A footer tap does nothing before the lock. After the lock it raises
+`WasChoiceChanged` when the remembered choice changed, raises `WasSelected`, and closes. A press on a wedge and
+release on the footer activates neither control. A release outside dismisses and consumes the gesture.
 `Update(InputManager, dt, focused, player?)` keeps that pointer path and adds wrapping keyboard and gamepad
 navigation. Left and Right move within the wheel or footer, Down enters the footer, Up returns to the wheel,
-menu-select commits, and menu-cancel closes. Disabled choices are skipped by navigation.
+menu-select commits, and menu-cancel closes. In `EntryThenChoice` mode, menu-select first locks the focused entry.
+Down becomes available after that lock, and menu-select on the footer commits and closes. Disabled choices are
+skipped by navigation.
 
 `WasSelected`, `Selection`, `WasChoiceChanged`, `ChoiceChange`, and `WasDismissed` are one-frame results cleared
 by the next `Update`, including while closed. `HoverIndex` tracks the wedge under the pointer. `ActiveIndex`
-tracks the wedge whose detail and footer state are shown. `Bounds` reports the complete live composition.
+tracks the current pointer or navigation wedge. In `EntryThenChoice` mode, the locked wedge and footer target stay
+independent from that active hover. `Bounds` reports the complete live composition.
 `ResolvedTitle`, `ResolvedEntryLabel`, `ResolvedEntryDetail`, and `ResolvedChoiceLabel` expose the strings retained
 at the most recent open.
 
@@ -210,6 +229,9 @@ hue while retaining their source luminance, and multiply their source alpha by `
 to zero hides all disabled entry channels. `Draw` uses ordinary Render2D geometry. The centre plate has its own
 shadow, translucent surface, inner highlight, and border, and remains visible when every entry is disabled.
 Drawing performs no blur, refraction, distortion, or framebuffer sampling.
+
+A menu without footer choices should use `Immediate` explicitly. This keeps a source or station picker on the
+one-click path while recipe or amount menus opt into `EntryThenChoice`.
 
 `GuiUseContext` carries one opaque source selection into a later target gesture. It draws nothing and has no
 widget dependency, so callers can thread the same context between any pair of controls. This example starts from

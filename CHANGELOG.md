@@ -5,7 +5,7 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 18.40.2
+## 18.40.3
 
 `TileWorldServer.SetPlayerState` no longer lets a lock the game cleared be reported as a failure to reach
 (Grimhollow#166).
@@ -16,6 +16,15 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - The case that hit was a game pausing a fight from `OnCombatEvent`, which `ResolveCombat` raises one step ahead
   of the report: the player's own landed blow was answered with a cannot-reach notice on every damaging hit.
 - Behaviour fix only. No API surface changed.
+
+## 18.40.2
+
+Radial menus can lock an entry before a footer choice commits it, preventing hover from retargeting an action.
+
+- `RadialMenu.InteractionMode` defaults to `Immediate`, preserving existing entry-click behaviour.
+- `EntryThenChoice` locks an enabled entry on click, then commits that entry and quantity from the footer.
+- Pointer hover keeps the locked entry, while clicking another enabled entry deliberately changes it.
+- The locked entry stays highlighted and named. Footer choices remain inactive until an entry is locked.
 
 ## 18.40.1
 

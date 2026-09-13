@@ -558,6 +558,7 @@ public sealed partial class TileWorldView : IDisposable
         // plane. A caller that runs its own water pass turns it off with TileWorldViewOptions.DrawWater.
         if (_options.DrawWater) DrawWaterPlanes();
         if (_silhouettedObject != 0L) DrawSilhouettedObject(focus);
+        if (_outlinedObject != 0L) DrawOutlinedObject(focus);
     }
 
     // The silhouetted object, 0 for none. The id resolves through the document's own O(1) object index

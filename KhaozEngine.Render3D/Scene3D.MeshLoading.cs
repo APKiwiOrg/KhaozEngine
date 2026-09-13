@@ -7,7 +7,8 @@ namespace KhaozEngine.Render3D
     /// <summary>Rigid mesh upload and the outline-only normal stream built beside the ordinary model stream.</summary>
     public sealed partial class Scene3D
     {
-        MeshHandle LoadMeshInternal(GltfMesh mesh, IGpuResourceSet? material, int splatMaterial = -1,
+        MeshHandle LoadMeshInternal(GltfMesh mesh, IGpuResourceSet? material,
+            IGpuResourceSet? outlineMaterial = null, int splatMaterial = -1,
             float alphaCutoff = 0f, int tileGroundMaterial = -1, Vector3[]? outlineNormals = null)
         {
             var f = _gd.Factory;
@@ -26,7 +27,7 @@ namespace KhaozEngine.Render3D
                 MeshBounds bounds = MeshBounds.FromVertices(mesh.Vertices);
                 int index = _slots.Alloc(out int generation);
                 var slot = new Mesh(vb, outlineNormalVb, ib, mesh.Indices32.Length, mesh.IndexFormat, in bounds,
-                    material, splatMaterial, alphaCutoff, tileGroundMaterial);
+                    material, outlineMaterial, splatMaterial, alphaCutoff, tileGroundMaterial);
                 if (index < _meshes.Count) _meshes[index] = slot;
                 else _meshes.Add(slot);
                 return new MeshHandle(index, generation);
@@ -37,6 +38,7 @@ namespace KhaozEngine.Render3D
                 outlineNormalVb?.Dispose();
                 ib?.Dispose();
                 material?.Dispose();
+                outlineMaterial?.Dispose();
                 throw;
             }
         }

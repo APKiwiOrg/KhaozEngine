@@ -45,6 +45,7 @@ namespace KhaozEngine.Render3D
         readonly Rendering.WaterRenderer _water;
         readonly Rendering.OverlayMeshRenderer _overlayMeshes;
         readonly Rendering.SilhouetteRenderer _silhouettes;
+        readonly Rendering.TargetOutlineRenderer _targetOutlines;
         readonly RenderResources _res;
         // Slot-indexed GPU mesh storage parallel to _slots; a freed slot's entry is null until reused.
         readonly List<Mesh?> _meshes = new();
@@ -447,6 +448,7 @@ namespace KhaozEngine.Render3D
             _depthLines = new Rendering.DepthLineRenderer(gd, _res.ColorDepthFB.Outputs);
             _overlayMeshes = new Rendering.OverlayMeshRenderer(gd, _res.ModelFB.Outputs);
             _silhouettes = new Rendering.SilhouetteRenderer(gd, _res.ModelFB.Outputs);
+            _targetOutlines = new Rendering.TargetOutlineRenderer(gd, targetOutput);
         }
 
         /// <summary>An opaque handle to an albedo texture loaded with <see cref="LoadTexture(string,TextureMipPolicy)"/> /
@@ -512,9 +514,13 @@ namespace KhaozEngine.Render3D
         public MeshHandle LoadMesh(GltfMesh mesh, TextureHandle texture)
         {
             IGpuResourceSet? material = null;
+            IGpuResourceSet? outlineMaterial = null;
             if (texture.IsValid)
+            {
                 material = _model.CreateMaterialSet(_textures[texture.ListIndex]!);
-            return LoadMeshInternal(mesh, material);
+                outlineMaterial = _targetOutlines.CreateMaterialSet(_textures[texture.ListIndex]!);
+            }
+            return LoadMeshInternal(mesh, material, outlineMaterial);
         }
 
         /// <summary>Upload a mesh and bind a full PBR-lite material (<paramref name="maps"/>): albedo + optional
@@ -532,7 +538,8 @@ namespace KhaozEngine.Render3D
             IGpuResourceSet? material = (a != null || n != null || r != null)
                 ? _model.CreateMaterialSet(a, n, r)
                 : null;
-            return LoadMeshInternal(mesh, material, alphaCutoff: maps.AlphaCutoff,
+            IGpuResourceSet? outlineMaterial = a != null ? _targetOutlines.CreateMaterialSet(a) : null;
+            return LoadMeshInternal(mesh, material, outlineMaterial, alphaCutoff: maps.AlphaCutoff,
                 outlineNormals: outlineNormals);
         }
 
@@ -542,7 +549,7 @@ namespace KhaozEngine.Render3D
         public MeshHandle LoadMesh(GltfMesh mesh, SplatMaterialHandle material)
         {
             if (!material.IsValid) return LoadMesh(mesh);
-            return LoadMeshInternal(mesh, null, material.ListIndex);
+            return LoadMeshInternal(mesh, null, splatMaterial: material.ListIndex);
         }
 
         /// <summary>Decode a PNG/JPG file into an albedo texture (RGBA8) and return a handle for
@@ -841,6 +848,7 @@ namespace KhaozEngine.Render3D
             _waterPlanes.Clear();
             _overlayMeshDraws.Clear();
             _silhouetteDraws.Clear();
+            BeginMeshOutlineFrame();
             _billboardAlphaItems.Clear();
             _billboardAlpha.Clear();
             _billboardAdditive.Clear();
@@ -2033,6 +2041,7 @@ namespace KhaozEngine.Render3D
             if (EnableTiming) transparentsMs += ElapsedMs(timingStart);
             timingStart = EnableTiming ? Stopwatch.GetTimestamp() : 0;
             _post.Run(cl, _res, target, Post, runFxaa, distortionActive);
+            DrawTargetOutlines(cl, vp, target);
             if (EnableTiming) postMs = ElapsedMs(timingStart);
             timingStart = EnableTiming ? Stopwatch.GetTimestamp() : 0;
 
@@ -2330,6 +2339,7 @@ namespace KhaozEngine.Render3D
             _water.Dispose();
             _overlayMeshes.Dispose();
             _silhouettes.Dispose();
+            _targetOutlines.Dispose();
             _res.Dispose();
             foreach (var m in _meshes)
                 if (m is { } mesh)
@@ -2338,6 +2348,7 @@ namespace KhaozEngine.Render3D
                     mesh.OutlineNormalVb.Dispose();
                     mesh.Ib.Dispose();
                     mesh.MaterialSet?.Dispose();
+                    mesh.OutlineMaterialSet?.Dispose();
                 }
             foreach (var m in _skinnedMeshes)
                 if (m is { } e) { e.Vb.Dispose(); e.Ib.Dispose(); e.MaterialSet?.Dispose(); e.SkinnedMaterialSet?.Dispose(); }
@@ -2347,41 +2358,6 @@ namespace KhaozEngine.Render3D
             _textures.Clear();
             DisposeSplatMaterials();
             DisposeTileGroundMaterials();
-        }
-
-        readonly struct Mesh
-        {
-            public readonly IGpuBuffer Vb, OutlineNormalVb, Ib;
-            public readonly int IndexCount;
-            /// <summary>GPU index width of <see cref="Ib"/> (UInt16 for meshes up to 65,536 verts, else UInt32).</summary>
-            public readonly GpuIndexFormat IndexFormat;
-            /// <summary>Per-mesh material resource set (UBO + albedo + sampler), or null => the renderer's white
-            /// default. The texture itself is owned in Scene3D's <c>_textures</c> list, not here, so a texture can
-            /// be shared by several meshes; only the set is owned per mesh.</summary>
-            public readonly IGpuResourceSet? MaterialSet;
-            /// <summary>Index into Scene3D's splat-material list when this mesh draws through the splat pipeline, else
-            /// -1 (the normal model pipeline). Splat meshes carry no per-mesh <see cref="MaterialSet"/> (the splat set
-            /// is shared and owned by the scene), so unload frees only Vb/Ib.</summary>
-            public readonly int SplatMaterial;
-            // Index into Scene3D's tile-ground material list when this mesh draws through the tile-ground pipeline,
-            // else -1. Shared and scene-owned like SplatMaterial, but tile ground CASTS shadows (see ShadowCasters).
-            public readonly int TileGroundMaterial;
-            /// <summary>Mesh-local bounds (AABB + bounding sphere) computed once at load from the vertex positions,
-            /// for frustum culling. The renderer transforms these by the per-instance world matrix (no per-frame
-            /// vertex scan).</summary>
-            public readonly MeshBounds Bounds;
-            /// <summary>Alpha-cutout threshold for this mesh's material (0 = OPAQUE, no clip). Packed into each of
-            /// this mesh's per-instance <c>SpecParams.z</c> by <c>ApplyAlphaCutoffs</c> so the model fragment
-            /// discards texels below it (MASK foliage renders as its silhouette). 0 keeps the render byte-identical.</summary>
-            public readonly float AlphaCutoff;
-            public Mesh(IGpuBuffer vb, IGpuBuffer outlineNormalVb, IGpuBuffer ib, int indexCount,
-                GpuIndexFormat indexFormat, in MeshBounds bounds, IGpuResourceSet? materialSet = null,
-                int splatMaterial = -1, float alphaCutoff = 0f, int tileGroundMaterial = -1)
-            {
-                Vb = vb; OutlineNormalVb = outlineNormalVb; Ib = ib; IndexCount = indexCount;
-                IndexFormat = indexFormat; Bounds = bounds; MaterialSet = materialSet;
-                SplatMaterial = splatMaterial; AlphaCutoff = alphaCutoff; TileGroundMaterial = tileGroundMaterial;
-            }
         }
 
         /// <summary>A GPU-resident skinned mesh: its vertex/index buffers, index count, optional material set, the

@@ -573,4 +573,30 @@ public class TileWorldViewTests
         view.Draw(HouseFocus + new Vector3(500f, 0f, 0f));
         Assert.Empty(scene.Silhouettes);
     }
+
+    [Fact]
+    public void An_outlined_object_draws_every_part_in_one_pixel_group()
+    {
+        var scene = new RecordingTileWorldScene();
+        TileWorldDocument doc = TileRenderTestData.HouseWorld();
+        using TileWorldView view = View(scene, doc);
+        view.LoadRegion(TileRenderTestData.Region);
+
+        TileObject target = doc.GetOrCreateRegion(TileRenderTestData.Region).Objects[0];
+        var crimson = new KhaozEngine.Primitives.Color(0.9f, 0.25f, 0.2f, 1f);
+        view.SetOutlinedObject(target.Id, crimson, widthPixels: 1.25f);
+        view.Draw(HouseFocus);
+
+        Assert.Single(scene.OutlineGroups);
+        RecordedOutlineGroup group = scene.OutlineGroups[0];
+        TileObjectArchetype archetype = TileRenderTestData.Catalogs.Archetype(target.ArchetypeId)!;
+        Assert.Equal(new GreyboxMeshResolver().Resolve(archetype)!.Count, group.Parts.Count);
+        Assert.Equal(crimson, group.Color);
+        Assert.Equal(1.25f, group.WidthPixels);
+
+        scene.OutlineGroups.Clear();
+        view.ClearOutlinedObject();
+        view.Draw(HouseFocus);
+        Assert.Empty(scene.OutlineGroups);
+    }
 }

@@ -108,6 +108,12 @@ public interface ITileWorldScene
     /// out by <paramref name="widthMetres"/>. Defaults to a no-op so an implementation written before
     /// silhouettes existed keeps compiling and simply draws none.</summary>
     void DrawMeshSilhouette(MeshHandle handle, Matrix4x4 world, Color color, float widthMetres) { }
+
+    /// <summary>Starts one frame-local pixel-width outline group. Defaults to an inert handle for an older scene.</summary>
+    MeshOutlineGroup BeginMeshOutline(Color color, float widthPixels) => default;
+
+    /// <summary>Adds one mesh part to a pixel-width outline group. Defaults to a no-op for an older scene.</summary>
+    void DrawMeshOutline(MeshOutlineGroup group, MeshHandle handle, Matrix4x4 world) { }
 }
 
 /// <summary>The shipped <see cref="ITileWorldScene"/>: every member forwards straight to a <see cref="Scene3D"/>
@@ -148,6 +154,14 @@ public sealed class Scene3DTileWorldScene : ITileWorldScene
     /// <inheritdoc />
     public void DrawMeshSilhouette(MeshHandle handle, Matrix4x4 world, Color color, float widthMetres) =>
         _scene.DrawMeshSilhouette(handle, world, color, widthMetres);
+
+    /// <inheritdoc />
+    public MeshOutlineGroup BeginMeshOutline(Color color, float widthPixels) =>
+        _scene.BeginMeshOutline(color, widthPixels);
+
+    /// <inheritdoc />
+    public void DrawMeshOutline(MeshOutlineGroup group, MeshHandle handle, Matrix4x4 world) =>
+        _scene.DrawMeshOutline(group, handle, world);
 
     /// <inheritdoc />
     public TileGroundMaterialHandle LoadTileGroundMaterial(TileGroundMaterialSet set)

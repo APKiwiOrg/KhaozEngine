@@ -366,6 +366,19 @@ public sealed record TilePropDrawRecord(
 /// records every load, unload and draw, so a test asserts exact handle counts and exact draw contents. Unloading
 /// a handle that is not live throws, which turns a double free in the view into a failing test rather than a
 /// silent leak of the bug into a real device.</summary>
+public sealed class RecordedOutlineGroup
+{
+    public KhaozEngine.Primitives.Color Color { get; }
+    public float WidthPixels { get; }
+    public List<(MeshHandle Handle, Matrix4x4 World)> Parts { get; } = new();
+
+    public RecordedOutlineGroup(KhaozEngine.Primitives.Color color, float widthPixels)
+    {
+        Color = color;
+        WidthPixels = widthPixels;
+    }
+}
+
 public sealed partial class RecordingTileWorldScene : ITileWorldScene
 {
     readonly HashSet<int> _alive = new();
@@ -477,6 +490,21 @@ public sealed partial class RecordingTileWorldScene : ITileWorldScene
     /// <summary>Records one silhouette draw.</summary>
     public void DrawMeshSilhouette(MeshHandle handle, Matrix4x4 world, KhaozEngine.Primitives.Color color, float widthMetres) =>
         Silhouettes.Add((handle, world, color, widthMetres));
+
+    /// <summary>Pixel-width outline groups created by the view this frame.</summary>
+    public List<RecordedOutlineGroup> OutlineGroups { get; } = new();
+
+    /// <summary>Creates one recording group that custom seam implementations can identify by handle index.</summary>
+    public MeshOutlineGroup BeginMeshOutline(KhaozEngine.Primitives.Color color, float widthPixels)
+    {
+        int index = OutlineGroups.Count;
+        OutlineGroups.Add(new RecordedOutlineGroup(color, widthPixels));
+        return new MeshOutlineGroup(index);
+    }
+
+    /// <summary>Records one part in its outline group.</summary>
+    public void DrawMeshOutline(MeshOutlineGroup group, MeshHandle handle, Matrix4x4 world) =>
+        OutlineGroups[group.Index].Parts.Add((handle, world));
 
     /// <summary>Hands out one fresh live handle per part, unless this is the archetype
     /// <see cref="ThrowOnPropMeshLoad"/> names, which throws having uploaded nothing.</summary>

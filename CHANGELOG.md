@@ -5,6 +5,25 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.45.0
+
+Networked characters support server-authored ballistic movement commitments through collision and prediction.
+
+- `MovementCommitmentRequest.ForBallisticArc` resolves an authored distance, apex and duration to launch velocity
+  and gravity. Preparation, flight and rooted recovery ignore player movement, jump, facing and rescue commands.
+- `WorldServer` and `ShardedWorldServer` expose sequence-returning `BeginMovementCommitment` and sequence-guarded
+  `AbortMovementCommitment`. `MovementCommitmentLanded` fires at physical contact and `MovementCommitmentEnded`
+  fires after recovery or an abort, after movement and handoff but before snapshots.
+- `MoveState.Commitment` and `MovementState.Commitment` carry the phase, frozen direction, speeds, gravity and
+  timers through codec, predictor replay and sharded handoff. Movement wire generation is 11. Consumers must
+  advance their join protocol gate when adopting the changed component.
+- The normal swept mover, support, bounds and gravity path handles the arc. Deep water aborts into swimming
+  without a landing event. Blocked launches, timeouts, superseding moves, disconnects and teleports end once.
+- Direct teleports share the same terminal callback as admin teleports. A stale abort cannot stop a newer
+  commitment. Launch compensation uses the actual simulation step, with no endpoint teleport.
+- Tests exercise hostile input, walls, landing and recovery, water entry, prediction replay, component and
+  persisted blob compatibility, sequence safety, direct teleport and sharded authority handoff.
+
 ## 18.44.0
 
 Text inputs can draw a localized, non-editable prefix before their placeholder or typed content.

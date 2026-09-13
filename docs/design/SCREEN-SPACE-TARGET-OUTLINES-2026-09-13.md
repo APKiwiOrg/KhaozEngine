@@ -6,7 +6,7 @@ Consumer: [Grimhollow #186](https://github.com/APKiwiOrg/Grimhollow/issues/186).
 ## Goal and contract
 
 Selected targets have a thin border around their camera-projected silhouette. Overlapping limbs,
-material parts and canopy masses form one union and never create internal strokes. Foreground
+material parts and canopy masses form one union and never create internal strokes. Opaque foreground
 geometry hides the target and its border. An occluder's cut through a target creates no new border.
 Grimhollow uses 1.25 physical output pixels for every target, independent of body size and distance.
 
@@ -51,14 +51,17 @@ The composite never colours an occupied center pixel. It searches only a bounded
 neighborhood and takes border colour from visible target coverage. Depth checks at both the source
 and destination suppress hidden silhouettes and prevent painting over nearer geometry.
 
-The pass runs after the scene post-processing stage and before final overlays. Pixel width is
-measured against the final framebuffer dimensions. Mask targets are allocated lazily and resized
-with the viewport. Ordinary model culling and alpha cutout must also apply to the mask.
+The composite runs after the scene post-processing stage and before final overlays. Pixel width is
+measured against the final framebuffer dimensions. Full target coverage/depth and visible target
+coverage are rendered on the scene's actual internal raster and MSAA sample grid, then resolved for
+the final-output composite. Mask targets are allocated lazily and resized with the scene resources.
+Ordinary model culling and alpha cutout also apply to the mask. Scene-depth occlusion covers opaque
+depth-writing geometry. Water and particle passes that do not write this depth cannot occlude the
+final border.
 
-MSAA and render scaling are correctness requirements. The ordinary scene depth MRT can contain
-resolved edge values. A single-sample full-resolution mask must not be assumed to match it without
-tests. If direct depth sampling fails those tests, use matching scene-sample coverage before the
-final pixel-width composite. A large depth epsilon is not an acceptable substitute.
+MSAA and render scaling are correctness requirements. The ordinary scene depth MRT stores raw NDC
+depth and can contain resolved edge values. Mask mapping uses the same final blit convention and
+point samples. A large depth epsilon is not an acceptable substitute for matching coverage.
 
 ## Implementation plan
 
@@ -97,7 +100,7 @@ final pixel-width composite. A large depth epsilon is not an acceptable substitu
 - No red lines through a goblin's head, torso, arm joints or overlapping legs.
 - No yellow lines through overlapping oak canopy surfaces.
 - A thin border follows only the visible outer edge and genuine transparent holes.
-- Foreground geometry receives no leaked outline and introduces no cut-line.
+- Opaque foreground geometry receives no leaked outline and introduces no cut-line.
 - Border thickness remains constant for all target sizes, distances and render scales.
 - Legacy hull callers retain their behavior. Frames without new outlines remain unchanged.
 - Metal, Direct3D 11 and Vulkan pass the semantic render checks.

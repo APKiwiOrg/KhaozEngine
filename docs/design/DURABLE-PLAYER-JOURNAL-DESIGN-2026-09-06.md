@@ -111,6 +111,12 @@ the game.
 
 ### 4.3 Authority versus durability
 
+**Superseded in part by [`JOURNAL-ADMITTED-STATE-DESIGN-2026-09-13.md`](JOURNAL-ADMITTED-STATE-DESIGN-2026-09-13.md).**
+The commit-before-apply order below is still what a durable record means. What changed is when the consumer shows
+it: the executor now carries an admitted state layer, so an accepted operation moves a live view on the tick it was
+admitted and the commit follows behind it. A commit that sets `PresentAtCommit` keeps the order exactly as written
+here. The reserved-stream refusal is gone either way, replaced by an ordered per-stream queue.
+
 The host is authoritative because it decides whether an action is legal and what it means. The journal makes
 that decision durable. Host authority alone does not protect an in-memory grant from process loss.
 
@@ -599,6 +605,12 @@ Admission returns one of:
 - `StreamBusy`, when any touched stream already has an admitted mutation
 - `Backpressure`, when the configured operation or byte capacity is full
 - `Stopping`, after shutdown drain starts
+
+**Superseded by [`JOURNAL-ADMITTED-STATE-DESIGN-2026-09-13.md`](JOURNAL-ADMITTED-STATE-DESIGN-2026-09-13.md).** A
+busy stream queues in admission order now instead of refusing, so `StreamBusy` is left to a quarantined stream and
+to a commit that opted out of queueing. Admission also answers `VersionConflict` when an expected version does not
+match the admitted head, and `Backpressure` when a stream's own queue depth cap is reached. Everything below about
+retries, quarantine, capacity, acknowledgement and shutdown is unchanged.
 
 An accepted operation is never evicted. Transient or unknown store failures retry the same operation with
 bounded exponential backoff and jitter. While it retries, all touched streams remain reserved. This is the

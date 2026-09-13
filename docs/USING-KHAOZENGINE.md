@@ -15734,15 +15734,19 @@ and permissions. The complete public type and limit reference is in
 
 The host flow is fixed:
 
-1. Authenticate and validate the command on the simulation thread against committed live state.
+1. Authenticate and validate the command on the simulation thread against the executor's admitted view of the
+   stream, which is the committed state plus whatever is already in flight over it.
 2. Freeze one `JournalOperationIdentity`, ordered event set, changed projections, and result. Keep every byte and the
    operation ID stable across retries.
 3. Call `MutationJournalExecutor.Submit`. Do not wait for SQL on the simulation thread.
-4. At the start of a later frame, drain a bounded number of terminal completions.
-5. For an applied or replayed receipt, check that every stream range starts at the live committed version. Reduce
+4. Present the accepted result on that same tick, unless the commit set `PresentAtCommit`.
+5. At the start of a later frame, drain a bounded number of terminal completions.
+6. For an applied or replayed receipt, check that every stream range starts at the live committed version. Reduce
    into isolated copies and swap every affected state together.
-6. Send client success only after that committed result is reflected in live state.
-7. Call `AcknowledgeCompletion` only after the result, no-write conflict, or quarantine was fully handled.
+7. Handle a correction by resyncing the sections it names and telling the players behind the superseded operations
+   that nothing happened.
+8. Call `AcknowledgeCompletion` only after the result, no-write conflict, supersession, or quarantine was fully
+   handled.
 
 ```csharp
 var executor = new MutationJournalExecutor(
@@ -15790,6 +15794,76 @@ for (int drained = 0;
 
 The host owns `completionBudget`, keeps it positive, and selects it to fit the simulation tick budget.
 
+#### The admitted view, the queue, and correction
+
+A busy stream no longer refuses work. `Submit` appends behind the operations already admitted on every stream the
+commit touches, and the operation is dispatched to the store once it is at the head of all of them, which happens
+when each operation ahead has reached a terminal result and been acknowledged. One stream therefore commits in
+admission order. `ExpectedVersion` is checked against the admitted head version, the version the operation ahead
+will produce, so a queued chain is contiguous and a stale plan is refused at admission with `VersionConflict`
+rather than at the store. `JournalExecutorOptions.StreamQueueDepth` caps one stream's queue and answers
+`Backpressure` beyond it. `StreamBusy` remains the answer for a quarantined stream and for a commit built with
+`queueBehindAdmitted: false`, which is the right shape for an action a player would rather see refused than see
+queued.
+
+Tell the executor what the store durably holds when you load a stream, then read the layered view instead of the
+database:
+
+```csharp
+JournalProjectionRead loaded = await journal.ReadProjectionsAsync(new JournalProjectionQuery(streamKey));
+executor.SeedCommitted(streamKey, loaded.HeadVersion, loaded.Sections);
+
+// On the simulation thread, with no store read and no await.
+if (executor.TryGetAdmittedProjection(streamKey, "bag", out JournalAdmittedSection? bag))
+{
+    GameBuildPlanFrom(bag.Data.Span);
+}
+
+// When the player logs out.
+executor.ForgetStream(streamKey);
+```
+
+`TryGetAdmittedProjection` returns the newest admitted uncommitted write over a section, or the committed baseline
+when nothing is in flight, and `IsCommitted` says which. `TryGetAdmittedStream` returns the whole stream: committed
+version, admitted head version, the number of operations in flight, and every section. The executor never reads
+the store to build this. It advances the baseline as commits are acknowledged `Handled`. A stream nobody seeded is
+still tracked while it carries admitted operations and is forgotten once its queue empties, so the view then holds
+only what is in flight.
+
+An accepted `JournalSubmission` carries `AdmittedStreams` (the head version each touched stream now stands at) and
+`ChangedSections` (every section the operation replaced), which is what a consumer presents from on the submitting
+tick. The engine plays no sound and sends no packet. Presentation is entirely game-side.
+
+Set `presentAtCommit: true` on a commit whose outcome must not be shown before it is durable. The owner rule across
+the fleet is value moving between players: a trade and a contested loot claim. Such an operation still queues,
+still reserves its streams and still blocks whatever is behind it. What changes is the consumer's reading of its
+own submission result.
+
+A terminal failure corrects the view. Fatal faults, quarantine, `VersionConflict` and `OperationConflict` all roll
+every touched stream back to its committed baseline plus the operations still queued ahead of the failure, refuse
+every operation queued behind it with a `JournalCompletionKind.SupersededByFailure` completion that never reached
+the store, and attach one `JournalCorrection` to the failed operation's own completion:
+
+```csharp
+if (completion.Correction is JournalCorrection correction)
+{
+    foreach (JournalProjectionSectionKey section in correction.SectionsToResync)
+        GameResyncSection(section.StreamKey, section.SectionName);
+    foreach (Guid refused in correction.SupersededOperationIds)
+        GameCancelPresentation(refused);
+    GameRaiseLocalizedNotice(correction.StreamKeys);
+}
+```
+
+Acknowledge a superseded completion `Handled` like any other, which is what releases its bytes and its place in
+the queue. Transient retries never correct: the operation is still admitted, its writes still stand, and the store
+is still being asked. After a `Quarantined` acknowledgement the executor also supersedes the dependants and resets
+the touched streams, so re-seed them after `ReleaseQuarantine`.
+
+Admitted uncommitted operations die with the process. A client-originated operation resubmits under the same
+operation ID after reconnect, and `StopAsync` reports operations that queued and never started among its
+unresolved IDs. Do not acknowledge those.
+
 `Game...` methods above are consumer code, not engine API. While its operation receipt remains inside the configured
 retention horizon, a replay already represented by the current live versions returns the original result without
 reducing the old events again. A receipt gap requires snapshot and tail catch-up before gameplay continues. If
@@ -15825,8 +15899,8 @@ host to roll back its child and parent deletes after migration.
 
 Every executor needs explicit positive operation-count and owned-byte capacities. Accepted work remains charged and
 its streams remain reserved until acknowledgement. `StopAsync` rejects new work, gives admitted work a bounded drain
-period, and returns every unresolved or completed-but-unacknowledged operation ID. Do not acknowledge those on the
-host's behalf during shutdown.
+period, and returns every unresolved, queued-but-never-started, or completed-but-unacknowledged operation ID. Do
+not acknowledge those on the host's behalf during shutdown.
 
 The first release allows a multi-stream mutation only when one orchestration host can update or invalidate every
 affected live session. Database atomicity does not update RAM in another process. Cross-host trade needs durable

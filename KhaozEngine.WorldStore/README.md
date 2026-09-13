@@ -105,7 +105,7 @@ array or list after construction cannot change a fingerprint, capacity charge, s
 |---|---|
 | `JournalOperationIdentity` | Stable `Guid` operation ID, authenticated scope, action kind, and normalized intent bytes. The same intent must keep all four values across retries. |
 | `JournalInitialization` | Identity, one absent stream key, version-zero snapshot, version-zero projections, and stable result. |
-| `JournalCommit` | Identity, one or more stream mutations, replacement projections, and stable result. `OwnedByteCount` is the executor admission charge. |
+| `JournalCommit` | Identity, one or more stream mutations, replacement projections, and stable result. `OwnedByteCount` is the executor admission charge. `PresentAtCommit` marks an operation the consumer must not present before its commit. `QueueBehindAdmitted` is true by default and false asks for the pre-queue `StreamBusy` answer instead. |
 | `JournalStreamMutation` | Stream key, expected version, and ordered events. A zero-event mutation is a read constraint and cannot write projections. |
 | `JournalEvent` | Game-owned event type, positive schema version, payload, and SHA-256 checksum. Event order is significant. |
 | `JournalProjectionWrite` | Full replacement of one game-owned section at the stream's resulting version. It is not a patch or an event. |
@@ -202,24 +202,63 @@ ending a retry budget cannot establish whether the commit happened.
 
 | Member | Contract |
 |---|---|
-| `Submit(commit)` | Freezes and validates the complete commit. Returns `Accepted`, `StreamBusy`, `Backpressure`, or `Stopping`. It never waits on database I/O. |
-| `TryDequeueCompletion(out completion)` | Lets the simulation thread drain terminal results. `JournalCompletion` carries the frozen commit and either a result or a fatal failure. |
+| `Submit(commit)` | Freezes and validates the complete commit, then queues it behind whatever its streams already carry. Returns `Accepted`, `StreamBusy`, `Backpressure`, `VersionConflict`, or `Stopping`. It never waits on database I/O. |
+| `SeedCommitted(streamKey, committedVersion, sections)` | Declares what the store durably holds for one stream, which is the `JournalProjectionRead` the consumer already performs when it loads that stream. Seeding again replaces the baseline and rebuilds the admitted layer over it. |
+| `ForgetStream(streamKey)` | Drops a seeded baseline. False when the stream is unknown, and it refuses while the stream still carries admitted operations. |
+| `TryGetAdmittedProjection(streamKey, sectionName, out section)` | Reads one section as the executor sees it now, the newest admitted uncommitted write or the committed baseline. Synchronous and safe from the simulation thread. |
+| `TryGetAdmittedStream(streamKey, out stream)` | Reads the whole view of one stream: committed version, admitted head version, in-flight operation count, and every section. |
+| `TryDequeueCompletion(out completion)` | Lets the simulation thread drain terminal results. `JournalCompletion` carries the frozen commit and either a result, a fatal failure, or neither when it was superseded. |
 | `AcknowledgeCompletion(id, acknowledgement)` | Accepts `Handled` or `Quarantined` after a dequeued completion. Only this releases admission bytes and stream reservations. |
 | `ReleaseQuarantine(streamKeys)` | Reopens a fully recovered quarantine group atomically. Every stream quarantined by one operation must be released together. |
 | `StopAsync(gracePeriod, ct)` | Stops admission and gives workers a bounded drain period. `JournalShutdownResult` lists every unresolved or unacknowledged operation and its total admitted bytes. |
 
 Accepted work is never evicted. Pending and completed-but-unacknowledged work share the same operation and byte
 capacity. Streams stay reserved while storage retries and until acknowledgement. A fatal completion quarantines
-its streams. The host must reload and verify snapshot plus tail before calling `ReleaseQuarantine`.
+its streams. The host must reload and verify snapshot plus tail before calling `ReleaseQuarantine`, and re-seed
+those streams before it submits against them again.
+
+### Admitted state
+
+Each stream carries an ordered queue of admitted operations. An operation is dispatched to the store only when it
+is at the head of every one of its queues, which happens once each operation ahead of it has reached a terminal
+result and been acknowledged, so one stream commits in admission order. `ExpectedVersion` is checked against the
+admitted head version, which is the version the operation ahead will produce, so a queued chain is contiguous. A
+mismatch is refused at admission with `VersionConflict`. `JournalExecutorOptions.StreamQueueDepth` caps one
+stream's queue and answers `Backpressure` beyond it. `StreamBusy` still answers a quarantined stream and a commit
+that set `QueueBehindAdmitted` to false.
+
+Over that queue the executor keeps a live view of the projection sections: the committed baseline
+`SeedCommitted` declared, with every admitted uncommitted `JournalProjectionWrite` layered over it in order. The
+executor never reads the store to build it and advances the baseline as commits are acknowledged `Handled`. A
+stream nobody seeded is still tracked while it has admitted operations, adopting the first operation's expected
+version as its baseline and forgotten once its queue empties.
+
+A terminal failure (fatal, quarantined, `VersionConflict`, or `OperationConflict`) corrects the view. Every stream
+the operation touched drops back to its committed baseline plus the operations still queued ahead of it, every
+operation queued behind it is refused with a `SupersededByFailure` completion without ever reaching the store, and
+the failed operation's own completion carries a `JournalCorrection`. Transient retries correct nothing: the
+operation is still admitted and the store is still being asked.
 
 Executor values are immutable host handoff records. `JournalSubmission` exposes `Status`, `OperationId`,
-`AdmittedByteCount`, and `IsAccepted`. `JournalCompletion` exposes the operation ID, frozen commit, touched stream
-keys, terminal result or failure, and `IsFatal`. `JournalShutdownResult` exposes ordered unresolved operation IDs and
-their admitted byte total. `JournalCompletionAcknowledgement` contains `Handled` and `Quarantined`.
+`AdmittedByteCount`, `IsAccepted`, `AdmittedStreams` (a `JournalAdmittedStreamHead` per touched stream) and
+`ChangedSections` (a `JournalProjectionSectionKey` per replaced section). `JournalCompletion` exposes the operation
+ID, frozen commit, touched stream keys, terminal result or failure, `IsFatal`, a `JournalCompletionKind` of
+`Committed`, `Fatal` or `SupersededByFailure`, the `Correction` a failure carries, and `SupersededBy`.
+`JournalCorrection` names the failed operation, the rolled-back streams, the sections to resync and the superseded
+operation IDs. `JournalAdmittedSection` carries the section identity, bytes, source version and an `IsCommitted`
+flag. `JournalAdmittedStream` carries the committed version, admitted head version, in-flight operation count and
+sections. `JournalShutdownResult` exposes ordered unresolved operation IDs, including operations that queued and
+never started, and their admitted byte total. `JournalCompletionAcknowledgement` contains `Handled` and
+`Quarantined`.
+
+Admitted uncommitted operations die with the process. A client-originated operation resubmits under the same
+operation ID after reconnect. Set `PresentAtCommit` on anything whose early presentation could mint value across
+accounts, which is a player trade or a contested loot claim.
 
 `MutationJournalExecutorMetrics` exposes submission and result counters, retry counts by failure kind, queue
-operations and bytes, oldest pending age, reserved streams, unacknowledged completions, quarantine count, a commit
-latency histogram, recovery tail readings, compaction lag, and projection latency and section readings. Payloads,
+operations and bytes, oldest pending age, reserved streams, unacknowledged completions, quarantine count, admitted
+uncommitted depth with its per-stream peak and oldest age, correction and superseded counts, a commit latency
+histogram, recovery tail readings, compaction lag, and projection latency and section readings. Payloads,
 results, display names, and raw account IDs do not belong in logs or metric labels.
 
 `GetRetryCount` reads one failure-kind counter. `GetCommitLatencyHistogram` returns a
@@ -233,9 +272,15 @@ The game owns every method named `Game...` in this example. They stand for game 
 client routing, and recovery. The journal calls are the engine API.
 
 ```csharp
+// Once, when the stream is loaded.
+JournalProjectionRead loaded = await journal.ReadProjectionsAsync(new JournalProjectionQuery(streamKey));
+executor.SeedCommitted(streamKey, loaded.HeadVersion, loaded.Sections);
+
 // On the simulation thread, after authenticating the command.
-JournalCommit frozen = GameValidateAndFreeze(command, committedLiveState);
+JournalCommit frozen = GameValidateAndFreeze(command, executor);
 JournalSubmission submission = executor.Submit(frozen);
+if (submission.IsAccepted && !frozen.PresentAtCommit)
+    GamePresentNow(submission.AdmittedStreams, submission.ChangedSections);
 
 // At the start of a later frame, under a fixed completion budget.
 const int completionBudget = 32;
@@ -243,6 +288,18 @@ for (int drained = 0;
      drained < completionBudget && executor.TryDequeueCompletion(out JournalCompletion? completion);
      drained++)
 {
+    if (completion.Correction is JournalCorrection correction)
+        GameResyncAndNotice(correction);
+
+    if (completion.IsSuperseded)
+    {
+        // Nothing this operation described happened and it never reached the store.
+        executor.AcknowledgeCompletion(
+            completion.OperationId,
+            JournalCompletionAcknowledgement.Handled);
+        continue;
+    }
+
     if (completion.Failure is not null)
     {
         GameBlockAndRecover(completion.StreamKeys, completion.Failure);
@@ -273,8 +330,9 @@ for (int drained = 0;
 
 The host owns `completionBudget`, keeps it positive, and selects it to fit the simulation tick budget.
 
-The order is fixed: validate on the simulation thread, freeze deterministic identity and intent, submit without
-blocking, drain at the start of a frame, apply only contiguous committed versions, reply, then acknowledge. A
+The order is fixed: validate on the simulation thread against the admitted view, freeze deterministic identity and
+intent, submit without blocking, present at admission unless the commit set `PresentAtCommit`, drain at the start
+of a frame, apply only contiguous committed versions, reply, then acknowledge. A
 replayed receipt already represented by live versions returns its original response without reducing its events
 again while that receipt is retained. A gap forces journal catch-up before gameplay resumes. If isolated reduction
 or the atomic live-state swap fails, acknowledge `Quarantined`, block every touched stream, and recover them as one

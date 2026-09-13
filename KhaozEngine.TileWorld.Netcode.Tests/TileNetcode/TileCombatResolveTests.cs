@@ -743,4 +743,45 @@ public class TileCombatResolveTests
         s.Tick(Dt);
         Assert.Equal(new[] { 4242L }, refused);
     }
+
+    // A LOCK THE GAME WROTE AWAY IS NOT A BROKEN ONE. A game that pauses a fight while an award commits does it the
+    // only way it can, SetPlayerState with the target zeroed, and the natural place to do it is OnCombatEvent, which
+    // ResolveCombat raises one step ahead of ReportBrokenLocks. The report then found a watched lock, a state with
+    // no target and a target that still resolved, which is exactly its shape for a failure to reach, and answered
+    // the player's own landed blow with a CannotReach (Grimhollow#166). The write forgets the watch instead.
+    [Fact]
+    public void A_lock_the_game_clears_from_a_combat_event_is_not_reported_as_unreachable()
+    {
+        var hub = new InMemoryTransportHub();
+        var rules = new FixedRules { Damage = 3 };
+        using TileWorldServer s = Server(TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(20, 20, 0), rules);
+        long player = s.SpawnPlayer(0, "a", "Ari");
+        Assert.True(s.SetHealth(player, new TileHealth { Current = 40, Max = 40 }));
+        long monster = s.SpawnActor(new TileCoord(20, 21, 0), new TileActorSpawn(100, 4, TileDirection.S));
+        Lock(s, player, monster);
+        var refused = new List<long>();
+        s.OnCannotReach += (_, target) => refused.Add(target);
+        int paused = 0;
+        s.OnCombatEvent += e =>
+        {
+            if (e.AttackerNetId != player) return;
+            Assert.True(s.TryGetPlayerState(0, out TileMoveState live));
+            TileMoveState stopped = TileMoveState.At(live.Tile, live.Facing);
+            s.SetPlayerState(0, stopped);
+            paused++;
+        };
+
+        s.Tick(Dt);
+
+        Assert.Equal(1, paused);
+        Assert.True(s.TryGetHealth(monster, out TileHealth hit));
+        Assert.Equal(97, hit.Current);
+        Assert.True(s.TryGetPlayerState(0, out TileMoveState after));
+        Assert.Equal(0L, after.CombatTarget);
+        Assert.Empty(refused);
+
+        // The write is what silenced it, not the event: the ordinary refusals above and in
+        // An_unreachable_target_notices_the_player_and_a_disengaging_walk_does_not still fire, because a lock the
+        // SIMULATOR clears never passes through SetPlayerState.
+    }
 }

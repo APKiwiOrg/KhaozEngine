@@ -283,7 +283,11 @@ public sealed partial class TileWorldServer : IDisposable
     /// <param name="slot">The player's connection slot. An unknown slot is ignored, but the state is validated
     /// first, so a bad one is refused whether or not the slot is live.</param>
     /// <param name="state">The state to write. Its route is written out to <see cref="TileRouteState"/> as well,
-    /// so the two halves stay the one answer.</param>
+    /// so the two halves stay the one answer. A write that drops or changes <see cref="TileMoveState.CombatTarget"/>
+    /// is the game ending that fight on purpose, so the tick's broken-lock report skips it: no
+    /// <see cref="OnCannotReach"/> and no <see cref="TileServerReason.CannotReach"/> notice follow, even when the
+    /// write happens inside the tick (from <see cref="OnCombatEvent"/>, say) after the lock was recorded for the
+    /// report.</param>
     /// <param name="teleport">Advance the teleport epoch, for a placement the client must not interpolate. It also
     /// forces <see cref="TileMoveState.StepFrom"/> onto <see cref="TileMoveState.Tile"/> at zero progress, so a
     /// one-tile teleport CUTS rather than gliding: an origin one step out is a legal step, so a placement copied
@@ -319,6 +323,7 @@ public sealed partial class TileWorldServer : IDisposable
             next.Epoch = (cell.World.TryGet(e, out TileMoveState old) ? old.Epoch : 0u) + 1u;
         cell.World.Set(e, next);
         cell.World.Set(e, new TileRouteState { Remaining = steps });
+        ForgetWatchedLock(slot, next.CombatTarget);
     }
 
     /// <summary>Builds a player entity and binds the slot to it, at the configured spawn or, for an account a

@@ -40,6 +40,19 @@ public sealed partial class TileWorldServer
     // apart from a target that has since gone, and can only tell them apart with this.
     readonly List<(int slot, long target, bool clicked)> watchedLocks = new();
 
+    // The game's half of the watch. A lock the GAME wrote away through SetPlayerState inside the tick (a pause while
+    // an award commits, a scripted disengage) is not one the simulator failed to reach, so its entry leaves the
+    // watch as the state is written and ReportBrokenLocks never sees it. Keyed on the target the write carries
+    // rather than dropped outright: a write that keeps the same target changes nothing the report reads, and a
+    // write that names a DIFFERENT one has ended the watched fight either way. Without this, a game that cleared
+    // the lock from OnCombatEvent (raised by ResolveCombat, one step ahead of the report) was answered with a
+    // CannotReach naming a target its player had just hit.
+    void ForgetWatchedLock(int slot, long keptTarget)
+    {
+        for (int i = watchedLocks.Count - 1; i >= 0; i--)
+            if (watchedLocks[i].slot == slot && watchedLocks[i].target != keptTarget) watchedLocks.RemoveAt(i);
+    }
+
     static readonly Comparison<(long sinceTick, long netId, long target)> OldestLockFirst = (a, b) =>
         a.sinceTick != b.sinceTick ? a.sinceTick.CompareTo(b.sinceTick) : a.netId.CompareTo(b.netId);
 

@@ -20,6 +20,18 @@ Tile draw priority can keep every moving body wholly visible while collapsing on
   presentation. Custom rosters can pass the local motion answer explicitly.
 - The existing one-body-per-tile policy remains the default, including its step and fixed-window fades.
 
+## 18.40.3
+
+`TileWorldServer.SetPlayerState` no longer lets a lock the game cleared be reported as a failure to reach
+(Grimhollow#166).
+
+- A write that drops or changes `TileMoveState.CombatTarget` removes that seat's entry from the tick's broken-lock
+  watch, so `ReportBrokenLocks` raises no `OnCannotReach` and sends no `ke:cannot-reach` for it. The report now
+  covers only locks the simulator itself broke.
+- The case that hit was a game pausing a fight from `OnCombatEvent`, which `ResolveCombat` raises one step ahead
+  of the report: the player's own landed blow was answered with a cannot-reach notice on every damaging hit.
+- Behaviour fix only. No API surface changed.
+
 ## 18.40.2
 
 Radial menus can lock an entry before a footer choice commits it, preventing hover from retargeting an action.

@@ -50,5 +50,35 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal(2, batch.FrameStats.Quads);   // one quad counted per DrawQuad, degenerate included
         }
+
+        [GpuFact]
+        public void DrawQuad_interpolates_two_edge_colors_continuously()
+        {
+            byte[] rgba = Render2DSnapshot.Capture(W, H, Color.Transparent, ctx =>
+            {
+                Texture2D tex = ctx.CreateTexture(Pixel, 1, 1);
+                ctx.Batch.Begin();
+                ctx.Batch.DrawQuad(
+                    tex,
+                    new Vector2(4, 4),
+                    new Vector2(28, 4),
+                    new Vector2(28, 28),
+                    new Vector2(4, 28),
+                    new Vector4(0f, 0f, 1f, 1f),
+                    new Color(0.1f, 0.1f, 0.1f, 1f),
+                    new Color(0.9f, 0.9f, 0.9f, 1f));
+                ctx.Batch.End();
+            });
+
+            byte top = Red(rgba, 16, 6);
+            byte middle = Red(rgba, 16, 16);
+            byte bottom = Red(rgba, 16, 26);
+
+            Assert.True(top < middle && middle < bottom,
+                $"expected a monotonic gradient, got {top}, {middle}, {bottom}");
+            Assert.InRange(middle, 115, 140);
+        }
+
+        static byte Red(byte[] rgba, int x, int y) => rgba[(y * W + x) * 4];
     }
 }

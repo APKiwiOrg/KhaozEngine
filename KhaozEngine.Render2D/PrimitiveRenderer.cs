@@ -305,7 +305,7 @@ namespace KhaozEngine.Render2D
         /// Draws a filled sector (pie wedge) centered at <paramref name="center"/>, facing
         /// <paramref name="dirAngle"/> radians, spanning +/- <paramref name="halfAngle"/>, out to
         /// <paramref name="radius"/>. Built as a fan of exact triangles through degenerate
-        /// <see cref="SpriteBatch.DrawQuad"/> calls. No-op when radius or sweep is non-positive.
+        /// <c>SpriteBatch.DrawQuad</c> calls. No-op when radius or sweep is non-positive.
         /// </summary>
         public void DrawFilledSector(SpriteBatch batch, Vector2 center, float dirAngle, float halfAngle, float radius, Color color)
         {
@@ -342,6 +342,50 @@ namespace KhaozEngine.Render2D
                 FillTriangle(batch, pi0, po0, po1, color);
                 FillTriangle(batch, pi0, po1, pi1, color);
                 pi0 = pi1; po0 = po1;
+            }
+        }
+
+        /// <summary>
+        /// Draws a filled arc band with <paramref name="innerColor"/> on its inner edge and
+        /// <paramref name="outerColor"/> on its outer edge. The GPU interpolates the colors across one convex
+        /// quad per arc segment. Adjacent segments share the same edge vertices and colors, so translucent bands
+        /// have no overlapping fan triangles or seams. Geometry, segment count, and no-op conditions match
+        /// <see cref="DrawFilledArcBand"/>.
+        /// </summary>
+        public void DrawFilledArcBandGradient(
+            SpriteBatch batch,
+            Vector2 center,
+            float innerR,
+            float outerR,
+            float startAngle,
+            float sweep,
+            Color innerColor,
+            Color outerColor)
+        {
+            if (outerR <= 0f || sweep == 0f) return;
+            innerR = MathF.Max(0f, innerR);
+            int segs = SectorSegments(outerR, sweep);
+            float step = sweep / segs;
+            void Pt(float a, float r, out Vector2 p) =>
+                p = center + new Vector2(MathF.Cos(a) * r, MathF.Sin(a) * r);
+            Pt(startAngle, innerR, out Vector2 inner0);
+            Pt(startAngle, outerR, out Vector2 outer0);
+            for (int i = 1; i <= segs; i++)
+            {
+                float angle = startAngle + i * step;
+                Pt(angle, innerR, out Vector2 inner1);
+                Pt(angle, outerR, out Vector2 outer1);
+                batch.DrawQuad(
+                    _white,
+                    outer0,
+                    outer1,
+                    inner1,
+                    inner0,
+                    FullUV,
+                    outerColor,
+                    innerColor);
+                inner0 = inner1;
+                outer0 = outer1;
             }
         }
 

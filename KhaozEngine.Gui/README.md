@@ -19,15 +19,25 @@ string argument is an icon-atlas key, not player text, so it is unchanged. See t
 through eight caller-ordered entries and an optional strip of zero through eight caller-defined choices. Entry
 zero starts at twelve o'clock and ordering continues clockwise. The whole composition is clamped inside
 `SafeBounds`, including its footer. Tags and icon ids are opaque caller values. Every title, entry label, detail,
-and footer label is a `LocalizedText` sink that resolves and is retained when `Open` runs.
+choice prompt, quick-select label, and footer label are `LocalizedText` sinks that resolves and is retained when `Open` runs.
 
 The footer has no built-in quantity, mode, or category meaning. Each entry remembers its own current footer tag.
 `InteractionMode` defaults to `Immediate`, where selecting a wedge returns both tags in one
 `RadialMenuSelection` and closes the menu. `EntryThenChoice` is the opt-in two-step flow. Selecting an enabled
 wedge locks it without committing. An enabled footer choice then commits that locked entry and choice together.
 Hover cannot change the lock, while selecting another enabled wedge replaces it. The footer is disabled until a
-wedge is locked. The locked wedge stays highlighted and its localized entry content replaces the centre text so
-the footer target remains visible.
+wedge is locked. The locked wedge stays highlighted. Its localized entry name appears above the optional choice
+prompt passed to the five-argument `Open` overload. Centre text wraps and fits inside the padded circle.
+
+Footer pointer hover highlights the actual enabled button independently of the remembered amount. Pass the
+modifier snapshot to `Update(pointer, dt, quickSelect)` to commit an enabled wedge immediately with its retained
+choice. The original pointer overload keeps normal selection.
+
+Assign a caller-owned `ContextMenu` to `EntryContextMenu` and configure its viewport to enable right-click entry
+shortcuts. The context stays pinned to the entry that opened it and offers every footer choice. Set the localized
+`QuickSelectLabel` before `Open` to add a final quick-select row showing the retained choice. Disabled entries
+reject shortcuts and disabled choices stay inert. The radial updates and draws the assigned context, and closes
+it when the wheel closes or reopens.
 
 ```csharp
 enum InteractionAction : long
@@ -117,6 +127,8 @@ public sealed partial class RadialMenu
     public RadialMenuInteractionMode InteractionMode { get; set; }
     public bool IsOpen { get; }
     public int HoverIndex { get; }
+    public ContextMenu? EntryContextMenu { get; set; }
+    public LocalizedText QuickSelectLabel { get; set; }
     public int ActiveIndex { get; }
     public bool WasSelected { get; }
     public RadialMenuSelection Selection { get; }
@@ -125,14 +137,19 @@ public sealed partial class RadialMenu
     public bool WasDismissed { get; }
     public Rect Bounds { get; }
     public string ResolvedTitle { get; }
+    public string ResolvedChoicePrompt { get; }
+    public string ResolvedQuickSelectLabel { get; }
 
     public void Open(
         LocalizedText title,
         IReadOnlyList<RadialMenuEntry> entries,
         Vector2 anchor,
         IReadOnlyList<RadialMenuChoice>? choices = null);
+    public void Open(LocalizedText title, IReadOnlyList<RadialMenuEntry> entries,
+        Vector2 anchor, IReadOnlyList<RadialMenuChoice>? choices, LocalizedText choicePrompt);
     public bool SetEntryChoice(long entryTag, long choiceTag);
     public bool Update(Pointer pointer, float dt);
+    public bool Update(Pointer pointer, float dt, bool quickSelect);
     public bool Update(InputManager input, float dt, bool focused, PlayerIndex? player = null);
     public void Close();
     public void Draw(SpriteBatch batch, Texture2D white, SpriteFont font, IconAtlas? icons = null);
@@ -326,14 +343,19 @@ and explicit raw player names or messages stay distinguishable.
 colours, and a single-line composer. Enter opens the composer, a later Enter submits trimmed non-empty text,
 and Escape clears and closes it. `Update` reserves the full `Bounds` through `Pointer`, including movement and
 wheel input over the box. Call it before world picking and draw it with the same white texture used by the
-other retained widgets. The composer stays internal. Configure it through these placement-neutral properties:
+other retained widgets. Sparse history stays at the top of the history viewport by default. Set
+`HistoryAlignment` to `ChatHistoryAlignment.Bottom` when sparse rows should grow upward from the bottom. Full
+and overflowing histories keep the existing layout and scrolling. The composer stays internal. Configure the
+chatbox through these public `ChatBox` properties:
 
 ```csharp
+public ChatHistoryAlignment HistoryAlignment { get; set; }
 public LocalizedText ComposerPlaceholder { get; set; }
 public int MaxInputLength { get; set; }
 ```
 
-`ComposerPlaceholder` resolves lazily through the current localization catalog and defaults to empty.
+`HistoryAlignment` defaults to `ChatHistoryAlignment.Top`. `ComposerPlaceholder` resolves lazily through the
+current localization catalog and defaults to empty.
 `MaxInputLength` defaults to 32 and rejects zero or negative values. Lowering it reclamps any existing composer
 text immediately through the normal `TextInput.SetText` path.
 
@@ -346,6 +368,7 @@ using KhaozEngine.Primitives;
 var history = new ChatHistory(capacity: 100);
 var chat = new ChatBox(history, new Rect(16, 420, 460, 284), font)
 {
+    HistoryAlignment = ChatHistoryAlignment.Bottom, // Optional. Top is the default.
     ComposerPlaceholder = Strings.ChatPlaceholder,
     MaxInputLength = 160,
     ShowTimestamps = settings.ShowChatTimestamps,

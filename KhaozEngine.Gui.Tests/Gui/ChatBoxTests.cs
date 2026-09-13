@@ -224,10 +224,138 @@ public sealed class ChatBoxTests
         Assert.Equal(new[] { "[11:08] Alice: hello (2)" }, box.CachedLines);
     }
 
-    static ChatBox Box(ChatHistory? history = null) => new(history ?? new ChatHistory(8), BoxBounds)
+    [Fact]
+    public void History_alignment_defaults_to_top_for_sparse_rows()
+    {
+        var box = Box(HistoryWithLines(1));
+        box.ShowTimestamps = false;
+
+        box.RefreshLayout(Font, Sydney);
+
+        Assert.Equal(ChatHistoryAlignment.Top, box.HistoryAlignment);
+        Assert.Equal(new Rect(108f, 108f, 284f, 16f), box.RowBounds(0));
+    }
+
+    [Fact]
+    public void Bottom_alignment_keeps_an_empty_history_empty()
+    {
+        var box = Box();
+        box.HistoryAlignment = ChatHistoryAlignment.Bottom;
+
+        box.RefreshLayout(Font, Sydney);
+
+        Assert.Empty(box.CachedLines);
+    }
+
+    [Theory]
+    [InlineData(1, 220f)]
+    [InlineData(2, 202f)]
+    public void Bottom_alignment_grows_sparse_rows_upward_in_oldest_to_newest_order(int count, float firstY)
+    {
+        var box = Box(HistoryWithLines(count));
+        box.ShowTimestamps = false;
+        box.HistoryAlignment = ChatHistoryAlignment.Bottom;
+
+        box.RefreshLayout(Font, Sydney);
+
+        Assert.Equal(firstY, box.RowBounds(0).Y);
+        Assert.Equal(236f, box.RowBounds(count - 1).Bottom);
+        for (int i = 1; i < count; i++)
+            Assert.True(box.RowBounds(i - 1).Y < box.RowBounds(i).Y);
+    }
+
+    [Fact]
+    public void Bottom_alignment_places_wrapped_sparse_rows_against_the_viewport_bottom()
+    {
+        var history = new ChatHistory(8);
+        history.Add(Entry(DateTimeOffset.UnixEpoch, content: new string('x', 40), author: null));
+        var box = Box(history);
+        box.ShowTimestamps = false;
+        box.HistoryAlignment = ChatHistoryAlignment.Bottom;
+
+        box.RefreshLayout(Font, Sydney);
+
+        Assert.Equal(2, box.CachedLines.Count);
+        Assert.Equal(202f, box.RowBounds(0).Y);
+        Assert.Equal(236f, box.RowBounds(1).Bottom);
+    }
+
+    [Fact]
+    public void Bottom_alignment_places_the_last_nearly_full_sparse_row_at_the_viewport_bottom()
+    {
+        var box = Box(HistoryWithLines(8), BoxBounds with { Height = 195f });
+        box.ShowTimestamps = false;
+        box.HistoryAlignment = ChatHistoryAlignment.Bottom;
+
+        box.RefreshLayout(Font, Sydney);
+
+        Assert.Equal(251f, box.RowBounds(7).Bottom);
+    }
+
+    [Theory]
+    [InlineData(194f)]
+    [InlineData(180f)]
+    public void Full_and_overflowing_histories_have_identical_bounds_and_scrolling(float boxHeight)
+    {
+        ChatHistory history = HistoryWithLines(8);
+        Rect bounds = BoxBounds with { Height = boxHeight };
+        var top = Box(history, bounds);
+        var bottom = Box(history, bounds);
+        top.ShowTimestamps = false;
+        bottom.ShowTimestamps = false;
+        bottom.HistoryAlignment = ChatHistoryAlignment.Bottom;
+        top.RefreshLayout(Font, Sydney);
+        bottom.RefreshLayout(Font, Sydney);
+
+        Rect[] before = RowBounds(top, 8);
+        Assert.Equal(before, RowBounds(bottom, 8));
+
+        Update(top, new Pointer(), Frame(new Vector2(120f, 120f), scroll: 1f));
+        Update(bottom, new Pointer(), Frame(new Vector2(120f, 120f), scroll: 1f));
+
+        Rect[] after = RowBounds(top, 8);
+        Assert.NotEqual(before, after);
+        Assert.Equal(after, RowBounds(bottom, 8));
+    }
+
+    [Fact]
+    public void Opening_and_closing_the_composer_does_not_move_bottom_aligned_history()
+    {
+        var box = Box(HistoryWithLines(1));
+        var pointer = new Pointer();
+        box.ShowTimestamps = false;
+        box.HistoryAlignment = ChatHistoryAlignment.Bottom;
+        box.RefreshLayout(Font, Sydney);
+        Rect closed = box.RowBounds(0);
+
+        Update(box, pointer, Press(Key.Enter));
+        Rect open = box.RowBounds(0);
+        Update(box, pointer, Release(Key.Enter));
+        Update(box, pointer, Press(Key.Escape));
+
+        Assert.Equal(closed, open);
+        Assert.Equal(closed, box.RowBounds(0));
+    }
+
+    static ChatBox Box(ChatHistory? history = null, Rect? bounds = null) => new(history ?? new ChatHistory(8), bounds ?? BoxBounds)
     {
         Theme = Theme,
     };
+
+    static ChatHistory HistoryWithLines(int count)
+    {
+        var history = new ChatHistory(Math.Max(1, count));
+        for (int i = 0; i < count; i++)
+            history.Add(Entry(DateTimeOffset.UnixEpoch, content: $"message {i}", sourceKey: $"source-{i}"));
+        return history;
+    }
+
+    static Rect[] RowBounds(ChatBox box, int count)
+    {
+        var rows = new Rect[count];
+        for (int i = 0; i < count; i++) rows[i] = box.RowBounds(i);
+        return rows;
+    }
 
     static ChatBox OpenBox(string text)
     {
@@ -241,12 +369,15 @@ public sealed class ChatBoxTests
         DateTimeOffset timestamp,
         ChatEntryKind kind = ChatEntryKind.Ordinary,
         bool isOwn = false,
-        int repeatCount = 1) => new(
+        int repeatCount = 1,
+        string content = "hello",
+        string sourceKey = "source",
+        string? author = "Alice") => new(
             timestamp,
-            "source",
-            LocalizedText.Raw("Alice"),
-            LocalizedText.Raw("hello"),
-            "hello",
+            sourceKey,
+            author is null ? null : LocalizedText.Raw(author),
+            LocalizedText.Raw(content),
+            content,
             kind,
             isOwn,
             repeatCount);

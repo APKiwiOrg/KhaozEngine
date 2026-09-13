@@ -5,6 +5,27 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.42.0
+
+`ChatBox.HistoryAlignment` lets sparse chat history anchor to the top or bottom of its viewport.
+
+- `ChatHistoryAlignment.Top` preserves the existing default placement at the top of the history viewport.
+- Opt-in `ChatHistoryAlignment.Bottom` grows sparse wrapped rows upward from the viewport bottom while preserving
+  oldest-to-newest order. Full and overflowing histories retain the existing layout and scrolling.
+
+## 18.41.2
+
+Radial menus gain smooth shading, padded step prompts, pointer quantity feedback and quick selection shortcuts.
+
+- `SpriteBatch.DrawQuad` accepts two edge colours, and `PrimitiveRenderer.DrawFilledArcBandGradient`
+  uses GPU interpolation to shade exact arc segments without flat overlay stripes.
+- Radial centre text fits inside a padded circle. An additive `Open` overload accepts a localized choice
+  prompt, shown with the locked entry name.
+- Enabled footer choices visibly highlight under the pointer without changing the retained quantity.
+- An explicit quick-select modifier commits an enabled entry with its remembered choice.
+- A caller-supplied `EntryContextMenu` offers the entry's choices and a localized quick-last row, pinned
+  to the entry that opened it.
+
 ## 18.41.1
 
 A stationary local player keeps their settled tile claim across equal-endpoint interpolation rounding (#866).

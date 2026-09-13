@@ -53,6 +53,9 @@ public sealed class ChatBox
     /// <summary>Whether each entry starts with its timestamp converted to local time.</summary>
     public bool ShowTimestamps { get; set; } = true;
 
+    /// <summary>Vertical placement for history rows that do not fill the history viewport.</summary>
+    public ChatHistoryAlignment HistoryAlignment { get; set; } = ChatHistoryAlignment.Top;
+
     /// <summary>True while the composer owns keyboard input.</summary>
     public bool OwnsKeyboard => Composer.IsFocused;
 
@@ -173,7 +176,7 @@ public sealed class ChatBox
 
     void DrawRow(SpriteBatch batch, SpriteFont font, int index, CachedRow row)
     {
-        Rect bounds = _scroll.ItemBounds(index);
+        Rect bounds = RowBounds(index);
         var position = new Vector2(MathF.Floor(bounds.X), MathF.Floor(bounds.Y));
         Vector4 messageColor = SelectColor(row.Entry, Theme);
 
@@ -190,6 +193,18 @@ public sealed class ChatBox
         string message = row.Text[row.TimestampLength..];
         position.X += font.Measure(timestamp).X;
         batch.DrawString(font, message, position, (Color)messageColor);
+    }
+
+    internal Rect RowBounds(int index)
+    {
+        Rect bounds = _scroll.ItemBounds(index);
+        if (HistoryAlignment != ChatHistoryAlignment.Bottom || _rows.Count == 0)
+            return bounds;
+
+        float rowsHeight = _rows.Count * _scroll.Stride - _scroll.ItemSpacing;
+        float sparseSpace = _scroll.ContentBounds.Height - rowsHeight;
+        if (sparseSpace <= 0f) return bounds;
+        return bounds with { Y = bounds.Y + sparseSpace + _scroll.ScrollOffset };
     }
 
     void SyncGeometry()

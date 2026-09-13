@@ -1455,19 +1455,23 @@ messages keep the same localization boundary as the rest of Gui.
 `ChatBox` owns wrapped scrollback and a single-line composer inside caller-selected design-space bounds. Enter
 opens the composer. A later Enter submits trimmed non-empty text and leaves it open. Escape clears and closes it.
 `ShowTimestamps` converts each UTC timestamp to local time for presentation only. `ChatBoxTheme` carries the frame,
-composer, ordinary, own, system and timestamp colours.
+composer, ordinary, own, system and timestamp colours. Sparse history is placed at the top of the history viewport
+by default. Set `HistoryAlignment` to `ChatHistoryAlignment.Bottom` to place sparse rows against the bottom and
+grow them upward as entries arrive. Full and overflowing histories retain the existing layout and scrolling.
 
-The composer remains internal. Its public configuration surface is exactly:
+The composer remains internal. Its public configuration surface is:
 
 ```csharp
+public ChatHistoryAlignment HistoryAlignment { get; set; }
 public LocalizedText ComposerPlaceholder { get; set; }
 public int MaxInputLength { get; set; }
 ```
 
-`ComposerPlaceholder` is lazily resolved, so switching the ambient catalog changes the placeholder on the next
-draw. It defaults to empty. `MaxInputLength` preserves the existing 32-character default and accepts only positive
-values. Assigning a lower limit immediately reclamps existing text through `TextInput.SetText`, preserving the
-normal change-detection path. There is no raw string placeholder overload on `ChatBox`.
+`HistoryAlignment` defaults to `ChatHistoryAlignment.Top`. `ComposerPlaceholder` is lazily resolved, so switching
+the ambient catalog changes the placeholder on the next draw. It defaults to empty. `MaxInputLength` preserves the
+existing 32-character default and accepts only positive values. Assigning a lower limit immediately reclamps
+existing text through `TextInput.SetText`, preserving the normal change-detection path. There is no raw string
+placeholder overload on `ChatBox`.
 
 ```csharp
 using System;
@@ -1478,6 +1482,7 @@ using KhaozEngine.Primitives;
 var history = new ChatHistory(capacity: 100);
 var chat = new ChatBox(history, new Rect(16, 420, 460, 284), font)
 {
+    HistoryAlignment = ChatHistoryAlignment.Bottom, // Optional. Top is the default.
     ComposerPlaceholder = Strings.ChatPlaceholder,
     MaxInputLength = 160,
     ShowTimestamps = settings.ShowChatTimestamps,
@@ -6342,7 +6347,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.41.2" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.42.0" />
 ```
 
 ```csharp
@@ -11903,7 +11908,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.41.2" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.42.0" />
 ```
 
 ```csharp
@@ -11939,7 +11944,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.41.2" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.42.0" />
 ```
 
 ```csharp
@@ -12181,7 +12186,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.41.2" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.42.0" />
 ```
 
 ```csharp
@@ -14229,7 +14234,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="18.41.2" />
+  <PackageReference Include="KhaozEngine.Automation" Version="18.42.0" />
 </ItemGroup>
 ```
 

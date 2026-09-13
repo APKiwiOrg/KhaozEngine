@@ -5,6 +5,14 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.42.0
+
+`ChatBox.HistoryAlignment` lets sparse chat history anchor to the top or bottom of its viewport.
+
+- `ChatHistoryAlignment.Top` preserves the existing default placement at the top of the history viewport.
+- Opt-in `ChatHistoryAlignment.Bottom` grows sparse wrapped rows upward from the viewport bottom while preserving
+  oldest-to-newest order. Full and overflowing histories retain the existing layout and scrolling.
+
 ## 18.41.2
 
 Radial menus gain smooth shading, padded step prompts, pointer quantity feedback and quick selection shortcuts.

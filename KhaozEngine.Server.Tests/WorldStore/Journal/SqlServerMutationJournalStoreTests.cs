@@ -193,6 +193,35 @@ public sealed class SqlServerMutationJournalStoreTests : IDisposable
         Assert.NotNull(await survivor.LoadSnapshotAsync("player/a"));
     }
 
+    [SqlServerFact]
+    public async Task One_commit_costs_at_most_two_commands_whatever_it_writes()
+    {
+        SqlServerJournalPrefixStore store = CreatePrefixedStore();
+        await store.InitializeAsync(Initialization(1, "player/a"));
+        SqlServerJournalCommitStatistics before = store.CommitStatistics;
+
+        JournalCommitResult result = await store.CommitAsync(new JournalCommit(
+            Identity(2),
+            new[]
+            {
+                new JournalStreamMutation("player/a", 0, new[]
+                {
+                    new JournalEvent("state.changed", 1, new byte[] { 1 }),
+                    new JournalEvent("state.changed", 1, new byte[] { 2 }),
+                }),
+            },
+            new[] { Projection("player/a", "bag", 3), Projection("player/a", "skills", 4) },
+            "result.v1",
+            1,
+            new byte[] { 5 }));
+        SqlServerJournalCommitStatistics after = store.CommitStatistics;
+
+        Assert.Equal(JournalCommitStatus.Applied, result.Status);
+        Assert.Equal(1, after.Operations - before.Operations);
+        Assert.InRange(after.Commands - before.Commands, 1, 2);
+        Assert.InRange(after.MaximumCommandsForOneOperation, 1, 2);
+    }
+
     [SqlServerFact] public Task Initialization_creates_version_zero_exactly_once() => Conformance().Initialization_creates_version_zero_exactly_once();
     [SqlServerFact] public Task Identical_initialization_replays_original_receipt_and_result() => Conformance().Identical_initialization_replays_original_receipt_and_result();
     [SqlServerFact] public Task Different_operation_on_existing_stream_returns_existing_stream() => Conformance().Different_operation_on_existing_stream_returns_existing_stream();

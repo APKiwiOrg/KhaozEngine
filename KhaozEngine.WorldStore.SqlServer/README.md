@@ -87,6 +87,23 @@ validation with a whole-store `JournalStoreException` of kind `SchemaMismatch`, 
 the required permission. Validation never accepts a schema whose definition it cannot inspect. See SQL Server's
 [metadata visibility rules](https://learn.microsoft.com/sql/relational-databases/security/metadata-visibility-configuration).
 
+One initialization or commit sends **one** parameterized T-SQL batch inside the caller's serializable transaction,
+so the cost of an operation is the transaction's own begin and commit plus a single command round trip rather than
+the dozen or so statements the logical transaction contains. That batch takes the shared maintenance lock, resolves
+the operation for idempotent replay, locks every touched stream head with `UPDLOCK, HOLDLOCK` in ordinal stream-key
+order, checks the per-stream projection limits, writes events, heads, projections, and the operation receipt, and
+reports `Applied`, `Replayed`, `VersionConflict`, `OperationConflict`, `ExistingStream`, a projection-limit refusal,
+or an application-lock failure through a result set rather than through an error message. Provider errors still
+surface as themselves: the batch rethrows inside its own `TRY`/`CATCH`, so a duplicate key or a deadlock keeps its
+number and its place in the failure contract. The caller owns `BEGIN` and `COMMIT`, so nothing is visible before
+the commit and every failure boundary still rolls the whole operation back. Variable-length work is unrolled into
+the batch with one bound parameter set per row, which stays well under SQL Server's 2100-parameter ceiling at the
+engine's maximum operation size (16 streams, 128 events, 64 projection sections).
+
+`CommitStatistics` reports that cost: `Operations` counts attempted initializations and commits, `Commands` counts
+the SQL commands they executed on their own transaction, and `MaximumCommandsForOneOperation` is the worst case
+seen. Recovery on a separate connection after a duplicate key is not counted.
+
 `CommandTimeout` applies to commands and schema locking. `MinimumRetryHorizon` prevents maintenance from deleting
 replay rows which may still be retried. `Limits` can lower any core journal maximum. `TimeProvider` controls public
 journal timestamps for deterministic hosts and tests. It does not control `PurgeOperationsByAgeAsync`, whose

@@ -17,8 +17,11 @@ public sealed partial class SqlServerMutationJournalStore
         ArgumentNullException.ThrowIfNull(initialization);
         cancellationToken.ThrowIfCancellationRequested();
         initialization.Identity.Validate(limits);
+        initialization.Validate(limits);
         JournalFingerprint intent = JournalCanonicalizer.CreateIntentFingerprint(initialization.Identity);
+        JournalFingerprint execution = JournalCanonicalizer.CreateInitializationFingerprint(initialization);
         string[] streamKeys = { initialization.AbsentStreamKey };
+        var tally = new SqlServerJournalCommandTally();
         Invoke(JournalTestHookPhase.BeforeTransaction);
         await using SqlConnection connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         SqlTransaction? transaction = null;
@@ -27,51 +30,46 @@ public sealed partial class SqlServerMutationJournalStore
         try
         {
             transaction = await BeginTransactionAsync(connection, cancellationToken).ConfigureAwait(false);
-            await AcquireMaintenanceLockAsync(transaction, exclusive: false, cancellationToken).ConfigureAwait(false);
-            OperationLookup lookup = await LookupOperationAsync(
-                initialization.Identity.OperationId,
-                intent.Digest.ToArray(),
-                transaction,
-                cancellationToken,
-                forUpdate: true).ConfigureAwait(false);
-            Invoke(JournalTestHookPhase.AfterOperationResolution);
-            if (lookup.Status != OperationLookupStatus.NotFound)
+            DateTimeOffset now = UtcNow();
+            SqlServerJournalWriteResult batch;
+            using (SqlCommand command = CreateCommand(transaction, string.Empty))
             {
-                await transaction.RollbackAsync(CancellationToken.None).ConfigureAwait(false);
-                return lookup.Status == OperationLookupStatus.Conflict
-                    ? new JournalInitializeResult(JournalInitializeStatus.OperationConflict)
-                    : new JournalInitializeResult(JournalInitializeStatus.Replayed, lookup.Receipt);
+                SqlServerJournalWriteBatch.BuildInitialize(
+                    command,
+                    initialization,
+                    intent,
+                    execution,
+                    now,
+                    MaintenanceLockTimeoutMilliseconds,
+                    SuppressOperationLookup());
+                batch = await ExecuteWriteBatchAsync(
+                    command,
+                    initialization.Identity.OperationId,
+                    tally,
+                    cancellationToken).ConfigureAwait(false);
             }
-
-            initialization.Validate(limits);
-            (bool found, _, _) = await ReadHeadAsync(initialization.AbsentStreamKey, transaction, cancellationToken, forUpdate: true).ConfigureAwait(false);
-            if (found)
+            Invoke(JournalTestHookPhase.AfterOperationResolution);
+            switch (batch.Outcome)
             {
-                await transaction.RollbackAsync(CancellationToken.None).ConfigureAwait(false);
-                return new JournalInitializeResult(JournalInitializeStatus.ExistingStream);
+                case SqlServerJournalWriteOutcome.Applied:
+                    break;
+                case SqlServerJournalWriteOutcome.Replayed:
+                    await transaction.RollbackAsync(CancellationToken.None).ConfigureAwait(false);
+                    return new JournalInitializeResult(JournalInitializeStatus.Replayed, batch.Receipt);
+                case SqlServerJournalWriteOutcome.OperationConflict:
+                    await transaction.RollbackAsync(CancellationToken.None).ConfigureAwait(false);
+                    return new JournalInitializeResult(JournalInitializeStatus.OperationConflict);
+                case SqlServerJournalWriteOutcome.ExistingStream:
+                    await transaction.RollbackAsync(CancellationToken.None).ConfigureAwait(false);
+                    return new JournalInitializeResult(JournalInitializeStatus.ExistingStream);
+                default:
+                    throw WriteBatchFailure(batch, streamKeys);
             }
             Invoke(JournalTestHookPhase.AfterHeadValidation);
-
-            DateTimeOffset now = UtcNow();
-            await InsertInitializedStreamAsync(initialization, now, transaction, cancellationToken).ConfigureAwait(false);
             Invoke(JournalTestHookPhase.AfterEventWrites);
-            await WriteInitializationProjectionsAsync(initialization, now, transaction, cancellationToken).ConfigureAwait(false);
             Invoke(JournalTestHookPhase.AfterProjectionWrites);
 
             var range = new JournalStreamVersionRange(initialization.AbsentStreamKey, 0, 0, 0);
-            JournalFingerprint execution = JournalCanonicalizer.CreateInitializationFingerprint(initialization);
-            await InsertOperationAsync(
-                initialization.Identity,
-                intent,
-                execution,
-                initialization.ResultSchema,
-                initialization.ResultSchemaVersion,
-                initialization.ResultData.ToArray(),
-                initialization.ResultChecksum.ToArray(),
-                now,
-                new[] { range },
-                transaction,
-                cancellationToken).ConfigureAwait(false);
             var receipt = new JournalCommitReceipt(
                 initialization.Identity.OperationId,
                 now,
@@ -107,6 +105,7 @@ public sealed partial class SqlServerMutationJournalStore
         }
         finally
         {
+            counters.Record(tally.Count);
             transaction?.Dispose();
         }
     }
@@ -116,8 +115,11 @@ public sealed partial class SqlServerMutationJournalStore
         ArgumentNullException.ThrowIfNull(commit);
         cancellationToken.ThrowIfCancellationRequested();
         commit.Identity.Validate(limits);
+        commit.Validate(limits);
         JournalFingerprint intent = JournalCanonicalizer.CreateIntentFingerprint(commit.Identity);
+        JournalFingerprint execution = JournalCanonicalizer.CreateCommitFingerprint(commit);
         string[] streamKeys = commit.StreamMutations.Select(value => value.StreamKey).ToArray();
+        var tally = new SqlServerJournalCommandTally();
         Invoke(JournalTestHookPhase.BeforeTransaction);
         await using SqlConnection connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         SqlTransaction? transaction = null;
@@ -126,85 +128,50 @@ public sealed partial class SqlServerMutationJournalStore
         try
         {
             transaction = await BeginTransactionAsync(connection, cancellationToken).ConfigureAwait(false);
-            await AcquireMaintenanceLockAsync(transaction, exclusive: false, cancellationToken).ConfigureAwait(false);
-            OperationLookup lookup = await LookupOperationAsync(
-                commit.Identity.OperationId,
-                intent.Digest.ToArray(),
-                transaction,
-                cancellationToken,
-                forUpdate: true).ConfigureAwait(false);
-            Invoke(JournalTestHookPhase.AfterOperationResolution);
-            if (lookup.Status != OperationLookupStatus.NotFound)
+            DateTimeOffset now = UtcNow();
+            SqlServerJournalWriteResult batch;
+            using (SqlCommand command = CreateCommand(transaction, string.Empty))
             {
-                await transaction.RollbackAsync(CancellationToken.None).ConfigureAwait(false);
-                return lookup.Status == OperationLookupStatus.Conflict
-                    ? new JournalCommitResult(JournalCommitStatus.OperationConflict)
-                    : new JournalCommitResult(JournalCommitStatus.Replayed, lookup.Receipt);
+                SqlServerJournalWriteBatch.BuildCommit(
+                    command,
+                    commit,
+                    intent,
+                    execution,
+                    now,
+                    limits,
+                    MaintenanceLockTimeoutMilliseconds,
+                    SuppressOperationLookup());
+                batch = await ExecuteWriteBatchAsync(
+                    command,
+                    commit.Identity.OperationId,
+                    tally,
+                    cancellationToken).ConfigureAwait(false);
             }
-
-            commit.Validate(limits);
-            var heads = new Dictionary<string, long>(StringComparer.Ordinal);
-            foreach (JournalStreamMutation mutation in commit.StreamMutations.OrderBy(value => value.StreamKey, StringComparer.Ordinal))
+            Invoke(JournalTestHookPhase.AfterOperationResolution);
+            switch (batch.Outcome)
             {
-                (bool found, long head, _) = await ReadHeadAsync(mutation.StreamKey, transaction, cancellationToken, forUpdate: true).ConfigureAwait(false);
-                if (!found || head != mutation.ExpectedVersion)
-                {
+                case SqlServerJournalWriteOutcome.Applied:
+                    break;
+                case SqlServerJournalWriteOutcome.Replayed:
+                    await transaction.RollbackAsync(CancellationToken.None).ConfigureAwait(false);
+                    return new JournalCommitResult(JournalCommitStatus.Replayed, batch.Receipt);
+                case SqlServerJournalWriteOutcome.OperationConflict:
+                    await transaction.RollbackAsync(CancellationToken.None).ConfigureAwait(false);
+                    return new JournalCommitResult(JournalCommitStatus.OperationConflict);
+                case SqlServerJournalWriteOutcome.VersionConflict:
                     await transaction.RollbackAsync(CancellationToken.None).ConfigureAwait(false);
                     return new JournalCommitResult(JournalCommitStatus.VersionConflict);
-                }
-                heads.Add(mutation.StreamKey, head);
+                default:
+                    throw WriteBatchFailure(batch, streamKeys);
             }
-            await VerifyProjectionLimitsAsync(commit.ProjectionWrites, transaction, cancellationToken).ConfigureAwait(false);
             Invoke(JournalTestHookPhase.AfterHeadValidation);
-
-            DateTimeOffset now = UtcNow();
-            var ranges = new List<JournalStreamVersionRange>(commit.StreamMutations.Count);
-            int operationOrdinal = 0;
-            foreach (JournalStreamMutation mutation in commit.StreamMutations)
-            {
-                long before = heads[mutation.StreamKey];
-                long version = before;
-                foreach (JournalEvent journalEvent in mutation.Events)
-                {
-                    version = checked(version + 1);
-                    await InsertEventAsync(
-                        mutation.StreamKey,
-                        version,
-                        commit.Identity.OperationId,
-                        operationOrdinal++,
-                        journalEvent,
-                        now,
-                        transaction,
-                        cancellationToken).ConfigureAwait(false);
-                }
-                if (version != before)
-                    await UpdateStreamHeadAsync(mutation.StreamKey, version, now, transaction, cancellationToken).ConfigureAwait(false);
-                ranges.Add(new JournalStreamVersionRange(mutation.StreamKey, before, version, mutation.Events.Count));
-                heads[mutation.StreamKey] = version;
-            }
             Invoke(JournalTestHookPhase.AfterEventWrites);
-
-            foreach (JournalProjectionWrite projection in commit.ProjectionWrites)
-                await UpsertProjectionAsync(projection, heads[projection.StreamKey], now, transaction, cancellationToken).ConfigureAwait(false);
             Invoke(JournalTestHookPhase.AfterProjectionWrites);
 
-            JournalFingerprint execution = JournalCanonicalizer.CreateCommitFingerprint(commit);
-            await InsertOperationAsync(
-                commit.Identity,
-                intent,
-                execution,
-                commit.ResultSchema,
-                commit.ResultSchemaVersion,
-                commit.ResultData.ToArray(),
-                commit.ResultChecksum.ToArray(),
-                now,
-                ranges,
-                transaction,
-                cancellationToken).ConfigureAwait(false);
             var receipt = new JournalCommitReceipt(
                 commit.Identity.OperationId,
                 now,
-                ranges,
+                CommittedRanges(commit),
                 commit.ResultSchema,
                 commit.ResultSchemaVersion,
                 commit.ResultData.ToArray(),
@@ -236,198 +203,20 @@ public sealed partial class SqlServerMutationJournalStore
         }
         finally
         {
+            counters.Record(tally.Count);
             transaction?.Dispose();
         }
     }
 
-    private async Task InsertInitializedStreamAsync(
-        JournalInitialization initialization,
-        DateTimeOffset now,
-        SqlTransaction transaction,
-        CancellationToken cancellationToken)
+    private static IReadOnlyList<JournalStreamVersionRange> CommittedRanges(JournalCommit commit)
     {
-        using (SqlCommand stream = CreateCommand(transaction, "INSERT INTO dbo.journal_stream(stream_key, current_version, retained_floor, updated_at_utc) VALUES (@stream, 0, 0, @now);"))
-        {
-            Add(stream, "@stream", initialization.AbsentStreamKey);
-            Add(stream, "@now", Timestamp(now));
-            await stream.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-        }
-        using SqlCommand snapshot = CreateCommand(transaction, """
-            INSERT INTO dbo.journal_snapshot(
-                stream_key, through_version, snapshot_schema, snapshot_schema_version,
-                data, data_sha256, created_at_utc)
-            VALUES (@stream, 0, @schema, @schemaVersion, @data, @checksum, @now);
-            """);
-        Add(snapshot, "@stream", initialization.AbsentStreamKey);
-        Add(snapshot, "@schema", initialization.SnapshotSchema);
-        Add(snapshot, "@schemaVersion", initialization.SnapshotSchemaVersion);
-        Add(snapshot, "@data", initialization.SnapshotData.ToArray());
-        Add(snapshot, "@checksum", initialization.SnapshotChecksum.ToArray());
-        Add(snapshot, "@now", Timestamp(now));
-        await snapshot.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        var ranges = new List<JournalStreamVersionRange>(commit.StreamMutations.Count);
+        foreach (JournalStreamMutation mutation in commit.StreamMutations)
+            ranges.Add(new JournalStreamVersionRange(
+                mutation.StreamKey,
+                mutation.ExpectedVersion,
+                checked(mutation.ExpectedVersion + mutation.Events.Count),
+                mutation.Events.Count));
+        return ranges;
     }
-
-    private async Task WriteInitializationProjectionsAsync(
-        JournalInitialization initialization,
-        DateTimeOffset now,
-        SqlTransaction transaction,
-        CancellationToken cancellationToken)
-    {
-        foreach (JournalProjectionWrite projection in initialization.ProjectionWrites)
-            await UpsertProjectionAsync(projection, 0, now, transaction, cancellationToken).ConfigureAwait(false);
-    }
-
-    private async Task InsertEventAsync(
-        string streamKey,
-        long version,
-        Guid operationId,
-        int ordinal,
-        JournalEvent journalEvent,
-        DateTimeOffset now,
-        SqlTransaction transaction,
-        CancellationToken cancellationToken)
-    {
-        using SqlCommand command = CreateCommand(transaction, """
-            INSERT INTO dbo.journal_event(
-                stream_key, stream_version, operation_id, operation_ordinal, event_type,
-                event_schema_version, payload, payload_sha256, committed_at_utc)
-            VALUES (@stream, @version, @operation, @ordinal, @type, @schemaVersion, @payload, @checksum, @now);
-            """);
-        Add(command, "@stream", streamKey);
-        Add(command, "@version", version);
-        Add(command, "@operation", operationId);
-        Add(command, "@ordinal", ordinal);
-        Add(command, "@type", journalEvent.EventType);
-        Add(command, "@schemaVersion", journalEvent.EventSchemaVersion);
-        Add(command, "@payload", journalEvent.Payload.ToArray());
-        Add(command, "@checksum", journalEvent.PayloadChecksum.ToArray());
-        Add(command, "@now", Timestamp(now));
-        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-    }
-
-    private async Task UpdateStreamHeadAsync(
-        string streamKey,
-        long version,
-        DateTimeOffset now,
-        SqlTransaction transaction,
-        CancellationToken cancellationToken)
-    {
-        using SqlCommand command = CreateCommand(transaction, "UPDATE dbo.journal_stream SET current_version = @version, updated_at_utc = @now WHERE stream_key = @stream;");
-        Add(command, "@version", version);
-        Add(command, "@now", Timestamp(now));
-        Add(command, "@stream", streamKey);
-        if (await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) != 1)
-            throw new InvalidOperationException("Validated journal stream disappeared inside its transaction.");
-    }
-
-    private async Task UpsertProjectionAsync(
-        JournalProjectionWrite projection,
-        long sourceVersion,
-        DateTimeOffset now,
-        SqlTransaction transaction,
-        CancellationToken cancellationToken)
-    {
-        using SqlCommand command = CreateCommand(transaction, """
-            UPDATE dbo.journal_projection
-            SET source_version = @version, projection_schema = @schema,
-                projection_schema_version = @schemaVersion, data = @data,
-                data_sha256 = @checksum, updated_at_utc = @now
-            WHERE stream_key = @stream AND section_name = @section;
-            IF @@ROWCOUNT = 0
-                INSERT INTO dbo.journal_projection(
-                    stream_key, section_name, source_version, projection_schema,
-                    projection_schema_version, data, data_sha256, updated_at_utc)
-                VALUES (@stream, @section, @version, @schema, @schemaVersion, @data, @checksum, @now);
-            """);
-        Add(command, "@stream", projection.StreamKey);
-        Add(command, "@section", projection.SectionName);
-        Add(command, "@version", sourceVersion);
-        Add(command, "@schema", projection.ProjectionSchema);
-        Add(command, "@schemaVersion", projection.ProjectionSchemaVersion);
-        Add(command, "@data", projection.Data.ToArray());
-        Add(command, "@checksum", projection.DataChecksum.ToArray());
-        Add(command, "@now", Timestamp(now));
-        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-    }
-
-    private async Task InsertOperationAsync(
-        JournalOperationIdentity identity,
-        JournalFingerprint intent,
-        JournalFingerprint execution,
-        string resultSchema,
-        int resultSchemaVersion,
-        byte[] resultData,
-        byte[] resultChecksum,
-        DateTimeOffset now,
-        IReadOnlyList<JournalStreamVersionRange> ranges,
-        SqlTransaction transaction,
-        CancellationToken cancellationToken)
-    {
-        using (SqlCommand operation = CreateCommand(transaction, """
-            INSERT INTO dbo.journal_operation(
-                operation_id, operation_kind, intent_fingerprint_format, intent_fingerprint,
-                execution_fingerprint_format, execution_fingerprint, result_schema,
-                result_schema_version, result_data, result_sha256, committed_at_utc,
-                retention_started_at_utc)
-            VALUES (@id, @kind, @intentFormat, @intent, @executionFormat, @execution,
-                    @resultSchema, @resultSchemaVersion, @result, @resultChecksum, @now,
-                    TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'));
-            """))
-        {
-            Add(operation, "@id", identity.OperationId);
-            Add(operation, "@kind", identity.ActionKind);
-            Add(operation, "@intentFormat", intent.FormatVersion);
-            Add(operation, "@intent", intent.Digest.ToArray());
-            Add(operation, "@executionFormat", execution.FormatVersion);
-            Add(operation, "@execution", execution.Digest.ToArray());
-            Add(operation, "@resultSchema", resultSchema);
-            Add(operation, "@resultSchemaVersion", resultSchemaVersion);
-            Add(operation, "@result", resultData);
-            Add(operation, "@resultChecksum", resultChecksum);
-            Add(operation, "@now", Timestamp(now));
-            await operation.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-        }
-        foreach (JournalStreamVersionRange range in ranges)
-        {
-            using SqlCommand child = CreateCommand(transaction, """
-                INSERT INTO dbo.journal_operation_stream(operation_id, stream_key, before_version, after_version, event_count)
-                VALUES (@id, @stream, @before, @after, @count);
-                """);
-            Add(child, "@id", identity.OperationId);
-            Add(child, "@stream", range.StreamKey);
-            Add(child, "@before", range.BeforeVersion);
-            Add(child, "@after", range.AfterVersion);
-            Add(child, "@count", range.EventCount);
-            await child.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-        }
-    }
-
-    private async Task VerifyProjectionLimitsAsync(
-        IReadOnlyList<JournalProjectionWrite> writes,
-        SqlTransaction transaction,
-        CancellationToken cancellationToken)
-    {
-        foreach (IGrouping<string, JournalProjectionWrite> group in writes.GroupBy(value => value.StreamKey, StringComparer.Ordinal))
-        {
-            using SqlCommand command = CreateCommand(transaction, "SELECT section_name, DATALENGTH(data) FROM dbo.journal_projection WITH (UPDLOCK, HOLDLOCK) WHERE stream_key = @stream;");
-            Add(command, "@stream", group.Key);
-            var sizes = new Dictionary<string, int>(StringComparer.Ordinal);
-            await using (SqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
-            {
-                while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-                    sizes.Add(reader.GetString(0), checked((int)reader.GetInt64(1)));
-            }
-            foreach (JournalProjectionWrite write in group) sizes[write.SectionName] = write.Data.Length;
-            int bytes = 0;
-            foreach (int value in sizes.Values) bytes = checked(bytes + value);
-            if (sizes.Count > limits.ProjectionSectionsPerStream || bytes > limits.AggregateProjectionBytesPerStream)
-                throw new JournalStoreException(
-                    JournalStoreFailureKind.ConstraintViolation,
-                    JournalStoreFailureCertainty.DefinitelyNotCommitted,
-                    JournalStoreFailureScope.OperationStreams,
-                    new[] { group.Key },
-                    "Projection replacement would exceed the configured per-stream limits.");
-        }
-    }
-
 }

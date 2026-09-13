@@ -333,3 +333,7 @@ Author-time dotnet tools that ship as packages on the shared version line (not r
 | **Ruinborne** (3D MMO) | `KhaozEngine.Game3D` + `NetWorld` (client) + `KhaozEngine.Server` + `WorldStore.SqlServer` (server) | Authoritative networked overworld, Azure SQL persistence. |
 
 Each consumer pins its own engine version (its `Directory.Build.props` `<KhaozEngineVersion>`) and adopts new releases on its own schedule.
+
+## Support
+
+[![Support me on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/apkiwi)

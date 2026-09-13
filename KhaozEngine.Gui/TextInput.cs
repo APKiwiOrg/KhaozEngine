@@ -71,7 +71,7 @@ namespace KhaozEngine.Gui
         public float Opacity = 1f;
 
         /// <summary>
-        /// Uniform scale for the field's text and placeholder. Defaults to <c>1f</c> (today's rendering,
+        /// Uniform scale for the field's prefix, text, and placeholder. Defaults to <c>1f</c> (today's rendering,
         /// byte-for-byte). Scales the TEXT only: <see cref="Bounds"/>, the box chrome, the caret sliver's own width
         /// and height, and all hit-testing are unchanged at any scale, so a compact field draws smaller text in the
         /// same rect. Mirrors <see cref="TabBar.TextScale"/>. Every width term the draw derives rides the scale,

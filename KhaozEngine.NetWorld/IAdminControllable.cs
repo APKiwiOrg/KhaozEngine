@@ -41,8 +41,8 @@ public interface IAdminControllable
     uint BeginMovementCommitment(PlayerRef target, in MovementCommitmentRequest request) =>
         throw new System.NotSupportedException("This server does not support movement commitments.");
 
-    /// <summary>Queues cancellation of an active server-authored movement commitment.</summary>
-    void AbortMovementCommitment(PlayerRef target) =>
+    /// <summary>Queues cancellation only when the active commitment matches <paramref name="expectedSequence"/>.</summary>
+    void AbortMovementCommitment(PlayerRef target, uint expectedSequence) =>
         throw new System.NotSupportedException("This server does not support movement commitments.");
 
     /// <summary>Queues a kick of <paramref name="target"/>; the reason is delivered to that client as a notice.</summary>

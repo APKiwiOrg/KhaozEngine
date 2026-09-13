@@ -616,7 +616,8 @@ momentarily unreadable) is not a teleport, and neither is the recovery back off 
 
 Both authoritative heads can commit a player to one collision-safe ballistic move. The direction and arc are
 latched when the queued request reaches the host tick. Player move, jump, facing, and self-rescue input cannot alter
-the move while it is active. Admin teleport and `AbortMovementCommitment` remain deliberate server controls.
+the move while it is active. Admin teleport and `AbortMovementCommitment(target, expectedSequence)` remain deliberate
+server controls. The expected sequence prevents a delayed abort from cancelling a replacement move.
 
 ```csharp
 MovementCommitmentRequest leap = MovementCommitmentRequest.ForBallisticArc(

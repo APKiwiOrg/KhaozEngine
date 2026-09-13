@@ -320,6 +320,9 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
     {
         if (netIdBySlot.TryGetValue(slot, out long netId) && host.TryGetOwner(netId, out CellSim cell, out Entity e))
         {
+            if (teleport && TryGetPlayerState(slot, out PlayerMoveState current)
+                && current.Move.Commitment.IsActive)
+                QueueMovementCommitmentEnd(slot, current, MovementCommitmentEndReason.Teleported);
             uint baseEpoch = TeleportEpochGuard.BaseEpoch(cell.World, e, slot);   // reports rather than zeroing
             PlayerMoveState next = state;
             if (teleport) next.Move.Commitment = default;
@@ -673,8 +676,6 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
                 int slot = ResolveSlot(cmd.Target);
                 if (slot >= 0 && TryGetPlayerState(slot, out PlayerMoveState st))
                 {
-                    if (cmd.Kind == AdminCommandKind.Teleport && st.Move.Commitment.IsActive)
-                        QueueMovementCommitmentEnd(slot, st, MovementCommitmentEndReason.Teleported);
                     st.Position = cmd.Position;
                     st.VerticalVelocity = 0f;
                     SetPlayerState(slot, st, teleport: cmd.Kind == AdminCommandKind.Teleport);
@@ -692,7 +693,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
                 ApplyBeginMovementCommitment(cmd);
                 break;
             case AdminCommandKind.AbortMovementCommitment:
-                ApplyAbortMovementCommitment(cmd.Target, MovementCommitmentEndReason.Aborted);
+                ApplyAbortMovementCommitment(cmd.Target, cmd.Sequence, MovementCommitmentEndReason.Aborted);
                 break;
             case AdminCommandKind.Kick:
             {

@@ -125,7 +125,7 @@ public class MovementCommitmentReplicationTests
         Assert.Equal(slot, landing.Slot);
         Assert.Equal(MovementCommitmentEndReason.Landed, landing.Reason);
         Assert.Equal(Vector2.UnitX, landing.Direction);
-        Assert.True(landing.Position.X > 3f, landing.Position.ToString());
+        Assert.InRange(landing.Position.X, 3.95f, 4.05f);
 
         for (int i = 0; i < 10; i++) { server.Poll(); server.Tick(Dt); }
         Assert.Equal(1, landed);
@@ -255,6 +255,124 @@ public class MovementCommitmentReplicationTests
         Assert.Equal(MovementCommitmentEndReason.EnteredWater, ended.Reason);
         Assert.True(server.TryGetPlayerState(slot, out PlayerMoveState state));
         Assert.True(state.Swimming);
+    }
+
+    [Fact]
+    public void World_server_stale_abort_cannot_cancel_a_replacement_sequence()
+    {
+        static float Flat(float _, float __) => 0f;
+        var (serverTransport, clientTransport) = LoopbackTransport.CreatePair();
+        var server = new WorldServer(serverTransport, new WorldServerConfig { TickSeconds = Dt }, Flat,
+            MoveTuning.Default);
+        var client = new NetClient(clientTransport, TestHandshake.Wire("world-abort"));
+        for (int i = 0; i < 200 && server.PlayerCount == 0; i++)
+        {
+            client.Poll(); server.Poll(); server.Tick(Dt);
+        }
+        int slot = Assert.Single(server.JoinedSlots);
+        MovementCommitmentRequest request = MovementCommitmentRequest.ForBallisticArc(Vector2.UnitX, 8f, 2f, 1.2f);
+        uint oldSequence = server.BeginMovementCommitment(PlayerRef.Slot(slot), request);
+        uint replacement = server.BeginMovementCommitment(PlayerRef.Slot(slot), request);
+        server.AbortMovementCommitment(PlayerRef.Slot(slot), oldSequence);
+
+        server.Tick(Dt);
+
+        Assert.True(server.TryGetPlayerState(slot, out PlayerMoveState state));
+        Assert.Equal(replacement, state.Move.Commitment.Sequence);
+        Assert.True(state.Move.Commitment.IsActive);
+    }
+
+    [Fact]
+    public void Sharded_server_stale_abort_cannot_cancel_a_replacement_sequence()
+    {
+        static float Flat(float _, float __) => 0f;
+        var (serverTransport, clientTransport) = LoopbackTransport.CreatePair();
+        var config = new ShardedWorldServerConfig { TickSeconds = Dt };
+        using var server = new ShardedWorldServer(serverTransport, config, Flat, MoveTuning.Default);
+        var client = new NetClient(clientTransport, TestHandshake.Wire("shard-abort"));
+        for (int i = 0; i < 200 && server.PlayerCount == 0; i++)
+        {
+            client.Poll(); server.Poll(); server.Tick(Dt);
+        }
+        int slot = Assert.Single(server.JoinedSlots);
+        MovementCommitmentRequest request = MovementCommitmentRequest.ForBallisticArc(Vector2.UnitX, 8f, 2f, 1.2f);
+        uint oldSequence = server.BeginMovementCommitment(PlayerRef.Slot(slot), request);
+        uint replacement = server.BeginMovementCommitment(PlayerRef.Slot(slot), request);
+        server.AbortMovementCommitment(PlayerRef.Slot(slot), oldSequence);
+
+        server.Tick(Dt);
+
+        Assert.True(server.TryGetPlayerState(slot, out PlayerMoveState state));
+        Assert.Equal(replacement, state.Move.Commitment.Sequence);
+        Assert.True(state.Move.Commitment.IsActive);
+    }
+
+    [Fact]
+    public void World_server_direct_teleport_ends_once_without_landing()
+    {
+        static float Flat(float _, float __) => 0f;
+        var (serverTransport, clientTransport) = LoopbackTransport.CreatePair();
+        var server = new WorldServer(serverTransport, new WorldServerConfig { TickSeconds = Dt }, Flat,
+            MoveTuning.Default);
+        var client = new NetClient(clientTransport, TestHandshake.Wire("world-teleport"));
+        for (int i = 0; i < 200 && server.PlayerCount == 0; i++)
+        {
+            client.Poll(); server.Poll(); server.Tick(Dt);
+        }
+        int slot = Assert.Single(server.JoinedSlots);
+        uint sequence = server.BeginMovementCommitment(PlayerRef.Slot(slot),
+            MovementCommitmentRequest.ForBallisticArc(Vector2.UnitX, 8f, 2f, 1.2f));
+        server.Tick(Dt);
+        int landed = 0, ended = 0;
+        MovementCommitmentResult result = default;
+        server.MovementCommitmentLanded += _ => landed++;
+        server.MovementCommitmentEnded += value => { ended++; result = value; };
+        Assert.True(server.TryGetPlayerState(slot, out PlayerMoveState state));
+        state.Position = new Vector3(20f, 0f, 20f);
+
+        server.SetPlayerState(slot, state, teleport: true);
+        server.Tick(Dt);
+
+        Assert.Equal(0, landed);
+        Assert.Equal(1, ended);
+        Assert.Equal(sequence, result.Sequence);
+        Assert.Equal(MovementCommitmentEndReason.Teleported, result.Reason);
+        Assert.True(server.TryGetPlayerState(slot, out PlayerMoveState teleported));
+        Assert.Equal(MovementCommitmentPhase.None, teleported.Move.Commitment.Phase);
+    }
+
+    [Fact]
+    public void Sharded_server_direct_teleport_ends_once_without_landing()
+    {
+        static float Flat(float _, float __) => 0f;
+        var (serverTransport, clientTransport) = LoopbackTransport.CreatePair();
+        var config = new ShardedWorldServerConfig { TickSeconds = Dt };
+        using var server = new ShardedWorldServer(serverTransport, config, Flat, MoveTuning.Default);
+        var client = new NetClient(clientTransport, TestHandshake.Wire("shard-teleport"));
+        for (int i = 0; i < 200 && server.PlayerCount == 0; i++)
+        {
+            client.Poll(); server.Poll(); server.Tick(Dt);
+        }
+        int slot = Assert.Single(server.JoinedSlots);
+        uint sequence = server.BeginMovementCommitment(PlayerRef.Slot(slot),
+            MovementCommitmentRequest.ForBallisticArc(Vector2.UnitX, 8f, 2f, 1.2f));
+        server.Tick(Dt);
+        int landed = 0, ended = 0;
+        MovementCommitmentResult result = default;
+        server.MovementCommitmentLanded += _ => landed++;
+        server.MovementCommitmentEnded += value => { ended++; result = value; };
+        Assert.True(server.TryGetPlayerState(slot, out PlayerMoveState state));
+        state.Position = new Vector3(20f, 0f, 20f);
+
+        server.SetPlayerState(slot, state, teleport: true);
+        server.Tick(Dt);
+
+        Assert.Equal(0, landed);
+        Assert.Equal(1, ended);
+        Assert.Equal(sequence, result.Sequence);
+        Assert.Equal(MovementCommitmentEndReason.Teleported, result.Reason);
+        Assert.True(server.TryGetPlayerState(slot, out PlayerMoveState teleported));
+        Assert.Equal(MovementCommitmentPhase.None, teleported.Move.Commitment.Phase);
     }
 
     private static MovementState RoundTrip(MovementState source)

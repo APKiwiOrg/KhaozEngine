@@ -355,6 +355,9 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
     public void SetPlayerState(int slot, in PlayerMoveState state, bool teleport = false)
     {
         if (!entityBySlot.TryGetValue(slot, out Entity e)) return;
+        if (teleport && stateBySlot.TryGetValue(slot, out PlayerMoveState current)
+            && current.Move.Commitment.IsActive)
+            QueueMovementCommitmentEnd(slot, current, MovementCommitmentEndReason.Teleported);
         uint baseEpoch = TeleportEpochGuard.BaseEpoch(stateBySlot, slot);   // reports rather than silently zeroing
         PlayerMoveState next = ToIsland(state);
         if (teleport) next.Move.Commitment = default;
@@ -647,8 +650,6 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
                 int slot = ResolveSlot(cmd.Target);
                 if (slot >= 0 && stateBySlot.TryGetValue(slot, out PlayerMoveState st))
                 {
-                    if (cmd.Kind == AdminCommandKind.Teleport && st.Move.Commitment.IsActive)
-                        QueueMovementCommitmentEnd(slot, st, MovementCommitmentEndReason.Teleported);
                     st.Position = cmd.Position;
                     st.VerticalVelocity = 0f;
                     SetPlayerState(slot, st, teleport: cmd.Kind == AdminCommandKind.Teleport);
@@ -672,7 +673,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
                 ApplyBeginMovementCommitment(cmd);
                 break;
             case AdminCommandKind.AbortMovementCommitment:
-                ApplyAbortMovementCommitment(cmd.Target, MovementCommitmentEndReason.Aborted);
+                ApplyAbortMovementCommitment(cmd.Target, cmd.Sequence, MovementCommitmentEndReason.Aborted);
                 break;
             case AdminCommandKind.Kick:
             {

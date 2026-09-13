@@ -183,4 +183,31 @@ public class MovementCommitmentTests
         Assert.Equal(MovementCommitmentPhase.Aborted, state.Commitment.Phase);
         Assert.Equal(MovementCommitmentEndReason.EnteredWater, state.Commitment.EndReason);
     }
+
+    [Theory]
+    [InlineData(30)]
+    [InlineData(60)]
+    public void Authored_arc_lands_within_one_fixed_step_at_common_tick_rates(int tickRate)
+    {
+        const float Distance = 8f;
+        const float Apex = 2f;
+        const float Duration = 0.54f;
+        float dt = 1f / tickRate;
+        float horizontalSpeed = Distance / Duration;
+        float verticalSpeed = 4f * Apex / Duration;
+        float gravity = 8f * Apex / (Duration * Duration);
+        var state = new MoveState
+        {
+            Position = new Vector3(0f, Tuning.CapsuleHalfHeight, 0f),
+            Grounded = true,
+            Commitment = new MovementCommitment(24u, Vector2.UnitX, horizontalSpeed, verticalSpeed, gravity,
+                preparationSeconds: 0f, recoverySeconds: 0f, timeoutSeconds: 3f),
+        };
+
+        for (int i = 0; i < 180 && state.Commitment.Phase != MovementCommitmentPhase.Completed; i++)
+            state = CharacterMovement.Step(state, MoveCommand.Idle, dt, Flat, Tuning);
+
+        Assert.Equal(MovementCommitmentPhase.Completed, state.Commitment.Phase);
+        Assert.InRange(MathF.Abs(state.Position.X - Distance), 0f, horizontalSpeed * dt + 1e-4f);
+    }
 }

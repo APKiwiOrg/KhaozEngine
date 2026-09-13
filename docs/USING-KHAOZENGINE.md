@@ -9065,7 +9065,8 @@ server.MovementCommitmentLanded += result =>
 server.MovementCommitmentEnded += result => ReleaseAbilityLock(result.Slot, result.Sequence);
 ```
 
-The begin and abort calls use the server's host-thread command queue. Once applied, move, jump, facing, and
+The begin and `AbortMovementCommitment(target, expectedSequence)` calls use the server's host-thread command queue.
+The sequence guard prevents a delayed abort from cancelling a replacement move. Once applied, move, jump, facing, and
 self-rescue input cannot change the commitment. The normal gravity, support, bounds, and swept collision path still
 resolves it. Entering surface-swimming depth aborts with `EnteredWater` and never emits a landing. An admin teleport
 deliberately ends it. `MovementCommitmentLanded` runs after authoritative movement,

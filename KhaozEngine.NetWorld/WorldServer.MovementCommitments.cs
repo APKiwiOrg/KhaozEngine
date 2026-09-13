@@ -34,8 +34,13 @@ public sealed partial class WorldServer
     }
 
     /// <summary>Queues a server-authorized abort of the target's active commitment.</summary>
-    public void AbortMovementCommitment(PlayerRef target) =>
-        admin.Enqueue(new AdminCommand { Kind = AdminCommandKind.AbortMovementCommitment, Target = target });
+    public void AbortMovementCommitment(PlayerRef target, uint expectedSequence) =>
+        admin.Enqueue(new AdminCommand
+        {
+            Kind = AdminCommandKind.AbortMovementCommitment,
+            Target = target,
+            Sequence = expectedSequence,
+        });
 
     private uint NextMovementCommitmentSequence()
     {
@@ -55,11 +60,12 @@ public sealed partial class WorldServer
         SetPlayerState(slot, state);
     }
 
-    private void ApplyAbortMovementCommitment(PlayerRef target, MovementCommitmentEndReason reason)
+    private void ApplyAbortMovementCommitment(PlayerRef target, uint expectedSequence,
+        MovementCommitmentEndReason reason)
     {
         int slot = ResolveSlot(target);
         if (slot < 0 || !stateBySlot.TryGetValue(slot, out PlayerMoveState state)
-            || !state.Move.Commitment.IsActive) return;
+            || !state.Move.Commitment.IsActive || state.Move.Commitment.Sequence != expectedSequence) return;
         QueueMovementCommitmentEnd(slot, state, reason);
         state.Move.Commitment = default;
         SetPlayerState(slot, state);

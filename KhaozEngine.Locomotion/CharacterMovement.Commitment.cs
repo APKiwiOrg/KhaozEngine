@@ -64,7 +64,10 @@ public static partial class CharacterMovement
             }
 
             movement = movement with { Phase = MovementCommitmentPhase.Airborne };
-            state.VerticalVelocity = movement.VerticalSpeed;
+            // The shared vertical integrator is semi-implicit: it applies gravity before this tick's position
+            // advance. Seed at the half-step so tick-boundary positions follow the authored ballistic equation while
+            // VerticalSpeed remains the nominal launch speed consumers use for progress.
+            state.VerticalVelocity = movement.VerticalSpeed + movement.Gravity * dt * 0.5f;
             state.Grounded = false;
             state.TimeSinceGrounded = 0f;
             state.HorizontalVelocity = movement.Direction * movement.HorizontalSpeed;

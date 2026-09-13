@@ -48,9 +48,20 @@ namespace KhaozEngine.Terrain
         internal static GltfMesh MergeMeasured(IReadOnlyList<PropPlacement> placements,
                                                IReadOnlyDictionary<string, GltfMesh> sourceMeshes,
                                                out long malformedCornersDropped)
+            => MergeMeasured(placements, sourceMeshes, selectedPlacementIndex: -1,
+                out _, out _, out malformedCornersDropped);
+
+        static GltfMesh MergeMeasured(IReadOnlyList<PropPlacement> placements,
+                                      IReadOnlyDictionary<string, GltfMesh> sourceMeshes,
+                                      int selectedPlacementIndex,
+                                      out int selectedIndexStart,
+                                      out int selectedIndexCount,
+                                      out long malformedCornersDropped)
         {
             if (placements == null) throw new ArgumentNullException(nameof(placements));
             if (sourceMeshes == null) throw new ArgumentNullException(nameof(sourceMeshes));
+            selectedIndexStart = 0;
+            selectedIndexCount = 0;
             malformedCornersDropped = 0;
 
             int vertCount = 0, indexCount = 0;
@@ -67,6 +78,7 @@ namespace KhaozEngine.Terrain
             for (int p = 0; p < placements.Count; p++)
             {
                 PropPlacement pl = placements[p];
+                if (p == selectedPlacementIndex) selectedIndexStart = ii;
                 if (!Usable(sourceMeshes, pl.Id, out GltfMesh? mesh)) continue;
 
                 Matrix4x4 rot = Matrix4x4.CreateRotationY(pl.Yaw);
@@ -94,6 +106,7 @@ namespace KhaozEngine.Terrain
                     if (s >= srcVerts) malformedCornersDropped++;
                     idx[ii++] = baseIndex + (s < srcVerts ? s : 0u);
                 }
+                if (p == selectedPlacementIndex) selectedIndexCount = mi.Length;
             }
             return new GltfMesh(verts, idx);
         }
@@ -130,6 +143,13 @@ namespace KhaozEngine.Terrain
             if (cellSize <= 0f)
                 throw new ArgumentOutOfRangeException(nameof(cellSize), cellSize, "Weld cell size must be positive.");
 
+            return WeldRange(mesh, cellSize, indexStart: 0, indexCount: mesh.Indices32.Length,
+                compactVertices: false);
+        }
+
+        static GltfMesh WeldRange(GltfMesh mesh, float cellSize, int indexStart, int indexCount,
+                                  bool compactVertices)
+        {
             ModelVertex[] src = mesh.Vertices;
             var cellOf = new Dictionary<(int, int, int), int>();
             var remap = new int[src.Length];
@@ -170,18 +190,42 @@ namespace KhaozEngine.Terrain
 
             uint[] si = mesh.Indices32;
             uint vertexCount = (uint)src.Length;
+            int indexEnd = indexStart + indexCount;
             int kept = 0;
-            for (int t = 0; t + 2 < si.Length; t += 3)
+            for (int t = indexStart; t + 2 < indexEnd; t += 3)
                 if (Survives(si, t, vertexCount, remap, out _, out _, out _)) kept++;
 
             var outI = new uint[kept * 3];
             int o = 0;
-            for (int t = 0; t + 2 < si.Length; t += 3)
+            for (int t = indexStart; t + 2 < indexEnd; t += 3)
             {
                 if (!Survives(si, t, vertexCount, remap, out int a, out int b, out int c)) continue;
                 outI[o++] = (uint)a; outI[o++] = (uint)b; outI[o++] = (uint)c;
             }
-            return new GltfMesh(outV, outI);
+            return compactVertices ? Compact(outV, outI) : new GltfMesh(outV, outI);
+        }
+
+        static GltfMesh Compact(ModelVertex[] vertices, uint[] indices)
+        {
+            var used = new bool[vertices.Length];
+            for (int i = 0; i < indices.Length; i++) used[indices[i]] = true;
+
+            int usedCount = 0;
+            for (int i = 0; i < used.Length; i++)
+                if (used[i]) usedCount++;
+
+            var compactVertices = new ModelVertex[usedCount];
+            var remap = new int[vertices.Length];
+            int outputIndex = 0;
+            for (int i = 0; i < vertices.Length; i++)
+            {
+                if (!used[i]) continue;
+                compactVertices[outputIndex] = vertices[i];
+                remap[i] = outputIndex++;
+            }
+
+            for (int i = 0; i < indices.Length; i++) indices[i] = (uint)remap[indices[i]];
+            return new GltfMesh(compactVertices, indices);
         }
 
         /// <summary>Whether the triangle at <paramref name="t"/> makes it into the welded output, and its remapped
@@ -213,6 +257,32 @@ namespace KhaozEngine.Terrain
                                                IReadOnlyDictionary<string, GltfMesh> sourceMeshes,
                                                float weldCellSize)
             => BuildMergedMeshMeasured(placements, sourceMeshes, weldCellSize, out _);
+
+        /// <summary>Build the exact geometry contributed by one placement inside a merged HLOD cluster. The merge
+        /// and optional weld still process every placement, so vertices shared through a weld cell keep the same
+        /// averaged values as <see cref="BuildMergedMesh"/>. Only surviving triangles from the selected placement
+        /// are emitted, with unused output vertices removed. An absent or empty selected source returns an empty
+        /// mesh. A non-positive weld cell keeps the selected placement at full merged detail.</summary>
+        public static GltfMesh BuildPlacementMesh(IReadOnlyList<PropPlacement> placements,
+                                                  int placementIndex,
+                                                  IReadOnlyDictionary<string, GltfMesh> sourceMeshes,
+                                                  float weldCellSize)
+        {
+            if (placements == null) throw new ArgumentNullException(nameof(placements));
+            if (sourceMeshes == null) throw new ArgumentNullException(nameof(sourceMeshes));
+            if ((uint)placementIndex >= (uint)placements.Count)
+                throw new ArgumentOutOfRangeException(nameof(placementIndex), placementIndex,
+                    "Placement index must name an item in placements.");
+
+            GltfMesh merged = MergeMeasured(placements, sourceMeshes, placementIndex,
+                out int indexStart, out int indexCount, out _);
+            if (weldCellSize > 0f)
+                return WeldRange(merged, weldCellSize, indexStart, indexCount, compactVertices: true);
+
+            var selectedIndices = new uint[indexCount];
+            Array.Copy(merged.Indices32, indexStart, selectedIndices, 0, indexCount);
+            return Compact(merged.Vertices, selectedIndices);
+        }
 
         /// <summary>The live containment build plus its exact count of malformed source corners.</summary>
         internal static GltfMesh BuildMergedMeshMeasured(IReadOnlyList<PropPlacement> placements,

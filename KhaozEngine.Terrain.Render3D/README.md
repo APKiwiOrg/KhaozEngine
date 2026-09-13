@@ -205,6 +205,10 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   1.5 m cell). `PropHlod.BuildMergedMesh(placements, sourceMeshes, weldCellSize)` is the one-call bake (merge, then
   weld when the cell is positive), and `PropHlod.CrossfadeAt(distance, hlodDistance, crossfadeWidth)` is the 0..1
   distance crossfade curve. All pure and deterministic, so the bake reproduces byte-for-byte.
+  `PropHlod.BuildPlacementMesh(placements, placementIndex, sourceMeshes, weldCellSize)` extracts one
+  placement's exact surviving geometry from that same global weld, with unused vertices removed. This supports
+  selected-object masks while preserving cell averages shared with neighboring placements. Missing or empty
+  selected sources yield an empty mesh.
   `PropClusterRenderer` runs it as a runtime build and keeps the accepted generation until invalidation or unload.
   The same function remains offline-ready if a future artifact bake wants it. The
   merged mesh keeps flat **vertex-colour** albedo (from the `PropLoader.LoadProp` source form), so it renders

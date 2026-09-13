@@ -44,6 +44,13 @@ pixels. Separate groups retain their own colours and widths, with stable submiss
 `Scene3DTileWorldScene` forwards them. `TileWorldView.SetOutlinedObject` and
 `ClearOutlinedObject` provide object selection, with every part in one group.
 
+Selected world objects use their active full, LOD1 and HLOD representation. Full and LOD1 selection
+reuses the ordinary prop emission rules, including dissolve thresholds. The full mask suppresses
+dither holes as interior strokes, while visible coverage follows the actual fragment keep rule.
+For merged HLOD, an on-demand selected-placement mask uses the canonical global cluster weld and
+emits only that placement's surviving triangles. Welding the placement alone would move shared-cell
+vertices and is not equivalent. Cache this mask against the selected object and cluster generation.
+
 ## Rendering
 
 The mask contains the full unexpanded target, including portions hidden behind world geometry.
@@ -78,7 +85,8 @@ point samples. A large depth epsilon is not an acceptable substitute for matchin
    resize, partial allocation failure, stale groups, empty frames and material lifetime with
    headless tests. Preserve the legacy silhouette tests and their committed references.
 4. Wire the tile scene and object-selection APIs. A multipart object starts one group and submits
-   each transformed part to that group. Prove forwarding through the scene adapter.
+   each transformed part to that group. Prove forwarding through the scene adapter, current residency,
+   LOD transitions and exact selected-placement HLOD geometry. Preserve the target through its walk-up.
 5. Exercise 1.25-pixel outlines at multiple camera angles and distances, internal render scales,
    MSAA 1 and 4, and SSAA. Require a stable thin border and zero interior strokes using baseline
    coverage as the oracle. Keep the tests named `Golden` for all-backend pull-request verification.

@@ -16,6 +16,9 @@ Selected multipart models can use thin camera-space outlines without internal st
   compatible for callers that use world-space hulls.
 - `ITileWorldScene` and `Scene3DTileWorldScene` expose the grouped drawing path. `TileWorldView.SetOutlinedObject`
   and `ClearOutlinedObject` provide the same pixel-outline selection for authored world objects.
+- Selected world objects follow their accepted full, LOD and merged HLOD geometry, including dissolve
+  transitions and pending rebuilds. `PropClusterRenderer.TryGetDrawState` exposes the actual retained draw
+  state, and `PropHlod.BuildPlacementMesh` extracts an exact selected-object mask from the global cluster weld.
 
 ## 18.46.0
 

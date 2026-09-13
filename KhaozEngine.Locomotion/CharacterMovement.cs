@@ -163,6 +163,8 @@ public static partial class CharacterMovement
     {
         MoveState s = state;
         MoveTuning t = tuning;
+        bool commitmentControlledTick = PrepareCommitmentTick(ref s, ref t, ref moveDir, ref speedFraction,
+            ref run, ref jump, ref faceYaw, dt, out bool committedFlight, out bool launchedThisTick);
 
         CapsuleShape capsule = CapsuleFor(t);
         float halfH = t.CapsuleHalfHeight;
@@ -209,7 +211,17 @@ public static partial class CharacterMovement
         // threshold, never flickering at the boundary. Only meaningful with a provider; dry land never swims.
         bool swimming = ResolveSwimming(s.Swimming, medNow, s.Position.Y - halfH, t);
         if (swimming)
-            return SwimStep(s, moveDir, speedFraction, jump, dt, t, medNow, groundHeight, clampXz, halfH, faceYaw);
+        {
+            MoveState swim = SwimStep(s, moveDir, speedFraction, jump, dt, t, medNow, groundHeight, clampXz, halfH,
+                faceYaw);
+            if (s.Commitment.IsActive)
+                swim.Commitment = s.Commitment with
+                {
+                    Phase = MovementCommitmentPhase.Aborted,
+                    EndReason = MovementCommitmentEndReason.EnteredWater,
+                };
+            return swim;
+        }
 
         // 0a. THE TRACTION GATE FOR THIS TICK, resolved ONCE from the footing the tick STARTED with and handed to every
         //    consumer below: the slide contact, the wall contact on all three horizontal paths, the slide resolve, the
@@ -240,7 +252,14 @@ public static partial class CharacterMovement
         float speedScale = (s.Grounded ? 1f : t.AirControl) * wade * s.SpeedScale;
         float dx, dz, slideVVel = 0f;
         Vector2 commandedVel, carrySeed;
-        if (sliding)
+        if (committedFlight)
+        {
+            commandedVel = s.HorizontalVelocity;
+            carrySeed = commandedVel;
+            dx = s.Position.X + commandedVel.X * dt;
+            dz = s.Position.Z + commandedVel.Y * dt;
+        }
+        else if (sliding)
         {
             SlideStep slide = ResolveSlide(s, moveDir, speedFraction, run, dt, t, slideNormal, groundNormal, groundHeight, speedScale, halfH, tractionGate);
             (dx, dz, commandedVel, carrySeed, slideVVel) = (slide.X, slide.Z, slide.Commanded, slide.Carry, slide.VerticalVelocity);
@@ -510,7 +529,7 @@ public static partial class CharacterMovement
 
             // CARRIED heading, turned shortest-arc toward the camera (FaceCamera) or the commanded direction. A pure
             // OUTPUT: nothing above reads it, so the position this step commits is untouched by it.
-            FacingYaw = ResolveFacing(s.FacingYaw, moveDir, faceYaw, dt, t),
+            FacingYaw = commitmentControlledTick ? s.FacingYaw : ResolveFacing(s.FacingYaw, moveDir, faceYaw, dt, t),
             SpeedScale = state.SpeedScale,   // a movement INPUT: carried through unchanged, never derived by the step
             CommandedVelocity = commandedVel, // a per-tick OUTPUT: what the step asked for, before anything denied it
             // Carried inertia, stamped on EVERY tick (grounded included) and consumed only when AirMomentum is on:
@@ -519,6 +538,7 @@ public static partial class CharacterMovement
             // from. On a slide it carries a contour steer the carry does not, and reading the carry alone against a
             // displacement the steer helped produce would clip the carry for the steer's travel (see there).
             HorizontalVelocity = ClipCarryToAchieved(carrySeed, commandedVel, start, pos, dt),
+            Commitment = FinishCommitmentTick(s.Commitment, launchedThisTick, grounded, start, pos, dt),
         };
         // Defense-in-depth: a finite input state must never produce a non-finite result. A pathological command is
         // gated out upstream, but a misbehaving ground/bound/tuning value could inject a NaN/Inf that would slip
@@ -533,7 +553,13 @@ public static partial class CharacterMovement
         return IsFinite(result.Position) && float.IsFinite(result.VerticalVelocity) &&
                float.IsFinite(result.ClimbRate) && float.IsFinite(result.ClimbRateEwma) &&
                float.IsFinite(result.StepDeltaY) && IsFinite(result.HorizontalVelocity) && float.IsFinite(result.FacingYaw)
-            ? result : state with { LandingImpactSpeed = 0f, SupportGranted = false, StepDeltaY = 0f };
+            ? result : state with
+            {
+                LandingImpactSpeed = 0f,
+                SupportGranted = false,
+                StepDeltaY = 0f,
+                Commitment = result.Commitment,
+            };
     }
 
     /// <summary>True when every component of <paramref name="v"/> is finite (neither NaN nor infinite).</summary>

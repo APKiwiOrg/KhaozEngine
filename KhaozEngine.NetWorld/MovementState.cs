@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using KhaozEngine.Ecs;
+using KhaozEngine.Locomotion;
 
 namespace KhaozEngine.NetWorld;
 
@@ -14,6 +15,10 @@ namespace KhaozEngine.NetWorld;
 /// </summary>
 public struct MovementState : IComponent
 {
+    /// <summary>The server-authored committed movement carried through prediction, replication, and handoff. Added
+    /// on the wire in generation 11. Its zero default means ordinary command-driven locomotion.</summary>
+    public MovementCommitment Commitment;
+
     /// <summary>Vertical velocity (m/s, positive up).</summary>
     public float VerticalVelocity;
 
@@ -334,6 +339,7 @@ public struct MovementState : IComponent
     /// <see cref="ReplicatedPosition"/>).</summary>
     public static MovementState From(in PlayerMoveState state) => new()
     {
+        Commitment = state.Move.Commitment,
         VerticalVelocity = state.Move.VerticalVelocity,
         Grounded = state.Move.Grounded,
         TimeSinceGrounded = state.Move.TimeSinceGrounded,

@@ -188,6 +188,7 @@ public struct PlayerMoveState : IPredictedState<PlayerMoveState>
             // And the sharded head's sim-local footing grant, same read path and same reasoning: false on a client and
             // across a handoff, which reads as "found no footing this tick".
             SupportGranted = movement.SupportGranted,
+            Commitment = movement.Commitment,
         },
         TeleportEpoch = movement.TeleportEpoch,
     };

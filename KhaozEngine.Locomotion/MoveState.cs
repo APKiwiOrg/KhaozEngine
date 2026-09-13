@@ -249,4 +249,7 @@ public struct MoveState
     /// feeds the move resolve - which is what makes every existing game bit-identical on position across this
     /// feature.</summary>
     public float FacingYaw;
+
+    /// <summary>The replicated server-authored ballistic movement currently controlling this character.</summary>
+    public MovementCommitment Commitment;
 }

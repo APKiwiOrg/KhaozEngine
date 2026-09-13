@@ -357,6 +357,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
         if (!entityBySlot.TryGetValue(slot, out Entity e)) return;
         uint baseEpoch = TeleportEpochGuard.BaseEpoch(stateBySlot, slot);   // reports rather than silently zeroing
         PlayerMoveState next = ToIsland(state);
+        if (teleport) next.Move.Commitment = default;
         next.TeleportEpoch = teleport ? baseEpoch + 1u : baseEpoch;   // server owns the monotonic epoch
         stateBySlot[slot] = next;
         world.Set(e, ReplicatedPosition.InFrame(islandFrame, next.Position));
@@ -465,6 +466,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
     private void HandleSelfRescue(int slot)
     {
         if (config.SelfRescueDestination is null) return;                                   // feature off
+        if (stateBySlot.TryGetValue(slot, out PlayerMoveState state) && state.Move.Commitment.IsActive) return;
         if (selfRescueReadyAt.TryGetValue(slot, out double readyAt) && selfRescueClock < readyAt) return;  // cooling down
         Vector3 dest = config.SelfRescueDestination(PlayerRef.Slot(slot));
         admin.Enqueue(new AdminCommand { Kind = AdminCommandKind.Teleport, Target = PlayerRef.Slot(slot), Position = dest });
@@ -525,7 +527,9 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
             stateBySlot[slot] = state;
             world.Set(entityBySlot[slot], ReplicatedPosition.InFrame(islandFrame, state.Position));
             world.Set(entityBySlot[slot], MovementState.From(state));   // replicate the vertical axis
-            if (config.AntiCheat.CorrectionEnabled) TrackCorrection(slot, prev, state, dt);
+            InspectMovementCommitmentTransition(slot, prev, state);
+            if (config.AntiCheat.CorrectionEnabled && !prev.Move.Commitment.IsActive)
+                TrackCorrection(slot, prev, state, dt);
         }
 
         // Re-anchor the island once the tick's movement has settled, before anything reads a position back.
@@ -533,6 +537,8 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
 
         // Rebuild AoI index from current positions, healing any stale frame stamp on the way past.
         RebuildInterestAndHealFrames();
+
+        PublishMovementCommitmentEvents();
 
         // Serve each client its area-of-interest, headered with its own net id + move ack. Delta-capable clients get
         // a per-client AoI delta (only what changed since their acknowledged baseline); everyone else a full snapshot.
@@ -641,6 +647,8 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
                 int slot = ResolveSlot(cmd.Target);
                 if (slot >= 0 && stateBySlot.TryGetValue(slot, out PlayerMoveState st))
                 {
+                    if (cmd.Kind == AdminCommandKind.Teleport && st.Move.Commitment.IsActive)
+                        QueueMovementCommitmentEnd(slot, st, MovementCommitmentEndReason.Teleported);
                     st.Position = cmd.Position;
                     st.VerticalVelocity = 0f;
                     SetPlayerState(slot, st, teleport: cmd.Kind == AdminCommandKind.Teleport);
@@ -660,6 +668,12 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
                 }
                 break;
             }
+            case AdminCommandKind.BeginMovementCommitment:
+                ApplyBeginMovementCommitment(cmd);
+                break;
+            case AdminCommandKind.AbortMovementCommitment:
+                ApplyAbortMovementCommitment(cmd.Target, MovementCommitmentEndReason.Aborted);
+                break;
             case AdminCommandKind.Kick:
             {
                 int slot = ResolveSlot(cmd.Target);
@@ -695,93 +709,4 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
         onlinePublisher.PublishIfChanged(admin);
     }
 
-    private void OnJoin(int slot, string subject, string displayName, string verifiedPersistenceKey)
-    {
-        // A VERIFIED subject may not sit inside the reserved guest namespace: it would read as tokenless to
-        // persistence and lose the whole session silently (see ReservedSubjectGuard).
-        if (ReservedSubjectGuard.IsReserved(subject, slot)) { net.Disconnect(slot); return; }
-
-        string accountId = string.IsNullOrEmpty(subject) ? $"{ResumePositionCache.GuestAccountPrefix}{slot}" : subject;
-        if (banStore is not null && banStore.IsBanned(accountId))
-        {
-            // Typed rejection, no engine-authored text: the client maps ServerNoticeKind.Banned to its own localized
-            // string (the server owns no string catalog), the same way it does for Maintenance / Shutdown.
-            SendNoticeTo(slot, new ServerNotice(ServerNoticeKind.Banned, string.Empty));
-            net.Disconnect(slot);
-            return;
-        }
-        if (!TryBindPersistenceKey(slot, accountId, verifiedPersistenceKey, out string persistenceKey))
-        {
-            net.Disconnect(slot);
-            return;
-        }
-
-        // Belt-and-suspenders: clear any stale command-queue state on the (recycled) slot before spawning, in case
-        // a prior occupant's Left was ever missed. A fresh session's seqs restart at 0; a stale high-water mark
-        // would reject every one and freeze the player (see OnLeave).
-        commands.Forget(slot);
-        // Drop any stale delta baseline / capability on the recycled slot: the new occupant re-advertises and
-        // re-baselines from scratch (it starts on full snapshots until its own DeltaCapable hello arrives).
-        deltaReplicator?.Forget(slot);
-        deltaCapableSlots.Remove(slot);
-
-        Vector3 spawn = JoinSpawn(slot, persistenceKey);   // a known rejoiner is built where it left (see JoinSpawn)
-        // Ground-clamp the spawn (an idle step settles Y onto the terrain + half-height). The spawn position is
-        // authored ABSOLUTE, so it converts into the island first: the clamp step queries the island's physics
-        // world and samplers, which speak the island's space.
-        PlayerMoveState state = simulator.Step(ToIsland(new PlayerMoveState { Position = spawn }), MoveCommand.Idle, config.TickSeconds);
-
-        long netId = allocator.Next().Value;
-        Entity e = world.Spawn();
-        world.Set(e, new NetId(netId));
-        world.Set(e, ReplicatedPosition.InFrame(islandFrame, state.Position));
-        world.Set(e, MovementState.From(state));   // vertical axis present from the first snapshot
-
-        netIdBySlot[slot] = netId;
-        entityBySlot[slot] = e;
-        stateBySlot[slot] = state;
-        lastAckBySlot[slot] = -1;
-        accountIdBySlot[slot] = accountId;
-        // Fresh per-connection anti-cheat state (a recycled slot starts from a full bucket / zero streak).
-        RateLimiter? limiter = config.AntiCheat.CreateLimiter(config.TickSeconds);
-        if (limiter is not null) rateBySlot[slot] = limiter; else rateBySlot.Remove(slot);
-        correctionStreakBySlot[slot] = 0;
-
-        // A display name carried on the connect token (a SignedToken claim) is applied here so token games get
-        // nameplates for free; a DB-sourced name is set from the PlayerJoined handler instead (or overrides this).
-        if (!string.IsNullOrEmpty(displayName)) world.Set(e, new PlayerIdentity { DisplayName = displayName });
-
-        PlayerJoined?.Invoke(slot, accountId);
-    }
-
-    // Idempotent by design: safe to call more than once for the same slot. The TryGetValue guards below make a repeat
-    // call a no-op (PlayerLeaving cannot double-fire, save-on-leave cannot double-persist), and every Remove is a
-    // no-op on a missing key. This is load-bearing: Disconnect(slot) calls OnLeave synchronously, and a real transport
-    // may later surface a Left event for the same slot through Poll, calling OnLeave a second time.
-    private void OnLeave(int slot)
-    {
-        try
-        {
-            // The final state goes out ABSOLUTE: a persistence layer writes world metres, and a save that carried a
-            // runtime frame would break the moment the grid constant changed.
-            if (accountIdBySlot.TryGetValue(slot, out string? acct) && stateBySlot.TryGetValue(slot, out PlayerMoveState final))
-                PlayerLeaving?.Invoke(slot, acct, ToAbsolute(final));
-        }
-        finally
-        {
-            ReleasePersistenceKey(slot);
-            if (entityBySlot.TryGetValue(slot, out Entity e) && world.IsAlive(e)) world.Despawn(e);
-            netIdBySlot.Remove(slot);
-            entityBySlot.Remove(slot);
-            stateBySlot.Remove(slot);
-            lastAckBySlot.Remove(slot);
-            accountIdBySlot.Remove(slot);
-            rateBySlot.Remove(slot);
-            correctionStreakBySlot.Remove(slot);
-            selfRescueReadyAt.Remove(slot);
-            deltaReplicator?.Forget(slot);
-            deltaCapableSlots.Remove(slot);
-            commands.Forget(slot);
-        }
-    }
 }

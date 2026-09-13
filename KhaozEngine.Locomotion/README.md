@@ -372,6 +372,13 @@ decision. **A null provider never engages swim.** The swim flag replicates via N
   a run tick, with no consumer of its own.
   A rejected non-finite tick holds the last good pose and clears `StepDeltaY`, so its previous step impulse
   is not replayed while the input remains invalid.
+- **`MoveState.Commitment`** - optional carried `MovementCommitment` state for a server-authored ballistic move.
+  `Preparing`, `Airborne`, and `Recovering` suppress command movement, jump, and facing. Entering surface-swimming
+  depth aborts with `MovementCommitmentEndReason.EnteredWater` and hands control to the ordinary swim state.
+  The airborne phase uses its latched XZ direction, horizontal speed, vertical speed, and gravity through the normal
+  swept collision, support, and bounds path. `Completed` and `Aborted` are terminal states that clear on the next
+  step. The zero default is ordinary command-driven locomotion. NetWorld creates and replicates this state through
+  `MovementCommitmentRequest` rather than accepting it from the client.
 - **`MoveState.SpeedScale`** (14.26.0) - per-entity HORIZONTAL speed multiplier: haste (`> 1`), slow (`< 1`),
   root (`0`), unmodified (`1`, the default). A movement INPUT the step reads and carries through unchanged, and nothing
   in the sim derives or decays it. It multiplies INTO the existing speed product rather than replacing any of it, so

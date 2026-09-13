@@ -322,6 +322,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         {
             uint baseEpoch = TeleportEpochGuard.BaseEpoch(cell.World, e, slot);   // reports rather than zeroing
             PlayerMoveState next = state;
+            if (teleport) next.Move.Commitment = default;
             next.TeleportEpoch = teleport ? baseEpoch + 1u : baseEpoch;   // server owns the monotonic epoch
             // The state came from OUTSIDE the simulation (an admin teleport, a load-on-join record, a self-rescue),
             // so its position is absolute and lands in the owning cell's frame.
@@ -431,6 +432,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
     private void HandleSelfRescue(int slot)
     {
         if (config.SelfRescueDestination is null) return;                                   // feature off
+        if (TryGetPlayerState(slot, out PlayerMoveState state) && state.Move.Commitment.IsActive) return;
         if (selfRescueReadyAt.TryGetValue(slot, out double readyAt) && selfRescueClock < readyAt) return;  // cooling down
         Vector3 dest = config.SelfRescueDestination(PlayerRef.Slot(slot));
         admin.Enqueue(new AdminCommand { Kind = AdminCommandKind.Teleport, Target = PlayerRef.Slot(slot), Position = dest });
@@ -478,6 +480,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         List<int> slots = tickSlots;
         bool trackCorrection = config.AntiCheat.CorrectionEnabled;
         correctionScratch.Clear();
+        movementCommitmentScratch.Clear();
 
         // 1. Route each client's input to the cell that owns its player.
         foreach (int slot in slots)
@@ -487,6 +490,13 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
             if (host.TryGetOwner(netIdBySlot[slot], out CellSim cell, out Entity e))
             {
                 cell.World.Set(e, new PendingMove { Command = cmd });
+                if (cell.World.TryGet(e, out ReplicatedPosition commitmentPosition))
+                {
+                    cell.World.TryGet(e, out MovementState commitmentMovement);
+                    PlayerMoveState before = PlayerMoveState.From(commitmentPosition.Value, commitmentMovement);
+                    if (before.Move.Commitment.IsActive)
+                        movementCommitmentScratch.Add((slot, before, cell, cell.TickCount));
+                }
                 // Snapshot the pre-step state so the post-step correction (how far the cell sim denied the move)
                 // can be measured after the cells tick. Movement happens inside PlayerMovementSystem, so we bracket
                 // host.Tick rather than threading the metric through the ECS.
@@ -510,11 +520,22 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         if (movementRan)
             foreach (RateLimiter limiter in rateBySlot.Values) limiter.Refill();
 
+        if (movementRan)
+        {
+            foreach ((int slot, PlayerMoveState before, CellSim cell, long tick) in movementCommitmentScratch)
+            {
+                if (cell.TickCount == tick || !TryGetPlayerState(slot, out PlayerMoveState after)) continue;
+                InspectMovementCommitmentTransition(slot, before, after);
+            }
+        }
+
         // 4. Authority follows entities across boundaries (exactly-once), then refresh border ghosts.
         host.ProcessHandoffs();
         ApplyDesiredSpeedScales();
         boundPlayerCellsVersion++;   // a handoff can move a bound player's home cell: the eviction cache must re-read
         host.SyncGhosts();
+
+        PublishMovementCommitmentEvents();
 
         // 4b. Movement-correction anomaly: compare each routed player's post-step position to its intended move.
         // A skipped accumulator frame is neither a corrected nor a clean movement tick, so it must leave the
@@ -525,6 +546,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
             {
                 if (cell.TickCount == tickCount) continue;
                 if (!TryGetPlayerState(slot, out PlayerMoveState after)) continue;
+                if (prev.Move.Commitment.IsActive) continue;
                 float correction = MovementAnomaly.CorrectionDistance(prev, after, cell.TickSeconds);
                 if (MovementAnomaly.RegisterCorrection(correctionStreakBySlot, slot, correction, config.AntiCheat))
                     Raise(slot, SuspiciousReason.MovementCorrection, correction);
@@ -651,6 +673,8 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
                 int slot = ResolveSlot(cmd.Target);
                 if (slot >= 0 && TryGetPlayerState(slot, out PlayerMoveState st))
                 {
+                    if (cmd.Kind == AdminCommandKind.Teleport && st.Move.Commitment.IsActive)
+                        QueueMovementCommitmentEnd(slot, st, MovementCommitmentEndReason.Teleported);
                     st.Position = cmd.Position;
                     st.VerticalVelocity = 0f;
                     SetPlayerState(slot, st, teleport: cmd.Kind == AdminCommandKind.Teleport);
@@ -664,6 +688,12 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
                     SetDesiredSpeedScale(netId, cmd.Scale);
                 break;
             }
+            case AdminCommandKind.BeginMovementCommitment:
+                ApplyBeginMovementCommitment(cmd);
+                break;
+            case AdminCommandKind.AbortMovementCommitment:
+                ApplyAbortMovementCommitment(cmd.Target, MovementCommitmentEndReason.Aborted);
+                break;
             case AdminCommandKind.Kick:
             {
                 int slot = ResolveSlot(cmd.Target);
@@ -699,102 +729,4 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         onlinePublisher.PublishIfChanged(admin);
     }
 
-    private void OnJoin(int slot, string subject, string displayName, string verifiedPersistenceKey)
-    {
-        // A VERIFIED subject may not sit inside the reserved guest namespace: it would read as tokenless to
-        // persistence and lose the whole session silently (see ReservedSubjectGuard).
-        if (ReservedSubjectGuard.IsReserved(subject, slot)) { net.Disconnect(slot); return; }
-
-        string accountId = string.IsNullOrEmpty(subject) ? $"{ResumePositionCache.GuestAccountPrefix}{slot}" : subject;
-        if (banStore is not null && banStore.IsBanned(accountId))
-        {
-            // Typed rejection, no engine-authored text: the client maps ServerNoticeKind.Banned to its own localized
-            // string (the server owns no string catalog), the same way it does for Maintenance / Shutdown.
-            SendNoticeTo(slot, new ServerNotice(ServerNoticeKind.Banned, string.Empty));
-            net.Disconnect(slot);
-            return;
-        }
-        if (!TryBindPersistenceKey(slot, accountId, verifiedPersistenceKey, out string persistenceKey))
-        {
-            net.Disconnect(slot);
-            return;
-        }
-
-        // Belt-and-suspenders: clear any stale command-queue state on the (recycled) slot before spawning, in case
-        // a prior occupant's Left was ever missed. A fresh session's seqs restart at 0; a stale high-water mark
-        // would reject every one and freeze the player (see OnLeave).
-        commands.Forget(slot);
-        // Drop any stale delta baseline / capability on the recycled slot; the new occupant re-advertises + re-baselines.
-        deltaReplicator?.Forget(slot);
-        deltaCapableSlots.Remove(slot);
-
-        Vector3 spawn = JoinSpawn(slot, persistenceKey);   // a known rejoiner is built where it left (see JoinSpawn)
-        // Ground-clamp the spawn (an idle step settles Y onto the terrain + half-height). The clamp runs in the frame
-        // of the cell that contains the spawn point, using that cell's physics world, and comes back ABSOLUTE - the
-        // cell the player actually lands in is keyed off that absolute position, exactly as before.
-        PlayerMoveState state = RuntimeFor(host.CellFor(spawn.X, spawn.Z))
-            .SpawnClamp(new PlayerMoveState { Position = spawn }, config.TickSeconds);
-
-        long netId = allocator.Next().Value;
-        Entity e = host.SpawnOwned(state.Position.X, state.Position.Z, netId, out CellSim cell); // eager index register
-        cell.World.Set(e, ReplicatedPosition.FromWorld(state.Position, cell.Frame));
-        cell.World.Set(e, MovementState.From(state));   // vertical axis: present at spawn, carried across handoff
-        // A display name on the connect token rides along the same way (a registered component, migrated on handoff).
-        if (!string.IsNullOrEmpty(displayName)) cell.World.Set(e, new PlayerIdentity { DisplayName = displayName });
-        EnsureWired(cell);
-        netIdBySlot[slot] = netId;
-        lastAckBySlot[slot] = -1;
-        accountIdBySlot[slot] = accountId;
-        // Fresh per-connection anti-cheat state (a recycled slot starts from a full bucket / zero streak).
-        RateLimiter? limiter = config.AntiCheat.CreateLimiter(config.TickSeconds);
-        if (limiter is not null) rateBySlot[slot] = limiter; else rateBySlot.Remove(slot);
-        correctionStreakBySlot[slot] = 0;
-        host.BindClient(slot, netId);
-        boundPlayerCellsVersion++;   // a join changes the bound-player-cells set the eviction cache serves
-
-        PlayerJoined?.Invoke(slot, accountId);
-    }
-
-    // Idempotent: Disconnect calls this synchronously, and a transport may later surface the same Left event.
-    // Cleanup stays in finally because PlayerLeaving includes consumer callbacks that may throw.
-    private void OnLeave(int slot)
-    {
-        bool joined = netIdBySlot.TryGetValue(slot, out long netId);
-        try
-        {
-            if (joined)
-            {
-                desiredSpeedScaleByNetId.Remove(netId);
-                if (accountIdBySlot.TryGetValue(slot, out string? acct) && TryGetPlayerState(slot, out PlayerMoveState final))
-                    PlayerLeaving?.Invoke(slot, acct, final);
-            }
-        }
-        finally
-        {
-            ReleasePersistenceKey(slot);
-            if (joined && host.TryGetOwner(netId, out CellSim cell, out Entity e) && cell.World.IsAlive(e))
-            {
-                cell.UnregisterOwned(netId); // eager: drop it from the ownership index before despawning
-                cell.World.Despawn(e);
-            }
-            host.UnbindClient(slot);
-            boundPlayerCellsVersion++;
-            netIdBySlot.Remove(slot);
-            lastAckBySlot.Remove(slot);
-            accountIdBySlot.Remove(slot);
-            rateBySlot.Remove(slot);
-            correctionStreakBySlot.Remove(slot);
-            selfRescueReadyAt.Remove(slot);
-            deltaReplicator?.Forget(slot);
-            deltaCapableSlots.Remove(slot);
-            commands.Forget(slot);
-        }
-    }
-
-    private static bool PositionAccessor(World world, Entity e, out float x, out float y)
-    {
-        if (world.TryGet(e, out ReplicatedPosition p)) { x = p.Value.X; y = p.Value.Z; return true; }
-        x = y = 0f;
-        return false;
-    }
 }

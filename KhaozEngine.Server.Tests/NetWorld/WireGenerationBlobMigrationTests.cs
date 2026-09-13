@@ -190,7 +190,8 @@ public class WireGenerationBlobMigrationTests
         MovementState restored = cell.World.Get<MovementState>(e);
         Assert.Equal(m.TeleportEpoch, restored.TeleportEpoch);
         Assert.Equal(m.HorizontalVelocityXQ, restored.HorizontalVelocityXQ);
-        Assert.Equal((short)0, restored.FacingYawQ);   // the older generation never wrote it
+        Assert.Equal(m.FacingYawQ, restored.FacingYawQ);
+        Assert.Equal(default, restored.Commitment);   // the older generation never wrote it
 
         // A brought-forward cell is rewritten once, so the stored blob now carries the CURRENT generation and the
         // next boot does no work.

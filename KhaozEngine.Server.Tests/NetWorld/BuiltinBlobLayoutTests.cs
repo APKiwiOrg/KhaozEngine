@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using KhaozEngine.Ecs;
+using KhaozEngine.Locomotion;
 using KhaozEngine.NetWorld;
 using KhaozEngine.Primitives;
 using KhaozEngine.Replication;
@@ -39,6 +40,7 @@ public class BuiltinBlobLayoutTests
         HorizontalVelocityXQ = 1000,
         HorizontalVelocityZQ = -2000,
         FacingYawQ = 12345,
+        Commitment = new MovementCommitment(7u, new Vector2(3f, 4f), 11f, 9f, 17f, 0.2f, 0.1f, 4f),
     };
 
     // The payload the LIVE codec writes for one component, taken out of a real one-entity snapshot:
@@ -64,6 +66,7 @@ public class BuiltinBlobLayoutTests
     [InlineData(8)]
     [InlineData(9)]
     [InlineData(10)]
+    [InlineData(11)]
     public void MovementPayloadLength_MatchesTheCodecAtThatGeneration(int generation)
     {
         Assert.Equal(CellBlobFixtures.Movement(generation, Sample()).Length, BuiltinBlobLayout.MovementPayloadLength(generation));
@@ -148,6 +151,7 @@ public class BuiltinBlobLayoutTests
         m.FacingYawQ = 0;
         m.HorizontalVelocityXQ = 0;
         m.HorizontalVelocityZQ = 0;
+        m.Commitment = default;
         byte[] atSix = CellBlobFixtures.Movement(6, m);
         byte[] atCurrent = CellBlobFixtures.Movement(MoveProtocol.WireProtocolVersion, m);
         Assert.Equal(atSix, atCurrent[..atSix.Length]);

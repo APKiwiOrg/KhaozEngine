@@ -11,7 +11,10 @@ namespace KhaozEngine.NetWorld;
 // SetPosition is Teleport's twin: the same placement, applied through the same case, differing only in whether the
 // teleport epoch advances. It is a separate KIND rather than a flag on the struct so the drain reads the intent
 // straight off the command.
-internal enum AdminCommandKind : byte { Teleport, Kick, Broadcast, SpeedScale, SetPosition }
+internal enum AdminCommandKind : byte
+{
+    Teleport, Kick, Broadcast, SpeedScale, SetPosition, BeginMovementCommitment, AbortMovementCommitment,
+}
 
 /// <summary>A queued admin mutation, applied on the host thread during the next tick.</summary>
 internal readonly struct AdminCommand
@@ -23,6 +26,9 @@ internal readonly struct AdminCommand
 
     /// <summary>The horizontal speed multiplier for <see cref="AdminCommandKind.SpeedScale"/>, unused otherwise.</summary>
     public float Scale { get; init; }
+
+    public uint Sequence { get; init; }
+    public MovementCommitmentRequest MovementCommitment { get; init; }
 }
 
 /// <summary>

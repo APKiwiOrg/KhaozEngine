@@ -178,6 +178,7 @@ public sealed class PlayerMovementSystem : ISystem
                 // way every tick and accumulates - bounded by half a quantum per turning tick, a fraction of a
                 // degree over any real turn, and it unwinds the moment the turn lands exactly on its target.
                 FacingYaw = MovementState.DecodeFacingYaw(ms.FacingYawQ),
+                Commitment = ms.Commitment,
             };
             state = CharacterMovement.Step(state, move.Command, dt, ground, tuning, normal, physics, clampXz, fluid);
 
@@ -212,6 +213,7 @@ public sealed class PlayerMovementSystem : ISystem
             // And the heading back OUT, both halves again: without the write-back this head's characters never turn,
             // and without it reaching the wire a corrected client restarts its turn on every correction.
             ms.FacingYawQ = MovementState.QuantizeFacingYaw(state.FacingYaw);
+            ms.Commitment = state.Commitment;
         });
     }
 }

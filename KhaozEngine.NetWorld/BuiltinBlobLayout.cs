@@ -118,6 +118,7 @@ public static class BuiltinBlobLayout
         // 9 reshaped position, neither of which touched this payload, so all three share generation 7's row.
         7 or 8 or 9 => 24,
         10 => 26,       // + FacingYawQ (short, 2)
+        11 => 64,       // + MovementCommitment (38 bytes)
         _ => throw new ArgumentOutOfRangeException(nameof(wireGeneration), wireGeneration,
             $"No cell-blob movement layout is recorded for wire generation {wireGeneration}. Add its row here (and " +
             "its CellBlobRewriter case if the change was not a plain append) in the same change that bumps " +

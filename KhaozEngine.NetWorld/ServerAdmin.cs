@@ -45,6 +45,9 @@ public sealed partial class ServerAdmin
     public void Teleport(PlayerRef target, Vector3 position) => server.Teleport(target, position);
     /// <inheritdoc cref="IAdminControllable.SetPosition"/>
     public void SetPosition(PlayerRef target, Vector3 position) => server.SetPosition(target, position);
+    public uint BeginMovementCommitment(PlayerRef target, in MovementCommitmentRequest request) =>
+        server.BeginMovementCommitment(target, request);
+    public void AbortMovementCommitment(PlayerRef target) => server.AbortMovementCommitment(target);
     public void Kick(PlayerRef target, string reason) => server.Kick(target, reason);
     public void Broadcast(string text) => server.Broadcast(text);
 

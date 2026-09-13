@@ -405,7 +405,7 @@ on a snapshot it cannot decode. Both are additive: the wire and existing ctors a
     the version layer, and set the client's connect token to `HandshakeToken.Wrap(worldHash, authToken)` alone.
     `WorldClient` stamps the wire layer over it, so the layers arrive as
     `[ke-wire:N][ProtocolVersion][worldHash][auth]`.
-  - **Wire-format generation (enforced automatically since 10.2.0).** `MoveProtocol.WireProtocolVersion` (= 10)
+  - **Wire-format generation (enforced automatically since 10.2.0).** `MoveProtocol.WireProtocolVersion` (= 11)
     labels
     the incompatible on-the-wire generations. 1 was the pre-10.0.0 32-bit line, and 2 was 10.0.0 widening `NetId` to
     64-bit (the snapshot/delta id field and the frame header, `[localNetId:long][ackSeq:int]`, grown 8 -> 12 bytes).
@@ -419,7 +419,8 @@ on a snapshot it cannot decode. Both are additive: the wire and existing ctors a
     connect. 9 was the floating-origin wire (`ReplicatedPosition` as a frame stamp plus a frame-local offset, see
     below), and 10 is authoritative facing: the move frame's `run` byte became a flags byte (bit 1 is
     `MoveCommand.FaceCamera`, and `MoveSize` stays 18) and the movement built-in gained
-    `MovementState.FacingYawQ`, one bump for both. There is no
+    `MovementState.FacingYawQ`, one bump for both. Generation 11 appends `MovementState.Commitment`, the complete
+    carried state for a server-authored ballistic move. There is no
     dual-format wire, so peers on
     different generations MUST reject each other at connect rather than misparse a frame. As of 10.2.0 the engine
     enforces this for you: `WorldClient` always folds the
@@ -610,6 +611,44 @@ knows the position (see the `WorldPersistence` bullet above for pre-warming acro
 
 `RemoteTeleports` follows the same advance-only rule: a remote's replicated epoch going backwards (its `MovementState`
 momentarily unreadable) is not a teleport, and neither is the recovery back off that dip.
+
+## Server-authored committed movement
+
+Both authoritative heads can commit a player to one collision-safe ballistic move. The direction and arc are
+latched when the queued request reaches the host tick. Player move, jump, facing, and self-rescue input cannot alter
+the move while it is active. Admin teleport and `AbortMovementCommitment` remain deliberate server controls.
+
+```csharp
+MovementCommitmentRequest leap = MovementCommitmentRequest.ForBallisticArc(
+    direction: aimXz,
+    distance: 8f,
+    apexHeight: 2f,
+    durationSeconds: 0.8f,
+    recoverySeconds: 0.15f,
+    timeoutSeconds: 3f);
+
+uint sequence = server.BeginMovementCommitment(PlayerRef.Slot(slot), leap);
+server.MovementCommitmentLanded += result =>
+{
+    if (result.Sequence != sequence) return;
+    ResolveImpact(result.Position, result.Direction);
+};
+server.MovementCommitmentEnded += result => ReleaseAbilityLock(result.Slot, result.Sequence, result.Reason);
+```
+
+`ForBallisticArc` derives horizontal speed, vertical speed, and gravity for the requested same-height arc. Terrain,
+bounds, and swept physics collision can shorten it. An explicit-speed constructor is also available. Optional
+preparation and recovery phases root the player. `MovementCommitmentLanded` fires on physical contact after movement,
+handoff, and ghost sync, before that tick's snapshots are encoded. `MovementCommitmentEnded` fires after recovery.
+Both fire in the landing tick when recovery is zero. The result exposes the absolute capsule-centre position and the
+latched XZ direction.
+
+The full state rides as `MoveState.Commitment` locally and `MovementState.Commitment` remotely. A client begins from
+the first authoritative snapshot carrying the sequence, then prediction replays pending commands through the same
+simulator. `Preparing`, `Airborne`, and `Recovering` report `IsActive == true`. `Completed` and `Aborted` remain for
+one served state before the next simulation step clears them. Timeout, deep-water swim entry, and a launch blocked
+at its first stride abort the sequence without a landing event. A second server begin supersedes the first.
+Disconnect emits an ended result and strips the state before persistence.
 
 ## Per-entity speed scale: haste, slow, root (since 14.26.0)
 

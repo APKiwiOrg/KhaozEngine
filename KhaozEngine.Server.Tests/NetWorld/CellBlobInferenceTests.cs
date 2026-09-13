@@ -153,6 +153,7 @@ public class CellBlobInferenceTests
         Assert.Equal(expected.HorizontalVelocityXQ, actual.HorizontalVelocityXQ);
         Assert.Equal(expected.HorizontalVelocityZQ, actual.HorizontalVelocityZQ);
         Assert.Equal(expected.FacingYawQ, actual.FacingYawQ);
+        Assert.Equal(expected.Commitment, actual.Commitment);
     }
 
     /// <summary>
@@ -239,8 +240,8 @@ public class CellBlobInferenceTests
         Assert.Contains(issues2, i => i.Kind == CellPersistenceIssueKind.QuarantinedAmbiguous);
     }
 
-    /// <summary>The 71-bytes-for-69 case: a generation-10 body is already current, so the only correct output is the
-    /// input.</summary>
+    /// <summary>The 71-bytes-for-69 case: the generation-10 body must be identified correctly before the current
+    /// commitment payload is appended.</summary>
     [Fact]
     public void NormalizeV3ToV4_UnderReadingCandidate_DoesNotWinOverTheTruth()
     {
@@ -251,7 +252,13 @@ public class CellBlobInferenceTests
         byte[] normalized = WireGenerationBlobMigration.NormalizeV3ToV4(body,
             new CellBlobMigrationOptions { Registry = registry });
 
-        Assert.Equal(body, normalized);   // 71 bytes under the most-frames rule, from the generation-9 mis-walk
+        byte[] expected = new CellBlobFixtures.BodyBuilder()
+            .Entity(11,
+                (MoveProtocol.MovementTypeId,
+                    CellBlobFixtures.Movement(MoveProtocol.WireProtocolVersion, seeded)),
+                (BulkyId, ExtensionFrame(extensionPayload)))
+            .ToBody();
+        Assert.Equal(expected, normalized);
 
         var world = new World();
         var view = new ClientReplicationView(registry);

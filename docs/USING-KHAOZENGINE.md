@@ -9047,6 +9047,36 @@ var server = new WorldServer(transport, new WorldServerConfig { TickSeconds = 1f
 // loop: server.Poll(); clock.Advance(elapsed, _ => server.Tick(1f/30f));
 ```
 
+For a server-authored leap, charge, knockback, or similar move that player input must not steer, queue a movement
+commitment. This example authors an 8 metre same-height arc with a 2 metre apex, then holds a rooted recovery pose
+for 0.15 seconds after physical contact:
+
+```csharp
+MovementCommitmentRequest leap = MovementCommitmentRequest.ForBallisticArc(
+    aimXz, distance: 8f, apexHeight: 2f, durationSeconds: 0.8f,
+    recoverySeconds: 0.15f, timeoutSeconds: 3f);
+uint sequence = server.BeginMovementCommitment(PlayerRef.Slot(slot), leap);
+
+server.MovementCommitmentLanded += result =>
+{
+    if (result.Sequence == sequence)
+        ApplyLandingEffect(result.Position, result.Direction);
+};
+server.MovementCommitmentEnded += result => ReleaseAbilityLock(result.Slot, result.Sequence);
+```
+
+The begin and abort calls use the server's host-thread command queue. Once applied, move, jump, facing, and
+self-rescue input cannot change the commitment. The normal gravity, support, bounds, and swept collision path still
+resolves it. Entering surface-swimming depth aborts with `EnteredWater` and never emits a landing. An admin teleport
+deliberately ends it. `MovementCommitmentLanded` runs after authoritative movement,
+cell handoff, and ghost sync, then before the snapshot pass. `MovementCommitmentEnded` runs after optional recovery.
+Use the landing result's absolute capsule-centre `Position` and latched XZ `Direction` for authoritative effects.
+
+Prediction begins when the authoritative snapshot first carries `MoveState.Commitment`, then replays pending input
+through the same simulator. The local render state reads `client.LocalRenderState.Move.Commitment`. A remote reads
+`MovementState.Commitment`. Initial `VerticalSpeed` and commitment-local `Gravity` remain available through the
+lifecycle for animation timing, while the live vertical velocity remains on the surrounding movement state.
+
 - **`WorldClient`** (render-free): wraps `NetClient` + `ClientReplicationView` + `ClientPrediction`. `Poll()`
   ingests AoI snapshots, applies remote entities, and reconciles the local avatar against the authoritative
   basis; `SendInput(cmd)` predicts one tick forward and transmits it (a no-op returning `-1`

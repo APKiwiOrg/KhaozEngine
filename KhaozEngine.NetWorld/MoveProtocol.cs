@@ -12,8 +12,10 @@ public static class MoveProtocol
 {
     /// <summary>
     /// The engine wire-format generation. Bumped only on a breaking change to the on-the-wire snapshot / delta /
-    /// frame-header layout, so it labels the incompatible generations. It is <c>10</c> as of AUTHORITATIVE FACING,
-    /// which changed the wire in two places at once and takes ONE bump for both. The client-to-server move frame's
+    /// frame-header layout, so it labels the incompatible generations. It is <c>11</c> as of committed movement,
+    /// which appends <see cref="MovementState.Commitment"/> to the movement built-in so a server-authored ballistic
+    /// move survives reconciliation replay and cell handoff. <c>10</c> was AUTHORITATIVE FACING, which changed the
+    /// wire in two places at once and took one bump for both. The client-to-server move frame's
     /// <c>run</c> byte became a FLAGS byte (bit 0 run, bit 1 <see cref="MoveCommand.FaceCamera"/>), reusing a byte
     /// that carried a bare bool through generation 9 rather than widening the frame - <c>MoveSize</c> stays 18, which
     /// the length-based client-to-server demux contract below depends on. And the movement built-in gained the
@@ -57,7 +59,7 @@ public static class MoveProtocol
     /// <see cref="WorldClientConfig.ProtocolVersion"/> game-version gate still layers on top via
     /// <see cref="VersionCheckingAuthenticator"/>.
     /// </summary>
-    public const int WireProtocolVersion = 10;
+    public const int WireProtocolVersion = 11;
 
     /// <summary>Type id of <see cref="ReplicatedPosition"/> in the shared registry.</summary>
     public const ushort PositionTypeId = 1;
@@ -147,6 +149,17 @@ public static class MoveProtocol
                 bw.Write(m.HorizontalVelocityXQ);   // wire generation 7: carried airborne velocity, world X (0 = none)
                 bw.Write(m.HorizontalVelocityZQ);   // wire generation 7: carried airborne velocity, world Z (0 = none)
                 bw.Write(m.FacingYawQ);     // wire generation 10: the carried heading as a 16-bit turn fraction (0 = -Z)
+                bw.Write(m.Commitment.Sequence);
+                bw.Write((byte)m.Commitment.Phase);
+                bw.Write(m.Commitment.Direction.X);
+                bw.Write(m.Commitment.Direction.Y);
+                bw.Write(m.Commitment.HorizontalSpeed);
+                bw.Write(m.Commitment.VerticalSpeed);
+                bw.Write(m.Commitment.Gravity);
+                bw.Write(m.Commitment.PreparationRemaining);
+                bw.Write(m.Commitment.RecoveryRemaining);
+                bw.Write(m.Commitment.TimeoutRemaining);
+                bw.Write((byte)m.Commitment.EndReason);
             },
             read: br => new MovementState
             {
@@ -161,6 +174,19 @@ public static class MoveProtocol
                 HorizontalVelocityXQ = br.ReadInt16(),   // wire generation 7: carried airborne velocity, world X
                 HorizontalVelocityZQ = br.ReadInt16(),   // wire generation 7: carried airborne velocity, world Z
                 FacingYawQ = br.ReadInt16(),             // wire generation 10: the carried heading
+                Commitment = new MovementCommitment
+                {
+                    Sequence = br.ReadUInt32(),
+                    Phase = (MovementCommitmentPhase)br.ReadByte(),
+                    Direction = new Vector2(br.ReadSingle(), br.ReadSingle()),
+                    HorizontalSpeed = br.ReadSingle(),
+                    VerticalSpeed = br.ReadSingle(),
+                    Gravity = br.ReadSingle(),
+                    PreparationRemaining = br.ReadSingle(),
+                    RecoveryRemaining = br.ReadSingle(),
+                    TimeoutRemaining = br.ReadSingle(),
+                    EndReason = (MovementCommitmentEndReason)br.ReadByte(),
+                },
             });
         // Display name. Length-prefixed UTF-8, capped at MaxDisplayNameBytes. Not interpolated (strings do not blend);
         // re-sent in every AoI snapshot (names are static, so this is wasteful but simple and consistent at the

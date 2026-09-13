@@ -41,6 +41,20 @@ internal static class CellBlobFixtures
         if (generation >= 7) bw.Write(m.HorizontalVelocityXQ);   // generation 7: carried airborne velocity, world X
         if (generation >= 7) bw.Write(m.HorizontalVelocityZQ);   // generation 7: carried airborne velocity, world Z
         if (generation >= 10) bw.Write(m.FacingYawQ);            // generation 10: the carried heading
+        if (generation >= 11)
+        {
+            bw.Write(m.Commitment.Sequence);
+            bw.Write((byte)m.Commitment.Phase);
+            bw.Write(m.Commitment.Direction.X);
+            bw.Write(m.Commitment.Direction.Y);
+            bw.Write(m.Commitment.HorizontalSpeed);
+            bw.Write(m.Commitment.VerticalSpeed);
+            bw.Write(m.Commitment.Gravity);
+            bw.Write(m.Commitment.PreparationRemaining);
+            bw.Write(m.Commitment.RecoveryRemaining);
+            bw.Write(m.Commitment.TimeoutRemaining);
+            bw.Write((byte)m.Commitment.EndReason);
+        }
         bw.Flush();
         return ms.ToArray();
     }

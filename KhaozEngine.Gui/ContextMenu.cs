@@ -204,7 +204,12 @@ namespace KhaozEngine.Gui
         /// </summary>
         public void Open(LocalizedText title, IReadOnlyList<ContextMenuEntry> entries, Vector2 screenPoint)
         {
-            _title = title.Resolve() ?? "";
+            OpenResolved(title.Resolve() ?? "", entries, screenPoint);
+        }
+
+        internal void OpenResolved(string title, IReadOnlyList<ContextMenuEntry> entries, Vector2 screenPoint)
+        {
+            _title = title;
             _entries.Clear();
             if (entries != null)
                 for (int i = 0; i < entries.Count; i++) _entries.Add(entries[i]);

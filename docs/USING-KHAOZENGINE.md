@@ -1691,14 +1691,18 @@ For a larger catalog, the caller groups entries into categories and opens anothe
 
 Entry zero starts at twelve o'clock and caller order continues clockwise. Each entry carries an opaque `long`
 tag and its own current footer tag. Footer choices are also opaque `long` tags. They do not have built-in
-quantity or mode semantics. Player-facing title, label, detail, and footer text use `LocalizedText` and resolve
-when `Open` runs. Icon ids stay caller-owned tokens resolved through the optional `IconAtlas` supplied to `Draw`.
+quantity or mode semantics. Player-facing title, label, detail, footer text, choice prompt, and quick-select label
+use `LocalizedText` and resolve when `Open` runs. Icon ids stay caller-owned tokens resolved through the optional
+`IconAtlas` supplied to `Draw`.
 
 `InteractionMode` defaults to `RadialMenuInteractionMode.Immediate`, which keeps the original one-click entry
 flow. Set it to `EntryThenChoice` when the footer is the confirmation step. An enabled entry selection then locks
 that entry without closing. An enabled footer choice commits the locked entry and choice together. The lock cannot
 be changed by pointer hover. Selecting a different enabled entry replaces it. Until an entry is locked, the footer
-is disabled. The locked wedge stays highlighted and its localized entry content is fitted inside the centre plate.
+is disabled. The initial title wraps before it shrinks, and every centre text block fits against the padded circle
+chords rather than only its full diameter. After a lock, the entry content stays as a compact caption above the
+localized choice prompt passed to the five-argument `Open` overload. An empty prompt preserves the earlier
+locked-name-only presentation.
 
 This example uses caller-defined action tags and generic footer tags:
 
@@ -1757,6 +1761,20 @@ if (radial.WasSelected)
 radial.Draw(batch, white, font, icons);
 ```
 
+For pointer shortcuts, assign a caller-owned `ContextMenu` to `EntryContextMenu`, set its `Viewport`, and set
+`QuickSelectLabel` before `Open`. Construct that context menu with `SpriteFont` values for normal drawing or with
+`ITextMeasurer` values for headless interaction tests. A right tap on an enabled wedge opens it with the entry name
+as its pinned title, one row for every footer choice, and a final quick-select row whose right detail is the
+remembered choice label. The entry remains pinned while the pointer moves. Selecting a choice row raises
+`WasChoiceChanged` when needed, then raises `WasSelected`. Selecting the quick row raises `WasSelected` with the
+remembered choice. Disabled entries never open the menu, and disabled choices remain inert. Closing or reopening
+the radial menu also closes the context menu and clears its pinned entry. Menus without footer choices do not open
+this shortcut context.
+
+Pass the caller's modifier snapshot to `Update(pointer, dt, quickSelect)`. A true `quickSelect` on an enabled wedge
+commits that entry immediately with its retained choice. The existing two-argument pointer overload supplies false,
+and ordinary click, keyboard, footer, press-origin, and per-entry retention behavior stays unchanged.
+
 The opening gesture is latched, so the right-click release that caused `Open` cannot immediately select or
 dismiss the menu. While open, its complete `Bounds` is blocked through the shared `Pointer`. In `Immediate` mode,
 a fresh tap on an enabled wedge selects it and closes. A footer tap changes the active entry's choice and keeps
@@ -1783,8 +1801,8 @@ choice is disabled. An all-disabled footer accepts no pointer or navigation choi
 in that state returns choice tag `0`. `HoverIndex` is the pointer wedge.
 `ActiveIndex` is the current pointer or navigation wedge. In `EntryThenChoice` mode, the locked wedge and footer
 target stay independent from that active hover. `Bounds` covers the entire clamped wheel and footer.
-`ResolvedTitle`, `ResolvedEntryLabel`, `ResolvedEntryDetail`, and `ResolvedChoiceLabel` expose the strings retained
-at the latest open.
+`ResolvedTitle`, `ResolvedChoicePrompt`, `ResolvedQuickSelectLabel`, `ResolvedEntryLabel`, `ResolvedEntryDetail`,
+and `ResolvedChoiceLabel` expose the strings retained at the latest open.
 
 `RadialMenuMetrics` is a public value that controls inner and outer radius, wedge gap, icon size, label scale,
 detail gap, footer gap and button size, composition margin, border thickness, shadow offset, and sheen speed.
@@ -1812,6 +1830,12 @@ low-alpha moving sheen. Its independent centre plate draws a shadow, translucent
 border behind the retained text. The plate stays visible when every entry is disabled, while disabled alpha still
 applies to each entry channel. It has no background blur, refraction, distortion, or framebuffer sampling. A
 consumer that needs those effects must compose them in its own render pipeline.
+
+Wedge highlights and sheen interpolate continuously from transparent at the inner edge to their themed color at
+the outer edge. The same interpolation applies over normal, active, and disabled wedge surfaces without changing
+their exact arc footprint. After an entry lock, its remembered footer choice uses a quiet accent border. Pointer
+hover and keyboard focus use the same brighter fill, active border, and text treatment on the actual enabled choice.
+Footer choices have no actionable hover treatment before an `EntryThenChoice` lock.
 
 A menu without footer choices should use `Immediate` explicitly. This keeps a source or station picker on the
 one-click path while recipe or amount menus opt into `EntryThenChoice`.
@@ -2517,6 +2541,11 @@ inside the callback: the command list it is recording into still names them unti
   `DrawRadialProgress(center, radius, thickness, fraction, color)` strokes `clamp(fraction,0,1)` of a ring from
   12 o'clock clockwise (0 nothing, 1 a full ring) - a countdown/cooldown dial. Angles are radians, +Y down so a
   positive sweep goes clockwise; segment count scales with the swept fraction so small arcs stay smooth.
+- `SpriteBatch.DrawQuad` accepts either one color or two edge colors. The two-color overload assigns `top` to the
+  first two corners and `bottom` to the final two, then lets the GPU interpolate across the quad. Orient those
+  argument edges along any convex quad to choose the gradient direction.
+- `PrimitiveRenderer.DrawFilledArcBandGradient` gives an annulus slice separate inner and outer colors. It uses
+  one interpolated quad per ordinary arc segment, with shared vertices and no overlapping translucent fan geometry.
 - `TextLayout` - device-free word-wrap + alignment over an `ITextMeasurer`, memoized in a bounded LRU cache
   per measurer, held weakly so a font that goes unreachable is collected with its entries.
   `Wrap(font, text, maxWidth, hardBreak = false, preserveSpaceRuns = false)` breaks on spaces; `hardBreak` slices a
@@ -6313,7 +6342,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.41.1" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.41.2" />
 ```
 
 ```csharp
@@ -11874,7 +11903,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.41.1" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.41.2" />
 ```
 
 ```csharp
@@ -11910,7 +11939,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.41.1" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.41.2" />
 ```
 
 ```csharp
@@ -12152,7 +12181,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.41.1" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.41.2" />
 ```
 
 ```csharp
@@ -14200,7 +14229,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="18.41.1" />
+  <PackageReference Include="KhaozEngine.Automation" Version="18.41.2" />
 </ItemGroup>
 ```
 

@@ -50,7 +50,9 @@ namespace KhaozEngine.Tests.Gpu
                 viewport.Update(Width, Height);
 
                 ctx.Batch.Begin(viewport);
-                for (int i = 0; i < 32; i++) menu.Draw(ctx.Batch, white, font);
+                // AllocAssert may run the 32-call workload twice. Warm that full retained-list capacity so the
+                // retry measures Draw rather than a capacity increase caused by its own accumulated first pass.
+                for (int i = 0; i < 64; i++) menu.Draw(ctx.Batch, white, font);
                 ctx.Batch.End();
 
                 ctx.Batch.Begin(viewport);

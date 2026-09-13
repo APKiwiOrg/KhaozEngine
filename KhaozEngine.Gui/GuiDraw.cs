@@ -274,7 +274,7 @@ namespace KhaozEngine.Gui
         /// <summary>
         /// One quad of the radial cooldown fan: four corners in draw space. The fan apex (the rect centre) is
         /// <see cref="P0"/> for every slice, and a slice's fourth corner repeats <see cref="P2"/>, so each quad is
-        /// degenerate (renders as a single triangle) - the shape <see cref="SpriteBatch.DrawQuad"/> is built to allow.
+        /// degenerate (renders as a single triangle) - the shape <c>SpriteBatch.DrawQuad</c> is built to allow.
         /// </summary>
         internal readonly record struct CooldownQuad(Vector2 P0, Vector2 P1, Vector2 P2, Vector2 P3);
 
@@ -356,7 +356,7 @@ namespace KhaozEngine.Gui
         /// <summary>
         /// Draw the radial cooldown fan (see <see cref="CooldownSweepQuads"/>) over <paramref name="rect"/> as solid
         /// <paramref name="tint"/> quads on the 1x1 <paramref name="white"/> texture, via
-        /// <see cref="SpriteBatch.DrawQuad"/>. No-op when <paramref name="fraction"/> is 0 or less. Shared by
+        /// <c>SpriteBatch.DrawQuad</c>. No-op when <paramref name="fraction"/> is 0 or less. Shared by
         /// <see cref="GuiSurface"/>.<c>CooldownOverlay</c> and <see cref="SlotGrid"/> so both draw the sweep identically.
         /// </summary>
         internal static void CooldownSweep(SpriteBatch batch, Texture2D white, Rect rect, float fraction, Vector4 tint)

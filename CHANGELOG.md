@@ -30,6 +30,16 @@ the server applying that client's input late for the rest of the session (#873, 
 - Tests: `TileArrivalCorrectionTests` (a diverged chase step is walked off not cut, a teleport still cuts),
   `TileInputBacklogTests` (one command per stalled frame, no trail after), the speed-cap `ClientPrediction` and
   `FixedTickHost` cases, and the `TileGlideTests` / loopback ruling tests updated from cut-a-step to walk-a-step.
+- `TileWorldServerConfig.CanRun` (default null, everyone runs) is a server-side RUN GATE: consulted in admission for
+  every command whose mode is `Run`, over the player's slot, and returning false admits that tick's command at
+  `Walk` instead whatever the client sent. Only the mode is rewritten, so the kind, goal and target still apply, and
+  the change lands at the start of the next step exactly as a client's own toggle does. It is applied LAST, after
+  the existing admission rules, so the starvation neutral (Continue at the player's current mode) is gated too and
+  a player whose packets stop arriving cannot keep running. A game's run energy is the intended caller, with the
+  client's own toggle still the cooperative half and this the authority behind it. The callback runs on the tick
+  thread once per tick per running player and is not wrapped, so a throw comes out of the tick.
+  `TileWorldServer.GatedRunCount` counts the commands it downgraded, and `TileRunGateTests` pins the cadence either
+  side of a gate that closes and reopens mid route, the slot it is asked about, and the starved tick.
 
 ## 18.45.0
 

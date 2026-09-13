@@ -5,6 +5,18 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.47.0
+
+Selected multipart models can use thin camera-space outlines without internal strokes (#879).
+
+- `Scene3D.BeginMeshOutline` creates a frame-local group with an explicit physical-pixel width and colour.
+  `DrawMeshOutline` submits every independently transformed part into that group's projected union.
+- The new mask-based border suppresses target interiors and uses scene depth for foreground occlusion.
+  Width is independent of target size and camera distance. The existing metre-width silhouette API remains
+  compatible for callers that use world-space hulls.
+- `ITileWorldScene` and `Scene3DTileWorldScene` expose the grouped drawing path. `TileWorldView.SetOutlinedObject`
+  and `ClearOutlinedObject` provide the same pixel-outline selection for authored world objects.
+
 ## 18.46.0
 
 A tile client walks off a chase-arrival misprediction instead of snapping, and a stalled frame no longer leaves

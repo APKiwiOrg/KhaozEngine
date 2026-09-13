@@ -71,6 +71,16 @@ A SQL Server journal operation commits in one round trip instead of about thirte
   and the worst case seen, so the round-trip count cannot drift back up unnoticed.
 - Group commit across disjoint streams is filed separately as #869.
 
+### Radial selection feedback
+
+Radial quick selection previews its hovered entry and quantity, and an open shortcut menu can switch entries.
+
+- Holding the quick-select modifier previews the hovered entry and its retained choice in the centre without
+  changing the locked entry or saved quantity. Releasing it restores the ordinary centre prompt.
+- Unavailable entries preview their existing requirement. Footerless source pickers retain their ordinary text.
+- A fresh right-click on an exposed enabled entry retargets an open shortcut popup. Both gesture endpoints
+  must stay outside the popup, and its own hits keep input priority.
+
 ## 18.42.0
 
 `ChatBox.HistoryAlignment` lets sparse chat history anchor to the top or bottom of its viewport.

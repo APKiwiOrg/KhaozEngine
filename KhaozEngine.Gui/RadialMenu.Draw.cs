@@ -38,6 +38,8 @@ namespace KhaozEngine.Gui
         int _drawChoiceCount = -1;
         int _drawDetailEntry = -2;
         int _drawLockedEntry = -2;
+        int _drawQuickSelectPreviewEntry = -2;
+        int _drawQuickSelectPreviewChoice = -2;
 
         public RadialMenuTheme Theme { get; set; } = RadialMenuTheme.Default;
 
@@ -62,6 +64,8 @@ namespace KhaozEngine.Gui
             _drawChoiceCount = -1;
             _drawDetailEntry = -2;
             _drawLockedEntry = -2;
+            _drawQuickSelectPreviewEntry = -2;
+            _drawQuickSelectPreviewChoice = -2;
         }
 
         /// <summary>Draws the open radial menu through the shared Render2D batch.</summary>
@@ -133,13 +137,21 @@ namespace KhaozEngine.Gui
                 _drawChoicesSource = _choices;
                 _drawDetailEntry = -2;
                 _drawLockedEntry = -2;
+                _drawQuickSelectPreviewEntry = -2;
+                _drawQuickSelectPreviewChoice = -2;
             }
 
-            if (_drawDetailEntry != ActiveIndex || _drawLockedEntry != LockedEntryIndex)
+            int previewChoice = QuickSelectPreviewChoiceIndex;
+            if (_drawDetailEntry != ActiveIndex ||
+                _drawLockedEntry != LockedEntryIndex ||
+                _drawQuickSelectPreviewEntry != QuickSelectPreviewIndex ||
+                _drawQuickSelectPreviewChoice != previewChoice)
             {
                 CacheCenterText(font);
                 _drawDetailEntry = ActiveIndex;
                 _drawLockedEntry = LockedEntryIndex;
+                _drawQuickSelectPreviewEntry = QuickSelectPreviewIndex;
+                _drawQuickSelectPreviewChoice = previewChoice;
             }
         }
 

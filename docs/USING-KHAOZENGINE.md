@@ -1772,13 +1772,21 @@ For pointer shortcuts, assign a caller-owned `ContextMenu` to `EntryContextMenu`
 as its pinned title, one row for every footer choice, and a final quick-select row whose right detail is the
 remembered choice label. The entry remains pinned while the pointer moves. Selecting a choice row raises
 `WasChoiceChanged` when needed, then raises `WasSelected`. Selecting the quick row raises `WasSelected` with the
-remembered choice. Disabled entries never open the menu, and disabled choices remain inert. Closing or reopening
-the radial menu also closes the context menu and clears its pinned entry. Menus without footer choices do not open
-this shortcut context.
+remembered choice. A fresh right tap on another exposed enabled wedge retargets and reopens the popup immediately.
+Either endpoint touching the popup keeps popup priority, so a covered wedge cannot receive that gesture. Disabled
+entries never open or retarget the menu, and disabled choices remain inert. Closing or reopening the radial menu
+also closes the context menu and clears its pinned entry. Menus without footer choices do not open this shortcut
+context.
 
 Pass the caller's modifier snapshot to `Update(pointer, dt, quickSelect)`. A true `quickSelect` on an enabled wedge
-commits that entry immediately with its retained choice. The existing two-argument pointer overload supplies false,
-and ordinary click, keyboard, footer, press-origin, and per-entry retention behavior stays unchanged.
+commits that entry immediately with its retained choice. While it is held over a wedge on a menu with footer
+choices, the centre previews the hovered entry, the resolved `QuickSelectLabel`, and that entry's remembered choice.
+The preview changes with hover without locking an entry, crafting, or changing caller preference state. An
+unavailable entry shows its existing localized detail and omits the quick action and choice. Leaving the wedge,
+releasing the modifier, opening, or closing clears the preview and restores the ordinary title or locked choice
+prompt. Menus without footer choices keep ordinary centre text, which avoids applying action copy to source or
+category pages. The existing two-argument pointer overload supplies false, and ordinary click, keyboard, footer,
+press-origin, and per-entry retention behavior stays unchanged.
 
 The opening gesture is latched, so the right-click release that caused `Open` cannot immediately select or
 dismiss the menu. While open, its complete `Bounds` is blocked through the shared `Pointer`. In `Immediate` mode,

@@ -31,13 +31,19 @@ prompt passed to the five-argument `Open` overload. Centre text wraps and fits i
 
 Footer pointer hover highlights the actual enabled button independently of the remembered amount. Pass the
 modifier snapshot to `Update(pointer, dt, quickSelect)` to commit an enabled wedge immediately with its retained
-choice. The original pointer overload keeps normal selection.
+choice. While the modifier is held on a menu with footer choices, the centre previews the hovered entry, the
+resolved `QuickSelectLabel`, and that entry's remembered choice without changing the lock or retained choice.
+The preview follows pointer hover and clears when the pointer leaves a wedge, the modifier is released, or the
+menu opens or closes. An unavailable entry shows its existing localized detail instead of the quick action and
+choice. Menus without footer choices keep their ordinary centre text. The original pointer overload keeps normal
+selection.
 
 Assign a caller-owned `ContextMenu` to `EntryContextMenu` and configure its viewport to enable right-click entry
-shortcuts. The context stays pinned to the entry that opened it and offers every footer choice. Set the localized
-`QuickSelectLabel` before `Open` to add a final quick-select row showing the retained choice. Disabled entries
-reject shortcuts and disabled choices stay inert. The radial updates and draws the assigned context, and closes
-it when the wheel closes or reopens.
+shortcuts. The context stays pinned to the entry that opened it and offers every footer choice. A fresh right tap
+on another exposed enabled wedge retargets and reopens the context immediately. A gesture touching the popup keeps
+popup priority, and pointer movement or an unavailable wedge cannot change the pinned entry. Set the localized
+`QuickSelectLabel` before `Open` to add a final quick-select row showing the retained choice. Disabled choices stay
+inert. The radial updates and draws the assigned context, and closes it when the wheel closes or reopens.
 
 ```csharp
 enum InteractionAction : long

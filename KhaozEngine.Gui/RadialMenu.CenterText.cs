@@ -26,7 +26,50 @@ namespace KhaozEngine.Gui
             float paddedRadius = MathF.Max(1f, Metrics.InnerRadius - MathF.Max(6f, Metrics.BorderThickness * 3f));
             float wrapWidth = paddedRadius * 1.45f;
 
-            if (LockedEntryIndex >= 0)
+            if (QuickSelectPreviewIndex >= 0)
+            {
+                int previewIndex = QuickSelectPreviewIndex;
+                bool actionable = CanQuickSelectEntry(previewIndex);
+                AppendCenterText(
+                    font,
+                    _entries[previewIndex].Content,
+                    Metrics.LabelScale * 0.72f,
+                    wrapWidth,
+                    0f,
+                    actionable ? CenterText : CenterDisabled);
+                if (actionable)
+                {
+                    AppendCenterText(
+                        font,
+                        _resolvedQuickSelectLabel,
+                        Metrics.LabelScale * 0.78f,
+                        wrapWidth,
+                        _drawCenterLineCount > 0 ? 4f : 0f,
+                        CenterMuted);
+                    int choiceIndex = QuickSelectPreviewChoiceIndex;
+                    if (choiceIndex >= 0)
+                    {
+                        AppendCenterText(
+                            font,
+                            _choices[choiceIndex].Content,
+                            Metrics.LabelScale,
+                            wrapWidth,
+                            _drawCenterLineCount > 0 ? 2f : 0f,
+                            CenterText);
+                    }
+                }
+                else
+                {
+                    AppendCenterText(
+                        font,
+                        _entries[previewIndex].Detail,
+                        Metrics.LabelScale * 0.78f,
+                        wrapWidth,
+                        _drawCenterLineCount > 0 ? 4f : 0f,
+                        CenterDisabled);
+                }
+            }
+            else if (LockedEntryIndex >= 0)
             {
                 AppendCenterText(
                     font,

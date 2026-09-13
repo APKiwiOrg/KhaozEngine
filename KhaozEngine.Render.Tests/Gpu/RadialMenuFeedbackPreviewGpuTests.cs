@@ -13,8 +13,8 @@ using Xunit;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// Writes a side-by-side offscreen proof of the game-style radial menu before recipe lock and after lock with
-    /// the pointer over a different amount. Output dir: <c>KE_RADIAL_PREVIEW_DIR</c> or a temp folder.
+    /// Writes an offscreen proof of the game-style radial menu across the locked, quick preview, hover change,
+    /// unavailable hover, and modifier release states. Output dir: <c>KE_RADIAL_PREVIEW_DIR</c> or a temp folder.
     /// </summary>
     public sealed class RadialMenuFeedbackPreviewGpuTests
     {
@@ -23,26 +23,29 @@ namespace KhaozEngine.Tests.Gpu
         static readonly Vector2 Center = new(256f, 215f);
 
         [GpuFact]
-        public void Captures_initial_and_locked_hover_states()
+        public void Captures_quick_select_preview_change_and_release_states()
         {
-            byte[] initial = Capture(lockedHover: false);
-            byte[] lockedHover = Capture(lockedHover: true);
+            byte[] locked = Capture(PreviewState.Locked);
+            byte[] firstHover = Capture(PreviewState.FirstHover);
+            byte[] changedHover = Capture(PreviewState.ChangedHover);
+            byte[] disabledHover = Capture(PreviewState.DisabledHover);
+            byte[] released = Capture(PreviewState.Released);
             byte[] contextMenu = CaptureContextMenu();
-            byte[] combined = Combine(initial, lockedHover);
+            byte[] combined = Combine(locked, firstHover, changedHover, disabledHover, released);
             string dir = Environment.GetEnvironmentVariable("KE_RADIAL_PREVIEW_DIR")
                 ?? Path.Combine(Path.GetTempPath(), "radial-surface-feedback");
             Directory.CreateDirectory(dir);
-            string path = Path.Combine(dir, "radial-surface-feedback-preview.png");
+            string path = Path.Combine(dir, "radial-quick-select-preview.png");
             string contextPath = Path.Combine(dir, "radial-context-shortcuts-preview.png");
 
-            PngWriter.Save(path, combined, PanelWidth * 2, Height);
+            PngWriter.Save(path, combined, PanelWidth * 5, Height);
             PngWriter.Save(contextPath, contextMenu, PanelWidth, Height);
 
             Assert.True(new FileInfo(path).Length > 0, $"expected a radial preview at {path}");
             Assert.True(new FileInfo(contextPath).Length > 0, $"expected a context preview at {contextPath}");
         }
 
-        static byte[] Capture(bool lockedHover) =>
+        static byte[] Capture(PreviewState state) =>
             Render2DSnapshot.Capture(PanelWidth, Height, new Color(0.055f, 0.06f, 0.07f, 1f), ctx =>
             {
                 Texture2D white = ctx.CreateTexture([255, 255, 255, 255], 1, 1);
@@ -55,6 +58,7 @@ namespace KhaozEngine.Tests.Gpu
                     SafeBounds = new Rect(0f, 0f, PanelWidth, Height),
                     InteractionMode = RadialMenuInteractionMode.EntryThenChoice,
                     Theme = GameTheme(),
+                    QuickSelectLabel = LocalizedText.Raw("Quick craft last"),
                 };
                 menu.Open(
                     LocalizedText.Raw("Choose recipe"),
@@ -80,15 +84,22 @@ namespace KhaozEngine.Tests.Gpu
 
                 var pointer = new Pointer();
                 var mouse = new MouseFrames();
-                if (lockedHover)
+                Tap(menu, pointer, mouse, RadialMenu.LabelPoint(Center, 0, 4, RadialMenuMetrics.Default));
+                switch (state)
                 {
-                    Tap(menu, pointer, mouse, RadialMenu.LabelPoint(Center, 0, 4, RadialMenuMetrics.Default));
-                    Rect hover = RadialMenu.ChoiceBounds(Center, 4, 2, RadialMenuMetrics.Default);
-                    Update(menu, pointer, mouse, CenterOf(hover), down: false);
-                }
-                else
-                {
-                    Update(menu, pointer, mouse, Center, down: false);
+                    case PreviewState.FirstHover:
+                        UpdatePreview(menu, pointer, mouse, EntryPoint(1), quickSelect: true);
+                        break;
+                    case PreviewState.ChangedHover:
+                        UpdatePreview(menu, pointer, mouse, EntryPoint(3), quickSelect: true);
+                        break;
+                    case PreviewState.DisabledHover:
+                        UpdatePreview(menu, pointer, mouse, EntryPoint(2), quickSelect: true);
+                        break;
+                    case PreviewState.Released:
+                        UpdatePreview(menu, pointer, mouse, EntryPoint(1), quickSelect: true);
+                        UpdatePreview(menu, pointer, mouse, EntryPoint(1), quickSelect: false);
+                        break;
                 }
 
                 var viewport = new DesignViewport(PanelWidth, Height, ScaleMode.Fit);
@@ -192,18 +203,42 @@ namespace KhaozEngine.Tests.Gpu
             menu.Update(pointer, 1f / 60f);
         }
 
-        static byte[] Combine(byte[] left, byte[] right)
+        static byte[] Combine(params byte[][] panels)
         {
-            var combined = new byte[PanelWidth * 2 * Height * 4];
+            var combined = new byte[PanelWidth * panels.Length * Height * 4];
             int rowBytes = PanelWidth * 4;
-            int combinedRowBytes = rowBytes * 2;
+            int combinedRowBytes = rowBytes * panels.Length;
             for (int y = 0; y < Height; y++)
             {
-                Buffer.BlockCopy(left, y * rowBytes, combined, y * combinedRowBytes, rowBytes);
-                Buffer.BlockCopy(right, y * rowBytes, combined, y * combinedRowBytes + rowBytes, rowBytes);
+                for (int panel = 0; panel < panels.Length; panel++)
+                    Buffer.BlockCopy(
+                        panels[panel],
+                        y * rowBytes,
+                        combined,
+                        y * combinedRowBytes + panel * rowBytes,
+                        rowBytes);
             }
             return combined;
         }
+
+        static void UpdatePreview(
+            RadialMenu menu,
+            Pointer pointer,
+            MouseFrames mouse,
+            Vector2 position,
+            bool quickSelect)
+        {
+            var held = new HashSet<MouseButton>();
+            (HashSet<MouseButton> pressed, HashSet<MouseButton> released) = mouse.Advance(held);
+            pointer.Update(new InputState(
+                new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
+                held, pressed, position, Vector2.Zero, 0f, PanelWidth, Height,
+                mouseReleased: released));
+            menu.Update(pointer, 1f / 60f, quickSelect);
+        }
+
+        static Vector2 EntryPoint(int index) =>
+            RadialMenu.LabelPoint(Center, index, 4, RadialMenuMetrics.Default);
 
         static RadialMenuTheme GameTheme() => new()
         {
@@ -222,5 +257,14 @@ namespace KhaozEngine.Tests.Gpu
 
         static Vector2 CenterOf(Rect bounds) =>
             new(bounds.X + bounds.Width * 0.5f, bounds.Y + bounds.Height * 0.5f);
+
+        enum PreviewState
+        {
+            Locked,
+            FirstHover,
+            ChangedHover,
+            DisabledHover,
+            Released,
+        }
     }
 }

@@ -159,6 +159,7 @@ namespace KhaozEngine.Gui
             _focusedChoiceIndex = ChoiceIndexForEntry(_focusedEntryIndex);
             _hoveredChoiceIndex = -1;
             _footerFocused = false;
+            ClearQuickSelectPreview();
             _openedThisFrame = true;
             _openingGestureLatch = true;
             _sheenPhase = 0f;
@@ -211,6 +212,7 @@ namespace KhaozEngine.Gui
         {
             ArgumentNullException.ThrowIfNull(pointer);
             ClearFrameFlags();
+            ClearQuickSelectPreview();
             if (!IsOpen)
             {
                 _blockingPointer = null;
@@ -246,6 +248,7 @@ namespace KhaozEngine.Gui
                 _pointerEntryIndex = -1;
                 ActiveIndex = _focusedEntryIndex;
             }
+            UpdateQuickSelectPreview(quickSelect);
 
             if (!openingFrame && OpenEntryContextMenu(pointer))
                 return false;
@@ -359,6 +362,7 @@ namespace KhaozEngine.Gui
             _focusedChoiceIndex = -1;
             _hoveredChoiceIndex = -1;
             _footerFocused = false;
+            ClearQuickSelectPreview();
             _blockingPointer = null;
             CloseEntryContextMenu();
         }
@@ -406,16 +410,16 @@ namespace KhaozEngine.Gui
             if (pressedEntry < 0 || pressedEntry != releasedEntry)
                 return false;
 
-            if (!_entries[releasedEntry].Enabled)
-                return false;
-
             if (quickSelect)
             {
-                if (_choices.Length > 0 && ChoiceIndexForEntry(releasedEntry) < 0)
+                if (!CanQuickSelectEntry(releasedEntry))
                     return false;
                 SelectEntry(releasedEntry);
                 return true;
             }
+
+            if (!_entries[releasedEntry].Enabled)
+                return false;
 
             if (InteractionMode == RadialMenuInteractionMode.EntryThenChoice)
             {

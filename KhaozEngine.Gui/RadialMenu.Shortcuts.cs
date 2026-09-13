@@ -11,6 +11,7 @@ namespace KhaozEngine.Gui
         LocalizedText _quickSelectLabel;
         string _resolvedQuickSelectLabel = "";
         int _contextEntryIndex = -1;
+        int _quickSelectPreviewIndex = -1;
 
         /// <summary>
         /// An optional caller-owned context menu used for right-click entry shortcuts. Configure its viewport and
@@ -43,6 +44,12 @@ namespace KhaozEngine.Gui
 
         /// <summary>The quick-select label resolved and retained by the most recent <c>Open</c> call.</summary>
         public string ResolvedQuickSelectLabel => _resolvedQuickSelectLabel;
+
+        internal int QuickSelectPreviewIndex => _quickSelectPreviewIndex;
+        internal int QuickSelectPreviewChoiceIndex =>
+            CanQuickSelectEntry(_quickSelectPreviewIndex) && _choices.Length > 0
+                ? ChoiceIndexForEntry(_quickSelectPreviewIndex)
+                : -1;
 
         void ResolveShortcutLabels() => _resolvedQuickSelectLabel = _quickSelectLabel.Resolve() ?? "";
 
@@ -102,9 +109,34 @@ namespace KhaozEngine.Gui
             }
 
             if (!context.IsOpen)
+            {
                 _contextEntryIndex = -1;
+                return true;
+            }
+
+            // A popup hit keeps priority even when the popup covers another radial wedge. Both ends of the right
+            // gesture must be outside the popup before an exposed enabled wedge can become the new target.
+            var contextBounds = context.Bounds;
+            bool popupOwnsRightGesture = contextBounds.Contains(pointer.RightPressOrigin) ||
+                pointer.IsPointerIn(contextBounds);
+            if (!popupOwnsRightGesture)
+                OpenEntryContextMenu(pointer);
             return true;
         }
+
+        bool CanQuickSelectEntry(int entryIndex)
+        {
+            if (entryIndex < 0 || !_entries[entryIndex].Enabled)
+                return false;
+            return _choices.Length == 0 || ChoiceIndexForEntry(entryIndex) >= 0;
+        }
+
+        void ClearQuickSelectPreview() => _quickSelectPreviewIndex = -1;
+
+        void UpdateQuickSelectPreview(bool quickSelect) =>
+            _quickSelectPreviewIndex = quickSelect && _choices.Length > 0 && HoverIndex >= 0
+                ? HoverIndex
+                : -1;
 
         void CloseEntryContextMenu()
         {

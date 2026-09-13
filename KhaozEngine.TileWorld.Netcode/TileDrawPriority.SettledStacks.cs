@@ -50,8 +50,29 @@ public sealed partial class TileDrawPriority
     {
         TileMoveState rendered = client.Prediction.RenderedState;
         Vector2 position = rendered.HasRenderOverride ? rendered.RenderPosition : rendered.Position;
-        bool localMoving = local.IsStepping || position != new Vector2(local.Tile.X, local.Tile.Z);
+        bool localMoving = IsLocalPresentationMoving(local, position);
         RebuildSettled(client.LocalNetId, local.Tile, localMoving, others);
+    }
+
+    // Two equal Vector2.Lerp endpoints can still miss their common value by one float ULP because the operation
+    // rounds its multiply and add terms separately. The prediction clock rebuilds that lerp on every command tick,
+    // including Continue while standing, so exact equality made a stationary player alternate between settled and
+    // moving at frame fractions whose arithmetic rounded the other way. Two neighbouring floats on either side are
+    // presentation noise at the tile's own magnitude. A real glide or correction moves beyond that band, while an
+    // in-flight discrete step remains moving without consulting floats at all.
+    internal static bool IsLocalPresentationMoving(in TileMoveState local, Vector2 position)
+    {
+        if (local.IsStepping) return true;
+        float tileX = local.Tile.X, tileZ = local.Tile.Z;
+        return !WithinSettleUlps(position.X, tileX) || !WithinSettleUlps(position.Y, tileZ);
+    }
+
+    static bool WithinSettleUlps(float value, float settled)
+    {
+        if (!float.IsFinite(value)) return false;
+        float lower = float.BitDecrement(float.BitDecrement(settled));
+        float upper = float.BitIncrement(float.BitIncrement(settled));
+        return value >= lower && value <= upper;
     }
 
     void RebuildSettled(long localNetId, TileCoord localTile, bool localMoving,

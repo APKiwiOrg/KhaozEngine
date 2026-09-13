@@ -264,4 +264,103 @@ public class TileDrawPrioritySettledStacksTests
         Assert.True(sawMoving, "the local presentation never exposed the step in flight");
         Assert.True(sawSettled, "the local presentation never settled on its arrival tile");
     }
+
+    [Fact]
+    public void Equal_local_interpolation_endpoints_do_not_drop_the_settled_tile_claim_on_a_rounding_frame()
+    {
+        using var loop = new TileRemoteReadTests.Loop();
+        loop.Join();
+        var destination = new TileCoord(13, 10, 0);
+        long remote = loop.Server.SpawnPlayer(slot: 1, "remote", "Rem");
+        loop.Server.SetPlayerState(1, TileMoveState.At(destination, TileDirection.S));
+        loop.Frames(24);
+
+        loop.Client.Queue(TileCommand.WalkTo(destination, TileMoveMode.Run));
+        for (int i = 0; i < 300; i++)
+        {
+            loop.Step();
+            TileMoveState state = loop.Client.Prediction.PredictedState;
+            TileMoveState rendered = loop.Client.Prediction.RenderedState;
+            if (state.Tile == destination && !state.IsStepping
+                && rendered.RenderPosition == new Vector2(destination.X, destination.Z)) break;
+        }
+
+        TileMoveState settled = loop.Client.Prediction.PredictedState;
+        Assert.Equal(destination, settled.Tile);
+        Assert.False(settled.IsStepping);
+
+        var roundingFramePriority = Priority();
+        bool sawRoundingNoise = false;
+        for (int i = 0; i < 32; i++)
+        {
+            // Continue on a standing tick resets the interpolation between two identical tile-centre endpoints.
+            // 0.30786 makes Vector2.Lerp(13, 13, fraction) miss 13 by one ULP on .NET 10, while 0.3 is exact.
+            // Alternating them reproduces the ownership flicker without any body moving.
+            float fraction = i % 2 == 0 ? 0.30786f : 0.3f;
+            loop.Client.Tick(1f / 6f);
+            loop.Client.AdvancePresentation((1f / 6f) * fraction);
+            TileMoveState roundingFrame = loop.Client.Prediction.RenderedState;
+            sawRoundingNoise |= roundingFrame.RenderPosition != new Vector2(destination.X, destination.Z);
+
+            roundingFramePriority.Rebuild(loop.Client, Frame);
+
+            Assert.Equal(1f, roundingFramePriority.Weight(loop.Client.LocalNetId));
+            Assert.Equal(0f, roundingFramePriority.Weight(remote));
+            Assert.True(roundingFramePriority.TryGetDrawn(destination, out long owner));
+            Assert.Equal(loop.Client.LocalNetId, owner);
+        }
+        Assert.True(sawRoundingNoise, "the known .NET 10 equal-endpoint rounding frame was never exercised");
+    }
+
+    [Fact]
+    public void Hollowmere_spawn_equal_endpoint_lerp_noise_is_settled()
+    {
+        TileMoveState local = TileMoveState.At(new TileCoord(96, 93, 0), TileDirection.S);
+        var centre = new Vector2(96f, 93f);
+        Vector2 position = Vector2.Lerp(centre, centre, 0.34413f);
+
+        Assert.NotEqual(centre, position);
+        Assert.False(TileDrawPriority.IsLocalPresentationMoving(local, position));
+    }
+
+    [Theory]
+    [InlineData(96, 93)]
+    [InlineData(-96, -93)]
+    [InlineData(0, 0)]
+    public void The_two_ulp_settle_band_handles_positive_negative_and_zero_tiles(int x, int z)
+    {
+        TileMoveState local = TileMoveState.At(new TileCoord(x, z, 0), TileDirection.S);
+        float nearX = float.BitIncrement(float.BitIncrement((float)x));
+        float nearZ = float.BitDecrement(float.BitDecrement((float)z));
+
+        Assert.False(TileDrawPriority.IsLocalPresentationMoving(local, new Vector2(nearX, nearZ)));
+    }
+
+    [Fact]
+    public void A_real_ten_thousandth_tile_presentation_offset_remains_moving()
+    {
+        TileMoveState local = TileMoveState.At(new TileCoord(96, 93, 0), TileDirection.S);
+        var position = new Vector2(96.0001f, 93f);
+
+        Assert.True(TileDrawPriority.IsLocalPresentationMoving(local, position));
+    }
+
+    [Fact]
+    public void An_in_flight_step_is_moving_even_when_its_presented_position_is_inside_the_settle_band()
+    {
+        TileMoveState local = TileMoveState.At(new TileCoord(96, 93, 0), TileDirection.S);
+        local.StepFrom = new TileCoord(95, 93, 0);
+        var position = new Vector2(96f, 93f);
+
+        Assert.True(TileDrawPriority.IsLocalPresentationMoving(local, position));
+    }
+
+    [Fact]
+    public void A_nonfinite_local_presentation_never_claims_a_settled_tile()
+    {
+        TileMoveState local = TileMoveState.At(new TileCoord(96, 93, 0), TileDirection.S);
+
+        Assert.True(TileDrawPriority.IsLocalPresentationMoving(local, new Vector2(float.NaN, 93f)));
+        Assert.True(TileDrawPriority.IsLocalPresentationMoving(local, new Vector2(96f, float.PositiveInfinity)));
+    }
 }

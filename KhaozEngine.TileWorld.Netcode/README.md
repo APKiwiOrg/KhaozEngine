@@ -464,7 +464,9 @@ always keep the constructor map.
   that answer to binary idle-stack visibility. Moving bodies stay at weight 1 and claim no destination or
   departure tile. Once settled, the local player wins their tile, and `SettledComparison` chooses among all other
   bodies. A positive comparison means its first net id wins. Zero falls back to the higher net id, so equal game
-  ranks remain stable. The callback sees only net ids, leaving all game classifications in the head.
+  ranks remain stable. The callback sees only net ids, leaving all game classifications in the head. A local
+  presentation within two float values of its tile centre is settled, preventing equal-endpoint interpolation
+  rounding from dropping the local claim while preserving real step and correction motion.
 - **`TileClientMessageHandler`** - the delegate an opaque server message arrives on.
 
 **Persistence**

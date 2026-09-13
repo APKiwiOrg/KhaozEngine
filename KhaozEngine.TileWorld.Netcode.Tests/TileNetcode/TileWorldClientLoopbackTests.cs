@@ -166,8 +166,13 @@ public class TileWorldClientLoopbackTests
     // makes the two heads step different ways on the very first tick. Further down the route it would cost nothing
     // at all, and the test below pins that as the deliberate property it is.
     [Fact]
-    public void One_blocker_the_client_cannot_see_costs_exactly_one_snap_and_then_agreement()
+    public void One_blocker_the_client_cannot_see_is_walked_off_not_cut_and_then_agreement()
     {
+        // A tree only the server knows about, one step ahead: the client predicts the step onto it before the
+        // authoritative route arrives, so the heads disagree by one tile. That is under the tile client's few-tile
+        // hard-snap distance, so it is a CORRECTION the body walks off at step speed rather than a cut (#873). It
+        // used to cost exactly one snap; the ruling changed to a walk-in, and only a disagreement past a chase step
+        // still cuts.
         TileWorldDocument serverDoc = TileMoveSimulatorTests.FlatWorld();
         serverDoc.AddObject("tree", 10, 11, 0, 0);                     // only the SERVER knows about this
         using var h = new Harness(serverDoc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f);
@@ -179,8 +184,8 @@ public class TileWorldClientLoopbackTests
         Assert.True(h.Server.TryGetPlayerState(0, out TileMoveState server));
         Assert.Equal(server.Tile, h.Client.Prediction.PredictedState.Tile);
         Assert.Equal(new TileCoord(10, 18, 0), server.Tile);
-        Assert.True(h.Client.CorrectionCount >= 1);
-        Assert.Equal(1, h.Client.SnapCount);
+        Assert.True(h.Client.CorrectionCount >= 1);   // the one-step disagreement is still a correction,
+        Assert.Equal(0, h.Client.SnapCount);          // but it is walked off, not cut.
     }
 
     // The other half of the blocker story, and the reason the one above has to put its tree underfoot. The route is
@@ -417,8 +422,9 @@ public class TileWorldClientLoopbackTests
 
         h.Client.Queue(TileCommand.WalkTo(new TileCoord(10, 18, 0), TileMoveMode.Run));
         h.Frames(160);
-        Assert.Equal(1, h.Client.SnapCount);                        // the hidden tree cut the walk exactly once
-        Assert.Equal(1, teleports);                                 // and a cut step is not a teleport
+        Assert.Equal(0, h.Client.SnapCount);                        // the hidden tree is walked off, not cut (#873)
+        Assert.True(h.Client.CorrectionCount >= 1);                 // it is still a correction,
+        Assert.Equal(1, teleports);                                 // and a walked correction is not a teleport
 
         h.Server.SetPlayerState(0, TileMoveState.At(new TileCoord(20, 20, 0), TileDirection.S), teleport: true);
         h.Frames(12);

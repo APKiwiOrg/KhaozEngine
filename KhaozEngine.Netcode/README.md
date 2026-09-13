@@ -54,7 +54,12 @@ prediction.AdvancePresentation(elapsedSeconds);                                 
 Draw(prediction.RenderedState);
 ```
 
-Tune via `PredictionSettings` (tick rate, buffer cap, hard-snap distance, correction rate, dead-zone).
+Tune via `PredictionSettings` (tick rate, buffer cap, hard-snap distance, correction rate, dead-zone,
+correction-speed cap). `PendingCommandCount` is how many predicted commands the host has not yet acknowledged, the
+round trip in ticks plus one on a healthy link and a climbing-and-staying value when the host is applying this
+client's input late. `MaxCorrectionSpeed` (default 0, off) caps how fast the planar reconciliation offset resolves:
+above zero a correction WALKS off at that constant speed instead of the damped near-instant decay, so on a lattice a
+step disagreement reads as one more walked step rather than a snap. A hard snap and a teleport still cut.
 
 `AdvancePresentation` refuses a frame time that is not a finite positive number of seconds (negative, zero,
 infinite, or not a number): it is treated as zero and advances nothing. The inter-tick clock accumulates, so one
@@ -156,7 +161,9 @@ conversion.
 ## RemoteCommandQueue&lt;TCommand&gt;
 
 Host-side per-slot, seq-ordered command queue. Dedups retransmits and negative seqs, returns a neutral
-command for an empty slot, and tracks the last acknowledged seq per slot to stamp on snapshots. As anti-replay
+command for an empty slot, and tracks the last acknowledged seq per slot to stamp on snapshots. `Depth(slot)` is
+the buffered, not-yet-dequeued count, the host's input backlog for that slot: 0 or 1 for a steady one-per-tick
+sender, and a value that climbs and stays there is input the host is applying that many ticks late. As anti-replay
 it also rejects any seq at or below a slot's processed high-water mark, so a slot's state must be cleared when
 that slot is released for reuse: `Forget(slot)` drops the slot's buffered commands and high-water mark
 (idempotent), letting the next session that recycles the slot restart its seqs from 0. The authoritative servers

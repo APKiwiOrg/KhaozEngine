@@ -49,10 +49,19 @@ public sealed class FixedTickHost
     /// <summary>
     /// Adds <paramref name="elapsedSeconds"/> (negative is clamped to 0) to the accumulator and invokes
     /// <paramref name="onTick"/> once per whole fixed step, at most <paramref name="maxTicksPerFrame"/> times,
-    /// passing the running <see cref="TickCount"/>. When the cap is hit the accumulator is clamped to one
-    /// tick's worth so the host sheds backlog instead of spiralling. Returns the number of ticks produced.
+    /// passing the running <see cref="TickCount"/>. When the cap is hit the backlog is SHED rather than owed:
+    /// by default the accumulator is clamped to one tick's worth, so the very next call still steps promptly and the
+    /// host sheds the rest instead of spiralling. Returns the number of ticks produced.
+    /// <para><paramref name="keepPhaseWhenShedding"/> changes what a shed keeps. The default keeps up to a whole extra
+    /// tick, which is right for an authoritative host: it owes the world one more step soon and takes it on the next
+    /// call. A COMMAND CLOCK wants the opposite. A client whose frame stalled sends one command per tick it produces,
+    /// and every tick it missed was already synthesised by the host it talks to, so each extra tick it runs afterwards
+    /// is a command the host applies late for the rest of the session. With this set, a shed drops every whole tick
+    /// beyond the cap and keeps only the sub-tick remainder, exactly as if the missed ticks had fired and done
+    /// nothing, so the clock's phase is unchanged and no catch-up tick follows.</para>
     /// </summary>
-    public int Advance(float elapsedSeconds, Action<long> onTick, int maxTicksPerFrame = 8)
+    public int Advance(float elapsedSeconds, Action<long> onTick, int maxTicksPerFrame = 8,
+        bool keepPhaseWhenShedding = false)
     {
         ArgumentNullException.ThrowIfNull(onTick);
         int cap = Math.Max(1, maxTicksPerFrame);
@@ -68,7 +77,11 @@ public sealed class FixedTickHost
         }
 
         if (produced >= cap)
-            accumulatorSeconds = MathF.Min(accumulatorSeconds, tickSeconds);
+        {
+            accumulatorSeconds = keepPhaseWhenShedding
+                ? accumulatorSeconds % tickSeconds
+                : MathF.Min(accumulatorSeconds, tickSeconds);
+        }
 
         return produced;
     }

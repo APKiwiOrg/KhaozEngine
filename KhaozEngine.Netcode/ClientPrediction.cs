@@ -97,6 +97,13 @@ public sealed class ClientPrediction<TState, TCommand>
     /// <summary>The current predicted (authority-tracking) state.</summary>
     public TState PredictedState => predictedState;
 
+    /// <summary>Commands predicted and not yet acknowledged by the host: how far this client's prediction runs ahead
+    /// of the newest authoritative basis, in ticks. On a healthy link it is the round trip in ticks plus one. A value
+    /// that climbs and stays there is the host applying this client's input that many ticks late (a buffered backlog
+    /// on the host side), which is invisible to reconciliation, since the replay is exact either way, and visible to
+    /// anything that resolves against the host's newest picture of OTHER entities (a moving chase target).</summary>
+    public int PendingCommandCount => pendingCommands.Count;
+
     /// <summary>
     /// The local player's predicted horizontal (planar) speed in units/sec, taken from the most recent
     /// <see cref="Predict"/> tick (the commanded move, collision-clamped in the simulator step). Unlike differencing
@@ -433,7 +440,7 @@ public sealed class ClientPrediction<TState, TCommand>
         // stream while a sustained vertical bias still resolves. smoothTime is the ~time-to-settle, mapped from the
         // first-order CorrectionRate so the tuning knob keeps its meaning on both axes.
         float smoothTime = settings.CorrectionRate > 0f ? 1f / settings.CorrectionRate : 0f;
-        renderOffset = SmoothDampToZero(renderOffset, ref renderOffsetVelocity, smoothTime, dt);
+        renderOffset = DecayPlanarOffset(smoothTime, dt);
         verticalRenderOffset = SmoothDampToZero(verticalRenderOffset, ref verticalRenderOffsetVelocity, smoothTime, dt);
 
         float dz = settings.CorrectionDeadZone;
@@ -448,6 +455,40 @@ public sealed class ClientPrediction<TState, TCommand>
     }
 
     private static float Lerp(float a, float b, float t) => a + (b - a) * t;
+
+    // The planar correction offset's decay for one frame. Without a speed cap it is the ordinary critically-damped
+    // ease, which resolves any offset in about 1/CorrectionRate seconds and so lurches a whole-step correction onto
+    // its answer. With MaxCorrectionSpeed set, the offset instead WALKS off at a constant capped speed until the
+    // damped ease is the slower of the two (near the end), so a lattice step disagreement reads as one more walked
+    // step and a genuine sub-tile correction still eases to rest. Only the planar axis is capped (see the field doc).
+    private Vector2 DecayPlanarOffset(float smoothTime, float dt)
+    {
+        Vector2 damped = SmoothDampToZero(renderOffset, ref renderOffsetVelocity, smoothTime, dt);
+        if (settings.MaxCorrectionSpeed <= 0f)
+        {
+            return damped;
+        }
+
+        // How far the damped ease would move the offset this frame, and how far the speed cap allows. Walk at the
+        // SLOWER of the two: the cap dominates while the offset is large (the constant-speed walk-in), and the damped
+        // move dominates near zero (the gentle finish). When the cap dominates the carried damping velocity is stale,
+        // so it is reset, and the ease restarts from rest on the frame it takes back over.
+        float dampedMove = Vector2.Distance(damped, renderOffset);
+        float cappedMove = settings.MaxCorrectionSpeed * dt;
+        if (dampedMove <= cappedMove)
+        {
+            return damped;
+        }
+
+        renderOffsetVelocity = Vector2.Zero;
+        float dist = renderOffset.Length();
+        if (dist <= cappedMove)
+        {
+            return Vector2.Zero;
+        }
+
+        return renderOffset - renderOffset * (cappedMove / dist);
+    }
 
     /// <summary>
     /// Critically-damped (no-overshoot) decay of <paramref name="current"/> toward zero, carrying

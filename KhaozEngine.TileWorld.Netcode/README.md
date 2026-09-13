@@ -258,7 +258,7 @@ understand. Its registered traversal profile can give that algorithm a different
   before the first authoritative tick, `SpawnAdmission` for synchronous game-owned spawn availability,
   `Behaviour` and `Seed` for the decision seam, `Spawners`,
   `TryGetSpawnerOf`, `Forget` (the despawn hook, dropping the unspent latch, the birth tile and the spawner link
-  together) and `PendingCommandCount`. Its tick is step 1b: every spawner respawns or counts
+  together) and `PendingCommandCount` (its own actor latch count, not the client's). Its tick is step 1b: every spawner respawns or counts
   down, then every live actor gets its decision translated into a command, plus the tag and
   `PendingTileCommand` rewrite above. It iterates its own net id list rather than an ECS query on the tag,
   because a query over the tag cannot see the one actor that most needs the write.
@@ -414,7 +414,9 @@ always keep the constructor map.
   `TryGetLatestRemoteTile` is on the newest applied snapshot, so it is right for anything the RULES will answer.
   Its overload also reports how many ticks old the answer is, for an overlay that fades a stale marker rather than
   lying with it. `TryGetRemoteStepProgress` and the bulk `CollectRemoteSteps` add how far through its step a remote
-  is, 0 as the step commits and 1 once the body is at rest, off the same sample the pose is drawn from. `NetStats` is the link readout beside the session ones, a live `NetTransportStats` forwarded from
+  is, 0 as the step commits and 1 once the body is at rest, off the same sample the pose is drawn from. `PendingCommandCount` is how far the local prediction runs ahead of the newest basis: 0 or 1 on a loopback, the
+  round trip in ticks plus one on a real link, and a climbing-and-staying value when the server is applying this
+  client's input late, which `TileWorldServer.InputDepth(slot)` reads from the server side. `NetStats` is the link readout beside the session ones, a live `NetTransportStats` forwarded from
   the transport (round trip, loss, cumulative byte counters), so a HUD does not need to keep the transport it built.
   A transport that tracks nothing answers `NetTransportStats.Unavailable`, an all-zero DISCONNECTED value that says
   nothing about the session, so `IsJoined` stays the read for that. Three more events land here: `CombatEvent` per swing whose TARGET is in this client's own area of

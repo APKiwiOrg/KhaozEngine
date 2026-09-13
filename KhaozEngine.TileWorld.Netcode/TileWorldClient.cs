@@ -39,6 +39,12 @@ public sealed partial class TileWorldClient : IDisposable
     double presentationClock;
     bool seeded;
 
+    // How far a chase misprediction may sit before the correction CUTS instead of walking in. A step disagreement
+    // near a moving target's arrival is at most a diagonal running step plus a tick of travel, comfortably under
+    // this, so it walks in (see MaxCorrectionSpeed in the default prediction settings and TileWorldClientConfig.
+    // Prediction). A disagreement past it is the two heads on genuinely different ground, which cuts.
+    const float DefaultHardSnapTiles = 2.5f;
+
     /// <summary>
     /// Builds a client over a transport and the SAME collision map the server baked, which is the determinism
     /// contract in one argument: both heads step the same simulator over the same tiles.
@@ -81,7 +87,8 @@ public sealed partial class TileWorldClient : IDisposable
         Simulator = new TileMoveSimulator(map, config.StepTicks, targets, config.Move, new TileRemoteTargets(this));
         Prediction = new ClientPrediction<TileMoveState, TileCommand>(new SelfBoundStepper(this),
             config.Prediction ?? new PredictionSettings(config.TickSeconds, MaxPendingCommands: 64,
-                HardSnapDistance: 0.5f, CorrectionRate: 8f, CorrectionDeadZone: 0.01f));
+                HardSnapDistance: DefaultHardSnapTiles, CorrectionRate: 8f, CorrectionDeadZone: 0.01f,
+                MaxCorrectionSpeed: 1f / (config.StepTicks.Walk * config.TickSeconds)));
         View = new ClientReplicationView(registry ?? TileProtocol.CreateRegistry());
         World = new World();
         // A placeholder until the head has the world file. One metre tiles and the document default plane height
@@ -188,6 +195,14 @@ public sealed partial class TileWorldClient : IDisposable
     /// server, which is a disagreement about the world rather than about timing. See
     /// <see cref="TileWorldClientConfig.Prediction"/> for the threshold and why it is half a tile.</summary>
     public int SnapCount { get; private set; }
+
+    /// <summary>Commands predicted and sent that the server has not yet acknowledged, which is how many ticks this
+    /// client's prediction runs ahead of the newest basis. A loopback sits at 0 or 1 between frames and a real link at
+    /// its round trip in ticks plus one. A value that CLIMBS AND STAYS is the server's input queue for this slot
+    /// holding a backlog it never drains (see <c>TileWorldServer.InputDepth</c>), so the server applies every click
+    /// that many ticks late and the chase prediction resolves its target off a picture that far behind. The
+    /// diagnostics line to put beside <see cref="CorrectionCount"/>.</summary>
+    public int PendingCommandCount => Prediction.PendingCommandCount;
 
     /// <summary>Snapshots refused whole by the decoder. A malformed component frame is never partly applied and
     /// never becomes a reconciliation basis, because a basis rebuilt from half a frame is a plausible-looking
@@ -320,14 +335,21 @@ public sealed partial class TileWorldClient : IDisposable
     /// predict-and-send itself, because a command sent before the seed burns a sequence number that
     /// <see cref="ClientPrediction{TState,TCommand}.Reset"/> then rewinds, and the server refuses the re-used
     /// number as stale.</para>
-    /// <para>A frame that covers many ticks (a stall, a breakpoint, a long GC) runs at most eight of them and SHEDS
-    /// the rest, which is <see cref="FixedTickHost"/>'s own rule. Catching the whole backlog up would fire a burst
-    /// of commands describing intent the player no longer has, and movement is latest-wins on both heads anyway.
-    /// </para>
+    /// <para>A frame that covers many ticks (a stall, a breakpoint, a long GC) runs ONE of them and SHEDS the rest,
+    /// keeping only the sub-tick phase. Every tick this client missed was already synthesised by the server, which
+    /// dequeues a neutral command for a tick with nothing buffered and moves the player on, so a command sent for a
+    /// missed tick is not caught up on: it is a command the server applies one tick late, and one it keeps applying
+    /// late for the rest of the session, because the drain is one per tick and so is the sender. A burst of the
+    /// <see cref="FixedTickHost"/> default eight after a half-second stall left the server applying this client's
+    /// clicks several ticks behind for good, and chasing a moving target off a picture that far behind is what read
+    /// as a snap on every arrival. The one command that IS sent describes the intent the player holds now, and the
+    /// reconcile that follows carries the body forward over the ticks the server ran alone, which the prediction
+    /// layer walks in rather than cutting.</para>
     /// </summary>
     /// <param name="elapsedSeconds">Seconds since the last call. Negative is treated as zero.</param>
-    /// <returns>The number of whole command ticks this call produced, at most eight.</returns>
-    public int Tick(float elapsedSeconds) => clock.Advance(elapsedSeconds, onCommandTick);
+    /// <returns>The number of whole command ticks this call produced, zero or one.</returns>
+    public int Tick(float elapsedSeconds) =>
+        clock.Advance(elapsedSeconds, onCommandTick, maxTicksPerFrame: 1, keepPhaseWhenShedding: true);
 
     void OnCommandTick(long tick)
     {

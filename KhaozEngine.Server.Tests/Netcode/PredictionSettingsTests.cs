@@ -20,4 +20,12 @@ public class PredictionSettingsTests
         Assert.Equal(100f, PredictionSettings.Default.HardSnapDistance, 3);
         Assert.Equal(8f, PredictionSettings.Default.CorrectionRate, 3);
     }
+
+    [Fact]
+    public void Default_correction_speed_cap_is_off_so_the_continuous_decay_is_unchanged()
+    {
+        // The cap is opt-in: a continuous game keeps the critically-damped decay, and only a lattice client that
+        // wants a step-paced walk-in sets a positive value.
+        Assert.Equal(0f, PredictionSettings.Default.MaxCorrectionSpeed, 5);
+    }
 }

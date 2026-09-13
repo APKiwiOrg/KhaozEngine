@@ -39,6 +39,32 @@ public class FixedTickHostTests
     }
 
     [Fact]
+    public void Advance_ShedByDefault_KeepsOneTickForTheNextCall()
+    {
+        var host = new FixedTickHost(0.1f);
+        var ticks = new List<long>();
+        Assert.Equal(1, host.Advance(0.55f, ticks.Add, maxTicksPerFrame: 1));
+        // The default clamp holds a whole tick, so the very next call fires one more.
+        Assert.Equal(1, host.Advance(0f, ticks.Add, maxTicksPerFrame: 1));
+        Assert.Equal(new long[] { 0, 1 }, ticks);
+    }
+
+    [Fact]
+    public void Advance_KeepPhaseWhenShedding_DropsWholeTicksAndKeepsTheRemainder()
+    {
+        var host = new FixedTickHost(0.1f);
+        var ticks = new List<long>();
+        // 0.55 s is five ticks and a half: one fires, four are shed, and the half is what the clock keeps.
+        Assert.Equal(1, host.Advance(0.55f, ticks.Add, maxTicksPerFrame: 1, keepPhaseWhenShedding: true));
+        Assert.Equal(0, host.Advance(0f, ticks.Add, maxTicksPerFrame: 1, keepPhaseWhenShedding: true));
+        Assert.Equal(0.05f, host.SecondsUntilNextTick, 3);
+        // The phase carried: the next tick is due exactly where it would have been had every missed tick fired.
+        Assert.Equal(1, host.Advance(0.05f, ticks.Add, maxTicksPerFrame: 1, keepPhaseWhenShedding: true));
+        Assert.Equal(new long[] { 0, 1 }, ticks);
+        Assert.Equal(2L, host.TickCount);
+    }
+
+    [Fact]
     public void Advance_NegativeElapsed_IsClampedToZero()
     {
         var host = new FixedTickHost(0.1f);

@@ -53,33 +53,33 @@ public sealed record TileWorldClientConfig
     public TileMoveOptions Move { get; init; } = new();
 
     /// <summary>
-    /// Prediction tunables. Null derives them from <see cref="TickSeconds"/>: a 64-command window (16 seconds at a
-    /// 4 Hz tick), a HALF-TILE hard-snap distance and a small dead zone.
-    /// <para>The distance is in TILES rather than metres, because a <see cref="TileMoveState"/>'s position is a
+    /// Prediction tunables. Null derives them from <see cref="TickSeconds"/> and <see cref="StepTicks"/>: a 64-command
+    /// window (16 seconds at a 4 Hz tick), a small dead zone, a hard-snap distance of a few tiles, and a correction
+    /// speed cap of one WALK step per step duration.
+    /// <para>The distances are in TILES rather than metres, because a <see cref="TileMoveState"/>'s position is a
     /// tile-lattice quantity and its vertical is a plane INDEX (see that type's doc).
     /// <see cref="PredictionSettings.Default"/> carries 100, documented in world units, which on this lattice means
     /// a hundred tiles of misprediction before anything ever cut: the same as never snapping at all.</para>
-    /// <para>Half a tile rather than a whole one, and the reason is worth reading before anybody raises it. On a
-    /// lattice a CORRECT prediction reconciles to exactly zero error, not to a small one: the replay re-applies the
-    /// pending commands on top of the authoritative basis, and the basis carries the authoritative route, so a
-    /// client running any number of ticks ahead still lands on the server's own state. Latency therefore
-    /// contributes NO error at all here, which is the opposite of the continuous case the engine default was tuned
-    /// for.</para>
-    /// <para>An error that does appear is USUALLY the two heads having stepped different ways, and that is what the
-    /// number below is chosen for, but it is not the only source and a reader raising it should know the other two.
-    /// A command that misses a server tick (a click delayed past one by jitter) has the server synthesise a
-    /// <see cref="TileCommand.Continue"/> for that tick and apply the real command on the next, so the same command
-    /// runs one tick apart on the two heads. And a backlog deeper than the server's catch-up threshold makes its
-    /// command queue skip straight to the newest buffered command, discarding ones this client already predicted.
-    /// Both are latency artifacts rather than disagreements about the world, both resolve themselves within a tick
-    /// or two, and both measure the same magnitude as a real disagreement, so neither can be told apart from one by
-    /// distance alone.</para>
-    /// <para>Half a tile is the smallest such disagreement that can show up: one tick of a running step. Below it
-    /// there is only float noise in the replay, so it glides. At or above it the heads' last steps went different
-    /// ways, which is a fact about the world (a blocker one head cannot see) rather than about timing, and gliding
-    /// it would slide the avatar across ground it was never routed over on its way to a square it had already been
-    /// told it was not on. A WALKING step is a quarter tile per tick, so a walk cuts one tick later than a run
-    /// does, which is the right way round: the slower the movement, the smaller the artifact.</para>
+    /// <para>On a lattice a CORRECT prediction reconciles to exactly zero error, not to a small one: the replay
+    /// re-applies the pending commands on top of the authoritative basis, and the basis carries the authoritative
+    /// route, so a client running any number of ticks ahead still lands on the server's own state. Latency therefore
+    /// contributes NO error to an ordinary walk, which is the opposite of the continuous case the engine default was
+    /// tuned for. A CHASE is the exception, and it is why the default is not tuned to cut a single step. Predicting
+    /// the pursuit of a MOVING target resolves that target's tile from this client's newest snapshot, which trails
+    /// the server by the round trip plus its buffered input depth, so near the target's arrival the two heads step
+    /// different ways by one tile. That is a timing artifact, not a disagreement about the world, and it appears at
+    /// the same one-step magnitude a real blocker disagreement would. Two more sources look identical: a command that
+    /// misses a server tick runs one tick apart on the two heads, and a backlog past the server's catch-up threshold
+    /// makes its queue skip to the newest buffered command. None can be told from a real disagreement by distance
+    /// alone.</para>
+    /// <para>So a one-step disagreement is WALKED off rather than cut. <see cref="PredictionSettings.MaxCorrectionSpeed"/>
+    /// caps the render correction at a walk step per step duration, so the body finishes the walk onto the corrected
+    /// tile at roughly its own pace while the rules already hold it there, which is how OSRS reads: the drawn body
+    /// lags and catches up while the tile is the truth. <see cref="PredictionSettings.HardSnapDistance"/> stays at a
+    /// few tiles so a genuine disagreement past a chase step still CUTS rather than sliding the avatar across ground
+    /// it was never routed over, and a teleport (an authoritative epoch advance) cuts at any distance regardless. A
+    /// walking chase caps at the same walk speed a run does, which is deliberate: the corrected body has usually
+    /// arrived and stands swinging, so the last tile is walked in whichever mode the approach used.</para>
     /// </summary>
     public PredictionSettings? Prediction { get; init; }
 }

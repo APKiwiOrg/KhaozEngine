@@ -6313,7 +6313,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.41.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.41.1" />
 ```
 
 ```csharp
@@ -9943,6 +9943,11 @@ prediction presentation. Every moving body remains at weight 1 and claims neithe
 always visible and takes their tile after settling. Other settled bodies on that tile then fall to 0. All weights
 in this policy are binary, and `FadeSeconds` has no effect on them.
 
+The local settle check allows two neighbouring float values on either side of the tile centre. This is the
+rounding width of an equal-endpoint `Vector2.Lerp` at arbitrary frame fractions, so a standing local player keeps
+their tile claim. A real step remains moving from `TileMoveState.IsStepping`, and a presentation correction beyond
+that numerical band still keeps the body from claiming a tile before it visibly arrives.
+
 Since 18.15.0 the answer is a WEIGHT rather than a boolean, and that is what stops it popping. A tile commits when
 a step STARTS and the body glides in over the rest of it, so a body judged the frame its tile changes is judged a
 whole step before it arrives: enemies walking onto the player used to vanish in the open instead of walking under
@@ -11869,7 +11874,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.41.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.41.1" />
 ```
 
 ```csharp
@@ -11905,7 +11910,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.41.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.41.1" />
 ```
 
 ```csharp
@@ -12147,7 +12152,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.41.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.41.1" />
 ```
 
 ```csharp
@@ -14195,7 +14200,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="18.41.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="18.41.1" />
 </ItemGroup>
 ```
 

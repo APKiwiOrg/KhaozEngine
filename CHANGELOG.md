@@ -5,6 +5,19 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.41.1
+
+A stationary local player keeps their settled tile claim across equal-endpoint interpolation rounding (#866).
+
+- `TileDrawPriorityPolicy.SettledStacksOnly` now treats a local presentation within two adjacent float values of
+  the tile centre as settled. Arbitrary frame fractions can make `Vector2.Lerp` miss identical endpoints by one
+  float value, which previously revealed a settled body under the player for isolated frames.
+- `TileMoveState.IsStepping` still makes the local body moving outright. Real presentation corrections beyond the
+  numerical band still prevent a premature tile claim, and the policy keeps binary weights with no temporal delay.
+- Headless coverage reproduces the reported stationary flicker through a real client, including Hollowmere's
+  `(96, 93)` spawn fraction, alternating exact and noisy idle frames, negative and zero coordinates, non-finite
+  presentation values, genuine small movement, and an in-flight step at the destination centre.
+
 ## 18.41.0
 
 Tile draw priority can keep every moving body wholly visible while collapsing only settled stacks (#864).

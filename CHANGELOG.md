@@ -8,7 +8,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 ## 18.46.0
 
 A tile client walks off a chase-arrival misprediction instead of snapping, and a stalled frame no longer leaves
-the server applying that client's input late for the rest of the session (#873, #874).
+the server applying that client's input late for the rest of the session (#873, #874). Target silhouettes stay
+continuous across hard mesh edges (#876).
 
 - `PredictionSettings.MaxCorrectionSpeed` (default 0, off) caps how fast the planar reconciliation offset resolves,
   in position units per second. Above zero the offset WALKS off at that constant speed until the damped ease is the
@@ -40,6 +41,12 @@ the server applying that client's input late for the rest of the session (#873, 
   thread once per tick per running player and is not wrapped, so a throw comes out of the tick.
   `TileWorldServer.GatedRunCount` counts the commands it downgraded, and `TileRunGateTests` pins the cadence either
   side of a gate that closes and reopens mid route, the slot it is asked about, and the starved tick.
+
+- `Scene3D.DrawMeshSilhouette` expands along dedicated angle-weighted normals shared by coincident vertices.
+  Faceted meshes and UV seams no longer pull apart into disconnected outline strips. The original model normals
+  still drive lighting. The existing colour, world-space width and depth occlusion contract is unchanged.
+- Rigid mesh uploads carry an additional 12-byte normal stream per vertex, reusing the original position stream
+  and index buffer. The stream is released with its mesh, including deferred unload and failed uploads.
 
 ## 18.45.0
 

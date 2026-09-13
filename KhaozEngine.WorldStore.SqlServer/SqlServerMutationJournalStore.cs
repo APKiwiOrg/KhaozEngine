@@ -35,6 +35,7 @@ public sealed partial class SqlServerMutationJournalStore : IMutationJournalStor
     private readonly TimeSpan minimumRetryHorizon;
     private readonly TimeProvider timeProvider;
     private readonly SqlServerJournalTestHook? testHook;
+    private readonly SqlServerJournalCommitCounters counters = new();
 
     public SqlServerMutationJournalStore(string connectionString)
         : this(new SqlServerMutationJournalStoreOptions(connectionString), null)
@@ -194,7 +195,7 @@ public sealed partial class SqlServerMutationJournalStore : IMutationJournalStor
         return command;
     }
 
-    private static void Add(SqlCommand command, string name, object value)
+    internal static void Add(SqlCommand command, string name, object value)
     {
         if (value is string textValue)
         {

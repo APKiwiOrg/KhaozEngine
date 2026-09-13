@@ -10,7 +10,7 @@ namespace KhaozEngine.Render3D.Rendering;
 
 internal sealed class TargetOutlineRenderer : IDisposable
 {
-    const int DrawPayloadBytes = 144;
+    const int DrawPayloadBytes = 160;
     const int DrawSlotBytes = 256;
 
     readonly IGpuDevice _gd;
@@ -35,11 +35,11 @@ internal sealed class TargetOutlineRenderer : IDisposable
     Matrix4x4 _viewProj;
 
     IGpuTexture? _fullCoverage;
-    IGpuTexture? _fullDepth;
     IGpuTexture? _visibleCoverage;
+    IGpuTexture? _visibleDepth;
     IGpuTexture? _msFullCoverage;
-    IGpuTexture? _msFullDepth;
     IGpuTexture? _msVisibleCoverage;
+    IGpuTexture? _msVisibleDepth;
     IGpuTexture? _privateDepth;
     IGpuTexture? _boundSceneDepth;
     IGpuFramebuffer? _fullFramebuffer;
@@ -68,8 +68,8 @@ internal sealed class TargetOutlineRenderer : IDisposable
             new GpuResourceLayoutElement("Samp", GpuResourceKind.Sampler, GpuShaderStages.Fragment)));
         _compositeLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
             new GpuResourceLayoutElement("FullCoverage", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
-            new GpuResourceLayoutElement("FullDepth", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
             new GpuResourceLayoutElement("VisibleCoverage", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
+            new GpuResourceLayoutElement("VisibleDepth", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
             new GpuResourceLayoutElement("SceneDepth", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
             new GpuResourceLayoutElement("PointSamp", GpuResourceKind.Sampler, GpuShaderStages.Fragment),
             new GpuResourceLayoutElement("LinearSamp", GpuResourceKind.Sampler, GpuShaderStages.Fragment),
@@ -105,13 +105,14 @@ internal sealed class TargetOutlineRenderer : IDisposable
 
     public void Enqueue(IGpuBuffer vertexBuffer, IGpuBuffer indexBuffer, int indexCount,
         GpuIndexFormat indexFormat, IGpuResourceSet? materialSet, int drawIndex, Matrix4x4 world,
-        float alphaCutoff)
+        float alphaCutoff, float dissolve, bool dissolveComplement, Vector3 renderOrigin)
     {
         var payload = new DrawUbo
         {
             ViewProj = _viewProj,
             World = world,
-            Params = new Vector4(alphaCutoff, 0f, 0f, 0f),
+            Params = new Vector4(alphaCutoff, dissolve, dissolveComplement ? 1f : 0f, 0f),
+            RenderOrigin = new Vector4(renderOrigin, 0f),
         };
         MemoryMarshal.Write(_drawImage.AsSpan(drawIndex * DrawSlotBytes, DrawSlotBytes), in payload);
         _queue.Add(new QueuedDraw(vertexBuffer, indexBuffer, indexCount, indexFormat,
@@ -127,19 +128,20 @@ internal sealed class TargetOutlineRenderer : IDisposable
 
         cl.SetFramebuffer(_fullFramebuffer!);
         cl.ClearColorTarget(0, Color.Transparent);
-        cl.ClearColorTarget(1, new Color(backgroundDepth, 0f, 0f, 0f));
         cl.ClearDepthStencil(1f);
         DrawQueue(cl, _fullPipeline!);
         if (resources.Msaa)
-        {
             cl.ResolveTexture(_msFullCoverage!, _fullCoverage!);
-            cl.ResolveTexture(_msFullDepth!, _fullDepth!);
-        }
 
         cl.SetFramebuffer(_visibleFramebuffer!);
         cl.ClearColorTarget(0, Color.Transparent);
+        cl.ClearColorTarget(1, new Color(backgroundDepth, 0f, 0f, 0f));
         DrawQueue(cl, _visiblePipeline!);
-        if (resources.Msaa) cl.ResolveTexture(_msVisibleCoverage!, _visibleCoverage!);
+        if (resources.Msaa)
+        {
+            cl.ResolveTexture(_msVisibleCoverage!, _visibleCoverage!);
+            cl.ResolveTexture(_msVisibleDepth!, _visibleDepth!);
+        }
 
         var composite = new CompositeUbo
         {
@@ -171,7 +173,21 @@ internal sealed class TargetOutlineRenderer : IDisposable
     {
         if (_resourceGeneration == resources.Generation) return;
         DisposeTargets();
-        _resourceGeneration = resources.Generation;
+        try
+        {
+            CreateTargets(resources);
+            _resourceGeneration = resources.Generation;
+        }
+        catch
+        {
+            DisposeTargets();
+            _resourceGeneration = -1;
+            throw;
+        }
+    }
+
+    void CreateTargets(RenderResources resources)
+    {
         var f = _gd.Factory;
         uint width = (uint)resources.Width;
         uint height = (uint)resources.Height;
@@ -179,31 +195,31 @@ internal sealed class TargetOutlineRenderer : IDisposable
         var sampledTarget = GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled;
         _fullCoverage = f.CreateTexture(new GpuTextureDescription(width, height, GpuPixelFormat.R8UNorm,
             sampledTarget, 1, 1, 1));
-        _fullDepth = f.CreateTexture(new GpuTextureDescription(width, height, GpuPixelFormat.R32Float,
-            sampledTarget, 1, 1, 1));
         _visibleCoverage = f.CreateTexture(new GpuTextureDescription(width, height, GpuPixelFormat.R8UNorm,
+            sampledTarget, 1, 1, 1));
+        _visibleDepth = f.CreateTexture(new GpuTextureDescription(width, height, GpuPixelFormat.R32Float,
             sampledTarget, 1, 1, 1));
         _privateDepth = f.CreateTexture(new GpuTextureDescription(width, height, GpuPixelFormat.D32FloatS8UInt,
             GpuTextureUsage.DepthStencil, 1, 1, samples));
 
         IGpuTexture fullCoverageTarget = _fullCoverage;
-        IGpuTexture fullDepthTarget = _fullDepth;
         IGpuTexture visibleTarget = _visibleCoverage;
+        IGpuTexture visibleDepthTarget = _visibleDepth;
         if (resources.Msaa)
         {
             _msFullCoverage = f.CreateTexture(new GpuTextureDescription(width, height, GpuPixelFormat.R8UNorm,
                 GpuTextureUsage.RenderTarget, 1, 1, samples));
-            _msFullDepth = f.CreateTexture(new GpuTextureDescription(width, height, GpuPixelFormat.R32Float,
-                GpuTextureUsage.RenderTarget, 1, 1, samples));
             _msVisibleCoverage = f.CreateTexture(new GpuTextureDescription(width, height, GpuPixelFormat.R8UNorm,
                 GpuTextureUsage.RenderTarget, 1, 1, samples));
+            _msVisibleDepth = f.CreateTexture(new GpuTextureDescription(width, height, GpuPixelFormat.R32Float,
+                GpuTextureUsage.RenderTarget, 1, 1, samples));
             fullCoverageTarget = _msFullCoverage;
-            fullDepthTarget = _msFullDepth;
             visibleTarget = _msVisibleCoverage;
+            visibleDepthTarget = _msVisibleDepth;
         }
 
-        _fullFramebuffer = f.CreateFramebuffer(_privateDepth, fullCoverageTarget, fullDepthTarget);
-        _visibleFramebuffer = f.CreateFramebuffer(resources.DepthStencil, visibleTarget);
+        _fullFramebuffer = f.CreateFramebuffer(_privateDepth, fullCoverageTarget);
+        _visibleFramebuffer = f.CreateFramebuffer(resources.DepthStencil, visibleTarget, visibleDepthTarget);
         _boundSceneDepth = resources.DepthColorTex;
         _fullPipeline = BuildMaskPipeline(f, _fullShaders, _fullFramebuffer.Outputs, full: true);
         _visiblePipeline = BuildMaskPipeline(f, _visibleShaders, _visibleFramebuffer.Outputs, full: false);
@@ -218,7 +234,7 @@ internal sealed class TargetOutlineRenderer : IDisposable
         {
             int index = _compositeSets.Count;
             _compositeSets.Add(_gd.Factory.CreateResourceSet(new GpuResourceSetDescription(_compositeLayout,
-                _fullCoverage!, _fullDepth!, _visibleCoverage!, _boundSceneDepth!, _gd.PointSampler,
+                _fullCoverage!, _visibleCoverage!, _visibleDepth!, _boundSceneDepth!, _gd.PointSampler,
                 _gd.LinearSampler,
                 _compositeUbos[index])));
         }
@@ -237,8 +253,8 @@ internal sealed class TargetOutlineRenderer : IDisposable
         {
             BlendFactor = Vector4.Zero,
             BlendAttachments = full
-                ? new[] { GpuBlendAttachment.OverrideBlend, GpuBlendAttachment.OverrideBlend }
-                : new[] { GpuBlendAttachment.OverrideBlend },
+                ? new[] { GpuBlendAttachment.OverrideBlend }
+                : new[] { GpuBlendAttachment.OverrideBlend, GpuBlendAttachment.OverrideBlend },
             DepthStencil = full ? GpuDepthStencilState.DepthOnlyLessEqual
                 : GpuDepthStencilState.DepthTestLessEqualNoWrite,
             Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid,
@@ -276,22 +292,22 @@ internal sealed class TargetOutlineRenderer : IDisposable
         _fullFramebuffer?.Dispose();
         _visibleFramebuffer?.Dispose();
         _fullCoverage?.Dispose();
-        _fullDepth?.Dispose();
         _visibleCoverage?.Dispose();
+        _visibleDepth?.Dispose();
         _msFullCoverage?.Dispose();
-        _msFullDepth?.Dispose();
         _msVisibleCoverage?.Dispose();
+        _msVisibleDepth?.Dispose();
         _privateDepth?.Dispose();
         _fullPipeline = null;
         _visiblePipeline = null;
         _fullFramebuffer = null;
         _visibleFramebuffer = null;
         _fullCoverage = null;
-        _fullDepth = null;
         _visibleCoverage = null;
+        _visibleDepth = null;
         _msFullCoverage = null;
-        _msFullDepth = null;
         _msVisibleCoverage = null;
+        _msVisibleDepth = null;
         _privateDepth = null;
         _boundSceneDepth = null;
     }
@@ -302,6 +318,7 @@ internal sealed class TargetOutlineRenderer : IDisposable
         public Matrix4x4 ViewProj;
         public Matrix4x4 World;
         public Vector4 Params;
+        public Vector4 RenderOrigin;
     }
 
     struct CompositeUbo

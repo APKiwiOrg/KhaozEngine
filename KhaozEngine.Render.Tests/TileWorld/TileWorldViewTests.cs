@@ -595,6 +595,11 @@ public class TileWorldViewTests
         Assert.Equal(1.25f, group.WidthPixels);
 
         scene.OutlineGroups.Clear();
+        view.LoadRegion(TileRenderTestData.Region, TileRegionResidencyState.Decor);
+        view.Draw(HouseFocus);
+        Assert.Empty(scene.OutlineGroups);
+
+        scene.OutlineGroups.Clear();
         view.ClearOutlinedObject();
         view.Draw(HouseFocus);
         Assert.Empty(scene.OutlineGroups);

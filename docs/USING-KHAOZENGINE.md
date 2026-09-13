@@ -13192,6 +13192,45 @@ self-corrects when its region streams in, so a click handler may set it optimist
 `ITileWorldScene.DrawMeshSilhouette` defaults to a no-op, so custom scene implementations keep compiling and
 simply draw no rims.
 
+### Grouped target outlines (`DrawMeshOutline`, 18.47.0)
+
+Use a grouped target outline when the border must follow only the visible camera-projected exterior at a
+constant screen width. Start one frame-local group, then add every rigid part of the selected target:
+
+```csharp
+MeshOutlineGroup outline = scene.BeginMeshOutline(actionColor, widthPixels: 1.25f);
+scene.DrawMeshOutline(outline, torso, torsoWorld);
+scene.DrawMeshOutline(outline, leftArm, leftArmWorld);
+scene.DrawMeshOutline(outline, rightArm, rightArmWorld);
+```
+
+All parts in the group form one projected union. Overlapping limbs, material parts and canopy masses do not
+create internal strokes. Alpha-cutout holes remain real silhouette holes. Opaque depth-writing scene geometry
+hides both the selected target and its border without introducing a line at the occluder's cut. Transparent
+water and particles do not participate in that depth contract.
+
+`widthPixels` is measured in physical final-framebuffer pixels and accepts finite values from 0.5 through 8.
+It does not change with model scale, camera distance, internal render scale, MSAA or SSAA. A group belongs to
+the scene and frame that created it. `Scene3D.Begin()` invalidates it. For a one-part target, call
+`DrawMeshOutline(mesh, world, color, widthPixels)` directly.
+
+`DrawMeshOutlineDissolved(group, mesh, world, dissolve, dissolveComplement)` matches the rigid model
+world-noise coverage used by full, LOD1 and merged-HLOD crossfades. The visible mask follows only fragments
+kept by that phase. The full projected union ignores partial dissolve so the noise holes do not gain borders.
+An entirely hidden phase contributes neither mask.
+
+For authored tile objects, `TileWorldView.SetOutlinedObject(objectId, color, widthPixels: 1.25f)` queues all
+active parts in one group until `ClearOutlinedObject()`. `ITileWorldScene.BeginMeshOutline` and
+`DrawMeshOutline` default to an inert handle and a no-op so older custom scene implementations keep compiling.
+An implementation that supports outlines can construct its own `MeshOutlineGroup(int index)` and interpret
+the index when parts are submitted.
+Clustered tile objects reuse the live prop renderer's full and LOD1 dissolve decisions. Their selected HLOD
+mask is built on demand with `PropHlod.BuildPlacementMesh`, which performs the whole cluster weld before
+retaining the chosen placement's triangles, so shared-cell averages match the live merged mesh.
+
+`DrawMeshSilhouette` remains a separate compatibility API. Its width is in world metres and it expands an
+inverted hull, which is useful when world-space growth is intentional.
+
 For a body fading between tile draw priorities, use
 `ITileWorldScene.DrawMeshDissolved(handle, world, dissolve, edgeWidth, edgeColor)` (18.19.0). This is the
 existing rigid mesh noise dissolve, including the matching shadow mask, exposed through the tile scene seam.

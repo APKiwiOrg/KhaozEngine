@@ -36,12 +36,22 @@ public sealed partial class Scene3D
 
     /// <summary>Adds one mesh part to a group returned by <see cref="BeginMeshOutline"/> this frame.</summary>
     public void DrawMeshOutline(MeshOutlineGroup group, MeshHandle mesh, Matrix4x4 world)
+        => AddMeshOutlinePart(group, mesh, world, 0f, false);
+
+    public void DrawMeshOutlineDissolved(MeshOutlineGroup group, MeshHandle mesh, Matrix4x4 world,
+        float dissolve, bool dissolveComplement)
+    {
+        AddMeshOutlinePart(group, mesh, world, dissolve, dissolveComplement);
+    }
+
+    void AddMeshOutlinePart(MeshOutlineGroup group, MeshHandle mesh, Matrix4x4 world,
+        float dissolve, bool dissolveComplement)
     {
         if (group.Owner != _outlineOwner || group.Frame != _outlineFrame
             || group.Index < 0 || group.Index >= _meshOutlineGroups.Count)
             throw new ArgumentException("outline group does not belong to this scene and frame.", nameof(group));
-
-        _meshOutlineGroups[group.Index].Parts.Add(new MeshOutlinePart(mesh, world));
+        _meshOutlineGroups[group.Index].Parts.Add(new MeshOutlinePart(mesh, world,
+            Math.Clamp(dissolve, 0f, 1f), dissolveComplement));
         _meshOutlinePartCount++;
     }
 
@@ -75,7 +85,8 @@ public sealed partial class Scene3D
         }
     }
 
-    readonly record struct MeshOutlinePart(MeshHandle Mesh, Matrix4x4 World);
+    readonly record struct MeshOutlinePart(MeshHandle Mesh, Matrix4x4 World, float Dissolve,
+        bool DissolveComplement);
 
     void DrawTargetOutlines(IGpuCommandList cl, Matrix4x4 viewProjection, IGpuFramebuffer target)
     {
@@ -91,10 +102,13 @@ public sealed partial class Scene3D
             int groupDraws = 0;
             foreach (MeshOutlinePart part in group.Parts)
             {
+                if ((!part.DissolveComplement && part.Dissolve >= 1f)
+                    || (part.DissolveComplement && part.Dissolve <= 0f)) continue;
                 if (!_slots.IsValid(part.Mesh.Index, part.Mesh.Generation)) continue;
                 if (_meshes[part.Mesh.Index] is not { } mesh) continue;
                 _targetOutlines.Enqueue(mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat,
-                    mesh.OutlineMaterialSet, drawIndex++, ToRender(part.World), mesh.AlphaCutoff);
+                    mesh.OutlineMaterialSet, drawIndex++, ToRender(part.World), mesh.AlphaCutoff,
+                    part.Dissolve, part.DissolveComplement, _frameOrigin);
                 groupDraws++;
             }
             _targetOutlines.Render(cl, _res, target, group.Color, group.WidthPixels, Post.BackgroundColor.R,

@@ -46,6 +46,8 @@ public sealed partial class RecordingTileWorldScene
             _scene.ClusterDrawPasses++;
             _renderer.Draw(focus);
         }
+        public bool TryGetDrawState(PropClusterKey key, Vector3 focus, out PropClusterDrawState state) =>
+            _renderer.TryGetDrawState(key, focus, out state);
         public void Dispose() => _renderer.Dispose();
     }
 

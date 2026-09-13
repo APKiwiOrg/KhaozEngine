@@ -3,45 +3,67 @@ namespace KhaozEngine.Render3D.Internal;
 internal static partial class ShaderSources
 {
     public const string TargetOutlineMaskVert = @"#version 450
-layout(set=0, binding=0) uniform Draw { mat4 ViewProj; mat4 World; vec4 Params; };
+layout(set=0, binding=0) uniform Draw { mat4 ViewProj; mat4 World; vec4 Params; vec4 RenderOrigin; };
 layout(location=0) in vec3 Position;
 layout(location=1) in vec3 Normal;
 layout(location=2) in vec4 Color;
 layout(location=3) in vec2 TexCoord;
 layout(location=0) out vec2 vUv;
+layout(location=1) out vec3 vWorldPos;
 void main() {
     vUv = TexCoord;
-    gl_Position = ViewProj * World * vec4(Position, 1.0);
+    vec4 world = World * vec4(Position, 1.0);
+    float sink = Normal.x + Color.x;
+    world.x += sink * 1e-30;
+    vWorldPos = world.xyz + RenderOrigin.xyz;
+    gl_Position = ViewProj * world;
 }";
 
     public const string TargetOutlineFullMaskFrag = @"#version 450
-layout(set=0, binding=0) uniform Draw { mat4 ViewProj; mat4 World; vec4 Params; };
+layout(set=0, binding=0) uniform Draw { mat4 ViewProj; mat4 World; vec4 Params; vec4 RenderOrigin; };
 layout(set=1, binding=0) uniform texture2D Albedo;
 layout(set=1, binding=1) uniform sampler Samp;
 layout(location=0) in vec2 vUv;
+layout(location=1) in vec3 vWorldPos;
 layout(location=0) out float oCoverage;
-layout(location=1) out float oDepth;
 void main() {
     if (Params.x > 0.0 && texture(sampler2D(Albedo, Samp), vUv).a < Params.x) discard;
+    oCoverage = 1.0;
+}";
+
+    public const string TargetOutlineVisibleMaskFrag = @"#version 450
+layout(set=0, binding=0) uniform Draw { mat4 ViewProj; mat4 World; vec4 Params; vec4 RenderOrigin; };
+layout(set=1, binding=0) uniform texture2D Albedo;
+layout(set=1, binding=1) uniform sampler Samp;
+layout(location=0) in vec2 vUv;
+layout(location=1) in vec3 vWorldPos;
+layout(location=0) out float oCoverage;
+layout(location=1) out float oDepth;
+float dhash(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
+float dnoise(vec3 p) {
+    vec3 i = floor(p); vec3 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+    float n000 = dhash(i + vec3(0,0,0)), n100 = dhash(i + vec3(1,0,0));
+    float n010 = dhash(i + vec3(0,1,0)), n110 = dhash(i + vec3(1,1,0));
+    float n001 = dhash(i + vec3(0,0,1)), n101 = dhash(i + vec3(1,0,1));
+    float n011 = dhash(i + vec3(0,1,1)), n111 = dhash(i + vec3(1,1,1));
+    return mix(mix(mix(n000, n100, f.x), mix(n010, n110, f.x), f.y),
+               mix(mix(n001, n101, f.x), mix(n011, n111, f.x), f.y), f.z);
+}
+void main() {
+    if (Params.x > 0.0 && texture(sampler2D(Albedo, Samp), vUv).a < Params.x) discard;
+    if (Params.y > 0.0 || Params.z > 0.5) {
+        float mask = dnoise(vWorldPos * 6.0);
+        bool keep = Params.z > 0.5 ? mask < Params.y : mask >= Params.y;
+        if (!keep) discard;
+    }
     oCoverage = 1.0;
     oDepth = gl_FragCoord.z;
 }";
 
-    public const string TargetOutlineVisibleMaskFrag = @"#version 450
-layout(set=0, binding=0) uniform Draw { mat4 ViewProj; mat4 World; vec4 Params; };
-layout(set=1, binding=0) uniform texture2D Albedo;
-layout(set=1, binding=1) uniform sampler Samp;
-layout(location=0) in vec2 vUv;
-layout(location=0) out float oCoverage;
-void main() {
-    if (Params.x > 0.0 && texture(sampler2D(Albedo, Samp), vUv).a < Params.x) discard;
-    oCoverage = 1.0;
-}";
-
     public const string TargetOutlineCompositeFrag = @"#version 450
 layout(set=0, binding=0) uniform texture2D FullCoverage;
-layout(set=0, binding=1) uniform texture2D FullDepth;
-layout(set=0, binding=2) uniform texture2D VisibleCoverage;
+layout(set=0, binding=1) uniform texture2D VisibleCoverage;
+layout(set=0, binding=2) uniform texture2D VisibleDepth;
 layout(set=0, binding=3) uniform texture2D SceneDepth;
 layout(set=0, binding=4) uniform sampler PointSamp;
 layout(set=0, binding=5) uniform sampler LinearSamp;
@@ -50,7 +72,7 @@ layout(location=0) in vec2 vUv;
 layout(location=0) out vec4 oColor;
 void main() {
     vec2 uv = vec2(vUv.x, 1.0 - vUv.y);
-    if (texture(sampler2D(FullCoverage, LinearSamp), uv).r > 0.001) {
+    if (texture(sampler2D(FullCoverage, LinearSamp), uv).r >= 0.5) {
         oColor = vec4(0.0);
         return;
     }
@@ -71,7 +93,10 @@ void main() {
             vec2 sourceUv = uv + vec2(x, y) * pixel;
             float visible = texture(sampler2D(VisibleCoverage, LinearSamp), sourceUv).r;
             if (visible <= 0.001) continue;
-            float targetDepth = texture(sampler2D(FullDepth, PointSamp), sourceUv).r;
+            float pointVisible = texture(sampler2D(VisibleCoverage, PointSamp), sourceUv).r;
+            if (pointVisible <= 0.001) continue;
+            float resolvedDepth = texture(sampler2D(VisibleDepth, PointSamp), sourceUv).r;
+            float targetDepth = (resolvedDepth - (1.0 - pointVisible) * backgroundDepth) / pointVisible;
             if (!destinationIsBackground && targetDepth > sceneAtDestination + 0.00002) continue;
             coverage = max(coverage, visible * radial);
         }

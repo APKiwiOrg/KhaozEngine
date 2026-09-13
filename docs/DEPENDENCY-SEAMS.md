@@ -517,6 +517,12 @@ Terrain.Render3D cache, which owns `Scene3D` foliage batches. This adds no new p
 TileGroundMaterialHandle)` (falls through to the material-free `LoadMesh`, so the same geometry renders through
 the model path), `DrawWater(in WaterPlane)` (a no-op, so no water is drawn) and
 `DrawMeshSilhouette(MeshHandle, Matrix4x4, Color, float)` (a no-op, so no highlight rims are drawn).
+`BeginMeshOutline(Color, float)` returns an inert frame-group handle by default, and
+`DrawMeshOutline(MeshOutlineGroup, MeshHandle, Matrix4x4)` defaults to a no-op. Custom implementations that
+support grouped pixel outlines construct and track their own public `MeshOutlineGroup(int)` indices.
+`DrawMeshOutlineDissolved(MeshOutlineGroup, MeshHandle, Matrix4x4, float, bool)` defaults to the solid grouped
+submission. The shipped adapter forwards the rigid dissolve and complement so TileWorld LOD and HLOD handoffs
+keep their current visible coverage.
 `DrawMeshDissolved(MeshHandle, Matrix4x4, float, float, Color)` defaults to the solid `DrawMesh` and forwards
 the existing noise dissolve and shadow mask when the scene supports it. `DrawGroundCover` forwards cached
 ground-cover instances to the scene and defaults to drawing none. `DrawOverlayMesh(MeshHandle, Matrix4x4)`

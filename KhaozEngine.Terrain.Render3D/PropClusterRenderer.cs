@@ -202,40 +202,62 @@ namespace KhaozEngine.Terrain
             {
                 foreach (Cluster cluster in _clusters.Values)
                 {
-                    float centerX = (cluster.Area.MinX + cluster.Area.MaxX) * 0.5f;
-                    float centerZ = (cluster.Area.MinZ + cluster.Area.MaxZ) * 0.5f;
-                    float dx = centerX - focus.X;
-                    float dz = centerZ - focus.Z;
-                    float distance = MathF.Sqrt(dx * dx + dz * dz);
-                    if (cluster.Handle is { } merged)
-                    {
-                        if (distance >= cluster.Layer.DrawRadius) continue;
-                        float t = PropHlod.CrossfadeAt(distance, cluster.Layer.HlodDistance,
-                                                       cluster.Layer.HlodCrossfadeWidth);
-                        if (PropHlod.DrawsHlodProps(t))
-                            _backend.DrawProps(cluster.Placements, cluster.Layer, focus, t);
-                        float exitStart = MathF.Max(0f, cluster.Layer.DrawRadius - cluster.Layer.FadeBandWidth);
-                        bool exiting = cluster.Layer.FadeBandWidth > 0f && distance >= exitStart;
-                        if (exiting)
-                        {
-                            // The exit band wins when configuration overlaps the HLOD entrance. Disappearing
-                            // safely at the declared radius matters more than preserving an entrance complement
-                            // that cannot complete before the layer is gone.
-                            float exitWidth = cluster.Layer.DrawRadius - exitStart;
-                            float dissolve = exitWidth <= 0f
-                                ? 0f
-                                : Math.Clamp((distance - exitStart) / exitWidth, 0f, 1f);
-                            _backend.DrawMerged(merged, cluster.Layer, dissolve, invertShadowDissolve: false);
-                        }
-                        else if (PropHlod.DrawsHlodMerged(t))
-                            _backend.DrawMerged(merged, cluster.Layer, 1f - t, invertShadowDissolve: true);
-                    }
-                    else
-                    {
-                        _backend.DrawProps(cluster.Placements, cluster.Layer, focus, 0f);
-                    }
+                    PropClusterDrawState state = ResolveDrawState(cluster, focus);
+                    if (state.DrawsIndividuals)
+                        _backend.DrawProps(cluster.Placements, cluster.Layer, focus,
+                            state.IndividualDissolveFloor);
+                    if (state.DrawsMerged && cluster.Handle is { } merged)
+                        _backend.DrawMerged(merged, cluster.Layer, state.MergedDissolve,
+                            state.MergedComplement);
                 }
             }
+        }
+
+        /// <summary>Reports the exact representation decisions used by <see cref="Draw"/> for one retained cluster.</summary>
+        public bool TryGetDrawState(PropClusterKey key, Vector3 focus, out PropClusterDrawState state)
+        {
+            ThrowIfDisposed();
+            lock (_sync)
+            {
+                if (!_clusters.TryGetValue(key, out Cluster? cluster))
+                {
+                    state = default;
+                    return false;
+                }
+                state = ResolveDrawState(cluster, focus);
+                return true;
+            }
+        }
+
+        static PropClusterDrawState ResolveDrawState(Cluster cluster, Vector3 focus)
+        {
+            if (cluster.Handle is null)
+                return new PropClusterDrawState(true, 0f, false, 0f, false, -1);
+
+            float centerX = (cluster.Area.MinX + cluster.Area.MaxX) * 0.5f;
+            float centerZ = (cluster.Area.MinZ + cluster.Area.MaxZ) * 0.5f;
+            float dx = centerX - focus.X;
+            float dz = centerZ - focus.Z;
+            float distance = MathF.Sqrt(dx * dx + dz * dz);
+            if (distance >= cluster.Layer.DrawRadius)
+                return new PropClusterDrawState(false, 0f, false, 0f, false, cluster.Generation);
+
+            float t = PropHlod.CrossfadeAt(distance, cluster.Layer.HlodDistance,
+                cluster.Layer.HlodCrossfadeWidth);
+            bool individuals = PropHlod.DrawsHlodProps(t);
+            float exitStart = MathF.Max(0f, cluster.Layer.DrawRadius - cluster.Layer.FadeBandWidth);
+            bool exiting = cluster.Layer.FadeBandWidth > 0f && distance >= exitStart;
+            if (exiting)
+            {
+                float exitWidth = cluster.Layer.DrawRadius - exitStart;
+                float dissolve = exitWidth <= 0f ? 0f
+                    : Math.Clamp((distance - exitStart) / exitWidth, 0f, 1f);
+                return new PropClusterDrawState(individuals, t, true, dissolve, false,
+                    cluster.Generation);
+            }
+            bool merged = PropHlod.DrawsHlodMerged(t);
+            return new PropClusterDrawState(individuals, t, merged, 1f - t, true,
+                cluster.Generation);
         }
 
         internal long GenerationOf(PropClusterKey key)

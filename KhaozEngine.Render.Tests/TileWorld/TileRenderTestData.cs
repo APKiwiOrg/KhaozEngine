@@ -370,7 +370,7 @@ public sealed class RecordedOutlineGroup
 {
     public KhaozEngine.Primitives.Color Color { get; }
     public float WidthPixels { get; }
-    public List<(MeshHandle Handle, Matrix4x4 World)> Parts { get; } = new();
+    public List<(MeshHandle Handle, Matrix4x4 World, float Dissolve, bool Complement)> Parts { get; } = new();
 
     public RecordedOutlineGroup(KhaozEngine.Primitives.Color color, float widthPixels)
     {
@@ -504,7 +504,12 @@ public sealed partial class RecordingTileWorldScene : ITileWorldScene
 
     /// <summary>Records one part in its outline group.</summary>
     public void DrawMeshOutline(MeshOutlineGroup group, MeshHandle handle, Matrix4x4 world) =>
-        OutlineGroups[group.Index].Parts.Add((handle, world));
+        OutlineGroups[group.Index].Parts.Add((handle, world, 0f, false));
+
+    /// <summary>Records one dissolved part in its outline group.</summary>
+    public void DrawMeshOutlineDissolved(MeshOutlineGroup group, MeshHandle handle, Matrix4x4 world,
+        float dissolve, bool dissolveComplement) =>
+        OutlineGroups[group.Index].Parts.Add((handle, world, dissolve, dissolveComplement));
 
     /// <summary>Hands out one fresh live handle per part, unless this is the archetype
     /// <see cref="ThrowOnPropMeshLoad"/> names, which throws having uploaded nothing.</summary>

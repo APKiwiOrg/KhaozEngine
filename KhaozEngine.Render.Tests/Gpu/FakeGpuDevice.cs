@@ -86,6 +86,9 @@ namespace KhaozEngine.Tests.Gpu
         /// itself and not just a count (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/383">#383</see>).</summary>
         internal List<FakeTexture> Textures { get; } = new();
 
+        /// <summary>Absolute 1-based texture creation to fail, or zero for no injected failure.</summary>
+        internal int ThrowOnTextureCreate { get; set; }
+
         /// <summary>Every buffer this factory has handed out, in creation order. See <see cref="Textures"/>.</summary>
         internal List<FakeBuffer> Buffers { get; } = new();
 
@@ -112,6 +115,8 @@ namespace KhaozEngine.Tests.Gpu
 
         public IGpuTexture CreateTexture(in GpuTextureDescription d)
         {
+            if (ThrowOnTextureCreate == Textures.Count + 1)
+                throw new InvalidOperationException("planned texture creation failure");
             var t = new FakeTexture(d.Width, d.Height, d.MipLevels, d.SampleCount, d.Format, d.Usage, d.ArrayLayers,
                 d.IsArray);
             Textures.Add(t);

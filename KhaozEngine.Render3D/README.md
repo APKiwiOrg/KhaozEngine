@@ -689,6 +689,16 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   the model as usual and queue its silhouette the same frame. The normal push assumes a UNIFORM world scale
   (bake a nonuniform scale into the mesh). The
   whole-scene edge post keeps the Outline name on `PixelPostProcessSettings`.
+- `Scene3D.BeginMeshOutline(Color color, float widthPixels)` plus
+  `DrawMeshOutline(MeshOutlineGroup group, MeshHandle mesh, Matrix4x4 world)` queue one screen-space target
+  border across any number of independently transformed parts. The group is valid for its scene and current
+  frame only. Its full alpha-cutout-aware projected union rejects interior strokes, while opaque scene depth
+  suppresses occluder cuts and border leaks onto nearer geometry. Width is 0.5 to 8 physical output pixels and
+  stays fixed across model size, camera distance, MSAA and render scale. The one-part `DrawMeshOutline(mesh,
+  world, color, widthPixels)` overload creates its own group. Mask targets allocate lazily. The older
+  `DrawMeshSilhouette` metre-width hull remains available for world-space expansion effects.
+  `DrawMeshOutlineDissolved(group, mesh, world, dissolve, dissolveComplement)` applies the same world-anchored
+  coverage split as rigid LOD handoffs. Its full union still rejects strokes around individual dissolve holes.
 - Debug wire volumes: `Scene3D.DebugWireSphere` / `DebugWireDome` (hemisphere, flat side down) /
   `DebugWireCylinder` (vertical, `radius` + `halfHeight`) / `DebugWireCircle`, each `(..., Color color, float
   opacity = 1, DebugDepthMode depth = DepthTested, int segments = DebugWireSegments)`. Immediate-mode (cleared each

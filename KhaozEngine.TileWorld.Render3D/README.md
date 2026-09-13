@@ -299,7 +299,9 @@ Everything the view does to a scene goes through `ITileWorldScene`: `LoadMesh`, 
 `LoadPropMeshes`, `UnloadPropMeshes`, `DrawProps`, plus the ground-material trio `LoadTileGroundMaterial`,
 `UnloadTileGroundMaterial` and the `LoadMesh(mesh, material)` overload that binds a mesh to the tile-ground
 pipeline, `DrawWater(in WaterPlane)` for the water surfaces, and `DrawMeshSilhouette(handle, world, color,
-widthMetres)` for the per-entity highlight rim (18.3.0). `DrawMeshDissolved(handle, world, dissolve, edgeWidth,
+widthMetres)` for the per-entity highlight rim (18.3.0). `BeginMeshOutline(color, widthPixels)` plus
+`DrawMeshOutline(group, handle, world)` submit a multipart selected object as one screen-space union.
+`DrawMeshDissolved(handle, world, dissolve, edgeWidth,
 edgeColor)` queues a rigid mesh through `Scene3D`'s existing dissolve path with a white tint and opaque material.
 `DrawOverlayMesh(handle, world)` reaches `Scene3D`'s translucent, unlit overlay pass. Its default implementation
 throws `NotSupportedException`, so a legacy scene reports that it cannot provide translucency instead of silently
@@ -315,7 +317,15 @@ water, no rims, and a solid body where a dissolve was requested. The view's own 
 frame, resolved by id per frame from the loaded regions, and an id nothing loaded holds is a quiet no-op that
 self-corrects when its region streams in. The hull reads the per-object archetype override below, since one built
 on the authored archetype while the prop draws an overridden one sits on a different anchor and floats beside the
-mesh it is outlining. It is shaped exactly on what `Scene3D` and the prop renderer
+mesh it is outlining.
+`TileWorldView.SetOutlinedObject(long objectId, Color color, float widthPixels = 1.25f)` and
+`ClearOutlinedObject()` use the pixel-width grouped path. Every active part shares one group, so part overlap
+cannot produce interior borders. Clustered objects follow the same full-to-LOD1 dissolve decisions as the
+ordinary prop renderer. During the HLOD handoff, an on-demand mask mesh comes from
+`PropHlod.BuildPlacementMesh`, which runs the canonical cluster weld over every placement before retaining the
+selected placement's triangles. The selected border therefore follows the live merged geometry without adding
+object IDs to the retained HLOD draw.
+It is shaped exactly on what `Scene3D` and the prop renderer
 already offer, because its job is to let the view's bookkeeping run without a device, not to add an abstraction of
 its own. `Scene3DTileWorldScene` is the shipped implementation and forwards straight through, and a test drives a
 recording fake, which is how every view and residency rule is covered headless.

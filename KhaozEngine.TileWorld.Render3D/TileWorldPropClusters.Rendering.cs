@@ -33,6 +33,7 @@ public sealed partial class TileWorldPropClusters
         foreach (KeyValuePair<string, TilePropLayerSnapshot> item in snapshot.Layers)
         {
             PropClusterKey key = Key(item.Key, snapshot.Region, snapshot.Plane);
+            RememberOutlineSnapshot(key, snapshot.Generation, item.Value);
             if (!_requestedClusters.Add(key)) _clusterOwner!.Invalidate(key);
             _clusterBuilds.Request(new TileWorldBuildRequest<PropClusterBuildRequest>(
                 new TileWorldBuildKey(snapshot.Region, snapshot.Plane, TileWorldBuildKind.Hlod, item.Key),
@@ -52,6 +53,7 @@ public sealed partial class TileWorldPropClusters
         int x = (int)MathF.Floor(TileWorldSpace.TileX(focus.X, _tileSize));
         int z = (int)MathF.Floor(TileWorldSpace.TileZ(focus.Z, _tileSize));
         _clusterBuilds.Pump(RegionCoord.Of(x, z));
+        PruneOutlineSnapshots(focus);
     }
 
     internal void Draw(Vector3 focus) => _clusterOwner?.Draw(focus);
@@ -67,6 +69,7 @@ public sealed partial class TileWorldPropClusters
             _clusterOwner!.Unload(key);
             _requestedClusters.Remove(key);
         }
+        ForgetOutlineSnapshots(region, plane);
     }
 
     void DisposeRendering()
@@ -76,6 +79,7 @@ public sealed partial class TileWorldPropClusters
         _clusterOwner?.Dispose();
         _clusterOwner = null;
         _requestedClusters.Clear();
+        ClearOutlineState();
     }
 
     PropClusterKey Key(string layerId, RegionCoord region, int plane) =>

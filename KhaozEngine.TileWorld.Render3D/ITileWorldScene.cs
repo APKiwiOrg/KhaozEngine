@@ -25,6 +25,13 @@ public interface ITileWorldPropClusterOwner : IDisposable
 
     /// <summary>Draw all retained layers once for this frame.</summary>
     void Draw(Vector3 focus);
+
+    /// <summary>Reports the exact individual and merged choices used by the retained cluster's draw.</summary>
+    bool TryGetDrawState(PropClusterKey key, Vector3 focus, out PropClusterDrawState state)
+    {
+        state = default;
+        return false;
+    }
 }
 
 /// <summary>The slice of a 3D scene a tile world draws through: upload and free a ground mesh, draw one at a
@@ -114,6 +121,10 @@ public interface ITileWorldScene
 
     /// <summary>Adds one mesh part to a pixel-width outline group. Defaults to a no-op for an older scene.</summary>
     void DrawMeshOutline(MeshOutlineGroup group, MeshHandle handle, Matrix4x4 world) { }
+
+    /// <summary>Adds a part whose visible mask follows the rigid dissolve used by the ordinary model draw.</summary>
+    void DrawMeshOutlineDissolved(MeshOutlineGroup group, MeshHandle handle, Matrix4x4 world,
+        float dissolve, bool dissolveComplement) => DrawMeshOutline(group, handle, world);
 }
 
 /// <summary>The shipped <see cref="ITileWorldScene"/>: every member forwards straight to a <see cref="Scene3D"/>
@@ -162,6 +173,11 @@ public sealed class Scene3DTileWorldScene : ITileWorldScene
     /// <inheritdoc />
     public void DrawMeshOutline(MeshOutlineGroup group, MeshHandle handle, Matrix4x4 world) =>
         _scene.DrawMeshOutline(group, handle, world);
+
+    /// <inheritdoc />
+    public void DrawMeshOutlineDissolved(MeshOutlineGroup group, MeshHandle handle, Matrix4x4 world,
+        float dissolve, bool dissolveComplement) =>
+        _scene.DrawMeshOutlineDissolved(group, handle, world, dissolve, dissolveComplement);
 
     /// <inheritdoc />
     public TileGroundMaterialHandle LoadTileGroundMaterial(TileGroundMaterialSet set)
@@ -214,6 +230,8 @@ public sealed class Scene3DTileWorldScene : ITileWorldScene
         public void Invalidate(PropClusterKey key) => _renderer.Invalidate(key);
         public void Unload(PropClusterKey key) => _renderer.Unload(key);
         public void Draw(Vector3 focus) => _renderer.Draw(focus);
+        public bool TryGetDrawState(PropClusterKey key, Vector3 focus, out PropClusterDrawState state) =>
+            _renderer.TryGetDrawState(key, focus, out state);
         public void Dispose() => _renderer.Dispose();
     }
 }

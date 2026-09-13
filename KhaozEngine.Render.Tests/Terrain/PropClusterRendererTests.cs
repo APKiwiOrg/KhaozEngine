@@ -111,6 +111,45 @@ namespace KhaozEngine.Tests.Terrain
         }
 
         [Fact]
+        public void Draw_state_keeps_the_accepted_Hlod_generation_after_a_failed_rebuild()
+        {
+            using var rig = new PropClusterRig();
+            PropClusterKey key = new("trees", 0, 0, 0);
+            rig.Apply(key, rig.Build(key, generation: 1));
+            rig.Renderer.Invalidate(key);
+            rig.FailEveryMerge = true;
+            rig.Apply(key, rig.Build(key, generation: 2,
+                new PropPlacement("stump", 9f, 0f, 1f, 1f, 0f, 0)));
+
+            Assert.True(rig.Renderer.TryGetDrawState(key, Focus(100f), out PropClusterDrawState state));
+
+            Assert.Equal(1, state.MergedSourceGeneration);
+            Assert.True(state.DrawsIndividuals);
+            Assert.True(state.DrawsMerged);
+            Assert.Equal(0.5f, state.IndividualDissolveFloor, 5);
+            Assert.Equal(0.5f, state.MergedDissolve, 5);
+            Assert.True(state.MergedComplement);
+        }
+
+        [Fact]
+        public void Draw_state_and_Draw_use_the_same_exit_decision()
+        {
+            using var rig = new PropClusterRig();
+            PropClusterKey key = new("trees", 0, 0, 0);
+            PropLayer layer = PropClusterRig.ExitLayer(drawRadius: 120f, fadeWidth: 20f,
+                hlodDistance: 100f, hlodWidth: 40f);
+            rig.Apply(key, rig.Build(key, generation: 1, layer));
+
+            Assert.True(rig.Renderer.TryGetDrawState(key, Focus(110f), out PropClusterDrawState state));
+            rig.Renderer.Draw(Focus(110f));
+
+            Assert.Equal(1, rig.MergedDrawCount);
+            Assert.True(state.DrawsMerged);
+            Assert.False(state.MergedComplement);
+            Assert.Equal(rig.LastMergedDissolve, state.MergedDissolve, 5);
+        }
+
+        [Fact]
         public void Failed_new_generation_still_rejects_an_older_completed_build()
         {
             using var rig = new PropClusterRig();

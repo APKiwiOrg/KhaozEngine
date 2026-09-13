@@ -518,7 +518,15 @@ namespace KhaozEngine.Render3D
             if (texture.IsValid)
             {
                 material = _model.CreateMaterialSet(_textures[texture.ListIndex]!);
-                outlineMaterial = _targetOutlines.CreateMaterialSet(_textures[texture.ListIndex]!);
+                try
+                {
+                    outlineMaterial = _targetOutlines.CreateMaterialSet(_textures[texture.ListIndex]!);
+                }
+                catch
+                {
+                    material.Dispose();
+                    throw;
+                }
             }
             return LoadMeshInternal(mesh, material, outlineMaterial);
         }
@@ -538,7 +546,16 @@ namespace KhaozEngine.Render3D
             IGpuResourceSet? material = (a != null || n != null || r != null)
                 ? _model.CreateMaterialSet(a, n, r)
                 : null;
-            IGpuResourceSet? outlineMaterial = a != null ? _targetOutlines.CreateMaterialSet(a) : null;
+            IGpuResourceSet? outlineMaterial;
+            try
+            {
+                outlineMaterial = a != null ? _targetOutlines.CreateMaterialSet(a) : null;
+            }
+            catch
+            {
+                material?.Dispose();
+                throw;
+            }
             return LoadMeshInternal(mesh, material, outlineMaterial, alphaCutoff: maps.AlphaCutoff,
                 outlineNormals: outlineNormals);
         }

@@ -892,3 +892,184 @@ that meet it must fail closed rather than skip it, which is what `MinimumClientB
 converted to a currency refund at some later version. Recommended default: no, and leave it to a
 deliberate `ReplacedBy` rule pointing at whatever the owner decides to give. Automation here is a policy
 the engine should not have.
+
+## 9. Tagged field encoding
+
+### 9.1 The format
+
+An instance payload is a sequence of fields, each:
+
+```
+[Kind: varint uint16][Length: varint int32][Bytes: Length bytes]
+```
+
+That is the only structure. There is no header, no magic and no version byte on a payload, because a
+payload never travels alone: it is always inside a container page, a ground item component or a journal
+event, each of which carries its own version byte (section 15). An EMPTY payload is zero bytes, which is
+what a plain stack has.
+
+The engine's only existing tagged binary format is `JournalCanonicalizer`, which writes numeric field tags
+behind a four-character magic and a `ushort` format version
+(`KhaozEngine.WorldStore/Journal/JournalCanonicalizer.cs:37-79`, `a-engine.md:1480-1491`). Every other
+codec in the tree is POSITIONAL, which is why unknown fields cannot be skipped and truncation is a
+whole-message refusal there. This format departs from the positional house style deliberately, and section
+9.5 says what it buys.
+
+### 9.2 Property kind ids and reserved ranges
+
+| Range | Owner | Varint cost |
+|---|---|---|
+| `0` | Reserved, never a valid kind | n/a |
+| `1` to `127` | ENGINE generic instance fields (item level, durability, quality, flags, bound-to) | 1 byte |
+| `128` to `1023` | SCOPE B fields (rarity, affixes, sockets, enchantments, rare name words) | 2 bytes |
+| `1024` to `65535` | GAME fields | 2 to 3 bytes |
+
+The two-byte cost on the Scope B range is paid ONCE per payload per field, not once per affix, because the
+affix list is a single field holding all of them. A six-affix item pays it once.
+
+### 9.3 Canonical form, and why byte equality is property equality
+
+Three rules, all enforced by the encoder and all checked by the decoder:
+
+1. Fields appear in STRICTLY ASCENDING order by kind id.
+2. No kind appears twice.
+3. Every varint is MINIMAL. `0x81 0x00` is not a legal encoding of 1.
+
+Together these make the encoding canonical: one set of properties has exactly one byte sequence. That is
+load bearing for Scope B's stacking rule, which is that items stack only when the definition is stackable
+AND their properties are identical (#884 body, item 4). With a canonical form, "identical properties" is a
+`ReadOnlySpan<byte>.SequenceEqual` over two payloads. Without it, it is a structural comparison that has to
+decode both sides, which at bank-merge volumes is the difference between a memcmp and a parse.
+
+`ItemContainerCodec` already takes the same shape at the container level: entries are strictly ascending by
+slot and `Validate` rejects disorder (`KhaozEngine.Items/ItemContainerCodec.cs:96`, `a-engine.md:103-124`).
+`TileWorldHash` sorts collections before digesting for the same reason
+(`TileWorldHash.cs:95-96`, `a-engine.md:1219-1222`).
+
+### 9.4 Unknown kinds are preserved verbatim
+
+A decoder that meets a kind it does not know keeps the field's exact bytes and its position in the ordering,
+and re-emits them unchanged on the next encode. It does not drop them, does not reorder them and does not
+reinterpret them.
+
+This is what lets a client built against content build N read, display and re-save an item carrying a field
+only build N+1 knows, and it is the forward-compatibility half that `MinimumClientBuild` (section 7.4) is
+the fallback for. It is also what lets a game add a field without the engine's container codec changing at
+all.
+
+The preserved bytes participate in byte equality, so two items differing only in an unknown field do not
+stack. That is the conservative answer and the right one: the decoder does not know whether the unknown
+field is meaningful.
+
+### 9.5 Sockets
+
+Sockets are ONE field kind holding an ordered list:
+
+```
+[Count: varint][ for each socket:
+    [SocketTypeId: varint int32]      // 0 means no type restriction
+    [ContainedDefinitionId: varint int32]  // 0 means the socket is empty
+    [NestedLength: varint int32]
+    [Nested: NestedLength bytes]      // a payload in this same format
+]
+```
+
+**Nesting is ONE LEVEL ONLY and the DECODER enforces it.** A nested payload containing a socket field is
+malformed and the decoder returns a reason rather than recursing. This is a hard structural limit rather
+than a convention, because recursion is the one way a 40 byte payload becomes a denial of service, and
+because the owner ruled sockets in and links out (#884 body), which is exactly the one-level shape.
+
+Socket order is AUTHORED and preserved, never sorted. This mirrors `TileObjectArchetype.Tags`, whose
+authored order is deliberately kept out of the sort for the catalog digest because sorting them would call
+two different files one archetype (`TileWorldHash.cs:117-120`, `a-engine.md:1224-1226`). A player who puts
+a gem in the third socket expects it to stay there.
+
+### 9.6 Maximum payload size
+
+**`MaxInstancePayloadBytes = 512`.**
+
+The two caps it has to live under, with the arithmetic:
+
+- **The journal section cap, 2 MiB** (`JournalLimits.cs:16`, `a-engine.md:437-491`). Scope B pages a
+  container at about 100 slots per page, each page its own journal section (#884 body, item 6). A worst
+  case page is 100 slots each carrying a 512 byte payload plus about 14 bytes of slot overhead, so about
+  52.6 KB. That is 2.5 percent of the section cap and comfortably under the 256 KiB event payload cap too,
+  which matters because a page rewrite is a whole-section replacement every time (`a-engine.md:437-460`).
+- **The game message cap, 1,024 bytes** (`TileProtocol.Frames.cs:65`, `a-engine.md:791-800`). A 512 byte
+  payload plus the 4 byte game-message header plus a slot entry leaves about 500 bytes of headroom, so a
+  SINGLE-ITEM message (a craft result, a pickup, a ground item spawn) is always one frame with room to
+  spare. A PAGE sync is not one frame and never can be, so it uses the application-level chunking
+  precedent at `TileWorldServer.Tick.cs:241-259`, which is the one place the engine already sends a
+  logical payload across several reliable ordered frames (`a-engine.md:818-838`).
+
+512 is also about 12 times the realistic size computed in 9.7, so it is a guard rail rather than a budget.
+A larger cap would buy nothing and would let one pathological item consume a page. A smaller one, say 256,
+would still fit a six-affix socketed item but would leave no room for the game-range fields a consumer has
+not thought of yet.
+
+**Expensive to change once data exists: no to raise, yes to lower.** Raising the cap is backward
+compatible: every existing payload is still legal. Lowering it strands items that are already over it, and
+the only safe way to lower it would be a remap rule kind that does not exist.
+
+### 9.7 Truncation and malformed handling
+
+The decoder NEVER throws. It returns `false` plus a reason string, exactly like
+`ItemContainerCodec.TryDecode` and `Validate`, whose `string?` return is null for fine and a quarantine
+reason otherwise (`KhaozEngine.Items/ItemContainerCodec.cs:49-104`, `a-engine.md:103-124`). Every frame
+decoder in `TileProtocol` is total for the same reason: the bytes come from a remote peer
+(`a-engine.md:814-817`).
+
+The reasons, each a stable token so a counter can be keyed on it:
+
+| Reason | Condition |
+|---|---|
+| `payload-too-long` | The payload exceeds `MaxInstancePayloadBytes`. |
+| `field-truncated` | A field's declared length runs past the end of the payload. |
+| `kind-out-of-order` | A kind is not strictly greater than its predecessor. |
+| `kind-duplicate` | The same kind appears twice. |
+| `varint-not-minimal` | A varint is longer than its value needs. |
+| `varint-overflow` | A varint does not terminate within 5 bytes. |
+| `socket-nesting` | A nested payload contains a socket field. |
+| `field-malformed` | A known kind's bytes do not match its own shape. |
+
+A payload that fails for any reason is QUARANTINED per section 10, never discarded, and never
+reinterpreted as a shorter valid payload. That last clause matters: a decoder that stops at the first bad
+field and keeps what it read would silently strip affixes off an item, which is worse than showing a
+placeholder.
+
+### 9.8 A worked byte example
+
+A rare Greatsword at item level 68, durability 90 of 100, three affixes and one socket holding an item.
+The definition id lives in the container slot entry, not the payload, so the payload is properties only.
+
+Field kinds used: 2 item level (engine), 5 durability (engine), 130 rarity (Scope B), 131 affixes (Scope
+B), 132 sockets (Scope B). They appear in that order, which is ascending, as rule 9.3.1 requires.
+
+```
+02 01 44                                 kind 2  len 1   item level 68
+05 02 5A 64                              kind 5  len 2   durability 90 of 100
+82 01 01 03                              kind 130 len 1  rarity 3 (rare)
+83 01 0F                                 kind 131 len 15 affixes
+   03                                       count 3
+   F2 20 03 CC CC                           mod 4210, tier 3, position 52428
+   5B 01 33 33                              mod 91,   tier 1, position 13107
+   84 02 02 FF FF                           mod 260,  tier 2, position 65535
+84 01 08                                 kind 132 len 8  sockets
+   01                                       count 1
+   07                                       socket type 7
+   C1 06                                    contains definition 833
+   03                                       nested payload length 3
+      02 01 37                              nested: kind 2 len 1 item level 55
+```
+
+Forty bytes total. The varints in it: `82 01` is 130, `83 01` is 131, `84 01` is 132, `F2 20` is 4210,
+`84 02` is 260, `C1 06` is 833, and every single-byte value below 128 is itself.
+
+Reading the third affix, `84 02 02 FF FF`: mod id 260, tier 2, position 65,535, which is the top of the
+tier's range. If that tier runs 10 to 40, section 6.4's formula gives
+`10 + (65535 * 30 + 32767) / 65535 = 10 + 30 = 40`.
+
+Forty bytes against the 512 cap is 8 percent. Against Grimhollow's current 18-bytes-per-slot bank budget
+(`b-grimhollow.md:1044-1054`) it is 2.2 times over, which is the concrete number saying a bank of affixed
+items cannot sync as one message and must be paged. That is not a surprise, it is the arithmetic behind
+Scope B's paged-container requirement.

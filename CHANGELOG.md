@@ -5,6 +5,36 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.48.1
+
+Audio follows a change of default output device and recovers a lost device instead of staying on the old output
+until restart (#770).
+
+- `OpenAlContext` used to open the default device once and never look at it again. Switching speakers to headphones
+  left the old device connected, so no AL error latched and the game stayed on the speakers. `AudioSystem.Update`
+  now checks the device once a second and reopens it in place with `alcReopenDeviceSOFT` when the system default
+  output changed or `ALC_CONNECTED` reads false. The check runs ahead of the music early-out, so an SFX-only game
+  gets it as long as it calls `Update`. An `OpenAlMusicBackend` that owns its own context polls from its own
+  `Update`. The silent backends are unchanged.
+- The reopen keeps the context, every source and every buffer, confirmed on macOS against the bundled OpenAL Soft
+  1.23.1 with a streaming source mid-queue: the stream keeps advancing and nothing is reloaded. The context also
+  turns off `AL_STOP_SOURCES_ON_DISCONNECT_SOFT` (the experimental `AL_SOFTX_hold_on_disconnect`) so a lost
+  device holds its sources rather than stopping them. Without that, a stopped streaming source reports every
+  buffer processed and the music refill raced through the track while nothing could be heard.
+- A default change is detected by comparing the default output with the one seen at the last open, not with the
+  open device's name, so a backend whose names disagree cannot reopen every second. The probe asks for the full
+  device list first: `ALC_DEFAULT_ALL_DEVICES_SPECIFIER` alone answers from a cached list in 1.23.1 and never sees
+  a change. It costs about 0.4 ms per check on macOS. The 1.23.1 CoreAudio backend never reports a disconnect, so
+  on macOS the default change is what catches an unplug.
+- A failed reopen is logged once through `AlErrorLog` as `device reopen` and retried. A lost device retries every
+  second. A follow that fails while the old output still plays backs off from 2 up to 30 seconds, because OpenAL
+  Soft stops the working output to try the new one and restarts it on failure.
+- No Silk.NET natives package ships OpenAL Soft 1.24 or later, where `ALC_SOFT_system_events` would replace the
+  poll, so the engine stays on 1.23.1.
+- The decisions live in the internal `AudioDeviceFollower` behind the `IAlcOutputDevice` seam and are unit tested
+  headlessly. `OpenAlDeviceReopenTests` run the real reopen against the machine's output at zero gain, gated on
+  `KE_AUDIO_DEVICE_TESTS=1`.
+
 ## 18.48.0
 
 Render2D draws convex polygon fills and mitred strokes, so a translucent outline no longer double-blends at its

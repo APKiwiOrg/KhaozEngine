@@ -614,3 +614,281 @@ instance id 0. The first Grimhollow item that gains a property is the first inst
 
 **Expensive to change once data exists: yes for Ruinborne, no for Grimhollow.** Ruinborne's is a data
 migration over millions of rows with a dual-read window. Grimhollow's is a no-op.
+
+## 7. Version identity and the per-page stamp
+
+### 7.1 A content version is a number AND a hash
+
+Publishing assigns two things to a content version:
+
+- **The version number**, a monotonic `int` starting at 1, incremented by exactly 1 per publish, never
+  reused, never skipped. This is the ORDERING.
+- **The manifest hash**, a SHA-256 over a canonical description of the version, lower hex, 64 characters.
+  This is the IDENTITY.
+
+Both travel together everywhere a version is named. They answer different questions and neither
+substitutes for the other.
+
+### 7.2 The page stamp is the NUMBER
+
+A durable container page, and any other durable record carrying content ids, stamps the content VERSION
+NUMBER it was last brought up to date with. Not the hash.
+
+**Why the hash cannot do this job.** A remap rule applies to any page whose stamp is OLDER than the rule's
+version (section 8). "Older" is a comparison, and a digest has no order: two hashes tell you they differ
+and nothing else. A stamp that cannot be compared forces the loader to either keep a full history table
+mapping every hash ever published to its ordinal, or to re-apply every rule ever written on every load.
+The number makes it one `if (stamp < rule.Version)`.
+
+Weighted comparison, because this one is genuinely contested (a hash is the more obvious choice for an
+identity, and it is what Grimhollow's door carries today).
+
+| Criterion | Number | Hash | Both on the page |
+|---|---|---|---|
+| Orders a remap rule application | 10 | 1 | 10 |
+| Bytes on every page | 9 (4) | 5 (32, or 8 truncated) | 4 |
+| Detects a page stamped by a DIFFERENT publish line | 2 | 10 | 10 |
+| Survives a rollback republish | 8 | 6 | 6 |
+| Simplicity at the read site | 9 | 7 | 5 |
+| Total | 38 | 29 | 35 |
+
+Recommendation: the NUMBER on the page, the HASH on the connect door and in the manifest. The "both"
+column scores well and loses on bytes: 36 bytes on every page of every container of millions of owned
+items, to detect a case (two publish lines against one durable store) the owner has explicitly ruled out
+for v1 by having no staging environment (#882 comment 2, 2026-09-14). Section 17 carries this as the
+question to revisit if staging arrives.
+
+**Expensive to change once data exists: yes, because** the stamp is a field on every durable page, and
+both the loader's remap decision and the rewrite-on-commit rule read it.
+
+### 7.3 The manifest hash
+
+Following `TileWorldHash` in every particular (`KhaozEngine.TileWorld/TileWorldHash.cs:19-185`,
+`a-engine.md:1183-1237`):
+
+- Algorithm SHA-256, rendered lower hex through `Convert.ToHexStringLower`, 64 characters.
+- A `public const int SchemeVersion` folded into the digest, starting at 1, bumped on any
+  canonicalisation change, on purpose.
+- Domain separated. The domain string is `kec/` and the manifest sub-domain is `kec/manifest/`. The chunk
+  digest, the client manifest digest and the server manifest digest each get their own sub-domain, so a
+  head gating on one can never accidentally agree with a head gating on another. That last property is
+  `TileWorldHash.OfWorldAndCatalogs`'s stated reason for existing (`a-engine.md:1206-1209`).
+- Every number formatted through `CultureInfo.InvariantCulture`, because `StringBuilder.Append(int)` uses
+  the CURRENT culture and a negative number digests differently under a culture with its own minus sign
+  (`TileWorldHash.cs:171-176`).
+- Every string LENGTH PREFIXED as `"{len}:{value} "`, with a bare `"- "` for null, so a delimiter inside
+  an authored key cannot make two different manifests digest the same (`TileWorldHash.cs:178-185`).
+- Collections SORTED before digesting, by type id then by chunk index.
+
+The canonical manifest text is, in order: the sub-domain plus scheme version, the version number, the
+minimum server build, the minimum client build, then for each content type sorted by type id, the type id,
+the type key, the chunk count, and for each chunk in index order the chunk index and its chunk hash.
+
+The CHUNK HASH is plain SHA-256 of the chunk's uncompressed canonical bytes, lower hex, under sub-domain
+`kec/chunk/`. It is the chunk's content address, so a chunk that did not change between two versions has
+the same hash and a client already holding it fetches nothing. That is the mechanism behind the owner's
+"download size after a one-item edit" budget (#882 body, item 12).
+
+The CLIENT manifest is built the same way over the client-visible chunks only (section 11), so it has its
+own hash and is never equal to the server manifest's.
+
+### 7.4 Minimum builds
+
+The manifest carries `MinimumServerBuild` and `MinimumClientBuild`, each an `int`. A build number here is
+the engine content SCHEME generation, not a version string and not a game version: it increments when a
+content type's row codec gains a field an older reader cannot skip.
+
+- A server whose build is BELOW `MinimumServerBuild` refuses to load the version and fails the boot
+  closed, per the owner's fail-closed rule (#882 body, item 8). It does not fall back to an older version,
+  because an operator who published a version intends it to be live and a silent downgrade is how a
+  fleet ends up serving two different catalogs.
+- A client whose build is BELOW `MinimumClientBuild` is refused at the connect door with a distinct
+  refusal token, so the client can tell the player to update rather than showing a generic mismatch.
+- A reader ABOVE either minimum is always fine. Forward compatibility within a build generation comes from
+  the tagged encoding in section 9, and the minimum build is the explicit statement that the tagged escape
+  hatch was not enough this time.
+
+### 7.5 The connect door layer
+
+A new labelled `HandshakeToken` layer carries the content identity, gated by a
+`ContentIdentityGateAuthenticator` modelled directly on `WorldIdentityGateAuthenticator`
+(`KhaozEngine.Netcode/ConnectionGate.cs:53-96`): unwrap one layer, compare ORDINAL, refuse with a stable
+wire token carrying both sides, otherwise delegate inward. Nothing needs inventing, which is the engine
+report's own finding (`a-engine.md:872-879`).
+
+The layer's value is `<versionNumber>|<clientManifestHash>`, the decimal version number and the 64
+character lower hex client manifest hash joined by a pipe. Both, because the number alone cannot detect a
+client that rebuilt a pack wrongly and the hash alone cannot tell an operator which side is behind.
+
+Refusal token format, following `ke:world-mismatch:<serverHash>|<clientHash>`
+(`KhaozEngine.Netcode/HandshakeToken.cs:23`):
+
+```
+ke:content-mismatch:<serverVersion>|<serverHash>|<clientVersion>|<clientHash>
+ke:content-client-too-old:<minimumClientBuild>
+```
+
+The pipe is the separator INSIDE the payload and the colon separates the token's own fields, matching the
+existing world-mismatch shape. A client presenting no layer at all unwraps to the empty label and is
+refused with empty client fields, which is exactly what `GrimhollowConfigGate` already does
+(`b-grimhollow.md:449-456`).
+
+Layer ORDER in the nest, outermost first: protocol version, world, CONTENT, the game's token auth, the ban
+check. Content sits inside world and outside auth for the same reason world sits inside version: a
+disagreement about content is a cheaper and more specific refusal than a failed credential, and the ban
+check must stay innermost because it needs the subject the token produced
+(`KhaozEngine.Netcode/ConnectionGate.cs:154-180`, `a-engine.md:839-871`).
+
+### 7.6 How Grimhollow's joined config hash is replaced
+
+Grimhollow's door carries four layers today, and the fourth is the skilling config hash
+(`b-grimhollow.md:420-434`). The in-flight `feature/item-drop` branch changes that fourth layer's value to
+`GrimhollowGameDataHash.Current`, a HYPHEN-JOINED pair of the skilling hash and a new item-properties
+hash, joined rather than rehashed so an operator reading a refusal can see which half moved, and with no
+colon in it because `GrimhollowConfigGate.TryParseMismatch` splits on colons
+(`b-grimhollow.md:1341-1350`).
+
+**Contract.** In phase 1 of Grimhollow's adoption, the joined game-data hash is REPLACED by the content
+version layer of section 7.5, and `GrimhollowConfigGate` is deleted rather than re-pointed. Specifically:
+
+- `skilling.jsonc` and `items.jsonc` both become content types, per the owner's ruling that the skilling
+  data and the item properties are versioned content (#882 body). Once they are content, their per-file
+  hashes have nothing left to describe.
+- The operator-legibility property the hyphen join was built for is preserved and improved: the refusal
+  token in 7.5 carries BOTH sides' version numbers, so an operator sees "server 47, client 44" rather than
+  having to diff two digests. That is strictly more legible than knowing which of two files moved.
+- Until phase 1 lands, the joined hash stands as shipped. This contract does not ask the in-flight branch
+  to change, and it explicitly does NOT adopt the hyphen join into the engine: an engine layer that joins
+  two sub-hashes would need a rule for how many sub-hashes there are, and the content version number
+  answers the same question with one comparable integer.
+- The `tradable` flag from `items.jsonc` becomes a per-definition field on the engine item base type, and
+  the fail-closed every-live-item-needs-a-row rule becomes the publish validator's coverage check
+  (section 10). The retired-items-answer-untradable rule becomes the retire policy in section 8.
+
+**Expensive to change once data exists: no for the door, yes for the manifest hash.** The door layer is
+negotiated fresh on every connect and carries nothing durable. The manifest hash is recorded against every
+published version, so changing the algorithm or the canonicalisation requires a scheme version bump and
+re-digesting every version, which is why `SchemeVersion` exists.
+
+**Open question for the owner.** Whether a client that is BEHIND on content should be refused or should be
+allowed in read-only while it fetches. Recommended default: refused, matching every other gate in the nest
+and the owner's server-restart apply model. A fetch-then-rejoin loop is the client's own business and needs
+no server state.
+
+## 8. Remap rule format
+
+### 8.1 Shape
+
+Remap rules are APPEND ONLY. A rule is never edited and never deleted, and the list is a permanent part of
+every published version. There is no precedent for this in the engine at all: `grep -i remap` over the
+tree returns only GPU, mesh, texture and input remapping (`a-engine.md:1457-1467`). The nearest relatives
+are `RotateStoreEpochAsync`, which invalidates every outstanding projection cursor after a restore
+(`KhaozEngine.WorldStore/Journal/IMutationJournalMaintenance.cs:10`), and `SqliteJournalSchema`'s gated
+forward migration. So this format is new, and it is designed to be boring.
+
+Each rule carries:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `Sequence` | `int` | Global, monotonic across ALL rules of all types. The apply order. |
+| `IntroducedIn` | `int` | The content version number the rule was published in. |
+| `TypeId` | `ushort` | The content type the rule operates on. |
+| `Kind` | `byte` | See 8.2. |
+| `FromId` | `int` | The id being remapped. |
+| `ToId` | `int` | The destination id, or 0 where the kind has none. |
+| `Payload` | bytes | Optional, at most 64 bytes, kind-specific. |
+
+### 8.2 The v1 rule kinds
+
+**Kind 1, `ReplacedBy`.** `FromId` is retired and every reference to it becomes `ToId`. Counts, positions
+and any payload carry over unchanged. This is the ordinary rename or re-base case.
+
+**Kind 2, `Retired`.** `FromId` leaves play. The payload's first byte is the POLICY:
+
+- `0x01` placeholder. The reference is kept as-is and the item is displayed through a placeholder. It is
+  not usable, not tradable and not droppable. This is the quarantine presentation of section 10 reached
+  by a different road, and it uses the same placeholder so a player sees one consistent thing.
+- `0x02` replacement. Bytes 1 to 4 are an int32 destination id, and the behaviour is kind 1.
+
+There is deliberately no "delete" policy. The owner's rule is that a definition is never deleted and is
+retired instead (#882 body, item 2), and Grimhollow's 18 retired ids exist precisely so a stored stack
+still decodes (`b-grimhollow.md:30-36`).
+
+**Kind 3, `MovedToLegacy`.** `FromId` is a mod whose ranges changed under the keep-legacy option, and
+`ToId` is the legacy copy that can never be generated or crafted again (#884 body, item 11, and section
+5.4 here). Every existing item carrying `FromId` moves to `ToId` at load. Items generated after the
+publish carry the new `FromId` with its new ranges. The two coexist forever.
+
+**Kind 4, `StackCapLowered`.** `FromId` is a definition whose stack cap fell. `ToId` is 0. The payload is
+an int32 new cap. The POLICY, stated here because Ruinborne's is the cautionary tale:
+
+- An existing over-cap stack is LEGAL. It is not split, not truncated, not deleted and not refused on
+  load.
+- It may only SHRINK. Any operation that would leave it at or below the new cap is allowed. Any operation
+  that would leave it above its current count is refused.
+- Once it is at or below the new cap, the ordinary cap applies and it can never go back up.
+
+Ruinborne's version of this is silent and permanent: the merge candidate query is
+`AND [quantity] < @max`, so an over-cap row is excluded from candidacy rather than repaired, nothing
+anywhere re-checks existing rows, there is no CHECK constraint on the quantity column and no repair pass
+(`c-ruinborne.md:537-564`). The failure is not that over-cap stacks exist. It is that nothing knows they
+do, so they never converge and never surface. Kind 4 makes the state explicit, bounded and self-healing.
+
+### 8.3 Application
+
+A rule applies to any durable page whose stamp is STRICTLY OLDER than `IntroducedIn`. Rules apply in
+`Sequence` order, all of them, in one pass. After the pass the page's effective stamp is the active
+version.
+
+**Idempotence is required, and it is a property of the RULE SET rather than of one rule.** Applying the
+whole ordered set twice to the same bytes must produce the same bytes as applying it once. That is what
+makes a crash between "apply" and "commit" safe, and it is what makes a page that was already brought
+forward by another path cost nothing. Concretely it forbids two shapes: a rule whose `ToId` is the
+`FromId` of an earlier rule in the same set (which would chain twice on a second pass), and a rule whose
+effect depends on a value it also changes. The publish validator MUST reject both, by walking the full
+ordered set and checking that no rule's `ToId` appears as any earlier rule's `FromId` for the same type.
+
+A rule is a no-op on a page that holds no reference to `FromId`, which is the common case, so the pass is
+a scan rather than a rewrite for almost every page.
+
+### 8.4 Byte encoding
+
+Little endian throughout, varints as defined in section 15:
+
+```
+[Sequence: varint int32]
+[IntroducedIn: varint int32]
+[TypeId: uint16 LE]
+[Kind: byte]
+[FromId: varint int32]
+[ToId: varint int32]
+[PayloadLength: byte, 0 to 64]
+[Payload: PayloadLength bytes]
+```
+
+A typical rule is 9 to 12 bytes. Ten thousand rules is about 110 KB, which is a rounding error against a
+pack.
+
+### 8.5 Where rules travel
+
+Rules travel IN THE PACK, in ONE dedicated chunk per manifest, at a reserved chunk address outside any
+content type's id space. That chunk holds the FULL rule list from sequence 1, not a delta.
+
+The full list rather than a delta, because a page can be arbitrarily old. A player returning after a year
+has a stamp from twenty versions back, and a delta pack would require the loader to hold every
+intervening version's rule chunk to bring that page forward. Since the list is append only and small, the
+whole of it is cheaper than the bookkeeping to avoid it.
+
+The rule chunk is in BOTH the server and the client manifest, and its contents are identical in both. A
+client needs it to bring a locally cached page forward and to render an old item correctly. It carries no
+server-only information by construction, because a rule is (id, id, kind) and never a value.
+
+**Expensive to change once data exists: yes, because** the rule list is the only record of how an old page
+becomes a current one. A change to the rule encoding or the apply order restates the history of every
+durable page in the world. The `Kind` byte is the extension point: a new kind is additive and old readers
+that meet it must fail closed rather than skip it, which is what `MinimumClientBuild` is for.
+
+**Open question for the owner.** Whether a retired definition's placeholder items should be automatically
+converted to a currency refund at some later version. Recommended default: no, and leave it to a
+deliberate `ReplacedBy` rule pointing at whatever the owner decides to give. Automation here is a policy
+the engine should not have.

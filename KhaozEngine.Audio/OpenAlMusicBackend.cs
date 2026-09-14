@@ -117,6 +117,8 @@ public sealed unsafe class OpenAlMusicBackend : IMusicBackend
 
     public void Update()
     {
+        // Whoever owns the context follows the output device. A shared context is polled by AudioSystem instead.
+        if (_ownsContext) _ctx.PollOutputDevice();
         if (!_playing) return;
 
         try

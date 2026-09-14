@@ -45,6 +45,11 @@ Game-agnostic audio on the custom MonoGame-free stack: streaming music + SFX + 3
 - `OpenAlSfxBackend` + `SfxVoicePool` - a 16-voice one-shot SFX pool over a shared OpenAL context, with
   optional 3D positioning. `SfxVoicePool` is the pure (device-free) allocation policy: `Next()` is the round
   robin, `Steal(playing)` picks the lowest-priority voice with that rotation as the tie-break.
+- Output device following - the OpenAL device opens on the system default output and stays on it. `Update`
+  checks once a second and reopens the device in place when the default output changes (speakers to headphones,
+  a Bluetooth sink connecting) or the device reports it was lost. The reopen keeps the context, sources and
+  buffers, so music resumes mid-track and loaded SFX stay loaded. A failed reopen is logged once and retried.
+  Nothing to call: keep calling `Update` every frame, including in a game with no music.
 
 No MonoGame. OpenAL is bundled (openal-soft, Silk.NET.OpenAL.Soft
 .Native) so no system OpenAL is required.

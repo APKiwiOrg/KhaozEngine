@@ -11073,6 +11073,15 @@ the request in your own structure and issue the call from the main thread on the
 deliberate exemption: a process-exit handler or host teardown on another thread stays legal, since failing at the
 point where the state is about to be dropped buys nothing.
 
+**Output device changes follow themselves, as long as `Update` runs.** The OpenAL backend opens the system default
+output, and `Update` checks it once a second (about 0.4 ms per check on macOS). When the default output changes, or
+the device reports it was lost, the device is reopened in place on the new default. Context, sources and buffers
+survive the reopen, so a streaming track resumes where it was and nothing is reloaded. A reopen that fails is
+logged once through the OpenAL error log and retried: every second while the old device is gone, and with a
+backoff up to 30 seconds while the old device still plays, because each failed attempt briefly interrupts it. The
+check runs ahead of the music early-out, so an SFX-only game gets it too, but only if it calls `Update` every
+frame. The silent backends have no device and do nothing here.
+
 **Music crossfade.** Switching tracks can fade the old one out and the new one in instead of a hard cut. Set
 `MusicCrossfadeDuration` (seconds, default `0` = hard cut, today's behavior) to make every track change
 (`PlayTrack`, `PlayRandomTrack`, end-of-track auto-advance) crossfade, or call `CrossfadeTo(name, duration)` /

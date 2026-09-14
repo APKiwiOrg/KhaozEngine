@@ -573,11 +573,14 @@ public sealed partial class AudioSystem : IDisposable
     /// or <see cref="CrossfadeTo(string,float)"/> must call THIS overload with a real <paramref name="dt"/> so the fade
     /// progresses. With no active fade (or <c>dt = 0</c>) behavior is identical to the historical no-arg update.
     /// Detects end-of-track and queues the next; a transient <see cref="IMusicBackend.IsPlaying"/> read failure skips
-    /// the frame (logged) and recovers next frame.
+    /// the frame (logged) and recovers next frame. On the OpenAL backend it also moves audio to a new default output
+    /// device, or back onto one after the device was lost, checked once a second.
     /// </summary>
     public void Update(float dt)
     {
         EnsureOwningThread();
+        // Ahead of the music early-out: SFX play through the same device when no music is registered or enabled.
+        _context?.PollOutputDevice();
         if (_backend.TrackCount == 0 || !_available || !_musicEnabled) return;
 
         try

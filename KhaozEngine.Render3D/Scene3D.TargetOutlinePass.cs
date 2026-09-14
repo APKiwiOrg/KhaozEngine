@@ -18,23 +18,38 @@ public sealed partial class Scene3D
 
     /// <summary>
     /// Starts one frame-local target outline group. Every mesh part added to the returned handle forms one
-    /// projected union with <paramref name="color"/> and a width measured in final framebuffer pixels.
+    /// projected union with <paramref name="color"/> and a width measured in final framebuffer pixels. Scene depth
+    /// hides the border, as <see cref="MeshOutlineOcclusion.SceneDepth"/> describes.
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException">
     /// <paramref name="widthPixels"/> is not finite or is outside the supported 0.5 to 8 pixel range.
     /// </exception>
     public MeshOutlineGroup BeginMeshOutline(Color color, float widthPixels)
+        => BeginMeshOutline(color, widthPixels, MeshOutlineOcclusion.SceneDepth);
+
+    /// <summary>
+    /// Starts one frame-local target outline group whose border <paramref name="occlusion"/> may hide. Every mesh
+    /// part added to the returned handle forms one projected union with <paramref name="color"/> and a width
+    /// measured in final framebuffer pixels.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="widthPixels"/> is not finite or is outside the supported 0.5 to 8 pixel range, or
+    /// <paramref name="occlusion"/> is not a defined <see cref="MeshOutlineOcclusion"/>.
+    /// </exception>
+    public MeshOutlineGroup BeginMeshOutline(Color color, float widthPixels, MeshOutlineOcclusion occlusion)
     {
         if (!float.IsFinite(widthPixels) || widthPixels < 0.5f || widthPixels > 8f)
             throw new ArgumentOutOfRangeException(nameof(widthPixels), widthPixels,
                 "outline width must be finite and between 0.5 and 8 pixels.");
+        if (!Enum.IsDefined(occlusion))
+            throw new ArgumentOutOfRangeException(nameof(occlusion), occlusion, "unknown outline occlusion.");
 
         int index = _meshOutlineGroups.Count;
-        _meshOutlineGroups.Add(new MeshOutlineDrawGroup(color, widthPixels));
+        _meshOutlineGroups.Add(new MeshOutlineDrawGroup(color, widthPixels, occlusion));
         return new MeshOutlineGroup(_outlineOwner, _outlineFrame, index);
     }
 
-    /// <summary>Adds one mesh part to a group returned by <see cref="BeginMeshOutline"/> this frame.</summary>
+    /// <summary>Adds one mesh part to a group returned by <see cref="BeginMeshOutline(Color, float, MeshOutlineOcclusion)"/> this frame.</summary>
     public void DrawMeshOutline(MeshOutlineGroup group, MeshHandle mesh, Matrix4x4 world)
         => AddMeshOutlinePart(group, mesh, world, 0f, false);
 
@@ -57,13 +72,19 @@ public sealed partial class Scene3D
 
     /// <summary>Queues a one-part target outline with a width measured in final framebuffer pixels.</summary>
     public void DrawMeshOutline(MeshHandle mesh, Matrix4x4 world, Color color, float widthPixels)
+        => DrawMeshOutline(mesh, world, color, widthPixels, MeshOutlineOcclusion.SceneDepth);
+
+    /// <summary>Queues a one-part target outline whose border <paramref name="occlusion"/> may hide.</summary>
+    public void DrawMeshOutline(MeshHandle mesh, Matrix4x4 world, Color color, float widthPixels,
+        MeshOutlineOcclusion occlusion)
     {
-        MeshOutlineGroup group = BeginMeshOutline(color, widthPixels);
+        MeshOutlineGroup group = BeginMeshOutline(color, widthPixels, occlusion);
         DrawMeshOutline(group, mesh, world);
     }
 
     internal int MeshOutlineGroupCount => _meshOutlineGroups.Count;
     internal int MeshOutlinePartCount => _meshOutlinePartCount;
+    internal MeshOutlineOcclusion MeshOutlineOcclusionAt(int groupIndex) => _meshOutlineGroups[groupIndex].Occlusion;
 
     void BeginMeshOutlineFrame()
     {
@@ -76,12 +97,14 @@ public sealed partial class Scene3D
     {
         public Color Color { get; }
         public float WidthPixels { get; }
+        public MeshOutlineOcclusion Occlusion { get; }
         public List<MeshOutlinePart> Parts { get; } = new();
 
-        public MeshOutlineDrawGroup(Color color, float widthPixels)
+        public MeshOutlineDrawGroup(Color color, float widthPixels, MeshOutlineOcclusion occlusion)
         {
             Color = color;
             WidthPixels = widthPixels;
+            Occlusion = occlusion;
         }
     }
 
@@ -111,9 +134,10 @@ public sealed partial class Scene3D
                     part.Dissolve, part.DissolveComplement, _frameOrigin);
                 groupDraws++;
             }
+            bool occluded = group.Occlusion == MeshOutlineOcclusion.SceneDepth;
             _targetOutlines.Render(cl, _res, target, group.Color, group.WidthPixels, Post.BackgroundColor.R,
-                Post.Pixelated, groupIndex);
-            _frameStats.DrawCalls += groupDraws * 2 + 1;
+                Post.Pixelated, groupIndex, occluded);
+            _frameStats.DrawCalls += groupDraws * (occluded ? 2 : 1) + 1;
         }
     }
 }

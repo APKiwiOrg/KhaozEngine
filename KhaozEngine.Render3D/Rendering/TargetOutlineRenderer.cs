@@ -135,7 +135,7 @@ internal sealed class TargetOutlineRenderer : IDisposable
     }
 
     public void Render(IGpuCommandList cl, RenderResources resources, IGpuFramebuffer target,
-        Color color, float widthPixels, float backgroundDepth, bool pixelated, int styleIndex)
+        Color color, float widthPixels, float backgroundDepth, bool pixelated, int styleIndex, bool occluded)
     {
         if (_queue.Count == 0) return;
         BindTargets(resources);
@@ -149,16 +149,20 @@ internal sealed class TargetOutlineRenderer : IDisposable
             cl.ResolveTexture(_msFullCoverage!, _fullCoverage!);
         if (_fullCoverage!.MipLevels > 1) cl.GenerateMipmaps(_fullCoverage);
 
-        cl.SetFramebuffer(_visibleFramebuffer!);
-        cl.ClearColorTarget(0, Color.Transparent);
-        cl.ClearColorTarget(1, new Color(backgroundDepth, 0f, 0f, 0f));
-        DrawQueue(cl, _visiblePipeline!);
-        if (resources.Msaa)
+        // A border nothing hides reads only the full union, so the scene-depth visible pass is skipped.
+        if (occluded)
         {
-            cl.ResolveTexture(_msVisibleCoverage!, _visibleCoverage!);
-            cl.ResolveTexture(_msVisibleDepth!, _visibleDepth!);
+            cl.SetFramebuffer(_visibleFramebuffer!);
+            cl.ClearColorTarget(0, Color.Transparent);
+            cl.ClearColorTarget(1, new Color(backgroundDepth, 0f, 0f, 0f));
+            DrawQueue(cl, _visiblePipeline!);
+            if (resources.Msaa)
+            {
+                cl.ResolveTexture(_msVisibleCoverage!, _visibleCoverage!);
+                cl.ResolveTexture(_msVisibleDepth!, _visibleDepth!);
+            }
+            if (_visibleCoverage!.MipLevels > 1) cl.GenerateMipmaps(_visibleCoverage);
         }
-        if (_visibleCoverage!.MipLevels > 1) cl.GenerateMipmaps(_visibleCoverage);
 
         var composite = new CompositeUbo
         {
@@ -170,7 +174,7 @@ internal sealed class TargetOutlineRenderer : IDisposable
                 _visibleCoverage!.MipLevels > 1
                     ? MathF.Max(0f, MathF.Log2(MathF.Max(resources.Width / (float)target.Width,
                         resources.Height / (float)target.Height))) : 0f,
-                0f),
+                occluded ? 0f : 1f),
         };
         EnsureCompositeSlot(styleIndex);
         cl.UpdateBuffer(_compositeUbos[styleIndex], 0, in composite);

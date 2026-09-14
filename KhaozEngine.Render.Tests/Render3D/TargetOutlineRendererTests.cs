@@ -36,12 +36,12 @@ public sealed class TargetOutlineRendererTests
 
         Assert.Throws<InvalidOperationException>(() =>
             renderer.Render(commands, resources, target, Color.White, 1.25f, 0.025f, pixelated: false,
-                styleIndex: 0));
+                styleIndex: 0, occluded: true));
         Assert.True(factory.Textures[firstMaskTexture].Disposed);
 
         factory.ThrowOnTextureCreate = 0;
         renderer.Render(commands, resources, target, Color.White, 1.25f, 0.025f, pixelated: false,
-            styleIndex: 0);
+            styleIndex: 0, occluded: true);
     }
 
     [Fact]

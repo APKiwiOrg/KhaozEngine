@@ -49,6 +49,22 @@ public sealed class TargetOutlineApiTests
             sceneB.DrawMeshOutline(group, mesh, Matrix4x4.Identity));
     }
 
+    [Fact]
+    public void Group_keeps_its_occlusion_and_defaults_to_scene_depth()
+    {
+        using var device = new FakeGpuDevice();
+        using var scene = new Scene3D(device, Outputs);
+        scene.Begin();
+
+        MeshOutlineGroup occluded = scene.BeginMeshOutline(Color.White, 1.25f);
+        MeshOutlineGroup through = scene.BeginMeshOutline(Color.White, 1.25f, MeshOutlineOcclusion.None);
+
+        Assert.Equal(MeshOutlineOcclusion.SceneDepth, scene.MeshOutlineOcclusionAt(occluded.Index));
+        Assert.Equal(MeshOutlineOcclusion.None, scene.MeshOutlineOcclusionAt(through.Index));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            scene.BeginMeshOutline(Color.White, 1.25f, (MeshOutlineOcclusion)2));
+    }
+
     [Theory]
     [InlineData(float.NaN)]
     [InlineData(float.PositiveInfinity)]

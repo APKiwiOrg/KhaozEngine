@@ -5,6 +5,25 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.49.0
+
+A target outline group can draw its border through geometry, the way a screen-space marker reads.
+
+- `MeshOutlineOcclusion` chooses what may hide a group's border. `SceneDepth` (0, the default) keeps the existing
+  contract: opaque depth-writing geometry hides the covered target and the border beside it. `None` (1) draws the
+  border around the target's whole projected silhouette over every surface, and still never inside that silhouette.
+- `Scene3D.BeginMeshOutline(color, widthPixels, occlusion)` and the one-part
+  `DrawMeshOutline(mesh, world, color, widthPixels, occlusion)` add the choice. The existing overloads are
+  `SceneDepth`. An undefined value throws `ArgumentOutOfRangeException`.
+- `ITileWorldScene.BeginMeshOutline(color, widthPixels, occlusion)` defaults to the two-argument method, so an
+  older scene implementation keeps compiling and draws a scene-depth border. `Scene3DTileWorldScene` forwards it.
+- `TileWorldView.SetOutlinedObject` takes an optional `occlusion`, applied to the individual, LOD and selected HLOD
+  masks alike.
+- A `None` group skips the scene-depth visible mask pass. Its composite reads source coverage from the full union
+  with the same point, linear and mip sampling rules.
+- New goldens pin a partly walled target whose `None` border matches its unwalled border, and a fully hidden target
+  that gets a ring on the wall under `None` and nothing under `SceneDepth`.
+
 ## 18.48.2
 
 Audio follows a change of default output device and recovers a lost device instead of staying on the old output

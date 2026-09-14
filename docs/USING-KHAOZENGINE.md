@@ -6378,7 +6378,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.48.2" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.49.0" />
 ```
 
 ```csharp
@@ -11986,7 +11986,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.48.2" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.49.0" />
 ```
 
 ```csharp
@@ -12022,7 +12022,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.48.2" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.49.0" />
 ```
 
 ```csharp
@@ -12264,7 +12264,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.48.2" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.49.0" />
 ```
 
 ```csharp
@@ -13237,6 +13237,12 @@ vertex program, which does not reproduce the model pass depth bit for bit, so it
 bias of 2.5e-7 NDC plus one pixel of the surface's depth slope (18.48.1). An occluder closer to the target than
 that does not cut its rim.
 
+That depth contract is `MeshOutlineOcclusion.SceneDepth`, the default. Pass `MeshOutlineOcclusion.None` to
+`BeginMeshOutline(color, widthPixels, occlusion)` (18.49.0) for a border nothing hides, the way a screen-space
+marker reads. It follows the target's whole projected silhouette over walls, props and bodies in front of or
+behind it, and still never colours a pixel inside that silhouette, so an occluder shows through the ring. This
+mode skips the scene-depth visible pass.
+
 `widthPixels` is measured in physical final-framebuffer pixels and accepts finite values from 0.5 through 8.
 It does not change with model scale, camera distance, internal render scale, MSAA or SSAA. A group belongs to
 the scene and frame that created it. `Scene3D.Begin()` invalidates it. For a one-part target, call
@@ -13247,9 +13253,11 @@ world-noise coverage used by full, LOD1 and merged-HLOD crossfades. The visible 
 kept by that phase. The full projected union ignores partial dissolve so the noise holes do not gain borders.
 An entirely hidden phase contributes neither mask.
 
-For authored tile objects, `TileWorldView.SetOutlinedObject(objectId, color, widthPixels: 1.25f)` queues all
-active parts in one group until `ClearOutlinedObject()`. `ITileWorldScene.BeginMeshOutline` and
+For authored tile objects, `TileWorldView.SetOutlinedObject(objectId, color, widthPixels: 1.25f, occlusion)`
+queues all active parts in one group until `ClearOutlinedObject()`. `ITileWorldScene.BeginMeshOutline` and
 `DrawMeshOutline` default to an inert handle and a no-op so older custom scene implementations keep compiling.
+The occlusion overload of `BeginMeshOutline` defaults to the two-argument one, so an older implementation draws a
+scene-depth border.
 An implementation that supports outlines can construct its own `MeshOutlineGroup(int index)` and interpret
 the index when parts are submitted.
 Clustered tile objects reuse the live prop renderer's full and LOD1 dissolve decisions. Their selected HLOD
@@ -14359,7 +14367,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="18.48.2" />
+  <PackageReference Include="KhaozEngine.Automation" Version="18.49.0" />
 </ItemGroup>
 ```
 

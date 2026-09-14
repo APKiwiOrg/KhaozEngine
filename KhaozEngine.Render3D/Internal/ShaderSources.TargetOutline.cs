@@ -87,6 +87,7 @@ void main() {
     vec2 pixel = Params.xy;
     float width = Params.z + Mode.y;
     float backgroundDepth = Params.w;
+    bool throughGeometry = Mode.w > 0.5;
     float sceneAtDestination = texture(sampler2D(SceneDepth, PointSamp), uv).r;
     bool destinationIsBackground = abs(sceneAtDestination - backgroundDepth) < 0.00001;
     float coverage = 0.0;
@@ -98,6 +99,13 @@ void main() {
             float radial = clamp(width + 0.5 - length(pixelDistance), 0.0, 1.0);
             if (radial <= 0.0) continue;
             vec2 sourceUv = uv + vec2(x, y) * pixel;
+            if (throughGeometry) {
+                float full = Mode.x > 0.5
+                    ? textureLod(sampler2D(FullCoverage, PointSamp), sourceUv, 0.0).r
+                    : textureLod(sampler2D(FullCoverage, LinearSamp), sourceUv, Mode.z).r;
+                coverage = max(coverage, sqrt(full) * radial);
+                continue;
+            }
             float visible = Mode.x > 0.5
                 ? textureLod(sampler2D(VisibleCoverage, PointSamp), sourceUv, 0.0).r
                 : textureLod(sampler2D(VisibleCoverage, LinearSamp), sourceUv, Mode.z).r;

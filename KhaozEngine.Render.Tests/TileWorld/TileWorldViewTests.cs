@@ -593,6 +593,12 @@ public class TileWorldViewTests
         Assert.Equal(new GreyboxMeshResolver().Resolve(archetype)!.Count, group.Parts.Count);
         Assert.Equal(crimson, group.Color);
         Assert.Equal(1.25f, group.WidthPixels);
+        Assert.Equal(MeshOutlineOcclusion.SceneDepth, group.Occlusion);
+
+        scene.OutlineGroups.Clear();
+        view.SetOutlinedObject(target.Id, crimson, widthPixels: 1.25f, MeshOutlineOcclusion.None);
+        view.Draw(HouseFocus);
+        Assert.Equal(MeshOutlineOcclusion.None, Assert.Single(scene.OutlineGroups).Occlusion);
 
         scene.OutlineGroups.Clear();
         view.LoadRegion(TileRenderTestData.Region, TileRegionResidencyState.Decor);

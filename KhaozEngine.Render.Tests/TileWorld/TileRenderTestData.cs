@@ -370,12 +370,14 @@ public sealed class RecordedOutlineGroup
 {
     public KhaozEngine.Primitives.Color Color { get; }
     public float WidthPixels { get; }
+    public MeshOutlineOcclusion Occlusion { get; }
     public List<(MeshHandle Handle, Matrix4x4 World, float Dissolve, bool Complement)> Parts { get; } = new();
 
-    public RecordedOutlineGroup(KhaozEngine.Primitives.Color color, float widthPixels)
+    public RecordedOutlineGroup(KhaozEngine.Primitives.Color color, float widthPixels, MeshOutlineOcclusion occlusion)
     {
         Color = color;
         WidthPixels = widthPixels;
+        Occlusion = occlusion;
     }
 }
 
@@ -494,11 +496,16 @@ public sealed partial class RecordingTileWorldScene : ITileWorldScene
     /// <summary>Pixel-width outline groups created by the view this frame.</summary>
     public List<RecordedOutlineGroup> OutlineGroups { get; } = new();
 
+    /// <summary>Creates one scene-depth recording group.</summary>
+    public MeshOutlineGroup BeginMeshOutline(KhaozEngine.Primitives.Color color, float widthPixels) =>
+        BeginMeshOutline(color, widthPixels, MeshOutlineOcclusion.SceneDepth);
+
     /// <summary>Creates one recording group that custom seam implementations can identify by handle index.</summary>
-    public MeshOutlineGroup BeginMeshOutline(KhaozEngine.Primitives.Color color, float widthPixels)
+    public MeshOutlineGroup BeginMeshOutline(KhaozEngine.Primitives.Color color, float widthPixels,
+        MeshOutlineOcclusion occlusion)
     {
         int index = OutlineGroups.Count;
-        OutlineGroups.Add(new RecordedOutlineGroup(color, widthPixels));
+        OutlineGroups.Add(new RecordedOutlineGroup(color, widthPixels, occlusion));
         return new MeshOutlineGroup(index);
     }
 

@@ -22,12 +22,14 @@ public sealed class TileWorldTargetOutlineLodTests
             new TileWorldViewOptions { PropLayers = new[] { TreeLayer() } },
             new TileWorldBuildQueueOptions { MaxHlodAppliesPerPump = 4 }, new ImmediateDispatcher());
         view.LoadRegion(TileRenderTestData.Region);
-        view.SetOutlinedObject(tree.Id, new KhaozEngine.Primitives.Color(1f, 0f, 0f, 1f));
+        view.SetOutlinedObject(tree.Id, new KhaozEngine.Primitives.Color(1f, 0f, 0f, 1f),
+            occlusion: MeshOutlineOcclusion.None);
         var placement = new Vector3(25.5f, 0f, -25.5f);
 
         view.Draw(placement + new Vector3(64f, 0f, 0f));
 
         RecordedOutlineGroup lod = Assert.Single(scene.OutlineGroups);
+        Assert.Equal(MeshOutlineOcclusion.None, lod.Occlusion);
         Assert.Equal(2, lod.Parts.Count);
         Assert.Contains(lod.Parts, part => !part.Complement && MathF.Abs(part.Dissolve - 0.5f) < 0.001f);
         Assert.Contains(lod.Parts, part => part.Complement && MathF.Abs(part.Dissolve - 0.5f) < 0.001f);
@@ -37,6 +39,7 @@ public sealed class TileWorldTargetOutlineLodTests
         view.Draw(regionCenter + new Vector3(192f, 0f, 0f));
 
         RecordedOutlineGroup hlod = Assert.Single(scene.OutlineGroups);
+        Assert.Equal(MeshOutlineOcclusion.None, hlod.Occlusion);
         Assert.Contains(hlod.Parts, part => part.Complement);
         Assert.Contains(hlod.Parts, part => !part.Complement);
         Assert.True(scene.MeshLoads.Count > 0, "selected HLOD mask mesh was not uploaded");

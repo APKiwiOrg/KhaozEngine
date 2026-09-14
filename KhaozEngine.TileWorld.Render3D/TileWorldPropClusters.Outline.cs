@@ -19,7 +19,7 @@ public sealed partial class TileWorldPropClusters
     bool _outlineHlodCached;
 
     internal bool DrawOutline(TileRegionProps regionProps, long objectId, Vector3 focus, Color color,
-        float widthPixels)
+        float widthPixels, MeshOutlineOcclusion occlusion)
     {
         foreach (KeyValuePair<string, TilePropLayerSnapshot> item in regionProps.Layers)
         {
@@ -31,7 +31,7 @@ public sealed partial class TileWorldPropClusters
             if (!_outlineSnapshots.TryGetValue(key,
                 out SortedDictionary<long, TilePropLayerSnapshot>? generations)) return true;
 
-            MeshOutlineGroup group = _scene.BeginMeshOutline(color, widthPixels);
+            MeshOutlineGroup group = _scene.BeginMeshOutline(color, widthPixels, occlusion);
             if (state.DrawsIndividuals
                 && generations.TryGetValue(state.IndividualSourceGeneration, out TilePropLayerSnapshot? individual))
             {

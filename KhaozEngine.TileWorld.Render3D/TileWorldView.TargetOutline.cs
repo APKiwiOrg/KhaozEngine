@@ -10,18 +10,25 @@ public sealed partial class TileWorldView
     long _outlinedObject;
     Color _outlineColor;
     float _outlineWidthPixels;
+    MeshOutlineOcclusion _outlineOcclusion;
 
     /// <summary>The default selected-object outline width in physical framebuffer pixels.</summary>
     public const float DefaultOutlineWidthPixels = 1.25f;
 
     /// <summary>Outlines one authored object's projected union every frame until cleared.</summary>
+    /// <param name="objectId">The authored object to outline.</param>
+    /// <param name="color">The border colour.</param>
+    /// <param name="widthPixels">The border width in physical framebuffer pixels.</param>
+    /// <param name="occlusion">What may hide the border. Scene depth hides it by default.</param>
     public void SetOutlinedObject(long objectId, Color color,
-        float widthPixels = DefaultOutlineWidthPixels)
+        float widthPixels = DefaultOutlineWidthPixels,
+        MeshOutlineOcclusion occlusion = MeshOutlineOcclusion.SceneDepth)
     {
         if (_outlinedObject != objectId) _propClusters.ClearOutlineSelection();
         _outlinedObject = objectId;
         _outlineColor = color;
         _outlineWidthPixels = widthPixels;
+        _outlineOcclusion = occlusion;
     }
 
     /// <summary>Stops drawing the selected object's pixel-width outline.</summary>
@@ -41,7 +48,7 @@ public sealed partial class TileWorldView
         if (_catalogs.Archetype(archetypeId) is not { } archetype) return;
         if (archetype.IsRoof && IsRoofHidden(TileFootprint.Of(archetype, o.X, o.Z, o.Rotation), o.Plane)) return;
         if (_propClusters.DrawOutline(handles.Props[o.Plane], o.Id, focus, _outlineColor,
-            _outlineWidthPixels)) return;
+            _outlineWidthPixels, _outlineOcclusion)) return;
         if (!_propMeshes.TryGetValue(archetypeId, out IReadOnlyList<MeshHandle>? parts)) return;
         Vector3 at = TileObjectProps.AnchorPosition(_doc, archetype, o);
         float dx = at.X - focus.X;
@@ -49,7 +56,7 @@ public sealed partial class TileWorldView
         if (dx * dx + dz * dz > _options.PropDrawRadius * _options.PropDrawRadius) return;
         Matrix4x4 world = Matrix4x4.CreateRotationY(TileObjectProps.YawRadians(archetype, o.Rotation))
             * Matrix4x4.CreateTranslation(at);
-        MeshOutlineGroup group = _scene.BeginMeshOutline(_outlineColor, _outlineWidthPixels);
+        MeshOutlineGroup group = _scene.BeginMeshOutline(_outlineColor, _outlineWidthPixels, _outlineOcclusion);
         for (int i = 0; i < parts.Count; i++)
             _scene.DrawMeshOutline(group, parts[i], world);
     }

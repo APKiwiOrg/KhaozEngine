@@ -180,6 +180,83 @@ public sealed class TargetOutlineGoldenTests
             }, frames: 2);
     }
 
+    [GpuFact]
+    public void Golden3D_TargetOutline_ThroughGeometryDrawsTheUnoccludedBorderOverANearWall()
+    {
+        AssertThroughGeometry(AntiAliasing.Off);
+        AssertThroughGeometry(AntiAliasing.Msaa(4));
+    }
+
+    [GpuFact]
+    public void Golden3D_TargetOutline_ThroughGeometryRingsATargetAWallHidesCompletely()
+    {
+        byte[] baseline = CaptureBehindWall(outlined: false, MeshOutlineOcclusion.None, CoveringWall, AntiAliasing.Off);
+        byte[] occluded = CaptureBehindWall(outlined: true, MeshOutlineOcclusion.SceneDepth, CoveringWall,
+            AntiAliasing.Off);
+        byte[] through = CaptureBehindWall(outlined: true, MeshOutlineOcclusion.None, CoveringWall, AntiAliasing.Off);
+
+        int rim = 0;
+        for (int i = 0; i < baseline.Length; i += 4)
+        {
+            Assert.False(IsBody(baseline, i), $"the covering wall left target pixel {i / 4} visible");
+            if (!IsRim(through, i)) continue;
+            rim++;
+            Assert.True(IsBlue(baseline, i), $"through-geometry border missed the wall at pixel {i / 4}");
+        }
+        Assert.Equal(baseline, occluded);
+        Assert.True(rim > 60, $"hidden target drew only {rim} through-geometry border pixels");
+    }
+
+    static readonly Matrix4x4 NearWall = Matrix4x4.CreateScale(0.7f, 2.6f, 0.5f)
+        * Matrix4x4.CreateTranslation(0.6f, 1.3f, 1.1f);
+    static readonly Matrix4x4 CoveringWall = Matrix4x4.CreateScale(4.5f, 5f, 0.5f)
+        * Matrix4x4.CreateTranslation(0f, 1.2f, 1.3f);
+
+    static void AssertThroughGeometry(AntiAliasing antiAliasing)
+    {
+        byte[] open = CaptureBehindWall(outlined: false, MeshOutlineOcclusion.None, null, antiAliasing);
+        byte[] openOutlined = CaptureBehindWall(outlined: true, MeshOutlineOcclusion.None, null, antiAliasing);
+        byte[] walled = CaptureBehindWall(outlined: false, MeshOutlineOcclusion.None, NearWall, antiAliasing);
+        byte[] through = CaptureBehindWall(outlined: true, MeshOutlineOcclusion.None, NearWall, antiAliasing);
+
+        int onWall = 0;
+        for (int i = 0; i < open.Length; i += 4)
+        {
+            if (IsBody(open, i))
+                Assert.True(SamePixel(walled, through, i), $"border drew inside the target silhouette at pixel {i / 4}");
+            if (!IsRim(openOutlined, i)) continue;
+            Assert.False(SamePixel(walled, through, i), $"wall cut the through-geometry border at pixel {i / 4}");
+            if (IsBlue(walled, i)) onWall++;
+        }
+        Assert.True(onWall > 20, $"only {onWall} border pixels crossed the near wall");
+    }
+
+    static byte[] CaptureBehindWall(bool outlined, MeshOutlineOcclusion occlusion, Matrix4x4? wallWorld,
+        AntiAliasing antiAliasing)
+    {
+        MeshHandle target = default;
+        MeshHandle wall = default;
+        return Render3DSnapshot.Capture(W, H,
+            setup: scene =>
+            {
+                Configure(scene, antiAliasing);
+                target = scene.LoadMesh(MeshPrimitives.Box(1f));
+                wall = scene.LoadMesh(MeshPrimitives.Box(1f));
+            },
+            drawFrame: scene =>
+            {
+                Matrix4x4 targetWorld = Matrix4x4.CreateScale(1.5f, 2f, 0.8f)
+                    * Matrix4x4.CreateTranslation(0f, 1f, 0f);
+                scene.Draw(target, targetWorld, Body, Material.Glowing(Body));
+                if (outlined) scene.DrawMeshOutline(target, targetWorld, Rim, 1.25f, occlusion);
+                if (wallWorld is { } world)
+                {
+                    var blue = new Color(0f, 0.2f, 1f, 1f);
+                    scene.Draw(wall, world, blue, Material.Glowing(blue));
+                }
+            }, frames: 2);
+    }
+
     static byte[] CaptureCloseWall(bool outlined)
     {
         MeshHandle target = default;

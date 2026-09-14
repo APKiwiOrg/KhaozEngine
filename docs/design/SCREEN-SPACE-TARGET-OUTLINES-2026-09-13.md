@@ -77,6 +77,11 @@ whole grazing silhouette edges on real meshes and changed them as the camera cre
 no-depth-test ceiling for a real conifer across distance, world offset and MSAA, and it keeps the unbiased depth
 for the composite's destination test.
 
+Addition in 18.49.0: a group chooses `MeshOutlineOcclusion`. `SceneDepth` is the contract above. `None` is for a
+game that wants the border to read like a screen-space marker through walls. Its composite takes source coverage
+from the full union instead of the visible mask and skips both depth checks, so the visible pass is not drawn.
+The occupied-centre rule still holds, so the border stays outside the whole silhouette.
+
 ## Implementation plan
 
 > Agent execution uses the subagent-driven-development workflow, with parent review and integration.

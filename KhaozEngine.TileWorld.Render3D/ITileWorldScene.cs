@@ -119,6 +119,11 @@ public interface ITileWorldScene
     /// <summary>Starts one frame-local pixel-width outline group. Defaults to an inert handle for an older scene.</summary>
     MeshOutlineGroup BeginMeshOutline(Color color, float widthPixels) => default;
 
+    /// <summary>Starts one frame-local pixel-width outline group whose border <paramref name="occlusion"/> may hide.
+    /// Defaults to the scene-depth group for a scene written before the choice existed.</summary>
+    MeshOutlineGroup BeginMeshOutline(Color color, float widthPixels, MeshOutlineOcclusion occlusion) =>
+        BeginMeshOutline(color, widthPixels);
+
     /// <summary>Adds one mesh part to a pixel-width outline group. Defaults to a no-op for an older scene.</summary>
     void DrawMeshOutline(MeshOutlineGroup group, MeshHandle handle, Matrix4x4 world) { }
 
@@ -169,6 +174,10 @@ public sealed class Scene3DTileWorldScene : ITileWorldScene
     /// <inheritdoc />
     public MeshOutlineGroup BeginMeshOutline(Color color, float widthPixels) =>
         _scene.BeginMeshOutline(color, widthPixels);
+
+    /// <inheritdoc />
+    public MeshOutlineGroup BeginMeshOutline(Color color, float widthPixels, MeshOutlineOcclusion occlusion) =>
+        _scene.BeginMeshOutline(color, widthPixels, occlusion);
 
     /// <inheritdoc />
     public void DrawMeshOutline(MeshOutlineGroup group, MeshHandle handle, Matrix4x4 world) =>

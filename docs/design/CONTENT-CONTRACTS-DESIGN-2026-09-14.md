@@ -1073,3 +1073,257 @@ Forty bytes against the 512 cap is 8 percent. Against Grimhollow's current 18-by
 (`b-grimhollow.md:1044-1054`) it is 2.2 times over, which is the concrete number saying a bank of affixed
 items cannot sync as one message and must be paged. That is not a surprise, it is the arithmetic behind
 Scope B's paged-container requirement.
+
+## 10. Validation outcomes
+
+### 10.1 The three outcomes
+
+Every durable record carrying content ids resolves, on load, to exactly one of three outcomes. There is no
+fourth, and in particular there is no "dropped".
+
+**Valid.** Every id resolves in the active version, every field parses, every cross-reference holds. The
+record is used as read and the page is not dirtied.
+
+**Remapped.** The page's stamp is older than at least one remap rule and the rules changed something
+(section 8.3). The record is usable. The page is marked DIRTY IN MEMORY and is rewritten with the new stamp
+on its NEXT ordinary commit, not eagerly.
+
+**Quarantined.** Something did not resolve or did not parse. The record is kept, unusable.
+
+### 10.2 Quarantine, precisely
+
+A quarantined record's BYTES ARE KEPT VERBATIM in a wrapper record carrying the original bytes, a reason
+code (the tokens of section 9.7, plus `unknown-definition` and `unknown-content-reference`), and the
+content version number the record was stamped with when it failed. Nothing is truncated, nothing is
+normalized and nothing is re-encoded.
+
+The item is displayed as a PLACEHOLDER. It is unusable, untradeable and undroppable. It cannot be equipped,
+socketed, crafted with, sold or destroyed. It can be moved between slots, because moving it does not depend
+on understanding it and a player who cannot move it cannot tidy a bag.
+
+An alert fires, and both halves are named here so a spec cannot invent its own:
+
+- Counter `khaoz.content.quarantined_records`, dimensioned by content type id and reason code.
+- Log line under category `ContentValidation`, at Warning, naming the reason code, the stamped version, the
+  active version and the record's owning stream key. It NEVER logs the payload bytes or a raw account id,
+  which is the journal design's operations rule (`DURABLE-PLAYER-JOURNAL-DESIGN-2026-09-06.md:657-660`).
+
+The precedent is `ItemContainerCodec.Validate` returning a `string?` quarantine reason rather than
+throwing, whose doc says false is the caller's cue to seat a fresh container
+(`KhaozEngine.Items/ItemContainerCodec.cs:43-44`, `a-engine.md:103-124`). This contract goes further: a
+fresh container is not acceptable for an owned item, because seating a fresh one loses it. Grimhollow's
+current behaviour is the opposite extreme, a hard THROW on an unknown item id
+(`GrimhollowJournalContracts.cs:483-524`, `b-grimhollow.md:545-556`), which turns one bad id into a player
+who cannot log in. Quarantine sits between the two on purpose.
+
+### 10.3 Why remapped pages are lazy
+
+A remapped page is rewritten on its next commit, not on load.
+
+The eager alternative is to rewrite every touched page at boot. It was considered and rejected on the
+journal's own numbers: a commit rewrites a changed section WHOLE
+(`JournalProjectionWrite`, `a-engine.md:437-460`), the recorded SQLite baseline is 698 commits per second
+with 42,365 bytes allocated per operation
+(`a-engine.md:607-641`), and the admitted queue admits one operation per stream at a time with a default
+depth of 8 (`a-engine.md:492-534`). Eagerly rewriting every player's pages on the first boot after a
+content publish would be a write storm proportional to the whole player base, arriving exactly when the
+server is coldest, for a change that is invisible until someone logs in.
+
+Lazy costs one thing: a page can sit remapped-in-memory across a session and be lost on a crash, which
+simply means it is remapped again on the next load. That is safe because the rule set is idempotent
+(section 8.3).
+
+### 10.4 The one validator
+
+ONE validator implementation is shared by publish, server boot and tests. Its contract shape:
+
+```
+ContentValidationReport Validate(ContentSnapshot candidate, IReadOnlyList<RemapRule> rules)
+```
+
+- INPUT is a complete candidate snapshot plus the full ordered rule set. Nothing is read from a database,
+  a file or an ambient static inside it.
+- OUTPUT is a report: a bool plus an ordered list of findings, each carrying a content type id, an id, a
+  code and a message. It accumulates rather than stopping at the first, following
+  `JsonSchemaValidator.ValidationReport(bool IsValid, IReadOnlyList<string> Errors)` and its
+  run-to-the-end sweep (`KhaozEngine.Content/JsonSchemaValidator.cs:11-101`, `a-engine.md:275-292`).
+- NO SIDE EFFECTS. It does not log, does not mutate the candidate, does not touch a counter and does not
+  throw for content reasons. A throw from it is a bug in the validator.
+
+Because it is pure and takes its whole world as an argument, a test builds a snapshot in memory and asserts
+on findings, publish runs it before writing anything, and boot runs it against the loaded pack. Ruinborne's
+catalog loader is the shape this avoids: validation lives inside the SQL read delegate, so an
+`ArgumentException` from a bad row is routed to the connectivity failure handler and reported as
+`Item catalog: SQL read failed`, which sends an operator looking at the network
+(`c-ruinborne.md:176-196`, `c-ruinborne.md:481-501`).
+
+### 10.5 Fail closed at boot
+
+A missing or invalid active content version FAILS THE BOOT. There is no runtime fallback to code defaults
+(#882 body, item 8). The process exits non-zero with the validator's findings on stderr.
+
+This is stated as a contract because the consumer precedent is the opposite: Ruinborne's loader falls back
+to five hardcoded code defaults on any failure, announces it with a `Console.WriteLine`, and serves a
+different catalog than the database holds with no metric, no exit code and no refusal to admit joins
+(`c-ruinborne.md:176-196`, `c-ruinborne.md:1030-1038`). A silent fallback catalog is worse than an outage,
+because an outage is noticed.
+
+**Expensive to change once data exists: no.** All three outcomes and the fail-closed rule are runtime
+behaviour over a fixed byte format. The QUARANTINE WRAPPER's own encoding is durable, so it gets a version
+byte like everything else in section 15.
+
+## 11. Visibility vocabularies
+
+### 11.1 Two vocabularies, deliberately different
+
+**Property visibility**, per property KIND, three levels ordered least to most visible:
+
+| Level | Meaning |
+|---|---|
+| `ServerOnly` | Never leaves the server. Not in any snapshot, not in any tooltip. |
+| `OwnerOnly` | Sent to the item's owner. Not to anyone else. |
+| `Everyone` | Sent to any viewer who can see the item at all. |
+
+**Content visibility**, per content TYPE and per FIELD, two levels:
+
+| Level | Meaning |
+|---|---|
+| `Client` | Travels in the client manifest. |
+| `ServerOnly` | Server manifest only. |
+
+They are different because they answer different questions. A property level is about ONE PLAYER'S item
+relative to ONE VIEWER. A content level is about whether a row belongs in the pack a client downloads at
+all. Collapsing them into one enum would force a drop table (server only content) and an unidentified
+affix (owner only property) to share a word, and they have nothing to do with each other.
+
+### 11.2 The replication rule
+
+A viewer receives a field if and only if its kind's visibility is AT OR BELOW the viewer's level for that
+item. The viewer's level is `Everyone` normally and `OwnerOnly` when the viewer owns the item. Nothing is
+ever `ServerOnly` on the wire.
+
+**Tooltips follow the same rule, using the same evaluation.** There is exactly one function answering "may
+this viewer see this field", and both the replication filter and the tooltip builder call it. A tooltip
+that computed its own answer is how a client eventually renders something the server never sent.
+
+This is new machinery and the contract says so. Every existing filter in the engine is PER ENTITY, a
+`HashSet<long>` of net ids handed to `SnapshotWriter.WriteFiltered`, and the component write delegates
+registered at `TileProtocol.Components.cs:122` take `(value, BinaryWriter)` with NO viewer argument, so a
+component physically cannot serialize differently per recipient today (`a-engine.md:952-981`,
+`a-engine.md:1497-1514`). The one per-recipient rule that exists, `PickupState.OwnerNetId`, gates the
+COLLECT OFFER rather than the replication. So Scope B needs either a viewer-aware write delegate or a
+per-viewer projection of the payload before it reaches the writer, and this contract owns only the RULE,
+not which of the two.
+
+The cheap implementation note, because it affects the byte format and therefore belongs here: since fields
+are sorted ascending by kind and the ranges in section 9.2 are fixed, a spec MAY assign kind ids so that
+visibility is monotonic in the kind id, which makes the owner-only projection a prefix truncation rather
+than a re-encode. This contract does not require that, because it would couple the kind ranges to the
+visibility vocabulary forever, and it is worth measuring first.
+
+### 11.3 The two manifest rules
+
+- The CLIENT manifest OMITS every `ServerOnly` chunk, and omits every `ServerOnly` FIELD from the rows in
+  the chunks it does carry. Its hash is computed over what it actually contains (section 7.3), so a client
+  can verify what it downloaded.
+- The publish validator REFUSES a `ServerOnly` field appearing in a `Client` chunk. That is a publish-time
+  error, not a warning and not a strip, because a silent strip means the field's absence is indistinguishable
+  from an authoring mistake.
+
+Drop tables and stores are the motivating cases. The owner put them in the same versioned content as items
+and called it important (#882 comment 2), and a drop table is exactly the content a client must not have.
+
+**Expensive to change once data exists: yes for the level count, no for a field's assigned level.**
+Changing a field from `Everyone` to `OwnerOnly` is a publish. Adding a fourth property level changes the
+comparison every replication and tooltip site performs.
+
+**Open question for the owner.** Whether an unidentified item is an `OwnerOnly` case or its own mechanic.
+Recommended default: its own mechanic, built on `OwnerOnly` rather than replacing it, because
+"unidentified" also has to hide fields from the OWNER, which is a fourth level the three above deliberately
+do not have.
+
+## 12. Localization key conventions
+
+### 12.1 The derivation
+
+A content string's key is derived MECHANICALLY from the content type key, the row key and the field name:
+
+```
+<type key>.<content key>.<field>
+```
+
+Examples, using the two consumers' real content: `item.stone_sword.name`, `item.stone_sword.examine`,
+`mod.fine_crafted.line`, `rareword.gloom.text`, `store.general.name`, `node.oak_tree.examine`.
+
+Derivation rather than authoring, because an authored key rots independently of the row it names.
+Grimhollow's does already: `ItemPineLogs = "item.pinelogs.name"` and `ItemOakLogs = "item.oaklogs.name"`
+drop the underscore every other key keeps, so the key is NOT derivable from the item's config key today
+(`b-grimhollow.md:765-772`). Two rows out of thirty-five is enough to make every downstream tool do a
+lookup instead of a concatenation.
+
+### 12.2 Character rules
+
+The type key and the content key follow section 5.3 (`a-z`, `0-9`, `_`, ordinal, 64 characters). The field
+name follows the same set and is drawn from a fixed per-type list declared at registration, so `name`,
+`examine` and `line` are the type's vocabulary rather than free text. The dot is therefore unambiguous:
+it never appears inside a segment, so a key splits on it exactly.
+
+Total key length is bounded at 192 characters, which is three 64 character segments plus the two dots.
+`StringId` accepts any non-empty string with ordinal equality (`KhaozEngine.App/StringId.cs:11-41`), so the
+bound is this contract's, not the engine's.
+
+### 12.3 Composed names
+
+A name assembled from localized parts (a rare item's prefix, base and suffix) is a TEMPLATE in content plus
+KEYS for the parts. The template is a localizable string in its own right, because word order differs by
+language and a concatenation in code cannot be translated.
+
+```
+template key:  item.name_template.rare        -> "{0} {1} {2}"
+parts:         rareword.gloom.text, item.greatsword.name, rareword.of_bloodshed.text
+```
+
+Resolution goes through `IStringCatalog.Format`, which is `string.Format(CurrentUICulture, Get(key),
+args)`, and a malformed template falls back to the unformatted template rather than taking the process
+down. That fallback exists because a template is translator-authored CONTENT arriving as data rather than
+a caller bug, and Gui resolves inside the frame loop with nothing above it to catch
+(`KhaozEngine.App/IStringCatalog.cs:28-49`, `a-engine.md:1097-1112`). Content-authored templates are
+exactly the case that doc was written for, so the contract adopts `SafeFormat` on this path explicitly.
+
+### 12.4 Where content strings live and how they layer
+
+Per-language TEXT CHUNKS in the pack, one chunk set per language, listed in the manifest with their own
+chunk hashes so a client downloads only the languages it wants (#882 body, item 6 and item 9).
+
+They are loaded into an `IStringCatalog` LAYERED OVER the game's existing .resx catalog:
+
+1. The content catalog is asked first.
+2. On a miss, the game's .resx catalog is asked.
+3. On a miss there, the standard behaviour applies: `Get` returns THE KEY ITSELF as a visible non-fatal
+   placeholder, never a throw (`KhaozEngine.App/IStringCatalog.cs:12-17`).
+
+Content first, because content is the thing that ships without a client release (#882 comment 2), so a
+content string must be able to override a stale shipped one. The engine's catalog loading today is .resx
+satellite assemblies with no JSON loader, no hot reload and no per-pack merge
+(`a-engine.md:1128-1133`), so the layered catalog is new code and the contract names the order so both
+specs assume the same one.
+
+### 12.5 Grimhollow's two non-conforming keys
+
+`item.pinelogs.name` and `item.oaklogs.name` are RENAMED at adoption to `item.pine_logs.name` and
+`item.oak_logs.name`. They are not special-cased, not aliased and not exempted.
+
+A rename is one line in the .resx and one constant in `GrimhollowStrings.cs`, and the existing reflection
+test walks every declared key constant against the shipped catalog so a half-done rename goes red
+immediately (`b-grimhollow.md:773-780`). Special-casing them would mean the engine's derivation carries a
+per-consumer exception table forever, for two rows. The rename is tracked in
+[Grimhollow #222](https://github.com/APKiwiOrg/Grimhollow/issues/222).
+
+**Expensive to change once data exists: no.** Localization keys name TEXT, not durable player state. A key
+change is a content edit plus a catalog edit, and a miss degrades to a visible placeholder rather than a
+failure. That is precisely why the rename is affordable and the special case is not.
+
+**Open question for the owner.** Whether the engine ships a per-language text chunk for languages the game
+does not, so content can be translated ahead of the client. Recommended default: yes, since the chunks are
+per language and independently addressed, and a language the client has no font for is a presentation
+problem rather than a content one.

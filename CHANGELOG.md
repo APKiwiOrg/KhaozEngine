@@ -5,6 +5,22 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.48.1
+
+Target outlines reach the whole silhouette of a real mesh and hold still as the camera moves (#885).
+
+- The visible target mask is re-rasterized through `TargetOutlineMaskVert` and depth-tested against the depth the
+  instanced model program wrote. The two programs are not position-invariant under Metal fast math, and the depth
+  mismatch grows with the slope of the grazing faces that form a silhouette. An unbiased `LessEqual` rejected whole
+  silhouette edges, so no rim was drawn beside them, and sub-centimetre camera moves changed which edges failed.
+- `TargetOutlineVisibleMaskFrag` now writes `gl_FragCoord.z - (2.5e-7 + fwidth(gl_FragCoord.z))` as its test depth.
+  The resolved target depth the composite reads stays unbiased, so the destination occlusion test is unchanged. An
+  opaque occluder closer to the target surface than that bias no longer cuts its rim.
+- On a real conifer under a perspective camera the rim reached as little as 79 percent of the silhouette boundary
+  before and reaches the no-depth-test ceiling after, at 9.6 to 56 m, at world offsets 0 and 190 m, with AA off and
+  MSAA 4.
+- `TargetOutlinePerspectiveGoldenTests` pins it with a tiered cone conifer across ten sub-centimetre camera steps.
+
 ## 18.48.0
 
 Render2D draws convex polygon fills and mitred strokes, so a translucent outline no longer double-blends at its

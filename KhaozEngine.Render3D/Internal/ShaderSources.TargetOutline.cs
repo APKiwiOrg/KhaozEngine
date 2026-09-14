@@ -58,6 +58,10 @@ void main() {
     }
     oCoverage = vec2(1.0, 0.0);
     oDepth = gl_FragCoord.z;
+    // The scene wrote this surface's depth through the model program, and this program does not reproduce it
+    // bit for bit. The mismatch grows with the depth slope of the grazing faces that form a silhouette, so the
+    // test against the scene depth takes a constant plus a slope-scaled bias. The composite keeps the true depth.
+    gl_FragDepth = gl_FragCoord.z - (2.5e-7 + fwidth(gl_FragCoord.z));
 }";
 
     public const string TargetOutlineCompositeFrag = @"#version 450

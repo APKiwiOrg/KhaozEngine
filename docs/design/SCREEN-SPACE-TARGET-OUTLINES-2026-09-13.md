@@ -70,6 +70,13 @@ MSAA and render scaling are correctness requirements. The ordinary scene depth M
 depth and can contain resolved edge values. Mask mapping uses the same final blit convention and
 point samples. A large depth epsilon is not an acceptable substitute for matching coverage.
 
+Revision in 18.48.1 (https://github.com/APKiwiOrg/KhaozEngine/issues/885): the visible mask's own vertex program
+and the model program are not position-invariant under Metal fast math, so an unbiased `LessEqual` test dropped
+whole grazing silhouette edges on real meshes and changed them as the camera crept. The visible pass now writes
+`gl_FragCoord.z - (2.5e-7 + fwidth(gl_FragCoord.z))` as its test depth. That is the smallest bias that reached the
+no-depth-test ceiling for a real conifer across distance, world offset and MSAA, and it keeps the unbiased depth
+for the composite's destination test.
+
 ## Implementation plan
 
 > Agent execution uses the subagent-driven-development workflow, with parent review and integration.

@@ -13232,7 +13232,10 @@ scene.DrawMeshOutline(outline, rightArm, rightArmWorld);
 All parts in the group form one projected union. Overlapping limbs, material parts and canopy masses do not
 create internal strokes. Alpha-cutout holes remain real silhouette holes. Opaque depth-writing scene geometry
 hides both the selected target and its border without introducing a line at the occluder's cut. Transparent
-water and particles do not participate in that depth contract.
+water and particles do not participate in that depth contract. The visible mask is re-rasterized through its own
+vertex program, which does not reproduce the model pass depth bit for bit, so its test against scene depth takes a
+bias of 2.5e-7 NDC plus one pixel of the surface's depth slope (18.48.1). An occluder closer to the target than
+that does not cut its rim.
 
 `widthPixels` is measured in physical final-framebuffer pixels and accepts finite values from 0.5 through 8.
 It does not change with model scale, camera distance, internal render scale, MSAA or SSAA. A group belongs to

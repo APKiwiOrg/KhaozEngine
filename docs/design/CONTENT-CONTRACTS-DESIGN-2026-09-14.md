@@ -1327,3 +1327,254 @@ failure. That is precisely why the rename is affordable and the special case is 
 does not, so content can be translated ahead of the client. Recommended default: yes, since the chunks are
 per language and independently addressed, and a language the client has no font for is a presentation
 problem rather than a content one.
+
+## 13. Stat definition shape
+
+### 13.1 A stat is content
+
+| Field | Type | Notes |
+|---|---|---|
+| `StatId` | `int` | Section 5's id space, type `stat`. 0 is none. |
+| `Key` | string | Section 5.3 rules. |
+| `Scale` | `int` | A fixed power of ten. The stored integer is the value times `Scale`. |
+| `Min`, `Max` | `int` | Inclusive clamp, in scaled units. |
+| `Tags` | ordered list of tag ids | Authored order preserved, per section 9.5's reasoning. |
+| `DisplayFormatKey` | string | A localization key, section 12. |
+
+The VALUE KIND is integer with a fixed scale, always. `Scale = 100` gives two decimal places, which is what
+a percent-of-a-percent needs. There is no float stat and no float modifier anywhere in the content system.
+
+### 13.2 Combine kinds and the evaluation formula
+
+Three kinds, and exactly three:
+
+- `Flat`, summed.
+- `Increased`, an ADDITIVE percent pool. All `Increased` from every source are summed, then applied once.
+- `More`, a MULTIPLICATIVE percent. Each `More` applies as its own factor.
+
+The formula, in integer math, evaluated per stat in this order:
+
+```
+flat      = Base + sum(Flat)                                   // scaled units
+increased = 10000 + sum(IncreasedBasisPoints)                  // 10000 == 100 percent
+value     = (flat * increased + 5000) / 10000                  // round half up
+for each More m, in ascending (SourceOrder, ModifierIndex):
+    value = (value * (10000 + m.BasisPoints) + 5000) / 10000   // round half up
+value     = clamp(value, Min, Max)
+```
+
+Percentages are BASIS POINTS, integers where 10,000 is 100 percent. `+ 5000` before the divide is round
+half up, the same shape as the roll formula in section 6.4, so there is one rounding rule in the whole
+system rather than two.
+
+The `More` loop order is FIXED and stated because multiplication of integers with rounding at each step is
+NOT associative: `(a * x) * y` and `(a * y) * x` can differ by one unit. Ordering by (source order,
+modifier index) makes the fold reproducible. That is the same reason `StatSet` documents its insertion
+order as load bearing and deliberately rejected a `Dictionary`
+(`KhaozEngine.Stats/StatSet.cs:22-31`, `a-engine.md:212-228`), and this contract inherits the argument
+while changing the arithmetic from float to integer.
+
+Intermediate arithmetic is done in `long` and the result is checked into `int` before the clamp, so a
+pathological modifier set saturates at the clamp rather than overflowing.
+
+### 13.3 The relation to today's `StatSet`
+
+`StatSet` today is dense `float` channels with exactly two modifier kinds, folded as
+`(Base + sum Flat) * max(1 + sum Percent, MinimumScale)`, with the channel index allocated and named
+entirely by the game and no stat id, no registry and no metadata
+(`KhaozEngine.Stats/StatSet.cs:232-233`, `KhaozEngine.Stats/StatModifier.cs:13`, `a-engine.md:164-237`).
+
+**Contract: the new evaluator REPLACES `StatSet` for content-driven stats. `StatSet` stays, unchanged, for
+games that do not adopt content stats.** The two coexist as siblings, and a game uses one or the other for
+a given stat, never both.
+
+The contested alternative is to keep `StatSet` and have a game map stat ids to channels, so it is scored.
+
+| Criterion | Map ids onto `StatSet` | New integer evaluator | 
+|---|---|---|
+| Determinism between client and server | 2 | 10 |
+| Supports `More` without a breaking change to `StatModifier` | 3 | 10 |
+| Clamp, tags and conditions | 2 | 9 |
+| Cost to build | 9 | 4 |
+| Keeps the bit-for-bit add-then-remove restore property | 6 | 9 |
+| Consumer churn | 8 | 4 |
+| Total | 30 | 46 |
+
+Recommendation: the new evaluator. The mapping option wins on cost and loses on the two things that
+matter. Adding a `More` kind to `StatModifier` is a breaking change to a shipped struct, and the engine's
+own survey says so (`a-engine.md:1558-1571`). More decisively, `StatSet` is float, and float is exactly
+what section 13.4 forbids on this path.
+
+`StatSet` is NOT deprecated by this. It remains the right kernel for a game whose stats are a handful of
+channels with no client-server agreement requirement, and its remarks about fold order and running totals
+stay true.
+
+### 13.4 The determinism rule
+
+**No floating point anywhere a client and a server must agree.** Every stat value, every modifier, every
+roll, every threshold and every displayed number on this path is an integer.
+
+The reason is not style. A client computes a tooltip and a server computes a hit, and if the two disagree
+by one unit in the last place, the player sees a number that is not the number that was used. Float
+addition is not associative, so the disagreement is a function of ORDER, which means it appears only for
+some items and only sometimes, which is the worst shape a bug can have.
+
+This forbids: `float`, `double`, `MathF.*` on a value path, a percent stored as a fraction, and a display
+formatter that divides by the scale in floating point. It permits float on a purely PRESENTATION path that
+feeds no decision, for example an animation lerp driven by a stat, as long as the stat itself arrived as an
+integer.
+
+**Expensive to change once data exists: yes.** The scale, the basis-point convention and the rounding rule
+are baked into every stored roll and every authored range. Changing any of them restates every number in
+the game.
+
+**Open question for the owner.** Whether `Increased` and `More` are the right two names, given the owner's
+crafting design is deliberately not a PoE copy (#884 body). Recommended default: keep them, because they
+are the clearest available names for additive-pool versus multiplicative and the alternative is inventing
+vocabulary for a distinction everyone already understands.
+
+## 14. Random source contract
+
+### 14.1 The seam
+
+```csharp
+public interface IRandomSource
+{
+    int    NextInt(int minInclusive, int maxExclusive);
+    ulong  NextULong();
+    ushort NextRollPosition();          // uniform over 0..65535, section 6.4
+    void   NextBytes(Span<byte> destination);
+}
+```
+
+`NextInt` throws when `maxExclusive <= minInclusive`, which is a caller bug rather than a draw. There is
+NO `Seed` property, no `State` property, no `CreateDerived` and no way to ask an instance what it will do
+next. That is the whole point: a seam whose seed is readable is a seam a crafting system can leak.
+
+Nothing here returns a float, which is section 13.4's rule applied to the random path. A weighted choice is
+made with `NextInt` over an integer weight total.
+
+**The engine has no seam at all today**, verified by grep: two concrete types, `DeterministicRng` and
+`TileActorRandom`, with nothing between them (`a-engine.md:1259-1269`). So this is new, and it is
+deliberately narrow.
+
+### 14.2 The two implementations
+
+**`CryptographicRandomSource`**, for hosted servers. Seeded from the OS through
+`System.Security.Cryptography.RandomNumberGenerator`, which is the only cryptographic randomness in the
+engine today and exists solely in the two Identity PKCE helpers
+(`KhaozEngine.Identity.Discord/Pkce.cs:14`, `KhaozEngine.Identity.Oidc/Pkce.cs:13`,
+`a-engine.md:1264-1269`). Uniform integer draws use rejection sampling rather than modulo, because modulo
+bias on a crafting roll is a real edge a player can farm.
+
+**`SeededRandomSource`**, for tests and for any deterministic replay. It WRAPS `DeterministicRng`
+(`KhaozEngine.Primitives/DeterministicRng.cs:16-72`) rather than reimplementing a generator, so the
+engine keeps exactly one seeded stream definition and the two known vectors already pinning that stream in
+the test suite keep doing their job. Its constructor takes the seed. The seed is not readable back off the
+instance, so a test that wants to assert on a seed asserts on the one it passed in.
+
+### 14.3 The journal rule
+
+**A journal event records the RESOLVED OUTCOME and never a seed, a state or a draw index.** A craft event
+carries the item that came out. A drop event carries what dropped.
+
+This is the owner's decision (#882 comment 3, 2026-09-14) and it is also the only shape that survives the
+journal's own replay model: a replay returns the ORIGINAL receipt and result rather than re-running
+anything (`a-engine.md:535-564`), so an event carrying a seed would have to be re-rolled to be meaningful
+and a re-roll on replay is a duplication bug wearing a hat.
+
+### 14.4 Where consumers get one
+
+**A constructor parameter, never an ambient static, never a service locator, never a default.** A type
+that rolls takes `IRandomSource` in its constructor and holds it. A type with no `IRandomSource` cannot
+roll, which is the property that makes "does this class have gameplay randomness" answerable by reading its
+signature.
+
+There is no engine-provided default instance, because a default is how a production server ends up on the
+test source. Both consumers are already shaped for this and both are adopters:
+
+- **Grimhollow** passes a plain `int seed` constructor parameter to every roller already
+  (`GrimhollowLoot`, `GrimhollowCombatRules`, `GrimhollowGathering`, `MonsterSpawners.Install`), with the
+  four production seeds being integer literals in one file and a comment beside them saying the literal
+  must not survive to a shared server (`b-grimhollow.md:786-836`). The adoption is a parameter type change
+  from `int seed` to `IRandomSource`, and the comment's own stated answer becomes the cryptographic
+  implementation. Tracked as [Grimhollow #214](https://github.com/APKiwiOrg/Grimhollow/issues/214). No test
+  depends on the production literals, and every test already passes its own seed through the same
+  parameter, so the tests move to `SeededRandomSource` one construction at a time
+  (`b-grimhollow.md:837-850`).
+- **Ruinborne** creates one UNSEEDED `System.Random` at server start and passes it to `LootRoll.Roll`
+  (`Ruinborne.Server/Program.cs:473`, `Ruinborne.Core/Loot/LootRoll.cs:18-33`,
+  `c-ruinborne.md:718-734`). `LootRoll`'s own doc already says the RNG is injected purely so tests can seed
+  it, so the seam is the right shape and only the type changes. Unseeded is better than a constant literal
+  and still wrong: `System.Random`'s sequence is not guaranteed stable across .NET releases, which is the
+  stated reason `TileActorRandom` exists at all (`a-engine.md:1252-1258`).
+
+**Expensive to change once data exists: no.** No seed, state or draw index is ever durable, by rule 14.3.
+That is precisely what makes the source swappable at any time.
+
+**Open question for the owner.** Whether a hosted server should be able to run the seeded source at all,
+for a debugging session. Recommended default: yes, behind an explicit host option that logs a Warning line
+on every boot it is set, so it cannot be left on by accident.
+
+## 15. Integer and encoding rules shared by every format
+
+These apply to every format either program defines: the pack chunk, the manifest, the remap rule, the
+instance payload, the container page, the quarantine wrapper and every wire message.
+
+**Endianness.** LITTLE ENDIAN, written and read through `System.Buffers.Binary.BinaryPrimitives` with the
+endianness in the method name (`WriteInt32LittleEndian`, `ReadUInt16LittleEndian`). Both sides, always.
+`ItemContainerCodec` is the cautionary detail: its READ side is explicit `BinaryPrimitives` and its WRITE
+side relies on `BinaryWriter`'s documented little endian, an asymmetry the survey flags
+(`KhaozEngine.Items/ItemContainerCodec.cs:61-63`, `a-engine.md:83-101`). `BitConverter` is FORBIDDEN,
+because it is host endian: `TileProtocol`'s game-message `kind` uses it and is the one latent
+inconsistency in the tree (`TileProtocol.Frames.cs:179`, `a-engine.md:1629-1635`).
+
+**Varint.** Unsigned LEB128 over the ZIG-ZAG encoding of a signed value, so a negative number does not
+cost ten bytes. Seven value bits per byte, low group first, high bit set on every byte but the last, at
+most five bytes for a 32 bit value and ten for a 64 bit one. Encodings must be MINIMAL, and a
+non-minimal or non-terminating varint is a decode failure with the reasons named in section 9.7.
+Zig-zag maps `n` to `(n << 1) ^ (n >> 31)` for 32 bit, so 0 is 0, -1 is 1, 1 is 2.
+
+**Version field first, always.** The FIRST field of every standalone format is its version, and a version
+number is bumped and never reused. Three shapes exist in the tree and the contract picks one:
+`ItemContainerCodec.Version` is a `public const byte` at byte 0 whose doc says bump it and never reuse it
+(`ItemContainerCodec.cs:16`), `JournalProjectionCursor.FormatVersion` is a private const byte checked in
+`TryDecode` returning false, and `JournalCanonicalizer.CurrentFormatVersion` is a `public const ushort`
+passed as a parameter so a caller can pin an older format (`a-engine.md:1302-1313`). **Use the `ushort`,
+public, as a named constant.** A byte is not enough headroom for a format that will outlive several
+content generations, and the public constant is what a test pins.
+
+A mismatched version is a REFUSAL of the whole record with a reason, never a best-effort partial read. An
+instance PAYLOAD carries no version of its own, because it is never standalone (section 9.1) and its
+forward compatibility comes from the tagged encoding.
+
+**Magic prefixes.** A format STORED STANDALONE (a pack chunk file, a manifest file, a quarantine wrapper)
+carries a four-character ASCII magic before its version, following `JournalCanonicalizer`'s three magics
+`KJIF`, `KJEF` and `KJNF` (`JournalCanonicalizer.cs:37-79`). The content magics are `KECC` for a chunk,
+`KECM` for a manifest, `KECR` for the remap rule chunk and `KECQ` for a quarantine wrapper. A format that
+is always EMBEDDED in a larger versioned record carries no magic, because the enclosing record already
+identified it and a magic there is four wasted bytes per row.
+
+**Digests.** SHA-256 for everything, rendered LOWER HEX when it appears as text, raw 32 bytes when it
+appears as a column or a field. This is uniform across the tree already: `TileWorldHash` uses
+`Convert.ToHexStringLower` (`TileWorldHash.cs:23`), `JournalValidation.Hash` is `SHA256.HashData`
+(`JournalLimits.cs:135`), and both journal providers store fingerprints as `binary(32)`
+(`a-engine.md:1228-1237`). Truncation to 16 hex characters, which both Grimhollow hashes do
+(`b-grimhollow.md:404-417`), is NOT adopted: a content identity is compared by machines rather than typed
+by humans, and 64 characters costs nothing on a connect token.
+
+**Domain separation.** EVERY digest is domain separated, and the domain string includes the scheme
+version, following `TileWorldHash`'s `Domain = "ketw/"` plus a per-digest sub-domain plus
+`SchemeVersion` folded in as the first line (`TileWorldHash.cs:19-20`, `a-engine.md:1191-1197`). The
+content domain is `kec/`. No two digests in these two programs share a sub-domain, so a head comparing one
+can never accidentally agree with a head comparing another.
+
+**Text inside a digest.** Length prefixed as `"{len}:{value} "` with a bare `"- "` for null, and every
+number formatted through `CultureInfo.InvariantCulture` (`TileWorldHash.cs:171-185`). Both rules exist
+because of real failures the survey records: a delimiter inside an authored name colliding two different
+catalogs, and `StringBuilder.Append(int)` using the current culture so a negative coordinate digests
+differently under a culture with its own minus sign.
+
+**Expensive to change once data exists: yes for endianness, the varint definition and the digest algorithm.
+No for adding a magic or bumping a version.** The first three are read by every durable byte. The last two
+are the mechanisms for changing things safely.

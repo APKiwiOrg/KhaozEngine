@@ -1578,3 +1578,103 @@ differently under a culture with its own minus sign.
 **Expensive to change once data exists: yes for endianness, the varint definition and the digest algorithm.
 No for adding a magic or bumping a version.** The first three are read by every durable byte. The last two
 are the mechanisms for changing things safely.
+
+## 16. Decisions that are expensive to change once data exists
+
+Consolidated from the per-section notes above. "Expensive" means the change requires rewriting durable
+bytes that already exist in a consumer's production database, rather than a recompile or a republish.
+
+| Decision | Section | Cost if changed later |
+|---|---|---|
+| Definition id is `int32`, 0 reserved as none | 5.1 | Every container slot, ground item, journal projection and remap rule names it. |
+| Definition ids are never reused and never deleted | 5.1 | A reused id silently turns one stored item into another. |
+| A family's declared block size | 5.2 | Moves every id in the family. |
+| String keys are immutable once published | 5.3 | Every localization key, icon filename and authored cross-reference derives from them. |
+| A consumer's existing string id becomes a KEY, not an ID | 5.5 | The other choice puts 64 characters in every durable slot. |
+| Instance id is `int64`, node prefixed 16 plus 48 | 6.2 | The durable name a trade, a craft and a socket reference use. |
+| Instance id 0 means no instance | 6.1 | It is what makes every existing plain stack cost zero extra bytes. |
+| Rolls are a `ushort` POSITION, not a value | 6.4 | The other choice makes a rescale a re-roll. |
+| The roll-to-value formula and its rounding | 6.4 | Silently restates every item in the world. |
+| The page stamp is the version NUMBER | 7.2 | Read by the loader's remap decision and by the rewrite-on-commit rule. |
+| Manifest hash algorithm and canonicalisation | 7.3 | Needs a `SchemeVersion` bump and a re-digest of every published version. |
+| Chunk size is a power-of-two SLOT count | 4.5 | Renumbers every chunk and invalidates every cached client pack. |
+| Remap rules are append only, in one global sequence | 8.1 | The only record of how an old page becomes a current one. |
+| The remap rule encoding and apply order | 8.4 | Restates the history of every durable page. |
+| The over-cap stack policy (legal, may only shrink) | 8.2 | The alternative strands or destroys player property. |
+| Tagged payload: kind ranges, ascending order, no duplicates, minimal varints | 9.2, 9.3 | Byte equality is the stacking rule, so any of these changes what stacks. |
+| Socket nesting is one level, decoder enforced | 9.5 | A format that permitted deeper nesting cannot be narrowed without stranding items. |
+| `MaxInstancePayloadBytes = 512` | 9.6 | Raising is safe. Lowering strands items already over it. |
+| Unknown field kinds are preserved verbatim | 9.4 | The only forward compatibility the format has. |
+| The quarantine wrapper keeps original bytes verbatim | 10.2 | Anything else loses the item. |
+| Stat scale, basis points, and the rounding rule | 13.1, 13.2 | Restates every number in the game. |
+| Integers only where client and server must agree | 13.4 | The disagreement is order dependent, so it appears only sometimes. |
+| Little endian, varint definition, SHA-256 | 15 | Read by every durable byte in both programs. |
+
+Everything NOT in this table is cheap by comparison: package names, visibility levels assigned to a
+field, localization keys, the random source implementation, the validator's findings, the alert names and
+every runtime policy in section 10.
+
+## 17. Open questions for the owner
+
+Each carries the recommended default, which is what both specs assume unless the owner says otherwise, and
+what changes if the answer is different.
+
+1. **Do socketed items gain experience or levels while socketed?** (From #884, "Open for the owner at the
+   first design gate".) Recommended default: NO for v1. What changes if yes: a socketed item becomes a
+   high-frequency write path, so the nested payload needs a checkpoint policy and the container page
+   commit stops being driven by player action. The issue names this itself. Nothing in the byte format
+   changes, because a nested payload can already carry an experience field, so this is a v2 decision that
+   does not block either spec.
+2. **Do socket types restrict what a socket accepts?** (From #884, same list.) Recommended default: YES,
+   and the restriction is content on the socket type row rather than code. What changes if no: the
+   `SocketTypeId` field in section 9.5 stays in the format (it is one varint and the byte cost is already
+   paid) but every value is 0, and the socket type content type registers with no rows. Either answer
+   leaves the format unchanged, which is why it is safe to defer.
+3. **Is the engine-allocated int definition id shown to authors at all?** (Section 5.5.) Recommended
+   default: shown read-only beside the key. If hidden, an operator reading a quarantine reason or a log
+   line sees an id they cannot look up, so the admin console would need an id-to-key search instead.
+4. **Is a rescale silent, or is the player told?** (Section 6.4.) Recommended default: silent. If the
+   player is told, nothing in the byte format changes: the remap rule already carries the sequence number
+   and version a notification needs.
+5. **Should the page stamp carry the manifest hash as well as the version number?** (Section 7.2.)
+   Recommended default: no, on 36 bytes per page across millions of owned items, and because the case it
+   detects (two publish lines against one durable store) is ruled out by there being no staging
+   environment. Revisit the moment staging arrives, because adding it later is a page format change.
+6. **Is a client that is behind on content refused, or admitted read-only while it fetches?**
+   (Section 7.5.) Recommended default: refused, matching every other gate in the nest. If admitted, the
+   server needs a per-connection content version and a partial replication rule, which is a large amount
+   of new machinery for a case the fetch-then-rejoin loop already covers.
+7. **Should a retired definition's placeholder items be auto-converted to a refund later?** (Section 8.5.)
+   Recommended default: no, leave it to a deliberate `ReplacedBy` rule. If yes, the engine acquires a
+   policy about what player property is worth, which it should not have.
+8. **Is an unidentified item an `OwnerOnly` case or its own mechanic?** (Section 11.3.) Recommended
+   default: its own mechanic built on `OwnerOnly`. Unidentified has to hide fields from the OWNER too,
+   which is a fourth visibility level the three in section 11.1 deliberately do not have. If the owner
+   wants a fourth level instead, it has to be decided BEFORE either spec, because the level count is in
+   section 16's expensive table.
+9. **Does the engine ship per-language text chunks for languages the game does not?** (Section 12.4.)
+   Recommended default: yes. If no, a translation cannot ship ahead of a client release, which partly
+   defeats the "new content without a client release" decision.
+10. **Are `Increased` and `More` the right names?** (Section 13.4.) Recommended default: keep them. If
+    renamed, it is a rename of content field values and costs nothing durable, so this is the cheapest
+    question in the list and can be answered late.
+11. **May a hosted server run the seeded random source for debugging?** (Section 14.4.) Recommended
+    default: yes, behind an explicit host option that logs a Warning on every boot it is set. If no, a
+    production-shaped repro of a crafting bug is impossible.
+12. **Does Grimhollow's in-flight `feature/item-drop` branch land before or after the contracts?**
+    (Section 7.6, evidence at `b-grimhollow.md:1316-1379`.) This is a sequencing question rather than a
+    design one, and it is the owner's to answer because it is about two repos' release order.
+    Recommended default: let it land as shipped, and absorb it in Grimhollow adoption phase 1. If the
+    contracts land first, the branch's `assets/config/items.jsonc` becomes a third authored content
+    mechanism that has to be migrated immediately rather than at adoption.
+
+## 18. How the two specs consume this document
+
+A spec may REFINE anything here and may not CONTRADICT anything here. Refining means narrowing a range,
+naming a concrete type where this document names a shape, choosing a chunk size within the stated bounds,
+or adding a field kind inside its own reserved range. Contradicting means changing a width, a reserved
+value, a byte order, an ordering rule, a formula or a vocabulary. When a spec finds that it NEEDS a
+contradiction, the change comes back HERE first: this document is amended, the amendment says what moved
+and why, and both specs are re-read against the new text before either is approved. A spec that quietly
+diverges is the exact failure this document exists to prevent, and a divergence found at integration costs
+a re-spec of both halves rather than an edit of one paragraph.

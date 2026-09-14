@@ -76,6 +76,19 @@ flushes are safe. Calling it before `Begin` or after `End` throws `InvalidOperat
 - `PrimitiveRenderer` - filled/outlined 2D primitives through a `SpriteBatch` (owns a 1x1 white pixel):
   rects, lines, circles/rings, filled circles, vertical gradients, progress bars, filled sectors/arc-bands, and
   partial-ring strokes `DrawArc` (a general arc outline) / `DrawRadialProgress` (a 0..1 countdown/cooldown ring).
+- Convex polygons (18.48.0), in either winding, for screen-space shapes such as a projected tile marker:
+  - `PrimitiveRenderer.FillConvexPolygon(batch, points, color, feather = 0)` draws a triangle fan.
+  - `StrokeConvexPolygon(batch, points, thickness, color, alignment = Center, feather = 0, miterLimit = 4)` draws
+    exactly one quad per edge between two mitred rings, so a translucent stroke never double-blends at its
+    joins. `StrokeAlignment` is `Inside`, `Center` or `Outside`.
+  - A stroke whose inward ring would reach `ConvexPolygon.InsetLimit` collapses to a fill of its outer ring.
+  - `feather > 0` adds a fade strip that wide on every exposed edge. It fades to the same RGB at alpha 0, which is
+    fringe-free under the batch's straight alpha blend.
+  - Fewer than 3 points, zero area, a non-finite point or a non-positive thickness draws nothing. Neither call
+    allocates: rings up to 64 vertices use the stack, and larger ones rent from `ArrayPool<Vector2>.Shared`.
+  - `ConvexPolygon` is the pure geometry underneath: `SignedArea` (positive for clockwise on a y-down screen),
+    `Offset` (mitred, either winding, miter clamped to `miterLimit * |distance|`) and `InsetLimit` (the vertex
+    centroid's distance to the nearest edge line).
 - `Render2DSurface(AppWindow)` - draw into a `KhaozEngine.Windowing` window; texture/font/`ImageRgba` loaders;
   `CaptureToTexture` / `CaptureToRgba` offscreen capture, and `Render2DSnapshot` captures headless. Both captures
   open, submit and drain a command list of their own, so they are NOT mid-frame calls: taken while the frame's

@@ -2566,6 +2566,22 @@ inside the callback: the command list it is recording into still names them unti
   argument edges along any convex quad to choose the gradient direction.
 - `PrimitiveRenderer.DrawFilledArcBandGradient` gives an annulus slice separate inner and outer colors. It uses
   one interpolated quad per ordinary arc segment, with shared vertices and no overlapping translucent fan geometry.
+- `PrimitiveRenderer.FillConvexPolygon` and `StrokeConvexPolygon` (18.48.0) draw a convex polygon given as a
+  `ReadOnlySpan<Vector2>` in either winding. The stroke is one quad per edge between two mitred rings, so a
+  translucent outline composites evenly with no doubled joins, which a `DrawLine` per edge cannot do.
+  `StrokeAlignment` places it inside, centred on, or outside the edges. A polygon smaller than its own line weight
+  (the inward ring reaching `ConvexPolygon.InsetLimit`) draws as a fill of the outer ring instead. `feather`
+  anti-aliases each exposed edge with a strip fading to the same RGB at alpha 0. Neither call allocates.
+  `ConvexPolygon.SignedArea`, `Offset` and `InsetLimit` are the pure geometry, usable on their own:
+
+  ```csharp
+  // A RuneLite-style tile marker: project the tile's corners to screen pixels, then draw in a screen-space pass.
+  Span<Vector2> corners = stackalloc Vector2[4];
+  for (int i = 0; i < 4; i++)
+      if (!camera.WorldToScreen(tileCorners[i], width, height, out corners[i])) return;   // a corner behind the camera
+  primitives.FillConvexPolygon(batch, corners, new Color(1f, 0.85f, 0.2f, 0.15f), feather: 1f);
+  primitives.StrokeConvexPolygon(batch, corners, 2f, new Color(1f, 0.85f, 0.2f, 0.8f), StrokeAlignment.Inside, feather: 1f);
+  ```
 - `TextLayout` - device-free word-wrap + alignment over an `ITextMeasurer`, memoized in a bounded LRU cache
   per measurer, held weakly so a font that goes unreachable is collected with its entries.
   `Wrap(font, text, maxWidth, hardBreak = false, preserveSpaceRuns = false)` breaks on spaces; `hardBreak` slices a
@@ -6362,7 +6378,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.47.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.48.0" />
 ```
 
 ```csharp
@@ -11961,7 +11977,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.47.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.48.0" />
 ```
 
 ```csharp
@@ -11997,7 +12013,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.47.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.48.0" />
 ```
 
 ```csharp
@@ -12239,7 +12255,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.47.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.48.0" />
 ```
 
 ```csharp
@@ -14331,7 +14347,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="18.47.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="18.48.0" />
 </ItemGroup>
 ```
 

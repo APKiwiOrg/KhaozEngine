@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Numerics;
 using KhaozEngine.Primitives;
 using KhaozEngine.Windowing;
@@ -6,7 +7,8 @@ using KhaozEngine.Windowing;
 namespace KhaozEngine.Render2D
 {
     /// <summary>
-    /// Draws 2D primitives (rectangles, lines, circles, rings, gradients, progress bars) through a
+    /// Draws 2D primitives (rectangles, lines, circles, rings, gradients, progress bars, convex polygon fills and
+    /// strokes) through a
     /// <see cref="SpriteBatch"/> using a 1x1 white texture. The MonoGame-free 5.x port of the 4.x
     /// KhaozEngine.Graphics PrimitiveRenderer: rectangles take a <see cref="Rect"/>, colors are RGBA
     /// <see cref="Vector4"/> (0..1), points are <see cref="Vector2"/>. Rotated primitives (lines, rings)
@@ -386,6 +388,135 @@ namespace KhaozEngine.Render2D
                     innerColor);
                 inner0 = inner1;
                 outer0 = outer1;
+            }
+        }
+
+        // Polygons up to this many vertices keep their offset rings on the stack. Larger ones rent the rings from the
+        // shared array pool and return them before the call ends, so neither path allocates per call.
+        const int PolygonStackVertices = 64;
+
+        /// <summary>
+        /// Fills a convex polygon given in either winding as a triangle fan from its first vertex, one
+        /// coincident-corner <see cref="SpriteBatch.DrawQuad(Texture2D, Vector2, Vector2, Vector2, Vector2, Vector4, Color)"/>
+        /// per triangle, so no pixel is covered twice and a translucent <paramref name="color"/> composites evenly.
+        /// <paramref name="feather"/> above 0 anti-aliases the edge with a strip that wide outside it (the polygon
+        /// offset outward by <see cref="ConvexPolygon.Offset"/>): one gradient quad per edge fading from
+        /// <paramref name="color"/> to the same RGB at alpha 0. The batch blends straight, non-premultiplied alpha
+        /// (source alpha over inverse source alpha), so fading alpha alone leaves no fringe, where fading to
+        /// transparent black would drag the rim's colour toward black. No-op for fewer than 3 points, zero area,
+        /// or any non-finite point. Allocation-free (offset rings up to 64 vertices live on the stack, larger ones
+        /// come from the shared array pool).
+        /// </summary>
+        public void FillConvexPolygon(SpriteBatch batch, ReadOnlySpan<Vector2> points, Color color, float feather = 0f)
+        {
+            if (!ConvexPolygon.IsDrawable(points)) return;
+            FanFill(batch, points, color);
+            if (!IsFeathered(feather)) return;
+
+            int n = points.Length;
+            Vector2[]? rented = null;
+            Span<Vector2> ring = n <= PolygonStackVertices
+                ? stackalloc Vector2[PolygonStackVertices]
+                : (rented = ArrayPool<Vector2>.Shared.Rent(n));
+            try
+            {
+                ring = ring[..n];
+                ConvexPolygon.Offset(points, feather, ring);
+                FeatherStrip(batch, points, ring, color);
+            }
+            finally
+            {
+                if (rented is not null) ArrayPool<Vector2>.Shared.Return(rented);
+            }
+        }
+
+        /// <summary>
+        /// Strokes the outline of a convex polygon given in either winding as exactly ONE quad per edge between an
+        /// outer and an inner mitred ring (<see cref="ConvexPolygon.Offset"/>). Neighbouring quads share the two ring
+        /// vertices on each corner's bisector, so joins never overlap and a translucent <paramref name="color"/>
+        /// composites evenly all the way round, which a line per edge cannot do. <paramref name="alignment"/> places
+        /// the rings: <see cref="StrokeAlignment.Inside"/> at 0 and <c>-thickness</c>,
+        /// <see cref="StrokeAlignment.Center"/> at <c>+/- thickness / 2</c>, <see cref="StrokeAlignment.Outside"/>
+        /// at <c>+thickness</c> and 0. <paramref name="miterLimit"/> clamps each corner's miter to that multiple of
+        /// its ring distance.
+        /// <para>
+        /// When the inner ring's inward distance would reach or pass <see cref="ConvexPolygon.InsetLimit"/>, the
+        /// polygon is smaller than its own line weight and the stroke COLLAPSES to a fill of its outer ring, which
+        /// reads as a solid shape instead of an inverted bow tie. <paramref name="feather"/> above 0 adds the same
+        /// straight-alpha fade strip as <see cref="FillConvexPolygon"/> outside the outer ring and inside the inner
+        /// ring (outside only when collapsed), with the inner strip stopping at the inset limit. No-op for fewer
+        /// than 3 points, zero area, any non-finite point, or a <paramref name="thickness"/> that is not a positive
+        /// finite number. Allocation-free, as for the fill.
+        /// </para>
+        /// </summary>
+        public void StrokeConvexPolygon(SpriteBatch batch, ReadOnlySpan<Vector2> points, float thickness, Color color,
+            StrokeAlignment alignment = StrokeAlignment.Center, float feather = 0f, float miterLimit = 4f)
+        {
+            if (!(thickness > 0f) || !float.IsFinite(thickness) || !ConvexPolygon.IsDrawable(points)) return;
+            (float outerDistance, float innerDistance) = ConvexPolygon.StrokeRingDistances(thickness, alignment);
+            float insetLimit = ConvexPolygon.InsetLimit(points);
+            bool feathered = IsFeathered(feather);
+
+            int n = points.Length;
+            Vector2[]? rented = null;
+            Span<Vector2> rings = n <= PolygonStackVertices
+                ? stackalloc Vector2[PolygonStackVertices * 4]
+                : (rented = ArrayPool<Vector2>.Shared.Rent(n * 4));
+            try
+            {
+                Span<Vector2> outer = rings.Slice(0, n);
+                Span<Vector2> inner = rings.Slice(n, n);
+                Span<Vector2> outerFade = rings.Slice(2 * n, n);
+                Span<Vector2> innerFade = rings.Slice(3 * n, n);
+
+                ConvexPolygon.Offset(points, outerDistance, outer, miterLimit);
+                if (feathered) ConvexPolygon.Offset(points, outerDistance + feather, outerFade, miterLimit);
+
+                if (innerDistance < 0f && -innerDistance >= insetLimit)
+                {
+                    FanFill(batch, outer, color);
+                    if (feathered) FeatherStrip(batch, outer, outerFade, color);
+                    return;
+                }
+
+                ConvexPolygon.Offset(points, innerDistance, inner, miterLimit);
+                for (int i = 0; i < n; i++)
+                {
+                    int next = i + 1 == n ? 0 : i + 1;
+                    batch.DrawQuad(_white, outer[i], outer[next], inner[next], inner[i], FullUV, color);
+                }
+                if (!feathered) return;
+
+                FeatherStrip(batch, outer, outerFade, color);
+                ConvexPolygon.Offset(points, MathF.Max(innerDistance - feather, -insetLimit), innerFade, miterLimit);
+                FeatherStrip(batch, inner, innerFade, color);
+            }
+            finally
+            {
+                if (rented is not null) ArrayPool<Vector2>.Shared.Return(rented);
+            }
+        }
+
+        static bool IsFeathered(float feather) => feather > 0f && float.IsFinite(feather);
+
+        // A triangle fan from the first vertex. Each triangle is one exact coincident-corner quad (see FillTriangle).
+        void FanFill(SpriteBatch batch, ReadOnlySpan<Vector2> points, Color color)
+        {
+            Vector2 apex = points[0];
+            for (int i = 1; i + 1 < points.Length; i++)
+                FillTriangle(batch, apex, points[i], points[i + 1], color);
+        }
+
+        // One gradient quad per edge between an exposed edge ring and its fade ring: `color` along the edge and the
+        // same RGB at alpha 0 along the fade ring (straight alpha, see FillConvexPolygon).
+        void FeatherStrip(SpriteBatch batch, ReadOnlySpan<Vector2> edge, ReadOnlySpan<Vector2> fade, Color color)
+        {
+            Color clear = color.WithAlpha(0f);
+            int n = edge.Length;
+            for (int i = 0; i < n; i++)
+            {
+                int next = i + 1 == n ? 0 : i + 1;
+                batch.DrawQuad(_white, edge[i], edge[next], fade[next], fade[i], FullUV, color, clear);
             }
         }
 

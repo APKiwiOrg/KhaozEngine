@@ -5,6 +5,30 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.48.0
+
+Render2D draws convex polygon fills and mitred strokes, so a translucent outline no longer double-blends at its
+joins.
+
+- `PrimitiveRenderer.FillConvexPolygon(batch, points, color, feather = 0)` fills a convex polygon given as a
+  `ReadOnlySpan<Vector2>` in either winding, as a triangle fan of coincident-corner `DrawQuad` calls.
+- `PrimitiveRenderer.StrokeConvexPolygon(batch, points, thickness, color, alignment = Center, feather = 0,
+  miterLimit = 4)` emits exactly one quad per edge between an outer and an inner mitred ring. The new
+  `StrokeAlignment` enum places the rings at 0 and `-thickness` (`Inside`), `+/- thickness / 2` (`Center`) or
+  `+thickness` and 0 (`Outside`). When the inward ring would reach or pass the polygon's inset limit, the stroke
+  collapses to a fill of its outer ring instead of drawing an inverted bow tie.
+- `feather > 0` anti-aliases every exposed edge (the fill's outer edge, both stroke edges, only the outer one when
+  collapsed) with a gradient strip that wide. The strip fades to the same RGB at alpha 0 rather than to transparent
+  black, because the batch blends straight alpha and a black end would darken the rim.
+- Fewer than 3 points, zero area, a non-finite point or a thickness that is not a positive finite number draws
+  nothing. Neither call allocates: rings up to 64 vertices live on the stack and larger ones rent from
+  `ArrayPool<Vector2>.Shared`.
+- `ConvexPolygon` is the pure, allocation-free geometry underneath. `SignedArea` is positive for clockwise on a
+  y-down screen. `Offset` moves each vertex along its mitred bisector so every edge shifts by a signed distance, in
+  either winding, with the miter clamped to `miterLimit * |distance|`. `InsetLimit` is the smallest distance from
+  the vertex centroid to an edge line, exact for regular polygons, rectangles and parallelograms and conservative
+  otherwise.
+
 ## 18.47.0
 
 Selected multipart models can use thin camera-space outlines without internal strokes (#879).

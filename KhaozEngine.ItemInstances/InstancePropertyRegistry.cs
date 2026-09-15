@@ -278,6 +278,13 @@ public sealed class InstancePropertyRegistry
     /// rather than a test failure. Two of them were defects in an earlier draft of the spec and are covered
     /// by construction now: kind 7's material ids are <c>item</c> references, and a socket's contained
     /// definition id is an <c>item</c> reference at every depth.
+    /// <para>
+    /// Kinds 128, 131, 132 and 133 register a REAL codec here rather than
+    /// <see cref="InstancePropertyCodec.ShapeOnly"/>, and it has to happen at registration: a registered
+    /// codec is never replaced (that would make two previously distinct items stack and destroy one
+    /// identity), so there is no later moment at which one could be supplied. Every other v1 kind's shape
+    /// is its whole contract.
+    /// </para>
     /// </remarks>
     public static InstancePropertyRegistry CreateV1()
     {
@@ -310,7 +317,7 @@ public sealed class InstancePropertyRegistry
         registry.Register(
             InstanceKindBand.ScopeB,
             InstancePropertyKind.Identification,
-            InstancePropertyCodec.ShapeOnly,
+            InstancePropertyCodec.Identification,
             PropertyVisibility.Everyone,
             NotGated,
             new InstanceFieldShape(ByteThenVarint, InstanceCountWidth.None, default),
@@ -345,7 +352,7 @@ public sealed class InstancePropertyRegistry
         registry.Register(
             InstanceKindBand.ScopeB,
             InstancePropertyKind.Sockets,
-            InstancePropertyCodec.ShapeOnly,
+            InstancePropertyCodec.SocketList,
             PropertyVisibility.Everyone,
             NotGated,
             new InstanceFieldShape(default, InstanceCountWidth.Varint, SocketEntry),
@@ -429,7 +436,7 @@ public sealed class InstancePropertyRegistry
         => registry.Register(
             InstanceKindBand.ScopeB,
             kind,
-            InstancePropertyCodec.ShapeOnly,
+            InstancePropertyCodec.AffixList,
             PropertyVisibility.Everyone,
             identificationMaskBit,
             new InstanceFieldShape(default, InstanceCountWidth.Byte, AffixEntry),

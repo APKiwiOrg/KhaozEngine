@@ -134,7 +134,7 @@ game's graph, so the dependency costs a consumer nothing. In particular it does 
 | Type | One line |
 |---|---|
 | `ContentTypeId` | A `readonly record struct` wrapping the `ushort` of contracts 4.3, with the three range predicates. |
-| `ContentKey` | A `readonly record struct` wrapping the string key of contracts 5.3, ordinal, validated at construction. |
+| `ContentKey` | A `readonly struct` over the UTF-8 key bytes of contracts 5.3, ordinal, materialising a string only on demand, section 9.1. |
 | `ContentVisibility` | `Client` or `ServerOnly`, contracts 11.1's content vocabulary. |
 | `ContentFieldKind` | `Int`, `ScaledInt`, `Bool`, `KeyReference`, `TagList`, `LocalizedTextKey`, `OpaqueBytes`, contracts 4.7. |
 | `ContentFieldSchema` | One type's ordered field list: name, kind, scale, reference target, visibility, required. |
@@ -2360,6 +2360,26 @@ client release, so a content string must be able to override a stale shipped one
 `ContentStringCatalog.Format` routes through the `SafeFormat` behaviour contracts 12.3 adopts, so a malformed
 translator-authored template falls back to the unformatted template rather than taking the frame loop down.
 
+**A decoded language is the chunk body itself plus one index, and no decoded entry at all.** The decode
+decompresses the body into a `byte[]` and KEEPS it, exactly as a type's `Bodies` keeps its rows (9.2), and
+builds one open-addressed `int[]` over it holding each entry's byte offset plus one, hashed on that entry's
+UTF-8 key and probed by an ordinal span compare. There is no `Dictionary<string, string>`, and nothing in the
+chunk exists as UTF-16 until something asks for it. At 50,000 items and 100,800 entries that is the 8.5 MB
+body plus 262,144 buckets of 4 bytes, about 9.6 MB, against the 44.2 MB the string dictionary measured at
+stage 5 (14.3). A language that sharded holds one body and one index per shard, and because the entries are
+ordinal ascending across the whole language (above), picking the shard is a binary search over each shard's
+first key rather than a probe of every shard.
+
+**`IStringCatalog.Get` returns `string`, so a materialisation happens somewhere, and the only choice is
+whether the same one happens twice.** Materialising per call keeps the resident figure at exactly the body
+plus the index and allocates on every call, which is right for a settings screen built once and wrong for
+anything a frame loop touches. A small bounded cache of resolved strings costs a bounded number of live
+strings and answers a repeat from the cache. **The cache wins and is what this spec ships**: a direct-mapped
+table of 512 entries keyed on the entry offset, which at a 60-character value is about 80 KB of strings, three
+ten-thousandths of P10's budget, and it holds the working set of a UI screen. It is bounded by construction
+rather than by a policy, so it cannot grow into the thing the budget exists to prevent, and a miss is one
+`Encoding.UTF8.GetString` over a slice the catalog is already holding.
+
 ### 7.7 The remap rule chunk, `KECR`
 
 ONE rule chunk per manifest, at a reserved address outside any content type's id space, holding the FULL rule
@@ -2714,7 +2734,7 @@ internal sealed class ContentTypeTable
     public readonly byte[] Bodies;         // every row body of every chunk, concatenated
     public readonly int[] Lengths;         // parallel to Offsets
     public readonly ulong[] RetiredBits;   // one bit per slot
-    public readonly ContentKey[] Keys;     // parallel, for logging and admin lookup
+    public readonly int[] KeyIds;          // open addressed id table, hashed on the UTF-8 key slice
 }
 ```
 
@@ -2726,21 +2746,54 @@ by id, immutable and swapped atomically, with no lock per lookup".
 a chunk size of 1,024 allocates a 36-element array, not a 1,024-element one. Chunk slots are a TRANSPORT unit
 (contracts 4.5) and the runtime does not inherit their sparseness.
 
-**Every array in `ContentTypeTable` except `Bodies` is parallel to `Offsets`, so the sparse cost is four
-arrays and not one.** A type with a family block at base 65,536 and 40 members sizes `Offsets` to 65,577
-entries, and `Lengths`, `Keys` and `RetiredBits` all follow:
+**There is no `Keys` array, because every row body already opens with its own key, length prefixed UTF-8
+(section 7.3).** The per-type key blob is `Bodies`, the offset array is `Offsets`, and a second blob would be
+a second copy of bytes the loader already holds. So an id-to-key read is the same array read and span slice as
+a row read, one varint further in, and what it hands back is a `ContentKey` over that slice:
+
+```csharp
+public readonly struct ContentKey            // (blob, start, length) over the loaded bytes
+{
+    public ReadOnlySpan<byte> Utf8 { get; }  // a slice of ContentTypeTable.Bodies, no copy
+    public bool Equals(ContentKey other);    // ordinal, SequenceEqual over the two slices
+    public override string ToString();       // materialises, on demand, for a log line or a console
+}
+```
+
+A `ContentKey` built from a string instead, which is what an admin lookup, a world boot reference (3.10) and
+an import row hand in, encodes to UTF-8 once at construction and compares by bytes after that. Both sides are
+ordinal, which is contracts 5.3's rule, and no loaded key exists as UTF-16 anywhere in the runtime.
+
+**`KeyIds` is the key-to-id index of 9.4, and it is the only structure a key costs.** An open-addressed
+`int[]` of a power-of-two capacity at least twice the live row count, holding an id in each occupied bucket
+and 0 in an empty one, which is unambiguous because 0 is not a legal id (contracts 5.1). A probe hashes the
+key's UTF-8 bytes, masks to a bucket, and compares the candidate id's key slice ordinally, walking linearly on
+a collision. The build is one pass over the live ids and a lookup is O(1) expected at one cache line a probe.
+
+**The alternative was a sorted-key binary search over the offsets, and it lost on build and on lookup.** Its
+whole case is memory: 4 bytes a row rather than 8. Against that, building it sorts the live ids with an
+ordinal span comparison inside every comparison, which is n log n with a random memory access per compare
+against one linear pass, at a stress figure of 1,833,833 rows. A lookup is about 17 of those random probes
+rather than one. What the sorted form buys that the hash does not is ordered iteration, and nothing in this
+spec asks for one: a console listing is by id (10.4) and so is a diff. So the hash table is the shape, and the
+sorted form is written down here in case a prefix query ever turns up.
+
+**Every array in `ContentTypeTable` except `Bodies` and `KeyIds` is parallel to `Offsets`, so the sparse cost
+is three arrays and not one.** A type with a family block at base 65,536 and 40 members sizes `Offsets` to
+65,577 entries, and `Lengths` and `RetiredBits` follow:
 
 | Array | At 65,577 slots |
 |---|---|
 | `Offsets`, `int[]` | 262 KB |
 | `Lengths`, `int[]` | 262 KB |
-| `Keys`, one reference per slot | 525 KB, plus about 2.6 KB for the 40 real keys |
 | `RetiredBits`, 1,025 `ulong` | 8 KB |
-| Total | about 1.06 MB, for 40 rows |
+| `KeyIds`, 128 buckets for 40 rows | 512 bytes |
+| Total | about 533 KB, for 40 rows |
 
-That is four times the 262 KB this paragraph used to quote, because it counted `Offsets` alone, and it is the
-number question Q5's sparse-table threshold should be argued against. The recommended default there is to
-switch a type to a sorted-id binary search when live density falls below one in sixteen.
+That is twice the 262 KB this paragraph once quoted, which counted `Offsets` alone, and half the 1.06 MB the
+string-keyed layout cost, and it is the number question Q5's sparse-table threshold is argued against. The
+recommended default there is to switch a type to a sorted-id binary search when live density falls below one
+in sixteen.
 
 **`ItemRow` is the typed view over the `item` type, and it exists because four of its fields are read per
 operation.** The generic read side is `ContentRow`, an ordered field-value list, which is right for an editor,
@@ -2784,25 +2837,29 @@ The concatenation happens ONCE at load, chunk by chunk, into a buffer sized from
 decompress.
 
 Per-type memory at the two owner figures, with the item base's realistic row of about 124 bytes encoded
-(section 14, P1 arithmetic):
+(section 14, P1 arithmetic). That row figure INCLUDES the row's own key, because the key is the first thing
+the encoder writes:
 
-| Definitions | `Bodies` | `Offsets` + `Lengths` | `Keys` | `RetiredBits` | Total |
+| Definitions | `Bodies` | `Offsets` + `Lengths` | `KeyIds` | `RetiredBits` | Total |
 |---|---|---|---|---|---|
-| 50,000 | 6.2 MB | 0.4 MB | 3.6 MB | 6 KB | about 10 MB |
-| 1,000,000 | 124 MB | 8 MB | 72 MB | 125 KB | about 205 MB |
+| 50,000 | 6.2 MB | 0.4 MB | 0.5 MB | 6 KB | about 7.1 MB |
+| 1,000,000 | 124 MB | 8 MB | 8.4 MB | 125 KB | about 140 MB |
 
-**`Keys` counts the CHARACTERS, which is the line this table used to get wrong.** It is an array of
-`ContentKey`, each wrapping a string, so per key it is 8 bytes of reference in the array plus a string object,
-and a 20-character key as UTF-16 is 40 bytes of payload on top of about 24 bytes of header and length, which
-rounds to 64. Seventy-two bytes per key, so 3.6 MB at 50,000 and 72 MB at 1,000,000. The figures here were 1.6
-MB and 32 MB, which counted the references and the object headers and left the characters out entirely.
+**A loaded key costs the `KeyIds` bucket and nothing else, which is the line this table has now got wrong
+twice in opposite directions.** It first counted an array of references and object headers, 1.6 MB and 32 MB,
+and left the characters out. It then counted the UTF-16 characters too, 3.6 MB and 72 MB, and was right about
+the layout it was describing. What changed is the layout: 9.1 reads a key out of `Bodies` where the encoder
+already put it, so the only structure left is the open-addressed id table, at 4 bytes a bucket and a
+power-of-two capacity of at least twice the row count. At 50,000 rows that is 131,072 buckets and 524 KB, and
+at 1,000,000 it is 2,097,152 buckets and 8.4 MB.
 
-`Keys` is therefore the biggest avoidable line at the stress figure by a wider margin than before, 72 MB of a
-205 MB runtime rather than 32 of 240. It exists for logging, for an admin lookup and for the quarantine reason
-of contracts 10.2, which needs to name what failed. The mitigation, if the stress figure ever becomes real, is
-to hold the keys as one UTF-8 blob plus an offset array, the same trick as `Bodies`: 20 bytes of UTF-8 per key
-plus a 4-byte offset is 24 MB against 72, so it saves about 48 MB rather than the 24 this section used to
-claim. Section 21 question Q5 covers it and the default is to ship the simple version and measure.
+**That is 65 MB off the stress figure, and it also deletes the separate key-to-id dictionary**, because
+`KeyIds` IS that index (9.4). The string-keyed layout carried both, an array of `ContentKey` at 72 MB and a
+`Dictionary<ContentKey, int>` at roughly 32 MB on top of it, and the two are one 8.4 MB array now. What the
+saving is NOT is free: a key comparison became a byte-span compare against a scattered row body rather than a
+UTF-16 compare against a string the index had already in hand, and the keys stay around for the same three
+reasons as before, logging, an admin lookup, and the quarantine reason of contracts 10.2 which has to name
+what failed. Budget P3 in 14.1 is where the trade is measured rather than argued.
 
 ### 9.3 Decode is lazy on the client and eager on the server
 
@@ -2825,7 +2882,7 @@ lazy build inside a tick is a latency spike:
 
 | Index | Shape | Who reads it |
 |---|---|---|
-| Key to id, per type | A frozen `Dictionary<ContentKey, int>` | Admin lookup, world boot resolution (3.10), bulk import. |
+| Key to id, per type | The open-addressed `int[]` of 9.1, hashed on the UTF-8 key slice | Admin lookup, world boot resolution (3.10), bulk import. |
 | Tag to ids | Per tag id, a sorted `int[]` per content type | Drop tables with a `required_tags` filter (3.5), store rates by item class. |
 | Family membership | The block list per family, cached | The two-comparison membership test of contracts 5.2. |
 | Loot candidate arrays | Per `loot_table`, the resolved entry list with weights prefixed-summed | The roll, so a weighted draw is one binary search over an `int[]`. |

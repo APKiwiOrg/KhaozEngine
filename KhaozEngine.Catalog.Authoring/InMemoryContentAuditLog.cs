@@ -43,8 +43,46 @@ sealed class InMemoryContentAuditLog(Func<DateTimeOffset> clock)
         string? after,
         int versionNumber,
         string note)
-        => _entries.Add(new ContentAuditEntry(
-            _nextAuditId++,
+    {
+        var staged = new List<ContentAuditEntry>(1);
+        Stage(staged, action, actor, operatorId, type, definitionId, key, fieldName, before, after, versionNumber, note);
+        Commit(staged);
+    }
+
+    /// <summary>
+    /// Renders one entry into a STAGING list without appending it, which is how a caller makes the audit
+    /// write and the change it describes land together: everything that can fail happens here, and
+    /// <see cref="Commit"/> afterwards cannot.
+    /// </summary>
+    /// <param name="staged">The staging list the entry is added to.</param>
+    /// <param name="action">One of <see cref="ContentAuditActions"/>.</param>
+    /// <param name="actor">What the engine authenticated.</param>
+    /// <param name="operatorId">What the console forwarded, empty when it forwarded none.</param>
+    /// <param name="type">The content type, or the default for a store-level action.</param>
+    /// <param name="definitionId">The row's id, or 0 for a store-level action.</param>
+    /// <param name="key">The row's key, or the default for a store-level action.</param>
+    /// <param name="fieldName">The schema field name, empty for a row-level action.</param>
+    /// <param name="before">The old value rendered, or null for absent.</param>
+    /// <param name="after">The new value rendered, or null for absent.</param>
+    /// <param name="versionNumber">0 for a draft edit, the published number for a publish.</param>
+    /// <param name="note">The operator's note, empty when none.</param>
+    public void Stage(
+        List<ContentAuditEntry> staged,
+        string action,
+        string actor,
+        string operatorId,
+        ContentTypeId type,
+        int definitionId,
+        ContentKey key,
+        string fieldName,
+        string? before,
+        string? after,
+        int versionNumber,
+        string note)
+    {
+        ArgumentNullException.ThrowIfNull(staged);
+        staged.Add(new ContentAuditEntry(
+            0,
             clock(),
             actor,
             operatorId,
@@ -57,6 +95,21 @@ sealed class InMemoryContentAuditLog(Func<DateTimeOffset> clock)
             after,
             versionNumber,
             note));
+    }
+
+    /// <summary>
+    /// Appends a staged batch, numbering each entry as it lands. It cannot fail, which is the whole point:
+    /// the audit ids are taken HERE rather than at staging, so a batch that never committed burns none.
+    /// </summary>
+    /// <param name="staged">The entries rendered by <see cref="Stage"/>.</param>
+    public void Commit(List<ContentAuditEntry> staged)
+    {
+        ArgumentNullException.ThrowIfNull(staged);
+        for (int i = 0; i < staged.Count; i++)
+        {
+            _entries.Add(staged[i] with { AuditId = _nextAuditId++ });
+        }
+    }
 
     /// <summary>Writes one edit's entries: one per CHANGED FIELD, or one row-level entry when it changes none.</summary>
     /// <param name="edit">The edit applied to the open draft.</param>
@@ -65,9 +118,32 @@ sealed class InMemoryContentAuditLog(Func<DateTimeOffset> clock)
     /// <param name="note">The operator's note.</param>
     public void AppendEdit(ContentEdit edit, string actor, string operatorId, string note)
     {
+        var staged = new List<ContentAuditEntry>();
+        StageEdit(staged, edit, actor, operatorId, note);
+        Commit(staged);
+    }
+
+    /// <summary>
+    /// One edit's entries rendered into a staging list, which is what the store uses so a failed audit write
+    /// takes the edit down with it rather than leaving a draft edit nothing recorded.
+    /// </summary>
+    /// <param name="staged">The staging list the entries are added to.</param>
+    /// <param name="edit">The edit applied to the open draft.</param>
+    /// <param name="actor">What the engine authenticated.</param>
+    /// <param name="operatorId">What the console forwarded.</param>
+    /// <param name="note">The operator's note.</param>
+    public void StageEdit(
+        List<ContentAuditEntry> staged,
+        ContentEdit edit,
+        string actor,
+        string operatorId,
+        string note)
+    {
+        ArgumentNullException.ThrowIfNull(edit);
         if (edit.Fields.Count == 0)
         {
-            Append(
+            Stage(
+                staged,
                 ContentAuditActions.DraftEdit,
                 actor,
                 operatorId,
@@ -85,7 +161,8 @@ sealed class InMemoryContentAuditLog(Func<DateTimeOffset> clock)
         for (int i = 0; i < edit.Fields.Count; i++)
         {
             ContentFieldEdit field = edit.Fields[i];
-            Append(
+            Stage(
+                staged,
                 ContentAuditActions.DraftEdit,
                 actor,
                 operatorId,

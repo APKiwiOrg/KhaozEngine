@@ -215,17 +215,23 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
                 working.Apply(edits[i]);
             }
 
+            // The audit entries are RENDERED before the draft moves and APPENDED after it, which is the whole
+            // of the audit rule on a store with no transaction to lean on: the append is in the edit's
+            // transaction rather than best effort, so an audit write that fails takes the edit down with it.
+            // A content edit with no audit row is indistinguishable from no edit.
+            var audited = new List<ContentAuditEntry>(edits.Count);
+            for (int i = 0; i < edits.Count; i++)
+            {
+                _audit.StageEdit(audited, edits[i], actor, operatorId, note);
+            }
+
             _draft = new ContentDraft(
                 open.BaseVersion,
                 open.OpenedBy,
                 open.OpenedAtUtc,
                 note.Length == 0 ? open.Note : note,
                 working);
-
-            for (int i = 0; i < edits.Count; i++)
-            {
-                _audit.AppendEdit(edits[i], actor, operatorId, note);
-            }
+            _audit.Commit(audited);
 
             return Task.FromResult(_draft);
         }

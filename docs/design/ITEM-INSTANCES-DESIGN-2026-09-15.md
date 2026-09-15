@@ -2299,3 +2299,123 @@ rolling the publish BACK leaves pages that already moved pointing at a legacy id
 still contains, because a retired row stays in the pack forever (contracts 5.1). So the rollback of a
 keep-legacy publish is safe in one direction and lossy in the other: the items that moved stay moved. That
 asymmetry is contracts 8.6's irreversibility rule, and it is the reason keep-legacy is the non-default.
+
+## 15. Security and exploit analysis
+
+The threat is a player with a modified client and unlimited patience, plus an operator who makes a
+mistake. Each subsection names the attack, the mitigation and the test that proves the mitigation.
+
+### 15.1 Duplication
+
+Four doors, and the journal closes three of them before this document starts.
+
+- **Replay of a craft against a refilled slot.** The normalized intent carries the target's INSTANCE ID
+  (10.6), so the same operation id against a different item hashes differently and resolves
+  `OperationConflict` rather than applying twice. Without that field the intent is (currency, slot) and a
+  resubmit after the slot refilled would apply to the new item. Test: 17.10, a replay with the slot
+  refilled, asserting `OperationConflict` and an untouched page.
+- **Crash between admission and commit.** Nothing is written, so nothing is duplicated (13, row 3). The
+  ids the batch allocated are burned. Test: the existing `--journal-crash-probe` harness
+  (`KhaozEngine.Benchmarks/README.md:238-243`) extended with an item batch, asserting the page bytes and
+  the allocator high-water mark after the kill.
+- **A drop and a reclaim.** A claim MOVES the instance id (7.3) and never mints one, and the dropper is
+  not special cased, so a drop-and-claim cycle produces the same item rather than a second one. Test:
+  17.11, drop then claim by the dropper, asserting the instance id is unchanged.
+- **Player trading, later.** Not built (1.3). The shape is one commit across two player streams with
+  `PresentAtCommit` (`JournalCommit.cs:29`, `:56-62`), which is atomic by the store's transaction. Section
+  18 carries it as the adoption item that makes the flag required.
+
+### 15.2 Rollback and restore
+
+A restore from backup rewinds pages and can therefore restore an item that was consumed, which is
+duplication by administration rather than by exploit. The engine cannot prevent it and does not pretend
+to. What it does is make the aftermath survivable: the node id rotates (3.6), the retired list refuses the
+old one, and every id issued after the backup point is never reissued, so the restored world and the lost
+one can never name the same item. Test: 17.12, `Rotate` then an allocation, asserting no overlap with the
+pre-rotation range and that a boot on a retired node id throws.
+
+### 15.3 Payload tampering
+
+**The invariant: the server never accepts instance BYTES from a client, only OPERATIONS.** Every
+client-to-server message in this design names items by slot and by id (7.6), and there is no message
+anywhere carrying a payload in that direction. A payload is produced by the generator, by a craft
+primitive, or by a decode of the server's own durable bytes, and by nothing else.
+
+That makes the whole class of "craft a payload, send it, get the item" unreachable rather than mitigated,
+which is worth more than any validation. Test: 17.13, an architecture test asserting that no
+client-to-server message route in the tile netcode carries a payload-shaped field, in the spirit of
+`ArchitectureTests.NoTwoShaderToolchains` (AGENTS.md).
+
+### 15.4 Stacking through unknown fields
+
+Two items stack when their payload bytes are equal (4.6). An attacker who could make the server FORGET a
+field could make two different items compare equal and merge, destroying one and keeping its count. That
+is why `InstancePropertyRegistry` permits no unregistration and no codec replacement (3.3): forgetting a
+kind is the attack, and the registry makes it impossible rather than unlikely.
+
+The remaining surface is a DEPLOY mismatch: a server built without a kind another server wrote. Its
+decoder keeps the unknown field verbatim (contracts 9.4) and byte equality still sees it, so the two items
+still do not merge. Preserving unknown fields is therefore a security property as well as a compatibility
+one. Test: 17.2's round trip through a registry missing a kind, extended to assert the two items do not
+merge.
+
+### 15.5 Roll prediction
+
+Both generators the engine ships today are deliberately predictable: `DeterministicRng` publishes its full
+`State` for save and resume (`DeterministicRng.cs:29-33`) and `TileActorRandom.For(seed, netId, tick)`
+derives every draw from three values a client can observe. Grimhollow's four production seeds are integer
+literals with a comment beside them saying they must not survive to a shared server
+(`b-grimhollow.md:786-836`, https://github.com/APKiwiOrg/Grimhollow/issues/214).
+
+The mitigation is contracts 14: `IRandomSource` with no readable seed and no readable state, the
+cryptographic implementation on hosted servers with rejection sampling rather than modulo, and gate 0
+decision 11's Warning line on every boot a hosted server runs the seeded source. What this document adds
+is that the generator takes the source PER CALL (9.1), so a server cannot accidentally hold a seeded one
+for its lifetime.
+
+**Modulo bias is the subtle half and it is farmable.** A weighted pick with modulo over a weight total
+that does not divide the generator's range biases the low candidates by a fraction a patient player can
+measure over a million drops. Rejection sampling removes it. Test: 17.6's distribution test run against
+both sources, asserting the cryptographic one is within bound and asserting the seeded one is deterministic
+rather than unbiased, which is the honest assertion for it.
+
+### 15.6 Socket nesting and oversize denial of service
+
+A payload that could nest without limit is a decompression bomb: a few hundred bytes expanding into
+unbounded decoder recursion. The decoder enforces ONE LEVEL structurally (3.5), returning `socket-nesting`
+rather than recursing, so the depth is a constant rather than a budget. `MaxInstancePayloadBytes = 512`
+bounds the breadth, `SetSlotAt` refuses an over-cap payload (4.7), and the ground spawn overload throws on
+one (7.3).
+
+Neither limit is reachable from a client anyway, by 15.3, so this is defence against a bad content publish
+and a game bug rather than against a player. Test: 17.3's decoder fuzzing, which asserts no input ever
+throws, never recurses past one level and never allocates past the cap.
+
+### 15.7 A race across two containers
+
+Moving an item from a bag to a bank touches two pages, and two operations racing could in principle read
+the same source slot twice and write it into two destinations. The journal closes it and this document
+only has to not reopen it: the admitted layer serializes per stream, an operation is sent to the store only
+when it is at the head of EVERY one of its queues (`JournalAdmittedState.cs:82-88`), and a cross-page move
+is ONE commit with two projection writes on one stream (5.6). Grimhollow adds a validation ticket order so
+two clicks whose loads finish out of order cannot be planned against stale state
+(`b-grimhollow.md:618-639`).
+
+The one thing this document adds is a refusal: a batch CLOSES rather than widening when an operation would
+touch a second stream (6.4, rule 2), so a cross-account move can never be folded into an unrelated batch.
+Test: 17.14, two concurrent moves of one stack, asserting exactly one succeeds and the other is refused.
+
+### 15.8 Legacy mods, and the visibility leak surface
+
+**A legacy mod that can never be generated is a feature, and it is also an audit tool.** An item carrying
+one provably predates the publish that created it, which is how a support question about a suspiciously
+good item is answered. The guard that keeps it ungeneratable is standing rather than authored (10.3), so a
+currency cannot opt out of it.
+
+**The visibility leak surface is three holes, two closed and one accepted.** A tooltip computing its own
+answer is closed by there being one function both paths call (12.5) and one test asserting they agree
+(17.9). A component serialized once and sent to everyone is closed by the public view being computed
+before the writer (7.4), so the owner-only bytes are never in the shared capture at all. The accepted one
+is 12.7's: stacking by byte equality tells a player whether two unidentified items are identical. Closing
+it means excluding gated kinds from the stacking compare, which would make two genuinely different items
+merge and destroy one, so the leak is strictly cheaper than its fix.

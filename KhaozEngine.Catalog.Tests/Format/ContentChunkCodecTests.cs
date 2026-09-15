@@ -590,6 +590,32 @@ public class ContentChunkCodecTests
     }
 
     [Fact]
+    public void AResetDoesNotWriteOverRowsAnEarlierBuildHandedBack()
+    {
+        // A Build hands back slices of the arena. A Reset that rewound the SAME arena left the already-built
+        // list aliasing whatever came next, and nothing downstream could see it: the aliased rows encode,
+        // hash and decode cleanly, carrying another chunk's bytes under the first chunk's ids.
+        ContentTypeRegistry registry = Registry();
+        ContentTypeRegistration tag = Tag(registry);
+        var assembler = new ContentChunkAssembler();
+        assembler.Add(TagRow(tag, 1, "metal", 10), tag.Codec);
+
+        IReadOnlyList<ContentChunkRow> first = assembler.Build();
+        byte[] before = first[0].Body.ToArray();
+
+        assembler.Reset();
+        assembler.Add(TagRow(tag, 2, "two_handed", 20, retired: true), tag.Codec);
+
+        Assert.Equal(before, first[0].Body.ToArray());
+
+        EncodedContentChunk encoded = ContentChunkCodec.Encode(
+            tag, 0, ContentVisibility.Client, first, ContentPackFormat.BrotliQuality);
+        Assert.True(ContentChunkCodec.TryDecode(encoded.StoredFile.Span, registry, out ContentChunk? chunk, out _));
+        Assert.NotNull(chunk);
+        Assert.Equal(before, chunk.RowBodyAt(0).ToArray());
+    }
+
+    [Fact]
     public void TheAssemblerCarriesTheRetiredBitOntoTheRowTable()
     {
         ContentTypeRegistry registry = Registry();

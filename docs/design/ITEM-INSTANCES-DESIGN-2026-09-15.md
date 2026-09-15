@@ -232,7 +232,8 @@ rather than an accident: the option that would have needed all three is scored i
 
 `KhaozEngine.ItemInstances` depends on `KhaozEngine.Catalog`, which Scope A has not built. Phase 1
 (section 20) needs only the catalog's READ side: an id-to-row lookup per content type, a live version
-number, and the remap rule list. Those are four members. Scope B phase 1 therefore proceeds behind a
+number, the remap rule list and `IsRetired(typeId, id)` for validator check 13 (12.2). Those are five
+members. Scope B phase 1 therefore proceeds behind a
 narrow `IContentSnapshot` that Scope A implements, and the two phase 1s land in either order. Every
 later Scope B phase needs real content types registered, so phases 4 onward are gated on Scope A's
 registry and publish path being real.
@@ -2869,7 +2870,7 @@ truncated, normalized or re-encoded. The wrapper replaces the entry's payload in
 ```
 [Magic: 4 bytes 'K','E','C','Q']   // 0x4B 0x45 0x43 0x51
 [Version: uint16 LE]               // 1
-[ReasonCode: byte]                 // an ordinal from the closed set of 12.2
+[ReasonCode: byte]                 // an ordinal from the closed set of QUARANTINE reasons in 12.2
 [StampedVersion: varint int32]     // the page stamp the record failed under
 [OriginalLength: varint int32]
 [Original: OriginalLength bytes]   // verbatim, never re-encoded
@@ -2958,8 +2959,8 @@ and are stable.
 | 8 | A page exceeds the journal's section cap | arithmetically impossible: 100 entries at the maximum size is 53,209 bytes against 2 MiB (5.4) | none | the row exists so the 2.5 percent margin is written down. A page geometry change reruns the arithmetic |
 | 9 | A client never acknowledges a page sync | no acknowledgement exists, deliberately | nothing. `ReliableOrdered` means delivery or a dead connection (7.5 rule 1), and a partial assembly dies with the connection (rule 4) | the client re-requests on rejoin, at two bytes (7.6). Adding an acknowledgement would build a second reliability layer over a reliable channel |
 | 10 | A page is written into the wrong section | the decoder's `FirstSlot == PageIndex * expectedPageSlots` check (4.4) | the page fails to decode and is quarantined as a unit | the redundant two bytes are what make this loud instead of silent. Recovery is the journal's, from the event tail |
-| 12 | A page delta names more changes than one game message holds | the builder measures the encoded size as it writes and stops before the cap (7.5) | the delta is abandoned before it is encoded and the page is sent through the fragmenter instead, so nothing reaches `EncodeGameMessage` above the cap | none needed. The row exists because the failure it prevents is a THROW INSIDE THE PER-VIEWER SERVE LOOP, which the combat path already paid for once (`TileWorldServer.Tick.cs:236-247`) |
 | 11 | Ground item payloads dominate a viewer's bandwidth | budget 11 of section 16: public view bytes times instances in interest divided by the tick length (7.4) | no throw and no overflow. A snapshot frame carries no cap (`TileProtocol.Frames.cs:112-125`), so the effect is bytes per viewer per second, repeated every tick for the life of the drop | a per-cell payload byte budget on `SpawnGroundItem` (open question 6), or moving the sibling component onto the AoI delta path. `AoiDeltaReplicator` exists in `KhaozEngine.Replication` and the tile serve does not use it (7.4) |
+| 12 | A page delta names more changes than one game message holds | the builder measures the encoded size as it writes and stops before the cap (7.5) | the delta is abandoned before it is encoded and the page is sent through the fragmenter instead, so nothing reaches `EncodeGameMessage` above the cap | none needed. The row exists because the failure it prevents is a THROW INSIDE THE PER-VIEWER SERVE LOOP, which the combat path already paid for once (`TileWorldServer.Tick.cs:236-247`) |
 
 **Row 12 is the only row whose CURRENT behaviour would be worse than its recovery**, and it is worth
 naming as the one place this design puts new pressure on an existing throw. The combat path already
@@ -3250,7 +3251,7 @@ Numbered so the sections above can cite a test rather than describe one, and a r
 
 | # | Test | Home | What it pins |
 |---|---|---|---|
-| 1 | Golden payload and page files | `ItemInstances.Tests` | contracts 9.8's 45 bytes SORTED (3.7), the four 3.8 rows, one full 100 rare page, one quarantined entry |
+| 1 | Golden payload and page files | `ItemInstances.Tests` | contracts 9.8's 45 bytes copied as they stand, now that 9.8 is written in canonical order (3.7), the four 3.8 rows, one full 100 rare page, one quarantined entry whose original exceeds `MaxInstancePayloadBytes` (4.4) |
 | 2 | Unknown-kind round trip | `ItemInstances.Tests` | a decoder whose registry omits a kind the encoder wrote reproduces the input byte for byte, and the two items do not merge (15.4) |
 | 3 | Decoder fuzzing | `ItemInstances.Tests` | mutation over the goldens (bit flips, truncations, length lies, kind swaps): NEVER throws, reasons are stable per mutation class, no recursion past one level |
 | 4 | Cross-version round trips | `Foundation.Tests` | a version 1 container blob read by the version 2 reader, seated at instance id 0 with an empty payload, then written back as version 2 (4.5) |

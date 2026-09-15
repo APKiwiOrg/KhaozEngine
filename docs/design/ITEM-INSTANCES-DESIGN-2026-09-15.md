@@ -683,3 +683,346 @@ that has already validated and a violation here is a caller bug rather than bad 
 `TakeSlotAt(int slot)` is `TakeAt`'s payload carrying sibling: it returns the whole `ItemSlot` and seats
 `ItemSlot.Empty`. `Swap(a, b)` swaps the payload array entries alongside the stacks, so the existing one
 line tuple swap becomes two.
+
+## 5. Paged containers
+
+### 5.1 Why, in one paragraph of arithmetic
+
+A journal commit rewrites a changed projection section WHOLE and never patches it
+(`JournalProjectionWrite.cs:10-29`, README line 114). Grimhollow's bank is ONE section
+(`b-grimhollow.md:503-520`), 56 slots today. At the owner's 1,000 stacks of affixed items and 69 bytes
+per entry (3.8), one bank section is about 69 KB, so every single deposit, withdraw, craft or reorder
+would rewrite 69 KB. Twenty crafts in a row would write 1.38 MB to say that one item changed. Paging at
+100 slots turns each of those writes into 6.9 KB, and section 6's batching turns twenty of them into
+one. The two together are a factor of about two hundred, and they are the reason the owner put paged
+containers and coalesced commits in scope in the same sentence (#882 comment 3).
+
+### 5.2 Page geometry and section naming
+
+**A page is 100 slots.** `ContainerPageSlots = 100`, a `public const int`.
+
+One hundred rather than 128, deliberately. The power of two buys a shift instead of a divide, which a
+compiler turns into a multiply either way, and it costs legibility everywhere a human reads a page
+number: under 100, slot 743 is page 7 slot 43 and an operator reading a log line or a section name can
+do the arithmetic in their head. Contracts 4.5's power-of-two rule binds CONTENT chunk sizes and says
+nothing about container pages, so 100 is free. It is open question 2.
+
+**Section names are `<container>/p<NN>`**, zero padded to two digits, with three or more digits used
+unpadded above page 99. `bank/p00` through `bank/p09` for a 1,000 slot bank, `bag/p00` for a 30 slot
+bag, `worn/p00` for an 11 slot worn set. `JournalProjectionWrite.sectionName` is an identifier capped at
+128 characters over `[A-Za-z0-9._:/-]` (`JournalProjectionWrite.cs:13`, `JournalLimits.cs:86-98`), and
+the slash is in that set, so nothing needs escaping. `ContainerSectionNames.Parse` is the one place the
+name is taken apart, and it is what section 13 row 10 uses to check a page against the section it
+arrived in.
+
+### 5.3 The page header and its stamp
+
+The page header is container codec version 2's header (4.4), and the field that matters here is
+`ContentVersion`, the page stamp. Contracts 7.2 fixes it as the version NUMBER rather than the hash, for
+a reason that is entirely about this section: a remap rule applies to a page whose stamp is OLDER than
+the rule's version, older is a comparison, and a digest has no order. The comparison is one
+`if (stamp < rule.IntroducedIn)` per rule per page.
+
+`ItemContainerPage` holds the decoded slots, the stamp, a dirty flag and the page index. The dirty flag
+is set by exactly two things: an operation that changed a slot, and a remap that changed an id (5.5).
+Nothing else dirties a page, and in particular READING one never does.
+
+### 5.4 Fitting inside the journal's caps
+
+Four caps bind, and all four have headroom. Values from `JournalLimits.cs:9-23`.
+
+| Cap | Value | What Scope B puts against it | Headroom |
+|---|---|---|---|
+| Projection sections per stream | 64 | 17 for Grimhollow at a 1,000 slot bank | 47 sections, about 4,700 more bank slots |
+| Projection section bytes | 2 MiB | 6.9 KB typical, 52 KB worst case | 40 times, at the worst case |
+| Aggregate projection bytes per stream | 8 MiB | about 70 KB for a full 1,000 stack bank of rares | 100 times |
+| Projection writes per operation | 64 | 1 for a craft, 2 for a cross page move | 32 times, at a cross page move |
+
+**The 64 section cap is the real ceiling on bank size, and here is the number.** Grimhollow has eight
+sections today (`profile`, `skills`, `bag`, `worn`, `bank`, `quests`, `processing-preferences`,
+`migrations`, `b-grimhollow.md:503-520`). Paging replaces `bank` with N pages and leaves `bag` and
+`worn` at one page each, so the count is `7 + N`. At N = 10 that is 17, leaving 47. The maximum bank a
+Grimhollow stream can hold is therefore `(64 - 7) * 100 = 5,700` slots, five and a half times what the
+owner asked for. A game wanting more pages than that needs a second stream, which the journal already
+supports (a commit may touch 16 streams, `JournalLimits.cs:9`), and this document does not build it
+because nothing needs it.
+
+**The worst case page is 52 KB and cannot reach the 2 MiB cap.** One hundred entries at the maximum
+entry size (slot 1, flags 1, definition 3, count 3, instance 10, length 2, payload 512) is
+`100 * 532 = 53,200` bytes plus a nine byte header. That is 2.5 percent of the section cap and 20
+percent of the 256 KiB event payload cap, so section 13's row 8 is a row whose answer is "structurally
+impossible, and here is the arithmetic".
+
+### 5.5 Loading a container
+
+`ContainerLoadResult Load(IReadOnlyList<JournalProjectionSection> sections, IContentSnapshot snapshot)`,
+one pass, no store reads, no ambient state, following the one-validator shape contracts 10.4 sets for
+the content side.
+
+1. For each section whose name parses as this container's, decode the page (4.4). A page that fails to
+   decode at the PAGE level (bad version, bad header, truncated, entries out of order) is a whole page
+   failure and is quarantined as a unit, because a page that cannot be parsed has no entries to keep.
+2. For each decoded page, apply the remap rule set (contracts 8.3): every rule whose `IntroducedIn` is
+   strictly greater than the page stamp, in `Sequence` order, in one pass. A rule that changes nothing
+   is a scan rather than a rewrite, which is almost every rule on almost every page.
+3. If any rule changed anything, mark the page DIRTY and set its in-memory stamp to the active version.
+   Do NOT write it (5.6).
+4. Validate each entry (12.2). Structural failures quarantine that ENTRY and leave the rest of the page
+   alone. Drift failures are counted and tolerated (12.3).
+5. Return the pages, the accumulated findings and the dirty set.
+
+**Remapped pages are rewritten LAZILY, on the next ordinary commit, and contracts 10.3 says why.**
+Eagerly rewriting every touched page at boot would be a write storm proportional to the whole player
+base arriving exactly when the server is coldest, against a recorded baseline of 698 commits per second
+(`a-engine.md:607-641`). The cost of lazy is that a page can sit remapped in memory across a session and
+be lost on a crash, which simply means it is remapped again on the next load, and that is safe because
+the rule set is idempotent (contracts 8.3).
+
+**A page whose stamp is NEWER than the active version is not an error and is not quarantined.** Section
+13 row 2 has the policy: run the ordinary validator, use the entries that resolve, quarantine the ones
+that do not, and never lower the stamp, so the page is already correct when the newer version returns.
+
+### 5.6 Which page an operation touches
+
+The rule is the same for every operation: **the pages holding the slots it changed, and no others.**
+
+| Operation | Pages | Projection writes |
+|---|---|---|
+| Deposit into the first free slot | the page holding that slot | 1 |
+| Deposit that merges into an existing stack | the page holding that stack | 1 |
+| Withdraw | the source page, plus the destination page if it is a different container | 1 or 2 |
+| Craft in place | the page holding the target, plus the page holding the consumed currency | 1 or 2 |
+| Move within one page | that page | 1 |
+| Move across two pages of one container | both pages | 2 |
+| Reorder a whole container | every page it touched | up to 64 |
+| A remapped page, rewritten lazily | that page, folded into whatever commit comes next | 0 extra |
+
+**A move across pages is ONE commit with TWO projection writes on the SAME stream.** That is already
+legal: `JournalCommit` sorts projections by (stream, section), rejects a duplicate (stream, section)
+pair, and requires every projection's stream be touched by the commit and carry at least one event
+(`JournalCommit.cs:37`, `:125-138`). One stream, two sections, one event. Atomicity is the database
+transaction's, so an item cannot be in both pages or neither.
+
+**A page a remap dirtied rides the next commit for free.** The commit builder (6.4) asks the container
+for its dirty set and includes those pages alongside the ones the operation changed. That is what makes
+the lazy rewrite cost nothing: it never causes a commit, it only joins one.
+
+### 5.7 Capacity is a gate, not a size
+
+Ruinborne's model is the one to fit, and it is not a size at all (`c-ruinborne.md:894-905`): capacity is
+per-character data on `player_character.bag_capacity`, it limits SLOTS rather than items, a grant that
+merges entirely into existing stacks succeeds at or past capacity, and an over-capacity bag is never
+trimmed and only refused new slots (`BagCapacityRules.cs:13-29`).
+
+`PagedItemContainer` splits the two concepts that `ItemContainer` conflates:
+
+- **Slot space** is the page geometry, fixed at construction, `PageCount * ContainerPageSlots`. It is
+  the address space, and it never shrinks.
+- **Capacity** is a separate mutable integer, the number of OCCUPIED slots a grant may leave behind. It
+  is a gate consulted by `Add` and by nothing else.
+
+The rules, which are Ruinborne's restated as engine behaviour:
+
+1. A grant that opens a NEW slot is refused when occupancy is at or above capacity.
+2. A grant that merges entirely into existing stacks is allowed at any occupancy.
+3. Lowering capacity below current occupancy is LEGAL. The container loads intact, is never trimmed, and
+   is refused new slots until occupancy falls below capacity. That is the shrink-only rule of 12.3, and
+   it is the generalisation of contracts 8.2 kind 4's over-cap stack policy.
+4. Capacity is never read from content. It is a per-owner number the game sets, because it is player
+   progression rather than balance data.
+
+**Ruinborne's explicit cell index with holes is expressible with no engine machinery at all.** A page's
+entries are SPARSE and strictly ascending by slot (4.4), so a hole is the absence of an entry and costs
+zero bytes, exactly as version 1's sparse form already did. Holes survive a load, a save and a remap
+because nothing in the format or the loader compacts. The dense renumber Ruinborne's PostDeploy repair
+explicitly refuses to do (`c-ruinborne.md:665-684`, "It NEVER closes a hole") is not something this
+container can do by accident.
+
+**Ruinborne's equipped-row-keeps-its-cell rule needs one game field and no engine change.** An equipped
+item sits in the WORN container and reserves a cell in the BAG container, which is why Ruinborne has
+deliberately no unique index on `(character_id, bag_order)` (`c-ruinborne.md:876-893`). The engine's
+answer: the worn entry carries a game range property kind (>= 1024) holding the home bag slot, and the
+bag container's occupancy counts its own occupied slots only, which is exactly `BagCapacityRules.UsedSlots`
+counting non-equipped rows (`BagCapacityRules.cs:59-66`). The engine needs to know nothing about it.
+
+## 6. Coalesced commits
+
+### 6.1 What the journal actually does today
+
+Five facts, all verified, and the design has to fit all five rather than four:
+
+1. **One operation identity per commit.** `JournalCommit(identity, streams, projections, resultSchema,
+   resultSchemaVersion, resultData, presentAtCommit, queueBehindAdmitted)` takes ONE
+   `JournalOperationIdentity` (`JournalCommit.cs:14-22`), which is `(Guid operationId, string
+   authenticatedScope, string actionKind, byte[] normalizedIntent)` (`JournalOperationIdentity.cs:9`).
+2. **Replay is by operation id plus intent.** `ResolveOperationAsync(identity, ct)` answers `NotFound`,
+   `Replayed` or `OperationConflict`, and a retained replay returns the ORIGINAL receipt and result
+   (WorldStore README line 71, `a-engine.md:535-564`).
+3. **The admitted queue is per stream and its default depth is 8.**
+   `JournalAdmittedState.Refusal` answers `Backpressure` at
+   `JournalExecutorOptions.StreamQueueDepth` and `VersionConflict` when the expected version is not the
+   ADMITTED head (`JournalAdmittedState.cs:41-50`, `JournalExecutorOptions.cs:14`). An operation is sent
+   to the store only when it is at the head of every one of its queues (`JournalAdmittedState.cs:82-88`).
+4. **A projection write is a whole section replacement, never a patch** (`JournalProjectionWrite.cs:10-29`).
+5. **`PresentAtCommit` changes nothing inside the executor.** The operation still queues, still reserves,
+   still blocks what is behind it and still moves the admitted view. It tells the CONSUMER not to present
+   early (`JournalCommit.cs:56-62`).
+
+Nothing in the tree coalesces. A grep for `coalesc` across the WorldStore packages returns two SQL
+`COALESCE(` calls and nothing else (`a-engine.md:1530-1546`). Grimhollow has none either: every mutation
+is its own commit with its own operation id, and the single deferral in the whole repo is a health
+checkpoint parking ONE mutation per account (`b-grimhollow.md:640-651`).
+
+### 6.2 The three options
+
+**A. A game-side intent batch.** The game applies N logical operations to an in-memory working copy and
+emits ONE `JournalCommit` with one identity, N events and one projection write per touched page.
+
+**B. An executor-side merge of queued operations into one commit carrying several identities.** The
+executor, when an operation reaches the head of its queues, folds the operations behind it into the same
+store call.
+
+**C. A write-behind of dirty pages with a bounded window.** Events commit promptly, one per operation,
+and the page PROJECTION is deferred and written by a later commit. On a crash the projection lags and
+the loader replays the event tail over it.
+
+| Criterion (1 to 10) | A: intent batch | B: executor merge | C: write-behind |
+|---|---|---|---|
+| One operation identity per commit is preserved | 10 | 3 | 10 |
+| Idempotent replay by operation id is unchanged | 10 | 4 | 10 |
+| `KhaozEngine.WorldStore` and both providers unchanged | 10 | 2 | 9 |
+| The admitted view still presents on the tick that caused it | 9 | 8 | 6 |
+| Write amplification actually removed | 7 | 9 | 10 |
+| Crash exposure beyond the admitted window already accepted | 9 | 7 | 3 |
+| The consumer load path is unchanged | 10 | 10 | 2 |
+| Work to build | 8 | 3 | 4 |
+| Total | 73 | 46 | 54 |
+
+**Recommendation: A, with the batch window fixed at ONE SERVER TICK.**
+
+### 6.3 Why B loses, precisely
+
+B scores worst on the three rows that are not negotiable, and the reason is worth stating so the owner
+can overrule it knowingly. Merging two identities into one commit means `journal_operation` holds more
+than one row per commit, which means: `JournalCommit` takes a LIST of identities rather than one
+(`JournalCommit.cs:14-22`), `OwnedByteCount` sums several intents (`JournalCommit.cs:108-114`), both
+provider schemas gain a commit group column plus a migration (`JournalSchemaV1.sql`,
+`SqliteJournalSchema.cs:20-112`, both of which carry `CurrentVersion = 2` and a NAMED required
+migration today), `SqlServerJournalWriteBatch.BuildCommit`'s fixed statement order grows a loop
+(`SqlServerJournalWriteBatch.cs:22-28`), `ResolveOperationAsync` resolves any identity in a group to the
+group's receipt, the admitted layer's `AdmittedAfterVersions` bookkeeping becomes per identity
+(`JournalAdmittedState.cs:60-80`), and the shared store conformance suite gains a multi-identity case
+(`MutationJournalStoreConformance.cs`, 22 facts). That is a release of its own in the journal, and it
+buys a saving option A already gets for free.
+
+C loses on two rows that are structural rather than costly. It changes the consumer's LOAD path from
+"read the projections" to "read the projections and replay the event tail over them", which needs a
+reducer per event type on the load path in every consumer, and Grimhollow's load path today reads
+projections only (`b-grimhollow.md:652-667`). And it opens a crash window in which durable events exist
+that the projection does not reflect, which is a correct event-sourcing shape and a new failure mode for
+every operator and every admin screen.
+
+### 6.4 The recommendation, in full
+
+`ContainerCommitBuilder`, in `KhaozEngine.ItemInstances.Journal`:
+
+```csharp
+var batch = ContainerCommitBuilder.Open(streamKey, actionKind, scope, containers);
+batch.Apply(operation);          // repeated, against an in-memory working copy
+JournalCommit commit = batch.Close(identityFactory);
+```
+
+What `Close` emits:
+
+- **ONE `JournalOperationIdentity`.** Its `normalizedIntent` is the canonical encoding of the ORDERED
+  operation list: `[Count: varint][ per operation: [Kind: varint][Parameters] ]`, little endian,
+  minimal varints, exactly the rules of contracts 15. Canonical because the intent is what the journal
+  hashes to detect a conflicting replay (`JournalValidation.Hash` is `SHA256.HashData`,
+  `JournalLimits.cs:135`), so two encodings of the same batch must produce the same bytes.
+- **ONE `JournalEvent` per logical operation**, in order. The audit trail is not collapsed, only the
+  projection is. At about forty bytes an event and a cap of 128 events per operation
+  (`JournalLimits.cs:10`), a batch is bounded at 128 operations and about 5 KB of events.
+- **ONE `JournalProjectionWrite` per touched page**, carrying the page's FINAL bytes, plus the pages the
+  container's dirty set names from a lazy remap (5.6).
+- **ONE result**, the resolved state the consumer presents.
+
+**The batch window is one server tick, and it closes on the FIRST of:**
+
+1. the tick boundary,
+2. an operation that would touch a SECOND stream, because a cross stream operation is a different atomic
+   unit and must not be widened by an unrelated batch,
+3. an operation that sets `PresentAtCommit`, which is value moving between accounts and must not share
+   an identity with anything else,
+4. a CLIENT originated operation, see 6.5,
+5. 128 events, 64 projection writes, or the 8 MiB aggregate commit cap (`JournalLimits.cs:10, 11, 19`).
+
+A tick boundary rather than a timer, and that is the load bearing choice. A tick is a bounded, natural,
+already-existing window in which everything either happened or did not, the admitted view moves on the
+tick that produced the change exactly as it does today, and there is no new state living across a
+boundary that an operator would have to reason about. A timer would buy more merging and would put
+durable player property in a window whose length is a configuration value.
+
+### 6.5 Which operations may share an identity
+
+**A batch NEVER merges two CLIENT originated operations.** A client operation's id is supplied by the
+client and is what it resubmits after a reconnect (`GrimhollowMutationPayloads.TryRead` reads a 16 byte
+operation id off every mutation payload, `b-grimhollow.md:594-604`), and `ResolveOperationAsync` is keyed
+on ONE id. Merging two client ids would leave one of them unresolvable, so the second click after a
+reconnect would replay as a fresh action.
+
+**Batching therefore applies to SERVER CAUSED work**, which is exactly the amplifying case the owner
+named: a held craft, a processing run, a gathering run, a drop expiry sweep. Grimhollow's
+`PlayerMutation.ServerCause` already mints its own durable cause id
+(`GrimhollowPlayerJournal.Contracts.cs:263`), so the batch identity is a server minted id and needs no
+client cooperation. A client operation commits on its own identity, and because the admitted layer
+layers projection writes in admission order (`JournalAdmittedState.cs:75-79`), a click landing in the
+middle of a held craft builds its page over the batch's admitted view and commits behind it.
+
+**One client operation MAY be the head of a batch of the server caused work it directly causes.** A
+withdraw that also triggers a quest advance is one identity, the client's, because the server work
+happened because of the client's action and has no separate identity to lose.
+
+### 6.6 Crash and replay semantics of the recommendation
+
+Stated case by case, because this is the part that is easy to get almost right.
+
+- **Crash BEFORE admission.** Nothing happened. A client operation resubmits by its id, resolves
+  `NotFound`, and the action is validated and applied fresh. Server caused work is simply lost, which is
+  the trade the admitted-state design already took (`JOURNAL-ADMITTED-STATE-DESIGN-2026-09-13.md`,
+  section 6).
+- **Crash AFTER admission, BEFORE commit.** The whole batch dies with the process. The player's pages
+  revert to their last committed bytes. No value is duplicated because nothing was written. **The
+  instance ids the batch allocated are SKIPPED and never reissued**, because the allocator persisted its
+  high-water mark before issuing (3.6), so a crafted item that was never committed leaves a gap in the
+  id space and nothing else.
+- **Crash AFTER commit, BEFORE the response reaches the client.** A client originated batch resubmits by
+  its id and resolves `Replayed`, returning the ORIGINAL receipt and result, so the client sees the same
+  outcome and nothing is applied twice. A server caused batch is durable and the next load reads the new
+  page bytes.
+- **Terminal store failure.** The admitted layer rolls every touched stream back to its committed
+  baseline plus the operations still queued AHEAD of the failure, refuses everything queued BEHIND it
+  transitively without sending any of it to the store, and attaches one `JournalCorrection` naming the
+  streams, the projection SECTION KEYS to resync and the superseded operation ids
+  (`JournalAdmittedState.cs:117-147`). Because a batch writes whole pages, the section keys in that
+  correction are exactly the pages the consumer must resync, so the correction's existing shape is the
+  page resync list with no addition.
+- **Transient retry.** Corrects nothing. The batch is still admitted, its view still stands, and the
+  store is still being asked. That is the journal's stated fail-closed behaviour and it is unchanged.
+- **Replay with a DIFFERENT intent under the same id.** `OperationConflict`, unchanged. The canonical
+  intent encoding in 6.4 is what makes that detection meaningful for a batch: a batch resubmitted with
+  one extra operation appended hashes differently and is refused rather than silently applied.
+
+### 6.7 What it is worth
+
+The arithmetic that justifies the section, using 3.8's 69 byte entry and 5.4's 6.9 KB page.
+
+| Workload | Today, one section per container | Paged, one commit each | Paged and batched |
+|---|---|---|---|
+| One craft on a 1,000 stack bank | 69 KB | 6.9 KB | 6.9 KB |
+| Twenty crafts in a held action | 1,380 KB | 138 KB | **7.7 KB** |
+| Twenty crafts, as journal events | 20 events | 20 events | 20 events |
+| Commits issued | 20 | 20 | **1** |
+
+Twenty crafts go from 1,380 KB and twenty commits to 7.7 KB and one, a factor of about 180 on bytes and
+20 on commits. The 7.7 KB is one 6.9 KB page plus twenty events of about forty bytes. Section 16 turns
+those into measured budgets.

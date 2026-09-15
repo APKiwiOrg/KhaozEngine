@@ -129,4 +129,46 @@ public class ItemContainerTests
         bag.SetAt(2, new ItemStack(0, 5));
         Assert.True(bag[2].IsEmpty);
     }
+
+    [Fact]
+    public void A_merge_keeps_the_numerically_lower_instance_id_so_a_replay_in_either_order_agrees()
+    {
+        // Lower rather than the destination's, so the merge is commutative: whichever order a replay seats
+        // the two entries in, one id survives and it is the same one.
+        Assert.Equal(3, ItemStack.MergeInstanceId(3, 7));
+        Assert.Equal(3, ItemStack.MergeInstanceId(7, 3));
+        // Zero is the ABSENCE of an instance rather than a low id, so a side carrying none never wins.
+        Assert.Equal(7, ItemStack.MergeInstanceId(7, 0));
+        Assert.Equal(7, ItemStack.MergeInstanceId(0, 7));
+        Assert.Equal(0, ItemStack.MergeInstanceId(0, 0));
+
+        // The kernel's own merge is Add's top-up, and the units arriving there carry no instance, so the
+        // destination keeps its id and the count saturates exactly as it always did.
+        ItemContainer bag = Bag();
+        bag.SetAt(0, new ItemStack(Coins, 5, 7));
+        Assert.Equal(10, bag.Add(Coins, 10));
+        Assert.Equal(new ItemStack(Coins, 15, 7), bag[0]);
+        Assert.True(bag[1].IsEmpty);
+    }
+
+    [Fact]
+    public void Add_never_tops_up_a_quarantined_or_payload_carrying_slot()
+    {
+        // Two of the four conditions a merge takes: neither entry is quarantined, and their payload bytes
+        // are equal. Plain units satisfy neither against an instance, so they open a new slot rather than
+        // inherit an item's properties.
+        var withPayload = new ItemContainer(5, Stackable, _ => true);
+        withPayload.SetSlotAt(0, new ItemSlot(new ItemStack(Coins, 5, 7), new byte[] { 1, 2 }, Quarantined: false));
+        Assert.Equal(10, withPayload.Add(Coins, 10));
+        Assert.Equal(new ItemStack(Coins, 5, 7), withPayload[0]);
+        Assert.Equal(new ItemStack(Coins, 10), withPayload[1]);
+        Assert.True(withPayload.SlotAt(1).Payload.IsEmpty);
+        Assert.Equal(15, withPayload.CountOf(Coins));
+
+        var quarantined = new ItemContainer(5, Stackable, _ => true);
+        quarantined.SetSlotAt(0, new ItemSlot(new ItemStack(Coins, 5, 8), new byte[] { 9 }, Quarantined: true));
+        Assert.Equal(4, quarantined.Add(Coins, 4));
+        Assert.Equal(new ItemStack(Coins, 5, 8), quarantined[0]);
+        Assert.Equal(new ItemStack(Coins, 4), quarantined[1]);
+    }
 }

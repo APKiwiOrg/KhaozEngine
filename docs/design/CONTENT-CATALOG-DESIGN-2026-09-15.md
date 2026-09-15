@@ -641,7 +641,7 @@ required migration.
 | `catalog_draft_edit_field` | one per changed field per edit | The changed fields only. |
 | `catalog_audit` | one per field change ever | Who, when, note, type, id, field, before, after. |
 | `catalog_remap_rule` | one per rule, append only | Contracts 8.1. |
-| `catalog_chunk` | one per (version, type, chunk index) | The chunk hash, so a republish knows which chunks changed. |
+| `catalog_chunk` | one per (version, type, chunk index, side) | The chunk hash, so a republish knows which chunks changed. Two rows when the client and server bytes differ (section 6.7). |
 
 `catalog_row_field` is the decision that makes the audit and the diff cheap, and it is a deliberate departure
 from storing an encoded row blob. Ruinborne's audit is the lesson: its rows record THAT a row changed and
@@ -834,7 +834,7 @@ CREATE TABLE IF NOT EXISTS catalog_chunk (
     uncompressed_bytes INTEGER NOT NULL CHECK (uncompressed_bytes >= 0),
     stored_bytes INTEGER NOT NULL CHECK (stored_bytes >= 0),
     visibility INTEGER NOT NULL CHECK (visibility IN (0, 1)),
-    PRIMARY KEY (version_number, type_id, chunk_index),
+    PRIMARY KEY (version_number, type_id, chunk_index, visibility),
     FOREIGN KEY (version_number) REFERENCES catalog_version(version_number),
     FOREIGN KEY (type_id) REFERENCES catalog_type(type_id));
 CREATE INDEX IF NOT EXISTS ix_catalog_chunk_hash ON catalog_chunk(chunk_hash);
@@ -855,6 +855,17 @@ adds any maintenance path that touches rules, it adds the trigger with it.
 hash is the NORMAL case and is the entire point: a chunk that did not change between two versions has the same
 hash and a client already holding it fetches nothing (contracts 7.3). The index is what makes "does this
 version share a chunk with the last one" one lookup at publish time.
+
+**`visibility` is in `catalog_chunk`'s primary key because one id range can be TWO chunks.** The column names
+the SIDE the bytes were encoded for, `0` for client and `1` for server, and it is not a copy of
+`catalog_type.default_visibility`. A type whose visibility is `ServerOnly` has exactly one row per chunk, at
+`visibility = 1`. A type whose visibility is `Client` and whose fields are all `Client` has exactly one row,
+at `visibility = 0`, and both manifests name that one hash. A type whose visibility is `Client` and which
+carries at least one `ServerOnly` FIELD has TWO rows per chunk with two different hashes, because the client
+bytes omit those fields and the server bytes carry them (section 6.7, contracts 11.3). Without the side in the
+key, the client hash of that third case has nowhere to live: the partial republish of section 6.10 step 5
+copies a chunk's previous hash forward and the client manifest of section 6.8 is built from chunk hashes, so a
+single-hash row makes the client manifest unreconstructable the moment any type takes a per-field override.
 
 ### 4.5 The SQL Server DDL
 
@@ -940,9 +951,33 @@ per type against an owner figure of 50,000 definitions and a stress figure of 1,
 family's blocks in ordinal order, finds the first whose `next_free_id < base_id + block_size`, issues that id
 and advances `next_free_id`. When every block is full it reserves a NEW block: it takes the type's
 `reserved_through`, rounds UP to the family's declared `block_size` alignment, reserves through the top of the
-new block by the step-2 rule above, inserts the `catalog_family_block` row, and only then issues. The rounding
-up is what wastes ids and what makes `(id & ~(size - 1)) == base` a legal membership test (contracts 5.2), and
-the waste is bounded by the block size.
+new block by the step-2 rule above, **advances `issued_through` to that same block top**, inserts the
+`catalog_family_block` row, and only then issues. The rounding up is what wastes ids and what makes
+`(id & ~(size - 1)) == base` a legal membership test (contracts 5.2), and the waste is bounded by the block
+size plus one alignment gap.
+
+**Advancing `issued_through` past the block top is what keeps the plain counter out of the block, and it is
+why step 1 needs no knowledge of families at all.** Without it, reserving a block raises only
+`reserved_through`, and step 1's single `<= reserved_through` guard then walks the plain counter through the
+gap under the block and into it. A fresh `item` type allocates 10 plain ids and sits at
+`issued_through = 10, reserved_through = 1024`. A `sword` family with `block_size = 16` rounds 1024 up to
+1024, takes the block `[1024, 1040)` and issues 1024 to its first member. Plain adds keep climbing, 11, 12,
+and so on to 1023, and the next one hands out 1024 a second time, to a row that is not in the family. At the
+same publish the `catalog_row` primary key `(type_id, definition_id, valid_from_version)` refuses the second
+insert loudly. At a LATER version it inserts cleanly, and the type now has two live rows claiming id 1024
+with whichever the encoder writes last winning the chunk.
+
+The alternative was to teach step 1 to read `catalog_family_block` and skip past any block its next id would
+enter. This spec advances the counter instead, for three reasons: step 1 stays one comparison against one
+durable number, the reserve-before-issue guarantee that number already carries is exactly the guarantee this
+needs, and a skip has to define what a multi-id range straddling a block means where an advance does not. The
+cost is ids, which this section already spends 1,024 at a time without noticing.
+
+**The validator checks the outcome anyway, because a counter is a mechanism and the invariant is a property.**
+`KEC0036` refuses two live rows of one type sharing a `definition_id`, and `KEC0037` refuses a non-family row
+whose id lies inside any block of any family of its type. Both are pass 1 (section 5.3) and both are linear
+walks over the candidate, so either one fires at the publish that would write the duplicate rather than at the
+boot that decodes it.
 
 An id block exhausted MID-PUBLISH cannot happen, because allocation runs as step 2 of the publish (section
 6.3) before anything is written, and a failure there aborts the publish with nothing changed. Section 11 row 9
@@ -1018,8 +1053,8 @@ decode reasons. Codes are never reused and never renumbered.
 | `KEC0010` | A definition id is outside every block of the family it claims. | 5.2 |
 | `KEC0011` | A family block is not aligned to its own declared size. | 5.2 |
 | `KEC0012` | Two families of one type claim overlapping blocks. | 5.2 |
-| `KEC0013` | A `ServerOnly` field appears on a type whose visibility is `Client`, with no per-field override. | 11.3 |
-| `KEC0014` | A `Client` chunk would carry a `ServerOnly` field. | 11.3, 10.4 |
+| `KEC0013` | WITHDRAWN, and never reissued under any meaning. As written it fired on the legal per-field override of contracts 4.7, which is the case section 6.7 is built around. Its real content is `KEC0014`. | 11.3 |
+| `KEC0014` | The CLIENT-side encoded bytes of a chunk still carry a field whose visibility is `ServerOnly`. | 11.3, 10.4 |
 | `KEC0015` | The remap rule set is not idempotent: a rule's `ToId` is an earlier rule's `FromId` for the same type. | 8.3, 10.4 |
 | `KEC0016` | A remap rule's `FromId` names a row that never existed. | 8.1 |
 | `KEC0017` | A remap rule's `ToId` names a row that is not live at `IntroducedIn`. | 8.2 |
@@ -1038,6 +1073,8 @@ decode reasons. Codes are never reused and never renumbered.
 | `KEC0030` | A localized text key exceeds 192 characters or breaks 12.2's character rules. | 12.2 |
 | `KEC0031` | A `parent_id` is non-zero while inheritance is unimplemented. | 3.8 here |
 | `KEC0032` to `KEC0035` | The four inheritance checks of section 3.8, unreachable in phase 1. | 3.8 here |
+| `KEC0036` | Two live rows of one type carry the same `definition_id`. | 5.1, 4.7 here |
+| `KEC0037` | A row that names no family carries an id inside a block of one of its type's families. | 5.2, 4.7 here |
 | `KEC0040` | A game validator returned a finding. The message is the game's, the code is prefixed with its type key. | 4.4 |
 
 `KEC0022` and `KEC0025` are the two checks that make Ruinborne's stackable defects impossible to publish:
@@ -1055,14 +1092,19 @@ identity.
 The sweep runs in five passes over the candidate, in this order, and never stops early:
 
 1. **Structure.** Ids, keys, families, blocks, chunk sizes, type identity. `KEC0001` to `KEC0003`, `KEC0009`
-   to `KEC0012`, `KEC0028`, `KEC0029`.
+   to `KEC0012`, `KEC0028`, `KEC0029`, `KEC0036`, `KEC0037`.
 2. **Schema.** Every field against its type's declared schema, required fields, value ranges, localized key
    shape, the inheritance guard. `KEC0004`, `KEC0005`, `KEC0020`, `KEC0021`, `KEC0025`, `KEC0030` to
    `KEC0035`.
 3. **References.** Key references, tag lists, loot graphs. `KEC0006` to `KEC0008`, `KEC0023`, `KEC0024`.
-4. **Visibility and codec.** Field visibility against chunk visibility, the round trip, the row size cap.
-   `KEC0013`, `KEC0014`, `KEC0022`, `KEC0026`, `KEC0027`.
+4. **Visibility and codec.** Field visibility against the SIDE a chunk is encoded for, the round trip, the row
+   size cap. `KEC0014`, `KEC0022`, `KEC0026`, `KEC0027`.
 5. **Remap rules.** The full ordered set. `KEC0015` to `KEC0019`.
+
+`KEC0036` and `KEC0037` are in pass 1 because they are the property the id allocator's counter discipline
+(section 4.7) is a mechanism for, and pass 1 is already walking every id of every type with the family block
+list in hand. `KEC0037` is `(id & ~(size - 1)) == base` against each block of the row's type, which is
+contracts 5.2's own membership test read the other way round.
 
 Pass 3 needs pass 1 to have built the live-row index, and pass 5 needs pass 1 to know which ids ever existed.
 Nothing else is ordered, and the passes are single threaded because the candidate at 1,000,000 rows is a few
@@ -1214,6 +1256,14 @@ Every chunk NOT in `affected` keeps its previous version's hash, read from `cata
 behind the owner's "download size after a one-item edit" budget (#882 body, item 12) and it is the reason
 chunk identity had to be an id range rather than a row range.
 
+**The carry-forward is PER SIDE, because `affected` is a set of `(typeId, chunkIndex)` and a chunk address is
+`(typeId, chunkIndex, side)`.** For an unaffected chunk the publisher copies forward every
+`catalog_chunk` row the previous version holds for that `(typeId, chunkIndex)`: one row for a chunk that is
+single sided, two when the type is `Client` with a per-field `ServerOnly` override. For an affected chunk it
+encodes every side the type produces, which is the same one or two. Nothing anywhere decides a side by
+recomputing it from the type's default visibility, because the type's schema may have gained a `ServerOnly`
+field at THIS version, and the row set is what says which sides the previous version actually wrote.
+
 **A retire is an ordinary chunk rewrite.** The retired row keeps its slot and its bytes and gains the retired
 bit, so exactly one chunk changes. Grimhollow's 18 retired ids sit across ids 1 to 35, which at 4,096 slots
 per chunk is one chunk, so its whole retirement history is one chunk rewrite.
@@ -1247,10 +1297,20 @@ its own canonical bytes and its own hash (contracts 11.3). A type whose visibili
 client chunk at all. So a chunk address is `(hash)` and the client and server chunks for one id range are two
 addresses, which is exactly right: they are different bytes.
 
+**A `Client` type MAY carry a per-field `ServerOnly` override, and this is the case that path exists for**
+(contracts 4.7 for the per-field level, contracts 11.3 for the client manifest omitting "every `ServerOnly`
+field from the rows in the chunks it does carry"). Nothing refuses it and nothing needs to: the client chunk
+omits those fields at encode time. `KEC0014` therefore fires on exactly one thing, the CLIENT-side encoded
+bytes of a chunk still carrying a field the schema marks `ServerOnly`, which is an encoder defect and not an
+authoring one. The publish-time refusal is the codec failing to honour the schema, never the schema itself.
+The `catalog_chunk` row set carries both hashes (section 4.4) and section 6.6 copies both forward.
+
 ### 6.8 Step 8, build both manifests
 
 Two manifests per version, the SERVER manifest over every chunk and the CLIENT manifest over the
-client-visible chunks only (contracts 7.3, 11.3). Each gets its own hash under its own sub-domain,
+client-visible chunks only (contracts 7.3, 11.3). Each is built by reading the version's `catalog_chunk` rows
+and taking one side: the server manifest takes `visibility = 1` where it exists and `visibility = 0`
+otherwise, the client manifest takes `visibility = 0` and names nothing for a type that has no such row. Each gets its own hash under its own sub-domain,
 `kec/manifest/server/` and `kec/manifest/client/`, so a head gating on one can never accidentally agree with a
 head gating on the other. That last property is `TileWorldHash.OfWorldAndCatalogs`'s stated reason for
 existing (`a-engine.md:1206-1209`).
@@ -1312,9 +1372,9 @@ ONE transaction (section 4.8). In order inside it:
    base version, the publisher, the note and the timestamp.
 3. Apply every temporal row change computed at step 5.
 4. Append every remap rule computed at step 5, at `MAX(sequence) + 1` upward.
-5. Insert every `catalog_chunk` row for `newVersion`. Unaffected chunks get a row too, carrying the hash
-   copied from `newVersion - 1`, so the table answers "which chunks does version N have" with one query and no
-   recursion back through history.
+5. Insert every `catalog_chunk` row for `newVersion`, ONE PER SIDE. Unaffected chunks get their rows too,
+   copied from `newVersion - 1` side by side (section 6.6), so the table answers "which chunks does version N
+   have, on which side" with one query and no recursion back through history.
 6. Insert every audit row.
 7. Delete `catalog_draft_edit_field`, `catalog_draft_edit` and `catalog_draft`.
 8. `UPDATE catalog_metadata SET active_version = newVersion`.
@@ -1349,7 +1409,16 @@ names nothing points at yet" with the manifest rename as the commit
 ### 6.12 Step 11, the sweep
 
 After the commit, and only after a SUCCESSFUL commit, the publisher lists the pack store and deletes any file
-whose hash appears in no `catalog_chunk` row and is neither manifest of any version. The sweep is SKIPPED when
+outside the keep set. **The keep set is the union, over EVERY version the store knows, of that version's two
+manifest hashes and every hash named INSIDE either manifest.** It is defined against the manifests and not
+against `catalog_chunk`, because the manifest is the complete enumeration and `catalog_chunk` is not: the
+remap rule chunk sits at a reserved address outside any type's id space (section 7.7) and the text chunks are
+per language (section 7.6), so neither has a `catalog_type` row to hang a `catalog_chunk` row on, while both
+are named by both manifests (section 6.8). A keep set read from `catalog_chunk` would delete the rule chunk
+and every text chunk at the first publish, and every later boot would fail closed on `chunk <hash> absent`,
+for every version, forever. Reading the manifests also settles the per-side case for free, since the client
+manifest names the client hash and the server manifest names the server hash (section 6.7). The sweep is
+SKIPPED when
 the store listing fails for any reason, because deleting files on the authority of a listing that failed is
 how a bad publish turns into a lost pack. That skip rule is the map document's, which skips its own sweep when
 the previous manifest could not be read (`MapTiledFile.Save.cs:105-107`).
@@ -2527,10 +2596,14 @@ Grimhollow's hyphen-joined game data hash was built for, improved (contracts 7.6
 
 ### 13.1 The client half is public data
 
-Everything in a client manifest is data the client is meant to have, so **nothing secret goes in a `Client`
-chunk**. That is not a hope, it is a publish-time refusal: `KEC0014` refuses a `ServerOnly` field appearing in
-a `Client` chunk, as a publish ERROR rather than a warning and rather than a silent strip, because a silent
-strip makes the field's absence indistinguishable from an authoring mistake (contracts 11.3).
+Everything in a client manifest is data the client is meant to have, so **nothing secret reaches a client
+chunk**. That is not a hope, it is two mechanisms in order. A field marked `ServerOnly` on a `Client` type is
+OMITTED from the client-side encode by construction, which is contracts 11.3's own wording and section 6.7's
+two-hash chunk. `KEC0014` then refuses, as a publish ERROR rather than a warning, any publish whose
+client-side bytes still carry such a field. The omission is the design and the finding is the proof it
+happened, so a codec that forgets a field's visibility fails the publish instead of shipping the value to
+every player. What `KEC0014` does NOT refuse is the per-field override itself: a `Client` type carrying a
+`ServerOnly` field is legal and is how a public row holds a private number.
 
 The two families that are `ServerOnly` at the TYPE level, so no client ever sees a row of them at all, are
 `loot_table` and `loot_entry` (section 3.5). Drop rates are the motivating case and the owner put drop tables
@@ -2834,6 +2907,7 @@ The facts, each asserting OBSERVABLE behaviour and never a mechanism:
 | 20 | Export at version N then import into an empty store gives identical rows, keys and ids. |
 | 21 | A publish that fails at the validator leaves the draft intact. |
 | 22 | The active pointer and the version row commit together, asserted by a reader seeing both or neither. |
+| 23 | A plain allocation taken after a family block is reserved never returns an id inside that block, asserted by draining the whole gap under the block and then some. |
 
 ### 15.6 Publish crash safety
 
@@ -2885,9 +2959,11 @@ the catalog loaded from SQL or from code defaults (`c-ruinborne.md:517-536`).
 other is identical to the previous version's. Then edit a row in a different chunk and assert two changed.
 This is P6's correctness half and it is what would catch a chunk boundary accidentally becoming row-relative.
 
-**Visibility.** Publish a type with one `ServerOnly` field, then assert the client chunk decodes without that
-field, that its hash differs from the server chunk's, that the client manifest omits every `ServerOnly` type,
-and that a hand-built candidate placing a `ServerOnly` field in a `Client` chunk is refused by `KEC0014`.
+**Visibility.** Publish a `Client` type with one `ServerOnly` field, then assert the client chunk decodes
+without that field, that its hash differs from the server chunk's, that BOTH hashes are in `catalog_chunk`
+under the one `(version, type, chunk index)` at two sides, that the next publish of an unrelated chunk carries
+both forward, that the client manifest omits every `ServerOnly` TYPE, and that a stub encoder which leaves the
+field in the client-side bytes is refused by `KEC0014`.
 
 **Boot fail-closed.** Eight facts, one per row of section 9.6's exit table, each asserting exit code 3 and the
 exact stderr prefix. Run in process against a test host that captures the exit rather than calling
@@ -3008,6 +3084,12 @@ The bundle is generated by reading, in this order:
 `issued_through` to the maximum imported id per type afterwards. So item 13 is `stone_sword` before and after,
 every stored container decodes unchanged, and no player's bank moves. Contracts 6.5 states the outcome
 directly: Grimhollow's adoption is a no-op for stored data.
+
+**The bundle declares no families, so the block rule of section 4.7 does not bear on this import.** Grimhollow
+has no id block structure to carry across: its ids are a flat 1 to 35 and its equipment profiles are a
+satellite table keyed by item id rather than a family. Seeding the high-water marks is the whole of the
+allocator work here, and the first family this database ever sees will be created by a later ordinary edit,
+against a counter that is already past every imported id.
 
 **The 18 retired ids import as rows with `retired = 1` plus 18 `Retired` remap rules with policy `0x01`
 placeholder.** They are not replacements, because Grimhollow's retired items have no destination: the
@@ -3661,7 +3743,7 @@ pass checked hardest and cleared, named so a reviewer knows where to look rather
 | Loot entries as their own type, 3.1 | 4.7 | A refinement. 4.7's kind list has no repeated group, and this avoids needing one, which is why no CCR asks for one. |
 | Family blocks, 3.8 | 5.2 | Same bounds, same alignment rule, same second-block behaviour, same never-deleted rule. |
 | Definition ids allocated reserve-before-issue, 4.7 | 5.1, 6.2 | A refinement. 6.2 states the ORDER rule for instance ids and 5.1 leaves definition-id mechanics open, so applying the same order is narrowing, not contradicting. |
-| `KEC0014`, a `Client` chunk carrying a `ServerOnly` field, 5.2 | 11.3 | Exactly 11.3's second bullet, a publish-time refusal rather than a warning or a silent strip. |
+| `KEC0014`, client-side bytes still carrying a `ServerOnly` field, 5.2 | 11.3 | 11.3's second bullet is the OMISSION, which section 6.7 does at encode time. `KEC0014` is the publish-time check that it happened, rather than a warning. |
 | `chance_bp` basis points out of 10,000, 3.5 | 13.2 | The same percent representation and the same round-half-up shape, so there is one convention rather than two. |
 | The connect door layer order, 8.5 | 7.5 | Content sits inside world and outside auth, and a client that is behind is refused rather than admitted read-only, which is gate 0 decision 6. |
 | The page stamp is the number, 12.1 | 7.2, gate 0 decision 5 | This spec supplies the number and never asks a page to carry a hash. |

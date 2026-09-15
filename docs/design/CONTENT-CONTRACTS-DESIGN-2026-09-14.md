@@ -1468,6 +1468,19 @@ different catalog than the database holds with no metric, no exit code and no re
 (`c-ruinborne.md:176-196`, `c-ruinborne.md:1030-1038`). A silent fallback catalog is worse than an outage,
 because an outage is noticed.
 
+**What the rule binds is the CONTENT VERSION.** The boot fails when the active version is missing, when
+its pack cannot be read, when it does not pass the validator of 10.4, or when it is below one of the
+minimum builds of 7.4. It does not bind the game CODE a content row happens to name. A row that names a
+registration this process does not have, a game-registered crafting operation or a validator hook that
+ships in a later binary, LOADS, and the operation is refused at the moment of USE with a stable reason
+code and a counter, not at boot. The reason is the deployment order: content publishes and code deploys
+move on separate clocks, so failing the boot for a missing registration lets one unusable row take a whole
+server down for a deploy that has not happened yet, and it puts the content operator in a position to halt
+the fleet by saving a draft. A refusal at use costs one unusable operation, which is visible in the counter
+and recoverable by deploying the code. The distinction holds in the other direction too: the version and
+its pack are checked once, at boot, by the process that is about to serve them, so nothing here weakens the
+no-runtime-fallback rule above.
+
 **Expensive to change once data exists: no.** All three outcomes and the fail-closed rule are runtime
 behaviour over a fixed byte format. The QUARANTINE WRAPPER's own encoding is durable, so it gets a version
 byte like everything else in section 15.

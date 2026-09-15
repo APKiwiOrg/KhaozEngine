@@ -512,6 +512,22 @@ Grimhollow already does exactly this by hand: 18 of its 35 item ids are retired 
 the rule, that retired ids are never removed so a stored stack still decodes and the player upgrade can
 find it (`b-grimhollow.md:30-36` citing `GrimhollowItems.cs:133-151`).
 
+**The one exception is a bulk import into an EMPTY database.** An import run against a store that holds no
+rows for any content type MAY carry explicit ids, and the store ADOPTS them rather than allocating over
+them. Immediately afterwards it sets both its reserved and its issued high-water mark above the highest
+imported id PER TYPE, so every subsequent id comes from the allocator under the ordinary rule. No other
+write path may ever name an id, and an import into a database that already holds a row may not name one
+either. The empty-database condition is what makes the exception safe: it makes an import once-ever per
+database, so there is no second import to disagree with the first and nothing to renumber afterwards. The
+never-reuse guarantee is untouched, because the marks move PAST the imported range rather than into it.
+
+This exception is also what makes 6.5's promise reachable. Grimhollow's 35 item ids already sit inside
+every stored `ItemContainer` blob, and `GrimhollowJournalContracts.ValidateContainer` throws on an unknown
+item id (`b-grimhollow.md:545-556`), so an import that allocated fresh ids would be a player who cannot log
+in. **Expensive to change once data exists: no while every store is still empty, yes the moment one has
+imported**, because a store that adopted ids cannot afterwards be told it should have allocated them
+without renumbering the durable data that names them.
+
 **Why `int` and not `long`.** `ItemStack.ItemId` is an `int` and `TileGroundItem.ItemId` is an `int`.
 Widening either is a wire break and a codec break across two packages and every consumer. 2.1 billion
 definitions per type is four orders of magnitude past the owner's 1,000,000 stress figure.
@@ -739,7 +755,8 @@ mapping rule is:
   into one (`c-ruinborne.md:939-948`). Instances cannot land in Ruinborne before that repair is fixed.
 
 **Grimhollow** has int item ids already, so its definition ids map one to one and no stored container
-changes value. Its items carry no per-instance state at all today, so every existing stack maps to
+changes value. That one-to-one mapping rides 5.1's empty-database import exception, which is the
+only path by which the existing ids survive the move into the authoring store. Its items carry no per-instance state at all today, so every existing stack maps to
 instance id 0. The first Grimhollow item that gains a property is the first instance id it allocates.
 
 **Expensive to change once data exists: yes for Ruinborne, no for Grimhollow.** Ruinborne's is a data

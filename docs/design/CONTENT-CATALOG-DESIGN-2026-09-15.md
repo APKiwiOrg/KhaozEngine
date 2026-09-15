@@ -3533,3 +3533,42 @@ Each is a non-goal from section 1.2 with the hook phase 1 already built for it, 
 | Multi-world activation | The active pointer as a single row (4.9) | One column. Section 4.9 says so in full. |
 | Family generators | Families, aligned blocks and the ordered block list (3.8) | A template expansion at authoring time. Nothing durable. |
 | Market index | Tag ids as the query surface (3.2, contracts 4.6) | An index build, outside the pack. |
+
+## 19. Decisions that are expensive to change once data exists
+
+This table adds ONLY what this spec introduces. Contracts section 16 is the parent table and is not repeated
+here: the int32 definition id, the never-reuse rule, family block sizes, key immutability, the page stamp
+being the number, the manifest hash algorithm, chunk size being a power-of-two slot count, remap rule
+append-only ordering and encoding, tag ids as the tag representation, a published field being retired rather
+than removed, the stat scale and rounding rules, little endian, the varint definition and SHA-256 are all
+decided THERE and are binding here unchanged.
+
+"Expensive" keeps the contracts' meaning: rewriting durable bytes that already exist in a consumer's
+production database, or in a player's cached pack, rather than a recompile or a republish.
+
+| Decision | Section | Cost if changed later |
+|---|---|---|
+| The five engine type ids and their keys: 1 `tag`, 2 `item`, 3 `stat`, 4 `loot_table`, 5 `loot_entry` | 3.1 | Every chunk in every published pack is addressed by type id, and `KEC0029` refuses the change outright. A renumber is a new catalog. |
+| Engine ids stop at 255, Scope B takes 256 to 1023, games start at 1024 | 3.1, contracts 4.3 | A game type sitting in a range the engine later claims collides silently at registration in a future engine release. |
+| Loot entries are their OWN content type, not a repeated group in an opaque field | 3.1 | Every entry has an id and a key. Folding them into the table later retires every entry id and rewrites every table row. |
+| The `item` type's field set as shipped | 3.3 | A published field is retired, never removed (contracts 4.7). Adding is cheap, so the cost here is only in what shipped wrong. |
+| Asset references are `opaque bytes` holding a varint length plus UTF-8, capped at 128 bytes, character set `a-z0-9_./-` | 3.3 | Changing the encoding restates every row carrying an icon, mesh or held mesh. Raising the cap is safe. Lowering it strands rows already over it, the same shape as contracts' `MaxInstancePayloadBytes`. |
+| `MaxContentRowBytes = 4096` | 7.3 | Raising is safe. Lowering strands every row already over it and makes a published version unrepublishable. |
+| The default `chunkSlots` per engine type: 4,096, and 16,384 for `loot_entry` | 3.1, 4.5 | Renumbers every chunk of that type and invalidates every cached client pack for it. Question Q3 proposes lowering `item` to 1,024 and that is a decision to take BEFORE the first publish, not after. |
+| The chunk body's canonical byte layout, which is what the chunk hash is taken over | 7.3 | Every chunk hash in every manifest of every published version changes, so it needs a `SchemeVersion` bump and a re-digest. |
+| The hash domain prefix `kec/` and its five sub-domains | 7.8 | The same re-digest, plus a gate that compared one manifest side could start agreeing with the other. |
+| The version number is monotonic from 1, plus exactly one per publish, never reused and never skipped | 12.1 | A durable container page stamps it and a remap rule applies to any page stamped OLDER than the rule. A gap or a reuse makes "older" ambiguous. |
+| A retire's POLICY for a specific definition, placeholder versus replacement | 3.9, 16.4 | Contracts 8.6: a retire is irreversible for pages already migrated past it. Grimhollow's 18 retired ids import as placeholder, and choosing replacement later cannot reach the pages already migrated. |
+| The `ContentBundle` format version | 10.9 | A bundle is the backup format as well as the seeding format, so an old bundle needs a reader for as long as anyone might restore one. |
+| The authoring store's temporal row shape: `valid_from_version` and `replaced_in_version` per row version | 3.7, 4.3 | Rewrites the operator's whole authoring database. Cheaper than the rows above because the store HAS a migration path by design (4.2's `CurrentVersion` and `RequiredMigration`), which is exactly what a pack format does not have. |
+| `catalog_row_field`, one row per field, rather than one encoded blob per row | 4.3 | The same migration, plus every audit row before the migration loses its field-level meaning. |
+| Grimhollow: definition ids 1 to 35 preserved exactly at import | 16.4 | Every stored `ItemContainer` blob names them, and `ValidateContainer` THROWS on an unknown id, so a moved id is a player who cannot log in. |
+| Ruinborne: ids allocated in key-ascending order at import | 17.3 | The ids exist after the import. A different order is a different catalog, and `character_inventory` will reference them after Scope B. |
+| Ruinborne: the four REAL-to-`ScaledInt` scales, 100 for stats and modifier values, 1000 for range, arc and cooldown, basis points for drop chance | 17.6 | Restates every number those columns hold, in both directions, and a rescale after publish is a balance edit applied silently (gate 0 decision 4). |
+
+Everything else this spec introduces is cheap by comparison and is named so the table is not read as
+exhaustive in the other direction: the finding CODES (contracts 16 already lists the validator's findings as
+cheap, and this spec's rule that codes are never renumbered is a convenience for runbooks rather than a
+durability constraint), the exit code 3 and its stderr text, the `FileSystemPackStore` directory sharding, the
+action names and their status codes, the per-field visibility assignments, the package names, the benchmark
+flags, and every localization key including Grimhollow's two renames in 16.5.

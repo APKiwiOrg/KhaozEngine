@@ -126,8 +126,10 @@ public sealed class TileActorHost
     /// <param name="definition">What to build there.</param>
     /// <param name="home">Where to build it.</param>
     /// <exception cref="ArgumentNullException"><paramref name="definition"/> is null.</exception>
-    /// <exception cref="ArgumentException">The definition names an unregistered traversal profile or that
-    /// profile blocks <paramref name="home"/>.</exception>
+    /// <exception cref="ArgumentException">The definition names an unregistered traversal profile, or that
+    /// profile's map does not let the whole footprint stand at <paramref name="home"/>. A one-tile definition on the
+    /// default profile keeps the legacy rule that a blocked home is admitted. <see cref="CanPlace"/> asks the same
+    /// question without throwing.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="definition"/> is refused by
     /// <see cref="TileActorSpawner"/>'s own door, or its <see cref="TileActorDefinition.LeashRadius"/> is above
     /// this server's <see cref="TileMoveOptions.MaxPathRadius"/> for actors.</exception>
@@ -141,9 +143,25 @@ public sealed class TileActorHost
                 + $"({pathRadius}, TileWorldServerConfig.ActorMove.MaxPathRadius). A leash beyond that window is a "
                 + "walk home the pathfinder cannot plan in one go.");
         var spawner = new TileActorSpawner(definition, home);
-        server.ValidateActorTraversalPlacement(definition.TraversalProfile, home, nameof(definition));
+        server.ValidateActorTraversalPlacement(definition.TraversalProfile, home, definition.FootprintSize,
+            nameof(definition));
         spawners.Add(spawner);
         return spawner;
+    }
+
+    /// <summary>Whether <paramref name="definition"/>'s footprint fits at <paramref name="home"/> on its traversal
+    /// profile, which is the placement check <see cref="Add"/> and every respawn make, without throwing. For a game's
+    /// content test over its authored spawn markers: the engine does not know which markers are actors.</summary>
+    /// <param name="definition">What would be built there.</param>
+    /// <param name="home">The authored home, the footprint's south-west tile.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="definition"/> is null.</exception>
+    public bool CanPlace(TileActorDefinition definition, TileCoord home)
+    {
+        ArgumentNullException.ThrowIfNull(definition);
+        int size = definition.FootprintSize;
+        if (size < 1 || size > TileMoveState.MaxFootprintSize) return false;
+        return server.TryGetActorTraversal(definition.TraversalProfile, out _)
+            && !server.IsActorTraversalPlacementBlocked(definition.TraversalProfile, home, size);
     }
 
     /// <summary>
@@ -278,6 +296,7 @@ public sealed class TileActorHost
         {
             TraversalProfile = traversalProfile,
             TraversalMap = traversalMap,
+            FootprintSize = state.FootprintSize,
         };
 
         TileActorIntent intent = Behaviour.Decide(context);
@@ -438,15 +457,17 @@ public sealed class TileActorHost
             spawner.FormerActorRetired();
         }
         TileActorDefinition d = spawner.Definition;
-        // A registered topology can change after authoring. A temporary blocker at a non-default home leaves the
-        // spawner in its current state and retries next tick, the same way a full cell does.
-        if (server.IsActorTraversalPlacementBlocked(d.TraversalProfile, spawner.Home)) return;
+        // A registered topology can change after authoring. A temporary blocker under the footprint (on any profile
+        // for a large body, on a non-default profile for a one-tile one) leaves the spawner in its current state and
+        // retries next tick, the same way a full cell does.
+        if (server.IsActorTraversalPlacementBlocked(d.TraversalProfile, spawner.Home, d.FootprintSize)) return;
         if (SpawnAdmission is not null && !SpawnAdmission(spawner)) return;
         // The spawner rides INTO the spawn rather than being filed after it returns. See LinkSpawner.
         server.SpawnActorFrom(spawner.Home,
             new TileActorSpawn(d.MaxHealth, d.AttackTicks, TileDirection.S, d.StepMode)
             {
                 TraversalProfile = d.TraversalProfile,
+                FootprintSize = d.FootprintSize,
             }, spawner);
         // The answer is deliberately dropped. A zero is the per-cell cap refusing at the door, and a refused spawn
         // files nothing, so the spawner keeps its state and tries again on the next tick. That is the right answer

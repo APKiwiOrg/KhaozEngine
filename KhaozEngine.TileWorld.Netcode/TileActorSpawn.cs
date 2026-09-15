@@ -25,4 +25,10 @@ public readonly record struct TileActorSpawn(ushort MaxHealth, byte AttackTicks,
     /// <see cref="TileActorHost.RegisterTraversalProfile"/> before spawning. Kept outside the positional record
     /// shape so existing construction and deconstruction remain source compatible.</summary>
     public TileActorTraversalProfile TraversalProfile { get; init; } = TileActorTraversalProfile.Default;
+
+    /// <summary>The edge of the actor's square footprint in tiles, written onto its move state at spawn. See
+    /// <see cref="TileActorDefinition.FootprintSize"/>. 1 through <see cref="TileMoveState.MaxFootprintSize"/>,
+    /// refused at the door otherwise. Kept outside the positional record shape for the reason
+    /// <see cref="TraversalProfile"/> is.</summary>
+    public int FootprintSize { get; init; } = 1;
 }

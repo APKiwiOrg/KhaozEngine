@@ -29,6 +29,12 @@ public sealed record TileActorDefinition
     /// preserves the map supplied to <see cref="TileWorldServer"/>.</summary>
     public TileActorTraversalProfile TraversalProfile { get; init; } = TileActorTraversalProfile.Default;
 
+    /// <summary>The edge of the actor's square footprint in tiles, anchored on its home and every committed tile as
+    /// the SOUTH-WEST corner. 1 through <see cref="TileMoveState.MaxFootprintSize"/>, refused at the spawner door
+    /// otherwise. Pathing, reach, the wander and spawn placement all use the whole footprint, and the presenter
+    /// centres the body on it.</summary>
+    public int FootprintSize { get; init; } = 1;
+
     /// <summary>Ticks between swings, written onto <see cref="TileCombatState.AttackTicks"/> at spawn. Zero means an
     /// actor that never swings, which is a legitimate content decision (a critter, a training dummy).</summary>
     public byte AttackTicks { get; init; } = 10;

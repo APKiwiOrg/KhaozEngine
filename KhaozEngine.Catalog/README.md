@@ -130,6 +130,8 @@ mismatch refuses the WHOLE record with a reason token. Every decode entry point 
   content address and the stored file, storing uncompressed whenever Brotli does not shrink the body.
   `TryReadHeader` takes every refusal derivable from the header alone and allocates nothing, `TryDecode`
   walks the table, and `TryVerify` checks a stored file against an address without decoding its rows.
+  `TryDecodeVerified` is the load path's one pass, doing both over a SINGLE decompression and comparing the
+  digest before it walks a row, so nothing escapes a buffer that has not been verified.
 - `ContentChunk`, `ContentChunkRow`, `ContentChunkHeader` and `EncodedContentChunk` - the decoded chunk with
   its walked table, one row on its way in, the 36 header bytes as a value, and the encode result carrying the
   canonical bytes, the hash and the stored file. `IsRetired(id)` is answered from the table with no row

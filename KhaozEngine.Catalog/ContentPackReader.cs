@@ -426,11 +426,14 @@ public sealed class ContentPackReader
         return null;
     }
 
+    /// <summary>
+    /// Verifies and decodes ONE chunk over a single decompression. It was a <c>TryVerify</c> then a
+    /// <c>TryDecode</c> over the same span, which decompressed the stored bytes twice and allocated the
+    /// uncompressed body twice, per chunk, per boot.
+    /// </summary>
     LoadedChunk? LoadChunk(string hash, ReadOnlyMemory<byte> file, out string? reason)
     {
-        ReadOnlySpan<byte> span = file.Span;
-        if (!ContentChunkCodec.TryVerify(span, hash, out reason)
-            || !ContentChunkCodec.TryDecode(span, Registry, out ContentChunk? chunk, out reason))
+        if (!ContentChunkCodec.TryDecodeVerified(file.Span, Registry, hash, out ContentChunk? chunk, out reason))
         {
             return null;
         }

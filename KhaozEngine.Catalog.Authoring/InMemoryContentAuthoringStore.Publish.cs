@@ -113,7 +113,7 @@ public sealed partial class InMemoryContentAuthoringStore
 
             // The same statement about the rule list: a plan appends on top of the rules it was built over,
             // so this store's rules have to be that plan's own prefix or the sequences would collide.
-            RequireRulePrefix(plan);
+            ContentRulePrefix.Require(_rules, plan);
 
             ContentPublishBaseline before = ReadBaseline();
 
@@ -324,39 +324,6 @@ public sealed partial class InMemoryContentAuthoringStore
 
         return highest;
     }
-
-    /// <summary>
-    /// Every rule this store already holds must be the plan's own prefix, identity for identity. A rule list
-    /// is append only, so a plan built over a different history would renumber rules this store has already
-    /// published, and the rule chunk hash in both its manifests would then name a set nothing can rebuild.
-    /// </summary>
-    void RequireRulePrefix(ContentPublishPlan plan)
-    {
-        if (plan.Rules.Count < _rules.Count)
-        {
-            throw Moved(FormattableString.Invariant(
-                $"The plan carries {plan.Rules.Count} remap rule(s) and this store already holds {_rules.Count}. A rule list is append only, so a plan can never carry fewer than the version it is published onto."));
-        }
-
-        for (int i = 0; i < _rules.Count; i++)
-        {
-            if (Same(_rules[i], plan.Rules[i]))
-            {
-                continue;
-            }
-
-            throw Moved(FormattableString.Invariant(
-                $"Remap rule {i + 1} of the plan is not the one this store already holds at that sequence, so the plan was built over a different rule history."));
-        }
-    }
-
-    static bool Same(RemapRule held, RemapRule planned)
-        => held.Sequence == planned.Sequence
-            && held.IntroducedIn == planned.IntroducedIn
-            && held.Type == planned.Type
-            && held.Kind == planned.Kind
-            && held.FromId == planned.FromId
-            && held.ToId == planned.ToId;
 
     void Close(IReadOnlyList<ContentRowClose> closes)
     {

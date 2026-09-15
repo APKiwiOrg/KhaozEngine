@@ -72,7 +72,7 @@ public sealed partial class SqlServerContentAuthoringStore
                 }
 
                 IReadOnlyList<RemapRule> held = await ReadRulesAsync(scope, token).ConfigureAwait(false);
-                RequireRulePrefix(held, plan);
+                ContentRulePrefix.Require(held, plan);
 
                 ContentPublishBaseline before = await ReadBaselineAsync(scope, token).ConfigureAwait(false);
 
@@ -463,39 +463,6 @@ public sealed partial class SqlServerContentAuthoringStore
             }
         }
     }
-
-    /// <summary>
-    /// Every rule this store already holds must be the plan's own prefix, identity for identity. A rule list
-    /// is append only, so a plan built over a different history would renumber rules already published, and
-    /// the rule chunk hash in both manifests would then name a set nothing can rebuild.
-    /// </summary>
-    static void RequireRulePrefix(IReadOnlyList<RemapRule> held, ContentPublishPlan plan)
-    {
-        if (plan.Rules.Count < held.Count)
-        {
-            throw Moved(FormattableString.Invariant(
-                $"The plan carries {plan.Rules.Count} remap rule(s) and this store already holds {held.Count}. A rule list is append only, so a plan can never carry fewer than the version it is published onto."));
-        }
-
-        for (int i = 0; i < held.Count; i++)
-        {
-            if (Same(held[i], plan.Rules[i]))
-            {
-                continue;
-            }
-
-            throw Moved(FormattableString.Invariant(
-                $"Remap rule {i + 1} of the plan is not the one this store already holds at that sequence, so the plan was built over a different rule history."));
-        }
-    }
-
-    static bool Same(RemapRule held, RemapRule planned)
-        => held.Sequence == planned.Sequence
-            && held.IntroducedIn == planned.IntroducedIn
-            && held.Type == planned.Type
-            && held.Kind == planned.Kind
-            && held.FromId == planned.FromId
-            && held.ToId == planned.ToId;
 
     /// <summary>The commit half, built once over the pack target this store was handed.</summary>
     ContentPublishCommit RequireCommit()

@@ -389,7 +389,9 @@ required to start from, so nothing is left half seeded.
 - **Reserve before issue.** A range is reserved durably BEFORE any id in it is issued. The worst a crash can
   do is skip a block of ids that were never issued, and it can never reissue one.
 - **A published version is immutable and remap rules are append only.** There is no update path and no
-  delete path for a rule in this seam or in any provider.
+  delete path for a rule in this seam or in any provider. `ContentRulePrefix.Require` is that rule as a
+  check every store runs inside its commit: the rules the store holds must be the plan's own prefix, WHOLE,
+  the payload a retire writes its policy and destination in included.
 - **Ids are never reused.** A definition that leaves play is retired, and the row stays in the pack forever
   so a stored stack still decodes.
 - **Keys are ordinal and immutable once published.** Both SQL backends pin their key columns to a binary

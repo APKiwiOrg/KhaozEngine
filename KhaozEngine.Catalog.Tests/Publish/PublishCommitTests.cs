@@ -223,6 +223,69 @@ public class PublishCommitTests
     }
 
     [Fact]
+    public async Task TheCommitRefusesAPlanWhoseHeldRuleDiffersOnlyInItsPayload()
+    {
+        using var root = new TemporaryRoot();
+        ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing);
+        var pack = new FileSystemPackStore(root.Path);
+        InMemoryContentAuthoringStore store = PublishFixtures.Store(registry, pack);
+        ContentPublisher publisher = PublishFixtures.Publisher(store, registry);
+
+        await PublishFixtures.ApplyAsync(
+            store,
+            ContentEdit.Add(Thing, new ContentKey("sword"), PublishFixtures.Fields(1)));
+        await store.PublishAsync(PublishFixtures.Request(0));
+
+        // A fork appends the one rule kind whose payload is free-form, so the doctored rule below is still
+        // well formed and still validates: the ONLY thing wrong with it is that it is not the rule the store
+        // already published at that sequence.
+        await PublishFixtures.ApplyAsync(
+            store,
+            ContentEdit.Fork(
+                Thing,
+                1,
+                new ContentKey("sword"),
+                new ContentKey("sword_legacy"),
+                PublishFixtures.LegacyField,
+                []));
+        await store.PublishAsync(PublishFixtures.Request(1));
+
+        await PublishFixtures.ApplyAsync(
+            store,
+            ContentEdit.Add(Thing, new ContentKey("shield"), PublishFixtures.Fields(2)));
+        ContentPublishBaseline held = await store.ReadPublishBaselineAsync();
+        RemapRule published = Assert.Single(held.Rules);
+        var doctored = new ContentPublishBaseline(
+            held.VersionNumber,
+            held.Rows,
+            [
+                new RemapRule(
+                    published.Sequence,
+                    published.IntroducedIn,
+                    published.Type,
+                    published.Kind,
+                    published.FromId,
+                    published.ToId,
+                    [0x01]),
+            ],
+            held.Chunks,
+            held.Languages,
+            held.MinimumServerBuild,
+            held.MinimumClientBuild);
+        ContentPublishPlan plan = PublishFixtures.AssertValid(
+            await publisher.PrepareAsync(PublishFixtures.Request(2), doctored));
+
+        // A payload carries a retire's policy and its destination, so a prefix check that ignored it would
+        // let a plan rewrite what a published rule MEANS while keeping its identity columns.
+        ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
+            () => store.CommitPublishAsync(plan, PublishFixtures.Request(2)));
+
+        Assert.Equal(ContentAuthoringException.BaseVersionMovedReason, refused.Reason);
+        Assert.Equal(2, await store.GetActiveVersionAsync());
+        Assert.Equal(2, (await store.ListVersionsAsync()).Count);
+    }
+
+    [Fact]
     public async Task TheCommitRefusesAPlanTheValidatorDidNotPass()
     {
         using var root = new TemporaryRoot();

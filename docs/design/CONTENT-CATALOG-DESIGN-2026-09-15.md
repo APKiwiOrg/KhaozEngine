@@ -186,8 +186,8 @@ public interface IContentSnapshot
 Seven members and no more. It carries no authoring concept, no chunk, no hash beyond the identity pair, and
 no mutation, so a client holds one with the pure read graph of 2.1. `TryGetRow` is the generic path and
 `ItemRow` (below) is the typed one over the same storage. **It ships in milestone 1.1**, with the registry
-and the codecs, ahead of everything that consumes it, because Scope B's phase 1 is designed behind it and the
-two phase 1s are meant to land in either order.
+and the codecs, ahead of everything that consumes it, because Scope B's phase 1 is designed behind it and
+COMPILES against it, which is why milestone 1.1 gates every `ItemInstances` package (18.1).
 
 ### 2.3 `KhaozEngine.Catalog.Authoring` public types
 
@@ -4812,12 +4812,18 @@ replacing the validator underneath it (16.7). Those two are the acceptance. The 
 fence around it.
 
 **Coordination with Scope B, named here because a phase table that names no edge implies there is none.**
-Scope A phase 1 and Scope B phase 1 do not depend on each other and may land in either order, which is what
-`IContentSnapshot` shipping in milestone 1.1 (2.2) is for. One thing between them IS ordered: Scope B phase 1
+Milestone 1.1 is a HARD PRECONDITION for Scope B rather than a convenience, and an earlier draft of this
+section said the two phase 1s may land in either order. They may not. `KhaozEngine.Catalog` carries the
+registry, `IContentSnapshot` (2.2), `ContentVarint` and the remap rules, and every
+`KhaozEngine.ItemInstances` type compiles against them, so **milestone 1.1 must land before any
+`ItemInstances` package compiles.** Only the Scope B work touching `KhaozEngine.Items`,
+`KhaozEngine.Primitives` and `KhaozEngine.TileWorld.Netcode` alone is order-free. Milestones 1.2 onward
+carry no such edge, so Scope B waits on 1.1 and on nothing after it. A SECOND thing between them is
+ordered: Scope B phase 1
 takes `ItemStack` to three components and `ItemContainerCodec` to version 2, a fleet-wide compile break plus a
 durable codec bump, and it must land OUTSIDE the window of Grimhollow's adoption steps 7 to 11 (16.8). Before
 step 7 or after step 11, either is fine. Inside is not, and nothing except these two sentences would have
-stopped it, because each spec's phase 1 is written as though the other's is not happening.
+stopped it either, because each spec's phase 1 is written as though the other's is not happening.
 
 **Consumer:** Grimhollow, [#208](https://github.com/APKiwiOrg/Grimhollow/issues/208). Its
 `feature/item-drop` branch lands before any of this (gate 0 decision 12, section 16.1).

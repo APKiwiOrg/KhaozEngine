@@ -234,8 +234,20 @@ rather than an accident: the option that would have needed all three is scored i
 (section 20) needs only the catalog's READ side: an id-to-row lookup per content type, a live version
 number, the remap rule list and `IsRetired(typeId, id)` for validator check 13 (12.2). Those are five
 members. Scope B phase 1 therefore proceeds behind a
-narrow `IContentSnapshot` that Scope A implements, and the two phase 1s land in either order. Every
-later Scope B phase needs real content types registered, so phases 4 onward are gated on Scope A's
+narrow `IContentSnapshot` that Scope A implements.
+
+**That seam NARROWS the dependency, it does not remove it, and an earlier draft of this section said the
+two phase 1s land in either order.** They do not. `IContentSnapshot`, `ContentVarint` and the remap rule
+set are Scope A types living in `KhaozEngine.Catalog`, every `KhaozEngine.ItemInstances` type compiles
+against them, and Scope A ships all three in milestone 1.1 (catalog 18.1). **Scope A milestone 1.1,
+`KhaozEngine.Catalog` with the registry, the snapshot interface, the varint and the remap rules, must land
+BEFORE any `ItemInstances` package compiles.** What is genuinely order-free is only the Scope B work that
+touches `KhaozEngine.Items`, `KhaozEngine.Primitives` and `KhaozEngine.TileWorld.Netcode` alone, which is
+`ItemStack`'s third component, `ItemSlot`, container codec version 2 and the ground item messages. Nothing
+after milestone 1.1 gates Scope B phase 1, so the precondition is ONE milestone rather than the whole of
+Scope A phase 1.
+
+Every later Scope B phase needs real content types registered, so phases 4 onward are gated on Scope A's
 registry and publish path being real.
 
 ## 3. The instance record and payload
@@ -3635,8 +3647,8 @@ Five phases. Each names what it ships and the acceptance test that says it shipp
 **Phase 1, the instance record and the container.** The whole of sections 3 and 4:
 `KhaozEngine.ItemInstances` with the payload codec, the property registry, the `KECQ` wrapper, the
 instance validator and the allocator, plus `ItemStack`'s third component, `ItemSlot`, and container codec
-version 2 with its version 1 reader. Behind the narrow `IContentSnapshot` of 2.5, so it does not wait on
-Scope A. **Not** paging, **not** the journal, **not** generation, **not** crafting, **not** the evaluator.
+version 2 with its version 1 reader. Behind the narrow `IContentSnapshot` of 2.5, which gates it on Scope
+A's milestone 1.1 and on nothing later. **Not** paging, **not** the journal, **not** generation, **not** crafting, **not** the evaluator.
 Acceptance: tests 1, 2, 3, 4, 12 and 16 green, and the contracts' 45 byte example reproduced byte for
 byte. Test 12 is here rather than later because the allocator ships in this phase and its epoch refusal
 (3.6) is the one behaviour in it that cannot be added afterwards without a durable migration.

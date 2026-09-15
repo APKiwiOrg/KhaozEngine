@@ -40,7 +40,7 @@ Nine things, in the order #884's "In scope" list names them:
 3. **Visibility per property kind**, owner only, everyone or server only, with replication and tooltips
    going through one function. Sections 7.4 and 12.5.
 4. **Stacking**, by byte equality over canonical payloads, with a definition carrying durability or
-   sockets barred from stacking at publish. Section 4.5.
+   sockets barred from stacking at publish. Section 4.6.
 5. **Validation**, quarantining rather than deleting, bytes kept verbatim, placeholder presentation,
    one counter and one log line. Section 12.
 6. **Containers and persistence.** `ItemStack`, `ItemContainer` and container codec version 2 carrying
@@ -152,11 +152,11 @@ oversized game message.
 | `IRandomSource`, `CryptographicRandomSource`, `SeededRandomSource` | contracts 14.1 and 14.2 | 9.3 |
 | `CraftPrimitive` | enum of the fourteen v1 primitives | 10.2 |
 | `CraftGuard`, `CraftGuardKind` | the guard vocabulary | 10.3 |
-| `CraftPlan`, `CraftOutcome`, `CraftRefusal` | a resolved sequence and its answer | 10.5 |
-| `CraftingRegistry`, `ICraftOperation` | game-registered code operations | 10.6 |
+| `CraftPlan`, `CraftOutcome`, `CraftRefusal` | a resolved sequence and its answer | 10.4, 10.6 |
+| `CraftingRegistry`, `ICraftOperation` | game-registered code operations | 10.5 |
 | `ContentStatEvaluator` | the integer evaluator | 11.6 |
-| `StatModifierLine`, `StatCombineKind`, `StatSourceKey`, `StatContext` | the evaluator's value types | 11.3 |
-| `IStatConditionRegistry` | game conditions above the engine range | 11.5 |
+| `StatModifierLine`, `StatCombineKind`, `StatSourceKey`, `StatContext` | the evaluator's value types | 11.2 |
+| `IStatConditionRegistry` | game conditions above the engine range | 11.3 |
 
 `KhaozEngine.ItemInstances.Journal`:
 
@@ -164,7 +164,7 @@ oversized game message.
 |---|---|---|
 | `ContainerCommitBuilder` | accumulates page operations, emits ONE `JournalCommit` | 6.4 |
 | `ContainerSectionNames` | the `<container>/p<NN>` scheme and its parser | 5.2 |
-| `ItemInstanceEvents` | the event type constants and their payload codecs | 6.6 |
+| `ItemInstanceEvents` | the event type constants and their payload codecs | 9.5, 10.6 |
 | `ContainerLoadResult` | decoded pages plus findings plus the dirty set | 5.5 |
 
 `KhaozEngine.Items`, modified:
@@ -172,8 +172,8 @@ oversized game message.
 | Change | Shape | Section |
 |---|---|---|
 | `ItemStack` | gains a third component, `long InstanceId`, defaulting to 0 | 4.2 |
-| `ItemContainer.SetSlotAt` | the payload-carrying codec door | 4.6 |
-| `ItemContainer.TakeSlotAt` | the payload-carrying take | 4.6 |
+| `ItemContainer.SetSlotAt` | the payload-carrying codec door | 4.7 |
+| `ItemContainer.TakeSlotAt` | the payload-carrying take | 4.7 |
 | `ItemContainerCodec.Version` | becomes a `public const ushort` at 2, with the version 1 reader kept | 4.4 |
 
 `KhaozEngine.TileWorld.Netcode`, modified:
@@ -205,14 +205,14 @@ need and adding a reference would widen its graph:
 Scale work goes in `KhaozEngine.Benchmarks` as a new `--items` mode following the journal set's shape
 exactly (config with a static `Parse`, a runner, a result with `ToJson`, an output writer for
 `--output`, and a checked-in baseline under `Baselines/`), plus a structural test in
-`KhaozEngine.Server.Tests` mirroring `MutationJournalBenchmarkTests`. Section 17.4 has the detail.
+`KhaozEngine.Server.Tests` mirroring `MutationJournalBenchmarkTests`. Section 17, row 5, has the detail.
 
 ### 2.4 What the journal does NOT need
 
 **The recommended coalescing design (section 6) requires no change to `KhaozEngine.WorldStore`, no
 change to either provider schema and no change to the store conformance suite.** That is a result
-rather than an accident: the option that would have needed all three is scored and rejected in 6.3, and
-6.5 states exactly what it would have cost, so the owner can choose it knowingly.
+rather than an accident: the option that would have needed all three is scored in 6.2 and rejected in
+6.3, which states exactly what it would have cost, so the owner can choose it knowingly.
 
 ### 2.5 Sequencing against Scope A
 
@@ -257,7 +257,7 @@ because a payload never travels alone:
 
 The three canonical rules of contracts 9.3 are enforced by the ENCODER and checked by the DECODER:
 fields strictly ascending by kind, no kind twice, every varint minimal. Together they make one set of
-properties into exactly one byte sequence, which is what turns the stacking rule of 4.5 into a
+properties into exactly one byte sequence, which is what turns the stacking rule of 4.6 into a
 `ReadOnlySpan<byte>.SequenceEqual`.
 
 `ItemInstancePayload.TryDecode` NEVER throws. It returns false plus one of the closed reason tokens of
@@ -348,7 +348,7 @@ Five things about it, each of which a reader would otherwise have to guess:
   field. That is why the contract could reserve the whole flags varint without stranding anything.
 - **The list is sorted ASCENDING BY MOD ID**, which makes the field canonical. Two items carrying the
   same three affixes at the same tiers and positions produce the same bytes regardless of the order they
-  were rolled or crafted in, which is what 4.5's byte comparison needs. Section 21 records it as
+  were rolled or crafted in, which is what 4.6's byte comparison needs. Section 21 records it as
   expensive to change, because the sort is baked into every stored payload.
 
 ### 3.5 The socket entry
@@ -369,7 +369,7 @@ and it is what stops a 45 byte payload from becoming a denial of service (15.6).
 
 **Socket ORDER is authored and never sorted**, unlike the affix list. A player who puts a gem in the
 third socket expects it there, which is the same argument `TileWorldHash` makes for
-`TileObjectArchetype.Tags` (`TileWorldHash.cs:117-120`). The consequence for 4.5 is exact and worth
+`TileObjectArchetype.Tags` (`TileWorldHash.cs:117-120`). The consequence for 4.6 is exact and worth
 stating: two otherwise identical items whose gems sit in different sockets do NOT stack, which is
 correct, because they are different items.
 
@@ -487,7 +487,8 @@ are true of different items: 512 is 11 times the WORKED example of 9.8, and 1.25
 the v1 field set can produce. So the cap is a guard rail for an ordinary item and close to a budget for
 a maximal one, and the practical consequence is that raising it is more likely than the contract
 implies. Raising it is backward compatible and lowering it is not (contracts 9.6), so nothing is at
-risk, but section 14.5 records the trigger to watch and section 21 lists the cap as expensive to lower.
+risk, but contracts 16 already lists the cap as expensive to lower and open question 4 puts the trigger
+to watch in front of the owner.
 
 ## 4. `ItemStack`, `ItemContainer` and container codec version 2
 
@@ -2465,7 +2466,8 @@ page that doubles in size doubles two copies and not one.
 
 ## 17. Test plan
 
-Numbered so the sections above can cite a test rather than describe one. Homes are 2.3's four projects.
+Numbered so the sections above can cite a test rather than describe one, and a reference of the form
+`17.N` anywhere in this document means ROW N of the table below. Homes are 2.3's four projects.
 
 | # | Test | Home | What it pins |
 |---|---|---|---|

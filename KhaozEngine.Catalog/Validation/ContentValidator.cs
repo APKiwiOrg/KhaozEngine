@@ -24,6 +24,14 @@ namespace KhaozEngine.Catalog;
 /// <b>What this validator deliberately does NOT check</b> (spec 5.5), named so nobody adds one later
 /// without a decision:
 /// </para>
+/// <para>
+/// <b>Three codes are ISSUED and are emitted somewhere other than this sweep</b>, named here because a
+/// reader looking for one has to land somewhere that says where it lives, the way
+/// <c>ContentKeyChecks.CheckFamilies</c> names its quiet four. <c>KEC0039</c> is a statement about a
+/// ROLLBACK and <c>KEC0041</c> about a Fork EDIT (spec 5.3), both of which the authoring store emits
+/// because only it holds the edit being made. <c>KEC0014</c> is a statement about the CLIENT-side encoded
+/// bytes of a chunk (spec 6.7) and hangs off the client chunk encode, which has not shipped.
+/// </para>
 /// <list type="bullet">
 ///   <item><description>
 ///     <b>Whether a value is sensible.</b> A sword worth 0 coins and a tree with a 100 percent chance are

@@ -2,9 +2,9 @@
   <Project Path="KhaozEngine.App/KhaozEngine.App.csproj" />
   <Project Path="KhaozEngine.Audio/KhaozEngine.Audio.csproj" />
   <Project Path="KhaozEngine.Automation/KhaozEngine.Automation.csproj" />
-  <Project Path="KhaozEngine.Collision/KhaozEngine.Collision.csproj" />
   <Project Path="KhaozEngine.Catalog/KhaozEngine.Catalog.csproj" />
   <Project Path="KhaozEngine.Catalog.Authoring/KhaozEngine.Catalog.Authoring.csproj" />
+  <Project Path="KhaozEngine.Collision/KhaozEngine.Collision.csproj" />
   <Project Path="KhaozEngine.Content/KhaozEngine.Content.csproj" />
   <Project Path="KhaozEngine.Commerce.Sqlite/KhaozEngine.Commerce.Sqlite.csproj" />
   <Project Path="KhaozEngine.Commerce.SqlServer/KhaozEngine.Commerce.SqlServer.csproj" />

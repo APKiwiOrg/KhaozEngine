@@ -73,6 +73,18 @@ public sealed class ContentPackReader
     /// </summary>
     public const string ReasonTypeUnregistered = "chunk-type-unregistered";
 
+    /// <summary>
+    /// The chunks fetched, verified and decoded but NOT yet handed to a snapshot. <see cref="BuildSnapshot"/>
+    /// empties it, because the snapshot copies every row body into its own per-type blob and holding both is
+    /// paying for the catalog twice.
+    /// <para>
+    /// That bounds the EAGER path, which is the one that reads every chunk the manifest names: boot's peak is
+    /// the decoded chunks OR the snapshot rather than both. It does not bound the lazy client path, where a
+    /// reader that never builds a snapshot accumulates a chunk per slot range touched and frees none. That is
+    /// https://github.com/APKiwiOrg/KhaozEngine/issues/902 and it needs an eviction policy rather than a
+    /// hand-off point.
+    /// </para>
+    /// </summary>
     readonly Dictionary<string, LoadedChunk> _chunks = new(StringComparer.Ordinal);
     RemapRuleSet? _rules;
 
@@ -82,6 +94,9 @@ public sealed class ContentPackReader
     /// <param name="manifest">The version's manifest, already fetched and verified.</param>
     /// <param name="manifestHash">The manifest's own content address, which becomes the snapshot's identity.</param>
     /// <exception cref="ArgumentNullException">A reference argument is null.</exception>
+    /// <exception cref="ContentPackException">
+    /// A manifest type's <c>chunkSlots</c> disagrees with the local registration for that type.
+    /// </exception>
     public ContentPackReader(
         IPackStore store,
         ContentTypeRegistry registry,
@@ -93,10 +108,49 @@ public sealed class ContentPackReader
         ArgumentNullException.ThrowIfNull(manifest);
         ArgumentNullException.ThrowIfNull(manifestHash);
 
+        CheckChunkSlots(registry, manifest);
+
         Store = store;
         Registry = registry;
         Manifest = manifest;
         ManifestHash = manifestHash;
+    }
+
+    /// <summary>
+    /// Every manifest type's <c>chunkSlots</c> against the local registration for that type, throwing on a
+    /// disagreement because a reader that carried on would be paginating rows into chunks the publisher put
+    /// somewhere else.
+    /// <para>
+    /// <b>It is here because the manifest DIGEST omits <c>chunkSlots</c> by design</b> (contracts 7.3), so
+    /// the only thing binding it is <see cref="ContentManifestCodec"/>'s cross-check, and that runs only
+    /// when a registry is handed in. The static <see cref="ReadManifestAsync"/> and <see cref="TryVerify"/>
+    /// cannot hold one, so a manifest CAN reach this constructor unchecked. Every caller in the tree passes
+    /// the registry today, which makes this defence in depth rather than a live refusal, and the reason it
+    /// belongs here anyway is that the constructor is the first place that holds both halves.
+    /// </para>
+    /// <para>
+    /// It THROWS rather than reporting a token, because a constructor has no report to write to and because
+    /// the fail-closed shape is the one that cannot be ignored. A type the registry does not carry is left
+    /// alone, exactly as the codec leaves it: an unknown type is the loader's decision, not this one's.
+    /// </para>
+    /// </summary>
+    static void CheckChunkSlots(ContentTypeRegistry registry, ContentManifest manifest)
+    {
+        for (int t = 0; t < manifest.Types.Count; t++)
+        {
+            ManifestTypeEntry entry = manifest.Types[t];
+            if (!registry.TryGet(new ContentTypeId(entry.TypeId), out ContentTypeRegistration? registration)
+                || registration.ChunkSlots == entry.ChunkSlots)
+            {
+                continue;
+            }
+
+            throw new ContentPackException(
+                FormattableString.Invariant(
+                    $"The manifest gives type '{entry.TypeKey}' {entry.ChunkSlots} chunk slots and this build registers {registration.ChunkSlots}. The two sides disagree about which chunk an id falls in, and the manifest digest does not cover chunk_slots, so nothing earlier could have caught it."),
+                null,
+                ContentManifestCodec.ReasonChunkSlots);
+        }
     }
 
     /// <summary>The store every fetch goes to.</summary>
@@ -310,6 +364,19 @@ public sealed class ContentPackReader
     /// The snapshot over the chunks read SO FAR, rows ascending by id whatever order the chunks arrived in.
     /// A reader that has only been asked for one row therefore builds a snapshot holding one chunk's rows,
     /// which is the whole shape of the lazy client path.
+    /// <para>
+    /// <b>It HANDS the chunks over rather than sharing them.</b> The snapshot copies every row body into its
+    /// own per-type blob, so a reader that kept its decoded chunks afterwards would hold the whole catalog
+    /// twice for the rest of the process, and boot's peak is exactly where that is least affordable. The
+    /// decoded chunks are therefore dropped here, and a second call with nothing read since builds an EMPTY
+    /// snapshot rather than the same one.
+    /// </para>
+    /// <para>
+    /// Reading rows through the READER after building is therefore not a supported mode: read them from the
+    /// snapshot, which is the thing that owns them. A lazy caller that keeps looking rows up through
+    /// <see cref="ReadRowAsync"/> simply does not build a snapshot in between, and one that does pays a
+    /// refetch for the slot ranges it asks for again.
+    /// </para>
     /// </summary>
     public ContentSnapshot BuildSnapshot()
     {
@@ -337,7 +404,11 @@ public sealed class ContentPackReader
             }
         }
 
-        return builder.Build();
+        ContentSnapshot snapshot = builder.Build();
+
+        // Build COPIED every body into the snapshot's own blob, so the decoded chunks are dead weight now.
+        _chunks.Clear();
+        return snapshot;
     }
 
     static ContentManifestRead DecodeManifest(
@@ -426,11 +497,14 @@ public sealed class ContentPackReader
         return null;
     }
 
+    /// <summary>
+    /// Verifies and decodes ONE chunk over a single decompression. It was a <c>TryVerify</c> then a
+    /// <c>TryDecode</c> over the same span, which decompressed the stored bytes twice and allocated the
+    /// uncompressed body twice, per chunk, per boot.
+    /// </summary>
     LoadedChunk? LoadChunk(string hash, ReadOnlyMemory<byte> file, out string? reason)
     {
-        ReadOnlySpan<byte> span = file.Span;
-        if (!ContentChunkCodec.TryVerify(span, hash, out reason)
-            || !ContentChunkCodec.TryDecode(span, Registry, out ContentChunk? chunk, out reason))
+        if (!ContentChunkCodec.TryDecodeVerified(file.Span, Registry, hash, out ContentChunk? chunk, out reason))
         {
             return null;
         }
@@ -456,7 +530,10 @@ public sealed class ContentPackReader
             }
 
             rows[i] = row;
-            bodies[i] = chunk.RowBodyAt(i).ToArray();
+
+            // A SLICE of the chunk's body, not a copy of it: spec 9.2 asks for no growth and no copy beyond
+            // the decompress, and the snapshot takes its own copy into one blob per type anyway.
+            bodies[i] = chunk.RowBodyMemoryAt(i);
         }
 
         reason = null;

@@ -288,6 +288,122 @@ public static class ContentChunkCodec
             return false;
         }
 
+        return TryWalkBody(header, body, out chunk, out reason);
+    }
+
+    /// <summary>
+    /// The LOAD path's one pass: verify against a content address and decode, over a SINGLE decompression.
+    /// Calling <see cref="TryVerify"/> and then <see cref="TryDecode"/> on the same file decompresses the
+    /// same stored bytes twice and allocates the uncompressed body twice, which is what boot used to do for
+    /// every chunk of every type.
+    /// <para>
+    /// <b>Hash before trust, and that ordering is the whole licence for the saving.</b> The digest over the
+    /// rebuilt canonical header plus the body is compared BEFORE the row table is walked, so no row ever
+    /// escapes a buffer nothing signed. Folding the two calls together would otherwise quietly drop
+    /// <see cref="TryVerify"/>'s weaker header check for <see cref="TryDecode"/>'s, so the full range set
+    /// runs here, including the row-count guard that bounds the four parallel arrays.
+    /// </para>
+    /// <para>
+    /// <see cref="TryVerify"/> and <see cref="TryDecode"/> both stay as they are, for the callers that hold
+    /// only one of the two questions: a store filing an object it cannot decode, and a tool reading a chunk
+    /// it was handed without an address.
+    /// </para>
+    /// </summary>
+    /// <param name="file">The stored chunk file.</param>
+    /// <param name="registry">The local registry, or null to skip the per-type slot-count cross-check.</param>
+    /// <param name="expectedHash">The content address the file was fetched under.</param>
+    /// <param name="chunk">The decoded chunk, or null on any refusal.</param>
+    /// <param name="reason">The stable reason token, or null on success.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="expectedHash"/> is null.</exception>
+    public static bool TryDecodeVerified(
+        ReadOnlySpan<byte> file,
+        ContentTypeRegistry? registry,
+        string expectedHash,
+        [MaybeNullWhen(false)] out ContentChunk chunk,
+        out string? reason)
+    {
+        ArgumentNullException.ThrowIfNull(expectedHash);
+
+        chunk = null;
+        if (!TryReadHeader(file, out ContentChunkHeader header, out reason)
+            || !CheckRange(header, file.Length, registry, out reason))
+        {
+            return false;
+        }
+
+        byte[] body = new byte[header.UncompressedBytes];
+        if (!TryFillBody(file[ContentPackFormat.ChunkHeaderBytes..], header, body, out reason)
+            || !MatchesHash(file, header, body, expectedHash, out reason))
+        {
+            return false;
+        }
+
+        return TryWalkBody(header, body, out chunk, out reason);
+    }
+
+    /// <summary>
+    /// Verifies a stored file against a content address without decoding its rows: decompress, rebuild the
+    /// canonical header, digest. That is one header rewrite of 36 bytes per verification, which is the
+    /// price of a hash that a compressor change cannot move.
+    /// </summary>
+    public static bool TryVerify(ReadOnlySpan<byte> file, string expectedHash, out string? reason)
+    {
+        ArgumentNullException.ThrowIfNull(expectedHash);
+        if (!TryReadHeader(file, out ContentChunkHeader header, out reason)
+            || !CheckLengths(header, file.Length, out reason))
+        {
+            return false;
+        }
+
+        byte[] body = new byte[header.UncompressedBytes];
+        if (!TryFillBody(file[ContentPackFormat.ChunkHeaderBytes..], header, body, out reason))
+        {
+            return false;
+        }
+
+        return MatchesHash(file, header, body, expectedHash, out reason);
+    }
+
+    /// <summary>
+    /// Digests the decompressed body under the REBUILT canonical header, which is the 36 stored bytes with
+    /// <c>compression</c> forced to 0 and <c>storedBytes</c> forced equal to <c>uncompressedBytes</c>, and
+    /// compares it to the address the file arrived under. That is what makes a compressor change a no-op for
+    /// every cached client.
+    /// </summary>
+    static bool MatchesHash(
+        ReadOnlySpan<byte> file,
+        in ContentChunkHeader header,
+        ReadOnlySpan<byte> body,
+        string expectedHash,
+        out string? reason)
+    {
+        Span<byte> canonicalHeader = stackalloc byte[ContentPackFormat.ChunkHeaderBytes];
+        file[..ContentPackFormat.ChunkHeaderBytes].CopyTo(canonicalHeader);
+        canonicalHeader[25] = ContentPackFormat.CompressionNone;
+        BinaryPrimitives.WriteUInt32LittleEndian(canonicalHeader[32..], header.UncompressedBytes);
+
+        string actual = ContentHash.OfChunkStreaming(canonicalHeader, body, ContentHash.ChunkDomain);
+        if (!string.Equals(actual, expectedHash, StringComparison.Ordinal))
+        {
+            reason = ReasonHashMismatch;
+            return false;
+        }
+
+        reason = null;
+        return true;
+    }
+
+    /// <summary>
+    /// Walks the row table of an already-decompressed body and builds the chunk over it, with no further
+    /// copy: the body array becomes the chunk's own.
+    /// </summary>
+    static bool TryWalkBody(
+        in ContentChunkHeader header,
+        byte[] body,
+        [MaybeNullWhen(false)] out ContentChunk chunk,
+        out string? reason)
+    {
+        chunk = null;
         int rowCount = (int)header.RowCount;
         int[] ids = new int[rowCount];
         int[] offsets = new int[rowCount];
@@ -311,42 +427,6 @@ public static class ContentChunkCodec
             offsets,
             lengths,
             retired);
-        reason = null;
-        return true;
-    }
-
-    /// <summary>
-    /// Verifies a stored file against a content address without decoding its rows: decompress, rebuild the
-    /// canonical header, digest. That is one header rewrite of 36 bytes per verification, which is the
-    /// price of a hash that a compressor change cannot move.
-    /// </summary>
-    public static bool TryVerify(ReadOnlySpan<byte> file, string expectedHash, out string? reason)
-    {
-        ArgumentNullException.ThrowIfNull(expectedHash);
-        if (!TryReadHeader(file, out ContentChunkHeader header, out reason)
-            || !CheckLengths(header, file.Length, out reason))
-        {
-            return false;
-        }
-
-        byte[] body = new byte[header.UncompressedBytes];
-        if (!TryFillBody(file[ContentPackFormat.ChunkHeaderBytes..], header, body, out reason))
-        {
-            return false;
-        }
-
-        Span<byte> canonicalHeader = stackalloc byte[ContentPackFormat.ChunkHeaderBytes];
-        file[..ContentPackFormat.ChunkHeaderBytes].CopyTo(canonicalHeader);
-        canonicalHeader[25] = ContentPackFormat.CompressionNone;
-        BinaryPrimitives.WriteUInt32LittleEndian(canonicalHeader[32..], header.UncompressedBytes);
-
-        string actual = ContentHash.OfChunkStreaming(canonicalHeader, body, ContentHash.ChunkDomain);
-        if (!string.Equals(actual, expectedHash, StringComparison.Ordinal))
-        {
-            reason = ReasonHashMismatch;
-            return false;
-        }
-
         reason = null;
         return true;
     }

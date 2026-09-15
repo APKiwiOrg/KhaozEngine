@@ -18,6 +18,12 @@ namespace KhaozEngine.Catalog;
 /// the row body does not (spec 7.3). Ordering is the caller's: the publisher sorts ascending by id before it
 /// encodes (spec 6.7), and <see cref="ContentChunkCodec.Encode"/> is what refuses a set that is not sorted.
 /// </para>
+/// <para>
+/// <b>Nothing in the shipped tree calls it yet, and it is not dead.</b> Its caller is the publish path's
+/// chunk builder, which lands with the authoring half, and it ships ahead of that caller because the encode
+/// side of every format in this milestone is what the goldens and the fuzzer are written against. The tests
+/// here are its callers until then.
+/// </para>
 /// </summary>
 public sealed class ContentChunkAssembler : IBufferWriter<byte>
 {
@@ -41,10 +47,22 @@ public sealed class ContentChunkAssembler : IBufferWriter<byte>
     /// </summary>
     public int LargestRowBytes => _largestRowBytes;
 
-    /// <summary>Clears the rows and rewinds the arena, keeping the buffer for the next chunk.</summary>
+    /// <summary>
+    /// Clears the rows and takes a FRESH arena of the same capacity, so a list an earlier
+    /// <see cref="Build"/> handed back keeps the buffer it was built over.
+    /// <para>
+    /// <b>Rewinding the same arena silently aliased already-built rows.</b> A <see cref="Build"/> hands back
+    /// slices rather than copies, so the next chunk's bodies landed under the previous chunk's ids at the
+    /// previous chunk's lengths, and the result encoded, hashed and decoded cleanly at every gate. One array
+    /// per chunk is the price of that not being possible, and it is one allocation against the thousands of
+    /// small ones a copying <see cref="Build"/> would cost instead. The capacity carries over, so an arena
+    /// that grew to fit a big chunk does not have to grow again.
+    /// </para>
+    /// </summary>
     public void Reset()
     {
         _rows.Clear();
+        _arena = new byte[_arena.Length];
         _used = 0;
         _largestRowBytes = 0;
     }
@@ -74,11 +92,15 @@ public sealed class ContentChunkAssembler : IBufferWriter<byte>
     }
 
     /// <summary>
-    /// The committed rows, each pointing at its slice of the arena.
+    /// The committed rows, each pointing at its slice of the arena. The bodies are NOT copied, which is what
+    /// makes a chunk one buffer rather than one per row.
     /// <para>
-    /// The slices are over the arena AS IT STANDS, so a later <see cref="Add(ContentRow, IContentRowCodec)"/>
-    /// that grows the arena leaves an already-built list pointing at the old buffer. Build once, at the end
-    /// of a chunk, which is the only order a publisher has any reason to use.
+    /// A built list is therefore only as stable as the arena under it, and the rule is: <see cref="Reset"/>
+    /// takes a fresh arena, so a list built before it keeps its bytes for good, but a further
+    /// <see cref="Add(ContentRow, IContentRowCodec)"/> WITHOUT a reset writes into the same arena and may
+    /// resize it, which leaves an already-built list pointing at the old buffer and missing everything
+    /// added since. Build once, at the end of a chunk, then reset, which is the only order a publisher has
+    /// any reason to use.
     /// </para>
     /// </summary>
     public IReadOnlyList<ContentChunkRow> Build()

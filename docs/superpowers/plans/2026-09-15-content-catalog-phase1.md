@@ -2104,3 +2104,523 @@ git commit -m "catalog(bench): add the structural test for the catalog benchmark
 Expected: exit zero. **This closes milestone 1.3.**
 
 ---
+
+## Milestone 1.4: the sixteen authoring actions
+
+**Group acceptance (spec 18.1's gate for 1.4):** the action tests pass, INCLUDING one asserting a real 409
+body carrying `expectedBaseVersion`, and budgets P5 and P6 are measured. Tasks 25 to 28.
+
+### Task 25: `AdminActionStatus.Conflict` and the object error payload (small)
+
+Spec 2.1, 10.1, 10.2.
+
+**Files:**
+
+- Modify: `KhaozEngine.NetWorld/AdminActionResult.cs`
+- Modify: `KhaozEngine.Server.Admin/AdminHttpServer.cs`
+- Modify: `KhaozEngine.NetWorld/README.md`, `KhaozEngine.Server.Admin/README.md`
+- Create: `KhaozEngine.Server.Tests/ServerAdminEndpoint/AdminActionConflictTests.cs`
+
+**Interfaces:**
+
+- Consumes: the existing `ServerAdmin` action surface
+- Produces: a 409 and a structured 400 body, which five actions in Task 27 need
+
+**This is additive and breaks no caller**, which is why spec 10.1 makes it a milestone item rather than a
+contract change request. It is named as its own task because the spec's entire answer to two failure modes
+rides on it and an unnamed engine change is an unbudgeted one.
+
+- [ ] **Step 1: Write failing tests.**
+
+`AdminActionStatus` today is exactly `{ Ok, Accepted, BadRequest }`, `AdminActionResult.BadRequest(string)`
+carries a bare string, and `DispatchActionAsync` maps `BadRequest` to `Results.BadRequest(new { error })`
+with everything else falling to 500. Assert: a handler returning `Conflict(payload)` dispatches to HTTP 409
+with the payload as the JSON body, a handler returning the new object-carrying `BadRequest(payload)`
+dispatches to 400 with the payload as the body, and **every existing string overload keeps its exact
+current shape**, asserted against the `new { error = result.Error }` body.
+
+- [ ] **Step 2: Implement.**
+
+Add `Conflict` to the enum, add `AdminActionResult.Conflict(object payload)` beside `BadRequest`, add an
+object-carrying `BadRequest(object payload)` overload while KEEPING the string one, and add the two arms to
+the dispatch switch. Nothing returns 202 in the catalog's actions, deliberately: a 202 means enqueued to
+the host thread, and a content edit completes INSIDE the request against the database, so the operator gets
+the real answer rather than an optimistic one.
+
+- [ ] **Step 3: Run green and commit.**
+
+~~~bash
+dotnet test KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj -c Release --filter FullyQualifiedName~AdminAction
+git add KhaozEngine.NetWorld KhaozEngine.Server.Admin KhaozEngine.Server.Tests/ServerAdminEndpoint
+git commit -m "admin(result): add Conflict and an object-carrying error payload"
+~~~
+
+---
+
+### Task 26: The five read actions (medium)
+
+Spec 10.1 to 10.4, 10.7.
+
+**Files:**
+
+- Create: `KhaozEngine.Server.Admin/Catalog/CatalogAdminActions.cs` (the registration entry point only)
+- Create: `KhaozEngine.Server.Admin/Catalog/CatalogReadActions.cs`
+- Create: `KhaozEngine.Server.Admin/Catalog/CatalogActionPayloads.cs`
+- Create: `KhaozEngine.Server.Tests/Catalog/CatalogReadActionTests.cs`
+- Modify: `KhaozEngine.Server.Admin/KhaozEngine.Server.Admin.csproj`, `README.md` catalog row text
+
+**Interfaces:**
+
+- Consumes: Tasks 13, 14, 25
+- Produces: `catalog-schema`, `catalog-list`, `catalog-get`, `catalog-draft`, `catalog-versions`
+
+**PLAN CHOICE, and the spec leaves this open.** Spec 10.1 names
+`CatalogAdminActions.Register(ServerAdmin admin, IContentAuthoringStore store, ContentTypeRegistry registry)`
+and never says which package holds it. It needs `ServerAdmin` (in `KhaozEngine.NetWorld`) and
+`IContentAuthoringStore` (in `KhaozEngine.Catalog.Authoring`). Three homes were weighed:
+
+| Home | Cost |
+|---|---|
+| `KhaozEngine.Catalog.Authoring` gains a NetWorld reference | Every opt-in SQL provider then transitively pulls NetWorld, Physics, Simulation and WorldStore into a tooling graph. Rejected. |
+| A sixth package | Spec 2.1 says "no sixth is added". Rejected. |
+| `KhaozEngine.Server.Admin` gains `Catalog` and `Catalog.Authoring` references | It already references NetWorld, it already owns the dispatch, it is already one of the three packages this phase changes, and it is deliberately OUT of the `Server` umbrella so nothing inherits the cost. TAKEN. |
+
+The cost of the taken option is that a game registering catalog actions on a `ServerAdmin` with no HTTP
+endpoint cannot reach the helper. There is one transport today and the status codes in spec 10.2 are HTTP,
+so that cost is theoretical. Report the choice so the spec's author can confirm it.
+
+- [ ] **Step 1: Write failing tests.**
+
+Action names match `^[a-z0-9][a-z0-9-]{0,63}$` and a duplicate registration throws, both already enforced by
+`ServerAdmin`. **Every handler runs on the HTTP REQUEST THREAD and must never touch simulation state**,
+which these are compliant with by construction because they touch only the authoring store.
+
+`catalog-schema` returns the full registered schema, which is what makes ONE generic editor render a type
+the console has never heard of. Assert a `LocalizedTextKey` field is returned with `"derived": true` and no
+value, so a console renders it READ ONLY.
+
+`catalog-list` takes a type key, a version (0 meaning the draft-applied live set), a key prefix, an
+include-retired flag, a skip and a take. **`take` is CAPPED at 500 server side and the response carries
+`total`**, which is what makes a console page rather than silently truncate. Assert the cap and the total.
+Assert the derived `name` key is returned READ ONLY and is not a stored value.
+
+`catalog-get` takes a type key plus an id OR a key and returns one row plus its full version HISTORY, which
+is the temporal model's payoff. `catalog-draft` returns the open draft with its edits expanded.
+`catalog-versions` returns the active version, the pinned version and every version record.
+
+- [ ] **Step 2: Implement, run green, commit.**
+
+~~~bash
+dotnet test KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj -c Release --filter FullyQualifiedName~CatalogReadActionTests
+git add KhaozEngine.Server.Admin KhaozEngine.Server.Tests/Catalog README.md
+git commit -m "catalog(actions): add the five read actions and the schema endpoint"
+~~~
+
+---
+
+### Task 27: The seven mutating actions (large)
+
+Spec 10.5 to 10.8, 10.10, 11 row 4.
+
+**Files:**
+
+- Create: `KhaozEngine.Server.Admin/Catalog/CatalogEditActions.cs`
+- Create: `KhaozEngine.Server.Admin/Catalog/CatalogPublishActions.cs`
+- Create: `KhaozEngine.Server.Tests/Catalog/CatalogEditActionTests.cs`
+- Create: `KhaozEngine.Server.Tests/Catalog/CatalogPublishActionTests.cs`
+
+**Interfaces:**
+
+- Consumes: Tasks 15, 16, 25, 26
+- Produces: `catalog-edit`, `catalog-discard`, `catalog-validate`, `catalog-diff`, `catalog-publish`,
+  `catalog-pin`, `catalog-rollback`
+
+- [ ] **Step 1: Write failing edit tests.**
+
+Every edit in one request applies in ONE database transaction or none of them does, so a batch save from a
+grid is atomic. Edits are checked against the schema AT THE BOUNDARY and the response carries EVERY finding
+rather than the first. **A payload naming a field the schema does not declare is 400 with `KEC0004`**, and
+that is the direct answer to an upsert with no gate letting an operator save a row the server then rejects
+at boot while the console reports success.
+
+**No edit ever carries a localized text key.** A payload carrying a marker field is refused with `KEC0004`
+and the message names the DERIVED key, so an operator sees what they were trying to set.
+
+`fork` is an `op` VALUE rather than a seventeenth action, because it is an edit against the open draft like
+the other three and it is saved, validated, diffed and published through the same path. Its `fields` are
+the changes to the ORIGINAL row. `forkKey` is required. The response is the ordinary draft response and the
+copy's allocated id does NOT appear in it, because ids are allocated at publish.
+
+A `retire` names `placeholder` or `replacement`, and a `replacement` with no resolvable key is 400 with
+`KEC0017`. `catalog-discard` writes one audit row carrying the edit count, so a discarded draft leaves a
+trace, and it is 409 while a publish is in flight.
+
+- [ ] **Step 2: Write failing publish tests.**
+
+`catalog-validate` builds the candidate and runs the full sweep WITHOUT allocating ids and without writing
+anything. It is the same validator, so a green validate followed by a red publish can only mean the draft
+changed in between.
+
+`catalog-diff` is FIELD LEVEL and carries a `chunkSummary`, which is the operator-facing half of the
+one-item-edit budget.
+
+**`expectedBaseVersion` on `catalog-publish` is REQUIRED optimistic concurrency.** Two consoles cannot both
+publish the same draft: the second one's expectation is stale and it gets a 409 naming BOTH numbers. That
+is the same shape as the journal's expected-version mutation, and it turns a race into an error message.
+Write that 409 test against the real dispatch from Task 25, because it is the milestone gate.
+
+- [ ] **Step 3: Write the pin and rollback tests.**
+
+`catalog-pin` takes a version or null. A pin naming a version that does not exist is 400. A pin naming a
+version whose `minimumServerBuild` exceeds the running build is ACCEPTED with a warning, because the
+operator may be pinning ahead of an upgrade on purpose and the boot check is the real gate. **When the
+server's own CONFIG already pins a version, the action returns 200 carrying `configPinnedVersion` and a
+warning naming it**, because a bare 200 for a call with no effect on the next restart is the failure that
+paragraph exists to prevent.
+
+`catalog-rollback` BUILDS A DRAFT and returns `draftCreated`, `editCount` and `blockedByRules`. Blocked by
+an irreversible retire, it is 409 carrying `KEC0039`, the blocking rules, and a `remedy` naming the
+mint-a-new-id path, so the operator is not left guessing.
+
+**There is deliberately NO validation override flag anywhere in these actions.** A publish that bypasses
+validation is how a bad row reaches a pack, and a force flag would make boot the only real gate while boot
+fails closed, so the operator would have published a version that cannot be served. The repair path for a
+validator bug is an engine patch: export the failing candidate through `catalog-export` and replay it in a
+unit test.
+
+- [ ] **Step 4: Run green, check file sizes, commit.**
+
+~~~bash
+dotnet test KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj -c Release --filter FullyQualifiedName~CatalogPublishActionTests
+dotnet test KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj -c Release --filter FullyQualifiedName~CatalogEditActionTests
+sh scripts/check-file-size.sh --tree
+git add KhaozEngine.Server.Admin/Catalog KhaozEngine.Server.Tests/Catalog
+git commit -m "catalog(actions): add the seven mutating actions and optimistic publish"
+~~~
+
+---
+
+### Task 28: Import, export, operator identity and the operational pair (medium, GATE for 1.4)
+
+Spec 10.9, 10.10, 10.11, 10.2.
+
+**Files:**
+
+- Create: `KhaozEngine.Server.Admin/Catalog/CatalogBundleActions.cs`
+- Create: `KhaozEngine.Server.Admin/Catalog/CatalogOperationalActions.cs`
+- Create: `KhaozEngine.Server.Tests/Catalog/CatalogBundleActionTests.cs`
+- Create: `KhaozEngine.Server.Tests/Catalog/CatalogActionInventoryTests.cs`
+
+**Interfaces:**
+
+- Consumes: Tasks 16, 26, 27
+- Produces: `catalog-import`, `catalog-export`, `catalog-sweep`, `catalog-verify`, and the milestone gate
+
+- [ ] **Step 1: Write the inventory test, because the count is a number the spec states once and means.**
+
+`CatalogActionInventoryTests` asserts `CatalogAdminActions.Register` leaves EXACTLY SIXTEEN action names on
+the `ServerAdmin`, and asserts the sixteen names literally: `catalog-schema`, `catalog-list`,
+`catalog-get`, `catalog-edit`, `catalog-draft`, `catalog-discard`, `catalog-validate`, `catalog-diff`,
+`catalog-publish`, `catalog-versions`, `catalog-pin`, `catalog-rollback`, `catalog-import`,
+`catalog-export`, `catalog-sweep`, `catalog-verify`. Earlier spec drafts counted eleven in one place and
+fourteen in another, so the test is what stops the count drifting again. Assert no content action returns
+501: a registered action that does not exist is a 404 from the lookup, and the 501 arms belong to four
+built-in routes gated on capability flags.
+
+- [ ] **Step 2: Write the import, export and identity tests.**
+
+**Import works into an EMPTY database ONLY and is refused otherwise**, empty meaning the version table has
+no rows, with a 409 carrying the active version and no partial write. That single rule is the answer to a
+whole class of seeding defects: an insert-if-absent seed that runs repeatedly against live data ends up
+carrying guarded corrections that knowingly revert an operator's value. A deployed database's values change
+through `catalog-edit` and `catalog-publish` and through nothing else, ever.
+
+Export at N then import into an empty store reproduces the same rows, keys and IDS. A bundle row's id is
+OPTIONAL and a bundle may MIX the two, because the id is per row and there is one import path.
+
+**Operator identity is a forwarded, unverified field.** The bearer token is ONE token and is not an
+identity. The console forwards `operator` on every mutating request and the engine records it beside its
+own `actor`, keeping both columns because `actor` is what the engine AUTHENTICATED and `operator` is what
+the console ASSERTED. A request with NO `operator` is ACCEPTED and audited with an empty operator, because
+refusing it would break a scripted maintenance call with no human behind it. An `operator` over 128
+characters is a 400. Document the field as taking a STABLE identity rather than a display name, and say why
+in the doc comment: a display name breaks the audit trail the day someone renames themselves.
+
+- [ ] **Step 3: Implement the operational pair.**
+
+`catalog-sweep` runs publish step 11 alone, returns the count deleted and the count skipped, and obeys the
+same skip-on-listing-failure rule. `catalog-verify` walks the active version's manifest, fetches every
+chunk and rehashes it, and returns the chunks that do not match. **It is read only and NEVER repairs**,
+because a repair means deciding which copy is right and only a republish can know that.
+
+- [ ] **Step 4: Run the milestone 1.4 gate and commit.**
+
+~~~bash
+dotnet test KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj -c Release --filter FullyQualifiedName~Catalog
+dotnet run -c Release --project KhaozEngine.Benchmarks -- --catalog --definitions 50000 --edit-count 1 --output ./catalog-p5-p6.json
+git add KhaozEngine.Server.Admin/Catalog KhaozEngine.Server.Tests/Catalog
+git commit -m "catalog(actions): add the bundle pair, operator identity and the operational pair"
+~~~
+
+Record P5 and P6 from that JSON in the report. **This closes milestone 1.4.**
+
+---
+
+## Milestone 1.5: the connect door, the client fetch and the layered catalog
+
+**Group acceptance (spec 18.1's gate for 1.5):** the five door tests of spec 15.7 pass, and budgets P4 and
+P10 are measured. Tasks 29 to 32.
+
+### Task 29: `KhaozEngine.Catalog.Netcode` and the connect door layer (medium)
+
+Spec 2.1, 2.4, 8.5. Contracts 7.5.
+
+**Files:**
+
+- Create: `KhaozEngine.Catalog.Netcode/KhaozEngine.Catalog.Netcode.csproj`
+- Create: `KhaozEngine.Catalog.Netcode/README.md`
+- Create: `KhaozEngine.Catalog.Netcode/ContentIdentityLayer.cs`
+- Create: `KhaozEngine.Catalog.Netcode/ContentRefusal.cs`
+- Create: `KhaozEngine.Catalog.Netcode/ContentIdentityGateAuthenticator.cs`
+- Create: `KhaozEngine.TileWorld.Netcode.Tests/Catalog/ContentIdentityGateTests.cs`
+- Modify: `KhaozEngine.slnx`, `README.md`
+
+**Interfaces:**
+
+- Consumes: `KhaozEngine.Catalog`, `KhaozEngine.Netcode`
+- Produces: the content layer of the handshake nest
+
+**The precedent is `WorldIdentityGateAuthenticator` at `KhaozEngine.Netcode/ConnectionGate.cs:53-96`** and
+nothing here needs inventing: unwrap ONE layer, compare ORDINAL, refuse with a stable wire token carrying
+BOTH sides, otherwise delegate inward. Implement `IConnectionAuthenticator`, `IConnectionDisplayName` and
+`IConnectionPersistenceKey` exactly as the world gate does, each unwrapping and delegating.
+
+**This is its own small package rather than a type inside `KhaozEngine.Catalog`** because `Foundation`
+cannot reference a `Server`-side package. Ship the README and the root catalog row in this commit.
+
+- [ ] **Step 1: Write the five door tests, in `KhaozEngine.TileWorld.Netcode.Tests` where the existing gate
+tests live.**
+
+A matching layer ADMITS and delegates inward. A version mismatch REFUSES with both sides in the token. A
+hash mismatch with MATCHING version numbers refuses, which is the case the number alone cannot catch. An
+ABSENT layer unwraps to the empty label and refuses with EMPTY client fields. A client below
+`minimumClientBuild` gets `ke:content-client-too-old` rather than the generic mismatch, so the client can
+tell the player to update.
+
+The layer value is `<versionNumber>|<clientManifestHash>`, a decimal number and a 64-character lower hex
+hash joined by a pipe. The refusal tokens are exactly:
+
+~~~
+ke:content-mismatch:<serverVersion>|<serverHash>|<clientVersion>|<clientHash>
+ke:content-client-too-old:<minimumClientBuild>
+~~~
+
+The PIPE separates fields inside the payload and the COLON separates the token's own fields, matching the
+existing world-mismatch shape. Assert no value in either token ever contains a colon.
+
+- [ ] **Step 2: Pin the layer ORDER, outermost first: protocol version, world, CONTENT, the game's token
+auth, the ban check.** Content sits inside world and outside auth because a disagreement about content is a
+cheaper and more specific refusal than a failed credential, and the ban check stays innermost because it
+needs the subject the token produced. Write that as a composition test over `ConnectionGate.Wrap`.
+
+- [ ] **Step 3: Run green and commit.**
+
+~~~bash
+dotnet test KhaozEngine.TileWorld.Netcode.Tests/KhaozEngine.TileWorld.Netcode.Tests.csproj -c Release --filter FullyQualifiedName~ContentIdentityGateTests
+sh scripts/check-doc-versions.sh
+git add KhaozEngine.Catalog.Netcode KhaozEngine.TileWorld.Netcode.Tests KhaozEngine.slnx README.md
+git commit -m "catalog(netcode): add the content identity layer and its gate"
+~~~
+
+---
+
+### Task 30: `HttpPackStore` and `CachingPackStore` (medium)
+
+Spec 8.3, 8.4, 8.6, 13.4.
+
+**Files:**
+
+- Create: `KhaozEngine.Catalog/HttpPackStore.cs`
+- Create: `KhaozEngine.Catalog/CachingPackStore.cs`
+- Create: `KhaozEngine.Catalog.Tests/Store/HttpPackStoreTests.cs`
+- Create: `KhaozEngine.Catalog.Tests/Store/CachingPackStoreTests.cs`
+
+**Interfaces:**
+
+- Consumes: Task 10
+- Produces: the read-only cloud provider and the verifying decorator
+
+**No cloud SDK, and that is a package decision rather than a preference.** Taking a blob SDK would put a
+third-party dependency into a `Foundation` package and force every client of every game to carry it. Every
+blob service worth using serves an HTTP GET, and the WRITE side is the publisher's, which runs on a server
+that can implement `IPackStore` over whatever SDK the game already has.
+
+- [ ] **Step 1: Write failing `HttpPackStore` tests.**
+
+Read only, over one INJECTED `HttpClient`. `GetAsync` issues
+`GET <base>/<hash[0..2]>/<hash[2..4]>/<hash>.kec`, the same shard layout as the filesystem provider, so one
+tree serves both. It reads `<base>/versions/<n>` for a pointer by the same rule. **`PutAsync` and
+`ListAsync` THROW `NotSupportedException`**, which is what makes it obviously a fetch path rather than a
+half-working publish target. A 404 answers null rather than throwing.
+
+- [ ] **Step 2: Write failing `CachingPackStore` tests, which carry the whole value of the decorator.**
+
+`GetAsync` asks local, on a miss asks remote, VERIFIES, writes through to local and returns.
+`ExistsAsync` asks local then remote. `PutAsync` goes to local only.
+
+~~~
+bytes  = await remote.GetAsync(hash)
+actual = ContentHash.OfBytesForKind(bytes)
+if (actual != hash) -> discard, do NOT cache, report "hash-mismatch", try the next source
+~~~
+
+**The verification happens on every READ from the cache, not only on write**, which is what makes a local
+file replaced with attacker bytes self-healing rather than permanent. Write that test.
+
+**The decompression that feeds the verify is BOUNDED and the ORDER is load bearing**, because verifying a
+hash taken over uncompressed bytes means decompressing bytes that are not yet trusted. The steps, and each
+gets a test: check `storedBytes` against the received body length (`chunk-stored-length`), check the
+declared `uncompressedBytes` against `MaxChunkUncompressedBytes` (`chunk-too-large`), allocate exactly the
+declared length, decompress INTO that buffer refusing on the first overrunning byte, THEN rebuild the
+canonical form and hash. The overrun refusal is NOT redundant with the declared-length check, because a
+Brotli stream can expand past whatever its container claims and the declared length is the sender's number
+too. Write the hostile case explicitly: a 40 KB body whose header declares `uncompressedBytes = 0xFFFFFFFF`
+is refused before any allocation.
+
+- [ ] **Step 3: Run green and commit.**
+
+~~~bash
+dotnet test KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj -c Release --filter FullyQualifiedName~PackStore
+git add KhaozEngine.Catalog KhaozEngine.Catalog.Tests/Store
+git commit -m "catalog(store): add the http provider and the verifying cache decorator"
+~~~
+
+---
+
+### Task 31: The client fetch loop (medium)
+
+Spec 8.7, 8.8, 9.3, 11 rows 2, 3, 6, 7, 8.
+
+**Files:**
+
+- Create: `KhaozEngine.Catalog/ContentFetchLoop.cs`
+- Create: `KhaozEngine.Catalog/ContentFetchProgress.cs`
+- Create: `KhaozEngine.Catalog.Tests/Store/ContentFetchLoopTests.cs`
+
+**Interfaces:**
+
+- Consumes: Tasks 29 and 30
+- Produces: refusal to reconnect, with no state in which a client holds half a version
+
+**Lift the loop shape from the spike's `ClientFetchSimulator.cs`**, which is the code P4 was measured
+against, and drop its token-bucket shaper and its HTTP test server (`TokenBucket.cs`, `PackHttpServer.cs`),
+which are benchmark harness and stay in the benchmark.
+
+- [ ] **Step 1: Write failing tests for the six steps.**
+
+1 refused at the door with the server's version and hash. 2 get the manifest from cache or remote, verify,
+cache. 3 fail and ask the player to update when `formatGeneration` exceeds the reader's or the local build
+is below `minimumClientBuild`. 4 compute `missing` as every chunk hash in the manifest not in the local
+cache. 5 fetch each at BOUNDED CONCURRENCY 4, verifying, retrying ONCE against the same source on a
+mismatch, then failing that chunk. 6 reconnect when every chunk arrived, otherwise report progress and
+retry the missing set with backoff.
+
+Bounded concurrency 4 because a home connection saturates at two or three streams and unbounded parallelism
+against a CDN buys nothing.
+
+**Decode is LAZY on the client.** Step 5 stores BYTES. Nothing is decompressed or decoded until a lookup
+asks for a row in that chunk, which is what makes the cold start a download budget rather than a decode
+budget. Assert a client that reads one item id touches one chunk and leaves the rest compressed.
+
+- [ ] **Step 2: Write the six failure-mode tests of spec 8.8.**
+
+An interrupted fetch caches what arrived and the next attempt recomputes `missing`, with NO resume state
+beyond the cache. A truncated chunk fails its hash, is discarded, retried once, then reports
+`chunk-fetch-failed` with the client staying at the door. A valid hash over a malformed body means the
+PUBLISHER wrote a bad chunk and the client refuses with the decode reason and does not cache it. A cached
+chunk gone bad on disk is detected on first use, deleted and refetched. A manifest hash mismatch is
+refetched once, then `manifest-hash-mismatch` and the client STOPS, because it cannot tell a bad CDN from a
+bad configuration and guessing is worse than stopping. The server's version moving mid fetch needs no
+special casing: the client finishes, reconnects, is refused with the NEW hash, and the second fetch
+downloads only what differs.
+
+**A partial download never becomes a partial catalog.** The client does not reconnect until every chunk in
+the manifest verifies, which is what makes the door comparison a hash equality rather than a negotiation.
+Assert there is no code path that returns a usable snapshot from an incomplete fetch.
+
+**The client gets its base URL from configuration, NEVER from the refusal token.** A URL in a refusal token
+is a redirect an unauthenticated party controls. Assert the loop takes its base address as a constructor
+argument and that nothing parses a URL out of a refusal.
+
+- [ ] **Step 3: Run green and commit.**
+
+~~~bash
+dotnet test KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj -c Release --filter FullyQualifiedName~ContentFetchLoopTests
+git add KhaozEngine.Catalog KhaozEngine.Catalog.Tests/Store
+git commit -m "catalog(fetch): add the client fetch loop and its failure modes"
+~~~
+
+---
+
+### Task 32: `ContentStringCatalog`, the layered catalog (medium, GATE for 1.5)
+
+Spec 7.6, 15.7. Contracts 12.3, 12.4.
+
+**Files:**
+
+- Create: `KhaozEngine.Catalog/ContentStringCatalog.cs`
+- Create: `KhaozEngine.Catalog/ContentTextIndex.cs`
+- Create: `KhaozEngine.Catalog.Tests/Text/ContentStringCatalogTests.cs`
+
+**Interfaces:**
+
+- Consumes: Task 8's `KECT` codec
+- Produces: an `IStringCatalog` layered over the game's shipped `.resx` catalog
+
+**`KhaozEngine.Catalog` does NOT reference `KhaozEngine.App`, so read this before implementing.**
+`IStringCatalog` and `StringId` live in `KhaozEngine.App`, and `Catalog`'s only dependency is
+`KhaozEngine.Primitives`. Adding an `App` reference would widen a `Foundation` package's graph for one
+interface. **PLAN CHOICE:** implement `ContentStringCatalog` with the same member shape
+(`Get(key)`, `Format(key, args)`) and NO `IStringCatalog` implements clause, plus a `Fallback` delegate
+taking the next catalog, so a game adapts it in one line. If the implementer finds `App` already sits below
+`Catalog` in the graph, or that `IStringCatalog` has moved, implement the interface instead and say so.
+Either way, stop and report if it looks like `Catalog` needs a new dependency: that is a layering decision
+the plan does not get to make quietly.
+
+- [ ] **Step 1: Write failing tests.**
+
+**Content is asked FIRST, then the game's catalog, then the standard behaviour of returning THE KEY ITSELF
+as a visible non-fatal placeholder.** Content first, because content is the thing that ships without a
+client release, so a content string must be able to override a stale shipped one. Assert all three layers
+and assert a miss never throws.
+
+`Format` routes through the SAFE formatting behaviour: a malformed translator-authored template falls back
+to the UNFORMATTED template rather than taking the frame loop down. A template is content arriving as data
+rather than a caller bug, and Gui resolves inside the frame loop with nothing above it to catch.
+
+- [ ] **Step 2: Write the layout tests, which are what P10 measures.**
+
+**A decoded language is the chunk BODY itself plus one index, and no decoded entry at all.** The decode
+decompresses into a `byte[]` and KEEPS it, and builds one open-addressed `int[]` holding each entry's byte
+offset plus one, hashed on the entry's UTF-8 key and probed by an ordinal span compare. **There is no
+`Dictionary<string, string>` and nothing exists as UTF-16 until something asks for it.** Assert both by
+reflection over the type's fields.
+
+The resolved-string cache is a DIRECT-MAPPED table of 512 entries keyed on the entry offset, bounded by
+construction rather than by a policy, so it cannot grow into the thing the budget exists to prevent. A miss
+is one UTF-8 decode over a slice the catalog already holds. Assert the bound and assert a repeat `Get`
+returns the same instance.
+
+- [ ] **Step 3: Run the milestone 1.5 gate and commit.**
+
+~~~bash
+dotnet test KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj -c Release
+dotnet test KhaozEngine.TileWorld.Netcode.Tests/KhaozEngine.TileWorld.Netcode.Tests.csproj -c Release --filter FullyQualifiedName~ContentIdentityGateTests
+dotnet run -c Release --project KhaozEngine.Benchmarks -- --catalog --definitions 50000 --languages 1 --output ./catalog-p4-p10.json
+git add KhaozEngine.Catalog KhaozEngine.Catalog.Tests/Text
+git commit -m "catalog(text): add the layered content string catalog"
+~~~
+
+Record P4 and P10 from that JSON in the report. **This closes milestone 1.5.**
+
+---

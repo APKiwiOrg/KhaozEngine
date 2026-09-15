@@ -570,3 +570,402 @@ Three things follow, and they are stated so neither this spec nor a consumer dri
    offending key and the world source named, matching the fail-closed rule of contracts 10.5 and
    `TileWorldCatalogs.LoadJson`'s own behaviour of throwing a `TileWorldException` naming the source
    (`a-engine.md:315-320`).
+
+## 4. Authoring store and providers
+
+### 4.1 The provider pattern this copies
+
+The engine has one provider pattern and it is verified across two pairs, `Commerce` and `WorldStore`
+(`a-engine.md:700-788`). The content authoring store copies it in every particular:
+
+- A provider package is `KhaozEngine.<Area>.<Backend>`, references the core project plus its ADO.NET package,
+  says OPT-IN in its `<Description>`, is in no umbrella, and ships its own `README.md` as
+  `PackageReadmeFile`.
+- Raw parameterized ADO.NET, no EF and no ORM. SQLite uses `$name` parameters, SQL Server uses `@name`.
+- Key columns are pinned to a BINARY collation, `COLLATE Latin1_General_100_BIN2` on SQL Server and
+  `TEXT COLLATE BINARY` on SQLite. This is contracts 5.3's requirement and it is a non-obvious trap: a
+  case-insensitive database default silently merged two accounts once, which is why
+  `SqlServerWalletStore.cs:32-42` carries a ten-line comment about it.
+- Tests are an abstract contract class with one concrete subclass per backend (section 2.6).
+
+**The schema is the JOURNAL's style, not the wallet's.** The wallet's schema is a single inline `Bootstrap`
+const with `CREATE TABLE IF NOT EXISTS` and no version at all (`SqliteWalletStore.cs:20-32`). The journal's has
+a `CurrentVersion`, a named `RequiredMigration`, an `AutoCreate` and `ValidateOnly` mode, a
+`journal_metadata.schema_version` row and validation of every schema object
+(`KhaozEngine.WorldStore.Sqlite/SqliteJournalSchema.cs:17-18, 159-205`). The engine survey's own conclusion is
+that a content authoring store should follow the journal style because it needs migrations
+(`a-engine.md:741-748`), and this spec agrees: the content schema will gain tables as Scope B's types land and
+as inheritance ships, so it needs a migration path from the first release.
+
+**SQLite sits on `SqliteStoreConnection` and this is not optional.** One held connection, one
+`SemaphoreSlim(1,1)` gate, and a dispose that calls `SqliteConnection.ClearPool(connection)` BEFORE
+`connection.Dispose()` (`KhaozEngine.Sqlite/SqliteStoreConnection.cs:76-82`). The type doc says why it exists:
+the same pool-clearing line was copied wrong three times over. Every command runs under a lease from
+`EnterAsync`, and a transaction takes the lease FIRST (`SqliteStoreConnection.cs:62-73`).
+
+There is no equivalent shared SQL Server connection type, and this spec does not add one. The SQL Server
+provider opens its own pooled `SqlConnection` per call, exactly as `SqlServerWalletStore.cs:47` does, and
+relies on an `IsolationLevel.Serializable` transaction for the publish rather than an in-process semaphore.
+
+### 4.2 The schema version and its modes
+
+```csharp
+internal const int CurrentVersion = 1;
+internal const string RequiredMigration = "catalog-v1-initial";
+```
+
+`ContentAuthoringSchemaMode` is `AutoCreate` or `ValidateOnly`, the journal's enum
+(`SqliteJournalSchema.cs:9-13`). `AutoCreate` creates the schema when the database is empty and then
+validates. `ValidateOnly` refuses an empty or mismatched database rather than creating anything, which is what
+a production host sets so a typo in a connection string cannot silently create a second empty catalog.
+
+Validation compares the actual schema objects against the expected DDL text after normalization, which is what
+`SqliteJournalSchema.ReadSchemaObjects` does with a `sqlite_master` query
+(`SqliteJournalSchema.cs:209-225`). A mismatch throws `ContentAuthoringException` naming the object and the
+required migration.
+
+### 4.3 The tables, and what each is for
+
+| Table | Rows | Why it exists |
+|---|---|---|
+| `catalog_metadata` | exactly 1 | Schema version, store epoch, the ACTIVE version pointer. |
+| `catalog_type` | one per registered type ever seen | Pins a type id to its key so a rename or a reassignment is refused. |
+| `catalog_version` | one per published version | Version number, both manifest hashes, minimum builds, format generation, publisher, note, published-at. |
+| `catalog_row` | one per row VERSION | The temporal row of section 3.7. |
+| `catalog_row_field` | one per field per row version | The field values, so an audit and a diff are field level without decoding a blob. |
+| `catalog_family` | one per family | Name, type, declared block size. |
+| `catalog_family_block` | one per reserved block | The aligned `[base, base + size)` ranges of contracts 5.2. |
+| `catalog_id_high_water` | one per type | The reserve-before-issue high-water mark of contracts 6.2 applied to definition ids. |
+| `catalog_draft` | at most 1 | The one open draft. |
+| `catalog_draft_edit` | one per pending edit | The change set of section 3.7. |
+| `catalog_draft_edit_field` | one per changed field per edit | The changed fields only. |
+| `catalog_audit` | one per field change ever | Who, when, note, type, id, field, before, after. |
+| `catalog_remap_rule` | one per rule, append only | Contracts 8.1. |
+| `catalog_chunk` | one per (version, type, chunk index) | The chunk hash, so a republish knows which chunks changed. |
+
+`catalog_row_field` is the decision that makes the audit and the diff cheap, and it is a deliberate departure
+from storing an encoded row blob. Ruinborne's audit is the lesson: its rows record THAT a row changed and
+carry no values at all, so the entire durable record of an item edit is "someone edited item_def:sword at time
+T" (`c-ruinborne.md:399-420`, Ruinborne [#509](https://github.com/APKiwiOrg/Ruinborne/issues/509)). With one
+row per field, the before and after values fall out of the same table the editor writes.
+
+The encoded row blob is NOT stored. It is computed at publish from `catalog_row_field` through the type's
+codec, and the only thing persisted about it is the chunk hash in `catalog_chunk`. Storing both would give two
+sources of truth for one row and no mechanism to keep them equal.
+
+### 4.4 The SQLite DDL, in full
+
+A C# raw string const in `KhaozEngine.Catalog.Sqlite/SqliteCatalogSchema.cs`, handed to
+`SqliteStoreConnection`'s constructor, following `SqliteJournalSchema.Tables`
+(`SqliteJournalSchema.cs:20-113`). Every key column is `TEXT COLLATE BINARY`, every size cap is a `CHECK`, and
+every foreign key is declared because `PRAGMA foreign_keys = ON` is set in the bootstrap
+(`SqliteJournalSchema.BootstrapSql`, `SqliteJournalSchema.cs:154-158`).
+
+```sql
+CREATE TABLE IF NOT EXISTS catalog_metadata (
+    metadata_key INTEGER NOT NULL PRIMARY KEY CHECK (metadata_key = 1),
+    schema_version INTEGER NOT NULL CHECK (schema_version >= 1),
+    store_epoch TEXT COLLATE BINARY NOT NULL CHECK (length(store_epoch) IN (32, 36)),
+    active_version INTEGER NOT NULL DEFAULT 0 CHECK (active_version >= 0),
+    updated_at_utc INTEGER NOT NULL);
+
+CREATE TABLE IF NOT EXISTS catalog_type (
+    type_id INTEGER NOT NULL PRIMARY KEY CHECK (type_id BETWEEN 1 AND 65535),
+    type_key TEXT COLLATE BINARY NOT NULL CHECK (length(type_key) BETWEEN 1 AND 64),
+    chunk_slots INTEGER NOT NULL CHECK (chunk_slots BETWEEN 256 AND 65536),
+    default_visibility INTEGER NOT NULL CHECK (default_visibility IN (0, 1)),
+    first_seen_version INTEGER NOT NULL CHECK (first_seen_version >= 0));
+CREATE UNIQUE INDEX IF NOT EXISTS ux_catalog_type_key ON catalog_type(type_key);
+
+CREATE TABLE IF NOT EXISTS catalog_version (
+    version_number INTEGER NOT NULL PRIMARY KEY CHECK (version_number >= 1),
+    server_manifest_hash TEXT COLLATE BINARY NOT NULL CHECK (length(server_manifest_hash) = 64),
+    client_manifest_hash TEXT COLLATE BINARY NOT NULL CHECK (length(client_manifest_hash) = 64),
+    minimum_server_build INTEGER NOT NULL CHECK (minimum_server_build >= 0),
+    minimum_client_build INTEGER NOT NULL CHECK (minimum_client_build >= 0),
+    format_generation INTEGER NOT NULL CHECK (format_generation >= 1),
+    base_version INTEGER NOT NULL CHECK (base_version >= 0),
+    published_by TEXT COLLATE BINARY NOT NULL CHECK (length(published_by) BETWEEN 1 AND 128),
+    note TEXT COLLATE BINARY NOT NULL CHECK (length(note) <= 1024),
+    published_at_utc INTEGER NOT NULL,
+    sealed_flag INTEGER NOT NULL DEFAULT 0 CHECK (sealed_flag IN (0, 1)));
+
+CREATE TABLE IF NOT EXISTS catalog_row (
+    type_id INTEGER NOT NULL,
+    definition_id INTEGER NOT NULL CHECK (definition_id >= 1),
+    valid_from_version INTEGER NOT NULL CHECK (valid_from_version >= 1),
+    replaced_in_version INTEGER NULL CHECK (replaced_in_version IS NULL
+        OR replaced_in_version > valid_from_version),
+    content_key TEXT COLLATE BINARY NOT NULL CHECK (length(content_key) BETWEEN 1 AND 64),
+    parent_id INTEGER NOT NULL DEFAULT 0 CHECK (parent_id >= 0),
+    family_id INTEGER NULL,
+    retired INTEGER NOT NULL DEFAULT 0 CHECK (retired IN (0, 1)),
+    PRIMARY KEY (type_id, definition_id, valid_from_version),
+    FOREIGN KEY (type_id) REFERENCES catalog_type(type_id),
+    FOREIGN KEY (valid_from_version) REFERENCES catalog_version(version_number),
+    FOREIGN KEY (family_id) REFERENCES catalog_family(family_id));
+CREATE INDEX IF NOT EXISTS ix_catalog_row_live ON catalog_row(type_id, replaced_in_version, definition_id);
+CREATE INDEX IF NOT EXISTS ix_catalog_row_key ON catalog_row(type_id, content_key, valid_from_version);
+CREATE INDEX IF NOT EXISTS ix_catalog_row_changed ON catalog_row(valid_from_version, type_id, definition_id);
+
+CREATE TABLE IF NOT EXISTS catalog_row_field (
+    type_id INTEGER NOT NULL,
+    definition_id INTEGER NOT NULL,
+    valid_from_version INTEGER NOT NULL,
+    field_name TEXT COLLATE BINARY NOT NULL CHECK (length(field_name) BETWEEN 1 AND 64),
+    field_kind INTEGER NOT NULL CHECK (field_kind BETWEEN 0 AND 6),
+    int_value INTEGER NULL,
+    text_value TEXT COLLATE BINARY NULL CHECK (text_value IS NULL OR length(text_value) <= 192),
+    blob_value BLOB NULL CHECK (blob_value IS NULL OR length(blob_value) <= 4096),
+    PRIMARY KEY (type_id, definition_id, valid_from_version, field_name),
+    FOREIGN KEY (type_id, definition_id, valid_from_version)
+        REFERENCES catalog_row(type_id, definition_id, valid_from_version));
+```
+
+`catalog_row_field` stores exactly one of the three value columns per row, chosen by `field_kind`: `int`,
+`ScaledInt`, `Bool` and `KeyReference` use `int_value`, `LocalizedTextKey` uses `text_value`, and `TagList`
+and `OpaqueBytes` use `blob_value`. A tag list is stored as a `blob_value` of varint tag ids in AUTHORED
+ORDER, which is what contracts 4.6 requires and what a column of joined text would lose. The 4,096 byte cap on
+`blob_value` is a guard rail, not a budget: a 128-byte asset reference and a 60-tag list are both far under
+it.
+
+```sql
+CREATE TABLE IF NOT EXISTS catalog_family (
+    family_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    type_id INTEGER NOT NULL,
+    family_key TEXT COLLATE BINARY NOT NULL CHECK (length(family_key) BETWEEN 1 AND 64),
+    block_size INTEGER NOT NULL CHECK (block_size BETWEEN 16 AND 65536),
+    retired INTEGER NOT NULL DEFAULT 0 CHECK (retired IN (0, 1)),
+    created_in_version INTEGER NOT NULL CHECK (created_in_version >= 1),
+    FOREIGN KEY (type_id) REFERENCES catalog_type(type_id));
+CREATE UNIQUE INDEX IF NOT EXISTS ux_catalog_family_key ON catalog_family(type_id, family_key);
+
+CREATE TABLE IF NOT EXISTS catalog_family_block (
+    family_id INTEGER NOT NULL,
+    block_ordinal INTEGER NOT NULL CHECK (block_ordinal >= 0),
+    base_id INTEGER NOT NULL CHECK (base_id >= 1),
+    block_size INTEGER NOT NULL CHECK (block_size BETWEEN 16 AND 65536),
+    next_free_id INTEGER NOT NULL CHECK (next_free_id >= base_id),
+    reserved_in_version INTEGER NOT NULL CHECK (reserved_in_version >= 1),
+    PRIMARY KEY (family_id, block_ordinal),
+    FOREIGN KEY (family_id) REFERENCES catalog_family(family_id),
+    CHECK (base_id % block_size = 0),
+    CHECK (next_free_id <= base_id + block_size));
+
+CREATE TABLE IF NOT EXISTS catalog_id_high_water (
+    type_id INTEGER NOT NULL PRIMARY KEY,
+    reserved_through INTEGER NOT NULL CHECK (reserved_through >= 0),
+    issued_through INTEGER NOT NULL CHECK (issued_through >= 0 AND issued_through <= reserved_through),
+    FOREIGN KEY (type_id) REFERENCES catalog_type(type_id));
+
+CREATE TABLE IF NOT EXISTS catalog_draft (
+    draft_key INTEGER NOT NULL PRIMARY KEY CHECK (draft_key = 1),
+    base_version INTEGER NOT NULL CHECK (base_version >= 0),
+    opened_by TEXT COLLATE BINARY NOT NULL CHECK (length(opened_by) BETWEEN 1 AND 128),
+    opened_at_utc INTEGER NOT NULL,
+    note TEXT COLLATE BINARY NOT NULL DEFAULT '' CHECK (length(note) <= 1024));
+
+CREATE TABLE IF NOT EXISTS catalog_draft_edit (
+    edit_ordinal INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    type_id INTEGER NOT NULL,
+    definition_id INTEGER NOT NULL DEFAULT 0 CHECK (definition_id >= 0),
+    content_key TEXT COLLATE BINARY NOT NULL CHECK (length(content_key) BETWEEN 1 AND 64),
+    operation INTEGER NOT NULL CHECK (operation IN (1, 2, 3)),
+    retire_policy INTEGER NOT NULL DEFAULT 0 CHECK (retire_policy IN (0, 1, 2)),
+    replacement_id INTEGER NOT NULL DEFAULT 0 CHECK (replacement_id >= 0),
+    family_id INTEGER NULL,
+    edited_by TEXT COLLATE BINARY NOT NULL CHECK (length(edited_by) BETWEEN 1 AND 128),
+    edited_at_utc INTEGER NOT NULL,
+    FOREIGN KEY (type_id) REFERENCES catalog_type(type_id));
+CREATE UNIQUE INDEX IF NOT EXISTS ux_catalog_draft_edit_target
+    ON catalog_draft_edit(type_id, definition_id, content_key);
+
+CREATE TABLE IF NOT EXISTS catalog_draft_edit_field (
+    edit_ordinal INTEGER NOT NULL,
+    field_name TEXT COLLATE BINARY NOT NULL CHECK (length(field_name) BETWEEN 1 AND 64),
+    field_kind INTEGER NOT NULL CHECK (field_kind BETWEEN 0 AND 6),
+    int_value INTEGER NULL,
+    text_value TEXT COLLATE BINARY NULL CHECK (text_value IS NULL OR length(text_value) <= 192),
+    blob_value BLOB NULL CHECK (blob_value IS NULL OR length(blob_value) <= 4096),
+    PRIMARY KEY (edit_ordinal, field_name),
+    FOREIGN KEY (edit_ordinal) REFERENCES catalog_draft_edit(edit_ordinal) ON DELETE CASCADE);
+```
+
+The unique index on `(type_id, definition_id, content_key)` is what makes an edit IDEMPOTENT per target: a
+console that saves the same row twice updates the one edit rather than queueing two. An `Add` carries
+`definition_id = 0` because no id exists yet, so its uniqueness comes from the key half of the index, which is
+also what refuses two `Add` edits for the same key in one draft.
+
+```sql
+CREATE TABLE IF NOT EXISTS catalog_audit (
+    audit_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    occurred_at_utc INTEGER NOT NULL,
+    actor TEXT COLLATE BINARY NOT NULL CHECK (length(actor) BETWEEN 1 AND 128),
+    operator TEXT COLLATE BINARY NOT NULL DEFAULT '' CHECK (length(operator) <= 128),
+    action TEXT COLLATE BINARY NOT NULL CHECK (length(action) BETWEEN 1 AND 32),
+    type_id INTEGER NOT NULL DEFAULT 0,
+    definition_id INTEGER NOT NULL DEFAULT 0,
+    content_key TEXT COLLATE BINARY NOT NULL DEFAULT '' CHECK (length(content_key) <= 64),
+    field_name TEXT COLLATE BINARY NOT NULL DEFAULT '' CHECK (length(field_name) <= 64),
+    before_value TEXT COLLATE BINARY NULL CHECK (before_value IS NULL OR length(before_value) <= 512),
+    after_value TEXT COLLATE BINARY NULL CHECK (after_value IS NULL OR length(after_value) <= 512),
+    version_number INTEGER NOT NULL DEFAULT 0,
+    note TEXT COLLATE BINARY NOT NULL DEFAULT '' CHECK (length(note) <= 1024));
+CREATE INDEX IF NOT EXISTS ix_catalog_audit_time ON catalog_audit(occurred_at_utc, audit_id);
+CREATE INDEX IF NOT EXISTS ix_catalog_audit_target ON catalog_audit(type_id, definition_id, audit_id);
+
+CREATE TABLE IF NOT EXISTS catalog_remap_rule (
+    sequence INTEGER NOT NULL PRIMARY KEY CHECK (sequence >= 1),
+    introduced_in INTEGER NOT NULL CHECK (introduced_in >= 1),
+    type_id INTEGER NOT NULL,
+    kind INTEGER NOT NULL CHECK (kind BETWEEN 1 AND 255),
+    from_id INTEGER NOT NULL CHECK (from_id >= 1),
+    to_id INTEGER NOT NULL DEFAULT 0 CHECK (to_id >= 0),
+    payload BLOB NOT NULL DEFAULT x'' CHECK (length(payload) <= 64),
+    FOREIGN KEY (type_id) REFERENCES catalog_type(type_id),
+    FOREIGN KEY (introduced_in) REFERENCES catalog_version(version_number));
+
+CREATE TABLE IF NOT EXISTS catalog_chunk (
+    version_number INTEGER NOT NULL,
+    type_id INTEGER NOT NULL,
+    chunk_index INTEGER NOT NULL CHECK (chunk_index >= 0),
+    chunk_hash TEXT COLLATE BINARY NOT NULL CHECK (length(chunk_hash) = 64),
+    row_count INTEGER NOT NULL CHECK (row_count >= 0),
+    uncompressed_bytes INTEGER NOT NULL CHECK (uncompressed_bytes >= 0),
+    stored_bytes INTEGER NOT NULL CHECK (stored_bytes >= 0),
+    visibility INTEGER NOT NULL CHECK (visibility IN (0, 1)),
+    PRIMARY KEY (version_number, type_id, chunk_index),
+    FOREIGN KEY (version_number) REFERENCES catalog_version(version_number),
+    FOREIGN KEY (type_id) REFERENCES catalog_type(type_id));
+CREATE INDEX IF NOT EXISTS ix_catalog_chunk_hash ON catalog_chunk(chunk_hash);
+
+INSERT OR IGNORE INTO catalog_metadata(metadata_key, schema_version, store_epoch, active_version, updated_at_utc)
+VALUES (1, 1, lower(hex(randomblob(16))), 0, CAST(strftime('%s', 'now') AS INTEGER) * 1000);
+```
+
+**A remap rule has no delete path and the schema says so.** Rules are append only (contracts 8.1), so there is
+no `UPDATE` and no `DELETE` statement for `catalog_remap_rule` anywhere in either provider. The journal takes
+the stronger position for its own operations, a `BEFORE DELETE` trigger raising an abort unless a guarded
+maintenance hook is set (`SqliteJournalSchema.cs:70-76`). This spec does NOT copy the trigger, because the
+journal's guard exists to permit a retention sweep and there is no retention sweep here: the rule list is
+small (contracts 8.4 computes ten thousand rules at about 110 KB) and grows only on a retire. If a later phase
+adds any maintenance path that touches rules, it adds the trigger with it.
+
+**`catalog_chunk` has a hash index and no unique constraint on the hash.** Two versions naming the same chunk
+hash is the NORMAL case and is the entire point: a chunk that did not change between two versions has the same
+hash and a client already holding it fetches nothing (contracts 7.3). The index is what makes "does this
+version share a chunk with the last one" one lookup at publish time.
+
+### 4.5 The SQL Server DDL
+
+An EMBEDDED RESOURCE, `KhaozEngine.Catalog.SqlServer/CatalogSchemaV1.sql`, following
+`KhaozEngine.WorldStore.SqlServer/JournalSchemaV1.sql`. The shape is the SQLite text with the type and
+constraint idioms swapped, and the differences are mechanical rather than semantic:
+
+| SQLite | SQL Server |
+|---|---|
+| `TEXT COLLATE BINARY` | `nvarchar(N) COLLATE Latin1_General_100_BIN2` |
+| `INTEGER` | `int`, or `bigint` for the audit id and the timestamps |
+| `INTEGER PRIMARY KEY AUTOINCREMENT` | `bigint IDENTITY(1,1)` |
+| `BLOB` | `varbinary(max)`, with `CHECK (DATALENGTH(x) <= N)` |
+| `CAST(strftime(...))` epoch ms | `datetimeoffset(7)` |
+| `INSERT OR IGNORE` | `IF NOT EXISTS (...) INSERT` |
+| `CHECK (length(x) <= N)` | `CHECK (LEN(x) <= N)` for `nvarchar`, `DATALENGTH` for `varbinary` |
+| inline `CHECK` | `CONSTRAINT ck_<table>_<what> CHECK` |
+
+`JournalSchemaV1.sql:10` is the precedent for the collation and `:33` for the `DATALENGTH` cap. Every
+constraint is NAMED on SQL Server, because an unnamed constraint gets a generated name and the schema
+validator compares names.
+
+The one genuine behavioural difference is the transaction. SQLite serializes IN PROCESS behind the
+`SqliteStoreConnection` gate plus an explicit transaction (`SqliteWalletStore.cs:69-70`). SQL Server takes no
+in-process semaphore and uses `IsolationLevel.Serializable` (`SqlServerWalletStore.cs:11-13`), which is what
+makes two consoles publishing concurrently a deadlock-or-abort rather than a race (section 11, row 4). The
+conformance suite asserts the OBSERVABLE behaviour, never the mechanism, so one suite covers both.
+
+### 4.6 The audit, field level, through the schema
+
+Every write path in section 10 appends audit rows, and the unit of an audit row is ONE FIELD, not one row and
+not one request. An `Update` that changes three fields writes three audit rows sharing an `occurred_at_utc`,
+an `actor`, an `operator` and a `note`.
+
+| Column | Filled with |
+|---|---|
+| `actor` | The engine's own actor constant for the admin endpoint, matching Grimhollow's `AdminActors.AdminEndpoint` (`b-grimhollow.md:949-951`). |
+| `operator` | The identity the console FORWARDED, section 10.10. Empty when it forwarded none. |
+| `action` | `draft-edit`, `draft-discard`, `publish`, `pin`, `rollback`, `bulk-import`, `family-create`. |
+| `field_name` | The schema field name. Empty for a row-level action such as a retire. |
+| `before_value`, `after_value` | The value rendered through the field's kind, invariant culture, null for absent. |
+| `version_number` | 0 for a draft edit, the published number for a publish. |
+
+`before_value` and `after_value` are TEXT even for an int field, deliberately. An audit row is read by a human
+and joined by nothing, and rendering at write time means a later schema change cannot make an old audit row
+un-renderable. A tag list renders as its comma-joined tag KEYS resolved at write time, because a reader of an
+audit row six months later should not have to resolve ids against a version that may have retired them.
+
+**The audit append is IN the same transaction as the edit, not best effort.** Ruinborne's is best effort: it
+catches and logs a warning so an audit failure never blocks the edit (`c-ruinborne.md:415-417`), and in its
+no-SQL developer mode there is no audit at all. Both are the wrong default for content, because a content edit
+with no audit row is indistinguishable from no edit, and the whole reason this store exists is that the owner
+authors values a player's economy depends on. If the audit insert fails, the edit fails.
+
+### 4.7 The id allocator
+
+Contracts 5.1 puts allocation in the authoring store and contracts 6.2's reserve-before-issue ORDER is the
+contract this copies: **a range is RESERVED durably BEFORE any id in it is issued**, so the worst a crash can
+do is skip a block of ids that were never issued, and it can never reissue one.
+
+`catalog_id_high_water` carries two numbers per type:
+
+- `reserved_through` is the highest id the store has DURABLY promised not to hand out twice.
+- `issued_through` is the highest id actually stamped onto a row.
+
+`AllocateAsync(typeId, count)`:
+
+1. If `issued_through + count <= reserved_through`, hand out `[issued_through + 1, issued_through + count]`,
+   set `issued_through` to the top, and return. No reservation needed.
+2. Otherwise compute `newReserved = issued_through + max(count, ReserveBatch)` where `ReserveBatch` is 1,024,
+   write `reserved_through = newReserved` and COMMIT that write on its own, then go to step 1.
+
+The separate commit in step 2 is the whole rule. Persisting the reservation after issuing leaves a window in
+which a crash hands the next boot an id it has already put on a row, and a duplicate definition id is the one
+failure this section exists to prevent. `NetIdAllocator` persists its packed high-water mark for exactly this
+reason (`KhaozEngine.Replication/NetIdAllocator.cs:14-60`, `a-engine.md:1158-1175`).
+
+A crash between the two commits skips up to 1,024 ids. That is free: ids are 31 bits of positive `int` space
+per type against an owner figure of 50,000 definitions and a stress figure of 1,000,000 (contracts 1.3 item
+2), so a server could crash mid-allocation two million times before the gap mattered.
+
+**Family allocation is the same rule on a narrower range.** `AllocateInFamilyAsync(familyId)` takes the
+family's blocks in ordinal order, finds the first whose `next_free_id < base_id + block_size`, issues that id
+and advances `next_free_id`. When every block is full it reserves a NEW block: it takes the type's
+`reserved_through`, rounds UP to the family's declared `block_size` alignment, reserves through the top of the
+new block by the step-2 rule above, inserts the `catalog_family_block` row, and only then issues. The rounding
+up is what wastes ids and what makes `(id & ~(size - 1)) == base` a legal membership test (contracts 5.2), and
+the waste is bounded by the block size.
+
+An id block exhausted MID-PUBLISH cannot happen, because allocation runs as step 2 of the publish (section
+6.3) before anything is written, and a failure there aborts the publish with nothing changed. Section 11 row 9
+spends this case.
+
+### 4.8 One transaction per publish
+
+The entire publish COMMIT is one database transaction (section 6.10). Inside it: the `catalog_version` row,
+every `catalog_row` close and insert, every `catalog_row_field` insert, every `catalog_remap_rule` append,
+every `catalog_chunk` row, the `catalog_draft` and `catalog_draft_edit` deletion, the audit rows, and the
+`catalog_metadata.active_version` update.
+
+Outside it, and BEFORE it: every chunk file write and every manifest file write (section 6.9). That ordering
+is the crash-safety property and it is the map document's, which writes changed tiles "at names nothing points
+at yet" and then commits with one manifest rename
+(`KhaozEngine.MapDoc/MapTiledFile.Save.cs:81-102`). A chunk file is named by its own hash, so writing one is
+idempotent and writing one nothing references yet is inert. The database transaction is the only commit point
+and it is atomic by construction.
+
+### 4.9 What a second world would add
+
+The owner has one world now and separate worlds later (#882 comment 2). Stated once so nobody designs around
+it: a second world adds a `world_key` column to `catalog_metadata`'s active pointer and nothing else. Versions,
+rows, chunks, packs and manifests are all world independent, because content is what a thing IS and a world is
+where it sits. Two worlds on different active versions is two rows in a renamed `catalog_active_version` table
+keyed by world, and every other table is untouched.

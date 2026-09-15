@@ -569,7 +569,7 @@ then EntryCount entries, strictly ascending by Slot:
   [DefinitionId: varint int32]         // never 0 on an occupied entry
   [Count: varint int32]                // always positive
   [InstanceId: varint uint64]          // the int64 bit pattern, unsigned, never zig-zagged
-  [PayloadLength: varint int32]        // 0 to MaxInstancePayloadBytes
+  [PayloadLength: varint int32]        // bounded by the SECTION cap, see below
   [Payload: PayloadLength bytes]
 ```
 
@@ -601,6 +601,25 @@ fact about the item's properties has nowhere else to go, and the first such fact
 quarantined, section 12.4). Without it, a quarantined slot would have to be told apart by sniffing the
 payload for the `KECQ` magic, and `K` is 0x4B, which is a perfectly legal property kind varint, so the
 sniff is ambiguous. One byte per entry against ambiguity is the right trade.
+
+**`PayloadLength` is bounded by the SECTION cap, and `MaxInstancePayloadBytes` binds a NON-quarantined
+entry only.** Two bounds were in play and they contradicted: this field once declared "0 to
+`MaxInstancePayloadBytes`" while 12.4 said an `OriginalLength` may exceed it. The one that is code wins
+the wrong way round, so it is settled here rather than there. A quarantine wrapper carries the original
+bytes VERBATIM plus eleven bytes of its own header (12.4), so an entry that quarantined for
+`payload-oversize` is by construction larger than the cap it broke, and bounding the entry at
+`MaxInstancePayloadBytes` would refuse to write exactly the item the wrapper exists to keep. The rule:
+
+- A NON-quarantined entry's payload is at most `MaxInstancePayloadBytes`. The decoder refuses a larger one
+  with `payload-oversize` and `SetSlotAt` throws on one (4.7).
+- A QUARANTINED entry's payload is the wrapper, and its bound is the page's own: the journal's 2 MiB
+  projection section cap less the rest of the page (`JournalLimits.cs:16`). 5.4 carries the arithmetic.
+
+The case this exists for is a cap RAISE, which contracts 9.6 makes backward compatible and open question 4
+expects. Engine 20.x raises the cap to 1,024, a six socket item reaches 700 bytes, and a shard still on
+19.x loads the page: check 5 fires, the entry quarantines, the wrapper is about 711 bytes, and it has to
+be writable or the page cannot be re-encoded at all and the whole container becomes uncommittable. One
+oversize item must not cost a player their bank.
 
 **Endianness and varints are contracts 15's**: little endian through `BinaryPrimitives` with the
 endianness in the method name on BOTH sides, which fixes the asymmetry version 1 carries (its read side
@@ -681,6 +700,15 @@ that has already validated and a violation here is a caller bug rather than bad 
    `[Conditional("DEBUG")]` members do not exist in the Release configuration CI builds (AGENTS.md) and
    a door that only guards on a developer machine is not a door.
 
+**Invariants 2 and 4 are SKIPPED when `value.Quarantined` is set**, and the wrapper's own checks stand in
+for them. A quarantine wrapper is not a payload: it is not canonical, it is not meant to be, and it may be
+larger than `MaxInstancePayloadBytes` because the thing it preserves may have been (4.4). So a quarantined
+slot is checked instead by `QuarantineWrapper.Verify`, which reads the four magic bytes, the version and
+the declared `OriginalLength` and refuses anything else. Invariants 1 and 3 still bind, because an empty
+stack and a missing instance id are caller bugs whatever the flag says. Without this exception the door
+refuses the wrapper and the quarantine path is unreachable at exactly the moment it is needed, which is
+the failure this paragraph exists to prevent.
+
 `TakeSlotAt(int slot)` is `TakeAt`'s payload carrying sibling: it returns the whole `ItemSlot` and seats
 `ItemSlot.Empty`. `Swap(a, b)` swaps the payload array entries alongside the stacks, so the existing one
 line tuple swap becomes two.
@@ -754,6 +782,15 @@ entry size (slot 1, flags 1, definition 3, count 3, instance 10, length 2, paylo
 percent of the 256 KiB event payload cap, so section 13's row 8 is a row whose answer is "structurally
 impossible, and here is the arithmetic".
 
+**The quarantine exception is bounded too, and here is that arithmetic.** A quarantined entry's payload is
+bounded by this section cap rather than by `MaxInstancePayloadBytes` (4.4), so the 52 KB above is the
+ordinary case rather than the ceiling. The exceptional case is a page every one of whose entries
+quarantines a payload written under a RAISED cap: at 1,024 bytes of original, eleven bytes of wrapper
+header and twenty of entry overhead, that is `100 * 1,055 = 105,500` bytes, 5 percent of the section cap.
+A page cannot approach 2 MiB without an entry whose original is itself megabyte-sized, which no writer at
+any cap produces, so the exception widens the worst case by a factor of two and leaves it two orders of
+magnitude clear.
+
 ### 5.5 Loading a container
 
 `ContainerLoadResult Load(IReadOnlyList<JournalProjectionSection> sections, IContentSnapshot snapshot)`,
@@ -768,8 +805,9 @@ the content side.
    is a scan rather than a rewrite, which is almost every rule on almost every page.
 3. If any rule changed anything, mark the page DIRTY and set its in-memory stamp to the active version.
    Do NOT write it (5.6).
-4. Validate each entry (12.2). Structural failures quarantine that ENTRY and leave the rest of the page
-   alone. Drift failures are counted and tolerated (12.3).
+4. Validate each entry (12.2). A failed check quarantines that ENTRY and leaves the rest of the page
+   alone, for a structural failure and for an unresolved content reference alike (12.3). The one check
+   that does not is 12, the over-cap count, which contracts 8.2 kind 4 declares legal.
 5. Return the pages, the accumulated findings and the dirty set.
 
 **Remapped pages are rewritten LAZILY, on the next ordinary commit, and contracts 10.3 says why.**
@@ -935,11 +973,15 @@ JournalCommit commit = batch.Close(identityFactory);
 
 What `Close` emits:
 
-- **ONE `JournalOperationIdentity`.** Its `normalizedIntent` is the canonical encoding of the ORDERED
-  operation list: `[Count: varint][ per operation: [Kind: varint][Parameters] ]`, little endian,
-  minimal varints, exactly the rules of contracts 15. Canonical because the intent is what the journal
-  hashes to detect a conflicting replay (`JournalValidation.Hash` is `SHA256.HashData`,
-  `JournalLimits.cs:135`), so two encodings of the same batch must produce the same bytes.
+- **ONE `JournalOperationIdentity`, and what its `normalizedIntent` holds depends on whose identity it
+  is.** For a SERVER-minted batch it is the canonical encoding of the ORDERED operation list:
+  `[Count: varint][ per operation: [Kind: varint][Parameters] ]`, little endian, minimal varints, exactly
+  the rules of contracts 15. For a CLIENT-headed batch (6.5) it is the client operation's OWN canonical
+  intent ALONE, in 10.6's shape, and the server-caused operations riding behind it contribute NO intent
+  bytes at all: they are carried by the events and by the page bytes. Canonical in both cases, because the
+  intent is what the journal hashes to detect a conflicting replay (`JournalValidation.Hash` is
+  `SHA256.HashData`, `JournalLimits.cs:135`), so two encodings of one batch must produce one byte
+  sequence.
 - **ONE `JournalEvent` per logical operation**, in order. The audit trail is not collapsed, only the
   projection is. At about forty bytes an event and a cap of 128 events per operation
   (`JournalLimits.cs:10`), a batch is bounded at 128 operations and about 5 KB of events.
@@ -983,6 +1025,21 @@ middle of a held craft builds its page over the batch's admitted view and commit
 withdraw that also triggers a quest advance is one identity, the client's, because the server work
 happened because of the client's action and has no separate identity to lose.
 
+**A client-headed batch's intent is the CLIENT's action and nothing else, and that is the load bearing
+half of the exception.** The client resubmits after a reconnect with the intent it built from its own
+click, and that intent cannot name the server work the click caused, because the client never saw it: the
+quest advance, the expiry sweep, the achievement. If the batch's intent were the whole ordered list, the
+resubmit would hash differently, `ResolveOperationAsync` would answer `OperationConflict`
+(`InMemoryMutationJournalStore.cs:47`, `:57-60`), and the consumer would treat a COMMITTED withdraw as a
+failed one: `Withdraw` rolls the admitted view back and supersedes everything queued behind it
+transitively (`JournalAdmittedState.cs:117-147`), the player is told the action failed, and a re-click
+applies it twice. Scoping the intent to the client's own operation makes the resubmit hash identically
+and resolve `Replayed`, which is what 6.6 claims and what 6.5's exception is worth having.
+
+**The server-caused half is not lost by being outside the intent.** An intent is a REPLAY KEY rather than
+a record: what happened is the ordered `JournalEvent` list and the page bytes, both durable, both read by
+an auditor. Nothing reads `normalizedIntent` except the fingerprint.
+
 ### 6.6 Crash and replay semantics of the recommendation
 
 Stated case by case, because this is the part that is easy to get almost right.
@@ -1009,9 +1066,14 @@ Stated case by case, because this is the part that is easy to get almost right.
   page resync list with no addition.
 - **Transient retry.** Corrects nothing. The batch is still admitted, its view still stands, and the
   store is still being asked. That is the journal's stated fail-closed behaviour and it is unchanged.
-- **Replay with a DIFFERENT intent under the same id.** `OperationConflict`, unchanged. The canonical
-  intent encoding in 6.4 is what makes that detection meaningful for a batch: a batch resubmitted with
-  one extra operation appended hashes differently and is refused rather than silently applied.
+- **Replay with a DIFFERENT intent under the same id.** `OperationConflict`, unchanged, and 6.4's split
+  is what "different" means. A CLIENT operation resubmitted with different parameters, a different slot, a
+  different currency or a different target instance id, hashes differently and is refused. The
+  server-caused operations behind it are NOT in the hash, so a resubmit that omits them, or a second
+  attempt whose server work differs because the world moved, still resolves `Replayed` and returns the
+  original receipt. A SERVER-minted batch carries the whole ordered list and has no resubmitter at all,
+  because its id is minted per attempt (`GrimhollowPlayerJournal.Contracts.cs:263`), so a conflicting
+  replay of one is a bug rather than a reconnect.
 
 ### 6.7 What it is worth
 
@@ -1261,6 +1323,30 @@ Reassembly rules, all on the client:
 A single crafted rare changes one slot, so a craft costs `3 + 1 + 1 + 68 = 73` bytes and one frame. A
 delta names the page it applies to, and the client REFUSES a delta for a page it has not fully received,
 asking for a full page sync instead, so a delta can never be applied to bytes the client guessed at.
+
+**A delta that would not fit ONE frame is never sent, and the page goes through the fragmenter instead.**
+Nothing above bounds `ChangedCount`, and a page holds 100 slots, so a Sort, a multi-slot move or a deposit
+that cascades across a page produces a delta far over the cap. That is not a truncated message, it is a
+THROW: `EncodeGameMessage` throws above `MaxGameMessageBytes` (`TileProtocol.Frames.cs:173-174`), the
+delta is sent with `SendGameMessageTo` from inside the per-viewer serve loop, and nothing in
+`TileWorld.Netcode` catches around it. The combat path already paid for this exact shape and its comment
+says so: the throw was inside the loop and "took the tick down for every player on the server"
+(`TileWorldServer.Tick.cs:236-247`). So the builder MEASURES as it writes:
+
+1. The budget is `MaxGameMessageBytes` less the four byte envelope (`TileProtocol.Frames.cs:77`) less the
+   delta's own three byte header, so 1,017 bytes of changes.
+2. A change to an OCCUPIED slot costs the slot varint plus the `0x01` tag plus the entry body, which is 70
+   bytes at 3.8's rare. FOURTEEN changed rare slots fit in one frame and the fifteenth does not.
+3. A change to an EMPTIED slot costs two or three bytes, so bytes are not what binds there. `ChangedCount`
+   is a byte, so 255 is the format ceiling and a 100 slot page is under it either way.
+4. When the next change would not fit, the builder ABANDONS the delta and sends the whole page through
+   `TileFragmentedMessage`. Not a second delta frame: two deltas for one page would have to be applied in
+   order by a client that may have missed the first, which is the reassembly problem the fragmenter
+   already solves once.
+
+A Sort over a 100 slot bank page of rares is therefore ONE fragmented page send of about 6.9 KB in seven
+chunks, never a 6,800 byte game message and never a throw. Test 17 pins it, at fourteen changes, at
+fifteen, and at a full page.
 
 ### 7.6 The ground item message vocabulary
 
@@ -2138,40 +2224,58 @@ shape and `JsonSchemaValidator.ValidationReport`'s run-to-the-end sweep
 (`KhaozEngine.Content/JsonSchemaValidator.cs:11-101`). It is side effect free: it does not log, does not
 touch a counter and does not mutate the page. The caller does all three.
 
-| # | Check | Level | Failure |
-|---|---|---|---|
-| 1 | the payload is canonical: ascending kinds, no duplicate, minimal varints | structural | `field-order`, `field-duplicate`, `varint-nonminimal` |
-| 2 | every declared length lies inside the payload | structural | `truncated` |
-| 3 | a registered kind's bytes decode through its codec | structural | `field-malformed` |
-| 4 | kind 132's nested payloads carry no kind 132 | structural | `socket-nesting` |
-| 5 | the payload is at most `MaxInstancePayloadBytes` | structural | `payload-oversize` |
-| 6 | the entry's definition id resolves in the active version | drift | `unknown-definition` |
-| 7 | every mod id, socket type id, rarity id, template id and word id resolves | drift | `unknown-content-reference` |
-| 8 | a `(mod id, tier ordinal)` pair names a live tier | drift | `unknown-content-reference` |
-| 9 | a non-empty payload has a non-zero instance id | structural | `instance-id-missing` |
-| 10 | the instance id is unique within the page | structural | `instance-id-duplicate` |
-| 11 | an entry carrying kind 5 or 132 has count 1 | structural | `stack-not-instanceable` |
-| 12 | the entry's count is at most the definition's cap, OR the over-cap shrink rule applies | drift | `over-cap`, tolerated |
+| # | Check | Class | Failure | Outcome |
+|---|---|---|---|---|
+| 1 | the payload is canonical: ascending kinds, no duplicate, minimal varints | structural | `field-order`, `field-duplicate`, `varint-nonminimal` | quarantine |
+| 2 | every declared length lies inside the payload | structural | `truncated` | quarantine |
+| 3 | a registered kind's bytes decode through its codec | structural | `field-malformed` | quarantine |
+| 4 | kind 132's nested payloads carry no kind 132 | structural | `socket-nesting` | quarantine |
+| 5 | the payload is at most `MaxInstancePayloadBytes` | structural | `payload-oversize` | quarantine |
+| 6 | the entry's definition id resolves in the active version | drift | `unknown-definition` | quarantine |
+| 7 | every content id the registry's reference targets name resolves, at every depth (3.3) | drift | `unknown-content-reference` | quarantine |
+| 8 | a `(mod id, tier ordinal)` pair names a live tier | drift | `unknown-content-reference` | quarantine |
+| 9 | a non-empty payload has a non-zero instance id | structural | `instance-id-missing` | quarantine |
+| 10 | the instance id is unique within the page | structural | `instance-id-duplicate` | quarantine |
+| 11 | an entry carrying kind 5 or 132 has count 1 | structural | `stack-not-instanceable` | quarantine |
+| 12 | the entry's count is at most the definition's cap, OR the over-cap shrink rule applies | policy | `over-cap` | tolerated |
 
-### 12.3 Structural quarantines, drift is counted and tolerated
+### 12.3 What each failure does
+
+**Contracts 10.1 owns the outcome vocabulary and this section only says which check reaches which
+outcome.** Valid, Remapped, Quarantined, there is no fourth, and nothing here invents a middle state.
 
 **A structural failure quarantines that ENTRY.** The item's bytes cannot be trusted to mean what they say,
 so nothing reads them again until someone looks.
 
-**A drift failure does NOT quarantine by default.** Checks 6, 7 and 8 fail because CONTENT moved, which is
-what remap rules exist to handle, so the loader's order matters: rules apply first (5.5 step 2) and the
-validator runs after, so a drift finding means no rule covered it. The policy is per check. Check 6, an
-unresolvable DEFINITION, quarantines, because an item with no base cannot be drawn, stacked or equipped.
-Checks 7 and 8, an unresolvable content REFERENCE inside a payload, are COUNTED and TOLERATED: the field is
-kept verbatim, contributes nothing to the evaluator, renders as a placeholder line, and is re-checked on
-every load, so the item survives the window in which an author forgot a rule. Check 12 is contracts 8.2
-kind 4's shrink-only rule, which is tolerance by contract.
+**An UNRESOLVED CONTENT REFERENCE also quarantines, and that is the contracts' call rather than this
+document's.** Checks 6, 7 and 8 fail because CONTENT moved, which is what remap rules exist to handle, so
+the loader's order matters: rules apply first (5.5 step 2) and the validator runs after, so a drift
+finding means NO RULE COVERED IT. Contracts 10.2 names `unknown-definition` and
+`unknown-content-reference` as QUARANTINE reason codes, and contracts 10.1 says a record that "did not
+resolve" is Quarantined. An earlier draft of this section counted and tolerated checks 7 and 8, keeping
+the field verbatim, contributing nothing to the evaluator and rendering a placeholder line while the item
+stayed equipped, TRADABLE and craftable. That is a fourth outcome under a reason code the contract
+assigned to the third. The argument for it, and the reason it was rejected, are recorded in appendix A
+under F2.
 
-That split is the single most consequential policy in this section, and it is chosen against Grimhollow's
-current behaviour deliberately. `ValidateContainer` THROWS on an unknown item id
-(`GrimhollowJournalContracts.cs:483-524`), which turns one bad id into a player who cannot log in
-(`b-grimhollow.md:545-556`). A payload-level unknown reference is strictly more likely than an unknown
-definition, because there are more mods than bases, so quarantining on it would multiply that failure.
+**The consequence is worth stating rather than hiding: one forgotten remap rule quarantines every item
+carrying that mod.** That is a larger blast radius than a placeholder line, and it is the trade the
+contract chose deliberately. A quarantined item is VISIBLY broken and recoverable in full, because the
+bytes are kept verbatim (12.4) and the first load after the missing rule publishes re-validates and
+restores the item exactly. A tolerated one is INVISIBLY wrong and tradable, which is worse in the one
+direction that matters: the player who sells it has already been paid when the rule lands. The first line
+of defence is not this validator anyway, it is the publish validator's own retire-and-remap checks
+(contracts 10.4), which are what stop the missing rule from ever shipping.
+
+**Check 12 is the one tolerated failure and it is tolerated BY CONTRACT.** Contracts 8.2 kind 4's over-cap
+stack rule is legal, may only shrink and is self-healing, so an over-cap count is a state the contract
+declares valid rather than a drift the validator caught. It is counted and it changes nothing.
+
+Quarantine is still a strictly softer answer than the one Grimhollow has today, which is why section 18
+row 4 is early in its adoption plan. `ValidateContainer` THROWS on an unknown item id
+(`GrimhollowJournalContracts.cs:483-524`), turning one bad id into a player who cannot log in at all
+(`b-grimhollow.md:545-556`). The same bad id under this validator is one placeholder item in an otherwise
+working bag, on a stream that still loads.
 
 ### 12.4 The quarantine wrapper, `KECQ`
 
@@ -2262,12 +2366,13 @@ and are stable.
 | 2 | A page's stamp is NEWER than the active version, after a content rollback | `stamp > snapshot.Version` at load (5.5) | NOT an error. Entries that resolve are used, entries that do not are quarantined per 12.2, the stamp is never lowered | the page is already correct when the newer version returns. Nothing is written, so the rollback is reversible |
 | 3 | Crash between admission and commit of a craft | none needed, the process died | the whole batch dies. Pages revert to their last committed bytes. Instance ids the batch allocated are skipped forever (3.6) | a client operation resubmits by its id and resolves `NotFound`, then applies fresh (6.6) |
 | 4 | Crash mid page rewrite | none needed | impossible to observe. A projection write is a whole section replacement inside the store's transaction (`JournalProjectionWrite.cs:10-29`), so a page is entirely old or entirely new | none required. This row exists to record that there is no torn page to repair |
-| 5 | A socket references a retired socket type | validator check 7 (12.2) | drift, tolerated. The socket keeps its contained item and its bytes, and accepts nothing new until a rule lands | a `ReplacedBy` rule (contracts 8.2 kind 1) points it at a live type, or a `Retired` rule with the placeholder policy keeps it unusable |
-| 6 | A mod is retired with no remap rule | validator check 7 or 8 | drift, tolerated. The affix contributes nothing to the evaluator and renders as a placeholder line | the author publishes the missing rule. Every page is re-checked on its next load, so no rewrite pass is needed |
+| 5 | A socket references a socket type that resolves to nothing | validator check 7 (12.2) | the ENTRY quarantines, bytes kept verbatim, the item is unusable and untradeable until a rule lands (12.3) | a `ReplacedBy` rule (contracts 8.2 kind 1) points it at a live type. The next load re-validates and the item returns intact, because nothing was rewritten |
+| 6 | A mod is retired with no remap rule | validator check 7 or 8 | the ENTRY quarantines. Every item carrying that mod quarantines, which is the blast radius 12.3 names | the author publishes the missing rule. Every page is re-checked on its next load, so there is no rewrite pass and no support edit. The publish validator (contracts 10.4) is what should have caught it first |
 | 7 | An instance id collides after a restore from backup | the allocator refuses to boot on a node id in its persisted retired list (3.6) | the boot fails closed rather than issuing a colliding id | rotate the node id with `Rotate`, which burns one of 65,535. Ids issued after the backup point and lost by it are simply never reissued |
 | 8 | A page exceeds the journal's section cap | arithmetically impossible: 100 entries at the maximum size is 53,209 bytes against 2 MiB (5.4) | none | the row exists so the 2.5 percent margin is written down. A page geometry change reruns the arithmetic |
 | 9 | A client never acknowledges a page sync | no acknowledgement exists, deliberately | nothing. `ReliableOrdered` means delivery or a dead connection (7.5 rule 1), and a partial assembly dies with the connection (rule 4) | the client re-requests on rejoin, at two bytes (7.6). Adding an acknowledgement would build a second reliability layer over a reliable channel |
 | 10 | A page is written into the wrong section | the decoder's `FirstSlot == PageIndex * expectedPageSlots` check (4.4) | the page fails to decode and is quarantined as a unit | the redundant two bytes are what make this loud instead of silent. Recovery is the journal's, from the event tail |
+| 12 | A page delta names more changes than one game message holds | the builder measures the encoded size as it writes and stops before the cap (7.5) | the delta is abandoned before it is encoded and the page is sent through the fragmenter instead, so nothing reaches `EncodeGameMessage` above the cap | none needed. The row exists because the failure it prevents is a THROW INSIDE THE PER-VIEWER SERVE LOOP, which the combat path already paid for once (`TileWorldServer.Tick.cs:236-247`) |
 | 11 | Ground item payloads overflow a snapshot frame | the encoder throws above 1,024 bytes (`TileProtocol.Frames.cs:173-174`) | today, a throw inside the serve loop, which takes the tick down for every player | the fix is the chunking shape `SendCombatTo` already uses (`TileWorldServer.Tick.cs:241-259`) plus a per-cell ground payload budget. Open question 6 |
 
 **Row 11 is the only row whose CURRENT behaviour is worse than its recovery**, and it is worth naming as
@@ -2487,6 +2592,7 @@ Numbered so the sections above can cite a test rather than describe one, and a r
 | 14 | Concurrent cross-container move | `Server.Tests` | two moves of one stack, exactly one succeeds |
 | 15 | Page sync under loss and reorder | `TileWorld.Netcode.Tests` | a reassembler fed chunks out of order, with a sequence change mid assembly, with a fifth concurrent assembly, and with a truncated final chunk |
 | 16 | Quarantine byte preservation | `ItemInstances.Tests` | wrap, store, load, unwrap, assert byte equality including an over-cap original |
+| 17 | Page delta frame bound | `TileWorld.Netcode.Tests` | fourteen changed rare slots produce one delta frame, fifteen produce a fragmented page send, a 100 slot reorder produces a fragmented page send, and no path encodes a game message above `MaxGameMessageBytes` (7.5) |
 
 Four notes on how to run these rather than what they assert:
 
@@ -2593,7 +2699,7 @@ Gated on nothing new. Acceptance: tests 5, 8 and 14 green, and budget 4 measured
 
 **Phase 3, the wire.** Section 7: the sibling ground component, the spawn overload,
 `TileFragmentedMessage`, the page delta, the owner remainder message and `PublicView`. Acceptance: tests 9,
-11 and 15 green, and budgets 7 and 8 measured.
+11, 15 and 17 green, and budgets 7 and 8 measured.
 
 **Phase 4, content and generation.** Sections 8 and 9: the seven content types, their validators, the
 candidate tables and `ItemGenerator`. **Gated on Scope A's registry and publish path being real** (2.5).

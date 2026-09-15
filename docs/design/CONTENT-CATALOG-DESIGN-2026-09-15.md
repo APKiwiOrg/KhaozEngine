@@ -3150,3 +3150,68 @@ because Scope A does not create instances. Scope B cannot.
 | `loot_table` and `loot_table_entry` | The engine `loot_table` and `loot_entry` types, one to one. Section 3.5 chose the child-type shape partly because Ruinborne already has it. |
 | `ability_def`, `npc_archetype`, `npc_spawn` | Game types, `1024` upward. |
 | The five `RuinborneItems` code defaults | DELETED. There is no code-default catalog under contracts 1.4 ("a definition exists in the authoring store and nowhere else"), and deleting them is what closes [#512](https://github.com/APKiwiOrg/Ruinborne/issues/512). |
+
+### 17.3 The string id becomes the key, and the int id is new
+
+Contracts 5.5 fixes this and names it as the single most likely place the two adoption specs would diverge, so
+it is restated here in the concrete: `item_def.item_id NVARCHAR(64)` becomes the engine content KEY, and the
+int32 definition id is allocated by the authoring store at import and did not exist before.
+
+Ruinborne's five current ids are already legal keys under contracts 5.3, which is worth checking rather than
+assuming: `health_potion`, `sword`, `staff`, `swiftstride_boots` and `rime_band` are `a-z0-9_`, no leading
+digit, no double underscore, well under 64 characters (`c-ruinborne.md:221-227`). So the import renames
+nothing, unlike Grimhollow's two localization keys (section 16.5).
+
+**Nothing durable is rewritten by Scope A.** The seven tables carrying `item_id` as a foreign key keep working
+unchanged, because the key survives: `character_inventory`, `item_stat`, `weapon_def`,
+`item_ability_modifier`, `loot_table_entry`, `world_entity` and `economy_ledger`
+(`c-ruinborne.md:859-867`). The int id is added beside the key, not in place of it. Migrating
+`character_inventory.item_id` to the int definition id is Scope B's work, because it is the owned-item half,
+and it is not a precondition for anything in this section.
+
+**Allocation order is pinned at import, and the reason is reproducibility.** Ids are allocated in edit ordinal
+order (section 6.3), so the bundle's row order determines the ids. The bundle builder orders every type's rows
+by KEY ascending, ordinal, which is the order `SqlRuinborneStore.cs:433` already reads them in
+(`ORDER BY [item_id]`). Two consequences: an export at version N re-imported into an empty database reproduces
+the same ids (section 10.9), and the ordering that was a hazard when it was a WIRE index becomes harmless the
+moment it is only an allocation order, because the id it produces is then stored rather than derived.
+
+**No families at import.** Nothing in Ruinborne's catalog is grouped contiguously today and contracts 5.2's
+block size is expensive to change once allocated, so the import declares no family and every id comes from the
+type's plain high-water mark. A family is declared later, for a new group, and costs nothing to add then. The
+opposite mistake, declaring a family at import to be tidy and sizing its block wrong, is in section 19's table.
+
+### 17.4 The wire index, `ItemRosterPush` and message kinds 16 and 17 are deleted
+
+This is the largest deletion in the plan and the one that removes a whole class of hazard rather than a
+defect.
+
+Today the server pushes the catalog to each client at join: one `ReliableOrdered` message per rarity then one
+per item, each carrying `[totalCount:byte][index:byte]` plus the def's fields, where the index is the def's
+POSITION in a list (`ItemRosterPush.cs:49-62`, `ItemDefCodec.cs:23-53`). The bag then names items by that
+byte (`InventoryStateCodec.cs:40`). The position is built by a cast, `map[items[i].ItemId] = (byte)i`
+(`ItemCatalogContentLoader.cs:27`), enforced by a 255-item and a 255-rarity ceiling that reject the WHOLE
+catalog when breached (`:137-148`), and it disagrees between the two sources it can be built from
+(`c-ruinborne.md:517-536`).
+
+After adoption the client has the catalog BEFORE it connects. The door refuses a client whose content version
+does not match, with the server's version and manifest hash in the refusal token, and the client fetches what
+it lacks from the pack store and reconnects (section 8.5, gate 0 decision 6). So:
+
+| Deleted | Replaced by |
+|---|---|
+| `ItemRosterPush` and its one call site at `PlayerLifecycleService.cs:491` | Nothing. The catalog is not pushed. |
+| Message kinds 16 `RarityDefsMessageKind` and 17 `ItemDefsMessageKind` (`RuinborneItemProtocol.cs:31, :36`) | Retired, never reused, for the same reason a definition id is never reused. |
+| `ItemDefCodec` and `RarityDefCodec` | The registered row codecs of section 3.6, one per type. |
+| `ItemClientState` and `RarityClientState`, their `totalCount` sizing and their out-of-order fill (`ItemClientState.cs:24-80`) | `ContentRuntime` on the client half, loaded from the cached pack at startup. |
+| The 255-item and 255-rarity ceilings | `int32` ids. |
+| `InventoryStack.ItemIndex`, a `byte` list position | The int32 definition id as a varint. Scope B's message change, not durable, so it is a message version bump rather than a migration. |
+
+**Two documented holes close by construction rather than by a fix.** The first is the ordering hole at
+`ItemRosterPush.cs:43-48`: a killing blow attributed to the slot, landing after the character binding exists
+but before the roster push runs, can deliver a bag push naming indices the client has not learned yet. It is
+called "practically unreachable, self-correcting, and real" and left open because closing it needs a per-slot
+roster-sent latch. There is nothing to latch once the client has the catalog before the door admits it. The
+second is `DefsReady`, the client's rule that the bag simply does not render until every def has arrived
+(`ItemClientState.cs:19-21`). A client that is admitted is by definition content-current, so there is no
+not-ready window to render around.

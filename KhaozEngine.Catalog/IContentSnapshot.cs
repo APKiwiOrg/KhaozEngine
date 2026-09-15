@@ -6,8 +6,8 @@ namespace KhaozEngine.Catalog;
 /// <summary>
 /// The narrow READ side every consumer outside this package is written against, so a game and the item
 /// instances layer compile against an INTERFACE rather than against whichever concrete holder is live. Both
-/// <see cref="ContentSnapshot"/> (a candidate, or a version loaded but not yet active) and
-/// <c>ContentRuntime</c> (the active one) implement it, which is what lets the validator, a test and the
+/// <see cref="ContentSnapshot"/> (a candidate, or a version loaded but not yet active) implements it today
+/// and <c>ContentRuntime</c> (the active one) will, which is what lets the validator, a test and the
 /// running server all be handed the same shape.
 /// <para>
 /// SEVEN members and no more, which a reflection test pins: it carries no authoring concept, no chunk, no

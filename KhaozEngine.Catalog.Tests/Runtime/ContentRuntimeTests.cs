@@ -416,13 +416,26 @@ public class ContentRuntimeTests
         // The swap needs no lock and no barrier beyond the publishing write BECAUSE of this: a writable field
         // anywhere in the graph would be a torn read waiting to happen.
         AssertReadOnlyFields(typeof(ContentTypeTable));
-        AssertReadOnlyFields(typeof(ContentRuntime));
+        AssertReadOnlyFields(typeof(ContentTagIndex));
+        AssertReadOnlyFields(typeof(ContentFamilyIndex));
+        AssertReadOnlyFields(typeof(ContentLootIndex));
+        AssertReadOnlyFields(typeof(ContentDerivedIndexes));
+
+        // The runtime's ONE exception is the registered load-index map of boot step 7b, which is null while
+        // step 7b runs and assigned exactly once when it finishes. That null IS the refusal an index reading
+        // another index meets, so it is state with a job rather than a leftover setter.
+        AssertReadOnlyFields(typeof(ContentRuntime), "_loadIndexes");
     }
 
-    static void AssertReadOnlyFields(Type type)
+    static void AssertReadOnlyFields(Type type, string? except = null)
     {
         foreach (FieldInfo field in type.GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public))
         {
+            if (string.Equals(field.Name, except, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
             Assert.True(field.IsInitOnly, $"{type.Name}.{field.Name} is writable after construction");
         }
     }

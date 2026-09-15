@@ -5,9 +5,10 @@ using System.Diagnostics.CodeAnalysis;
 namespace KhaozEngine.Catalog;
 
 /// <summary>
-/// The loaded ACTIVE version, spec 9.1: one <c>ContentTypeTable</c> per registered type and the seven
-/// members of <see cref="IContentSnapshot"/> answered out of those arrays. Built once at boot, immutable
-/// after, and swapped whole through <see cref="ContentRuntimeHolder"/> when a version changes.
+/// The loaded ACTIVE version, spec 9.1: one <c>ContentTypeTable</c> per registered type, the four derived
+/// indexes of 9.4 over them, and the seven members of <see cref="IContentSnapshot"/> answered out of those
+/// arrays. Built once at boot, immutable after, and swapped whole through
+/// <see cref="ContentRuntimeHolder"/> when a version changes.
 /// <para>
 /// <b>It is not an alternative to <see cref="ContentSnapshot"/>, it is the next step after one.</b> The
 /// snapshot is the CANDIDATE shape: a publish builds one and validates it, a test builds one by hand, and
@@ -38,6 +39,13 @@ public sealed class ContentRuntime : IContentSnapshot
     readonly RemapRule[] _rules;
     readonly ContentTypeTable? _items;
 
+    /// <summary>
+    /// The registered load indexes of spec 9.4, or null until <see cref="BuildLoadIndexes"/> has run them.
+    /// The ONE field here that is not readonly, and it is assigned exactly once: null IS the "still building"
+    /// state, which is what makes "an index may not read another index" a refusal rather than a comment.
+    /// </summary>
+    Dictionary<ushort, IContentLoadIndex>? _loadIndexes;
+
     ContentRuntime(
         ContentVersionIdentity identity,
         ContentTypeRegistry registry,
@@ -60,10 +68,13 @@ public sealed class ContentRuntime : IContentSnapshot
         // and a dictionary probe per call is not part of that. Every other type's table is hoisted by its
         // own reader the same way, once, rather than per lookup.
         _tables.TryGetValue(EngineContentTypes.ItemTypeId, out _items);
+        Indexes = ContentDerivedIndexes.Build(this);
     }
 
     /// <summary>
-    /// Boot step 7: index a decoded snapshot by id into the arrays of spec 9.1.
+    /// Boot step 7: index a decoded snapshot by id into the arrays of spec 9.1 and derive the four engine
+    /// indexes of 9.4 over them. Step 7b is <see cref="BuildLoadIndexes"/> and is a separate call, because
+    /// the boot runs it after these four and before the validator.
     /// </summary>
     /// <param name="snapshot">The decoded version, which the pack reader assembles.</param>
     /// <param name="registry">The registry the snapshot's types came from, FROZEN by the pack load.</param>
@@ -109,6 +120,12 @@ public sealed class ContentRuntime : IContentSnapshot
 
     /// <summary>Every content type this version carries a row for, ASCENDING by type id.</summary>
     public IReadOnlyList<ContentTypeId> Types => _types;
+
+    /// <summary>The four derived indexes of spec 9.4, built eagerly at load and immutable after.</summary>
+    public ContentDerivedIndexes Indexes { get; }
+
+    /// <summary>True once <see cref="BuildLoadIndexes"/> has run every registered index to completion.</summary>
+    public bool LoadIndexesBuilt => _loadIndexes is not null;
 
     /// <inheritdoc />
     public bool TryGetRow(ContentTypeId type, int id, [MaybeNullWhen(false)] out ContentRow row)
@@ -182,12 +199,100 @@ public sealed class ContentRuntime : IContentSnapshot
     }
 
     /// <summary>
-    /// The managed bytes the loaded tables hold, which is the memory line of spec 9.2's arithmetic. It does
-    /// not count the decoded rows, which the loader allocated before the runtime existed.
+    /// Boot step 7b (spec 9.4): every registered <see cref="IContentLoadIndex"/>, in TYPE ID ORDER, after the
+    /// engine's four and before the validator.
+    /// <para>
+    /// An index MAY read another type's rows through the snapshot it is handed, which is this runtime, and it
+    /// MAY NOT read another index: <see cref="TryGetLoadIndex{T}"/> throws for the whole of this call, so the
+    /// rule is a refusal rather than a comment and a registration order can never become load bearing. An
+    /// index that throws takes the boot with it, with its type named, rather than leaving a partial index
+    /// behind.
+    /// </para>
+    /// </summary>
+    /// <exception cref="ContentLoadIndexException">A registered index threw, or this ran twice.</exception>
+    public void BuildLoadIndexes()
+    {
+        if (_loadIndexes is not null)
+        {
+            throw new ContentLoadIndexException(
+                "The load indexes of this content runtime are built already. They are built ONCE, at boot step 7b, and are immutable after.",
+                new ContentTypeId(0),
+                string.Empty,
+                null);
+        }
+
+        var built = new Dictionary<ushort, IContentLoadIndex>();
+
+        // ByTypeId is sorted ascending always, so an index over engine rows is built before one over a later
+        // band's and the order never depends on what a host registered first.
+        IReadOnlyList<ContentTypeRegistration> registrations = Registry.ByTypeId;
+        for (int i = 0; i < registrations.Count; i++)
+        {
+            ContentTypeRegistration registration = registrations[i];
+            IContentLoadIndex? index = registration.LoadIndex;
+            if (index is null)
+            {
+                continue;
+            }
+
+            try
+            {
+                index.Build(this);
+            }
+            catch (Exception failure)
+            {
+                throw new ContentLoadIndexException(
+                    FormattableString.Invariant(
+                        $"The load index for type '{registration.TypeKey}' ({registration.Type.Value}) failed: {failure.Message}"),
+                    registration.Type,
+                    registration.TypeKey,
+                    failure);
+            }
+
+            built[registration.Type.Value] = index;
+        }
+
+        _loadIndexes = built;
+    }
+
+    /// <summary>
+    /// The index a type registered, as the type the registering code owns. It answers only AFTER
+    /// <see cref="BuildLoadIndexes"/> has finished, so an index cannot read another index while step 7b is
+    /// running and no caller can read a half-built one.
+    /// </summary>
+    /// <typeparam name="T">The registering code's own index type.</typeparam>
+    /// <param name="type">The content type the index was registered against.</param>
+    /// <param name="index">The built index, or null when this type registered none of that type.</param>
+    /// <exception cref="ContentLoadIndexException">Step 7b has not finished.</exception>
+    public bool TryGetLoadIndex<T>(ContentTypeId type, [MaybeNullWhen(false)] out T index)
+        where T : class, IContentLoadIndex
+    {
+        Dictionary<ushort, IContentLoadIndex>? built = _loadIndexes
+            ?? throw new ContentLoadIndexException(
+                FormattableString.Invariant(
+                    $"The load index for type {type.Value} was asked for before boot step 7b finished. An index may read another type's ROWS through the snapshot and may not read another index, which would make the registration order load bearing."),
+                type,
+                string.Empty,
+                null);
+
+        if (built.TryGetValue(type.Value, out IContentLoadIndex? found) && found is T typed)
+        {
+            index = typed;
+            return true;
+        }
+
+        index = null;
+        return false;
+    }
+
+    /// <summary>
+    /// The managed bytes the loaded tables and the derived indexes hold, which is the memory line of spec
+    /// 9.2's arithmetic. It does not count the decoded rows, which the loader allocated before the runtime
+    /// existed.
     /// </summary>
     public long ApproximateBytes()
     {
-        long bytes = 0;
+        long bytes = Indexes.ApproximateBytes();
         for (int i = 0; i < _types.Length; i++)
         {
             bytes += _tables[_types[i].Value].ApproximateBytes();

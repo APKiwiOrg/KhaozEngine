@@ -92,7 +92,11 @@ var key = new ContentKey(rowBlob, start, length);       // no string materialise
   decoder refuses.
 - `IContentLoadIndex` - a derived table one type builds ONCE at boot, after the engine's own indexes, in type
   id order, before the validator. It may read another type's rows and may not read another index, and it
-  throws to fail the boot closed rather than returning a partial index.
+  throws to fail the boot closed rather than returning a partial index. `ContentRuntime.BuildLoadIndexes`
+  runs them and `ContentRuntime.TryGetLoadIndex` hands one back typed.
+- `ContentLoadIndexException` - a registered load index failed, or one was asked for before the step that
+  builds them finished. It carries the type and its key, which is what the boot's refusal line names, and it
+  keeps the index's own failure as the inner exception rather than flattening it.
 - `ContentRegistrationException` - a registration rule of contracts 4.2 to 4.5 or 4.7 was broken, which is a host
   bug at process start and never a content defect.
 - `ContentTextKey` - the ONE derivation of a content string's localization key,
@@ -200,14 +204,42 @@ process, and it implements the same `IContentSnapshot` seam over arrays indexed 
   read is the same slice one varint further in and a key costs only its bucket. `Body`, `Key`, `TryGetItem`,
   `TryGetId` over raw UTF-8 and the seven seam members all answer out of those arrays. The hand-off from the
   snapshot SHARES its per-type body blob rather than copying it, so the two hold one copy of the catalog
-  between them.
+  between them. `FromSnapshot` is boot step 7 and derives the four indexes below with it. `BuildLoadIndexes`
+  is step 7b and runs whatever the registered types declared, which the boot sequences separately because it
+  falls between the engine's four and the validator.
 - `ContentRuntimeHolder` - the ONE field the active runtime lives in, published with a `Volatile.Write` and
-  read with a `Volatile.Read`, with no lock anywhere. A reader takes the reference once at the top of an
+  read with a `Volatile.Read`, and no lock anywhere. A reader takes the reference once at the top of an
   operation and uses that instance throughout, so a swap cannot hand it a half-old half-new answer, which
   works because a runtime and everything reachable from it is immutable after construction. v1 never swaps
   at runtime, since a new version applies at server restart: the pair exists for a test fixture and for a
   later live-apply phase. An unloaded holder THROWS rather than serving a default catalog, because there is
   no fallback to code defaults anywhere in this package.
+
+## The four derived indexes
+
+`ContentDerivedIndexes` is built eagerly in the runtime's own constructor, so a runtime never exists with its
+engine indexes missing. None of the four is built lazily, because each is walked inside gameplay and a lazy
+build inside a tick is a latency spike.
+
+- **Key to id, per type.** The open-addressed `int[]` on the type table itself, because it is keyed on a slice
+  of that table's own blob. Read through `ContentRuntime.TryGetId`.
+- `ContentTagIndex` - tag id to the sorted, distinct ids of the rows carrying it, per content type. Flat
+  arrays sliced three deep rather than a dictionary of lists, so a lookup is two searches over small sorted
+  runs and hands back a span. It covers EVERY registered type declaring a tag-list field rather than just
+  `item`, and it holds retired rows, because the retired bit is the reader's filter and an admin listing wants
+  them.
+- `ContentFamilyIndex` and `ContentIdBlock` - the block list per family and the two-comparison membership test
+  `(id & ~(size - 1)) == base`. **Empty for a version loaded from a pack:** a family and its blocks are
+  authoring rows and none of the four pack formats carries them, so the read side has no source and the index
+  refuses to invent one out of the id clustering. `FromBlocks` is the seam a declared block list arrives
+  through, and it refuses a block that is not a power of two between 16 and 65,536 aligned to its own size.
+  Tracked as https://github.com/APKiwiOrg/KhaozEngine/issues/934.
+- `ContentLootIndex` and `ContentLootEntry` - per `loot_table`, the resolved entries with the weights PREFIX
+  SUMMED, so a weighted draw is one `NextInt(0, total)` and one binary search over an `int[]` with no
+  allocation and no per-roll summation. Entries come back in `sort` then id order, a negative weight is clamped
+  and the running total saturates, both so the prefix array stays monotonic and searchable. A `required_tags`
+  entry resolves at load into a candidate array of the live items carrying every listed tag, retired rows
+  excluded.
 
 ## Pack store and reader
 

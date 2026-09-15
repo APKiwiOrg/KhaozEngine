@@ -33,9 +33,10 @@ public sealed partial class SqliteContentAuthoringStore
     /// <inheritdoc />
     /// <remarks>
     /// The families and the id marks are written BEFORE the publish, because the edits and the baseline both
-    /// need them. Any refusal after that point resets this store to the empty state it was required to be
-    /// in, so a caller that catches one is holding a store it may import into again. Files a failed attempt
-    /// already wrote to the pack store are ordinary orphans and the next sweep takes them.
+    /// need them. Any refusal after that point takes that staging back, so a caller that catches one is
+    /// holding a store it may import into again. It takes back the staging and NOTHING else, because the
+    /// publish commits whole or not at all. Files a failed attempt already wrote to the pack store are
+    /// ordinary orphans and the next sweep takes them.
     /// </remarks>
     public async Task<ContentPublishResult> ImportBundleAsync(
         ContentBundle bundle,
@@ -394,29 +395,36 @@ public sealed partial class SqliteContentAuthoringStore
     }
 
     /// <summary>
-    /// The empty state the import was required to start from. A refused import leaves a store a caller may
-    /// import into again rather than one carrying half a bundle. The audit is KEPT: a refused import is a
-    /// thing that happened and the trace of it is the point.
+    /// The empty state the import was required to start from, narrowed to the tables the import writes
+    /// BEFORE the commit. A refused import leaves a store a caller may import into again rather than one
+    /// carrying half a bundle. The audit is KEPT: a refused import is a thing that happened and the trace of
+    /// it is the point.
+    /// <para>
+    /// <b>It deletes from five tables and no more, because the commit is atomic.</b> The version, row, row
+    /// field, chunk and rule tables are written only inside step 10's one transaction, which either commits
+    /// whole or not at all, and an import that reaches here was refused before that transaction opened or
+    /// inside it. Either way those five tables still hold what they held when the import started, which on
+    /// the empty store an import is licensed into is nothing, and the active and pinned pointers have not
+    /// moved either. The families, the id marks and the draft are the only things staged ahead of the
+    /// commit, so they are the only things there is anything to take back from. A <c>DELETE</c> against
+    /// <c>catalog_remap_rule</c> would also be the one statement in this provider that mutates an
+    /// append-only table.
+    /// </para>
     /// </summary>
     async Task ResetToEmptyAsync(CancellationToken cancellationToken)
     {
         using SqliteStoreLease lease = await _connection.EnterAsync(cancellationToken).ConfigureAwait(false);
         using SqliteTransaction transaction = _connection.BeginTransaction();
 
-        // Child first, so no delete trips a foreign key on the way down.
+        // Child first, so no delete trips a foreign key on the way down. The edit fields go with the edits
+        // through the cascade the schema declares.
         string[] statements =
         [
-            "DELETE FROM catalog_row_field;",
-            "DELETE FROM catalog_row;",
-            "DELETE FROM catalog_chunk;",
-            "DELETE FROM catalog_remap_rule;",
-            "DELETE FROM catalog_version;",
+            "DELETE FROM catalog_draft_edit;",
+            "DELETE FROM catalog_draft;",
             "DELETE FROM catalog_family_block;",
             "DELETE FROM catalog_family;",
             "DELETE FROM catalog_id_high_water;",
-            "DELETE FROM catalog_draft_edit;",
-            "DELETE FROM catalog_draft;",
-            "UPDATE catalog_metadata SET active_version = 0, pinned_version = NULL WHERE metadata_key = 1;",
         ];
 
         for (int i = 0; i < statements.Length; i++)

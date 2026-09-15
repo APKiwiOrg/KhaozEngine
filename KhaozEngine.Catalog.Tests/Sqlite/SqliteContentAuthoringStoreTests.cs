@@ -273,6 +273,76 @@ public class SqliteContentAuthoringStoreTests
     }
 
     [Fact]
+    public async Task ARefusedImportTakesBackOnlyWhatItStagedAndTheStoreImportsAgain()
+    {
+        using var source = new TemporaryCatalogDatabase();
+        ContentBundle bundle;
+        using (var store = new SqliteContentAuthoringStore(
+            source.ConnectionString, Registry(), source.Pack()))
+        {
+            await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
+            await store.ApplyEditsAsync(
+                [
+                    ContentEdit.Add(Thing, new ContentKey("one"), PublishFixtures.Fields(11)),
+                    ContentEdit.Add(Thing, new ContentKey("two"), PublishFixtures.Fields(22)),
+                ],
+                Actor,
+                Operator,
+                "two adds");
+            await store.PublishAsync(Request(0));
+            bundle = await store.ExportBundleAsync(1);
+        }
+
+        // The same bundle with one row naming a field the type does not declare. It gets as far as writing
+        // its families and its id marks and is then refused inside the edit call, which is a refusal BEFORE
+        // the publish transaction ever opens.
+        var broken = new ContentBundle(
+            bundle.FormatVersion,
+            bundle.StoreEpoch,
+            bundle.SourceVersion,
+            bundle.Types,
+            [
+                bundle.Rows[0],
+                bundle.Rows[1] with
+                {
+                    Fields = [new ContentFieldEdit(
+                        "not_declared", ContentFieldValue.OfNumber(ContentFieldKind.Int, 1))],
+                },
+            ],
+            bundle.Families,
+            bundle.Rules);
+
+        using var target = new TemporaryCatalogDatabase();
+        ContentTypeRegistry targetRegistry = Registry();
+        using var imported = new SqliteContentAuthoringStore(
+            target.ConnectionString, targetRegistry, target.Pack());
+        await imported.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
+
+        ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
+            () => imported.ImportBundleAsync(broken, Actor, Operator, "broken seed"));
+        Assert.Equal("unknown-field", refused.Reason);
+
+        // The five tables the commit owns were never written, so the reset has nothing to take back from
+        // them and does not delete from any of them. The rule table in particular is append only, and a
+        // DELETE against it here would be the one statement in this provider that mutates one.
+        Assert.Equal(0L, target.Scalar("SELECT COUNT(*) FROM catalog_version;"));
+        Assert.Equal(0L, target.Scalar("SELECT COUNT(*) FROM catalog_row;"));
+        Assert.Equal(0L, target.Scalar("SELECT COUNT(*) FROM catalog_chunk;"));
+        Assert.Equal(0L, target.Scalar("SELECT COUNT(*) FROM catalog_remap_rule;"));
+        Assert.Equal(0, await imported.GetActiveVersionAsync());
+        Assert.Null(await imported.GetPinnedVersionAsync());
+
+        // What the import DID stage is gone, which is what makes the store importable again.
+        Assert.Equal(0L, target.Scalar("SELECT COUNT(*) FROM catalog_id_high_water;"));
+        Assert.Null(await imported.GetOpenDraftAsync());
+
+        ContentPublishResult republished = await imported.ImportBundleAsync(bundle, Actor, Operator, "seed");
+        Assert.Equal(1, republished.VersionNumber);
+        ContentRowPage page = await imported.ListRowsAsync(Thing, 0, null, true, 0, 10);
+        Assert.Equal([1, 2], Ids(page.Rows));
+    }
+
+    [Fact]
     public async Task ASecondEditOfOneTargetReplacesItAndADifferentOperationIsRefused()
     {
         using var database = new TemporaryCatalogDatabase();

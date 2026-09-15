@@ -57,6 +57,27 @@ internal sealed class TemporaryCatalogDatabase : IDisposable
         SqliteConnection.ClearPool(connection);
     }
 
+    /// <summary>
+    /// One scalar on a RAW connection, which is how a test asserts on a table the store's own API does not
+    /// expose. The whole statement is the argument rather than a table name, so every call site reads as a
+    /// literal.
+    /// </summary>
+    /// <param name="sql">The statement to run, which must return one value.</param>
+    public long Scalar(string sql)
+    {
+        using var connection = new SqliteConnection(ConnectionString);
+        connection.Open();
+        long value;
+        using (SqliteCommand command = connection.CreateCommand())
+        {
+            command.CommandText = sql;
+            value = command.ExecuteScalar() is long held ? held : 0L;
+        }
+
+        SqliteConnection.ClearPool(connection);
+        return value;
+    }
+
     /// <inheritdoc />
     public void Dispose()
     {

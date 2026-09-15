@@ -5,18 +5,20 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// <summary>
 /// The CLIENT's half of the entity target seam: the same net id space <see cref="TileEntityTargets"/> answers on
 /// the server for combat and entity interactions, resolved out of what this client actually holds. A remote comes off
-/// <see cref="TileWorldClient.TryGetLatestRemoteTile(long, out TileCoord)"/> and the local player comes off its own
-/// prediction.
+/// <see cref="TileWorldClient.TryGetLatestRemoteFootprint"/> and the local player comes off its own prediction. Both
+/// answer the state's own whole footprint, never a floored size and never a one-tile rect on the anchor, because a
+/// client that resolved a large body as one tile would stop an approach inside it and be corrected every time.
 /// <para>THE HONEST READ, never the delayed one. <c>TryGetRemoteTile</c> answers off the delayed render timeline the
 /// bodies ride, which is the right read for an overlay drawn ON a body and the wrong one for a RULE: it is the truth
 /// from a moment that has already passed, so a reach question asked of it is wrong by construction. This resolver
 /// feeds the simulator, which is rules, so it takes the sibling read R0 landed for exactly this.</para>
 /// <para>The LOCAL branch has exactly one live consumer today, and it is not an oversight. This client simulates
 /// only its own entity, so <c>target == LocalNetId</c> can arise in one way: an <see cref="TileCommandKind.Attack"/>
-/// naming the player's own net id. The server resolves that through its own map and stands (because the target IS
-/// the attacker, the one case that stands inside a footprint instead of stepping off it, never because a footprint
-/// interior is in reach), so answering it here is what makes the client's replay agree instead of clearing a lock
-/// the server still holds.</para>
+/// naming the player's own net id. The server resolves that target and its follow CLEARS the lock with the route
+/// dropped, because a footprint that moves with the body is never in range (#741). Answering it here sends the
+/// client's follow down that same branch. Unresolved, the client would clear the lock through the "target stopped
+/// resolving" rule instead, which keeps the route, and a self attack clicked mid-walk would predict a walk the server
+/// stopped.</para>
 /// <para>The two heads still resolve one target to slightly DIFFERENT tiles, and the residue is accepted. What is
 /// left after the honest read is the one-way latency no client can see, so a client predicting its approach to a
 /// moving monster can still path toward a tile the server has just left. That is not a new class of disagreement: it
@@ -37,13 +39,13 @@ public sealed class TileRemoteTargets : ITileTargets
     /// <inheritdoc/>
     public bool TryGetFootprint(long target, out TileRect footprint, out int plane)
     {
-        footprint = default;
-        plane = 0;
-        TileCoord tile;
-        if (target != 0 && target == client.LocalNetId) tile = client.Prediction.PredictedState.Tile;
-        else if (!client.TryGetLatestRemoteTile(target, out tile)) return false;
-        footprint = new TileRect(tile.X, tile.Z, 1, 1);
-        plane = tile.Plane;
-        return true;
+        if (target != 0 && target == client.LocalNetId)
+        {
+            TileMoveState own = client.Prediction.PredictedState;
+            footprint = own.Footprint;
+            plane = own.Tile.Plane;
+            return true;
+        }
+        return client.TryGetLatestRemoteFootprint(target, out footprint, out plane);
     }
 }

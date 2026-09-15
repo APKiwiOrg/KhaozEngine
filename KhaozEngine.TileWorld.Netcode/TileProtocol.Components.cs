@@ -157,10 +157,20 @@ public static partial class TileProtocol
         return s;
     }
 
-    // 41 bytes for every existing state, and one optional trailing byte while an entity interaction is pending.
-    // The component is an extension frame, so an older reader sees its own bounded 42-byte payload, consumes the
-    // 41 bytes it knows, and the replication reader advances over the full frame. A new reader defaults a 41-byte
-    // payload to AuthoredObject. Existing states therefore keep their exact bytes in both directions.
+    // 41 bytes for a one-tile body, then up to two optional trailing bytes. The first is the interaction domain,
+    // written while an entity interaction is pending. The second is the footprint size, written only for a body
+    // larger than one tile. A large body always writes the domain slot ahead of it, as a zero when no entity
+    // interaction is pending, so the size sits at the fixed offset 42 whatever the interaction. A one-tile body
+    // therefore writes exactly the 41 or 42 bytes it always did.
+    //
+    // The component is an extension frame, and every decode hands this codec a reader bounded to the component's
+    // own payload (ClientReplicationView's framed window on an apply, a Migrate adoption included, and a byte slice
+    // of exactly that payload when a buffered discrete sample is written back). That bound is what lets each
+    // trailing byte be read only when the payload holds it: a new reader defaults a missing domain to
+    // AuthoredObject and a missing size to one. An OLDER reader still decodes a large state. It consumes the 41
+    // bytes it knows and at most the domain byte, which a large body writes as a value that reader already
+    // understands, and the replication reader advances over the size byte with the rest of the frame. What it
+    // decodes is a one-tile body, which is why both heads upgrade together for a size above one to mean anything.
     //
     // StepFrom rides WITHOUT a plane of its own, and that is a rule rather than a saving: a step never changes
     // plane, so the glide's two tiles always share one, and a second plane byte would be a way to express a state
@@ -184,8 +194,13 @@ public static partial class TileProtocol
         w.Write(v.Epoch);
         w.Write(v.InteractTarget);
         w.Write(v.CombatTarget);
-        if (v.InteractTarget != 0 && v.InteractDomain == TileInteractionDomain.Entity)
-            w.Write((byte)TileInteractionDomain.Entity);
+        bool entityDomain = v.InteractTarget != 0 && v.InteractDomain == TileInteractionDomain.Entity;
+        int size = v.FootprintSize;
+        // A large body always writes the domain slot, as a zero when no entity interaction is pending, so its size
+        // sits at a fixed offset. A one-tile body writes exactly the bytes it always did.
+        if (entityDomain || size > 1)
+            w.Write((byte)(entityDomain ? TileInteractionDomain.Entity : TileInteractionDomain.AuthoredObject));
+        if (size > 1) w.Write((byte)size);
     }
 
     // Every byte here is attacker controlled, and a byte cast into an enum is not validated by the runtime, so the
@@ -219,6 +234,9 @@ public static partial class TileProtocol
             if (s.InteractTarget != 0 && domain == (byte)TileInteractionDomain.Entity)
                 s.InteractDomain = TileInteractionDomain.Entity;
         }
+        // Clamped rather than checked, the file's rule for a field whose every byte value has a size to clamp to.
+        if (r.BaseStream.Position < r.BaseStream.Length)
+            s.FootprintSize = Math.Clamp((int)r.ReadByte(), 1, TileMoveState.MaxFootprintSize);
         // At() seeded StepFrom onto the tile, which is what a frame naming anything but a STEP falls back to. A pair
         // that is not one tile apart is not a step: a teleport, a plane change, or a lie. Gliding between them would
         // walk the avatar over every tile in the gap, and it is a lie that costs, because Position is fed straight

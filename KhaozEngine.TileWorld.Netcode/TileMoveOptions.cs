@@ -7,8 +7,11 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// </summary>
 public sealed record TileMoveOptions
 {
-    /// <summary>Footprint edge of a moving agent, in tiles. 1 is a player. Every tile of the footprint must be
-    /// able to take a step for the step to be legal, so raising this narrows what the same map allows.</summary>
+    /// <summary>A FLOOR under each state's <see cref="TileMoveState.FootprintSize"/>, in tiles. The simulator steps an
+    /// entity at the larger of the two (<see cref="TileMoveSimulator.FootprintOf"/>), so the default of 1 leaves every
+    /// entity at its own size. Prefer the per-entity size: this knob raises every body the simulator steps at once.
+    /// Every tile of the footprint must be able to take a step for the step to be legal, so a larger size narrows
+    /// what the same map allows.</summary>
     public int AgentSize { get; init; } = 1;
 
     /// <summary>Half width of the pathfinder's search window, in tiles. A goal outside the window is treated as

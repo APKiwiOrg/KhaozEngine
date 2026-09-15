@@ -104,8 +104,9 @@ public struct TileMoveState : IPredictedState<TileMoveState>, IComponent, IEquat
     public long InteractTarget;
 
     /// <summary>The id domain of <see cref="InteractTarget"/>. Authored object is zero so a legacy 41-byte state
-    /// and a default value keep their original meaning. Entity is carried as one optional trailing wire byte only
-    /// while an entity interaction is pending.</summary>
+    /// and a default value keep their original meaning. It rides as one optional trailing wire byte, written while
+    /// an entity interaction is pending. A <see cref="FootprintSize"/> above one always writes it, as a zero when no
+    /// entity interaction is pending, so the size byte behind it sits at a fixed offset.</summary>
     public TileInteractionDomain InteractDomain;
 
     /// <summary>The entity this state is locked onto and chasing, 0 when not fighting. A NET ID, from the entity
@@ -122,6 +123,33 @@ public struct TileMoveState : IPredictedState<TileMoveState>, IComponent, IEquat
     /// <c>TileActionQueue</c> gives about its own pair: two records of one intent, where the one that outlives the
     /// other fires against something the player visibly walked away from.</para></summary>
     public long CombatTarget;
+
+    /// <summary>The largest footprint edge an entity may have, in tiles. Content hygiene rather than a limit of the
+    /// lattice: reach candidates grow as 4(M + N - 1), and a bigger body deserves its own look at those numbers.</summary>
+    public const int MaxFootprintSize = 8;
+
+    byte footprintSize;
+
+    /// <summary>The edge of this entity's square footprint, in tiles, anchored on <see cref="Tile"/> as its SOUTH-WEST
+    /// corner and covering the tiles north and east of it. One for every player and for every state built without it,
+    /// because the backing byte's zero reads as one. It rides the move state rather than a simulator so the one stepper,
+    /// the entity target snapshot, a region handoff and a client's remote sample all hold it with no second lookup.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">Set outside 1 through <see cref="MaxFootprintSize"/>.</exception>
+    public int FootprintSize
+    {
+        readonly get => footprintSize == 0 ? 1 : footprintSize;
+        set
+        {
+            if (value < 1 || value > MaxFootprintSize)
+                throw new ArgumentOutOfRangeException(nameof(value), value,
+                    $"FootprintSize must be 1..{MaxFootprintSize}.");
+            footprintSize = (byte)value;
+        }
+    }
+
+    /// <summary>The tiles this entity covers: <see cref="FootprintSize"/> square from <see cref="Tile"/>.</summary>
+    public readonly TileRect Footprint => new(Tile.X, Tile.Z, FootprintSize, FootprintSize);
 
     /// <summary>Presentation only, see the type doc.</summary>
     public Vector2 RenderPosition;
@@ -232,17 +260,20 @@ public struct TileMoveState : IPredictedState<TileMoveState>, IComponent, IEquat
         && StepTicks == other.StepTicks && StepTotal == other.StepTotal
         && Route.Equals(other.Route) && Epoch == other.Epoch && InteractTarget == other.InteractTarget
         && InteractDomain == other.InteractDomain
-        && CombatTarget == other.CombatTarget;
+        && CombatTarget == other.CombatTarget
+        && FootprintSize == other.FootprintSize;
 
     /// <inheritdoc/>
     public readonly override bool Equals(object? obj) => obj is TileMoveState s && Equals(s);
 
     /// <summary>Hashes the same simulation fields <see cref="Equals(TileMoveState)"/> compares.</summary>
     /// <remarks><see cref="HashCode.Combine{T1, T2, T3, T4, T5, T6, T7, T8}"/> takes at most eight arguments, so the
-    /// ninth field regroups the existing call rather than being appended to it.</remarks>
+    /// fields past the eighth regroup inside the existing call rather than being appended to it. The footprint is
+    /// hashed through <see cref="FootprintSize"/>, the normalized size, so a zero backing byte and a one hash alike,
+    /// exactly as they compare equal.</remarks>
     public readonly override int GetHashCode() =>
         HashCode.Combine(HashCode.Combine(Tile, StepFrom), HashCode.Combine(Facing, Mode, StepTicks, StepTotal),
-            Route, Epoch, HashCode.Combine(InteractTarget, InteractDomain), CombatTarget);
+            Route, Epoch, HashCode.Combine(InteractTarget, InteractDomain, FootprintSize), CombatTarget);
 
     /// <summary>Equality operator over <see cref="Equals(TileMoveState)"/>.</summary>
     public static bool operator ==(TileMoveState a, TileMoveState b) => a.Equals(b);

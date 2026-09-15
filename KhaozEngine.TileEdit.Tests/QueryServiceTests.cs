@@ -153,6 +153,8 @@ public class QueryServiceTests
         Assert.False(f.Query.IsWalkable(3, 3, 0).Walkable);
         // A 2x2 agent anchored at (2, 2) covers the blocked tile AND the tree.
         Assert.False(f.Query.IsWalkable(2, 2, 0, agentSize: 2).Walkable);
+        // A 2x2 agent anchored at (0, 0) has no blocked tile but stands across the wall between (0, 1) and (1, 1).
+        Assert.False(f.Query.IsWalkable(0, 0, 0, agentSize: 2).Walkable);
         Assert.True(f.Query.IsWalkable(6, 6, 0, agentSize: 2).Walkable);
         Assert.Equal(2, f.Query.IsWalkable(6, 6, 0, agentSize: 2).AgentSize);
     }

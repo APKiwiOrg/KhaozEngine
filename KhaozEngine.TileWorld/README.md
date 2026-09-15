@@ -187,6 +187,14 @@ wall on the entering edge. A diagonal additionally needs both corner bits clear 
 legal, the no-corner-cutting rule, and an NxN agent must pass on every footprint tile. `CanStep` deliberately
 allows EGRESS from a `Blocked` tile, so an agent standing where the ground was blocked under it can walk out.
 
+`TileCollision.CanStand(map, x, z, plane, agentSize = 1)` is whether an NxN agent anchored on its south-west tile
+at (x, z) may STAND there: no tile of the footprint is `Blocked` (an unloaded region reads blocked, so it refuses
+too) and no wall lies on an edge between two tiles of the footprint. For one tile it is exactly `!IsBlocked`. For a
+size above 1, `CanStep` also requires `CanStand` at the destination, because the per-tile steps cross every internal
+edge along the axis of travel but not the perpendicular ones, so a large body could otherwise straddle a fence and
+walk along it. `FindPath` walks through `CanStep`, so every step of a size-above-1 route lands on a standable
+footprint. Size 1 is unchanged.
+
 ## Pathing, raycast, prefabs
 
 `TilePathfinder.FindPath(map, plane, start, goal, agentSize = 1, maxRadius = 64)` is a deterministic BFS over

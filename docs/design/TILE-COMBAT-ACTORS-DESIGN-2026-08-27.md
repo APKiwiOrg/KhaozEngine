@@ -496,6 +496,11 @@ which entity it is stepping: `TileMoveSimulator.Step` takes the stepped entity's
 it per entity, and the client binds its own `LocalNetId` so prediction and the reconcile replay read the same answer
 the server does.
 
+**Superseded for the self case** by section 6.3 of
+[TILE-ACTOR-FOOTPRINTS-DESIGN-2026-09-15.md](TILE-ACTOR-FOOTPRINTS-DESIGN-2026-09-15.md) (#741): a lock on the
+attacker itself now CLEARS on the tick it is applied, with the route dropped, and the server answers `CannotReach`.
+The net id the follow is told is still what separates that case from a foreign target on the same tiles.
+
 ### 6.3 Adjacency: cardinal, and it is not a new function
 
 **Melee range is `TileReach.Contains(map, targetFootprint, targetPlane, attackerTile)`.** No new rule, no new
@@ -520,7 +525,8 @@ was weighed and rejected on four grounds:
 
 The known limit is `TileReach`'s own and it is stated in its doc three times (`:23-25`, `:42-43`, `:82-84`): every
 tile in the set is an ANCHOR tile for a ONE TILE actor. Both parties are 1x1 this round, so the set is exact.
-Section 12 defers larger footprints with that as the reason.
+Section 12 defers larger footprints with that as the reason. That limit was later lifted: see section 12's pointer
+to the footprints design, whose one predicate asks this same set from any tile an NxN attacker covers.
 
 ### 6.4 One tick, stated deterministically
 
@@ -1101,6 +1107,9 @@ Grimhollow: a headless capture of a monster standing in Hollowmere, and a window
   actor simulator is deliberately the seam that first change lands on. There is also no test coverage for
   `agentSize > 1` anywhere in the tile suites today, so the first large monster is also the first exercise of a
   shipped-but-unproven path.
+  **Lifted** by [TILE-ACTOR-FOOTPRINTS-DESIGN-2026-09-15.md](TILE-ACTOR-FOOTPRINTS-DESIGN-2026-09-15.md), which put
+  the size on the state rather than on a per-definition simulator and gave `TileReach` its agent-size overloads. The
+  text above is kept as the reasoning at the time.
 - **Actors as movement blockers.** Players walk through monsters this round. Making an actor block would put a
   DYNAMIC entry in a collision map that is baked from files and that each head bakes for itself
   (`TileCollisionBaker`), so the two heads would disagree on every occupied tile and every chase would become a

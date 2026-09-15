@@ -128,9 +128,9 @@ public sealed partial class QueryService(TileEditSession session)
         });
     }
 
-    /// <summary>Whether an agent <paramref name="agentSize"/> tiles square anchored at this tile stands clear:
-    /// every tile of that footprint must be unblocked, which is the same footprint rule the pathfinder walks
-    /// with.</summary>
+    /// <summary>Whether an agent <paramref name="agentSize"/> tiles square anchored at this tile stands clear, by
+    /// <see cref="TileCollision.CanStand"/>: no tile of that footprint is blocked and no wall lies between two of
+    /// its tiles, which is the same footprint rule the pathfinder walks with.</summary>
     /// <exception cref="ArgumentOutOfRangeException">The plane is outside the world's range, or the agent is
     /// smaller than one tile.</exception>
     public WalkableInfo IsWalkable(int x, int z, int plane, int agentSize = 1)
@@ -139,10 +139,7 @@ public sealed partial class QueryService(TileEditSession session)
         RequirePlane(plane);
         return session.Read(e =>
         {
-            bool walkable = true;
-            for (int dz = 0; dz < agentSize && walkable; dz++)
-                for (int dx = 0; dx < agentSize && walkable; dx++)
-                    if (TileCollision.IsBlocked(e.Collision, x + dx, z + dz, plane)) walkable = false;
+            bool walkable = TileCollision.CanStand(e.Collision, x, z, plane, agentSize);
             return new WalkableInfo(x, z, plane, agentSize, walkable, CollisionNames(e.Collision.Get(x, z, plane)));
         });
     }

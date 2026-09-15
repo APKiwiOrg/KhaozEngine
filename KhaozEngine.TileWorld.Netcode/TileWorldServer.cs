@@ -301,8 +301,13 @@ public sealed partial class TileWorldServer : IDisposable
     /// <see cref="TileMoveState.StepTotal"/>, both shapes a step in flight the simulator could not have produced
     /// and neither reachable through a teleport, which is normalized first. A route whose tiles are not adjacent
     /// to each other is refused too, by <see cref="TileRoute.RemainingSteps"/>, with its own message.</exception>
+    /// <exception cref="ArgumentException"><paramref name="state"/> carries a <see cref="TileMoveState.FootprintSize"/>
+    /// above 1. A player is one tile, and a larger footprint is for actors. Refused ahead of the teleport
+    /// normalization, so a teleport is refused for it too.</exception>
     public void SetPlayerState(int slot, in TileMoveState state, bool teleport = false)
     {
+        if (state.FootprintSize != 1)
+            throw new ArgumentException("A player is one tile. FootprintSize above 1 is for actors.", nameof(state));
         TileMoveState next = state;
         if (teleport)
         {

@@ -141,6 +141,11 @@ public readonly record struct TileActorContext(
     /// <summary>The collision map registered for <see cref="TraversalProfile"/>. Null only on a context built by
     /// hand or on an unresolved server invariant.</summary>
     public TileCollisionMap? TraversalMap { get; init; }
+
+    /// <summary>The edge of the actor's square footprint in tiles, anchored on <see cref="Tile"/> as its
+    /// south-west corner. Read off the actor's own move state rather than off <see cref="Definition"/>, because
+    /// an actor spawned without a spawner is handed the fallback definition, which cannot know its size.</summary>
+    public int FootprintSize { get; init; } = 1;
 }
 
 /// <summary>

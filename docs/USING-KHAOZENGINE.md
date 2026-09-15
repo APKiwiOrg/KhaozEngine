@@ -9738,9 +9738,19 @@ if (TileRaycast.Pick(document, plane, rayOrigin, rayDirection) is TileHit hit
 
 `TileReach` is the rule over what it resolves: the reach set of a footprint is every tile CARDINALLY adjacent to a
 footprint tile that the footprint tile could step OUT onto, so a wall between you and the booth denies reach, a diagonal never counts, and
-the target itself being solid is not a problem. It reads the document
+the target itself being solid is not a problem. The document targets read the document
 THROUGH on every call, so an object deleted between the click and the arrival stops resolving, which is the
 contract the reach rules need.
+
+That set is anchor tiles for a ONE TILE agent. `TileReach.Set`, `Contains` and `FacingToward` each have an overload
+taking `agentSize`, for an NxN agent anchored on its south-west tile: it is in range when its own square does not
+overlap the target's footprint and covers at least one tile of the one-tile set. A wall denying one of its tiles
+leaves another free to reach, and a body inside its target is never in range. `Set(map, footprint, plane,
+agentSize)` lists the in-range ANCHORS in the one-tile set's own order, and at size 1 it is that set element for
+element, so every one-tile tie break stays. `TryNearest(map, footprint, plane, from, agentSize, maxRadius, ...)`
+walks to the nearest of those anchors, so the tile it answers is one `Contains` at the same size answers true for.
+The same predicate is the follow's range test, the entity interaction's arrival and the combat roll, so a large
+body and a small one agree on reach whichever of them is attacking.
 
 ### Standing a server up
 
@@ -10010,7 +10020,8 @@ if (client.TryGetRemoteTile(netId, out TileCoord theirs))          // agrees wit
   without an RTT estimate this package does not keep, so it is a LOWER bound and a threshold on it wants headroom
   for the link. Both reads are allocation free, both answer false for an unknown id and for the local player, and
   neither ever extrapolates: a starved read keeps answering the last thing the server said and tells you how old
-  that is.
+  that is. A large remote's square has the same pair, `TryGetRemoteFootprint` off the delayed sample and
+  `TryGetLatestRemoteFootprint` off the newest snapshot, picked by the same rule (see Large actors).
 - **A remote's ROUTE is not available, deliberately.** It is owner-only on the wire, so no client can highlight
   another player's path. The two tile reads above give you their committed tile and that is the whole of it.
 - **`TilePresenter.Pose(state)` is the BODY**, `TilePresenter.PoseAt(tile)` is the RULES. Mixing them up draws
@@ -10019,7 +10030,7 @@ if (client.TryGetRemoteTile(netId, out TileCoord theirs))          // agrees wit
 
 ### One body per tile: `TileDrawPriority`
 
-Draw every body on its tile centre and a crowd on one tile is a smear of overlapping meshes that reads as one
+Draw every one-tile body on its tile centre and a crowd on one tile is a smear of overlapping meshes that reads as one
 wrong-looking creature. The body a player can least afford to lose in that smear is their own. `TileDrawPriority`
 collapses each tile to ONE drawn actor at rest: the local player on their own tile (both tiles of a step in
 flight), and the highest net id everywhere else. OSRS answers the same question with PID and this is that shape
@@ -10149,9 +10160,13 @@ foreach ((long netId, TileCoord _) in remotes)
   the first snapshot names the local actor. The check is against that sentinel and not against the sign, because
   `NetIdAllocator.Pack` hands out negative net ids from node 32768 up and one of those is a real local player.
 
-**A pose names the tile CENTRE**, half a tile in from the corner on each axis, which is the middle of the tile's
-own ground quad and the point `TileObjectProps.AnchorPosition` puts a 1x1 prop on, so an avatar and the thing it
-walks up to sit on the same grid. Draw at `pose.Position` directly and do not re-centre it.
+**A pose names the FOOTPRINT centre.** For a one-tile body that is the tile centre, half a tile in from the corner
+on each axis, which is the middle of the tile's own ground quad and the point `TileObjectProps.AnchorPosition` puts
+a 1x1 prop on, so an avatar and the thing it walks up to sit on the same grid. A larger body is centred on its whole
+footprint, anchor plus half its edge on each axis, and `TryGetRemotePose` already does it. Draw at `pose.Position`
+directly and do not re-centre it. `presenter.PoseAt(footprint, plane, facing)` is the overlay form for a
+`TileRect`, the centre of a footprint marker or a nameplate anchor with no glide, and for a one-tile rect it is
+exactly `PoseAt(tile)`.
 
 **Run rides the tick stream, not the click.** `RunMode` is carried on EVERY command, `TileCommand.Continue`
 included, and the simulator applies it at the START of the next step. Holding run halfway through a walking step
@@ -10206,9 +10221,18 @@ var rat = new TileActorDefinition
 };
 
 server.Actors.Add(rat, new TileCoord(70, 70, 0));          // the home tile, and the spawner's identity
+
+// A 2x2 body. The home is its SOUTH-WEST tile, and it covers (74,70) through (75,71).
+var cow = rat with { Id = "cow", MaxHealth = 60, FootprintSize = 2, Kind = 3 };
+server.Actors.Add(cow, new TileCoord(74, 70, 0));
+
 server.Actors.Behaviour = new TileWanderBehaviour();       // the default: leash, chase, retaliate, stand, wander
 server.Actors.Seed = 20260827;                             // fixes every actor's random stream
 ```
+
+`FootprintSize = 2` makes the cow a two-by-two body everywhere the rules look: it paths, wanders and is placed as a
+whole square, a player reaches it from any tile cardinally beside that square that no wall denies, and every client
+draws it centred on the square. The Large actors subsection below has the rest.
 
 Set `SpawnAdmission` when an authored spawner has a game-owned availability condition that must pass before the
 actor exists. The delegate is synchronous and runs on the authoritative tick thread. A false answer leaves a new
@@ -10268,10 +10292,11 @@ pathfinding, committed step validation, repathing, chase, wander destinations, l
 handoff. It also supplies the attacker's final adjacency check so chase and melee reach cannot disagree about a
 wall. This is geometry only. Attack admission, damage and any ranged rules remain game policy.
 
-A non-default actor must start on an open tile in its registered map. `Add` and direct `SpawnActor` reject an
-unknown profile or blocked custom home before creating an entity. A managed spawner waits and retries if a dynamic
-change later blocks that home when respawn becomes due. The default profile keeps the earlier blocked-home spawn
-behaviour for compatibility. If corrupted ECS state carries an unknown key, movement freezes and consumes its
+A non-default actor must start where its whole footprint can stand in its registered map. `Add` and direct
+`SpawnActor` reject an unknown profile or blocked custom home before creating an entity. A managed spawner waits and
+retries if a dynamic change later blocks that home when respawn becomes due. The default profile keeps the earlier
+blocked-home spawn behaviour for compatibility, for a one-tile actor only: a `FootprintSize` above 1 is placement
+checked on every profile. If corrupted ECS state carries an unknown key, movement freezes and consumes its
 pending command instead of falling back to another topology. Player movement and client prediction always keep
 the constructor map.
 
@@ -10308,7 +10333,7 @@ sealed class GuardBehaviour(ITileActorBehaviour fallback) : ITileActorBehaviour
 }
 ```
 
-Six things about the context are worth knowing before writing one:
+Seven things about the context are worth knowing before writing one:
 
 - **Every tile on it is a TICK-START tile**, the actor's own and its target's, resolved through the tick's own
   target snapshot. So no actor's decision can depend on another entity having already moved, and the ECS
@@ -10351,13 +10376,57 @@ the LEASH, since an actor never legitimately paths further than that. `MaxActors
 per-REGION budget, since a cell is exactly a region, and `SpawnActor` answers 0 rather than throwing when a spawn
 is refused, so a spawner can never take a tick down with it.
 
+### Large actors
+
+An actor can be an NxN body. The size lives on the entity's own `TileMoveState.FootprintSize`, so it replicates,
+crosses a region handoff and reaches both heads with no second lookup.
+
+- **The size is content.** Set `TileActorDefinition.FootprintSize` for a spawner, or `TileActorSpawn.FootprintSize`
+  for a direct `SpawnActor`. Both default to 1 and refuse anything outside 1 through
+  `TileMoveState.MaxFootprintSize` (8). `TileMoveState.Footprint` is the covered square as a `TileRect`.
+- **The anchor is the SOUTH-WEST tile.** `TileMoveState.Tile`, the home, every route tile and every wander goal name
+  the anchor, and the body covers the square north and east of it (+x, +z). The leash and the wander radius both
+  measure anchor to home anchor.
+- **Placement asks the whole footprint.** `TileActorHost.Add`, `SpawnActor` and every respawn refuse a home whose
+  footprint fails `TileCollision.CanStand` on the actor's traversal map: a Blocked tile, an unloaded region, or a
+  wall between two of its tiles. A one-tile actor on the default profile keeps the legacy rule that a blocked home
+  still spawns. `TileActorHost.CanPlace(definition, home)` asks the placement question without throwing, which is
+  what a game's content test over its authored markers calls, since the engine cannot tell which markers are
+  actors. It asks placement only, not `Add`'s other door rules such as the leash radius.
+- **Pathing and wandering move the whole body.** `CanStep` and `FindPath` at a size above 1 never step onto a
+  footprint that cannot stand, so a cow cannot straddle a fence or squeeze into a one-tile corridor. The wander
+  drops a goal the whole body cannot stand on, reading `TileActorContext.FootprintSize` off the actor's state.
+- **Reach is from and against the whole footprint.** A body is in range when its own square does not overlap the
+  target's and some tile of it is a reach tile of the target, through the agent-size `TileReach` overloads. The
+  follow, the entity interaction arrival and the combat roll all ask that one predicate, with the attacker at its
+  own simulator's `TileMoveSimulator.FootprintOf` and the target at its own state's footprint. A body standing
+  inside its target steps out before it swings.
+- **The presenter centres the body.** `TilePresenter.Pose` adds half the footprint edge to the anchor, so
+  `TryGetRemotePose` draws a cow centred on its square with no head change, and `PoseAt(TileRect, int,
+  TileDirection)` centres an overlay on one.
+- **Clients read the square in the two usual timelines.** `client.TryGetRemoteFootprint(netId, out rect, out
+  plane)` is off the delayed sample the body is drawn from, for click bounds and a target highlight.
+  `client.TryGetLatestRemoteFootprint` is off the newest snapshot, for a rule, and it is what `TileRemoteTargets`
+  resolves a remote to, so a predicted approach to a cow stops on the same tile the server stops on.
+- **Players are one tile.** `TileWorldServer.SetPlayerState` refuses a state with a `FootprintSize` above 1.
+  `TileMoveOptions.AgentSize` still exists as a floor under every state's size and is removed at the next major,
+  [#900](https://github.com/APKiwiOrg/KhaozEngine/issues/900).
+
+Two presentation and interest gaps remain. `TileDrawPriority` judges a body on its anchor tile only, so a one-tile
+body on another tile of a cow overlaps it on screen
+([#899](https://github.com/APKiwiOrg/KhaozEngine/issues/899)), and interest is measured from the anchor, so a large
+body enters view up to N - 1 tiles late on its north and east edges
+([#906](https://github.com/APKiwiOrg/KhaozEngine/issues/906)). A game with big bosses pads `InterestRadius`.
+
 ### Combat
 
 Combat is a FOLLOWED interaction rather than a system of its own. `TileCommandKind.Attack` names a NET ID,
 `TileMoveState.CombatTarget` carries the lock, and the chase therefore runs inside the ONE stepper both heads
 predict rather than in a second movement authority the client would pay a round trip on. Melee range is literally
-`TileReach.Contains` against a 1x1 rect, using the attacker's registered movement map for an actor and the normal
-constructor map for a player. Cardinal adjacency, the no-diagonal rule and the wall-denied safespot all fall out
+`TileReach.Contains` against the target's whole footprint, with the attacker at its own simulator's
+`FootprintOf` size, using the attacker's registered movement map for an actor and the normal constructor map for a
+player. A one-tile pair is the one-tile reach rule unchanged, and a large body is in range from any tile it covers.
+Cardinal adjacency, the no-diagonal rule and the wall-denied safespot all fall out
 of the reach rule the package already had, and the final legal-reach check agrees with the chase topology. The
 follow turns the attacker toward its target on every tick it answers in range, not once as it lands, so a
 combatant faces what it is fighting even after a step-off walked it away from the target and even as the target
@@ -10490,18 +10559,22 @@ if (client.View.TryGetEntity(targetNetId, out Entity mirrored)
     DrawHealthBar(hp.Current, hp.Max);
 ```
 
-**The one thing a consumer gets wrong first: a RULE reads `TryGetLatestRemoteTile`, never `TryGetRemoteTile`, and
-a BODY is drawn from the second, never the first.** The delayed read agrees with the body it sits under, which is
+**The one thing a consumer gets wrong first: a RULE reads `TryGetLatestRemoteTile` and
+`TryGetLatestRemoteFootprint`, never `TryGetRemoteTile` or `TryGetRemoteFootprint`, and a BODY is drawn from the
+delayed pair, never the latest.** The delayed read agrees with the body it sits under, which is
 exactly what an overlay wants and exactly what a range check must not have. Picking the wrong one is silent.
 
 ```csharp
-// Is my target still in reach? A RULE, so the honest read, and the age is what a stale answer is faded on.
-if (client.TryGetLatestRemoteTile(targetNetId, out TileCoord theirs, out float ticksOld))
+// Is my target still in reach? A RULE, so the honest reads: the footprint off the newest snapshot, and the age a
+// stale answer is faded on.
+if (client.TryGetLatestRemoteFootprint(targetNetId, out TileRect theirs, out int plane)
+    && client.TryGetLatestRemoteTile(targetNetId, out _, out float ticksOld))
 {
     TileMoveState me = client.Prediction.PredictedState;
-    // The SAME rule the server ran: a 1x1 footprint, and the map both heads baked from the same world files.
-    bool inReach = TileReach.Contains(map, new TileRect(theirs.X, theirs.Z, 1, 1), theirs.Plane, me.Tile);
-    DrawTargetRing(client.Presenter.PoseAt(theirs), inReach, MathF.Max(0f, 1f - ticksOld / 4f));
+    // The SAME rule the server ran: the target's whole footprint, this body at the size its own simulator steps it
+    // at, and the map both heads baked from the same world files.
+    bool inReach = TileReach.Contains(map, theirs, plane, me.Tile, client.Simulator.FootprintOf(me).Width);
+    DrawTargetRing(client.Presenter.PoseAt(theirs, plane), inReach, MathF.Max(0f, 1f - ticksOld / 4f));
 }
 ```
 

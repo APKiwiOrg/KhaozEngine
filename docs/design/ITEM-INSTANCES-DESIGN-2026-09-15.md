@@ -1389,31 +1389,71 @@ engine should cap ground payload bytes per cell rather than leaving it to the ga
 
 ### 8.1 What registers, and where
 
-Seven content types register in the Scope B range of contracts 4.3 (`256` to `1023`), through
+Eighteen content types register in the Scope B range of contracts 4.3 (`256` to `1023`), through
 `RegisterContentType` exactly as contracts 4.2 shapes it, at process start and before any pack loads.
 Each carries a row codec, a validator, a field schema (contracts 4.7), a default content visibility and
 a chunk slot count.
 
-| Type id | Type key | What a row is | Default visibility | Chunk slots |
-|---|---|---|---|---|
-| 256 | `mod` | one affix, with its tiers, weights and stat lines | `Client` | 4,096 |
-| 257 | `mod_group` | an exclusivity group and how many of it one item may carry | `Client` | 256 |
-| 258 | `rarity_rule` | how many prefixes and suffixes a rarity permits, and its weight | `Client` | 256 |
-| 259 | `unique_template` | a fixed item with fixed or narrow-range lines | `Client` | 4,096 |
-| 260 | `socket_type` | what a socket accepts | `Client` | 256 |
-| 261 | `crafting_currency` | a named sequence of primitives with guards | `Client` | 4,096 |
-| 262 | `rare_name_word` | one word in a rare-name position | `Client` | 4,096 |
+**Seven of them are the types an author thinks in, and eleven are their CHILDREN.** Contracts 4.7 has
+eight value kinds and none of them is a list, and Scope A's registration rule is that "any repeating child
+structure in engine or game content is its own content type with a key reference to its parent, never a
+blob field". An earlier draft of this section put a mod's tiers in an `opaque bytes` field and gave five
+other types list-valued fields that no value kind names. Both are corrected here, the same way Scope A
+split `loot_entry` off its table, and appendix A records it under C2.
 
-**All seven are `Client` by default and that is deliberate.** A client computes tooltips from this data
-and must agree with the server to the unit (contracts 13.4), so hiding a mod's ranges would make the
-tooltip a second implementation. What is `ServerOnly` is the LOOT TABLE that decides which base drops,
-which is Scope A's engine-range type and not one of these. The one exception is per field rather than
-per type, and it is named in 8.2: a mod's spawn weights are `ServerOnly`, because a weight is the only
-field on these rows a client can farm rather than display.
+| Type id | Type key | What a row is | Parent | Default visibility | Chunk slots |
+|---|---|---|---|---|---|
+| 256 | `mod` | one affix: its kind, its group and its display line | | `Client` | 4,096 |
+| 257 | `mod_group` | an exclusivity group and how many of it one item may carry | | `Client` | 256 |
+| 258 | `rarity_rule` | how many affixes a rarity permits, and its composed name template | | `Client` | 256 |
+| 259 | `unique_template` | a fixed item built on a base | | `Client` | 4,096 |
+| 260 | `socket_type` | what a socket accepts | | `Client` | 256 |
+| 261 | `crafting_currency` | a named sequence of steps with guards | | `Client` | 4,096 |
+| 262 | `rare_name_word` | one word in a rare-name position | | `Client` | 4,096 |
+| 263 | `mod_tier` | one tier of one mod, with its item level gate | `mod` | `Client` | 16,384 |
+| 264 | `mod_tier_weight` | one tier's spawn weight against one tag | `mod_tier` | `ServerOnly` | 65,536 |
+| 265 | `stat_line` | one stat a tier grants, with its range | `mod_tier` | `Client` | 32,768 |
+| 266 | `rarity_weight` | one rarity's weight against one tag | `rarity_rule` | `ServerOnly` | 1,024 |
+| 267 | `rarity_kind_limit` | how many of one mod kind above 2 a rarity permits | `rarity_rule` | `Client` | 1,024 |
+| 268 | `unique_line` | one mod, at one tier, that a unique template grants | `unique_template` | `Client` | 16,384 |
+| 269 | `unique_socket` | one socket a unique template forces, in authored order | `unique_template` | `Client` | 4,096 |
+| 270 | `socket_tag_rule` | one accept or reject tag of a socket type | `socket_type` | `Client` | 1,024 |
+| 271 | `currency_step` | one step: a primitive or a game operation, with its parameters | `crafting_currency` | `Client` | 16,384 |
+| 272 | `currency_guard` | one guard, on a currency's target or on one of its steps | `crafting_currency` | `Client` | 16,384 |
+| 273 | `rare_name_word_weight` | one word's weight against one tag | `rare_name_word` | `ServerOnly` | 16,384 |
+
+Eighteen of the 768 ids in the Scope B range, leaving 750. The ids are assigned in one block and never
+reused, per contracts 5.1.
+
+**A child row carries `id`, `key`, a key reference to its parent, and a `sort` where its ORDER matters.**
+That shape is uniform across all eleven, so an editor, an audit row and a publish diff read the same way
+for every one of them. `sort` is authored, is unique within one parent, and carries no meaning beyond
+order. A child type whose rows have no order (a weight, a kind limit) has no `sort`.
+
+**Three of the eighteen are `ServerOnly` as WHOLE TYPES, and that is the point of the split.** A weight
+tells a client the exact odds of every outcome, which is farmable rather than displayable, so it is
+omitted from the client chunk under contracts 11.3. In the earlier draft a weight was a sub-field of an
+opaque blob whose other bytes were `Client`, and Scope A's client-chunk builder omits whole FIELDS, so it
+had no way to strip the weights out of the middle of one. Three whole `ServerOnly` types make that a
+publish-time property again: a client never downloads a `mod_tier_weight`, a `rarity_weight` or a
+`rare_name_word_weight` row at all. Everything else about a tier is client visible, so a tooltip that says
+"this tier rolls 10 to 40 at item level 60 and above" is computed from the same bytes on both sides
+(contracts 13.4).
+
+**The one multi-valued field left in any Scope B schema is `stat_line.tag_scope`, and it is the
+contracts' own `tag list` value kind** (4.7), not an ad hoc list: it renders in a generic editor, it diffs
+element by element in the publish diff, and it has a declared reference target. A socket type's accept and
+reject tags could have been two `tag list` fields for the same reason, and are a child type instead,
+because accept-versus-reject is a property of the PAIR and two fields would put it in a field NAME.
+
+**All seven parent types are `Client` by default and that is deliberate.** A client computes tooltips from
+this data and must agree with the server to the unit (contracts 13.4), so hiding a mod's ranges would make
+the tooltip a second implementation. What is `ServerOnly` is the LOOT TABLE that decides which base drops,
+which is Scope A's engine-range type and not one of these, plus the three weight types above.
 
 **Nothing in the engine is PoE-specific, and this section is the place that claim has to be earned.**
 Every row above is a SHAPE. There is no mod named in engine code, no currency named in engine code, no
-rarity named in engine code and no tier count fixed in engine code. The engine ships the seven types,
+rarity named in engine code and no tier count fixed in engine code. The engine ships the eighteen types,
 their codecs and their validators, and the owner authors every row. A game that wants Tibia's model
 authors three rarity rules with zero affixes each and never writes a mod row, and nothing about that is
 a degraded mode.
@@ -1422,119 +1462,212 @@ a degraded mode.
 
 | Field | Value kind | Reference target | Visibility | Required |
 |---|---|---|---|---|
-| `Id` | int | | `Client` | yes |
-| `Key` | string key | | `Client` | yes |
-| `Kind` | int | | `Client` | yes |
-| `GroupId` | key reference | `mod_group` | `Client` | no |
-| `Legacy` | bool | | `Client` | yes |
-| `DisplayFormatKey` | localized text key | | `Client` | yes |
-| `Tiers` | opaque bytes | the tier list of 8.3 | mixed, see below | yes |
+| `id` | int | | `Client` | yes |
+| `key` | string key | | `Client` | yes |
+| `kind` | int | | `Client` | yes |
+| `group_id` | key reference | `mod_group` | `Client` | no |
+| `legacy` | bool | | `Client` | yes |
+| `line` | localized text key | | `Client` | yes |
 
-`Kind` is an integer the engine assigns exactly two meanings to, `1` prefix and `2` suffix, with `3` to
+**Field names are snake_case on every Scope B type**, because contracts 12.1 derives a localization key
+mechanically as `<type key>.<content key>.<field>` and contracts 5.3 binds it to `a-z`, `0-9` and `_`,
+lower case only. A field named `DisplayFormatKey` produces `mod.fine_crafted.DisplayFormatKey`, which the
+validator refuses. The contracts' own worked example names this field `line`, so this table does too, and
+the derived key is `mod.fine_crafted.line`.
+
+**`line` stores NOTHING.** The `localized text key` value kind is a MARKER (contracts 4.7): its presence
+in the schema declares that the key derived from the row exists in the text chunks, and the row carries no
+string. So a mod's displayed line is looked up, never stored, and a translator adding a language adds a
+text chunk rather than a content edit.
+
+`kind` is an integer the engine assigns exactly two meanings to, `1` prefix and `2` suffix, with `3` to
 `255` free for the game. The engine needs the prefix and suffix split because contracts 9.9 put the
 distinction on the ROW rather than in the affix entry (3.4), so the generator reads it to count against
 the rarity rule's two limits. Everything above 2 is a kind the generator treats as its own counted pool,
 which is how an implicit, a corruption line or a Mortal Online material line gets a slot without an
 engine change.
 
-`GroupId` is contracts' exclusivity, one level of indirection rather than a raw integer, so the group
-can carry a count. `mod_group` is three fields: `Id`, `Key` and `MaxPerItem` (an int, default 1). Two
-mods sharing a group with `MaxPerItem = 1` cannot both appear, which is the ordinary exclusivity case,
-and a group with `MaxPerItem = 2` is a family an item may carry twice. A mod with no group is
+`group_id` is contracts' exclusivity, one level of indirection rather than a raw integer, so the group
+can carry a count. `mod_group` is three fields: `id`, `key` and `max_per_item` (an int, default 1). Two
+mods sharing a group with `max_per_item = 1` cannot both appear, which is the ordinary exclusivity case,
+and a group with `max_per_item = 2` is a family an item may carry twice. A mod with no group is
 unconstrained beyond the rarity rule's counts.
 
-`Legacy` is contracts 5.4's flag, read by exactly two places: the generator skips a legacy row when
-building its candidate tables (9.2), and the crafting guard refuses one (10.3). Everywhere else a legacy
-mod resolves through the ordinary path, which is the whole point of not giving it its own id range.
+`legacy` is contracts 5.4's flag, read by exactly three places: the generator skips a legacy row when
+building its candidate tables (9.2), the crafting guard refuses one (10.3), and the frozen-entry rule of
+10.3 refuses to rewrite an affix already sitting on a legacy row. Everywhere else a legacy mod resolves
+through the ordinary path, which is the whole point of not giving it its own id range.
+
+**A mod row carries NO tiers, no lines and no weights.** They are three child types, and they are what
+the next two sections are.
 
 ### 8.3 Tiers, and why the ordinal is the payload's key
 
-A mod's tiers are a LIST on the mod row rather than their own content type, and that is a deliberate
-narrowing of the obvious shape. The payload stores `(mod id, tier ordinal)` (3.4), so the ordinal must
-be stable for the life of the mod, and the cheapest way to guarantee that is to make the ordinal the
-tier's position in a list the publish validator refuses to reorder. A separate `mod_tier` content type
-would have given each tier its own id and its own remap rule, which sounds better until you notice the
-payload would then carry a `mod_tier` id and a retire of one tier would need its own rule kind.
+A mod's tiers are `mod_tier` rows pointing back at the mod. The payload stores `(mod id, tier ordinal)`
+(3.4), NOT a `mod_tier` id, and that is the deliberate narrowing this section exists to explain: a payload
+naming a `mod_tier` id would need its own remap rule for every retired tier, and a retire of one tier
+would become a rule kind of its own. The ordinal is the key the bytes carry, the row is where the tier's
+data lives, and the validator refuses to let the two drift.
 
-| Tier field | Value kind | Notes |
-|---|---|---|
-| `Ordinal` | int | 1 to 255, unique within the mod, IMMUTABLE once published |
-| `ItemLevelMin` | int | inclusive, 1 to 65535 |
-| `ItemLevelMax` | int | inclusive, `>= ItemLevelMin`, 65535 means no ceiling |
-| `Weights` | list of `(tag id, int weight)` | `ServerOnly`, see below |
-| `Lines` | list of stat lines | 8.4 |
+| `mod_tier` field | Value kind | Reference target | Visibility | Required |
+|---|---|---|---|---|
+| `id` | int | | `Client` | yes |
+| `key` | string key | | `Client` | yes |
+| `mod_id` | key reference | `mod` | `Client` | yes |
+| `ordinal` | int | | `Client` | yes |
+| `item_level_min` | int | | `Client` | yes |
+| `item_level_max` | int | | `Client` | yes |
 
-**Weights are the one `ServerOnly` field in this section.** A weight tells a client the exact odds of
-every outcome, which is farmable rather than displayable, so it is omitted from the client manifest
-under contracts 11.3 and the publish validator refuses it appearing in a `Client` chunk. Everything else
-about a tier is client visible, so a tooltip that says "this tier rolls 10 to 40 at item level 60 and
-above" is computed from the same bytes on both sides.
+`ordinal` is 1 to 255, unique within the mod, and IMMUTABLE once published. `item_level_min` and
+`item_level_max` are inclusive, 1 to 65535, with `item_level_max = 65535` meaning no ceiling.
 
-**A weight is keyed by TAG, never by base id.** `Weights` is a list of `(tag id, weight)` pairs, and a
-base's weight for this tier is the weight of the FIRST tag in the base's authored tag list that appears
-in the pair list, or zero when none does. First rather than sum, because the base's tag order is
-authored information (contracts 4.6) and a sum would make the order meaningless. A tier with an empty
-pair list can never spawn, which is legal and is how a tier reachable only through crafting is authored.
+**The engine assigns tier ordinals no ordering meaning.** Whether ordinal 1 is the best or the worst is
+the author's convention. What gates a tier is its own `item_level_min` and `item_level_max`.
+
+**A reorder is refused at publish and it is now a CHANGE-SHAPED check.** Contracts 10.4 takes the previous
+published snapshot as an argument, so the check "a mod's tier ordinals are unchanged since the last
+published version" has an input to compare against, runs at publish and does not run at boot or in a test
+where `previous` is null. Before that argument existed this check had nowhere to read from.
+
+| `mod_tier_weight` field | Value kind | Reference target | Visibility | Required |
+|---|---|---|---|---|
+| `id` | int | | `ServerOnly` | yes |
+| `key` | string key | | `ServerOnly` | yes |
+| `mod_tier_id` | key reference | `mod_tier` | `ServerOnly` | yes |
+| `tag_id` | key reference | `tag` | `ServerOnly` | yes |
+| `weight` | int | | `ServerOnly` | yes |
+
+**A weight is keyed by TAG, never by base id**, and a base's weight for a tier is the weight of the FIRST
+tag in the base's authored tag list that has a `mod_tier_weight` row for that tier, or zero when none
+does. First rather than sum, because the base's tag order is authored information (contracts 4.6) and a
+sum would make the order meaningless. A tier with NO weight rows can never spawn, which is legal and is
+how a tier reachable only through crafting is authored.
+
+**The whole type is `ServerOnly`, so a client downloads no weight row at all.** That is the property 8.1
+names: visibility is a whole-field and now a whole-TYPE fact, and the client chunk builder omits it by
+omitting rows rather than by reaching into bytes.
 
 ### 8.4 Stat lines and ranges
 
-A tier carries one or more stat lines, and a line is what turns a stored `ushort` position into a number
-the evaluator folds (11.6).
+A tier carries one or more `stat_line` rows, and a line is what turns a stored `ushort` position into a
+number the evaluator folds (11.6).
 
-| Line field | Value kind | Notes |
-|---|---|---|
-| `StatId` | key reference to `stat` | Scope A's engine-range type, contracts 13.1 |
-| `Combine` | int | `1` Flat, `2` Increased, `3` More, contracts 13.2 |
-| `Min`, `Max` | int | inclusive, in the stat's scaled units or in basis points |
-| `TagScope` | ordered list of tag ids | empty means the stat itself, 11.4 |
-| `ConditionId` | int | 0 means unconditional, 11.5 |
+| `stat_line` field | Value kind | Reference target | Visibility | Required |
+|---|---|---|---|---|
+| `id` | int | | `Client` | yes |
+| `key` | string key | | `Client` | yes |
+| `mod_tier_id` | key reference | `mod_tier` | `Client` | yes |
+| `sort` | int | | `Client` | yes |
+| `stat_id` | key reference | `stat` | `Client` | yes |
+| `combine` | int | | `Client` | yes |
+| `min` | int | | `Client` | yes |
+| `max` | int | | `Client` | yes |
+| `tag_scope` | tag list | `tag` | `Client` | no |
+| `condition_id` | int | | `Client` | no |
+
+`stat` is Scope A's engine-range type (contracts 13.1). `combine` is `1` Flat, `2` Increased, `3` More
+(contracts 13.2). `min` and `max` are inclusive, in the stat's scaled units or in basis points. An empty
+`tag_scope` means the stat itself (11.3), and `condition_id` 0 means unconditional (11.3).
 
 **One roll position drives every line on the tier.** A tier with two lines ("adds 10 to 40 physical
 damage" as a pair) resolves both from the SAME stored position, so the two move together and the payload
 stores one `ushort` for the affix rather than one per line. That is contracts 6.4's position applied
-literally, and it is what makes a six-affix rare cost eighteen bytes of affix entries (3.7).
+literally, and it is what makes a six-affix rare cost eighteen bytes of affix entries (3.7). `sort` is
+what makes "the tier's second line" a stable phrase across a republish.
 
-Whether a line's units are scaled units or basis points is decided by `Combine` and by nothing else:
+Whether a line's units are scaled units or basis points is decided by `combine` and by nothing else:
 `Flat` is in the stat's scaled units, `Increased` and `More` are in basis points where 10,000 is 100
-percent (contracts 13.2). The validator checks `Min <= Max` and refuses `Min == Max` on a tier whose
+percent (contracts 13.2). The validator checks `min <= max` and refuses `min == max` on a tier whose
 only line is the one being checked ONLY when the mod's kind is a rolled kind, because a fixed line is
 exactly how a unique's guaranteed value is authored (8.6).
 
 ### 8.5 `rarity_rule`
 
-| Field | Value kind | Notes |
-|---|---|---|
-| `Id` | int | 1 to 255. The payload's kind 130 stores this as ONE byte (3.3) |
-| `Key` | string key | |
-| `DisplayFormatKey` | localized text key | |
-| `MinAffixes`, `MaxAffixes` | int | total across every kind |
-| `MaxPrefixes`, `MaxSuffixes` | int | per kind, `Kind` 1 and 2 of 8.2 |
-| `MaxOfKind` | list of `(kind, int)` | for kinds above 2 |
-| `NameWordPositions` | int | 0 means the item keeps its base name, above 0 rolls that many words |
-| `Weights` | list of `(tag id, int weight)` | `ServerOnly`, the same shape as 8.3 |
-| `UpgradeFrom` | key reference to `rarity_rule` | the rarity this one is reachable from, 0 for none |
+| Field | Value kind | Reference target | Visibility | Required |
+|---|---|---|---|---|
+| `id` | int | | `Client` | yes |
+| `key` | string key | | `Client` | yes |
+| `display_format` | localized text key | | `Client` | yes |
+| `min_affixes` | int | | `Client` | yes |
+| `max_affixes` | int | | `Client` | yes |
+| `max_prefixes` | int | | `Client` | yes |
+| `max_suffixes` | int | | `Client` | yes |
+| `name_word_positions` | int | | `Client` | yes |
+| `upgrade_from` | key reference | `rarity_rule` | `Client` | no |
+
+`id` is 1 to 255. `min_affixes` and `max_affixes` are totals across every kind, `max_prefixes` and
+`max_suffixes` are per kind for `kind` 1 and 2 of 8.2, and `name_word_positions` is 0 for an item that
+keeps its base name or above 0 to roll that many words.
+
+**`display_format` IS the composed name template of contracts 12.3, and its arguments are fixed here.**
+Contracts 12.3 resolves a rare's name through a template plus localized parts, and neither spec said which
+row held the template. It is this field. The derived key is `rarity_rule.<key>.display_format`, the
+template it names looks like `"{0} {1} {2}"`, and the ARGUMENTS are the item's `rare_name_word` texts in
+POSITION ORDER (kind 134 stores the ids in that order, 8.8) followed by the base item's own name. So a
+rare with two name words formats `{0}` and `{1}` from the words and `{2}` from the base, a language whose
+adjective follows its noun reorders the template rather than the payload, and a rarity with
+`name_word_positions = 0` formats `{0}` from the base name alone. Resolution goes through
+`ContentStringCatalog.Format`, which is contracts 12.4's layered catalog over the `SafeFormat` path of
+contracts 12.3, so a translator's malformed template falls back to the unformatted template instead of
+throwing inside the frame loop.
 
 **The id is a byte and that is a format constraint, not a preference.** Kind 130 is `[RarityId: byte]`,
-pinned by contracts 9.8's `82 01 03`, so 255 rarities is the ceiling forever. That is generous against
+pinned by contracts 9.8's `82 01 01 03`, so 255 rarities is the ceiling forever. That is generous against
 PoE's four and Tibia's zero, and it is recorded in section 21 because raising it is a payload format
 change.
 
-`UpgradeFrom` is what a `set rarity` craft primitive walks (10.2) and what a rarity-upgrade currency
+`upgrade_from` is what a `set rarity` craft primitive walks (10.2) and what a rarity-upgrade currency
 composes. It is a single parent rather than a list, so the rarities form a forest and a craft that
 raises a rarity has exactly one answer for what comes next.
 
+| `rarity_kind_limit` field | Value kind | Reference target | Notes |
+|---|---|---|---|
+| `id`, `key` | int, string key | | |
+| `rarity_rule_id` | key reference | `rarity_rule` | |
+| `mod_kind` | int | | a `mod.kind` above 2 |
+| `max_count` | int | | how many of that kind the rarity permits |
+
+| `rarity_weight` field | Value kind | Reference target | Visibility |
+|---|---|---|---|
+| `id`, `key` | int, string key | | `ServerOnly` |
+| `rarity_rule_id` | key reference | `rarity_rule` | `ServerOnly` |
+| `tag_id` | key reference | `tag` | `ServerOnly` |
+| `weight` | int | | `ServerOnly` |
+
+`rarity_weight` is 8.3's first-tag-wins rule again, over rarities rather than tiers, and it is the draw
+step 3 of 9.4 makes.
+
 ### 8.6 `unique_template`
 
-| Field | Value kind | Notes |
-|---|---|---|
-| `Id` | int | stored in payload kind 129 |
-| `Key` | string key | |
-| `BaseId` | key reference to `item_base` | the base it is built on |
-| `NameKey` | localized text key | the unique's own name, replacing the base name |
-| `Lines` | list of stat lines | the SAME shape as 8.4, so `Min == Max` is a fixed value |
-| `ForcedSockets` | list of `(socket type id, int count)` | seeds kind 132 at generation |
-| `ItemLevelMin` | int | the lowest item level it can drop at |
-| `Weight` | int | `ServerOnly` |
+| Field | Value kind | Reference target | Visibility | Required |
+|---|---|---|---|---|
+| `id` | int | | `Client` | yes |
+| `key` | string key | | `Client` | yes |
+| `base_id` | key reference | `item` | `Client` | yes |
+| `name` | localized text key | | `Client` | yes |
+| `item_level_min` | int | | `Client` | yes |
+| `weight` | int | | `ServerOnly` | yes |
+
+`base_id` names Scope A's `item` type, which is the base. An earlier draft wrote the target as
+`item_base`, a type key nothing registers, which would have fired `KEC0007` at registry freeze and
+blocked every pack carrying a unique. `id` is what payload kind 129 stores. `name` replaces the base
+name and is a marker field like every localized text key. `weight` is a scalar `ServerOnly` FIELD, which
+contracts 4.7 allows because visibility is per field, and needs no child type because it does not repeat.
+
+| `unique_line` field | Value kind | Reference target | Notes |
+|---|---|---|---|
+| `id`, `key` | int, string key | | |
+| `unique_template_id` | key reference | `unique_template` | |
+| `sort` | int | | authored order |
+| `mod_id` | key reference | `mod` | the mod row the line is |
+| `tier_ordinal` | int | | which of that mod's tiers |
+
+| `unique_socket` field | Value kind | Reference target | Notes |
+|---|---|---|---|
+| `id`, `key` | int, string key | | |
+| `unique_template_id` | key reference | `unique_template` | |
+| `sort` | int | | the socket's index in kind 132, authored order |
+| `socket_type_id` | key reference | `socket_type` | 0 means no restriction |
 
 **A unique is a template plus rolls, not a separate item kind.** The generated item carries kind 129
 naming the template, kind 131 carrying the rolled positions for the template's lines, and kind 130
@@ -1542,92 +1675,137 @@ carrying the unique rarity rule. Nothing in the payload format is special. That 
 reroll a unique's values without any primitive knowing what a unique is: `reroll values` (10.2) rewrites
 positions and never touches kind 129.
 
-**A unique's lines are NOT mods and carry no mod id**, which is the one asymmetry in the format and it
-is worth naming. Kind 131's entries are `(mod id, tier, position, flags)`, so a unique's line needs a
-mod id to sit there. The answer is that a unique template's lines are authored as ORDINARY MOD ROWS with
-a single tier, weight zero everywhere (so the generator can never roll them onto an ordinary item) and a
-group that keeps them off a rare. That costs one mod row per unique line and buys a payload with no
-second affix shape, no second decode path and no second remap story. It is the single most important
-consequence of 3.4 for an author to understand, so 8.10 restates it in the authoring checklist.
+**A unique's lines are NOT a second line shape: each one NAMES a mod row**, which is the one asymmetry in
+the format and it is worth naming. Kind 131's entries are `(mod id, tier, position, flags)`, so a unique's
+line needs a mod id to sit there. The answer is that a unique template's lines are authored as ORDINARY
+MOD ROWS with a single tier, no `mod_tier_weight` row anywhere (so the generator can never roll them onto
+an ordinary item) and a group that keeps them off a rare, and `unique_line` points at that mod and tier.
+That costs one mod row per unique line and buys a payload with no second affix shape, no second decode
+path and no second remap story. It is the single most important consequence of 3.4 for an author to
+understand, so 8.10 restates it in the authoring checklist.
+
+**`unique_socket` rows ARE the socket order.** The earlier draft's `(socket type id, count)` pairs could
+not say what order the sockets sat in, and kind 132 is authored order (3.5), so one row per socket with a
+`sort` is both smaller and the only shape that can seed the field.
 
 ### 8.7 `socket_type`
 
-| Field | Value kind | Notes |
-|---|---|---|
-| `Id` | int | stored in a socket entry's `SocketTypeId` (3.5) |
-| `Key` | string key | |
-| `DisplayFormatKey` | localized text key | |
-| `AcceptTags` | ordered list of tag ids | a contained item must carry at least one |
-| `RejectTags` | ordered list of tag ids | a contained item must carry none |
-| `MaxNestedBytes` | int | 0 means `MaxInstancePayloadBytes`, else a tighter per-socket cap |
+| Field | Value kind | Reference target | Visibility | Required |
+|---|---|---|---|---|
+| `id` | int | | `Client` | yes |
+| `key` | string key | | `Client` | yes |
+| `display_format` | localized text key | | `Client` | yes |
+| `max_nested_bytes` | int | | `Client` | yes |
+
+| `socket_tag_rule` field | Value kind | Reference target | Notes |
+|---|---|---|---|
+| `id`, `key` | int, string key | | |
+| `socket_type_id` | key reference | `socket_type` | |
+| `sort` | int | | evaluation order within its rule kind |
+| `tag_id` | key reference | `tag` | |
+| `rule` | int | | `1` accept, `2` reject |
 
 Gate 0 decision 2 says socket types DO restrict, and that the restriction is content rather than code.
-`AcceptTags` and `RejectTags` are that restriction, evaluated by the socket primitive (10.2) and by
-nothing else. Reject wins over accept, checked in that order, so a type that accepts `gem` and rejects
-`corrupted` is one row.
+`socket_tag_rule` is that restriction, evaluated by the socket primitive (10.2) and by nothing else. A
+contained item must carry at least one `accept` tag and none of the `reject` tags, reject is checked
+FIRST and wins, so a type that accepts `gem` and rejects `corrupted` is one parent row and two child rows.
+A type with no accept row accepts nothing, which is how a decorative socket is authored.
 
-`MaxNestedBytes` exists because of 3.5's arithmetic: a six socket item has about 59 bytes per nested
+`max_nested_bytes` exists because of 3.5's arithmetic: a six socket item has about 58 bytes per nested
 payload before the 512 byte cap binds, and a socket type that admits a deep item makes that ceiling a
-runtime surprise. Authoring the per socket budget turns it into a publish-time fact and a refusal at the
-moment of socketing rather than a refusal at the moment of encoding.
+runtime surprise. 0 means `MaxInstancePayloadBytes`. Authoring the per socket budget turns it into a
+publish-time fact and a refusal at the moment of socketing rather than a refusal at the moment of
+encoding.
 
 ### 8.8 `crafting_currency` and `rare_name_word`
 
-`crafting_currency` is section 10's row and its fields are listed there (10.4), because a row with no
-primitive vocabulary to read it against is a list of opaque columns. It registers here so the type id is
-in one table.
+`crafting_currency` is section 10's row and its fields, its `currency_step` children and its
+`currency_guard` children are listed there (10.4), because a row with no primitive vocabulary to read it
+against is a list of opaque columns. All three register here so the type ids are in one table.
 
-`rare_name_word`:
+| `rare_name_word` field | Value kind | Reference target | Visibility | Required |
+|---|---|---|---|---|
+| `id` | int | | `Client` | yes |
+| `key` | string key | | `Client` | yes |
+| `text` | localized text key | | `Client` | yes |
+| `position` | int | | `Client` | yes |
 
-| Field | Value kind | Notes |
-|---|---|---|
-| `Id` | int | stored in payload kind 134 |
-| `Key` | string key | |
-| `TextKey` | localized text key | the word itself, localized like everything player facing |
-| `Position` | int | 1 to 255, which slot in the name it may fill |
-| `Weights` | list of `(tag id, int weight)` | `ServerOnly` |
+| `rare_name_word_weight` field | Value kind | Reference target | Visibility |
+|---|---|---|---|
+| `id`, `key` | int, string key | | `ServerOnly` |
+| `rare_name_word_id` | key reference | `rare_name_word` | `ServerOnly` |
+| `tag_id` | key reference | `tag` | `ServerOnly` |
+| `weight` | int | | `ServerOnly` |
 
-A rare name is `NameWordPositions` words (8.5) drawn one per position, each from the words whose
-`Position` matches and whose weight against the base's tags is above zero. Kind 134 stores the word ids
+`id` is what payload kind 134 stores. `text` is the word itself, a marker field whose derived key is
+`rare_name_word.<key>.text`, which is the name contracts 12.3 illustrates. `position` is 1 to 255, which
+slot in the name the word may fill.
+
+A rare name is `name_word_positions` words (8.5) drawn one per position, each from the words whose
+`position` matches and whose weight against the base's tags is above zero. Kind 134 stores the word ids
 in POSITION ORDER, so the name is reproducible from the payload with no re-roll, which is contracts
 14.3's rule applied to a name.
 
-**The composed name is localization's problem, not the payload's.** Contracts 12.3 owns composed names,
-so kind 134 stores ids and the display layer composes them. A language whose adjective follows its noun
-composes the same three ids differently, which is exactly why the words are ids rather than a string.
+**The composed name is localization's problem and 8.5 says exactly whose row holds the template.** Kind
+134 stores ids, `rarity_rule.display_format` holds the template, and the display layer composes them
+through `ContentStringCatalog.Format`. A language whose adjective follows its noun composes the same three
+ids differently, which is exactly why the words are ids rather than a string.
 
 ### 8.9 Registration, validation and what publish refuses
 
-The seven validators run inside contracts 10.4's one validator and add these checks to its minimum list.
-None of them relaxes anything the contract requires.
+The eighteen validators run inside contracts 10.4's one validator and add these checks to its minimum
+list. None of them relaxes anything the contract requires. The three marked PUBLISH-ONLY compare against
+the `previous` snapshot contracts 10.4 now takes as an argument, so they do not run at boot or in a test
+where `previous` is null.
 
-1. A `mod` tier's `ItemLevelMin <= ItemLevelMax`, and the tier ordinals within one mod are unique and
-   unchanged since the previous published version. A REORDER is refused, because the ordinal is in every
-   stored payload (3.4).
-2. A stat line's `StatId` resolves, its `Combine` is 1, 2 or 3, and `Min <= Max`.
-3. A `mod_group`'s `MaxPerItem` is at least 1.
-4. A `rarity_rule`'s `MinAffixes <= MaxAffixes`, `MaxPrefixes + MaxSuffixes >= MaxAffixes`, and its
-   `UpgradeFrom` chain has no cycle.
-5. A `unique_template`'s `BaseId` resolves and every line's mod row has weight zero on every tier, which
-   is the check that keeps a unique line off an ordinary rare.
-6. A `socket_type`'s `AcceptTags` and `RejectTags` are disjoint.
-7. A `rare_name_word`'s `Position` is at least 1, and for every rarity rule with `NameWordPositions = N`
+1. Every child row's parent reference resolves, and a `currency_guard` naming a `currency_step` names one
+   belonging to the SAME currency.
+2. A `mod_tier`'s `item_level_min <= item_level_max`, and its `ordinal` is 1 to 255 and unique within its
+   mod.
+3. PUBLISH-ONLY: a mod's tier ordinals are unchanged since the previous published version. A REORDER is
+   refused, because the ordinal is in every stored payload (3.4).
+4. A `stat_line`'s `stat_id` resolves, its `combine` is 1, 2 or 3, and `min <= max`.
+5. A `mod_group`'s `max_per_item` is at least 1.
+6. A `rarity_rule`'s `min_affixes <= max_affixes`, `max_prefixes + max_suffixes >= max_affixes`, and its
+   `upgrade_from` chain has no cycle.
+7. A `unique_line`'s `mod_id` resolves, its `tier_ordinal` names a tier of that mod, and that mod carries
+   no `mod_tier_weight` row on any tier, which is the check that keeps a unique line off an ordinary rare.
+8. A `socket_type`'s accept and reject tag sets are disjoint.
+9. A `rare_name_word`'s `position` is at least 1, and for every rarity rule with `name_word_positions = N`
    and every base tag reachable at that rarity, every position 1 to N has at least one word with a
    non-zero weight. That last one is the check that stops a publish producing an item whose name cannot
    be rolled, and it is the expensive one: it is a cross product over rarities, positions and tags, run
    once per publish, which is the right place for it.
+10. A `crafting_currency` carries at most `max_steps` steps and `max_steps` is at most 16 (10.4), and
+    every step's `sort` is unique within the currency.
+11. PUBLISH-ONLY: a `rarity_rule`'s `id` is unchanged since the previous published version, because kind
+    130 stores it.
+12. PUBLISH-ONLY: no `mod` that any stored payload could name has lost its tier for that ordinal without
+    a remap rule covering it. The validator cannot see stored payloads, so what it actually checks is the
+    weaker and still useful form: every tier ordinal removed since `previous` is named by a rule in the
+    set it was handed.
 
-### 8.10 The authoring checklist, and the four reference games on these seven types
+### 8.10 The authoring checklist, and the four reference games on these eighteen types
 
-An author adding one affix touches exactly one row. An author adding one unique touches one
-`unique_template` row plus one `mod` row per line. An author adding a rarity touches one `rarity_rule`
-row and, if it names items, N `rare_name_word` rows. Nothing above needs an engine release.
+An author adding one affix touches one `mod` row, one `mod_tier` row per tier, one `stat_line` row per
+line on each tier, and one `mod_tier_weight` row per tag each tier can spawn against. An author adding one
+unique touches one `unique_template` row, one `unique_line` row per line plus the `mod` and `mod_tier`
+rows those lines name, and one `unique_socket` row per forced socket. An author adding a rarity touches
+one `rarity_rule` row, one `rarity_weight` row per tag, one `rarity_kind_limit` row per counted kind above
+2 and, if it names items, N `rare_name_word` rows with their weights. Nothing above needs an engine
+release.
+
+**That is more rows than the earlier draft's blob and it is not more authoring.** The same facts were
+always there. What changed is that each one is now a row a generic editor renders, a publish diff reports
+field by field, and an audit records a before and an after for, rather than a hex box whose whole content
+reads as one changed value (contracts 4.7, and `catalog_audit.before_value` is capped at 512 characters
+anyway).
 
 What each reference game authors, which is the concrete form of the claim that these are shapes rather
 than PoE:
 
 - **OSRS.** Nothing. Zero mod rows, zero rarity rules, zero uniques. Every item is a base with instance
-  id 0, and all seven types register with an empty row set, which the validator permits because every
+  id 0, and all eighteen types register with an empty row set, which the validator permits because every
   cross-check above is vacuous over an empty set.
 - **Tibia.** Zero mods. Item level and upgrade tier live in the engine range kinds 2 and 8 (3.3), and a
   plus-one upgrade is a craft primitive writing kind 8, not an affix. Socket types register if the game
@@ -1637,15 +1815,16 @@ than PoE:
   modifiers (11.5), so the affix machinery sits unused while the instance machinery carries everything.
   That is contracts 6.3's point about storing inputs rather than derived stats, and it is why kind 7 is
   in the ENGINE range rather than in Scope B's.
-- **PoE.** All seven, heavily. This is the only shape that uses the whole section, and the numbers
+- **PoE.** All eighteen, heavily. This is the only shape that uses the whole section, and the numbers
   section 9 is sized against (2,000 mods, 50,000 bases) are its numbers rather than the fleet's.
 
 **Two authoring traps, written here because both cost a republish to undo.** First, a tier ordinal is
-immutable, so inserting a new best tier at the top means appending it with the NEXT ordinal and letting
-the ordinal carry no ordering meaning (3.4). Second, a unique's lines are mod rows with zero weight, so
-an author who gives one a weight has quietly added it to the rare pool for every base carrying that tag.
-Check 5 of 8.9 catches the second at publish. Nothing catches the first, because a reorder is refused
-and an append is legal, which is the correct outcome and a surprising one to read for the first time.
+immutable, so inserting a new best tier at the top means appending a `mod_tier` row with the NEXT ordinal
+and letting the ordinal carry no ordering meaning (3.4). Second, a unique's lines are mod rows with no
+weight row, so an author who gives one a `mod_tier_weight` has quietly added it to the rare pool for every
+base carrying that tag. Check 7 of 8.9 catches the second at publish. Nothing catches the first, because a
+reorder is refused and an append is legal, which is the correct outcome and a surprising one to read for
+the first time.
 
 ## 9. Item generator
 
@@ -1669,15 +1848,21 @@ The naive table is keyed by (base, item level) and it does not fit. At 50,000 ba
 that is 5,000,000 candidate arrays, and at even 500 candidates each it is tens of gigabytes. The shape
 below is keyed so that the BASE COUNT contributes almost nothing, which is the whole trick.
 
+**The input is three row sets and nothing else:** every `mod` row for its `kind`, `group_id` and
+`legacy` flag, every `mod_tier` row for its ordinal and its two level bounds, and every
+`mod_tier_weight` row for its tag and weight (8.3). All three are ordinary content rows, so the build is
+a scan of three indexed row sets rather than a decode of a blob per mod, and a server whose pack omits
+the `ServerOnly` weight type builds no tables at all, which is exactly what a client does.
+
 **Two levels. Tag-band tables, built once, and a memoized merge per tag signature.**
 
-1. **Bands.** Collect every distinct `ItemLevelMin` and `ItemLevelMax + 1` across every tier of every
-   mod. Sort them. The intervals between consecutive values are the BANDS, and within one band no tier's
+1. **Bands.** Collect every distinct `item_level_min` and `item_level_max + 1` across every `mod_tier`
+   row. Sort them. The intervals between consecutive values are the BANDS, and within one band no tier's
    gate changes, so the live tier set is constant. At 2,000 mods and 8 tiers each the boundary count is
    bounded by 32,000 and in practice is the authored level curve, tens rather than thousands.
 2. **Tag-band tables.** For each `(tag id, band)` pair, an array of `(mod id, tier ordinal, weight)` for
-   every tier that is live in that band and names that tag with a non-zero weight, sorted ascending by
-   (mod id, tier ordinal). Sorted rather than insertion ordered, because the sort is what makes the
+   every `mod_tier` row live in that band with a `mod_tier_weight` row naming that tag at a non-zero
+   weight, sorted ascending by (mod id, tier ordinal). Sorted rather than insertion ordered, because the sort is what makes the
    weighted pick reproducible from a seed and independent of pack load order (contracts 4.3).
 3. **The merge, at roll time.** A base's candidate set is the merge of the tables for its tags, walked in
    the base's AUTHORED tag order, taking the first weight found for each `(mod id, tier ordinal)` and
@@ -1742,17 +1927,17 @@ Every step is numbered because the ORDER of the draws is the reproducibility con
 
 1. **Resolve the band** from `context.ItemLevel` by binary search over the band boundaries. No draw.
 2. **Resolve the unique**, if `ForcedUniqueTemplateId` is non-zero. Skip to step 9 with the template's
-   lines as the affix list and its `ForcedSockets` as the socket list. No draw. A unique is FORCED by the
+   `unique_line` rows as the affix list and its `unique_socket` rows as the socket list. No draw. A unique is FORCED by the
    caller rather than rolled here, because deciding that a unique drops is the loot table's job (9.1).
-3. **Roll the rarity**, unless `ForcedRarityId` is non-zero. One `NextInt(0, total)` over the rarity
-   rules' weights against the base's tags, using 8.3's first-tag-wins rule.
-4. **Roll the affix count.** One `NextInt(rule.MinAffixes, rule.MaxAffixes + 1)`.
+3. **Roll the rarity**, unless `ForcedRarityId` is non-zero. One `NextInt(0, total)` over the
+   `rarity_weight` rows against the base's tags, using 8.3's first-tag-wins rule.
+4. **Roll the affix count.** One `NextInt(rule.min_affixes, rule.max_affixes + 1)`.
 5. **Roll the prefix and suffix split.** For each of the `count` picks in turn, decide the kind FIRST:
    one `NextInt(0, openKindTotal)` over the kinds still under their per kind cap, weighted by the number
    of candidates of that kind. Kind before mod, so a rarity permitting three prefixes and three suffixes
    does not produce six prefixes because prefixes happen to outnumber suffixes in the pool.
 6. **Filter the pool** for this pick: drop every candidate whose kind is not the chosen one, whose mod id
-   is already on the item, whose `mod_group` is at `MaxPerItem`, or whose mod row carries `Legacy`. No
+   is already on the item, whose `mod_group` is at `max_per_item`, or whose mod row carries `legacy`. No
    draw. The filter is a forward pass over the memoized merged array, producing a cumulative weight
    array in the same order.
 7. **Pick the mod and tier.** One `NextInt(0, weightTotal)` and a walk of the cumulative array. When
@@ -1763,9 +1948,9 @@ Every step is numbered because the ORDER of the draws is the reproducibility con
    places nothing, consumes no further draw for that pick, and the item ends with fewer affixes than the
    count asked for, which is a legal outcome and is reported in the result rather than retried.
 9. **Sort the affix list ascending by mod id** (3.4). No draw.
-10. **Roll the rare name.** For each position 1 to `rule.NameWordPositions`, one `NextInt(0, total)` over
-    that position's words weighted against the base's tags. Record the word ids in position order.
-11. **Seat the sockets.** A unique's `ForcedSockets` verbatim, otherwise the base's authored socket
+10. **Roll the rare name.** For each position 1 to `rule.name_word_positions`, one `NextInt(0, total)` over
+    that position's words weighted against the base's tags through their `rare_name_word_weight` rows. Record the word ids in position order.
+11. **Seat the sockets.** A unique's `unique_socket` rows in `sort` order, otherwise the base's authored socket
     declaration, in authored order, every socket empty. No draw in v1: a rolled socket COUNT is a craft
     primitive (`add socket`, 10.2) rather than a generation step, so nothing here consumes a draw the
     owner has not asked for.
@@ -1857,7 +2042,7 @@ Ruinborne (`c-ruinborne.md:22-26`) and `GrimhollowTrade`'s bag clone has in Grim
 | 2 | `RemoveMod` | selector | removes one affix chosen by the selector, 10.3 |
 | 3 | `RerollValues` | selector | new `NextRollPosition()` for every selected affix, same mods and tiers |
 | 4 | `RerollMods` | kind mask | discards the selected affixes and re-runs 9.4 steps 4 to 9 for that kind |
-| 5 | `SetRarity` | rarity id or 0 for `UpgradeFrom` | writes kind 130, then trims or fills affixes to the new rule's counts |
+| 5 | `SetRarity` | rarity id or 0 for `upgrade_from` | writes kind 130, then trims or fills affixes to the new rule's counts |
 | 6 | `AddSocket` | socket type id or 0 | appends one empty socket to kind 132 |
 | 7 | `Socket` | socket index, source slot | moves an item INTO a socket, keeping its instance id |
 | 8 | `Unsocket` | socket index, destination slot | moves it back out, keeping its instance id |
@@ -1890,7 +2075,7 @@ guard rather than a message.
 | Kind | Guard | Parameters | True when |
 |---|---|---|---|
 | 1 | `RarityIs` | rarity id | kind 130 equals it |
-| 2 | `RarityIsAtMost` | rarity id | kind 130's `UpgradeFrom` chain reaches it |
+| 2 | `RarityIsAtMost` | rarity id | kind 130's `upgrade_from` chain reaches it |
 | 3 | `AffixCountAtMost` | mod kind, count | the item carries at most that many of that kind |
 | 4 | `AffixCountAtLeast` | mod kind, count | likewise |
 | 5 | `HasMod` | mod id | kind 131 or 133 carries it |
@@ -1902,7 +2087,7 @@ guard rather than a message.
 | 11 | `SocketEmpty` | socket index | that socket's contained definition is 0 |
 | 12 | `IsIdentified` | state | kind 128's state equals it |
 | 13 | `FlagIs` | bit, value | that bit of kind 1 equals it |
-| 14 | `NotLegacy` | | no affix on the item names a `Legacy` mod row |
+| 14 | `NotLegacy` | | no affix on the item names a `legacy` mod row |
 | 15 | `IsCorruptible` | | kind 1 bit 0 is clear, the standing refusal every currency inherits |
 
 **Guards are ANDed and there is no OR, no NOT and no nesting.** An OR is two currency rows, which is one
@@ -1927,37 +2112,62 @@ set, and `NotLegacy` as an authored guard is the stronger statement that the ite
 `RandomOfKind` is the only selector that draws, and it draws exactly once, so a currency's draw count is a
 function of its step list rather than of the item it hits.
 
-### 10.4 A `crafting_currency` row
+### 10.4 A `crafting_currency` row and its two children
 
-| Field | Value kind | Notes |
-|---|---|---|
-| `Id` | int | |
-| `Key` | string key | |
-| `NameKey`, `DescriptionKey` | localized text key | |
-| `ConsumesDefinitionId` | key reference to `item_base` | what is spent, 0 for a free operation |
-| `ConsumesCount` | int | |
-| `TargetGuards` | guard set | evaluated once, before any step |
-| `Steps` | ordered list | each step is `(guard set, primitive or operation id, parameters)` |
-| `MaxSteps` | int | a publish-checked ceiling, at most 16 in v1 |
+A currency is THREE content types, not one row with two lists in it: the currency, its ordered steps and
+its guards. 8.1 has the type ids and the reason.
 
-A step naming an id at or above 1,024 is a GAME operation rather than a primitive (10.5). The two share
-the step list so a currency can mix them, which is the point of having a registry at all.
+| `crafting_currency` field | Value kind | Reference target | Notes |
+|---|---|---|---|
+| `id` | int | | |
+| `key` | string key | | |
+| `name` | localized text key | | a marker, key `crafting_currency.<key>.name` |
+| `description` | localized text key | | a marker, key `crafting_currency.<key>.description` |
+| `consumes_definition_id` | key reference | `item` | what is spent, empty for a free operation |
+| `consumes_count` | int | | |
+| `max_steps` | int | | a publish-checked ceiling, at most 16 in v1 |
+
+| `currency_step` field | Value kind | Reference target | Notes |
+|---|---|---|---|
+| `id`, `key` | int, string key | | |
+| `crafting_currency_id` | key reference | `crafting_currency` | |
+| `sort` | int | | the step's position, unique within the currency |
+| `operation` | int | | 1 to 14 is a primitive (10.2), at or above 1,024 is a game operation (10.5) |
+| `parameter_a` to `parameter_d` | int | | 0 when unused. A selector occupies two, its kind then its parameter |
+
+| `currency_guard` field | Value kind | Reference target | Notes |
+|---|---|---|---|
+| `id`, `key` | int, string key | | |
+| `crafting_currency_id` | key reference | `crafting_currency` | |
+| `currency_step_id` | key reference | `currency_step` | EMPTY means a target guard, set means a step guard |
+| `sort` | int | | evaluation order within its set |
+| `guard_kind` | int | | a kind of 10.3 |
+| `parameter_a`, `parameter_b` | int | | 0 when unused |
+
+**Target guards and step guards are one type told apart by one empty reference.** A guard with no
+`currency_step_id` is evaluated once, before any step, against the target. A guard naming a step is
+evaluated before that step. One type rather than two because the guard SCHEMA is identical and a second
+type would duplicate it, and check 1 of 8.9 is what stops a guard naming a step of a different currency.
+
+A step naming an `operation` at or above 1,024 is a GAME operation rather than a primitive (10.5). The two
+share the step list so a currency can mix them, which is the point of having a registry at all.
 
 **Worked example, and it is deliberately not a PoE currency.** A "whetstone" that repairs and adds one
-quality point, refusing a corrupted or unidentified item:
+quality point, refusing an unidentified item:
 
 ```
-ConsumesDefinitionId = whetstone, ConsumesCount = 1
-TargetGuards = [ IsCorruptible, IsIdentified(1) ]
-Steps:
-  1. guards [ QualityBetween(0, 19) ]  ->  SetQuality(delta +1)
-  2. guards [ ]                        ->  Repair(0)
+crafting_currency   whetstone:  consumes_definition_id = whetstone, consumes_count = 1, max_steps = 2
+currency_guard      whetstone_target_1:  step empty,  IsIdentified(1)
+currency_step       whetstone_1:  sort 1, operation 12 SetQuality, parameter_a = +1 (delta)
+currency_guard      whetstone_1_g1:  step whetstone_1,  QualityBetween(0, 19)
+currency_step       whetstone_2:  sort 2, operation 11 Repair, parameter_a = 0 (full)
 ```
 
-Two properties of that encoding are worth naming. A step whose guard set is false is SKIPPED rather than
-refusing the whole craft, so the whetstone repairs an item already at quality 20. And `TargetGuards`
-failing refuses the whole craft and consumes NOTHING, which is the difference between a precondition and a
-step guard and is the reason the row carries both.
+Three properties of that encoding are worth naming. A step whose guard set is false is SKIPPED rather than
+refusing the whole craft, so the whetstone repairs an item already at quality 20. A target guard failing
+refuses the whole craft and consumes NOTHING, which is the difference between a precondition and a step
+guard and is the reason both exist. And the whetstone does NOT author `IsCorruptible`, because that
+refusal is standing and every currency inherits it (10.3).
 
 ### 10.5 Game operations through a registry
 
@@ -2044,7 +2254,7 @@ Contracts 5.4 and 8.2 own the mechanism. What this section owns is the AUTHORING
    every stored position maps through 6.4's formula into the new range on the next read. Gate 0 decision 4
    makes the rescale SILENT, so no notification, no flag and no event.
 4. The other choice is **KEEP LEGACY**: the authoring store copies the mod to a NEW id in the same id
-   space with `Legacy` set (contracts 5.4), leaves the original id carrying the new ranges, and emits one
+   space with `legacy` set (contracts 5.4), leaves the original id carrying the new ranges, and emits one
    `MovedToLegacy` remap rule (contracts 8.2 kind 3) from the original id to the legacy copy.
 5. Every stored page whose stamp is older than that publish moves its entries onto the legacy id at load
    (5.5 step 2), lazily, and is rewritten on its next commit. Items generated after the publish carry the
@@ -2162,7 +2372,7 @@ Contracts 13.2's formula verbatim, with the steps this document owns marked:
 6. value     = (flat * increased + 5000) / 10000                 // round half up
 7. for each More m, in the step 1 order:
        value = (value * (10000 + m.Value) + 5000) / 10000
-8. value     = clamp(checked int, stat.Min, stat.Max)
+8. value     = clamp(checked int, stat.min, stat.max)
 ```
 
 ```csharp
@@ -2817,7 +3027,7 @@ per-cell budget to `SpawnGroundItem` and chunk the snapshot the way `SendCombatT
 
 **7. Should the engine cap the affix COUNT, or leave it to the rarity rules?** (3.3, 8.5.) Kind 131's count
 is a byte, so 255 is the format ceiling, and the owner's stated shape is six. **Recommended default: no
-engine cap. The rarity rule's `MaxAffixes` is the cap, it is content, and 255 stays the format's ceiling.**
+engine cap. The rarity rule's `max_affixes` is the cap, it is content, and 255 stays the format's ceiling.**
 
 **8. An unregistered craft operation: refuse at use, or fail the boot?** (10.5, and change request 4.)
 **Recommended default: refuse at use, with a counter, because the alternative takes a server down for one

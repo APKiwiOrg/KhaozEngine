@@ -268,6 +268,7 @@ public sealed class CatalogPublisher
     {
         string[] keys = SyntheticText.BuildKeys(_content);
         var records = new List<TextChunkRecord>();
+        var ordered = new List<EncodedTextChunk>();
         files = [];
         for (int language = 0; language < languages; language++)
         {
@@ -286,14 +287,18 @@ public sealed class CatalogPublisher
                     SyntheticText.Materialize(keys, shards[i].Start, shards[i].Count, tag);
                 encodedShards[i] = ContentTextChunkCodec.Encode(shardTag, entries);
             });
-            foreach (EncodedTextChunk shard in encodedShards)
-            {
-                records.Add(new TextChunkRecord(shard.LanguageTag, shard.Hash, shard.StoredBytes,
-                    shard.UncompressedBytes, shard.EntryCount));
-                files.Add(shard.StoredFile);
-            }
+            foreach (EncodedTextChunk shard in encodedShards) ordered.Add(shard);
         }
-        records.Sort(static (a, b) => string.CompareOrdinal(a.Tag, b.Tag));
+        // Sort the RECORD and its FILE together. Sorting the record list alone stored every shard past the
+        // first reordered one under another shard's hash, which only the client fetch loop's verification
+        // could see, because the server load path never fetches a text chunk.
+        ordered.Sort(static (a, b) => string.CompareOrdinal(a.LanguageTag, b.LanguageTag));
+        foreach (EncodedTextChunk shard in ordered)
+        {
+            records.Add(new TextChunkRecord(shard.LanguageTag, shard.Hash, shard.StoredBytes,
+                shard.UncompressedBytes, shard.EntryCount));
+            files.Add(shard.StoredFile);
+        }
         return records;
     }
 

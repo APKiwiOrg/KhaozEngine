@@ -240,7 +240,7 @@ public static class CatalogBenchmarkRunner
         log.WriteLine(string.Create(CultureInfo.InvariantCulture,
             $"P4 cold start {fetch.WallClockMs / 1000.0:F2} s over {config.LinkBitsPerSecond / 1_000_000} Mbit, "
             + $"local work {fetch.LocalWorkMs:F0} ms, {fetch.BytesFetched / 1048576.0:F1} MB, {fetch.ChunksFetched} objects, "
-            + $"transfer floor {fetch.TransferFloorMs / 1000.0:F2} s, {fetch.Failures} failures"));
+            + $"transfer floor {fetch.TransferFloorMs / 1000.0:F2} s, {fetch.Retries} retries, {fetch.Failures} failures"));
     }
 
     private static void MeasureCompose(
@@ -278,7 +278,9 @@ public static class CatalogBenchmarkRunner
         double sinceProcessStart = (DateTime.Now - self.StartTime).TotalMilliseconds;
 
         builder.ComposeBootMs = boot.Elapsed.TotalMilliseconds;
-        builder.ComposeProcessStartMs = sinceProcessStart;
+        // Only a run that found the pack already published can call this a cold boot. A run that published
+        // first has its own publish inside the elapsed time, so the field stays null rather than lying.
+        builder.ComposeProcessStartMs = publishedThisRun ? null : sinceProcessStart;
         builder.ComposeP3Ms = p3;
         builder.ComposeP10Ms = textMs;
         builder.ComposeLoadIndexMs = indexMs;

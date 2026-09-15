@@ -75,6 +75,8 @@ public sealed record CatalogBenchmarkResult
     public double? ColdStartTransferFloorMs { get; init; }
     public long? ColdStartBytes { get; init; }
     public int? ColdStartChunks { get; init; }
+    public int? ColdStartRetries { get; init; }
+    public int? ColdStartFailures { get; init; }
 
     // P5 and P6: the one-item edit.
     public double? EditPublishMs { get; init; }

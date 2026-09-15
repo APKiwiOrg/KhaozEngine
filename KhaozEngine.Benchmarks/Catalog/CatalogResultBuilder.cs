@@ -117,6 +117,8 @@ public sealed class CatalogResultBuilder
             ColdStartTransferFloorMs = Fetch?.TransferFloorMs,
             ColdStartBytes = Fetch?.BytesFetched,
             ColdStartChunks = Fetch?.ChunksFetched,
+            ColdStartRetries = Fetch?.Retries,
+            ColdStartFailures = Fetch?.Failures,
 
             EditPublishMs = Edit?.PublishMs,
             EditValidateMs = Edit?.ValidateMs,

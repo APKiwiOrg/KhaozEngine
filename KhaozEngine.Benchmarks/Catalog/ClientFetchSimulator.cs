@@ -18,6 +18,7 @@ public sealed class FetchOutcome
     public required long BytesFetched { get; init; }
     public required int ChunksFetched { get; init; }
     public required int Failures { get; init; }
+    public required int Retries { get; init; }
     public required long LinkBitsPerSecond { get; init; }
     public required int Concurrency { get; init; }
 
@@ -68,6 +69,7 @@ public static class ClientFetchSimulator
 
         long bytes = 0;
         int failures = 0;
+        int retries = 0;
         double verifyMs = 0;
         var queue = new ConcurrentQueue<string>(missing);
         var workers = new Task[Math.Max(1, concurrency)];
@@ -77,15 +79,27 @@ public static class ClientFetchSimulator
             {
                 while (queue.TryDequeue(out string? hash))
                 {
-                    byte[] file = await FetchAsync(client, bucket, hash, cancellation).ConfigureAwait(false);
-                    Interlocked.Add(ref bytes, file.Length);
-                    var verify = Stopwatch.StartNew();
-                    bool ok = hashes[hash]
-                        ? ContentChunkCodec.TryVerify(file, hash, out _)
-                        : VerifyText(file, hash);
-                    verify.Stop();
-                    AddDouble(ref verifyMs, verify.Elapsed.TotalMilliseconds);
-                    if (!ok) Interlocked.Increment(ref failures);
+                    // Section 8.7 step 5: verify the hash, and on a mismatch retry ONCE against the same
+                    // source before failing this chunk. A truncated body has no valid hash, so the same
+                    // branch covers both.
+                    for (int attempt = 0; ; attempt++)
+                    {
+                        byte[] file = await FetchAsync(client, bucket, hash, cancellation).ConfigureAwait(false);
+                        Interlocked.Add(ref bytes, file.Length);
+                        var verify = Stopwatch.StartNew();
+                        bool ok = hashes[hash]
+                            ? ContentChunkCodec.TryVerify(file, hash, out _)
+                            : VerifyText(file, hash);
+                        verify.Stop();
+                        AddDouble(ref verifyMs, verify.Elapsed.TotalMilliseconds);
+                        if (ok) break;
+                        if (attempt >= 1)
+                        {
+                            Interlocked.Increment(ref failures);
+                            break;
+                        }
+                        Interlocked.Increment(ref retries);
+                    }
                 }
             }, cancellation);
         }
@@ -101,6 +115,7 @@ public static class ClientFetchSimulator
             BytesFetched = bytes + manifestFile.Length,
             ChunksFetched = missing.Count,
             Failures = failures,
+            Retries = retries,
             LinkBitsPerSecond = linkBitsPerSecond,
             Concurrency = concurrency,
         };
@@ -150,7 +165,9 @@ public static class ClientFetchSimulator
             await bucket.ConsumeAsync(read, cancellation).ConfigureAwait(false);
             buffer.Write(block, 0, read);
         }
-        return buffer.ToArray();
+        byte[] received = buffer.ToArray();
+        if (length is > 0 && received.Length != length.Value) return [];   // truncated, so no hash can match
+        return received;
     }
 
     private static void AddDouble(ref double target, double value)

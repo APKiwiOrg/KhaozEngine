@@ -63,3 +63,37 @@ if (!ContentVarint.TryRead(buffer, ref offset, out uint id, out string? reason))
 string chunkHash = ContentHash.OfChunk(canonicalChunkBytes);
 var key = new ContentKey(rowBlob, start, length);       // no string materialised
 ```
+
+## Validation
+
+`ContentValidator.Validate(candidate, previous, rules, registry)` is the ONE validator, shared by publish,
+server boot and every test. It is PURE: it takes its whole world as arguments, reads no store, no file and
+no ambient static, mutates nothing, and never throws for a content reason. It ACCUMULATES, so one run
+reports every defect rather than the earliest.
+
+- `ContentValidationReport` is `(bool IsValid, IReadOnlyList<ContentFinding> Findings)`, and
+  `ContentFinding` is the value `(ContentTypeId Type, int Id, string Code, string Message)`. The CODE is a
+  stable token a counter, a test and an operator runbook all key on, so a code is never renumbered and a
+  withdrawn one is never reissued.
+- `previous` is the base version's snapshot at publish and NULL everywhere else, including at boot. The
+  three checks that are statements about a CHANGE rather than about a snapshot need it, so they are skipped
+  when it is null and the report carries `KEC0000` naming them. That is a property of the ARGUMENT rather
+  than a mode flag, and `KEC0000` is the one finding that leaves `IsValid` true.
+- **Five passes, in order, none of them stopping early**: structure, schema, references, visibility and
+  codec, then the remap rules. `KEC0001` to `KEC0099` are the engine's own and 1 to 42 are issued.
+  `KEC0100` to `KEC0199` are reserved for the item-instances band, which runs INSIDE the sweep after pass 5.
+- A per-type `IContentValidator` runs LAST, one per registered type, and may only ADD a constraint. Its
+  findings come back as `KEC0040` with its type key on the message, so the token stays stable. A per-type
+  validator is untrusted code, so a throw from one is caught and reported as `KEC0040` rather than taking a
+  publish down with a stack trace where a finding was expected.
+- **What it deliberately does NOT check**: whether a value is sensible, whether a client has the art,
+  whether a localization key resolves, and whether a remap rule is a good idea. The owner owns the numbers.
+
+```csharp
+ContentValidationReport report = ContentValidator.Validate(candidate, previous: null, rules, registry);
+foreach (ContentFinding finding in report.Findings)
+    Log(finding.Code, finding.Type.Value, finding.Id, finding.Message);
+
+if (!report.IsValid)
+    return Refuse(report);                              // publish writes nothing, boot exits non-zero
+```

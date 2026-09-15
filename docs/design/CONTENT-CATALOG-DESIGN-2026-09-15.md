@@ -109,8 +109,9 @@ spec's status codes require:
 | `KhaozEngine.Primitives` | Gains `IRandomSource`, `SeededRandomSource` and `CryptographicRandomSource` (contracts 3.2 and 14.1). Additive, and it is the CONTRACTS' change rather than this spec's: it is listed here because this spec takes a dependency on the result. |
 
 The first two land in phase 1 milestone 1.4 (section 18.1) and neither is a contract change. The third lands
-whenever either scope needs it first, which is milestone 1.3 here, and it is already written into the
-contracts. Section 10.1 spends the reasoning for the admin pair.
+whenever either scope needs it first, which is milestone 1.1 here: the decoder fuzzer that GATES 1.1 is seeded
+with `SeededRandomSource` (15.2), well before `LootRoller` takes an `IRandomSource` in 1.3. It is already
+written into the contracts. Section 10.1 spends the reasoning for the admin pair.
 
 The layering rules are the README's, surveyed at `a-engine.md:1373-1407`. A pure catalog with no SQL belongs in
 `Foundation` beside `Items` and `Stats`. Anything with a SQL provider is an opt-in SIBLING pair and is never
@@ -186,8 +187,8 @@ public interface IContentSnapshot
 Seven members and no more. It carries no authoring concept, no chunk, no hash beyond the identity pair, and
 no mutation, so a client holds one with the pure read graph of 2.1. `TryGetRow` is the generic path and
 `ItemRow` (below) is the typed one over the same storage. **It ships in milestone 1.1**, with the registry
-and the codecs, ahead of everything that consumes it, because Scope B's phase 1 is designed behind it and the
-two phase 1s are meant to land in either order.
+and the codecs, ahead of everything that consumes it, because Scope B's phase 1 is designed behind it and
+COMPILES against it, which is why milestone 1.1 gates every `ItemInstances` package (18.1).
 
 ### 2.3 `KhaozEngine.Catalog.Authoring` public types
 
@@ -2136,8 +2137,14 @@ offset  width  field
                  [definitionId : varint uint32]   strictly ascending
                  [flags        : byte]            bit 0 retired, bits 1-7 reserved 0
                  [rowLength    : varint uint32]   bytes of this row's body
-  ..     ..    row bodies, in the SAME ORDER as the table, concatenated
+  ..     ..    row bodies, in the SAME ORDER as the table, concatenated, each
+                 [key    : varint uint32 length, then that many UTF-8 bytes]
+                 [fields : the type's codec, positional in schema order]
 ```
+
+**The key is the FIRST field of every row body**, which is what lets the runtime hold no separate `Keys`
+array: an id-to-key read is the same offset lookup and span slice as a row read, one varint further in
+(section 9.1). Section 7.9 works a two-row chunk through byte by byte.
 
 Rows are STRICTLY ASCENDING by definition id and a row id appearing twice is a refusal with
 `chunk-row-duplicate`. Disorder is `chunk-row-order`. Both mirror `ItemContainerCodec`, whose entries are
@@ -2449,37 +2456,41 @@ codec's field set is fixed by the schema it was checked against at registration 
 in the text chunk (section 7.6). Positional encoding is unaffected: a marker takes zero width in the sequence
 the way a zero-length field would, and the decoder knows to skip it from the same schema the encoder used.
 
-The row body for tag 1 is therefore one field:
+The row body for tag 1 therefore opens with the row's own content key, a varint length then the UTF-8 bytes
+(section 7.3), and the one encoded field follows it:
 
 ```
+05 6D 65 74 61 6C                                  key: varint length 5, then "metal"
 0A                                                 sort: varint 10
 ```
 
-One byte. The row body for tag 2:
+Seven bytes. The row body for tag 2:
 
 ```
+0A 74 77 6F 5F 68 61 6E 64 65 64                   key: varint length 10, then "two_handed"
 14                                                 sort: varint 20
 ```
 
-One byte. `0A` is 10 and `14` is 20, both single-byte varints because both are under 128.
+Twelve bytes. `0A` is 10 and `14` is 20, both single-byte varints because both are under 128, and tag 2's key
+length prefix is that same `0A` byte for the same reason.
 
 The row table, two entries:
 
 ```
-01 00 01       id 1, flags 0 (live),    rowLength 1
-02 01 01       id 2, flags 1 (retired), rowLength 1
+01 00 07       id 1, flags 0 (live),    rowLength 7
+02 01 0C       id 2, flags 1 (retired), rowLength 12
 ```
 
-Six bytes. The uncompressed body is `6 + 1 + 1 = 8` bytes:
+Six bytes. The uncompressed body is `6 + 7 + 12 = 25` bytes:
 
 ```
-01 00 01  02 01 01
-0A
-14
+01 00 07  02 01 0C
+05 6D 65 74 61 6C  0A
+0A 74 77 6F 5F 68 61 6E 64 65 64  14
 ```
 
 The 36 byte header, as it appears in the CANONICAL bytes the hash is taken over, so `compression = 0` and
-`storedBytes = uncompressedBytes = 8`:
+`storedBytes = uncompressedBytes = 25`:
 
 ```
 4B 45 43 43     magic  'K','E','C','C'
@@ -2492,19 +2503,19 @@ The 36 byte header, as it appears in the CANONICAL bytes the hash is taken over,
 00              visibility 0 (Client)
 00              compression 0
 00 00           reserved
-08 00 00 00     uncompressedBytes 8
-08 00 00 00     storedBytes 8
+19 00 00 00     uncompressedBytes 25
+19 00 00 00     storedBytes 25
 ```
 
-Note `00 10 00 00` is 4,096 little endian (`0x00001000`). The canonical bytes are 44 in total, 36 of header
-plus 8 of body, and
+Note `00 10 00 00` is 4,096 little endian (`0x00001000`). The canonical bytes are 61 in total, 36 of header
+plus 25 of body, and
 
 ```
-chunkHash = lowerHex(SHA256( utf8("kec/chunk/1\n") || <those 44 bytes> ))
+chunkHash = lowerHex(SHA256( utf8("kec/chunk/1\n") || <those 61 bytes> ))
 ```
 
 The STORED file differs from the canonical bytes in exactly two fields when the body compresses: byte 25 holds
-`01` and bytes 32 to 35 hold the compressed length. At 8 bytes this body will not compress smaller, so this
+`01` and bytes 32 to 35 hold the compressed length. At 25 bytes this body will not compress smaller, so this
 particular chunk stores uncompressed and the stored file is byte identical to the canonical bytes. That is the
 common case for a small chunk and it is why the `compression` byte exists per chunk rather than per pack.
 
@@ -4798,7 +4809,7 @@ each with its own gate, so it is not one undivided landing:
 
 | Milestone | Ships | Gate |
 |---|---|---|
-| 1.1 | `KhaozEngine.Catalog`: registry, field schema, codecs, varint, hashes, the four pack formats, remap rules, `FileSystemPackStore`, `ContentPackReader`, plus `IContentSnapshot` and `ItemRow` (2.2) | The golden files of 15.1, the decoder fuzzing of 15.2, the cross-version round trips of 15.3 |
+| 1.1 | `KhaozEngine.Catalog`: registry, field schema, codecs, varint, hashes, the four pack formats, remap rules, `FileSystemPackStore`, `ContentPackReader`, plus `IContentSnapshot` and `ItemRow` (2.2), and the `KhaozEngine.Primitives` random seam of 2.1 that the fuzzer seeds from | The golden files of 15.1, the decoder fuzzing of 15.2, the cross-version round trips of 15.3 |
 | 1.2 | `Catalog.Authoring`, `Catalog.Sqlite`, `Catalog.SqlServer`: temporal rows, draft, change set, field audit, id allocator, publish | The provider conformance suite of 15.5 on both backends, the crash-safety cases of 15.6 |
 | 1.3 | `ContentRuntime`, the boot sequence, fail-closed exit 3, the derived indexes, `IContentLoadIndex` and boot step 7b, `LootRoller`, the `--catalog` benchmark mode | The twelve boot facts of 15.7, plus P3, P7, P9 and P11 measured at 50,000 |
 | 1.4 | The sixteen actions, the bundle, the empty-database rule, operator identity, and the admin-result change of section 10.1: `AdminActionStatus.Conflict`, an object-carrying error payload on `AdminActionResult`, and the matching arm in `AdminHttpServer.DispatchActionAsync` | The action tests, including one asserting a real 409 body with `expectedBaseVersion`, plus P5 and P6 measured |
@@ -4812,12 +4823,18 @@ replacing the validator underneath it (16.7). Those two are the acceptance. The 
 fence around it.
 
 **Coordination with Scope B, named here because a phase table that names no edge implies there is none.**
-Scope A phase 1 and Scope B phase 1 do not depend on each other and may land in either order, which is what
-`IContentSnapshot` shipping in milestone 1.1 (2.2) is for. One thing between them IS ordered: Scope B phase 1
+Milestone 1.1 is a HARD PRECONDITION for Scope B rather than a convenience, and an earlier draft of this
+section said the two phase 1s may land in either order. They may not. `KhaozEngine.Catalog` carries the
+registry, `IContentSnapshot` (2.2), `ContentVarint` and the remap rules, and every
+`KhaozEngine.ItemInstances` type compiles against them, so **milestone 1.1 must land before any
+`ItemInstances` package compiles.** Only the Scope B work touching `KhaozEngine.Items`,
+`KhaozEngine.Primitives` and `KhaozEngine.TileWorld.Netcode` alone is order-free. Milestones 1.2 onward
+carry no such edge, so Scope B waits on 1.1 and on nothing after it. A SECOND thing between them is
+ordered: Scope B phase 1
 takes `ItemStack` to three components and `ItemContainerCodec` to version 2, a fleet-wide compile break plus a
 durable codec bump, and it must land OUTSIDE the window of Grimhollow's adoption steps 7 to 11 (16.8). Before
 step 7 or after step 11, either is fine. Inside is not, and nothing except these two sentences would have
-stopped it, because each spec's phase 1 is written as though the other's is not happening.
+stopped it either, because each spec's phase 1 is written as though the other's is not happening.
 
 **Consumer:** Grimhollow, [#208](https://github.com/APKiwiOrg/Grimhollow/issues/208). Its
 `feature/item-drop` branch lands before any of this (gate 0 decision 12, section 16.1).

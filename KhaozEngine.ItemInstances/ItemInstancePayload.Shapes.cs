@@ -85,12 +85,13 @@ public static partial class ItemInstancePayload
     /// instance id sets the high bit, so narrowing the read here would refuse a legal payload. Narrowing a
     /// particular kind's value is that kind's own codec's business.
     /// <para>
-    /// <b>This walk and <c>InstanceValidator.ReadRun</c> are a PAIR.</b> They read the same four
-    /// <see cref="InstanceSlotKind"/> members off the same shapes and differ only in what they do with what
-    /// they find: this one discards the values and recurses STRUCTURALLY, and the validator's keeps the
-    /// values, because resolving a reference needs them, and answers <c>field-malformed</c> for every
-    /// failure, because the bytes have already decoded here and a refusal there is defensive. A fifth slot
-    /// kind is added to BOTH or to neither.
+    /// <b>This walk, <c>InstanceValidator.ReadRun</c> and <c>InstanceRemapPass.ReadRun</c> are a SET of
+    /// three.</b> They read the same four <see cref="InstanceSlotKind"/> members off the same shapes and
+    /// differ only in what they do with what they find: this one discards the values and recurses
+    /// STRUCTURALLY, the validator's keeps the values, because resolving a reference needs them, and
+    /// answers <c>field-malformed</c> for every failure, because the bytes have already decoded here and a
+    /// refusal there is defensive, and the pass's keeps them and writes them back. A fifth slot kind is
+    /// added to ALL THREE or to none.
     /// </para>
     /// </summary>
     static bool ReadSlots(

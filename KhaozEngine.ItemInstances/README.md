@@ -387,6 +387,58 @@ content, so it saturates at the engine ceiling and the load-time validator is wh
 Where that rule should live is
 [#924](https://github.com/APKiwiOrg/KhaozEngine/issues/924).
 
+## The remap pass
+
+`InstanceRemapPass.Apply` brings one page forward: every rule whose `IntroducedIn` is strictly greater than
+the page stamp, in `Sequence` order, in ONE pass. It runs BEFORE the validator, which is what makes a drift
+finding mean "no rule covered it".
+
+```csharp
+InstanceRemapOutcome outcome = InstanceRemapPass.Apply(
+    page, rules, page.ContentVersion, properties, types, entries);
+// outcome.EntriesTouched, outcome.IdsRewritten, outcome.BytesDelta
+// entries now holds the page's entries as the pass left them, ready for the codec
+```
+
+**The walk is DERIVED from the property registry.** It visits the entry's own definition id, every id a
+registered `InstanceReferenceTarget` names inside every field, and, through a nesting slot, every id inside a
+socket's nested payload along with that socket's own contained definition. Nothing is skipped for being
+nested: a gem socketed into a sword is rewritten by the same rule that rewrites the same gem lying in a bag
+slot, which is what stops an item surviving three publishes invisibly and then quarantining on the day a
+player unsockets it. A game kind at or above 1,024 is remapped by declaring its shape and its targets and
+nothing else.
+
+**It walks the same descriptors, in the same recursive order, as the validator's checks 6 and 7.** Both read
+`Shape` and `References` off the registration, and both resolve a run's targets AFTER recursing into a nested
+payload that run carries, so a kind cannot be remapped-but-not-validated or validated-but-not-remapped.
+
+**It RE-ENCODES rather than patching bytes in place**, because a replacement id can change a varint's WIDTH.
+A hit recomputes, innermost first, the nested payload's bytes, then the socket entry's nested length, then the
+field's length, then the entry's payload length in the page. It also restores canonical order on a list whose
+codec declares one (the shipped affix list), because a replacement can move a mod id past its neighbour and a
+list that lost its order no longer stacks with its own twins.
+
+| Rule kind | What the pass does to an entry carrying `FromId` |
+|---|---|
+| 1 `ReplacedBy` | rewrites the id at the entry's own definition and at every depth inside the payload, counts and positions carried over |
+| 2 `Retired`, policy `0x01` | nothing: the reference is kept as is, the page is not dirtied and the stamp does not move. The placeholder presentation is the caller's, through validator check 13 |
+| 2 `Retired`, policy `0x02` | rewrites to the destination held IN the payload, which is kind 1's behaviour |
+| 3 `MovedToLegacy` | rewrites onto the legacy copy, at every depth, exactly as kind 1 does |
+| 4 `StackCapLowered` | nothing: `ToId` is 0 and the id does not move. The rule RESOLVES, which is what a caller enforcing the cap reads, and an existing over-cap stack is legal by contract |
+
+**A rule that changes nothing is a SCAN.** The page is not dirtied, its stamp does not move, and no byte is
+replaced, which is almost every rule on almost every page. A rule that DOES change something dirties the page
+and moves its in-memory stamp, and never lowers it, so a page stamped newer than the active version is left as
+it stands. The page is NOT written: the rewrite is lazy and rides the next ordinary commit, and that is safe
+because applying the whole ordered set twice produces what applying it once produced.
+
+**A set whose destination is an earlier rule's source is REFUSED.** One pass is enough because the publish
+validator is required to reject that shape, and a fixed-point loop here would hide the gap rather than surface
+it. An entry the pass cannot rewrite is left WHOLE, its definition id included: a quarantined entry, whose
+wrapper preserves bytes verbatim rather than offering them to be read, a payload that does not decode, and a
+rewrite whose result the decoder would refuse, which is what a rule naming an id the same item already carries
+produces.
+
 ## The validator
 
 `InstanceValidator` sweeps a decoded container through thirteen checks and reports everything it found.
@@ -424,7 +476,7 @@ Four of those rows deserve their reason spelled out.
   the thing that drifts, so the sweep calls `ItemInstancePayload.TryDecode` and maps its token back to the
   row that owns it.
 - **Checks 6 and 7 are DERIVED from the property registry** rather than from a list here, walking the same
-  `InstanceReferenceTarget` descriptors the remap pass will walk, in the same recursive order, over the same
+  `InstanceReferenceTarget` descriptors `InstanceRemapPass` walks, in the same recursive order, over the same
   nested payloads. A kind cannot be remapped-but-not-validated or validated-but-not-remapped, and a game kind
   at or above 1,024 gets drift detection by declaring its shape and nothing else. Check 8 stays HAND WRITTEN,
   because a tier ordinal is not a content id: it is a key INTO the row check 7 already resolved.
@@ -443,9 +495,8 @@ unwraps it through `QuarantineWrapper.TryUnwrap` first and hands the ORIGINAL by
 load after a missing remap rule lands restores the item exactly.
 
 `InstanceValidationOutcome` has THREE members and there is no fourth. In particular there is no "dropped": a
-record that did not resolve is KEPT, unusable, never discarded. `Remapped` is here from the start because the
-vocabulary belongs to the contracts rather than to this package, and **no phase 1 path produces it**, because
-the remap pass ships with the pages.
+record that did not resolve is KEPT, unusable, never discarded. `Remapped` is the outcome the pass above
+produces, and the vocabulary belongs to the contracts rather than to this package.
 
 `InstanceValidationReport` is the only thing the sweep produces. `Findings` is every `InstanceValidationFinding`
 in slot order with the container-wide ones last, `TryGetQuarantine(slot)` is what a caller writes a wrapper
@@ -503,7 +554,6 @@ data exists. What is absent is breadth, which is content.
 | Not here | Where it lands |
 |---|---|
 | the container section naming (`<container>/p<NN>`) | `docs/superpowers/plans/2026-09-15-item-instances-phase2-3.md` |
-| the registry-derived remap pass, which is what produces the `Remapped` outcome | the same plan, with the pages |
 | the journal commit path (`ContainerCommitBuilder`) | the same plan |
 | the wire: the fragmenter, the ground component, the page delta, the owner remainder, and a real `PublicView` | the same plan |
 | the affix content types and the item generator | spec 20 phase 4, gated on the authoring registry and publish path being real |

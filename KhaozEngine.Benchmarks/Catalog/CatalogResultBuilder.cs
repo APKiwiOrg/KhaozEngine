@@ -37,6 +37,10 @@ public sealed class CatalogResultBuilder
     public double? TextDecodeMs { get; set; }
     public long? TextDecodeHeapBytes { get; set; }
     public int? TextDecodeEntryCount { get; set; }
+    public long? TextCatalogApproximateBytes { get; set; }
+    public MicroResult? TextGetCached { get; set; }
+    public MicroResult? TextGetUncached { get; set; }
+    public int? TextGetProbeKeys { get; set; }
     public double? ComposeBootMs { get; set; }
     public double? ComposeProcessStartMs { get; set; }
     public double? ComposeP3Ms { get; set; }
@@ -160,6 +164,12 @@ public sealed class CatalogResultBuilder
             TextDecodeMs = TextDecodeMs,
             TextDecodeHeapBytes = TextDecodeHeapBytes,
             TextDecodeEntryCount = TextDecodeEntryCount,
+            TextCatalogApproximateBytes = TextCatalogApproximateBytes,
+            TextGetCachedNanoseconds = TextGetCached?.Nanoseconds,
+            TextGetCachedAllocatedBytes = TextGetCached?.AllocatedBytes,
+            TextGetUncachedNanoseconds = TextGetUncached?.Nanoseconds,
+            TextGetUncachedAllocatedBytes = TextGetUncached?.AllocatedBytes,
+            TextGetProbeKeys = TextGetProbeKeys,
 
             ComposeProcessStartMs = ComposeProcessStartMs,
             ComposeBootMs = ComposeBootMs,

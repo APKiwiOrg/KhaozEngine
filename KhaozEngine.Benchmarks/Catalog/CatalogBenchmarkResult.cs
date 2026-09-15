@@ -118,6 +118,12 @@ public sealed record CatalogBenchmarkResult
     public double? TextDecodeMs { get; init; }
     public long? TextDecodeHeapBytes { get; init; }
     public int? TextDecodeEntryCount { get; init; }
+    public long? TextCatalogApproximateBytes { get; init; }
+    public double? TextGetCachedNanoseconds { get; init; }
+    public long? TextGetCachedAllocatedBytes { get; init; }
+    public double? TextGetUncachedNanoseconds { get; init; }
+    public long? TextGetUncachedAllocatedBytes { get; init; }
+    public int? TextGetProbeKeys { get; init; }
 
     // P11: the composed cold boot.
     public double? ComposeProcessStartMs { get; init; }

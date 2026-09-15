@@ -89,8 +89,13 @@ public static class ContentTextChunkCodec
         };
     }
 
-    /// <summary>Decodes a stored text chunk into a dictionary. Total: a reason token, never a throw.</summary>
-    public static bool TryDecode(ReadOnlySpan<byte> file, out Dictionary<string, string>? entries, out string reason)
+    /// <summary>
+    /// Verifies the header of a stored text chunk and decompresses its body, WITHOUT decoding an entry.
+    /// Section 7.6: a decoded language is the body itself plus one index over it, so the body is what a
+    /// reader keeps and <see cref="ContentStringCatalog"/> is what indexes it. Total: a reason token,
+    /// never a throw.
+    /// </summary>
+    public static bool TryDecodeBody(ReadOnlySpan<byte> file, out byte[]? entries, out string reason)
     {
         entries = null;
         if (file.Length < ContentPackFormat.TextHeaderFixedBytes + 1) { reason = "text-truncated-header"; return false; }
@@ -121,26 +126,7 @@ public static class ContentTextChunkCodec
             return false;
         }
 
-        int cursor = 0;
-        if (!ContentVarint.TryRead(body, ref cursor, out uint entryCount)) { reason = "text-entry-count"; return false; }
-        var map = new Dictionary<string, string>((int)entryCount, StringComparer.Ordinal);
-        for (uint i = 0; i < entryCount; i++)
-        {
-            if (cursor >= body.Length) { reason = "text-truncated-entry"; return false; }
-            int keyLength = body[cursor++];
-            if (keyLength is < 1 or > MaxKeyBytes) { reason = "text-key-length"; return false; }
-            if (cursor + keyLength > body.Length) { reason = "text-truncated-entry"; return false; }
-            string key = Encoding.UTF8.GetString(body, cursor, keyLength);
-            cursor += keyLength;
-            if (!ContentVarint.TryRead(body, ref cursor, out uint valueLength)) { reason = "text-value-length"; return false; }
-            if (valueLength > MaxValueBytes) { reason = "text-value-length"; return false; }
-            if (cursor + (int)valueLength > body.Length) { reason = "text-truncated-entry"; return false; }
-            string value = Encoding.UTF8.GetString(body, cursor, (int)valueLength);
-            cursor += (int)valueLength;
-            map[key] = value;
-        }
-        if (cursor != body.Length) { reason = "text-trailing-bytes"; return false; }
-        entries = map;
+        entries = body;
         reason = string.Empty;
         return true;
     }

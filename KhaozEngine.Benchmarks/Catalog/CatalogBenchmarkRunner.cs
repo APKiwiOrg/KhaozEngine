@@ -82,13 +82,26 @@ public static class CatalogBenchmarkRunner
 
         if (config.Phases.HasFlag(CatalogPhases.Text))
         {
-            (double ms, long heap, int entries) = CatalogMicroBenchmarks.MeasureTextDecode(
+            TextDecodeResult text = CatalogMicroBenchmarks.MeasureTextDecode(
                 store, publish.ServerManifest.Languages, CatalogPublisher.LanguageTag(0));
-            builder.TextDecodeMs = ms;
-            builder.TextDecodeHeapBytes = heap;
-            builder.TextDecodeEntryCount = entries;
+            builder.TextDecodeMs = text.Milliseconds;
+            builder.TextDecodeHeapBytes = text.HeapBytes;
+            builder.TextDecodeEntryCount = text.Entries;
+            builder.TextCatalogApproximateBytes = text.ApproximateBytes;
             log.WriteLine(string.Create(CultureInfo.InvariantCulture,
-                $"P10 text decode {ms:F1} ms, {heap / 1048576.0:F1} MB resident, {entries} entries"));
+                $"P10 text decode {text.Milliseconds:F1} ms, {text.HeapBytes / 1048576.0:F1} MB resident, "
+                + $"{text.Entries} entries, {text.ApproximateBytes / 1048576.0:F1} MB accounted"));
+
+            int getIterations = config.Quick ? 1_000_000 : 10_000_000;
+            (MicroResult cachedGet, MicroResult uncachedGet, int probes) =
+                CatalogMicroBenchmarks.MeasureTextGet(text.Catalog, 64, getIterations);
+            builder.TextGetCached = cachedGet;
+            builder.TextGetUncached = uncachedGet;
+            builder.TextGetProbeKeys = probes;
+            log.WriteLine(string.Create(CultureInfo.InvariantCulture,
+                $"P10 Get over {probes} keys: cached {cachedGet.Nanoseconds:F1} ns, "
+                + $"{cachedGet.AllocatedBytes / (double)getIterations:F1} B/call; materialised "
+                + $"{uncachedGet.Nanoseconds:F1} ns, {uncachedGet.AllocatedBytes / (double)getIterations:F1} B/call"));
         }
 
         if (config.Phases.HasFlag(CatalogPhases.Edit))
@@ -265,8 +278,9 @@ public static class CatalogBenchmarkRunner
         runtime.Timing.ValidateMs = validateClock.Elapsed.TotalMilliseconds;
         double p3 = runtime.Timing.TotalMs;
 
-        (double textMs, long _, int _) = CatalogMicroBenchmarks.MeasureTextDecode(
+        TextDecodeResult text = CatalogMicroBenchmarks.MeasureTextDecode(
             store, publish.ServerManifest.Languages, CatalogPublisher.LanguageTag(0));
+        double textMs = text.Milliseconds;
 
         (double indexMs, long indexBytes) = CatalogMicroBenchmarks.BuildStandInLoadIndex(runtime, StandInLoadIndexBytes);
 
@@ -287,6 +301,7 @@ public static class CatalogBenchmarkRunner
         builder.ComposeLoadIndexBytes = indexBytes;
         builder.ComposeHeapBytes = heapAfter - heapBefore;
         builder.ComposePublishedThisRun = publishedThisRun;
+        GC.KeepAlive(text.Catalog);
 
         string note = publishedThisRun ? " (this run also published, so the process figure is not a boot)" : string.Empty;
         log.WriteLine(string.Create(CultureInfo.InvariantCulture,

@@ -10,6 +10,14 @@ namespace KhaozEngine.Benchmarks.Catalog;
 /// <summary>A per-operation cost: nanoseconds and the bytes it allocated on this thread.</summary>
 public readonly record struct MicroResult(double Nanoseconds, long AllocatedBytes);
 
+/// <summary>What budget P10's decode produced: the timing, the heap delta, and the catalog it built.</summary>
+public readonly record struct TextDecodeResult(
+    double Milliseconds,
+    long HeapBytes,
+    int Entries,
+    long ApproximateBytes,
+    ContentStringCatalog Catalog);
+
 /// <summary>
 /// The per-operation budgets: P7's lookup by id, P9's weighted loot draw, P10's text chunk decode, and
 /// the stand-in per-type load index P11 composes with. Every loop sinks its result into a static field so
@@ -127,8 +135,12 @@ public static class CatalogMicroBenchmarks
         return (clock.Elapsed.TotalMilliseconds, candidates.LongLength * 4);
     }
 
-    /// <summary>Budget P10: decode one language's text chunks into a dictionary, timed and weighed.</summary>
-    public static (double Milliseconds, long HeapBytes, int Entries) MeasureTextDecode(
+    /// <summary>
+    /// Budget P10: decode one language's text chunks into their resident form, timed and weighed. The
+    /// resident form of section 7.6 is the chunk body plus one open-addressed index over it, so what the
+    /// heap delta measures is those two and the catalog's bounded cache, which is empty at this point.
+    /// </summary>
+    public static TextDecodeResult MeasureTextDecode(
         FileSystemPackStore store,
         IReadOnlyList<ManifestLanguageEntry> languages,
         string languageTag)
@@ -152,19 +164,53 @@ public static class CatalogMicroBenchmarks
         GC.Collect();
         long before = GC.GetTotalMemory(forceFullCollection: true);
         var clock = Stopwatch.StartNew();
-        var decoded = new List<Dictionary<string, string>>(files.Count);
-        int entries = 0;
-        foreach (byte[] file in files)
-        {
-            if (!ContentTextChunkCodec.TryDecode(file, out Dictionary<string, string>? map, out _) || map is null) continue;
-            decoded.Add(map);
-            entries += map.Count;
-        }
+        if (!ContentStringCatalog.TryBuild(files, out ContentStringCatalog? catalog, out string reason) || catalog is null)
+            throw new InvalidOperationException("Text chunk refused: " + reason);
         clock.Stop();
         long after = GC.GetTotalMemory(forceFullCollection: true);
-        _sink += decoded.Count;
-        GC.KeepAlive(decoded);
-        return (clock.Elapsed.TotalMilliseconds, after - before, entries);
+        _sink += catalog.ShardCount;
+        return new TextDecodeResult(clock.Elapsed.TotalMilliseconds, after - before, catalog.EntryCount,
+            catalog.ApproximateBytes(), catalog);
+    }
+
+    /// <summary>
+    /// The two shapes section 7.6 weighed for <c>Get</c>, over one screen's worth of keys resolved
+    /// repeatedly: through the bounded cache, and materialising on every call. The probe set and its keys
+    /// are built BEFORE the allocation baseline, so the reported bytes are the lookups' own.
+    /// </summary>
+    public static (MicroResult Cached, MicroResult Uncached, int ProbeKeys) MeasureTextGet(
+        ContentStringCatalog catalog,
+        int probeKeys,
+        int iterations)
+    {
+        ArgumentNullException.ThrowIfNull(catalog);
+        List<byte[]> keys = catalog.SampleKeys(probeKeys);
+        if (keys.Count == 0) return (default, default, 0);
+        byte[][] probes = keys.ToArray();
+        var clock = new Stopwatch();
+
+        RunTextGet(catalog, probes, Math.Min(iterations, 100_000), cached: true);
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        clock.Start();
+        RunTextGet(catalog, probes, iterations, cached: true);
+        clock.Stop();
+        long cachedBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        var cached = new MicroResult(clock.Elapsed.TotalMilliseconds * 1_000_000.0 / iterations, cachedBytes);
+
+        clock.Reset();
+        RunTextGet(catalog, probes, Math.Min(iterations, 100_000), cached: false);
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        before = GC.GetAllocatedBytesForCurrentThread();
+        clock.Start();
+        RunTextGet(catalog, probes, iterations, cached: false);
+        clock.Stop();
+        long uncachedBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        var uncached = new MicroResult(clock.Elapsed.TotalMilliseconds * 1_000_000.0 / iterations, uncachedBytes);
+
+        return (cached, uncached, probes.Length);
     }
 
     public static long Sink => Volatile.Read(ref _sink);
@@ -190,6 +236,19 @@ public static class CatalogMicroBenchmarks
         for (int i = 0; i < iterations; i++)
         {
             if (runtime.TryGetItem(ring[i & mask], out ItemRowView row)) accumulator += row.MaxStack;
+        }
+        _sink += accumulator;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void RunTextGet(ContentStringCatalog catalog, byte[][] probes, int iterations, bool cached)
+    {
+        long accumulator = 0;
+        for (int i = 0; i < iterations; i++)
+        {
+            byte[] key = probes[i % probes.Length];
+            bool found = cached ? catalog.TryGet(key, out string value) : catalog.TryGetUncached(key, out value);
+            if (found) accumulator += value.Length;
         }
         _sink += accumulator;
     }

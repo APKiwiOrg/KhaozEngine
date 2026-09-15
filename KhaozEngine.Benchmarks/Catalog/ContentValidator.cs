@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Text;
 
 namespace KhaozEngine.Benchmarks.Catalog;
 
@@ -72,17 +73,20 @@ public sealed class ContentValidator
             if (type.ChunkSlots < 256 || type.ChunkSlots > 65_536 || (type.ChunkSlots & (type.ChunkSlots - 1)) != 0)
                 report.Add(type.TypeId, 0, "KEC0028", "chunk_slots is not a power of two between 256 and 65536.");
             if (!runtime.Tables.TryGetValue(type.TypeId, out ContentTypeTable? table)) continue;
-            var keys = new HashSet<string>(table.RowCount, StringComparer.Ordinal);
+            // Uniqueness is the key index rather than a HashSet of strings: the index keeps one id per key,
+            // so a row that looks its own key up and gets someone else's id is the duplicate. That is one
+            // probe per row against a build of a second table, and it materialises a string only on a finding.
+            table.EnsureKeyIndex();
             for (int id = 0; id < table.Offsets.Length; id++)
             {
                 if (table.Offsets[id] < 0) continue;
                 report.RowsSwept++;
                 if (id <= 0) report.Add(type.TypeId, id, "KEC0009", "A definition id is 0 or negative.");
-                string key = table.Keys[id];
+                ReadOnlySpan<byte> key = table.KeyUtf8(id);
                 if (!IsWellFormedKey(key))
-                    report.Add(type.TypeId, id, "KEC0001", "A key is not well formed: " + key);
-                if (!keys.Add(key))
-                    report.Add(type.TypeId, id, "KEC0002", "A key is not unique within its type: " + key);
+                    report.Add(type.TypeId, id, "KEC0001", "A key is not well formed: " + Encoding.UTF8.GetString(key));
+                if (table.TryGetId(key, out int owner) && owner != id)
+                    report.Add(type.TypeId, id, "KEC0002", "A key is not unique within its type: " + Encoding.UTF8.GetString(key));
             }
         }
     }
@@ -106,7 +110,7 @@ public sealed class ContentValidator
                     report.Add(ContentTypes.Item, id, "KEC0025", "max_stack is below 1, or is 1 on a stackable row.");
                 if (row.Stackable && (row.DurabilityMax > 0 || row.SocketMax > 0))
                     report.Add(ContentTypes.Item, id, "KEC0022", "A definition declaring durability or sockets is stackable.");
-                CheckDerivedKey(report, ContentTypes.Item, id, "item", items.Keys[id], "examine");
+                CheckDerivedKey(report, ContentTypes.Item, id, "item", items.KeyUtf8(id).Length, "examine");
             }
         }
 
@@ -124,7 +128,7 @@ public sealed class ContentValidator
                 }
                 if (!IsPowerOfTen(row.Scale)) report.Add(ContentTypes.Stat, id, "KEC0020", "A stat scale is not a power of ten.");
                 if (row.Min > row.Max) report.Add(ContentTypes.Stat, id, "KEC0021", "A stat min exceeds its max.");
-                CheckDerivedKey(report, ContentTypes.Stat, id, "stat", stats.Keys[id], "display_format");
+                CheckDerivedKey(report, ContentTypes.Stat, id, "stat", stats.KeyUtf8(id).Length, "display_format");
             }
         }
     }
@@ -346,22 +350,26 @@ public sealed class ContentValidator
             report.Add(typeId, id, "KEC0008", "A tag list names a tag id that is not a live tag row.");
     }
 
-    private static void CheckDerivedKey(ValidationReport report, ushort typeId, int id, string typeKey, string contentKey, string field)
+    private static void CheckDerivedKey(ValidationReport report, ushort typeId, int id, string typeKey, int contentKeyBytes, string field)
     {
-        if (typeKey.Length + contentKey.Length + field.Length + 2 > 192)
+        if (typeKey.Length + contentKeyBytes + field.Length + 2 > 192)
             report.Add(typeId, id, "KEC0030", "A row's derived localized text key exceeds 192 characters.");
     }
 
-    private static bool IsWellFormedKey(string key)
+    /// <summary>
+    /// The key charset of contracts 5.3 is ASCII snake case, so the byte test and the character test are the
+    /// same test, and this one runs over the loaded UTF-8 slice without materialising anything.
+    /// </summary>
+    private static bool IsWellFormedKey(ReadOnlySpan<byte> key)
     {
-        if (string.IsNullOrEmpty(key) || key.Length > 64) return false;
-        if (key[0] is >= '0' and <= '9' || key[0] == '_' || key[^1] == '_') return false;
+        if (key.Length is 0 or > 64) return false;
+        if (key[0] is >= (byte)'0' and <= (byte)'9' || key[0] == (byte)'_' || key[^1] == (byte)'_') return false;
         for (int i = 0; i < key.Length; i++)
         {
-            char c = key[i];
-            bool legal = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_';
+            byte c = key[i];
+            bool legal = (c >= (byte)'a' && c <= (byte)'z') || (c >= (byte)'0' && c <= (byte)'9') || c == (byte)'_';
             if (!legal) return false;
-            if (c == '_' && i + 1 < key.Length && key[i + 1] == '_') return false;
+            if (c == (byte)'_' && i + 1 < key.Length && key[i + 1] == (byte)'_') return false;
         }
         return true;
     }

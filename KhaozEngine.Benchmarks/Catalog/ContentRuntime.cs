@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Text;
 
 namespace KhaozEngine.Benchmarks.Catalog;
 
@@ -100,6 +99,17 @@ public sealed class ContentRuntime
     /// <summary>The one array read and span slice budget P7 is taken against.</summary>
     public ReadOnlySpan<byte> Row(ushort typeId, int id) => _tables[typeId].Body(id);
 
+    /// <summary>Key to id, through the open-addressed index of section 9.4. No string is materialised.</summary>
+    public bool TryGetId(ushort typeId, ReadOnlySpan<byte> key, out int id)
+    {
+        if (!_tables.TryGetValue(typeId, out ContentTypeTable? table))
+        {
+            id = 0;
+            return false;
+        }
+        return table.TryGetId(key, out id);
+    }
+
     public long ApproximateBytes()
     {
         long bytes = 0;
@@ -165,7 +175,6 @@ public sealed class ContentRuntime
                 chunk.Body.AsSpan(chunk.Offsets[i], length).CopyTo(table.Bodies.AsSpan(cursor));
                 table.Offsets[id] = cursor;
                 table.Lengths[id] = length;
-                table.Keys[id] = ReadKey(table.Bodies.AsSpan(cursor, length));
                 if (chunk.Retired[i]) table.MarkRetired(id);
                 cursor += length;
                 rows++;
@@ -176,15 +185,6 @@ public sealed class ContentRuntime
         Timing.DecodeMs += decode.Elapsed.TotalMilliseconds;
         _tables[type.TypeId] = table;
         if (type.TypeId == ContentTypes.Item) _itemTable = table;
-    }
-
-    /// <summary>A row body opens with its content key, length prefixed UTF-8 (see the row encoder).</summary>
-    public static string ReadKey(ReadOnlySpan<byte> body)
-    {
-        int offset = 0;
-        if (!ContentVarint.TryRead(body, ref offset, out uint length)) return string.Empty;
-        if (offset + (int)length > body.Length) return string.Empty;
-        return Encoding.UTF8.GetString(body.Slice(offset, (int)length));
     }
 
     /// <summary>The offset of the first schema field, past the key prefix.</summary>

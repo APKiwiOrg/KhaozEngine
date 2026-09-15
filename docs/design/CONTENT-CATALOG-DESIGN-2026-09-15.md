@@ -44,6 +44,17 @@ Concretely, Scope A ships:
 7. A server runtime that loads the active version into arrays indexed by id, immutable, swapped atomically,
    with no lock per lookup (section 9).
 8. An authoring API for game consoles over the existing `ServerAdmin` action mechanism (section 10).
+9. `LootRoller`, ONE implementation of the `loot_table` composition rule this spec defines, so a game that
+   authors a drop table gets the draw as well as the schema (section 3.5, budget P9).
+
+The ninth is the newest and is here for a reason worth stating. This spec defined `loot_table` and
+`loot_entry`, specified exactly how guaranteed entries, weighted picks, nested tables and tag draws compose,
+built the prefix-summed arrays the draw needs at load and budgeted the draw at P9, and then shipped no code
+that performs it. Scope B disclaims the roll deliberately, because deciding WHICH base drops is not an
+instance concern. So the roll fell between the two specs, and every consumer would have written the
+composition rule again against the engine's own arrays: Grimhollow for `monster_drop`, Ruinborne to replace
+its `LootRoll`, and the two would have disagreed about how `guaranteed` interacts with `roll_count` on the
+first table that used both. The owner of a rule is the code that runs it.
 
 ### 1.2 What it explicitly does not build
 
@@ -146,6 +157,7 @@ game's graph, so the dependency costs a consumer nothing. In particular it does 
 | `HttpPackStore` | The read-only cloud provider over `HttpClient`, section 8.3. |
 | `CachingPackStore` | A decorator: a local store in front of a remote one, hash verified on every read. |
 | `ContentRuntime` | The loaded active version: arrays indexed by id per type, immutable, atomically swapped. |
+| `LootRoller`, `LootDraw` | The one implementation of section 3.5's composition rule, and the struct one roll returns. |
 | `ContentVersionIdentity` | `(int Number, string ManifestHash)`, the pair that travels together, contracts 7.1. |
 | `ContentStringCatalog` | The layered `IStringCatalog` of contracts 12.4, content first then the game's resx. |
 | `ContentVarint` | The LEB128 and zig-zag primitives of contracts 15, shared with Scope B. |
@@ -181,7 +193,7 @@ two phase 1s are meant to land in either order.
 | `IContentAuthoringStore` | The provider seam: draft edits, publish, version listing, audit, id allocation, bulk import and export. |
 | `ContentAuthoringSchemaMode` | `AutoCreate` or `ValidateOnly`, the journal's shape (`SqliteJournalSchema.cs:9-13`). |
 | `ContentDraft` | The one open draft: its base version, its edit list and its opened-by and opened-at stamps. |
-| `ContentEdit` | One edit: type, id or key, operation (`Add`, `Update`, `Retire`), and the field values it sets. |
+| `ContentEdit` | One edit: type, id or key, operation (`Add`, `Update`, `Retire`, `Fork`), and the field values it sets. |
 | `ContentChangeSet` | An ordered, deduplicated edit list, the durable form of a draft. |
 | `ContentAuditEntry` | One audited field change: who, when, note, type, id, field, before and after. |
 | `ContentVersionRecord` | A published version's row: number, both manifest hashes, minimum builds, generation, publisher, note. |
@@ -546,6 +558,47 @@ A cycle through `nested_table` is refused (`KEC0024`) by a depth-first walk with
 cyclic loot table is an infinite roll at runtime and the validator is the only place that can see the whole
 graph.
 
+**`LootRoller` is the one implementation of everything above.** The composition rule in this section is not
+a suggestion a game re-derives, it is executable, and the engine executes it:
+
+```csharp
+public sealed class LootRoller
+{
+    public LootRoller(ContentRuntime runtime, IRandomSource random);
+    public int Roll(int tableId, Span<LootDraw> destination);    // returns the count written
+    public bool TryRoll(int tableId, Span<LootDraw> destination, out int written);
+}
+
+public readonly record struct LootDraw(int ItemId, int Count, int TableId);
+```
+
+- **It returns ITEM IDS AND COUNTS, and nothing else.** One `LootDraw` per line of loot, carrying the item's
+  definition id, the rolled count between the entry's `min_count` and `max_count`, and the id of the table the
+  line came from, which is the one thing a caller cannot reconstruct after a nested draw. It writes into a
+  caller-supplied span and returns how many it wrote, so a roll allocates nothing. A destination too small is
+  filled and the return is the span's length, with the overflow reported through `TryRoll`'s bool overload, so
+  a caller can size up rather than silently lose drops.
+- **It does not create anything.** It does not build an instance, does not place a ground stack, does not add
+  to an inventory, does not emit an event and does not touch a journal. It reads content and a random source
+  and returns numbers. That is what keeps it in `Foundation` next to the arrays it walks, and it is what lets
+  Scope B's generator take its output as an input without the two depending on each other.
+- **The journal event a game records is the GAME's, not the roller's.** Scope B's `item-generated` event and
+  Grimhollow's own drop logging both want to name a source, and this is the type that knows it: the caller
+  passes the `TableId` it got back into whatever event it writes. The engine does not write the event, because
+  a journal section, a section flag and an event shape are all the game's, and an engine type that logged
+  would be making that decision for every consumer.
+- **The draw order is fixed and is part of the contract**: every `guaranteed` entry in `sort` order first,
+  each rolling its own `chance_bp` independently, then `roll_count` weighted picks over the non-guaranteed
+  entries, each pick a `NextInt(0, total)` and a binary search over the prefix-summed array of 9.4. A
+  `nested_table` entry recurses at the point it is drawn, with the recursion depth bounded by the acyclicity
+  `KEC0024` already guarantees. A `required_tags` entry draws uniformly from its precomputed candidate array.
+  Writing the order down is the point: it is exactly the interaction two independent reimplementations would
+  have got differently.
+- **`IRandomSource` comes in through the constructor** (contracts 14.4, `KhaozEngine.Primitives`), never an
+  ambient static and never a default, so a test rolls a seeded table and asserts exact drops.
+- **Budgeted at P9**, under 100 ns and zero allocation for one weighted draw over a 200-entry table, which is
+  the budget this spec already carried for a draw nothing performed.
+
 ### 3.6 How Scope B and a game register their own
 
 Registration is contracts 4.2's call, once, at process start, before any pack loads:
@@ -569,6 +622,19 @@ registry.RegisterContentType(
 `MaxContentRowBytes`, and registration refuses a type whose
 `chunkSlots * (maxRowBytes + 8) + 36` exceeds `MaxChunkUncompressedBytes` (section 7.1), which is the check
 that keeps a publish from building a chunk no reader will load.
+
+`maxDefinitionId` is optional and null means the type's only ceiling is the 31 bits of positive `int` space.
+A type declares one when a FORMAT it is carried in cannot hold a bigger number: Scope B declares 255 on
+`rarity_rule`, because payload kind 130 writes the rarity as a byte. Section 4.7 is where the rule is spent,
+including why retired rows count toward it and why the validator checks it with `KEC0042` as well as the
+allocator refusing it. Unlike `chunkSlots` it is NOT frozen at the first publish, because raising it is what a
+format widening looks like from this side and refusing that would make a legal change impossible. Lowering it
+below the type's `issued_through` is refused at registration, since rows above the new ceiling already exist
+and no answer short of deleting them would satisfy it.
+
+`loadIndex` is optional and null means the type derives nothing at load. Section 9.4 specifies
+`IContentLoadIndex` and boot step 7b, which is where a type whose gameplay reads want a derived table builds
+one without the host wiring a second pass.
 
 **`chunkSlots` is immutable after a type's first publish, and `KEC0029` says so.** It was guarded only by
 `KEC0028`'s power-of-two bound, which refuses 1,000 and accepts a change from 256 to 1,024 on a type that has
@@ -671,6 +737,39 @@ of:
 | `Add` | type, key, field values, optional family | Allocates an id, writes a row with `valid_from_version = new version`. |
 | `Update` | type, id, the changed fields only | Closes the current row and writes a successor with the merged field set. |
 | `Retire` | type, id, retire policy, optional replacement id | Closes the current row, writes a successor with `retired = 1`, and appends a `Retired` remap rule. |
+| `Fork` | type, id, the copy's new key, the flag field to set on the copy, the changed fields for the ORIGINAL | Allocates a NEW id, copies the source row's whole field set onto it under the new key, sets the named flag field, applies the changed fields to the original, and appends a `MovedToLegacy` remap rule from the original id to the new one. |
+
+**`Fork` is the fourth operation and it exists because kind 3 had no producer.** Contracts 8.2 defines remap
+rule kind 3, `MovedToLegacy`, and Scope B's keep-legacy flow is built on it: an author who changes a mod's
+ranges chooses between rescaling every stored roll silently and preserving what players already own. The
+preserving answer needs the OLD definition to survive at a new id with a legacy flag set while the ORIGINAL
+id carries the new numbers, so that stored payloads keep pointing at the values they were rolled against.
+With only `Add`, `Update` and `Retire`, that flow cannot be expressed: `Add` plus `Update` gets the rows into
+the right shape but emits no rule, so nothing tells a loaded page to move, and `Retire` emits kind 2, which
+is a different statement with a different policy set. Kind 3 would have been a dead letter in the contracts
+and the keep-legacy choice would have collapsed to the silent rescale by default.
+
+**It is one operation rather than three, because the three are not separable.** Allocating the id, copying the
+fields and appending the rule are one atomic statement about one definition, and an author who did them as
+three edits could have the publish succeed with the rule missing, which is the state nothing can detect
+afterwards: the pages are already migrated and the original values are gone. So `Fork` is refused as a whole
+or applied as a whole, and `KEC0041` is its precondition check.
+
+**Why a fourth operation rather than a keep-legacy policy on `Retire`.** The other shape considered was a
+policy byte on `Retire`, which would have added no operation and reused a path that already emits a rule. It
+was rejected because `Retire` says a definition is GONE and that saying so is irreversible (contracts 8.6,
+`KEC0039`). A fork retires nothing: both rows are live afterwards, the original under its own id with new
+values and the copy under a new id with the flag set, and either may be edited again. Folding the two into
+one operation would have made "is this id retired" a question about a policy byte rather than about the
+`retired` column, which is read by the runtime's retired bit (9.4), by `KEC0039`, by the rollback block of
+12.2 and by Scope B's retired check. Four of those five readers would have needed the policy byte too, to
+answer a question that the fourth operation answers by not touching the column at all.
+
+**The flag field is the CALLER's, and the engine does not name it.** `legacy` on a Scope B `mod` row is the
+case that motivated this, but the engine has no opinion about which boolean means "superseded" on a type it
+did not define. The edit names a field, the field must exist on the type's schema and must be `Bool`, and
+`KEC0041` refuses the edit otherwise. That keeps `Fork` a generic operation over the row model rather than a
+Scope B feature the engine happens to host.
 
 An edit is stored as the CHANGED FIELDS ONLY, never the whole row. That is what lets the audit record a field
 level before and after with no extra table (section 4.6), and it is what makes two operators editing different
@@ -860,6 +959,7 @@ CREATE TABLE IF NOT EXISTS catalog_type (
     type_key TEXT COLLATE BINARY NOT NULL CHECK (length(type_key) BETWEEN 1 AND 64),
     chunk_slots INTEGER NOT NULL CHECK (chunk_slots BETWEEN 256 AND 65536),
     default_visibility INTEGER NOT NULL CHECK (default_visibility IN (0, 1)),
+    max_definition_id INTEGER NULL CHECK (max_definition_id IS NULL OR max_definition_id >= 1),
     first_seen_version INTEGER NOT NULL CHECK (first_seen_version >= 0));
 CREATE UNIQUE INDEX IF NOT EXISTS ux_catalog_type_key ON catalog_type(type_key);
 
@@ -960,9 +1060,11 @@ CREATE TABLE IF NOT EXISTS catalog_draft_edit (
     type_id INTEGER NOT NULL,
     definition_id INTEGER NOT NULL DEFAULT 0 CHECK (definition_id >= 0),
     content_key TEXT COLLATE BINARY NOT NULL CHECK (length(content_key) BETWEEN 1 AND 64),
-    operation INTEGER NOT NULL CHECK (operation IN (1, 2, 3)),
+    operation INTEGER NOT NULL CHECK (operation IN (1, 2, 3, 4)),
     retire_policy INTEGER NOT NULL DEFAULT 0 CHECK (retire_policy IN (0, 1, 2)),
     replacement_id INTEGER NOT NULL DEFAULT 0 CHECK (replacement_id >= 0),
+    fork_key TEXT COLLATE BINARY NULL CHECK (fork_key IS NULL OR length(fork_key) BETWEEN 1 AND 64),
+    fork_flag_field TEXT COLLATE BINARY NULL CHECK (fork_flag_field IS NULL OR length(fork_flag_field) BETWEEN 1 AND 64),
     family_id INTEGER NULL,
     edited_by TEXT COLLATE BINARY NOT NULL CHECK (length(edited_by) BETWEEN 1 AND 128),
     edited_at_utc INTEGER NOT NULL,
@@ -1218,6 +1320,33 @@ An id block exhausted MID-PUBLISH cannot happen, because allocation runs as step
 6.3) before anything is written, and a failure there aborts the publish with nothing changed. Section 11 row 9
 spends this case.
 
+**`maxDefinitionId` is a per-type CEILING and `AllocateAsync` refuses above it.** A type may declare one at
+registration (3.6). When it does, both allocation branches refuse to issue an id above it: step 1 fails rather
+than handing out a range that crosses the ceiling, step 2 reserves no further, and
+`AllocateInFamilyAsync` refuses a new block whose top would exceed it. The failure is a
+`ContentAuthoringException` naming the type, the ceiling and the current high-water mark, and it aborts the
+publish with nothing written, which is the same shape as every other allocation failure.
+
+**Why a ceiling exists at all: some ids are a FORMAT constraint rather than a preference.** Scope B's payload
+kind 130 is `[RarityId: byte]`, pinned by the contracts' own worked example, so `rarity_rule` ids are capped
+at 255 forever and Scope B declares `maxDefinitionId: 255` at registration. Without the ceiling the 256th
+rarity rule ever created would publish cleanly, and every payload written with it would truncate silently to
+a byte and land on an existing rarity. That is silent damage to durable player data, produced by an
+authoring action that reported success, which is precisely the class of failure the reserved ranges and the
+fail-closed boot exist to prevent everywhere else.
+
+**Retired rows count toward the ceiling, and that is deliberate.** Ids are never reused (contracts 5.1), so a
+retired rarity rule keeps its id and the space it occupies. A ceiling that excluded retired rows would be a
+ceiling on LIVE rows, which is not what the format constrains: the format constrains the NUMBER, and a number
+freed by a retire and reissued would resolve stored payloads onto the wrong row. So a type that retires
+aggressively burns its ceiling, and the answer is to declare the ceiling honestly and watch it rather than to
+recycle ids. `catalog-list` reports the remaining headroom for any type that declares one, so the wall is
+visible well before it is hit.
+
+**The validator checks it too, with `KEC0042`**, because the allocator is a mechanism and the invariant is a
+property of the candidate. An id above the ceiling can also arrive through the carried-id path of 6.3, which
+is the empty-database import, and that path does not go through the allocator at all.
+
 ### 4.8 One transaction per publish
 
 The entire publish COMMIT is one database transaction (section 6.10). Inside it: the `catalog_version` row,
@@ -1295,12 +1424,12 @@ counter, a test and an operator runbook can all key on it, which is the same rul
 decode reasons. Codes are never reused and never renumbered, which is why a code this spec withdrew is
 withdrawn rather than recycled.
 
-**Thirty-nine codes are issued, across the number range `KEC0001` to `KEC0040`.** `KEC0013` is withdrawn and
+**Forty-one codes are issued, across the number range `KEC0001` to `KEC0042`.** `KEC0013` is withdrawn and
 carries no check, and `KEC0032` to `KEC0035` are four codes sharing one row below. `KEC0000` is not a finding
 about content and is listed first and separately. Section 15.7 builds one test per issued code.
 
 **The number range is banded, and the bands are as durable as the codes.** `KEC0001` to `KEC0099` are the
-engine's own, of which 1 to 40 are issued and 41 to 99 are free for this spec's successors. `KEC0100` to
+engine's own, of which 1 to 42 are issued and 43 to 99 are free for this spec's successors. `KEC0100` to
 `KEC0199` are RESERVED for Scope B, so an affix rule and a family block rule are told apart by an operator
 reading a code rather than by reading a message. `KEC0200` and above are unallocated and no game takes one: a
 game validator's findings come back as `KEC0040` prefixed with the game's type key, which is section 5.3's
@@ -1346,6 +1475,8 @@ rule and does not change.
 | `KEC0038` | A chunk's canonical uncompressed bytes exceed `MaxChunkUncompressedBytes`. | 7.1 here |
 | `KEC0039` | A rollback would restore a row that has been retired. A retire is irreversible. | 8.6 |
 | `KEC0040` | A game validator returned a finding. The message is the game's, the code is prefixed with its type key. | 4.4 |
+| `KEC0041` | A `Fork` edit's preconditions fail: its source row is absent or already retired, its `forkKey` is taken or malformed, or its `flagField` is absent from the type's schema or is not `Bool`. | 3.7 here, 8.2 |
+| `KEC0042` | A definition id exceeds the `maxDefinitionId` its type declared at registration. | 4.3, 3.6 here |
 
 `KEC0022` and `KEC0025` are the two checks that make Ruinborne's stackable defects impossible to publish:
 `Stackable = true, MaxStack = 1` is directly reachable in its admin form today
@@ -1487,9 +1618,9 @@ taken where the write happens.
 
 ### 6.3 Step 3, allocate ids
 
-Every `Add` edit in the frozen change set needs an id. Allocation runs before validation deliberately, because
-several checks (`KEC0006` reference resolution, `KEC0010` family membership) need the ids the new rows will
-carry.
+Every `Add` edit in the frozen change set needs an id, and so does every `Fork`, which allocates one for its
+copy. Allocation runs before validation deliberately, because several checks (`KEC0006` reference resolution,
+`KEC0010` family membership) need the ids the new rows will carry.
 
 For each `Add`, in edit ordinal order:
 
@@ -1517,6 +1648,12 @@ an export and re-import reproducible (section 10.9) and what fixes Ruinborne's i
 Ids that are CARRIED are kept exactly, which is what makes Grimhollow's import preserve ids 1 to 35 and leave
 every stored container decoding unchanged (section 16.4). Ordering does not preserve an id, carrying it does.
 
+**A `Fork` allocates through branch 3 and never carries an id.** Its copy takes the next free id of the type
+and may not name one, because a fork is only ever authored against a live database and the carry path exists
+for the empty-database import alone. It also may not name a family: the copy inherits the SOURCE row's family
+if it has one, so the legacy copy sits in the same block as the row it came from and `KEC0037` stays quiet. A
+family whose block is full reserves a second block the ordinary way (3.8).
+
 ### 6.4 Step 4, validate
 
 Section 5, on the candidate built at step 2 plus the rule set as it will stand after step 5 appends this
@@ -1541,9 +1678,17 @@ For each edit, with `V` the new version number:
 | `Add` | One `catalog_row` with `valid_from_version = V`, `replaced_in_version = NULL`, `retired = 0`, plus one `catalog_row_field` per set field. |
 | `Update` | Sets the current row's `replaced_in_version = V`, then inserts a successor with `valid_from_version = V` carrying the MERGED field set: the current row's fields with the edit's fields overlaid. |
 | `Retire` | Sets the current row's `replaced_in_version = V`, then inserts a successor with `valid_from_version = V`, `retired = 1` and the SAME field set, plus one `catalog_remap_rule` with kind `2` and the policy payload. |
+| `Fork` | Writes one `catalog_row` at the NEW id with `valid_from_version = V`, `retired = 0`, the source row's whole field set copied field by field, the new key, and the named flag field set true. Then sets the SOURCE row's `replaced_in_version = V` and inserts its successor with the edit's changed fields overlaid, exactly as an `Update` would. Then appends one `catalog_remap_rule` with kind `3`, `from_id` the source id and `to_id` the new id. |
 
 A `Retire` whose policy is `0x02` replacement carries the destination id in payload bytes 1 to 4 (contracts
 8.2) and the validator has already checked the destination is live (`KEC0017`).
+
+**A `Fork` writes three things and the ORDER is the one that matters.** The copy is written FIRST, so the
+kind 3 rule appended last names a `to_id` that is already live at `V`, which is what `KEC0017` checks and what
+keeps the rule set applicable the moment it is published. The source row's successor is an ordinary `Update`
+successor and carries no flag: the legacy marker is on the COPY, because the copy is what stored payloads are
+moved onto and the original id keeps serving new rolls. Both rows land in the same publish and therefore the
+same transaction (4.8), so there is no window in which the rule exists and the row it names does not.
 
 A row NOT named by any edit is untouched. Nothing walks it, nothing rewrites it, and its
 `valid_from_version` still names whichever old version it entered in. That is what makes step 6 cheap.
@@ -2878,7 +3023,10 @@ that an operator reading a quarantine reason or a log line needs to look the id 
       "family": "swords",
       "fields": { "stackable": false, "max_stack": 1,
                   "tradable": true, "value": 120, "tags": ["metal", "two_handed"] } },
-    { "op": "retire", "typeKey": "item", "id": 25, "policy": "replacement", "replacementKey": "oak_shield_v2" } ] }
+    { "op": "retire", "typeKey": "item", "id": 25, "policy": "replacement", "replacementKey": "oak_shield_v2" },
+    { "op": "fork",   "typeKey": "mod", "id": 412, "forkKey": "added_fire_damage_legacy",
+      "flagField": "legacy",
+      "fields": { "tier_1_max": 60 } } ] }
 
 // response 200
 { "draft": { "baseVersion": 47, "editCount": 12, "openedBy": "oid:8f2c...", "openedAtUtc": "..." },
@@ -2901,6 +3049,20 @@ for, and the message names the derived key so an operator sees what they were tr
 
 A `retire` names its policy as `placeholder` or `replacement`, matching contracts 8.2's payload byte, and a
 `replacement` policy without a resolvable `replacementKey` is a 400 with `KEC0017`.
+
+**`fork` is an `op` value rather than a seventeenth action**, because it is an edit against the open draft
+like the other three and it is saved, validated, diffed and published through the same path. Adding an action
+would have split the draft's own vocabulary across two endpoints for no gain, and the action count in 10.2 is
+a number this spec states once and means.
+
+Its `fields` are the changes to the ORIGINAL row, which is the direction that reads correctly at the console:
+the author is editing the mod they have open, and the fork is how they say "keep what players already rolled".
+`forkKey` is the copy's key and is required, because a key is immutable once published (5.3) and the engine
+will not invent one. `flagField` names the `Bool` field the copy gets set to true. A fork whose `forkKey` is
+taken, whose `flagField` is absent from the type's schema or is not `Bool`, or whose `id` names a row that is
+already retired, is a 400 with `KEC0041`. The response is the ordinary draft response: the copy's allocated id
+does not appear in it, because ids are allocated at publish (6.3) and reporting one from an edit would be
+reporting a number that does not exist yet.
 
 `catalog-draft` returns the open draft with its edits expanded, so a console can show a pending-changes panel.
 `catalog-discard` deletes the draft and writes one `draft-discard` audit row carrying the edit count, so a
@@ -3688,10 +3850,11 @@ proves the durability.
 
 ### 15.7 The rest
 
-**Validator tests.** One per ISSUED finding code, 39 of them, each building the smallest `ContentSnapshot`
-that triggers exactly that code and asserting the code, the type and the id. Thirty-nine and not forty: the
-codes run `KEC0001` to `KEC0040`, `KEC0013` is WITHDRAWN and never reissued (section 5.2), and `KEC0032` to
-`KEC0035` are four codes on one table row, which is where the count went wrong before. Two groups are not
+**Validator tests.** One per ISSUED finding code, 41 of them, each building the smallest `ContentSnapshot`
+that triggers exactly that code and asserting the code, the type and the id. Forty-one and not forty-two: the
+codes run `KEC0001` to `KEC0042`, `KEC0013` is WITHDRAWN and never reissued (section 5.2), and `KEC0032` to
+`KEC0035` are four codes on one table row, which is where the count went wrong before. `KEC0000` gets a test
+too and it is the one that asserts a finding does NOT set `IsValid` to false. Two groups are not
 ordinary sweep tests. The four inheritance codes are unreachable in phase 1, so their tests assert they do NOT
 fire on a candidate whose `parent_id` is 0 throughout, and `KEC0039` is asserted through `RollbackToAsync`
 because it is emitted there rather than by the sweep (section 5.3). Plus three sweep-level facts: findings
@@ -3719,9 +3882,16 @@ under the one `(version, type, chunk index)` at two sides, that the next publish
 both forward, that the client manifest omits every `ServerOnly` TYPE, and that a stub encoder which leaves the
 field in the client-side bytes is refused by `KEC0014`.
 
-**Boot fail-closed.** Eleven facts, one per row of section 9.6's exit table, each asserting exit code 3 and the
+**Boot fail-closed.** Twelve facts, one per row of section 9.6's exit table, each asserting exit code 3 and the
 exact stderr prefix. Run in process against a test host that captures the exit rather than calling
 `Environment.Exit`.
+
+**Fork.** Publish a row, fork it, and assert all five properties in one test: the copy carries a new id and
+the source row's whole field set, the copy's flag field is true, the ORIGINAL id is live with the edit's new
+values and no flag, exactly one kind 3 rule was appended naming both ids in that direction, and a page stamped
+before the fork resolves onto the copy while a page stamped after it does not. Plus the four `KEC0041`
+negatives of 10.5. This is the test that would catch the rule being appended without the row, which is the one
+failure that cannot be repaired afterwards (3.7).
 
 **The door.** In `KhaozEngine.TileWorld.Netcode.Tests`: a matching layer admits, a version mismatch refuses
 with both sides in the token, a hash mismatch with matching versions refuses, an absent layer refuses with

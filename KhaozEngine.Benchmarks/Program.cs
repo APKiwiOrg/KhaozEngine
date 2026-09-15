@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Threading;
 using KhaozEngine.Benchmarks;
+using KhaozEngine.Benchmarks.Items;
 using KhaozEngine.Benchmarks.Journal;
 using KhaozEngine.Simulation;
 
@@ -15,6 +16,7 @@ using KhaozEngine.Simulation;
 //   dotnet run --project KhaozEngine.Benchmarks -c Release -- --quick        (fast smoke: small N, few ticks)
 //   dotnet run --project KhaozEngine.Benchmarks -c Release -- --gate         (jobs-3 system-scheduler GATE evaluation)
 //   dotnet run --project KhaozEngine.Benchmarks -c Release -- --replication  (replication-hotpath jobs-1 matrix only)
+//   dotnet run --project KhaozEngine.Benchmarks -c Release -- --items        (item-instances section 16 budgets)
 // See KhaozEngine.Benchmarks/README.md for how to read the output.
 
 if (Array.IndexOf(args, "--journal-crash-probe") >= 0)
@@ -46,6 +48,30 @@ if (Array.IndexOf(args, "--journal") >= 0 || Array.IndexOf(args, "--journal-soak
     finally
     {
         Console.CancelKeyPress -= cancel;
+    }
+    return;
+}
+
+if (Array.IndexOf(args, "--items") >= 0)
+{
+    ItemsBenchmarkConfig itemsConfig = ItemsBenchmarkConfig.Parse(args);
+    using var itemsCancellation = new CancellationTokenSource();
+    ConsoleCancelEventHandler itemsCancel = (_, eventArgs) =>
+    {
+        eventArgs.Cancel = true;
+        itemsCancellation.Cancel();
+    };
+    Console.CancelKeyPress += itemsCancel;
+    try
+    {
+        ItemsBenchmarkResult itemsResult = await ItemsBenchmarkRunner.RunAsync(itemsConfig, Console.Out, itemsCancellation.Token);
+        if (itemsConfig.OutputPath is not null)
+            await ItemsBenchmarkOutput.WriteAsync(itemsResult, itemsConfig.OutputPath);
+        Console.Out.WriteLine(itemsResult.ToJson());
+    }
+    finally
+    {
+        Console.CancelKeyPress -= itemsCancel;
     }
     return;
 }

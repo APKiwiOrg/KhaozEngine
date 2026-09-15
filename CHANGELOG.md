@@ -5,6 +5,96 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.50.0
+
+The content catalog lands its read half: a frozen registry of content types, four content-addressed pack
+formats, and one pure validator behind them.
+
+- `KhaozEngine.Catalog` is a new package, in the `Foundation` umbrella, referencing `KhaozEngine.Primitives`
+  and nothing else. Tunable content is authored in a database, published as immutable content-addressed packs
+  and loaded into a runtime of arrays indexed by id. This package is the half every consumer needs, a game
+  client included, so a client gets the read side with no third-party dependency and no database in its graph.
+  Authoring, publish and the SQL providers are later, opt-in siblings.
+- Four rules hold across every type in it. Every value on a path a client and a server must agree on is an
+  integer, with no `float` anywhere and rounding by floor division. Bytes are little endian through
+  `BinaryPrimitives`, never `BitConverter`. Decoders are total: a bad byte returns `false` plus a stable reason
+  token rather than throwing or reading part of a record. Every digest is SHA-256 under the `kec/` domain with
+  its own sub-domain and `ContentHash.SchemeVersion` folded into the prefix.
+- `ContentTypeRegistry` is the registry itself, per instance rather than an ambient static. A host registers
+  through `ContentTypeRegistration`, `Freeze()` closes the registry at the first pack load, and a later
+  registration throws `ContentRegistrationException`. `ContentRegistrationBand` is the id entitlement, `Engine`
+  1 to 255, `Instances` 256 to 1023 and `Game` 1024 to 65535, with id 0 reserved forever. `ByTypeId` is sorted
+  ascending always, so no ordinal anywhere depends on the order a host registered in.
+- `ContentFieldSchema` and `ContentFieldEntry` are a type's ORDERED field list, which a row's values are
+  parallel to by index rather than keyed by name. `ContentFieldKind` numbers the seven value kinds durably
+  (`Int`, `ScaledInt`, `Bool`, `KeyReference`, `TagList`, `LocalizedTextKey`, `OpaqueBytes`), and
+  `ContentVisibility` is `Client` or `ServerOnly` per type and per field, which is the whole basis of the two
+  manifests. `IContentRowCodec` and `ContentRowCodecBase` are the only path between a row and its canonical
+  bytes, the base class being the positional walk the schema drives. `IContentLoadIndex` is a derived table a
+  type builds once at boot, and `ContentTextKey` derives a content string's localization key as
+  `<type key>.<content key>.<field>`.
+- `EngineContentTypes.Register(registry)` registers the six engine content types once, before any pack loads:
+  `TagContentType` (id 1), `ItemContentType` (2), `StatContentType` (3), `LootTableContentType` (4, server-only
+  at the type level so the family is omitted from every client manifest), `LootEntryContentType` (5) and
+  `BaseSocketContentType` (6). It also carries the two type keys the engine writes down and a game registers
+  under, `equip_profile` and `socket_type`.
+- The four pack formats each open with a four-character ASCII magic and a `ushort` version, and a version
+  mismatch refuses the whole record with a reason token. `ContentChunkCodec` is the `KECC` chunk, a 36 byte
+  never-compressed header then a row table ascending by id and the row bodies, with `TryDecodeVerified` doing
+  one decompression and comparing the digest before it walks a row, so nothing escapes an unverified buffer.
+  `ContentManifestCodec` is the `KECM` manifest file, and `ContentManifestText` is the canonical text the two
+  manifest digests are taken over, sorted here rather than assumed sorted. `ContentRuleChunkCodec` is the
+  `KECR` rule chunk, one per manifest, carrying the full append-only `RemapRule` list from sequence 1 with four
+  v1 kinds and no delete path, and `RemapRuleSet.TryResolve` walks a from-id and a page stamp forward to the id
+  a page should carry now. `ContentTextChunkCodec` is the `KECT` per-language chunk, one per language with its
+  own hash, holding its body as bytes with a non-allocating walk so nothing becomes a string until something
+  asks. The four formats are pinned by a checked-in golden set that every decoder is also fuzzed against.
+- `ContentVarint` is the one varint definition in the tree: unsigned LEB128, zig-zag first for a field declared
+  signed, and minimal encodings enforced, so `TryRead` refuses `0x81 0x00` with `varint-not-minimal` and leaves
+  the offset where it found it on every refusal. `ContentKey` holds a row's key as a slice of the loaded UTF-8
+  blob rather than a string, hashing over its bytes so it keys a dictionary directly, and
+  `ContentChunkAssembler` is the publish-side arena that lands every row body in one growable buffer.
+- `IPackStore` is the content-addressed store seam, four members and no more, with the delete path split into
+  `IPackStorePruning` so a read-only provider cannot be asked to prune. `FileSystemPackStore` is the local
+  provider, one file per hash under a two-level shard derived from the hash, written to a temporary name and
+  moved. `ContentPackReader` is the one reader the server and the client share and differ only in when they
+  call: `ReadAllAsync` is the eager boot path, `ReadRowAsync` the lazy one that touches at most the chunk whose
+  slots cover the id, verify always comes before decode, and every attempt carries a stable reason token rather
+  than throwing.
+- `IContentSnapshot` is the narrow read seam every consumer outside the package is written against, seven
+  members, carrying no authoring concept and no mutation. `ContentSnapshot` is the immutable holder behind it
+  and `ContentSnapshotBuilder` the one way a snapshot is made, so publish, boot and a test all build one the
+  same way. `ContentRow` and `ContentFieldValue` are the generic row a codec-free consumer sees,
+  `ContentVersionIdentity` pairs a version number with its manifest hash, and `ItemRow` is the one typed view,
+  a `ref struct` over the item row body with the four hot fields decoded at construction.
+- `ContentValidator.Validate(candidate, previous, rules, registry)` is the one validator, shared by publish,
+  server boot and every test. It is pure, takes its whole world as arguments, reads no store and no ambient
+  static, never throws for a content reason, and accumulates, so one run reports every defect rather than the
+  earliest. `ContentValidationReport` and `ContentFinding` carry a stable `KEC` code, and `KEC0001` to
+  `KEC0042` are issued across five passes. `previous` is the base version's snapshot at publish and null
+  everywhere else, so the three checks that are statements about a change are skipped and named by `KEC0000`,
+  the one finding that leaves `IsValid` true. A per-type `IContentValidator` runs last and may only add a
+  constraint, reporting through `KEC0040`, and a throw from one is caught and reported rather than taking a
+  publish down.
+- `KhaozEngine.Primitives` gains the engine's one gameplay-randomness seam, `IRandomSource`, with `NextInt`,
+  `NextULong`, `NextRollPosition` and `NextBytes`. It has no seed, no state and no way to ask an instance what
+  it will draw next, and a consumer takes one as a constructor parameter rather than from an ambient default,
+  so a type with no `IRandomSource` cannot roll. `CryptographicRandomSource` is the implementation a hosted
+  server runs, drawing from the OS through `RandomNumberGenerator`. `SeededRandomSource(ulong seed)` is the
+  deterministic one for tests and seeded replay, wrapping `DeterministicRng` so the engine keeps exactly one
+  seeded stream definition. Both draw a bounded integer by rejection sampling rather than modulo, because
+  modulo bias on a roll is an edge a player can farm.
+- The `KhaozEngine.Foundation` umbrella carries `Catalog`, so a gameplay-logic library or a server head reaches
+  it through the reference it already has. The locked umbrella membership test in `KhaozEngine.Tests` records
+  the change.
+- This is milestone 1.1 of the content catalog's phase 1
+  ([#882](https://github.com/APKiwiOrg/KhaozEngine/issues/882)), and it is the version the rest of the program
+  rides. The authoring, publish, runtime and netcode halves land on this same staged version in later
+  milestones, and the item instances program
+  ([#884](https://github.com/APKiwiOrg/KhaozEngine/issues/884)) rides it too, because its package depends on
+  this one. The design is `docs/design/CONTENT-CATALOG-DESIGN-2026-09-15.md`, written against the gate 0
+  contracts in `docs/design/CONTENT-CONTRACTS-DESIGN-2026-09-14.md`.
+
 ## 18.49.0
 
 A target outline group can draw its border through geometry, the way a screen-space marker reads.

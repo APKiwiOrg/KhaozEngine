@@ -11,6 +11,14 @@
     <Content Include="Payload/Goldens/*.bin" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
+    <!-- The version 1 container blobs KhaozEngine.Foundation.Tests pins, LINKED rather than copied, so one
+         set of stored bytes serves both suites and neither can drift from the other. The pattern follows
+         KhaozEngine.Render.Tests, which links KhaozEngine.Showcase's dungeon assets the same way. No
+         project reference comes with it, so the reference graph push CI selects on is unchanged. -->
+    <Content Include="../KhaozEngine.Foundation.Tests/Items/Fixtures/container-v1-*.blob"
+             Link="Items/Fixtures/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />

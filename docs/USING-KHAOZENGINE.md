@@ -13990,7 +13990,7 @@ if (!ItemContainerPageCodec.TryDecode(
         out int entryCount,
         out string? pageReason))
 {
-    return Refuse(pageReason);          // an ItemContainerPageReason token, never an exception
+    return Refuse(pageReason);          // a stable refusal token, never an exception
 }
 
 // Sweep what came back against the ACTIVE content version. Thirteen checks, pure: no store read,

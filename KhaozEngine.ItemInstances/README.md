@@ -307,8 +307,11 @@ page stamp 0, which is older than every published version. Anything else is a `u
 is a pure sizing query that answers the bytes `Encode` would write and never a verdict, which is why it takes
 the slot count and does not read it.
 `WriteEntry` and `EntrySize` are one entry on its own, so a page delta can reuse the entry shape without
-re-deriving it. `TryDecode` REFUSES rather than throws, answering a `ItemContainerPageReason` token, and
-`Validate` is the same call shaped for a persistence layer. `PageHeader` and `PageEntry` are what comes back,
+re-deriving it. `TryDecode` REFUSES rather than throws, answering a stable token, and `Validate` is the same call shaped for
+a persistence layer. That token is usually an `ItemContainerPageReason` and not always: a malformed varint
+answers with `ContentVarint`'s own token, an over-cap entry payload answers `payload-too-long`, and a version
+1 blob the version 1 reader refuses answers with that reader's message, because a refusal belongs to whatever
+owns the rule it broke. `PageHeader` and `PageEntry` are what comes back,
 and an entry's payload is a WINDOW into the page buffer rather than a copy, so a decode allocates nothing per
 entry. `PageSlotInput` is one entry on the way in, and its payload is borrowed rather than copied until the
 page is written.

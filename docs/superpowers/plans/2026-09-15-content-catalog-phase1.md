@@ -1261,3 +1261,392 @@ Spec 2.1, 2.3, 3.7, 4.1, 4.2.
 - Create: `KhaozEngine.Catalog.Authoring/ContentAuthoringException.cs`
 - Create: `KhaozEngine.Catalog.Tests/Authoring/AuthoringValueTests.cs`
 - Modify: `KhaozEngine.slnx`, `README.md`, `KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj`
+
+**Interfaces:**
+
+- Consumes: `KhaozEngine.Catalog`
+- Produces: the provider seam every backend implements, plus the authoring value types
+
+**The package is PURE .NET with no SQL.** Its only `ProjectReference` is `KhaozEngine.Catalog`. Ship its
+README and its root catalog row in this commit, for the guard reason in the Global Constraints.
+
+- [ ] **Step 1: Write failing tests for the value types.**
+
+`ContentEditOperation` is `Add = 1`, `Update = 2`, `Retire = 3`, `Fork = 4`, matching the
+`CHECK (operation IN (1, 2, 3, 4))` the DDL carries in Task 17, so write the numbers explicitly. Assert a
+`ContentChangeSet` is ordered and deduplicated per TARGET, that a second edit naming an occupied target
+collides even when its operation differs, and that an edit stores the CHANGED FIELDS ONLY rather than the
+whole row.
+
+**`Fork` carries five things and is atomic**: the source id, the copy's new key, the `Bool` flag field to
+set on the copy, the changed fields for the ORIGINAL, and no id for the copy (ids are allocated at
+publish). Assert its value type refuses construction with an empty `forkKey`. `Fork` exists because remap
+rule kind 3 had no producer, and it is one operation rather than three because an author who did the three
+separately could have the publish succeed with the rule missing, which is the state nothing can detect
+afterwards.
+
+- [ ] **Step 2: Implement `IContentAuthoringStore`.**
+
+The members the rest of this milestone and milestone 1.4 call, named here so a provider implements one
+shape: `InitializeAsync(ContentAuthoringSchemaMode)`, `GetSchemaVersionAsync`, `GetStoreEpochAsync`,
+`GetActiveVersionAsync`, `GetPinnedVersionAsync`, `SetPinnedVersionAsync`, `ListVersionsAsync`,
+`GetVersionAsync(int)`, `LoadSnapshotAsync(int version, ContentTypeRegistry)`, `GetOpenDraftAsync`,
+`ApplyEditsAsync(IReadOnlyList<ContentEdit>, string actor, string operatorId, string note)`,
+`DiscardDraftAsync`, `PublishAsync(ContentPublishRequest)`, `RollbackToAsync(int target)`,
+`ListRowsAsync`, `GetRowHistoryAsync`, `ListAuditAsync`, `AllocateAsync(ContentTypeId, int count)`,
+`AllocateInFamilyAsync(long familyId)`, `CreateFamilyAsync`, `ImportBundleAsync`, `ExportBundleAsync`.
+
+`ContentAuthoringSchemaMode` is `AutoCreate` or `ValidateOnly`, the journal's enum shape
+(`KhaozEngine.WorldStore.Sqlite/SqliteJournalSchema.cs:9-13`). `ValidateOnly` refuses an empty or
+mismatched database rather than creating anything, which is what a production host sets so a typo in a
+connection string cannot silently create a second empty catalog.
+
+- [ ] **Step 3: Run green and commit.**
+
+~~~bash
+dotnet test KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj -c Release
+sh scripts/check-doc-versions.sh
+git add KhaozEngine.Catalog.Authoring KhaozEngine.Catalog.Tests KhaozEngine.slnx README.md
+git commit -m "catalog(authoring): add the package, the store seam and the edit vocabulary"
+~~~
+
+---
+
+### Task 14: The id allocator and the in-memory store (medium)
+
+Spec 3.8, 4.7, 4.9. Contracts 5.1, 5.2, 6.2.
+
+**Files:**
+
+- Create: `KhaozEngine.Catalog.Authoring/ContentIdAllocator.cs`
+- Create: `KhaozEngine.Catalog.Authoring/InMemoryContentAuthoringStore.cs`
+- Create: `KhaozEngine.Catalog.Tests/Authoring/ContentIdAllocatorTests.cs`
+
+**Interfaces:**
+
+- Consumes: Task 13
+- Produces: the reserve-then-issue allocator and a store every later authoring test builds on
+
+- [ ] **Step 1: Write failing allocator tests.**
+
+`AllocateAsync(typeId, count)`: when `issued_through + count <= reserved_through`, hand out
+`[issued_through + 1, issued_through + count]` and advance `issued_through`. Otherwise compute
+`newReserved = issued_through + max(count, 1024)`, write `reserved_through = newReserved` and **COMMIT
+THAT WRITE ON ITS OWN**, then issue. Assert the ORDER by reading `reserved_through` after a single
+allocate and finding it already above the issued id.
+
+Assert: two allocations never return the same id across 10,000 in a loop, an allocation above a declared
+`maxDefinitionId` throws `ContentAuthoringException` naming the type, the ceiling and the high-water mark,
+and RETIRED rows count toward the ceiling because ids are never reused.
+
+`AllocateInFamilyAsync(familyId)`: takes the family's blocks in ordinal order, finds the first whose
+`next_free_id < base_id + block_size`, issues and advances. When every block is full it reserves a NEW
+block: take the type's `reserved_through`, round UP to the family's declared `block_size` alignment,
+reserve through the top of the new block, **advance `issued_through` to that same block top**, insert the
+block row, and only then issue.
+
+**Write the regression test for the advance, because it is the bug the spec spends a page on.** A fresh
+`item` type allocates 10 plain ids and sits at `issued_through = 10, reserved_through = 1024`. A `sword`
+family with `block_size = 16` takes the block `[1024, 1040)` and issues 1024. Without the advance, plain
+adds climb to 1023 and the next one hands out 1024 a SECOND time. The fact is spec 15.5's number 23: a
+plain allocation taken after a family block is reserved never returns an id inside that block, asserted by
+draining the whole gap under the block and then some.
+
+- [ ] **Step 2: Implement the allocator and the in-memory store.**
+
+**PLAN CHOICE.** Spec 2.6 requires that draft, change set, publish, diff, allocator and bundle tests run
+"against an in-memory store" and never names the type. This plan adds
+`InMemoryContentAuthoringStore`, a full `IContentAuthoringStore` implementation in
+`KhaozEngine.Catalog.Authoring` (not in the test project), because milestone 1.4's action tests need one
+too and a test-project copy could not be reached from `KhaozEngine.Server.Tests`. It is documented as a
+TEST AND TOOLING store and its doc comment says a production host uses a provider.
+
+A crash between the two commits skips up to 1,024 ids, which is free: ids are 31 bits of positive `int`
+space per type against an owner figure of 50,000 definitions.
+
+- [ ] **Step 3: Run green and commit.**
+
+~~~bash
+dotnet test KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj -c Release --filter FullyQualifiedName~Authoring
+git add KhaozEngine.Catalog.Authoring KhaozEngine.Catalog.Tests/Authoring
+git commit -m "catalog(ids): add the reserve-then-issue allocator and the in-memory store"
+~~~
+
+---
+
+### Task 15: The publish pipeline, steps 1 to 8 (large)
+
+Spec 6.1 to 6.8, 2.7. Contracts 4.3, 11.3.
+
+**Files:**
+
+- Create: `KhaozEngine.Catalog.Authoring/Publish/ContentPublisher.cs` (the ordered steps only)
+- Create: `KhaozEngine.Catalog.Authoring/Publish/ContentPublishRequest.cs` (holds `ContentPublishResult`)
+- Create: `KhaozEngine.Catalog.Authoring/Publish/ContentIdAllocation.cs`
+- Create: `KhaozEngine.Catalog.Authoring/Publish/ContentChunkBuilder.cs`
+- Create: `KhaozEngine.Catalog.Authoring/Publish/ContentManifestBuilder.cs`
+- Create: `KhaozEngine.Catalog.Authoring/Publish/ContentPublishStep.cs`
+- Create: `KhaozEngine.Catalog.Tests/Publish/PublishPipelineTests.cs`
+- Create: `KhaozEngine.Catalog.Tests/Publish/ChunkReuseTests.cs`
+- Create: `KhaozEngine.Catalog.Tests/Publish/VisibilityTests.cs`
+
+**Interfaces:**
+
+- Consumes: Tasks 5 to 11, 13 and 14
+- Produces: everything a publish does before it writes a durable row
+
+**Lift the chunk selection and encode loop from the spike's `CatalogPublisher.cs`**, which is the code that
+produced the measured P5 and P6 numbers. It is cut down to what the budgets needed and has no database, so
+the temporal rows, the audit and the commit are fresh work in Task 16.
+
+- [ ] **Step 1: Write failing tests for the step order and the id sources.**
+
+**Step 3 allocates ids BEFORE step 4 validates**, because `KEC0006` and `KEC0010` need the ids the new rows
+will carry. There is ONE path with two id sources and which runs is a property of the EDIT: an `Add` with
+`definition_id = 0` is allocated one, an `Add` with a non-zero `definition_id` KEEPS it, and only
+`catalog-import` into an empty database writes the second kind. After every `Add` has an id, the high-water
+marks are SEEDED from the largest carried id per type, so the first ordinary `Add` after an import does not
+allocate id 1 onto an imported row. Assert the seeding is a no-op for an ordinary publish.
+
+A `Fork` allocates through the plain branch, never carries an id, and never names a family: its copy
+inherits the SOURCE row's family so `KEC0037` stays quiet.
+
+Assert that two publishes of the same id-free bundle into two empty databases produce the SAME ids, because
+allocation follows edit ordinal order.
+
+- [ ] **Step 2: Write failing tests for chunk selection and reuse.**
+
+~~~
+affected = { (type, id / chunkSlots[type])
+             for every row whose valid_from_version = V
+             or whose replaced_in_version = V }
+~~~
+
+Both halves matter: a row that ENTERED at V changes its chunk, and a row CLOSED at V also changes its chunk
+because it leaves the live set. Publish, edit one row, publish again, assert EXACTLY ONE chunk hash changed
+and every other is identical to the previous version's. Then edit a row in a different chunk and assert two
+changed. Assert that adding a content TYPE rewrites no existing chunk and DOES change the manifest hash.
+
+**The carry-forward is PER SIDE.** For an unaffected chunk the publisher copies forward every chunk row the
+previous version holds for that `(typeId, chunkIndex)`, one row for a single-sided chunk and two when the
+type is `Client` with a per-field `ServerOnly` override. Nothing recomputes a side from the type's default
+visibility, because the schema may have gained a `ServerOnly` field at THIS version.
+
+- [ ] **Step 3: Write failing visibility tests.**
+
+Publish a `Client` type with one `ServerOnly` field. Assert the client chunk decodes WITHOUT that field,
+that its hash differs from the server chunk's, that BOTH hashes exist under the one
+`(version, type, chunk index)` at two sides, that the next publish of an unrelated chunk carries both
+forward, that the client manifest omits every `ServerOnly` TYPE, and that a stub encoder leaving the field
+in the client-side bytes is refused by `KEC0014`.
+
+- [ ] **Step 4: Write the manifest stability test, which is contracts 4.3's direct test.**
+
+Register the same five types in a SHUFFLED order, publish the same content, and assert the manifest hashes
+are byte identical. Ten shuffles from a seeded source. This is the test Ruinborne's wire index would have
+failed, since the same item has a different byte index depending on whether the catalog loaded from SQL or
+from code defaults.
+
+- [ ] **Step 5: Implement steps 1 to 8, each delegating to its named type.**
+
+Step 1 freezes the draft and takes a row lock. **The new version number is read INSIDE the commit
+transaction at step 10, not at freeze time**, because reading it here and using it there is exactly the
+race the lock is meant to close. Step 2 builds the candidate by applying the draft's edits to the base
+version. Step 3 allocates. Step 4 validates with `previous` non-null, the ONLY place it is. Step 5 computes
+the temporal rows. Step 6 selects affected chunks. Step 7 encodes each affected chunk with its live rows
+SORTED ASCENDING BY ID, hashes over the UNCOMPRESSED canonical bytes, then compresses. Step 8 builds both
+manifests.
+
+`MinimumServerBuild` and `MinimumClientBuild` are CONSUMER-SUPPLIED on the request and the engine never
+interprets them beyond comparing. Omitted, they carry FORWARD the previous version's values rather than
+resetting to 0. `FormatGeneration` is `ContentPackFormat.Generation`, read from the engine and never
+supplied by a caller. All three are INPUTS to the manifest hash, not stamps beside it.
+
+`ContentPublishStep` is the internal enum the crash tests in Task 19 hook, copied from `MapTiledSaveStep`
+(`KhaozEngine.MapDoc/MapDocumentForm.cs:58-74`): `BeforeIdAllocation`, `AfterIdAllocation`,
+`BeforeChunkWrite`, `AfterChunkWrite`, `BeforeManifestWrite`, `AfterManifestWrite`, `BeforeCommit`,
+`AfterCommit`, `DuringSweep`. Add the `OnStep` hook to the publisher now so Task 19 has something to throw
+from.
+
+- [ ] **Step 6: Run green, check file sizes, commit.**
+
+~~~bash
+dotnet test KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj -c Release
+sh scripts/check-file-size.sh --tree
+git add KhaozEngine.Catalog.Authoring/Publish KhaozEngine.Catalog.Tests/Publish
+git commit -m "catalog(publish): add steps one to eight, chunk selection and both manifests"
+~~~
+
+---
+
+### Task 16: The commit, the sweep, rollback, diff and the bundle (large)
+
+Spec 6.9 to 6.13, 4.6, 4.8, 10.9. Contracts 8.6.
+
+**Files:**
+
+- Create: `KhaozEngine.Catalog.Authoring/Publish/ContentPublishCommit.cs`
+- Create: `KhaozEngine.Catalog.Authoring/Publish/ContentPackSweep.cs`
+- Create: `KhaozEngine.Catalog.Authoring/ContentDiff.cs` (holds `ContentDiffEntry`)
+- Create: `KhaozEngine.Catalog.Authoring/ContentBundle.cs`
+- Create: `KhaozEngine.Catalog.Authoring/ContentRollback.cs`
+- Create: `KhaozEngine.Catalog.Tests/Publish/PublishCommitTests.cs`
+- Create: `KhaozEngine.Catalog.Tests/Publish/RollbackTests.cs`
+- Create: `KhaozEngine.Catalog.Tests/Publish/ForkTests.cs`
+- Create: `KhaozEngine.Catalog.Tests/Authoring/BundleTests.cs`
+
+**Interfaces:**
+
+- Consumes: Tasks 13, 14 and 15
+- Produces: the one commit point, the orphan sweep, the field-level diff, the bundle and rollback
+
+- [ ] **Step 1: Write failing commit tests.**
+
+Step 9 writes every chunk file and both manifest files to the pack store BEFORE the database commit, at
+content-addressed names nothing references yet, plus the version POINTER at `versions/<n>`. A chunk whose
+hash already exists is NOT rewritten, checked with `ExistsAsync` first, which is what makes a republish of
+an unchanged chunk free.
+
+Step 10 is ONE transaction, in this order inside it: read `MAX(version_number) + 1`, insert the
+`catalog_version` row, apply every temporal row change, append every remap rule at `MAX(sequence) + 1`
+upward, insert every chunk row ONE PER SIDE including the carried-forward ones, insert every audit row,
+delete the draft and its edits, then `UPDATE catalog_metadata SET active_version`. Assert a reader sees
+`active_version = N` only together with every row, rule, chunk and audit entry of version N. Assert the
+active pointer moves at publish while a RUNNING server keeps serving what it loaded.
+
+Step 11 sweeps only after a SUCCESSFUL commit. **The keep set is the union, over EVERY version the store
+knows, of that version's pointer, the two manifest hashes it holds, and every hash named INSIDE either
+manifest.** It is defined against the MANIFESTS and not against the chunk table, because the rule chunk and
+the text chunks have no type row to hang a chunk row on and a keep set read from the chunk table would
+delete both at the first publish. Write that as its own test. **The sweep is SKIPPED when the store listing
+fails for any reason**, and an absent or unreadable pointer for any version IS a listing failure.
+
+- [ ] **Step 2: Write the fork test, which is the one whose failure cannot be repaired afterwards.**
+
+Publish a row, fork it, and assert all five properties in ONE test: the copy carries a new id and the
+source row's WHOLE field set, the copy's flag field is true, the ORIGINAL id is live with the edit's new
+values and NO flag, exactly one kind 3 rule was appended naming both ids in that direction, and a page
+stamped before the fork resolves onto the copy while a page stamped after it does not. Plus the four
+`KEC0041` negatives: an absent source row, an already-retired source, a taken or malformed `forkKey`, and
+a `flagField` that is absent from the schema or is not `Bool`.
+
+The ORDER inside a fork matters: the copy is written FIRST, so the kind 3 rule appended last names a
+`to_id` that is already live at V, which is what `KEC0017` checks. Both rows land in the same transaction,
+so there is no window in which the rule exists and the row it names does not.
+
+- [ ] **Step 3: Write the rollback tests.**
+
+`RollbackToAsync(targetVersion)` BUILDS A DRAFT rather than publishing directly, so an operator reviews the
+diff and publishes it. For every row live at both versions whose field set differs, emit an `Update`
+restoring the target's values. For every row live at the target and RETIRED since, **REFUSE with
+`KEC0039`**, naming the row and the rule that retired it. For every row introduced AFTER the target, do
+NOTHING: it keeps its id and its values, which is the difference between a rollback and a restore.
+
+**There is no un-retire branch and there never was a reachable one**, because every retire appends a kind 2
+rule, so a branch conditioned on "no rule names that id" could not run. Assert `KEC0039` fires and assert
+the way out is an ordinary `Add` with a new key plus a `ReplacedBy` rule.
+
+- [ ] **Step 4: Implement the diff and the bundle.**
+
+The diff is FIELD LEVEL, computed over the per-field rows rather than by comparing chunk hashes, and it
+carries a chunk summary so an operator sees the download cost of an edit before publishing it.
+
+A `ContentBundle` is the whole catalog as one JSON document: a format version, the registered type list
+with schemas, every live row with its id, key and fields, every family with its blocks, and the full rule
+list. It is the seeding format AND the lossless export format and there is only one of them. **Import works
+into an EMPTY database ONLY**, empty meaning the version table has no rows, otherwise 409 with nothing
+written. A bundle row's id is OPTIONAL: named, it is imported with it, unnamed, it is allocated in edit
+ordinal order. Export at N then import into an empty store reproduces the same rows, keys and IDS.
+
+**A lossless export is not a backup**, and the bundle's doc comment says so: an import republishes at
+version 1, so the version LINE restarts. When the line must be preserved the path is an ordinary database
+restore of the authoring store, which is the provider's tooling and outside this engine.
+
+- [ ] **Step 5: Run green, check file sizes, commit.**
+
+~~~bash
+dotnet test KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj -c Release
+sh scripts/check-file-size.sh --tree
+git add KhaozEngine.Catalog.Authoring KhaozEngine.Catalog.Tests
+git commit -m "catalog(publish): add the commit, the sweep, rollback, diff and the bundle"
+~~~
+
+---
+
+### Task 17: The SQLite authoring provider (large)
+
+Spec 4.1 to 4.4, 4.7, 2.7. Contracts 5.3.
+
+**Files:**
+
+- Create: `KhaozEngine.Catalog.Sqlite/KhaozEngine.Catalog.Sqlite.csproj`
+- Create: `KhaozEngine.Catalog.Sqlite/README.md`
+- Create: `KhaozEngine.Catalog.Sqlite/SqliteCatalogSchema.cs` (the const DDL plus the two constants only)
+- Create: `KhaozEngine.Catalog.Sqlite/SqliteCatalogSchemaValidation.cs`
+- Create: `KhaozEngine.Catalog.Sqlite/SqliteContentAuthoringStore.cs`
+- Create: `KhaozEngine.Catalog.Sqlite/SqliteContentAuthoringStore.Publish.cs`
+- Create: `KhaozEngine.Catalog.Sqlite/SqliteContentAuthoringStore.Draft.cs`
+- Modify: `KhaozEngine.slnx`, `README.md`
+
+**Interfaces:**
+
+- Consumes: Task 13's seam, `KhaozEngine.Sqlite`, `Microsoft.Data.Sqlite`
+- Produces: the SQLite backend
+
+**Precedents to copy, not to reinvent.** `KhaozEngine.WorldStore.Sqlite/SqliteJournalSchema.cs` is the
+schema style: a `CurrentVersion`, a named `RequiredMigration`, an `AutoCreate` and `ValidateOnly` mode, a
+metadata schema-version row, and validation of every schema object read back from `sqlite_master`. The
+wallet's single inline bootstrap with no version at all is the style NOT to copy, because this schema will
+gain tables as Scope B's types land and as inheritance ships.
+
+**`SqliteStoreConnection` is not optional.** One held connection, one `SemaphoreSlim(1,1)` gate, and a
+dispose that calls `SqliteConnection.ClearPool(connection)` BEFORE `connection.Dispose()`
+(`KhaozEngine.Sqlite/SqliteStoreConnection.cs:76-82`). That line was copied wrong three times over and
+there is one copy now. Every command runs under a lease from `EnterAsync`, and a transaction takes the
+lease FIRST.
+
+- [ ] **Step 1: Transcribe the DDL from spec 4.4, in full, without editing it.**
+
+Spec 4.4 gives the complete SQLite DDL for all fourteen tables: `catalog_metadata`, `catalog_type`,
+`catalog_version`, `catalog_row`, `catalog_row_field`, `catalog_family`, `catalog_family_block`,
+`catalog_id_high_water`, `catalog_draft`, `catalog_draft_edit`, `catalog_draft_edit_field`,
+`catalog_audit`, `catalog_remap_rule`, `catalog_chunk`, plus the seed insert. Copy it as a C# raw string
+const. Every key column is `TEXT COLLATE BINARY`, every size cap is a `CHECK`, and every foreign key is
+declared because `PRAGMA foreign_keys = ON` is set in the bootstrap.
+
+Four details in that DDL are load bearing and each has a test below: the unique index on
+`(type_id, definition_id, content_key)` makes an edit idempotent per TARGET, `visibility` is in
+`catalog_chunk`'s primary key because one id range can be TWO chunks, `catalog_row_field` stores exactly
+one of three value columns chosen by `field_kind` and writes NO row at all for a `LocalizedTextKey`, and
+`catalog_metadata` carries `active_version`, `pinned_version` and `store_epoch` with no `sealed_flag`.
+
+**There is no `UPDATE` and no `DELETE` statement for `catalog_remap_rule` anywhere in this provider.** Do
+not add the journal's `BEFORE DELETE` trigger either: that guard exists to permit a retention sweep and
+there is no retention sweep here.
+
+If `SqliteCatalogSchema.cs` approaches 800 lines with the DDL in it, the validation half is already its own
+file and that is the split. Do not split the DDL string.
+
+- [ ] **Step 2: Write the provider tests as the conformance subclass only.**
+
+The behaviour facts live in Task 19's shared conformance class. What belongs HERE is the schema half:
+`AutoCreate` on an empty database creates and reports version 1, `ValidateOnly` on an empty database throws
+naming `catalog-v1-initial`, `ValidateOnly` on a correct schema succeeds, and a mismatched object throws
+`ContentAuthoringException` naming the object and the migration.
+
+- [ ] **Step 3: Implement the store, split by responsibility across the three partial files.**
+
+Raw parameterized ADO.NET with `$name` parameters, no EF and no ORM. The publish COMMIT is one explicit
+transaction taken under the connection lease. Ship the package README and the root catalog row in this
+commit. The description says OPT-IN and the package joins NO umbrella.
+
+- [ ] **Step 4: Run green and commit.**
+
+~~~bash
+dotnet build KhaozEngine.Catalog.Sqlite/KhaozEngine.Catalog.Sqlite.csproj -c Release
+sh scripts/check-doc-versions.sh && sh scripts/check-file-size.sh --tree
+git add KhaozEngine.Catalog.Sqlite KhaozEngine.slnx README.md
+git commit -m "catalog(sqlite): add the SQLite authoring provider and its versioned schema"
+~~~
+
+---

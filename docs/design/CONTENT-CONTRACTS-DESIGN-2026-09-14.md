@@ -5,7 +5,13 @@ specs were drafted, under the section 18 rule that a spec brings a needed change
 an asset reference value kind, 5.1 gains a one-time import exception that 6.5 now cross-references, 3.2
 gains `KhaozEngine.ItemInstances.Journal`, 9.8 and 9.9 make the affix list canonical ascending by mod id,
 9.6 restates the payload cap against the deepest legal item rather than the typical one, and 10.5 says the
-fail-closed rule binds the content version and not the code a row names. Nothing here is implemented yet.
+fail-closed rule binds the content version and not the code a row names. AMENDED A THIRD TIME after the
+stage 4 review of both specs: the `IRandomSource` seam and its two implementations live in the existing
+`KhaozEngine.Primitives` rather than in either new package (3.2, 14.1, 14.2), the validator takes the
+previous published snapshot as an argument and runs its change-shaped checks only when it is non-null
+(10.4), 9.5's contained instance id is an unsigned varint, 13.2's fold divides toward negative infinity so
+the rounding holds for negative values, and 4.7's localized text key kind is a marker that stores nothing.
+Nothing here is implemented yet.
 This document exists so the two parallel specs cannot contradict each other. Scope A is the versioned
 content catalog, [#882](https://github.com/APKiwiOrg/KhaozEngine/issues/882). Scope B is
 owned item instances, affixes, sockets, crafting and the stat evaluation base,

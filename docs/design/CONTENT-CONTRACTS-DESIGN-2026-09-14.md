@@ -800,14 +800,15 @@ Following `TileWorldHash` in every particular (`KhaozEngine.TileWorld/TileWorldH
 - Collections SORTED before digesting, by type id then by chunk index.
 
 The canonical manifest text is, in order: the sub-domain plus scheme version, the version number, the
-format generation, the minimum server build, the minimum client build, then for each content type sorted by
-type id, the type id,
-the type key, the chunk count, and for each chunk in index order the chunk index and its chunk hash.
+format generation, the minimum server build, the minimum client build, then for each content type sorted
+by type id, the type id, the type key, the chunk count, and for each chunk in index order the chunk index
+and its chunk hash.
 
-The CHUNK HASH is plain SHA-256 of the chunk's uncompressed canonical bytes, lower hex, under sub-domain
-`kec/chunk/`. It is the chunk's content address, so a chunk that did not change between two versions has
-the same hash and a client already holding it fetches nothing. That is the mechanism behind the owner's
-"download size after a one-item edit" budget (#882 body, item 12).
+The CHUNK HASH is SHA-256 under its own sub-domain `kec/chunk/`, with the scheme version folded in like
+every other digest in these two programs (section 15), taken over the chunk's uncompressed canonical bytes
+and rendered lower hex. It is the chunk's content address, so a chunk that did not change between two
+versions has the same hash and a client already holding it fetches nothing. That is the mechanism behind
+the owner's "download size after a one-item edit" budget (#882 body, item 12).
 
 The CLIENT manifest is built the same way over the client-visible chunks only (section 11), so it has its
 own hash and is never equal to the server manifest's.
@@ -1360,6 +1361,21 @@ ContentValidationReport Validate(ContentSnapshot candidate, IReadOnlyList<RemapR
   run-to-the-end sweep (`KhaozEngine.Content/JsonSchemaValidator.cs:11-101`, `a-engine.md:275-292`).
 - NO SIDE EFFECTS. It does not log, does not mutate the candidate, does not touch a counter and does not
   throw for content reasons. A throw from it is a bug in the validator.
+
+**The publish-time checks it must include, as a minimum.** A spec may add to this list and may not take
+anything off it:
+
+- Every content REFERENCE resolves. A field the type's schema declares as a key reference (4.7) names a
+  live row of the type it names.
+- Every KEY is unique within its type and well formed under 5.3's character rules.
+- A definition declaring DURABILITY or SOCKETS is not stackable (#884 body, item 4). The two are
+  contradictory, because stacking is byte equality over payloads and both of those are per instance.
+- No `ServerOnly` FIELD appears in a `Client` chunk (11.3).
+- The remap rule set is IDEMPOTENT, by the walk 8.3 describes: no rule's `ToId` is any earlier rule's
+  `FromId` for the same type.
+- Every LIVE definition carries every field its schema marks required (4.7). This is the engine's form of
+  Grimhollow's every-live-item-needs-a-row rule, which fails the config load closed when a live item has no
+  properties row (`b-grimhollow.md:1316-1358`).
 
 Because it is pure and takes its whole world as an argument, a test builds a snapshot in memory and asserts
 on findings, publish runs it before writing anything, and boot runs it against the loaded pack. Ruinborne's

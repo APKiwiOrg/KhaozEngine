@@ -776,11 +776,11 @@ entry only.** Two bounds were in play and they contradicted: this field once dec
 `MaxInstancePayloadBytes`" while 12.4 said an `OriginalLength` may exceed it. The one that is code wins
 the wrong way round, so it is settled here rather than there. A quarantine wrapper carries the original
 bytes VERBATIM plus eleven bytes of its own header (12.4), so an entry that quarantined for
-`payload-oversize` is by construction larger than the cap it broke, and bounding the entry at
+`payload-too-long` is by construction larger than the cap it broke, and bounding the entry at
 `MaxInstancePayloadBytes` would refuse to write exactly the item the wrapper exists to keep. The rule:
 
 - A NON-quarantined entry's payload is at most `MaxInstancePayloadBytes`. The decoder refuses a larger one
-  with `payload-oversize` and `SetSlotAt` throws on one (4.7).
+  with `payload-too-long` and `SetSlotAt` throws on one (4.7).
 - A QUARANTINED entry's payload is the wrapper, and its bound is the page's own: the journal's 2 MiB
   projection section cap less the rest of the page (`JournalLimits.cs:16`). 5.4 carries the arithmetic.
 
@@ -2824,7 +2824,7 @@ touch a counter and does not mutate the page. The caller does all three.
 | 2 | every declared length lies inside the payload | structural | `truncated` | quarantine |
 | 3 | a registered kind's bytes decode through its codec | structural | `field-malformed` | quarantine |
 | 4 | kind 132's nested payloads carry no kind 132 | structural | `socket-nesting` | quarantine |
-| 5 | the payload is at most `MaxInstancePayloadBytes` | structural | `payload-oversize` | quarantine |
+| 5 | the payload is at most `MaxInstancePayloadBytes` | structural | `payload-too-long` | quarantine |
 | 6 | the entry's definition id, and every socket's `ContainedDefinitionId` at every depth, resolves in the active version | drift | `unknown-definition` | quarantine |
 | 7 | every content id the registry's reference targets name resolves, at every depth (3.3) | drift | `unknown-content-reference` | quarantine |
 | 8 | a `(mod id, tier ordinal)` pair names a live tier | drift | `unknown-content-reference` | quarantine |
@@ -2973,7 +2973,7 @@ quarantined entry, on a path that is by definition rare.
 **The wrapper is itself durable, so it is versioned** (contracts 10.5's closing note). Version 1 is the
 only version and a decoder refuses anything else rather than guessing.
 
-**`OriginalLength` may exceed `MaxInstancePayloadBytes`**, because `payload-oversize` is a reason and
+**`OriginalLength` may exceed `MaxInstancePayloadBytes`**, because `payload-too-long` is a reason and
 refusing to wrap the thing that failed for being too big would destroy exactly the item the wrapper
 exists to keep. The page's own entry length check is what bounds it, at the 2 MiB section cap.
 

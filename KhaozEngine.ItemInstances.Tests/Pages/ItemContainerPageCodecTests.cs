@@ -1,5 +1,6 @@
 using System;
 using System.Buffers.Binary;
+using System.IO;
 using KhaozEngine.Catalog;
 using KhaozEngine.ItemInstances;
 using KhaozEngine.Items;
@@ -15,6 +16,28 @@ namespace KhaozEngine.Tests.ItemInstances.Pages;
 public class ItemContainerPageCodecTests
 {
     const int PageSlots = ItemContainerPageCodec.ContainerPageSlots;
+
+    /// <summary>Spec 16 budget 3's full page, checked in under <c>Pages/Goldens</c> and copied beside the
+    /// assembly. Every other version 2 fact encodes and then decodes through the same pair, which cannot
+    /// see a change that moves both sides together. This file can.</summary>
+    const string HundredRares = "spec-3-8-poe-page-100-rares.bin";
+
+    /// <summary>Spec 4.4's cap-raise page: one entry whose original payload broke
+    /// <c>MaxInstancePayloadBytes</c> and whose wrapper is therefore larger than the cap it broke.</summary>
+    const string QuarantinedOverCap = "spec-4-4-quarantined-over-cap.bin";
+
+    /// <summary>The 3.8 PoE row's definition id, two varint bytes, which is the realistic width for a
+    /// catalog of any size (4.4).</summary>
+    const int PoeDefinitionId = 4200;
+
+    /// <summary>The counter the 3.8 PoE row's instance id is written at, five varint bytes, which is the
+    /// realistic width for a node prefixed id on a live shard. A hundred consecutive counters from here all
+    /// stay five bytes, so every entry of the golden page is the same 69 bytes.</summary>
+    const long PoeFirstCounter = 4_000_000_000;
+
+    /// <summary>The golden page's stamp. One varint byte, which is what makes its header the eight bytes
+    /// budget 3 counts.</summary>
+    const int PageStamp = 100;
 
     static PageSlotInput Entry(int slot, int definitionId, int count, long instanceId, byte[]? payload = null, uint flags = 0) =>
         new(slot, flags, definitionId, count, instanceId, payload ?? Array.Empty<byte>());
@@ -162,6 +185,11 @@ public class ItemContainerPageCodecTests
         Assert.True(decoded[0].Quarantined);
         Assert.Equal(711, decoded[0].PayloadLength);
         Assert.True(wrapped.AsSpan().SequenceEqual(page.AsSpan(decoded[0].PayloadStart, decoded[0].PayloadLength)));
+
+        // Checked in, because an encode-then-decode pair cannot see a change that moves both sides
+        // together, and this is the one page shape whose whole reason to exist is that it survives a
+        // reader that would refuse the payload inside it.
+        Assert.Equal(Golden(QuarantinedOverCap), page);
     }
 
     [Fact]
@@ -174,20 +202,32 @@ public class ItemContainerPageCodecTests
     }
 
     [Fact]
-    public void A_full_page_of_100_rares_is_under_eight_kilobytes()
+    public void A_full_page_of_100_rares_is_budget_3s_6908_bytes()
     {
+        // Spec 16 budget 3, reproduced rather than restated. The payload is the CHECKED IN 3.8 PoE golden
+        // itself rather than filler of the same length, so the page cannot drift from the payload row its
+        // budget is derived from. Each entry is slot 1, flags 1, definition id 2, count 1, instance id 5,
+        // payload length 1 and payload 58, which is 4.4's 69, and the header is version 2, page index 1,
+        // first slot 1, slot count 2, stamp 1 and entry count 1, which is 8. 8 + 100 * 69 = 6,908.
+        byte[] payload = PayloadGolden("spec-3-8-poe-greatsword.bin");
+        Assert.Equal(58, payload.Length);
+
         var entries = new PageSlotInput[PageSlots];
         for (int i = 0; i < PageSlots; i++)
-            entries[i] = Entry(i, 2000 + i, 1, InstanceIdAllocator.Pack(0, 4201 + i), Payload(58));
+            entries[i] = Entry(i, PoeDefinitionId, 1, InstanceIdAllocator.Pack(0, PoeFirstCounter + i), payload);
+        Assert.All(entries, entry => Assert.Equal(69, ItemContainerPageCodec.EntrySize(entry, firstSlot: 0)));
 
-        int size = ItemContainerPageCodec.EncodedSize(0, 0, PageSlots, 300, entries);
-        byte[] page = ItemContainerPageCodec.Encode(0, 0, PageSlots, 300, entries);
+        byte[] golden = Golden(HundredRares);
+        byte[] page = ItemContainerPageCodec.Encode(0, 0, PageSlots, PageStamp, entries);
 
-        Assert.Equal(size, page.Length);
+        Assert.Equal(8 + (100 * 69), golden.Length);
+        Assert.Equal(6908, golden.Length);
+        Assert.Equal(golden, page);
+        Assert.Equal(golden.Length, ItemContainerPageCodec.EncodedSize(0, 0, PageSlots, PageStamp, entries));
         Assert.True(page.Length < 8 * 1024, $"a full page of rares is {page.Length} bytes");
 
         Span<PageEntry> decoded = new PageEntry[PageSlots];
-        Assert.True(ItemContainerPageCodec.TryDecode(page, PageSlots, decoded, out _, out int count, out _));
+        Assert.True(ItemContainerPageCodec.TryDecode(golden, PageSlots, decoded, out _, out int count, out _));
         Assert.Equal(PageSlots, count);
     }
 
@@ -236,6 +276,14 @@ public class ItemContainerPageCodecTests
         Assert.False(ItemContainerPageCodec.TryDecode(page, PageSlots, decoded, out _, out _, out string? reason));
         Assert.Equal(ItemContainerPageReason.EntryMalformed, reason);
     }
+
+    static byte[] Golden(string name)
+        => File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Pages", "Goldens", name));
+
+    /// <summary>Reads a PAYLOAD golden, so a page fact can be built out of the payload bytes the payload
+    /// facts already pin rather than out of a second copy of them.</summary>
+    static byte[] PayloadGolden(string name)
+        => File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Payload", "Goldens", name));
 
     [Fact]
     public void The_seven_page_reasons_are_a_closed_set()

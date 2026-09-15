@@ -9,6 +9,7 @@
     <!-- The checked-in payload goldens, copied beside the assembly so a golden fact reads the same bytes
          the repository holds. A change that moves one of these files has changed a stored byte format. -->
     <Content Include="Payload/Goldens/*.bin" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Pages/Goldens/*.bin" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <!-- The version 1 container blobs KhaozEngine.Foundation.Tests pins, LINKED rather than copied, so one

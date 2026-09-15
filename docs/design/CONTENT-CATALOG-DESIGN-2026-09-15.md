@@ -969,3 +969,488 @@ it: a second world adds a `world_key` column to `catalog_metadata`'s active poin
 rows, chunks, packs and manifests are all world independent, because content is what a thing IS and a world is
 where it sits. Two worlds on different active versions is two rows in a renamed `catalog_active_version` table
 keyed by world, and every other table is untouched.
+
+## 5. Validation
+
+### 5.1 The one validator
+
+Contracts 10.4 fixes the shape and this spec fills it in:
+
+```csharp
+public static ContentValidationReport Validate(
+    ContentSnapshot candidate,
+    IReadOnlyList<RemapRule> rules,
+    ContentTypeRegistry registry);
+```
+
+- INPUT is a complete candidate snapshot plus the full ordered rule set. Nothing is read from a database, a
+  file or an ambient static inside it.
+- OUTPUT is `(bool IsValid, IReadOnlyList<ContentFinding> Findings)`, accumulating rather than stopping at the
+  first, following `JsonSchemaValidator.ValidationReport` and its run-to-the-end sweep
+  (`KhaozEngine.Content/JsonSchemaValidator.cs:11-101`, `a-engine.md:275-292`).
+- NO SIDE EFFECTS. It does not log, does not mutate the candidate, does not touch a counter and does not throw
+  for content reasons. A throw from it is a bug in the validator.
+
+Because it is pure and takes its whole world as an argument, a test builds a snapshot in memory and asserts on
+findings, publish runs it before writing anything, and boot runs it against the loaded pack. Ruinborne's
+catalog loader is the shape this avoids: validation lives INSIDE the SQL read delegate, so an
+`ArgumentException` from a bad row is routed to the connectivity failure handler and reported as
+`Item catalog: SQL read failed`, which sends an operator looking at the network
+(`c-ruinborne.md:176-196`, Ruinborne [#325](https://github.com/APKiwiOrg/Ruinborne/issues/325)).
+
+### 5.2 The findings
+
+A finding is `(ContentTypeId Type, int Id, string Code, string Message)`. The CODE is a stable token so a
+counter, a test and an operator runbook can all key on it, which is the same rule contracts 9.7 applies to
+decode reasons. Codes are never reused and never renumbered.
+
+| Code | Check | Contract |
+|---|---|---|
+| `KEC0001` | A key is not well formed: not `a-z0-9_`, leading digit, leading or trailing underscore, double underscore, over 64 characters. | 5.3 |
+| `KEC0002` | A key is not unique within its type. | 5.3 |
+| `KEC0003` | A key changed on a row that is already published. | 5.3 |
+| `KEC0004` | A row carries a field the type's schema does not declare. | 4.7 |
+| `KEC0005` | A live row is missing a field its schema marks required. | 4.7, 10.4 |
+| `KEC0006` | A key reference names a row that is not live at this version. | 10.4 |
+| `KEC0007` | A key reference names a content type that was never registered. | 3.3 here |
+| `KEC0008` | A tag list names a tag id that is not a live `tag` row. | 4.6 |
+| `KEC0009` | A definition id is 0 or negative. | 5.1 |
+| `KEC0010` | A definition id is outside every block of the family it claims. | 5.2 |
+| `KEC0011` | A family block is not aligned to its own declared size. | 5.2 |
+| `KEC0012` | Two families of one type claim overlapping blocks. | 5.2 |
+| `KEC0013` | A `ServerOnly` field appears on a type whose visibility is `Client`, with no per-field override. | 11.3 |
+| `KEC0014` | A `Client` chunk would carry a `ServerOnly` field. | 11.3, 10.4 |
+| `KEC0015` | The remap rule set is not idempotent: a rule's `ToId` is an earlier rule's `FromId` for the same type. | 8.3, 10.4 |
+| `KEC0016` | A remap rule's `FromId` names a row that never existed. | 8.1 |
+| `KEC0017` | A remap rule's `ToId` names a row that is not live at `IntroducedIn`. | 8.2 |
+| `KEC0018` | Remap rule sequences are not contiguous from 1, or are not strictly ascending. | 8.1 |
+| `KEC0019` | A remap rule payload is longer than 64 bytes, or is malformed for its kind. | 8.4 |
+| `KEC0020` | A stat `scale` is not a power of ten, or is below 1. | 13.1 |
+| `KEC0021` | A stat `min` exceeds its `max`. | 13.1 |
+| `KEC0022` | A definition declaring durability or sockets is stackable. | 10.4 |
+| `KEC0023` | A loot entry sets both `item` and `nested_table`, or neither. | 3.5 here |
+| `KEC0024` | A loot table graph contains a cycle through `nested_table`. | 3.5 here |
+| `KEC0025` | `max_stack` is below 1, or is 1 on a stackable row. | 3.3 here |
+| `KEC0026` | A row's encoded bytes exceed `MaxContentRowBytes`. | 7.3 here |
+| `KEC0027` | A row's codec round trip is not byte identical. | 7.3 here |
+| `KEC0028` | A `chunk_slots` value is not a power of two between 256 and 65,536. | 4.5 |
+| `KEC0029` | A type id or type key changed after its first publish. | 4.4 |
+| `KEC0030` | A localized text key exceeds 192 characters or breaks 12.2's character rules. | 12.2 |
+| `KEC0031` | A `parent_id` is non-zero while inheritance is unimplemented. | 3.8 here |
+| `KEC0032` to `KEC0035` | The four inheritance checks of section 3.8, unreachable in phase 1. | 3.8 here |
+| `KEC0040` | A game validator returned a finding. The message is the game's, the code is prefixed with its type key. | 4.4 |
+
+`KEC0022` and `KEC0025` are the two checks that make Ruinborne's stackable defects impossible to publish:
+`Stackable = true, MaxStack = 1` is directly reachable in its admin form today
+(`c-ruinborne.md:359-363`) and Ruinborne [#279](https://github.com/APKiwiOrg/Ruinborne/issues/279) asks for
+the equippable-plus-stackable rule that `KEC0022` generalizes.
+
+`KEC0027` is the check most likely to be skipped and it is the one that pays. Encoding every row and decoding
+it back costs one pass over the candidate at publish time, and it is the only thing that can catch a codec
+whose encode and decode disagree before the bytes are hashed into a manifest an operator then treats as an
+identity.
+
+### 5.3 The sweep order
+
+The sweep runs in five passes over the candidate, in this order, and never stops early:
+
+1. **Structure.** Ids, keys, families, blocks, chunk sizes, type identity. `KEC0001` to `KEC0003`, `KEC0009`
+   to `KEC0012`, `KEC0028`, `KEC0029`.
+2. **Schema.** Every field against its type's declared schema, required fields, value ranges, localized key
+   shape, the inheritance guard. `KEC0004`, `KEC0005`, `KEC0020`, `KEC0021`, `KEC0025`, `KEC0030` to
+   `KEC0035`.
+3. **References.** Key references, tag lists, loot graphs. `KEC0006` to `KEC0008`, `KEC0023`, `KEC0024`.
+4. **Visibility and codec.** Field visibility against chunk visibility, the round trip, the row size cap.
+   `KEC0013`, `KEC0014`, `KEC0022`, `KEC0026`, `KEC0027`.
+5. **Remap rules.** The full ordered set. `KEC0015` to `KEC0019`.
+
+Pass 3 needs pass 1 to have built the live-row index, and pass 5 needs pass 1 to know which ids ever existed.
+Nothing else is ordered, and the passes are single threaded because the candidate at 1,000,000 rows is a few
+hundred megabytes and the whole sweep is a linear walk (section 14, budget P5).
+
+Game validators (contracts 4.4, an ADDITIONAL constraint never a relaxation) run LAST, after pass 5, one per
+registered type, each handed only its own type's rows plus a read-only lookup into the rest of the candidate.
+Their findings come back as `KEC0040` with the game's message. A game validator that throws is caught and
+reported as `KEC0040` with the exception message, so one bad game validator cannot take the publish down with
+a stack trace instead of a finding.
+
+### 5.4 The three callers
+
+**Publish** (section 6.4) runs it on the candidate BEFORE any id is stamped into a durable row and before any
+byte is written. `IsValid == false` aborts the publish, nothing is written, the draft is untouched, and the
+findings come back to the console as HTTP 400 with the full list.
+
+**Boot** (section 9.5) runs it on the snapshot decoded from the loaded pack. A pack that fails validation at
+boot fails the boot CLOSED, non-zero exit, findings on stderr (contracts 10.5). This is not redundant with the
+publish run: the pack may have been written by an older engine build, may have been corrupted in transit, or
+may have been produced by a publish whose validator had a bug now fixed. Running it again costs one linear
+sweep at process start and is the last gate before a server serves content.
+
+**Tests** build a `ContentSnapshot` in memory with no store, no file and no registry beyond the one they
+construct, and assert on the exact finding codes. That is the property that makes the validator testable at
+all, and it is why the signature takes the registry as an argument rather than reading an ambient one.
+
+### 5.5 What the validator deliberately does NOT check
+
+Named so nobody adds them later without a decision:
+
+- **Whether a value is sensible.** A sword worth 0 coins and a tree with a 100 percent chance are legal. The
+  validator enforces the SHAPE of content, and the owner owns the numbers. Grimhollow's AGENTS.md already
+  states the corresponding rule for its own numbers, that they are content the owner owns
+  (`b-grimhollow.md:1081-1105`).
+- **Whether a client has the art.** `MinimumClientBuild` is the publisher's statement about that (contracts
+  7.4), and the validator cannot see a client's asset bundle.
+- **Whether a localization key resolves.** `IStringCatalog.Get` never throws for a missing key and returns the
+  key itself as a visible placeholder (`KhaozEngine.App/IStringCatalog.cs:12-17`), so a missing string is a
+  visible defect rather than a publish blocker. Section 15.7 adds a test-only coverage sweep for a game that
+  wants the stronger guarantee.
+- **Whether a remap rule is a GOOD idea.** `KEC0015` refuses a rule set that is not idempotent and nothing
+  refuses a rule that moves every sword onto a stick. That is the owner's call and contracts 8.6 already says
+  a retire is irreversible.
+
+## 6. Publish
+
+### 6.1 The whole algorithm, in order
+
+Publish is eleven steps. Steps 1 to 8 write nothing durable. Step 9 writes files nothing references. Step 10
+is the one commit. Step 11 is a sweep after the commit.
+
+```
+ 1. Freeze the draft
+ 2. Build the candidate
+ 3. Allocate ids
+ 4. Validate
+ 5. Compute the temporal rows
+ 6. Select affected chunks
+ 7. Encode and compress the affected chunks, computing each chunk hash
+ 8. Build both manifests and compute both manifest hashes
+ 9. Write chunk files and manifest files to the pack store
+10. COMMIT: one transaction writing the version row, the rows, the rules, the chunk rows,
+    the audit rows, the draft deletion and the active pointer
+11. Sweep: prune unreferenced chunk files written by a previous failed attempt
+```
+
+Crash safety is stated per step in section 6.11 and the invariant is one sentence: **a crash at any point
+leaves either the old version or the new one, never a torn one.** That holds because nothing observable
+changes until step 10 and step 10 is a single transaction.
+
+### 6.2 Step 1, freeze the draft
+
+The draft is marked frozen in memory for the duration of the publish and the store takes a row lock on
+`catalog_draft`. A draft edit arriving while a publish is in flight is refused with HTTP 409 and
+`publish-in-progress`. On SQL Server the lock is the `Serializable` transaction's own. On SQLite it is the
+`SqliteStoreConnection` gate, which already serializes every command in the process
+(`SqliteStoreConnection.cs:66-73`), plus a `BEGIN IMMEDIATE` so a second process cannot start one.
+
+Two consoles publishing concurrently is section 11 row 4 and it resolves here: the second one either blocks
+and then finds the draft empty, or aborts with a serialization failure. Neither produces a torn version.
+
+The new version number is `MAX(version_number) + 1` read INSIDE the transaction at step 10, not here. Reading
+it at freeze time and using it at commit time is exactly the race the lock is meant to close, so the number is
+taken where the write happens.
+
+### 6.3 Step 3, allocate ids
+
+Every `Add` edit in the frozen change set needs an id. Allocation runs before validation deliberately, because
+several checks (`KEC0006` reference resolution, `KEC0010` family membership) need the ids the new rows will
+carry.
+
+For each `Add`, in edit ordinal order:
+
+1. If the edit names a family, call `AllocateInFamilyAsync(familyId)` (section 4.7).
+2. Otherwise call `AllocateAsync(typeId, 1)`.
+
+Both go through the reserve-before-issue rule, so the reservation commits on its own before the id appears
+anywhere. **An allocation that fails aborts the publish with nothing written**, because no durable row carries
+the id yet. A reservation that COMMITTED and then aborted leaves a gap of reserved-but-unissued ids, which is
+the safe direction and costs nothing (section 4.7).
+
+Ids are allocated in edit ordinal order, so two publishes of the same bundle into two empty databases produce
+the same ids. That is what makes a bundle export and re-import reproducible (section 10.9) and what makes the
+Grimhollow import preserve ids 1 to 35 (section 16.4).
+
+### 6.4 Step 4, validate
+
+Section 5, on the candidate built at step 2 plus the rule set as it will stand after step 5 appends this
+publish's rules. Validating the rules BEFORE they are durable is the point: `KEC0015` refusing a
+non-idempotent rule set is the check that makes contracts 8.3's crash safety hold, and a rule that got into
+the table could not be taken back out.
+
+An invalid candidate aborts. The draft is NOT discarded and the console gets every finding, so an operator
+fixes three problems in one round trip rather than three.
+
+### 6.5 Step 5, compute the temporal rows
+
+For each edit, with `V` the new version number:
+
+| Edit | Writes |
+|---|---|
+| `Add` | One `catalog_row` with `valid_from_version = V`, `replaced_in_version = NULL`, `retired = 0`, plus one `catalog_row_field` per set field. |
+| `Update` | Sets the current row's `replaced_in_version = V`, then inserts a successor with `valid_from_version = V` carrying the MERGED field set: the current row's fields with the edit's fields overlaid. |
+| `Retire` | Sets the current row's `replaced_in_version = V`, then inserts a successor with `valid_from_version = V`, `retired = 1` and the SAME field set, plus one `catalog_remap_rule` with kind `2` and the policy payload. |
+
+A `Retire` whose policy is `0x02` replacement carries the destination id in payload bytes 1 to 4 (contracts
+8.2) and the validator has already checked the destination is live (`KEC0017`).
+
+A row NOT named by any edit is untouched. Nothing walks it, nothing rewrites it, and its
+`valid_from_version` still names whichever old version it entered in. That is what makes step 6 cheap.
+
+### 6.6 Step 6, select affected chunks
+
+A chunk is `(typeId, chunkIndex)` where `chunkIndex = definitionId / chunkSlots` for that type (contracts
+4.5, a slot count and not a row count, so a chunk's identity never moves when a row is added to it).
+
+```
+affected = { (type, id / chunkSlots[type])
+             for every row whose valid_from_version = V
+             or whose replaced_in_version = V }
+```
+
+Both halves matter. A row that entered at `V` changes its chunk. A row that was CLOSED at `V` also changes its
+chunk, because it leaves the live set. An `Update` touches the same chunk twice, which the set collapses.
+
+Every chunk NOT in `affected` keeps its previous version's hash, read from `catalog_chunk` at
+`version_number = V - 1`. It is not encoded, not compressed, not hashed and not written. This is the mechanism
+behind the owner's "download size after a one-item edit" budget (#882 body, item 12) and it is the reason
+chunk identity had to be an id range rather than a row range.
+
+**A retire is an ordinary chunk rewrite.** The retired row keeps its slot and its bytes and gains the retired
+bit, so exactly one chunk changes. Grimhollow's 18 retired ids sit across ids 1 to 35, which at 4,096 slots
+per chunk is one chunk, so its whole retirement history is one chunk rewrite.
+
+**Adding a content TYPE rewrites nothing.** A new type contributes its own chunks and every existing chunk
+hash is unchanged. The MANIFEST hash changes, because the manifest enumerates every type sorted by type id
+(contracts 7.3), and that is correct: the version identity moved even though no old byte did.
+
+### 6.7 Step 7, encode, compress and hash
+
+For each affected chunk, in `(typeId, chunkIndex)` order:
+
+1. Take the live rows whose id falls in `[chunkIndex * slots, (chunkIndex + 1) * slots)`, sorted ASCENDING BY
+   ID. Sorted, always, because contracts 4.3's registration-order-independence rule requires that two
+   processes registering the same types in different orders produce byte-identical packs.
+2. Encode each row through its type's `IContentRowCodec` into the row body.
+3. Build the chunk's canonical uncompressed bytes (section 7.3).
+4. `chunkHash = ContentHash.OfChunk(canonicalBytes)`, SHA-256 under sub-domain `kec/chunk/` with the scheme
+   version folded in, rendered lower hex (contracts 7.3, 15).
+5. Compress the body (section 7.5) and assemble the stored file.
+
+**The hash is over the UNCOMPRESSED canonical bytes.** That is contracts 7.3's rule and it is what makes the
+hash independent of the compressor: a later engine build that improves compression produces the same chunk
+hash for the same content, so a client already holding the chunk fetches nothing and a republish of an
+unchanged chunk is a no-op. A hash over the stored bytes would make a compressor change a full re-download of
+the entire catalog.
+
+**The client chunk is a DIFFERENT chunk with a DIFFERENT hash.** For a type whose visibility is `Client` but
+which carries at least one `ServerOnly` field, the client chunk is encoded with those fields omitted, giving
+its own canonical bytes and its own hash (contracts 11.3). A type whose visibility is `ServerOnly` produces no
+client chunk at all. So a chunk address is `(hash)` and the client and server chunks for one id range are two
+addresses, which is exactly right: they are different bytes.
+
+### 6.8 Step 8, build both manifests
+
+Two manifests per version, the SERVER manifest over every chunk and the CLIENT manifest over the
+client-visible chunks only (contracts 7.3, 11.3). Each gets its own hash under its own sub-domain,
+`kec/manifest/server/` and `kec/manifest/client/`, so a head gating on one can never accidentally agree with a
+head gating on the other. That last property is `TileWorldHash.OfWorldAndCatalogs`'s stated reason for
+existing (`a-engine.md:1206-1209`).
+
+The canonical manifest text, in order (contracts 7.3):
+
+```
+<sub-domain><SchemeVersion>\n
+<version number>\n
+<format generation>\n
+<minimum server build>\n
+<minimum client build>\n
+for each content type, SORTED BY TYPE ID:
+    <type id> <len>:<type key>  <chunk count>\n
+    for each chunk in ASCENDING INDEX order:
+        <chunk index> <chunk hash>\n
+<len>:<remap rule chunk hash> \n
+for each language, SORTED ORDINAL BY TAG:
+    <len>:<language tag>  <text chunk hash>\n
+```
+
+Every number goes through `CultureInfo.InvariantCulture`, because `StringBuilder.Append(int)` uses the CURRENT
+culture and a negative number digests differently under a culture with its own minus sign
+(`TileWorldHash.cs:171-176`). Every string is LENGTH PREFIXED as `"{len}:{value} "` with a bare `"- "` for
+null, so a delimiter inside an authored key cannot make two different manifests digest the same
+(`TileWorldHash.cs:178-185`).
+
+**The minimum builds and the format generation are INPUTS to the manifest hash, not stamps beside it.** A
+publisher who raises `MinimumClientBuild` without touching a row publishes a version with a different manifest
+hash and identical chunk hashes, so a client re-reads one small manifest and downloads nothing. That is the
+correct behaviour and it falls out of putting the three numbers inside the digest.
+
+`MinimumServerBuild` and `MinimumClientBuild` are CONSUMER-SUPPLIED build ordinals carried on the publish
+request (section 10.6). `FormatGeneration` is the ENGINE's own constant, `ContentPackFormat.Generation`, read
+from the engine at publish time and never supplied by a caller (contracts 7.4).
+
+### 6.9 Step 9, write the files
+
+Every chunk file and both manifest files go to the pack store (section 8) BEFORE the database commit, at
+content-addressed names nothing references yet.
+
+- A chunk file is named by its chunk hash. Writing one twice is idempotent by construction.
+- A chunk whose hash already exists in the store is NOT rewritten. `IPackStore.ExistsAsync(hash)` is checked
+  first, which is what makes a republish of an unchanged chunk free.
+- A manifest file is named by its manifest hash, so the same rule applies.
+- The filesystem provider writes to `<hash>.tmp` and then `File.Move(temp, final, overwrite: true)`, the map
+  document's idiom (`MapTiledFile.Save.cs:183-192`), with a `stream.Flush(flushToDisk: true)` before the move
+  when the store is configured for power-fail durability.
+
+Nothing points at any of these files until step 10, so a crash here leaves orphans and nothing else. Step 11
+sweeps them.
+
+### 6.10 Step 10, the commit
+
+ONE transaction (section 4.8). In order inside it:
+
+1. `newVersion = MAX(version_number) + 1` from `catalog_version`, or 1 when empty.
+2. Insert the `catalog_version` row with both manifest hashes, both minimum builds, the format generation, the
+   base version, the publisher, the note and the timestamp.
+3. Apply every temporal row change computed at step 5.
+4. Append every remap rule computed at step 5, at `MAX(sequence) + 1` upward.
+5. Insert every `catalog_chunk` row for `newVersion`. Unaffected chunks get a row too, carrying the hash
+   copied from `newVersion - 1`, so the table answers "which chunks does version N have" with one query and no
+   recursion back through history.
+6. Insert every audit row.
+7. Delete `catalog_draft_edit_field`, `catalog_draft_edit` and `catalog_draft`.
+8. `UPDATE catalog_metadata SET active_version = newVersion`.
+
+Step 8 is the moment the version becomes live, and it is the last statement in the transaction. A reader that
+sees `active_version = N` is guaranteed to see every row, rule, chunk and audit entry of version N, because
+they committed together.
+
+**The active pointer moves at publish, and the SERVER does not.** v1 applies a new version at server restart
+(contracts 1.3 item 8), so moving the pointer makes the version ACTIVE FOR THE NEXT BOOT. A running server
+keeps serving the version it loaded. Section 12.5 says what an operator sees and section 10.7 gives them the
+pin action for holding a version back.
+
+### 6.11 Idempotence and crash safety, step by step
+
+| Crash point | State afterwards | Recovery |
+|---|---|---|
+| During step 1 to 8 | Nothing written. The draft is intact. | Republish. Nothing to clean. |
+| Between step 3's reservation commit and step 4 | A gap of reserved-but-unissued ids. | None needed. The gap is invisible and bounded by 1,024 per type (section 4.7). |
+| During step 9, part way through the chunk files | Some chunk files exist that nothing references. The old version is still active. | Republish writes them again idempotently, since a chunk file's name is its own hash. Step 11 of the NEXT successful publish sweeps any that are never referenced. |
+| Between step 9 and step 10 | Every file of the new version exists. Nothing references them. The old version is still active. | Republish. The `ExistsAsync` check at step 9 makes the rewrite free, so a retried publish after a crash here is fast. |
+| During step 10 | The transaction rolls back. The old version is active. The orphan files remain. | Republish, then sweep. |
+| Between step 10 and step 11 | The new version is fully live. Orphan files from a PREVIOUS failed attempt remain. | The next publish sweeps them. An operator may run the sweep alone (section 10.11). |
+
+The property that makes all six rows safe is that **a chunk file's name is a hash of its own contents**, so
+writing one is idempotent, writing one nothing references is inert, and two independent publishes that produce
+identical bytes produce one file. That is the map document's argument, whose changed tiles are written "at
+names nothing points at yet" with the manifest rename as the commit
+(`MapTiledFile.Save.cs:81-102`), and the engine already has a step-hook enum to test exactly this shape
+(`MapTiledSaveStep`, `KhaozEngine.MapDoc/MapDocumentForm.cs:58-74`). Section 15.6 copies it.
+
+### 6.12 Step 11, the sweep
+
+After the commit, and only after a SUCCESSFUL commit, the publisher lists the pack store and deletes any file
+whose hash appears in no `catalog_chunk` row and is neither manifest of any version. The sweep is SKIPPED when
+the store listing fails for any reason, because deleting files on the authority of a listing that failed is
+how a bad publish turns into a lost pack. That skip rule is the map document's, which skips its own sweep when
+the previous manifest could not be read (`MapTiledFile.Save.cs:105-107`).
+
+The sweep never deletes a file referenced by ANY version, not just the active one, because a pinned server
+(section 10.7) and a rollback (section 12.3) both need older versions to stay fetchable.
+
+### 6.13 Rollback is a publish
+
+A rollback is a NEW version that restores old values and keeps every id introduced since (#882 body, item 8).
+The version number keeps climbing throughout: a rollback is never a return to an old number, which is the same
+property that lets the page stamp be an ordering comparison (contracts 7.2, 8.6).
+
+`RollbackToAsync(targetVersion)` builds a draft rather than doing anything special:
+
+1. Read the live row set at `targetVersion` and the live row set at the current version.
+2. For every row live at BOTH whose field set differs, emit an `Update` restoring the target's field values.
+3. For every row live at `targetVersion` and retired since, emit an `Update` clearing `retired` AND refuse if
+   any remap rule of kind 1, 2 or 3 names that id, because contracts 8.6 makes a retire irreversible for
+   migrated pages.
+4. For every row introduced AFTER `targetVersion`, do NOTHING. It keeps its id and its values. This is #882's
+   "keeps every id introduced since" and it is the difference between a rollback and a restore.
+5. Publish the draft in the ordinary way.
+
+Step 3 is the one place a rollback can fail, and it fails EARLY with finding `KEC0017` plus a message naming
+the rule sequence, rather than silently producing a version whose remap rules contradict its rows. The way out
+is the contracts' own: **a rollback that wants a retired definition back MINTS A NEW ID carrying the old
+values** (contracts 8.6), which is an ordinary `Add` with a new key, plus a `ReplacedBy` rule if the owner
+wants existing references moved onto it. The API surfaces this as a 409 with the blocking rules listed and the
+mint-new-id path named, so the operator is not left guessing.
+
+Section 12 spends the operator-facing half of this.
+
+## 7. Pack format, byte level
+
+### 7.1 Rules that apply to every format here
+
+From contracts 15, restated because every layout below depends on them:
+
+- **Little endian**, written and read through `System.Buffers.Binary.BinaryPrimitives` with the endianness in
+  the method name. `BitConverter` is FORBIDDEN because it is host endian.
+- **Varint** is unsigned LEB128: seven value bits per byte, low group first, high bit set on every byte but
+  the last, at most five bytes for a 32 bit value and ten for a 64 bit one. A field declared SIGNED is zig-zag
+  encoded first. Content ids, chunk indices, kind ids, lengths, counts and row counts are all declared
+  UNSIGNED and are never zig-zagged. Encodings must be MINIMAL.
+- **Version field first**, a `public const ushort`, bumped and never reused. A mismatched version is a REFUSAL
+  of the whole record with a reason, never a best-effort partial read.
+- **Magic prefixes** for a format stored standalone: `KECC` chunk, `KECM` manifest, `KECR` remap rule chunk,
+  `KECQ` quarantine wrapper (Scope B's). This spec adds `KECT` for a text chunk, which contracts 15 did not
+  name because per-language text chunks are Scope A's own format. Section 20 records it as a note rather than
+  a change request, because contracts 15 gives the RULE for magics and lists the ones it knew about.
+- **Digests** are SHA-256, lower hex as text, raw 32 bytes as a field. Every digest is domain separated under
+  `kec/` with its own sub-domain and the scheme version folded in.
+
+```csharp
+public static class ContentPackFormat
+{
+    public const ushort ChunkFormatVersion    = 1;
+    public const ushort ManifestFormatVersion = 1;
+    public const ushort RuleChunkFormatVersion = 1;
+    public const ushort TextChunkFormatVersion = 1;
+    public const int    Generation            = 1;   // contracts 7.4
+    public const int    HashSchemeVersion     = 1;   // contracts 7.3
+    public const int    MaxContentRowBytes    = 4096;
+    public const int    MaxChunkUncompressedBytes = 16 * 1024 * 1024;
+}
+```
+
+`MaxContentRowBytes = 4096` is the row-level guard rail behind `KEC0026`. The arithmetic: the largest realistic
+engine row is an item base with three asset references at 128 bytes each, two localized keys at 192, a 20 tag
+list and a dozen ints, which is under 900 bytes. Four kilobytes is four times that and it is what stops one
+pathological row from dominating a chunk. `MaxChunkUncompressedBytes = 16 MiB` is the matching chunk-level
+guard: at 4,096 slots a chunk would have to average 4 KB per row to reach it, which `MaxContentRowBytes`
+makes the absolute worst case, so the two caps are consistent by construction.
+
+### 7.2 The chunk file, `KECC`
+
+```
+offset  width  field
+------  -----  ---------------------------------------------------------------
+  0      4     magic, ASCII 'K','E','C','C'  = 4B 45 43 43
+  4      2     formatVersion       uint16 LE
+  6      2     typeId              uint16 LE
+  8      4     chunkIndex          uint32 LE
+ 12      4     slotBase            uint32 LE     first definition id in range
+ 16      4     slotCount           uint32 LE     ids in range, a power of two
+ 20      4     rowCount            uint32 LE
+ 24      1     visibility          byte          0 = Client, 1 = ServerOnly
+ 25      1     compression         byte          0 = none, 1 = Brotli
+ 26      2     reserved            uint16 LE     written 0, refused non-zero
+ 28      4     uncompressedBytes   uint32 LE     body length before decompression
+ 32      4     storedBytes         uint32 LE     body length as stored
+ 36      N     body                storedBytes bytes
+```
+
+The header is 36 bytes and is NEVER compressed, so a reader learns the type, the id range, the row count and
+the two lengths without touching the compressor. `reserved` is written 0 and a non-zero value is a REFUSAL
+with reason `chunk-reserved-set`, which is the contracts' fail-closed rule for an extension a reader cannot
+skip (contracts 8.5, 7.4).
+
+`slotBase` and `slotCount` are carried explicitly rather than derived from `chunkIndex` and a registry lookup,
+because a reader validating a chunk it just downloaded should not need the registry to decide the file is
+malformed. The reader CHECKS them against the registry (`slotBase == chunkIndex * slotCount` and `slotCount`
+matching the type's registration) and refuses a mismatch with `chunk-range-mismatch`.

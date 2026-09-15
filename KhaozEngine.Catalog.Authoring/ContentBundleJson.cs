@@ -266,7 +266,7 @@ public static class ContentBundleJson
             writer.WriteNumber("kind", (int)rule.Kind);
             writer.WriteNumber("fromId", rule.FromId);
             writer.WriteNumber("toId", rule.ToId);
-            writer.WriteString("payload", Convert.ToHexString(rule.Payload.Span).ToLowerInvariant());
+            writer.WriteString("payload", Convert.ToHexString(rule.Payload).ToLowerInvariant());
             writer.WriteEndObject();
         }
 

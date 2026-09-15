@@ -25,7 +25,7 @@ namespace KhaozEngine.Catalog.Authoring;
 /// is what a provider's connection lease does with a real connection behind it.
 /// </para>
 /// </summary>
-public sealed class InMemoryContentAuthoringStore : IContentAuthoringStore, IContentIdPersistence
+public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringStore, IContentIdPersistence
 {
     /// <summary>The schema version this store reports, matching the providers' first migration.</summary>
     public const int SchemaVersion = 1;

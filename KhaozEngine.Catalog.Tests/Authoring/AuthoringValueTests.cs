@@ -322,7 +322,7 @@ public class AuthoringValueTests
     }
 
     [Fact]
-    public void TheStoreSeamCarriesTheTwentyTwoMembersEveryProviderImplements()
+    public void TheStoreSeamCarriesTheTwentyFiveMembersEveryProviderImplements()
     {
         // Spec 2.3 and the phase 1 plan name these so a provider implements ONE shape. A member added here
         // without being added to every backend is the drift this pins.
@@ -331,6 +331,7 @@ public class AuthoringValueTests
             "AllocateAsync",
             "AllocateInFamilyAsync",
             "ApplyEditsAsync",
+            "CommitPublishAsync",
             "CreateFamilyAsync",
             "DiscardDraftAsync",
             "ExportBundleAsync",
@@ -344,10 +345,12 @@ public class AuthoringValueTests
             "ImportBundleAsync",
             "InitializeAsync",
             "ListAuditAsync",
+            "ListFamiliesAsync",
             "ListRowsAsync",
             "ListVersionsAsync",
             "LoadSnapshotAsync",
             "PublishAsync",
+            "ReadPublishBaselineAsync",
             "RollbackToAsync",
             "SetPinnedVersionAsync",
         ];

@@ -1,0 +1,433 @@
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+using KhaozEngine.Catalog.Authoring;
+using KhaozEngine.Sqlite;
+using Microsoft.Data.Sqlite;
+
+namespace KhaozEngine.Catalog.Sqlite;
+
+/// <summary>
+/// The bundle half: the lossless export of one version, and the import that seeds an EMPTY database from
+/// one.
+/// <para>
+/// <b>An import runs through the ordinary publish and there is no second mechanism.</b> It turns the bundle
+/// into a draft of <c>Add</c> edits, some carrying their own id and some not, and publishes it as version 1.
+/// </para>
+/// <para>
+/// <b>Into an EMPTY database only</b>, empty meaning <c>catalog_version</c> holds no rows. That single rule
+/// is the answer to a whole class of seeding defect, where a seed that runs repeatedly against live data
+/// either reverts an operator's value on the next deploy or is beaten forever by a stored row.
+/// </para>
+/// <para>
+/// <b>The restamped rules are held in memory until the publish commits them</b>, and that is forced by the
+/// schema rather than chosen: <c>catalog_remap_rule.introduced_in</c> has a foreign key to
+/// <c>catalog_version</c>, so a rule stamped at version 1 cannot be written before version 1 exists. The
+/// baseline read hands them to the publish pipeline, and the one transaction of step 10 appends them after
+/// the version row, which is the same order every other publish writes in.
+/// </para>
+/// </summary>
+public sealed partial class SqliteContentAuthoringStore
+{
+    /// <inheritdoc />
+    /// <remarks>
+    /// The families and the id marks are written BEFORE the publish, because the edits and the baseline both
+    /// need them. Any refusal after that point resets this store to the empty state it was required to be
+    /// in, so a caller that catches one is holding a store it may import into again. Files a failed attempt
+    /// already wrote to the pack store are ordinary orphans and the next sweep takes them.
+    /// </remarks>
+    public async Task<ContentPublishResult> ImportBundleAsync(
+        ContentBundle bundle,
+        string actor,
+        string operatorId,
+        string note,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(bundle);
+        ArgumentNullException.ThrowIfNull(actor);
+        ArgumentNullException.ThrowIfNull(operatorId);
+        ArgumentNullException.ThrowIfNull(note);
+
+        IReadOnlyList<ContentEdit> edits;
+        using (SqliteStoreLease lease = await _connection.EnterAsync(cancellationToken).ConfigureAwait(false))
+        {
+            int active = (int)await ReadLongAsync(
+                "SELECT active_version FROM catalog_metadata WHERE metadata_key = 1;", null, cancellationToken)
+                .ConfigureAwait(false);
+            long published = await ReadLongAsync(
+                "SELECT COUNT(*) FROM catalog_version;", null, cancellationToken).ConfigureAwait(false);
+            if (published > 0)
+            {
+                throw new ContentAuthoringException(
+                    FormattableString.Invariant(
+                        $"This store already stands at version {active}, and a bundle is imported into an EMPTY store only. A deployed catalog's values change through an edit and a publish and through nothing else."),
+                    default,
+                    0,
+                    ContentAuthoringException.CatalogNotEmptyReason);
+            }
+
+            if (PackStore is null)
+            {
+                throw NoPackStore(nameof(ImportBundleAsync));
+            }
+
+            RequireTypesAgree(bundle);
+
+            using SqliteTransaction transaction = _connection.BeginTransaction();
+            await RestoreFamiliesAsync(bundle, transaction, cancellationToken).ConfigureAwait(false);
+            await SeedMarksAsync(bundle, transaction, cancellationToken).ConfigureAwait(false);
+            transaction.Commit();
+
+            _importRules = Restamp(bundle);
+            edits = await EditsAsync(bundle, cancellationToken).ConfigureAwait(false);
+        }
+
+        try
+        {
+            await ApplyEditsAsync(edits, actor, operatorId, note, cancellationToken).ConfigureAwait(false);
+            ContentPublishResult published = await PublishAsync(
+                new ContentPublishRequest(actor, operatorId, note, 0), cancellationToken).ConfigureAwait(false);
+
+            using SqliteStoreLease lease = await _connection.EnterAsync(cancellationToken).ConfigureAwait(false);
+            using SqliteTransaction transaction = _connection.BeginTransaction();
+            await AppendAuditAsync(
+                transaction,
+                ContentAuditActions.BulkImport,
+                actor,
+                operatorId,
+                default,
+                0,
+                default,
+                string.Empty,
+                null,
+                Render(bundle.Rows.Count),
+                published.VersionNumber,
+                note,
+                cancellationToken).ConfigureAwait(false);
+            transaction.Commit();
+            return published;
+        }
+        catch (ContentAuthoringException)
+        {
+            await ResetToEmptyAsync(cancellationToken).ConfigureAwait(false);
+            throw;
+        }
+        finally
+        {
+            _importRules = null;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<ContentBundle> ExportBundleAsync(
+        int versionNumber,
+        CancellationToken cancellationToken = default)
+    {
+        using SqliteStoreLease lease = await _connection.EnterAsync(cancellationToken).ConfigureAwait(false);
+        if (!await VersionExistsAsync(versionNumber, null, cancellationToken).ConfigureAwait(false))
+        {
+            throw UnknownVersion(versionNumber);
+        }
+
+        var types = new List<ContentBundleType>();
+        IReadOnlyList<ContentTypeRegistration> registrations = _registry.ByTypeId;
+        for (int i = 0; i < registrations.Count; i++)
+        {
+            ContentTypeRegistration registration = registrations[i];
+            types.Add(new ContentBundleType(
+                registration.Type,
+                registration.TypeKey,
+                registration.DefaultVisibility,
+                registration.ChunkSlots,
+                registration.MaxDefinitionId,
+                registration.Schema));
+        }
+
+        IReadOnlyList<ContentFamily> families = await ReadFamiliesAsync(
+            default, null, null, cancellationToken).ConfigureAwait(false);
+        var familyKeys = new Dictionary<long, string>();
+        for (int i = 0; i < families.Count; i++)
+        {
+            familyKeys[families[i].FamilyId] = families[i].FamilyKey;
+        }
+
+        IReadOnlyList<ContentRowRevision> live = await ReadRevisionsAsync(
+            default, null, versionNumber, null, cancellationToken).ConfigureAwait(false);
+        var rows = new List<ContentBundleRow>(live.Count);
+        for (int i = 0; i < live.Count; i++)
+        {
+            rows.Add(Export(live[i], familyKeys));
+        }
+
+        var rules = new List<RemapRule>();
+        IReadOnlyList<RemapRule> all = await ReadRulesAsync(null, cancellationToken).ConfigureAwait(false);
+        for (int i = 0; i < all.Count; i++)
+        {
+            if (all[i].IntroducedIn <= versionNumber)
+            {
+                rules.Add(all[i]);
+            }
+        }
+
+        string epoch;
+        using (SqliteCommand command = Command("SELECT store_epoch FROM catalog_metadata WHERE metadata_key = 1;"))
+        {
+            epoch = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) as string
+                ?? throw NoMetadata();
+        }
+
+        return new ContentBundle(
+            ContentBundle.CurrentFormatVersion, epoch, versionNumber, types, rows, families, rules);
+    }
+
+    /// <summary>
+    /// One live row as a bundle carries it. The id is always NAMED on an export, because that is what makes
+    /// an import reproduce the same ids and therefore makes an adoption a no-op for stored player data. A
+    /// DERIVED marker field is skipped: an edit cannot author a value for one.
+    /// </summary>
+    ContentBundleRow Export(ContentRowRevision revision, Dictionary<long, string> familyKeys)
+    {
+        ContentRow row = revision.Row;
+        IReadOnlyList<ContentFieldEntry> schema = RequireType(row.Type).Schema.Fields;
+        var fields = new List<ContentFieldEdit>(schema.Count);
+        for (int i = 0; i < schema.Count && i < row.Fields.Count; i++)
+        {
+            if (!schema[i].IsDerivedMarker)
+            {
+                fields.Add(new ContentFieldEdit(schema[i].Name, row.Fields[i]));
+            }
+        }
+
+        string? familyKey = revision.FamilyId is long familyId && familyKeys.TryGetValue(familyId, out string? key)
+            ? key
+            : null;
+
+        return new ContentBundleRow(row.Type, row.Id, row.Key, row.IsRetired, familyKey, fields);
+    }
+
+    /// <summary>
+    /// Every bundle type must be registered HERE, under the same key and the same chunk slot count. A codec
+    /// is code and no document can carry one, so an import registers nothing: it checks that the declaration
+    /// the bundle was exported under and the one this process holds are the same declaration.
+    /// </summary>
+    void RequireTypesAgree(ContentBundle bundle)
+    {
+        for (int i = 0; i < bundle.Types.Count; i++)
+        {
+            ContentBundleType declared = bundle.Types[i];
+            if (!_registry.TryGet(declared.Type, out ContentTypeRegistration? registration))
+            {
+                throw new ContentAuthoringException(
+                    FormattableString.Invariant(
+                        $"The bundle carries content type {declared.Type.Value} '{declared.TypeKey}', which this process has not registered. A codec is code, so an import needs the type already declared against the codec that decodes it."),
+                    declared.Type,
+                    0,
+                    ContentAuthoringException.UnknownTypeReason);
+            }
+
+            if (!string.Equals(registration.TypeKey, declared.TypeKey, StringComparison.Ordinal)
+                || registration.ChunkSlots != declared.ChunkSlots)
+            {
+                throw new ContentAuthoringException(
+                    FormattableString.Invariant(
+                        $"The bundle declares content type {declared.Type.Value} as '{declared.TypeKey}' with {declared.ChunkSlots} chunk slots and this process registers it as '{registration.TypeKey}' with {registration.ChunkSlots}. The two declarations disagree about where an id falls, so the import is refused whole."),
+                    declared.Type,
+                    0,
+                    ContentAuthoringException.BundleFormatReason);
+            }
+        }
+    }
+
+    /// <summary>
+    /// The families and their blocks VERBATIM, ids included, because a family is what makes a row's id
+    /// membership answerable and an import that reallocated blocks would move every id in one.
+    /// </summary>
+    async Task RestoreFamiliesAsync(
+        ContentBundle bundle,
+        SqliteTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        for (int i = 0; i < bundle.Families.Count; i++)
+        {
+            ContentFamily family = bundle.Families[i];
+            RequireType(family.Type);
+
+            using (SqliteCommand insert = Command(
+                """
+                INSERT INTO catalog_family(
+                    family_id, type_id, family_key, block_size, retired, created_in_version)
+                VALUES ($family, $type, $key, $size, $retired, $created);
+                """,
+                transaction))
+            {
+                Bind(insert, "$family", family.FamilyId);
+                Bind(insert, "$type", (long)family.Type.Value);
+                Bind(insert, "$key", family.FamilyKey);
+                Bind(insert, "$size", (long)family.BlockSize);
+                Bind(insert, "$retired", family.IsRetired ? 1L : 0L);
+                Bind(insert, "$created", (long)family.CreatedInVersion);
+                await insert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            for (int b = 0; b < family.Blocks.Count; b++)
+            {
+                ContentFamilyBlock block = family.Blocks[b];
+                using SqliteCommand insert = Command(
+                    """
+                    INSERT INTO catalog_family_block(
+                        family_id, block_ordinal, base_id, block_size, next_free_id, reserved_in_version)
+                    VALUES ($family, $ordinal, $base, $size, $next, $version);
+                    """,
+                    transaction);
+                Bind(insert, "$family", family.FamilyId);
+                Bind(insert, "$ordinal", (long)block.BlockOrdinal);
+                Bind(insert, "$base", (long)block.BaseId);
+                Bind(insert, "$size", (long)block.BlockSize);
+                Bind(insert, "$next", (long)block.NextFreeId);
+                Bind(insert, "$version", (long)block.ReservedInVersion);
+                await insert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Both marks move to the top of every restored block and every carried id, so the plain counter cannot
+    /// walk into a family's block or onto a row the bundle already named.
+    /// <para>
+    /// <b>It runs BEFORE the allocation rather than after it</b>, which is the one place this diverges from
+    /// spec 6.3's written order, and it has to. A bundle may MIX named and unnamed ids, so an unnamed row
+    /// allocated from a counter that has not yet seen the carried ids lands straight on one of them.
+    /// </para>
+    /// </summary>
+    async Task SeedMarksAsync(
+        ContentBundle bundle,
+        SqliteTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        var highest = new Dictionary<ushort, int>();
+        for (int i = 0; i < bundle.Families.Count; i++)
+        {
+            ContentFamily family = bundle.Families[i];
+            for (int b = 0; b < family.Blocks.Count; b++)
+            {
+                Raise(highest, family.Type.Value, family.Blocks[b].TopExclusive - 1);
+            }
+        }
+
+        for (int i = 0; i < bundle.Rows.Count; i++)
+        {
+            ContentBundleRow row = bundle.Rows[i];
+            if (row.Id is int id)
+            {
+                Raise(highest, row.Type.Value, id);
+            }
+        }
+
+        foreach (KeyValuePair<ushort, int> mark in highest)
+        {
+            var type = new ContentTypeId(mark.Key);
+            ContentIdHighWater held = await ReadHighWaterAsync(type, transaction, cancellationToken)
+                .ConfigureAwait(false);
+            await WriteHighWaterAsync(
+                type,
+                new ContentIdHighWater(
+                    Math.Max(held.ReservedThrough, mark.Value), Math.Max(held.IssuedThrough, mark.Value)),
+                transaction,
+                cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// The bundle's rules as the NEW line's, contiguous from 1 and introduced in version 1, which is what
+    /// makes an import a republish rather than a restore. A lossless export is not a backup: the version
+    /// LINE restarts, so a durable page stamped against the old line is newer than every rule there is.
+    /// </summary>
+    static IReadOnlyList<RemapRule> Restamp(ContentBundle bundle)
+    {
+        var rules = new List<RemapRule>(bundle.Rules.Count);
+        for (int i = 0; i < bundle.Rules.Count; i++)
+        {
+            RemapRule rule = bundle.Rules[i];
+            rules.Add(new RemapRule(i + 1, 1, rule.Type, rule.Kind, rule.FromId, rule.ToId, rule.Payload));
+        }
+
+        return rules;
+    }
+
+    /// <summary>One <c>Add</c> per bundle row, in the bundle's own order, which is the allocation order.</summary>
+    async Task<IReadOnlyList<ContentEdit>> EditsAsync(ContentBundle bundle, CancellationToken cancellationToken)
+    {
+        IReadOnlyList<ContentFamily> families = await ReadFamiliesAsync(
+            default, null, null, cancellationToken).ConfigureAwait(false);
+        var byKey = new Dictionary<(ushort Type, string Key), long>();
+        for (int i = 0; i < families.Count; i++)
+        {
+            byKey[(families[i].Type.Value, families[i].FamilyKey)] = families[i].FamilyId;
+        }
+
+        var edits = new List<ContentEdit>(bundle.Rows.Count);
+        for (int i = 0; i < bundle.Rows.Count; i++)
+        {
+            ContentBundleRow row = bundle.Rows[i];
+            long? familyId = null;
+            if (row.FamilyKey is string familyKey)
+            {
+                if (!byKey.TryGetValue((row.Type.Value, familyKey), out long held))
+                {
+                    throw new ContentAuthoringException(
+                        FormattableString.Invariant(
+                            $"Bundle row '{row.Key}' of content type {row.Type.Value} names family '{familyKey}', which the bundle's own family list does not carry."),
+                        row.Type,
+                        row.Id ?? 0,
+                        ContentAuthoringException.UnknownFamilyReason);
+                }
+
+                familyId = held;
+            }
+
+            edits.Add(ContentEdit.Import(
+                row.Type, row.Id ?? 0, row.Key, row.Fields, familyId, row.IsRetired));
+        }
+
+        return edits;
+    }
+
+    /// <summary>
+    /// The empty state the import was required to start from. A refused import leaves a store a caller may
+    /// import into again rather than one carrying half a bundle. The audit is KEPT: a refused import is a
+    /// thing that happened and the trace of it is the point.
+    /// </summary>
+    async Task ResetToEmptyAsync(CancellationToken cancellationToken)
+    {
+        using SqliteStoreLease lease = await _connection.EnterAsync(cancellationToken).ConfigureAwait(false);
+        using SqliteTransaction transaction = _connection.BeginTransaction();
+
+        // Child first, so no delete trips a foreign key on the way down.
+        string[] statements =
+        [
+            "DELETE FROM catalog_row_field;",
+            "DELETE FROM catalog_row;",
+            "DELETE FROM catalog_chunk;",
+            "DELETE FROM catalog_remap_rule;",
+            "DELETE FROM catalog_version;",
+            "DELETE FROM catalog_family_block;",
+            "DELETE FROM catalog_family;",
+            "DELETE FROM catalog_id_high_water;",
+            "DELETE FROM catalog_draft_edit;",
+            "DELETE FROM catalog_draft;",
+            "UPDATE catalog_metadata SET active_version = 0, pinned_version = NULL WHERE metadata_key = 1;",
+        ];
+
+        for (int i = 0; i < statements.Length; i++)
+        {
+            using SqliteCommand command = Command(statements[i], transaction);
+            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        transaction.Commit();
+    }
+
+    static void Raise(Dictionary<ushort, int> highest, ushort typeId, int candidate)
+        => highest[typeId] = highest.TryGetValue(typeId, out int held) ? Math.Max(held, candidate) : candidate;
+}

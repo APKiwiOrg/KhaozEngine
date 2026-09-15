@@ -112,6 +112,14 @@ public sealed class ContentAuthoringException : Exception
     /// <summary>A bundle document could not be read: a format version this build does not know, or a malformed member.</summary>
     public const string BundleFormatReason = "bundle-format";
 
+    /// <summary>
+    /// A provider's database is absent under <see cref="ContentAuthoringSchemaMode.ValidateOnly"/>, carries a
+    /// schema version the build does not support, or holds an object that does not match the shape its
+    /// migration declares. The message names the object and the migration, because those are the two facts an
+    /// operator can act on.
+    /// </summary>
+    public const string SchemaMismatchReason = "schema-mismatch";
+
     /// <summary>Creates the exception with no message.</summary>
     public ContentAuthoringException()
     {

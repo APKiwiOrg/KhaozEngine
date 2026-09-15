@@ -34,7 +34,7 @@ public partial class ArchitectureTests
     {
         "Physics.Bepu", "WorldStore.Sqlite", "WorldStore.SqlServer",
         "Server.Admin", "Social.Discord", "Commerce.Sqlite", "Commerce.SqlServer",
-        "Identity.Oidc", "Identity.Discord",
+        "Identity.Oidc", "Identity.Discord", "Catalog.Sqlite",
         // THE THREE NATIVE GPU BACKENDS ARE NOT ON THIS LIST ANY MORE, and their absence is asserted rather than
         // assumed: NativeGpuBackends_AreCarriedByEveryUmbrellaThatCarriesGpu below requires the opposite of what
         // this list would have meant. They were opt-in from decisions P1 / V-P1 / M-P1, on pay-for-what-you-use
@@ -110,8 +110,8 @@ public partial class ArchitectureTests
         // KhaozEngine.Sqlite is the shared store lifecycle the two SQLite backends sit on, so it is a third home
         // for the provider rather than an escape from the seam: the pool-clearing dispose has to touch
         // SqliteConnection, and that discipline living once is the whole point of the package (#731).
-        ["Microsoft.Data.Sqlite"] = new[] { "Sqlite", "WorldStore.Sqlite", "Commerce.Sqlite" },
-        ["SQLitePCLRaw.lib.e_sqlite3"] = new[] { "Sqlite", "WorldStore.Sqlite", "Commerce.Sqlite" },
+        ["Microsoft.Data.Sqlite"] = new[] { "Sqlite", "WorldStore.Sqlite", "Commerce.Sqlite", "Catalog.Sqlite" },
+        ["SQLitePCLRaw.lib.e_sqlite3"] = new[] { "Sqlite", "WorldStore.Sqlite", "Commerce.Sqlite", "Catalog.Sqlite" },
         ["Microsoft.Data.SqlClient"] = new[] { "WorldStore.SqlServer", "Commerce.SqlServer" },
         // glTF load contained in Render3D's GltfLoader.
         ["SharpGLTF.Core"] = new[] { "Render3D" },

@@ -261,11 +261,20 @@ the property `ReplicationRegistry.FirstExtensionTypeId` already gives components
 | Type id | Type key | What it is | Default visibility | Default chunk slots |
 |---|---|---|---|---|
 | `1` | `tag` | The tag vocabulary of contracts 4.6. | `Client` | 4,096 |
-| `2` | `item` | The item base. | `Client` | 4,096 |
+| `2` | `item` | The item base. | `Client` | 1,024 |
 | `3` | `stat` | The stat definition of contracts 13.1. | `Client` | 4,096 |
 | `4` | `loot_table` | A named drop or reward table. | `ServerOnly` | 4,096 |
 | `5` | `loot_entry` | One weighted row of one loot table. | `ServerOnly` | 16,384 |
 | `6` to `255` | reserved | Future engine types. Never assigned by a game. | | |
+
+**`item` takes 1,024 slots and every other type takes more, which is a download decision rather than a
+storage one.** A chunk is the unit of re-download, so the type that is edited one row at a time wants the
+smallest chunk that still amortizes a manifest entry. At 1,024 slots and the item row of section 14.1, one
+chunk is about 133 KB uncompressed and a one-item edit re-downloads it alone, which is what puts budget P6
+inside its target instead of three times over it. The cost is four times the manifest entries, which at 50,000
+definitions is 49 rather than 13, and at the stress figure 977 rather than 245. Question Q3 raised this and
+section 19 puts it in the expensive column, so it is settled HERE, before the first publish, rather than
+measured afterwards.
 
 `loot_entry` takes a larger chunk than its parents because entries outnumber tables by roughly the branching
 factor, and a chunk is a transport unit sized for download economics rather than an authoring unit (contracts
@@ -1180,7 +1189,12 @@ catalog loader is the shape this avoids: validation lives INSIDE the SQL read de
 
 A finding is `(ContentTypeId Type, int Id, string Code, string Message)`. The CODE is a stable token so a
 counter, a test and an operator runbook can all key on it, which is the same rule contracts 9.7 applies to
-decode reasons. Codes are never reused and never renumbered.
+decode reasons. Codes are never reused and never renumbered, which is why a code this spec withdrew is
+withdrawn rather than recycled.
+
+**Thirty-nine codes are issued, across the number range `KEC0001` to `KEC0040`.** `KEC0013` is withdrawn and
+carries no check, and `KEC0032` to `KEC0035` are four codes sharing one row below. Section 15.7 builds one
+test per issued code.
 
 | Code | Check | Contract |
 |---|---|---|
@@ -1426,8 +1440,8 @@ recomputing it from the type's default visibility, because the type's schema may
 field at THIS version, and the row set is what says which sides the previous version actually wrote.
 
 **A retire is an ordinary chunk rewrite.** The retired row keeps its slot and its bytes and gains the retired
-bit, so exactly one chunk changes. Grimhollow's 18 retired ids sit across ids 1 to 35, which at 4,096 slots
-per chunk is one chunk, so its whole retirement history is one chunk rewrite.
+bit, so exactly one chunk changes. Grimhollow's 18 retired ids sit across ids 1 to 35, which at the `item`
+type's 1,024 slots per chunk is one chunk, so its whole retirement history is one chunk rewrite.
 
 **Adding a content TYPE rewrites nothing.** A new type contributes its own chunks and every existing chunk
 hash is unchanged. The MANIFEST hash changes, because the manifest enumerates every type sorted by type id
@@ -1846,9 +1860,9 @@ offset  width  field
 ```
 
 Hashes are RAW 32 BYTES in the file and LOWER HEX only where a hash appears as text, which is contracts 15's
-rule and which halves the manifest. A manifest for 1,000,000 item definitions at 4,096 slots is 245 chunks of
-about 39 bytes each for one type, so a five-type manifest is a few tens of kilobytes even at the stress figure
-(section 14, budget P1).
+rule and which halves the manifest. A manifest for 1,000,000 item definitions at the `item` type's 1,024
+slots is 977 chunks of about 39 bytes each for one type, so a five-type manifest is under 50 KB even at the
+stress figure (section 14, budget P1).
 
 **`uncompressedBytes` is per chunk and it is in the manifest deliberately.** Section 9.2 sizes the
 concatenated `Bodies` buffer from the sum of it across a type's chunks, and it cannot get that from the CHUNK
@@ -1881,7 +1895,7 @@ The measurement to beat is the pack size and cold start budgets of section 14.
 | Criterion | Brotli | Deflate | None |
 |---|---|---|---|
 | Ratio on small highly repetitive binary rows | 9 | 7 | 1 |
-| Compress time at publish, 245 chunks | 6 | 9 | 10 |
+| Compress time at publish, a thousand chunks | 6 | 9 | 10 |
 | Decompress time at boot and at client cold start | 8 | 9 | 10 |
 | In box, no package reference | 10 | 10 | 10 |
 | Deterministic output for a fixed input and level | 9 | 9 | 10 |
@@ -1973,12 +1987,19 @@ it forever.
 header before any allocation and before the compressor is touched. The 8,192 byte value cap bounds one entry
 and these two bound the file, which is the pairing the entry cap alone was never going to give.
 
-**One chunk per language, not one per language per type.** At 50,000 items with a name and an examine line
-averaging 60 bytes, one language is about 6 MB uncompressed and roughly 1.5 MB Brotli, which is one fetch. The
-alternative, sharding text by type or by id range, buys a smaller re-download when one string changes and
-costs a manifest entry per shard and a lookup that spans shards. Section 21 question Q4 puts the sharding
-threshold to the owner with a recommended default of sharding only when a language chunk exceeds 8 MB
-uncompressed.
+**One chunk per language, not one per language per type, up to a size at which it MUST shard.** The size is
+computed once, in section 14.1, and this section does not recompute it: at 50,000 items a language chunk is
+about 8.7 MB uncompressed, roughly 2.2 MB Brotli, and it holds 100,800 entries. That is every localized field
+of every engine type, `item.name` and `item.examine` at 50,000 each, `tag.name` at 200 and `stat.name` and
+`stat.display_format` at 300 each, not just the two item fields an earlier version of this paragraph counted,
+and it includes the derived key bytes an earlier version left out.
+
+**Sharding becomes MANDATORY before the stress figure, and that is not a preference.** At 86 bytes an entry,
+`MaxChunkUncompressedBytes` of 16 MiB is about 195,000 entries, so one language chunk cannot hold more than
+about 97,000 items with two localized fields each. At the 1,000,000 figure of contracts 1.3 one language is
+2,000,000 entries and 172 MB, which is eleven shards at minimum. So the shard is a phase 3 mechanism by
+schedule and a correctness requirement by arithmetic, and section 21 question Q4 sets the threshold against
+these numbers rather than against the 8 MB one that was picked when the chunk was thought to be 6 MB.
 
 The catalog is layered over the game's existing `.resx` catalog, content first (contracts 12.4):
 `ContentStringCatalog` asks the pack, misses to the game's `IStringCatalog`, and misses there to the standard
@@ -2158,7 +2179,7 @@ will write anything under any name is not content addressed.
 ### 8.2 `FileSystemPackStore`
 
 One file per hash under a two-level shard, `<root>/<hash[0..2]>/<hash[2..4]>/<hash>.kec`. Two levels of 256
-because a flat directory of 245 chunks times 50 versions is fine and a flat directory of a million is not, and
+because a flat directory of a thousand chunks times 50 versions is fine and a flat directory of a million is not, and
 the shard is derived from the hash so it needs no index.
 
 Writes go to `<hash>.tmp` in the same shard directory and then `File.Move(temp, final, overwrite: true)`, the
@@ -2302,7 +2323,7 @@ player reconnects at once and every one of them needs the same set of chunks. A 
    else: report progress and retry the missing set with backoff
 ```
 
-Bounded concurrency 4, because a cold start at 1,000,000 definitions is 245 chunks per type and unbounded
+Bounded concurrency 4, because a cold start at 1,000,000 definitions is 977 item chunks and unbounded
 parallelism against a CDN buys nothing over a link a player's home connection saturates at two or three
 streams.
 
@@ -2352,7 +2373,7 @@ lock, no allocation. That is #882's requirement stated directly: "load the activ
 by id, immutable and swapped atomically, with no lock per lookup".
 
 `Offsets` is sized to the highest live id plus one, not to the sum of chunk slots. A type with ids 1 to 35 and
-a chunk size of 4,096 allocates a 36-element array, not a 4,096-element one. Chunk slots are a TRANSPORT unit
+a chunk size of 1,024 allocates a 36-element array, not a 1,024-element one. Chunk slots are a TRANSPORT unit
 (contracts 4.5) and the runtime does not inherit their sparseness.
 
 **Every array in `ContentTypeTable` except `Bodies` is parallel to `Offsets`, so the sparse cost is four
@@ -2374,9 +2395,9 @@ switch a type to a sorted-id binary search when live density falls below one in 
 ### 9.2 Memory layout and the arithmetic
 
 One `Bodies` array per type holding every row body concatenated in ascending id order, rather than one array
-per chunk. The reason is allocation count and locality: at 1,000,000 item definitions and 4,096 slots that is
-245 chunks, so 245 byte arrays per type would be 245 large-object-heap allocations that a walk over ids
-touches in 245 discontiguous regions. One array is one allocation and a sequential walk is sequential.
+per chunk. The reason is allocation count and locality: at 1,000,000 item definitions and 1,024 slots that is
+977 chunks, so one byte array per chunk would be 977 large-object-heap allocations that a walk over ids
+touches in 977 discontiguous regions. One array is one allocation and a sequential walk is sequential.
 
 The concatenation happens ONCE at load, chunk by chunk, into a buffer sized from the per-chunk
 `uncompressedBytes` the manifest carries (section 7.4), so there is no growth and no copy beyond the
@@ -2533,7 +2554,7 @@ that surface, with no new package and no new transport, which is the engine surv
 (`a-engine.md:1027-1034`).
 
 An engine-side helper, `CatalogAdminActions.Register(ServerAdmin admin, IContentAuthoringStore store,
-ContentTypeRegistry registry)`, registers all eleven. A game calls it once beside its own registrations, the
+ContentTypeRegistry registry)`, registers all SIXTEEN. A game calls it once beside its own registrations, the
 way Grimhollow registers its inspection actions today
 (`Grimhollow.Server/Admin/AdminInspectionActions.cs:63-65`, `b-grimhollow.md:878-899`).
 
@@ -2570,7 +2591,7 @@ named failure modes rides on it. `expectedBaseVersion` optimistic concurrency (s
 11 row 4 resolves with, and the empty-database 409 (section 10.9) is what the Ruinborne seeding class resolves
 with. An unnamed engine change is an unbudgeted one.
 
-### 10.2 The eleven actions
+### 10.2 The sixteen actions
 
 | Action | Verb | Status codes | Audit action |
 |---|---|---|---|
@@ -2589,8 +2610,12 @@ with. An unnamed engine change is an unbudgeted one.
 | `catalog-import` | POST | 200, 400, 409 | `bulk-import` |
 | `catalog-export` | POST | 200, 400 | none |
 
-That is fourteen rows for eleven concepts, because `catalog-draft` and `catalog-discard` are the draft pair
-and `catalog-pin` and `catalog-rollback` are the version pair. The status conventions are `AdminHttpServer`'s
+**There is one action count in this spec and it is SIXTEEN**, the number of names `ServerAdmin` holds after
+`CatalogAdminActions.Register` returns. Fourteen are in the table above and two more are the operational pair
+of section 10.11, `catalog-sweep` and `catalog-verify`. Earlier drafts counted eleven in one place, fourteen
+in another and sixteen nowhere, by collapsing pairs that a caller still has to know the names of, so the
+pairing is now a reading aid rather than a count: `catalog-draft` with `catalog-discard`, `catalog-pin` with
+`catalog-rollback`, `catalog-import` with `catalog-export` and `catalog-sweep` with `catalog-verify`. The status conventions are `AdminHttpServer`'s
 own: reads return `Results.Json` and a bad request body or a bad id returns 400 with `new { error = ... }`,
 both in the action dispatch at `AdminHttpServer.cs:156-172`. The 501 arms are NOT on that path: they are on
 the four BUILT-IN routes, `/accounts`, `/bans`, `/ban` and `/unban`, each gated on an `admin.*Supported`
@@ -2614,7 +2639,7 @@ every type including one the console has never heard of (contracts 4.7, first co
 {
   "generation": 1,
   "types": [
-    { "typeId": 2, "typeKey": "item", "visibility": "Client", "chunkSlots": 4096,
+    { "typeId": 2, "typeKey": "item", "visibility": "Client", "chunkSlots": 1024,
       "fields": [
         { "name": "name",      "kind": "LocalizedTextKey", "target": null,  "visibility": "Client", "required": true, "derived": true },
         { "name": "tags",      "kind": "TagList",          "target": "tag", "visibility": "Client", "required": false },
@@ -2908,7 +2933,7 @@ A mutating request with no `operator` field is ACCEPTED and audited with an empt
 it would break a scripted maintenance call that has no human behind it. A request whose `operator` exceeds 128
 characters is a 400.
 
-### 10.11 Two operational actions
+### 10.11 Two operational actions, the fifteenth and sixteenth
 
 `catalog-sweep` runs step 11 of the publish alone (section 6.12), for an operator cleaning up after a crashed
 publish. It returns the count deleted and the count skipped and it obeys the same skip-on-listing-failure
@@ -3063,19 +3088,35 @@ handshake completes before the bearer check: `MaxConcurrentConnections` 64, `Req
 `KeepAliveTimeout` 30 s (`AdminEndpointOptions.cs:39-51`). The content actions inherit all of it and add
 nothing, which is the point of registering rather than opening a second listener.
 
-Three Ruinborne admin lessons are answered by the design rather than by a control, and they are worth naming
-because each is an OPEN issue whose fix is structural:
+Three Ruinborne admin lessons are ADDRESSED by the design rather than by a control, and they are worth naming
+because each is an OPEN issue whose fix is structural. Two are resolved and the third is improved, which the
+bullets say individually:
 
 - [Ruinborne #506](https://github.com/APKiwiOrg/Ruinborne/issues/506), `UpsertItemDefAsync` has no domain gate
   so the console can save one bad row that reverts the whole item catalog at boot. Answered by validating at
   the API boundary (section 3.7) and again at publish (section 6.4) and again at boot (section 9.5), and by
   boot failing closed rather than falling back (section 9.6).
 - [Ruinborne #509](https://github.com/APKiwiOrg/Ruinborne/issues/509), content-edit audit rows record no
-  field, no old value and no new value. Answered by the field-level audit through the schema (section 4.6),
-  which is the contracts' own second consumer for the field schema existing at all (contracts 4.7).
+  field, no old value and no new value. IMPROVED rather than resolved. The field-level audit through the schema
+  (section 4.6) fixes the half the issue is titled for, one row per changed field with a before and an after,
+  and it is the contracts' own second consumer for the field schema existing at all (contracts 4.7). The WHO
+  half is only improved, for the reason below.
 - [Ruinborne #512](https://github.com/APKiwiOrg/Ruinborne/issues/512), a catalog load failure is a
   `Console.WriteLine` with no metric and no refusal to boot, so players see a stale catalog. Answered by exit
   code 3 with findings on stderr (section 9.6) and by there being no code-default catalog to fall back TO.
+
+**The `operator` field is an audit AID among cooperating operators, not an authentication control.** The engine
+does not verify it, a request that omits it is accepted and audited with an empty operator, and any holder of
+the single bearer token can put any 128-character string in it including somebody else's object id (section
+10.10). So `catalog_audit.operator` is caller-asserted data, and a forged or absent value is indistinguishable
+from a true one in the table. That is a stated design limit rather than a defect, because the alternative is
+an identity provider inside `KhaozEngine.Server.Admin`, and it does constrain what this design may CLAIM: the
+audit is accountable to the TOKEN HOLDER, and it distinguishes operators only as far as the operators
+cooperate. Ruinborne [#371](https://github.com/APKiwiOrg/Ruinborne/issues/371) asks for exactly the
+accountability a shared token cannot give, so this design improves it, by giving the console a stable place to
+put a stable identity and by auditing what it sent beside what the engine authenticated, and does not close
+it. Closing it needs per-operator credentials at the endpoint, which is a separate piece of work in a
+different package.
 
 ### 13.4 Rate limits on fetch
 
@@ -3121,7 +3162,7 @@ operator's static host owns, and the tick loop is never in it.
 
 **The residual risk, named:** a client can enumerate every `Client` chunk hash from the manifest and therefore
 knows the exact size of every chunk it does not need. That leaks the ROUGH SHAPE of the catalog, for example
-that the item type has 245 chunks. It leaks nothing about `ServerOnly` content, because those chunks are
+that the item type has 977 chunks. It leaks nothing about `ServerOnly` content, because those chunks are
 absent from the client manifest entirely rather than present with their hashes withheld.
 
 ## 14. Performance budgets
@@ -3135,6 +3176,7 @@ spike #882 item 12 requires. Every target is justified by arithmetic rather than
 | P2 | Pack size at 1,000,000 definitions | Server pack under 240 MB stored, client pack under 180 MB stored | the same run at `--definitions 1000000` | TBD (stage 5) |
 | P3 | Server load time and memory at 50,000 | Under 400 ms wall clock from manifest to validated runtime, under 20 MB of managed heap for the runtime | `Stopwatch` around boot steps 3 to 8, `GC.GetTotalAllocatedBytes` delta and `GC.GetTotalMemory(true)` after | TBD (stage 5) |
 | P4 | Client cold start at 50,000 | Under 6 s on a 20 Mbit link to first joinable, of which under 300 ms is local work | the fetch loop against a local HTTP server with a token-bucket shaper, timed from refusal to reconnect | TBD (stage 5) |
+| P4b | Client COLD start at 1,000,000 | Under 90 s on a 20 Mbit link to first joinable. Stated rather than targeted: it is the transfer, and the design cannot beat it | the same run at `--definitions 1000000` | TBD (stage 5) |
 | P5 | Publish time, one item edited, 50,000 definitions | Under 1.5 s wall clock end to end | `catalog-publish` elapsed, reported in its own response | TBD (stage 5) |
 | P6 | Download size after a one-item edit | Under 80 KB, including the manifest | the publish response's `bytesWritten` plus the manifest size | TBD (stage 5) |
 | P7 | Lookup by id, server runtime | Under 5 ns, zero allocation | a tight loop over random live ids, `GC.GetAllocatedBytesForCurrentThread` delta asserted 0 | TBD (stage 5) |
@@ -3187,25 +3229,45 @@ chunk, which is 9 MB of SHA-256 at typical throughput of over 1 GB/s on any mach
 This is a ONE TIME cost per version per client, because the cache is by hash and a subsequent version reuses
 every unchanged chunk.
 
-**P5, publish time.** One item edited touches ONE chunk of 4,096 slots holding at most 4,096 rows, so the
-encode and compress is at most 800 KB of work. Everything else is fixed cost: the candidate build is a query
+**P4b, client cold start at 1,000,000, which is the number this spec cannot argue away.** The client pack at
+the stress figure is 180 MB stored (P2). At 20 Mbit, which is 2.5 MB/s, that is **72 seconds of pure
+transfer** before a player can join, and gate 0 decision 6 forbids admitting the client read only while it
+fetches. Ninety seconds is the honest budget: 72 of transfer, the rest for connection setup at bounded
+concurrency 4, 180 MB of SHA-256 and the reconnect. There is no design lever inside this spec that moves it,
+because it IS the bytes, and the levers that exist are outside it: a smaller catalog, a faster link, or a
+client that ships the pack with its installer.
+
+**What P4b is NOT is a restart herd.** Section 8.6's thundering-herd row is about a VERSION CHANGE, and a
+version change is not a cold start: the cache is content addressed (section 8.4), so a client already holding
+version N fetches only the chunks that differ in version N+1, which is P6 sized and measured in tens of
+kilobytes. The 72 seconds is paid once per client per machine, by a player who has never held this catalog,
+and a thousand of those arriving together is a CDN sizing question rather than a client one. The two cases
+were conflated in an earlier reading of this section and they have nothing in common but the word cold.
+
+**P5, publish time.** One item edited touches ONE chunk of 1,024 slots holding at most 1,024 rows, so the
+encode and compress is at most 133 KB of work. Everything else is fixed cost: the candidate build is a query
 over the live set, the validator is P8 scaled down by twenty, and the commit is one transaction. The dominant
 term at 50,000 is the validator sweep at roughly 1 s by P8's ratio, which is why the target is 1.5 s rather
 than 200 ms. If the measurement comes in far under, the validator can stop rebuilding indexes it could
 incrementally maintain, and that optimization is deliberately not designed now.
 
-**P6, download size after a one-item edit.** One chunk of 4,096 item rows at 200 bytes is 800 KB
-uncompressed, which is far over the 80 KB target, so the target is NOT met by the chunk alone. The target is
-met because **a one-item edit at 50,000 definitions touches a chunk holding about 4,096 rows only if the ids
-are dense in that range.** Two mitigations are already in the design and the target assumes both: the
-manifest is a few kilobytes and is always refetched, and the chunk is the only other object. So the honest
-arithmetic is 800 KB compressed to roughly 250 KB, which is three times the target. **P6's target is
-therefore the one budget this spec expects the spike to move**, and section 21 question Q3 puts the resolution
-to the owner: either accept about 250 KB per edit, or lower the default `chunkSlots` for the item type to
-1,024, which quarters the re-download to about 65 KB at the cost of four times the manifest entries, which is
-still only 49 entries at 50,000 definitions. The recommended default is to lower `chunkSlots` for `item` to
-1,024 and leave every other type at 4,096, and the whole point of making the chunk size a per-type
-registration parameter (contracts 4.5) is that this is a one-line change measured rather than argued.
+**P6, download size after a one-item edit, and the arithmetic that set `item` to 1,024 slots.** A one-item
+edit rewrites exactly one chunk (section 6.6) and the client refetches that chunk plus the manifest, so P6 is
+those two numbers and nothing else.
+
+At the 4,096 slots this spec first gave `item`, the chunk is 4,096 rows at about 130 bytes, which is 533 KB
+uncompressed and roughly 180 KB stored at a conservative 3:1. Against an 80 KB target that is more than twice
+over, and the budget table was publishing a number the section under it refuted.
+
+At 1,024 slots the same chunk is 1,024 rows, 133 KB uncompressed and about 44 KB stored. The manifest is the
+other object, at 65 chunk entries of 39 bytes plus the type and language rows, so under 4 KB. **So P6 is about
+48 KB and its 80 KB target holds**, with the margin covering a chunk that compresses worse than 3:1.
+
+The cost is manifest entries, four times as many for the item type, which is 49 at 50,000 definitions and 977
+at 1,000,000. That is why section 3.1 now registers `item` at 1,024 and every other engine type at 4,096 or
+above: `item` is the type edited one row at a time, and the others are not. Question Q3 is answered by this
+paragraph rather than deferred to the spike, because contracts 4.5 and section 19 both put `chunkSlots` in the
+expensive-after-data column and the spike lands after the decision is needed.
 
 **P7, lookup.** One array index into `Offsets`, one bounds check, one span slice. Five nanoseconds is a
 generous ceiling for that on any current hardware and the real value should be under 2. The budget exists to
@@ -3398,8 +3460,13 @@ proves the durability.
 
 ### 15.7 The rest
 
-**Validator tests.** One per finding code, 40 of them, each building the smallest `ContentSnapshot` that
-triggers exactly that code and asserting the code, the type and the id. Plus three sweep-level facts: findings
+**Validator tests.** One per ISSUED finding code, 39 of them, each building the smallest `ContentSnapshot`
+that triggers exactly that code and asserting the code, the type and the id. Thirty-nine and not forty: the
+codes run `KEC0001` to `KEC0040`, `KEC0013` is WITHDRAWN and never reissued (section 5.2), and `KEC0032` to
+`KEC0035` are four codes on one table row, which is where the count went wrong before. Two groups are not
+ordinary sweep tests. The four inheritance codes are unreachable in phase 1, so their tests assert they do NOT
+fire on a candidate whose `parent_id` is 0 throughout, and `KEC0039` is asserted through `RollbackToAsync`
+because it is emitted there rather than by the sweep (section 5.3). Plus three sweep-level facts: findings
 accumulate rather than stopping at the first, the validator never throws for content reasons, and a game
 validator that throws becomes one `KEC0040` rather than an escaping exception.
 
@@ -3591,7 +3658,7 @@ collision kind, size, interactive flag and tags), which section 3.10 deliberatel
 served from an immutable snapshot captured at server start, and its subtitle says so
 (`b-grimhollow.md:866-899`). After adoption:
 
-- `AdminApiClient` gains the fourteen `actions/catalog-*` calls beside its existing `actions/item-catalog`
+- `AdminApiClient` gains the sixteen `actions/catalog-*` calls beside its existing `actions/item-catalog`
   (`Grimhollow.Admin/Services/AdminApiClient.cs:139`), and `actions/item-catalog` and
   `actions/skilling-config` are deleted.
 - `Items.razor` renders its grid and its edit drawer FROM `catalog-schema` rather than from a hand-written
@@ -3865,7 +3932,7 @@ change.** Today `ContentStore` holds a `relational` handle and writes SQL direct
 (`ContentStore.cs:91-96` calling `SqlRuinborneStore.UpsertItemDefAsync`, a bare `MERGE ... WITH (HOLDLOCK)`
 at `SqlRuinborneStore.cs:403-422`). The authoring store's one open draft, its id allocator and its single
 publish transaction cannot be enforced against two independent writers, so after adoption the console calls
-the admin endpoint's eleven actions (section 10.2) and the server owns every write. The bearer token plus the
+the admin endpoint's sixteen actions (section 10.2) and the server owns every write. The bearer token plus the
 pinned certificate is the transport, and the console forwards its stable Entra `oid` as the `operator` field
 (section 10.10).
 
@@ -3931,7 +3998,7 @@ spec's sections rather than against a promise, so a reviewer can check the claim
 | Issue | State today | What resolves it | Where |
 |---|---|---|---|
 | [#506](https://github.com/APKiwiOrg/Ruinborne/issues/506) | open | The console cannot write a row the server will reject: an undeclared field is a 400 at the API boundary, `KEC0025` refuses `stackable` with `max_stack` 1 at publish, and boot fails closed rather than falling back. The ungated facade method is deleted with the facade. | 3.7, 5.2, 6.4, 9.6, 17.7 |
-| [#509](https://github.com/APKiwiOrg/Ruinborne/issues/509) | open | A field-level audit through the schema: one row per changed field with before and after, plus the forwarded operator identity instead of a display name. | 4.6, 10.10, 17.7 |
+| [#509](https://github.com/APKiwiOrg/Ruinborne/issues/509) | open | IMPROVED, not resolved. A field-level audit through the schema gives it one row per changed field with a before and an after, which is what it is titled for. The WHO half is improved only: the forwarded `operator` is caller-asserted and unverified, so it is an audit aid among cooperating operators (section 13.3). | 4.6, 10.10, 13.3, 17.7 |
 | [#510](https://github.com/APKiwiOrg/Ruinborne/issues/510) | open | A type gets its editor by registering, so `item_stat` and `item_ability_modifier` stop being hand-SQL-only content. There is no such thing as a registered type with no page. | 10.3, 17.7 |
 | [#511](https://github.com/APKiwiOrg/Ruinborne/issues/511) | open | `base_stats_json` is not in the `item` schema, so after the import it is not a column, not a drawer field and not a codec arm. | 3.3, 17.2, 17.7 |
 | [#512](https://github.com/APKiwiOrg/Ruinborne/issues/512) | open | There is no code-default catalog to fall back to, and a load failure is exit code 3 with findings on stderr rather than a `Console.WriteLine`. Resolved by removing the destination, not by improving the message. | 9.6, 17.5 |
@@ -3939,7 +4006,11 @@ spec's sections rather than against a promise, so a reviewer can check the claim
 | [#199](https://github.com/APKiwiOrg/Ruinborne/issues/199) | open | `item_type` and `slot` stop being bare varchars. `item_type` becomes `item.tags`, whose vocabulary is the `tag` content type with a real id and a real reference, and `slot` becomes `item.equip_profile`, a key reference to a game type. A tag row IS the reference table the issue asks for. | 3.2, 3.3, 17.2 |
 | [#313](https://github.com/APKiwiOrg/Ruinborne/issues/313) | open | There is one decode path per type, the registered codec, so the hand-built `RarityDef` the item loader constructs instead of calling the shared mapper has nothing to drift from. The loader is deleted. | 3.6, 17.5 |
 
-Two more are touched and neither is claimed as resolved.
+Three more are touched and none is claimed as resolved.
+[#371](https://github.com/APKiwiOrg/Ruinborne/issues/371), whose console hardcodes one actor on all ten
+owned-item verbs, is IMPROVED by the forwarded operator identity of section 10.10 and not closed by it: the
+engine does not verify the field and the endpoint still holds one bearer token, so the audit is accountable to
+the token holder (section 13.3).
 [#279](https://github.com/APKiwiOrg/Ruinborne/issues/279), asking that `ItemDef.Validate` forbid equippable
 plus stackable, is GENERALIZED by `KEC0022` (a definition declaring durability or sockets is stackable) rather
 than answered: a row with an `equip_profile` and no durability is still publishable, and a game that wants the
@@ -3991,18 +4062,19 @@ already-published version.
 50,000 definitions through a minimal encoder. It is #882 item 12's proof spike and its output is numbers, not
 code.
 
-**Acceptance:** section 14's `Measured` column filled for those four rows, and question Q3 of section 21
-answered with a measurement rather than an argument. Section 14.1 already states that P6 is the one budget
-this spec expects the spike to move, and the whole point of making `chunkSlots` a per-type registration
-parameter is that the answer is a one-line change once it is measured.
+**Acceptance:** section 14's `Measured` column filled for those four rows, and question Q3's 1,024 slots for
+`item` either confirmed or moved by the measurement. Section 14.1 argues P6 to its target at 1,024 rather than
+leaving it three times over, so the spike is CHECKING an answer rather than supplying one, and the whole point
+of making `chunkSlots` a per-type registration parameter is that moving it is a one-line change while no data
+exists.
 
 **Consumer:** none. This gates the OWNER's approval of the spec, not a release.
 
 ### 18.1 Phase 1, Scope A complete, Grimhollow adopts
 
 **Ships:** all five packages of section 2.1, the complete pack format of section 7, the validator of section 5,
-the publish pipeline of section 6, both authoring providers, the server runtime of section 9, all fourteen
-action rows of section 10.2, and the connect door layer of section 8.5. Grimhollow's backend is env-selected
+the publish pipeline of section 6, both authoring providers, the server runtime of section 9, all sixteen
+actions of section 10.2 and 10.11, and the connect door layer of section 8.5. Grimhollow's backend is env-selected
 between SQLite and SQL Server (`GrimhollowEconomyDatabase.cs:26-40`), so BOTH providers are phase 1 and
 neither is deferred.
 
@@ -4058,10 +4130,13 @@ key dropped in the import is a failed deploy rather than a wrong number.
 **Ships:** the 1,000,000-definition runs, the operational actions exercised under load, and whatever the
 measurements force. Candidates already named in this spec and deliberately not designed yet: the incremental
 validator index of section 14.1's P5 note, and the sparse-table threshold of section 9.1, whose recommended
-default (switch a type to a sorted-id binary search below one-in-sixteen live density) is question Q5.
+default (switch a type to a sorted-id binary search below one-in-sixteen live density) is question Q5. One
+item is NOT a candidate but a requirement at this size: the text chunk shard of question Q4, because one
+language chunk cannot exceed `MaxChunkUncompressedBytes` and 1,000,000 items is eleven shards of it.
 
-**Acceptance:** P1, P2 and P8 measured at 1,000,000, the scale tests of section 15.4 green, and `catalog-sweep`
-and `catalog-verify` run against a version with a deliberately corrupted chunk and a deliberately orphaned one.
+**Acceptance:** P1, P2, P4b and P8 measured at 1,000,000, the scale tests of section 15.4 green, a language
+chunk shard exercised at the size that forces one, and `catalog-sweep` and `catalog-verify` run against a
+version with a deliberately corrupted chunk and a deliberately orphaned one.
 
 **Consumer:** neither game at its current size. This phase is the claim that the design scales, made honestly
 rather than assumed, and it is where the design either survives a number or gets a note in section 14 saying
@@ -4100,7 +4175,7 @@ production database, or in a player's cached pack, rather than a recompile or a 
 | The `item` type's field set as shipped | 3.3 | A published field is retired, never removed (contracts 4.7). Adding is cheap, so the cost here is only in what shipped wrong. |
 | Asset references are `opaque bytes` holding a varint length plus UTF-8, capped at 128 bytes, character set `a-z0-9_./-` | 3.3 | Changing the encoding restates every row carrying an icon, mesh or held mesh. Raising the cap is safe. Lowering it strands rows already over it, the same shape as contracts' `MaxInstancePayloadBytes`. |
 | `MaxContentRowBytes = 4096` | 7.3 | Raising is safe. Lowering strands every row already over it and makes a published version unrepublishable. |
-| The default `chunkSlots` per engine type: 4,096, and 16,384 for `loot_entry` | 3.1, 4.5 | Renumbers every chunk of that type and invalidates every cached client pack for it. Question Q3 proposes lowering `item` to 1,024 and that is a decision to take BEFORE the first publish, not after. |
+| The default `chunkSlots` per engine type: 1,024 for `item`, 4,096 for `tag`, `stat` and `loot_table`, 16,384 for `loot_entry` | 3.1, 4.5 | Renumbers every chunk of that type and invalidates every cached client pack for it. `KEC0029` refuses a change after the type's first publish. Question Q3 is why `item` is the odd one out, and it is settled before the first publish rather than after. |
 | The chunk body's canonical byte layout, which is what the chunk hash is taken over | 7.3 | Every chunk hash in every manifest of every published version changes, so it needs a `SchemeVersion` bump and a re-digest. |
 | The hash domain prefix `kec/` and its five sub-domains | 7.8 | The same re-digest, plus a gate that compared one manifest side could start agreeing with the other. |
 | The version number is monotonic from 1, plus exactly one per publish, never reused and never skipped | 12.1 | A durable container page stamps it and a remap rule applies to any page stamped OLDER than the rule. A gap or a reuse makes "older" ambiguous. |
@@ -4229,7 +4304,7 @@ pass checked hardest and cleared, named so a reviewer knows where to look rather
 |---|---|---|
 | The five packages, 2.1 | 3.2 | Identical set. `KhaozEngine.Content` untouched, as 3.1 requires. |
 | Engine type ids 1 to 5, 3.1 | 4.3 | Inside `1` to `255`. Scope B's `256` to `1023` and the games' `1024` upward left alone. |
-| `chunkSlots` 4,096 and 16,384, 3.1 | 4.5 | Both powers of two inside `256` to `65,536`. 4.5 explicitly licences per-type tuning with spike measurements. |
+| `chunkSlots` 1,024, 4,096 and 16,384, 3.1 | 4.5 | All three are powers of two inside `256` to `65,536`. 4.5 explicitly licences per-type tuning with spike measurements. |
 | Loot entries as their own type, 3.1 | 4.7 | A refinement. 4.7's kind list has no repeated group, and this avoids needing one, which is why no CCR asks for one. |
 | Family blocks, 3.8 | 5.2 | Same bounds, same alignment rule, same second-block behaviour, same never-deleted rule. |
 | Definition ids allocated reserve-before-issue, 4.7 | 5.1, 6.2 | A refinement. 6.2 states the ORDER rule for instance ids and 5.1 leaves definition-id mechanics open, so applying the same order is narrowing, not contradicting. |
@@ -4243,8 +4318,10 @@ pass checked hardest and cleared, named so a reviewer knows where to look rather
 ## 21. Open questions for the owner
 
 Seven, each with a recommended default so a non-answer is still a decision rather than a stall. Nothing here
-is a contracts question: those are section 20's two change requests. Q3, Q4 and Q5 are referenced from the
-sections that raised them and are repeated here in full so this section reads standalone.
+is a contracts question: those are section 20's three change requests. Q3, Q4 and Q5 are referenced from the
+sections that raised them and are repeated here in full so this section reads standalone. Q3 and Q4 are
+ANSWERED in the spec rather than left open, because both are expensive after the first publish, and they stay
+in this section so the owner can overrule them.
 
 ### Q1. Where do the chunks get served from in production
 
@@ -4273,29 +4350,44 @@ number to raise either.** The asymmetry is deliberate. A forgotten raise is caug
 check (section 9.6 row 4), because an engine-owned codec change bumps `FormatGeneration` and that is the case
 a stale minimum build actually matters for. A typo'd raise is caught by nothing.
 
-### Q3. The `item` type's default `chunkSlots`
+### Q3. The `item` type's default `chunkSlots`, taken at 1,024 and open to being overruled
 
-Section 14.1's P6 is the one budget this spec expects the measurement spike to move. A one-item edit at 50,000
-definitions rebuilds one chunk of 4,096 slots, which is about 800 KB uncompressed and roughly 250 KB stored,
-against a target of 80 KB. Two answers: accept about 250 KB per edit, or lower the `item` type's `chunkSlots`
-to 1,024, which quarters the re-download to about 65 KB at the cost of four times the manifest entries, still
-only 49 entries at 50,000 definitions.
+**This question is ANSWERED IN THE SPEC rather than left open, and it is here so the owner can overrule it.**
+Section 3.1 registers `item` at 1,024 slots and every other engine type at 4,096 or above. At the 4,096 this
+spec first carried, a one-item edit rebuilds a 533 KB chunk that stores at roughly 180 KB, against budget P6's
+80 KB target. At 1,024 it is 133 KB storing at about 44 KB, and P6 holds with margin. The cost is four times
+the manifest entries for that one type, 49 at 50,000 definitions and 977 at 1,000,000, which is a few tens of
+kilobytes of manifest.
 
-**Recommended default: lower `chunkSlots` for `item` to 1,024 and leave every other type at 4,096.** Section
-19 puts this in the expensive table, so it is a decision to take BEFORE the first publish rather than after.
-Phase 0 measures it, and the whole point of making chunk size a per-type registration parameter (contracts
-4.5) is that the answer is a one-line change.
+It is settled rather than deferred because section 19 puts `chunkSlots` in the expensive-after-data column:
+changing it renumbers every chunk of the type and invalidates every cached client pack for it, so it is a
+decision to take before the first publish, and phase 0's spike lands after the first publish would otherwise
+have happened. Phase 0 still MEASURES it, and if the measurement says 2,048 is the better point the change is
+one line taken before any data exists.
+
+**The decision to overrule, if the owner wants it: accept about 180 KB per edit and keep 4,096 everywhere.**
+That is a coherent choice if manifest size matters more than edit size, and nothing else in the design
+depends on which one is picked.
 
 ### Q4. When a language's text chunk should shard
 
-Section 7.6 ships ONE text chunk per language, about 1.5 MB stored at 50,000 items in one language. Sharding
-by type or id range would buy a smaller re-download when one string changes and would cost a manifest entry
-per shard plus a lookup that spans shards.
+Section 14.1 computes the chunk once, with the derived keys and every localized field of every engine type:
+**8.7 MB uncompressed at 50,000 items, 100,800 entries, about 2.2 MB stored.** The earlier figures in this
+spec were 6 MB in one section and 9 MB in another, one counting no key bytes and one counting only the item
+type's two fields, which is why the number is now computed in exactly one place.
 
-**Recommended default: one chunk per language, sharding only when a language exceeds 8 MB uncompressed.** At
-the 50,000 stress figure a language is about 6 MB, so the threshold is just above the designed-for case and
-the sharding code does not have to exist in phase 1. It becomes a phase 3 concern with a measurement behind
-it, which is the same treatment section 18.3 gives the other two deferred optimizations.
+The 8 MB threshold this question used to recommend was picked against the 6 MB figure, and the corrected 8.7
+MB is ALREADY PAST IT. So the threshold has to move or sharding ships in phase 1, and there is a third
+constraint that settles it: a language chunk cannot exceed `MaxChunkUncompressedBytes`, which at 86 bytes an
+entry is about 195,000 entries, so the 1,000,000 figure needs eleven shards whatever anyone prefers.
+
+**Recommended default: one chunk per language up to 12 MB uncompressed, sharding by id range above it.**
+Twelve leaves the 50,000 case comfortably inside one chunk at 8.7 MB, sits well under the 16 MiB hard cap so
+the shard boundary is a choice rather than a cliff, and keeps the sharding code out of phase 1 exactly as the
+old answer intended. Above the threshold a language shards by content id range, matching the chunking of the
+types it names, so a one-string change re-downloads one shard. Section 18.3 carries it with the other two
+deferred optimizations, and unlike those two it is a correctness requirement above about 97,000 items rather
+than a performance one.
 
 ### Q5. How hard to work at runtime memory before it is measured
 

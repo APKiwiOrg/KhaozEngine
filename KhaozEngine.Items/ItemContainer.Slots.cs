@@ -13,6 +13,7 @@ public sealed partial class ItemContainer
     readonly byte[]?[] _payloads;
     readonly bool[] _quarantined;
     readonly Func<ReadOnlyMemory<byte>, bool>? _payloadCanonical;
+    readonly Func<ReadOnlyMemory<byte>, bool>? _quarantineWellFormed;
 
     /// <summary>One slot's whole state: the stack, its payload and its quarantine flag. Empty slots answer
     /// <see cref="ItemSlot.Empty"/>. The payload is a window over bytes this container owns, so reading one
@@ -28,7 +29,8 @@ public sealed partial class ItemContainer
     /// <param name="value">The whole slot to seat. Its payload bytes are COPIED, so the caller may reuse
     /// its buffer.</param>
     /// <exception cref="ArgumentException">The payload is over <see cref="ItemSlot.MaxPayloadBytes"/>, or a
-    /// non-empty payload arrives with no instance id, or the payload is not canonical.</exception>
+    /// non-empty payload arrives with no instance id, or the payload is not canonical, or a quarantined
+    /// slot's bytes are not a well formed quarantine wrapper.</exception>
     /// <remarks>
     /// The invariants, in the order they are checked. One, an empty stack writes <see cref="ItemSlot.Empty"/>
     /// and clears everything. Two, a payload is at most <see cref="ItemSlot.MaxPayloadBytes"/>. Three, a
@@ -38,7 +40,9 @@ public sealed partial class ItemContainer
     /// under a Debug.Assert, because a door that only guards on a developer machine is not a door.
     /// Invariants two and four are SKIPPED when the slot is quarantined, because a wrapper is not a payload:
     /// it is not canonical, it is not meant to be, and it may be larger than the cap because the thing it
-    /// preserves was. Invariants one and three still bind whatever the flag says.
+    /// preserves was. The wrapper's own check stands in for them, through the second predicate, so a
+    /// quarantined slot still cannot carry arbitrary bytes. Invariants one and three still bind whatever the
+    /// flag says.
     /// </remarks>
     public void SetSlotAt(int slot, ItemSlot value)
     {
@@ -56,10 +60,13 @@ public sealed partial class ItemContainer
 
         if (value.Quarantined)
         {
-            // TODO(task 6): QuarantineWrapper.Verify stands in for invariants 2 and 4 here, reading the four
-            // magic bytes, the version and the declared original length and refusing anything else. Until it
-            // ships, a quarantined slot's bytes are taken unchecked, which is the safe direction: the
-            // alternative is a door that refuses the wrapper at exactly the moment quarantine is needed.
+            // QuarantineWrapper.Verify stands in for invariants 2 and 4: the four magic bytes, the version
+            // and a declared original length that accounts for exactly the bytes present. The container
+            // never learns the wrapper's shape, exactly as it never learns the payload's, because the type
+            // that knows it sits in the package ABOVE this one.
+            if (!payload.IsEmpty && (_quarantineWellFormed is null || !_quarantineWellFormed(value.Payload)))
+                throw new ArgumentException(
+                    $"slot {slot} carries quarantined bytes this container cannot vouch are a wrapper", nameof(value));
         }
         else
         {

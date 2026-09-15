@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using KhaozEngine.Items;
 using Xunit;
 
@@ -26,7 +27,60 @@ public class ItemSlotTests
         return true;
     }
 
-    static ItemContainer Bag(int slots = 5) => new(slots, Stackable, Canonical);
+    /// <summary>Stands in for <c>QuarantineWrapper.Verify</c> the way <see cref="Canonical"/> stands in for
+    /// the payload decoder. The real check is spec 12.4's KECQ header and it lives in
+    /// KhaozEngine.ItemInstances, which this project deliberately does not reference (push CI selects test
+    /// projects by the reference graph) and which KhaozEngine.Items sits BELOW, so the door takes it as a
+    /// predicate. The format is pinned for real in KhaozEngine.ItemInstances.Tests.</summary>
+    static bool WellFormedWrapper(ReadOnlyMemory<byte> wrapper)
+    {
+        ReadOnlySpan<byte> span = wrapper.Span;
+        if (span.Length < 9) return false;
+        if (span[0] != (byte)'K' || span[1] != (byte)'E' || span[2] != (byte)'C' || span[3] != (byte)'Q') return false;
+        if (span[4] != 1 || span[5] != 0) return false;
+        if (span[6] == 0 || span[6] > 13) return false;
+
+        int offset = 7;
+        return TryReadVarint(span, ref offset, out _)
+            && TryReadVarint(span, ref offset, out int length)
+            && length == span.Length - offset;
+    }
+
+    /// <summary>A KECQ wrapper over <paramref name="originalLength"/> bytes of filler, built by hand because
+    /// the writer is in the package above this one.</summary>
+    static byte[] Wrapper(byte reasonOrdinal, int stampedVersion, int originalLength)
+    {
+        var bytes = new List<byte> { (byte)'K', (byte)'E', (byte)'C', (byte)'Q', 1, 0, reasonOrdinal };
+        WriteVarint(bytes, stampedVersion);
+        WriteVarint(bytes, originalLength);
+        for (int i = 0; i < originalLength; i++) bytes.Add((byte)(i & 0xFF));
+        return bytes.ToArray();
+    }
+
+    // Unsigned LEB128, the same definition ContentVarint holds, written out here only because this project
+    // has no reference that reaches it and a stand-in that cannot read a length cannot stand in for Verify.
+    static void WriteVarint(List<byte> into, int value)
+    {
+        uint remaining = (uint)value;
+        while (remaining >= 0x80) { into.Add((byte)(remaining | 0x80)); remaining >>= 7; }
+        into.Add((byte)remaining);
+    }
+
+    static bool TryReadVarint(ReadOnlySpan<byte> span, ref int offset, out int value)
+    {
+        value = 0;
+        int shift = 0;
+        while (true)
+        {
+            if (offset >= span.Length || shift > 28) return false;
+            byte b = span[offset++];
+            value |= (b & 0x7F) << shift;
+            if ((b & 0x80) == 0) return true;
+            shift += 7;
+        }
+    }
+
+    static ItemContainer Bag(int slots = 5) => new(slots, Stackable, Canonical, WellFormedWrapper);
 
     static byte[] Payload(params byte[] bytes) => bytes;
 
@@ -66,7 +120,7 @@ public class ItemSlotTests
         Assert.False(bag.SlotAt(0).Quarantined);
         Assert.Equal(0, bag[0].InstanceId);
 
-        bag.SetSlotAt(1, new ItemSlot(new ItemStack(Sword, 1, 8), Payload(9, 1), Quarantined: true));
+        bag.SetSlotAt(1, new ItemSlot(new ItemStack(Sword, 1, 8), Wrapper(2, 4, 2), Quarantined: true));
         Assert.True(bag.SlotAt(1).Quarantined);
         bag.SetAt(1, new ItemStack(Sword, 1));
         Assert.False(bag.SlotAt(1).Quarantined);
@@ -131,10 +185,11 @@ public class ItemSlotTests
     public void SetSlotAt_skips_the_cap_and_canonical_checks_when_quarantined()
     {
         ItemContainer bag = Bag();
-        // A wrapper is the original bytes verbatim plus eleven of its own, so an entry that quarantined
-        // for payload-too-long is by construction larger than the cap it broke, and it is not canonical.
-        var wrapper = new byte[ItemSlot.MaxPayloadBytes + 11];
-        wrapper[0] = 0xFF;
+        // A wrapper is the original bytes verbatim plus its own header, so an entry that quarantined for
+        // payload-too-long is by construction larger than the cap it broke, and it is not canonical.
+        byte[] wrapper = Wrapper(1, 7, ItemSlot.MaxPayloadBytes + 1);
+        Assert.True(wrapper.Length > ItemSlot.MaxPayloadBytes);
+        Assert.False(Canonical(wrapper));
         bag.SetSlotAt(0, new ItemSlot(new ItemStack(Sword, 1, 7), wrapper, Quarantined: true));
         Assert.True(bag.SlotAt(0).Quarantined);
         Assert.Equal(wrapper.Length, bag.SlotAt(0).Payload.Length);
@@ -144,6 +199,48 @@ public class ItemSlotTests
             bag.SetSlotAt(1, new ItemSlot(new ItemStack(Sword, 1), wrapper, Quarantined: true)));
         bag.SetSlotAt(2, new ItemSlot(ItemStack.Empty, wrapper, Quarantined: true));
         Assert.Equal(ItemSlot.Empty, bag.SlotAt(2));
+    }
+
+    [Fact]
+    public void SetSlotAt_refuses_quarantined_bytes_that_are_not_a_wrapper()
+    {
+        // The quarantined branch skips the cap and the canonical check and is NOT unchecked: the wrapper's
+        // own header stands in for both (spec 4.7), so a bare payload carrying the flag is refused even
+        // though the same bytes would be accepted without it.
+        ItemContainer bag = Bag();
+        Assert.Throws<ArgumentException>(() =>
+            bag.SetSlotAt(0, new ItemSlot(new ItemStack(Sword, 1, 7), Payload(1, 2, 3), Quarantined: true)));
+        Assert.True(bag.SlotAt(0).IsEmpty);
+        bag.SetSlotAt(0, new ItemSlot(new ItemStack(Sword, 1, 7), Payload(1, 2, 3), Quarantined: false));
+        Assert.False(bag.SlotAt(0).Quarantined);
+
+        // A wrapper whose declared original length lies is refused for the same reason a truncated one is.
+        byte[] lying = Wrapper(1, 7, 4);
+        lying[^5] = 9;
+        Assert.Throws<ArgumentException>(() =>
+            bag.SetSlotAt(1, new ItemSlot(new ItemStack(Sword, 1, 8), lying, Quarantined: true)));
+
+        // A container built with no wrapper check carries no quarantined payload at all, so that door is
+        // never half open either.
+        var noCheck = new ItemContainer(5, Stackable, Canonical);
+        Assert.Throws<ArgumentException>(() =>
+            noCheck.SetSlotAt(0, new ItemSlot(new ItemStack(Sword, 1, 7), Wrapper(1, 7, 3), Quarantined: true)));
+        Assert.True(noCheck.SlotAt(0).IsEmpty);
+    }
+
+    [Fact]
+    public void SetSlotAt_accepts_a_quarantined_slot_carrying_a_well_formed_wrapper()
+    {
+        // The path quarantine exists for: the bytes that failed are seated verbatim, flag set, and nothing
+        // on the way in reshapes them.
+        ItemContainer bag = Bag();
+        byte[] wrapper = Wrapper(8, 41, 6);
+        bag.SetSlotAt(0, new ItemSlot(new ItemStack(Sword, 1, 7), wrapper, Quarantined: true));
+
+        Assert.True(bag.SlotAt(0).Quarantined);
+        Assert.Equal(wrapper, bag.SlotAt(0).Payload.ToArray());
+        Assert.Equal(wrapper, bag.TakeSlotAt(0).Payload.ToArray());
+        Assert.Equal(ItemSlot.Empty, bag.SlotAt(0));
     }
 
     [Fact]
@@ -170,12 +267,13 @@ public class ItemSlotTests
     {
         ItemContainer bag = Bag();
         bag.SetSlotAt(0, new ItemSlot(new ItemStack(Sword, 1, 7), Payload(1, 2, 3), Quarantined: false));
-        bag.SetSlotAt(4, new ItemSlot(new ItemStack(Bread, 2, 8), Payload(4, 5), Quarantined: true));
+        byte[] wrapper = Wrapper(3, 2, 2);
+        bag.SetSlotAt(4, new ItemSlot(new ItemStack(Bread, 2, 8), wrapper, Quarantined: true));
 
         bag.Swap(0, 4);
 
         Assert.Equal(new ItemStack(Bread, 2, 8), bag[0]);
-        Assert.Equal(Payload(4, 5), bag.SlotAt(0).Payload.ToArray());
+        Assert.Equal(wrapper, bag.SlotAt(0).Payload.ToArray());
         Assert.True(bag.SlotAt(0).Quarantined);
         Assert.Equal(new ItemStack(Sword, 1, 7), bag[4]);
         Assert.Equal(Payload(1, 2, 3), bag.SlotAt(4).Payload.ToArray());

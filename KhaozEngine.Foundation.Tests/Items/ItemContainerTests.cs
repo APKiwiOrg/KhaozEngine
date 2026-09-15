@@ -165,7 +165,9 @@ public class ItemContainerTests
         Assert.True(withPayload.SlotAt(1).Payload.IsEmpty);
         Assert.Equal(15, withPayload.CountOf(Coins));
 
-        var quarantined = new ItemContainer(5, Stackable, _ => true);
+        // The quarantined bytes go in through the wrapper predicate rather than the canonical one, so this
+        // container vouches for both. What Add does with the slot is the same either way.
+        var quarantined = new ItemContainer(5, Stackable, _ => true, _ => true);
         quarantined.SetSlotAt(0, new ItemSlot(new ItemStack(Coins, 5, 8), new byte[] { 9 }, Quarantined: true));
         Assert.Equal(4, quarantined.Add(Coins, 4));
         Assert.Equal(new ItemStack(Coins, 5, 8), quarantined[0]);

@@ -63,10 +63,18 @@ public sealed partial class ItemContainer
     /// carry payloads at all and the door is never half open. ITEM-INSTANCES-DESIGN-2026-09-15 section 4.7
     /// is the invariant, CONTENT-CONTRACTS-DESIGN-2026-09-14 section 3.2 is the package edge that decides
     /// which side of it the check can live on.</param>
+    /// <param name="quarantineWellFormed">Whether a QUARANTINED slot's bytes are a well formed quarantine
+    /// wrapper, which is <c>QuarantineWrapper.Verify</c> and arrives the same way and for the same reason as
+    /// <paramref name="payloadCanonical"/>. It stands in for invariants 2 and 4, which a wrapper is exempt
+    /// from by design: it is not canonical, it is not meant to be, and it may be larger than the cap because
+    /// the thing it preserves was. Left null, the container refuses every non-empty quarantined payload, so
+    /// the quarantined door is never half open either. ITEM-INSTANCES-DESIGN-2026-09-15 section 4.7 is the
+    /// invariant and section 12.4 is the format.</param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="slotCount"/> is not positive.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="stackable"/> is null.</exception>
     public ItemContainer(int slotCount, Func<int, bool> stackable,
-        Func<ReadOnlyMemory<byte>, bool>? payloadCanonical = null)
+        Func<ReadOnlyMemory<byte>, bool>? payloadCanonical = null,
+        Func<ReadOnlyMemory<byte>, bool>? quarantineWellFormed = null)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(slotCount);
         ArgumentNullException.ThrowIfNull(stackable);
@@ -75,6 +83,7 @@ public sealed partial class ItemContainer
         _payloads = new byte[slotCount][];
         _quarantined = new bool[slotCount];
         _payloadCanonical = payloadCanonical;
+        _quarantineWellFormed = quarantineWellFormed;
     }
 
     /// <summary>How many slots this container has.</summary>

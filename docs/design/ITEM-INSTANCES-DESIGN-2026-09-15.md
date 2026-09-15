@@ -234,8 +234,20 @@ rather than an accident: the option that would have needed all three is scored i
 (section 20) needs only the catalog's READ side: an id-to-row lookup per content type, a live version
 number, the remap rule list and `IsRetired(typeId, id)` for validator check 13 (12.2). Those are five
 members. Scope B phase 1 therefore proceeds behind a
-narrow `IContentSnapshot` that Scope A implements, and the two phase 1s land in either order. Every
-later Scope B phase needs real content types registered, so phases 4 onward are gated on Scope A's
+narrow `IContentSnapshot` that Scope A implements.
+
+**That seam NARROWS the dependency, it does not remove it, and an earlier draft of this section said the
+two phase 1s land in either order.** They do not. `IContentSnapshot`, `ContentVarint` and the remap rule
+set are Scope A types living in `KhaozEngine.Catalog`, every `KhaozEngine.ItemInstances` type compiles
+against them, and Scope A ships all three in milestone 1.1 (catalog 18.1). **Scope A milestone 1.1,
+`KhaozEngine.Catalog` with the registry, the snapshot interface, the varint and the remap rules, must land
+BEFORE any `ItemInstances` package compiles.** What is genuinely order-free is only the Scope B work that
+touches `KhaozEngine.Items`, `KhaozEngine.Primitives` and `KhaozEngine.TileWorld.Netcode` alone, which is
+`ItemStack`'s third component, `ItemSlot`, container codec version 2 and the ground item messages. Nothing
+after milestone 1.1 gates Scope B phase 1, so the precondition is ONE milestone rather than the whole of
+Scope A phase 1.
+
+Every later Scope B phase needs real content types registered, so phases 4 onward are gated on Scope A's
 registry and publish path being real.
 
 ## 3. The instance record and payload
@@ -776,11 +788,11 @@ entry only.** Two bounds were in play and they contradicted: this field once dec
 `MaxInstancePayloadBytes`" while 12.4 said an `OriginalLength` may exceed it. The one that is code wins
 the wrong way round, so it is settled here rather than there. A quarantine wrapper carries the original
 bytes VERBATIM plus eleven bytes of its own header (12.4), so an entry that quarantined for
-`payload-oversize` is by construction larger than the cap it broke, and bounding the entry at
+`payload-too-long` is by construction larger than the cap it broke, and bounding the entry at
 `MaxInstancePayloadBytes` would refuse to write exactly the item the wrapper exists to keep. The rule:
 
 - A NON-quarantined entry's payload is at most `MaxInstancePayloadBytes`. The decoder refuses a larger one
-  with `payload-oversize` and `SetSlotAt` throws on one (4.7).
+  with `payload-too-long` and `SetSlotAt` throws on one (4.7).
 - A QUARANTINED entry's payload is the wrapper, and its bound is the page's own: the journal's 2 MiB
   projection section cap less the rest of the page (`JournalLimits.cs:16`). 5.4 carries the arithmetic.
 
@@ -2824,7 +2836,7 @@ touch a counter and does not mutate the page. The caller does all three.
 | 2 | every declared length lies inside the payload | structural | `truncated` | quarantine |
 | 3 | a registered kind's bytes decode through its codec | structural | `field-malformed` | quarantine |
 | 4 | kind 132's nested payloads carry no kind 132 | structural | `socket-nesting` | quarantine |
-| 5 | the payload is at most `MaxInstancePayloadBytes` | structural | `payload-oversize` | quarantine |
+| 5 | the payload is at most `MaxInstancePayloadBytes` | structural | `payload-too-long` | quarantine |
 | 6 | the entry's definition id, and every socket's `ContainedDefinitionId` at every depth, resolves in the active version | drift | `unknown-definition` | quarantine |
 | 7 | every content id the registry's reference targets name resolves, at every depth (3.3) | drift | `unknown-content-reference` | quarantine |
 | 8 | a `(mod id, tier ordinal)` pair names a live tier | drift | `unknown-content-reference` | quarantine |
@@ -2925,11 +2937,44 @@ truncated, normalized or re-encoded. The wrapper replaces the entry's payload in
 ```
 [Magic: 4 bytes 'K','E','C','Q']   // 0x4B 0x45 0x43 0x51
 [Version: uint16 LE]               // 1
-[ReasonCode: byte]                 // an ordinal from the closed set of QUARANTINE reasons in 12.2
+[ReasonCode: byte]                 // the fixed ordinal from the table below, 0 never assigned
 [StampedVersion: varint int32]     // the page stamp the record failed under
 [OriginalLength: varint int32]
 [Original: OriginalLength bytes]   // verbatim, never re-encoded
 ```
+
+**`ReasonCode` is DURABLE, so the ordinals are assigned here and never anywhere else.** The byte outlives
+the release that wrote it, a tool reading an old page has only the number, and a set of reason tokens with
+no numbers attached is a set every implementer numbers differently. The canonical spelling of a reason is
+the contracts 9.7 token, which is why 1 to 8 are those eight tokens in the order contracts 9.7 lists them.
+12.2 writes four of them in a local shorthand and the third column is the bridge, so a check and an
+ordinal cannot drift apart.
+
+| Ordinal | Reason | 12.2 check | Notes |
+|---|---|---|---|
+| 0 | reserved, never assigned | none | A zeroed byte is never a valid reason, so a half-written wrapper is detectable |
+| 1 | `payload-too-long` | 5 | The one reason whose `OriginalLength` may exceed the cap, below |
+| 2 | `field-truncated` | 2 | 12.2 spells it `truncated` |
+| 3 | `kind-out-of-order` | 1 | 12.2 spells it `field-order` |
+| 4 | `kind-duplicate` | 1 | 12.2 spells it `field-duplicate` |
+| 5 | `varint-not-minimal` | 1 | 12.2 spells it `varint-nonminimal` |
+| 6 | `varint-overflow` | 1, 3 | Raised by the varint reader under either check |
+| 7 | `socket-nesting` | 4 | |
+| 8 | `field-malformed` | 3 | |
+| 9 | `unknown-definition` | 6 | |
+| 10 | `unknown-content-reference` | 7, 8 | Both checks report the same reason, so both write 10 |
+| 11 | `instance-id-missing` | 9 | First of this document's own entry-level reasons |
+| 12 | `instance-id-duplicate` | 10 | |
+| 13 | `stack-not-instanceable` | 11 | |
+
+**A new reason APPENDS at the next free number and an assigned number is never reused.** That holds even
+when a reason is withdrawn: its ordinal retires with it and the next reason takes the number after, the
+same never-reuse rule contracts 5.1 puts on a content id, for the same cause. A stored wrapper naming a
+retired ordinal still decodes to what it meant when it was written.
+
+**Checks 12 and 13 have no ordinal, deliberately.** `over-cap` is tolerated and `definition-retired`
+produces the `Retired` outcome (12.3), so neither ever writes a wrapper. Giving them a number would invite
+one to be written.
 
 **A magic here and none on a payload, and the two are consistent.** Contracts 15 forbids a magic on a
 format always embedded in a larger versioned record. A payload is such a format. A quarantine wrapper is
@@ -2940,7 +2985,7 @@ quarantined entry, on a path that is by definition rare.
 **The wrapper is itself durable, so it is versioned** (contracts 10.5's closing note). Version 1 is the
 only version and a decoder refuses anything else rather than guessing.
 
-**`OriginalLength` may exceed `MaxInstancePayloadBytes`**, because `payload-oversize` is a reason and
+**`OriginalLength` may exceed `MaxInstancePayloadBytes`**, because `payload-too-long` is a reason and
 refusing to wrap the thing that failed for being too big would destroy exactly the item the wrapper
 exists to keep. The page's own entry length check is what bounds it, at the 2 MiB section cap.
 
@@ -3602,8 +3647,8 @@ Five phases. Each names what it ships and the acceptance test that says it shipp
 **Phase 1, the instance record and the container.** The whole of sections 3 and 4:
 `KhaozEngine.ItemInstances` with the payload codec, the property registry, the `KECQ` wrapper, the
 instance validator and the allocator, plus `ItemStack`'s third component, `ItemSlot`, and container codec
-version 2 with its version 1 reader. Behind the narrow `IContentSnapshot` of 2.5, so it does not wait on
-Scope A. **Not** paging, **not** the journal, **not** generation, **not** crafting, **not** the evaluator.
+version 2 with its version 1 reader. Behind the narrow `IContentSnapshot` of 2.5, which gates it on Scope
+A's milestone 1.1 and on nothing later. **Not** paging, **not** the journal, **not** generation, **not** crafting, **not** the evaluator.
 Acceptance: tests 1, 2, 3, 4, 12 and 16 green, and the contracts' 45 byte example reproduced byte for
 byte. Test 12 is here rather than later because the allocator ships in this phase and its epoch refusal
 (3.6) is the one behaviour in it that cannot be added afterwards without a durable migration.
@@ -3668,6 +3713,7 @@ consumer's production database.
 | The craft intent carries the target instance id | 10.6 | Without it a replay applies to whatever refilled the slot |
 | `item-crafted` carries BEFORE and AFTER payloads | 10.6 | Nothing else in the durable record can answer what a craft changed |
 | The `KECQ` wrapper layout | 12.4 | It is durable and holds the only copy of a failed item's bytes |
+| The quarantine `ReasonCode` ordinals | 12.4 | The byte is durable, so a renumber re-points the reason every stored wrapper names |
 | `RevealedMask` bit assignments, 129 to 0, 131 to 1, 133 to 2, 134 to 3 | 3.3, 12.7 | The mask is durable inside kind 128, so a bit that moves re-points every partially identified item in the world |
 
 **The last row is the sharpest and is easy to miss, and the vector is not the one an earlier draft

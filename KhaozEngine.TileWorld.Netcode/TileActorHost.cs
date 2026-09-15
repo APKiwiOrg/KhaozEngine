@@ -151,7 +151,12 @@ public sealed class TileActorHost
 
     /// <summary>Whether <paramref name="definition"/>'s footprint fits at <paramref name="home"/> on its traversal
     /// profile, which is the placement check <see cref="Add"/> and every respawn make, without throwing. For a game's
-    /// content test over its authored spawn markers: the engine does not know which markers are actors.</summary>
+    /// content test over its authored spawn markers: the engine does not know which markers are actors.
+    /// <para>PLACEMENT ONLY. A true here does not mean <see cref="Add"/> accepts the definition, because the door's
+    /// other rules (the leash radius against the actor path window, a zero max health, a negative radius or respawn
+    /// delay) are not asked. And a one-tile definition on the default profile answers true for a Blocked home or one in
+    /// a region the map never loaded, which is the legacy rule <see cref="Add"/> keeps for content that predates
+    /// the check.</para></summary>
     /// <param name="definition">What would be built there.</param>
     /// <param name="home">The authored home, the footprint's south-west tile.</param>
     /// <exception cref="ArgumentNullException"><paramref name="definition"/> is null.</exception>

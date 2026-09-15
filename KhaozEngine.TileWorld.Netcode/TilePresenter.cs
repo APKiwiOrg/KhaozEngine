@@ -147,6 +147,9 @@ public sealed class TilePresenter
     /// <para><see cref="TileWorldClient.LocalPose"/> is this call with the client's own prediction and presenter
     /// already in hand, and is what a head normally uses. This overload is for a head holding a
     /// <see cref="ClientPrediction{TState,TCommand}"/> of its own.</para>
+    /// <para>No footprint offset, unlike <see cref="Pose"/>: this draws the LOCAL PLAYER, and a player is always one
+    /// tile (<see cref="TileWorldServer.SetPlayerState"/> refuses a larger footprint), so the tile centre is the
+    /// footprint centre.</para>
     /// </summary>
     /// <param name="prediction">The client's prediction for the local player.</param>
     /// <exception cref="ArgumentNullException"><paramref name="prediction"/> is null.</exception>

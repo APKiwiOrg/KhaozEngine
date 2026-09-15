@@ -91,7 +91,7 @@ public sealed class TileMovementSystem : ISystem
 
             // WHOSE state this is, handed to the stepper because the follow's rule 4 cannot derive it: an Attack
             // naming the attacker itself and one naming another entity standing on the same tile resolve to the
-            // identical footprint and want opposite answers (a standstill and a step off).
+            // identical footprint and want opposite answers (a self lock clears, a foreign overlap steps out).
             //
             // Read only when a lock is in play, so an idle world pays nothing for it, and THIS TICK'S Attack counts:
             // the lock it sets is written inside the step below, so the state still reads 0 here on the very tick a

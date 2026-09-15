@@ -40,6 +40,9 @@ public sealed record TileActorDefinition
     public byte AttackTicks { get; init; } = 10;
 
     /// <summary>How far from home an idle actor may wander, in tiles. Read by <c>TileWanderBehaviour</c>.
+    /// <para>Measured ANCHOR to home anchor, the frame the leash uses, so a large body's goal anchor lies within this
+    /// many tiles of its home anchor. A goal must also fit the WHOLE footprint (<c>TileCollision.CanStand</c> at the
+    /// actor's own footprint size), so a goal the body cannot stand on is dropped rather than walked toward.</para>
     /// <para>It bounds the DESTINATION, not the path. A route between two tiles inside the radius can still bulge
     /// outside it to get around an obstruction, so on anything but open ground an actor is briefly further out than
     /// this number. Keep it below <see cref="LeashRadius"/> and the leash catches the excursion. Nothing enforces
@@ -51,7 +54,9 @@ public sealed record TileActorDefinition
     /// restores to full on arrival. Sized against the actor simulator's path radius, since a leash longer than that
     /// window is a walk home the pathfinder cannot plan in one go, and <see cref="TileActorHost.Add"/> REFUSES a
     /// definition that exceeds it (<c>TileWorldServerConfig.ActorMove.MaxPathRadius</c>, 12 by default against this
-    /// 10). Raise the window with the leash for a monster meant to roam that far.</summary>
+    /// 10). Raise the window with the leash for a monster meant to roam that far.
+    /// <para>Measured ANCHOR to home anchor, as a Chebyshev distance. The whole body moves together, so for a large
+    /// body that equals centre to centre, and the nearest footprint tile is never what is measured.</para></summary>
     public int LeashRadius { get; init; } = 10;
 
     /// <summary>Ticks the spawner waits before it builds a new actor, counted from the tick it NOTICES the old one

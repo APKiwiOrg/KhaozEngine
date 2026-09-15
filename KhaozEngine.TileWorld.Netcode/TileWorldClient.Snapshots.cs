@@ -255,8 +255,10 @@ public sealed partial class TileWorldClient
 
     /// <summary>
     /// The tiles a remote COVERS, anchored on the tile <see cref="TryGetRemoteTile"/> answers and off the same
-    /// DELAYED sample, so the rect agrees with the body <see cref="TryGetRemotePose"/> draws centred on it. That
-    /// agreement makes it the read for click bounds and a target highlight. A RULE asks
+    /// DELAYED sample, so the rect is on the same timeline as the body <see cref="TryGetRemotePose"/> draws. The body
+    /// lands centred on this rect, and while it glides it trails the rect by up to one step, because a step commits
+    /// its tiles when it starts. That shared timeline makes it the read for click bounds and a target highlight. A
+    /// RULE asks
     /// <see cref="TryGetLatestRemoteFootprint"/> instead, for the reason a rule asks
     /// <see cref="TryGetLatestRemoteTile(long, out TileCoord)"/> rather than <see cref="TryGetRemoteTile"/>. Map
     /// it with <see cref="TilePresenter.PoseAt(TileRect, int, TileDirection)"/>. False for an unknown net id and for

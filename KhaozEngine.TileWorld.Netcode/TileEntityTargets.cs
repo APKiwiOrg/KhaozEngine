@@ -143,7 +143,8 @@ public sealed class TileEntityTargets : ITileTargets
     /// its committed tile as the south-west corner, which is <see cref="TileMoveState.Footprint"/> as it stood when
     /// the snapshot was taken. The target side of every reach question is the target's own footprint, and the
     /// attacker side is its own simulator's <see cref="TileMoveSimulator.FootprintOf"/>, so the follow and the
-    /// combat roll ask <see cref="TileReach"/> the same question with the same two rects.</remarks>
+    /// combat roll ask <see cref="TileReach"/> the same question by the same rule. They do not ask it of the same
+    /// tiles: the follow reads this tick-start snapshot, and the roll reads where both bodies ended the tick.</remarks>
     public bool TryGetFootprint(long target, out TileRect footprint, out int plane)
     {
         footprint = default;

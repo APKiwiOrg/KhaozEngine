@@ -86,7 +86,10 @@ public static class TileReach
     /// are only (0, 0), nothing overlaps and nothing repeats, so the list is that set element for element, which
     /// keeps every one tile tie break.
     /// <para>On open ground an MxM target has 4(M + N - 1) anchors, and walls only remove them. Empty whenever
-    /// the one tile set is.</para></summary>
+    /// the one tile set is.</para>
+    /// <para>Reach is all this asks, not standing. The list can hold an anchor whose own footprint covers a Blocked
+    /// tile or straddles a wall, which no agent of that size could stand on. <c>TryNearest</c> filters those out by
+    /// pathing, since no walk reaches them.</para></summary>
     /// <param name="map">The baked collision map to read walls and blocked tiles from.</param>
     /// <param name="footprint">The tiles the target covers.</param>
     /// <param name="plane">The plane the target stands on. Reach never crosses planes.</param>
@@ -165,7 +168,7 @@ public static class TileReach
     /// fall to scan order, which makes the choice total: both heads pick the same tile for the same map, and a
     /// prediction of an interaction walk reconciles instead of snapping.
     /// <para>Returns false when the footprint has no reach tile at all, when <paramref name="from"/> stands on
-    /// another plane, and when none of the reach tiles can be reached from <paramref name="from"/> inside
+    /// another plane, and when none of the candidate anchors can be reached from <paramref name="from"/> inside
     /// <paramref name="maxRadius"/>. That last refusal is ADMITTED CHEAPLY for a footprint the search window
     /// cannot hold: a footprint further than <paramref name="maxRadius"/> + <paramref name="agentSize"/> away has no
     /// candidate inside the window, so it is answered without a search and without the scratch one allocates. The
@@ -204,8 +207,11 @@ public static class TileReach
     /// <see cref="Set(TileCollisionMap, TileRect, int, int)"/> for this size, so the tile it stops on is one
     /// <see cref="Contains(TileCollisionMap, TileRect, int, TileCoord, int)"/> answers true for.</param>
     /// <param name="maxRadius">Half width of the search window, in tiles.</param>
-    /// <param name="reachTile">The chosen reach tile, default when the call returns false.</param>
-    /// <param name="path">The walk to <paramref name="reachTile"/>, empty when the actor already stands on it.</param>
+    /// <param name="reachTile">The chosen ANCHOR tile for <paramref name="agentSize"/>, the south-west tile the agent
+    /// stops with. At size 1 it is a reach tile of the one tile set, and above that it need not be one. Default when
+    /// the call returns false.</param>
+    /// <param name="path">The walk to <paramref name="reachTile"/>, empty when the agent's anchor is already on
+    /// it.</param>
     /// <exception cref="ArgumentNullException"><paramref name="map"/> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="agentSize"/> is below 1, or
     /// <paramref name="maxRadius"/> is outside 1..<see cref="TilePathfinder.MaxSearchRadius"/>, which is what
@@ -215,7 +221,7 @@ public static class TileReach
         int agentSize, int maxRadius, out TileCoord reachTile, out TilePath path)
         => TryNearest(map, footprint, plane, from, agentSize, maxRadius, out reachTile, out path, null);
 
-    /// <summary>Finds the nearest reachable tile using caller-owned pathfinder working memory.</summary>
+    /// <summary>Finds the nearest reachable anchor using caller-owned pathfinder working memory.</summary>
     /// <param name="map">The baked collision map.</param>
     /// <param name="footprint">The target footprint.</param>
     /// <param name="plane">The target plane.</param>
@@ -223,10 +229,11 @@ public static class TileReach
     /// <param name="agentSize">The moving actor's footprint edge. It shapes the walk and the candidates, which are
     /// the anchors of <see cref="Set(TileCollisionMap, TileRect, int, int)"/> for this size.</param>
     /// <param name="maxRadius">The pathfinder search radius.</param>
-    /// <param name="reachTile">The selected reach tile.</param>
-    /// <param name="path">The path to the selected tile.</param>
+    /// <param name="reachTile">The selected ANCHOR tile for <paramref name="agentSize"/>, see the overload
+    /// above.</param>
+    /// <param name="path">The path to the selected anchor.</param>
     /// <param name="scratch">Reusable pathfinder working memory, or null to allocate per search.</param>
-    /// <returns>True when a reach tile is reachable.</returns>
+    /// <returns>True when a candidate anchor is reachable.</returns>
     public static bool TryNearest(TileCollisionMap map, TileRect footprint, int plane, TileCoord from,
         int agentSize, int maxRadius, out TileCoord reachTile, out TilePath path, TilePathfinderScratch? scratch)
     {
@@ -306,8 +313,8 @@ public static class TileReach
     /// today, and the map stays in the signature so a later rule that has to consult the walls (an object
     /// facing you may only stand in front of) does not change the shape of every call site.</param>
     /// <param name="footprint">The tiles the target covers.</param>
-    /// <param name="plane">The plane the target stands on, carried for the same reason and for symmetry with the
-    /// three members above, so a caller never has to remember which of the four takes one.</param>
+    /// <param name="plane">The plane the target stands on, carried for the same reason and for symmetry with every
+    /// other member here, so a caller never has to remember which of them takes one.</param>
     /// <param name="from">The reach tile the actor stands on.</param>
     /// <exception cref="ArgumentNullException"><paramref name="map"/> is null.</exception>
     public static TileDirection FacingToward(TileCollisionMap map, TileRect footprint, int plane, TileCoord from)
@@ -326,8 +333,10 @@ public static class TileReach
     /// side (touching in x needs overlap in z, which rules out touching in z), so the answer is unique, and the
     /// sides are asked in the W, E, S, N order only so the fallback is reached deterministically. For a size of 1
     /// this is <see cref="FacingToward(TileCollisionMap, TileRect, int, TileCoord)"/>, answer for answer.
-    /// <para>Falls back to <see cref="TileDirection.W"/> for an agent that touches no side, which covers an
-    /// overlapping agent and an empty footprint, for the reason the one tile overload gives.</para></summary>
+    /// <para>Above size 1, falls back to <see cref="TileDirection.W"/> for an agent that touches no side, which
+    /// covers an overlapping agent and an empty footprint, for the reason the one tile overload gives. A size of 1
+    /// delegates to that overload's four-neighbour scan, so an overlapping one tile agent can answer any side a
+    /// footprint tile lies on, E included.</para></summary>
     /// <param name="map">The baked collision map, read only for the null check, as on the one tile overload.</param>
     /// <param name="footprint">The tiles the target covers.</param>
     /// <param name="plane">The plane the target stands on, carried for symmetry with the one tile overload.</param>

@@ -11,8 +11,8 @@ using Xunit;
 
 namespace KhaozEngine.Tests.TileNetcode;
 
-// The footprint size rides TileMoveState and its wire codec. A one-tile body keeps the exact bytes it always had, and a
-// larger one always writes the domain slot so its size byte sits at a fixed offset behind it.
+/// <summary>The footprint size rides TileMoveState and its wire codec. A one-tile body keeps the exact bytes it always
+/// had, and a larger one always writes the domain slot so its size byte sits at a fixed offset behind it.</summary>
 public class TileFootprintWireTests
 {
     [Fact]

@@ -1650,3 +1650,457 @@ git commit -m "catalog(sqlite): add the SQLite authoring provider and its versio
 ~~~
 
 ---
+
+### Task 18: The SQL Server authoring provider (medium)
+
+Spec 4.5, 4.1. Contracts 5.3.
+
+**Files:**
+
+- Create: `KhaozEngine.Catalog.SqlServer/KhaozEngine.Catalog.SqlServer.csproj`
+- Create: `KhaozEngine.Catalog.SqlServer/README.md`
+- Create: `KhaozEngine.Catalog.SqlServer/CatalogSchemaV1.sql` (EMBEDDED RESOURCE)
+- Create: `KhaozEngine.Catalog.SqlServer/SqlServerCatalogSchema.cs`
+- Create: `KhaozEngine.Catalog.SqlServer/SqlServerContentAuthoringStore.cs`
+- Create: `KhaozEngine.Catalog.SqlServer/SqlServerContentAuthoringStore.Publish.cs`
+- Modify: `KhaozEngine.slnx`, `README.md`
+
+**Interfaces:**
+
+- Consumes: Task 13's seam, `Microsoft.Data.SqlClient`
+- Produces: the SQL Server backend
+
+**Both providers are phase 1 and neither is deferred**, because Grimhollow's backend is env-selected
+between SQLite and SQL Server.
+
+**Precedent:** `KhaozEngine.WorldStore.SqlServer/JournalSchemaV1.sql` is the embedded-resource shape, its
+line 10 is the collation precedent and its line 33 the `DATALENGTH` cap precedent.
+`KhaozEngine.Commerce.SqlServer/SqlServerWalletStore.cs` is the connection shape: a pooled `SqlConnection`
+per call and an `IsolationLevel.Serializable` transaction, with no in-process semaphore. There is no shared
+SQL Server connection type in the engine and this plan does not add one.
+
+- [ ] **Step 1: Transcribe the DDL with the idiom swaps of spec 4.5's table.**
+
+`TEXT COLLATE BINARY` becomes `nvarchar(N) COLLATE Latin1_General_100_BIN2`. `INTEGER` becomes `int`, or
+`bigint` for the audit id and the timestamps. `INTEGER PRIMARY KEY AUTOINCREMENT` becomes
+`bigint IDENTITY(1,1)`. `BLOB` becomes `varbinary(max)` with `CHECK (DATALENGTH(x) <= N)`. The epoch-ms
+timestamps become `datetimeoffset(7)`. `INSERT OR IGNORE` becomes `IF NOT EXISTS (...) INSERT`.
+`CHECK (length(x) <= N)` becomes `LEN` for `nvarchar` and `DATALENGTH` for `varbinary`.
+
+**Every constraint is NAMED**, `CONSTRAINT ck_<table>_<what> CHECK`, because an unnamed constraint gets a
+generated name and the schema validator compares names.
+
+- [ ] **Step 2: Implement, and keep the difference behavioural rather than mechanical.**
+
+The one genuine behavioural difference is the transaction: SQL Server takes no in-process semaphore and
+uses `IsolationLevel.Serializable`, which makes two consoles publishing concurrently a deadlock or an abort
+rather than a race. The conformance suite asserts the OBSERVABLE behaviour and never the mechanism, so one
+suite covers both. A serialization failure surfaces to the caller as the same 409 the optimistic
+concurrency check produces.
+
+Ship the package README and the root catalog row in this commit. OPT-IN, no umbrella.
+
+- [ ] **Step 3: Build green and commit.**
+
+~~~bash
+dotnet build KhaozEngine.Catalog.SqlServer/KhaozEngine.Catalog.SqlServer.csproj -c Release
+sh scripts/check-doc-versions.sh
+git add KhaozEngine.Catalog.SqlServer KhaozEngine.slnx README.md
+git commit -m "catalog(sqlserver): add the SQL Server authoring provider"
+~~~
+
+---
+
+### Task 19: Provider conformance and publish crash safety (large, GATE for 1.2)
+
+Spec 15.5, 15.6, 2.6, 6.11.
+
+**Files:**
+
+- Create: `KhaozEngine.Server.Tests/Catalog/ContentAuthoringStoreConformance.cs`
+- Create: `KhaozEngine.Server.Tests/Catalog/SqliteContentAuthoringStoreTests.cs`
+- Create: `KhaozEngine.Server.Tests/Catalog/SqlServerContentAuthoringStoreTests.cs`
+- Create: `KhaozEngine.Server.Tests/Catalog/CatalogSqlServerFactAttribute.cs`
+- Create: `KhaozEngine.Catalog.Tests/Publish/PublishCrashSafetyTests.cs`
+- Modify: `KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj`
+
+**Interfaces:**
+
+- Consumes: Tasks 13 to 18
+- Produces: the milestone 1.2 gate
+
+**The conformance class is the precedent's shape**, `KhaozEngine.Server.Tests/Commerce/WalletStoreContract.cs:9-11`:
+an abstract class with `protected abstract IContentAuthoringStore NewStore()` and one concrete subclass per
+backend. The provider tests live in `KhaozEngine.Server.Tests` because that is the existing home of every
+Commerce and WorldStore provider test and it already references both SQL packages' siblings.
+
+- [ ] **Step 1: Write the env gate, as a byte-for-byte copy with the variable renamed.**
+
+~~~csharp
+public sealed class CatalogSqlServerFactAttribute : FactAttribute
+{
+    public CatalogSqlServerFactAttribute()
+    {
+        if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("KE_CATALOG_SQLSERVER")))
+            Skip = "set KE_CATALOG_SQLSERVER to run";
+    }
+}
+~~~
+
+A SEPARATE variable rather than reusing `KE_COMMERCE_SQLSERVER`, because the two suites create different
+schemas and an operator should be able to run one without the other. Its doc says the same thing the
+Commerce one does: CI has no SQL Server, so these run locally or against a test database on demand.
+
+The SQLite subclass uses the per-test unique in-memory idiom from
+`KhaozEngine.Server.Tests/Commerce/SqliteWalletStoreTests.cs:7-17`,
+`$"Data Source=catalog_{Guid.NewGuid():N};Mode=Memory;Cache=Shared"`, and disposes it.
+
+- [ ] **Step 2: Write the twenty-three conformance facts from spec 15.5, each asserting OBSERVABLE
+behaviour and never a mechanism.**
+
+1 `AutoCreate` on empty creates and reports version 1. 2 `ValidateOnly` on empty throws naming the required
+migration. 3 `ValidateOnly` on a correct schema succeeds. 4 A key differing only in case is a DIFFERENT
+key, which is the binary collation assertion. 5 Two `Add` edits for one key in one draft collide on the
+unique index. 6 An `Update` MERGES fields rather than replacing the row's field set. 7 Publish assigns 1
+then 2, never skipping. 8 Publish with a stale `expectedBaseVersion` is refused and nothing is written. 9 A
+row untouched by a publish keeps its `valid_from_version`. 10 The live set at an old version excludes a row
+added later. 11 A retire writes a successor row plus EXACTLY ONE remap rule. 12 A remap rule cannot be
+updated or deleted through the API surface. 13 Allocation reserves before issuing, asserted by reading
+`reserved_through` after a single allocate. 14 Two allocations never return the same id across 10,000. 15 A
+family allocation stays inside its aligned block and reserves a second block when full. 16 Every audit row
+carries a before and an after for a field change. 17 An audit insert failure ROLLS BACK the edit. 18 Import
+into an empty database succeeds and reproduces the source ids. 19 Import into a non-empty database is
+refused with nothing written. 20 Export at N then import into an empty store gives identical rows, keys and
+ids. 21 A publish that fails at the validator leaves the draft intact. 22 The active pointer and the
+version row commit together, asserted by a reader seeing both or neither. 23 A plain allocation taken after
+a family block is reserved never returns an id inside that block, asserted by draining the whole gap under
+the block and then some.
+
+Fact 17 is worth a sentence, because the default it rejects is the common one: **the audit append is IN the
+same transaction as the edit, not best effort.** A content edit with no audit row is indistinguishable from
+no edit. If the audit insert fails, the edit fails. The before and after columns cap at 4,096 to match the
+blob cap on the other side of the same transaction, and a rendering that still would not fit is abbreviated
+VISIBLY with `+<n> more` for a tag list or `+<n> bytes` for a blob, never silently.
+
+- [ ] **Step 3: Write the nine crash-safety cases, one per `ContentPublishStep`.**
+
+The hook throws at the step, and the test asserts three things: the store is EITHER entirely at the old
+version OR entirely at the new one, the pack store holds no file any version references but cannot serve,
+and **a REPUBLISH after the kill succeeds and produces the same manifest hash it would have produced
+without the kill.** That last clause is the idempotence assertion and it is the one that matters, because a
+publish that merely fails safely but cannot be retried is not recoverable.
+
+Two crash points have a specific expected state worth pinning. Between the reservation commit and step 4,
+a gap of reserved-but-unissued ids, bounded by 1,024 per type, needing no recovery. Between step 9 and step
+10, every file of the new version exists and so does its pointer, nothing in the database references them,
+the old version is still active, and the retried publish takes the SAME version number and overwrites the
+stale pointer.
+
+The out-of-process version is a `--catalog-crash-probe` mode in `KhaozEngine.Benchmarks`, killing a child
+process at each step against a real SQLite file, mirroring
+`KhaozEngine.Benchmarks/Journal/JournalCrashProbe.cs`. In-process hooks prove the ORDERING and a real kill
+proves the DURABILITY. Add the mode in this task and leave its structural test to Task 24.
+
+- [ ] **Step 4: Run the milestone 1.2 gate green and commit.**
+
+~~~bash
+dotnet test KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj -c Release
+dotnet test KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj -c Release --filter FullyQualifiedName~Catalog
+KE_CATALOG_SQLSERVER="<a test database>" dotnet test KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj -c Release --filter FullyQualifiedName~SqlServerContentAuthoringStoreTests
+sh scripts/check-dashes.sh --tree && sh scripts/check-prose.sh --tree && sh scripts/check-file-size.sh --tree
+git add KhaozEngine.Server.Tests KhaozEngine.Catalog.Tests KhaozEngine.Benchmarks
+git commit -m "catalog(conformance): add the store conformance suite and the crash-safety cases"
+~~~
+
+Expected: the first two exit zero. The third exits zero when a SQL Server is reachable and reports only
+env-gated skips otherwise. **This closes milestone 1.2.** If SQL Server is unreachable, say so in the
+report rather than marking the gate met.
+
+---
+
+## Milestone 1.3: the server runtime, the boot and the loot roller
+
+**Group acceptance (spec 18.1's gate for 1.3):** the twelve boot fail-closed facts of spec 15.7 pass, and
+budgets P3, P7, P9 and P11 are measured at 50,000 definitions. Tasks 20 to 24.
+
+### Task 20: `ContentTypeTable`, `ContentRuntime` and the atomic swap (medium)
+
+Spec 9.1, 9.2, 9.3, 9.7.
+
+**Files:**
+
+- Create: `KhaozEngine.Catalog/Runtime/ContentTypeTable.cs`
+- Create: `KhaozEngine.Catalog/Runtime/ContentRuntime.cs`
+- Create: `KhaozEngine.Catalog/Runtime/ContentRuntimeHolder.cs`
+- Create: `KhaozEngine.Catalog.Tests/Runtime/ContentRuntimeTests.cs`
+
+**Interfaces:**
+
+- Consumes: Tasks 3, 9 and 10
+- Produces: the loaded active version, implementing `IContentSnapshot`
+
+**Lift from the spike's `ContentTypeTable.cs` and `ContentRuntime.cs`**, which are the code P3 and P7 were
+measured against. Change two things: the runtime implements `IContentSnapshot` from Task 9, and the boot
+timing struct the spike carries stays out of the shipped type (it belongs to the benchmark).
+
+- [ ] **Step 1: Write failing tests.**
+
+A lookup is `offsets[id]`, one array read, then a span slice of `Bodies`. Assert NO dictionary, NO lock and
+NO allocation on the lookup path, with a `GC.GetAllocatedBytesForCurrentThread` delta of 0 over a warm
+loop. Assert `Offsets` is sized to the highest live id plus one and NOT to the sum of chunk slots, because
+chunk slots are a transport unit the runtime does not inherit. Assert `KeyIds` is the open-addressed
+key-to-id index with 0 meaning empty, which is unambiguous because 0 is not a legal id, and that a probe
+compares the candidate's key SLICE ordinally. Assert there is no `Keys` array: the key blob IS `Bodies`.
+
+Assert the swap: `Volatile.Read` of the single field, a reader taking the reference ONCE at the top of an
+operation, and everything reachable from a runtime immutable after construction. **v1 never swaps at
+runtime**, because a new version applies at server restart. The field and the `Volatile` pair exist anyway,
+for a test fixture and for a later live-apply phase, and they cost two lines.
+
+- [ ] **Step 2: Implement, run green, commit.**
+
+~~~bash
+dotnet test KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj -c Release --filter FullyQualifiedName~ContentRuntimeTests
+git add KhaozEngine.Catalog/Runtime KhaozEngine.Catalog.Tests/Runtime
+git commit -m "catalog(runtime): add the per-type tables and the atomically swapped runtime"
+~~~
+
+---
+
+### Task 21: The four derived indexes and `IContentLoadIndex` (medium)
+
+Spec 9.4, 3.6.
+
+**Files:**
+
+- Create: `KhaozEngine.Catalog/Runtime/ContentDerivedIndexes.cs`
+- Modify: `KhaozEngine.Catalog/IContentLoadIndex.cs` (the stub from Task 3)
+- Create: `KhaozEngine.Catalog.Tests/Runtime/DerivedIndexTests.cs`
+
+**Interfaces:**
+
+- Consumes: Tasks 3, 4 and 20
+- Produces: the four engine indexes and the hook a Scope B or game type registers its own through
+
+**Lift from the spike's `ContentIndexes.cs`**, which already builds all four as flat arrays rather than a
+collection per row.
+
+- [ ] **Step 1: Write failing tests for the four.**
+
+Key to id per type is the open-addressed `int[]` of Task 20. Tag to ids is a sorted `int[]` per tag id per
+content type. Family membership is the block list per family, cached, so a test is
+`(id & ~(size - 1)) == base` against each block. Loot candidate arrays are, per `loot_table`, the resolved
+entry list with weights PREFIX SUMMED, so a weighted draw is one binary search over an `int[]` with no
+allocation and no per-roll summation.
+
+**All four are built EAGERLY at load and none is built lazily**, because each is walked inside gameplay and
+a lazy build inside a tick is a latency spike.
+
+- [ ] **Step 2: Implement the registration hook.**
+
+~~~csharp
+public interface IContentLoadIndex
+{
+    ContentTypeId Type { get; }
+    void Build(IContentSnapshot snapshot);
+}
+~~~
+
+Registered through `RegisterContentType(..., loadIndex: ...)`, one per type at most, held by the runtime
+and handed back through a typed accessor the registering code owns. The four rules that make it safe, each
+a test: it runs at boot step 7b AFTER the engine's four and BEFORE the validator, in TYPE ID ORDER so an
+index over engine rows is built before one over Scope B rows, it MAY read another type's rows through the
+snapshot and may NOT read another index, and it THROWS to fail the boot closed rather than returning a
+partial index.
+
+- [ ] **Step 3: Run green and commit.**
+
+~~~bash
+dotnet test KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj -c Release --filter FullyQualifiedName~DerivedIndexTests
+git add KhaozEngine.Catalog KhaozEngine.Catalog.Tests/Runtime
+git commit -m "catalog(indexes): add the four derived indexes and the load-index hook"
+~~~
+
+---
+
+### Task 22: `LootRoller`, the one implementation of the composition rule (medium)
+
+Spec 1.1 ninth deliverable, 3.5, 9.4. Contracts 14.4.
+
+**Files:**
+
+- Create: `KhaozEngine.Catalog/LootRoller.cs` (holds `LootDraw`)
+- Create: `KhaozEngine.Catalog.Tests/Loot/LootRollerTests.cs`
+
+**Interfaces:**
+
+- Consumes: Tasks 1, 20 and 21
+- Produces: the draw the engine owns because the rule is the engine's
+
+**Lift from the spike's `LootRoller.cs`, and change its seam.** The spike takes `DeterministicRng` by
+constructor because `IRandomSource` did not exist. It exists now, from Task 1, so the shipped type takes
+`IRandomSource`.
+
+**Why this ships at all:** the spec defined `loot_table` and `loot_entry`, specified how guaranteed
+entries, weighted picks, nested tables and tag draws compose, built the prefix-summed arrays and budgeted
+the draw at P9, and shipped no code performing it. Scope B disclaims the roll. Every consumer would have
+written the composition rule again and the first table using both `guaranteed` and `roll_count` would have
+disagreed. The owner of a rule is the code that runs it.
+
+~~~csharp
+public sealed class LootRoller
+{
+    public LootRoller(ContentRuntime runtime, IRandomSource random);
+    public int  Roll(int tableId, Span<LootDraw> destination);   // returns the count written
+    public bool TryRoll(int tableId, Span<LootDraw> destination, out int written);
+}
+
+public readonly record struct LootDraw(int ItemId, int Count, int TableId);
+~~~
+
+- [ ] **Step 1: Write failing tests that pin the DRAW ORDER, which is the contract.**
+
+Every `guaranteed` entry in `sort` order FIRST, each rolling its own `chance_bp` independently. Then
+`roll_count` weighted picks over the non-guaranteed entries, each pick a `NextInt(0, total)` and a binary
+search over the prefix-summed array. A `nested_table` entry RECURSES at the point it is drawn, with depth
+bounded by the acyclicity `KEC0024` guarantees. A `required_tags` entry draws UNIFORMLY from its
+precomputed candidate array.
+
+Roll a seeded table and assert EXACT drops. Assert zero allocation over a warm loop. Assert a destination
+too small is filled and `Roll` returns the span's length while `TryRoll` reports the overflow, so a caller
+can size up rather than silently lose drops. Assert `TableId` on each draw names the table the LINE came
+from, which is the one thing a caller cannot reconstruct after a nested draw.
+
+**Assert what it does NOT do**, by absence of API: it builds no instance, places no ground stack, adds to
+no inventory, emits no event and touches no journal. It reads content and a random source and returns
+numbers. The journal event a game records is the GAME's, and the caller passes the `TableId` it got back
+into whatever event it writes.
+
+- [ ] **Step 2: Implement, run green, commit.**
+
+~~~bash
+dotnet test KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj -c Release --filter FullyQualifiedName~LootRollerTests
+git add KhaozEngine.Catalog/LootRoller.cs KhaozEngine.Catalog.Tests/Loot
+git commit -m "catalog(loot): add the roller that owns the composition rule"
+~~~
+
+---
+
+### Task 23: The boot sequence and the fail-closed exit path (medium)
+
+Spec 9.5, 9.6, 3.10. Contracts 10.5.
+
+**Files:**
+
+- Create: `KhaozEngine.Catalog/Runtime/ContentBoot.cs`
+- Create: `KhaozEngine.Catalog/Runtime/ContentBootResult.cs`
+- Create: `KhaozEngine.Catalog.Tests/Runtime/ContentBootTests.cs`
+
+**Interfaces:**
+
+- Consumes: Tasks 10, 11, 20, 21
+- Produces: the ordered boot and its twelve refusals
+
+- [ ] **Step 1: Write the twelve fail-closed facts, one per row of spec 9.6's table.**
+
+Each asserts exit code 3 and the EXACT stderr prefix. Run in process against a test host that CAPTURES the
+exit rather than calling `Environment.Exit`, so the whole table runs in one assembly.
+
+The twelve: no active version, manifest absent or hash mismatch, manifest declaring a different version,
+generation too new, server build too old, a chunk absent or mismatched, a manifest naming an UNREGISTERED
+type, a REGISTERED type absent from the manifest, a chunk decode failure, a registered load index that
+threw, validator findings (one line per finding then a count line), and an unresolved world key.
+
+**Both type-registration rows are refusals, in both directions.** A manifest naming a type this build does
+not register has no codec to decode its rows. A registered type ABSENT from the manifest is the same
+failure from the other side, and the tempting answer, an empty runtime table, is worse: every reference
+into that type then resolves to nothing and the operator reads a page of `KEC0006` findings instead of one
+line naming the missing type. Both refuse at step 6, before a single chunk is fetched, because the
+manifest's type list is enough to decide it.
+
+**Exit code 3 throughout**, distinct from the 2 a consumer already returns for a bad config, so a
+supervisor script tells a content failure from a config failure without parsing text.
+
+- [ ] **Step 2: Implement the ordered boot.**
+
+1 register every type, 2 resolve the version, 3 fetch and verify the server manifest AND its embedded
+`versionNumber`, 4 refuse a generation too new, 5 refuse a server build too old, 6 fetch and verify every
+chunk then FREEZE the registry, 7 decode and build the four engine indexes, 7b build every registered
+`IContentLoadIndex` in type id order, 8 run the validator with `previous` null, 9 publish the runtime with
+a `Volatile.Write`, 10 load the world document, 11 resolve every world-to-content key, 12 build the connect
+door, 13 accept connections.
+
+**Version precedence, step 2, one order and no other:** a version pinned in the SERVER'S OWN CONFIG wins
+always, otherwise the store's pinned version when not null, otherwise the store's active version. A server
+configured with a pinned version and a pack store therefore needs NO authoring database at boot at all,
+which is the deployment this design recommends: the authoring database is a TOOLING dependency.
+
+**Content loads BEFORE the world and both load before the door opens**, because step 11 needs content and
+because contracts 7.5 puts the content layer inside the world layer. Step 11 itself is a boot-time
+fail-closed check that a world archetype or marker tag naming content resolves by KEY, and the world
+document never carries a content ID.
+
+- [ ] **Step 3: Run green and commit.**
+
+~~~bash
+dotnet test KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj -c Release --filter FullyQualifiedName~ContentBootTests
+git add KhaozEngine.Catalog/Runtime KhaozEngine.Catalog.Tests/Runtime
+git commit -m "catalog(boot): add the ordered boot and its twelve fail-closed refusals"
+~~~
+
+---
+
+### Task 24: `CatalogBenchmarkTests`, the structural half of the scale runs (small, GATE for 1.3)
+
+Spec 14.2, 15.4, 18.1.
+
+**Files:**
+
+- Create: `KhaozEngine.Server.Tests/Benchmarks/CatalogBenchmarkTests.cs`
+
+**Interfaces:**
+
+- Consumes: the EXISTING `KhaozEngine.Benchmarks/Catalog/` spike, which is already the `--catalog` mode
+- Produces: the CI-side proof that the benchmark still works, mirroring `MutationJournalBenchmarkTests`
+
+**`KhaozEngine.Server.Tests` already references `KhaozEngine.Benchmarks`**, so this task adds no project
+reference. Put the class beside the existing benchmark test, in
+`KhaozEngine.Server.Tests/Benchmarks/`, and follow
+`KhaozEngine.Server.Tests/WorldStore/Journal/MutationJournalBenchmarkTests.cs` in shape.
+
+**PLAN CHOICE, and the one place this plan knowingly leaves a duplicate.** The brief and spec 18.0 both
+say the spike stays where it is and keeps building. This plan therefore does NOT re-point
+`KhaozEngine.Benchmarks/Catalog/` at the shipped packages in phase 1: the measured numbers in spec 14.3
+were taken against that code, and swapping the implementation under them mid-flight would make the
+`Measured` column describe something nobody ran. The duplication is deliberate, it is bounded to one
+gitignored-from-packaging benchmark project, and re-pointing it is a phase 3 follow-up the last task files.
+
+- [ ] **Step 1: Write the structural facts. The TIMING half never runs in CI.**
+
+`CatalogBenchmarkConfig.Parse` accepts `--definitions`, `--types`, `--chunk-slots`, `--languages`,
+`--edit-count` and `--compose` and rejects a malformed value. The synthetic generator is DETERMINISTIC from
+a seed, asserted by generating twice at one seed and comparing byte for byte, which is contracts 4.3's
+registration-order independence made measurable. `CatalogBenchmarkResult.ToJson` serializes and
+`CatalogBenchmarkOutput.WriteAsync` writes to a temp path. A TINY run completes, small enough to be a unit
+test rather than a benchmark. Add the same three for the `--catalog-crash-probe` mode from Task 19.
+
+- [ ] **Step 2: Run the milestone 1.3 gate.**
+
+~~~bash
+dotnet test KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj -c Release --filter FullyQualifiedName~CatalogBenchmarkTests
+dotnet run -c Release --project KhaozEngine.Benchmarks -- --catalog --definitions 50000 --compose --output ./catalog-p11.json
+~~~
+
+Record P3, P7, P9 and P11 from that JSON in the report. Do NOT edit spec 14's `Measured` column: that is the
+owner's table and this plan does not touch a design document.
+
+- [ ] **Step 3: Commit.**
+
+~~~bash
+git add KhaozEngine.Server.Tests/Benchmarks/CatalogBenchmarkTests.cs
+git commit -m "catalog(bench): add the structural test for the catalog benchmark mode"
+~~~
+
+Expected: exit zero. **This closes milestone 1.3.**
+
+---

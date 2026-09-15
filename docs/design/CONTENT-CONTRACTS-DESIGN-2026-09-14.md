@@ -352,8 +352,9 @@ RegisterContentType(
     string  typeKey,         // stable string key, see 5.5 character rules
     IContentRowCodec codec,  // encode and decode one row
     IContentValidator validator,
+    ContentFieldSchema schema,             // the type's fields, see 4.7
     ContentVisibility defaultVisibility,   // Client or ServerOnly, see 11
-    int chunkRows)           // see 4.5
+    int chunkSlots)          // see 4.5
 ```
 
 Registration happens ONCE, at process start, before any pack is loaded. The registry is frozen when the
@@ -393,9 +394,9 @@ validator, change a type's id or key after the first publish, or register the sa
 
 ### 4.5 Chunk size rule
 
-A chunk is a contiguous id range within one type, and `chunkRows` is the number of id SLOTS per chunk, not
+A chunk is a contiguous id range within one type, and `chunkSlots` is the number of id SLOTS per chunk, not
 the number of populated rows. It must be a power of two between 256 and 65,536, and the default is 4,096.
-Chunk boundaries are therefore `floor(id / chunkRows)`, computable without a lookup.
+Chunk boundaries are therefore `floor(id / chunkSlots)`, computable without a lookup.
 
 The reason it is a slot count rather than a row count: a chunk's identity must not move when a row is
 added to it. If chunks held N ROWS, inserting one definition would renumber every chunk after it and
@@ -444,6 +445,41 @@ durable row. A tag KEY exists for authoring and for a log line, exactly as every
 **Expensive to change once data exists: no for adding a tag, yes for the representation.** Adding a tag is
 an ordinary publish and putting one on a row is an edit. Moving to strings, or dropping the ordering rule,
 restates every row that carries tags and every digest taken over them.
+
+### 4.7 Every type registers a field schema
+
+Registration carries a FIELD SCHEMA DESCRIPTOR beside the codec, and it is not optional. The schema lists,
+for every field the type's rows carry:
+
+| Schema entry | Meaning |
+|---|---|
+| Name | The field name, under section 5.3's character rules, and the name section 12.1 derives a localization key from. |
+| Value kind | One of: int, scaled int with its scale (13.1), bool, key reference to a named content type, tag list (4.6), localized text key (section 12), opaque bytes. |
+| Reference target | For a key reference, the content type key it points at. For a tag list, that it is tags. Empty otherwise. |
+| Content visibility | `Client` or `ServerOnly`, per section 11, defaulting to the type's own default. |
+| Required | Whether a live row must carry a value. |
+
+Three consumers read it, and they are why it exists rather than being a convenience:
+
+- **A game's admin console renders a generic editor from it and validates client side against it.** That is
+  what makes the owner's "edited in each game's admin app" (1.4) one editor rather than a bespoke screen per
+  type. A new type gets its editor by registering.
+- **The authoring store's audit records field-level BEFORE and AFTER values through it.** Ruinborne's audit
+  is the lesson: its rows record THAT a row changed and carry no values at all, so an audit row cannot
+  answer what the value was (`c-ruinborne.md:328-346`). A schema-driven audit names the field and both
+  sides of it.
+- **The publish diff is computed over it**, so "what changed between version 46 and 47" is a field-level
+  answer rather than a chunk hash inequality.
+
+**The row codec is checked against the schema at registration.** The codec declares the fields it writes,
+registration compares that set against the schema, and a mismatch in either direction throws before the
+registry freezes (4.2). A codec and a schema that drift give an editor writing a field nothing reads and an
+audit naming a field nobody edited, so the check belongs at registration rather than at publish, and it
+costs one comparison per type at process start.
+
+**Expensive to change once data exists: no for adding a field, yes for removing one.** Adding a field is a
+publish plus a codec version. Removing one strands every row already carrying it, which is the retire path
+of section 8 rather than a schema edit.
 
 ## 5. Id spaces and allocation
 

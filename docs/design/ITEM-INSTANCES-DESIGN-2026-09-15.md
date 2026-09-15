@@ -301,10 +301,20 @@ engine rather than Scope B.
 | 129 | `UniqueTemplate` | `[TemplateId: varint int32]` | `Everyone`, identification gated |
 | 130 | `Rarity` | `[RarityId: byte]`, a `rarity_rule` row's ordinal | `Everyone` |
 | 131 | `Affixes` | `[Count: byte][ affix entry ] * Count`, ascending by mod id | `Everyone`, identification gated |
-| 132 | `Sockets` | `[Count: byte][ socket entry ] * Count`, AUTHORED order | `Everyone` |
+| 132 | `Sockets` | `[Count: varint][ socket entry ] * Count`, AUTHORED order | `Everyone` |
 | 133 | `Enchantments` | the SAME entry layout as 131, ascending by mod id | `Everyone`, identification gated |
 | 134 | `RareName` | `[TemplateId: varint int32][WordCount: byte][WordId: varint int32] * WordCount` | `Everyone`, identification gated |
 | 135 to 1023 | reserved for Scope B | | |
+
+**Kind 132's count is a VARINT and kind 131's is a byte, and the difference is not an oversight.**
+Contracts 9.5 writes the socket field as `[Count: varint]`, and a narrowing to a byte would be a width
+change, which contracts 18 calls a contradiction rather than a refinement. The divergence would also be
+invisible in the golden file, because the worked example writes `01` and that is both, so two
+implementations written from two documents would agree until the day a socket count reached 128 and then
+produce payloads that do not stack with their own twins. Kind 131's count is a byte because the affix
+field is Scope B's own and the contract says nothing about it, and the byte is deliberate: it caps affixes
+at 255, which is open question 7's format ceiling, and it costs one byte fewer on every affixed item in
+the world.
 
 **Note the visibility levels are NOT monotonic in the kind id**: kinds 4, 5 and 6 are `OwnerOnly` while
 7 and 8 are `Everyone`. That is deliberate, and it is the reason section 7.4 declines the optional
@@ -2076,10 +2086,14 @@ for the SHAPE is the last row of the top half: 400 KB for fifty thousand bases. 
 because it never enters a table, only its tag list does. That is what makes the design survive the
 owner's "millions of owned items" over a large catalog.
 
-**The tables are built when a pack LOADS and are immutable after.** A publish builds new tables beside
-the old ones and swaps the reference, so a roll in flight finishes against the tables it started with,
-which is the same live-swap shape `GrimhollowEconomy.Current` uses (`b-grimhollow.md:56-59`). Weights are
-`ServerOnly` (8.3), so a CLIENT builds none of this and holds none of it.
+**A BOOT builds the tables, not a publish, and they are immutable for the life of the process.** An
+earlier draft said a publish builds new tables beside the old ones and swaps the reference. That is a
+live-apply mechanism and v1 does not have one: a new content version becomes active at server RESTART
+(contracts 1.3 item 8), which is the owner's decision 8 and is what the page stamp and the connect door
+both assume. So there is exactly ONE table set in a process, no roll can see two, and a publish makes a
+version active for the NEXT boot. The beside-then-swap shape is kept as the HOOK a later live apply would
+use, and `GrimhollowEconomy.Current` is that shape in a game today (`b-grimhollow.md:56-59`), but nothing
+in v1 calls it. Weights are `ServerOnly` (8.3), so a CLIENT builds none of this and holds none of it.
 
 ### 9.3 The random source, restated at the call site
 
@@ -3188,6 +3202,7 @@ WRITTEN, NOT EXECUTED. Nothing here is done by this document, and each row is wo
 | 7 | Rolls move to `IRandomSource` | three `new Random(seed)` sites and four integer literals (`b-grimhollow.md:786-836`) | `CryptographicRandomSource` in production, `SeededRandomSource` in tests, one constructor parameter at a time | https://github.com/APKiwiOrg/Grimhollow/issues/214 |
 | 8 | `EquipStats` becomes content stats | three ints on a hardcoded switch over nine ids | four `stat` rows and `Flat` lines per base (11.7) | #208 |
 | 9 | `PresentAtCommit` is set | never set, anywhere (`b-grimhollow.md:618-639`) | set on a contested claim now, and on a trade when trading arrives | #208 |
+| 10 | `ItemStack` deconstruction sites are updated, OUTSIDE Scope A's step 7 to 11 window | `var (id, count) = stack` throughout | the three component form (4.2), scheduled before Scope A's reader switching opens or after it closes, never inside it (section 20, phase 1) | #208 |
 
 **Row 4 is the one with a behaviour change a player can see**, and it is the reason to do it early: today a
 retired or reslotted item makes a container undecodable, so item retirement is a breaking persistence
@@ -3250,6 +3265,18 @@ version 2 with its version 1 reader. Behind the narrow `IContentSnapshot` of 2.5
 Scope A. **Not** paging, **not** the journal, **not** generation, **not** crafting, **not** the evaluator.
 Acceptance: tests 1, 2, 3, 4 and 16 green, and the contracts' 45 byte example reproduced sorted.
 
+**Phase 1's `ItemStack` change is a fleet-wide break and it is SEQUENCED against Scope A's Grimhollow
+adoption.** A three component record struct generates a three out-parameter `Deconstruct`, so every
+`var (id, count) = stack` in the fleet stops compiling, and `ItemStack` equality gains the instance id
+(4.2). Scope A's Grimhollow plan runs eleven steps of reader switching, and its steps 7 to 11 are the
+window in which Grimhollow is HALF migrated, reading some values from content rows and some from code.
+**Phase 1 lands before that window opens or after it closes, never inside it**, because a deconstruction
+break in the middle of a half-switched reader set is two migrations interleaved, and because Scope A's
+acceptance test `EveryStoredContainerStillDecodes` would otherwise be comparing results across a container
+codec version bump nobody told it about. Scope B phase 1 does not otherwise wait on Scope A (2.5), so this
+is the ONE ordering edge between the two programs at phase 1, and section 18 row 10 is the Grimhollow-side
+half of it.
+
 **Phase 1 is a strong base rather than a partial catalog, and that is the distinction #884 draws.** What is
 settled in it is every byte format, every id space, every ordering rule and the stacking test, which are
 the expensive things (section 21). What is absent from it is breadth, which is content.
@@ -3262,7 +3289,7 @@ Gated on nothing new. Acceptance: tests 5, 8 and 14 green, and budget 4 measured
 `TileFragmentedMessage`, the page delta, the owner remainder message and `PublicView`. Acceptance: tests 9,
 11, 15 and 17 green, and budgets 7 and 8 measured.
 
-**Phase 4, content and generation.** Sections 8 and 9: the seven content types, their validators, the
+**Phase 4, content and generation.** Sections 8 and 9: the eighteen content types, their validators, the
 candidate tables and `ItemGenerator`. **Gated on Scope A's registry and publish path being real** (2.5).
 Acceptance: test 6 green, budgets 5 and 9 measured, and one authored pack of the owner's own mods rolling
 items end to end.

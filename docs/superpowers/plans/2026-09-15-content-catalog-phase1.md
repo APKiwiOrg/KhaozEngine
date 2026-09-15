@@ -175,7 +175,7 @@ does not overflow.
 
 ~~~bash
 dotnet test KhaozEngine.Foundation.Tests/KhaozEngine.Foundation.Tests.csproj -c Release --filter FullyQualifiedName~RandomSourceTests
-sh scripts/check-dashes.sh --tree && sh scripts/check-prose.sh --tree && sh scripts/check-file-size.sh --tree
+scripts/check-dashes.sh --tree && scripts/check-prose.sh --tree && scripts/check-file-size.sh --tree
 ~~~
 
 - [ ] **Step 6: Commit.**
@@ -279,8 +279,8 @@ canonical bytes RAW. The manifest digests take a canonical TEXT, the way `TileWo
 ~~~bash
 dotnet build KhaozEngine.Catalog/KhaozEngine.Catalog.csproj -c Release
 dotnet test KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj -c Release
-sh scripts/check-doc-versions.sh
-sh scripts/check-dashes.sh --tree && sh scripts/check-prose.sh --tree && sh scripts/check-file-size.sh --tree
+scripts/check-doc-versions.sh
+scripts/check-dashes.sh --tree && scripts/check-prose.sh --tree && scripts/check-file-size.sh --tree
 ~~~
 
 - [ ] **Step 5: Commit.**
@@ -1120,7 +1120,7 @@ whether a localization key resolves, and whether a remap rule is a good idea (sp
 
 ~~~bash
 dotnet test KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj -c Release
-sh scripts/check-file-size.sh --tree
+scripts/check-file-size.sh --tree
 git add KhaozEngine.Catalog/Validation KhaozEngine.Catalog.Tests/Validation
 git commit -m "catalog(validate): add the one validator and its forty-one findings"
 ~~~
@@ -1228,7 +1228,7 @@ client graph, checked mechanically rather than by review.
 ~~~bash
 dotnet test KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj -c Release
 dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj -c Release --filter FullyQualifiedName~ArchitectureTests
-sh scripts/check-dashes.sh --tree && sh scripts/check-prose.sh --tree && sh scripts/check-file-size.sh --tree
+scripts/check-dashes.sh --tree && scripts/check-prose.sh --tree && scripts/check-file-size.sh --tree
 git add KhaozEngine.Catalog.Tests KhaozEngine.Tests/ArchitectureTests.cs
 git commit -m "catalog(goldens): pin the four formats, fuzz the decoders, gate on format versions"
 ~~~
@@ -1305,7 +1305,7 @@ connection string cannot silently create a second empty catalog.
 
 ~~~bash
 dotnet test KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj -c Release
-sh scripts/check-doc-versions.sh
+scripts/check-doc-versions.sh
 git add KhaozEngine.Catalog.Authoring KhaozEngine.Catalog.Tests KhaozEngine.slnx README.md
 git commit -m "catalog(authoring): add the package, the store seam and the edit vocabulary"
 ~~~
@@ -1472,7 +1472,7 @@ from.
 
 ~~~bash
 dotnet test KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj -c Release
-sh scripts/check-file-size.sh --tree
+scripts/check-file-size.sh --tree
 git add KhaozEngine.Catalog.Authoring/Publish KhaozEngine.Catalog.Tests/Publish
 git commit -m "catalog(publish): add steps one to eight, chunk selection and both manifests"
 ~~~
@@ -1566,7 +1566,7 @@ restore of the authoring store, which is the provider's tooling and outside this
 
 ~~~bash
 dotnet test KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj -c Release
-sh scripts/check-file-size.sh --tree
+scripts/check-file-size.sh --tree
 git add KhaozEngine.Catalog.Authoring KhaozEngine.Catalog.Tests
 git commit -m "catalog(publish): add the commit, the sweep, rollback, diff and the bundle"
 ~~~
@@ -1644,7 +1644,7 @@ commit. The description says OPT-IN and the package joins NO umbrella.
 
 ~~~bash
 dotnet build KhaozEngine.Catalog.Sqlite/KhaozEngine.Catalog.Sqlite.csproj -c Release
-sh scripts/check-doc-versions.sh && sh scripts/check-file-size.sh --tree
+scripts/check-doc-versions.sh && scripts/check-file-size.sh --tree
 git add KhaozEngine.Catalog.Sqlite KhaozEngine.slnx README.md
 git commit -m "catalog(sqlite): add the SQLite authoring provider and its versioned schema"
 ~~~
@@ -1704,7 +1704,7 @@ Ship the package README and the root catalog row in this commit. OPT-IN, no umbr
 
 ~~~bash
 dotnet build KhaozEngine.Catalog.SqlServer/KhaozEngine.Catalog.SqlServer.csproj -c Release
-sh scripts/check-doc-versions.sh
+scripts/check-doc-versions.sh
 git add KhaozEngine.Catalog.SqlServer KhaozEngine.slnx README.md
 git commit -m "catalog(sqlserver): add the SQL Server authoring provider"
 ~~~
@@ -1807,7 +1807,7 @@ proves the DURABILITY. Add the mode in this task and leave its structural test t
 dotnet test KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj -c Release
 dotnet test KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj -c Release --filter FullyQualifiedName~Catalog
 KE_CATALOG_SQLSERVER="<a test database>" dotnet test KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj -c Release --filter FullyQualifiedName~SqlServerContentAuthoringStoreTests
-sh scripts/check-dashes.sh --tree && sh scripts/check-prose.sh --tree && sh scripts/check-file-size.sh --tree
+scripts/check-dashes.sh --tree && scripts/check-prose.sh --tree && scripts/check-file-size.sh --tree
 git add KhaozEngine.Server.Tests KhaozEngine.Catalog.Tests KhaozEngine.Benchmarks
 git commit -m "catalog(conformance): add the store conformance suite and the crash-safety cases"
 ~~~
@@ -2293,7 +2293,7 @@ unit test.
 ~~~bash
 dotnet test KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj -c Release --filter FullyQualifiedName~CatalogPublishActionTests
 dotnet test KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj -c Release --filter FullyQualifiedName~CatalogEditActionTests
-sh scripts/check-file-size.sh --tree
+scripts/check-file-size.sh --tree
 git add KhaozEngine.Server.Admin/Catalog KhaozEngine.Server.Tests/Catalog
 git commit -m "catalog(actions): add the seven mutating actions and optimistic publish"
 ~~~
@@ -2427,7 +2427,7 @@ needs the subject the token produced. Write that as a composition test over `Con
 
 ~~~bash
 dotnet test KhaozEngine.TileWorld.Netcode.Tests/KhaozEngine.TileWorld.Netcode.Tests.csproj -c Release --filter FullyQualifiedName~ContentIdentityGateTests
-sh scripts/check-doc-versions.sh
+scripts/check-doc-versions.sh
 git add KhaozEngine.Catalog.Netcode KhaozEngine.TileWorld.Netcode.Tests KhaozEngine.slnx README.md
 git commit -m "catalog(netcode): add the content identity layer and its gate"
 ~~~
@@ -2624,3 +2624,236 @@ git commit -m "catalog(text): add the layered content string catalog"
 Record P4 and P10 from that JSON in the report. **This closes milestone 1.5.**
 
 ---
+
+## Finishing
+
+### Task 33: Document, version, pack, and stop (medium)
+
+AGENTS.md's finishing ritual, in order. This is the ONLY task that touches `Directory.Build.props`.
+
+**Files:**
+
+- Modify: `KhaozEngine.Catalog/README.md`, `KhaozEngine.Catalog.Authoring/README.md`,
+  `KhaozEngine.Catalog.Sqlite/README.md`, `KhaozEngine.Catalog.SqlServer/README.md`,
+  `KhaozEngine.Catalog.Netcode/README.md`
+- Modify: `README.md` (five catalog rows, the two umbrella rows, the repo-layout block, every
+  `<PackageReference>` example line)
+- Modify: `KhaozEngine.Foundation/KhaozEngine.Foundation.csproj`,
+  `KhaozEngine.Server/KhaozEngine.Server.csproj`
+- Modify: `KhaozEngine.Primitives/README.md`, `KhaozEngine.NetWorld/README.md`,
+  `KhaozEngine.Server.Admin/README.md`
+- Modify: `docs/USING-KHAOZENGINE.md`, `docs/DEPENDENCY-SEAMS.md`, `docs/INDEX.md`
+- Modify: `CHANGELOG.md`, `Directory.Build.props`
+
+**Interfaces:**
+
+- Consumes: Tasks 1 to 32
+- Produces: the packed engine release for Grimhollow's adoption to start against
+
+- [ ] **Step 1: Finish the five package READMEs.**
+
+Each was created with its csproj for the guard. Now make each one CORRECT and self-contained, because it
+ships INSIDE the nupkg and is read standalone on the feed, so it rots independently of the master catalog.
+`KhaozEngine.Catalog` documents the registry, the four formats, the validator, the runtime and the loot
+roller with a worked registration example. `Catalog.Authoring` documents the store seam, the four edit
+operations including `Fork`, the allocator's reserve-then-issue order and the bundle's empty-database rule.
+Each SQL provider documents its connection string, its schema mode and its required migration name, and
+says OPT-IN. `Catalog.Netcode` documents the layer value and both refusal tokens.
+
+Also update the three CHANGED packages' own READMEs: `Primitives` for `IRandomSource` and its two sources,
+`NetWorld` for `AdminActionStatus.Conflict` and the object error payload, and `Server.Admin` for the
+sixteen registered actions and the 409 and structured 400 arms.
+
+- [ ] **Step 2: Update the root README catalog and the umbrella csprojs.**
+
+Five new rows in the package table. **`Foundation` gains `Catalog`. `Server` gains `Catalog.Authoring` and
+`Catalog.Netcode`. The two SQL providers join NO umbrella**, per the standing rule that a package with a
+SQL provider is an opt-in sibling pair. Add the `ProjectReference` lines to the two umbrella csprojs and
+update both umbrella `<Description>` strings, which enumerate their members. Add the five directories to
+the repo-layout block.
+
+- [ ] **Step 3: Write the usage and seams sections.**
+
+`docs/USING-KHAOZENGINE.md` gains a content-catalog section: registering the engine types, registering a
+game type in the 1024-plus range through `ContentRegistrationBand.Game`, opening a store, editing and
+publishing through the actions, booting a server onto a version, wiring the door layer, and rolling a loot
+table. State explicitly what the caller still owns: the admin console UI, the pack hosting, the build
+ordinals, and the journal event a loot draw feeds.
+
+`docs/DEPENDENCY-SEAMS.md` gains the new edges: `Catalog` on `Primitives` and nothing else,
+`Catalog.Authoring` on `Catalog`, each provider on `Catalog.Authoring` plus its ADO.NET package,
+`Catalog.Netcode` on `Catalog` and `Netcode`, and `Server.Admin` on `Catalog` and `Catalog.Authoring` for
+the registered actions. Name the seams: `IContentRowCodec`, `IContentValidator`, `IContentLoadIndex`,
+`IContentSnapshot`, `IContentAuthoringStore`, `IPackStore`, `IPackStorePruning` and `IRandomSource`.
+
+Update `docs/INDEX.md`'s design table row for `CONTENT-CATALOG-DESIGN-2026-09-15.md` to the shipped state
+and fix its two stale phrases while you are there: it says "the engine's five types" where there are six,
+and "40 stable finding codes" where 41 are issued across `KEC0001` to `KEC0042` with `KEC0013` withdrawn.
+That is a row edit in the index, NOT an edit to the design document.
+
+- [ ] **Step 4: Sweep for stale prose, mechanically.**
+
+Grep every new public type name, every new package id and `KE_CATALOG_SQLSERVER` across ALL `*.md`
+recursively, root, `docs/`, `docs/design/` and every per-package README, plus `AGENTS.md`. Confirm every
+place that should mention them does. No guard checks whether prose is CORRECT, only that it exists.
+
+- [ ] **Step 5: Merge current main, then take the version.**
+
+~~~bash
+git fetch --prune
+git merge origin/main
+git tag --list 'v*' --sort=-v:refname | head
+grep -n '<KhaozEngineVersion>' Directory.Build.props
+~~~
+
+**Re-read the version and the tag list on the up-to-date main right before bumping.** Parallel dev is heavy
+here and a concurrent chat may already have taken the number. If `<KhaozEngineVersion>` is AHEAD of the
+newest tag, a version is in flight: RIDE it, append to its changelog entry, roll the date, and do NOT bump.
+If nothing is in flight, cut exactly ONE fresh MINOR version, because the whole batch is additive. At the
+time this plan was written the version and the newest tag were both `18.49.0`, so nothing was staged and
+the next free minor was `18.50.0`. Do not trust that number: re-read it.
+
+- [ ] **Step 6: Write the changelog entry in the SAME commit as the bump.**
+
+Newest first, with a tight one-line summary as the first sentence. The summary is: KhaozEngine ships the
+versioned content catalog, five packages that author content in a database and publish it as immutable
+hashed packs a server loads into arrays. Then detail the public API: the five packages, the six engine
+content types, the four byte formats and their digests, the forty-one finding codes, the eleven-step
+publish, the fail-closed boot and its exit code 3, the sixteen actions, `IRandomSource` in `Primitives`,
+and `AdminActionStatus.Conflict` in `NetWorld`.
+
+- [ ] **Step 7: Update every versioned example line the guard checks.**
+
+`scripts/check-doc-versions.sh` checks EVERY `<PackageReference>` example line in `README.md` AND
+`docs/USING-KHAOZENGINE.md`, not just one. Any new example you wrote in step 3 counts.
+
+- [ ] **Step 8: Run every guard and the full Release suite.**
+
+~~~bash
+scripts/check-doc-versions.sh
+scripts/check-dashes.sh --tree
+scripts/check-prose.sh --tree
+scripts/check-file-size.sh --tree
+dotnet test KhaozEngine.slnx -c Release
+~~~
+
+Expected: every command exits zero. Paste the exit codes rather than a reading of the output. GPU and
+SQL Server legs may report only their normal environment-gated skips.
+
+- [ ] **Step 9: Pack to the local feed with the GUARDED script.**
+
+~~~bash
+mkdir -p local-feed
+scripts/check-local-feed.sh
+scripts/pack-local-feed.sh
+~~~
+
+`scripts/pack-local-feed.sh` and never a bare `dotnet pack`: the guard refuses to overwrite an
+already-released version, and at this point the version is STAGED so it packs silently and correctly.
+
+- [ ] **Step 10: Commit the version batch, merge back and push main.**
+
+~~~bash
+engine_version=$(sed -n 's:.*<KhaozEngineVersion>\([^<]*\)</KhaozEngineVersion>.*:\1:p' Directory.Build.props)
+git add README.md docs CHANGELOG.md Directory.Build.props KhaozEngine.Catalog KhaozEngine.Catalog.Authoring KhaozEngine.Catalog.Sqlite KhaozEngine.Catalog.SqlServer KhaozEngine.Catalog.Netcode KhaozEngine.Foundation KhaozEngine.Server KhaozEngine.Primitives KhaozEngine.NetWorld KhaozEngine.Server.Admin
+git commit -m "catalog(${engine_version}): add the versioned content catalog"
+git fetch --prune && git merge origin/main
+dotnet test KhaozEngine.slnx -c Release
+~~~
+
+Then merge to `main` and push `main` right away. Do not hold and do not ask.
+
+- [ ] **Step 11: STOP. Do not tag.**
+
+A `vX.Y.Z` tag is a separate, deliberate act and the owner starts it. The one sanctioned exception is a
+game pinned-and-waiting, and Grimhollow is NOT pinned on this: its adoption has not started, which is the
+follow-on below. When the owner does call for a release, it is `scripts/tag-release.sh` and never a
+hand-typed `git tag`, because a lightweight tag is rejected by `pre-push`.
+
+- [ ] **Step 12: Name the follow-on and file what this phase leaves open.**
+
+**The follow-on is Grimhollow's adoption**, spec section 16, tracked at
+https://github.com/APKiwiOrg/Grimhollow/issues/208, and it is a SEPARATE PLAN IN THAT REPO covering the
+eleven steps of spec 16.8: the bundle import preserving ids 1 to 35 and the 18 retired flags, the two
+localization key renames, replacing `GrimhollowConfigGate` with the content layer, and the four tests of
+16.7. Nothing in that plan belongs here, and spec 18.1's acceptance for phase 1 is met by that plan rather
+than by this one.
+
+File these as `kind/backlog` issues with a `confidence/*` label, at the moment you finish rather than
+later: the benchmark still carrying its own copy of the formats (Task 24's deliberate duplicate, a phase 3
+re-point once spec 14.3's numbers are re-taken), the stale `docs/INDEX.md` phrases if step 3 did not reach
+them, and any spec discrepancy the earlier tasks reported. A discovered follow-up becomes an issue at
+discovery and is never actioned mid-task.
+
+---
+
+## Appendix A: task index and sizes
+
+| # | Task | Milestone | Size |
+|---|---|---|---|
+| 1 | The random source seam in `KhaozEngine.Primitives` | 1.1 | small |
+| 2 | The `KhaozEngine.Catalog` package and the format primitives | 1.1 | medium |
+| 3 | The field schema and the content type registry | 1.1 | medium |
+| 4 | The six engine content types and their row codecs | 1.1 | large |
+| 5 | The `KECC` chunk file | 1.1 | medium |
+| 6 | The `KECM` manifest file and its canonical text | 1.1 | medium |
+| 7 | Remap rules and the `KECR` rule chunk | 1.1 | medium |
+| 8 | The `KECT` per-language text chunk | 1.1 | small |
+| 9 | `IContentSnapshot`, `ContentSnapshot` and `ItemRow` | 1.1 | medium |
+| 10 | `IPackStore`, `FileSystemPackStore` and `ContentPackReader` | 1.1 | medium |
+| 11 | The one validator and its forty-one findings | 1.1 | large |
+| 12 | Goldens, decoder fuzzing and cross-version round trips | 1.1 GATE | large |
+| 13 | The `Catalog.Authoring` package and its seam | 1.2 | medium |
+| 14 | The id allocator and the in-memory store | 1.2 | medium |
+| 15 | The publish pipeline, steps 1 to 8 | 1.2 | large |
+| 16 | The commit, the sweep, rollback, diff and the bundle | 1.2 | large |
+| 17 | The SQLite authoring provider | 1.2 | large |
+| 18 | The SQL Server authoring provider | 1.2 | medium |
+| 19 | Provider conformance and publish crash safety | 1.2 GATE | large |
+| 20 | `ContentTypeTable`, `ContentRuntime` and the atomic swap | 1.3 | medium |
+| 21 | The four derived indexes and `IContentLoadIndex` | 1.3 | medium |
+| 22 | `LootRoller` | 1.3 | medium |
+| 23 | The boot sequence and the fail-closed exit path | 1.3 | medium |
+| 24 | `CatalogBenchmarkTests` | 1.3 GATE | small |
+| 25 | `AdminActionStatus.Conflict` and the object error payload | 1.4 | small |
+| 26 | The five read actions | 1.4 | medium |
+| 27 | The seven mutating actions | 1.4 | large |
+| 28 | Import, export, operator identity and the operational pair | 1.4 GATE | medium |
+| 29 | `Catalog.Netcode` and the connect door layer | 1.5 | medium |
+| 30 | `HttpPackStore` and `CachingPackStore` | 1.5 | medium |
+| 31 | The client fetch loop | 1.5 | medium |
+| 32 | `ContentStringCatalog` | 1.5 GATE | medium |
+| 33 | Document, version, pack, and stop | finish | medium |
+
+## Appendix B: where this plan chose something the spec left open
+
+Each of these is a decision the spec did not make, taken here so thirty-three implementers do not each take
+a different one. Every one is reversible before the first publish and none changes a byte format.
+
+| # | Open point | Choice | Task |
+|---|---|---|---|
+| 1 | Which package holds `CatalogAdminActions` | `KhaozEngine.Server.Admin`, so the opt-in SQL providers do not transitively pull NetWorld | 26 |
+| 2 | The element type of `ContentRow`'s field list | `ContentFieldValue`, parallel to the schema's ordered fields rather than name keyed | 3 |
+| 3 | How a test builds a snapshot with no store | `ContentSnapshotBuilder`, the only construction path, used by publish, boot and tests alike | 9 |
+| 4 | `RemapRuleSet.Apply`'s signature, since contracts 8.3 writes it against a page Scope B owns | `TryResolve(type, fromId, pageStamp, out toId, out kind, out payload)`, id level, with the page walk left to Scope B | 7 |
+| 5 | Where the in-memory authoring store lives | `KhaozEngine.Catalog.Authoring`, not a test project, because milestone 1.4's tests are in a different assembly | 14 |
+| 6 | The row body's absence marker for optional variable-length fields | One convention, written in the codec's doc comment and pinned in a golden | 4 |
+| 7 | Whether `ContentStringCatalog` implements `IStringCatalog` | It matches the member shape without the implements clause, because `IStringCatalog` is in `KhaozEngine.App` and `Catalog` depends only on `Primitives` | 32 |
+| 8 | Whether the benchmark is re-pointed at the shipped packages | No. The spike keeps its own copy in phase 1, because spec 14.3's measured numbers were taken against it | 24 |
+| 9 | Where the validator lands in the milestone table | End of 1.1, since `ContentValidator` is a `KhaozEngine.Catalog` type and 1.2's publish consumes it | 11 |
+| 10 | `IRandomSource`'s milestone | 1.1, not 1.3, because spec 15.2's fuzzer is a 1.1 gate and seeds from `SeededRandomSource` | 1 |
+| 11 | Spec 15.3's forward round trip, unwritable while only v1 exists | Write the backward direction now and let `GoldenFormatVersionsTests` make the forward one automatic at v2 | 12 |
+
+## Appendix C: what an implementer must NOT resolve alone
+
+Stop and report rather than deciding, in every one of these:
+
+- The KESIZE ratchet fires and no split by responsibility is available.
+- A guard or a hook blocks a commit. That is the answer, not an obstacle.
+- The task appears to need a change to a BYTE FORMAT, a width, a reserved value, a byte order, an ordering
+  rule, a formula or a vocabulary. That is a contracts amendment under contracts 18, and it re-reads both
+  specs before either moves.
+- `KhaozEngine.Catalog` appears to need a new dependency, of any kind.
+- The owner accepts CCR-1, CCR-2 or CCR-3 mid-flight. The plan is designed on the contracts AS WRITTEN.
+- Two spec sections disagree. Task 5 already carries one such case with its resolution. Any further one
+  goes to the orchestrator with both citations rather than being silently picked.

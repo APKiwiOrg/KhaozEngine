@@ -254,6 +254,29 @@ public sealed partial class TileWorldClient
     }
 
     /// <summary>
+    /// The tiles a remote COVERS, anchored on the tile <see cref="TryGetRemoteTile"/> answers and off the same
+    /// DELAYED sample, so the rect agrees with the body <see cref="TryGetRemotePose"/> draws centred on it. That
+    /// agreement makes it the read for click bounds and a target highlight. A RULE asks
+    /// <see cref="TryGetLatestRemoteFootprint"/> instead, for the reason a rule asks
+    /// <see cref="TryGetLatestRemoteTile(long, out TileCoord)"/> rather than <see cref="TryGetRemoteTile"/>. Map
+    /// it with <see cref="TilePresenter.PoseAt(TileRect, int, TileDirection)"/>. False for an unknown net id and for
+    /// the local player, whose footprint is <c>Prediction.PredictedState.Footprint</c>.
+    /// </summary>
+    /// <param name="netId">The remote's net id.</param>
+    /// <param name="footprint">The remote's footprint on the delayed timeline. One tile for a one-tile body.</param>
+    /// <param name="plane">The plane the footprint stands on.</param>
+    /// <returns>True when this client is tracking <paramref name="netId"/> as a remote.</returns>
+    public bool TryGetRemoteFootprint(long netId, out TileRect footprint, out int plane)
+    {
+        footprint = default;
+        plane = 0;
+        if (netId == LocalNetId || !remoteSamples.TryGetValue(netId, out RemoteSample sample)) return false;
+        footprint = sample.State.Footprint;
+        plane = sample.State.Tile.Plane;
+        return true;
+    }
+
+    /// <summary>
     /// Fills a caller's buffer with every remote this client is drawing and the tile it is COMMITTED to, which is
     /// <see cref="TryGetRemoteTile"/>'s answer for all of them at once. Cleared first, unsorted, complete, and the
     /// local player is never in it. The same shape as <see cref="CollectGroundItems"/> and for the same reason:
@@ -379,6 +402,30 @@ public sealed partial class TileWorldClient
         return true;
     }
 
+    /// <summary>
+    /// The tiles a remote COVERS on the FRESHEST server state this client holds, anchored on the tile
+    /// <see cref="TryGetLatestRemoteTile(long, out TileCoord)"/> answers and off the same newest applied snapshot.
+    /// This is the read a RULE asks (is my target in reach of its whole body), and it is what
+    /// <see cref="TileRemoteTargets"/> resolves a remote target to, so a client predicts an approach to a large body
+    /// the way its server runs it. An overlay drawn on the body asks <see cref="TryGetRemoteFootprint"/> instead,
+    /// which agrees with the drawn body and trails this by <see cref="TileWorldClientConfig.InterpolationDelayTicks"/>.
+    /// False for an unknown net id and for the local player, exactly as the tile twin is.
+    /// </summary>
+    /// <param name="netId">The remote's net id.</param>
+    /// <param name="footprint">The remote's footprint on the newest applied snapshot. One tile for a one-tile body.
+    /// </param>
+    /// <param name="plane">The plane the footprint stands on.</param>
+    /// <returns>True when this client holds a server state for <paramref name="netId"/> as a remote.</returns>
+    public bool TryGetLatestRemoteFootprint(long netId, out TileRect footprint, out int plane)
+    {
+        footprint = default;
+        plane = 0;
+        if (netId == LocalNetId || !latestTiles.TryGetValue(netId, out LatestTile latest)) return false;
+        footprint = new TileRect(latest.Tile.X, latest.Tile.Z, latest.Size, latest.Size);
+        plane = latest.Tile.Plane;
+        return true;
+    }
+
     // Every remote in the snapshot Apply has just finished writing, stamped with the client clock. Full-state
     // snapshots are what make one pass do both jobs: World now carries exactly what the server sent, so anything
     // this pass does not see has left the viewer's area of interest and is pruned here rather than a frame later.
@@ -407,7 +454,7 @@ public sealed partial class TileWorldClient
         if (netId == LocalNetId) return;
         if (!World.TryGet(e, out TileMoveState now)) return;
         liveLatest.Add(netId);
-        latestTiles[netId] = new LatestTile(now.Tile, latestAt);
+        latestTiles[netId] = new LatestTile(now.Tile, now.FootprintSize, latestAt);
     }
 
     // Rebuilds the per-remote draw states off whatever InterpolateAt just wrote into the world. Called every frame
@@ -504,8 +551,9 @@ public sealed partial class TileWorldClient
     /// One remote's freshest committed tile. <paramref name="Tile"/> is straight off the newest applied snapshot,
     /// and <paramref name="At"/> is the client-clock instant that snapshot was applied, which is what
     /// <see cref="TryGetLatestRemoteTile(long, out TileCoord, out float)"/> measures the answer's age from. Only
-    /// the tile is kept: everything else on the state is presentation, and the delayed timeline is where
-    /// presentation is read.
+    /// the tile and <paramref name="Size"/> (the normalized footprint size) are kept, because those are what a rule
+    /// asks about: everything else on the state is presentation, and the delayed timeline is where presentation is
+    /// read.
     /// </summary>
-    readonly record struct LatestTile(TileCoord Tile, double At);
+    readonly record struct LatestTile(TileCoord Tile, int Size, double At);
 }

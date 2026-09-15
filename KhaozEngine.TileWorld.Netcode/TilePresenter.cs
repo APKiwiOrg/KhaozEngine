@@ -5,8 +5,8 @@ using KhaozEngine.Netcode;
 namespace KhaozEngine.TileWorld.Netcode;
 
 /// <summary>Where to draw something, and which way it faces.</summary>
-/// <param name="Position">World position in metres, on the tile CENTRE. See <see cref="TilePresenter"/> for the
-/// convention and why the half tile is the presenter's to add.</param>
+/// <param name="Position">World position in metres, on the footprint CENTRE, which is the tile centre for a one-tile
+/// body. See <see cref="TilePresenter"/> for the convention and why the half tile is the presenter's to add.</param>
 /// <param name="Yaw">Facing as a rotation about +Y in radians, ready for a <c>Matrix4x4.CreateRotationY(yaw)</c>
 /// model transform on a +z-forward mesh: tile SOUTH is 0, east +pi/2, north pi and west -pi/2. That is the engine's
 /// one model-yaw convention, the same <c>CharacterFacing.YawOf</c> produces and the same hand
@@ -20,9 +20,11 @@ public readonly record struct TilePose(Vector3 Position, float Yaw);
 /// tile z counts NORTH while render z counts south, so a render-space sign that leaked into a shard boundary, a
 /// reach test or a route would be an off-by-one nobody could see until a player walked into it. Keeping the
 /// negation in one file is what makes that impossible rather than merely unlikely.
-/// <para>A POSE NAMES THE TILE CENTRE. Tile (x, z) spans x..x+1 and z..z+1, which is the span its ground quad
-/// covers and the span <c>TileObjectProps.AnchorPosition</c> centres a 1x1 prop in, so half a tile is added on
-/// each axis before the world conversion. Added in TILE units, ahead of <see cref="TileWorldSpace"/>, so the half
+/// <para>A POSE NAMES THE FOOTPRINT CENTRE, which is the tile centre for a one-tile body. Tile (x, z) spans x..x+1
+/// and z..z+1, which is the span its ground quad covers and the span <c>TileObjectProps.AnchorPosition</c> centres a
+/// 1x1 prop in, so half a tile is added on each axis before the world conversion. An NxN body is anchored on its
+/// south-west tile and covers x..x+N and z..z+N, so its centre is N halves in from the anchor corner rather than one,
+/// the same centre an NxN prop is anchored at. Added in TILE units, ahead of <see cref="TileWorldSpace"/>, so the half
 /// tile goes through the same z negation the tile coordinate does and lands on the same side of the tile the
 /// ground quad and the props do. Drawn on the CORNER instead, an avatar stands half a tile diagonally off every
 /// prop it walks up to and off the middle of the ground it occupies, which is what a consumer then re-centres in
@@ -79,7 +81,7 @@ public sealed class TilePresenter
     /// <para>The ROUTE is not consulted, and that is what makes an observer's pose honest. A remote's route is
     /// owner-only, but the pair of tiles this glides between rides the everyone channel, so a raw replicated state
     /// draws exactly where its owner draws it with nothing guessed and nothing reconstructed from the tile it was
-    /// last seen on. A state with no step in flight draws on its tile centre, whatever
+    /// last seen on. A state with no step in flight draws on its footprint centre, whatever
     /// <paramref name="extraTicks"/> says.</para>
     /// <para>This is the BODY's answer, not the RULES'. A step commits its tile when it STARTS, so the tile the
     /// simulation has committed this player to is <see cref="TileMoveState.Tile"/> and the body drawn here is up to
@@ -102,7 +104,10 @@ public sealed class TilePresenter
             tileX = state.StepFrom.X + ((float)state.Tile.X - state.StepFrom.X) * f;
             tileZ = state.StepFrom.Z + ((float)state.Tile.Z - state.StepFrom.Z) * f;
         }
-        return PoseAt(new Vector2(tileX, tileZ), state.Tile.Plane, state.Facing);
+        // A footprint's centre is half its edge in from the anchor corner. PoseAt already adds the half tile a one-tile
+        // body wants, so a large body adds the rest, and the offset is constant through a glide because the size is.
+        float extra = (state.FootprintSize - 1) * 0.5f;
+        return PoseAt(new Vector2(tileX + extra, tileZ + extra), state.Tile.Plane, state.Facing);
     }
 
     /// <summary>
@@ -185,6 +190,18 @@ public sealed class TilePresenter
     /// <returns>The tile centre's world position, and the yaw of <paramref name="facing"/>.</returns>
     public TilePose PoseAt(TileCoord tile, TileDirection facing = TileDirection.S) =>
         PoseAt(new Vector2(tile.X, tile.Z), tile.Plane, facing);
+
+    /// <summary>A footprint's CENTRE, which is where an overlay that belongs to a large body (a footprint marker, a
+    /// nameplate anchor, a hitsplat) draws. The rules' answer, like <see cref="PoseAt(TileCoord, TileDirection)"/>, so
+    /// never a body: a body glides and goes through <see cref="Pose"/>.</summary>
+    /// <param name="footprint">The tiles covered, anchored on the south-west tile. A one-tile rect draws exactly
+    /// where <see cref="PoseAt(TileCoord, TileDirection)"/> draws its tile.</param>
+    /// <param name="plane">The plane index the footprint stands on.</param>
+    /// <param name="facing">The direction to face, <see cref="TileDirection.S"/> for a marker with no facing.</param>
+    /// <returns>The footprint centre's world position, and the yaw of <paramref name="facing"/>.</returns>
+    public TilePose PoseAt(TileRect footprint, int plane, TileDirection facing = TileDirection.S) =>
+        PoseAt(new Vector2(footprint.X + (footprint.Width - 1) * 0.5f, footprint.Z + (footprint.Height - 1) * 0.5f),
+            plane, facing);
 
     // A tile point as a world position on the tile CENTRE, which is the one place the half tile is added. In TILE
     // units, before TileWorldSpace, so the z half tile is negated with the coordinate it belongs to rather than

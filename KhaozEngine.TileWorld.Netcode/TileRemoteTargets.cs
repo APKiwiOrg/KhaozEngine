@@ -5,8 +5,9 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// <summary>
 /// The CLIENT's half of the entity target seam: the same net id space <see cref="TileEntityTargets"/> answers on
 /// the server for combat and entity interactions, resolved out of what this client actually holds. A remote comes off
-/// <see cref="TileWorldClient.TryGetLatestRemoteTile(long, out TileCoord)"/> and the local player comes off its own
-/// prediction.
+/// <see cref="TileWorldClient.TryGetLatestRemoteFootprint"/> and the local player comes off its own prediction. Both
+/// answer the state's own whole footprint, never a floored size and never a one-tile rect on the anchor, because a
+/// client that resolved a large body as one tile would stop an approach inside it and be corrected every time.
 /// <para>THE HONEST READ, never the delayed one. <c>TryGetRemoteTile</c> answers off the delayed render timeline the
 /// bodies ride, which is the right read for an overlay drawn ON a body and the wrong one for a RULE: it is the truth
 /// from a moment that has already passed, so a reach question asked of it is wrong by construction. This resolver
@@ -38,13 +39,13 @@ public sealed class TileRemoteTargets : ITileTargets
     /// <inheritdoc/>
     public bool TryGetFootprint(long target, out TileRect footprint, out int plane)
     {
-        footprint = default;
-        plane = 0;
-        TileCoord tile;
-        if (target != 0 && target == client.LocalNetId) tile = client.Prediction.PredictedState.Tile;
-        else if (!client.TryGetLatestRemoteTile(target, out tile)) return false;
-        footprint = new TileRect(tile.X, tile.Z, 1, 1);
-        plane = tile.Plane;
-        return true;
+        if (target != 0 && target == client.LocalNetId)
+        {
+            TileMoveState own = client.Prediction.PredictedState;
+            footprint = own.Footprint;
+            plane = own.Tile.Plane;
+            return true;
+        }
+        return client.TryGetLatestRemoteFootprint(target, out footprint, out plane);
     }
 }

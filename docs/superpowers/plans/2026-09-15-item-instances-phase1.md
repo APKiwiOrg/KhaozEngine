@@ -592,9 +592,13 @@ public static void Register(
   Kind 134's header slot is a `rarity_rule` id rather than a `unique_template` one: it records WHICH
   rarity rule's display format composed the name.
 
-- [ ] **Step 8: Write the package README.** It ships INSIDE the nupkg and is read standalone on NuGet, so
-  it is self-contained: what the package is, the payload format in one block, the kind ranges, the
-  registration rule and the three placeholder `StringId`s. Do not point it at a design doc.
+- [ ] **Step 8: Write the package README and its README catalog row IN THIS TASK.** The README ships
+  INSIDE the nupkg and is read standalone on NuGet, so it is self-contained: what the package is, the
+  payload format in one block, the kind ranges, the registration rule and the three placeholder
+  `StringId`s. Do not point it at a design doc. `scripts/check-doc-versions.sh` requires every packable
+  package to have BOTH its own README and a row in the root `README.md` catalog, so a minimal row lands
+  here and task 19 brings it up to the depth of the rows beside it. Without this step the guard is red
+  from this task until task 19.
 - [ ] **Step 9: Run the focused tests green and commit.**
 
 ~~~bash
@@ -1481,7 +1485,9 @@ public static ContainerLoadResult Load(
   `ProjectReference` set, and update the locked umbrella membership in `ArchitectureTests`. Add a
   `ProjectReference` from `KhaozEngine.Server.Tests`, which already references `WorldStore` and both
   providers, which is exactly why spec 2.3 puts these tests there rather than in a new project.
-- [ ] **Step 6: Write the package README**, self-contained, naming the layering reason the package exists.
+- [ ] **Step 6: Write the package README and its README catalog row IN THIS TASK**, self-contained,
+  naming the layering reason the package exists. Same guard reason as task 4 step 8: a packable package
+  with no catalog row reddens `scripts/check-doc-versions.sh` from here until task 19.
 - [ ] **Step 7: Run green and commit.**
 
 ~~~bash
@@ -1803,4 +1809,203 @@ git commit -m "bench(items): structural facts beside the --items mode"
 ~~~
 
 ---
+
+## Group E: documentation and release
+
+### Task 19: The full documentation sweep (medium, gate: milestone 1.1)
+
+AGENTS.md's "Full doc sweep on EVERY feature" rule. `scripts/check-doc-versions.sh` verifies the
+engine-version declarations, the newest changelog heading and the package INVENTORY. What it does NOT
+check is whether any of that prose is CORRECT, so a stale catalog row or a package README describing
+removed API sails through. This task is the content accuracy half, and it is its own task because two
+packages arrive in this plan and a missed row is a guard failure at release time.
+
+**Files:**
+
+- Modify: `README.md` (package table, umbrella table, repo-layout block)
+- Modify: `KhaozEngine.Items/README.md`
+- Modify: `KhaozEngine.TileWorld.Netcode/README.md`
+- Modify: `KhaozEngine.Foundation/README.md`, `KhaozEngine.Server/README.md`
+- Modify: `KhaozEngine.ItemInstances/README.md`, `KhaozEngine.ItemInstances.Journal/README.md`
+- Modify: `docs/USING-KHAOZENGINE.md`
+- Modify: `docs/DEPENDENCY-SEAMS.md`
+
+- [ ] **Step 1: Add the two package catalog rows to `README.md`**, in the same voice and depth as the
+  `KhaozEngine.Items` row beside them, plus the `Depends on` column. Add both to the repo-layout block.
+  `KhaozEngine.ItemInstances` joins the `Foundation` umbrella table row and
+  `KhaozEngine.ItemInstances.Journal` joins the `Server` one. The README table is the SINGLE source for
+  the catalog, so do not re-enumerate any of it in `AGENTS.md`.
+- [ ] **Step 2: Update the three MODIFIED packages' own READMEs**, which ship inside their nupkgs and are
+  read standalone on NuGet, so each rots independently of the master catalog. `KhaozEngine.Items` gains
+  the third `ItemStack` component, `ItemSlot`, the payload doors and codec version 2 reading version 1.
+  `KhaozEngine.TileWorld.Netcode` gains the sibling ground component, the spawn overload and the
+  fragmenter. Both umbrella READMEs gain their new member.
+- [ ] **Step 3: Add a `docs/USING-KHAOZENGINE.md` section for the new public API.** One section, following
+  the file's existing shape: a worked example that encodes an item, seats it in a paged container, commits
+  it through the builder and syncs a page. State explicitly what is NOT here yet and where it lands: the
+  generator, crafting and the stat evaluator are spec 20 phases 4 and 5.
+- [ ] **Step 4: Add the seams to `docs/DEPENDENCY-SEAMS.md`.** Three edges changed: `ItemInstances` sits
+  above `Items` and `Catalog` in `Foundation`, `ItemInstances.Journal` sits above `ItemInstances` and
+  `WorldStore` in `Server`, and `TileWorld.Netcode` gained a component and a fragmenter and NO items
+  dependency. That last one is the interesting entry, because it is a seam that was deliberately not
+  crossed. `IInstanceIdStore` is a new seam with no engine-shipped provider and belongs in the table.
+- [ ] **Step 5: Do the mechanical check before committing.** Grep every new type, package and constant name
+  across ALL `*.md` recursively (root, `docs/`, `docs/design/`, and every per-package `<Package>/README.md`)
+  plus `AGENTS.md`, and confirm every place that should mention it does.
+- [ ] **Step 6: Do NOT edit any file under `docs/design/`.** The two specs and the contracts are the record
+  of the reasoning and this plan does not restate them. Shipped API and usage go to the changelog, USING
+  and the package READMEs as they land, which is the rule that keeps `docs/design/` a why and not a
+  reference surface.
+- [ ] **Step 7: Run the guards and commit.**
+
+~~~bash
+scripts/check-doc-versions.sh
+scripts/check-dashes.sh --tree
+scripts/check-prose.sh --tree
+scripts/check-file-size.sh --tree
+git add README.md docs/USING-KHAOZENGINE.md docs/DEPENDENCY-SEAMS.md KhaozEngine.Items/README.md KhaozEngine.TileWorld.Netcode/README.md KhaozEngine.Foundation/README.md KhaozEngine.Server/README.md KhaozEngine.ItemInstances/README.md KhaozEngine.ItemInstances.Journal/README.md
+git commit -m "docs(items): catalog rows, package READMEs and the usage section"
+~~~
+
+  All four guards must exit 0 here. The catalog rows landed with their packages in tasks 4 and 14, so
+  nothing in this task is what unblocks the inventory check. If `check-doc-versions.sh` is red, read the
+  message: a complaint about the version line means task 20 has not run yet and is expected, and anything
+  else is a real miss in this task.
+
+---
+
+### Task 20: The finishing ritual, one version bump, no tag (medium, gate: milestone 1.1)
+
+AGENTS.md's finishing ritual, in order. **ONE version bump for the whole batch**, not one per task, which
+is the rule that stops the engine version creeping through a run of one-line releases.
+
+**Files:**
+
+- Modify: `Directory.Build.props`
+- Modify: `CHANGELOG.md`
+- Modify: every `README.md` `<PackageReference>` example line the guard checks, one per umbrella
+- Modify: `docs/USING-KHAOZENGINE.md` version-bearing example lines
+
+- [ ] **Step 1: Fetch and merge current main into the feature branch BEFORE reading the version.**
+
+~~~bash
+git fetch --prune
+git merge origin/main
+~~~
+
+  Resolve every conflict in the feature branch and rerun the affected suites. The shared
+  `<KhaozEngineVersion>` line collides constantly here and local `main` is routinely ahead of `origin`.
+
+- [ ] **Step 2: Read the version and the tags on the up-to-date main, then take the next FREE version.**
+
+~~~bash
+git tag --list 'v*' --sort=-v:refname | head
+grep -n '<KhaozEngineVersion>' Directory.Build.props
+~~~
+
+  If `<KhaozEngineVersion>` is AHEAD of the newest tag, a version is in flight: RIDE it. Append to that
+  staged version's changelog entry, roll its date, and do NOT bump. If nothing is in flight, cut exactly
+  ONE fresh version and take the next free MINOR, because this work is additive. At the time of writing
+  the version is 18.49.0 and the newest tag is v18.49.0, so nothing is in flight and the next free minor
+  is 18.50.0. **Re-read both rather than trusting that sentence**: a concurrent chat may have bumped and
+  tagged since. A collision here is auto-resolved and needs no asking.
+- [ ] **Step 3: Write the changelog entry in the SAME commit as the version bump.** Newest first, detailed,
+  with a tight one-line summary as the entry's FIRST sentence so the file doubles as the history view.
+  The first sentence is: `Owned item instances arrive: a canonical tagged payload, paged containers,
+  container codec version 2, and one commit per tick.` Then the detail, which is the public API and
+  behaviour change: the two new packages, `ItemStack`'s third component and the deconstruction break it
+  causes, `ItemSlot` and the payload doors, codec version 2 and its version 1 reader, the property
+  registry and its band rule, `KECQ`, the visibility function, the allocator and its epoch refusal, the
+  paged container and the capacity gate, the remap pass, `ContainerCommitBuilder`, the sibling ground
+  component and the spawn overload, the fragmenter, the page delta and the resync request. Name the
+  deferred half in one sentence so a reader does not go looking for a generator that is not there.
+- [ ] **Step 4: Update every engine-version declaration the guard checks.** EVERY `<PackageReference>`
+  example line in `README.md` and in `docs/USING-KHAOZENGINE.md`, one per umbrella, not just one.
+
+- [ ] **Step 5: Close what this lands and file what it leaves.** Close engine program
+  [#884](https://github.com/APKiwiOrg/KhaozEngine/issues/884)'s phase 1 items that are actually resolved,
+  or reference them with `Closes #NNN` in the commit. Anything this work knowingly leaves undone, defers
+  or works around becomes a GitHub issue AT THIS POINT, with a `confidence/*` label, per AGENTS.md. The
+  four open questions spec 20 leaves live in the spec and do not need issues. The page-level reason tokens
+  of task 10 step 8 and the delta-builder home of task 17 DO, because both are choices this plan made that
+  the spec should adopt or overrule.
+- [ ] **Step 6: Run every guard and the full Release verification.**
+
+~~~bash
+scripts/check-doc-versions.sh
+scripts/check-dashes.sh --tree
+scripts/check-prose.sh --tree
+scripts/check-file-size.sh --tree
+dotnet test KhaozEngine.slnx -c Release
+~~~
+
+  Every command exits zero. If `check-file-size.sh` fires, the fix is a new type and never a hand edit of
+  `.filesize-baseline` and never a split at an arbitrary line. If the growth is genuinely legitimate,
+  STOP AND ASK the user.
+
+- [ ] **Step 7: Check the feed, then pack it through the guarded script.**
+
+~~~bash
+scripts/check-local-feed.sh
+scripts/pack-local-feed.sh
+~~~
+
+  Never a bare `dotnet pack` into `local-feed`: the agent-side hook denies it and the guard exists because
+  packing a RELEASED version quietly puts a bigger build behind a tag that does not describe it. The pack
+  is silent through a normal release because the version is still staged at pack time.
+
+- [ ] **Step 8: Commit the version batch with the new version as the scope.**
+
+~~~bash
+engine_version=$(sed -n 's:.*<KhaozEngineVersion>\([^<]*\)</KhaozEngineVersion>.*:\1:p' Directory.Build.props)
+git add Directory.Build.props CHANGELOG.md README.md docs/USING-KHAOZENGINE.md
+git commit -m "items(${engine_version}): owned item instances, paged containers and codec version 2"
+~~~
+
+- [ ] **Step 9: Reconcile once more, fast-forward main, verify and push main right away.**
+
+~~~bash
+git fetch --prune
+git merge origin/main
+dotnet test KhaozEngine.slnx -c Release
+git -C /Users/antonio/KhaozEngine merge --ff-only feature/item-instances-phase1
+git -C /Users/antonio/KhaozEngine push origin main
+~~~
+
+  If main advanced after the branch merge, merge it into the feature branch and repeat verification before
+  the fast-forward. Do not hold the push and do not ask.
+
+- [ ] **Step 10: STOP. Do NOT tag.** A `vX.Y.Z` tag is a separate, deliberate act that the user starts.
+  The one sanctioned exception in AGENTS.md is a game pinned-and-waiting on this change, and no consumer is
+  pinned on Scope B phase 1: Grimhollow's adoption is spec 18 and runs AFTER this, and the other four
+  consumers do not use `KhaozEngine.Items` at all. So the default ending applies: merge, push `main`, pack
+  to `local-feed`, stop. If the situation has changed and a game really is blocked, say so in the report
+  and let the user start the release.
+- [ ] **Step 11: Ask about releasing only if `git worktree list` shows you are the last chat standing**,
+  once, as the last line of the report.
+
+**Group E acceptance:** all four guards exit 0, the full solution is green in Release, `local-feed` holds
+the new version, `main` is pushed, and no tag exists.
+
+---
+
+## Where this plan CHOSE, because the spec left it open
+
+Each of these is a decision the spec does not make and an implementer would otherwise make silently and
+differently. They are consolidated here so a reviewer can overrule one in a single read, and each is
+restated at the task that acts on it.
+
+| # | The gap | The plan's choice | Task |
+|---|---|---|---|
+| 1 | Spec 4.7 wants `SetSlotAt` to refuse a non-canonical payload, but the decoder lives in a package that DEPENDS on `KhaozEngine.Items`, and contracts 15 forbids a second varint reader | The container takes the check as an optional constructor predicate, the same shape the stacking rule already arrives in, and refuses every non-empty payload when it is absent | 1 |
+| 2 | `MaxInstancePayloadBytes` is declared in `KhaozEngine.ItemInstances` (spec 2.2) but `KhaozEngine.Items` and `KhaozEngine.TileWorld.Netcode` both need it and cannot reference that package | ONE number in `ItemSlot.MaxPayloadBytes`, mirrored by a local const in `TileWorld.Netcode`, with a cross-package equality fact in `KhaozEngine.Server.Tests` | 1, 16 |
+| 3 | Contracts 9.7's eight reason tokens are PAYLOAD reasons, and nothing names the PAGE-level ones | A second closed set, `ItemContainerPageReason`, using the spike's names so the benchmark and the package agree | 10 |
+| 4 | Spec 3.6 says reuse `NetIdAllocator`, which lives in a `Server` package the `Foundation` allocator cannot reference | `InstanceIdAllocator` mirrors the scheme with its own constants and a cross-package equality fact in `KhaozEngine.Server.Tests` | 9 |
+| 5 | The allocator's durable state has no named home | An `IInstanceIdStore` constructor seam, engine ships no provider | 9 |
+| 6 | Spec 7.6 lists an owner remainder message and no package builds it | `ItemInstanceVisibility.OwnerRemainder`, beside `PublicView` so the two cannot disagree, with the message KIND left to the game | 8 |
+| 7 | The page delta body is a page entry body, and `TileWorld.Netcode` must gain no items dependency | `ContainerPageDelta` lives in `KhaozEngine.ItemInstances` and the server composes it with the fragmenter | 17 |
+| 8 | Spec 20's phase 1 is narrower than the engine half this plan is asked for | The plan implements spec 20 phases 1, 2 and 3 as one release, keeps their acceptances as group acceptances, and defers phases 4 and 5 unchanged | header |
+
+Choices 3, 6 and 7 become GitHub issues in task 20 step 5, because each is something the spec should
+adopt or overrule rather than inherit from a plan.
 

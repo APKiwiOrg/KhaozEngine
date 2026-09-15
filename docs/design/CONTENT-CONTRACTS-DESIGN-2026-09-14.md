@@ -454,10 +454,25 @@ for every field the type's rows carry:
 | Schema entry | Meaning |
 |---|---|
 | Name | The field name, under section 5.3's character rules, and the name section 12.1 derives a localization key from. |
-| Value kind | One of: int, scaled int with its scale (13.1), bool, key reference to a named content type, tag list (4.6), localized text key (section 12), opaque bytes. |
+| Value kind | One of: int, scaled int with its scale (13.1), bool, key reference to a named content type, tag list (4.6), localized text key (section 12), asset reference (defined below), opaque bytes. |
 | Reference target | For a key reference, the content type key it points at. For a tag list, that it is tags. Empty otherwise. |
 | Content visibility | `Client` or `ServerOnly`, per section 11, defaulting to the type's own default. |
 | Required | Whether a live row must carry a value. |
+
+**The `asset reference` kind is a varint length followed by that many UTF-8 bytes**, character set `a-z`,
+`0-9`, `_`, `.`, `/` and `-`, at most 128 bytes. It is never a content key and it is never localized. It
+exists because some fields name a FILE rather than a row: an item's icon, its world mesh and its held mesh
+carry values shaped like `kit/unknown_item.glb` (`b-grimhollow.md:709`). Such a value cannot be a key,
+because a key is `a-z0-9_` with no dot and no slash (5.3), and it must not fall back to opaque bytes,
+because of the first reader in the list below. A generic editor cannot tell that opaque bytes are a path,
+so it renders a hex box where an author wants a file name with a typeahead, and every console would then
+carry a hand-maintained list of which opaque fields are really paths, which is the bespoke-screen-per-type
+outcome this schema exists to prevent. The engine neither resolves nor loads the value: it is a name the
+game's own asset layer looks up, and the codec checks the character set and the length and nothing else.
+
+**Expensive to change once data exists: no for widening the character set or the byte cap, yes for
+narrowing either.** Widening is additive, and every row already written still reads. Narrowing invalidates
+rows an author already published, which is a retire and a re-author rather than a schema edit.
 
 Three consumers read it, and they are why it exists rather than being a convenience:
 

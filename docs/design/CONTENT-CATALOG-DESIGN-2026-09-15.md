@@ -376,10 +376,26 @@ declares the FIELD and the game registers the type it points at, which is exactl
 stated shape: "The engine defines the shape, the game supplies entries"
 (`KhaozEngine.Commerce/IProductCatalog.cs:5`, `a-engine.md:668-676`).
 
-The consequence for contracts 4.7 is that a reference target may name a type the ENGINE does not register, so
-the validator resolves the target at REGISTRY FREEZE rather than at compile time, and a game that leaves
-`equip_profile` unwired registers no target and every row leaves the field at 0. Finding `KEC0007` covers a
-non-zero reference whose target type was never registered.
+**The mechanism, stated concretely, because "points at a game type" does not name one.** The engine's `item`
+schema declares `equip_profile` as a key reference whose target is the type KEY `equip_profile`. A key, not an
+id: contracts 4.7 says a key reference names "the content type key it points at", and a key is a name the
+engine can write down without knowing who will answer to it. A game that wants equip profiles registers a type
+under that key in its OWN id range, which is what Grimhollow does at type id `1026`, key `equip_profile`
+(section 3.6). Nothing about the engine's schema is mutated by that, which matters because contracts 4.4
+forbids a game replacing an engine type's codec and says nothing about letting one edit an engine schema: the
+engine wrote the target key once, at registration, and it is the same string in every game.
+
+The target is resolved at REGISTRY FREEZE rather than at compile time, which is what makes the key work as a
+late binding. Two outcomes and no third:
+
+- A type is registered under the key `equip_profile`. Every `item` row's `equip_profile` field is a key
+  reference into it and `KEC0006` checks that the row it names is live.
+- No type is registered under that key. Then the field MUST be 0 on every row, and a non-zero value is refused
+  by `KEC0007`, which is exactly "a key reference names a content type that was never registered". A game that
+  leaves equip profiles unwired therefore leaves the field at 0 and never notices it exists.
+
+The same pattern is available to any engine field that has to reach into game-owned content, and this is the
+only one in the engine schema today.
 
 **Asset references are `opaque bytes` with a declared shape, and section 20 asks for better.** Contracts 4.7's
 value kinds have no plain-string kind, and a mesh reference like `kit/unknown_item.glb`
@@ -484,6 +500,17 @@ registry.RegisterContentType(
 `MaxContentRowBytes`, and registration refuses a type whose
 `chunkSlots * (maxRowBytes + 8) + 36` exceeds `MaxChunkUncompressedBytes` (section 7.1), which is the check
 that keeps a publish from building a chunk no reader will load.
+
+**`chunkSlots` is immutable after a type's first publish, and `KEC0029` says so.** It was guarded only by
+`KEC0028`'s power-of-two bound, which refuses 1,000 and accepts a change from 256 to 1,024 on a type that has
+published forty versions. That change renumbers every chunk (contracts 4.5 calls it out as expensive for
+exactly this reason): publish step 6 computes `chunkIndex = id / 1024` for the rows that changed while step 10
+copies unaffected chunk rows forward from a version where the same index meant `id / 256`, so the new
+manifest names one chunk index under two meanings. It does not corrupt anything at read time, because the
+`KECC` header carries `slotBase` and `slotCount` and a reader refuses a mismatch with `chunk-range-mismatch`
+(section 7.2), so the publish yields a version that fails every boot closed at exit 3 instead. A version
+nobody can load is still a defect worth refusing at the publish that makes it, which is what `KEC0029` now
+does.
 
 The registry freezes when the first pack loads and a later registration throws (contracts 4.2). A game MAY
 register a type in the game range, supply its own codec and validator, set its default visibility, set its
@@ -870,6 +897,12 @@ also what refuses two `Add` edits for the same key in one draft. **The one excep
 because the key half is unique across a bundle and the id half is unique per type, and the publish tells the
 two apart by the value rather than by who wrote it.
 
+**The collision is per TARGET and not per operation, so a second edit naming an occupied target with a
+DIFFERENT operation collides too.** An `Update` on item 13 followed by a `Retire` of item 13 both name
+`(2, 13, "stone_sword")`, and the second is refused rather than silently flipping the first edit's operation
+and dropping its fields. A draft holds one pending intent per row, and an operator who wants both a price
+change and a retire gets them in two publishes, which is also the order the audit will show.
+
 ```sql
 CREATE TABLE IF NOT EXISTS catalog_audit (
     audit_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -1179,7 +1212,7 @@ decode reasons. Codes are never reused and never renumbered.
 | `KEC0026` | A row's encoded bytes exceed its TYPE's `maxRowBytes`. | 7.1 here |
 | `KEC0027` | A row's codec round trip is not byte identical. | 7.3 here |
 | `KEC0028` | A `chunk_slots` value is not a power of two between 256 and 65,536. | 4.5 |
-| `KEC0029` | A type id or type key changed after its first publish. | 4.4 |
+| `KEC0029` | A type id, type key or `chunk_slots` changed after its first publish. | 4.4, 4.5 |
 | `KEC0030` | A row's DERIVED localized text key exceeds 192 characters. Three 64-character parts derive 194, so the bound is reachable. | 12.1, 12.2 |
 | `KEC0031` | A `parent_id` is non-zero while inheritance is unimplemented. | 3.8 here |
 | `KEC0032` to `KEC0035` | The four inheritance checks of section 3.8, unreachable in phase 1. | 3.8 here |
@@ -1802,8 +1835,9 @@ offset  width  field
                  [visibility  : byte]
                  [chunkCount  : varint uint32]
                  per chunk, ASCENDING BY INDEX:
-                   [chunkIndex : varint uint32]
-                   [chunkHash  : 32 raw bytes]
+                   [chunkIndex        : varint uint32]
+                   [uncompressedBytes : varint uint32]
+                   [chunkHash         : 32 raw bytes]
  ..      ..    languageCount       varint uint32
  ..      ..    per language, ASCENDING ORDINAL BY TAG:
                  [tagLen     : byte]            1..35, a BCP-47 tag
@@ -1813,8 +1847,21 @@ offset  width  field
 
 Hashes are RAW 32 BYTES in the file and LOWER HEX only where a hash appears as text, which is contracts 15's
 rule and which halves the manifest. A manifest for 1,000,000 item definitions at 4,096 slots is 245 chunks of
-about 36 bytes each for one type, so a five-type manifest is a few tens of kilobytes even at the stress figure
+about 39 bytes each for one type, so a five-type manifest is a few tens of kilobytes even at the stress figure
 (section 14, budget P1).
+
+**`uncompressedBytes` is per chunk and it is in the manifest deliberately.** Section 9.2 sizes the
+concatenated `Bodies` buffer from the sum of it across a type's chunks, and it cannot get that from the CHUNK
+headers: at the point it sizes the buffer the loader holds a manifest and has fetched nothing. Three bytes of
+varint per chunk buys one allocation per type instead of a growing one.
+
+**It is in the FILE and not in the canonical manifest TEXT**, because contracts 7.3 fixes that text down to
+the field order and this spec refines the file rather than contradicting the digest. The field is therefore
+outside the manifest hash, which would be a drift risk if nothing bound it, so something does: a chunk whose
+own header declares a different `uncompressedBytes` than the manifest does is refused with
+`chunk-range-mismatch`, the same treatment as a disagreeing slot range, and the chunk header IS inside the
+chunk hash which IS inside the manifest digest. A wrong size in a manifest costs one refusal at the chunk that
+disagrees with it, never a silent short buffer.
 
 `side` is in the file AND in the hash sub-domain, so a client manifest and a server manifest of one version
 can never be confused for each other in either direction. A reader handed the wrong side refuses with
@@ -1877,10 +1924,16 @@ offset  width  field
   6      1     tagLen              byte
   7      N     languageTag         UTF-8, a BCP-47 tag, at most 35 bytes
  ..      1     compression         byte
+ ..      1     reserved            byte          written 0, refused non-zero
  ..      4     uncompressedBytes   uint32 LE
  ..      4     storedBytes         uint32 LE
  ..      M     body                storedBytes bytes
 ```
+
+The `reserved` byte is here for the same reason `KECC` and `KECR` carry one: a non-zero value is a refusal
+with `chunk-reserved-set`, which is the fail-closed rule for an extension a reader cannot skip (contracts 8.5,
+7.4). It was the one format in this spec without it, which would have made `KECT` the only one that could not
+grow a flag.
 
 Body, inside the compressed region:
 
@@ -1896,6 +1949,23 @@ per entry, ASCENDING ORDINAL BY KEY:
 Keys are the derived keys of contracts 12.1, `<type key>.<content key>.<field>`, ordinal ascending so the
 chunk is canonical and its hash is stable. The value cap of 8,192 bytes is generous for a UI string and
 bounded, so a malformed length cannot make a reader allocate a gigabyte.
+
+**The canonical bytes the text chunk hash is taken over are the whole logical chunk uncompressed**, the same
+construction as section 7.3: the header exactly as written with `compression` forced to 0 and `storedBytes`
+forced equal to `uncompressedBytes`, followed by the uncompressed body. The header is VARIABLE length here,
+`17 + tagLen` bytes, and it is included WHOLE, language tag and all, so the same strings under two language
+tags are two different chunks with two different hashes. Written out, so there is no ambiguity:
+
+```
+canonical = header(17 + tagLen bytes, with compression = 0 and storedBytes = uncompressedBytes)
+          || uncompressedBody
+
+textHash  = lowerHex(SHA256( utf8("kec/text/" + Inv(HashSchemeVersion) + "\n") || canonical ))
+```
+
+This was the one format whose canonical form section 7.8 named without anyone writing down, and the symptom of
+two implementers guessing differently is a client that fetches a text chunk, verifies it, fails, and discards
+it forever.
 
 **`KECT` takes the same two header-level refusals as `KECC`**, `chunk-too-large` when the declared
 `uncompressedBytes` exceeds `ContentPackFormat.MaxChunkUncompressedBytes` and `chunk-stored-length` when
@@ -2750,7 +2820,8 @@ is contracts 8.6's irreversibility surfaced as an operator message with the way 
 
 A `ContentBundle` is the whole catalog as one JSON document: a format version, the registered type list with
 their schemas, every live row with its id, key and fields, every family with its blocks, and the full remap
-rule list. It is the seeding format and the backup format and there is only one of them.
+rule list. It is the seeding format and the LOSSLESS EXPORT format and there is only one of them. It is not a
+database backup, and section 10.9's last paragraph says what is.
 
 **`catalog-import` works into an EMPTY database ONLY, and is refused otherwise** (#882 body item 8, "Seeding
 imports a whole bundle into an empty database only"). Empty means `catalog_version` has no rows. A non-empty
@@ -2788,8 +2859,20 @@ it, and a bundle may mix the two because the id is per row. There is no second i
 
 `catalog-export` takes `{ "version": 48 }` and returns the bundle for that version, ids included. Export at
 version `N` then import into an empty database reproduces the same rows with the same keys and the SAME IDS,
-because the export carries them and the import keeps them, which is what makes the bundle a real backup rather
-than an approximation.
+because the export carries them and the import keeps them, which is what makes the bundle **a lossless export
+rather than an approximation**.
+
+**A lossless export is not a backup, and the difference is the version LINE.** An import runs through
+`catalog-publish` and publishes version 1, so the new database's history starts there: the version numbers,
+the temporal row generations and every rule's `IntroducedIn` are the new line's, not the old one's. For a
+fresh database that is exactly right, and it is the only case `catalog-import` accepts. For a LIVE world it is
+not a restore at all, because a durable page carries the version number it was stamped with (contracts 7.2)
+and a rule applies to a stamp strictly older than its `IntroducedIn` (contracts 8.3), so a page stamped 46
+against a database whose newest version is 1 is newer than every rule there is. **When the version line must
+be preserved, the path is an ordinary database restore of the authoring store**, which is the provider's own
+tooling, a SQLite file copy or a SQL Server restore, and it is outside this spec because it is outside this
+engine. The bundle is for seeding a new database and for reading a version out in one document. The database
+backup is for putting a database back.
 
 ### 10.10 Operator identity
 
@@ -4022,7 +4105,7 @@ production database, or in a player's cached pack, rather than a recompile or a 
 | The hash domain prefix `kec/` and its five sub-domains | 7.8 | The same re-digest, plus a gate that compared one manifest side could start agreeing with the other. |
 | The version number is monotonic from 1, plus exactly one per publish, never reused and never skipped | 12.1 | A durable container page stamps it and a remap rule applies to any page stamped OLDER than the rule. A gap or a reuse makes "older" ambiguous. |
 | A retire's POLICY for a specific definition, placeholder versus replacement | 3.9, 16.4 | Contracts 8.6: a retire is irreversible for pages already migrated past it. Grimhollow's 18 retired ids import as placeholder, and choosing replacement later cannot reach the pages already migrated. |
-| The `ContentBundle` format version | 10.9 | A bundle is the backup format as well as the seeding format, so an old bundle needs a reader for as long as anyone might restore one. |
+| The `ContentBundle` format version | 10.9 | A bundle is the lossless export format as well as the seeding format, so an old bundle needs a reader for as long as anyone might import one. |
 | The authoring store's temporal row shape: `valid_from_version` and `replaced_in_version` per row version | 3.7, 4.3 | Rewrites the operator's whole authoring database. Cheaper than the rows above because the store HAS a migration path by design (4.2's `CurrentVersion` and `RequiredMigration`), which is exactly what a pack format does not have. |
 | `catalog_row_field`, one row per field, rather than one encoded blob per row | 4.3 | The same migration, plus every audit row before the migration loses its field-level meaning. |
 | Grimhollow: definition ids 1 to 35 preserved exactly at import | 16.4 | Every stored `ItemContainer` blob names them, and `ValidateContainer` THROWS on an unknown id, so a moved id is a player who cannot log in. |

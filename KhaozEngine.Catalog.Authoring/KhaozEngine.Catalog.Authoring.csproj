@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Catalog.Authoring</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>The authoring half of the content catalog (in the Server umbrella): the IContentAuthoringStore provider seam every backend implements, the one open draft and its change set of Add, Update, Retire and Fork edits, the field-level audit entry, the published version record, families and their aligned id blocks, the reserve-then-issue id allocator, publish, diff, and the bulk import and export bundle. PURE .NET with no SQL and no third-party dependency: the SQLite and SQL Server backends are opt-in sibling packages. A game client never needs this package, which is why the read side lives apart in KhaozEngine.Catalog.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- KhaozEngine.Catalog ONLY. The package is pure .NET with no SQL, so an authoring type never enters a
+         client graph and a backend is an opt-in sibling rather than a dependency here (spec 2.1). -->
+    <ProjectReference Include="../KhaozEngine.Catalog/KhaozEngine.Catalog.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -3300,3 +3300,79 @@ content, and section 3.10's boundary rule applies in the same spirit. The conten
 correction leave the script, and the duplicate-row collapse keeps its own open defect,
 [#299](https://github.com/APKiwiOrg/Ruinborne/issues/299), which section 17.1 already names as Scope B's
 precondition.
+
+### 17.7 The seven content pages become one generic editor
+
+`Ruinborne.Admin` is a Blazor Server app with seven content editor pages, one per table, at `/content/items`,
+`/content/rarities`, `/content/weapons`, `/content/loot`, `/content/abilities`, `/content/npcs` and
+`/content/spawns` (`c-ruinborne.md:321-333`). Each has its own drawer, its own view model, its own
+hand-written validation subset and its own upsert on the `ContentStore` facade. Two tables that are real
+content, `item_stat` and `item_ability_modifier`, have no page at all and are editable only by hand SQL or a
+PostDeploy edit ([#510](https://github.com/APKiwiOrg/Ruinborne/issues/510)).
+
+After adoption there is ONE page, routed `/content/{typeKey}`, rendering its grid and its drawer from
+`catalog-schema` (section 10.3). A type gets its editor by registering, so `item_stat` and
+`item_ability_modifier` get theirs for free and so does every Scope B type that has not been designed yet.
+
+**The console stops being a second writer to the same database, and this is the structural half of the
+change.** Today `ContentStore` holds a `relational` handle and writes SQL directly
+(`ContentStore.cs:91-96` calling `SqlRuinborneStore.UpsertItemDefAsync`, a bare `MERGE ... WITH (HOLDLOCK)`
+at `SqlRuinborneStore.cs:403-422`). The authoring store's one open draft, its id allocator and its single
+publish transaction cannot be enforced against two independent writers, so after adoption the console calls
+the admin endpoint's eleven actions (section 10.2) and the server owns every write. The bearer token plus the
+pinned certificate is the transport, and the console forwards its stable Entra `oid` as the `operator` field
+(section 10.10).
+
+What that fixes, item by item:
+
+- **[#506](https://github.com/APKiwiOrg/Ruinborne/issues/506)**, `UpsertItemDefAsync` is the only upsert in
+  the facade with no `Require(...)` gate, so an operator can save `stackable = 1, max_stack = 1` and the
+  console reports success while the server rejects the whole catalog at the next boot. All nine `Require`
+  call sites are deleted along with the facade: a draft edit naming an undeclared field is a 400 at the API
+  boundary (section 3.7), and `KEC0025` refuses `max_stack` of 1 on a stackable row at publish (section 5.2).
+  Two gates instead of a per-method habit that one method did not have.
+- **[#509](https://github.com/APKiwiOrg/Ruinborne/issues/509)**, the entire durable record of an item edit is
+  "someone edited item_def:sword at time T", because `AuditAsync` passes `detail` as literal null and the
+  table has no value columns. `catalog_audit` is one row per FIELD change with who, when, note, type, id,
+  field, before and after (section 4.6), which is the contracts' own second consumer for the field schema
+  existing at all.
+- **[#511](https://github.com/APKiwiOrg/Ruinborne/issues/511)**, `base_stats_json` is a dead
+  `NVARCHAR(MAX)` with no reader, still a free-text box in the drawer at `Items.razor:99-100` and still
+  written by the wire codec. It is not in the `item` schema of section 3.3, so after the import there is no
+  field, no box and no codec arm.
+- The dangling-rarity hole at `Items.razor:76-82`, where the drawer deliberately offers an unlisted
+  `RarityId` as a "(current)" option so opening it cannot silently rewrite the row, and saving it leaves a
+  reference that rejects the whole catalog at boot. A `KeyReference` field renders a typeahead over the
+  target type's live keys, and `KEC0006` refuses a reference that is not live at the version being published.
+- The dropped-field-on-save class, [#201](https://github.com/APKiwiOrg/Ruinborne/issues/201) on the item
+  editor and [#250](https://github.com/APKiwiOrg/Ruinborne/issues/250) on the NPC editor, both closed and
+  both the same shape: a view model round trip that silently resets a field the drawer does not carry. A
+  `ContentEdit` carries the CHANGED FIELDS ONLY (section 3.7), so a field the editor never touched is not in
+  the edit and cannot be reset by one.
+
+**What this does NOT fix**, named so nobody reads the list above as complete.
+[#425](https://github.com/APKiwiOrg/Ruinborne/issues/425), a stranded `max_stack` of 64 on a row whose
+`stackable` is false, survives: the engine has no rule that a non-stackable row's `max_stack` must be 1, and
+`KEC0025` only refuses the reverse. It stays a Ruinborne-side data-hygiene call, which is what the issue
+itself calls it, and the game can add it as a registered per-type validator (contracts 4.4) in two lines if it
+wants it.
+
+### 17.8 The tests that pin it
+
+Four, in the same order-of-value shape as section 16.7, and the second is the one that matters most because
+Ruinborne's durable rows reference the catalog by a key that is about to gain an id beside it.
+
+1. **`TheImportedBundleMatchesTheLiveDatabase`.** Build the bundle from a restored copy of the live database,
+   import into an empty in-memory store, publish version 1, and assert every row's field set against the
+   source rows read directly. Includes the scale conversions of section 17.6 as explicit expected integers,
+   so `0.45` seconds asserting `450` is a written fact rather than a derived one.
+2. **`EveryForeignKeyStillResolves`.** For each of the seven tables carrying `item_id`, assert every distinct
+   value present in the live database resolves to a live content key in the published version. This is the
+   test that catches a key dropped or renamed in the import, and it matters because
+   `character_inventory.item_id` is a `FOREIGN KEY` the database itself enforces, so a miss here is a failed
+   deploy rather than a wrong number.
+3. **`TheRealToScaledIntConversionIsExactOrReported`.** A property test over the four REAL columns: for every
+   value in the live database, converting to the declared scale and back reproduces the source, or the import
+   reported it. Nothing converts silently and nothing converts wrongly without a line.
+4. **`ThePublishedManifestIsStable`.** The same shuffled-registration-order test as Grimhollow's fourth,
+   against Ruinborne's type set, which is section 15.7's engine test applied to a second real consumer.

@@ -1356,3 +1356,236 @@ git commit -m "iteminstances(validation): thirteen checks, three outcomes, one c
 
 ---
 
+### Task 13: The registry-derived remap pass and its idempotence (large, gate: milestone 1.1)
+
+Spec 5.5 step 2 over contracts 8.1 through 8.6. **LIFT FROM THE SPIKE:**
+`KhaozEngine.Benchmarks/Items/RemapRuleSet.cs` (269 lines) has the whole shape: the applicable-rule
+prefilter keyed on `(typeId, fromId)`, the scan that never writes when nothing matched, the innermost-first
+re-encode, and the affix re-sort. Two things change on the way in. Its `RemapRule` is REPLACED by Scope A's
+`RemapRule` and `RemapRuleSet` from `KhaozEngine.Catalog`, and its hard-coded `ScanPayload` switch is
+REPLACED by a walk of the registry's reference targets, for the same reason task 5 step 2 gives.
+
+**Files:**
+
+- Create: `KhaozEngine.ItemInstances/InstanceRemapPass.cs`
+- Create: `KhaozEngine.ItemInstances/InstanceRemapPass.Rewrite.cs`
+- Create: `KhaozEngine.ItemInstances.Tests/Remap/InstanceRemapPassTests.cs`
+
+**Interfaces:**
+
+- Consumes: `RemapRule`, `RemapRuleKind`, `RemapRuleSet` from `KhaozEngine.Catalog`, task 4's registry,
+  task 10's page codec
+- Produces: `InstanceRemapPass.Apply(page, rules, pageStamp, destination)` returning what changed
+
+- [ ] **Step 1: Write the idempotence fact first, which is spec 17 row 8.** Applying the full ordered rule
+  set TWICE produces the same bytes as applying it once (contracts 8.3). That is what makes a crash between
+  apply and commit safe, and it is why the lazy rewrite is safe at all.
+- [ ] **Step 2: Write the depth and width facts, which are the two an implementer gets wrong.**
+
+~~~csharp
+[Fact] public void A_gem_socketed_into_a_sword_is_rewritten_by_the_same_rule_that_rewrites_it_in_a_bag()
+[Fact] public void A_ReplacedBy_that_WIDENS_a_varint_recomputes_the_two_lengths_above_it()
+[Fact] public void A_rewrite_restores_canonical_affix_order_when_a_replacement_moves_a_mod_id()
+[Fact] public void A_rule_matching_nothing_is_a_SCAN_and_writes_zero_bytes()
+[Fact] public void A_rule_whose_IntroducedIn_is_at_or_below_the_page_stamp_does_not_apply()
+[Fact] public void Rules_apply_in_Sequence_order_in_ONE_pass()
+[Fact] public void A_page_stamped_NEWER_than_the_active_version_is_not_an_error_and_is_not_lowered()
+~~~
+
+  The second is the whole reason the pass RE-ENCODES rather than patching bytes in place: a nested payload
+  carrying mod 91 is one byte shorter than the same payload carrying mod 4210, so a hit recomputes,
+  innermost first, the nested payload's bytes, then the socket entry's `NestedLength`, then kind 132's
+  `Length`, then the entry's `PayloadLength` in the page.
+
+- [ ] **Step 3: Walk every id the REGISTRY's reference targets name, never a list in a document.** The
+  entry's own definition id, every id inside every registered field, and, through kind 132's
+  `NestedPayload` slot, every id inside every socket's nested payload along with that socket's own
+  `ContainedDefinitionId`. Nothing is skipped for being nested. That is the property that stops an item
+  surviving three publishes invisibly and then quarantining on the day a player unsockets it.
+- [ ] **Step 4: Mark the page DIRTY and set its IN-MEMORY stamp to the active version when anything
+  changed, and do NOT write it.** The rewrite is lazy and rides the next ordinary commit (spec 5.5 step 3,
+  contracts 10.3). Eagerly rewriting at boot is a write storm proportional to the whole player base
+  arriving exactly when the server is coldest. The cost of lazy is that a remapped page can be lost on a
+  crash, which means it is remapped again on the next load, and that is safe because the set is idempotent.
+- [ ] **Step 5: Rely on contracts 8.3's publish-side guarantee rather than re-deriving it.** No rule's
+  `ToId` is any earlier rule's `FromId` for the same type, so ONE pass is enough. Do not add a fixed-point
+  loop "just in case": it would hide a publish validator bug rather than surface it. Add a defensive fact
+  that a rule set violating that shape is REFUSED by `RemapRuleSet` before the pass runs.
+- [ ] **Step 6: Run green and commit.**
+
+~~~bash
+dotnet test KhaozEngine.ItemInstances.Tests/KhaozEngine.ItemInstances.Tests.csproj -c Release --filter FullyQualifiedName~Remap
+git add KhaozEngine.ItemInstances/InstanceRemapPass.cs KhaozEngine.ItemInstances/InstanceRemapPass.Rewrite.cs KhaozEngine.ItemInstances.Tests/Remap
+git commit -m "iteminstances(remap): the registry-derived pass and its idempotence"
+~~~
+
+---
+
+### Task 14: `KhaozEngine.ItemInstances.Journal` and the container load path (medium, gate: milestone 1.1)
+
+Spec 2.1, 5.2 and 5.5. The package exists for a LAYERING reason rather than a size one: composing a
+`JournalCommit` needs `KhaozEngine.WorldStore`, and putting that inside `ItemInstances` would drag a
+`Server` package into `Foundation` and therefore into every client build.
+
+**Files:**
+
+- Create: `KhaozEngine.ItemInstances.Journal/KhaozEngine.ItemInstances.Journal.csproj`
+- Create: `KhaozEngine.ItemInstances.Journal/README.md`
+- Create: `KhaozEngine.ItemInstances.Journal/ContainerSectionNames.cs`
+- Create: `KhaozEngine.ItemInstances.Journal/ContainerLoad.cs`
+- Create: `KhaozEngine.ItemInstances.Journal/ContainerLoadResult.cs`
+- Create: `KhaozEngine.ItemInstances.Journal/ItemInstanceEvents.cs`
+- Create: `KhaozEngine.Server.Tests/ItemInstances/ContainerLoadTests.cs`
+- Modify: `KhaozEngine.slnx`, `KhaozEngine.Server/KhaozEngine.Server.csproj`,
+  `KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj`, `KhaozEngine.Tests/ArchitectureTests.cs`
+
+**Interfaces:**
+
+- Consumes: `KhaozEngine.ItemInstances`, `KhaozEngine.WorldStore`
+- Produces: `ContainerSectionNames` (`Format`, `Parse`), `ContainerLoad.Load`, `ContainerLoadResult`,
+  `ItemInstanceEvents`
+
+- [ ] **Step 1: Write the section naming facts.** `<container>/p<NN>`, zero padded to two digits, unpadded
+  above page 99 (spec 5.2). `bank/p00` through `bank/p09` for a 1,000 slot bank, `bag/p00`, `worn/p00`.
+  `JournalProjectionWrite`'s section name is an identifier capped at 128 characters over
+  `[A-Za-z0-9._:/-]` (`JournalProjectionWrite.cs:13`, `JournalLimits.cs:86-98`), and the slash is in that
+  set, so nothing needs escaping. `Parse` is the ONE place the name is taken apart, and a round-trip
+  `[Theory]` over pages 0, 9, 10, 99, 100 and 563 pins it.
+- [ ] **Step 2: Write the load facts, which are spec 5.5's five steps as five assertions.**
+
+~~~csharp
+[Fact] public void A_page_that_fails_at_the_PAGE_level_quarantines_as_a_UNIT()
+[Fact] public void Rules_apply_BEFORE_the_validator_runs_so_a_drift_finding_means_no_rule_covered_it()
+[Fact] public void A_rule_that_changed_something_marks_the_page_dirty_and_does_not_write_it()
+[Fact] public void A_failed_entry_check_quarantines_that_entry_and_leaves_the_page_loading()
+[Fact] public void Load_reads_no_store_touches_no_ambient_state_and_makes_one_pass()
+~~~
+
+  The ORDER in the second fact is the part that is easy to get backwards and it changes the meaning of
+  every drift finding, so it is asserted rather than assumed.
+
+- [ ] **Step 3: Implement the load signature spec 5.5 gives**, taking its whole world as arguments:
+
+~~~csharp
+public static ContainerLoadResult Load(
+    IReadOnlyList<JournalProjectionSection> sections,
+    IContentSnapshot snapshot);
+~~~
+
+  It returns the decoded pages, the accumulated findings and the dirty set. No store reads, no ambient
+  state, following the one-validator shape contracts 10.4 sets for the content side.
+
+- [ ] **Step 4: Check the page against the SECTION it arrived in**, using `ContainerSectionNames.Parse`
+  plus the page header's own `PageIndex`. That is spec 13 row 10 and it is otherwise silent.
+- [ ] **Step 5: Wire the package in.** Add to `KhaozEngine.slnx`, to the `Server` umbrella's
+  `ProjectReference` set, and update the locked umbrella membership in `ArchitectureTests`. Add a
+  `ProjectReference` from `KhaozEngine.Server.Tests`, which already references `WorldStore` and both
+  providers, which is exactly why spec 2.3 puts these tests there rather than in a new project.
+- [ ] **Step 6: Write the package README**, self-contained, naming the layering reason the package exists.
+- [ ] **Step 7: Run green and commit.**
+
+~~~bash
+dotnet test KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj -c Release --filter FullyQualifiedName~ItemInstances
+git add KhaozEngine.ItemInstances.Journal KhaozEngine.Server.Tests/ItemInstances KhaozEngine.slnx KhaozEngine.Server/KhaozEngine.Server.csproj KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj KhaozEngine.Tests/ArchitectureTests.cs
+git commit -m "iteminstances(journal): page section names and the container load path"
+~~~
+
+---
+
+### Task 15: `ContainerCommitBuilder`, the tick-bounded batch and its crash facts (large, gate: milestone 1.1)
+
+Spec 6.4, 6.5 and 6.6. Option A of spec 6.2's weighed table, with the batch window fixed at ONE SERVER
+TICK. **LIFT THE COMMIT SHAPES FROM THE SPIKE:** `KhaozEngine.Benchmarks/Items/ItemsCommitFactory.cs`
+already builds the exact `JournalCommit` this task emits, with one identity, one event per operation and
+one projection write per page, and `ItemsJournalMeasurements.cs` drives it against a real SQLite store.
+
+**This task changes NOTHING in `KhaozEngine.WorldStore`.** No change to either provider schema and no
+change to the store conformance suite (spec 2.4). That is a RESULT rather than an accident: option B of
+spec 6.2 would have needed all three and spec 6.3 prices it exactly. If an implementer finds themselves
+editing `JournalCommit`, `JournalLimits` or a provider, STOP: the design has drifted to option B and the
+owner has to choose it knowingly.
+
+**Files:**
+
+- Create: `KhaozEngine.ItemInstances.Journal/ContainerCommitBuilder.cs`
+- Create: `KhaozEngine.ItemInstances.Journal/ContainerBatchWindow.cs`
+- Create: `KhaozEngine.ItemInstances.Journal/ContainerOperation.cs`
+- Create: `KhaozEngine.Server.Tests/ItemInstances/ContainerCommitBuilderTests.cs`
+
+**Interfaces:**
+
+- Consumes: `JournalCommit`, `JournalStreamMutation`, `JournalEvent`, `JournalProjectionWrite`,
+  `JournalOperationIdentity`, `JournalLimits`, task 11's dirty set
+- Produces: `ContainerCommitBuilder.Open`, `Apply`, `Close`
+
+- [ ] **Step 1: Write the window facts, which are spec 6.4's five closers.** The batch closes on the FIRST
+  of: the tick boundary, an operation that would touch a SECOND stream, an operation that sets
+  `PresentAtCommit`, a CLIENT originated operation, or 128 events, 64 projection writes or the 8 MiB
+  aggregate cap (`JournalLimits.cs:10, 11, 19`). One fact each, and one asserting the FIRST of them wins.
+- [ ] **Step 2: Write the identity facts, which are spec 6.5 and the half that is easy to get wrong.**
+
+~~~csharp
+[Fact] public void A_batch_never_merges_two_CLIENT_originated_operations()
+[Fact] public void A_SERVER_minted_batchs_intent_is_the_canonical_ORDERED_operation_list()
+[Fact] public void A_CLIENT_headed_batchs_intent_is_the_clients_own_operation_ALONE()
+[Fact] public void A_client_headed_resubmit_omitting_the_server_work_still_resolves_Replayed()
+[Fact] public void A_client_resubmit_with_different_parameters_is_OperationConflict()
+~~~
+
+  The fourth is the load bearing one. If a client-headed batch's intent were the whole ordered list, the
+  resubmit would hash differently, `ResolveOperationAsync` would answer `OperationConflict`, and the
+  consumer would treat a COMMITTED withdraw as a failed one: `Withdraw` rolls the admitted view back and
+  supersedes everything queued behind it transitively (`JournalAdmittedState.cs:117-147`), the player is
+  told the action failed, and a re-click applies it twice.
+
+- [ ] **Step 3: Write the crash and replay facts, which are spec 6.6 case by case**, against a real SQLite
+  store the way `MutationJournalStoreConformance` already does:
+
+~~~csharp
+[Fact] public void Crash_BEFORE_admission_leaves_nothing_and_a_client_resubmit_resolves_NotFound()
+[Fact] public void Crash_AFTER_admission_before_commit_reverts_the_pages_and_SKIPS_the_allocated_ids()
+[Fact] public void Crash_AFTER_commit_replays_to_the_ORIGINAL_receipt_and_result()
+[Fact] public void A_terminal_store_failure_attaches_a_correction_whose_section_keys_ARE_the_pages_to_resync()
+[Fact] public void A_transient_retry_corrects_nothing_and_the_batch_stays_admitted()
+[Fact] public void Two_moves_of_one_stack_across_containers_leave_exactly_one_winner()
+~~~
+
+  The last is spec 17 row 14. The fourth needs no new journal shape: because a batch writes whole pages,
+  the section keys in `JournalCorrection` are exactly the pages the consumer must resync.
+
+- [ ] **Step 4: Implement the API spec 6.4 gives.**
+
+~~~csharp
+var batch = ContainerCommitBuilder.Open(streamKey, actionKind, scope, containers);
+batch.Apply(operation);          // repeated, against an in-memory working copy
+JournalCommit commit = batch.Close(identityFactory);
+~~~
+
+  `Close` emits ONE `JournalOperationIdentity`, ONE `JournalEvent` per logical operation in order, ONE
+  `JournalProjectionWrite` per touched page carrying the page's FINAL bytes plus the pages the container's
+  dirty set names, and ONE result. The audit trail is not collapsed, only the projection is.
+
+- [ ] **Step 5: Encode the server-minted intent canonically.** `[Count: varint][ per operation: [Kind:
+  varint][Parameters] ]`, little endian, minimal varints, contracts 15. Canonical because the journal
+  hashes the intent to detect a conflicting replay (`JournalValidation.Hash` is `SHA256.HashData`,
+  `JournalLimits.cs:135`), so two encodings of one batch must produce one byte sequence.
+- [ ] **Step 6: Apply the page rule of spec 5.6 and nothing wider:** the pages holding the slots the
+  operation changed, and no others. A move across two pages of one container is ONE commit with TWO
+  projection writes on the SAME stream, which `JournalCommit` already allows (`JournalCommit.cs:37`,
+  `:125-138`): one stream, two sections, one event. Atomicity is the database transaction's.
+- [ ] **Step 7: Measure budget 4 here rather than in task 18.** Twenty crafts in one held action is at most
+  20 KB and ONE commit, summed over `JournalCommit.OwnedByteCount`. Assert the commit COUNT in the test
+  and leave the byte number to the benchmark, so a structural regression is a red test rather than a
+  slower number nobody reads.
+- [ ] **Step 8: Run green and commit.**
+
+~~~bash
+dotnet test KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj -c Release --filter FullyQualifiedName~ContainerCommitBuilder
+git add KhaozEngine.ItemInstances.Journal KhaozEngine.Server.Tests/ItemInstances
+git commit -m "iteminstances(journal): one commit per tick from a batch of page operations"
+~~~
+
+**Group C acceptance:** spec 17 rows 4, 8 and 14 green, and budget 4 measured at ONE commit.
+
+---
+

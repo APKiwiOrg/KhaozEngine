@@ -2,7 +2,7 @@
 
 Date: 2026-09-15
 
-Status: Implemented, shipping in the next release. Signed off by the owner on 2026-09-15 (section 13), built in
+Status: Implemented in 18.50.0. Signed off by the owner on 2026-09-15 (section 13), built in
 the rounds of section 14.
 
 Issue: [#897](https://github.com/APKiwiOrg/KhaozEngine/issues/897). Resolves

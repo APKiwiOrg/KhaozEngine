@@ -10332,7 +10332,7 @@ sealed class GuardBehaviour(ITileActorBehaviour fallback) : ITileActorBehaviour
 }
 ```
 
-Six things about the context are worth knowing before writing one:
+Seven things about the context are worth knowing before writing one:
 
 - **Every tile on it is a TICK-START tile**, the actor's own and its target's, resolved through the tick's own
   target snapshot. So no actor's decision can depend on another entity having already moved, and the ECS

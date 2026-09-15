@@ -264,10 +264,10 @@ understand. Its registered traversal profile can give that algorithm a different
   positional construction and deconstruction. A non-default profile must be registered and its map must let the
   whole footprint stand at the spawn tile (`TileCollision.CanStand`). A `FootprintSize` above 1 is checked that way
   on EVERY profile, the default included, because no content predates it, and one outside 1 through 8 throws. The
-  size is written onto the actor's move state, so it replicates and crosses a region handoff with it. The door
-  refuses a zero `MaxHealth`, an off-map or off-plane tile and a cell already at `MaxActorsPerCell` by answering 0
-  rather than throwing, so a spawner can never take a tick down with it. `RefusedActorSpawnCount` counts the
-  capacity refusals. An actor is
+  size is written onto the actor's move state, so it replicates and crosses a region handoff with it. A malformed
+  spawn (a zero `MaxHealth`, an off-plane or unloaded tile, a placement the profile refuses) THROWS, because it is a
+  caller bug. A cell already at `MaxActorsPerCell` answers 0 instead, so a spawner running inside a tick is never
+  taken down by a transient capacity limit. `RefusedActorSpawnCount` counts those capacity refusals. An actor is
   `Transient` at `DurableOnly`, so a cell eviction FREEZES it rather than ending it, and both doors instantiate
   the coordinate before they resolve: the cap counts a frozen actor rather than admitting a spawn on top of it,
   and the despawn reaches one rather than leaving it to come back as an entity nothing indexes.
@@ -985,9 +985,10 @@ The four limits above from actor blocking onward are the R1 deferrals of an in-f
 in section 12 of `docs/design/TILE-COMBAT-ACTORS-DESIGN-2026-08-27.md`, tracked by
 [#736](https://github.com/APKiwiOrg/KhaozEngine/issues/736). That section's multi-tile deferral was lifted by
 `docs/design/TILE-ACTOR-FOOTPRINTS-DESIGN-2026-09-15.md`, whose own section 12 carries the footprint limits above.
-One R1 finding is filed on its own:
+One R1 finding was filed on its own and is closed:
 [#738](https://github.com/APKiwiOrg/KhaozEngine/issues/738), a `Migrating` combat target reading as gone on a
-networked shard link, which has a zero-tick window in process today.
+networked shard link, answered by `TileEntityTargets.MigratingGraceRefreshes`, which holds the frozen pre-handoff
+footprint for a bounded number of refreshes.
 
 Design: `docs/design/TILE-WORLD-NETCODE-DESIGN-2026-08-22.md`,
 `docs/design/TILE-COMBAT-ACTORS-DESIGN-2026-08-27.md` and

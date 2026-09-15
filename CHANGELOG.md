@@ -95,6 +95,57 @@ formats, and one pure validator behind them.
   this one. The design is `docs/design/CONTENT-CATALOG-DESIGN-2026-09-15.md`, written against the gate 0
   contracts in `docs/design/CONTENT-CONTRACTS-DESIGN-2026-09-14.md`.
 
+Tile actors can be NxN bodies (1x1 to 8x8) anchored on their south-west tile, with pathing, melee reach, wander,
+placement and presentation all honouring the whole footprint
+([#897](https://github.com/APKiwiOrg/KhaozEngine/issues/897)). A self-targeted lock now clears instead of holding
+forever ([#741](https://github.com/APKiwiOrg/KhaozEngine/issues/741)). Design:
+`docs/design/TILE-ACTOR-FOOTPRINTS-DESIGN-2026-09-15.md`.
+
+- **The size lives on the body.** `TileMoveState.FootprintSize` (1 through `TileMoveState.MaxFootprintSize`, 8) and
+  the derived `TileMoveState.Footprint` rect. A default or `TileMoveState.At` state is one tile. `TileActorDefinition`
+  and `TileActorSpawn` gain `FootprintSize` (default 1, refused outside 1 through 8 at the door), and the spawn writes
+  it onto the actor's state. `TileActorContext.FootprintSize` hands it to a behaviour.
+- **Wire.** A one-tile state encodes exactly the bytes it did. A larger one always writes the optional domain byte
+  (0 when no entity interaction is pending) followed by one size byte. An older reader decodes the state and skips
+  the size, so it draws and predicts a large body as one tile: upgrade both heads together before authoring a size
+  above 1. The size crosses a region handoff in the same codec.
+- **Melee range is one predicate for every range question.** A body is in range when its footprint does not overlap
+  the target's and some tile it covers is in the target's one-tile reach set, so walls still deny exactly the tiles
+  they sit beside. New overloads `TileReach.Set`, `Contains` and `FacingToward` take the agent size.
+  **Behaviour:** `TileReach.TryNearest`'s existing `agentSize` now shapes the candidate ANCHORS as well as the walk,
+  and admits a footprint up to `maxRadius + agentSize` away. Identical for size 1, including candidate order.
+- **The one stepper steps by footprint.** `TileMoveSimulator.FootprintOf(state)` is the stepped footprint, the
+  state's size floored at `TileMoveOptions.AgentSize` (kept as a floor, removal tracked by
+  [#900](https://github.com/APKiwiOrg/KhaozEngine/issues/900)). Walk, interact, follow, facing and repath all use it,
+  the server's combat roll asks it of the attacker's own simulator, and the target side is always the target state's
+  own footprint on both heads. A body overlapping its target steps out before it swings.
+- **Standing.** `TileCollision.CanStand(map, x, z, plane, size)`: no footprint tile is Blocked and no wall lies
+  between two of its tiles. **Behaviour:** `TileCollision.CanStep` and `TilePathfinder.FindPath` for a size above 1
+  refuse a destination a body could not stand on, so a large body cannot straddle a fence. Size 1 is unchanged. The
+  editor's `is_walkable` uses the same rule.
+- **Actors.** Spawn placement checks the whole footprint on the actor's traversal map for a size above 1, on every
+  profile (a one-tile actor on the default profile keeps the legacy rule that a blocked home still spawns). The
+  respawn retry uses the same check. `TileActorHost.CanPlace(definition, home)` answers it without throwing, for a
+  game's content test over its authored markers. `TileEntityTargets` answers the full footprint, including through
+  the migrating grace window. The wander only picks goals the whole body can stand on, and the leash and wander
+  radius measure anchor to home anchor.
+- **Presentation.** `TilePresenter.Pose` (and so `TileWorldClient.TryGetRemotePose`) centres a large body on its
+  footprint, a constant offset through the glide, so a consumer's large mesh needs no offset of its own.
+  `TilePresenter.PoseAt(TileRect, int, TileDirection)` is the overlay form. `TileWorldClient.TryGetRemoteFootprint`
+  (the delayed timeline the body rides, for click bounds and highlights) and `TryGetLatestRemoteFootprint` (the
+  newest snapshot, for rules) are new, and the client's `TileRemoteTargets` answers the real footprint, so an
+  approach to a large monster is predicted exactly as the server runs it.
+- **Behaviour (#741):** an `Attack` naming the attacker itself clears on the tick it is applied, drops the route and
+  is answered with the ordinary `CannotReach`, on both heads. It used to hold the lock forever with no roll possible,
+  which left a self-locked player permanently in combat for the logout linger.
+- **Behaviour:** `TileWorldServer.SetPlayerState` refuses a state whose footprint is above 1. Players stay one tile.
+- Known limits, filed: `TileDrawPriority` judges a large body on its anchor tile only
+  ([#899](https://github.com/APKiwiOrg/KhaozEngine/issues/899)), interest is measured from the anchor so a large
+  body enters view up to N-1 tiles late on its north and east edges
+  ([#906](https://github.com/APKiwiOrg/KhaozEngine/issues/906)), the reach search floods one window per candidate
+  ([#901](https://github.com/APKiwiOrg/KhaozEngine/issues/901)), and `TileAttackContext` carries no sizes yet
+  ([#907](https://github.com/APKiwiOrg/KhaozEngine/issues/907)).
+
 ## 18.49.0
 
 A target outline group can draw its border through geometry, the way a screen-space marker reads.

@@ -6,6 +6,11 @@
     <RootNamespace>KhaozEngine.Tests</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <!-- The checked-in payload goldens, copied beside the assembly so a golden fact reads the same bytes
+         the repository holds. A change that moves one of these files has changed a stored byte format. -->
+    <Content Include="Payload/Goldens/*.bin" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />

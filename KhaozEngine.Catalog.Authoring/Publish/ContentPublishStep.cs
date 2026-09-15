@@ -9,10 +9,11 @@ namespace KhaozEngine.Catalog.Authoring;
 /// new one and never a torn one, and an enum a test can name is what turns that sentence into an assertion.
 /// </para>
 /// <para>
-/// <b>Every value is declared and only the first six are reached today.</b>
-/// <see cref="BeforeCommit"/>, <see cref="AfterCommit"/> and <see cref="DuringSweep"/> belong to steps 9 to
-/// 11, which are the commit's own work, and they are here rather than added later so the hook a crash test
-/// throws from is one enum rather than two.
+/// <b>Every value is reached.</b> The first six come from the pipeline of steps 1 to 8, and
+/// <see cref="BeforeCommit"/>, <see cref="AfterCommit"/> and <see cref="DuringSweep"/> come from
+/// <c>ContentPublishCommit</c>, which invokes them around the one transaction and inside the sweep. The
+/// crash suite drives a kill at all nine against both stores, so there is no value here a test cannot stop a
+/// publish at.
 /// </para>
 /// </summary>
 public enum ContentPublishStep

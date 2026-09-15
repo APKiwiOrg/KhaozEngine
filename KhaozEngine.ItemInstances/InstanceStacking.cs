@@ -79,6 +79,12 @@ public static class InstanceStacking
     /// other order produces the same id, and the count saturates at <see cref="int.MaxValue"/> exactly as
     /// <c>ItemContainer.Add</c> does rather than overflowing.
     /// <para>
+    /// <b>The stack cap of a lowered <c>max_stack</c> is the CALLER's</b>, applied above this kernel:
+    /// <see cref="int.MaxValue"/> is the only ceiling here, because this package reads no content and the
+    /// cap is a content fact. Where that rule should live is
+    /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/924">#924</see>.
+    /// </para>
+    /// <para>
     /// A merge DESTROYS an instance id, which is the one place this design weakens the contracts'
     /// traceability argument. The mitigation is an event rather than a field: a merge emits
     /// <c>stack-merged</c> naming BOTH ids and the resulting count, so the destroyed id is answerable from

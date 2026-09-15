@@ -384,6 +384,8 @@ at `int.MaxValue` rather than overflowing.
 
 **The stack cap of a lowered `max_stack` is the CALLER's**, applied above this kernel. The container reads no
 content, so it saturates at the engine ceiling and the load-time validator is what reports an over-cap count.
+Where that rule should live is
+[#924](https://github.com/APKiwiOrg/KhaozEngine/issues/924).
 
 ## The validator
 

@@ -18,7 +18,8 @@ namespace KhaozEngine.ItemInstances;
 /// that cannot be expressed answers <see cref="Abandon"/> and the entry keeps the bytes it had. That covers a
 /// payload that does not decode, a replacement id too wide for the slot that holds it (kind 130's rarity id
 /// is a BYTE and there is no wider form of the field to widen into), and a result that would break the
-/// payload's own canonical form.
+/// payload's own canonical form. Nothing counts an abandoned entry yet
+/// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/931">#931</see>).
 /// </para>
 /// </summary>
 public static partial class InstanceRemapPass
@@ -169,7 +170,8 @@ public static partial class InstanceRemapPass
             // A list whose codec is the shipped affix list is held ASCENDING by its first entry reference
             // (contracts 9.9), and a replacement can move an id past its neighbour. Reading that off the
             // registered CODEC rather than off kinds 131 and 133 is what gives a game kind adopting the same
-            // codec the same re-sort. A nesting list is never re-sorted: its entries are authored order by
+            // codec the same re-sort. A game kind with its OWN sorted codec cannot ask for it, which is
+            // https://github.com/APKiwiOrg/KhaozEngine/issues/930. A nesting list is never re-sorted: its entries are authored order by
             // construction, and buffering them would mean two levels sharing one arena.
             bool sorted = ReferenceEquals(registration.Codec, InstancePropertyCodec.AffixList) && !shape.Nests;
             ReadOnlySpan<InstanceSlotKind> entry = shape.Entry.Span;

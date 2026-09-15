@@ -120,7 +120,10 @@ public static partial class InstanceRemapPass
     /// payload that does not decode, and a rewrite whose result the decoder would refuse, which is what a rule
     /// naming an id the same item already carries produces. Moving the definition id alone would strand a
     /// payload whose stale ids no rule will ever visit again, because the stamp moves past the rule that named
-    /// them.
+    /// them. An abandoned entry is not counted anywhere yet
+    /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/931">#931</see>), and bringing a
+    /// QUARANTINED one back is the load path's unwrap step rather than the pass's
+    /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/929">#929</see>).
     /// </para>
     /// </summary>
     /// <param name="page">The page, already seated from its stored bytes.</param>
@@ -214,7 +217,8 @@ public static partial class InstanceRemapPass
             PageSlotInput entry = entries[index];
 
             // A quarantined entry carries a WRAPPER rather than a payload, and contracts 10.2 keeps those
-            // bytes verbatim so the first load after the missing rule lands restores the item exactly.
+            // bytes verbatim so the first load after the missing rule lands restores the item exactly. What
+            // no step unwraps one is https://github.com/APKiwiOrg/KhaozEngine/issues/929.
             if (entry.Quarantined) continue;
 
             int before = resolver.Rewritten;

@@ -437,7 +437,10 @@ validator is required to reject that shape, and a fixed-point loop here would hi
 it. An entry the pass cannot rewrite is left WHOLE, its definition id included: a quarantined entry, whose
 wrapper preserves bytes verbatim rather than offering them to be read, a payload that does not decode, and a
 rewrite whose result the decoder would refuse, which is what a rule naming an id the same item already carries
-produces.
+produces. Nothing counts an abandoned entry yet
+([#931](https://github.com/APKiwiOrg/KhaozEngine/issues/931)), bringing a quarantined one back is the load
+path's unwrap step ([#929](https://github.com/APKiwiOrg/KhaozEngine/issues/929)), and a game kind with its own
+sorted list cannot ask for the re-sort ([#930](https://github.com/APKiwiOrg/KhaozEngine/issues/930)).
 
 ## The validator
 

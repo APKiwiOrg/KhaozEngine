@@ -54,7 +54,9 @@ public static class ItemsBenchmarkRunner
 
         CodecMeasurements codec = ItemsCodecMeasurements.Measure(generator, content, random, ContentVersion);
         GenerationMeasurement generation = ItemsWorkMeasurements.MeasureGeneration(
-            generator, tables, content, random, config.Generations, config.HotBaseCount, config.Seed);
+            generator, tables, content, random, config.Generations, config.HotBaseCount, 60, config.Seed);
+        GenerationMeasurement warm = ItemsWorkMeasurements.MeasureGeneration(
+            generator, tables, content, random, Math.Min(config.Generations, 200_000), 64, 4, config.Seed + 2);
         GenerationMeasurement cold = ItemsWorkMeasurements.MeasureColdGeneration(
             generator, tables, content, random, Math.Min(config.Generations / 10, 100_000), config.Seed);
         StatMeasurement stat = ItemsWorkMeasurements.MeasureStatEvaluation(content, random);
@@ -120,6 +122,10 @@ public static class ItemsBenchmarkRunner
             Budget5MeanAffixCount = generation.MeanAffixCount,
             Budget5CandidateVisitsPerGeneration = generation.CandidateVisitsPerGeneration,
             Budget5NanosecondsPerCandidateVisit = generation.NanosecondsPerCandidateVisit,
+            Budget5WarmP50Microseconds = warm.P50Microseconds,
+            Budget5WarmP99Microseconds = warm.P99Microseconds,
+            Budget5WarmAllocatedBytesPerGeneration = warm.AllocatedBytesPerGeneration,
+            Budget5WarmMemoHitRate = warm.MemoHitRate,
             Budget6Nanoseconds = stat.Nanoseconds,
             Budget6CachedNanoseconds = stat.CachedNanoseconds,
             Budget6AllocatedBytes = stat.AllocatedBytes,

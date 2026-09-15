@@ -39,13 +39,14 @@ internal static class ItemsWorkMeasurements
         IRandomSource random,
         int count,
         int hotBaseCount,
+        int levelSpan,
         int seed)
     {
         var hotBases = new int[Math.Max(hotBaseCount, 1)];
         for (int index = 0; index < hotBases.Length; index++) hotBases[index] = random.NextInt(0, content.BaseCount);
 
         for (int warmup = 0; warmup < 20_000; warmup++)
-            _ = generator.Generate(new GenerationContext(hotBases[warmup % hotBases.Length], 60 + (warmup % 20), 0, 0));
+            _ = generator.Generate(new GenerationContext(hotBases[warmup % hotBases.Length], 40 + (warmup % levelSpan), 0, 0));
 
         var samples = new JournalLatencySamples(seed);
         long hitsBefore = tables.MemoHits;
@@ -59,7 +60,7 @@ internal static class ItemsWorkMeasurements
         for (int index = 0; index < count; index++)
         {
             int baseIndex = hotBases[index % hotBases.Length];
-            int itemLevel = 40 + (index % 60);
+            int itemLevel = 40 + (index % levelSpan);
             long before = Stopwatch.GetTimestamp();
             GenerationResult result = generator.Generate(new GenerationContext(baseIndex, itemLevel, 0, 0));
             samples.Add((Stopwatch.GetTimestamp() - before) * ticksToMicroseconds);
@@ -123,33 +124,29 @@ internal static class ItemsWorkMeasurements
     }
 
     /// <summary>
-    /// Budget 6: one stat over eleven worn items carrying six affixes each, folded through 11.6. The
-    /// headline is the RECOMPUTE, which is what a read of a dirty stat costs. The cached read is
-    /// reported beside it because 11.5 says a read recomputes only when a source changed.
+    /// Budget 6: ONE stat folded over every line eleven worn items put on it. The budget's own
+    /// derivation is eleven worn items times up to thirteen lines each, about 140 lines, so the lines
+    /// all land on the measured stat rather than spreading across the catalog: a stat touched by four
+    /// of them would answer a much easier question than the one the budget asked. The headline is the
+    /// RECOMPUTE, which is what a read of a dirty stat costs, and the cached read is beside it because
+    /// 11.5 says a read recomputes only when a source changed.
     /// </summary>
     internal static StatMeasurement MeasureStatEvaluation(SyntheticContent content, IRandomSource random)
     {
+        const int hottest = 1;
+        const int baseLinesPerItem = 3;
+        const int affixLinesPerItem = 10;
         var evaluator = new ContentStatEvaluator(content.StatCount);
         var lines = new StatModifierLine[16];
         var tags = new[] { 1, 2, 3 };
-        var counts = new int[content.StatCount + 1];
         for (int worn = 0; worn < WornItems; worn++)
         {
-            int lineCount = 0;
-            for (int line = 0; line < 3; line++)
-            {
-                int statId = random.NextInt(1, content.StatCount + 1);
-                counts[statId]++;
-                lines[lineCount++] = new StatModifierLine(statId, StatCombineKind.Flat, random.NextInt(1, 200), 0, 0, 0);
-            }
+            for (int line = 0; line < baseLinesPerItem; line++)
+                lines[line] = new StatModifierLine(hottest, StatCombineKind.Flat, random.NextInt(1, 200), 0, 0, 0);
+            evaluator.AddSource(new StatSourceKey(1, worn, 0), lines.AsSpan(0, baseLinesPerItem), tags);
 
-            evaluator.AddSource(new StatSourceKey(1, worn, 0), lines.AsSpan(0, lineCount), tags);
-
-            lineCount = 0;
-            for (int affix = 0; affix < AffixesPerItem; affix++)
+            for (int line = 0; line < affixLinesPerItem; line++)
             {
-                int statId = random.NextInt(1, content.StatCount + 1);
-                counts[statId]++;
                 StatCombineKind combine = random.NextInt(0, 10) switch
                 {
                     < 6 => StatCombineKind.Flat,
@@ -157,21 +154,18 @@ internal static class ItemsWorkMeasurements
                     _ => StatCombineKind.More,
                 };
                 int value = combine == StatCombineKind.Flat ? random.NextInt(1, 200) : random.NextInt(100, 2_000);
-                lines[lineCount++] = new StatModifierLine(statId, combine, value, 0, random.NextInt(0, 2), 0);
+                lines[line] = new StatModifierLine(hottest, combine, value, 0, random.NextInt(0, 2), 0);
             }
 
-            evaluator.AddSource(new StatSourceKey(2, worn, 1_000 + worn), lines.AsSpan(0, lineCount), tags);
+            evaluator.AddSource(new StatSourceKey(2, worn, 1_000 + worn), lines.AsSpan(0, affixLinesPerItem), tags);
         }
 
-        int hottest = 1;
-        for (int statId = 1; statId <= content.StatCount; statId++)
-            if (counts[statId] > counts[hottest]) hottest = statId;
         evaluator.SetBase(hottest, 1_000);
         evaluator.SetStatTags(hottest, new[] { 1 });
 
         var contextTags = new[] { 1, 2, 3 };
         var context = new StatContext(contextTags, 0);
-        for (int warmup = 0; warmup < 100_000; warmup++)
+        for (int warmup = 0; warmup < 200_000; warmup++)
         {
             evaluator.MarkDirty();
             _ = evaluator.Recompute(hottest, in context);

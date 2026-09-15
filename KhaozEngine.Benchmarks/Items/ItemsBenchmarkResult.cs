@@ -59,6 +59,10 @@ public sealed record ItemsBenchmarkResult
     public double Budget5MeanAffixCount { get; init; }
     public double Budget5CandidateVisitsPerGeneration { get; init; }
     public double Budget5NanosecondsPerCandidateVisit { get; init; }
+    public double Budget5WarmP50Microseconds { get; init; }
+    public double Budget5WarmP99Microseconds { get; init; }
+    public double Budget5WarmAllocatedBytesPerGeneration { get; init; }
+    public double Budget5WarmMemoHitRate { get; init; }
 
     public double Budget6Nanoseconds { get; init; }
     public double Budget6CachedNanoseconds { get; init; }

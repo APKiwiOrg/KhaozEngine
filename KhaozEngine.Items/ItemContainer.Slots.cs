@@ -30,7 +30,7 @@ public sealed partial class ItemContainer
     /// its buffer.</param>
     /// <exception cref="ArgumentException">The payload is over <see cref="ItemSlot.MaxPayloadBytes"/>, or a
     /// non-empty payload arrives with no instance id, or the payload is not canonical, or a quarantined
-    /// slot's bytes are not a well formed quarantine wrapper.</exception>
+    /// slot's bytes are not a well formed quarantine wrapper, which an EMPTY payload never is.</exception>
     /// <remarks>
     /// The invariants, in the order they are checked. One, an empty stack writes <see cref="ItemSlot.Empty"/>
     /// and clears everything. Two, a payload is at most <see cref="ItemSlot.MaxPayloadBytes"/>. Three, a
@@ -40,9 +40,10 @@ public sealed partial class ItemContainer
     /// under a Debug.Assert, because a door that only guards on a developer machine is not a door.
     /// Invariants two and four are SKIPPED when the slot is quarantined, because a wrapper is not a payload:
     /// it is not canonical, it is not meant to be, and it may be larger than the cap because the thing it
-    /// preserves was. The wrapper's own check stands in for them, through the second predicate, so a
-    /// quarantined slot still cannot carry arbitrary bytes. Invariants one and three still bind whatever the
-    /// flag says.
+    /// preserves was. The wrapper's own check stands in for them, through the second predicate, and it runs
+    /// UNCONDITIONALLY: a quarantined slot must carry a non-empty payload, because the smallest wrapper is
+    /// nine bytes and an empty one preserves nothing. Invariants one and three still bind whatever the flag
+    /// says.
     /// </remarks>
     public void SetSlotAt(int slot, ItemSlot value)
     {
@@ -64,9 +65,14 @@ public sealed partial class ItemContainer
             // and a declared original length that accounts for exactly the bytes present. The container
             // never learns the wrapper's shape, exactly as it never learns the payload's, because the type
             // that knows it sits in the package ABOVE this one.
-            if (!payload.IsEmpty && (_quarantineWellFormed is null || !_quarantineWellFormed(value.Payload)))
+            //
+            // An EMPTY payload is refused here rather than waved through. The smallest wrapper is nine
+            // bytes, so an empty one preserves nothing, and a slot flagged quarantined over no bytes at all
+            // carries the flag into every reader with nothing behind it.
+            if (payload.IsEmpty || _quarantineWellFormed is null || !_quarantineWellFormed(value.Payload))
                 throw new ArgumentException(
-                    $"slot {slot} carries quarantined bytes this container cannot vouch are a wrapper", nameof(value));
+                    $"slot {slot} carries {payload.Length} quarantined bytes this container cannot vouch are a wrapper",
+                    nameof(value));
         }
         else
         {

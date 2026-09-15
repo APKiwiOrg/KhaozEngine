@@ -229,6 +229,25 @@ public class ItemSlotTests
     }
 
     [Fact]
+    public void SetSlotAt_refuses_a_quarantined_slot_carrying_no_payload_at_all()
+    {
+        // The quarantined branch used to short circuit on an empty payload, so a slot could be flagged
+        // quarantined and hold nothing. A wrapper is at least nine bytes (its magic, its version, its
+        // reason and two varints), so no legal wrapper is empty: an empty quarantined slot is a slot
+        // claiming to preserve bytes it does not hold, and the flag would ride on into every reader.
+        ItemContainer bag = Bag();
+        Assert.Throws<ArgumentException>(() =>
+            bag.SetSlotAt(0, new ItemSlot(new ItemStack(Sword, 1, 7), default, Quarantined: true)));
+        Assert.True(bag.SlotAt(0).IsEmpty);
+
+        // The same empty payload with the flag CLEAR still seats, because a definition may declare
+        // durability and have it at full with nothing else set.
+        bag.SetSlotAt(0, new ItemSlot(new ItemStack(Sword, 1, 7), default, Quarantined: false));
+        Assert.False(bag.SlotAt(0).Quarantined);
+        Assert.True(bag.SlotAt(0).Payload.IsEmpty);
+    }
+
+    [Fact]
     public void SetSlotAt_accepts_a_quarantined_slot_carrying_a_well_formed_wrapper()
     {
         // The path quarantine exists for: the bytes that failed are seated verbatim, flag set, and nothing

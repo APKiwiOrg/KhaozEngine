@@ -69,7 +69,7 @@ reader here is forbidden.
 
 **Left null, the matching door is SHUT rather than half open.** A container built with no `payloadCanonical`
 refuses every non-empty, non-quarantined payload, and one built with no `quarantineWellFormed` refuses every
-non-empty quarantined payload.
+quarantined payload at all.
 
 `SetSlotAt` enforces four invariants, throwing for each, because its only caller is a decoder that has
 already validated and a violation is a caller bug rather than bad data. One, an empty stack writes
@@ -79,7 +79,8 @@ definition may declare durability and have it at full with nothing else set. Fou
 canonical is refused, on every call rather than under a `Debug.Assert`, because a door that only guards on a
 developer machine is not a door. Invariants two and four are SKIPPED on a quarantined slot and the wrapper
 check stands in for them, because a wrapper is not canonical, is not meant to be, and may be larger than the
-cap because the thing it preserves was.
+cap because the thing it preserves was. That check runs UNCONDITIONALLY, so a quarantined slot must carry a
+non-empty payload: the smallest wrapper is nine bytes and an empty one preserves nothing.
 
 ```csharp
 public readonly record struct ItemStack(int ItemId, int Count, long InstanceId = 0);

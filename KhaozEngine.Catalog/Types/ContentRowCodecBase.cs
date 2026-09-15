@@ -306,6 +306,17 @@ public abstract class ContentRowCodecBase : IContentRowCodec
         return total;
     }
 
+    /// <summary>
+    /// Writes the key then one entry per non-marker field, positionally, in schema order.
+    /// <para>
+    /// <b><c>Int</c> and <c>ScaledInt</c> go out as UNSIGNED two's-complement varints, not zig-zag</b>, which
+    /// is what design 7.9 specifies and what the goldens record: its worked example writes the tag's
+    /// <c>sort: varint 10</c> as the single byte <c>0A</c>. A negative value therefore costs five bytes,
+    /// which is deliberate and which no catalog field pays, because the zig-zag rule of contracts 15 applies
+    /// only to a field DECLARED signed and the catalog schema declares none. Changing this is a format
+    /// change and a re-bake of every golden, not a codec tidy-up.
+    /// </para>
+    /// </summary>
     void WriteRow(ContentRow row, Span<byte> destination)
     {
         ReadOnlySpan<byte> key = row.Key.Utf8;

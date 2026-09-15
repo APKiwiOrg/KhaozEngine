@@ -102,6 +102,7 @@ this doc cannot silently drift apart.
 | Per-frame input composition | `KhaozEngine.Windowing` `AppWindow.InputFilter`, a `Func<InputState, InputState>?` applied to the snapshot `BuildInput()` just built and before the frame latches it (`AppWindow.InputFilter.cs`, called from `AppWindow.Frames.cs`). Null is the raw snapshot with no allocation | `KhaozEngine.Automation`'s `AutomationInputInjector` is the only in-tree filter. It is a COMPOSITION seam and not an input source: it never reaches `InputAccumulator` and never touches a Silk or GLFW static, so the row above (`AppWindow` is the sole toucher) is unchanged | (no extra dep) |
 | Playtest automation state and verbs | `KhaozEngine.Automation` (`AutomationHost.StateProvider`, a `Func<JsonNode?>`, and `Register(string, Func<JsonElement, JsonNode?>)`), both invoked on the WINDOW thread at the frame boundary | **game-side**, and deliberately no engine implementation. Projecting a tile to a screen pixel needs the live camera and only the game has it, so the engine defines the seam and knows nothing about tiles, inventories or panels | (no extra dep, `System.Text.Json` from the BCL) |
 | Playtest automation diagnostics | `KhaozEngine.Automation` `AutomationOptions.Log`, an `Action<string, Exception?>?` called from a socket thread when a loop or a connection ends for a reason other than shutdown | **game-side and optional**, null by default (silent, which is what a headless test wants). A delegate rather than a dependency on `KhaozEngine.Diagnostics`, which `KhaozEngine.Windowing` does not reference either, so the package's one edge stays `Automation -> Windowing` | (no extra dep) |
+| Gameplay randomness | `KhaozEngine.Primitives` (`IRandomSource`: `NextInt`, `NextULong`, `NextRollPosition`, `NextBytes`. No seed, no state, no derived stream and no way to ask an instance what it will draw next, so a durable record carries the RESOLVED OUTCOME rather than a seed and a draw index, which is what makes the source swappable at any time. Integer draws only, so a weighted choice is made over an integer weight total. A consumer takes one as a CONSTRUCTOR PARAMETER and there is no engine-provided default instance, because a default is how a production server ends up on the test source) | flavour 2 below: both implementations ship in the seam package, because neither takes a dependency. `CryptographicRandomSource` is what a hosted server runs, drawing from the OS through `RandomNumberGenerator`. `SeededRandomSource(ulong seed)` is the deterministic one for tests and seeded replay, wrapping `DeterministicRng` so the engine keeps exactly one seeded stream definition. Both draw a bounded integer by rejection sampling rather than modulo, because modulo bias on a roll is an edge a player can farm | (no extra dep, `System.Security.Cryptography` is in box) |
 
 `KhaozEngine.Sharding` gained the snapshot/restore primitives the per-cell persistence seam above is built on
 (`CellSim.SnapshotOwned`/`RestoreOwned`/`MaxOwnedNetId`, `ShardHost.CellCreated`/`EnsureCell`) with no storage
@@ -580,6 +581,29 @@ KhaozEngine.TileEdit.Tool -> Microsoft.Extensions.Hosting     (the stdio host, c
 It is in no umbrella and nothing in the engine references it. The `TileWorld.Render3D` edge is the whole reason
 the render verbs need a GPU while the other 41 do not, and it is the one edge that would disappear if the
 render verbs ever moved to a separate tool.
+
+## Content catalog package edges
+
+`KhaozEngine.Catalog` adds exactly two edges, both forward and both acyclic:
+
+```
+KhaozEngine.Catalog -> KhaozEngine.Primitives   (the foundation leaf, and where the IRandomSource seam its random consumers take lives)
+KhaozEngine.Foundation -> KhaozEngine.Catalog   (umbrella ProjectReference, like every other Foundation package)
+```
+
+**Taking no third-party dependency at all is the load-bearing part**, not a side effect of a young package. A
+game CLIENT needs the read side, and a client that reached it through a package carrying a database driver
+would ship one. `System.IO.Compression` and `System.Security.Cryptography` are in box, so the pack formats and
+the `kec/` digests declare nothing. The database sits the other side of a package boundary rather than a type
+boundary: authoring, publish and the two SQL providers are `KhaozEngine.Catalog.Authoring` and its `Sqlite` /
+`SqlServer` siblings, landing in later milestones, and `Catalog` never references any of them. That edge runs
+one way, `Catalog.Authoring -> Catalog`, which is what keeps the graph acyclic when those packages arrive.
+
+The seam the package owns on its own account is `IPackStore`, the content-addressed store: four members, with
+the delete path split out into `IPackStorePruning` so a read-only provider cannot be asked to prune and a
+misconfigured one cannot delete a production pack through the common interface. `FileSystemPackStore` is the
+in-package local provider, flavour 2 below, and a blob or object-store provider is a later sibling that
+declares its SDK there rather than here.
 
 ## Surface-source seam: INavSurfaceProvider (a deliberate non-edge)
 

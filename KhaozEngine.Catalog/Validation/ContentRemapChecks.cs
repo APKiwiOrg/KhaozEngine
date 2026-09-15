@@ -113,9 +113,28 @@ internal static class ContentRemapChecks
     }
 
     /// <summary>
-    /// <c>KEC0016</c> on a source that never existed and <c>KEC0017</c> on a destination that is not live.
-    /// A destination of 0 fails the same check on purpose: 0 is the reserved no-content id, so a rule that
-    /// moves a page onto it names no row at all.
+    /// <c>KEC0016</c> on a source that never existed and <c>KEC0017</c> on a destination the rule could not
+    /// have named. A destination of 0 fails either half on purpose: 0 is the reserved no-content id, so a
+    /// rule that moves a page onto it names no row at all.
+    /// <para>
+    /// <b>The liveness half is asked of the version under sweep ONLY, and that split is the whole point.</b>
+    /// Spec 5.2 defines <c>KEC0017</c> as a destination that is not live AT <c>IntroducedIn</c>, and the
+    /// candidate answers that question for one version, its own. Rules are append only and permanent
+    /// (contracts 8.1 and 8.5), so the full list is re-swept on every later publish, and checking a historic
+    /// rule's destination for liveness in TODAY's candidate refuses a legal chain the moment its middle row
+    /// is retired: 10 replaced by 11 at version 3, then 11 replaced by 12 at version 7, is a rule set no
+    /// later publish could ever get past. What a historic rule is still owed is that its destination EXISTS,
+    /// which the candidate does answer, because a row is never deleted and <c>KEC0016</c> already leans on
+    /// exactly that.
+    /// </para>
+    /// <para>
+    /// For a rule introduced in the version under sweep, both halves hold and publish step 6.5 relies on it:
+    /// a <c>Retire</c> under the replacement policy and a <c>Fork</c> both write their destination row in
+    /// the same transaction and BEFORE appending the rule, so a destination that is missing or already
+    /// retired is the edit being written in the wrong order. An author retiring two rows into one live
+    /// target in a single publish writes both rules to that target directly rather than chaining them
+    /// through a row this version also retires, so refusing the same-version chain costs nothing legal.
+    /// </para>
     /// </summary>
     static void CheckEndpoints(ContentValidationRun run, RemapRule rule)
     {
@@ -135,9 +154,24 @@ internal static class ContentRemapChecks
         }
 
         int destination = rule.Destination;
-        if (destination > 0
-            && run.Candidate.TryGetRow(rule.Type, destination, out _)
-            && !run.Candidate.IsRetired(rule.Type, destination))
+        bool exists = destination > 0 && run.Candidate.TryGetRow(rule.Type, destination, out _);
+        if (rule.IntroducedIn != run.Candidate.VersionNumber)
+        {
+            if (exists)
+            {
+                return;
+            }
+
+            run.Add(
+                rule.Type,
+                rule.FromId,
+                "KEC0017",
+                FormattableString.Invariant(
+                    $"Remap rule {rule.Sequence}, introduced at version {rule.IntroducedIn}, sends {rule.FromId} to {destination}, which names a row that does not exist. A row is never deleted, so an id no row of the type carries is an id that never existed. Whether it was LIVE is a question only the publish that appended the rule could answer."));
+            return;
+        }
+
+        if (exists && !run.Candidate.IsRetired(rule.Type, destination))
         {
             return;
         }

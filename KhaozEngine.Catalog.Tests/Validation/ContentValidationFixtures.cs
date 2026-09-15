@@ -98,6 +98,26 @@ internal static class ContentValidationFixtures
     }
 
     /// <summary>
+    /// A candidate carrying exactly the rows handed in, AT a version number, which is what the checks that
+    /// compare a rule's <c>IntroducedIn</c> against the version under sweep need. The manifest hash stays
+    /// empty, because a candidate has not been published and so has no digest yet.
+    /// </summary>
+    public static ContentSnapshot SnapshotAt(
+        ContentTypeRegistry registry,
+        int versionNumber,
+        params ContentRow[] rows)
+    {
+        var builder = new ContentSnapshotBuilder(registry);
+        builder.WithIdentity(versionNumber, string.Empty);
+        foreach (ContentRow row in rows)
+        {
+            builder.AddRow(row);
+        }
+
+        return builder.Build();
+    }
+
+    /// <summary>
     /// The clean candidate: one tag, one item, one stat, one loot table and the entry that draws from it,
     /// with every required field set and every reference resolving.
     /// </summary>

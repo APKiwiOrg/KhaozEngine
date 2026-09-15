@@ -59,23 +59,31 @@ public static class ContentHash
     public static string OfClientManifest(string canonicalText) => OverText(ClientManifestDomain, canonicalText);
 
     /// <summary>
-    /// The digest of a standalone file under the sub-domain its own magic names, so a caller verifying a
-    /// downloaded file hashes it the way the publisher did rather than guessing. Returns null for a run of
-    /// bytes too short to carry a magic and for a magic this reader does not know, both refused before any
-    /// length is read.
+    /// The digest of a chunk's CANONICAL bytes under the sub-domain its own magic names, so a caller with
+    /// canonical bytes and no idea which of the three kinds they are hashes them the way the publisher did
+    /// rather than guessing. Returns null for a run of bytes too short to carry a magic and for a magic this
+    /// reader does not know, both refused before any length is read.
+    /// <para>
+    /// <b>Canonical, not stored.</b> Every one of the three digests is over the uncompressed bytes with
+    /// <c>compression</c> forced to 0 and <c>storedBytes</c> forced equal to <c>uncompressedBytes</c>, which
+    /// is what makes a compressor change a no-op for every cached client. Hand this the STORED file of a
+    /// compressed chunk and it returns a digest that names nothing. Rebuild the canonical bytes first, the
+    /// way <c>ContentChunkCodec.TryVerify</c> does.
+    /// </para>
     /// <para>
     /// A <c>KECM</c> manifest is deliberately not one of them: a manifest hash is taken over the canonical
     /// manifest TEXT after decode, never over the file bytes, so there is no answer to give here.
     /// </para>
     /// </summary>
-    public static string? OfBytesForKind(ReadOnlySpan<byte> bytes)
+    /// <param name="canonical">The canonical, uncompressed bytes of one chunk file, header and body.</param>
+    public static string? OfBytesForKind(ReadOnlySpan<byte> canonical)
     {
-        if (bytes.Length < ContentPackFormat.MagicBytes) return null;
+        if (canonical.Length < ContentPackFormat.MagicBytes) return null;
 
-        ReadOnlySpan<byte> magic = bytes[..ContentPackFormat.MagicBytes];
-        if (magic.SequenceEqual(ContentPackFormat.ChunkMagic)) return OfChunk(bytes);
-        if (magic.SequenceEqual(ContentPackFormat.RuleChunkMagic)) return OfRuleChunk(bytes);
-        if (magic.SequenceEqual(ContentPackFormat.TextChunkMagic)) return OfTextChunk(bytes);
+        ReadOnlySpan<byte> magic = canonical[..ContentPackFormat.MagicBytes];
+        if (magic.SequenceEqual(ContentPackFormat.ChunkMagic)) return OfChunk(canonical);
+        if (magic.SequenceEqual(ContentPackFormat.RuleChunkMagic)) return OfRuleChunk(canonical);
+        if (magic.SequenceEqual(ContentPackFormat.TextChunkMagic)) return OfTextChunk(canonical);
         return null;
     }
 

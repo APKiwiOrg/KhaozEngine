@@ -64,6 +64,22 @@ public class ContentTextChunkCodecTests
         return [.. bytes];
     }
 
+    /// <summary>A body built from raw BYTES, which is the only way to put an invalid UTF-8 sequence in one.</summary>
+    static byte[] RawByteBody(params (byte[] Key, byte[] Value)[] entries)
+    {
+        var bytes = new List<byte>();
+        AddVarint(bytes, (uint)entries.Length);
+        foreach ((byte[] key, byte[] value) in entries)
+        {
+            bytes.Add((byte)key.Length);
+            bytes.AddRange(key);
+            AddVarint(bytes, (uint)value.Length);
+            bytes.AddRange(value);
+        }
+
+        return [.. bytes];
+    }
+
     /// <summary>Wraps a body in an uncompressed header at spec 7.6's offsets, without the codec.</summary>
     static byte[] Wrap(string languageTag, byte[] body)
     {
@@ -218,6 +234,43 @@ public class ContentTextChunkCodecTests
     }
 
     [Fact]
+    public void AValueThatIsNotValidUtf8Refuses()
+    {
+        // 0xFF is not a legal UTF-8 byte anywhere. Without this check the chunk decoded and the entry
+        // surfaced later as U+FFFD, so a mojibake string reached a player through a chunk that verified.
+        byte[] body = RawByteBody((Encoding.UTF8.GetBytes("item"), [0xFF]));
+
+        Assert.Equal(ContentTextChunkCodec.ReasonValueEncoding, Refusal(Wrap("en-US", body)));
+    }
+
+    [Fact]
+    public void AKeyThatIsNotValidUtf8Refuses()
+    {
+        byte[] body = RawByteBody(([0xFF], Encoding.UTF8.GetBytes("a")));
+
+        Assert.Equal(ContentTextChunkCodec.ReasonKeyEncoding, Refusal(Wrap("en-US", body)));
+    }
+
+    [Fact]
+    public void AValueCarryingAstralAndMultiByteSequencesIsAccepted()
+    {
+        // The check is validity and not ASCII: the catalog is localized, so every entry a translator writes
+        // is multi byte and the refusal has to be narrow enough to let all of it through.
+        var entries = new[]
+        {
+            Entry("item.a.name", "\u00e9p\u00e9e longue"),
+            Entry("item.b.name", "\u5927\u5251"),
+            Entry("item.c.name", "\U0001F5E1 blade"),
+        };
+
+        Assert.True(ContentTextChunkCodec.TryDecode(
+            ContentTextChunkCodec.Encode("en-US", entries), out ContentTextChunk? chunk, out string? reason));
+        Assert.Null(reason);
+        Assert.NotNull(chunk);
+        Assert.Equal(entries, Read(chunk));
+    }
+
+    [Fact]
     public void TrailingBytesInTheBodyRefuse()
     {
         byte[] body = [.. RawBody((4, "item", 1, "a")), (byte)0];
@@ -347,6 +400,23 @@ public class ContentTextChunkCodecTests
         Assert.NotNull(fromCanonical);
         Assert.Equal(Read(fromCanonical), Read(fromStored));
         Assert.Equal(fromCanonical.ComputeHash(), fromStored.ComputeHash());
+    }
+
+    [Fact]
+    public void ABrotliStreamThatExpandsPastItsDeclaredLengthIsRefusedAsTooLarge()
+    {
+        // The same refusal ContentChunkCodec gives, because spec 8.4 names the overrun kind generically and
+        // spec 7.6 takes KECC's header refusals whole. A static TryDecompress cannot tell the two apart.
+        byte[] stored = ContentTextChunkCodec.Encode("en-US", Twelve);
+        Assert.Equal(ContentPackFormat.CompressionBrotli, stored[7 + 5]);
+
+        // The stream still decompresses, it just claims one byte less room than it needs.
+        uint declared = BinaryPrimitives.ReadUInt32LittleEndian(stored.AsSpan(9 + 5));
+        BinaryPrimitives.WriteUInt32LittleEndian(stored.AsSpan(9 + 5), declared - 1);
+
+        Assert.False(ContentTextChunkCodec.TryDecode(stored, out ContentTextChunk? chunk, out string? reason));
+        Assert.Null(chunk);
+        Assert.Equal(ContentTextChunkCodec.ReasonTooLarge, reason);
     }
 
     // ---- The derived key, contracts 12.1 and 12.2 ----

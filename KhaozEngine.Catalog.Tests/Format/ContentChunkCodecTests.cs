@@ -3,6 +3,7 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO.Compression;
 using System.Linq;
+using System.Runtime.InteropServices;
 using KhaozEngine.Catalog;
 using Xunit;
 
@@ -587,6 +588,58 @@ public class ContentChunkCodecTests
         assembler.Reset();
         Assert.Equal(0, assembler.RowCount);
         Assert.Equal(0, assembler.LargestRowBytes);
+    }
+
+    [Fact]
+    public void TheMemoryRowBodyAccessorAliasesTheChunkBodyRatherThanCopyingIt()
+    {
+        ContentTypeRegistry registry = Registry();
+        EncodedContentChunk encoded = SpecSevenNineChunk(Tag(registry));
+        Assert.True(ContentChunkCodec.TryDecode(encoded.StoredFile.Span, registry, out ContentChunk? chunk, out _));
+        Assert.NotNull(chunk);
+
+        byte[]? shared = null;
+        for (int i = 0; i < chunk.RowCount; i++)
+        {
+            ReadOnlyMemory<byte> memory = chunk.RowBodyMemoryAt(i);
+            Assert.True(chunk.RowBodyAt(i).SequenceEqual(memory.Span));
+
+            // The slice is over the chunk's own body array, whole, so nothing here was copied.
+            Assert.True(MemoryMarshal.TryGetArray(memory, out ArraySegment<byte> segment));
+            Assert.NotNull(segment.Array);
+            Assert.Equal(chunk.Body.Length, segment.Array.Length);
+            shared ??= segment.Array;
+            Assert.Same(shared, segment.Array);
+        }
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => chunk.RowBodyMemoryAt(-1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => chunk.RowBodyMemoryAt(chunk.RowCount));
+    }
+
+    [Fact]
+    public void AResetDoesNotWriteOverRowsAnEarlierBuildHandedBack()
+    {
+        // A Build hands back slices of the arena. A Reset that rewound the SAME arena left the already-built
+        // list aliasing whatever came next, and nothing downstream could see it: the aliased rows encode,
+        // hash and decode cleanly, carrying another chunk's bytes under the first chunk's ids.
+        ContentTypeRegistry registry = Registry();
+        ContentTypeRegistration tag = Tag(registry);
+        var assembler = new ContentChunkAssembler();
+        assembler.Add(TagRow(tag, 1, "metal", 10), tag.Codec);
+
+        IReadOnlyList<ContentChunkRow> first = assembler.Build();
+        byte[] before = first[0].Body.ToArray();
+
+        assembler.Reset();
+        assembler.Add(TagRow(tag, 2, "two_handed", 20, retired: true), tag.Codec);
+
+        Assert.Equal(before, first[0].Body.ToArray());
+
+        EncodedContentChunk encoded = ContentChunkCodec.Encode(
+            tag, 0, ContentVisibility.Client, first, ContentPackFormat.BrotliQuality);
+        Assert.True(ContentChunkCodec.TryDecode(encoded.StoredFile.Span, registry, out ContentChunk? chunk, out _));
+        Assert.NotNull(chunk);
+        Assert.Equal(before, chunk.RowBodyAt(0).ToArray());
     }
 
     [Fact]

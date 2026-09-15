@@ -81,6 +81,14 @@ public sealed class DecoderFuzzTests
             }
 
             decoded++;
+
+            // A chunk whose container decoded but whose row bodies are nonsense is still a chunk that
+            // decoded, so the row refusal is checked for MEMBERSHIP rather than treated as a container
+            // refusal. It is the layer the fuzzer could not see while the chunk arm passed no registry.
+            Assert.True(
+                trip.RowReason is null || AcceptedReasons.Contains(trip.RowReason),
+                Where(golden, i, mutant) + " decoded a row refused with '" + trip.RowReason + "', which no decoder declares.");
+
             Assert.True(trip.Canonical is not null && trip.ReEncoded is not null, Where(golden, i, mutant));
             Assert.True(
                 ((ReadOnlySpan<byte>)trip.Canonical).SequenceEqual(trip.ReEncoded),
@@ -97,13 +105,15 @@ public sealed class DecoderFuzzTests
     {
         // Spec 15.2's fixed list, written out so the reflected set is checked against the spec rather than
         // against itself. The list is a SUBSET: every decoder declares tokens beyond it, which is why the set
-        // the fuzzer accepts is reflected instead of copied from here.
+        // the fuzzer accepts is reflected instead of copied from here. It is kept in step with the spec by
+        // hand, in the same commit, which is what makes this test able to catch a rename nobody finished.
         string[] fixedList =
         [
             "chunk-format-version", "chunk-reserved-set", "chunk-range-mismatch", "chunk-too-large",
             "chunk-stored-length", "chunk-row-duplicate", "chunk-row-order", "chunk-row-flags",
+            "chunk-decompress", "chunk-magic", "chunk-compression", "chunk-truncated-header",
             "manifest-wrong-side", "manifest-chunk-slots", "rule-kind", "rule-sequence-gap",
-            "rule-sequence-order",
+            "rule-sequence-order", "text-key-encoding", "text-value-encoding",
         ];
 
         var missing = new List<string>();

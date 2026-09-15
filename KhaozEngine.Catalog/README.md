@@ -3,13 +3,13 @@
 Game-agnostic tunable-content catalog, in the `Foundation` umbrella. Content is authored in a database,
 published as immutable content-addressed packs, and loaded into a runtime of arrays indexed by id. This
 package is the half every consumer needs: the registry, the byte formats, the digests, the validator, the
-pack store seam, the read side and the loot roller. Authoring, publish and the SQL providers live in the
-opt-in `KhaozEngine.Catalog.Authoring` and its two provider siblings.
+pack store seam and the read side. Authoring, publish and the SQL providers live in the opt-in
+`KhaozEngine.Catalog.Authoring` and its two provider siblings.
 
 **It takes no third-party dependency at all**, and that is load bearing: a game CLIENT needs the read side
 and must never pull a database into its graph. `System.IO.Compression` and `System.Security.Cryptography`
 are in box, and the single engine dependency is `KhaozEngine.Primitives`, which is already in every game's
-graph and is where the `IRandomSource` seam the loot roller takes lives.
+graph and is where the `IRandomSource` seam this catalog's random consumers take lives.
 
 ## The rules every type here obeys
 
@@ -130,10 +130,13 @@ mismatch refuses the WHOLE record with a reason token. Every decode entry point 
   content address and the stored file, storing uncompressed whenever Brotli does not shrink the body.
   `TryReadHeader` takes every refusal derivable from the header alone and allocates nothing, `TryDecode`
   walks the table, and `TryVerify` checks a stored file against an address without decoding its rows.
+  `TryDecodeVerified` is the load path's one pass, doing both over a SINGLE decompression and comparing the
+  digest before it walks a row, so nothing escapes a buffer that has not been verified.
 - `ContentChunk`, `ContentChunkRow`, `ContentChunkHeader` and `EncodedContentChunk` - the decoded chunk with
   its walked table, one row on its way in, the 36 header bytes as a value, and the encode result carrying the
   canonical bytes, the hash and the stored file. `IsRetired(id)` is answered from the table with no row
-  decode.
+  decode. `RowBodyAt` and `RowBodyMemoryAt` both slice the chunk's own body rather than copying it, the
+  second in the form a caller can store.
 - `ContentChunkAssembler` - the publish-side arena: every row body lands in ONE growable buffer and the row
   list is built from offsets at the end, so a chunk of a thousand rows is one buffer rather than a thousand.
   It is itself the `IBufferWriter<byte>` a row codec encodes into.
@@ -155,7 +158,10 @@ mismatch refuses the WHOLE record with a reason token. Every decode entry point 
 - `ContentTextChunkCodec`, `ContentTextChunk` and `ContentTextChunkEnumerator` - the `KECT` per-language
   chunk, one per language with its own hash so a client downloads only what it wants. The header is VARIABLE
   because the language tag sits inside it and inside the digest, and the decoded chunk keeps its body as
-  BYTES with a non-allocating walk over it, so nothing becomes a string until something asks.
+  BYTES with a non-allocating walk over it, so nothing becomes a string until something asks. The language
+  tag, every key and every value are held to strictly valid UTF-8 with no replacement of an invalid
+  sequence (`text-language-tag`, `text-key-encoding`, `text-value-encoding`), because a substituted U+FFFD
+  is a mojibake string on a player's screen behind a chunk that verified.
 
 The four formats are pinned by the checked-in golden set in `KhaozEngine.Catalog.Tests/Goldens`, which every
 decoder is also fuzzed against.
@@ -194,7 +200,11 @@ decoder is also fuzzed against.
   touches at most the chunk whose slots cover the id, and `ReadChunkAsync` never refetches a chunk it holds.
   Verify comes before decode, always. `ReadManifestAsync` fetches one manifest by hash and checks that its
   canonical text digests back to the name it was fetched under, and the static `TryVerify` dispatches on the
-  magic, so a caller hashes an object the way the publisher did rather than guessing.
+  magic, so a caller hashes an object the way the publisher did rather than guessing. `BuildSnapshot` HANDS
+  the decoded chunks over: the snapshot copies every row body into its own blob, so the reader drops them
+  and reading rows through the reader afterwards is not a supported mode. The constructor cross-checks every
+  manifest type's `chunkSlots` against the local registration and throws on a disagreement, because the
+  manifest digest does not cover `chunkSlots` and a registry-free decode leaves it unchecked.
 - `ContentManifestRead`, `ContentChunkRead`, `ContentRowRead` and `ContentPackRead` - one attempt each, every
   one carrying a stable reason token rather than throwing. The reasons this type adds (`hash-mismatch`,
   `manifest-hash-mismatch`, `chunk-fetch-failed`, `chunk-type-unregistered`) are FETCH outcomes and are

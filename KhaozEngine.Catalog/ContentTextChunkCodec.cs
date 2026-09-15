@@ -3,7 +3,6 @@ using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.IO.Compression;
 using System.Text;
 using System.Text.Unicode;
 
@@ -55,20 +54,29 @@ public static class ContentTextChunkCodec
     /// <summary>The compression byte names a compressor this reader does not have.</summary>
     public const string ReasonCompression = "chunk-compression";
 
-    /// <summary>The declared uncompressed length is over the chunk ceiling, taken from the header alone.</summary>
-    public const string ReasonTooLarge = "chunk-too-large";
+    /// <summary>
+    /// The declared uncompressed length is over the chunk ceiling, taken from the header alone, or a Brotli
+    /// body expanded past the length its own header claims.
+    /// </summary>
+    public const string ReasonTooLarge = ContentCompression.ReasonTooLarge;
 
     /// <summary>The declared stored length is not the body length actually received.</summary>
     public const string ReasonStoredLength = "chunk-stored-length";
 
-    /// <summary>The body did not decompress to the length its header declared.</summary>
-    public const string ReasonDecompress = "chunk-decompress";
+    /// <summary>The body is not a stream this decoder can finish reading.</summary>
+    public const string ReasonDecompress = ContentCompression.ReasonDecompress;
 
     /// <summary>A key length is 0 or over 192.</summary>
     public const string ReasonKeyLength = "text-key-length";
 
+    /// <summary>A key is not valid UTF-8, so the chunk is not the canonical form of the strings it carries.</summary>
+    public const string ReasonKeyEncoding = "text-key-encoding";
+
     /// <summary>A value length is over 8,192.</summary>
     public const string ReasonValueLength = "text-value-length";
+
+    /// <summary>A value is not valid UTF-8, which would reach a player as a run of replacement characters.</summary>
+    public const string ReasonValueEncoding = "text-value-encoding";
 
     /// <summary>Entries are not strictly ascending ordinal by key, so the chunk is not canonical.</summary>
     public const string ReasonEntryOrder = "text-entry-order";
@@ -110,8 +118,7 @@ public static class ContentTextChunkCodec
         ReadOnlySpan<byte> body = canonical.AsSpan(headerBytes);
 
         byte[] scratch = new byte[body.Length];
-        if (!BrotliEncoder.TryCompress(body, scratch, out int compressed, ContentPackFormat.BrotliQuality, ContentPackFormat.BrotliWindow)
-            || compressed >= body.Length)
+        if (!ContentCompression.TryCompress(body, ContentPackFormat.BrotliQuality, scratch, out int compressed))
         {
             return canonical;
         }
@@ -160,9 +167,8 @@ public static class ContentTextChunkCodec
             if (stored.Length != body.Length) { reason = ReasonStoredLength; return false; }
             stored.CopyTo(body);
         }
-        else if (!BrotliDecoder.TryDecompress(stored, body, out int decompressed) || decompressed != body.Length)
+        else if (!ContentCompression.TryFill(stored, body, out reason))
         {
-            reason = ReasonDecompress;
             return false;
         }
 
@@ -197,6 +203,7 @@ public static class ContentTextChunkCodec
             if (cursor + keyLength > body.Length) { reason = ReasonTruncated; return false; }
 
             ReadOnlySpan<byte> key = body.Slice(cursor, keyLength);
+            if (!IsUtf8(key)) { reason = ReasonKeyEncoding; return false; }
             if (previousKeyStart >= 0 && body.Slice(previousKeyStart, previousKeyLength).SequenceCompareTo(key) >= 0)
             {
                 // Ordinal over the UTF-8 BYTES, which is the canonical order for a byte format and which
@@ -213,6 +220,7 @@ public static class ContentTextChunkCodec
             if (!ContentVarint.TryRead(body, ref cursor, out uint valueLength, out reason)) { return false; }
             if (valueLength > MaxValueBytes) { reason = ReasonValueLength; return false; }
             if (cursor + valueLength > body.Length) { reason = ReasonTruncated; return false; }
+            if (!IsUtf8(body.Slice(cursor, (int)valueLength))) { reason = ReasonValueEncoding; return false; }
             cursor += (int)valueLength;
         }
 
@@ -293,8 +301,23 @@ public static class ContentTextChunkCodec
     /// UTF-16 from UTF-8 without throwing and without silently substituting, so a tag a decoder accepted
     /// re-encodes to the bytes it came from.
     /// </summary>
+    /// <summary>
+    /// The ONE UTF-8 rule this format holds every run of bytes to: strictly valid, no replacement of an
+    /// invalid sequence. The language tag was checked this way from the start, and keys and values were NOT,
+    /// so a chunk carrying an invalid sequence decoded and surfaced later as U+FFFD, which is a mojibake
+    /// string on a player's screen behind a chunk that verified. It also breaks the canonical property: two
+    /// different byte sequences would read back as the same string.
+    /// </summary>
+    static bool IsUtf8(ReadOnlySpan<byte> bytes) => Utf8.IsValid(bytes);
+
     static bool TryUtf8(ReadOnlySpan<byte> bytes, [MaybeNullWhen(false)] out string text)
     {
+        if (!IsUtf8(bytes))
+        {
+            text = null;
+            return false;
+        }
+
         Span<char> buffer = stackalloc char[MaxLanguageTagBytes];
         OperationStatus status = Utf8.ToUtf16(bytes, buffer, out int read, out int written, replaceInvalidSequences: false);
         if (status != OperationStatus.Done || read != bytes.Length)

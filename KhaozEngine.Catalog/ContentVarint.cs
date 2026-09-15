@@ -13,6 +13,14 @@ namespace KhaozEngine.Catalog;
 /// 0, -1 to 1 and 1 to 2, so a small negative number does not cost the full width.
 /// </para>
 /// <para>
+/// <b>The six signed members have no caller in this milestone and are not dead.</b> No catalog field is
+/// declared signed: <c>Int</c> and <c>ScaledInt</c> are unsigned two's-complement varints per design 7.9,
+/// and the goldens record that. The signed pair exists because contracts 15 defines the transform for a
+/// field that IS declared signed, and Scope B's instance payload is where one is expected to appear. Having
+/// one definition of zig-zag in the tree ahead of that is the point: the alternative is a second one written
+/// from the spec by whoever needs it first.
+/// </para>
+/// <para>
 /// Every reader here is TOTAL. The bytes come from a remote peer, so a malformed varint returns false with
 /// a stable reason token rather than throwing, and leaves the offset exactly where it found it so the
 /// caller can report the position that failed.

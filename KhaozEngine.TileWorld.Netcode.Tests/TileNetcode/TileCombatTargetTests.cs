@@ -169,6 +169,9 @@ public class TileCombatTargetTests
     // So the follow CLEARS the lock on the tick it is applied, the answer rule 5 gives any target with no reach tile,
     // and the server says CannotReach through its ordinary broken lock report. The simulator cannot refuse this in
     // Accepts, which sees no net id, so the follow's self rule is where it is decided.
+    //
+    // The notice is asserted per tick: exactly one, naming the player's own id, on the tick the Attack is applied,
+    // and none after it, because a cleared lock is not watched again and the report must not repeat.
     [Fact]
     public void A_self_attack_clears_and_the_body_never_moves()
     {
@@ -176,6 +179,8 @@ public class TileCombatTargetTests
         using TileWorldServer s = TileWorldServerTickTests.Server(
             TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(10, 10, 0));
         long netId = s.SpawnPlayer(0, "a", "Ari");
+        var refused = new List<(int slot, long target)>();
+        s.OnCannotReach += (slot, target) => refused.Add((slot, target));
         s.Enqueue(0, 0, TileCommand.Attack(netId, TileMoveMode.Run));
 
         var visited = new HashSet<TileCoord>();
@@ -185,6 +190,8 @@ public class TileCombatTargetTests
             Assert.True(s.TryGetPlayerState(0, out TileMoveState each));
             visited.Add(each.Tile);
             Assert.Equal(0L, each.CombatTarget);            // cleared from the first tick on
+            if (i == 0) Assert.Equal(new[] { (0, netId) }, refused);
+            else Assert.Single(refused);                    // nothing new on any later tick
         }
 
         Assert.True(s.TryGetPlayerState(0, out TileMoveState st));
@@ -664,6 +671,53 @@ public class TileCombatTargetTests
         Assert.Equal(0L, server.CombatTarget);
         Assert.Equal(0, h.Client.SnapCount);
         Assert.Equal(0, h.Client.CorrectionCount);
+    }
+
+    // The same pair clicked MID WALK, which is the case TileRemoteTargets' local branch exists for. A self lock clears
+    // with the route dropped, so the body finishes the step it already committed and stands there. A client that
+    // could not resolve its own id would clear through "the target stopped resolving" instead, keep the route, and
+    // predict a walk the server stopped. The route is 20 tiles and the whole run is a few steps of it, so an idle
+    // route is the drop and never an arrival.
+    [Fact]
+    public void A_client_predicts_a_self_attack_mid_walk_stopping_on_the_committed_step()
+    {
+        using var h = new TileCombatHarness(TileMoveSimulatorTests.FlatWorld(), new TileCoord(20, 20, 0));
+        h.Frames(8);
+
+        h.Client.Queue(TileCommand.WalkTo(new TileCoord(20, 40, 0), TileMoveMode.Walk));
+        h.Frames(30);
+        Assert.False(h.Client.Prediction.PredictedState.Route.IsIdle);
+        Assert.NotEqual(new TileCoord(20, 20, 0), h.Client.Prediction.PredictedState.Tile);
+
+        // The CLIENT ALONE until its own tick applies the Attack, with the server not polled, so what is read is the
+        // prediction and never a basis the server sent back. At a walk cadence the server's answer lands before the
+        // client's glide does, so a mispredicted route would be rebased away unseen if the heads were read later.
+        // The tile read here is the one the step in flight committed, and the body never leaves it.
+        TileCoord before = h.Client.Prediction.PredictedState.Tile;
+        h.Client.Queue(TileCommand.Attack(h.Client.LocalNetId, TileMoveMode.Walk));
+        int stepped = 0;
+        for (int i = 0; i < 10 && stepped == 0; i++) stepped = h.Client.Tick(TileCombatHarness.Frame);
+        Assert.Equal(1, stepped);
+        TileMoveState predicted = h.Client.Prediction.PredictedState;
+        Assert.Equal(0L, predicted.CombatTarget);
+        Assert.True(predicted.Route.IsIdle);
+        TileCoord committed = predicted.Tile;
+        Assert.Equal(before, committed);
+        h.Frames(60);
+
+        TileMoveState client = h.Client.Prediction.PredictedState;
+        Assert.True(h.Server.TryGetActorState(h.Client.LocalNetId, out TileMoveState server));
+        Assert.Equal(0L, client.CombatTarget);
+        Assert.Equal(0L, server.CombatTarget);
+        Assert.True(client.Route.IsIdle);
+        Assert.True(server.Route.IsIdle);
+        Assert.False(client.IsStepping);
+        Assert.False(server.IsStepping);
+        Assert.Equal(committed, client.Tile);
+        Assert.Equal(committed, server.Tile);
+        Assert.True(committed.Z > 20 && committed.Z < 40, "stopped part way along the route");
+        Assert.Equal(0, h.Client.CorrectionCount);
+        Assert.Equal(0, h.Client.SnapCount);
     }
 
     // One tick of the pair, in the tick body's own order: the target space is snapshotted BEFORE anything steps, so

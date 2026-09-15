@@ -184,6 +184,33 @@ public class TileFootprintFollowTests
         Assert.Equal(start.Tile, s.Tile);
     }
 
+    // #741 MID WALK, which a lock applied while standing cannot see: the route is dropped, not just the lock. The step
+    // in flight has already committed its tile, so the body finishes that step and stands on it.
+    [Theory, InlineData(1), InlineData(2)]
+    public void A_self_lock_applied_mid_walk_drops_the_route_and_stands_on_the_committed_tile(int size)
+    {
+        (TileMoveSimulator sim, FakeFootprints targets) = Sim();
+        TileMoveState s = sim.Step(At(10, 10, size), TileCommand.WalkTo(new TileCoord(10, 30, 0), TileMoveMode.Walk),
+            Dt, self: 7L);
+        for (int i = 0; i < 5; i++) s = sim.Step(s, TileCommand.Continue(TileMoveMode.Walk), Dt, self: 7L);
+        Assert.True(s.IsStepping);
+        Assert.False(s.Route.IsIdle);
+        TileCoord committed = s.Tile;
+        Assert.NotEqual(new TileCoord(10, 10, 0), committed);
+
+        targets.Rects[7L] = s.Footprint;
+        s = sim.Step(s, TileCommand.Attack(7L, TileMoveMode.Walk), Dt, self: 7L);
+        Assert.Equal(0L, s.CombatTarget);
+        Assert.True(s.Route.IsIdle);
+        Assert.Equal(committed, s.Tile);
+
+        for (int i = 0; i < 12; i++) s = sim.Step(s, TileCommand.Continue(TileMoveMode.Walk), Dt, self: 7L);
+        Assert.Equal(committed, s.Tile);
+        Assert.False(s.IsStepping);
+        Assert.True(s.Route.IsIdle);
+        Assert.Equal(0L, s.CombatTarget);
+    }
+
     [Fact]
     public void AgentSize_is_a_floor_under_the_state_size()
     {

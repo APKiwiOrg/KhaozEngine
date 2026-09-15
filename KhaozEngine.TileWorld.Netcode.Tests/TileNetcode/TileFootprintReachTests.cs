@@ -79,6 +79,47 @@ public class TileFootprintReachTests
         Assert.Equal(legacy, TileReach.Set(map, Target(m), 0, 1));
     }
 
+    // The order above size 1, pinned element for element. Each one tile reach tile, in its own W, E, S, N scan order,
+    // offers the anchors whose 2x2 holds it (dz ascending, then dx ascending), skipping an overlap and a repeat.
+    [Fact]
+    public void Size_two_set_against_a_two_by_two_is_in_the_pinned_order()
+    {
+        IReadOnlyList<TileCoord> set = TileReach.Set(OpenMap(), Target(2), 0, 2);
+        var expected = new[]
+        {
+            (18, 20), (18, 19), (20, 18), (19, 18), (22, 20), (22, 19),
+            (21, 18), (18, 21), (20, 22), (19, 22), (22, 21), (21, 22),
+        }.Select(p => new TileCoord(p.Item1, p.Item2, 0));
+        Assert.Equal(expected, set);
+    }
+
+    // Set and Contains agree on a map where walls and a Blocked tile really deny reach. Walls deny a reach tile by its
+    // edge, the tree denies the tile it stands on, and a wall further east only matters to a 3x3 target.
+    [Theory, MemberData(nameof(Pairings))]
+    public void Set_and_Contains_agree_on_a_walled_map(int n, int m)
+    {
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        doc.AddObject("wall", 19, 20, 0, 2);                        // east edge of (19,20)
+        doc.AddObject("wall", 20, 20, 0, 3);                        // south edge of (20,20)
+        doc.AddObject("wall", 23, 21, 0, 0);                        // west edge of (23,21)
+        doc.AddObject("tree", 21, 19, 0, 0);                        // Blocked, south of (21,20)
+        TileCollisionMap walled = TileMoveSimulatorTests.Bake(doc);
+        TileCollisionMap open = OpenMap();
+        TileRect target = Target(m);
+        IReadOnlyList<TileCoord> set = TileReach.Set(walled, target, 0, n);
+
+        int denied = 0;
+        for (int z = WindowMin; z <= WindowMax; z++)
+        for (int x = WindowMin; x <= WindowMax; x++)
+        {
+            var a = new TileCoord(x, z, 0);
+            bool inRange = TileReach.Contains(walled, target, 0, a, n);
+            Assert.Equal(set.Contains(a), inRange);
+            if (TileReach.Contains(open, target, 0, a, n) && !inRange) denied++;
+        }
+        Assert.True(denied > 0, "the walls deny at least one anchor that reaches on open ground");
+    }
+
     [Fact]
     public void A_wall_denies_one_attacker_tile_while_another_still_reaches()
     {

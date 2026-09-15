@@ -200,6 +200,38 @@ public class TileCombatServerTests
         Assert.Equal(0L, targets.TargetedBy(11L));
     }
 
+    // The same window for a LARGE body. The hold is a second copy of the capture, so it has to carry the size as well
+    // as the tile, or a 2x2 frozen mid handoff answers as 1x1 for the whole window and a chaser stops inside it.
+    [Fact]
+    public void A_large_migrating_entity_answers_its_whole_footprint_for_the_window()
+    {
+        var cell = new CellSim(new CellCoord(0, 0), Dt, TileProtocol.CreateRegistry(), interestCellSize: 8f);
+        Entity crosser = cell.World.Spawn();
+        cell.World.Set(crosser, new NetId(44L));
+        TileMoveState state = TileMoveState.At(new TileCoord(7, 8, 0), TileDirection.N);
+        state.FootprintSize = 2;
+        cell.World.Set(crosser, state);
+        var cells = new List<CellSim> { cell };
+
+        var targets = new TileEntityTargets(migratingGraceRefreshes: 2);
+        targets.Refresh(cells);
+        Assert.True(targets.TryGetFootprint(44L, out TileRect owned, out _));
+        Assert.Equal(new TileRect(7, 8, 2, 2), owned);
+
+        cell.World.Set(crosser, new Migrating { Destination = new CellCoord(1, 0) });
+        for (int refresh = 1; refresh <= 2; refresh++)
+        {
+            targets.Refresh(cells);
+            Assert.True(targets.TryGetFootprint(44L, out TileRect held, out int plane),
+                $"refresh {refresh} of the window still answers");
+            Assert.Equal(new TileRect(7, 8, 2, 2), held);
+            Assert.Equal(0, plane);
+        }
+
+        targets.Refresh(cells);
+        Assert.False(targets.TryGetFootprint(44L, out _, out _));
+    }
+
     // Admit's half of the mutual exclusion: an APPLIED attack abandons the pending action, exactly as an applied
     // walk does, because the simulator clears the state's own InteractTarget on one and an entry that outlived it
     // would fire the moment the chase happened to pass a reach tile of the thing the player walked away from.

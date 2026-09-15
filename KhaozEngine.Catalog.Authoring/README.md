@@ -127,6 +127,107 @@ reused and a retired row keeps the number it occupies.
 `IContentIdPersistence` is the durable half the allocator sits on, and every `Commit` member on it commits
 on its own. A backend implements it with its own transactions.
 
+## The publish pipeline
+
+`ContentPublisher` is publish, in order, with each step delegating to its named type. **Steps 1 to 8 write
+nothing durable.** They freeze the draft, build the candidate, allocate ids, validate, compute the temporal
+rows, select the affected chunks, encode and hash them, and build both manifests. Writing the files, the one
+commit transaction and the sweep after it are steps 9 to 11 and land separately.
+
+```csharp
+var publisher = new ContentPublisher(store, idPersistence, registry);
+ContentPublishPlan plan = await publisher.PrepareAsync(
+    new ContentPublishRequest("admin-endpoint", "oid:8f2c", "autumn price pass", expectedBaseVersion: 12),
+    baseline);
+
+if (!plan.IsValid)
+{
+    // Every finding at once, so an operator fixes three problems in one round trip rather than three.
+    return plan.Validation.Findings;
+}
+```
+
+`ContentPublishPlan` carries everything the commit needs: the candidate snapshot, the id allocation record,
+the row closes and inserts, the live row set, the appended remap rules, every chunk row with its hash, both
+manifests with their hashes, and the two counts an operator reads the one-item-edit budget off. A plan is not
+a publish. Nothing in it has been written, so a caller that drops it leaves the store exactly as it found it.
+
+An INVALID plan stops where it failed and both its manifests are null, because encoding bytes for a version
+nobody will publish is work for nothing.
+
+### The baseline is handed in
+
+`ContentPublishBaseline` is the base version as steps 2 to 8 need it: its number, its live rows, its rules,
+its chunk rows, its languages and its two minimum builds. It is an argument rather than something the
+publisher reads, and that is the crash-safety shape: the commit reads the base under the row lock it took at
+step 1 and hands it down, so the version the candidate was built against and the version the transaction
+commits against cannot differ.
+
+`ContentPublishBaseline.Empty` is the empty database, which is the one case the validator is passed a null
+previous snapshot. `ContentPublishBaseline.After(plan)` is the baseline the next publish sees.
+
+`ContentPublishRequest.ExpectedBaseVersion` is optimistic concurrency and it is required. Two consoles cannot
+both publish the same draft: the second one's expectation is stale and it is refused with both numbers named,
+carrying the `base-version-moved` reason.
+
+### Ids come from the edit, not from the caller
+
+There is ONE allocation path with two sources, and which one runs is a property of the edit. An `Add` with
+`definition_id` 0 is allocated one, an `Add` carrying a non-zero id keeps it, and only a bulk import into an
+empty database writes the second kind. After every add has an id, the high-water marks are SEEDED from the
+largest carried id per type, so the first ordinary add after an import does not allocate id 1 straight onto
+an imported row. `ContentIdAllocationRecord.Seeds` is empty for an ordinary publish.
+
+Allocation runs BEFORE validation, because `KEC0006` resolves references and `KEC0010` asks about family
+membership, and neither can be asked of a row whose id does not exist yet.
+
+A `Fork` allocates through the plain counter and its copy inherits the SOURCE row's family. The copy is
+written first, so the `MovedToLegacy` rule appended last names a destination that is already live.
+
+### Chunk selection and reuse
+
+A chunk is `(typeId, chunkIndex)` where `chunkIndex = definitionId / chunkSlots`, and the affected set is
+every chunk holding a row that entered at this version or was closed in it. Every chunk NOT in it keeps its
+previous version's hash and is not encoded, compressed, hashed or written. That is what makes the download
+after a one-item edit a small number rather than the whole pack, and it is the reason chunk identity is an id
+RANGE rather than a row range.
+
+The carry forward is PER SIDE. For an unaffected chunk every chunk row the previous version holds is copied
+forward, one for a single-sided chunk and two when the type is `Client` with a per-field `ServerOnly`
+override. Nothing recomputes a side from the type's default visibility, because the schema may have gained a
+`ServerOnly` field at THIS version.
+
+A chunk's rows are sorted ASCENDING BY ID before encoding and the hash is taken over the UNCOMPRESSED
+canonical bytes, so a later engine build that compresses better produces the same chunk hash and a client
+already holding the chunk fetches nothing.
+
+### Two sides, two chunks, two manifests
+
+`IContentRowSideEncoder` is how one row's body is written for one side, and `ContentSideRowEncoder` is the
+engine's own: the server side is the row as authored, and the client side is the same row with every
+`ServerOnly` field omitted. Omitted means written as ABSENT rather than skipped, because a row body is a
+positional walk and a field that took no width would shift every field after it.
+
+A `ServerOnly` TYPE produces one server chunk and no client chunk at all. A `Client` type produces one client
+chunk, plus a server chunk whenever its schema marks a field `ServerOnly`, because then the two sides are
+different bytes with different hashes.
+
+`KEC0014` fires on exactly one thing: the client-side encoded bytes of a chunk still carrying a field the
+schema marks `ServerOnly`. That is an ENCODER defect and never an authoring one, so nothing refuses a
+`Client` type with a `ServerOnly` field, and the check reads the bytes back rather than trusting the encoder
+that wrote them. A silent strip would be worse than the refusal, because then a field's absence on the client
+would be indistinguishable from an authoring mistake.
+
+Both manifests are built from the version's chunk rows, the server one taking the server side where it exists
+and the client one naming nothing for a type that has no client row. Each gets its own hash sub-domain, so a
+head gating on one can never accidentally agree with a head gating on the other. The two minimum builds and
+the format generation are INPUTS to the manifest hash rather than stamps beside it: raising a minimum build
+without touching a row publishes a version with a different manifest hash and identical chunk hashes, so a
+client re-reads one small manifest and downloads nothing.
+
+`ContentPublishStep` is the point a publish can be interrupted at, and `ContentPublisher.OnStep` is the hook
+a crash test throws from. Every value is declared and the steps after the manifest belong to the commit.
+
 ## The in-memory store
 
 `InMemoryContentAuthoringStore` is a TEST AND TOOLING implementation of the whole seam, holding the catalog

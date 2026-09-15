@@ -302,6 +302,28 @@ public class ItemInstancePayloadTests
     }
 
     [Fact]
+    public void The_builder_refuses_a_socket_whose_nested_payload_is_not_structurally_canonical()
+    {
+        // Kind 5 then kind 2 is DESCENDING, so the nested bytes break rule 9.3.1. The builder documented
+        // this refusal and did not make it, which let a writer produce a socket carrying bytes the decoder
+        // at the far end refuses. The check is the structural one of contracts 9.3, because the builder
+        // holds no registry.
+        byte[] descending = [0x05, 0x02, 0x5A, 0x64, 0x02, 0x01, 0x44];
+        Assert.False(ItemInstancePayload.IsCanonical(descending));
+        Assert.Throws<ArgumentException>(() => new ItemInstancePayloadBuilder()
+            .AddSockets(new[] { new InstanceSocket(7, 833, 4201, descending) }));
+
+        // The same socket carrying the same two fields ASCENDING still builds, and what it builds is
+        // canonical under the full registry check as well.
+        byte[] ascending = [0x02, 0x01, 0x44, 0x05, 0x02, 0x5A, 0x64];
+        Assert.True(ItemInstancePayload.IsCanonical(ascending));
+        byte[] built = new ItemInstancePayloadBuilder()
+            .AddSockets(new[] { new InstanceSocket(7, 833, 4201, ascending) })
+            .ToArray();
+        Assert.Null(ItemInstancePayload.Validate(InstancePropertyRegistry.CreateV1(), built));
+    }
+
+    [Fact]
     public void Byte_equality_is_property_equality()
     {
         byte[] left = new ItemInstancePayloadBuilder().AddScalar(InstancePropertyKind.ItemLevel, 68).ToArray();

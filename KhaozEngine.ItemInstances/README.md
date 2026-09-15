@@ -121,8 +121,9 @@ byte[] payload = new ItemInstancePayloadBuilder()
 ```
 
 `Add(kind, body)` is the opaque door under all of them, which is how an unknown kind is carried and how a
-caller writes a body there is no helper for. `AddMaterials` is kind 7, `AddSockets` is kind 132 and keeps
-AUTHORED order rather than sorting, and `AddRareName` is kind 134. `Length` is what `ToArray` will write, so
+caller writes a body there is no helper for. `AddMaterials` is kind 7, `AddSockets` is kind 132, keeps
+AUTHORED order rather than sorting, and refuses a socket whose nested payload is not structurally canonical,
+and `AddRareName` is kind 134. `Length` is what `ToArray` will write, so
 a caller can size a buffer, and `FieldCount` is how many fields it holds.
 
 Three value types are the list entries those helpers take. `InstanceMaterial` is an input item definition and
@@ -143,7 +144,7 @@ sit in different sockets do NOT stack, and that is correct, because they are dif
 | `TryDecode(registry, payload, fields, out count, out reason)` | the FULL check: the canonical rules, the cap, every declared length, each known kind's shape and codec, and the one level nesting limit |
 | `TryDecode(payload, fields, out count, out reason)` | STRUCTURE alone, treating every kind as unknown, so no field body is ever read |
 | `Validate(...)` | the same two checks as a reason token or null, which is the surface the validator calls rather than writing a second copy |
-| `IsCanonical(...)` | the same as a bool, and the registry-free overload is the shape `ItemContainer`'s door predicate takes |
+| `IsCanonical(...)` | the same as a bool, and the registry-free overload is the shape `ItemContainer`'s door predicate takes. That overload is STRUCTURAL: it reads no field body, so it never recurses into a nested payload, and a host wanting the per-kind checks at the container door passes a registry-bound predicate instead |
 | `SequenceEqual(left, right)` | the stacking rule, a byte compare, because the encoding is canonical |
 | `Encode(builder, destination)` | writes a builder's fields out and answers the bytes written |
 | `PublicView(...)` | a STUB in phase 1 that returns the whole payload. The visibility rule lands with the wire |

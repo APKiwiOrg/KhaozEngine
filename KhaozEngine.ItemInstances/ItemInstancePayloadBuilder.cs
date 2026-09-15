@@ -274,7 +274,9 @@ public sealed class ItemInstancePayloadBuilder
     /// </summary>
     /// <param name="sockets">The sockets, in the order the item carries them.</param>
     /// <exception cref="ArgumentException">An empty socket carries an instance id or a nested payload, or a
-    /// nested payload is not canonical.</exception>
+    /// nested payload is not STRUCTURALLY canonical. The socket-nesting limit is the decoder's (contracts
+    /// 9.5) and is not checked here, because the builder holds no registry and the limit is a fact about a
+    /// registered shape.</exception>
     public ItemInstancePayloadBuilder AddSockets(ReadOnlySpan<InstanceSocket> sockets)
     {
         int size = ContentVarint.Size((uint)sockets.Length);
@@ -290,6 +292,17 @@ public sealed class ItemInstancePayloadBuilder
             {
                 throw new ArgumentException(
                     "A contained definition of 0 MEANS the socket is empty (contracts 9.5), so an empty socket carries no instance id and no nested payload.",
+                    nameof(sockets));
+            }
+
+            // A nested payload is a payload in this same format, so the writer owes the reader the three
+            // rules of contracts 9.3. This is the STRUCTURAL check, which is all a registry-free caller can
+            // make: it treats every kind as unknown and never reads a body, so it says nothing about a
+            // socket nested inside a socket. The decoder owns that one.
+            if (!socket.Nested.IsEmpty && !ItemInstancePayload.IsCanonical(socket.Nested))
+            {
+                throw new ArgumentException(
+                    "A socket's nested payload is written structurally canonical (contracts 9.3): fields strictly ascending by kind, no kind twice, every varint minimal.",
                     nameof(sockets));
             }
 

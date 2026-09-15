@@ -149,6 +149,13 @@ public static partial class ItemInstancePayload
     /// door check: <c>ItemContainer</c> takes it as a <c>Func&lt;ReadOnlyMemory&lt;byte&gt;, bool&gt;</c>
     /// because <c>KhaozEngine.Items</c> sits BELOW this package and cannot call into it (contracts 3.2),
     /// and the delegate shape is why this overload carries no registry.
+    /// <para>
+    /// <b>Structural means structural.</b> It treats every kind as unknown, so it never reads a field body
+    /// and never recurses into a nested payload: a socket carrying nested bytes that are themselves out of
+    /// order passes here and is caught by the registry overload. A host that wants the per-kind checks at
+    /// the container door passes a registry-bound predicate instead, for example
+    /// <c>p =&gt; ItemInstancePayload.Validate(registry, p.Span) is null</c>.
+    /// </para>
     /// </summary>
     /// <param name="payload">The bytes, which may be empty.</param>
     public static bool IsCanonical(ReadOnlyMemory<byte> payload) => Validate(payload.Span) is null;

@@ -488,7 +488,9 @@ The entry is still in the schema because three readers need to know the field is
 the derived key READ-ONLY beside the field, so an author sees exactly what a translator will be handed. The
 audit and the publish diff know the field exists, so a type gaining a text field is a visible schema change
 rather than a silent one. The text chunk builder of 12.4 knows which strings the ROW OWNS, which is how it
-decides what goes into each per-language chunk.
+decides what goes into each per-language chunk. A marker field marked REQUIRED means the row's derived key
+must resolve to a non-empty string in every language the manifest lists, checked at publish by the validator
+of 10.4, because a required field with no stored value has nothing else to be required about.
 
 The rationale for storing nothing is 12.1's, restated at the schema: an authored key rots independently of
 the row it names, and Grimhollow has two keys out of thirty-five that already dropped the underscore their

@@ -64,9 +64,16 @@ public readonly struct ContentKey : IEquatable<ContentKey>
     /// rather than its tail. Over the BYTES rather than a materialised string, so a key sliced out of a
     /// loaded blob and the same key built from a string land in the same dictionary bucket.
     /// </summary>
-    public override int GetHashCode()
+    public override int GetHashCode() => unchecked((int)HashBytes(Utf8));
+
+    /// <summary>
+    /// The ONE key hash in the catalog, so the dictionary bucket a <see cref="ContentKey"/> lands in and the
+    /// open-addressed bucket <c>ContentTypeTable.KeyIds</c> probes are derived from the same bytes the same
+    /// way. FNV-1a with a final avalanche, so masking to the low bits carries the whole key rather than its
+    /// tail.
+    /// </summary>
+    internal static uint HashBytes(ReadOnlySpan<byte> bytes)
     {
-        ReadOnlySpan<byte> bytes = Utf8;
         uint hash = 2166136261u;
         for (int i = 0; i < bytes.Length; i++)
         {
@@ -77,7 +84,7 @@ public readonly struct ContentKey : IEquatable<ContentKey>
         hash ^= hash >> 15;
         hash *= 2246822519u;
         hash ^= hash >> 13;
-        return (int)hash;
+        return hash;
     }
 
     /// <summary>Materialises the key as a string. Allocates, so this is the log and finding path, not the hot one.</summary>

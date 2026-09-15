@@ -170,7 +170,8 @@ decoder is also fuzzed against.
 
 - `IContentSnapshot` - the narrow read seam every consumer outside this package is written against, seven
   members: the version number, the identity, a row by id, an id by key, every row of a type, the rule list
-  and the retired bit. It carries no authoring concept, no chunk and no mutation.
+  and the retired bit. It carries no authoring concept, no chunk and no mutation. Both read-side holders
+  implement it: `ContentSnapshot` is the CANDIDATE shape and `ContentRuntime` is the ACTIVE one.
 - `ContentSnapshot` - the immutable holder behind it, rows ordered by id whatever order they arrived in.
 - `ContentSnapshotBuilder` - the ONE way a snapshot is made, so publish, boot and a test build one the same
   way. It refuses a programming error and never a content defect: a duplicate id, a duplicate key and a
@@ -182,6 +183,31 @@ decoder is also fuzzed against.
 - `ItemRow` - the typed view over the engine `item` type, and the only typed view in the catalog: a
   `ref struct` over the row body with the four hot fields decoded at construction, for the stacking and
   generation paths a field-by-name walk does not budget for.
+
+## The loaded runtime
+
+`ContentRuntime.FromSnapshot(snapshot, registry)` is the one way an active version comes into being, and the
+path is one way: reader to snapshot to runtime to holder. The snapshot is the CANDIDATE shape a publish
+validates and a test builds by hand. The runtime is the ACTIVE shape a server reads for the rest of the
+process, and it implements the same `IContentSnapshot` seam over arrays indexed by id.
+
+- `ContentRuntime` - the loaded active version. Per type it holds a table of parallel arrays: `Offsets` by
+  id into one concatenated `Bodies` blob, `Lengths` beside it, a retired BITSET, and the open-addressed
+  key-to-id index. A lookup is `Offsets[id]`, one array read, then a span slice. No dictionary on that path,
+  no lock, no allocation. `Offsets` is sized to the highest id the version carries plus one and NOT to the
+  sum of the type's chunk slots, because a chunk slot is a transport unit the runtime does not inherit.
+  There is no `Keys` array either, because every row body already opens with its own key, so an id-to-key
+  read is the same slice one varint further in and a key costs only its bucket. `Body`, `Key`, `TryGetItem`,
+  `TryGetId` over raw UTF-8 and the seven seam members all answer out of those arrays. The hand-off from the
+  snapshot SHARES its per-type body blob rather than copying it, so the two hold one copy of the catalog
+  between them.
+- `ContentRuntimeHolder` - the ONE field the active runtime lives in, published with a `Volatile.Write` and
+  read with a `Volatile.Read`, with no lock anywhere. A reader takes the reference once at the top of an
+  operation and uses that instance throughout, so a swap cannot hand it a half-old half-new answer, which
+  works because a runtime and everything reachable from it is immutable after construction. v1 never swaps
+  at runtime, since a new version applies at server restart: the pair exists for a test fixture and for a
+  later live-apply phase. An unloaded holder THROWS rather than serving a default catalog, because there is
+  no fallback to code defaults anywhere in this package.
 
 ## Pack store and reader
 

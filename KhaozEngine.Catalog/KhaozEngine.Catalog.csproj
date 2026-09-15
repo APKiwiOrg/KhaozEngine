@@ -15,4 +15,12 @@
     <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- ContentTypeTable is the loaded runtime's STORAGE rather than its seam, so spec 9.1 declares it
+         internal and a consumer reads through ContentRuntime. The facts about its shape (Offsets sized to
+         the highest live id plus one, KeyIds open addressed with 0 empty, no Keys array) are exactly what
+         the runtime tests pin, so the test assembly sees inside and nothing else does. -->
+    <InternalsVisibleTo Include="KhaozEngine.Catalog.Tests" />
+  </ItemGroup>
+
 </Project>

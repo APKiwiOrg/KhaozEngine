@@ -14,6 +14,14 @@ namespace KhaozEngine.Catalog;
 /// what makes two snapshots of the same content compare row for row.
 /// </para>
 /// <para>
+/// <b>This is the candidate shape, and <see cref="ContentRuntime"/> is the ACTIVE one.</b> The two are not
+/// alternatives: a publish and a validator test build one of these and never load it, and a boot builds one
+/// of these out of the pack and then hands it to <see cref="ContentRuntime.FromSnapshot"/>, which indexes it
+/// by id into the arrays of spec 9.1, derives the four indexes of 9.4 over it and is what a running server
+/// reads through a <see cref="ContentRuntimeHolder"/>. The hand-off SHARES this snapshot's per-type body
+/// blob rather than copying it, so the two hold one copy of the catalog between them.
+/// </para>
+/// <para>
 /// <b>Nothing here refuses bad content.</b> A duplicate id, a duplicate key, an id of 0 and a malformed key
 /// are all FINDINGS (<c>KEC0002</c>, <c>KEC0009</c>, <c>KEC0036</c>), so a snapshot that could not hold the
 /// defect would be a snapshot the validator could never report it from. Where two rows share an id or a key,
@@ -59,6 +67,21 @@ public sealed class ContentSnapshot : IContentSnapshot
 
     /// <summary>Every content type this snapshot carries a row for, ASCENDING by type id.</summary>
     public IReadOnlyList<ContentTypeId> Types => _types;
+
+    /// <summary>
+    /// The per-type tables, in type id order, which is what <see cref="ContentRuntime.FromSnapshot"/> indexes
+    /// by id. Internal, because the layout is the runtime's business rather than a consumer's.
+    /// </summary>
+    internal ContentSnapshotTable[] Tables()
+    {
+        var tables = new ContentSnapshotTable[_types.Length];
+        for (int i = 0; i < _types.Length; i++)
+        {
+            tables[i] = _tables[_types[i]];
+        }
+
+        return tables;
+    }
 
     /// <inheritdoc />
     public bool TryGetRow(ContentTypeId type, int id, [MaybeNullWhen(false)] out ContentRow row)
@@ -187,6 +210,21 @@ internal sealed class ContentSnapshotTable
 
     /// <summary>The rows, ascending by id.</summary>
     internal IReadOnlyList<ContentRow> Rows => _rows;
+
+    /// <summary>The rows as the array itself, which the runtime indexes by id rather than by position.</summary>
+    internal ContentRow[] RowArray => _rows;
+
+    /// <summary>
+    /// The concatenated bodies, ascending by id, which is already the one blob spec 9.2 asks the loaded
+    /// runtime for. <see cref="ContentRuntime"/> takes it by REFERENCE rather than copying it.
+    /// </summary>
+    internal byte[] BodyBlob => _bodies ?? [];
+
+    /// <summary>Each row's offset into <see cref="BodyBlob"/>, or -1 where the row arrived with no body.</summary>
+    internal int[] BodyOffsets => _bodyOffsets;
+
+    /// <summary>Each row's body length, parallel to <see cref="BodyOffsets"/>.</summary>
+    internal int[] BodyLengths => _bodyLengths;
 
     /// <summary>One row by id.</summary>
     internal bool TryGetRow(int id, [MaybeNullWhen(false)] out ContentRow row)

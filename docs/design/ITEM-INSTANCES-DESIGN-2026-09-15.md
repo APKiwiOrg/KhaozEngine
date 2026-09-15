@@ -2121,3 +2121,131 @@ kind 1. Its `percent` becomes `Increased` rather than `More` because today it is
 multiplier exactly as `StatSet` does, so `Increased` preserves the numbers and `More` would not.
 `item_ability_modifier`'s comma-joined tag STRINGS (`c-ruinborne.md:67-72`) become a tag scope, which is
 the one place adopting this evaluator makes a Ruinborne substring search into a set membership test.
+
+## 12. Validation, quarantine and visibility
+
+### 12.1 Three outcomes, no fourth
+
+Contracts 10.1 fixes them: Valid, Remapped, Quarantined, and in particular there is no "dropped". This
+section is the engine-side machinery for the third, plus the one visibility function, which sits here
+rather than in section 7 because a tooltip is not a network concern.
+
+### 12.2 The instance validator's checks
+
+`InstanceValidator.Validate(page, snapshot)` accumulates and never throws, following contracts 10.4's
+shape and `JsonSchemaValidator.ValidationReport`'s run-to-the-end sweep
+(`KhaozEngine.Content/JsonSchemaValidator.cs:11-101`). It is side effect free: it does not log, does not
+touch a counter and does not mutate the page. The caller does all three.
+
+| # | Check | Level | Failure |
+|---|---|---|---|
+| 1 | the payload is canonical: ascending kinds, no duplicate, minimal varints | structural | `field-order`, `field-duplicate`, `varint-nonminimal` |
+| 2 | every declared length lies inside the payload | structural | `truncated` |
+| 3 | a registered kind's bytes decode through its codec | structural | `field-malformed` |
+| 4 | kind 132's nested payloads carry no kind 132 | structural | `socket-nesting` |
+| 5 | the payload is at most `MaxInstancePayloadBytes` | structural | `payload-oversize` |
+| 6 | the entry's definition id resolves in the active version | drift | `unknown-definition` |
+| 7 | every mod id, socket type id, rarity id, template id and word id resolves | drift | `unknown-content-reference` |
+| 8 | a `(mod id, tier ordinal)` pair names a live tier | drift | `unknown-content-reference` |
+| 9 | a non-empty payload has a non-zero instance id | structural | `instance-id-missing` |
+| 10 | the instance id is unique within the page | structural | `instance-id-duplicate` |
+| 11 | an entry carrying kind 5 or 132 has count 1 | structural | `stack-not-instanceable` |
+| 12 | the entry's count is at most the definition's cap, OR the over-cap shrink rule applies | drift | `over-cap`, tolerated |
+
+### 12.3 Structural quarantines, drift is counted and tolerated
+
+**A structural failure quarantines that ENTRY.** The item's bytes cannot be trusted to mean what they say,
+so nothing reads them again until someone looks.
+
+**A drift failure does NOT quarantine by default.** Checks 6, 7 and 8 fail because CONTENT moved, which is
+what remap rules exist to handle, so the loader's order matters: rules apply first (5.5 step 2) and the
+validator runs after, so a drift finding means no rule covered it. The policy is per check. Check 6, an
+unresolvable DEFINITION, quarantines, because an item with no base cannot be drawn, stacked or equipped.
+Checks 7 and 8, an unresolvable content REFERENCE inside a payload, are COUNTED and TOLERATED: the field is
+kept verbatim, contributes nothing to the evaluator, renders as a placeholder line, and is re-checked on
+every load, so the item survives the window in which an author forgot a rule. Check 12 is contracts 8.2
+kind 4's shrink-only rule, which is tolerance by contract.
+
+That split is the single most consequential policy in this section, and it is chosen against Grimhollow's
+current behaviour deliberately. `ValidateContainer` THROWS on an unknown item id
+(`GrimhollowJournalContracts.cs:483-524`), which turns one bad id into a player who cannot log in
+(`b-grimhollow.md:545-556`). A payload-level unknown reference is strictly more likely than an unknown
+definition, because there are more mods than bases, so quarantining on it would multiply that failure.
+
+### 12.4 The quarantine wrapper, `KECQ`
+
+Contracts 10.2 requires the bytes be kept VERBATIM with a reason code and the stamped version, nothing
+truncated, normalized or re-encoded. The wrapper replaces the entry's payload in the page and the entry's
+`EntryFlags` bit 0 is set (4.4), which is how a reader knows without sniffing.
+
+```
+[Magic: 4 bytes 'K','E','C','Q']   // 0x4B 0x45 0x43 0x51
+[Version: uint16 LE]               // 1
+[ReasonCode: byte]                 // an ordinal from the closed set of 12.2
+[StampedVersion: varint int32]     // the page stamp the record failed under
+[OriginalLength: varint int32]
+[Original: OriginalLength bytes]   // verbatim, never re-encoded
+```
+
+**A magic here and none on a payload, and the two are consistent.** Contracts 15 forbids a magic on a
+format always embedded in a larger versioned record. A payload is such a format. A quarantine wrapper is
+NOT: it is a payload-shaped field that must be distinguishable from a payload at a glance by a human
+reading a hex dump of a page, and by a tool that never saw the entry flag. Four bytes for that, once per
+quarantined entry, on a path that is by definition rare.
+
+**The wrapper is itself durable, so it is versioned** (contracts 10.5's closing note). Version 1 is the
+only version and a decoder refuses anything else rather than guessing.
+
+**`OriginalLength` may exceed `MaxInstancePayloadBytes`**, because `payload-oversize` is a reason and
+refusing to wrap the thing that failed for being too big would destroy exactly the item the wrapper
+exists to keep. The page's own entry length check is what bounds it, at the 2 MiB section cap.
+
+### 12.5 The one visibility function
+
+```csharp
+public static bool CanSee(ushort kind, PropertyVisibility viewerLevel, bool identified, uint revealedMask);
+public static int  PublicView(ReadOnlySpan<byte> payload, PropertyVisibility level, bool identified,
+                              uint revealedMask, Span<byte> destination);
+```
+
+`CanSee` is called by the replication filter (7.4) and by the tooltip builder and by NOTHING else, which
+is contracts 11.2's rule stated as a call-site constraint. `PublicView` is the forward pass over retained
+runs described in 7.4, returning the written length. Both are pure and static, so a test calls them with
+no server.
+
+The rule, in order: `ServerOnly` is never visible to anyone. `OwnerOnly` is visible when the viewer level
+is `OwnerOnly`. `Everyone` is visible always. Then, and only then, the identification gate: a kind marked
+`identificationGated` at registration (3.3) is hidden when `identified` is false and its bit in
+`revealedMask` is clear, EVEN FROM THE OWNER. That last clause is gate 0 decision 8 and it is why
+unidentified is a mechanic rather than a fourth level.
+
+### 12.6 The counter and the log line
+
+Contracts 10.2 names both and forbids inventing others. Counter
+`khaoz.content.quarantined_records`, dimensioned by content type id and reason code. One log line under
+category `ContentValidation` at Warning, naming the reason code, the stamped version, the active version
+and the owning stream key, and NEVER the payload bytes or a raw account id
+(`DURABLE-PLAYER-JOURNAL-DESIGN-2026-09-06.md:657-660`).
+
+**One line per PAGE, not per entry.** A page that fails wholesale would otherwise emit a hundred identical
+lines, which is how an operator learns to filter the category out. The line names the page, the reason
+code with the highest count, and the counts. The counter is still incremented per record, because a
+counter is what a dashboard reads and a log line is what a human reads.
+
+### 12.7 Unidentified, built on OwnerOnly
+
+Kind 128 is `[State: byte][RevealedMask: varint uint32]` (3.3). State 0 is unidentified. `RevealedMask`
+bit N corresponds to the Nth `identificationGated` kind in ASCENDING KIND ORDER, which is well defined
+because the registry is frozen (3.3) and kinds are ascending in the payload (3.2). Four kinds are gated in
+v1 (129, 131, 133, 134), so bits 4 to 31 are reserved and zero.
+
+The mechanic: an unidentified item replicates and tooltips WITHOUT its gated kinds, to everyone including
+its owner. The `Identify` primitive (10.2) sets state 1 and the mask to all ones. A partial reveal is
+already expressible: a primitive parameterised to set one bit reveals one affix, which is an authoring
+choice rather than an engine one and needs no format change.
+
+**The unidentified item still STACKS by byte equality**, and two unidentified items with different hidden
+affixes have different bytes, so they do not merge. That is the correct answer and it leaks one bit: a
+player who tries to stack two unidentified items learns whether they are identical. The leak is inherent
+to stacking by bytes, it is worth less than the hidden rolls are, and 15.8 records it as accepted with the
+alternative priced.

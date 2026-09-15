@@ -56,6 +56,7 @@
   <Project Path="KhaozEngine.Progression/KhaozEngine.Progression.csproj" />
   <Project Path="KhaozEngine.Replication/KhaozEngine.Replication.csproj" />
   <Project Path="KhaozEngine.Items/KhaozEngine.Items.csproj" />
+  <Project Path="KhaozEngine.ItemInstances/KhaozEngine.ItemInstances.csproj" />
   <Project Path="KhaozEngine.Stats/KhaozEngine.Stats.csproj" />
   <Project Path="KhaozEngine.Simulation/KhaozEngine.Simulation.csproj" />
   <Project Path="KhaozEngine.Sharding/KhaozEngine.Sharding.csproj" />
@@ -91,6 +92,7 @@
   <Project Path="KhaozEngine.TestSupport.Windowing/KhaozEngine.TestSupport.Windowing.csproj" />
   <Project Path="KhaozEngine.Foundation.Tests/KhaozEngine.Foundation.Tests.csproj" />
   <Project Path="KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj" />
+  <Project Path="KhaozEngine.ItemInstances.Tests/KhaozEngine.ItemInstances.Tests.csproj" />
   <Project Path="KhaozEngine.Simulation.Tests/KhaozEngine.Simulation.Tests.csproj" />
   <Project Path="KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj" />
   <Project Path="KhaozEngine.Audio.Tests/KhaozEngine.Audio.Tests.csproj" />

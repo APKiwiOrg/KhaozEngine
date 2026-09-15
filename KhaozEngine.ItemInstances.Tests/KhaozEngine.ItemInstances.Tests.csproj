@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <OutputType>Library</OutputType>
+    <!-- Pinned so the declared namespaces stay KhaozEngine.Tests.ItemInstances.*, per AGENTS.md. -->
+    <RootNamespace>KhaozEngine.Tests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- KhaozEngine.ItemInstances ONLY, which brings Items, Catalog and Primitives transitively (spec 2.3).
+         Push CI selects test projects by the reference graph, so a second reference for a type already in
+         the graph would silently degrade that selection. The journal, ground item and container tests live
+         in KhaozEngine.Server.Tests, KhaozEngine.TileWorld.Netcode.Tests and KhaozEngine.Foundation.Tests
+         for the same reason. -->
+    <ProjectReference Include="../KhaozEngine.ItemInstances/KhaozEngine.ItemInstances.csproj" />
+  </ItemGroup>
+</Project>

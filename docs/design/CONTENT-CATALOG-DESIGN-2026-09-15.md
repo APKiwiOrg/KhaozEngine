@@ -3215,3 +3215,88 @@ roster-sent latch. There is nothing to latch once the client has the catalog bef
 second is `DefsReady`, the client's rule that the bag simply does not render until every def has arrived
 (`ItemClientState.cs:19-21`). A client that is admitted is by definition content-current, so there is no
 not-ready window to render around.
+
+### 17.5 The five content loaders collapse to one load
+
+Ruinborne has five content loaders, each with its own SQL read, its own retry wrapper, its own validation
+placement and its own fallback. Four of them converged on `ContentRowMapping` when
+[#200](https://github.com/APKiwiOrg/Ruinborne/issues/200) was fixed, itself a repeat of #24 in
+`NpcContentLoader`, and the item loader is the fifth and was never swept
+([#325](https://github.com/APKiwiOrg/Ruinborne/issues/325), open).
+
+After adoption there are ZERO content loaders. There is one load, the engine's, at boot: read the active
+version, fetch and verify every chunk, decode, validate, build the runtime arrays, resolve the world keys
+(section 9.5). It is the same code for every content type in both games, which is what makes a sixth type
+cost no loader at all.
+
+What that deletes, and what each deletion buys:
+
+- `ItemCatalogContentLoader` in full, including `CodeDefaults`, `TryBuildFromSql` and its three
+  whole-catalog rejections, and `AttachModifiers`. The modifier fold becomes a key reference from the
+  `ability_modifier` game type to `item`, resolved by `KEC0006` at publish rather than by a per-row skip at
+  load (`ItemCatalogContentLoader.cs:199-209`).
+- `RuinborneItems.All` and `RuinborneRarities.DefaultRarities()`. Contracts 1.4 is explicit that a definition
+  exists in the authoring store and nowhere else, so there is no code-default catalog to fall back to. This is
+  what closes [#512](https://github.com/APKiwiOrg/Ruinborne/issues/512), and it closes it by removing the
+  destination rather than by improving the announcement.
+- The hand-built `RarityDef` construction the item loader does instead of calling
+  `ContentRowMapping.ToItemRarity`, which is [#313](https://github.com/APKiwiOrg/Ruinborne/issues/313) exactly.
+  It is resolved by there being one decode path per type, the registered codec, with no second hand-rolled
+  mapper left to drift from.
+- The positional `SqlDataReader` ordinal hazard that shipped as
+  [#494](https://github.com/APKiwiOrg/Ruinborne/issues/494) in `AbilityContentLoader`, where a duplicate column
+  in a SELECT shifted every later ordinal. A pack row is a field list the schema names, so there is no ordinal
+  to shift.
+
+**#325's distinction is preserved, deliberately, and it is worth spelling out because the issue argues for
+keeping the behaviour that looks like the defect.** It says the wholesale rejection is DEFENSIBLE and should
+stay, and that the real defect is the DIAGNOSTIC: an operator reading `Item catalog: SQL read failed (Item
+'xyz' has no IconId.)` goes looking at the network. This design keeps the rejection, because a pack is atomic
+by construction and half a version is not a thing that can exist, and it fixes the diagnostic completely: a
+content failure exits 3 with one line per finding naming the code, the type, the id and the message, and a
+transport failure exits 3 with a chunk hash and a store name (section 9.6). The two are never confusable
+because they are different rows of the same table.
+
+### 17.6 PostDeploy's insert-if-absent seeding becomes a one-time bundle import
+
+Every catalog row in Ruinborne is seeded by `Scripts/PostDeploy.sql` as `IF NOT EXISTS ... INSERT`, eleven
+blocks across `item_def`, `item_rarity`, `weapon_def`, `item_stat`, `stat_def`, `item_ability_modifier` and
+`loot_table` (`c-ruinborne.md:197-209`). Because insert-if-absent never reaches an existing row, the script
+carries a growing set of guarded `UPDATE ... WHERE column = <old literal>` corrections, and the file states in
+its own comments that these knowingly revert an operator value: "an operator who retuned it back down would
+see it reverted to 40 on the next deploy, the same limit every other numeric correction in this file already
+accepts" (`PostDeploy.sql:382-385`).
+
+Section 10.9's empty-database rule is the whole answer, and section 10.9 already names this as the defect
+class it exists for. The replacement is one `catalog-import` of one `ContentBundle` into one empty catalog
+database, once, ever. After that a value changes through `catalog-edit` and `catalog-publish` and through
+nothing else.
+
+**The bundle is built from the LIVE database, not from PostDeploy and not from `RuinborneItems`.** This is the
+same step that Grimhollow's section 16.4 gets wrong if it is done backwards, and Ruinborne's version of it is
+sharper, because its corrections mean the live rows and the seed text genuinely differ. The sequencing that
+makes it safe is: deploy normally so every pending correction has been applied, THEN export, so the
+corrections are already in the live rows and the export captures the operator's state including them.
+
+**The REAL columns become scaled integers, and the import reports every value that does not convert exactly.**
+Contracts 13.4 makes integers the determinism rule and this is a real behaviour change rather than a
+representation change, so the scales are chosen once, written down here, and put in section 19's table:
+
+| Source column | Type today | Becomes | Scale | Note |
+|---|---|---|---|---|
+| `item_stat.flat`, `.percent` | `REAL` | `ScaledInt` | 100 | Two decimal places. `0.1` becomes `10`. |
+| `weapon_def.range`, `.half_arc_deg` | `REAL` | `ScaledInt` | 1000 | Three places, which is well under a pixel and under a degree. |
+| `weapon_def.cooldown_seconds` | `REAL` | `ScaledInt` | 1000 | Milliseconds. The seeded `0.45` and `2.0` are exact. |
+| `item_ability_modifier.value` | `REAL` | `ScaledInt` | 100 | Matches `item_stat`, since both feed the same evaluation. |
+| `loot_table_entry.drop_chance` | `REAL` in `[0,1]` | `loot_entry.chance_bp` int | basis points | Times 10,000, the one percent representation in the system (section 3.5). |
+
+Rounding is half away from zero, and the import writes a line per value whose round trip back through the
+scale does not reproduce the source `REAL` bit for bit. Nothing is silently moved. That report is the review
+gate for this step and it is a human one, the same shape as Grimhollow's diff eyeball in section 16.8 step 4.
+
+**What STAYS in PostDeploy.** The owned-item repairs: the duplicate-row collapse at `:523-536` and the
+bag-slot repair at `:538-602`. Those operate on `character_inventory`, which is owned data rather than
+content, and section 3.10's boundary rule applies in the same spirit. The content blocks and every content
+correction leave the script, and the duplicate-row collapse keeps its own open defect,
+[#299](https://github.com/APKiwiOrg/Ruinborne/issues/299), which section 17.1 already names as Scope B's
+precondition.

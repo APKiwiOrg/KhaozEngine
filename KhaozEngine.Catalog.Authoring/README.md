@@ -101,6 +101,43 @@ family carries an ordered `ContentFamilyBlock` list.
 
 A family is never deleted. It is retired like a definition.
 
+## The id allocator
+
+`ContentIdAllocator` issues definition ids and it RESERVES BEFORE IT ISSUES. `ContentIdHighWater` is the
+pair of durable numbers behind that: `ReservedThrough` is the highest id the store has promised not to hand
+out twice, and `IssuedThrough` is the highest id actually stamped onto a row.
+
+`AllocateAsync(type, count)` returns the FIRST id of a contiguous range, so the range is
+`[first, first + count - 1]`. When the live reservation cannot cover the request, the allocator writes a new
+reservation `ReserveBatch` ids ahead and COMMITS THAT WRITE ON ITS OWN before issuing anything from below it.
+The order is the contract and the batch size is not: a crash between the two commits skips up to 1,024 ids
+that were never issued, where the inverted order would hand the next boot an id already on a row.
+
+`AllocateInFamilyAsync(familyId)` issues one id from the family's blocks in ordinal order and reserves a new
+aligned block when every block is full. Reserving a block also ADVANCES the type's issued mark to the new
+block's top, which is what keeps the plain counter from walking under the block and reissuing an id inside
+it. The plain path therefore needs no knowledge of families at all.
+
+A type may declare a `maxDefinitionId` at registration, and both paths refuse to cross it: a range that
+would pass it is refused whole, a reservation stops at it, and a new block whose top would exceed it is
+refused. The refusal is a `ContentAuthoringException` carrying the `id-ceiling-exceeded` reason and naming
+the type, the ceiling and the high-water mark. Retired rows count toward a ceiling, because ids are never
+reused and a retired row keeps the number it occupies.
+
+`IContentIdPersistence` is the durable half the allocator sits on, and every `Commit` member on it commits
+on its own. A backend implements it with its own transactions.
+
+## The in-memory store
+
+`InMemoryContentAuthoringStore` is a TEST AND TOOLING implementation of the whole seam, holding the catalog
+in memory. A production host uses a provider, because nothing in it survives the process. It ships in this
+package rather than in a test project because the draft, allocator, publish and admin-action suites all need
+one and they sit in different assemblies.
+
+It carries the constraints its provider siblings get from a `CHECK`, so a defect surfaces there rather than
+at the first SQL run: a high-water mark never moves backwards, an issued mark never passes a reserved one,
+and a family block is aligned to its own size.
+
 ## Audit and versions
 
 `ContentAuditEntry` is ONE audited field change. An update that changes three fields writes three entries

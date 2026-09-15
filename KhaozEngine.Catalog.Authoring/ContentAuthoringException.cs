@@ -25,6 +25,24 @@ public sealed class ContentAuthoringException : Exception
     /// </summary>
     public const string EditTargetCollisionReason = "edit-target-collision";
 
+    /// <summary>
+    /// An allocation would have crossed a type's declared id CEILING (spec 4.7). A ceiling is a FORMAT
+    /// constraint rather than a preference, and retired rows count toward it because ids are never reused.
+    /// </summary>
+    public const string IdCeilingReason = "id-ceiling-exceeded";
+
+    /// <summary>An allocation named a family the store does not hold.</summary>
+    public const string UnknownFamilyReason = "unknown-family";
+
+    /// <summary>An edit or an allocation named a content type the registry does not carry.</summary>
+    public const string UnknownTypeReason = "unknown-type";
+
+    /// <summary>An edit named a field the type's schema does not declare, refused AT THE BOUNDARY.</summary>
+    public const string UnknownFieldReason = "unknown-field";
+
+    /// <summary>A family declaration was refused: a taken key, or a block size that is not a legal power of two.</summary>
+    public const string FamilyDeclarationReason = "family-declaration";
+
     /// <summary>Creates the exception with no message.</summary>
     public ContentAuthoringException()
     {

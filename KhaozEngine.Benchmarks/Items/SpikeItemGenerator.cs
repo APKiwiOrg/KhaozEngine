@@ -15,7 +15,12 @@ internal readonly record struct GenerationResult(int BaseId, long InstanceId, by
 internal sealed class SpikeItemGenerator
 {
     private const int MaximumAffixes = 8;
-    private const int GroupSlots = 256;
+
+    /// <summary>One slot per (kind, tag position), which is the shape every per roll counter has.</summary>
+    private const int Slots = ModCandidateTables.KindCount * SyntheticContent.MaximumBaseTags;
+
+    /// <summary>Excluded runs held per slot. A placement excludes one run per slot, and its group excludes one more per member.</summary>
+    private const int MaximumExcludedRuns = 64;
 
     private readonly SyntheticContent content;
     private readonly ModCandidateTables tables;
@@ -27,18 +32,22 @@ internal sealed class SpikeItemGenerator
     private readonly int[] affixTier = new int[MaximumAffixes];
     private readonly ushort[] affixPosition = new ushort[MaximumAffixes];
     private readonly int[] nameWords = new int[RareNameTables.Positions];
-    private readonly int[] groupStamp = new int[GroupSlots];
-    private readonly int[] groupCount = new int[GroupSlots];
     private readonly int[] rarityCumulative;
     private readonly byte[] payloadBuffer = new byte[InstancePayload.MaximumPayloadBytes];
     private readonly byte[] affixBody = new byte[MaximumAffixes * 8];
     private readonly byte[] socketBody = new byte[64];
     private readonly byte[] nameBody = new byte[32];
-    private int[] prefixIndex = new int[1_024];
-    private int[] prefixCumulative = new int[1_024];
-    private int[] suffixIndex = new int[1_024];
-    private int[] suffixCumulative = new int[1_024];
-    private int generation;
+    private readonly int[] slotStart = new int[Slots];
+    private readonly int[] slotLength = new int[Slots];
+    private readonly int[] slotLiveWeight = new int[Slots];
+    private readonly int[] slotSuppressStart = new int[Slots];
+    private readonly int[] slotSuppressCount = new int[Slots];
+    private readonly int[] runFirst = new int[Slots * MaximumExcludedRuns];
+    private readonly int[] runLast = new int[Slots * MaximumExcludedRuns];
+    private readonly int[] runWeight = new int[Slots * MaximumExcludedRuns];
+    private readonly int[] runCount = new int[Slots];
+    private readonly int[] liveCount = new int[ModCandidateTables.KindCount];
+    private int tagCount;
 
     internal SpikeItemGenerator(
         SyntheticContent content,
@@ -56,18 +65,21 @@ internal sealed class SpikeItemGenerator
     }
 
     internal int ContentVersion { get; init; } = 7;
+
+    /// <summary>Live candidates the roll drew from, both kinds, which is the pool 9.2 never materialises.</summary>
     internal long LastPoolSize { get; private set; }
 
-    /// <summary>Every candidate the filter pass of step 6 has looked at, which is what budget 5's cost is made of.</summary>
-    internal long CandidateVisits { get; private set; }
+    /// <summary>Dead entries walked by step 7's shift, which is what a pick costs beyond its binary search.</summary>
+    internal long DeadEntriesWalked { get; private set; }
+
+    /// <summary>A pick that could not seat a run because the exclusion list was full. It must stay at zero.</summary>
+    internal long ExclusionOverflows { get; private set; }
 
     internal GenerationResult Generate(in GenerationContext context)
     {
         int baseIndex = context.BaseIndex;
         int band = tables.BandOf(context.ItemLevel);                                   // step 1
-        ModCandidate[] pool = tables.Merge(baseIndex, band);                            // steps 2 and 6's input
-        LastPoolSize = pool.Length;
-        EnsureScratch(pool.Length);
+        OpenPool(baseIndex, band);                                                      // step 6's tables, no merge
 
         int rarityId = context.ForcedRarityId != 0 ? context.ForcedRarityId : RollRarity(baseIndex);   // step 3
         int rarityIndex = rarityId - 1;
@@ -77,80 +89,45 @@ internal sealed class SpikeItemGenerator
         int prefixCap = content.RarityMaxPrefixes[rarityIndex];
         int suffixCap = content.RarityMaxSuffixes[rarityIndex];
 
-        generation++;
         int placed = 0;
         int prefixesPlaced = 0;
         int suffixesPlaced = 0;
         for (int pick = 0; pick < count; pick++)
         {
-            CandidateVisits += pool.Length;
-            int prefixCount = 0;
-            int suffixCount = 0;
-            int prefixTotal = 0;
-            int suffixTotal = 0;
-            for (int index = 0; index < pool.Length; index++)                           // step 6, one pass
-            {
-                ModCandidate candidate = pool[index];
-                int modIndex = candidate.ModId - 1;
-                if (content.ModLegacy[modIndex]) continue;
-                if (IsPlaced(candidate.ModId, placed)) continue;
-                int group = content.ModGroup[modIndex];
-                if (group != 0 && groupStamp[group & (GroupSlots - 1)] == generation && groupCount[group & (GroupSlots - 1)] >= 1) continue;
-                if (content.ModKind[modIndex] == 1)
-                {
-                    prefixTotal += candidate.Weight;
-                    prefixIndex[prefixCount] = index;
-                    prefixCumulative[prefixCount++] = prefixTotal;
-                }
-                else
-                {
-                    suffixTotal += candidate.Weight;
-                    suffixIndex[suffixCount] = index;
-                    suffixCumulative[suffixCount++] = suffixTotal;
-                }
-            }
-
-            bool prefixOpen = prefixesPlaced < prefixCap && prefixCount > 0;
-            bool suffixOpen = suffixesPlaced < suffixCap && suffixCount > 0;
-            int openTotal = (prefixOpen ? prefixCount : 0) + (suffixOpen ? suffixCount : 0);
+            int prefixLive = liveCount[0];
+            int suffixLive = liveCount[1];
+            bool prefixOpen = prefixesPlaced < prefixCap && prefixLive > 0;
+            bool suffixOpen = suffixesPlaced < suffixCap && suffixLive > 0;
+            int openTotal = (prefixOpen ? prefixLive : 0) + (suffixOpen ? suffixLive : 0);
             int kindDraw = random.NextInt(0, Math.Max(openTotal, 1));                   // step 5
-            bool takePrefix = prefixOpen && (!suffixOpen || kindDraw < prefixCount);
+            bool takePrefix = prefixOpen && (!suffixOpen || kindDraw < prefixLive);
+            int kind = takePrefix ? 0 : 1;
+            int liveWeight = 0;
+            for (int tag = 0; tag < tagCount; tag++) liveWeight += slotLiveWeight[(kind * SyntheticContent.MaximumBaseTags) + tag];
 
-            int[] chosenIndex = takePrefix ? prefixIndex : suffixIndex;
-            int[] chosenCumulative = takePrefix ? prefixCumulative : suffixCumulative;
-            int chosenCount = takePrefix ? prefixCount : suffixCount;
-            int chosenTotal = chosenCount == 0 ? 0 : chosenCumulative[chosenCount - 1];
-
-            if (openTotal == 0 || chosenCount == 0 || chosenTotal == 0)
+            if (openTotal == 0 || liveWeight <= 0)
             {
                 _ = random.NextInt(0, 1);                                               // step 8's two discards
                 _ = random.NextRollPosition();
                 continue;
             }
 
-            int weightDraw = random.NextInt(0, chosenTotal);                            // step 7
-            int slot = LowerBound(chosenCumulative, chosenCount, weightDraw);
-            ModCandidate chosen = pool[chosenIndex[slot]];
+            int weightDraw = random.NextInt(0, liveWeight);                             // step 7
+            int entry = Resolve(kind, weightDraw);
+            int modId = entry >> ModCandidateTables.TierBits;
             ushort position = random.NextRollPosition();                                // step 8
 
-            affixMod[placed] = chosen.ModId;
-            affixTier[placed] = chosen.TierOrdinal;
+            affixMod[placed] = modId;
+            affixTier[placed] = entry & ModCandidateTables.TierMask;
             affixPosition[placed] = position;
             placed++;
             if (takePrefix) prefixesPlaced++;
             else suffixesPlaced++;
-            int chosenGroup = content.ModGroup[chosen.ModId - 1];
-            if (chosenGroup != 0)
-            {
-                int groupSlot = chosenGroup & (GroupSlots - 1);
-                if (groupStamp[groupSlot] != generation)
-                {
-                    groupStamp[groupSlot] = generation;
-                    groupCount[groupSlot] = 0;
-                }
 
-                groupCount[groupSlot]++;
-            }
+            Exclude(modId);
+            int group = content.ModGroup[modId - 1];
+            if (group == 0) continue;
+            foreach (int member in tables.GroupMembers(group)) Exclude(member);
         }
 
         SortAffixes(placed);                                                            // step 9
@@ -160,6 +137,181 @@ internal sealed class SpikeItemGenerator
         payloadBuffer.AsSpan(0, payloadLength).CopyTo(payload);
         long instanceId = payloadLength == 0 ? 0 : allocator.Next();                     // step 13
         return new GenerationResult(content.BaseIdOf(baseIndex), instanceId, payload, rarityId, placed);
+    }
+
+    /// <summary>
+    /// Step 2 of 9.4: the base's tag tables for this band, one per (kind, tag position), with the
+    /// precomputed overlap already deducted. Nothing is merged and nothing is copied, so a roll starts
+    /// at a fixed cost in the base's tag count rather than one in the size of its candidate pool.
+    /// </summary>
+    private void OpenPool(int baseIndex, int band)
+    {
+        int signature = content.BaseTagSignature[baseIndex];
+        int tagStart = content.BaseTagStart[baseIndex];
+        tagCount = content.BaseTagCount[baseIndex];
+        long pool = 0;
+        for (int kind = 0; kind < ModCandidateTables.KindCount; kind++)
+        {
+            int live = 0;
+            for (int tag = 0; tag < SyntheticContent.MaximumBaseTags; tag++)
+            {
+                int slot = (kind * SyntheticContent.MaximumBaseTags) + tag;
+                runCount[slot] = 0;
+                if (tag >= tagCount)
+                {
+                    slotLength[slot] = 0;
+                    slotLiveWeight[slot] = 0;
+                    slotSuppressCount[slot] = 0;
+                    continue;
+                }
+
+                int bucket = tables.BucketOf(content.BaseTags[tagStart + tag], kind, band);
+                int header = tables.HeaderOf(signature, kind, band, tag);
+                slotStart[slot] = tables.BucketStartAt(bucket);
+                slotLength[slot] = tables.BucketLengthAt(bucket);
+                slotSuppressStart[slot] = tables.SuppressStartAt(header);
+                slotSuppressCount[slot] = tables.SuppressCountAt(header);
+                slotLiveWeight[slot] = tables.BucketTotalAt(bucket) - tables.SuppressWeightAt(header);
+                live += slotLength[slot] - slotSuppressCount[slot];
+            }
+
+            liveCount[kind] = live;
+            pool += live;
+        }
+
+        LastPoolSize = pool;
+    }
+
+    /// <summary>
+    /// Step 7's draw over a pool with the overlap and the exclusions SUBTRACTED rather than filtered.
+    /// The draw picks a tag position by its live weight, then walks that table's dead entries in index
+    /// order to shift the draw back into the table's own cumulative array before the binary search. The
+    /// landing entry is live by construction: consecutive dead entries share one shifted position, so a
+    /// dead entry is either wholly behind the draw or wholly ahead of it.
+    /// </summary>
+    private int Resolve(int kind, int draw)
+    {
+        int slot = kind * SyntheticContent.MaximumBaseTags;
+        while (draw >= slotLiveWeight[slot])
+        {
+            draw -= slotLiveWeight[slot];
+            slot++;
+        }
+
+        int[] cumulative = tables.EntryCumulative;
+        ushort[] suppressed = tables.SuppressIndex;
+        int start = slotStart[slot];
+        int suppressCursor = slotSuppressStart[slot];
+        int suppressEnd = suppressCursor + slotSuppressCount[slot];
+        int runCursor = slot * MaximumExcludedRuns;
+        int runEnd = runCursor + runCount[slot];
+        int shift = 0;
+        int walked = 0;
+        while (true)
+        {
+            int suppressIndex = suppressCursor < suppressEnd ? suppressed[suppressCursor] : int.MaxValue;
+            int runIndex = runCursor < runEnd ? runFirst[runCursor] : int.MaxValue;
+            if (suppressIndex == int.MaxValue && runIndex == int.MaxValue) break;
+            walked++;
+            if (suppressIndex < runIndex)
+            {
+                int before = suppressIndex == 0 ? 0 : cumulative[start + suppressIndex - 1];
+                if (before - shift > draw) break;
+                shift += cumulative[start + suppressIndex] - before;
+                suppressCursor++;
+                continue;
+            }
+
+            int runBefore = runIndex == 0 ? 0 : cumulative[start + runIndex - 1];
+            if (runBefore - shift > draw) break;
+            shift += runWeight[runCursor];
+            int last = runLast[runCursor];
+            while (suppressCursor < suppressEnd && suppressed[suppressCursor] < last) suppressCursor++;
+            runCursor++;
+        }
+
+        DeadEntriesWalked += walked;
+        return tables.EntryPacked[start + LowerBound(cumulative, start, slotLength[slot], draw + shift)];
+    }
+
+    /// <summary>
+    /// Removes every tier of one mod from every tag table of its kind BEFORE the next draw, which is
+    /// 9.3's filter-before-draw rule. The tiers of a mod are contiguous in a table, because it is sorted
+    /// by the packed (mod id, tier ordinal) key, so one run covers them all, and an entry the overlap
+    /// already suppressed is not deducted twice.
+    /// </summary>
+    private void Exclude(int modId)
+    {
+        int kind = content.ModKind[modId - 1] - 1;
+        int[] packed = tables.EntryPacked;
+        int[] cumulative = tables.EntryCumulative;
+        ushort[] suppressed = tables.SuppressIndex;
+        int target = modId << ModCandidateTables.TierBits;
+        for (int tag = 0; tag < tagCount; tag++)
+        {
+            int slot = (kind * SyntheticContent.MaximumBaseTags) + tag;
+            int length = slotLength[slot];
+            if (length == 0) continue;
+            int start = slotStart[slot];
+            int first = LowerBoundKey(packed, start, length, target);
+            if (first >= length || (packed[start + first] >> ModCandidateTables.TierBits) != modId) continue;
+            int last = first + 1;
+            while (last < length && (packed[start + last] >> ModCandidateTables.TierBits) == modId) last++;
+
+            int runCursor = slot * MaximumExcludedRuns;
+            int runs = runCount[slot];
+            int position = runs;
+            bool seated = false;
+            for (int run = 0; run < runs; run++)
+            {
+                if (runFirst[runCursor + run] == first)
+                {
+                    seated = true;
+                    break;
+                }
+
+                if (runFirst[runCursor + run] > first)
+                {
+                    position = run;
+                    break;
+                }
+            }
+
+            if (seated) continue;
+            if (runs == MaximumExcludedRuns)
+            {
+                ExclusionOverflows++;
+                continue;
+            }
+
+            int weight = cumulative[start + last - 1] - (first == 0 ? 0 : cumulative[start + first - 1]);
+            int suppressStart = slotSuppressStart[slot];
+            int suppressEnd = suppressStart + slotSuppressCount[slot];
+            int suppressedWeight = 0;
+            int suppressedEntries = 0;
+            for (int index = suppressStart; index < suppressEnd; index++)
+            {
+                int entry = suppressed[index];
+                if (entry < first) continue;
+                if (entry >= last) break;
+                suppressedWeight += cumulative[start + entry] - (entry == 0 ? 0 : cumulative[start + entry - 1]);
+                suppressedEntries++;
+            }
+
+            for (int run = runs; run > position; run--)
+            {
+                runFirst[runCursor + run] = runFirst[runCursor + run - 1];
+                runLast[runCursor + run] = runLast[runCursor + run - 1];
+                runWeight[runCursor + run] = runWeight[runCursor + run - 1];
+            }
+
+            runFirst[runCursor + position] = first;
+            runLast[runCursor + position] = last;
+            runWeight[runCursor + position] = weight;
+            runCount[slot] = runs + 1;
+            slotLiveWeight[slot] -= weight - suppressedWeight;
+            liveCount[kind] -= last - first - suppressedEntries;
+        }
     }
 
     private int RollRarity(int baseIndex)
@@ -266,13 +418,6 @@ internal sealed class SpikeItemGenerator
         return written;
     }
 
-    private bool IsPlaced(int modId, int placed)
-    {
-        for (int affix = 0; affix < placed; affix++)
-            if (affixMod[affix] == modId) return true;
-        return false;
-    }
-
     private void SortAffixes(int count)
     {
         for (int outer = 1; outer < count; outer++)
@@ -295,15 +440,7 @@ internal sealed class SpikeItemGenerator
         }
     }
 
-    private void EnsureScratch(int poolLength)
-    {
-        if (prefixIndex.Length >= poolLength) return;
-        prefixIndex = new int[poolLength];
-        prefixCumulative = new int[poolLength];
-        suffixIndex = new int[poolLength];
-        suffixCumulative = new int[poolLength];
-    }
-
+    /// <summary>The first index whose cumulative weight exceeds the draw, which is the weighted pick of 9.3.</summary>
     private static int LowerBound(int[] cumulative, int count, int draw)
     {
         int low = 0;
@@ -312,6 +449,36 @@ internal sealed class SpikeItemGenerator
         {
             int middle = (low + high) / 2;
             if (cumulative[middle] <= draw) low = middle + 1;
+            else high = middle;
+        }
+
+        return low;
+    }
+
+    /// <summary>The same, over one bucket of the flat table.</summary>
+    private static int LowerBound(int[] cumulative, int start, int count, int draw)
+    {
+        int low = 0;
+        int high = count - 1;
+        while (low < high)
+        {
+            int middle = (low + high) / 2;
+            if (cumulative[start + middle] <= draw) low = middle + 1;
+            else high = middle;
+        }
+
+        return low;
+    }
+
+    /// <summary>The first index whose packed key is at or past the target, which finds a mod's run of tiers.</summary>
+    private static int LowerBoundKey(int[] packed, int start, int count, int target)
+    {
+        int low = 0;
+        int high = count;
+        while (low < high)
+        {
+            int middle = (low + high) / 2;
+            if (packed[start + middle] < target) low = middle + 1;
             else high = middle;
         }
 

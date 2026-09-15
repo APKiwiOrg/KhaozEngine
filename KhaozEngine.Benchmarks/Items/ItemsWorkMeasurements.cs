@@ -10,10 +10,8 @@ internal readonly record struct GenerationMeasurement(
     double MeanMicroseconds,
     double AllocatedBytesPerGeneration,
     double MeanPoolSize,
-    double MemoHitRate,
     double MeanAffixCount,
-    double CandidateVisitsPerGeneration,
-    double NanosecondsPerCandidateVisit);
+    double DeadEntriesPerGeneration);
 
 internal readonly record struct StatMeasurement(
     double Nanoseconds,
@@ -49,9 +47,7 @@ internal static class ItemsWorkMeasurements
             _ = generator.Generate(new GenerationContext(hotBases[warmup % hotBases.Length], 40 + (warmup % levelSpan), 0, 0));
 
         var samples = new JournalLatencySamples(seed);
-        long hitsBefore = tables.MemoHits;
-        long missesBefore = tables.MemoMisses;
-        long visitsBefore = generator.CandidateVisits;
+        long deadBefore = generator.DeadEntriesWalked;
         long poolTotal = 0;
         long affixTotal = 0;
         double ticksToMicroseconds = 1_000_000.0 / Stopwatch.Frequency;
@@ -70,25 +66,23 @@ internal static class ItemsWorkMeasurements
 
         long elapsed = Stopwatch.GetTimestamp() - started;
         long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
-        long hits = tables.MemoHits - hitsBefore;
-        long misses = tables.MemoMisses - missesBefore;
-        long visits = generator.CandidateVisits - visitsBefore;
+        long dead = generator.DeadEntriesWalked - deadBefore;
         return new GenerationMeasurement(
             samples.Percentile(0.50),
             samples.Percentile(0.99),
             elapsed * ticksToMicroseconds / count,
             (double)allocated / count,
             (double)poolTotal / count,
-            hits + misses == 0 ? 0 : (double)hits / (hits + misses),
             (double)affixTotal / count,
-            (double)visits / count,
-            visits == 0 ? 0 : elapsed * ticksToMicroseconds * 1_000 / visits);
+            (double)dead / count);
     }
 
-    /// <summary>The same loop over the WHOLE base catalog, so the 9.2 memo's miss cost is visible.</summary>
+    /// <summary>
+    /// The same loop over the WHOLE base catalog at every item level, which is the coldest shape the
+    /// tables can be asked for: every roll lands on a different (tag signature, band) pair.
+    /// </summary>
     internal static GenerationMeasurement MeasureColdGeneration(
         SpikeItemGenerator generator,
-        ModCandidateTables tables,
         SyntheticContent content,
         IRandomSource random,
         int count,
@@ -96,8 +90,7 @@ internal static class ItemsWorkMeasurements
     {
         var samples = new JournalLatencySamples(seed + 1);
         double ticksToMicroseconds = 1_000_000.0 / Stopwatch.Frequency;
-        long hitsBefore = tables.MemoHits;
-        long missesBefore = tables.MemoMisses;
+        long deadBefore = generator.DeadEntriesWalked;
         long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
         long started = Stopwatch.GetTimestamp();
         for (int index = 0; index < count; index++)
@@ -109,18 +102,90 @@ internal static class ItemsWorkMeasurements
 
         long elapsed = Stopwatch.GetTimestamp() - started;
         long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
-        long hits = tables.MemoHits - hitsBefore;
-        long misses = tables.MemoMisses - missesBefore;
+        long dead = generator.DeadEntriesWalked - deadBefore;
         return new GenerationMeasurement(
             samples.Percentile(0.50),
             samples.Percentile(0.99),
             elapsed * ticksToMicroseconds / count,
             (double)allocated / count,
             0,
-            hits + misses == 0 ? 0 : (double)hits / (hits + misses),
             0,
-            0,
-            0);
+            (double)dead / count);
+    }
+
+    /// <summary>
+    /// The revision of 9.2 and 9.4 moved the filter from a per-pick pass to a subtraction, so the
+    /// properties the pass used to enforce are asserted here rather than assumed: no mod twice, no
+    /// exclusivity group twice, no legacy mod, no tier outside its gate, and the per kind caps. It runs
+    /// off the timed path and every count it returns must be zero.
+    /// </summary>
+    internal static int ValidateInvariants(
+        SpikeItemGenerator generator,
+        ModCandidateTables tables,
+        SyntheticContent content,
+        IRandomSource random,
+        int count)
+    {
+        int violations = 0;
+        Span<int> mods = stackalloc int[16];
+        Span<int> groups = stackalloc int[16];
+        Span<PayloadField> fields = stackalloc PayloadField[InstancePayload.MaximumFields];
+        for (int index = 0; index < count; index++)
+        {
+            int baseIndex = random.NextInt(0, content.BaseCount);
+            int itemLevel = random.NextInt(1, 101);
+            GenerationResult result = generator.Generate(new GenerationContext(baseIndex, itemLevel, 0, 0));
+            int band = tables.BandOf(itemLevel);
+            if (!InstancePayload.TryDecode(result.Payload, fields, out int fieldCount, out _))
+            {
+                violations++;
+                continue;
+            }
+
+            int modCount = 0;
+            int groupCount = 0;
+            int prefixes = 0;
+            int suffixes = 0;
+            for (int field = 0; field < fieldCount; field++)
+            {
+                if (fields[field].Kind != InstanceKinds.Affixes) continue;
+                ReadOnlySpan<byte> body = result.Payload.AsSpan(fields[field].BodyStart, fields[field].BodyLength);
+                int affixes = body[0];
+                int offset = 1;
+                for (int affix = 0; affix < affixes; affix++)
+                {
+                    if (!Varint.TryRead(body, ref offset, Varint.MaximumBytes32, out ulong modId, out _)) break;
+                    int tier = body[offset];
+                    offset += 3;
+                    _ = Varint.TryRead(body, ref offset, Varint.MaximumBytes32, out _, out _);
+                    int modIndex = (int)modId - 1;
+                    if (content.ModLegacy[modIndex]) violations++;
+                    int tierSlot = (modIndex * SyntheticContent.TiersPerMod) + tier - 1;
+                    if (content.TierLevelMin[tierSlot] > itemLevel || content.TierLevelMax[tierSlot] < itemLevel) violations++;
+                    if (tables.BandOf(content.TierLevelMin[tierSlot]) > band) violations++;
+                    for (int prior = 0; prior < modCount; prior++)
+                        if (mods[prior] == (int)modId) violations++;
+                    if (modCount < mods.Length) mods[modCount++] = (int)modId;
+                    int group = content.ModGroup[modIndex];
+                    if (group != 0)
+                    {
+                        for (int prior = 0; prior < groupCount; prior++)
+                            if (groups[prior] == group) violations++;
+                        if (groupCount < groups.Length) groups[groupCount++] = group;
+                    }
+
+                    if (content.ModKind[modIndex] == 1) prefixes++;
+                    else suffixes++;
+                }
+            }
+
+            int rarityIndex = result.RarityId - 1;
+            if (prefixes > content.RarityMaxPrefixes[rarityIndex]) violations++;
+            if (suffixes > content.RarityMaxSuffixes[rarityIndex]) violations++;
+            if (result.AffixCount > content.RarityMaxAffixes[rarityIndex]) violations++;
+        }
+
+        return violations + (int)Math.Min(generator.ExclusionOverflows, int.MaxValue);
     }
 
     /// <summary>

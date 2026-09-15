@@ -44,7 +44,7 @@ public static class ItemsBenchmarkRunner
         long tableMemoryAfter = ResidentMemory.Read();
         long tableTotalMemoryAfter = ResidentMemory.ReadTotalMemory();
         long tableResident = Math.Max(0, tableMemoryAfter - tableMemoryBefore);
-        output.WriteLine(string.Create(culture, $"generator tables: {content.TagCount} tags x {tables.BandCount} bands, {tables.TableEntries:N0} entries, built in {tableTimer.Elapsed.TotalMilliseconds:F1} ms"));
+        output.WriteLine(string.Create(culture, $"generator tables: {content.TagCount} tags x {ModCandidateTables.KindCount} kinds x {tables.BandCount} bands, {tables.TableEntries:N0} entries, {tables.SuppressedEntries:N0} suppressed, built in {tableTimer.Elapsed.TotalMilliseconds:F1} ms"));
         output.WriteLine();
 
         var names = new RareNameTables(content);
@@ -53,12 +53,14 @@ public static class ItemsBenchmarkRunner
         var generator = new SpikeItemGenerator(content, tables, names, random, allocator) { ContentVersion = ContentVersion };
 
         CodecMeasurements codec = ItemsCodecMeasurements.Measure(generator, content, random, ContentVersion);
+        int violations = ItemsWorkMeasurements.ValidateInvariants(
+            generator, tables, content, random, config.Quick ? 20_000 : 100_000);
         GenerationMeasurement generation = ItemsWorkMeasurements.MeasureGeneration(
             generator, tables, content, random, config.Generations, config.HotBaseCount, 60, config.Seed);
         GenerationMeasurement warm = ItemsWorkMeasurements.MeasureGeneration(
             generator, tables, content, random, Math.Min(config.Generations, 200_000), 64, 4, config.Seed + 2);
         GenerationMeasurement cold = ItemsWorkMeasurements.MeasureColdGeneration(
-            generator, tables, content, random, Math.Min(config.Generations / 10, 100_000), config.Seed);
+            generator, content, random, Math.Min(config.Generations / 10, 100_000), config.Seed);
         StatMeasurement stat = ItemsWorkMeasurements.MeasureStatEvaluation(content, random);
 
         byte[][] bankPages = BuildBank(generator, content, random, config.BankPagesPerPlayer);
@@ -118,14 +120,12 @@ public static class ItemsBenchmarkRunner
             Budget5ColdP50Microseconds = cold.P50Microseconds,
             Budget5ColdP99Microseconds = cold.P99Microseconds,
             Budget5MeanPoolSize = generation.MeanPoolSize,
-            Budget5MemoHitRate = generation.MemoHitRate,
             Budget5MeanAffixCount = generation.MeanAffixCount,
-            Budget5CandidateVisitsPerGeneration = generation.CandidateVisitsPerGeneration,
-            Budget5NanosecondsPerCandidateVisit = generation.NanosecondsPerCandidateVisit,
+            Budget5DeadEntriesPerGeneration = generation.DeadEntriesPerGeneration,
+            Budget5InvariantViolations = violations,
             Budget5WarmP50Microseconds = warm.P50Microseconds,
             Budget5WarmP99Microseconds = warm.P99Microseconds,
             Budget5WarmAllocatedBytesPerGeneration = warm.AllocatedBytesPerGeneration,
-            Budget5WarmMemoHitRate = warm.MemoHitRate,
             Budget6Nanoseconds = stat.Nanoseconds,
             Budget6CachedNanoseconds = stat.CachedNanoseconds,
             Budget6AllocatedBytes = stat.AllocatedBytes,
@@ -140,6 +140,9 @@ public static class ItemsBenchmarkRunner
             Budget9TableBuildMilliseconds = tableTimer.Elapsed.TotalMilliseconds,
             Budget9TableResidentBytes = tableResident,
             Budget9TableTotalMemoryDeltaBytes = tableTotalMemoryAfter - tableTotalMemoryBefore,
+            Budget9TableSelfReportedBytes = tables.ResidentBytes,
+            Budget9SuppressedEntries = tables.SuppressedEntries,
+            Budget9ConsistencyFailures = tables.ConsistencyFailures,
             Budget10LoadMilliseconds = load.Milliseconds,
             Budget10LoadAllocatedBytes = load.AllocatedBytes,
             Budget10RuleCount = noOpRules.Count,

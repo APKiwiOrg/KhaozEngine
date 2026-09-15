@@ -81,7 +81,7 @@ JSON config loader plus a schema validator, 143 lines across two files (contract
 
 | Package | Umbrella | Depends on | Ships |
 |---|---|---|---|
-| `KhaozEngine.Catalog` | `Foundation` | Pure .NET | The registry, the codecs, the hashes, the pack format, the validator, the pack store seam, the read-side runtime. |
+| `KhaozEngine.Catalog` | `Foundation` | `KhaozEngine.Primitives` | The registry, the codecs, the hashes, the pack format, the validator, the pack store seam, the read-side runtime, the loot roller. |
 | `KhaozEngine.Catalog.Authoring` | `Server` | `KhaozEngine.Catalog` | The authoring store contract, drafts, change sets, audit, publish, diff, bulk import and export. No SQL. |
 | `KhaozEngine.Catalog.Sqlite` | none, opt-in sibling | `Catalog.Authoring`, `KhaozEngine.Sqlite`, `Microsoft.Data.Sqlite` | The SQLite authoring provider. |
 | `KhaozEngine.Catalog.SqlServer` | none, opt-in sibling | `Catalog.Authoring`, `Microsoft.Data.SqlClient` | The SQL Server authoring provider. |
@@ -105,10 +105,15 @@ bundled in an umbrella, stated twice in the README (lines 101 and 104) and follo
 `Commerce`. `Foundation` cannot reference `Server`-side packages, which is why the handshake gate is its own
 small package rather than a type inside `KhaozEngine.Catalog`.
 
-**`KhaozEngine.Catalog` is Pure .NET and that is load bearing.** A game CLIENT needs the read side and must
-never pull a database dependency, so the client half of a pack has to decode with no authoring type in the
-graph (contracts 3.2, rationale). It uses `System.IO.Compression` and `System.Security.Cryptography`, both in
-box, and no third-party package at all. In particular it does NOT take `JsonSchema.Net`, which is contained to
+**`KhaozEngine.Catalog` takes no third-party dependency and that is load bearing.** A game CLIENT needs the
+read side and must never pull a database dependency, so the client half of a pack has to decode with no
+authoring type in the graph (contracts 3.2, rationale). It uses `System.IO.Compression` and
+`System.Security.Cryptography`, both in box, and no third-party package at all. Its one engine dependency is
+`KhaozEngine.Primitives`, which is where contracts 3.2 and 14.1 put the `IRandomSource` seam and its two
+implementations, beside the `DeterministicRng` that `SeededRandomSource` wraps. That edge is what lets the
+loot roller of 3.5 take a random source without `Catalog` depending on Scope B, which depends on `Catalog`
+and would close a cycle. `Primitives` is the bottom of the render and runtime stack and is already in every
+game's graph, so the dependency costs a consumer nothing. In particular it does NOT take `JsonSchema.Net`, which is contained to
 `KhaozEngine.Content` by an architecture test (`KhaozEngine.Tests/ArchitectureTests.cs:121`).
 
 ### 2.2 `KhaozEngine.Catalog` public types
@@ -124,7 +129,8 @@ box, and no third-party package at all. In particular it does NOT take `JsonSche
 | `IContentValidator` | One type's own checks, run after the engine's, contracts 4.4. |
 | `ContentTypeRegistry` | Registration, the freeze at first pack load, and lookup by type id or type key. |
 | `ContentRow` | The generic row a codec-free consumer sees: id, key, parent id, an ordered field-value list. |
-| `ContentSnapshot` | A complete candidate or loaded version: every type's rows plus the version header. |
+| `IContentSnapshot` | The narrow READ side every consumer outside this package compiles against, below. |
+| `ContentSnapshot` | A complete candidate or loaded version: every type's rows plus the version header. Implements `IContentSnapshot`. |
 | `ContentValidationReport` | `(bool IsValid, IReadOnlyList<ContentFinding> Findings)`, accumulating, contracts 10.4. |
 | `ContentFinding` | `(ContentTypeId Type, int Id, string Code, string Message)`. |
 | `ContentValidator` | The one pure validator of section 5. |
@@ -143,6 +149,30 @@ box, and no third-party package at all. In particular it does NOT take `JsonSche
 | `ContentVersionIdentity` | `(int Number, string ManifestHash)`, the pair that travels together, contracts 7.1. |
 | `ContentStringCatalog` | The layered `IStringCatalog` of contracts 12.4, content first then the game's resx. |
 | `ContentVarint` | The LEB128 and zig-zag primitives of contracts 15, shared with Scope B. |
+
+**`IContentSnapshot` is the read side everything outside this package is written against**, and it exists so
+Scope B and a game compile against an INTERFACE rather than against whichever concrete holder is live. Both
+`ContentSnapshot` (a candidate, or a version loaded but not yet active) and `ContentRuntime` (the active one)
+implement it, which is what lets the validator, a test and the running server all be handed the same shape:
+
+```csharp
+public interface IContentSnapshot
+{
+    int VersionNumber { get; }                                  // contracts 7.1, the pack's number
+    ContentVersionIdentity Identity { get; }                     // the number and its manifest hash
+    bool TryGetRow(ContentTypeId type, int id, out ContentRow row);
+    bool TryGetId(ContentTypeId type, ContentKey key, out int id);
+    IReadOnlyList<ContentRow> Rows(ContentTypeId type);          // ordered by id, the whole type
+    IReadOnlyList<RemapRule> Rules { get; }                      // the full ordered set, contracts 8.1
+    bool IsRetired(ContentTypeId type, int id);                  // 3.9, the retired bit without a row walk
+}
+```
+
+Seven members and no more. It carries no authoring concept, no chunk, no hash beyond the identity pair, and
+no mutation, so a client holds one with the pure read graph of 2.1. `TryGetRow` is the generic path and
+`ItemRow` (below) is the typed one over the same storage. **It ships in milestone 1.1**, with the registry
+and the codecs, ahead of everything that consumes it, because Scope B's phase 1 is designed behind it and the
+two phase 1s are meant to land in either order.
 
 ### 2.3 `KhaozEngine.Catalog.Authoring` public types
 
@@ -173,7 +203,10 @@ box, and no third-party package at all. In particular it does NOT take `JsonSche
 ### 2.5 Dependency edges
 
 ```
-KhaozEngine.Catalog            (Foundation, pure .NET, no third-party)
+KhaozEngine.Primitives         (Foundation, already in every graph, owns IRandomSource)
+        ^
+        |
+KhaozEngine.Catalog            (Foundation, no third-party)
         |                \
         |                 +--> KhaozEngine.Catalog.Netcode --> KhaozEngine.Netcode
         v
@@ -188,8 +221,26 @@ KhaozEngine.Sqlite      Microsoft.Data.SqlClient
 
 Scope B's `KhaozEngine.ItemInstances` depends on `KhaozEngine.Catalog` and `KhaozEngine.Items` (contracts 3.2)
 and nothing here depends on it. The edge is one way, which is what lets Scope A ship and be adopted before
-Scope B exists. The one shared type is `ContentVarint`, which Scope B's payload codec uses, so the varint
-definition of contracts 15 has exactly one implementation in the tree.
+Scope B exists. `KhaozEngine.Catalog` depends DOWNWARD on `KhaozEngine.Primitives`, which sits below both, so
+the one-way edge survives the loot roller needing a random source.
+
+**The shared surface is not one type, and pretending it was hid the coupling.** Scope B compiles against all
+of this, and each member is named where this spec defines it:
+
+| Shared surface | Where Scope B reads it | Defined in |
+|---|---|---|
+| `IContentSnapshot` | `ContainerLoad`, the stat evaluator's constructor | 2.2, shipped in milestone 1.1 |
+| Per-type id-to-row lookup and `ContentRow` | Every definition read | 2.2, 9.1 |
+| `ItemRow` | The four hot `item` fields, per operation | 2.2, 9.1 |
+| The content version number | The page stamp and the connect door | 2.2 `ContentVersionIdentity` |
+| `RemapRule`, `RemapRuleKind`, `RemapRuleSet` | The instance remap pass | 2.2, section 7.7 |
+| Key lookup, key to id per type | Authoring and boot resolution | 9.4 |
+| `stat` rows and tag ids | The stat fold and every tag scope | 3.2, 3.4 |
+| `ContentVarint` | The payload codec | 2.2 |
+| `IRandomSource` | Generation, via `KhaozEngine.Primitives` | contracts 14.1 |
+
+`ContentVarint` is still the one type whose BYTES both specs write, so the varint definition of contracts 15
+has exactly one implementation in the tree. It is not the whole seam.
 
 **No cycle, checked mechanically.** `KhaozEngine.Catalog` never references `Catalog.Authoring`, which is what
 keeps the client graph free of the authoring types. A new architecture test in
@@ -205,11 +256,17 @@ including `Render3D` and `Physics.Bepu` (`a-engine.md:1593-1600`, discovered-wor
 
 | Suite | Project | References |
 |---|---|---|
-| Registry, codecs, hashes, pack format, validator, runtime, remap rules, golden files, decoder fuzzing | **`KhaozEngine.Catalog.Tests`** (new) | `KhaozEngine.Catalog` only. |
+| Registry, codecs, hashes, pack format, validator, runtime, remap rules, loot roller, golden files, decoder fuzzing | **`KhaozEngine.Catalog.Tests`** (new) | `KhaozEngine.Catalog` only, which brings `KhaozEngine.Primitives` transitively. |
 | Draft, change set, publish pipeline, diff, id allocator, bundle import and export, all against an in-memory store | `KhaozEngine.Catalog.Tests` | plus `KhaozEngine.Catalog.Authoring`. |
 | Provider conformance: `ContentAuthoringStoreConformance` abstract class, `SqliteContentAuthoringStoreTests` and `SqlServerContentAuthoringStoreTests` subclasses | `KhaozEngine.Server.Tests/Catalog/` | The existing home of every Commerce and WorldStore provider test (`a-engine.md:781-788`). |
 | The connect-door layer and its refusal tokens | `KhaozEngine.TileWorld.Netcode.Tests` | Where the existing gate tests are. |
 | Scale runs at 50,000 and 1,000,000 definitions | `KhaozEngine.Benchmarks` plus a structural test in `KhaozEngine.Server.Tests` | The journal's shape (`a-engine.md:1322-1349`). |
+
+**The fuzzer's seeded random needs no extra reference.** `SeededRandomSource` ships in
+`KhaozEngine.Primitives` (contracts 14.1), which `KhaozEngine.Catalog` already references, so 15.2's seeding
+and the loot roller's own tests both compile against the single `KhaozEngine.Catalog` reference above. Adding
+a second reference for it would be the over-broad reference AGENTS.md warns about, for a type that is already
+in the graph.
 
 The new `KhaozEngine.Catalog.Tests` csproj sets `<IsPackable>false</IsPackable>` and pins
 `<RootNamespace>KhaozEngine.Tests</RootNamespace>`, per AGENTS.md, so its declared namespaces are
@@ -495,6 +552,7 @@ Registration is contracts 4.2's call, once, at process start, before any pack lo
 
 ```csharp
 registry.RegisterContentType(
+    band: ContentRegistrationBand.Game,
     typeId: 1024,
     typeKey: "store",
     codec: new GrimhollowStoreCodec(),
@@ -502,7 +560,9 @@ registry.RegisterContentType(
     schema: GrimhollowStoreSchema.Create(),
     defaultVisibility: ContentVisibility.ServerOnly,
     chunkSlots: 256,
-    maxRowBytes: ContentPackFormat.DefaultMaxRowBytes);
+    maxRowBytes: ContentPackFormat.DefaultMaxRowBytes,
+    maxDefinitionId: null,
+    loadIndex: null);
 ```
 
 `maxRowBytes` is optional and defaults to `ContentPackFormat.DefaultMaxRowBytes`. It may not exceed
@@ -528,6 +588,29 @@ engine's own. A game
 MAY NOT register into the engine or Scope B ranges, replace an engine type's codec, weaken an engine
 validator, change a type's id or key after the first publish, or register the same type id twice (contracts
 4.4).
+
+**`band` is the mechanism behind that MAY NOT, and prose was not one.** Contracts 4.4 states the three-way
+split and this spec restated it, but registration threw only for a codec and schema mismatch or a duplicate
+id, so a game registering type 300 would have succeeded and collided with Scope B at the next engine release,
+silently until the collision. `ContentRegistrationBand` is `Engine`, `Instances` or `Game`, the caller names
+its own band, and registration throws `ContentRegistrationException` when the type id falls outside it:
+
+| Band | Type ids | Who passes it |
+|---|---|---|
+| `Engine` | 1 to 255 | This spec's own registrations only (3.1). |
+| `Instances` | 256 to 1023 | Scope B's registrations only. |
+| `Game` | 1024 to 65,535 | Every consumer. |
+
+This is the shape `ReplicationRegistry.FirstExtensionTypeId` already uses for components, which is the
+precedent contracts 4.3 cites for the split in the first place, so the engine now enforces the rule in the
+same place for content types as it does for components. It costs one comparison at process start and it
+converts a silent collision two releases away into a throw on the line that caused it. The band is NOT a
+capability: it does not let an `Engine` caller do anything a `Game` caller cannot, it only says which ids the
+caller is entitled to. A game that wants an engine type's behaviour still adds a validator rather than
+claiming a band.
+
+Scope B's `InstancePropertyRegistry` takes the same argument for property KINDS, which is its spec's to
+specify and is the identical failure one layer down.
 
 **The codec is checked against the schema at registration** (contracts 4.7). `IContentRowCodec` exposes
 `IReadOnlyList<string> WrittenFields { get; }`, registration compares that set against the schema's field
@@ -1166,17 +1249,37 @@ Contracts 10.4 fixes the shape and this spec fills it in:
 ```csharp
 public static ContentValidationReport Validate(
     ContentSnapshot candidate,
+    ContentSnapshot? previous,
     IReadOnlyList<RemapRule> rules,
     ContentTypeRegistry registry);
 ```
 
-- INPUT is a complete candidate snapshot plus the full ordered rule set. Nothing is read from a database, a
-  file or an ambient static inside it.
+- INPUT is a complete candidate snapshot, the PREVIOUS published snapshot or null, and the full ordered rule
+  set. Nothing is read from a database, a file or an ambient static inside it.
 - OUTPUT is `(bool IsValid, IReadOnlyList<ContentFinding> Findings)`, accumulating rather than stopping at the
   first, following `JsonSchemaValidator.ValidationReport` and its run-to-the-end sweep
   (`KhaozEngine.Content/JsonSchemaValidator.cs:11-101`, `a-engine.md:275-292`).
 - NO SIDE EFFECTS. It does not log, does not mutate the candidate, does not touch a counter and does not throw
   for content reasons. A throw from it is a bug in the validator.
+
+**`previous` is the second argument and it is still a pure function.** Three required checks are statements
+about a CHANGE rather than about a snapshot, and a change needs two snapshots: a key moving on a published row
+(`KEC0003`), a type id or type key moving after its first publish (`KEC0029`), and Scope B's rule that tier
+ordinals within one mod are unique and UNCHANGED since the previous published version. None of them can be
+evaluated from a candidate alone. Handing the previous snapshot in as an argument is what keeps the function
+pure: the alternative, reading the previous version from the store inside the validator, is what contracts
+10.4 exists to forbid, and it would make the three callers stop sharing one function.
+
+**Those checks are PUBLISH ONLY, and that is a property of the input rather than a mode flag.** `previous` is
+null at boot, because a loaded pack is not a change to anything and the version it replaces is gone. It is
+null in a test, unless the test is specifically exercising a change. It is populated at publish, from the
+version the draft is based on. Every check that needs it is written to be SKIPPED when it is null, and the
+report says so: a validation run with `previous` null carries a `KEC0000` informational finding naming the
+checks that did not run, so a clean report from a boot is never mistaken for a clean report from a publish.
+`KEC0000` is the one code that does not set `IsValid` to false, which is stated here and in 5.2 because a
+finding that is not a failure is the kind of exception a reader has to be told about twice.
+Section 5.3 marks the publish-only checks in the sweep, and 5.4 states which of the three callers passes
+what.
 
 Because it is pure and takes its whole world as an argument, a test builds a snapshot in memory and asserts on
 findings, publish runs it before writing anything, and boot runs it against the loaded pack. Ruinborne's
@@ -1193,11 +1296,19 @@ decode reasons. Codes are never reused and never renumbered, which is why a code
 withdrawn rather than recycled.
 
 **Thirty-nine codes are issued, across the number range `KEC0001` to `KEC0040`.** `KEC0013` is withdrawn and
-carries no check, and `KEC0032` to `KEC0035` are four codes sharing one row below. Section 15.7 builds one
-test per issued code.
+carries no check, and `KEC0032` to `KEC0035` are four codes sharing one row below. `KEC0000` is not a finding
+about content and is listed first and separately. Section 15.7 builds one test per issued code.
+
+**The number range is banded, and the bands are as durable as the codes.** `KEC0001` to `KEC0099` are the
+engine's own, of which 1 to 40 are issued and 41 to 99 are free for this spec's successors. `KEC0100` to
+`KEC0199` are RESERVED for Scope B, so an affix rule and a family block rule are told apart by an operator
+reading a code rather than by reading a message. `KEC0200` and above are unallocated and no game takes one: a
+game validator's findings come back as `KEC0040` prefixed with the game's type key, which is section 5.3's
+rule and does not change.
 
 | Code | Check | Contract |
 |---|---|---|
+| `KEC0000` | INFORMATIONAL, never a failure. `previous` was null, so the publish-only checks did not run. The message names them. | 10.4, 5.1 here |
 | `KEC0001` | A key is not well formed: not `a-z0-9_`, leading digit, leading or trailing underscore, double underscore, over 64 characters. | 5.3 |
 | `KEC0002` | A key is not unique within its type. | 5.3 |
 | `KEC0003` | A key changed on a row that is already published. | 5.3 |
@@ -1260,6 +1371,11 @@ The sweep runs in five passes over the candidate, in this order, and never stops
    size cap and the chunk size cap. `KEC0014`, `KEC0022`, `KEC0026`, `KEC0027`, `KEC0038`.
 5. **Remap rules.** The full ordered set. `KEC0015` to `KEC0019`.
 
+**Three checks in that list are PUBLISH ONLY.** `KEC0003` (a key changed on a published row) and `KEC0029` (a
+type id, type key or `chunk_slots` changed after its first publish) are both in pass 1, and both compare the
+candidate against `previous`. When `previous` is null they are skipped and `KEC0000` names them. Every other
+check in passes 1 to 5 runs on every call, so a boot still sweeps everything a boot can meaningfully sweep.
+
 `KEC0039` is in no pass. It is emitted by `RollbackToAsync` while it builds the draft (section 6.13), before
 the validator runs at all, and it carries a finding code because the rollback action returns findings the same
 way a publish does.
@@ -1273,7 +1389,16 @@ Pass 3 needs pass 1 to have built the live-row index, and pass 5 needs pass 1 to
 Nothing else is ordered, and the passes are single threaded because the candidate at 1,000,000 rows is a few
 hundred megabytes and the whole sweep is a linear walk (section 14, budget P5).
 
-Game validators (contracts 4.4, an ADDITIONAL constraint never a relaxation) run LAST, after pass 5, one per
+**Pass 6 is Scope B's, and it is INSIDE the sweep rather than in the game slot.** Scope B's types are engine
+code in the engine's own 256 to 1023 band, so their checks are the engine's checks: they run after pass 5 and
+BEFORE any game validator, they emit `KEC0100` to `KEC0199` directly, and a throw from one is a bug in the
+engine rather than something to swallow. Putting them in the game slot would have done two wrong things at
+once. An operator reading `KEC0040` could not tell an engine affix rule from a game rule, and the per-type
+catch below, which exists because game validators are untrusted code, would have quietly turned a broken
+engine validator into a finding. Pass 6 is skipped entirely when no Scope B type is registered, which is
+every boot of a game that does not use instances. Its cost is inside P8 and 14.1 derives it.
+
+Game validators (contracts 4.4, an ADDITIONAL constraint never a relaxation) run LAST, after pass 6, one per
 registered type, each handed only its own type's rows plus a read-only lookup into the rest of the candidate.
 Their findings come back as `KEC0040` with the game's message. A game validator that throws is caught and
 reported as `KEC0040` with the exception message, so one bad game validator cannot take the publish down with
@@ -1282,18 +1407,24 @@ a stack trace instead of a finding.
 ### 5.4 The three callers
 
 **Publish** (section 6.4) runs it on the candidate BEFORE any id is stamped into a durable row and before any
-byte is written. `IsValid == false` aborts the publish, nothing is written, the draft is untouched, and the
-findings come back to the console as HTTP 400 with the full list.
+byte is written, and it is the ONE caller that passes a non-null `previous`: the snapshot of the version the
+draft is based on, which the publish already holds because step 2 built the candidate from it. `IsValid ==
+false` aborts the publish, nothing is written, the draft is untouched, and the findings come back to the
+console as HTTP 400 with the full list. A publish of the FIRST version ever passes null, because there is no
+previous, and takes the `KEC0000` informational finding like any other null run.
 
-**Boot** (section 9.5) runs it on the snapshot decoded from the loaded pack. A pack that fails validation at
+**Boot** (section 9.5) runs it on the snapshot decoded from the loaded pack, with `previous` null. A pack that fails validation at
 boot fails the boot CLOSED, non-zero exit, findings on stderr (contracts 10.5). This is not redundant with the
 publish run: the pack may have been written by an older engine build, may have been corrupted in transit, or
 may have been produced by a publish whose validator had a bug now fixed. Running it again costs one linear
 sweep at process start and is the last gate before a server serves content.
 
 **Tests** build a `ContentSnapshot` in memory with no store, no file and no registry beyond the one they
-construct, and assert on the exact finding codes. That is the property that makes the validator testable at
-all, and it is why the signature takes the registry as an argument rather than reading an ambient one.
+construct, and assert on the exact finding codes. `previous` is null for almost all of them, and a test for
+one of the three publish-only checks builds a SECOND in-memory snapshot and passes it, which costs the test
+four more lines and no infrastructure at all. That is the property that makes the validator testable at all,
+and it is why the signature takes the registry and the previous snapshot as arguments rather than reading an
+ambient one or a store.
 
 ### 5.5 What the validator deliberately does NOT check
 
@@ -1392,6 +1523,11 @@ Section 5, on the candidate built at step 2 plus the rule set as it will stand a
 publish's rules. Validating the rules BEFORE they are durable is the point: `KEC0015` refusing a
 non-idempotent rule set is the check that makes contracts 8.3's crash safety hold, and a rule that got into
 the table could not be taken back out.
+
+**`previous` is the base version's snapshot and this step is the only place it is non-null.** Step 2 built the
+candidate by applying the draft's edits to the version the draft is based on, so the previous snapshot is
+already materialized and passing it costs nothing. It is what gives `KEC0003`, `KEC0029` and Scope B's
+tier-ordinal check an input (section 5.1). The very first publish into an empty database passes null.
 
 An invalid candidate aborts. The draft is NOT discarded and the console gets every finding, so an operator
 fixes three problems in one round trip rather than three.
@@ -2441,8 +2577,8 @@ reason tokens.
 
 ### 9.4 Derived indexes, built once at load
 
-Four are built at load and none is built lazily, because each is walked inside gameplay and a lazy build
-inside a tick is a latency spike:
+Four are built by the ENGINE at load and none is built lazily, because each is walked inside gameplay and a
+lazy build inside a tick is a latency spike:
 
 | Index | Shape | Who reads it |
 |---|---|---|
@@ -2453,7 +2589,39 @@ inside a tick is a latency spike:
 
 The prefix-summed weight array is the one that matters for the tick: a weighted draw over `n` entries becomes
 `NextInt(0, total)` plus a binary search, with no allocation and no per-roll summation. The random source is
-`IRandomSource` handed in by constructor (contracts 14.4), never an ambient static and never a default.
+`IRandomSource` handed in by constructor (contracts 14.4, `KhaozEngine.Primitives`), never an ambient static
+and never a default.
+
+**Those four are the engine's, and they are not the only indexes a boot builds.** Scope B derives mod
+candidate tables at load, on the order of 25 MB and low hundreds of milliseconds, and a game with a large
+custom type will want the same. With no hook they would be built lazily inside the first roll, which is the
+latency spike this whole section exists to refuse, or by a second pass in the host that nobody specified and
+that runs after the validator. So a type registers an index BESIDE its codec:
+
+```csharp
+public interface IContentLoadIndex
+{
+    ContentTypeId Type { get; }                 // the type whose rows it is derived from
+    void Build(IContentSnapshot snapshot);      // called once, at boot step 7b
+}
+```
+
+Registered through `RegisterContentType(..., loadIndex: ...)`, one per type at most, held by the runtime and
+handed back through a typed accessor the registering code owns. The rules that make it safe are the ones the
+engine's own four already follow:
+
+- **It runs at step 7b, AFTER the engine's four and BEFORE the validator.** After the four, because an index
+  over rows will want the key lookup and the tag lists. Before the validator, because a type whose index
+  cannot be built has content the validator should be given the chance to explain, and because a boot that
+  builds indexes after validating would have the validator pass and the boot fail afterwards.
+- **In type id order**, so the order is deterministic and an index over engine rows is built before one over
+  Scope B rows. An index MAY read another type's rows through the snapshot. It may NOT read another index,
+  which would make the order load bearing in a way a registration list cannot express.
+- **It throws to fail the boot closed**, with the exit path of 9.6, rather than returning a partial index.
+- **It is built once and is immutable after**, like everything else in the runtime, and it is rebuilt wholesale
+  beside the old one when a version changes, which is the same `Volatile.Write` swap as 9.7.
+
+**Its cost is not inside P3.** Section 14 says so on P3's own row and P11 is the composed number.
 
 ### 9.5 Boot order
 
@@ -2464,7 +2632,8 @@ The prefix-summed weight array is the one that matters for the tick: a weighted 
 4. Refuse if manifest.formatGeneration > ContentPackFormat.Generation.
 5. Refuse if localServerBuild < manifest.minimumServerBuild.
 6. Fetch and verify every chunk the manifest names. Freeze the registry.
-7. Decode into ContentRuntime. Build the derived indexes.
+7. Decode into ContentRuntime. Build the four engine derived indexes.
+7b. Build every registered IContentLoadIndex, in type id order.   (section 9.4)
 8. Run the validator on the decoded snapshot plus the rule set.   (section 5.4)
 9. Publish the runtime: Volatile.Write of the new instance into the single field.
 10. Load the world document.
@@ -2501,6 +2670,7 @@ A missing or invalid active content version FAILS THE BOOT. There is no runtime 
 | 6, the manifest names an unregistered type | 3 | `content: version <v> names type <id> which this build does not register.` |
 | 6, a registered type is absent from the manifest | 3 | `content: type <key> (<id>) is registered and absent from version <v>.` |
 | 7, a chunk decode failure | 3 | `content: chunk <hash> <reason token>.` |
+| 7b, a registered load index threw | 3 | `content: load index for type <key> (<id>) failed: <message>.` |
 | 8, validator findings | 3 | one line per finding, `content: <code> <type>/<id> <message>`, then `content: <n> findings, refusing to serve.` |
 | 11, unresolved world key | 3 | `content: world <source> references <typeKey>.<contentKey> which is not live in version <v>.` |
 
@@ -2989,6 +3159,23 @@ A durable container page stamps the version NUMBER, never the hash (contracts 7.
 a remap rule applies to any page whose stamp is OLDER than the rule's version and a digest has no order.
 That is Scope B's field to carry and this spec only supplies the number.
 
+**`ContentPackFormat.Generation` is bumped by ANY engine change to a pack-carried format, and a new remap rule
+KIND is one.** The constant lives in this package and this spec owns it, which makes it this spec's job to say
+what moves it rather than leaving each change to judge itself:
+
+- A row codec for an ENGINE type gains a field an older reader cannot skip. Bump.
+- The `KECC`, `KECM`, `KECT` or `KECR` layout changes in a way an older reader misreads. Bump.
+- A new `RemapRuleKind` is defined, by this spec or by Scope B. **Bump**, and this is the case that is easy to
+  get wrong. A rule is carried in the pack, it must fail closed rather than be skipped (contracts 8.5), and the
+  generation is the only thing that makes an older server refuse the pack at boot step 4 instead of ignoring a
+  rule it does not understand and serving items it has not migrated.
+- A durable format that is NOT in the pack does not move it. Scope B's container page version and its
+  quarantine wrapper version are its own numbers, on its own rows, and carry their own forward compatibility.
+
+So the rule in one line: if an older server reading this pack would be WRONG rather than merely older, the
+generation moves. Scope B does not own the constant and does not bump it on its own initiative, it asks for
+the bump in the same change that defines the rule kind, which is the same shape as a contracts amendment.
+
 ### 12.2 What a rollback does to ids
 
 **Every id introduced since the target version KEEPS its id and its values** (#882 body item 8). A rollback
@@ -3186,6 +3373,16 @@ spike #882 item 12 requires. Every target is justified by arithmetic rather than
 | P8 | Validator sweep at 1,000,000 | Under 20 s | `ContentValidator.Validate` timed over a synthetic snapshot | TBD (stage 5) |
 | P9 | Weighted loot draw | Under 100 ns, zero allocation | a loop over a 200-entry table through the prefix-summed array (9.4) | TBD (stage 5) |
 | P10 | Text chunk decode, one language at 50,000 | Under 250 ms, under 32 MB resident | decode timed, `GC.GetTotalMemory(true)` after | TBD (stage 5) |
+| P11 | **Total cold boot to accepting connections** | Under 1.5 s wall clock, under 80 MB of managed heap, at 50,000 definitions with Scope B's types registered | `KhaozEngine.Benchmarks --catalog --compose`, timed from process start to the listener opening, `GC.GetTotalMemory(true)` after | TBD (stage 5) |
+
+**P3 EXCLUDES the per-type load indexes, and P11 is the number an operator actually restarts against.** P3 is
+scoped to boot steps 3 to 8, which is the engine's own work: decompress, decode, validate and build the four
+derived indexes of 9.4. It does NOT include the text decode of P10, and since 9.5 step 7b it does not include
+any index a Scope B or game type registers through `IContentLoadIndex` either. Those are real seconds on a
+real restart, so a spec that only ever published P3 would be telling an operator 400 ms for a boot that takes
+three times that. P11 is the composed row and it is measured in the SAME harness rather than added up on
+paper, because the three terms share a heap and a file cache and summing them on paper gets both numbers
+wrong in opposite directions.
 
 ### 14.1 Where the numbers come from
 
@@ -3282,6 +3479,16 @@ comparisons per row is a few tens of milliseconds, and the reference pass does a
 Twenty seconds is roughly ten times the arithmetic, which is the right margin for a publish-time check that
 runs once.
 
+**P8 also carries the `KEC0100` band, and one of its checks is not linear.** Scope B's validators run inside
+this sweep (5.3), so their cost is inside this budget, and six of the seven are linear passes over types
+whose row counts are in the tens of thousands rather than the millions, which is noise against the figures
+above. The seventh is not: its affix-availability check is a cross product over rarities, mod positions and
+tags, which at Scope B's own declared ceilings is 255 rarities by 2 positions by 200 tags, so 102,000 cells,
+each resolving a candidate list that the same pass has already built once. That is a fraction of a second at
+the sizes either spec permits, and it is bounded by the ceilings rather than by the definition count, which
+is why P8 does not move for it. It is written down here because a cross product hidden inside a budget
+derived from linear passes is exactly the term that surprises someone at ten times the scale.
+
 **P9 and P10** are Scope B adjacent but belong here because the arrays they read are built by this spec. P9's
 prefix-summed binary search over 200 entries is 8 comparisons. P10 is the 8.7 MB language chunk computed
 above, decoded into a frozen dictionary of 100,800 entries, and it is dominated by the dictionary build. Its
@@ -3291,13 +3498,31 @@ own slot, so 100,800 entries are roughly 25 MB. The budget is set at 32 MB rathe
 measured value is what decides whether the frozen dictionary should hold one UTF-8 blob with offsets the way
 section 9.2 does for keys, and a budget that leaves no room says nothing when it is missed by a megabyte.
 
+**P11, the composed cold boot.** The terms are P3 at 400 ms and 20 MB, P10 at 250 ms and 32 MB for one
+language, and the registered per-type indexes of step 7b, of which Scope B's generator tables are the only
+one anybody has sized: 500 ms and 40 MB at 2,000 mods. Added on paper that is 1.15 s and 92 MB, and both
+numbers are wrong. The time is pessimistic, because the three passes share a warm file cache and a warm JIT
+and step 7b runs after the rows are already decoded and resident. The heap is pessimistic in the other
+direction only if a game registers more indexes, which it may. So P11 is set at 1.5 s and 80 MB and MEASURED
+in one process rather than summed, and a miss is diagnosed by attributing it to a term rather than by
+arguing about the addition. Three facts make the number matter rather than being a curiosity: v1 applies a
+version at a restart (contracts 1.3 item 8), every player reconnects at once when it does (8.6), and the
+door refuses until the runtime is live (9.6). P11 is the length of that window.
+
 ### 14.2 The benchmark it runs in
 
 `KhaozEngine.Benchmarks` gets a `--catalog` mode following the journal's shape exactly
 (`a-engine.md:1322-1349`): a `CatalogBenchmarkConfig` with a static `Parse(args)`, a
 `CatalogBenchmarkRunner.RunAsync(config, ct)`, a `CatalogBenchmarkResult` with `ToJson()`, a
 `CatalogBenchmarkOutput.WriteAsync(result, path)` for `--output`, and a checked-in JSON baseline under
-`Baselines/`. New flags are `--definitions`, `--types`, `--chunk-slots`, `--languages` and `--edit-count`.
+`Baselines/`. New flags are `--definitions`, `--types`, `--chunk-slots`, `--languages`, `--edit-count` and
+`--compose`.
+
+`--compose` is P11's flag. It boots once with every registered type's load index built, times from process
+start to the listener opening, and reports the composed figure ALONGSIDE its attribution, so the JSON carries
+`p3Ms`, `p10Ms`, a per-index `loadIndexMs` map and the total. A consumer runs it with its own types
+registered, which is the only way the number means anything: the engine alone cannot know what a game builds
+at step 7b.
 
 The benchmark is `IsPackable=false`, is not on the engine version line, and CI's `dotnet test` never invokes
 its timing loop. Its STRUCTURAL behaviour is tested in CI, as a `CatalogBenchmarkTests` class in
@@ -4088,9 +4313,9 @@ each with its own gate, so it is not one undivided landing:
 
 | Milestone | Ships | Gate |
 |---|---|---|
-| 1.1 | `KhaozEngine.Catalog`: registry, field schema, codecs, varint, hashes, the four pack formats, remap rules, `FileSystemPackStore`, `ContentPackReader` | The golden files of 15.1, the decoder fuzzing of 15.2, the cross-version round trips of 15.3 |
+| 1.1 | `KhaozEngine.Catalog`: registry, field schema, codecs, varint, hashes, the four pack formats, remap rules, `FileSystemPackStore`, `ContentPackReader`, plus `IContentSnapshot` and `ItemRow` (2.2) | The golden files of 15.1, the decoder fuzzing of 15.2, the cross-version round trips of 15.3 |
 | 1.2 | `Catalog.Authoring`, `Catalog.Sqlite`, `Catalog.SqlServer`: temporal rows, draft, change set, field audit, id allocator, publish | The provider conformance suite of 15.5 on both backends, the crash-safety cases of 15.6 |
-| 1.3 | `ContentRuntime`, the boot sequence, fail-closed exit 3, the derived indexes, the `--catalog` benchmark mode | The eleven boot facts of 15.7, plus P3 and P7 measured at 50,000 |
+| 1.3 | `ContentRuntime`, the boot sequence, fail-closed exit 3, the derived indexes, `IContentLoadIndex` and boot step 7b, `LootRoller`, the `--catalog` benchmark mode | The eleven boot facts of 15.7, plus P3, P7, P9 and P11 measured at 50,000 |
 | 1.4 | The sixteen actions, the bundle, the empty-database rule, operator identity, and the admin-result change of section 10.1: `AdminActionStatus.Conflict`, an object-carrying error payload on `AdminActionResult`, and the matching arm in `AdminHttpServer.DispatchActionAsync` | The action tests, including one asserting a real 409 body with `expectedBaseVersion`, plus P5 and P6 measured |
 | 1.5 | `Catalog.Netcode`, `HttpPackStore`, `CachingPackStore`, the client fetch loop, `ContentStringCatalog` | The door tests of 15.7, plus P4 and P10 measured |
 

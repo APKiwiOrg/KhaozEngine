@@ -792,7 +792,8 @@ Following `TileWorldHash` in every particular (`KhaozEngine.TileWorld/TileWorldH
 - Collections SORTED before digesting, by type id then by chunk index.
 
 The canonical manifest text is, in order: the sub-domain plus scheme version, the version number, the
-minimum server build, the minimum client build, then for each content type sorted by type id, the type id,
+format generation, the minimum server build, the minimum client build, then for each content type sorted by
+type id, the type id,
 the type key, the chunk count, and for each chunk in index order the chunk index and its chunk hash.
 
 The CHUNK HASH is plain SHA-256 of the chunk's uncompressed canonical bytes, lower hex, under sub-domain
@@ -805,9 +806,29 @@ own hash and is never equal to the server manifest's.
 
 ### 7.4 Minimum builds
 
-The manifest carries `MinimumServerBuild` and `MinimumClientBuild`, each an `int`. A build number here is
-the engine content SCHEME generation, not a version string and not a game version: it increments when a
-content type's row codec gains a field an older reader cannot skip.
+Two different questions live here, and they are answered by two different numbers with two different owners.
+
+**`MinimumServerBuild` and `MinimumClientBuild` are CONSUMER-SUPPLIED build ordinals**, each an `int` and
+each monotonic. The GAME decides what its build number means and bumps it on any release that changes art,
+protocol or codec. The engine never interprets the number beyond comparing it, which is what lets one field
+carry both of the statements a publisher needs to make:
+
+- "This item needs art that ships in client build N." A new item whose model and art already ship needs no
+  client release (#882 body, item 7), and this is how a publisher states the case where it does not.
+- "This codec needs reader build N." A game type whose row codec gained a field an older reader cannot skip
+  is the same statement about code rather than art.
+
+Collapsing those two into one ordinal is deliberate. A game already has exactly one number that orders its
+releases, and asking it for a second art-only one would be asking it to track which release each asset
+landed in, which no consumer does today.
+
+**`FormatGeneration` is the ENGINE's own `int`, and the engine reader checks it itself.** It sits beside the
+two minimums in the manifest and is incremented ONLY when an engine-owned row codec or the pack format
+gains a field an older reader cannot skip. It is not a game's to set and not a game's to bump, which is why
+it cannot be folded into the consumer ordinals: a game that changed nothing of its own would otherwise have
+no way to say that the engine underneath it did.
+
+The refusal behaviours are unchanged by the split:
 
 - A server whose build is BELOW `MinimumServerBuild` refuses to load the version and fails the boot
   closed, per the owner's fail-closed rule (#882 body, item 8). It does not fall back to an older version,
@@ -815,9 +836,11 @@ content type's row codec gains a field an older reader cannot skip.
   fleet ends up serving two different catalogs.
 - A client whose build is BELOW `MinimumClientBuild` is refused at the connect door with a distinct
   refusal token, so the client can tell the player to update rather than showing a generic mismatch.
-- A reader ABOVE either minimum is always fine. Forward compatibility within a build generation comes from
-  the tagged encoding in section 9, and the minimum build is the explicit statement that the tagged escape
-  hatch was not enough this time.
+- A reader whose supported `FormatGeneration` is below the manifest's refuses on the same side and in the
+  same way, the server at boot and the client at the door, with no consumer involvement at all.
+- A reader ABOVE either minimum is always fine. Forward compatibility within a generation comes from the
+  tagged encoding in section 9, and a minimum build or a format generation is the explicit statement that
+  the tagged escape hatch was not enough this time.
 
 ### 7.5 The connect door layer
 
@@ -997,7 +1020,8 @@ server-only information by construction, because a rule is (id, id, kind) and ne
 **Expensive to change once data exists: yes, because** the rule list is the only record of how an old page
 becomes a current one. A change to the rule encoding or the apply order restates the history of every
 durable page in the world. The `Kind` byte is the extension point: a new kind is additive and old readers
-that meet it must fail closed rather than skip it, which is what `MinimumClientBuild` is for.
+that meet it must fail closed rather than skip it, which is what the engine's `FormatGeneration` (7.4) is
+for.
 
 **Open question for the owner.** Whether a retired definition's placeholder items should be automatically
 converted to a currency refund at some later version. Recommended default: no, and leave it to a

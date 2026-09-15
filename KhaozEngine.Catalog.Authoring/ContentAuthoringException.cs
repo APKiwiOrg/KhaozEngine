@@ -103,8 +103,9 @@ public sealed class ContentAuthoringException : Exception
     public const string PackUnreadableReason = "pack-unreadable";
 
     /// <summary>
-    /// The store was built with no pack store, so it can hold a draft and allocate ids and cannot publish.
-    /// Publishing writes files before it writes rows, so the pack target is not optional for it.
+    /// There is no usable pack target: either the store was built with none, or the one it was handed writes
+    /// no version pointer and a published version could therefore never be enumerated out of it. Publishing
+    /// writes files before it writes rows, so the target is not optional and neither half of it is.
     /// </summary>
     public const string NoPackStoreReason = "no-pack-store";
 

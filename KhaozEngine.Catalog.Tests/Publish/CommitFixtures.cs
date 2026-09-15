@@ -78,6 +78,44 @@ internal sealed class CountingPackStore(FileSystemPackStore inner)
 }
 
 /// <summary>
+/// A pack store that writes pointers and cannot PRUNE, which is a legitimate provider rather than a defect:
+/// deleting from a store is only safe where the provider says so, so a read-mostly target simply has no
+/// sweep. The publish still commits and the sweep says why it did nothing.
+/// </summary>
+internal sealed class PrunelessPackStore(FileSystemPackStore inner) : IPackStore, IPackVersionPointerStore
+{
+    /// <inheritdoc />
+    public Task<bool> ExistsAsync(string hash, CancellationToken cancellationToken = default)
+        => inner.ExistsAsync(hash, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<ReadOnlyMemory<byte>?> GetAsync(string hash, CancellationToken cancellationToken = default)
+        => inner.GetAsync(hash, cancellationToken);
+
+    /// <inheritdoc />
+    public Task PutAsync(string hash, ReadOnlyMemory<byte> bytes, CancellationToken cancellationToken = default)
+        => inner.PutAsync(hash, bytes, cancellationToken);
+
+    /// <inheritdoc />
+    public IAsyncEnumerable<string> ListAsync(int versionNumber, CancellationToken cancellationToken = default)
+        => inner.ListAsync(versionNumber, cancellationToken);
+
+    /// <inheritdoc />
+    public Task PutVersionPointerAsync(
+        int versionNumber,
+        string serverManifestHash,
+        string clientManifestHash,
+        CancellationToken cancellationToken = default)
+        => inner.PutVersionPointerAsync(versionNumber, serverManifestHash, clientManifestHash, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<PackVersionPointer?> GetVersionPointerAsync(
+        int versionNumber,
+        CancellationToken cancellationToken = default)
+        => inner.GetVersionPointerAsync(versionNumber, cancellationToken);
+}
+
+/// <summary>
 /// A pack store with no pointer half at all, which is what the publish commit refuses at construction: a
 /// store a published version could never be enumerated out of is not a publish target, and saying so before
 /// any file is written beats saying it after.

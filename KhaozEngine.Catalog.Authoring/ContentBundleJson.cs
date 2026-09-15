@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Text;
 using System.Text.Json;
 
@@ -48,7 +49,7 @@ public static class ContentBundleJson
     {
         ArgumentNullException.ThrowIfNull(bundle);
 
-        var buffer = new System.IO.MemoryStream();
+        using var buffer = new MemoryStream();
         using (var writer = new Utf8JsonWriter(buffer, WriterOptions))
         {
             writer.WriteStartObject();

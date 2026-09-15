@@ -383,6 +383,30 @@ public class PublishCommitTests
     }
 
     [Fact]
+    public async Task ASweepAgainstAStoreThatCannotPruneSaysSoRatherThanReportingSuccess()
+    {
+        using var root = new TemporaryRoot();
+        ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing);
+        var pack = new FileSystemPackStore(root.Path);
+        var pruneless = new PrunelessPackStore(pack);
+        InMemoryContentAuthoringStore store = PublishFixtures.Store(registry, pruneless);
+        ContentPublishCommit commit = PublishFixtures.Commit(store, pruneless, registry);
+
+        await PublishFixtures.ApplyAsync(
+            store,
+            ContentEdit.Add(Thing, new ContentKey("one"), PublishFixtures.Fields(1)));
+        ContentPublishResult published = await commit.PublishAsync(PublishFixtures.Request(0));
+
+        // Deleting nothing and deleting everything are one keystroke apart, so an operator reading a publish
+        // response is told which happened.
+        Assert.Equal(1, published.VersionNumber);
+        ContentPackSweepResult? sweep = commit.LastSweep;
+        Assert.NotNull(sweep);
+        Assert.False(sweep.Ran);
+        Assert.Equal(ContentPackSweep.SkippedNoPruning, sweep.SkipReason);
+    }
+
+    [Fact]
     public async Task ThePublishRefusesAPackStoreWithNoPointerHalfBeforeAnyFileIsWritten()
     {
         using var root = new TemporaryRoot();

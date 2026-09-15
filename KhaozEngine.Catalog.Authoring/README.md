@@ -131,8 +131,8 @@ on its own. A backend implements it with its own transactions.
 
 `ContentPublisher` is publish, in order, with each step delegating to its named type. **Steps 1 to 8 write
 nothing durable.** They freeze the draft, build the candidate, allocate ids, validate, compute the temporal
-rows, select the affected chunks, encode and hash them, and build both manifests. Writing the files, the one
-commit transaction and the sweep after it are steps 9 to 11 and land separately.
+rows, select the affected chunks, encode and hash them, and build both manifests. `ContentPublishCommit` is
+steps 9 to 11, the half that writes.
 
 ```csharp
 var publisher = new ContentPublisher(store, idPersistence, registry);
@@ -228,6 +228,95 @@ client re-reads one small manifest and downloads nothing.
 `ContentPublishStep` is the point a publish can be interrupted at, and `ContentPublisher.OnStep` is the hook
 a crash test throws from. Every value is declared and the steps after the manifest belong to the commit.
 
+### Steps nine to eleven, the files first and then one transaction
+
+`ContentPublishCommit` runs a whole publish: the pipeline for steps 1 to 8, then the three that write.
+
+```csharp
+var commit = new ContentPublishCommit(store, packStore, publisher);
+ContentPublishResult published = await commit.PublishAsync(
+    new ContentPublishRequest("admin-endpoint", "oid:8f2c", "autumn price pass", expectedBaseVersion: 12));
+```
+
+**The ordering is the whole crash-safety property.** Step 9 writes every chunk file, the remap rule chunk,
+both manifest files and the version pointer to the pack store BEFORE the database transaction, at
+content-addressed names nothing references yet, so a crash there leaves inert bytes and the old version. A
+hash the store already holds is checked for with `ExistsAsync` and not rewritten, which is what makes a
+republish of an unchanged chunk free. The pointer goes last of the four, so a crash part way through leaves a
+version whose pointer is absent, which reads as a listing failure and skips the next sweep rather than
+authorising it to delete on a partial view.
+
+The version POINTER at `versions/<n>` is the one object in a store not named by its own hash, and it is how a
+content-addressed store answers what a version contains once the authoring database is out of reach.
+`IPackVersionPointerStore` is its seam, separate from the read side's `IPackStore` for the same reason pruning
+is: a read-only provider cannot be a half-working publish target, and that is a compile-time fact rather than
+a runtime throw. `PackVersionPointers.Resolve` finds the half, and a store with none is refused at the top of
+the publish rather than after the chunk files are already written.
+
+Step 10 is `IContentAuthoringStore.CommitPublishAsync`, ONE transaction and the only member that moves the
+active pointer. In order inside it: confirm the version number, insert the version row, apply every temporal
+row change, append every remap rule at the sequence above the highest, insert every chunk row one per side
+including the carried-forward ones, insert every audit row, delete the draft, then move the active pointer
+LAST. A reader that sees the new active version sees every row, rule, chunk and audit entry of it, because
+they committed together.
+
+**It CONFIRMS the version number rather than trusting it.** The plan digested its number into both manifest
+hashes at step 8, so the transaction re-reads the highest published number and refuses with the
+`base-version-moved` reason when the plan's is not the next one. A provider that leases a connection per call
+holds no lock across steps 1 to 10, and this is the check that catches a base that moved underneath such a
+plan. The same statement is made about the rule list, which has to be the plan's own prefix.
+
+Step 11 is `ContentPackSweep`, the orphan sweep, which runs only after a SUCCESSFUL commit. **The keep set is
+the union, over every version the store knows, of that version's pointer, the two manifest hashes it holds and
+every hash named inside either manifest**, which is exactly `IPackStore.ListAsync(v)`. It is defined against
+the MANIFESTS and not against the chunk table, because the rule chunk sits at a reserved address outside any
+type's id space and the text chunks are per language, so neither has a chunk row to hang on while both are
+named by both manifests. A keep set read from the chunk table would delete them at the first publish and every
+later boot would fail closed on an absent chunk, for every version, forever.
+
+The sweep is SKIPPED when the store listing fails for any reason, and a pointer that is absent or unreadable
+for any version IS a listing failure. It is skipped again when the store implements no pruning half.
+`ContentPackSweepResult` carries the reason either way, because deleting nothing and deleting everything are
+one keystroke apart and an operator reading a publish response deserves to know which happened.
+
+## Rollback
+
+`RollbackToAsync(targetVersion)` BUILDS A DRAFT rather than publishing one, so an operator reviews the diff
+and publishes it. For every row live at both versions whose field set differs it emits an `Update` restoring
+the target's values. For every row introduced AFTER the target it does nothing at all: the row keeps its id
+and its values, which is the difference between a rollback and a restore.
+
+**The version number keeps climbing throughout.** A rollback is never a return to an old number, which is the
+same property that lets a durable page's version stamp be an ordering comparison.
+
+**A row live at the target and RETIRED since is a flat refusal**, `KEC0039`, naming the row and the rule that
+retired it. There is no un-retire branch and there never was a reachable one: every retire appends exactly one
+`Retired` rule, so a branch conditioned on no rule naming that id could not run. The way out is an ordinary
+`Add` under a NEW key carrying the old values, because a key is immutable once published, and the retired row
+keeps its id and its bytes forever so a stored stack still decodes.
+
+`ContentRollback.Prepare` is the plan behind it and `ContentRollbackPlan` is what a console renders: the
+edits, the blockers with the rule that produced each one, and one `KEC0039` finding per blocker.
+
+## The diff
+
+`ContentDiff.Between` is the field-level diff, computed over the per-field ROWS and never by comparing chunk
+hashes. Two versions whose chunk hashes differ tell an operator that something changed somewhere in a slot
+range of 256 ids, which is not an answer, and two versions whose hashes agree can still differ in the
+server-only half of a field set.
+
+Each `ContentDiffEntry` carries what happened to the definition and every field that differs, rendered as TEXT
+through the field's kind. The rendering is the AUDIT's own, so an operator reading a diff and an operator
+reading the audit row the publish wrote see the same string for the same value. `Removed` is the one operation
+a publish can never produce, because a definition that leaves play is retired and its row stays in the pack
+forever, and it appears only when the diff is asked the question backwards with an earlier version as the
+destination.
+
+`ContentDiff.ChunkSummary` is the download an edit would cost: per type, how many chunks the change touches
+against how many the destination holds. That is the operator-facing half of the one-item-edit budget, read
+before the publish rather than after it. A destination version number of null means the draft-applied
+candidate, which is a row set with no number yet because it has not been published.
+
 ## The in-memory store
 
 `InMemoryContentAuthoringStore` is a TEST AND TOOLING implementation of the whole seam, holding the catalog
@@ -238,6 +327,13 @@ one and they sit in different assemblies.
 It carries the constraints its provider siblings get from a `CHECK`, so a defect surfaces there rather than
 at the first SQL run: a high-water mark never moves backwards, an issued mark never passes a reserved one,
 and a family block is aligned to its own size.
+
+It PUBLISHES when it is handed an `IPackStore`, which is the second constructor argument and is optional: a
+store built without one holds a draft and allocates ids and refuses to publish, because a publish writes files
+before it writes rows. With one it answers the whole seam, `LoadSnapshotAsync` included, and that member reads
+the version's pack back through `ContentPackReader` rather than rebuilding a snapshot from the row table,
+deliberately, because what a server loads is the PACK and a store answering from its own rows could report a
+version whose bytes are unreadable as healthy.
 
 ## Audit and versions
 
@@ -273,6 +369,20 @@ with, and a rule applies to a stamp strictly older than its own version, so a pa
 database whose newest version is 1 is newer than every rule there is. When the version line must be
 preserved, the path is an ordinary database restore of the authoring store, which is the provider's own
 tooling and outside this engine.
+
+`ContentBundleJson` is the document, written and read there and nowhere else. Every property is written
+explicitly in a FIXED ORDER through a writer rather than a reflected serializer, because a bundle lands in a
+repository beside the code it seeds and two exports of one version have to be the same bytes. Numbers are
+written as numbers and bytes as lower hex, because a bundle is read and edited by hand as often as it is
+generated. Reading is total for shape: a document this build cannot read is a refusal naming what was wrong,
+never a half-built bundle.
+
+An import runs through the ORDINARY publish and there is no second mechanism. It restores the families and
+their blocks verbatim, restamps the bundle's rules as the new line's, turns every row into an `Add` edit and
+publishes the draft as version 1. `ContentEdit.Import` is the only factory that may name a definition id, and
+it is also the only one that may say a row is ALREADY retired, because a bundle carries its retired rows and
+already carries the rule that retired them. A refusal at any point resets the store to the empty state it was
+required to start from, so nothing is left half seeded.
 
 ## Rules this package will not bend
 

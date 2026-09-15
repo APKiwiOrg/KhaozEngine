@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace KhaozEngine.Catalog;
 
 /// <summary>
@@ -10,3 +12,20 @@ namespace KhaozEngine.Catalog;
 /// <param name="Code">The stable <c>KEC</c> token.</param>
 /// <param name="Message">The human-readable detail, naming the values that failed.</param>
 public sealed record ContentFinding(ContentTypeId Type, int Id, string Code, string Message);
+
+/// <summary>
+/// What one validation run produced (spec 5.1): whether the candidate may be published or loaded, and
+/// every finding the sweep accumulated, in the order the five passes emitted them.
+/// <para>
+/// The sweep ACCUMULATES rather than stopping at the first defect, following
+/// <c>JsonSchemaValidator.ValidationReport</c> and its run-to-the-end shape, so a bulk import reports every
+/// bad row in one pass instead of the earliest.
+/// </para>
+/// <para>
+/// <see cref="IsValid"/> is false when the report carries ANY finding except <c>KEC0000</c>, which is
+/// informational and says only that the publish-only checks did not run.
+/// </para>
+/// </summary>
+/// <param name="IsValid">True when nothing but <c>KEC0000</c> was found.</param>
+/// <param name="Findings">Every finding, in sweep order.</param>
+public sealed record ContentValidationReport(bool IsValid, IReadOnlyList<ContentFinding> Findings);

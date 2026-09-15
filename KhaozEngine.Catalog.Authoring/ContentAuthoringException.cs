@@ -43,6 +43,34 @@ public sealed class ContentAuthoringException : Exception
     /// <summary>A family declaration was refused: a taken key, or a block size that is not a legal power of two.</summary>
     public const string FamilyDeclarationReason = "family-declaration";
 
+    /// <summary>
+    /// A publish expected a base version the store no longer stands at (spec 6.2). Two consoles cannot both
+    /// publish the same draft: the second one's expectation is stale and it is refused with both numbers
+    /// named, which turns a race into an error message.
+    /// </summary>
+    public const string BaseVersionMovedReason = "base-version-moved";
+
+    /// <summary>
+    /// A publish found no open draft with pending edits. A version is a set of changes, so an empty one
+    /// would be a number with no content behind it.
+    /// </summary>
+    public const string NoOpenDraftReason = "no-open-draft";
+
+    /// <summary>
+    /// An update, a retire or a fork named a row the base version carries no live revision of. It is a
+    /// refusal rather than a finding, because a candidate cannot be built for an edit with no target.
+    /// </summary>
+    public const string UnknownRowReason = "unknown-row";
+
+    /// <summary>
+    /// A fork named a flag field its type's schema does not declare as a <c>Bool</c>. The field is the
+    /// caller's, and the engine checks only that it exists and is the right kind.
+    /// </summary>
+    public const string ForkFlagFieldReason = "fork-flag-field";
+
+    /// <summary>A draft edit carried an operation outside the four of spec 3.7.</summary>
+    public const string UnknownEditOperationReason = "unknown-edit-operation";
+
     /// <summary>Creates the exception with no message.</summary>
     public ContentAuthoringException()
     {

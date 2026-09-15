@@ -1267,3 +1267,33 @@ Only one new client-to-server message is needed and it carries no bytes about an
 take request already names the drop by net id and its durable source id
 (`b-grimhollow.md:975-990`). That is 15.3's invariant in practice: **no client-to-server message in this
 design carries an instance payload, and every one of them names an item by id.**
+
+The full vocabulary, so an implementer can count the work. Kinds are the game's to assign, because
+`TileProtocol` reserves the `ushort` kind space to the game and the engine only caps the frame
+(`TileProtocol.Frames.cs:65`).
+
+| Direction | Message | Payload | New |
+|---|---|---|---|
+| server to client | page chunk | `TileFragmentedMessage` header plus a slice of an encoded page | YES |
+| server to client | page delta | the 7.5 delta, one frame | YES |
+| server to client | owner remainder | the owner-only fields of one item, targeted at one viewer | YES |
+| server to client | ground item component | the sibling component inside the ordinary snapshot | YES |
+| client to server | page resync request | `[ContainerId: byte][PageIndex: byte]`, two bytes | YES |
+| client to server | take a drop | unchanged, names the drop by net id and source id | no |
+| client to server | move, deposit, withdraw, craft | unchanged shape, names slots and an operation id | no |
+
+**The page resync request is the only new client-to-server message and it carries two bytes.** It is
+what rule 3 of 7.5 leans on: a client that cannot apply a delta asks for the page rather than guessing,
+and a client that receives a `JournalCorrection`'s section key list asks for each named page. The server
+rate limits it at one page per client per tick, which bounds the worst case a malicious client can ask
+for at one page of fragments per tick, the same shape the snapshot already costs.
+
+**A ground item's payload is capped independently of the frame.** The sibling component rides inside a
+snapshot, and a snapshot frame is subject to the same 1,024 byte cap, so a cell holding several deep
+items could in principle overflow one. The engine's answer is the one it already uses: the ground item
+cap is a game budget rather than an engine one, and `TileWorldServer`'s cell occupancy limit
+(`SpawnGroundItem` answers 0 on a full cell, `TileWorldServer.GroundItems.cs:62-98`) is where a game
+tunes it. What this document adds is the arithmetic: at the 69 byte public view of a rare (3.8), a
+snapshot carrying twenty ground rares in one interest set spends 1,380 bytes and overflows. Section 13
+row 11 carries it as a failure mode with a detection, and open question 6 asks the owner whether the
+engine should cap ground payload bytes per cell rather than leaving it to the game.

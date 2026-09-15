@@ -1454,3 +1454,316 @@ skip (contracts 8.5, 7.4).
 because a reader validating a chunk it just downloaded should not need the registry to decide the file is
 malformed. The reader CHECKS them against the registry (`slotBase == chunkIndex * slotCount` and `slotCount`
 matching the type's registration) and refuses a mismatch with `chunk-range-mismatch`.
+
+### 7.3 The chunk body, and the canonical bytes the hash is taken over
+
+The body is a row table followed by the rows. Both are inside the compressed region.
+
+```
+offset  width  field
+------  -----  ---------------------------------------------------------------
+  0      ..    row table: rowCount entries, each
+                 [definitionId : varint uint32]   strictly ascending
+                 [flags        : byte]            bit 0 retired, bits 1-7 reserved 0
+                 [rowLength    : varint uint32]   bytes of this row's body
+  ..     ..    row bodies, in the SAME ORDER as the table, concatenated
+```
+
+Rows are STRICTLY ASCENDING by definition id and a row id appearing twice is a refusal with
+`chunk-row-duplicate`. Disorder is `chunk-row-order`. Both mirror `ItemContainerCodec`, whose entries are
+strictly ascending by slot and whose `Validate` rejects disorder
+(`KhaozEngine.Items/ItemContainerCodec.cs:96`, `a-engine.md:103-124`).
+
+A row's OFFSET is not stored. It is the running sum of the preceding `rowLength` values, which a reader
+computes in one pass over the table. Storing an absolute offset per row would cost four bytes per row to save
+an addition and would give a second representation of the same fact that could disagree with the first. The
+table is walked once at load and the result is an `int[]` of offsets held beside the decompressed body, so a
+lookup by id is a binary search over the ascending id array and then a slice.
+
+`flags` bit 0 is the retired bit of section 3.9. A reader answers `IsRetired(id)` from the table with no row
+decode at all. Bits 1 to 7 are written 0 and a non-zero value is `chunk-row-flags`, the same fail-closed rule
+as the header's `reserved`.
+
+**The canonical bytes the chunk hash is taken over are the UNCOMPRESSED bytes of the whole logical chunk**,
+which is the 36 byte header with `compression` forced to 0 and `storedBytes` forced equal to
+`uncompressedBytes`, followed by the uncompressed body. Written out, so there is no ambiguity:
+
+```
+canonical = header(36 bytes, with compression = 0 and storedBytes = uncompressedBytes)
+          || uncompressedBody
+
+chunkHash = lowerHex(SHA256( utf8("kec/chunk/" + Inv(HashSchemeVersion) + "\n") || canonical ))
+```
+
+The domain string is prepended as UTF-8 text and the canonical bytes follow raw. That is the one place this
+spec mixes text and binary in a digest, and it is deliberate: `TileWorldHash` digests a text canonicalisation
+(`TileWorldHash.cs:19-20`) because its input is authored JSON, while a chunk's input is already canonical
+bytes and re-rendering them as text would double the digest cost for nothing. The domain prefix keeps
+contracts 15's separation rule, and the scheme version is inside the prefix so a canonicalisation change
+invalidates every digest exactly as intended.
+
+Forcing `compression` and `storedBytes` to their uncompressed values in the canonical form is what makes the
+hash independent of the compressor (section 6.7). A reader that verifies a downloaded chunk decompresses
+first, rebuilds the canonical header, and hashes. That costs one header rewrite of 36 bytes per verification.
+
+### 7.4 The manifest file, `KECM`
+
+```
+offset  width  field
+------  -----  ---------------------------------------------------------------
+  0      4     magic, ASCII 'K','E','C','M'  = 4B 45 43 4D
+  4      2     formatVersion       uint16 LE
+  6      1     side                byte          0 = client, 1 = server
+  7      1     reserved            byte          written 0
+  8      4     versionNumber       uint32 LE
+ 12      4     formatGeneration    uint32 LE
+ 16      4     minimumServerBuild  uint32 LE
+ 20      4     minimumClientBuild  uint32 LE
+ 24     32     remapRuleChunkHash  raw bytes
+ 56      ..    typeCount           varint uint32
+ ..      ..    per type, ASCENDING BY TYPE ID:
+                 [typeId      : uint16 LE]
+                 [typeKeyLen  : byte]           1..64
+                 [typeKey     : UTF-8 bytes]
+                 [chunkSlots  : uint32 LE]
+                 [visibility  : byte]
+                 [chunkCount  : varint uint32]
+                 per chunk, ASCENDING BY INDEX:
+                   [chunkIndex : varint uint32]
+                   [chunkHash  : 32 raw bytes]
+ ..      ..    languageCount       varint uint32
+ ..      ..    per language, ASCENDING ORDINAL BY TAG:
+                 [tagLen     : byte]            1..35, a BCP-47 tag
+                 [tag        : UTF-8 bytes]
+                 [textHash   : 32 raw bytes]
+```
+
+Hashes are RAW 32 BYTES in the file and LOWER HEX only where a hash appears as text, which is contracts 15's
+rule and which halves the manifest. A manifest for 1,000,000 item definitions at 4,096 slots is 245 chunks of
+about 36 bytes each for one type, so a five-type manifest is a few tens of kilobytes even at the stress figure
+(section 14, budget P1).
+
+`side` is in the file AND in the hash sub-domain, so a client manifest and a server manifest of one version
+can never be confused for each other in either direction. A reader handed the wrong side refuses with
+`manifest-wrong-side`.
+
+**The manifest carries `chunkSlots` per type.** A reader therefore validates a chunk's declared range against
+the manifest rather than against its own registry, which matters for a client that loaded a pack produced by a
+server whose registry it cannot see. A `chunkSlots` disagreeing with the local registration is
+`manifest-chunk-slots` and is a refusal, because it means the two sides disagree about what a chunk index
+means.
+
+### 7.5 The compressor, weighed
+
+Every candidate is in box in .NET through `System.IO.Compression`, so this is a cost and ratio question only.
+The measurement to beat is the pack size and cold start budgets of section 14.
+
+| Criterion | Brotli | Deflate | None |
+|---|---|---|---|
+| Ratio on small highly repetitive binary rows | 9 | 7 | 1 |
+| Compress time at publish, 245 chunks | 6 | 9 | 10 |
+| Decompress time at boot and at client cold start | 8 | 9 | 10 |
+| In box, no package reference | 10 | 10 | 10 |
+| Deterministic output for a fixed input and level | 9 | 9 | 10 |
+| Streaming and span friendly, no intermediate copy | 8 | 8 | 10 |
+| Client cold start over a slow link (bytes dominate) | 10 | 7 | 1 |
+| Total | 60 | 59 | 52 |
+
+Recommendation: **Brotli at quality 5, window 22**, with the format carrying a `compression` byte so the
+choice is per chunk and reversible. Brotli and Deflate score within one point, which is exactly why the
+`compression` byte exists rather than a hard-coded algorithm, and the deciding row is the last one: a client
+cold start is bytes over a link the engine does not control, and Brotli's advantage on small structured binary
+is real.
+
+Quality 5 rather than 11 because publish time is a budget (section 14, P5) and quality 11 costs roughly an
+order of magnitude more CPU for a few percent of ratio on inputs this small. Window 22 because a chunk is at
+most 16 MiB and a larger window buys nothing.
+
+**A chunk whose compressed body is not SMALLER than its uncompressed body is stored uncompressed**, with
+`compression = 0`. That covers a chunk of one row and a chunk of already-dense data, and it means the format
+never pays a compression header to grow a file.
+
+**Determinism is asserted, not assumed.** `BrotliEncoder` with a fixed quality and window is deterministic for
+a given .NET version, and that is NOT a documented API guarantee across versions. This spec does not depend on
+it: the chunk HASH is over the uncompressed bytes (section 7.3), so a runtime that compresses differently
+produces a different FILE with the same content address, and the store's `ExistsAsync` check means the first
+writer wins and the second does not rewrite. Section 15.3 pins the uncompressed canonical bytes in the golden
+files and deliberately does NOT pin the compressed bytes, for exactly this reason.
+
+### 7.6 The text chunks, `KECT`
+
+Per-language text chunks, one chunk set per language, listed in the manifest with their own hashes so a client
+downloads only the languages it wants (contracts 12.4, #882 body items 6 and 9). The engine ships chunks for
+languages the game does not, which is gate 0 decision 9.
+
+```
+offset  width  field
+------  -----  ---------------------------------------------------------------
+  0      4     magic, ASCII 'K','E','C','T'  = 4B 45 43 54
+  4      2     formatVersion       uint16 LE
+  6      1     tagLen              byte
+  7      N     languageTag         UTF-8, a BCP-47 tag, at most 35 bytes
+ ..      1     compression         byte
+ ..      4     uncompressedBytes   uint32 LE
+ ..      4     storedBytes         uint32 LE
+ ..      M     body                storedBytes bytes
+```
+
+Body, inside the compressed region:
+
+```
+[entryCount : varint uint32]
+per entry, ASCENDING ORDINAL BY KEY:
+  [keyLen   : byte]          1..192
+  [key      : UTF-8]
+  [valueLen : varint uint32] 0..8192
+  [value    : UTF-8]
+```
+
+Keys are the derived keys of contracts 12.1, `<type key>.<content key>.<field>`, ordinal ascending so the
+chunk is canonical and its hash is stable. The value cap of 8,192 bytes is generous for a UI string and
+bounded, so a malformed length cannot make a reader allocate a gigabyte.
+
+**One chunk per language, not one per language per type.** At 50,000 items with a name and an examine line
+averaging 60 bytes, one language is about 6 MB uncompressed and roughly 1.5 MB Brotli, which is one fetch. The
+alternative, sharding text by type or by id range, buys a smaller re-download when one string changes and
+costs a manifest entry per shard and a lookup that spans shards. Section 21 question Q4 puts the sharding
+threshold to the owner with a recommended default of sharding only when a language chunk exceeds 8 MB
+uncompressed.
+
+The catalog is layered over the game's existing `.resx` catalog, content first (contracts 12.4):
+`ContentStringCatalog` asks the pack, misses to the game's `IStringCatalog`, and misses there to the standard
+behaviour of returning THE KEY ITSELF as a visible non-fatal placeholder
+(`KhaozEngine.App/IStringCatalog.cs:12-17`). Content first, because content is the thing that ships without a
+client release, so a content string must be able to override a stale shipped one.
+
+`ContentStringCatalog.Format` routes through the `SafeFormat` behaviour contracts 12.3 adopts, so a malformed
+translator-authored template falls back to the unformatted template rather than taking the frame loop down.
+
+### 7.7 The remap rule chunk, `KECR`
+
+ONE rule chunk per manifest, at a reserved address outside any content type's id space, holding the FULL rule
+list from sequence 1 rather than a delta (contracts 8.5). It is in BOTH manifests and its contents are
+identical in both, because a rule is `(id, id, kind)` and never a value, so it carries no server-only
+information by construction.
+
+```
+offset  width  field
+------  -----  ---------------------------------------------------------------
+  0      4     magic, ASCII 'K','E','C','R'  = 4B 45 43 52
+  4      2     formatVersion       uint16 LE
+  6      1     compression         byte
+  7      1     reserved            byte          written 0
+  8      4     ruleCount           uint32 LE
+ 12      4     uncompressedBytes   uint32 LE
+ 16      4     storedBytes         uint32 LE
+ 20      N     body                storedBytes bytes
+```
+
+The body is `ruleCount` rules in ASCENDING SEQUENCE order, each exactly contracts 8.4's encoding and not one
+byte more:
+
+```
+[Sequence      : varint int32]
+[IntroducedIn  : varint int32]
+[TypeId        : uint16 LE]
+[Kind          : byte]
+[FromId        : varint int32]
+[ToId          : varint int32]
+[PayloadLength : byte, 0 to 64]
+[Payload       : PayloadLength bytes]
+```
+
+A typical rule is 9 to 12 bytes and ten thousand rules is about 110 KB uncompressed, a rounding error against
+a pack (contracts 8.4). A gap in the sequence, a non-ascending sequence or a `Kind` the reader does not know
+are all REFUSALS rather than skips, with reasons `rule-sequence-gap`, `rule-sequence-order` and `rule-kind`.
+An unknown kind failing closed is contracts 8.5's explicit rule, and it is what `FormatGeneration` exists to
+announce in advance.
+
+The rule chunk's hash is SHA-256 under sub-domain `kec/rules/` over its canonical uncompressed bytes, by the
+same construction as section 7.3.
+
+### 7.8 Every digest in this spec, in one table
+
+| Digest | Sub-domain | Over |
+|---|---|---|
+| Chunk | `kec/chunk/` | The chunk's canonical uncompressed bytes (7.3). |
+| Remap rule chunk | `kec/rules/` | The rule chunk's canonical uncompressed bytes (7.7). |
+| Text chunk | `kec/text/` | The text chunk's canonical uncompressed bytes (7.6). |
+| Server manifest | `kec/manifest/server/` | The canonical manifest text of 6.8 with `side = server`. |
+| Client manifest | `kec/manifest/client/` | The same text with `side = client` and the server-only chunks omitted. |
+
+No two share a sub-domain, so a head comparing one can never accidentally agree with a head comparing another
+(contracts 15). `ContentHash.SchemeVersion` starts at 1 and is folded into every one of them, and bumping it
+re-digests every version, which is precisely why it exists.
+
+### 7.9 A worked hex example: a two-row chunk
+
+The `tag` type, type id 1, chunk 0, slots 4,096, holding two rows. Tag 1 is `metal` with name key
+`tag.metal.name` and sort 10. Tag 2 is `two_handed` with name key `tag.two_handed.name` and sort 20 and is
+retired. The `tag` schema of section 3.2 is two fields, `name` (localized text key) and `sort` (int), and the
+`tag` codec writes them positionally in schema order, because a row codec's field set is fixed by the schema
+it was checked against at registration (section 3.6).
+
+The row body for tag 1, field by field:
+
+```
+0E 74 61 67 2E 6D 65 74 61 6C 2E 6E 61 6D 65      name: varint len 14, "tag.metal.name"
+0A                                                 sort: varint 10
+```
+
+Sixteen bytes. The row body for tag 2:
+
+```
+13 74 61 67 2E 74 77 6F 5F 68 61 6E 64 65 64 2E 6E 61 6D 65
+                                                   name: varint len 19, "tag.two_handed.name"
+14                                                 sort: varint 20
+```
+
+Twenty-one bytes. `0E` is 14 and `13` is 19, both single-byte varints because both are under 128. `0A` is 10
+and `14` is 20.
+
+The row table, two entries:
+
+```
+01 00 10       id 1, flags 0 (live),    rowLength 16
+02 01 15       id 2, flags 1 (retired), rowLength 21
+```
+
+Six bytes. The uncompressed body is `6 + 16 + 21 = 43` bytes:
+
+```
+01 00 10  02 01 15
+0E 74 61 67 2E 6D 65 74 61 6C 2E 6E 61 6D 65  0A
+13 74 61 67 2E 74 77 6F 5F 68 61 6E 64 65 64 2E 6E 61 6D 65  14
+```
+
+The 36 byte header, as it appears in the CANONICAL bytes the hash is taken over, so `compression = 0` and
+`storedBytes = uncompressedBytes = 43`:
+
+```
+4B 45 43 43     magic  'K','E','C','C'
+01 00           formatVersion 1
+01 00           typeId 1
+00 00 00 00     chunkIndex 0
+00 00 00 00     slotBase 0
+00 10 00 00     slotCount 4096
+02 00 00 00     rowCount 2
+00              visibility 0 (Client)
+00              compression 0
+00 00           reserved
+2B 00 00 00     uncompressedBytes 43
+2B 00 00 00     storedBytes 43
+```
+
+Note `00 10 00 00` is 4,096 little endian (`0x00001000`) and `2B` is 43. The canonical bytes are 79 in total,
+36 of header plus 43 of body, and
+
+```
+chunkHash = lowerHex(SHA256( utf8("kec/chunk/1\n") || <those 79 bytes> ))
+```
+
+The STORED file differs from the canonical bytes in exactly two fields when the body compresses: byte 25 holds
+`01` and bytes 32 to 35 hold the compressed length. At 43 bytes this body will not compress smaller, so this
+particular chunk stores uncompressed and the stored file is byte identical to the canonical bytes. That is the
+common case for a small chunk and it is why the `compression` byte exists per chunk rather than per pack.

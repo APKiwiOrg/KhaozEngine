@@ -241,3 +241,60 @@ The `--journal-crash-probe` mode is an internal release gate used by the test su
 database path, operation GUID, and either `before-commit` or `after-commit-before-response`. At the requested internal
 provider hook it writes and flushes exactly one `JOURNAL_CHECKPOINT <phase>` line, then waits on standard input so the
 parent can kill the process tree and prove recovery.
+
+## Item instances (`--items`)
+
+The stage 5 proof spike for `docs/design/ITEM-INSTANCES-DESIGN-2026-09-15.md`. It measures every one of
+the thirteen performance budgets in that document's section 16, plus the "several million instances in
+memory" scale test its test plan names, against synthetic content at the owner's scale: 2,000 mods with
+eight tiers and five tag weights each, 50,000 bases over 300 authored tag signatures, 20 rarities and
+200 rare name words, all built from one seed through `DeterministicRng`.
+
+`Items/` is a throwaway but clean implementation of the byte formats and algorithms the two design
+documents define, and nothing else. It is not a package and nothing outside the benchmark references it.
+It carries the canonical TLV payload of the contracts document's section 9, container codec version 2
+and its 100 slot pages, the thirteen step generator draw with its tag-band tables and memoized merge,
+the integer stat fold with floor division, the page fragmenter and delta, and the remap rule pass.
+Anything that commits goes through the REAL journal: `SqliteMutationJournalStore` under
+`MutationJournalExecutor`, at `JournalLimits.Maximum`, because a 6.9 KB page has to sit against the
+engine's own projection section cap rather than a benchmark-shaped one.
+
+```bash
+# the full matrix, about two minutes in Release, and how the checked-in baseline was produced
+dotnet run --project KhaozEngine.Benchmarks -c Release -- --items --seed 915 \
+  --output "$PWD/KhaozEngine.Benchmarks/Baselines/items-sqlite-v1-seed915.json"
+
+# reduced matrix: 200 players, 200,000 generations, a 10 second throughput leg, 500,000 scale instances
+dotnet run --project KhaozEngine.Benchmarks -c Release -- --items --quick
+
+# one budget at a time, by shrinking the axis that dominates the run
+dotnet run --project KhaozEngine.Benchmarks -c Release -- --items --quick --players 50 --generations 50000
+
+# keep the SQLite file rather than deleting it with the run
+dotnet run --project KhaozEngine.Benchmarks -c Release -- --items --database /tmp/khaoz-items.db
+```
+
+`--players` drives budgets 12 and 13, `--generations` budget 5, and `--crafts` budget 4. `--seed` picks
+the content set and every draw in it. Always `-c Release`.
+
+The run prints one row per budget with its target, its measurement and a MEETS or MISS verdict, then a
+block of detail lines, then one stable JSON result. `--output` writes that JSON to an absolute path,
+atomically. The checked-in baseline is `Baselines/items-sqlite-v1-seed915.json`.
+
+Four things about the measurements that a reader would otherwise have to reverse engineer:
+
+- **Resident memory is read as the heap size after a forced compacting collection**, not as
+  `GC.GetTotalMemory(true)`. Against a known live set of 27,620,000 bytes built with the churn a page
+  builder produces, `GetTotalMemory(true)` answered 61,105,168 and `GetGCMemoryInfo().HeapSizeBytes`
+  answered 27,800,304. Both are in the JSON so the difference stays visible, and the exact sum of the
+  page byte arrays is there too as a third cross-check.
+- **Budgets 12 and the scale test cycle a pool of 10,000 distinct generated rares** rather than
+  generating three million. A page blob copies the payload bytes into itself and every slot still takes
+  a fresh instance id, so the page bytes are the same either way and the run is minutes shorter.
+- **Budget 13 drops a refused submission rather than retrying it**, which is what section 16 says a
+  consumer must do on `Backpressure`. The executor runs at the engine default stream queue depth of 8.
+  Latency is measured from `Submit` to the completion being dequeued, so it includes queueing behind
+  the store rather than just the store's own commit time.
+- **Budget 5 is measured three ways** because one number hid the answer: a hot set of 512 bases over 60
+  item levels, which thrashes the 4,096 entry memo, a warm set of 64 bases over 4 item levels, which
+  runs at a 100 percent hit rate, and a uniform draw over the whole 50,000 base catalog.

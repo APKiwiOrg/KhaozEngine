@@ -1969,3 +1969,155 @@ mod would emit a rule from the original id to a second legacy copy, which is leg
 FIRST legacy copy to anywhere would not be. So a legacy copy is terminal by construction: it can never be
 generated, never be crafted, and never be the source of another rule. The publish validator's existing walk
 catches an author who tries.
+
+## 11. Stat evaluation base
+
+### 11.1 What is new and what is not
+
+Contracts 13.3 already decided the contested part: a NEW integer evaluator, `StatSet` kept unchanged
+beside it for games that do not adopt content stats, and a game uses one or the other per stat and never
+both. This section builds the new one. `KhaozEngine.Stats` is NOT modified, which is why 2.1 lists it
+unchanged: `StatModifier(int Channel, float Flat, float Percent)` is a shipped struct and adding a
+`More` kind to it is a breaking change the engine's own survey already names (`a-engine.md:1558-1571`).
+
+`ContentStatEvaluator` lives in `KhaozEngine.ItemInstances`, not in `KhaozEngine.Stats`, for a layering
+reason: it resolves stat definitions and tag ids through `IContentSnapshot`, and putting a Catalog
+dependency on `Stats` would push it onto every game that uses the float kernel for a HUD bar.
+
+### 11.2 The value types
+
+```csharp
+public readonly record struct StatModifierLine(
+    int StatId, StatCombineKind Combine, int Value, int TagScopeStart, int TagScopeLength, int ConditionId);
+
+public enum StatCombineKind : byte { Flat = 1, Increased = 2, More = 3 }
+
+public readonly record struct StatSourceKey(byte SourceKind, int Ordinal, long InstanceId);
+
+public readonly record struct StatContext(
+    ReadOnlyMemory<int> Tags, int ConditionMask, IStatConditionRegistry? Conditions);
+```
+
+`Value` is in the stat's scaled units for `Flat` and in basis points for `Increased` and `More`
+(contracts 13.2, 8.4). The tag scope is a RANGE into one shared tag array the evaluator owns rather than
+a per-line array, so a source with eight lines allocates one array and eight structs, which is the
+allocation shape `StatSet.AddSource` already uses (`a-engine.md:212-228`) applied one level tighter.
+
+### 11.3 Tag scope and conditions
+
+**A tag scope is an AND over the context's tags.** A line whose scope is `[fire, spell]` applies only when
+the evaluation context carries both. An empty scope applies always, which is the common case and costs a
+length check. Scope is the mechanism for "increased fire damage with spells" and for Grimhollow's
+`CanBeAHatchet` predicate becoming a row (contracts 4.6), and it is the ONLY relation between a modifier
+and a context: there is no scope expression, no negation and no OR, for the same reason 10.3 gives.
+
+**A condition is an int id, and the engine owns `0` to `1023`.** Id 0 is unconditional. The engine
+defines none in v1, deliberately, so the whole range stays free. A game registers above 1,023 through
+`IStatConditionRegistry.Evaluate(conditionId, in StatContext)` returning a bool, and the engine never
+calls it for an id it owns. The registry is consulted at RECOMPUTE time only (11.5), so a condition that
+reads a moving value is a condition the game must dirty the evaluator on.
+
+### 11.4 Sources and the deterministic source order
+
+Contracts 13.2 fixes the `More` loop order as (source order, modifier index) and says why: integer
+multiplication with rounding at each step is not associative, so `(a * x) * y` and `(a * y) * x` can
+differ by one unit. This section fixes the source ORDINALS, and they are durable in the sense that
+changing one changes a displayed number.
+
+| `SourceKind` | Source | In v1 | Ordinal within the kind |
+|---|---|---|---|
+| 1 | base and implicit lines of the worn item | yes | the worn slot index, ascending |
+| 2 | affixes of a worn item (kind 131) | yes | worn slot index, then affix index in the SORTED list |
+| 3 | enchantments of a worn item (kind 133) | yes | the same |
+| 4 | lines of an item SOCKETED into a worn item | yes | worn slot, then socket index in AUTHORED order |
+| 5 | passives | no, reserved | |
+| 6 | buffs and auras | no, reserved | |
+| 7 to 255 | game sources | by registration | the game's own, and it must be deterministic |
+
+**The fold order is (SourceKind, Ordinal, InstanceId, ModifierIndex), in that order, always.** The
+instance id is in the key so that two sources that somehow tie on kind and ordinal still order, which
+cannot happen through the table above and can happen through a game source. It is the same defensive
+choice `TileWorldHash` makes by sorting before digesting (`a-engine.md:1219-1222`).
+
+**Reserving 5 and 6 rather than assigning them is the whole reason this is a base rather than a system.**
+A later passive tree adds a source kind and changes no fold, no format and no stored number, which is
+#884's "sources: worn items and socketed items now, passives and buffs later" read as an ordering
+commitment rather than a feature list.
+
+**Socket order is authored and never sorted** (3.5), so kind 4's ordinal is the authored index. A player
+who rearranges two gems can move a displayed value by one unit, which is correct and is the price of
+integer rounding being honest.
+
+### 11.5 Recompute, never per tick
+
+`Recompute(StatSourceKey changed)` marks dirty and nothing else. A read of a stat recomputes it if dirty
+and caches, which is `StatSet`'s own lazy-per-channel model (`a-engine.md:164-237`) carried across with
+the arithmetic changed. What is NOT carried across is the linear source scan: `StatSet.IndexOfSource` is
+O(sources) per add or remove (`a-engine.md`, `StatSet.cs:236-242`), which is fine at a handful of sources
+and is not fine at eleven worn items with six affixes and six sockets each. The evaluator holds a
+per-stat inverted index built as sources are added, so a dirty stat walks only the lines that touch it.
+
+**A source changes on exactly five events**: equip, unequip, socket, unsocket, and a craft that rewrites a
+worn item's payload. Nothing else dirties anything. In particular a tick does not, a movement does not,
+and a condition changing state does not unless the game says so, which is #884 item 12's "recompute when a
+source changes, never per tick" stated as a closed list rather than as an intention.
+
+### 11.6 The algorithm and the API
+
+Contracts 13.2's formula verbatim, with the steps this document owns marked:
+
+```
+1. Gather every line for this stat, in (SourceKind, Ordinal, InstanceId, ModifierIndex) order.   // 11.4
+2. Drop every line whose tag scope is not a subset of context.Tags.                              // 11.3
+3. Drop every line whose ConditionId is non-zero and evaluates false.                            // 11.3
+4. flat      = Base + sum(Flat)                                  // long arithmetic
+5. increased = 10000 + sum(IncreasedBasisPoints)
+6. value     = (flat * increased + 5000) / 10000                 // round half up
+7. for each More m, in the step 1 order:
+       value = (value * (10000 + m.Value) + 5000) / 10000
+8. value     = clamp(checked int, stat.Min, stat.Max)
+```
+
+```csharp
+public sealed class ContentStatEvaluator
+{
+    public ContentStatEvaluator(IContentSnapshot snapshot, IStatConditionRegistry? conditions = null);
+    public void SetBase(int statId, int scaledValue);
+    public void AddSource(in StatSourceKey key, ReadOnlySpan<StatModifierLine> lines, ReadOnlySpan<int> tags);
+    public bool RemoveSource(in StatSourceKey key);
+    public void ClearSources();
+    public int Value(int statId, in StatContext context);
+    public void CopyValuesTo(ReadOnlySpan<int> statIds, Span<int> destination, in StatContext context);
+}
+```
+
+`AddSource` under an existing key REPLACES in place and keeps the original position, which is
+`StatSet.AddSource`'s rule (`a-engine.md`, `StatSet.cs:139-143`) and is what makes an add-then-remove
+cycle return the prior value EXACTLY. With integers that property is free rather than delicate, which is
+the one place this evaluator is simpler than the float one it sits beside.
+
+**`+ 5000` before the divide is round half up, on a NON-NEGATIVE numerator only.** A negative `flat` with a
+positive `increased` makes the numerator negative, and C# integer division truncates toward zero, so
+`(-15000 + 5000) / 10000` is 0 rather than -1. The evaluator therefore computes the sign, rounds the
+magnitude and restores the sign, and the test in 17.7 pins a negative case, because a stat that can go
+negative (a resistance, a cold damage penalty) is ordinary and the trap is silent.
+
+### 11.7 How the two consumers map onto it
+
+**Grimhollow's `EquipStats(EquipSlot, int Accuracy, int Strength, int Defence, WeaponArchetype)`**
+(`b-grimhollow.md:78-104`) is three ints on a hardcoded switch over nine item ids, marked provisional in
+its own class doc. The mapping is direct and needs no new concept: three `stat` rows (`accuracy`,
+`strength`, `defence`), `Scale = 1` because they are whole numbers today, `Min = 0`, `Max` the game's
+ceiling, and each equipable base carries three `Flat` lines at source kind 1. `AttackTicks` maps to a
+fourth stat whose `Min` is the fastest permitted speed, which turns the `WeaponArchetype` switch
+(`Sword 14, Hatchet 18`) into two base rows. Nothing about Grimhollow needs `Increased`, `More`, a tag
+scope or a condition on day one, and that is the point: the base carries them unused.
+
+**Ruinborne's `item_stat(item_id, stat_id, flat, percent)`** (`c-ruinborne.md:926-948`) is a per
+DEFINITION row with two float-ish columns, so two copies of an item are identical. The mapping is one
+`stat` row per existing `stat_id` with `Scale = 100` (its percent column is a fraction today and the scale
+is what makes it an integer), one `Flat` line and one `Increased` line per `item_stat` row, both at source
+kind 1. Its `percent` becomes `Increased` rather than `More` because today it is summed into one
+multiplier exactly as `StatSet` does, so `Increased` preserves the numbers and `More` would not.
+`item_ability_modifier`'s comma-joined tag STRINGS (`c-ruinborne.md:67-72`) become a tag scope, which is
+the one place adopting this evaluator makes a Ruinborne substring search into a set membership test.

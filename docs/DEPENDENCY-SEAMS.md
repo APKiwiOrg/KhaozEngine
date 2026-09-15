@@ -88,6 +88,8 @@ this doc cannot silently drift apart.
 | Per-cell world persistence | `KhaozEngine.NetWorld` (`ICellPersistenceHost`, the surface `CellPersistence` drives, `ShardedWorldServer` implements it. Since 9.33.0 the host also carries `TryRestoreCell` for a non-throwing quarantining restore, a default interface method so existing implementers are unaffected. Since 10.0.0 the NetId high-water it carries - `NextNetId` / `EnsureNextNetIdAtLeast` - and the restored-id list are 64-bit `long`, and since 17.38.0 `SnapshotCell` skips any entity marked `KhaozEngine.Sharding.Transient`, the per-entity persist opt-out, which needs nothing of the host. Since 17.39.0 that mark carries a `TransientScope`, and the host also carries `SnapshotCell(coord, SnapshotPurpose)` plus `ReadTransientMarks` / `ApplyTransientMarks`, three more default interface methods, so `CellEvictor` can ask for an eviction-purpose freeze that keeps a `TransientScope.DurableOnly` entity and carry its mark beside the bytes, while an existing implementer keeps the durable-only-everywhere behaviour untouched, and the host also offers `Registry`, another default interface method, which `CellPersistence` takes as the default for `CellPersistenceConfig.Registry`, so a pre-v4 blob's generation is inferred against the host's live registry without the consumer wiring the same object in twice) | `CellPersistence` (+ `CellPersistenceConfig` with `RegisterMigration` + engine-provided migrations via `IncludeEngineMigrations`, `WorldMetaRecord`) wires it to any `IWorldStore`, migrating / quarantining / retaining on load and surfacing `CellPersistence.Issue` plus `CellRestoreApplied` after ownership and the NetId allocator are ready | Microsoft.Data.Sqlite / SqlClient (via the `IWorldStore` backend already chosen) |
 | Cell eviction (unloading idle cells) | `KhaozEngine.NetWorld` (`ICellEvictionHost`, which EXTENDS `ICellPersistenceHost` with `CanEvictCell` / `EvictCell` / `TryReadEvictionSignals`, implemented by `ShardedWorldServer`), plus the policy seam `KhaozEngine.Sharding.ICellEvictionPolicy` over `CellEvictionSignals`, which is the game's to replace | `CellEvictor` (+ `CellEvictionConfig`) persists each candidate through `CellPersistence` and removes it from the `ShardHost` only once the write lands, restoring an evicted coordinate on recreation. The shipped policy is `IdleCellEvictionPolicy` | (no extra dep, it rides whichever `IWorldStore` backend `CellPersistence` already has) |
 | World pickups (walk-over collectibles) | `KhaozEngine.NetWorld` (`IWorldPickupHost`, the surface `WorldPickups` drives, implemented by BOTH `WorldServer` and `ShardedWorldServer` - `JoinedSlots` / `TryGetPlayerNetId` / `TryGetPlayerState` / `SpawnEntity` are their pre-existing API verbatim, plus `TryGetEntity` / `DespawnEntity`, the resolve-and-remove halves `SpawnEntity` had been missing, neither of which ever touches a player entity, and since 17.38.0 `TryGetCellCoord`, a default interface method answering false so a host with no cell grid is unaffected) | `WorldPickups` (+ `WorldPickupsConfig` carrying the `OnCollect` decision hook and `OnRemoved`, the replicated `PickupState` built-in at `MoveProtocol.PickupTypeId`) owns spawn, the owner tag, the time-to-live, the linear proximity scan and the despawn, marks every pickup `Transient` so none is ever persisted, and follows a `CellEvictor` (`WorldPickupsConfig.Evictor` / `TrackEvictions`, with `ForgetCell` / `ForgetWhere` for a host that unloads its own way) so an evicted cell takes its pickups' tracking with it | (no extra dep. The payload is an opaque game-defined `long` the engine never interprets, and the ownership RULE lives in the consumer's `OnCollect`) |
+| Instance id allocation | `KhaozEngine.ItemInstances` (`IInstanceIdStore`: `Read()` answering an `InstanceIdState`, and `Persist(in InstanceIdState)`. Taken as a CONSTRUCTOR argument by `InstanceIdAllocator`, never as an ambient static. Both members are SYNCHRONOUS on purpose: an async seam would push an await into every call site that wants an id, and a host whose store is async owns that bridge) | **host-side, and the engine ships NO provider at all**, which is the load-bearing part rather than an omission. A real store persists into the journal store, and any in-tree implementation would drag a Server package into Foundation, where this package lives so that a client can decode an item. What the engine DOES ship is the seam, the `(node << 48) | counter` packing mirrored from `NetIdAllocator` (a net id and an instance id are different spaces that must never share a counter), and the order that matters: the high-water mark is persisted BEFORE any id in its block is issued, because persisting after issuing leaves a window in which a crash hands the next boot an id it has already put on an item. The batch size is free and the order is the contract | (no extra dep) |
+| Quarantine counter | `KhaozEngine.ItemInstances` (`InstanceValidationTelemetry.Report`'s `counter` parameter, an `Action<int, string>?` invoked once per QUARANTINED record with the content type id and the reason code, which are the two dimensions the contracts name, under the metric name `QuarantinedRecordsCounter`) | **consumer-side**, and a DELEGATE rather than an interface because **the engine has no counter seam to plug into**: it has `ILogger` and it has `FrameStats`, and nothing that counts a dimensioned event, so a package-wide metrics abstraction invented on the way past is exactly what this row refuses. Null counts nothing, which is what a headless test wants. The sibling `logger` parameter is NOT a new seam: it is `KhaozEngine.Diagnostics.ILogger` obtained through `LogManager.GetLogger`, injected rather than ambient, and null emits no line | (no extra dep) |
 | Audio | `KhaozEngine.Audio` (`IMusicBackend`, `ISfxBackend`, `Null*` no-op defaults) | (in-package) `OpenAlMusicBackend` / `OpenAlSfxBackend` | Silk.NET.OpenAL (+ NLayer mp3 / NVorbis ogg decode, contained) |
 | Server-status fetch | `KhaozEngine.ServerStatus` (`IServerStatusSource`, `ServerStatusReport` wire contract, `ServerStatusClient`, `ServerStatusEvaluator`) | (in-package) `HttpServerStatusSource`, a fake source in tests | System.Net.Http (BCL `HttpClient`, contained in `HttpServerStatusSource`) |
 | Server heartbeat (liveness) | `KhaozEngine.ServerStatus` (`IServerHeartbeatSink`, `ServerHeartbeat`, `Null`/`InMemory` reference sinks, `ServerHeartbeatService`) | **game-side** (the one-table upsert against the status DB), no engine backend package | Microsoft.Data.SqlClient / any - in the game, never the engine |
@@ -604,6 +606,55 @@ the delete path split out into `IPackStorePruning` so a read-only provider canno
 misconfigured one cannot delete a production pack through the common interface. `FileSystemPackStore` is the
 in-package local provider, flavour 2 below, and a blob or object-store provider is a later sibling that
 declares its SDK there rather than here.
+
+## Item instance package edges, and the one deliberately not crossed
+
+`KhaozEngine.ItemInstances` adds five edges, every one forward and acyclic:
+
+```
+KhaozEngine.ItemInstances -> KhaozEngine.Items         (the slots a payload rides in, and ItemSlot.MaxPayloadBytes, which the cap is rather than copies)
+KhaozEngine.ItemInstances -> KhaozEngine.Catalog       (the content ids a payload references, IContentSnapshot, and the ONE varint definition in the tree)
+KhaozEngine.ItemInstances -> KhaozEngine.Primitives    (the foundation leaf)
+KhaozEngine.ItemInstances -> KhaozEngine.Diagnostics   (ILogger, for the validator's one log line, and nothing else)
+KhaozEngine.Foundation    -> KhaozEngine.ItemInstances (umbrella ProjectReference, like every other Foundation package)
+```
+
+It sits ABOVE `Items` and `Catalog` in `Foundation`, which is the whole shape of the split: `Items` owns the
+slot arithmetic and holds the payload bytes without ever reading them, and this package owns what the bytes
+MEAN. It takes no third-party dependency, for the same reason `Catalog` takes none: a game CLIENT decodes an
+item, and a client that reached the decoder through a package carrying a database driver would ship one.
+
+**The `Diagnostics` edge buys exactly one log line.** `InstanceValidator` is pure and emits nothing, so the
+emission lives in `InstanceValidationTelemetry`, and the `ILogger` it writes through ARRIVES BY ARGUMENT from
+`LogManager.GetLogger` rather than through the ambient `Log` facade. `KhaozEngine.Diagnostics` references no
+project of its own, so it sits below this package and the edge cannot close a cycle. Null logs nothing, which
+is what a headless test wants.
+
+**The interesting entry is the edge that was NOT added: `Items` does not reference `ItemInstances`.**
+`ItemContainer.SetSlotAt` has to know whether the payload it is handed is canonical, and whether a
+quarantined slot's bytes are a well formed `KECQ` wrapper. The decoder that can answer both lives in the
+package ABOVE it, and writing a second varint reader down in `Items` is forbidden outright, because two
+implementations of a canonical form is how a stored payload ends up legal to one of them and not the other.
+So the checks arrive the same way the stacking rule already does, as predicates on the constructor:
+
+```csharp
+new ItemContainer(
+    slotCount: 28,
+    stackable: Stackable,
+    payloadCanonical: ItemInstancePayload.IsCanonical,        // KhaozEngine.ItemInstances
+    quarantineWellFormed: QuarantineWrapper.Verify);          // KhaozEngine.ItemInstances
+```
+
+Two details make that a real door rather than a gesture. Both predicates are `Func<ReadOnlyMemory<byte>,
+bool>`, which is why `ItemInstancePayload.IsCanonical` carries a registry-free overload at all: the seam
+shape came first. And **left null, the matching door is SHUT rather than open**. A container built with no
+`payloadCanonical` refuses every non-empty, non-quarantined payload, and one built with no
+`quarantineWellFormed` refuses every non-empty quarantined payload, so a caller that forgot to wire the
+predicate gets a refusal instead of an unchecked write. The check runs on every call rather than under a
+`Debug.Assert`, because a door that only guards on a developer machine is not a door.
+
+The consequence a reader should expect: `KhaozEngine.Items` still declares zero project references and ships
+as a leaf, and a consumer that wants plain stacks and nothing else never pulls the instance decoder in.
 
 ## Surface-source seam: INavSurfaceProvider (a deliberate non-edge)
 

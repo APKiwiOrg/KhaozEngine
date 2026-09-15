@@ -86,6 +86,7 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [Objective / goal tracking (`KhaozEngine.Objectives`)](#objective-goal-tracking-khaozengineobjectives)
 - [Stat channels (`KhaozEngine.Stats`)](#stat-channels-khaozenginestats)
 - [Content catalog (`KhaozEngine.Catalog`)](#content-catalog-khaozenginecatalog)
+- [Item instances (`KhaozEngine.ItemInstances`)](#item-instances-khaozengineiteminstances)
 - [Commerce / wallet (`KhaozEngine.Commerce`)](#commerce-wallet-khaozenginecommerce)
 - [Identity / sign-in (`KhaozEngine.Identity`)](#identity-sign-in-khaozengineidentity)
 - [Save data (`GameStorage`)](#save-data-gamestorage)
@@ -13572,6 +13573,12 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
   split applied to slots: the engine owns stack-first adds, honest overflow answers, ordered removes, swaps
   and the sparse versioned codec, and the game owns item identity entirely, supplying only a stackable
   predicate. See the package README for the full API and the rules stated once.
+- **`KhaozEngine.ItemInstances`**: the per-item instance record over `Items` and `Catalog`: the canonical
+  tagged payload an owned item carries beyond its definition id (the encoder is what makes it canonical, so byte
+  equality is the stacking rule), the property registry that gives every kind a band, a visibility, a fixed
+  identification mask bit and a field shape, the `KECQ` quarantine wrapper, container codec version 2
+  (`ItemContainerPageCodec`, which reads version 1 through a byte 0 dispatch), the `IInstanceIdStore`-backed
+  instance id allocator and the thirteen-check `InstanceValidator` (see "Item instances" below).
 - **`KhaozEngine.Stats`**: game-agnostic layered stat computation (`StatSet`) for equipment, skills, and
   buffs. A per-channel `Base` plus any number of named `StatSourceId` contributions fold to `Value(channel) =
   (Base + sum(Flat)) * max(1 + sum(Percent), MinimumScale)`. Dense int channels backed by a `float[]`,
@@ -13893,6 +13900,173 @@ seam, the four pack formats, the `kec/` digests, the remap rules and the `KEC` f
 `docs/design/CONTENT-CATALOG-DESIGN-2026-09-15.md`, written against the shared contracts in
 `docs/design/CONTENT-CONTRACTS-DESIGN-2026-09-14.md`. Authoring, publish, the SQL providers and the netcode
 handshake layer land in later milestones of the same program.
+
+---
+
+## Item instances (`KhaozEngine.ItemInstances`)
+
+`KhaozEngine.Items` holds slots of opaque `(ItemId, Count, InstanceId)` stacks and never learns what an item
+IS. `KhaozEngine.ItemInstances` is the other half of that split: the canonical property payload an individual
+owned item carries beyond its definition id, the registry that says what every property kind means to a
+walker that knows nothing about any kind, container codec version 2, the instance id allocator and the
+validator that sweeps a stored container against the active content version.
+
+Four rules run through all of it. The ENCODER is what makes a payload canonical (fields strictly ascending by
+kind, no kind twice, every varint minimal), so **byte equality is the stacking rule** and nothing anywhere
+decodes two payloads to compare them. An unknown kind is preserved VERBATIM, position included, so a client
+built against content build N reads, shows and re-saves an item carrying a field only build N+1 knows.
+Decoders never throw for a byte: they answer false plus a stable token from a closed set, because the bytes
+come from a peer or a store. Everything arrives by argument, the registry and the logger included, and there
+is no ambient static anywhere in the package.
+
+```csharp
+using KhaozEngine.Catalog;
+using KhaozEngine.ItemInstances;
+using KhaozEngine.Items;
+
+// ONCE at process start, before any pack loads. CreateV1 registers every kind the engine and
+// this package assign, and a game adds its own in the Game band at 1024 and above.
+InstancePropertyRegistry properties = InstancePropertyRegistry.CreateV1();
+properties.Freeze();
+
+// One item's canonical payload. The builder holds its fields ascending by kind whatever order
+// they arrive in, and sorts the affix list by mod id, which is what makes the bytes canonical.
+var affixes = new[]
+{
+    new InstanceAffix(modId: 41, tier: 3, position: 812),
+    new InstanceAffix(modId: 17, tier: 1, position: 64),
+};
+
+byte[] payload = new ItemInstancePayloadBuilder()
+    .AddScalar(InstancePropertyKind.ItemLevel, 42)
+    .AddScalars(InstancePropertyKind.Durability, 55, 60)
+    .AddAffixes(InstancePropertyKind.Affixes, affixes)
+    .ToArray();
+
+// The durable name. IInstanceIdStore is the HOST's to implement: the engine ships the seam and
+// the arithmetic and no provider, which is what keeps this package out of the server stack.
+var allocator = new InstanceIdAllocator(store, liveStoreEpoch: journalEpoch);
+long instanceId = allocator.Next();
+
+// Seat it. The two predicates are the doors, and left null the matching door is SHUT: a
+// container built without payloadCanonical refuses every payload rather than half checking one.
+var bank = new ItemContainer(
+    slotCount: 28,
+    stackable: Stackable,
+    payloadCanonical: ItemInstancePayload.IsCanonical,
+    quarantineWellFormed: QuarantineWrapper.Verify);
+
+bank.SetSlotAt(0, new ItemSlot(new ItemStack(BronzeSword, 1, instanceId), payload, Quarantined: false));
+
+// Save. Version 2 is a PAGE: sparse by slot, one entry per occupied slot, stamped with the
+// content version the page was last brought up to date with.
+ItemSlot seated = bank.SlotAt(0);
+var entries = new[]
+{
+    new PageSlotInput(
+        Slot: 0,
+        Flags: 0,
+        DefinitionId: seated.Stack.ItemId,
+        Count: seated.Stack.Count,
+        InstanceId: seated.Stack.InstanceId,
+        Payload: seated.Payload),
+};
+
+byte[] page = ItemContainerPageCodec.Encode(
+    pageIndex: 0,
+    firstSlot: 0,
+    slotCount: bank.SlotCount,
+    contentVersion: content.VersionNumber,
+    entries);
+
+// Reload. The decoder REFUSES rather than throws, and byte 0 dispatches, so a stored version 1
+// blob comes back through the same call with instance id 0 and page stamp 0 on every entry.
+Span<PageEntry> decoded = stackalloc PageEntry[ItemContainerPageCodec.ContainerPageSlots];
+if (!ItemContainerPageCodec.TryDecode(
+        page,
+        ItemContainerPageCodec.ContainerPageSlots,
+        decoded,
+        out PageHeader header,
+        out int entryCount,
+        out string? pageReason))
+{
+    return Refuse(pageReason);          // an ItemContainerPageReason token, never an exception
+}
+
+// Sweep what came back against the ACTIVE content version. Thirteen checks, pure: no store read,
+// no ambient state, no log line, no counter and no throw for a content reason.
+InstanceValidationReport report = InstanceValidator.Validate(
+    page, header, decoded[..entryCount], properties, types, content);
+
+foreach (PageEntry entry in decoded[..entryCount])
+{
+    var stack = new ItemStack(entry.DefinitionId, entry.Count, entry.InstanceId);
+
+    if (report.TryGetQuarantine(entry.Slot, out InstanceValidationFinding finding))
+    {
+        // Keep the bytes VERBATIM under the reason's durable ordinal. The item is unusable,
+        // untradeable and undroppable, and it can still be moved between slots.
+        byte[] wrapper = QuarantineWrapper.Wrap(
+            finding.Reason!,
+            finding.StampedVersion,
+            page.AsSpan(entry.PayloadStart, entry.PayloadLength));
+        bank.SetSlotAt(entry.Slot, new ItemSlot(stack, wrapper, Quarantined: true));
+        continue;
+    }
+
+    // Check 13 is NOT a quarantine: the entry decodes and the container loads, and what changes
+    // is the presentation and the refusals that ride with it.
+    if (report.IsRetiredAt(entry.Slot))
+    {
+        ShowPlaceholder(entry.Slot, InstanceValidationStrings.Retired);
+    }
+
+    bank.SetSlotAt(entry.Slot, new ItemSlot(
+        stack, page.AsMemory(entry.PayloadStart, entry.PayloadLength), Quarantined: false));
+}
+
+// The ONE named place a finished report becomes side effects: one warning line per CONTAINER,
+// one counter increment per quarantined RECORD, and nothing at all when nothing quarantined.
+InstanceValidationTelemetry.Report(
+    report,
+    streamKey: persistenceKey,
+    logger: logs.GetLogger(InstanceValidationTelemetry.LogCategory),
+    counter: (contentTypeId, reason) => metrics.Increment(
+        InstanceValidationTelemetry.QuarantinedRecordsCounter, contentTypeId, reason));
+
+// Reading the identity back off a slot. 0 is the ABSENCE of an instance rather than a low id,
+// so a plain stack carries 0 forever and costs nothing.
+ItemStack held = bank[0];
+if (held.HasInstance)
+{
+    long id = held.InstanceId;
+}
+```
+
+`properties` is the property registry, `types` is the `ContentTypeRegistry` the "Content catalog" section
+above freezes at boot, and `content` is the active `IContentSnapshot`. The validator reads nothing from a
+store, a file or an ambient static inside the call: everything it consults arrives as an argument, which is
+what makes a container sweep testable with no server anywhere.
+
+**What the validator answers.** Three outcomes and no fourth, and in particular no "dropped": a record that
+did not resolve is KEPT, unusable, never discarded. Checks 1 to 5 are the payload decoder called once rather
+than a second copy of it. Checks 6 and 7 are DERIVED from the property registry, walking the same reference
+descriptors the remap pass will walk, so a game kind at or above 1,024 gets drift detection and quarantine by
+declaring its field shape and its targets and nothing else. Check 10 quarantines EVERY entry sharing a
+duplicated instance id, the first included, because which of them is the original is unknowable from the
+bytes. Checks 12 and 13 are tolerated policy findings that leave the record valid, and neither is ever an
+alert. `KhaozEngine.ItemInstances/README.md` is the type-by-type reference, including the thirteen checks in
+full, the `KECQ` layout, the durable reason ordinals and the kind bands.
+
+**What is NOT here yet.** Phase 1 settles every byte format, every id space, every ordering rule and the
+stacking test, which are the expensive things to change once data exists, and it deliberately ships no
+breadth. Paging (`PagedItemContainer`, `ItemContainerPage`), the registry-derived remap pass that produces
+the `Remapped` outcome, the journal commit path (`ContainerCommitBuilder`) and the wire (the fragmenter, the
+ground component, the page delta, the owner remainder and a real `PublicView`, which is a stub here that
+returns the whole payload) are all
+`docs/superpowers/plans/2026-09-15-item-instances-phase2-3.md`. The affix content types and the item
+generator are spec 20 phase 4, and the crafting framework and the content stat evaluator are phase 5, both in
+`docs/design/ITEM-INSTANCES-DESIGN-2026-09-15.md`.
 
 ---
 

@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (- [ ]) syntax for tracking.
 
-**Goal:** Ship the instance record and the container, which is spec 20's phase 1 exactly: the canonical tagged payload, the property registry, quarantine, the instance id allocator, `ItemStack`'s third component, `ItemSlot`, and container codec version 2 with its version 1 reader, as one new package plus changes to one existing one.
+**Goal:** Ship the instance record and the container, which is spec 20's phase 1 exactly: the canonical tagged payload, the property registry, quarantine, the instance validator, the instance id allocator, `ItemStack`'s third component, `ItemSlot`, and container codec version 2 with its version 1 reader, as one new package plus changes to one existing one.
 
 **Acceptance, which is spec 20 phase 1's own:** spec 17 rows 1, 2, 3, 4, 12 and 16 green, and contracts 9.8's forty-five byte example reproduced BYTE FOR BYTE. Nothing else counts as done, and no group here is finished until its own acceptance below also holds.
 
-**Architecture:** `KhaozEngine.ItemInstances` (Foundation) owns the payload codec, the property registry, the `KECQ` wrapper, the instance id allocator and the page codec. `KhaozEngine.Items` gains a third `ItemStack` component, `ItemSlot`, the payload doors and codec version 2 with its version 1 reader. Nothing in the engine learns what an item means.
+**Architecture:** `KhaozEngine.ItemInstances` (Foundation) owns the payload codec, the property registry, the `KECQ` wrapper, the instance validator, the instance id allocator and the page codec. `KhaozEngine.Items` gains a third `ItemStack` component, `ItemSlot`, the payload doors and codec version 2 with its version 1 reader. Nothing in the engine learns what an item means.
 
 **Tech Stack:** .NET 10, `KhaozEngine.Items`, `KhaozEngine.Primitives`, `KhaozEngine.Catalog` (Scope A), xUnit. `KhaozEngine.Replication` is read for the id packing SCHEME only and is never referenced (task 7).
 
@@ -33,8 +33,9 @@ release lands:**
   naming, the load path with remap, `ContainerCommitBuilder`). Spec 20 phase 2.
 - **The wire** (spec 7, the fragmenter, the sibling ground component, the spawn overload, the page
   delta, the owner remainder and `PublicView`). Spec 20 phase 3.
-- **The full `InstanceValidator`** (spec 12.2). See the paragraph below, which is the one place this
-  plan reads spec 20's phase 1 sentence more narrowly than its list of names.
+- **The registry-derived remap pass** (spec 5.5 step 2, `InstanceRemapPass`), which the spec places with
+  the pages rather than with the validator. See the second paragraph below: the validator ships HERE and
+  the pass that produces its `Remapped` outcome does not.
 
 **Deferred exactly as spec 20 defers them, and out of scope for both plans:**
 
@@ -47,25 +48,32 @@ release lands:**
   `StatSourceKey`, `StatContext`, `IStatConditionRegistry`). Spec 20 phase 5.
 - **Consumer adoption** (spec 18 and 19). Runs per consumer after the wire lands, not inside either plan.
 
-**The validator is SPLIT, and this is the one judgement call in the split.** Spec 20 phase 1 names "the
-instance validator" in its list, and then says what phase 1 IS: the whole of sections 3 and 4. Section 12
-is neither. Phase 1's acceptance names no validator row either (rows 1, 2, 3, 4, 12 and 16 are goldens,
-unknown kinds, fuzzing, cross-version container round trips, the allocator and quarantine bytes). So what
-ships here is what the CODEC itself enforces, which is spec 12.2's checks 1 to 5 arriving as decoder
-refusals rather than as a validator sweep: canonical ascending order, no duplicate kind, minimal varints,
-every declared length inside the payload, the one-level socket rule and the cap. `ItemInstancePayload.Validate`
-is that surface and task 4 ships it. The DRIFT checks (6, 7, 8 and 13), the policy checks (12 and 13), the
-per-page `InstanceValidationReport`, the counter and the log line all need an `IContentSnapshot` and a
-PAGE, and a page is spec 5, so the full `InstanceValidator` lands in the phase 2-3 plan beside the load
-path that calls it. Nothing durable is decided later by that ordering: the quarantine wrapper, its reason
-ordinals and the entry flag bit all ship here.
+**The validator ships HERE, whole, because spec 20 phase 1's list names it.** All thirteen checks of spec
+12.2, the per-container `InstanceValidationReport`, the three placeholder `StringId`s, the counter and the
+log line are task 9. It needs an `IContentSnapshot` and a decoded container and it has both: milestone 1.1
+ships the snapshot (2.5) and task 8 ships the version 2 codec, whose decode hands back exactly the header
+and entry list the validator sweeps. Checks 1 to 5 also arrive EARLIER, as decoder refusals in task 4, and
+that is not a duplicate: the codec refuses a malformed payload at the door and the validator runs to the
+end accumulating findings, which is contracts 10.4's shape. Task 9 CALLS the codec for those five rather
+than writing a second copy of them.
+
+**What phase 1 does NOT ship is the REMAP PASS, which the spec places with the pages (5.5 step 2), and the
+one visible consequence is an outcome.** `InstanceValidationOutcome` carries the contracts 10.1 vocabulary
+complete from the start, because it is the contract's and not this plan's. `Remapped` is the DORMANT
+member: nothing in phase 1 rewrites an id, so no phase 1 path produces it, and the phase 2-3 plan's remap
+task is what lights it up. Task 9 says so in the XML doc on the member and pins it with a fact, so a reader
+does not go hunting for the path that sets it. Nothing durable waits on that: the quarantine wrapper, its
+reason ordinals and the entry flag bit all ship here too.
 
 Phase 1 is a STRONG BASE rather than a partial catalog (spec 1.2, spec 20). What it settles is every
 byte format, every id space, every ordering rule and the stacking test, which are the expensive things
 (spec 21). What it does not ship is breadth, which is content the owner authors afterwards.
 
 **Spec test plan rows this plan lands:** 1, 2, 3, 4, 12 and 16. Rows 5, 8, 9, 11, 14, 15 and 17 are the
-phase 2-3 plan's, and rows 6, 7, 10 and 13 belong to spec 20 phases 4 and 5.
+phase 2-3 plan's, and rows 6, 7, 10 and 13 belong to spec 20 phases 4 and 5. **The validator has no row of
+its own**, because spec 17 names none: what it cites are rows 1 and 16, the golden whose quarantined entry
+exceeds `MaxInstancePayloadBytes` and the wrap-store-load-unwrap byte equality, both of which tasks 4 and 6
+already land. Task 9's own fence is one fact per check, thirteen of them.
 
 ## Scope A dependency, per task
 
@@ -82,9 +90,10 @@ What this plan consumes from it, by name, all from catalog 2.2 and 2.5:
 | `ContentVarint` | every varint this plan writes, contracts 15 |
 | `ContentTypeId`, `ContentKey` | the type keys an `InstanceReferenceTarget` names, task 3 |
 | `ContentVersionIdentity` and its `int Number` | the page stamp the container codec writes, task 8, spec 5.3 |
-| `IContentSnapshot`, `ContentRow`, `ItemRow`, `IContentSnapshot.IsRetired(type, id)` | NOT read by phase 1. The full validator and the container load path read them, and both are the phase 2-3 plan's |
+| `IContentSnapshot`, `ContentRow`, `ItemRow` | the validator's drift and policy checks, task 9. The container load path reads them too and it is the phase 2-3 plan's |
+| `IContentSnapshot.IsRetired(type, id)` | validator check 13 and the `Retired` finding it raises, task 9, spec 12.2 |
 | `RemapRule`, `RemapRuleKind`, `RemapRuleSet` | NOT read by phase 1. The remap pass is the phase 2-3 plan's, spec 5.5 step 2 |
-| `ContentStringCatalog` | NOT read by phase 1. The three placeholder `StringId`s of spec 12.3 ship with the validator |
+| `ContentStringCatalog` | the three placeholder `StringId`s of spec 12.3, task 9 |
 | `IRandomSource` (`KhaozEngine.Primitives`, contracts 14.1) | not used by either plan, named so a later phase does not re-derive the seam |
 
 **Tasks 1 and 2 have NO Scope A gate at all.** They live in `KhaozEngine.Items`, which does not
@@ -140,7 +149,8 @@ breaks one of these is wrong even when its own tests pass.
   test projects by the reference graph, so an over-broad reference silently degrades selection.
 - **Every player-facing string is a `StringId`.** The three placeholder keys are engine owned and fixed:
   `khaoz.item.quarantined`, `khaoz.item.retired`, `khaoz.item.unidentified` (spec 12.3). They ship with
-  the validator in the phase 2-3 plan, and nothing here invents a literal in their place.
+  the validator in task 9, the engine ships the keys and no translation, and nothing anywhere invents a
+  literal in their place.
 - **No em dashes, no en dashes, no semicolons in prose** in any file this plan writes, code comments and
   XML doc included. Run `scripts/check-dashes.sh --tree` and `scripts/check-prose.sh --tree` before every
   push, not only at the end.
@@ -161,8 +171,9 @@ breaks one of these is wrong even when its own tests pass.
 | 6 | `QuarantineWrapper`, the `KECQ` format | small | milestone 1.1 |
 | 7 | `InstanceIdAllocator`, the store epoch and the rotation guard | medium | milestone 1.1 |
 | 8 | Container codec version 2 and the version 1 reader | large | milestone 1.1 |
-| 9 | Documentation sweep: the package README, the README catalog, USING, DEPENDENCY-SEAMS | medium | milestone 1.1 |
-| 10 | The finishing ritual: one version bump, changelog, pack, no tag | medium | milestone 1.1 |
+| 9 | `InstanceValidator`: thirteen checks, the counter and the log line | large | milestone 1.1 |
+| 10 | Documentation sweep: the package README, the README catalog, USING, DEPENDENCY-SEAMS | medium | milestone 1.1 |
+| 11 | The finishing ritual: one version bump, changelog, pack, no tag | medium | milestone 1.1 |
 
 Groups and their acceptances:
 
@@ -170,10 +181,12 @@ Groups and their acceptances:
   green across the solution with `ItemStack` at three components.
 - **Group B, tasks 3 to 7.** The instance record, spec 3. Acceptance: spec 17 rows 1, 2, 3, 12 and 16
   green, and contracts 9.8's 45 bytes reproduced byte for byte.
-- **Group C, task 8.** The container, spec 4. Acceptance: spec 17 row 4 green, a version 1 blob decoding
-  through the version 2 reader unchanged, and an OSRS slot entry at seven bytes against version 1's fixed
-  ten. Groups B and C together are spec 20 phase 1's acceptance in full.
-- **Group D, tasks 9 and 10.** Documentation and release. Acceptance: `scripts/check-doc-versions.sh`,
+- **Group C, tasks 8 and 9.** The container and the validator that sweeps it, spec 4 and 12. Acceptance:
+  spec 17 row 4 green, a version 1 blob decoding through the version 2 reader unchanged, an OSRS slot entry
+  at seven bytes against version 1's fixed ten, and the validator's thirteen checks green with the `Retired`
+  finding and the two unresolved-reference quarantines among them. Groups B and C together are spec 20
+  phase 1's acceptance in full.
+- **Group D, tasks 10 and 11.** Documentation and release. Acceptance: `scripts/check-doc-versions.sh`,
   `scripts/check-dashes.sh --tree`, `scripts/check-prose.sh --tree` and `scripts/check-file-size.sh --tree`
   all exit 0, the full solution green in Release, and `local-feed` packed with NO tag.
 
@@ -527,8 +540,8 @@ public static void Register(
   payload format in one block, the kind ranges, the registration rule and the three placeholder
   `StringId`s. Do not point it at a design doc. `scripts/check-doc-versions.sh` requires every packable
   package to have BOTH its own README and a row in the root `README.md` catalog, so a minimal row lands
-  here and task 9 brings it up to the depth of the rows beside it. Without this step the guard is red
-  from this task until task 9.
+  here and task 10 brings it up to the depth of the rows beside it. Without this step the guard is red
+  from this task until task 10.
 - [ ] **Step 9: Run the focused tests green and commit.**
 
 ~~~bash
@@ -545,14 +558,13 @@ git commit -m "iteminstances(registry): property kinds, bands and field shapes"
 Spec 3.2, 3.4, 3.5, 3.7 and 3.8, over contracts 9.1 through 9.9. This is the format everything else in
 the plan rests on, and spec 21 records most of it as expensive to change once data exists.
 
-**The STRUCTURAL checks live here, and the full `InstanceValidator` does not.** Spec 12.2's thirteen
-checks are section 12, which is neither of the two sections spec 20 puts in phase 1, and phase 1's
-acceptance names no validator row. What this task ships is what the CODEC enforces, which is checks 1 to
-5 arriving as decoder refusals: canonical ascending order, no duplicate kind, minimal varints, every
-declared length inside the payload, the one-level socket rule and the cap. `Validate` in step 8 is that
-surface. The drift and policy checks, the per-page report, the counter and the log line need an
-`IContentSnapshot` and a PAGE, so the full validator lands in
-`docs/superpowers/plans/2026-09-15-item-instances-phase2-3.md` beside the load path that calls it.
+**The STRUCTURAL checks arrive here as decoder refusals, and task 9's sweep reuses them.** Spec 12.2's
+checks 1 to 5 are what the CODEC itself enforces: canonical ascending order, no duplicate kind, minimal
+varints, every declared length inside the payload, the one-level socket rule and the cap. `Validate` in
+step 8 is that surface, it answers a reason from the closed set and it never throws. Task 9's
+`InstanceValidator` CALLS it for those five rather than writing a second copy, and adds the eight that need
+an `IContentSnapshot`: the drift checks, the policy checks, the per-container report, the counter and the
+log line. Two entry points, one implementation of each check.
 
 **LIFT FROM THE SPIKE, do not rewrite.** `KhaozEngine.Benchmarks/Items/InstancePayload.cs` (327 lines) is
 a clean, measured implementation of this exact format: the same field walk, the same closed reason set,
@@ -811,9 +823,9 @@ durable envelope that keeps them.
   choose them.** That table is the single source for which byte a reason is written as, and the byte is
   DURABLE: a wrapper stored under one ordinal is read back under the same one forever, so a task that
   numbered the reasons itself would pin a second meaning to the same byte the first time the two lists
-  diverged. Read the ordinals off 12.4 at implementation time. The full validator that raises most of
-  those reasons is the phase 2-3 plan's, which is why the ordinals live in the spec rather than in the
-  type that first writes them.
+  diverged. Read the ordinals off 12.4 at implementation time. The validator that raises most of those
+  reasons is task 9, three tasks later, which is why the ordinals live in the spec rather than in the type
+  that first writes them.
 
 - [ ] **Step 3: Let `OriginalLength` exceed `MaxInstancePayloadBytes`.** `payload-oversize` is a reason,
   and refusing to wrap the thing that failed for being too big destroys exactly the item the wrapper exists
@@ -933,7 +945,7 @@ byte for byte.
 
 ---
 
-## Group C: the container (spec 4)
+## Group C: the container and its validator (spec 4 and 12)
 
 ### Task 8: Container codec version 2 and the version 1 reader (large, gate: milestone 1.1)
 
@@ -1063,14 +1075,149 @@ git add KhaozEngine.ItemInstances/ItemContainerPageCodec.cs KhaozEngine.ItemInst
 git commit -m "items(codec): container codec version 2 reads version 1"
 ~~~
 
-**Group C acceptance:** spec 17 row 4 green. Together with group B that is spec 20 phase 1's acceptance
-in full: rows 1, 2, 3, 4, 12 and 16 green, and the forty-five byte example reproduced byte for byte.
+---
+
+### Task 9: `InstanceValidator`, its thirteen checks, the counter and the log line (large, gate: milestone 1.1)
+
+Spec 12.2, 12.3, 12.6 and 12.7 over contracts 10.1, 10.2 and 10.4. Spec 20 phase 1's list names the
+instance validator, so it ships here, whole. Write it fresh: the spike has no validator, and
+`KhaozEngine.Content/JsonSchemaValidator.cs:11-101` is the run-to-the-end sweep shape to copy. It sweeps
+what task 8 decodes, which is a version 2 container's header plus its entries, and it takes a standalone
+payload for a caller holding one item without a container.
+
+**Files:**
+
+- Create: `KhaozEngine.ItemInstances/InstanceValidator.cs`
+- Create: `KhaozEngine.ItemInstances/InstanceValidator.References.cs`
+- Create: `KhaozEngine.ItemInstances/InstanceValidationReport.cs`
+- Create: `KhaozEngine.ItemInstances/InstanceValidationStrings.cs`
+- Create: `KhaozEngine.ItemInstances/InstanceValidationTelemetry.cs`
+- Create: `KhaozEngine.ItemInstances.Tests/Validation/InstanceValidatorTests.cs`
+- Modify: `KhaozEngine.ItemInstances/KhaozEngine.ItemInstances.csproj` (step 7's one added reference)
+
+**Interfaces:**
+
+- Consumes: `IContentSnapshot` (`TryGetRow`, `IsRetired`), `ContentStringCatalog`, task 3's property
+  registry and its reference targets, task 4's payload field walk and its `Validate`, task 8's decoded
+  `PageHeader` and `PageEntry`, and `ILogger` from `KhaozEngine.Diagnostics` for the telemetry helper only
+- Produces: `InstanceValidator.Validate` and `InstanceValidator.ValidateEntry`,
+  `InstanceValidationReport`, `InstanceValidationFinding`, `InstanceValidationOutcome`,
+  `InstanceValidationStrings`, `InstanceValidationTelemetry`
+
+- [ ] **Step 1: Write one fact per check, thirteen of them**, naming the reason token spec 12.2 assigns.
+  Checks 1 to 5, 9, 10 and 11 are STRUCTURAL and quarantine. Checks 6, 7 and 8 are DRIFT and also
+  quarantine. Check 12 is POLICY and is TOLERATED. Check 13 is POLICY and answers `Retired`.
+  The two that a reader will get wrong without a test are 12 and 13, so write those first:
+
+~~~csharp
+[Fact] public void Check_12_an_over_cap_count_is_counted_and_changes_nothing()
+[Fact] public void Check_13_a_RETIRED_definition_is_not_a_quarantine_and_the_container_still_loads()
+[Fact] public void A_structural_failure_quarantines_that_ENTRY_and_leaves_the_rest_alone()
+[Fact] public void An_unresolved_content_reference_quarantines_because_no_rule_covered_it()
+[Fact] public void The_validator_accumulates_and_never_stops_at_the_first_finding()
+[Fact] public void The_validator_never_throws_never_logs_never_counts_and_never_mutates_its_input()
+~~~
+
+- [ ] **Step 2: Give it TWO entry points over ONE sweep.** Phase 1 has a decoded container and not yet an
+  `ItemContainerPage`, which is spec 5 and the phase 2-3 plan's, so the surface is written over what task 8
+  already hands back:
+
+~~~csharp
+public static InstanceValidationReport Validate(
+    in PageHeader header, IReadOnlyList<PageEntry> entries, IContentSnapshot snapshot);
+
+public static InstanceValidationOutcome ValidateEntry(
+    in PageEntry entry, int stampedVersion, IContentSnapshot snapshot,
+    out InstanceValidationFinding finding);
+~~~
+
+  The first is the whole stored container, so no new type sits between the codec and the validator. The
+  second is the standalone payload door, and the first is a loop over it plus the two answers that are
+  CONTAINER-wide: check 10's instance id uniqueness, and the report itself. When `ItemContainerPage`
+  arrives in the phase 2-3 plan it wraps the same header plus entries and calls the same method, so nothing
+  here changes shape when paging lands, and neither does the caller the load path becomes.
+- [ ] **Step 3: Ship the outcome vocabulary COMPLETE and say which member is dormant.** Contracts 10.1
+  fixes three outcomes and there is no fourth, so `InstanceValidationOutcome` carries `Valid`, `Remapped`
+  and `Quarantined` from the start: it is the contract's vocabulary rather than this plan's, a report that
+  cannot express one of them would have to be widened later, and a caller switching over the enum should
+  compile once against the final set. **No phase 1 path produces `Remapped`**, because the remap pass is
+  spec 5.5 step 2 and the phase 2-3 plan ships it. Put that sentence in the XML doc on the member and add a
+  fact that no phase 1 input reaches it, so the dormancy is pinned rather than assumed.
+- [ ] **Step 4: Model check 13's `Retired` as a FINDING and not as a fourth outcome**, which is the one
+  place spec 12.2's table and spec 12.3's prose have to be read together. The table's outcome column says
+  `retired`, and 12.3 says what that is NOT: not a quarantine, not a fourth contract outcome, not a counter
+  and not a new log category. The bytes are not wrapped, the entry still decodes, the container still
+  loads, and the record's contracts 10.1 outcome stays `Valid` or `Remapped` as its ids say. What `Retired`
+  changes is the PRESENTATION (`khaoz.item.retired`) and the refusals that ride with it, carried in the
+  finding the caller already reads. Contracts 8.2's kind 2 policy `0x01` is the rule it implements, and a
+  retired row stays in the pack forever (contracts 5.1), so check 6 RESOLVES it and the item would
+  otherwise be fully usable. That is the gap check 13 exists to close.
+
+- [ ] **Step 5: DERIVE checks 6 and 7 from the registry's `InstanceReferenceTarget` descriptors**, in the
+  same recursive order the phase 2-3 plan's remap pass will walk, over the same nested payloads. Spec 12.2
+  says why: an earlier draft wrote check 7 as a closed enumeration and it already omitted kind 7's material
+  ids and a socket's `ContainedDefinitionId`, and it would have omitted every game kind at or above 1,024
+  forever. A kind cannot be remapped-but-not-validated or validated-but-not-remapped. Check 8 stays hand
+  written, because a tier ordinal is not a content id: it is a key INTO the row check 7 already resolved.
+- [ ] **Step 6: Keep it PURE.** No store reads, no ambient state, no logging, no counter, no throw for a
+  content reason. A throw from it is a bug in the validator. The caller logs, counts and quarantines, and
+  step 7 is what the caller calls.
+- [ ] **Step 7: Name the counter and the log line, and invent no others.** Counter
+  `khaoz.content.quarantined_records`, dimensioned by content type id and reason code. ONE log line per
+  CONTAINER under category `ContentValidation` at Warning, naming the reason code, the stamped version, the
+  active version and the owning stream key, and NEVER the payload bytes or a raw account id. One per
+  container rather than per entry, because one that fails wholesale would otherwise emit a hundred
+  identical lines, which is how an operator learns to filter the category out. The COUNTER is still
+  incremented per record, because a counter is what a dashboard reads and a log line is what a human reads.
+  **The validator stays pure, so the emission is a named member beside it rather than a rule written in a
+  doc:** `InstanceValidationTelemetry.Report(report, logger, counter)` takes a finished report and does
+  both side effects in one place. Phase 1 ships no load path to be that caller, and the phase 2-3 plan's
+  one calls this instead of writing a second emitter, which is the whole reason it is a member and not a
+  paragraph. `ILogger` arrives by argument from `KhaozEngine.Diagnostics` (`LogManager.GetLogger` is the
+  injected path, never the ambient `Log` facade, #616), which is the one project reference this task adds
+  to a Foundation package that already sits above it. **The engine has NO counter seam**, verified by grep:
+  nothing in the tree defines one, so the counter arrives as a caller-supplied delegate and this task does
+  not invent a package-wide metrics abstraction on the way past. Add a fact asserting a wholesale failure
+  emits exactly one line and a hundred counter increments.
+
+- [ ] **Step 8: Ship the three placeholder `StringId`s and no translation.** `khaoz.item.quarantined`,
+  `khaoz.item.retired`, `khaoz.item.unidentified` (spec 12.3). All three are player facing, so none is a
+  literal, which is AGENTS.md's founding rule. They are prefixed `khaoz.` deliberately: they are ENGINE
+  strings rather than content rows, so contracts 12.1's derived `<type key>.<content key>.<field>` grammar
+  does not name them and the prefix keeps them out of its space. They resolve through
+  `ContentStringCatalog` on the `SafeFormat` path, so a translator's malformed template falls back to the
+  unformatted template rather than throwing inside the frame loop. A reason code and a stamped version are
+  NOT player text and are never formatted into these strings. Task 3 step 8's package README already names
+  the three keys, so keep the two in step.
+- [ ] **Step 9: Implement kind 128's identification mechanic on the registered bit.** `RevealedMask` bit N
+  is the bit a kind was REGISTERED with, never its position in the ascending list of gated kinds (spec 12.7
+  and spec 21's last row). Add a fact that registering a NEW gated engine kind at, say, 9 does NOT move
+  bits 0 to 3, which is the exact hazard the registered constant exists to prevent. What ships here is the
+  mask's semantics over task 3's registry. The function that READS it for a viewer,
+  `ItemInstanceVisibility.CanSee`, is spec 12.5 and lands with the wire in the phase 2-3 plan.
+- [ ] **Step 10: Add the unidentified stacking fact and its accepted leak.** An unidentified item still
+  STACKS by byte equality, and two unidentified items with different hidden affixes have different bytes,
+  so they do not merge. That leaks one bit: a player who tries to stack two unidentified items learns
+  whether they are identical. The leak is inherent to stacking by bytes and spec 15.8 records it as
+  accepted. Pin the behaviour so nobody "fixes" it later without reading that section.
+- [ ] **Step 11: Run green and commit.**
+
+~~~bash
+dotnet test KhaozEngine.ItemInstances.Tests/KhaozEngine.ItemInstances.Tests.csproj -c Release
+git add KhaozEngine.ItemInstances/InstanceValidator.cs KhaozEngine.ItemInstances/InstanceValidator.References.cs KhaozEngine.ItemInstances/InstanceValidationReport.cs KhaozEngine.ItemInstances/InstanceValidationStrings.cs KhaozEngine.ItemInstances/InstanceValidationTelemetry.cs KhaozEngine.ItemInstances/KhaozEngine.ItemInstances.csproj KhaozEngine.ItemInstances.Tests/Validation
+git commit -m "iteminstances(validation): thirteen checks, three outcomes, one counter"
+~~~
+
+**Group C acceptance:** spec 17 row 4 green, and the validator's thirteen checks green with the `Retired`
+finding and the two unresolved-reference quarantines among them. Together with group B that is spec 20
+phase 1's acceptance in full: rows 1, 2, 3, 4, 12 and 16 green, and the forty-five byte example reproduced
+byte for byte.
 
 ---
 
 ## Group D: documentation and release
 
-### Task 9: The documentation sweep for what phase 1 ships (medium, gate: milestone 1.1)
+### Task 10: The documentation sweep for what phase 1 ships (medium, gate: milestone 1.1)
 
 AGENTS.md's "Full doc sweep on EVERY feature" rule. `scripts/check-doc-versions.sh` verifies the
 engine-version declarations, the newest changelog heading and the package INVENTORY. What it does NOT
@@ -1097,19 +1244,23 @@ package arrives in this plan and a missed row is a guard failure at release time
   third `ItemStack` component, `ItemSlot`, the payload doors and codec version 2 reading version 1. The
   `Foundation` umbrella README gains its new member. Finish `KhaozEngine.ItemInstances/README.md` to the
   same depth: the payload format in one block, the kind ranges, the registration rule, the `KECQ`
-  wrapper and the allocator's `IInstanceIdStore` seam.
+  wrapper, the validator's thirteen checks with its three placeholder `StringId`s and its counter, and
+  the allocator's `IInstanceIdStore` seam.
 - [ ] **Step 3: Add a `docs/USING-KHAOZENGINE.md` section for the new public API.** One section,
   following the file's existing shape: a worked example that builds a payload, seats it in a container
-  slot through `SetSlotAt`, saves and reloads the container through codec version 2, and reads an
-  instance id off an `ItemStack`. State explicitly what is NOT here yet and where it lands: paging, the
+  slot through `SetSlotAt`, saves and reloads the container through codec version 2, sweeps what it
+  decoded through `InstanceValidator.Validate` against a snapshot, and reads an instance id off an
+  `ItemStack`. State explicitly what is NOT here yet and where it lands: paging, the remap pass, the
   journal, the commit batch and the wire are
   `docs/superpowers/plans/2026-09-15-item-instances-phase2-3.md`, and the generator, crafting and the
   stat evaluator are spec 20 phases 4 and 5.
-- [ ] **Step 4: Add the seams to `docs/DEPENDENCY-SEAMS.md`.** Two edges changed: `ItemInstances` sits
-  above `Items` and `Catalog` in `Foundation`, and `Items` gained an optional canonical-payload predicate
-  on its constructor rather than a dependency on the package that owns the decoder. That second one is
-  the interesting entry, because it is a seam that was deliberately not crossed. `IInstanceIdStore` is a
-  new seam with no engine-shipped provider and belongs in the table.
+- [ ] **Step 4: Add the seams to `docs/DEPENDENCY-SEAMS.md`.** Three edges changed: `ItemInstances` sits
+  above `Items` and `Catalog` in `Foundation`, it gained a `Diagnostics` edge for the validator's log line
+  (task 9 step 7, injected `ILogger`, never the ambient facade), and `Items` gained an optional
+  canonical-payload predicate on its constructor rather than a dependency on the package that owns the
+  decoder. That last one is the interesting entry, because it is a seam that was deliberately not crossed.
+  `IInstanceIdStore` is a new seam with no engine-shipped provider and belongs in the table, and so does
+  the validator's counter delegate, which exists because the engine has no counter seam to plug into.
 - [ ] **Step 5: Do the mechanical check before committing.** Grep every new type, package and constant name
   across ALL `*.md` recursively (root, `docs/`, `docs/design/`, and every per-package `<Package>/README.md`)
   plus `AGENTS.md`, and confirm every place that should mention it does.
@@ -1129,12 +1280,12 @@ git commit -m "docs(items): the catalog row, the package READMEs and the usage s
 ~~~
 
   All four guards must exit 0 here. If `check-doc-versions.sh` is red, read the message: a complaint
-  about the version line means task 10 has not run yet and is expected, and anything else is a real miss
+  about the version line means task 11 has not run yet and is expected, and anything else is a real miss
   in this task.
 
 ---
 
-### Task 10: The finishing ritual, one version bump, no tag (medium, gate: milestone 1.1)
+### Task 11: The finishing ritual, one version bump, no tag (medium, gate: milestone 1.1)
 
 AGENTS.md's finishing ritual, in order. **ONE version bump for the whole batch**, not one per task, which
 is the rule that stops the engine version creeping through a run of one-line releases. The phase 2-3 plan
@@ -1173,13 +1324,16 @@ grep -n '<KhaozEngineVersion>' Directory.Build.props
 - [ ] **Step 3: Write the changelog entry in the SAME commit as the version bump.** Newest first, detailed,
   with a tight one-line summary as the entry's FIRST sentence so the file doubles as the history view.
   The first sentence is: `The item instance record and the container arrive: a canonical tagged payload,
-  node-prefixed instance ids, quarantine, and container codec version 2 reading version 1.` Then the
-  detail, which is the public API and behaviour change: the new `KhaozEngine.ItemInstances` package,
-  `ItemStack`'s third component and the deconstruction break it causes, `ItemSlot` and the payload doors,
-  codec version 2 and its version 1 reader, the property registry and its band rule, the closed reason
-  set, `KECQ`, and the allocator with its epoch refusal. Name the deferred half in one sentence so a
-  reader does not go looking for a paged container that is not there: paging, the journal, the commit
-  batch and the wire are the next release, and generation, crafting and the evaluator are after that.
+  node-prefixed instance ids, quarantine, the instance validator, and container codec version 2 reading
+  version 1.` Then the detail, which is the public API and behaviour change: the new
+  `KhaozEngine.ItemInstances` package, `ItemStack`'s third component and the deconstruction break it
+  causes, `ItemSlot` and the payload doors, codec version 2 and its version 1 reader, the property
+  registry and its band rule, the closed reason set, `KECQ`, `InstanceValidator` with its thirteen checks,
+  its three placeholder `StringId`s and its `khaoz.content.quarantined_records` counter, and the allocator
+  with its epoch refusal. Name the deferred half in one sentence so a reader does not go looking for a
+  paged container that is not there: paging, the remap pass that makes `Remapped` reachable, the journal,
+  the commit batch and the wire are the next release, and generation, crafting and the evaluator are after
+  that.
 - [ ] **Step 4: Update every engine-version declaration the guard checks.** EVERY `<PackageReference>`
   example line in `README.md` and in `docs/USING-KHAOZENGINE.md`, one per umbrella, not just one.
 
@@ -1266,7 +1420,7 @@ restated at the task that acts on it.
 | 3 | Contracts 9.7's eight reason tokens are PAYLOAD reasons, and nothing names the PAGE-level ones | A second closed set, `ItemContainerPageReason`, using the spike's names so the benchmark and the package agree | 8 |
 | 4 | Spec 3.6 says reuse `NetIdAllocator`, which lives in a `Server` package the `Foundation` allocator cannot reference | `InstanceIdAllocator` mirrors the scheme with its own constants and a cross-package equality fact in `KhaozEngine.Server.Tests` | 7 |
 | 5 | The allocator's durable state has no named home | An `IInstanceIdStore` constructor seam, engine ships no provider | 7 |
-| 6 | Spec 20 phase 1 lists "the instance validator" among what it ships, and then defines phase 1 as the whole of sections 3 and 4, which section 12 is not | The codec's own structural refusals ship here and the full `InstanceValidator` ships with the page it validates, in the phase 2-3 plan. Nothing durable moves with it | 4 |
+| 6 | Spec 12.2's validator is PURE and the caller logs and counts, but phase 1 ships no load path to be that caller, and the engine has no counter seam at all (verified by grep) | `InstanceValidationTelemetry.Report`, one named member beside the validator taking an injected `ILogger` and a counter delegate, which the phase 2-3 plan's load path calls rather than writing a second emitter | 9 |
 
-Choice 3 becomes a GitHub issue in task 10 step 5, because it is something the spec should adopt or
+Choice 3 becomes a GitHub issue in task 11 step 5, because it is something the spec should adopt or
 overrule rather than inherit from a plan. Choices 1, 2, 4, 5 and 6 are recorded here and in their tasks.

@@ -73,8 +73,10 @@ public static partial class TileProtocol
     const int SnapshotHeader = 1 + 8 + 4 + 8 + 1;
     const byte SnapshotFlagPadded = 0x01;
 
-    // [tag:1][kind:2][flags:1], then the opaque payload, then the pad byte when the flag says so.
-    const int GameMessageHeader = 1 + 2 + 1;
+    // [tag:1][kind:2][flags:1], then the opaque payload, then the pad byte when the flag says so. Internal rather
+    // than private because TileFragmentedMessage sizes a chunk against it: a fragmenter that hardcoded the four
+    // would hold a second copy of this envelope's width, and the copy is the thing that rots.
+    internal const int GameMessageHeader = 1 + 2 + 1;
     const byte GameMessageFlagPadded = 0x01;
 
     // [tag:1][len:1], then the token's UTF-8 bytes, then the pad byte when the declared length implies one.

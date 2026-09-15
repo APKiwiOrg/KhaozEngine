@@ -4028,9 +4028,15 @@ The fixed list, in two halves. A DECODE entry point may return only:
 ```
 chunk-format-version   chunk-reserved-set     chunk-range-mismatch   chunk-too-large
 chunk-stored-length    chunk-row-duplicate    chunk-row-order        chunk-row-flags
+chunk-decompress       chunk-magic            chunk-compression      chunk-truncated-header
 manifest-wrong-side    manifest-chunk-slots   rule-kind              rule-sequence-gap
-rule-sequence-order
+rule-sequence-order    text-key-encoding      text-value-encoding
 ```
+
+The list is a FLOOR and not a ceiling: every decoder declares its full token set as public `Reason*`
+constants, and the fuzzer reflects those rather than copying this list, so a token a decoder adds is accepted
+without this document moving. What this list is for is the other direction, a token named here that no
+decoder declares any more, which is a rename nobody finished.
 
 A FETCH may additionally report `hash-mismatch`, `manifest-hash-mismatch` and `chunk-fetch-failed`, which are
 outcomes of a transfer rather than of a decode and which the fuzzer never produces, because it mutates bytes

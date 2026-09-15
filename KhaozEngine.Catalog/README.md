@@ -158,7 +158,10 @@ mismatch refuses the WHOLE record with a reason token. Every decode entry point 
 - `ContentTextChunkCodec`, `ContentTextChunk` and `ContentTextChunkEnumerator` - the `KECT` per-language
   chunk, one per language with its own hash so a client downloads only what it wants. The header is VARIABLE
   because the language tag sits inside it and inside the digest, and the decoded chunk keeps its body as
-  BYTES with a non-allocating walk over it, so nothing becomes a string until something asks.
+  BYTES with a non-allocating walk over it, so nothing becomes a string until something asks. The language
+  tag, every key and every value are held to strictly valid UTF-8 with no replacement of an invalid
+  sequence (`text-language-tag`, `text-key-encoding`, `text-value-encoding`), because a substituted U+FFFD
+  is a mojibake string on a player's screen behind a chunk that verified.
 
 The four formats are pinned by the checked-in golden set in `KhaozEngine.Catalog.Tests/Goldens`, which every
 decoder is also fuzzed against.

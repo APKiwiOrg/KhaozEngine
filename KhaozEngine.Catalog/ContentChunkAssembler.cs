@@ -18,6 +18,12 @@ namespace KhaozEngine.Catalog;
 /// the row body does not (spec 7.3). Ordering is the caller's: the publisher sorts ascending by id before it
 /// encodes (spec 6.7), and <see cref="ContentChunkCodec.Encode"/> is what refuses a set that is not sorted.
 /// </para>
+/// <para>
+/// <b>Nothing in the shipped tree calls it yet, and it is not dead.</b> Its caller is the publish path's
+/// chunk builder, which lands with the authoring half, and it ships ahead of that caller because the encode
+/// side of every format in this milestone is what the goldens and the fuzzer are written against. The tests
+/// here are its callers until then.
+/// </para>
 /// </summary>
 public sealed class ContentChunkAssembler : IBufferWriter<byte>
 {

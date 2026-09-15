@@ -294,7 +294,10 @@ internal static class GoldenCodecs
         // The decoded text chunk holds its canonical header and its body as BYTES, so the re-encode here is
         // that pair concatenated. The string-level re-encode is the goldens' own assertion, where every entry
         // is known to be valid UTF-8: a mutated entry need not be, and going through UTF-16 would substitute
-        // a replacement character and fail a round trip the decoder never broke.
+        // a replacement character and fail a round trip the decoder never broke. The codec now refuses a key
+        // or a value that is not valid UTF-8, so a chunk reaching here is in fact transcodable and this is no
+        // longer load bearing. It stays: the byte pair is the more direct statement of what canonical means
+        // for a byte format, and it does not depend on a refusal elsewhere staying in place.
         byte[] reEncoded = new byte[chunk.CanonicalHeader.Length + chunk.Body.Length];
         chunk.CanonicalHeader.CopyTo(reEncoded);
         chunk.Body.CopyTo(reEncoded.AsSpan(chunk.CanonicalHeader.Length));

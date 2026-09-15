@@ -4434,4 +4434,51 @@ row is still rendered by the generic editor with no extra work.
 
 ## 22. Appendix A: review log
 
-Filled at stage 4.
+Stage 4 was an adversarial read of this spec against `CONTENT-CONTRACTS-DESIGN-2026-09-14.md` and against the
+engine tree, at `1c5a51f4`. It raised 29 findings. Each was then verified independently against the cited
+lines, and the verified verdict is what decided the disposition: three findings were REFUTED as stated and
+carry only the wording fix their verification suggested, three were PARTIAL where the gap was real and the
+consequence was not, and one was a LEAD that named no mechanism.
+
+Every row is here, including the refuted ones, because the reason a finding was wrong is worth as much to the
+next reader as the reason another was right.
+
+| ID | Claim | Reviewer severity | Verified verdict | Disposition | Commit |
+|---|---|---|---|---|---|
+| F1 | `AllocateAsync` can issue a plain id already inside a reserved family block | high | Confirmed, high | Fixed. Family reservation advances `issued_through` past the block top, with the alternative weighed, plus `KEC0036` and `KEC0037` in pass 1. 4.7, 5.2, 5.3, 15.5, 16.4 | `6cb5dfdb` |
+| F2 | The publish sweep deletes the remap rule chunk and every text chunk | high | REFUTED, low, editorial | Rejected as a finding: `ListAsync(version)` reads the manifest, which names both hashes, so the sweep never had them out of its keep set. The wording fix was applied anyway, since the keep set was described against `catalog_chunk`. 6.12 | `6cb5dfdb` |
+| F3 | `catalog_chunk`'s key cannot hold both hashes of a mixed-visibility chunk | high | Confirmed, high | Fixed. `visibility` joins the primary key, carry-forward and commit are per side, a `Client` type may carry a per-field `ServerOnly` override, `KEC0014` fires only on client-side bytes. 4.3, 4.4, 6.6, 6.7, 6.8, 6.10, 13.1 | `6cb5dfdb` |
+| F4 | 409 and structured error bodies are not expressible through `RegisterAction` | high | Confirmed, medium | Fixed. The engine change is named and budgeted: `AdminActionStatus.Conflict`, an object error payload, the dispatch arm. 2.1, 10.1, 10.2, 18.1 milestone 1.4 | `7f241ca3` |
+| F5 | The `ContentBundle` round trip loses the version history, so it is not a backup | high | REFUTED, low | Rejected as a finding: an import runs through `catalog-publish`, which restamps at version 1, and re-seeding a live world is not a path this spec offers. The wording fix was applied: a lossless export, with an ordinary database restore named for the version line. 10.9, 19 | `5f60805b` |
+| F6 | A chunk is decompressed before its hash can be checked, with no size refusal | high | Confirmed, medium | Fixed. `chunk-too-large` and `chunk-stored-length` are header-level refusals before any allocation, decompression is bounded, both tokens are in the fixed list. 7.2, 7.6, 8.4, 15.2 | `7f241ca3` |
+| F7 | `chunk_slots` is mutable after a publish with no guard | medium to high | PARTIAL, low. The guard is missing. The consequence is a version no reader loads, not silent wrong rows | Fixed minimally. `KEC0029` covers `chunk_slots` after the first publish, and 3.6 states the fail-closed consequence correctly. 3.6, 5.2 | `5f60805b` |
+| F8 | A draft cannot hold an `Update` and a `Retire` for one row, and one is discarded | unstated, reads medium | REFUTED, low | Rejected as a finding: the stated observable is a unique-index refusal, and the draft-edit audit records the change. One sentence added making the collision explicit for a second edit with a different operation. 4.4 | `5f60805b` |
+| F9 | Audit value columns cap at 512 while a field caps at 4,096, so an audit failure fails the edit | medium | Confirmed, medium | Fixed. The caps widen to 4,096 and a rendering that still overflows is abbreviated visibly. 4.4, 4.6 | `b63cd535` |
+| F10 | `catalog-pin` has no column, and `sealed_flag` and `store_epoch` are unexplained | medium | Confirmed, medium | Fixed. `pinned_version` added, `store_epoch` given its stated job, `sealed_flag` deleted. 4.3, 4.4 | `b63cd535` |
+| F11 | `ListAsync(version)` cannot learn a version's manifest hash from a content-addressed store | medium | Confirmed, medium | Fixed. The publisher writes a `versions/<n>` pointer at step 9 and `ListAsync` reads it. 6.9, 6.11, 6.12, 8.1, 8.2 | `b63cd535` |
+| F12 | The import path has two id mechanisms and the schema expresses one | medium | Confirmed, medium | Fixed. A bundle row's id is optional, stated once in 6.3 and once in 10.9, with 4.4, 16.4 and 17.3 reading as two cases of one path | `7f241ca3` |
+| F13 | The text chunk's canonical form is never defined, so its hash is not reproducible | medium | PARTIAL, low. The prose gap is real. The lockout is not reachable, since one `OfBytesForKind` serves both sides | Fixed minimally. 7.6 writes out the construction and the header gains a `reserved` byte | `5f60805b` |
+| F14 | No boot refusal for a manifest type with no registration, or a registered type absent from the manifest | medium | Confirmed, medium | Fixed. Two exit rows at step 6, both exit 3, with the mirror case argued. 9.6, 15.7, 18.1 | `b63cd535` |
+| F15 | `MaxChunkUncompressedBytes` and `MaxContentRowBytes` are not consistent by construction | medium | Confirmed, medium | Fixed. A per-type `maxRowBytes`, a registration bound, and `KEC0038` as the proof the bound held. 3.1, 3.6, 5.2, 5.3, 7.1 | `b63cd535` |
+| F16 | The `Keys` memory line omits the string payload, and the sparse example counts one array | medium | Confirmed by arithmetic, medium | Fixed. Both recomputed and Q5 re-argued against the corrected numbers. 9.1, 9.2, 14.1, 21 Q5 | `b63cd535` |
+| F17 | Localized text keys are authored row values, which contracts 12.1 forbids | medium | Confirmed, medium | Fixed. A localized text key is a derived marker carrying no value and no row bytes, stated once in 3.2. 3.2, 3.3, 3.4, 4.4, 5.2, 7.1, 7.9, 10.3, 10.4, 10.5, 14.1, CCR-3 | `6f41bf93` |
+| F18 | No client cold start budget at 1,000,000, and the number is bad | medium | PARTIAL, low. The missing row is real. The restart herd is wrong, because the cache is content addressed | Fixed. Budget P4b with the 72 s arithmetic, on 18.3's acceptance, with the warm case named as P6 sized. 14, 14.1, 18.3 | `05f9bda9` |
+| F19 | The rollback un-retire branch is unreachable and reuses `KEC0017` | medium | Confirmed, medium | Fixed. The branch is deleted, a retire is never reversible by rollback, and the blocker is `KEC0039`. 5.2, 5.3, 6.13, 10.8, 12.2 | `b63cd535` |
+| F20 | The pin has two sources and the action writes only one | medium | Confirmed, medium | Fixed. One precedence order, config first, plus the manifest `versionNumber` cross-check at boot. 9.5, 9.6, 10.7 | `b63cd535` |
+| F21 | `KEC0023` refuses the `required_tags` draw shape 3.5 describes | medium | Confirmed, medium | Fixed. Exactly one of `item`, `nested_table` and a non-empty `required_tags`, with more than one refused rather than ranked. 3.5, 5.2 | `b63cd535` |
+| F22 | The manifest carries no per-chunk size, so 9.2's load buffer cannot be sized as described | low | Confirmed, low | Fixed. `uncompressedBytes` per chunk in the file, outside the canonical text, cross-checked against the chunk header. 7.4, 9.2 | `5f60805b` |
+| F23 | P6's 80 KB target is refuted by 14.1's own 250 KB arithmetic | low to medium | Confirmed, low | Fixed. `item` registers at 1,024 chunk slots per Q3's own recommendation and every dependent number follows. 3.1, 7.4, 8.2, 8.7, 9.1, 9.2, 10.3, 13.5, 14.1, 18.0, 19, 21 Q3 | `05f9bda9` |
+| F24 | The text chunk size is computed two ways and both are wrong | low to medium | Confirmed, low | Fixed. Computed once in 14.1 with the keys and every localized field, read there by 7.6 and Q4, and sharding is mandatory above about 97,000 items | `6f41bf93` (14.1), `05f9bda9` (7.6, Q4, 18.3) |
+| F25 | The action count is eleven, fourteen or sixteen by section | low | Confirmed, low | Fixed. Sixteen, everywhere. 10.1, 10.2, 10.11, 16.6, 17.7, 18.1 | `05f9bda9` |
+| F26 | "40 finding codes" is 36 | low | Confirmed, low | Fixed. Thirty-nine issued across `KEC0001` to `KEC0040`, with `KEC0013` withdrawn. 5.2, 15.7 | `05f9bda9` |
+| F27 | `KEC0013` as worded fires on the legal per-field override | low | Confirmed by quote, low | Fixed with F3. `KEC0013` is withdrawn and never reissued, and its real content is `KEC0014`. 5.2, 5.3 | `6cb5dfdb` |
+| F28 | Operator identity is unverified and optional, so it cannot do the accountability job it is given | low | Confirmed by quote, low | Fixed. 13.3 and 17.9 now say audit aid among cooperating operators, and Ruinborne 371 and 509 are improved rather than resolved | `05f9bda9` |
+| F29 | The `equip_profile` reference target is a game type the engine schema cannot name | lead | LEAD | Fixed by naming the mechanism: the engine schema names the type KEY, a game registers under it in its own range, and an unregistered target means the field must be 0, refused otherwise by `KEC0007`. 3.3 | `5f60805b` |
+
+Three findings were rejected AS FINDINGS and still changed the text, which is worth separating: F2, F5 and F8.
+In each case the mechanism the finding attacked was sound and the SENTENCE describing it was not, so the fix
+is wording and the design did not move. A reader who reaches for one of those three sections later should know
+the argument was tested and survived.
+
+One procedural note, because the appendix is the place for it: F17's verdict is carried by the stage 4
+disposition rather than by a verifier line of its own, unlike the other 28.

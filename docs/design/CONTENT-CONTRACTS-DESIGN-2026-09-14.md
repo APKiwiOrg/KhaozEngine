@@ -1,8 +1,20 @@
 # Content contracts: the shared ground under Scope A and Scope B
 
-**Status:** APPROVED BY THE OWNER AT GATE 0 on 2026-09-15, and BINDING ON BOTH SPECS. Nothing here is
-implemented yet. This document exists so the two parallel specs cannot contradict each other. Scope A is
-the versioned content catalog, [#882](https://github.com/APKiwiOrg/KhaozEngine/issues/882). Scope B is
+**Status:** APPROVED BY THE OWNER AT GATE 0 on 2026-09-15, and BINDING ON BOTH SPECS. AMENDED after both
+specs were drafted, under the section 18 rule that a spec brings a needed change back here first: 4.7 gains
+an asset reference value kind, 5.1 gains a one-time import exception that 6.5 now cross-references, 3.2
+gains `KhaozEngine.ItemInstances.Journal`, 9.8 and 9.9 make the affix list canonical ascending by mod id,
+9.6 restates the payload cap against the deepest legal item rather than the typical one, and 10.5 says the
+fail-closed rule binds the content version and not the code a row names. AMENDED A THIRD TIME after the
+stage 4 review of both specs: the `IRandomSource` seam and its two implementations live in the existing
+`KhaozEngine.Primitives` rather than in either new package (3.2, 14.1, 14.2), the validator takes the
+previous published snapshot as an argument and runs its change-shaped checks only when it is non-null
+(10.4), 9.5's contained instance id is an unsigned varint, 13.2's fold divides toward negative infinity so
+the rounding holds for negative values, and 4.7's localized text key kind is a marker that stores nothing.
+AMENDED A FOURTH TIME on 2026-09-15: a legacy affix entry is frozen against rerolls (5.4) and the instance
+id allocator's persisted record carries the store epoch (6.2). Nothing here is implemented yet.
+This document exists so the two parallel specs cannot contradict each other. Scope A is the versioned
+content catalog, [#882](https://github.com/APKiwiOrg/KhaozEngine/issues/882). Scope B is
 owned item instances, affixes, sockets, crafting and the stat evaluation base,
 [#884](https://github.com/APKiwiOrg/KhaozEngine/issues/884). Consumers are
 [Grimhollow #208](https://github.com/APKiwiOrg/Grimhollow/issues/208) and
@@ -303,7 +315,13 @@ README catalog cannot confuse the two.
 | `KhaozEngine.Catalog.Sqlite` | The SQLite authoring provider. Sits on `KhaozEngine.Sqlite`. | none, opt-in sibling |
 | `KhaozEngine.Catalog.SqlServer` | The SQL Server authoring provider. | none, opt-in sibling |
 | `KhaozEngine.ItemInstances` | Scope B's instance record, the tagged field codec, sockets, the container page codec, the generator and the crafting framework. Depends on `KhaozEngine.Items` and `KhaozEngine.Catalog`. | `Foundation` |
+| `KhaozEngine.ItemInstances.Journal` | The container page commit builder and the tick-bounded commit batch, which turn instance operations into `JournalCommit`s. Depends on `KhaozEngine.ItemInstances` and `KhaozEngine.WorldStore`. | `Server` |
 | `KhaozEngine.Catalog.Netcode` | `ContentIdentityGateAuthenticator` and the content-version handshake layer. Depends on `KhaozEngine.Netcode` and `KhaozEngine.Catalog`. | `Server` |
+
+**The random seam is not in this set and is not a new package.** `IRandomSource` and its two
+implementations go in the EXISTING `KhaozEngine.Primitives`, which already owns `DeterministicRng` and
+sits below every package in the table, so both programs reach the seam without a new dependency edge
+(section 14.1 carries the rule and the cycle it avoids).
 
 **Engine precedent.** The layering rules are the README's, surveyed at `a-engine.md:1373-1407`. Three of
 them bind here. A pure catalog with no SQL belongs in `Foundation` beside `Items` and `Stats`, and is
@@ -311,7 +329,10 @@ them bind here. A pure catalog with no SQL belongs in `Foundation` beside `Items
 Anything with a SQL provider is an opt-in SIBLING pair and is NEVER bundled in an umbrella, stated twice
 in the README (lines 101 and 104) and followed by both `WorldStore` and `Commerce`. `Foundation` cannot
 reference `Server`-side packages, which is why the handshake gate is its own small package rather than a
-type inside `KhaozEngine.Catalog`.
+type inside `KhaozEngine.Catalog`, and why the commit builder is its own package rather than a type inside
+`KhaozEngine.ItemInstances`. Composing a `JournalCommit` needs `KhaozEngine.WorldStore`, which is a server
+package, and the other half of the same split is the client: a client decodes an instance payload, and it
+must be able to do that with no journal type and no store dependency anywhere in its graph.
 
 **Rationale.** `Catalog` is the word the engine already uses for this shape (`IProductCatalog`,
 `TileWorldCatalogs`), it does not collide with `Content`, and it reads correctly in a package table next
@@ -454,10 +475,44 @@ for every field the type's rows carry:
 | Schema entry | Meaning |
 |---|---|
 | Name | The field name, under section 5.3's character rules, and the name section 12.1 derives a localization key from. |
-| Value kind | One of: int, scaled int with its scale (13.1), bool, key reference to a named content type, tag list (4.6), localized text key (section 12), opaque bytes. |
+| Value kind | One of: int, scaled int with its scale (13.1), bool, key reference to a named content type, tag list (4.6), localized text key (a MARKER carrying no stored value, defined below), asset reference (defined below), opaque bytes. |
 | Reference target | For a key reference, the content type key it points at. For a tag list, that it is tags. Empty otherwise. |
 | Content visibility | `Client` or `ServerOnly`, per section 11, defaulting to the type's own default. |
 | Required | Whether a live row must carry a value. |
+
+**The `localized text key` kind is a MARKER. It carries NO value in the row and NO bytes in the chunk**,
+because the key is DERIVED at encode and at decode time from the type key, the content key and the field
+name, by section 12.1's concatenation. An authored override does not exist, and there is no place to put
+one.
+
+The entry is still in the schema because three readers need to know the field is there. The editor shows
+the derived key READ-ONLY beside the field, so an author sees exactly what a translator will be handed. The
+audit and the publish diff know the field exists, so a type gaining a text field is a visible schema change
+rather than a silent one. The text chunk builder of 12.4 knows which strings the ROW OWNS, which is how it
+decides what goes into each per-language chunk. A marker field marked REQUIRED means the row's derived key
+must resolve to a non-empty string in every language the manifest lists, checked at publish by the validator
+of 10.4, because a required field with no stored value has nothing else to be required about.
+
+The rationale for storing nothing is 12.1's, restated at the schema: an authored key rots independently of
+the row it names, and Grimhollow has two keys out of thirty-five that already dropped the underscore their
+item key carries, which is enough to force every downstream tool into a lookup where a concatenation would
+have done (`b-grimhollow.md:765-772`). A stored key would give every type that carries text its own copy of
+that failure, so the kind stores nothing and the derivation is the only path to a key.
+
+**The `asset reference` kind is a varint length followed by that many UTF-8 bytes**, character set `a-z`,
+`0-9`, `_`, `.`, `/` and `-`, at most 128 bytes. It is never a content key and it is never localized. It
+exists because some fields name a FILE rather than a row: an item's icon, its world mesh and its held mesh
+carry values shaped like `kit/unknown_item.glb` (`b-grimhollow.md:709`). Such a value cannot be a key,
+because a key is `a-z0-9_` with no dot and no slash (5.3), and it must not fall back to opaque bytes,
+because of the first reader in the list below. A generic editor cannot tell that opaque bytes are a path,
+so it renders a hex box where an author wants a file name with a typeahead, and every console would then
+carry a hand-maintained list of which opaque fields are really paths, which is the bespoke-screen-per-type
+outcome this schema exists to prevent. The engine neither resolves nor loads the value: it is a name the
+game's own asset layer looks up, and the codec checks the character set and the length and nothing else.
+
+**Expensive to change once data exists: no for widening the character set or the byte cap, yes for
+narrowing either.** Widening is additive, and every row already written still reads. Narrowing invalidates
+rows an author already published, which is a retire and a re-author rather than a schema edit.
 
 Three consumers read it, and they are why it exists rather than being a convenience:
 
@@ -496,6 +551,22 @@ a remap rule (section 8), and the row stays in the pack forever so a stored stac
 Grimhollow already does exactly this by hand: 18 of its 35 item ids are retired and the comment states
 the rule, that retired ids are never removed so a stored stack still decodes and the player upgrade can
 find it (`b-grimhollow.md:30-36` citing `GrimhollowItems.cs:133-151`).
+
+**The one exception is a bulk import into an EMPTY database.** An import run against a store that holds no
+rows for any content type MAY carry explicit ids, and the store ADOPTS them rather than allocating over
+them. Immediately afterwards it sets both its reserved and its issued high-water mark above the highest
+imported id PER TYPE, so every subsequent id comes from the allocator under the ordinary rule. No other
+write path may ever name an id, and an import into a database that already holds a row may not name one
+either. The empty-database condition is what makes the exception safe: it makes an import once-ever per
+database, so there is no second import to disagree with the first and nothing to renumber afterwards. The
+never-reuse guarantee is untouched, because the marks move PAST the imported range rather than into it.
+
+This exception is also what makes 6.5's promise reachable. Grimhollow's 35 item ids already sit inside
+every stored `ItemContainer` blob, and `GrimhollowJournalContracts.ValidateContainer` throws on an unknown
+item id (`b-grimhollow.md:545-556`), so an import that allocated fresh ids would be a player who cannot log
+in. **Expensive to change once data exists: no while every store is still empty, yes the moment one has
+imported**, because a store that adopted ids cannot afterwards be told it should have allocated them
+without renumbering the durable data that names them.
 
 **Why `int` and not `long`.** `ItemStack.ItemId` is an `int` and `TileGroundItem.ItemId` is an `int`.
 Widening either is a wire break and a codec break across two packages and every consumer. 2.1 billion
@@ -573,6 +644,13 @@ id came from before it can look the row up. A flag on the row is read by exactly
 everywhere else. It also means a legacy mod's stat lines and display text resolve through the ordinary
 path with no special case.
 
+**A legacy affix entry is FROZEN.** "Never crafted again" is read conservatively: no crafting primitive and
+no game operation rewrites the roll position of an affix entry that names a legacy mod, so the old range
+stays exactly where the keep-legacy choice left it and cannot be farmed back to its top through a reroll. A
+legacy entry can only be REMOVED, by a primitive that removes affixes, never rerolled in place. This is a
+tightening taken at the stage 4 review and flagged for the owner at gate 1, and relaxing it later changes
+no byte.
+
 ### 5.5 What a consumer's existing string id becomes
 
 **Contract: a consumer's existing string item id is a KEY, not an ID.** Ruinborne's
@@ -636,6 +714,13 @@ persisting after issuing leaves a window in which a crash hands the next boot an
 an item, and a duplicate instance id is the single failure this section exists to prevent. `NetIdAllocator`
 persists its packed high-water mark for exactly this reason (`a-engine.md:1158-1175`), and the order is
 written down here because a batching optimisation is where it gets quietly inverted.
+
+**The persisted allocator record carries the store epoch.** The high-water mark is written beside the
+journal store's epoch it was persisted under, and the allocator REFUSES to issue when the live epoch
+differs. A point-in-time restore rolls the allocator's own state back with everything else, so a retired
+node list cannot protect against it, and the refusal forces the epoch rotate the journal's restore runbook
+already requires (`docs/design/DURABLE-PLAYER-JOURNAL-DESIGN-2026-09-06.md`, section 10) before any id can
+be handed out against restored data.
 
 **Which items get an instance id.** Any item carrying properties, per the owner's ruling that per-instance
 properties are required and that an item may carry up to six affix rolls, enchantments, durability and
@@ -724,8 +809,10 @@ mapping rule is:
   into one (`c-ruinborne.md:939-948`). Instances cannot land in Ruinborne before that repair is fixed.
 
 **Grimhollow** has int item ids already, so its definition ids map one to one and no stored container
-changes value. Its items carry no per-instance state at all today, so every existing stack maps to
-instance id 0. The first Grimhollow item that gains a property is the first instance id it allocates.
+changes value. That one-to-one mapping rides 5.1's empty-database import exception, which is the only path
+by which the existing ids survive the move into the authoring store. Its items carry no per-instance state
+at all today, so every existing stack maps to instance id 0. The first Grimhollow item that gains a
+property is the first instance id it allocates.
 
 **Expensive to change once data exists: yes for Ruinborne, no for Grimhollow.** Ruinborne's is a data
 migration over millions of rows with a dual-read window. Grimhollow's is a no-op.
@@ -1156,7 +1243,7 @@ Sockets are ONE field kind holding an ordered list:
 [Count: varint][ for each socket:
     [SocketTypeId: varint int32]      // 0 means no type restriction
     [ContainedDefinitionId: varint int32]  // 0 means the socket is empty
-    [ContainedInstanceId: varint int64]    // 0 means empty, or a contained item with no instance
+    [ContainedInstanceId: varint uint64]   // 0 means empty, or a contained item with no instance
     [NestedLength: varint int32]
     [Nested: NestedLength bytes]      // a payload in this same format
 ]
@@ -1167,7 +1254,8 @@ socketed item keeps its own identity while it sits in the socket, so unsocketing
 rather than minting a new one, and an item duplicated by a bug or an exploit stays traceable to the instance
 it was copied from. The field is 0 when the socket is empty, and also 0 when the contained item has no
 instance of its own, which is the ordinary case for a plain gem (section 6.2). The cost is one varint per
-occupied socket.
+occupied socket, and the field is UNSIGNED per section 15, because the id is node prefixed and a node id of
+65,535 sets the high bit, so a signed declaration would zig-zag every id on that node into ten bytes.
 
 **Nesting is ONE LEVEL ONLY and the DECODER enforces it.** A nested payload containing a socket field is
 malformed and the decoder returns a reason rather than recursing. This is a hard structural limit rather
@@ -1197,10 +1285,15 @@ The two caps it has to live under, with the arithmetic:
   precedent at `TileWorldServer.Tick.cs:241-259`, which is the one place the engine already sends a
   logical payload across several reliable ordered frames (`a-engine.md:818-838`).
 
-512 is also about 11 times the realistic size computed in 9.8, so it is a guard rail rather than a budget.
-A larger cap would buy nothing and would let one pathological item consume a page. A smaller one, say 256,
-would still fit a six-affix socketed item but would leave no room for the game-range fields a consumer has
-not thought of yet.
+512 sits between two item sizes rather than above one, and both numbers matter. The 45 bytes worked out in
+9.8 is a TYPICAL rare, three affixes and one socket. The DEEPEST item the v1 field kinds can express is
+about 410 bytes: six affixes, a full socket set with every socket holding a nested item, enchantments, and
+a rare name assembled from word ids. So 512 is a guard rail at about 1.25 times the deepest legal item and
+about 11 times the typical one, and anyone sizing a page or a message budget should plan against the 410
+rather than the 45. A larger cap would buy nothing and would let one pathological item consume a page. A
+smaller one, say 256, would fit the typical item with room over and would REFUSE the deepest one, which
+turns a legal roll into an encode failure and leaves no room at all for the game-range fields a consumer
+has not thought of yet.
 
 **Expensive to change once data exists: no to raise, yes to lower.** Raising the cap is backward
 compatible: every existing payload is still legal. Lowering it strands items that are already over it, and
@@ -1247,9 +1340,9 @@ B), 132 sockets (Scope B). They appear in that order, which is ascending, as rul
 82 01 01 03                              kind 130 len 1  rarity 3 (rare)
 83 01 12                                 kind 131 len 18 affixes
    03                                       count 3
-   F2 20 03 CC CC 00                        mod 4210, tier 3, position 52428, flags 0
    5B 01 33 33 00                           mod 91,   tier 1, position 13107, flags 0
    84 02 02 FF FF 00                        mod 260,  tier 2, position 65535, flags 0
+   F2 20 03 CC CC 00                        mod 4210, tier 3, position 52428, flags 0
 84 01 0A                                 kind 132 len 10 sockets
    01                                       count 1
    07                                       socket type 7
@@ -1264,9 +1357,11 @@ document added after the first draft.
 
 - Item level is 3 bytes, durability 4, rarity 4. None of those moved.
 - The affix field's payload is the count byte plus three entries. An entry is a mod id varint, a tier byte,
-  a position as a `uint16` LE and the reserved flags varint of 9.9, so the three entries are 6, 5 and 6
-  bytes and the payload is `1 + 6 + 5 + 6 = 18`, the `12` in the length byte. With the two-byte kind varint
-  and the length byte the whole field is 21 bytes, up from 18 before the flags field existed.
+  a position as a `uint16` LE and the reserved flags varint of 9.9, so the three entries are 5, 6 and 6
+  bytes and the payload is `1 + 5 + 6 + 6 = 18`, the `12` in the length byte. With the two-byte kind varint
+  and the length byte the whole field is 21 bytes, up from 18 before the flags field existed. The entries
+  are written ascending by mod id, as 9.9 requires, so this block may be copied into a golden file as it
+  stands.
 - The socket field's payload is the count byte, the socket type varint, the contained definition varint,
   the contained instance varint, the nested length byte and the 3 nested bytes:
   `1 + 1 + 2 + 2 + 1 + 3 = 10`, the `0A` in the length byte. With its kind varint and length byte the field
@@ -1278,7 +1373,7 @@ The varints in it: `82 01` is 130, `83 01` is 131, `84 01` is 132, `F2 20` is 42
 bits are 105, `69` with the continuation bit set giving `E9`, followed by 32, `20`. No value in this example
 is zig-zagged, because every field in it is declared unsigned (section 15).
 
-Reading the third affix, `84 02 02 FF FF 00`: mod id 260, tier 2, position 65,535, which is the top of the
+Reading the second affix, `84 02 02 FF FF 00`: mod id 260, tier 2, position 65,535, which is the top of the
 tier's range, and flags 0 as v1 requires. If that tier runs 10 to 40, section 6.4's formula gives
 `10 + (65535 * 30 + 32767) / 65535 = 10 + 30 = 40`.
 
@@ -1303,6 +1398,14 @@ This is the argument of 9.4 applied one level down, where the tagged encoding ca
 sits INSIDE a length-prefixed field, so a decoder that does not know an entry grew cannot skip the
 difference, and preserving an unknown field verbatim does nothing for it. The flags field is the entry-level
 version of the escape hatch the payload already has.
+
+This contract requires one thing of the LIST as well: **affix entries are ordered ASCENDING BY MOD ID, and
+a mod id appears at most once in one list.** Rule 9.3.1 orders FIELDS and says nothing about entries inside
+one, so without this the same three affixes encode six ways and byte equality stops being property equality
+(9.3), which is what a stack check and a page digest both rest on. The example in 9.8 is written in that
+order for the same reason. Changing the entry order later costs what changing 9.3's field order costs:
+every stored payload is already canonical under the old rule, so the new rule rewrites every page that
+carries an affix.
 
 **Expensive to change once data exists: yes, because** adding it later means two affix entry layouts told
 apart by the content version a page was stamped with, which is the positional-codec migration this whole
@@ -1372,11 +1475,13 @@ simply means it is remapped again on the next load. That is safe because the rul
 ONE validator implementation is shared by publish, server boot and tests. Its contract shape:
 
 ```
-ContentValidationReport Validate(ContentSnapshot candidate, IReadOnlyList<RemapRule> rules)
+ContentValidationReport Validate(ContentSnapshot candidate, ContentSnapshot? previous, IReadOnlyList<RemapRule> rules)
 ```
 
-- INPUT is a complete candidate snapshot plus the full ordered rule set. Nothing is read from a database,
-  a file or an ambient static inside it.
+- INPUT is a complete candidate snapshot, the PREVIOUS published snapshot or null, and the full ordered
+  rule set. Nothing is read from a database, a file or an ambient static inside it.
+- `previous` is NULL at boot and in tests, where there is nothing to compare against and nothing to load,
+  and is the LAST PUBLISHED version at publish, loaded by the caller and handed in.
 - OUTPUT is a report: a bool plus an ordered list of findings, each carrying a content type id, an id, a
   code and a message. It accumulates rather than stopping at the first, following
   `JsonSchemaValidator.ValidationReport(bool IsValid, IReadOnlyList<string> Errors)` and its
@@ -1399,6 +1504,23 @@ anything off it:
   Grimhollow's every-live-item-needs-a-row rule, which fails the config load closed when a live item has no
   properties row (`b-grimhollow.md:1316-1358`).
 
+**The CHANGE-SHAPED checks run only when `previous` is non-null, and each is documented PUBLISH-ONLY.**
+Every one of them compares the candidate against the last published version, so at boot and in a test,
+where `previous` is null, they do not run and cannot appear in the report. That is a property of the
+argument rather than a mode flag, which is what keeps one implementation honest across the three callers:
+
+- A KEY changed on a row that is already published. 5.3 makes a key immutable once published, and a rename
+  is a retire plus a new row plus a remap rule, so this is the check that enforces it.
+- A registered type's id, key or CHUNK SIZE changed after that type's first publish (4.3, 4.5). A chunk
+  size change repaginates every chunk hash and every page stamp derived from it.
+- A mod's TIERS were reordered. A stored affix entry is a mod id, a tier byte and a position (9.9), so
+  reordering tiers repoints every affix already in the world at a range it was never rolled in.
+
+Nothing above weakens the two rules that make the validator testable. It still has NO SIDE EFFECTS, and it
+still performs NO AMBIENT READS: `previous` is an ARGUMENT, loaded by the caller that has a store to load
+it from, never a lookup the validator performs. A test that wants a change-shaped finding constructs both
+snapshots in memory and passes the pair.
+
 Because it is pure and takes its whole world as an argument, a test builds a snapshot in memory and asserts
 on findings, publish runs it before writing anything, and boot runs it against the loaded pack. Ruinborne's
 catalog loader is the shape this avoids: validation lives inside the SQL read delegate, so an
@@ -1416,6 +1538,19 @@ to five hardcoded code defaults on any failure, announces it with a `Console.Wri
 different catalog than the database holds with no metric, no exit code and no refusal to admit joins
 (`c-ruinborne.md:176-196`, `c-ruinborne.md:1030-1038`). A silent fallback catalog is worse than an outage,
 because an outage is noticed.
+
+**What the rule binds is the CONTENT VERSION.** The boot fails when the active version is missing, when
+its pack cannot be read, when it does not pass the validator of 10.4, or when it is below one of the
+minimum builds of 7.4. It does not bind the game CODE a content row happens to name. A row that names a
+registration this process does not have, a game-registered crafting operation or a validator hook that
+ships in a later binary, LOADS, and the operation is refused at the moment of USE with a stable reason
+code and a counter, not at boot. The reason is the deployment order: content publishes and code deploys
+move on separate clocks, so failing the boot for a missing registration lets one unusable row take a whole
+server down for a deploy that has not happened yet, and it puts the content operator in a position to halt
+the fleet by saving a draft. A refusal at use costs one unusable operation, which is visible in the counter
+and recoverable by deploying the code. The distinction holds in the other direction too: the version and
+its pack are checked once, at boot, by the process that is about to serve them, so nothing here weakens the
+no-runtime-fallback rule above.
 
 **Expensive to change once data exists: no.** All three outcomes and the fail-closed rule are runtime
 behaviour over a fixed byte format. The QUARANTINE WRAPPER's own encoding is durable, so it gets a version
@@ -1600,17 +1735,37 @@ Three kinds, and exactly three:
 The formula, in integer math, evaluated per stat in this order:
 
 ```
-flat      = Base + sum(Flat)                                   // scaled units
-increased = 10000 + sum(IncreasedBasisPoints)                  // 10000 == 100 percent
-value     = (flat * increased + 5000) / 10000                  // round half up
+flat      = Base + sum(Flat)                                     // scaled units
+increased = 10000 + sum(IncreasedBasisPoints)                    // 10000 == 100 percent
+value     = floordiv(flat * increased + 5000, 10000)             // round half up
 for each More m, in ascending (SourceOrder, ModifierIndex):
-    value = (value * (10000 + m.BasisPoints) + 5000) / 10000   // round half up
+    value = floordiv(value * (10000 + m.BasisPoints) + 5000, 10000)
 value     = clamp(value, Min, Max)
 ```
 
 Percentages are BASIS POINTS, integers where 10,000 is 100 percent. `+ 5000` before the divide is round
 half up, the same shape as the roll formula in section 6.4, so there is one rounding rule in the whole
 system rather than two.
+
+**Every division in the fold is FLOOR division, toward negative infinity, and that is the rule rather than
+a detail of one implementation.** `floordiv(x + 5000, 10000)` is round half up for EVERY SIGN. C# integer
+division truncates toward zero instead, which makes `/` the wrong operator here and makes a debuff round
+differently from the buff of the same size.
+
+The negative case, worked. A stat whose `flat * increased` comes to `-14000`, that is `-1.4` scaled units:
+`floor((-14000 + 5000) / 10000) = floor(-9000 / 10000) = floor(-0.9) = -1`, the nearest integer with the
+tie going up. C# `(-9000) / 10000` gives `0`, so a plain `/` loses a whole unit of a penalty and reports no
+penalty at all. Negative values are ordinary here, because a `Flat` modifier may be negative and a stat's
+`Min` may sit below zero.
+
+The implementation is `Math.DivRem` with a negative-remainder adjustment, subtracting one from the quotient
+when the remainder is non-zero and its sign differs from the divisor's, or any equivalent that computes the
+same integer. It is NEVER `Math.Round`, which takes a floating point argument and would put a `double` on
+the determinism path that 13.4 exists to keep clear of it.
+
+**Section 6.4's roll formula has no negative case and is unaffected.** `position` is a `ushort` and
+`max - min` is non-negative by the tier's own bounds, so its numerator is never negative and truncation and
+floor agree on every input it can be given. It is written with `/` and stays that way.
 
 The `More` loop order is FIXED and stated because multiplication of integers with rounding at each step is
 NOT associative: `(a * x) * y` and `(a * y) * x` can differ by one unit. Ordering by (source order,
@@ -1700,7 +1855,21 @@ made with `NextInt` over an integer weight total.
 `TileActorRandom`, with nothing between them (`a-engine.md:1259-1269`). So this is new, and it is
 deliberately narrow.
 
+**`IRandomSource` lives in `KhaozEngine.Primitives`**, not in either new package. `Primitives` already
+owns `DeterministicRng` (`KhaozEngine.Primitives/DeterministicRng.cs`), which `SeededRandomSource` wraps,
+and it sits below every package either program names, so a seam declared there is reachable from both with
+no new dependency edge and no new package (section 3.2).
+
+Declaring it in `KhaozEngine.ItemInstances`, beside the crafting code that does most of the rolling, would
+close a cycle. Scope A's `KhaozEngine.Catalog` is a `Foundation` package and needs the seam itself, for the
+loot draw it owns and for the decoder fuzzing that feeds it random bytes, and `ItemInstances` already
+depends on `Catalog` (section 3.2). `Catalog` referencing `ItemInstances` back for the interface points the
+graph both ways, which is not a thing to discover at implementation time.
+
 ### 14.2 The two implementations
+
+Both ship in `KhaozEngine.Primitives` beside the seam, so taking `IRandomSource` never costs a second
+package reference.
 
 **`CryptographicRandomSource`**, for hosted servers. Seeded from the OS through
 `System.Security.Cryptography.RandomNumberGenerator`, which is the only cryptographic randomness in the

@@ -138,6 +138,24 @@ public sealed class ContentRow
         Fields = copy;
     }
 
+    /// <summary>
+    /// The same row carrying the identity a chunk's row TABLE owns. A row body holds the key and the fields
+    /// and nothing else, so a codec's <see cref="IContentRowCodec.TryDecode"/> returns id 0 and a live
+    /// retired bit, and the chunk decoder is what completes the row (spec 7.3). The field list is SHARED
+    /// rather than copied, which is safe because it is already this row's own private copy.
+    /// </summary>
+    public ContentRow WithIdentity(int id, bool isRetired) => new(this, id, isRetired);
+
+    ContentRow(ContentRow source, int id, bool isRetired)
+    {
+        Type = source.Type;
+        Id = id;
+        Key = source.Key;
+        ParentId = source.ParentId;
+        IsRetired = isRetired;
+        Fields = source.Fields;
+    }
+
     /// <summary>The content type this row belongs to.</summary>
     public ContentTypeId Type { get; }
 

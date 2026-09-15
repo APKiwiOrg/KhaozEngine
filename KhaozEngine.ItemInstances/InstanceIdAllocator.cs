@@ -161,10 +161,17 @@ public sealed class InstanceIdAllocator
     /// <param name="instanceId">The packed id.</param>
     /// <remarks>
     /// The sign is why this method exists rather than a bare call at each site. <c>Pack(65535, counter)</c>
-    /// sets the high bit and is a NEGATIVE <see cref="long"/>, so a zig-zag would fold the sign into the
-    /// low bit and give every high-node id a different ten bytes. Node 0, the only shape a single-process
-    /// server has, keeps ids numerically identical to a plain counter and costs four bytes up to
-    /// 268,435,455.
+    /// sets the high bit and is a NEGATIVE <see cref="long"/>, so the unsigned and the zig-zag encodings of
+    /// the same id are DIFFERENT bytes and the format has to say which it means. Contracts 15 declares
+    /// instance ids unsigned, so this is the unsigned one, written through one method rather than through a
+    /// cast at each call site.
+    /// <para>
+    /// What that costs is the high node and what it buys is node 0. <c>Pack(65535, 1)</c> is ten bytes
+    /// unsigned and seven zig-zagged, because a zig-zag folds the sign into the low bit. Node 0, the only
+    /// shape a single-process server has and the common case everywhere else, keeps ids numerically
+    /// identical to a plain counter and costs four bytes up to 268,435,455, where a zig-zag would double
+    /// the value and cost five.
+    /// </para>
     /// </remarks>
     public static int WriteId(Span<byte> destination, long instanceId) =>
         ContentVarint.WriteUInt64(destination, (ulong)instanceId);

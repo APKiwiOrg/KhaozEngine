@@ -172,6 +172,25 @@ public class InstanceIdAllocatorTests
     }
 
     [Fact]
+    public void The_unsigned_choice_costs_the_high_node_and_saves_node_0()
+    {
+        // WriteId's remarks claimed a zig-zag would give every high-node id a different TEN bytes, which
+        // reads as the reason the encoding is unsigned. It is not: a zig-zag folds the sign into the low
+        // bit and makes the high-node id SMALLER. The reason is contracts 15, which declares instance ids
+        // unsigned, and what the choice actually buys is node 0, the common case.
+        Span<byte> zigzag = stackalloc byte[16];
+
+        long high = InstanceIdAllocator.Pack(65535, 1);
+        Assert.True(high < 0);
+        Assert.Equal(10, InstanceIdAllocator.SizeOf(high));
+        Assert.Equal(7, ContentVarint.WriteSigned64(zigzag, high));
+
+        long common = InstanceIdAllocator.Pack(0, 268_435_455);
+        Assert.Equal(4, InstanceIdAllocator.SizeOf(common));
+        Assert.Equal(5, ContentVarint.WriteSigned64(zigzag, common));
+    }
+
+    [Fact]
     public void A_node_0_id_under_268435456_costs_four_varint_bytes()
     {
         Assert.Equal(4, InstanceIdAllocator.SizeOf(268_435_455));

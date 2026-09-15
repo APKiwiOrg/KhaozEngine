@@ -533,10 +533,12 @@ Four refinements the contract leaves to this spec:
   can never reissue one, which is the whole point.
 - **The id is written to the wire and to disk as an UNSIGNED varint over the int64's bit pattern**, never
   zig-zagged (contracts 15: instance ids are declared unsigned). This matters because
-  `NetIdAllocator.Pack(65535, counter)` sets the high bit and is a NEGATIVE `long`, so a zig-zag would
-  encode it as a ten byte value with the sign flipped into the low bit. Node 0, the only shape a single
-  process server has, keeps ids numerically identical to a plain counter and costs four varint bytes up
-  to 268,435,455.
+  `NetIdAllocator.Pack(65535, counter)` sets the high bit and is a NEGATIVE `long`, so the unsigned and
+  the zig-zag encodings of one id are different bytes and the format has to say which it means. Unsigned
+  costs the high node and buys node 0: `Pack(65535, 1)` is ten bytes unsigned against a zig-zag's seven,
+  because a zig-zag folds the sign into the low bit, while node 0, the only shape a single process server
+  has, keeps ids numerically identical to a plain counter and costs four varint bytes up to 268,435,455,
+  where a zig-zag would double the value and cost five.
 - **The allocator's persisted state is bound to the STORE EPOCH, and a restore rotates both.** An
   earlier draft guarded a restore with the persisted retired node list, and that guard cannot fire: a
   point-in-time restore rolls the high-water mark, the node id AND the retired list back together,

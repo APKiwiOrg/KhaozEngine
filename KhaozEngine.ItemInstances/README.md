@@ -240,8 +240,10 @@ and 48 counter bits, the counter starting at 1, never recycled, throwing rather 
 - **`Rotate(newNodeId)` moves the store onto a fresh node and retires the old one.** A boot on a retired node
   throws, because it would reissue ids that node has already handed out.
 - `WriteId` and `TryReadId` are the varint pair, UNSIGNED over the int64 bit pattern and never zig-zagged,
-  because `Pack(65535, counter)` sets the high bit and is a negative `long`. `SizeOf` sizes a page without
-  writing one.
+  because contracts 15 declares instance ids unsigned and `Pack(65535, counter)` sets the high bit, so the
+  two encodings are different bytes for the same id. Unsigned costs the high node (`Pack(65535, 1)` is ten
+  bytes against a zig-zag's seven) and buys node 0, the common case, which stays four bytes up to
+  268,435,455 where a zig-zag would cost five. `SizeOf` sizes a page without writing one.
 
 `IInstanceIdStore` is the durable half, taken as a CONSTRUCTOR SEAM rather than an ambient static. The host
 owns the implementation because a real one persists into the journal store, and **the engine ships the seam,

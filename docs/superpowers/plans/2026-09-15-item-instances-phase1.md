@@ -820,3 +820,251 @@ git commit -m "iteminstances(payload): mutation fuzzing over the goldens"
 
 ---
 
+### Task 7: `QuarantineWrapper`, the `KECQ` format (small, gate: milestone 1.1)
+
+Spec 12.4 over contracts 10.2 and 15. The bytes of a failed item are kept VERBATIM, and this is the
+durable envelope that keeps them.
+
+**Files:**
+
+- Create: `KhaozEngine.ItemInstances/QuarantineWrapper.cs`
+- Create: `KhaozEngine.ItemInstances.Tests/Quarantine/QuarantineWrapperTests.cs`
+- Modify: `KhaozEngine.Items/ItemContainer.Slots.cs` (resolve task 1 step 4's `TODO`)
+
+**Interfaces:**
+
+- Consumes: `ContentVarint`, task 5's reason set
+- Produces: `QuarantineWrapper` with `Wrap`, `TryUnwrap` and `Verify`
+
+- [ ] **Step 1: Write the failing tests, which are spec 17 row 16 plus the version refusal.**
+
+~~~csharp
+[Fact] public void Wrap_then_unwrap_returns_the_original_bytes_exactly()
+[Fact] public void An_original_above_MaxInstancePayloadBytes_wraps_and_unwraps_unchanged()
+[Fact] public void Verify_accepts_a_well_formed_wrapper_and_refuses_a_bare_payload()
+[Fact] public void A_wrapper_version_other_than_1_is_refused_rather_than_guessed()
+[Fact] public void The_reason_code_ordinal_round_trips_to_the_same_closed_token()
+[Fact] public void A_wrapper_whose_declared_OriginalLength_lies_is_refused()
+~~~
+
+- [ ] **Step 2: Implement the format exactly as spec 12.4 writes it.**
+
+~~~
+[Magic: 4 bytes 'K','E','C','Q']   // 0x4B 0x45 0x43 0x51
+[Version: uint16 LE]               // 1
+[ReasonCode: byte]                 // an ordinal from the closed set of QUARANTINE reasons in 12.2
+[StampedVersion: varint int32]     // the page stamp the record failed under
+[OriginalLength: varint int32]
+[Original: OriginalLength bytes]   // verbatim, never re-encoded
+~~~
+
+  **A magic here and none on a payload, and the two are consistent.** Contracts 15 forbids a magic on a
+  format always embedded in a larger versioned record, and a payload is such a format. A wrapper is not:
+  it must be distinguishable from a payload at a glance in a hex dump of a page, and by a tool that never
+  saw the entry flag. Four bytes for that, once per quarantined entry, on a path that is rare by definition.
+
+- [ ] **Step 3: Let `OriginalLength` exceed `MaxInstancePayloadBytes`.** `payload-oversize` is a reason,
+  and refusing to wrap the thing that failed for being too big destroys exactly the item the wrapper exists
+  to keep. The page entry's own length check is what bounds it, at the 2 MiB section cap (spec 4.4 and 5.4).
+- [ ] **Step 4: Finish task 1's quarantined door.** `SetSlotAt` skips invariants 2 and 4 when
+  `value.Quarantined` is set, and `QuarantineWrapper.Verify` stands in for them: four magic bytes, the
+  version, and a declared `OriginalLength` that matches the bytes present. Invariants 1 and 3 still bind.
+  Without this exception the door refuses the wrapper and the quarantine path is unreachable at exactly the
+  moment it is needed. Pass `Verify` in through the same predicate seam task 1 step 6 introduced.
+- [ ] **Step 5: Run green and commit.**
+
+~~~bash
+dotnet test KhaozEngine.ItemInstances.Tests/KhaozEngine.ItemInstances.Tests.csproj -c Release --filter FullyQualifiedName~Quarantine
+dotnet test KhaozEngine.Foundation.Tests/KhaozEngine.Foundation.Tests.csproj -c Release --filter FullyQualifiedName~ItemSlot
+git add KhaozEngine.ItemInstances/QuarantineWrapper.cs KhaozEngine.ItemInstances.Tests/Quarantine KhaozEngine.Items/ItemContainer.Slots.cs
+git commit -m "iteminstances(quarantine): the KECQ wrapper keeps failed bytes verbatim"
+~~~
+
+---
+
+### Task 8: `ItemInstanceVisibility`, the ONE `CanSee` and `PublicView` (medium, gate: milestone 1.1)
+
+Spec 7.4 and 12.5 over contracts 11.1 and 11.2. There is exactly ONE function answering "may this viewer
+see this field", and both the replication filter and the tooltip builder call it. A tooltip that computed
+its own answer is how a client eventually renders something the server never sent.
+
+**Files:**
+
+- Create: `KhaozEngine.ItemInstances/ItemInstanceVisibility.cs`
+- Modify: `KhaozEngine.ItemInstances/ItemInstancePayload.cs` (finish task 5's `PublicView` stub)
+- Create: `KhaozEngine.ItemInstances.Tests/Visibility/ItemInstanceVisibilityTests.cs`
+
+**Interfaces:**
+
+- Consumes: task 4's registry (visibility and `identificationMaskBit` per kind), task 5's field walk
+- Produces: `ItemInstanceVisibility.CanSee` and `ItemInstanceVisibility.PublicView`
+
+- [ ] **Step 1: Write the failing tests, which are spec 17 row 9 plus the identification gate.**
+
+~~~csharp
+[Fact] public void ServerOnly_is_never_visible_to_anyone_including_the_owner()
+[Fact] public void OwnerOnly_is_visible_only_when_the_viewer_level_is_OwnerOnly()
+[Fact] public void Everyone_is_always_visible()
+[Fact] public void A_gated_kind_is_hidden_from_the_OWNER_too_while_unidentified()
+[Fact] public void A_set_RevealedMask_bit_reveals_exactly_its_own_registered_kind()
+[Fact] public void The_replication_filter_and_the_tooltip_builder_agree_on_every_kind_at_every_level()
+[Fact] public void PublicView_of_a_rare_drops_kinds_4_5_and_6_and_keeps_the_rest()
+[Fact] public void PublicView_output_is_still_canonical_and_still_decodes()
+[Fact] public void PublicView_allocates_nothing_beyond_its_destination_span()
+~~~
+
+  The sixth is spec 17 row 9 itself and it is a table-driven `[Theory]` over every registered kind times
+  the three levels times identified and not, asserting the two call sites produce the same answer. The
+  point is that there is one function, so the test drives the SAME function from both call shapes.
+
+- [ ] **Step 2: Implement `CanSee` with spec 12.5's rule, in order.**
+
+~~~csharp
+public static bool CanSee(ushort kind, PropertyVisibility viewerLevel, bool identified, uint revealedMask);
+public static int  PublicView(ReadOnlySpan<byte> payload, PropertyVisibility level, bool identified,
+                              uint revealedMask, Span<byte> destination);
+~~~
+
+  `ServerOnly` is never visible to anyone. `OwnerOnly` is visible when the viewer level is `OwnerOnly`.
+  `Everyone` is visible always. THEN, and only then, the identification gate: a kind carrying an
+  `identificationMaskBit` is hidden when `identified` is false and its bit in `revealedMask` is clear,
+  EVEN FROM THE OWNER. That last clause is gate 0 decision 8 and is why unidentified is a mechanic rather
+  than a fourth visibility level. Both members are pure and static, so a test calls them with no server.
+
+- [ ] **Step 3: Implement `PublicView` as the forward pass over RETAINED RUNS**, which is the spike's
+  `InstancePayload.PublicView` and its `Flush` helper. Because fields are already ascending and each is
+  length prefixed, a filtered payload is a sequence of memcpy calls over contiguous ranges with no decode,
+  no re-sort and no allocation beyond the output. That is why spec 3.3 declines contracts 11.2's optional
+  coupling of kind ids to visibility: the coupling would buy a single memcpy instead of two or three,
+  forever, in exchange for constraining every future kind assignment. Note the visibility levels are NOT
+  monotonic in the kind id (4, 5 and 6 are `OwnerOnly` while 7 and 8 are `Everyone`), so the run walk is
+  the only correct shape.
+- [ ] **Step 4: Add the OWNER REMAINDER as a second projection, and record that the spec left its home
+  open.** Spec 7.6 lists an "owner remainder" server-to-client message and spec 7.4 says the owner-only
+  remainder rides a targeted game message, but neither says which package builds the bytes. The plan's
+  choice: `ItemInstanceVisibility.OwnerRemainder(payload, revealedMask, destination)` writes the
+  COMPLEMENT of `PublicView(payload, Everyone, ...)`, in the same retained-run shape, and lives here
+  beside `PublicView` so the two cannot disagree. The MESSAGE KIND stays the game's, because
+  `TileProtocol` reserves the `ushort` kind space to the game and the engine only caps the frame
+  (`TileProtocol.Frames.cs:65`). Add a fact that `PublicView` bytes plus `OwnerRemainder` bytes reconstruct
+  the full payload for an identified item at `OwnerOnly`.
+- [ ] **Step 5: State the ground-item rule in code, because it is a rule and not an omission.** A drop's
+  entity net id is nobody's, so there is no viewer this design calls the owner of a ground stack (spec
+  7.4). A ground item's public view is `PublicView(payload, PropertyVisibility.Everyone, ...)` and there
+  is NO owner remainder for a drop. Kind 6 `BoundTo` is therefore stripped before the component is
+  written, so a passer-by cannot read who a dropped item is bound to, which is a fact about a PLAYER
+  rather than about an item. Put that paragraph in the XML doc, and add the fact that a rare's 58 byte
+  payload replicates as 54 on the ground, which is budget 11's input.
+- [ ] **Step 6: Add the allocation fact under the existing `AllocSensitive` collection** if and only if
+  `KhaozEngine.ItemInstances.Tests` gains one. It does not have that collection today and this task does
+  not add a process-global one: assert instead that `PublicView` writes into a caller `Span<byte>` and
+  returns a length, so the absence of allocation is a property of the signature.
+- [ ] **Step 7: Run green and commit.**
+
+~~~bash
+dotnet test KhaozEngine.ItemInstances.Tests/KhaozEngine.ItemInstances.Tests.csproj -c Release
+git add KhaozEngine.ItemInstances/ItemInstanceVisibility.cs KhaozEngine.ItemInstances/ItemInstancePayload.cs KhaozEngine.ItemInstances.Tests/Visibility
+git commit -m "iteminstances(visibility): one CanSee behind replication and tooltips"
+~~~
+
+---
+
+### Task 9: `InstanceIdAllocator`, the store epoch and the rotation guard (medium, gate: milestone 1.1)
+
+Spec 3.6 over contracts 6.2. Spec 20 puts spec 17 row 12 in phase 1 for a stated reason: the allocator
+ships in this phase and its epoch refusal is the one behaviour in it that cannot be added afterwards
+without a durable migration.
+
+**Files:**
+
+- Create: `KhaozEngine.ItemInstances/InstanceIdAllocator.cs`
+- Create: `KhaozEngine.ItemInstances/IInstanceIdStore.cs`
+- Create: `KhaozEngine.ItemInstances.Tests/Allocator/InstanceIdAllocatorTests.cs`
+
+**Interfaces:**
+
+- Consumes: `NetIdAllocator` from `KhaozEngine.Replication` for the packing scheme ONLY, see step 3
+- Produces: `InstanceIdAllocator` with `Next`, `Rotate(ushort newNodeId)` and an epoch-bound durable state
+
+- [ ] **Step 1: Write the failing tests, which are spec 17 row 12's four clauses plus the exhaustion throw.**
+
+~~~csharp
+[Fact] public void Rotate_issues_no_id_in_the_old_nodes_range()
+[Fact] public void A_boot_on_a_node_id_already_on_the_retired_list_throws()
+[Fact] public void An_allocator_whose_persisted_store_epoch_differs_from_the_live_one_refuses_to_issue()
+[Fact] public void A_crash_skips_the_unissued_remainder_of_a_reserved_block_and_never_reissues()
+[Fact] public void The_range_is_persisted_BEFORE_the_first_id_in_it_is_handed_out()
+[Fact] public void Exhausting_the_48_bit_counter_throws_rather_than_wrapping()
+[Fact] public void Node_zero_ids_are_numerically_identical_to_a_plain_counter()
+~~~
+
+  The fifth is the one that catches the failure this whole section exists to prevent, and it is an ORDER
+  assertion rather than a value one: drive the allocator through a fake `IInstanceIdStore` that records
+  the interleaving of persist calls and issue calls, and assert the persist for a block precedes every
+  issue from it. Contracts 6.2: the ORDER is the contract, not the batch size, and a batching optimisation
+  is where it gets quietly inverted.
+
+- [ ] **Step 2: Take the durable store as a constructor seam**, never an ambient static:
+
+~~~csharp
+public interface IInstanceIdStore
+{
+    InstanceIdState Read();                                   // high-water mark, node id, store epoch, retired nodes
+    void Persist(in InstanceIdState state);                   // called BEFORE any id in the new block is issued
+}
+
+public readonly record struct InstanceIdState(long PackedHighWater, ushort NodeId, long StoreEpoch, ReadOnlyMemory<ushort> RetiredNodes);
+~~~
+
+  The host owns the implementation, because the journal store is where a real one persists. The engine
+  ships the seam and the arithmetic and no provider, which keeps `KhaozEngine.ItemInstances` in `Foundation`.
+
+- [ ] **Step 3: Reuse `NetIdAllocator`'s SCHEME, with its own counter, and say which.** Contracts 6.2 and
+  spec 3.6 both say Scope B reuses the type behind `InstanceIdAllocator` with its OWN persisted high-water
+  mark, because a net id and an instance id are different spaces that must not share a counter.
+  `NetIdAllocator` lives in `KhaozEngine.Replication`, which is a `Server` package, and
+  `KhaozEngine.ItemInstances` is `Foundation` and cannot reference it. **The plan's choice, recorded because
+  the spec does not name the layering problem:** `InstanceIdAllocator` holds its own copy of the four
+  constants (`CounterBits = 48`, `NodeBits = 16`, `CounterMask`, `MaxNodeId`) and its own `Pack`, `NodeOf`
+  and `CounterOf`, with a doc comment naming `NetIdAllocator.cs:14-70` as the scheme it mirrors and a test
+  asserting the two produce identical packed values for the same inputs. That test lives in
+  `KhaozEngine.Server.Tests`, which already references both, so `KhaozEngine.ItemInstances.Tests` keeps its
+  narrow reference set.
+- [ ] **Step 4: Reserve durably BEFORE issuing.** The allocator reserves a block of 4,096 ids by persisting
+  `high-water + 4096` and only then hands out ids from below it. A crash SKIPS the unissued remainder,
+  which is free at 2^48 per node, and can never reissue one.
+- [ ] **Step 5: Bind the state to the STORE EPOCH and refuse when it differs.** The allocator records the
+  `store_epoch` its high-water mark was persisted under and REFUSES TO ISSUE when the live epoch differs.
+  A point-in-time restore rolls the high-water mark, the node id AND the retired list back together, so a
+  retired-node check cannot be the restore guard: in the restored bytes the node in use was never retired
+  and the check passes. The epoch is a comparison between a restored value and a value an OPERATOR rotated,
+  which is the property the retired list could never have. The journal owns both mechanism and runbook:
+  `IMutationJournalMaintenance.RotateStoreEpochAsync`, and
+  `DURABLE-PLAYER-JOURNAL-DESIGN-2026-09-06.md` section 10. Put both citations in the refusal's message.
+- [ ] **Step 6: Keep the retired node list, demoted to a RE-BOOT guard.** `Rotate(ushort newNodeId)`
+  appends the old node id, and a boot refuses a node id already on the list. That catches an operator who
+  rotates onto a node id this store has already used, which is an ordinary configuration mistake worth one
+  refusal at boot. It is no longer the restore guard, because it cannot be one.
+- [ ] **Step 7: Write the id as an UNSIGNED varint over the int64 bit pattern**, never zig-zagged
+  (contracts 15). `Pack(65535, counter)` sets the high bit and is a NEGATIVE `long`, so a zig-zag would
+  encode it as a ten byte value with the sign flipped into the low bit. Add a fact pinning a node 65,535
+  id's varint length. Node 0, the only shape a single-process server has, keeps ids numerically identical
+  to a plain counter and costs four varint bytes up to 268,435,455.
+- [ ] **Step 8: Implement the which-items-get-an-id rule as a pure predicate**, contracts 6.2 verbatim,
+  because it is easy to get backwards: an item gets an instance id when its encoded payload is NON-EMPTY,
+  or its definition declares durability, sockets or any per-instance field. The rule is a property of the
+  ITEM rather than of the definition, so a definition gaining a property later does not retroactively give
+  every stored copy an id it does not have.
+- [ ] **Step 9: Run green and commit.**
+
+~~~bash
+dotnet test KhaozEngine.ItemInstances.Tests/KhaozEngine.ItemInstances.Tests.csproj -c Release --filter FullyQualifiedName~Allocator
+git add KhaozEngine.ItemInstances/InstanceIdAllocator.cs KhaozEngine.ItemInstances/IInstanceIdStore.cs KhaozEngine.ItemInstances.Tests/Allocator
+git commit -m "iteminstances(ids): node-prefixed instance ids bound to the store epoch"
+~~~
+
+**Group B acceptance:** spec 17 rows 1, 2, 3, 12 and 16 green, and contracts 9.8's 45 bytes reproduced
+byte for byte. That is spec 20 phase 1's acceptance in full.
+
+---
+

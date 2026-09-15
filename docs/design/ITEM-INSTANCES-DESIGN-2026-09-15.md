@@ -2419,3 +2419,85 @@ before the writer (7.4), so the owner-only bytes are never in the shared capture
 is 12.7's: stacking by byte equality tells a player whether two unidentified items are identical. Closing
 it means excluding gated kinds from the stacking compare, which would make two genuinely different items
 merge and destroy one, so the leak is strictly cheaper than its fix.
+
+## 16. Performance budgets
+
+The owner's six from #884 item 13, plus four this document's design introduces. Every target is derived
+from arithmetic already in this document or from the recorded journal baseline (698 commits per second,
+42,365 bytes allocated per operation, `a-engine.md:607-641`). Nothing here is measured yet, which is what
+the last column says.
+
+| # | Budget | Target | How measured | Measured |
+|---|---|---|---|---|
+| 1 | Bytes per rare item, payload | at most 80 | encode the 3.8 PoE row, count bytes | TBD (stage 5) |
+| 2 | Bytes per rare item, slot entry | at most 96 | the same, through 4.4 | TBD (stage 5) |
+| 3 | Page commit size, 100 rares | at most 8 KB | encode a full page, count bytes | TBD (stage 5) |
+| 4 | Write volume, 20 crafts in one held action | at most 16 KB and 1 commit | `--items` bench, sum `JournalCommit.OwnedByteCount` | TBD (stage 5) |
+| 5 | Rare generation time | under 20 microseconds per item | `--items` bench, 1M generations, report p50 and p99 | TBD (stage 5) |
+| 6 | Stat evaluation per attack | under 2 microseconds, 0 bytes allocated | evaluate one stat over 11 worn items with 6 affixes each | TBD (stage 5) |
+| 7 | Container page sync size, cold open | at most 8 KB and 8 frames per page | encode and fragment a full page (7.5) | TBD (stage 5) |
+| 8 | Steady-state sync after one craft | 1 frame, at most 96 bytes | the delta of 7.5 | TBD (stage 5) |
+| 9 | Generator table build at 2,000 mods | under 500 ms, under 40 MB resident | build the 9.2 tables from a synthetic pack | TBD (stage 5) |
+| 10 | Container load, 10 pages with a full remap pass | under 5 ms, under 200 KB allocated | `Load` over 10 pages and 200 rules | TBD (stage 5) |
+
+Where each number comes from, because a target with no derivation is a guess in a table:
+
+- **1 and 2** are 3.8's 58 and 69 with headroom for one more field. The deepest expressible item is 410
+  bytes (3.8), so these are TYPICAL budgets and the 512 cap is the ceiling.
+- **3 and 7** are 5.4's 6.9 KB page plus header and fragmentation overhead. Eight frames because
+  `ceil(6900 / 1015)` is seven and one is spare (7.5).
+- **4** is 6.7's measured arithmetic: one 6.9 KB page plus twenty events of about 83 bytes (9.5) is 8.6 KB,
+  and the 16 KB target leaves room for a two-page craft.
+- **5** is twenty draws and six passes over a few-hundred-entry array (9.4), which is hundreds of
+  nanoseconds of real work, budgeted at 20 microseconds so the answer is about the ALLOCATION and the
+  memo, not about the arithmetic.
+- **6** is the one that must be checked hardest. Eleven worn items times up to thirteen lines each is about
+  140 lines, folded through 11.6's eight steps. Two microseconds is generous, and zero allocation is the
+  binding half: an evaluation that allocates per attack is an evaluation that runs per attack.
+- **9** is 9.2's 1.7 million appends and 20 MB, doubled for the memo and the build's transient arrays.
+- **10** is 5.5's one pass over 10 pages with 200 rules, each rule a no-op on a page holding no reference.
+
+**Every one of these lands in `KhaozEngine.Benchmarks` as an `--items` mode with a checked-in baseline**
+(2.3), following the journal set's shape exactly, so the numbers are reproducible and a regression is a
+diff rather than an opinion. The 42,365 bytes per journal operation is the number to watch on budgets 4
+and 10: every journal byte array is cloned on write and again on read (`JournalLimits.cs:107, 137`), so a
+page that doubles in size doubles two copies and not one.
+
+## 17. Test plan
+
+Numbered so the sections above can cite a test rather than describe one. Homes are 2.3's four projects.
+
+| # | Test | Home | What it pins |
+|---|---|---|---|
+| 1 | Golden payload and page files | `ItemInstances.Tests` | contracts 9.8's 45 bytes SORTED (3.7), the four 3.8 rows, one full 100 rare page, one quarantined entry |
+| 2 | Unknown-kind round trip | `ItemInstances.Tests` | a decoder whose registry omits a kind the encoder wrote reproduces the input byte for byte, and the two items do not merge (15.4) |
+| 3 | Decoder fuzzing | `ItemInstances.Tests` | mutation over the goldens (bit flips, truncations, length lies, kind swaps): NEVER throws, reasons are stable per mutation class, no recursion past one level |
+| 4 | Cross-version round trips | `Foundation.Tests` | a version 1 container blob read by the version 2 reader, seated at instance id 0 with an empty payload, then written back as version 2 (4.5) |
+| 5 | Scale | `Benchmarks` plus a structural test in `Server.Tests` | a bank of 1,000 affixed stacks, several million instances in memory, 20 crafts in one batch, mirroring `MutationJournalBenchmarkTests` |
+| 6 | Generator distribution | `ItemInstances.Tests` | weights proportional within an integer bound, positions uniform and both ends reachable, draw count a function of the affix count (9.6) |
+| 7 | Evaluator determinism | `ItemInstances.Tests` | the `More` fold order changes the answer and the stated order is stable, add-then-remove restores exactly, negative rounding (11.6) |
+| 8 | Remap idempotence | `ItemInstances.Tests` | applying the full ordered rule set twice produces the same bytes as once (contracts 8.3) |
+| 9 | Visibility agreement | `ItemInstances.Tests` | the replication filter and the tooltip builder call `CanSee` and agree on every kind, at every level, identified and not (12.5) |
+| 10 | Craft replay | `Server.Tests` | same id and same intent replays to the original receipt, same id with a refilled slot is `OperationConflict` (15.1) |
+| 11 | Drop and claim | `TileWorld.Netcode.Tests` plus `Server.Tests` | the instance id survives a drop, a claim by a stranger and a claim by the dropper |
+| 12 | Allocator rotation | `ItemInstances.Tests` | `Rotate` issues no id in the old node's range, a boot on a retired node id throws, a crash skips the unissued block (3.6) |
+| 13 | No client payload route | `Server.Tests` | an architecture test over the message routes asserting none carries a payload-shaped field (15.3) |
+| 14 | Concurrent cross-container move | `Server.Tests` | two moves of one stack, exactly one succeeds |
+| 15 | Page sync under loss and reorder | `TileWorld.Netcode.Tests` | a reassembler fed chunks out of order, with a sequence change mid assembly, with a fifth concurrent assembly, and with a truncated final chunk |
+| 16 | Quarantine byte preservation | `ItemInstances.Tests` | wrap, store, load, unwrap, assert byte equality including an over-cap original |
+
+Four notes on how to run these rather than what they assert:
+
+- **Fuzzing is mutation over goldens, not random bytes.** Random bytes reject at the first varint and prove
+  nothing. A mutation of a valid golden exercises the paths a real corruption reaches, and the corpus is
+  the checked-in goldens so a new golden widens the fuzzer for free. The assertion is a triple: no throw, a
+  reason from the closed set, and the SAME reason for the same mutation across runs.
+- **The scale tests go in `Benchmarks` and their structural behaviour goes in `Server.Tests`**, which is the
+  existing split (`MutationJournalBenchmarkTests`, 16 facts, beside the `--journal` mode). A benchmark that
+  only runs by hand is a benchmark nobody runs.
+- **Test 7 must run once with `-c Release` before merging.** The evaluator's overflow behaviour differs
+  under a `Debug.Assert` rescue, and CI tests Release while a local `dotnet test` runs Debug (AGENTS.md,
+  the `TeleportEpochBasisTests` lesson, #637).
+- **Nothing here needs a GPU and nothing here writes process-global state**, so no test in this plan needs a
+  `DisableParallelization` collection. If one later does, it enlists in a named collection with the shared
+  state in its doc comment, per the #349 rule.

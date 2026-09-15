@@ -2249,3 +2249,53 @@ affixes have different bytes, so they do not merge. That is the correct answer a
 player who tries to stack two unidentified items learns whether they are identical. The leak is inherent
 to stacking by bytes, it is worth less than the hidden rolls are, and 15.8 records it as accepted with the
 alternative priced.
+
+## 13. Failure modes and recovery
+
+Every row is a failure this design can actually reach. Row numbers are referenced from sections 3 to 7
+and are stable.
+
+| # | Failure | Detection | Effect | Recovery |
+|---|---|---|---|---|
+| 1 | A payload fails to decode | `TryDecode` returns false with a closed reason (3.2) | that ENTRY is quarantined, the rest of the page loads | the bytes are kept in a `KECQ` wrapper (12.4), an operator reads the reason from the counter dimension, a fix is a content publish or a support edit |
+| 2 | A page's stamp is NEWER than the active version, after a content rollback | `stamp > snapshot.Version` at load (5.5) | NOT an error. Entries that resolve are used, entries that do not are quarantined per 12.2, the stamp is never lowered | the page is already correct when the newer version returns. Nothing is written, so the rollback is reversible |
+| 3 | Crash between admission and commit of a craft | none needed, the process died | the whole batch dies. Pages revert to their last committed bytes. Instance ids the batch allocated are skipped forever (3.6) | a client operation resubmits by its id and resolves `NotFound`, then applies fresh (6.6) |
+| 4 | Crash mid page rewrite | none needed | impossible to observe. A projection write is a whole section replacement inside the store's transaction (`JournalProjectionWrite.cs:10-29`), so a page is entirely old or entirely new | none required. This row exists to record that there is no torn page to repair |
+| 5 | A socket references a retired socket type | validator check 7 (12.2) | drift, tolerated. The socket keeps its contained item and its bytes, and accepts nothing new until a rule lands | a `ReplacedBy` rule (contracts 8.2 kind 1) points it at a live type, or a `Retired` rule with the placeholder policy keeps it unusable |
+| 6 | A mod is retired with no remap rule | validator check 7 or 8 | drift, tolerated. The affix contributes nothing to the evaluator and renders as a placeholder line | the author publishes the missing rule. Every page is re-checked on its next load, so no rewrite pass is needed |
+| 7 | An instance id collides after a restore from backup | the allocator refuses to boot on a node id in its persisted retired list (3.6) | the boot fails closed rather than issuing a colliding id | rotate the node id with `Rotate`, which burns one of 65,535. Ids issued after the backup point and lost by it are simply never reissued |
+| 8 | A page exceeds the journal's section cap | arithmetically impossible: 100 entries at the maximum size is 53,209 bytes against 2 MiB (5.4) | none | the row exists so the 2.5 percent margin is written down. A page geometry change reruns the arithmetic |
+| 9 | A client never acknowledges a page sync | no acknowledgement exists, deliberately | nothing. `ReliableOrdered` means delivery or a dead connection (7.5 rule 1), and a partial assembly dies with the connection (rule 4) | the client re-requests on rejoin, at two bytes (7.6). Adding an acknowledgement would build a second reliability layer over a reliable channel |
+| 10 | A page is written into the wrong section | the decoder's `FirstSlot == PageIndex * expectedPageSlots` check (4.4) | the page fails to decode and is quarantined as a unit | the redundant two bytes are what make this loud instead of silent. Recovery is the journal's, from the event tail |
+| 11 | Ground item payloads overflow a snapshot frame | the encoder throws above 1,024 bytes (`TileProtocol.Frames.cs:173-174`) | today, a throw inside the serve loop, which takes the tick down for every player | the fix is the chunking shape `SendCombatTo` already uses (`TileWorldServer.Tick.cs:241-259`) plus a per-cell ground payload budget. Open question 6 |
+
+**Row 11 is the only row whose CURRENT behaviour is worse than its recovery**, and it is worth naming as
+the one place this design puts new pressure on an existing throw. The combat path already learned this
+lesson and its comment says so in as many words, that the throw was inside the loop and cost every player
+on the server rather than the one viewer. Ground instances put the same pressure on the snapshot path.
+
+## 14. Versioning and rollback
+
+Four version numbers are in play and they move independently. Confusing two of them is the most likely
+reading error in this document, so they are tabulated.
+
+| Version | Where | Moves when | Read by |
+|---|---|---|---|
+| Container codec version | byte 0 of a page (4.4) | the page BYTE LAYOUT changes | the page decoder |
+| Payload field kinds | the registry (3.3) | a kind is added | the field decoders, additively |
+| Content version | the page stamp (5.3) | the owner publishes | the remap decision (5.5) |
+| Quarantine wrapper version | `KECQ` (12.4) | the wrapper layout changes | the wrapper decoder |
+
+**A content rollback does nothing to stored instances.** Pages are not rewritten, stamps are not lowered,
+and a page stamped past the active version is row 2 of section 13: entries that still resolve are used and
+entries that do not are quarantined until the version returns. That is the property gate 0 decision 5 buys
+by making the stamp a comparable NUMBER rather than a hash, and it is why a rollback is an operational
+action rather than a data migration.
+
+**A keep-legacy republish is append-only in every direction.** A new mod id appears, the original id keeps
+its id and gains new ranges, one `MovedToLegacy` rule is appended to the global sequence (contracts 8.1),
+and every stored page moves lazily on its next load. Nothing is rewritten eagerly, nothing is deleted, and
+rolling the publish BACK leaves pages that already moved pointing at a legacy id the rolled-back version
+still contains, because a retired row stays in the pack forever (contracts 5.1). So the rollback of a
+keep-legacy publish is safe in one direction and lossy in the other: the items that moved stay moved. That
+asymmetry is contracts 8.6's irreversibility rule, and it is the reason keep-legacy is the non-default.

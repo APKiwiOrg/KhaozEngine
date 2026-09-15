@@ -20,9 +20,13 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// stand, and no wall on the candidate's edge facing back. The baker mirrors every wall bit onto both sides of
 /// the edge it blocks, so the two wall questions are the same pair either way round and only the blocked one
 /// moves, which is exactly the asymmetry reach needs.</para>
-/// <para>Every tile in the set is an ANCHOR tile for a ONE TILE actor, since the outward step is tested at agent
-/// size one. An actor with a larger footprint acts from any tile it covers, which this does not model, so the
-/// set under-reports for one rather than describing it.</para>
+/// <para>Every tile in the one tile set is an ANCHOR tile for a ONE TILE actor, since the outward step is tested
+/// at agent size one. An NxN actor anchored on its south-west tile acts from any tile it covers, so the agent size
+/// overloads (<see cref="Set(TileCollisionMap, TileRect, int, int)"/>,
+/// <see cref="Contains(TileCollisionMap, TileRect, int, TileCoord, int)"/> and
+/// <see cref="FacingToward(TileCollisionMap, TileRect, int, TileCoord, int)"/>) answer for its anchor: in reach
+/// when its footprint does not overlap the target and covers at least one tile of the one tile set. Walls are
+/// never asked a second question, so a fence between one of its tiles and the target denies that tile only.</para>
 /// <para>The scan order is fixed (footprint tiles by z ascending then x ascending, and the four cardinals in
 /// W, E, S, N order), because a server and a client agree on which reach tile a click meant only if they
 /// enumerate the candidates in the same order. Nothing here iterates a dictionary or a set, so the order is the
@@ -39,8 +43,9 @@ public static class TileReach
     /// <summary>Every tile the footprint can be reached from, in the fixed scan order, which is the order
     /// <c>TryNearest</c> breaks a tie by. Empty for a footprint walled in on all sides, and for an empty
     /// rect, both of which callers have to handle rather than assume a reach tile exists.
-    /// <para>The tiles are anchor tiles for a ONE TILE actor, so a caller with a larger agent gets fewer reach
-    /// tiles than that agent really has rather than a set shaped to its footprint.</para>
+    /// <para>The tiles are anchor tiles for a ONE TILE actor. A caller with a larger agent asks
+    /// <see cref="Set(TileCollisionMap, TileRect, int, int)"/>, which derives that agent's anchors from this set
+    /// in this order.</para>
     /// <para>The footprint is assumed to lie in BAKED storage. A footprint in a region this map does not hold
     /// reads Blocked, which the outward test never consults, so reach is still reported from the loaded side.
     /// That can only arise on a shard whose neighbouring region is not baked into its map, never from a footprint
@@ -73,12 +78,46 @@ public static class TileReach
         return found;
     }
 
+    /// <summary>Every ANCHOR tile an NxN agent can act on the footprint from: anchors whose own footprint does not
+    /// overlap the target and covers at least one tile of the one tile
+    /// <see cref="Set(TileCollisionMap, TileRect, int)"/>. Derived from that set in its own order, each reach tile
+    /// offering the anchors whose footprint holds it (offset dz ascending, then dx ascending, so the anchor with
+    /// the reach tile on its south-west corner comes first), first occurrence kept. For a size of 1 the offsets
+    /// are only (0, 0), nothing overlaps and nothing repeats, so the list is that set element for element, which
+    /// keeps every one tile tie break.
+    /// <para>On open ground an MxM target has 4(M + N - 1) anchors, and walls only remove them. Empty whenever
+    /// the one tile set is.</para></summary>
+    /// <param name="map">The baked collision map to read walls and blocked tiles from.</param>
+    /// <param name="footprint">The tiles the target covers.</param>
+    /// <param name="plane">The plane the target stands on. Reach never crosses planes.</param>
+    /// <param name="agentSize">The agent's NxN footprint edge in tiles, anchored on its south-west tile.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="map"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="agentSize"/> is below 1.</exception>
+    public static IReadOnlyList<TileCoord> Set(TileCollisionMap map, TileRect footprint, int plane, int agentSize)
+    {
+        ArgumentNullException.ThrowIfNull(map);
+        ArgumentOutOfRangeException.ThrowIfLessThan(agentSize, 1);
+        IReadOnlyList<TileCoord> reach = Set(map, footprint, plane);
+        if (agentSize == 1) return reach;
+        var anchors = new List<TileCoord>();
+        foreach (TileCoord p in reach)
+            for (int dz = 0; dz < agentSize; dz++)
+                for (int dx = 0; dx < agentSize; dx++)
+                {
+                    var a = new TileCoord(p.X - dx, p.Z - dz, plane);
+                    if (Overlaps(a, agentSize, footprint) || anchors.Contains(a)) continue;
+                    anchors.Add(a);
+                }
+        return anchors;
+    }
+
     /// <summary>True when <paramref name="from"/> is one of the footprint's reach tiles, which is the test for
     /// "close enough to act on it" and the reason an interaction that arrives already in range costs no walk at
     /// all. A tile on another plane is never in reach, however close it looks in x and z.
     /// <para>The question is whether a ONE TILE actor anchored on <paramref name="from"/> is in reach, matching
-    /// <see cref="Set"/>. A larger agent that covers a reach tile without being anchored on one answers false, so
-    /// a caller giving an actor a footprint bigger than a tile needs a rule this member does not have.</para></summary>
+    /// <see cref="Set(TileCollisionMap, TileRect, int)"/>. A larger agent asks
+    /// <see cref="Contains(TileCollisionMap, TileRect, int, TileCoord, int)"/>, which is in reach from any tile it
+    /// covers.</para></summary>
     /// <param name="map">The baked collision map to read walls and blocked tiles from.</param>
     /// <param name="footprint">The tiles the target covers.</param>
     /// <param name="plane">The plane the target stands on.</param>
@@ -92,29 +131,59 @@ public static class TileReach
         return false;
     }
 
+    /// <summary>True when an NxN agent anchored on <paramref name="from"/> is close enough to act on the footprint:
+    /// its own footprint does not overlap the target, and it covers at least one tile of
+    /// <see cref="Set(TileCollisionMap, TileRect, int)"/>. So a wall between one of its tiles and the target denies
+    /// that tile only, and another tile of the agent that is not walled off still reaches. Any overlap is never in
+    /// reach, since a body inside its target cannot act on it, and <c>TryNearest</c> walks it out instead. A tile on
+    /// another plane is never in reach. For a size of 1 this is
+    /// <see cref="Contains(TileCollisionMap, TileRect, int, TileCoord)"/>, answer for answer.</summary>
+    /// <param name="map">The baked collision map to read walls and blocked tiles from.</param>
+    /// <param name="footprint">The tiles the target covers.</param>
+    /// <param name="plane">The plane the target stands on.</param>
+    /// <param name="from">The agent's anchor, its south-west tile.</param>
+    /// <param name="agentSize">The agent's NxN footprint edge in tiles.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="map"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="agentSize"/> is below 1.</exception>
+    public static bool Contains(TileCollisionMap map, TileRect footprint, int plane, TileCoord from, int agentSize)
+    {
+        ArgumentNullException.ThrowIfNull(map);
+        ArgumentOutOfRangeException.ThrowIfLessThan(agentSize, 1);
+        if (agentSize == 1) return Contains(map, footprint, plane, from);
+        if (from.Plane != plane || Overlaps(from, agentSize, footprint)) return false;
+        foreach (TileCoord c in Set(map, footprint, plane))
+            if ((long)c.X >= from.X && (long)c.X < (long)from.X + agentSize
+                && (long)c.Z >= from.Z && (long)c.Z < (long)from.Z + agentSize) return true;
+        return false;
+    }
+
     /// <summary>
-    /// The reach tile to walk to, and the path there. Candidates are tried in <see cref="Set"/>'s scan order and
-    /// scored by the LENGTH of the path <see cref="TilePathfinder.FindPath"/> actually reaches them by, never by
+    /// The anchor to walk to, and the path there. Candidates are the anchors of
+    /// <see cref="Set(TileCollisionMap, TileRect, int, int)"/> for <paramref name="agentSize"/>, tried in its
+    /// order and scored by the LENGTH of the path <see cref="TilePathfinder.FindPath"/> actually reaches them by, never by
     /// a straight-line guess, so a tile one wall away from the target does not beat one a short walk away. Ties
     /// fall to scan order, which makes the choice total: both heads pick the same tile for the same map, and a
     /// prediction of an interaction walk reconciles instead of snapping.
     /// <para>Returns false when the footprint has no reach tile at all, when <paramref name="from"/> stands on
     /// another plane, and when none of the reach tiles can be reached from <paramref name="from"/> inside
     /// <paramref name="maxRadius"/>. That last refusal is ADMITTED CHEAPLY for a footprint the search window
-    /// cannot hold: a footprint further than <paramref name="maxRadius"/> + 1 away has no candidate inside the
-    /// window, so it is answered without a search and without the scratch one allocates. The answer is the same
-    /// one, and the reason it is worth stating is that a caller naming a far target is how an unbounded search
+    /// cannot hold: a footprint further than <paramref name="maxRadius"/> + <paramref name="agentSize"/> away has no
+    /// candidate inside the window, so it is answered without a search and without the scratch one allocates. The
+    /// answer is the same one, and the reason it is worth stating is that a caller naming a far target is how an
+    /// unbounded search
     /// gets bought (see the comment in the body). The <see cref="ArgumentOutOfRangeException"/> below comes out of
     /// the top of the body rather than out of the pathfinder, so a bad argument is refused the same way whether
     /// the target is open, walled in, out of range, or on another plane. It used to surface only once a candidate
     /// was actually pathed, which made one caller bug read as "cannot reach" against some targets and throw
-    /// against others. Reach never crosses planes, which is the refusal <see cref="Contains"/>
+    /// against others. Reach never crosses planes, which is the refusal
+    /// <see cref="Contains(TileCollisionMap, TileRect, int, TileCoord, int)"/>
     /// already makes and the one the two members have to agree on: an actor a plane above a booth is not standing
     /// on a reach tile, so it must not be handed a zero step walk to one either. A caller treats a false as
     /// "cannot get there", not as "walk as close as you can": <c>FindPath</c>'s nearest-reachable fallback is
     /// deliberately discarded here, because stopping short of a target you cannot act on is worse than not
     /// moving.</para>
-    /// <para>At most one <c>FindPath</c> per candidate (so at most eight), and usually fewer, because a candidate
+    /// <para>At most one <c>FindPath</c> per candidate (so at most 2(W + H) + 4(N - 1) for a WxH footprint and an
+    /// NxN agent, which is eight for a 2x2 target and a one tile actor), and usually fewer, because a candidate
     /// that provably cannot win is skipped before its search. Two facts do that: the pathfinder's window cannot
     /// hold a candidate further than <paramref name="maxRadius"/> away, and an eight-connected walk is never
     /// shorter than the Chebyshev distance to its goal, so a candidate already that far from
@@ -130,8 +199,10 @@ public static class TileReach
     /// <param name="plane">The plane the target stands on. A <paramref name="from"/> on any other plane is
     /// refused rather than coerced onto this one, the way the rest of the package refuses a cross-plane goal.</param>
     /// <param name="from">The tile the actor stands on.</param>
-    /// <param name="agentSize">The actor's NxN footprint in tiles, passed straight to the pathfinder. It shapes
-    /// the WALK only. The reach tiles it walks to are anchor tiles for a one tile actor either way.</param>
+    /// <param name="agentSize">The actor's NxN footprint in tiles. It shapes the walk, passed straight to the
+    /// pathfinder, and the candidates, which are the anchors of
+    /// <see cref="Set(TileCollisionMap, TileRect, int, int)"/> for this size, so the tile it stops on is one
+    /// <see cref="Contains(TileCollisionMap, TileRect, int, TileCoord, int)"/> answers true for.</param>
     /// <param name="maxRadius">Half width of the search window, in tiles.</param>
     /// <param name="reachTile">The chosen reach tile, default when the call returns false.</param>
     /// <param name="path">The walk to <paramref name="reachTile"/>, empty when the actor already stands on it.</param>
@@ -149,7 +220,8 @@ public static class TileReach
     /// <param name="footprint">The target footprint.</param>
     /// <param name="plane">The target plane.</param>
     /// <param name="from">The actor's tile.</param>
-    /// <param name="agentSize">The moving actor's footprint edge.</param>
+    /// <param name="agentSize">The moving actor's footprint edge. It shapes the walk and the candidates, which are
+    /// the anchors of <see cref="Set(TileCollisionMap, TileRect, int, int)"/> for this size.</param>
     /// <param name="maxRadius">The pathfinder search radius.</param>
     /// <param name="reachTile">The selected reach tile.</param>
     /// <param name="path">The path to the selected tile.</param>
@@ -169,11 +241,12 @@ public static class TileReach
 
         // ADMISSION, and the counterpart to the server's own MaxGoalRadius refusal for a walk goal.
         // TilePathfinder.FindPath searches a (2r+1)^2 window centred on `from`, so a candidate outside that box is
-        // never visited and the search always fails. Every reach tile is cardinally adjacent to a footprint tile,
-        // so the nearest candidate is at most one tile closer than the footprint itself: a footprint whose nearest
-        // tile is further than maxRadius + 1 has no candidate inside the window AT ALL, and the whole call is
-        // decided here. Exactly the answer the searches below would have reached, for none of the (2r+1)^2 scratch
-        // entries each of them allocates.
+        // never visited and the search always fails. Every candidate is an anchor whose NxN body touches a side of
+        // the footprint, and the west and south anchors sit agentSize tiles out from it, so the nearest candidate
+        // is at most agentSize tiles closer than the footprint itself: a footprint whose nearest tile is further
+        // than maxRadius + agentSize has no candidate inside the window AT ALL, and the whole call is decided here.
+        // Exactly the answer the searches below would have reached, for none of the (2r+1)^2 scratch entries each
+        // of them allocates.
         //
         // That cost is what a client naming a target it has never seen was buying. Net ids are handed out from a
         // counter, so a hostile Attack or Interact guesses a small integer rather than needing to have seen
@@ -186,12 +259,12 @@ public static class TileReach
         // call rather than refuse it.
         long dx = Math.Max(Math.Max((long)footprint.X - from.X, (long)from.X - ((long)footprint.X1 - 1)), 0L);
         long dz = Math.Max(Math.Max((long)footprint.Z - from.Z, (long)from.Z - ((long)footprint.Z1 - 1)), 0L);
-        if (Math.Max(dx, dz) > (long)maxRadius + 1) return false;
+        if (Math.Max(dx, dz) > (long)maxRadius + agentSize) return false;
 
         int best = int.MaxValue;
         bool any = false;
 
-        foreach (TileCoord candidate in Set(map, footprint, plane))
+        foreach (TileCoord candidate in Set(map, footprint, plane, agentSize))
         {
             if (candidate.Equals(from))
             {
@@ -247,4 +320,43 @@ public static class TileReach
         }
         return TileDirection.W;
     }
+
+    /// <summary>The side on which an NxN agent anchored on <paramref name="from"/> touches the footprint, as the
+    /// direction it faces to act. Two rects that do not overlap and are cardinally adjacent touch on exactly one
+    /// side (touching in x needs overlap in z, which rules out touching in z), so the answer is unique, and the
+    /// sides are asked in the W, E, S, N order only so the fallback is reached deterministically. For a size of 1
+    /// this is <see cref="FacingToward(TileCollisionMap, TileRect, int, TileCoord)"/>, answer for answer.
+    /// <para>Falls back to <see cref="TileDirection.W"/> for an agent that touches no side, which covers an
+    /// overlapping agent and an empty footprint, for the reason the one tile overload gives.</para></summary>
+    /// <param name="map">The baked collision map, read only for the null check, as on the one tile overload.</param>
+    /// <param name="footprint">The tiles the target covers.</param>
+    /// <param name="plane">The plane the target stands on, carried for symmetry with the one tile overload.</param>
+    /// <param name="from">The agent's anchor, its south-west tile.</param>
+    /// <param name="agentSize">The agent's NxN footprint edge in tiles.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="map"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="agentSize"/> is below 1.</exception>
+    public static TileDirection FacingToward(TileCollisionMap map, TileRect footprint, int plane, TileCoord from,
+        int agentSize)
+    {
+        ArgumentNullException.ThrowIfNull(map);
+        ArgumentOutOfRangeException.ThrowIfLessThan(agentSize, 1);
+        if (agentSize == 1) return FacingToward(map, footprint, plane, from);
+        if (footprint.IsEmpty) return TileDirection.W;
+        long x0 = from.X, x1 = x0 + agentSize, z0 = from.Z, z1 = z0 + agentSize;
+        long fx0 = footprint.X, fx1 = fx0 + footprint.Width, fz0 = footprint.Z, fz1 = fz0 + footprint.Height;
+        bool zOverlap = z0 < fz1 && z1 > fz0;
+        bool xOverlap = x0 < fx1 && x1 > fx0;
+        // W, E, S, N, the order the one tile scan asks in.
+        if (zOverlap && x0 == fx1) return TileDirection.W;
+        if (zOverlap && x1 == fx0) return TileDirection.E;
+        if (xOverlap && z0 == fz1) return TileDirection.S;
+        if (xOverlap && z1 == fz0) return TileDirection.N;
+        return TileDirection.W;
+    }
+
+    // In long, both the agent's far edges and the rect's, because TileRect.X1 and Z1 are int sums that wrap near
+    // int.MaxValue and a wrapped edge would read as no overlap.
+    static bool Overlaps(TileCoord anchor, int size, TileRect r) =>
+        (long)anchor.X < (long)r.X + r.Width && (long)anchor.X + size > r.X
+        && (long)anchor.Z < (long)r.Z + r.Height && (long)anchor.Z + size > r.Z;
 }

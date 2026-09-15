@@ -11,7 +11,11 @@ before the owner approves both. Consumers are
 [Ruinborne #465](https://github.com/APKiwiOrg/Ruinborne/issues/465).
 
 Where this document and the contracts disagree, the contracts win and this document is wrong. Section
-22 is the only channel for changing that, and it is empty.
+22 is the only channel for changing that. It carries FOUR requests, all four accepted by the owner and
+already folded into the contracts: the worked affix example reordered into canonical form,
+`KhaozEngine.ItemInstances.Journal` recorded in the package set, the payload cap's characterisation
+restated, and fail-closed at boot bound to the content version rather than to a code registration.
+Section 22 also lists the third-round contract amendments this document is written against.
 
 Every byte layout below is written to be coded from without guessing, every algorithm is written as
 steps rather than as a description, and every claim about code that exists today cites a file and a
@@ -132,6 +136,7 @@ oversized game message.
 | `InstancePropertyKind` | `public const ushort` per engine and Scope B kind | 3.3 |
 | `InstancePropertyRegistry` | `Register(kind, codec, visibility, identificationMaskBit, shape, references)`, frozen at first pack load | 3.3 |
 | `InstanceFieldShape`, `InstanceReferenceTarget` | where a kind's content ids sit and which type each belongs to | 3.3 |
+| `InstanceKindBand` | enum `Engine`, `ScopeB`, `Game`, the caller band a registration declares | 3.3 |
 | `PropertyVisibility` | enum `ServerOnly`, `OwnerOnly`, `Everyone` | 12.5 |
 | `ItemSlot` | `readonly record struct (ItemStack Stack, ReadOnlyMemory<byte> Payload, bool Quarantined)` | 4.3 |
 | `ItemContainerPage` | one page's slots plus its content version stamp and dirty flag | 5.3 |
@@ -149,8 +154,7 @@ oversized game message.
 |---|---|---|
 | `ItemGenerator` | `ctor(ModCandidateTables, IRandomSource)`, `Generate(in GenerationContext)` | 9.4 |
 | `GenerationContext`, `GenerationResult` | inputs and the resolved item | 9.4 |
-| `ModCandidateTables` | built at pack load, queried per roll | 9.2 |
-| `IRandomSource`, `CryptographicRandomSource`, `SeededRandomSource` | contracts 14.1 and 14.2 | 9.3 |
+| `ModCandidateTables` | built at boot, queried per roll | 9.2 |
 | `CraftPrimitive` | enum of the fourteen v1 primitives | 10.2 |
 | `CraftGuard`, `CraftGuardKind` | the guard vocabulary | 10.3 |
 | `CraftPlan`, `CraftOutcome`, `CraftRefusal` | a resolved sequence and its answer | 10.4, 10.6 |
@@ -158,6 +162,15 @@ oversized game message.
 | `ContentStatEvaluator` | the integer evaluator | 11.6 |
 | `StatModifierLine`, `StatCombineKind`, `StatSourceKey`, `StatContext` | the evaluator's value types | 11.2 |
 | `IStatConditionRegistry` | game conditions above the engine range | 11.3 |
+
+**`IRandomSource`, `CryptographicRandomSource` and `SeededRandomSource` are NOT in this package.** An
+earlier draft of this table declared all three as public types of `KhaozEngine.ItemInstances`, and that
+closes a dependency cycle: Scope A's `KhaozEngine.Catalog` needs the seam for its own loot draw and for
+its decoder fuzzing, `ItemInstances` already depends on `Catalog` (2.1), and `Catalog` referencing back
+for the interface points the graph both ways. Contracts 14.1 settles it: the seam and both
+implementations live in `KhaozEngine.Primitives`, which already owns `DeterministicRng` and sits below
+both packages, so taking an `IRandomSource` costs no new package reference from anywhere in the fleet.
+This document uses the seam and declares none of it.
 
 `KhaozEngine.ItemInstances.Journal`:
 
@@ -326,6 +339,7 @@ filtered copy, and section 7.4 shows the filtered copy is already a memcpy of th
 
 ```csharp
 InstancePropertyRegistry.Register(
+    InstanceKindBand band,                     // Engine, ScopeB or Game
     ushort kind,
     IInstancePropertyCodec codec,
     PropertyVisibility visibility,
@@ -336,6 +350,15 @@ InstancePropertyRegistry.Register(
 
 It runs ONCE at process start, before any pack is loaded, and the registry freezes when the first pack
 loads. A later registration throws.
+
+**`band` is the caller's own declaration of which range it is allowed to register into, and a mismatch
+THROWS.** `InstanceKindBand.Engine` may register 1 to 127, `ScopeB` 128 to 1,023 and `Game` 1,024 and
+above, and a caller that names a band and a kind outside it is refused at startup. 3.3 already said a game
+MAY NOT register into the engine or Scope B ranges and named no mechanism, which makes it a comment rather
+than a rule: without the band the first sign of a collision is an engine release landing on a kind a game
+took, months later, with two codecs and stored payloads under both. `ReplicationRegistry.FirstExtensionTypeId`
+is the engine's existing precedent for exactly this, one level up. `CraftingRegistry` (10.5) carries the
+same argument for its 1,024 floor.
 
 **`identificationMaskBit` is a FIXED bit, assigned at registration, and it is -1 for a kind that is not
 identification gated.** It is not the kind's position in the ascending list of gated kinds. An earlier
@@ -536,9 +559,9 @@ and the reproduction is here so an implementer can use it as the first golden fi
 82 01 01 03                              kind 130 len 1   rarity 3
 83 01 12                                 kind 131 len 18  affixes
    03                                       count 3
-   F2 20 03 CC CC 00                        mod 4210, tier 3, position 52428, flags 0
    5B 01 33 33 00                           mod 91,   tier 1, position 13107, flags 0
    84 02 02 FF FF 00                        mod 260,  tier 2, position 65535, flags 0
+   F2 20 03 CC CC 00                        mod 4210, tier 3, position 52428, flags 0
 84 01 0A                                 kind 132 len 10  sockets
    01                                       count 1
    07                                       socket type 7
@@ -548,21 +571,25 @@ and the reproduction is here so an implementer can use it as the first golden fi
       02 01 37                              nested kind 2 len 1, item level 55
 ```
 
-Two things to check against 3.4 while reading it. The affixes are ascending by mod id (91, 260, 4210)
-in the CONTRACT's example only by accident, because they are written 4210, 91, 260 there. **This
-document's canonical order sorts them, so the canonical form of that item writes 91 first.** The
-contract's example is an illustration of the ENTRY layout rather than of the list order, which it does
-not state, so ordering the list is a refinement rather than a contradiction. An implementer copying the
-contract's byte block into a golden file must sort it first, and the golden file in 17.1 is the sorted
-form. That is the single most likely place a first implementation goes wrong, which is why it is called
-out here rather than left to be discovered.
+**The affix entries are written ASCENDING BY MOD ID, 91 then 260 then 4210, and the contract now says
+so.** An earlier draft of this document reproduced them in the contract's original order, 4210, 91, 260,
+and explained at length that its own canonical order sorted them. That explanation was self-contradictory
+as written, since a list is not ascending "only by accident" when it is not ascending at all, and it is
+moot now: change request 1 of section 22 was accepted, contracts 9.9 makes the ascending list the
+CONTRACT's rule rather than this document's refinement, and contracts 9.8's block is written in that
+order. So the block above may be copied into the golden file of 17.1 exactly as it stands, which was the
+whole point of filing the request. The entry byte counts are unchanged either way: the three entries are
+5, 6 and 6 bytes and the field payload is 18.
 
 ### 3.8 Coverage of the four reference games, with byte counts
 
 Each row is a real item of that shape, encoded through 3.2 and seated in a container page entry through
 4.4. "Payload" is the tagged field bytes. "Slot entry" is the whole entry including the payload, which
-is what a page and therefore a commit actually costs. Definition ids are assumed dense from 1, so a
-base in the first 16,383 costs two varint bytes and one above costs three.
+is what a page and therefore a commit actually costs. Definition ids are assumed dense from 1, so an id
+under 128 costs ONE varint byte, one under 16,384 costs two and anything above costs three. The three
+affixed rows below are written at a two byte id, which is the realistic case for a catalog of any size,
+and the OSRS row is written at definition id 1 deliberately, to show the FLOOR: the smallest entry the
+format can produce is seven bytes, and that is the number the compatibility argument rests on.
 
 | Game | Item | Fields used | Payload | Slot entry |
 |---|---|---|---|---|
@@ -970,8 +997,9 @@ rule's `FromId` for the same type, so one pass is enough and the result is idemp
 
 **Remapped pages are rewritten LAZILY, on the next ordinary commit, and contracts 10.3 says why.**
 Eagerly rewriting every touched page at boot would be a write storm proportional to the whole player
-base arriving exactly when the server is coldest, against a recorded baseline of 698 commits per second
-(`a-engine.md:607-641`). The cost of lazy is that a page can sit remapped in memory across a session and
+base arriving exactly when the server is coldest, against a recorded 698 commits per second on SQLite at
+1,000 players (`a-engine.md:607-641`), which is an observed offered load rather than a measured ceiling
+and is budget 13's starting point. The cost of lazy is that a page can sit remapped in memory across a session and
 be lost on a crash, which simply means it is remapped again on the next load, and that is safe because
 the rule set is idempotent (contracts 8.3).
 
@@ -1422,9 +1450,26 @@ allocation beyond the output. That is why 3.3 declines contracts 11.2's optional
 visibility: the coupling would buy a single memcpy instead of two or three, forever, in exchange for
 constraining every future kind assignment.
 
+**A GROUND item has no owner viewer in v1, and that is a rule rather than an omission.** A drop's entity
+is the drop, whose net id is nobody's, and the durable claim has not happened yet, so there is no viewer
+this document can call the owner of a ground stack. So a ground item's PUBLIC view is its WHOLE
+replicated payload: the sibling component carries `PublicView(payload, Everyone)` and there is no owner
+remainder message for a drop, only for an item in a container the viewer owns. The consequence to be
+explicit about is the leak that does not happen: kind 6 `BoundTo` is `OwnerOnly` (3.3), so it is stripped
+before the component is written and a passer-by cannot read who a dropped item is bound to, which is a
+fact about a PLAYER rather than about an item. Kinds 4 and 5, charges and durability, are stripped for
+the same reason, so a rare's 58 byte payload replicates as 54 on the ground (budget 11). A game that wants
+a dropper-only view builds it on the claim's own ownership tag (`PickupState.OwnerNetId`, 7.3) and a
+targeted message, exactly as the owner remainder does, and the engine ships neither in v1.
+
 The same function answers the tooltip. A tooltip builder that computed its own answer is how a client
 eventually renders something the server never sent, so `CanSee` (12.5) is called by the replication
 filter and by the tooltip builder and by nothing else, and 17.9 is the test that proves the two agree.
+**The tooltip's TEXT resolves through `ContentStringCatalog`**, Scope A's layered `IStringCatalog` of
+contracts 12.4, formatted on the `SafeFormat` path of contracts 12.3: content text chunks first, then the
+game's own resx, then the key itself, with a malformed translator template falling back to the unformatted
+template rather than throwing inside the frame loop. A tooltip built against the game's resx directly
+would miss every content-shipped string, which is the whole reason that ordering exists.
 
 ### 7.5 Page sync over the wire
 
@@ -2097,7 +2142,8 @@ in v1 calls it. Weights are `ServerOnly` (8.3), so a CLIENT builds none of this 
 
 ### 9.3 The random source, restated at the call site
 
-`IRandomSource` is contracts 14.1 verbatim. Three of its four members are used here:
+`IRandomSource` is contracts 14.1 verbatim and lives in `KhaozEngine.Primitives` (2.2). Three of its four
+members are used here:
 `NextInt(minInclusive, maxExclusive)` for a count and for a weighted pick, `NextRollPosition()` for a
 `ushort` roll position, and neither `NextULong` nor `NextBytes`. A weighted pick is
 `NextInt(0, weightTotal)` followed by a walk of the cumulative array, never a floating point draw and
@@ -2299,7 +2345,15 @@ guard rather than a message.
 | 12 | `IsIdentified` | state | kind 128's state equals it |
 | 13 | `FlagIs` | bit, value | that bit of kind 1 equals it |
 | 14 | `NotLegacy` | | no affix on the item names a `legacy` mod row |
-| 15 | `IsCorruptible` | | kind 1 bit 0 is clear, the standing refusal every currency inherits |
+| 15 | `IsCorruptible` | | kind 1 bit 0 is clear |
+
+**`IsCorruptible` is STANDING, so no currency authors it and none can opt out.** Every primitive that
+writes any part of the payload refuses an item whose kind 1 bit 0 is set, whatever the currency's guard
+set says, because "corrupted" means "cannot be modified further" (question 1) and a refusal a currency
+can forget is not that. It stays in the vocabulary above because the working copy reports it by kind when
+it refuses, and because an authored `IsCorruptible` on a step is a legal, redundant way for an author to
+document intent. The worked whetstone in 10.4 does NOT author it, and an earlier draft did, which is how
+this pair got out of step.
 
 **Guards are ANDed and there is no OR, no NOT and no nesting.** An OR is two currency rows, which is one
 more authored row and no evaluator. That refusal is the same one contracts 4.6 makes about tags and the
@@ -2418,7 +2472,8 @@ its constructor provably cannot roll. That is why `Apply` has no random paramete
 
 The registry follows `InstancePropertyRegistry` (3.3), which follows `ReplicationRegistry.Register`
 (`TileProtocol.Components.cs:122`): registration once, at process start, frozen at the first pack load,
-a later registration throws, and the id ranges below 1,024 are the engine's and cannot be registered into.
+a later registration throws, and an operation whose `Id` is below 1,024 is refused by the registry itself
+rather than by a rule in prose, which is the same caller-band argument 3.3 makes for property kinds.
 
 **A game operation gets the working copy and the same refusal vocabulary, and it gets NO new powers.** It
 cannot write an unregistered property kind, cannot exceed `MaxInstancePayloadBytes`, cannot produce a
@@ -2545,11 +2600,22 @@ allocation shape `StatSet.AddSource` already uses (`a-engine.md:212-228`) applie
 
 ### 11.3 Tag scope and conditions
 
-**A tag scope is an AND over the context's tags.** A line whose scope is `[fire, spell]` applies only when
-the evaluation context carries both. An empty scope applies always, which is the common case and costs a
-length check. Scope is the mechanism for "increased fire damage with spells" and for Grimhollow's
-`CanBeAHatchet` predicate becoming a row (contracts 4.6), and it is the ONLY relation between a modifier
-and a context: there is no scope expression, no negation and no OR, for the same reason 10.3 gives.
+**A tag scope is an AND over the context's tags AND the target stat's own tags.** A line applies when
+every tag in its scope is present in the UNION of `context.Tags` and the `stat` row's own `tags` field
+(contracts 13.1, which Scope A registers as a tag list). An empty scope applies always, which is the
+common case and costs a length check.
+
+**The stat row's half is what `stat.tags` is for, and nothing else reads it.** Scope A authors `tags` on
+every stat row and an earlier draft of this document matched a scope against the evaluation context only,
+which left that field dead weight in every stat row and every client pack. With both halves, "increased
+fire resistance" is one line on stat `fire_resistance` with scope `[fire]`, and it applies with no
+context tag at all because the stat row itself carries `fire`. Without it the caller would have to pass
+`fire` on every evaluation of that stat, which means every call site knows the taxonomy, which is the
+coupling the tag system exists to remove. The context's half stays the mechanism for the cases that are
+about the SITUATION rather than the stat: "increased fire damage WITH SPELLS" is scope `[fire, spell]`,
+where `fire` is matched by the stat row and `spell` by the context. Scope is the mechanism for Grimhollow's `CanBeAHatchet` predicate becoming a row (contracts 4.6), and it
+is the ONLY relation between a modifier and its target: there is no scope expression, no negation and no
+OR, for the same reason 10.3 gives.
 
 **A condition is an int id, and the engine owns `0` to `1023`.** Id 0 is unconditional. The engine
 defines none in v1, deliberately, so the whole range stays free. A game registers above 1,023 through
@@ -2916,6 +2982,18 @@ reading error in this document, so they are tabulated.
 | Content version | the page stamp (5.3) | the owner publishes | the remap decision (5.5) |
 | Quarantine wrapper version | `KECQ` (12.4) | the wrapper layout changes | the wrapper decoder |
 
+**A fifth number is NOT in that table and is worth naming for that reason: `ContentPackFormat.Generation`,
+the engine's own pack format generation** (contracts 7.4). Scope A owns it and bumps it "ONLY when an
+engine-owned row codec or the pack format gains a field an older reader cannot skip", and old readers that
+meet a higher generation FAIL CLOSED rather than skipping (contracts 8.5). None of the four versions above
+is it: a container page, a payload and a `KECQ` wrapper are durable formats that live in the JOURNAL
+rather than in the pack, and their forward compatibility is carried by the tagged encoding and the byte-0
+dispatch instead. What DOES reach the pack from this document is a new REMAP RULE KIND, which is
+pack-carried, must fail closed on an old reader, and is exactly what contracts 8.5 says the generation is
+for. So: **if Scope B ever introduces a remap rule kind, or any other pack-carried format change, Scope A
+bumps `ContentPackFormat.Generation` for it.** Scope B does not have its own generation number and does
+not want one. v1 introduces no rule kind, so nothing bumps.
+
 **A content rollback does nothing to stored instances.** Pages are not rewritten, stamps are not lowered,
 and a page stamped past the active version is row 2 of section 13: entries that still resolve are used and
 entries that do not are quarantined until the version returns. That is the property gate 0 decision 5 buys
@@ -3083,9 +3161,11 @@ merge and destroy one, so the leak is strictly cheaper than its fix.
 ## 16. Performance budgets
 
 The owner's six from #884 item 13, plus four this document's design introduces. Every target is derived
-from arithmetic already in this document or from the recorded journal baseline (698 commits per second,
-42,365 bytes allocated per operation, `a-engine.md:607-641`). Nothing here is measured yet, which is what
-the last column says.
+from arithmetic already in this document or from the recorded journal baseline (698 commits per second at
+1,000 players with no backpressure recorded, 42,365 bytes allocated per operation, `a-engine.md:607-641`).
+**That 698 is an OFFERED load that the store kept up with, not a ceiling it hit**, so it is a starting
+point for budget 13 rather than a limit anything here is measured against. Nothing in this table is
+measured yet, which is what the last column says.
 
 | # | Budget | Target | How measured | Measured |
 |---|---|---|---|---|
@@ -3101,6 +3181,7 @@ the last column says.
 | 10 | Container load, 10 pages with a full remap pass | under 5 ms, under 200 KB allocated | `Load` over 10 pages and 200 rules | TBD (stage 5) |
 | 11 | Ground instance bytes per viewer per second | at most 8 KB per second per viewer at 28 ground instances in interest | public view bytes times instances in interest divided by `TickSeconds` (7.4) | TBD (stage 5) |
 | 12 | Resident page bytes at 1,000 logged-in players | under 250 MB | sum the decoded page bytes plus the admitted layer's two dictionaries, at a 1,000 stack bank each | TBD (stage 5) |
+| 13 | Commits per second offered, 1,000 players at 4 Hz | 4,000 per second pre-coalescing, and what the store sustains is the number to find | `--items` bench against SQLite and SQL Server, offered load against accepted | TBD (stage 5) |
 
 Where each number comes from, because a target with no derivation is a guess in a table:
 
@@ -3130,6 +3211,13 @@ Where each number comes from, because a target with no derivation is a guess in 
   6.7 KB per second of REPEATED bytes, for the whole 300 second despawn window. Ten viewers in that cell
   is 67 KB per second of the server's egress for one death pile. The budget is per viewer because that is
   the number an operator can act on.
+- **13** is the steady state rather than the burst, which is the case 6.7 never priced. The batch window
+  is one server tick (6.4), so an active player offers at most one commit per tick, and the tile tick is
+  250 ms, so 1,000 players acting every tick offer 4,000 commits per second BEFORE coalescing, which is
+  the number a batch exists to reduce. The recorded SQLite baseline is 698.46 completed operations per
+  second at 1,000 players with ZERO backpressure recorded (`a-engine.md:607-641`), which makes it an
+  observed offered load rather than a measured ceiling, and this document cites it that way. SQL Server is
+  unmeasured. Finding the real ceiling on both is what this budget is for.
 - **12** is test 5's "several million instances in memory" given a number. A 1,000 stack bank is about
   70 KB of page bytes (5.4), so 1,000 logged-in players is about 70 MB before anything copies it.
   `JournalLimits` clones every byte array on the way in and again on EVERY property read
@@ -3137,6 +3225,17 @@ Where each number comes from, because a target with no derivation is a guess in 
   dictionary per stream, so the resident figure is two to three copies of that 70 MB. 250 MB is the
   ceiling that covers three copies with headroom, and it is the budget that says whether "millions of
   owned items" is a memory problem or a disk one.
+
+**What a consumer does on `Backpressure`, because this document has not said it anywhere else.** The
+admitted queue is per stream at a default depth of 8 (`JournalExecutorOptions.cs:14`), and past it
+`JournalAdmittedState.Refusal` answers `Backpressure` (`JournalAdmittedState.cs:41-50`), which is a
+REFUSED action rather than a queued one. The consumer's answer is the refusal path it already has for a
+guard failure (10.6): nothing durable is written, the working copy is discarded, and the client is told
+the action did not happen, with a resync rather than a retry. It must NOT auto-retry, because a retry
+under backpressure is what turns a queue at depth into a queue that never drains, and it must not present
+optimistically, because the operation never reached the store. A game that wants a held craft to survive
+a burst throttles at the INPUT, one craft per tick per player, which is the window the batch already
+uses.
 
 **Every one of these lands in `KhaozEngine.Benchmarks` as an `--items` mode with a checked-in baseline**
 (2.3), following the journal set's shape exactly, so the numbers are reproducible and a regression is a
@@ -3165,7 +3264,7 @@ Numbered so the sections above can cite a test rather than describe one, and a r
 | 12 | Allocator rotation and the epoch refusal | `ItemInstances.Tests` | `Rotate` issues no id in the old node's range, a boot on a retired node id throws, an allocator whose persisted `store_epoch` differs from the live one refuses to issue, and a crash skips the unissued block (3.6) |
 | 13 | No client payload route | `Server.Tests` | an architecture test over the message routes asserting none carries a payload-shaped field (15.3) |
 | 14 | Concurrent cross-container move | `Server.Tests` | two moves of one stack, exactly one succeeds |
-| 15 | Page sync under loss and reorder | `TileWorld.Netcode.Tests` | a reassembler fed chunks out of order, with a sequence change mid assembly, with a fifth concurrent assembly, and with a truncated final chunk |
+| 15 | Page sync consistency | `TileWorld.Netcode.Tests` | a reassembler fed a chunk whose `Sequence` differs mid assembly (it discards and restarts, 7.5 rule 1), a fifth concurrent assembly (it evicts the oldest and counts it, rule 2), a truncated final chunk (it quarantines rather than throwing, rule 3), and a connection drop mid assembly (rule 4). NOT out-of-order chunks: the channel is `ReliableOrdered`, so that cannot happen and the reassembler deliberately does not handle it |
 | 16 | Quarantine byte preservation | `ItemInstances.Tests` | wrap, store, load, unwrap, assert byte equality including an over-cap original |
 | 17 | Page delta frame bound | `TileWorld.Netcode.Tests` | fourteen changed rare slots produce one delta frame, fifteen produce a fragmented page send, a 100 slot reorder produces a fragmented page send, and no path encodes a game message above `MaxGameMessageBytes` (7.5) |
 
@@ -3195,7 +3294,7 @@ WRITTEN, NOT EXECUTED. Nothing here is done by this document, and each row is wo
 |---|---|---|---|---|
 | 1 | Bag, worn and bank become paged containers | three sections at 30, 11 and 56 slots (`b-grimhollow.md:503-520`) | `bag/p00`, `worn/p00`, `bank/p00` to `bank/p09` at 100 slots each | #208 |
 | 2 | Bank grows to the owner's 1,000 stacks | `BankSlots = 56` | 10 pages, 17 of the 64 sections used, 5,700 slots available (5.4) | #208 |
-| 3 | `PlayerJournalSections` widens | a `byte` flags enum with all eight bits used | `ushort` or larger, threaded through `ReplaceSections` and `SyncSections` | https://github.com/APKiwiOrg/Grimhollow/issues/223 |
+| 3 | `PlayerJournalSections` widens | a `byte` flags enum with all eight bits used | `uint`, threaded through `ReplaceSections` and `SyncSections`. A `ushort` holds 16 bits and row 2's ten page bank needs 17 sections (5.4), so it runs out on the page this same table ships | https://github.com/APKiwiOrg/Grimhollow/issues/223 |
 | 4 | `ValidateContainer` is replaced | a hard THROW on an unknown item id (`GrimhollowJournalContracts.cs:483-524`) | the engine validator plus quarantine (12.2), so one bad id is a placeholder rather than a locked-out player | https://github.com/APKiwiOrg/Grimhollow/issues/224 |
 | 5 | The bank message is replaced | one whole-container blob that hits the 1,024 byte cap at 102 occupied slots | page sync plus deltas (7.5) | https://github.com/APKiwiOrg/Grimhollow/issues/221 |
 | 6 | Dropped instances ride the region ground streams | `loot-created` with item id and count | the same event plus instance id, payload and stamp (7.3), and the sibling component on the spawn (7.2) | #208 |
@@ -3263,7 +3362,9 @@ Five phases. Each names what it ships and the acceptance test that says it shipp
 instance validator and the allocator, plus `ItemStack`'s third component, `ItemSlot`, and container codec
 version 2 with its version 1 reader. Behind the narrow `IContentSnapshot` of 2.5, so it does not wait on
 Scope A. **Not** paging, **not** the journal, **not** generation, **not** crafting, **not** the evaluator.
-Acceptance: tests 1, 2, 3, 4 and 16 green, and the contracts' 45 byte example reproduced sorted.
+Acceptance: tests 1, 2, 3, 4, 12 and 16 green, and the contracts' 45 byte example reproduced byte for
+byte. Test 12 is here rather than later because the allocator ships in this phase and its epoch refusal
+(3.6) is the one behaviour in it that cannot be added afterwards without a durable migration.
 
 **Phase 1's `ItemStack` change is a fleet-wide break and it is SEQUENCED against Scope A's Grimhollow
 adoption.** A three component record struct generates a three out-parameter `Deconstruct`, so every
@@ -3313,7 +3414,7 @@ consumer's production database.
 | The affix list is sorted ascending by mod id | 3.4 | The sort is baked into every stored payload, and it IS the stacking test |
 | `Position` is a fixed two byte little endian `ushort` | 3.4 | Changes the byte length of every stored affix entry |
 | The tier is the mod row's AUTHORED ORDINAL, not a content id | 3.4, 8.3 | Every stored affix names it, and it is why a tier reorder is refused at publish |
-| A rarity id is ONE BYTE, so 255 rarities forever | 8.5 | Kind 130's width, pinned by contracts 9.8 |
+| A rarity id is ONE BYTE, so 255 rarity rows EVER ALLOCATED | 8.5 | Kind 130's width, pinned by contracts 9.8. Contracts 5.1 never reuses and never deletes an id, so every retired rarity keeps its number forever and the ceiling counts the dead as well as the live |
 | Container page codec version dispatch on byte 0 | 4.4 | Versions congruent to 1 modulo 256 can never be assigned |
 | `ContainerPageSlots = 100` | 5.2 | Every section name and every page's `FirstSlot` check |
 | Section naming `<container>/p<NN>` | 5.2 | The durable section key a stored projection is filed under |

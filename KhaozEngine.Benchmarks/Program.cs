@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Threading;
 using KhaozEngine.Benchmarks;
+using KhaozEngine.Benchmarks.Catalog;
 using KhaozEngine.Benchmarks.Journal;
 using KhaozEngine.Simulation;
 
@@ -15,7 +16,36 @@ using KhaozEngine.Simulation;
 //   dotnet run --project KhaozEngine.Benchmarks -c Release -- --quick        (fast smoke: small N, few ticks)
 //   dotnet run --project KhaozEngine.Benchmarks -c Release -- --gate         (jobs-3 system-scheduler GATE evaluation)
 //   dotnet run --project KhaozEngine.Benchmarks -c Release -- --replication  (replication-hotpath jobs-1 matrix only)
+//   dotnet run --project KhaozEngine.Benchmarks -c Release -- --catalog      (content catalog section 14 budgets)
 // See KhaozEngine.Benchmarks/README.md for how to read the output.
+
+// content-catalog stage 5: the --catalog mode measures every budget of section 14 of the content catalog
+// design against a synthetic catalog it publishes first. It runs alone, like --journal, and prints one JSON
+// result. See KhaozEngine.Benchmarks/README.md for the command lines and the checked-in baselines.
+if (Array.IndexOf(args, "--catalog") >= 0)
+{
+    CatalogBenchmarkConfig catalogConfig = CatalogBenchmarkConfig.Parse(args);
+    using var catalogCancellation = new CancellationTokenSource();
+    ConsoleCancelEventHandler catalogCancel = (_, eventArgs) =>
+    {
+        eventArgs.Cancel = true;
+        catalogCancellation.Cancel();
+    };
+    Console.CancelKeyPress += catalogCancel;
+    try
+    {
+        CatalogBenchmarkResult catalogResult =
+            await CatalogBenchmarkRunner.RunAsync(catalogConfig, Console.Error, catalogCancellation.Token);
+        if (catalogConfig.OutputPath is not null)
+            await CatalogBenchmarkOutput.WriteAsync(catalogResult, catalogConfig.OutputPath, catalogCancellation.Token);
+        Console.Out.WriteLine(catalogResult.ToJson());
+    }
+    finally
+    {
+        Console.CancelKeyPress -= catalogCancel;
+    }
+    return;
+}
 
 if (Array.IndexOf(args, "--journal-crash-probe") >= 0)
 {

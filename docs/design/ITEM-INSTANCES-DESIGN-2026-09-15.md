@@ -2925,11 +2925,44 @@ truncated, normalized or re-encoded. The wrapper replaces the entry's payload in
 ```
 [Magic: 4 bytes 'K','E','C','Q']   // 0x4B 0x45 0x43 0x51
 [Version: uint16 LE]               // 1
-[ReasonCode: byte]                 // an ordinal from the closed set of QUARANTINE reasons in 12.2
+[ReasonCode: byte]                 // the fixed ordinal from the table below, 0 never assigned
 [StampedVersion: varint int32]     // the page stamp the record failed under
 [OriginalLength: varint int32]
 [Original: OriginalLength bytes]   // verbatim, never re-encoded
 ```
+
+**`ReasonCode` is DURABLE, so the ordinals are assigned here and never anywhere else.** The byte outlives
+the release that wrote it, a tool reading an old page has only the number, and a set of reason tokens with
+no numbers attached is a set every implementer numbers differently. The canonical spelling of a reason is
+the contracts 9.7 token, which is why 1 to 8 are those eight tokens in the order contracts 9.7 lists them.
+12.2 writes four of them in a local shorthand and the third column is the bridge, so a check and an
+ordinal cannot drift apart.
+
+| Ordinal | Reason | 12.2 check | Notes |
+|---|---|---|---|
+| 0 | reserved, never assigned | none | A zeroed byte is never a valid reason, so a half-written wrapper is detectable |
+| 1 | `payload-too-long` | 5 | The one reason whose `OriginalLength` may exceed the cap, below |
+| 2 | `field-truncated` | 2 | 12.2 spells it `truncated` |
+| 3 | `kind-out-of-order` | 1 | 12.2 spells it `field-order` |
+| 4 | `kind-duplicate` | 1 | 12.2 spells it `field-duplicate` |
+| 5 | `varint-not-minimal` | 1 | 12.2 spells it `varint-nonminimal` |
+| 6 | `varint-overflow` | 1, 3 | Raised by the varint reader under either check |
+| 7 | `socket-nesting` | 4 | |
+| 8 | `field-malformed` | 3 | |
+| 9 | `unknown-definition` | 6 | |
+| 10 | `unknown-content-reference` | 7, 8 | Both checks report the same reason, so both write 10 |
+| 11 | `instance-id-missing` | 9 | First of this document's own entry-level reasons |
+| 12 | `instance-id-duplicate` | 10 | |
+| 13 | `stack-not-instanceable` | 11 | |
+
+**A new reason APPENDS at the next free number and an assigned number is never reused.** That holds even
+when a reason is withdrawn: its ordinal retires with it and the next reason takes the number after, the
+same never-reuse rule contracts 5.1 puts on a content id, for the same cause. A stored wrapper naming a
+retired ordinal still decodes to what it meant when it was written.
+
+**Checks 12 and 13 have no ordinal, deliberately.** `over-cap` is tolerated and `definition-retired`
+produces the `Retired` outcome (12.3), so neither ever writes a wrapper. Giving them a number would invite
+one to be written.
 
 **A magic here and none on a payload, and the two are consistent.** Contracts 15 forbids a magic on a
 format always embedded in a larger versioned record. A payload is such a format. A quarantine wrapper is
@@ -3668,6 +3701,7 @@ consumer's production database.
 | The craft intent carries the target instance id | 10.6 | Without it a replay applies to whatever refilled the slot |
 | `item-crafted` carries BEFORE and AFTER payloads | 10.6 | Nothing else in the durable record can answer what a craft changed |
 | The `KECQ` wrapper layout | 12.4 | It is durable and holds the only copy of a failed item's bytes |
+| The quarantine `ReasonCode` ordinals | 12.4 | The byte is durable, so a renumber re-points the reason every stored wrapper names |
 | `RevealedMask` bit assignments, 129 to 0, 131 to 1, 133 to 2, 134 to 3 | 3.3, 12.7 | The mask is durable inside kind 128, so a bit that moves re-points every partially identified item in the world |
 
 **The last row is the sharpest and is easy to miss, and the vector is not the one an earlier draft

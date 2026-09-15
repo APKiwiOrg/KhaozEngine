@@ -2501,3 +2501,138 @@ Four notes on how to run these rather than what they assert:
 - **Nothing here needs a GPU and nothing here writes process-global state**, so no test in this plan needs a
   `DisableParallelization` collection. If one later does, it enlists in a named collection with the shared
   state in its doc comment, per the #349 rule.
+
+## 18. Grimhollow adoption plan
+
+WRITTEN, NOT EXECUTED. Nothing here is done by this document, and each row is work for
+[Grimhollow #208](https://github.com/APKiwiOrg/Grimhollow/issues/208) to sequence. Gate 0 decision 12 puts
+`feature/item-drop` first, so every row assumes that branch has landed.
+
+| # | Change | From | To | Tracked |
+|---|---|---|---|---|
+| 1 | Bag, worn and bank become paged containers | three sections at 30, 11 and 56 slots (`b-grimhollow.md:503-520`) | `bag/p00`, `worn/p00`, `bank/p00` to `bank/p09` at 100 slots each | #208 |
+| 2 | Bank grows to the owner's 1,000 stacks | `BankSlots = 56` | 10 pages, 17 of the 64 sections used, 5,700 slots available (5.4) | #208 |
+| 3 | `PlayerJournalSections` widens | a `byte` flags enum with all eight bits used | `ushort` or larger, threaded through `ReplaceSections` and `SyncSections` | https://github.com/APKiwiOrg/Grimhollow/issues/223 |
+| 4 | `ValidateContainer` is replaced | a hard THROW on an unknown item id (`GrimhollowJournalContracts.cs:483-524`) | the engine validator plus quarantine (12.2), so one bad id is a placeholder rather than a locked-out player | https://github.com/APKiwiOrg/Grimhollow/issues/224 |
+| 5 | The bank message is replaced | one whole-container blob that hits the 1,024 byte cap at 102 occupied slots | page sync plus deltas (7.5) | https://github.com/APKiwiOrg/Grimhollow/issues/221 |
+| 6 | Dropped instances ride the region ground streams | `loot-created` with item id and count | the same event plus instance id, payload and stamp (7.3), and the sibling component on the spawn (7.2) | #208 |
+| 7 | Rolls move to `IRandomSource` | three `new Random(seed)` sites and four integer literals (`b-grimhollow.md:786-836`) | `CryptographicRandomSource` in production, `SeededRandomSource` in tests, one constructor parameter at a time | https://github.com/APKiwiOrg/Grimhollow/issues/214 |
+| 8 | `EquipStats` becomes content stats | three ints on a hardcoded switch over nine ids | four `stat` rows and `Flat` lines per base (11.7) | #208 |
+| 9 | `PresentAtCommit` is set | never set, anywhere (`b-grimhollow.md:618-639`) | set on a contested claim now, and on a trade when trading arrives | #208 |
+
+**Row 4 is the one with a behaviour change a player can see**, and it is the reason to do it early: today a
+retired or reslotted item makes a container undecodable, so item retirement is a breaking persistence
+change (`b-grimhollow.md`, candidate I). After it, retirement is a content publish plus a remap rule.
+
+**Row 1 has a migration and it is the only one here that does.** An existing `bank` section decodes as a
+version 1 blob into page 0 (4.5), pages 1 to 9 start absent, and the first ordinary commit writes page 0
+back as version 2. `WidenBag` and `NarrowBag` (`b-grimhollow.md:88-102`) exist because the version 1 codec
+refuses a blob whose declared slot count is not the caller's, and they are DELETED rather than ported,
+because a page declares its own slot count and its own first slot (4.4).
+
+**Row 7 is a precondition for row 6 in practice.** A shared server rolling affixes on a literal seed
+publishes its own drop table, so the seeds move before the first affixed item drops, not after.
+
+## 19. Ruinborne adoption plan
+
+WRITTEN, NOT EXECUTED, for [Ruinborne #465](https://github.com/APKiwiOrg/Ruinborne/issues/465). Ruinborne
+is the harder adopter of the two because its durable store is relational rows rather than a codec, and
+because it already has two identities where the engine wants one.
+
+**The precondition, and it is absolute.** The PostDeploy duplicate-row collapse partitions non-stackable
+rows by `(character_id, item_id)` with no `instance_json` term and runs on EVERY redeploy
+(`c-ruinborne.md:939-948`), so the moment two differently rolled copies of one item exist they collapse
+into one. Instances cannot land in Ruinborne before
+[Ruinborne #299](https://github.com/APKiwiOrg/Ruinborne/issues/299) is fixed. Nothing else on this list
+matters until it is.
+
+| # | Change | From | To |
+|---|---|---|---|
+| 1 | `OwnedItemId` is replaced | a derived version-5 GUID on the wire and in the journal (`c-ruinborne.md:949-962`) | the engine `long` instance id, with a DUAL-READ window: the old GUID stays on the row for one release so an in-flight use or destroy request still resolves |
+| 2 | The bag cell model moves onto pages | `bag_order INT` with legitimate permanent holes and shared cells | a page's sparse ascending entries, which express a hole at zero cost and never compact (5.7). The equipped-row-keeps-its-cell rule is one game-range property kind on the worn entry |
+| 3 | Capacity stays exactly as it is | `player_character.bag_capacity`, a slot gate, never trimming | `PagedItemContainer`'s capacity, which is 5.7's four rules and is Ruinborne's semantics restated |
+| 4 | The SQL rows become a read model | the rows ARE the durable store, with FKs and filtered unique indexes doing the integrity work | the journal pages are durable and the rows are projected from them, so the indexes become a report rather than a constraint. This is the row with the real cost, and it is open question 9 |
+| 5 | `item_stat` moves onto the evaluator | `(item_id, stat_id, flat, percent)` per DEFINITION | one `stat` row per `stat_id` at `Scale = 100`, one `Flat` and one `Increased` line per row, source kind 1 (11.7) |
+| 6 | Loot rolls through the generator | `LootRoll.Roll` with an unseeded `System.Random` created once at server start | the loot table picks the base, `ItemGenerator` rolls the instance, both on `CryptographicRandomSource` |
+| 7 | The over-cap repair lands | a lowered `max_stack` leaves over-cap rows intact, invisibly and permanently | contracts 8.2 kind 4: legal, may only shrink, self-healing, with the state explicit. [Ruinborne #507](https://github.com/APKiwiOrg/Ruinborne/issues/507) |
+| 8 | The string item id becomes a KEY | `NVARCHAR(64)` as the primary key across seven tables | the key survives, an int32 definition id is added beside it, and the derived one-byte wire index is DELETED (contracts 5.5) |
+
+**Row 1's dual-read window is the migration and it is worth spelling out.** One engine instance id is
+allocated per existing owned row whose payload is non-empty, and rows with no properties take id 0 and
+need no allocation at all (contracts 6.5). Ruinborne's `instance_json` column has never held a value
+(`c-ruinborne.md:565-589`), so there is no legacy payload to decode and the instance payload arrives on a
+clean slate, which is the single biggest gift in this adoption.
+
+**Row 4 is the one to think hardest about, and this document does not decide it.** Moving the durable store
+from rows to pages loses the FK to `item_def`, the filtered unique index on `(character_id, slot) WHERE
+equipped = 1`, and the two SQL repairs that are only expressible because the state is rows
+(`c-ruinborne.md:906-925`). It also gains paging, batching, quarantine and instances. A middle path exists
+and may be the right one: keep the rows durable, adopt the PAYLOAD as a column, and take the container
+page machinery only for the bank. Open question 9 puts it to the owner.
+
+## 20. Phased delivery
+
+Five phases. Each names what it ships and the acceptance test that says it shipped.
+
+**Phase 1, the instance record and the container.** The whole of sections 3 and 4:
+`KhaozEngine.ItemInstances` with the payload codec, the property registry, the `KECQ` wrapper, the
+instance validator and the allocator, plus `ItemStack`'s third component, `ItemSlot`, and container codec
+version 2 with its version 1 reader. Behind the narrow `IContentSnapshot` of 2.5, so it does not wait on
+Scope A. **Not** paging, **not** the journal, **not** generation, **not** crafting, **not** the evaluator.
+Acceptance: tests 1, 2, 3, 4 and 16 green, and the contracts' 45 byte example reproduced sorted.
+
+**Phase 1 is a strong base rather than a partial catalog, and that is the distinction #884 draws.** What is
+settled in it is every byte format, every id space, every ordering rule and the stacking test, which are
+the expensive things (section 21). What is absent from it is breadth, which is content.
+
+**Phase 2, pages and commits.** Sections 5 and 6: `PagedItemContainer`, `ItemContainerPage`, the section
+naming, the load path with remap, and `ContainerCommitBuilder` in `KhaozEngine.ItemInstances.Journal`.
+Gated on nothing new. Acceptance: tests 5, 8 and 14 green, and budget 4 measured at one commit.
+
+**Phase 3, the wire.** Section 7: the sibling ground component, the spawn overload,
+`TileFragmentedMessage`, the page delta, the owner remainder message and `PublicView`. Acceptance: tests 9,
+11 and 15 green, and budgets 7 and 8 measured.
+
+**Phase 4, content and generation.** Sections 8 and 9: the seven content types, their validators, the
+candidate tables and `ItemGenerator`. **Gated on Scope A's registry and publish path being real** (2.5).
+Acceptance: test 6 green, budgets 5 and 9 measured, and one authored pack of the owner's own mods rolling
+items end to end.
+
+**Phase 5, crafting and stats.** Sections 10 and 11: the fourteen primitives, the guard vocabulary, the
+currency row, the operation registry, the craft journal operation, and `ContentStatEvaluator`. Acceptance:
+tests 7, 10 and 13 green, budget 6 measured, and one authored currency composing at least four primitives
+with guards.
+
+Adoption (sections 18 and 19) runs per consumer AFTER phase 3 for the container half and after phase 5 for
+the stat half. Neither consumer waits on the other.
+
+## 21. Decisions that are expensive to change once data exists
+
+Contracts 16 holds the shared list and every entry there still binds. This table adds ONLY what this
+document introduces, and "expensive" has the same meaning: rewriting durable bytes that already exist in a
+consumer's production database.
+
+| Decision | Section | Cost if changed later |
+|---|---|---|
+| The affix list is sorted ascending by mod id | 3.4 | The sort is baked into every stored payload, and it IS the stacking test |
+| `Position` is a fixed two byte little endian `ushort` | 3.4 | Changes the byte length of every stored affix entry |
+| The tier is the mod row's AUTHORED ORDINAL, not a content id | 3.4, 8.3 | Every stored affix names it, and it is why a tier reorder is refused at publish |
+| A rarity id is ONE BYTE, so 255 rarities forever | 8.5 | Kind 130's width, pinned by contracts 9.8 |
+| Container page codec version dispatch on byte 0 | 4.4 | Versions congruent to 1 modulo 256 can never be assigned |
+| `ContainerPageSlots = 100` | 5.2 | Every section name and every page's `FirstSlot` check |
+| Section naming `<container>/p<NN>` | 5.2 | The durable section key a stored projection is filed under |
+| `EntryFlags` is one varint per entry, bit 0 quarantined | 4.4 | Removing it makes a quarantined slot indistinguishable without sniffing |
+| A merge keeps the LOWER of two instance ids | 4.6 | Makes the merge commutative, so a replay in either order agrees |
+| A unique's lines are ordinary zero-weight mod rows | 8.6 | The alternative is a second affix shape in the payload |
+| The `(SourceKind, Ordinal, InstanceId, ModifierIndex)` fold order | 11.4 | Integer rounding is not associative, so the order IS the displayed number |
+| Source kinds 5 and 6 reserved for passives and buffs | 11.4 | Reassigning one moves every value a later passive tree produces |
+| The craft intent carries the target instance id | 10.6 | Without it a replay applies to whatever refilled the slot |
+| `item-crafted` carries BEFORE and AFTER payloads | 10.6 | Nothing else in the durable record can answer what a craft changed |
+| The `KECQ` wrapper layout | 12.4 | It is durable and holds the only copy of a failed item's bytes |
+| `RevealedMask` bits are the ascending order of gated kinds | 12.7 | Registering a gated kind below an existing one renumbers every stored mask |
+
+**The last row is the sharpest and is easy to miss.** A game that later registers a gated kind at 130 would
+shift every existing mask bit by one, silently revealing or hiding the wrong affix on every partially
+identified item in the world. The mitigation is that 3.3 reserves 135 to 1,023 for Scope B and the engine
+only ever APPENDS, so a new gated kind takes a higher id than every existing one. That rule is worth a
+comment on the registry rather than only a line here.

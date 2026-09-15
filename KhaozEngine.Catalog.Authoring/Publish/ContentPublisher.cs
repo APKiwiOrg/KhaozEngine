@@ -85,6 +85,16 @@ public sealed class ContentPublisher
         ContentDraft draft = await FreezeAsync(request, baseline, cancellationToken).ConfigureAwait(false);
         int version = baseline.VersionNumber + 1;
 
+        // KEC0041, the fork preconditions, BEFORE the candidate is built. A fork of a row that is not there
+        // cannot be applied at all, so the refusal has to come from the edit rather than from the middle of
+        // the walk that applies it.
+        IReadOnlyList<ContentFinding> forkFindings =
+            ContentForkChecks.Check(baseline, draft.Changes, _registry);
+        if (forkFindings.Count > 0)
+        {
+            return Refused(version, baseline, Empty(version), new ContentValidationReport(false, forkFindings));
+        }
+
         // STEP 2. Build the candidate by applying the draft's edits to the base version. Nothing walks a row
         // no edit names, which is what makes step 6 cheap.
         (List<ContentCandidateRow> rows, List<ContentPendingRule> pending) =
@@ -312,6 +322,36 @@ public sealed class ContentPublisher
 
         return (closes, inserts, live);
     }
+
+    /// <summary>
+    /// The plan a refusal that happened BEFORE step 2 hands back: the findings, and nothing else, because
+    /// nothing else was computed. The rule list is the base version's, unchanged, since a publish that does
+    /// not happen appends none.
+    /// </summary>
+    static ContentPublishPlan Refused(
+        int version,
+        ContentPublishBaseline baseline,
+        ContentSnapshot candidate,
+        ContentValidationReport report)
+        => Refused(
+            version,
+            baseline,
+            candidate,
+            report,
+            ContentIdAllocationRecord.Empty,
+            [],
+            [],
+            [],
+            [],
+            baseline.Rules,
+            [],
+            ContentRuleChunkCodec.Hash(baseline.Rules),
+            baseline.MinimumServerBuild,
+            baseline.MinimumClientBuild);
+
+    /// <summary>An empty candidate at the new version, which is what a refusal before step 2 carries.</summary>
+    ContentSnapshot Empty(int version)
+        => new ContentSnapshotBuilder(_registry).WithIdentity(version, string.Empty).Build();
 
     static ContentPublishPlan Refused(
         int version,

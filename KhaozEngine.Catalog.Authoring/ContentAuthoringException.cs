@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace KhaozEngine.Catalog.Authoring;
 
@@ -71,6 +72,45 @@ public sealed class ContentAuthoringException : Exception
     /// <summary>A draft edit carried an operation outside the four of spec 3.7.</summary>
     public const string UnknownEditOperationReason = "unknown-edit-operation";
 
+    /// <summary>
+    /// A publish was refused because its candidate did not validate. The findings are on
+    /// <see cref="Findings"/>, which is what the API boundary turns into its 400 body.
+    /// </summary>
+    public const string CandidateInvalidReason = "candidate-invalid";
+
+    /// <summary>
+    /// A rollback would restore a row that has been RETIRED since the target version, which
+    /// <c>KEC0039</c> refuses. A retire is never reversible by rollback: the way out is an ordinary add
+    /// under a new key carrying the old values, plus a replacement rule when existing references should
+    /// move onto it.
+    /// </summary>
+    public const string RetireIrreversibleReason = "retire-irreversible";
+
+    /// <summary>
+    /// An import was refused because the database already holds a published version. A bundle is imported
+    /// into an EMPTY database only, which is what makes a seed that cannot run twice against live data.
+    /// </summary>
+    public const string CatalogNotEmptyReason = "catalog-not-empty";
+
+    /// <summary>A read named a version the store does not hold.</summary>
+    public const string UnknownVersionReason = "unknown-version";
+
+    /// <summary>
+    /// A version's pack could not be read back: an absent manifest, a chunk the store no longer holds, or
+    /// bytes that do not digest to the address they were filed under. The pack reader's own reason token is
+    /// in the message.
+    /// </summary>
+    public const string PackUnreadableReason = "pack-unreadable";
+
+    /// <summary>
+    /// The store was built with no pack store, so it can hold a draft and allocate ids and cannot publish.
+    /// Publishing writes files before it writes rows, so the pack target is not optional for it.
+    /// </summary>
+    public const string NoPackStoreReason = "no-pack-store";
+
+    /// <summary>A bundle document could not be read: a format version this build does not know, or a malformed member.</summary>
+    public const string BundleFormatReason = "bundle-format";
+
     /// <summary>Creates the exception with no message.</summary>
     public ContentAuthoringException()
     {
@@ -101,6 +141,28 @@ public sealed class ContentAuthoringException : Exception
         Reason = reason;
     }
 
+    /// <summary>
+    /// Creates the exception carrying the FINDINGS that refused it, which is the publish and rollback
+    /// shape: a refusal an operator reads as a list of codes rather than as one sentence.
+    /// </summary>
+    /// <param name="message">The human-readable refusal.</param>
+    /// <param name="type">The content type the refusal is about, or the default when it is about none.</param>
+    /// <param name="id">The definition id, or 0 when the refusal is about the store as a whole.</param>
+    /// <param name="reason">The stable reason token.</param>
+    /// <param name="findings">Every finding behind the refusal, in the order they were produced.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="findings"/> is null.</exception>
+    public ContentAuthoringException(
+        string message,
+        ContentTypeId type,
+        int id,
+        string? reason,
+        IReadOnlyList<ContentFinding> findings)
+        : this(message, type, id, reason)
+    {
+        ArgumentNullException.ThrowIfNull(findings);
+        Findings = findings;
+    }
+
     /// <summary>The content type the refusal is about. The default type id 0 means none.</summary>
     public ContentTypeId Type { get; }
 
@@ -109,4 +171,11 @@ public sealed class ContentAuthoringException : Exception
 
     /// <summary>The stable reason token, or null. A log line and a counter key on this, not on the message.</summary>
     public string? Reason { get; }
+
+    /// <summary>
+    /// Every finding behind the refusal, EMPTY when the refusal is a plain one. A publish refused by the
+    /// validator and a rollback blocked by a retire both carry theirs here, so the API boundary renders one
+    /// body shape whichever refused.
+    /// </summary>
+    public IReadOnlyList<ContentFinding> Findings { get; } = [];
 }

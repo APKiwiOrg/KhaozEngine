@@ -157,6 +157,48 @@ public interface IContentAuthoringStore
     Task DiscardDraftAsync(string actor, string operatorId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The BASE version as the publish pipeline needs it, read under whatever lock the implementation holds
+    /// a publish behind: the active version's number, its live rows, the full rule list, its chunk rows at
+    /// every side, its languages and its two minimum builds.
+    /// <para>
+    /// It exists as a member rather than as something the publisher reads for itself because the version the
+    /// candidate is built against and the version the transaction commits against must be one read. A
+    /// publisher that assembled its own baseline out of the seam's other members would be reading each half
+    /// at a different moment, which is exactly the race the commit's own confirmation closes.
+    /// </para>
+    /// </summary>
+    /// <param name="cancellationToken">Cancels the call.</param>
+    Task<ContentPublishBaseline> ReadPublishBaselineAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Step 10 of spec 6.1, the ONE transaction, and the only member here that moves the active pointer. In
+    /// order inside it: confirm the version number, insert the version row, apply every temporal row change,
+    /// append every remap rule at the sequence above the highest, insert every chunk row one per side, insert
+    /// every audit row, delete the draft, then move the active pointer LAST.
+    /// <para>
+    /// <b>It CONFIRMS the number rather than trusting it.</b> The plan digested its version number into both
+    /// manifest hashes at step 8, so the transaction re-reads the highest published number and refuses when
+    /// the plan's is not the next one. An implementation that leases a connection per call holds no lock
+    /// across steps 1 to 10, and this is the check that catches the base moving underneath such a plan.
+    /// </para>
+    /// <para>
+    /// A reader that sees the new active version is guaranteed to see every row, rule, chunk and audit entry
+    /// of it, because they committed together. The pointer moves for the NEXT boot: a running server keeps
+    /// serving the version it loaded.
+    /// </para>
+    /// </summary>
+    /// <param name="plan">The plan steps 1 to 8 produced, whose pack files step 9 has already written.</param>
+    /// <param name="request">The publish request, whose actor, operator and note the version row and the audit carry.</param>
+    /// <param name="cancellationToken">Cancels the call.</param>
+    /// <returns>The version row the transaction inserted.</returns>
+    /// <exception cref="ArgumentNullException">An argument is null.</exception>
+    /// <exception cref="ContentAuthoringException">The plan did not validate, or the highest published version moved under it.</exception>
+    Task<ContentVersionRecord> CommitPublishAsync(
+        ContentPublishPlan plan,
+        ContentPublishRequest request,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Publishes the open draft as a new immutable version: validate, allocate, encode, write the pack, then
     /// ONE transaction that moves the active pointer together with every row, rule, chunk and audit entry.
     /// </summary>
@@ -256,8 +298,30 @@ public interface IContentAuthoringStore
     Task<int> AllocateInFamilyAsync(long familyId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Every family of one type with its blocks in ordinal order, or every family of every type when
+    /// <paramref name="type"/> carries type id 0, which is the same "0 means all" convention the audit read
+    /// uses.
+    /// <para>
+    /// A family is a READ as well as a write: a console shows one, and a bundle export carries every family
+    /// with its blocks, so the seam owes a way to reach one that is not the allocator's own persistence.
+    /// </para>
+    /// </summary>
+    /// <param name="type">The content type to filter to, or type id 0 for every type.</param>
+    /// <param name="cancellationToken">Cancels the call.</param>
+    Task<IReadOnlyList<ContentFamily>> ListFamiliesAsync(
+        ContentTypeId type,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Creates a family and reserves its first aligned block. The block size is declared HERE and cannot be
     /// changed later, because changing it would move every id in the family.
+    /// <para>
+    /// <b>The family and its blocks are stamped with the version they will FIRST APPEAR IN</b>, which is the
+    /// active version plus one, and never with the active version itself. Creating a family is an immediate
+    /// action while the active version is 0 on a database that has published nothing, so stamping the active
+    /// version would write a 0 against a column that begins at 1. Stamping the next number is also the truer
+    /// statement: no published version carries the family until the one that is being authored.
+    /// </para>
     /// </summary>
     /// <param name="type">The content type the family groups rows of.</param>
     /// <param name="familyKey">The family's key, unique within its type.</param>

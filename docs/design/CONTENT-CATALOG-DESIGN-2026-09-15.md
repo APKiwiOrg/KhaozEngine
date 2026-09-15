@@ -3426,3 +3426,110 @@ stays open and stays Scope B's precondition, as section 17.1 says.
 
 Steps 1 to 7 are additive and shippable one at a time. Step 8 and step 9 ship together or the bag names ids a
 client cannot resolve, and step 9 is the release boundary.
+
+## 18. Phased delivery
+
+Four phases plus a measurement spike ahead of them. One rule runs through all of them and is stated first
+because it is what the phase boundaries are chosen to protect:
+
+**Every BYTE FORMAT ships complete in phase 1. Phases divide behaviour, never format.** The chunk, the
+manifest, the text chunk, the remap rule chunk, the varint rules and every digest are section 19's expensive
+column, so a phase that ships half a format is a phase that plans a migration. A phase may ship a format that
+nothing reads yet, and phase 1 does: it writes per-language text chunks that no client consumes until phase 1
+milestone 5, because a manifest that gains a section later is a manifest hash that changes for every
+already-published version.
+
+### 18.0 Phase 0, the measurement spike
+
+**Ships:** a throwaway spike, not merged, measuring P1, P3, P6 and P7 of section 14 against synthetic data at
+50,000 definitions through a minimal encoder. It is #882 item 12's proof spike and its output is numbers, not
+code.
+
+**Acceptance:** section 14's `Measured` column filled for those four rows, and question Q3 of section 21
+answered with a measurement rather than an argument. Section 14.1 already states that P6 is the one budget
+this spec expects the spike to move, and the whole point of making `chunkSlots` a per-type registration
+parameter is that the answer is a one-line change once it is measured.
+
+**Consumer:** none. This gates the OWNER's approval of the spec, not a release.
+
+### 18.1 Phase 1, Scope A complete, Grimhollow adopts
+
+**Ships:** all five packages of section 2.1, the complete pack format of section 7, the validator of section 5,
+the publish pipeline of section 6, both authoring providers, the server runtime of section 9, all fourteen
+action rows of section 10.2, and the connect door layer of section 8.5. Grimhollow's backend is env-selected
+between SQLite and SQL Server (`GrimhollowEconomyDatabase.cs:26-40`), so BOTH providers are phase 1 and
+neither is deferred.
+
+It is a large phase because #882 names Grimhollow's adoption as phase 1's acceptance, and that adoption runs
+all eleven steps of section 16.8 including the client and the door. It is built in five ordered milestones,
+each with its own gate, so it is not one undivided landing:
+
+| Milestone | Ships | Gate |
+|---|---|---|
+| 1.1 | `KhaozEngine.Catalog`: registry, field schema, codecs, varint, hashes, the four pack formats, remap rules, `FileSystemPackStore`, `ContentPackReader` | The golden files of 15.1, the decoder fuzzing of 15.2, the cross-version round trips of 15.3 |
+| 1.2 | `Catalog.Authoring`, `Catalog.Sqlite`, `Catalog.SqlServer`: temporal rows, draft, change set, field audit, id allocator, publish | The provider conformance suite of 15.5 on both backends, the crash-safety cases of 15.6 |
+| 1.3 | `ContentRuntime`, the boot sequence, fail-closed exit 3, the derived indexes, the `--catalog` benchmark mode | The eight boot facts of 15.7, plus P3 and P7 measured at 50,000 |
+| 1.4 | The fourteen actions, the bundle, the empty-database rule, operator identity | The action tests, plus P5 and P6 measured |
+| 1.5 | `Catalog.Netcode`, `HttpPackStore`, `CachingPackStore`, the client fetch loop, `ContentStringCatalog` | The door tests of 15.7, plus P4 and P10 measured |
+
+**Acceptance:** the four Grimhollow tests of section 16.7 green, and section 16.8's eleven steps complete.
+Concretely, `TheImportedBundleMatchesTheShippedRoster` asserts row by row against the same literals
+`GrimhollowItemsTests` asserts today, and `EveryStoredContainerStillDecodes` decodes a checked-in corpus of
+real production container blobs identically before and after. Those two are the acceptance. The other two are
+the regression fence around it.
+
+**Consumer:** Grimhollow, [#208](https://github.com/APKiwiOrg/Grimhollow/issues/208). Its
+`feature/item-drop` branch lands before any of this (gate 0 decision 12, section 16.1).
+
+### 18.2 Phase 2, the second consumer
+
+**Ships:** by default, nothing new in the engine. Phase 2 is Ruinborne's adoption, section 17, and its job is
+to prove the engine is not shaped around one game.
+
+That is not a licence for it to ship nothing. Three things are EXPECTED and are budgeted for:
+
+- A `ContentBundle` conversion report helper, for section 17.6's REAL-to-scaled-int step. Ruinborne needs it
+  and any consumer migrating a float column will.
+- The opt-in localization coverage helper of section 15.7, which Grimhollow's existing reflection test becomes
+  and which Ruinborne needs against a second string catalog.
+- Whatever the SQL Server provider's first real production exercise turns up. Phase 1 gates it on an env-gated
+  conformance suite that CI does not run (section 2.6), so phase 2 is where it meets a live schema.
+
+**The rule that makes this phase a test rather than a second design round:** a change phase 2 forces to a BYTE
+FORMAT is a FAILURE of phase 1 and goes back through the contracts first (contracts 18), amending them and
+re-reading both specs. A change to a non-format surface, a new finding code, a new action, a schema helper, is
+expected and is exactly what a second adoption is for. Writing that boundary down now is what stops phase 2
+quietly widening a varint because it is easier than filing an amendment.
+
+**Acceptance:** section 17.10's twelve steps, gated on the four tests of section 17.8. The sharpest of them is
+`EveryForeignKeyStillResolves`, because `character_inventory.item_id` is a database-enforced foreign key, so a
+key dropped in the import is a failed deploy rather than a wrong number.
+
+**Consumer:** Ruinborne, [#465](https://github.com/APKiwiOrg/Ruinborne/issues/465).
+
+### 18.3 Phase 3, scale and operations
+
+**Ships:** the 1,000,000-definition runs, the operational actions exercised under load, and whatever the
+measurements force. Candidates already named in this spec and deliberately not designed yet: the incremental
+validator index of section 14.1's P5 note, and the sparse-table threshold of section 9.1, whose recommended
+default (switch a type to a sorted-id binary search below one-in-sixteen live density) is question Q5.
+
+**Acceptance:** P1, P2 and P8 measured at 1,000,000, the scale tests of section 15.4 green, and `catalog-sweep`
+and `catalog-verify` run against a version with a deliberately corrupted chunk and a deliberately orphaned one.
+
+**Consumer:** neither game at its current size. This phase is the claim that the design scales, made honestly
+rather than assumed, and it is where the design either survives a number or gets a note in section 14 saying
+which target moved and why.
+
+### 18.4 Phase 4 and later, the named deferrals
+
+Each is a non-goal from section 1.2 with the hook phase 1 already built for it, so none of them is a rewrite.
+
+| Deferral | What phase 1 already built | What it still needs |
+|---|---|---|
+| Live apply | The `Volatile` swap field and the immutable runtime (9.7) | A quiesce point in the tick loop and a policy for a mid-tick version change. |
+| Definition inheritance | `parent_id` on every row, `KEC0031` to `KEC0035`, and resolution placed at publish (1.3, 3.8) | The resolver. No pack format, chunk hash, runtime or client change, by construction. |
+| Staging promotion | Version pinning and the pack store abstraction (10.7, 8.1) | A second active pointer and the page-stamp hash of gate 0 decision 5, which is a page format change and must be decided when staging arrives. |
+| Multi-world activation | The active pointer as a single row (4.9) | One column. Section 4.9 says so in full. |
+| Family generators | Families, aligned blocks and the ordered block list (3.8) | A template expansion at authoring time. Nothing durable. |
+| Market index | Tag ids as the query surface (3.2, contracts 4.6) | An index build, outside the pack. |

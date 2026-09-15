@@ -12,7 +12,9 @@ previous published snapshot as an argument and runs its change-shaped checks onl
 (10.4), 9.5's contained instance id is an unsigned varint, 13.2's fold divides toward negative infinity so
 the rounding holds for negative values, and 4.7's localized text key kind is a marker that stores nothing.
 AMENDED A FOURTH TIME on 2026-09-15: a legacy affix entry is frozen against rerolls (5.4) and the instance
-id allocator's persisted record carries the store epoch (6.2). Nothing here is implemented yet.
+id allocator's persisted record carries the store epoch (6.2). AMENDED A FIFTH TIME on 2026-09-15: 9.6
+restates the payload cap once more, as a budget the deepest v1-expressible item fills exactly by
+construction (spec 3.8), rather than a guard rail standing above it. Nothing here is implemented yet.
 This document exists so the two parallel specs cannot contradict each other. Scope A is the versioned
 content catalog, [#882](https://github.com/APKiwiOrg/KhaozEngine/issues/882). Scope B is
 owned item instances, affixes, sockets, crafting and the stat evaluation base,
@@ -1286,14 +1288,19 @@ The two caps it has to live under, with the arithmetic:
   logical payload across several reliable ordered frames (`a-engine.md:818-838`).
 
 512 sits between two item sizes rather than above one, and both numbers matter. The 45 bytes worked out in
-9.8 is a TYPICAL rare, three affixes and one socket. The DEEPEST item the v1 field kinds can express is
-about 410 bytes: six affixes, a full socket set with every socket holding a nested item, enchantments, and
-a rare name assembled from word ids. So 512 is a guard rail at about 1.25 times the deepest legal item and
-about 11 times the typical one, and anyone sizing a page or a message budget should plan against the 410
-rather than the 45. A larger cap would buy nothing and would let one pathological item consume a page. A
-smaller one, say 256, would fit the typical item with room over and would REFUSE the deepest one, which
-turns a legal roll into an encode failure and leaves no room at all for the game-range fields a consumer
-has not thought of yet.
+9.8 is a TYPICAL rare, three affixes and one socket. The DEEPEST item the v1 field kinds can express
+REACHES 512 BY CONSTRUCTION, counted field by field in spec 3.8: 160 fixed bytes covering the flags, item
+level, quality, durability, binding, identification, rarity, six affixes, enchantments, rare name, kind
+132's own header and its six socket entries, then 352 bytes spread across the six nested payloads. So 512
+is a BUDGET that the six socket case fills rather than a guard rail standing clear above the deepest legal
+item. It is still about 11 times the typical one, and what the cap actually DECIDES is how deep a socketed
+gem may be, which is why the socket type carries an authored nested byte allowance. Anyone sizing a page or
+a message budget plans against 512, not against 45. An earlier draft here put the deepest item at about 410
+bytes and called 512 a guard rail at about 1.25 times it, which undercounted twice over: it assumed forty
+byte nested payloads and it never counted kind 132's own five byte header. A larger cap buys only deeper
+nesting and lets one pathological item consume a page. A smaller one, say 256, would fit the typical item
+with room over and would REFUSE the deepest one, which turns a legal roll into an encode failure and leaves
+no room at all for the game-range fields a consumer has not thought of yet.
 
 **Expensive to change once data exists: no to raise, yes to lower.** Raising the cap is backward
 compatible: every existing payload is still legal. Lowering it strands items that are already over it, and

@@ -1,0 +1,229 @@
+using System.Collections.Generic;
+using KhaozEngine.TileWorld;
+using KhaozEngine.TileWorld.Netcode;
+using Xunit;
+
+namespace KhaozEngine.Tests.TileNetcode;
+
+/// <summary>The stepper's follow, walk and step for an NxN body against an MxM target footprint anchored at (20, 20).
+/// Both are anchored on their south-west tile and z counts north. Wall rotation: 0 W, 1 N, 2 E, 3 S edge of the
+/// placed tile, mirrored onto the neighbour.</summary>
+public class TileFootprintFollowTests
+{
+    const float Dt = 0.25f;
+    const long TargetId = 42L;
+
+    sealed class FakeFootprints : ITileTargets
+    {
+        public readonly Dictionary<long, TileRect> Rects = new();
+        public bool TryGetFootprint(long target, out TileRect footprint, out int plane)
+        {
+            plane = 0;
+            return Rects.TryGetValue(target, out footprint);
+        }
+    }
+
+    static (TileMoveSimulator sim, FakeFootprints targets) Sim()
+    {
+        var targets = new FakeFootprints();
+        TileCollisionMap map = TileMoveSimulatorTests.Bake(TileMoveSimulatorTests.FlatWorld());
+        return (new TileMoveSimulator(map, TileMoveSimulatorTests.Ticks, null, null, targets), targets);
+    }
+
+    public static TheoryData<int, int> Pairings()
+    {
+        var data = new TheoryData<int, int>();
+        for (int a = 1; a <= 3; a++) for (int t = 1; t <= 3; t++) data.Add(a, t);
+        return data;
+    }
+
+    static TileRect Target(int m) => new(20, 20, m, m);
+
+    static TileMoveState At(int x, int z, int size)
+    {
+        TileMoveState s = TileMoveState.At(new TileCoord(x, z, 0), TileDirection.N);
+        s.FootprintSize = size;
+        return s;
+    }
+
+    static bool InRange(TileMoveSimulator sim, in TileMoveState s, TileRect rect) =>
+        TileReach.Contains(sim.Map, rect, 0, s.Tile, s.FootprintSize);
+
+    static bool Standing(TileMoveSimulator sim, in TileMoveState s, TileRect rect) =>
+        s.Route.IsIdle && !s.IsStepping && InRange(sim, s, rect);
+
+    // Geometry alone, independent of TileReach: the rects do not overlap and share a cardinal edge.
+    static bool TouchesOnOpenGround(TileRect a, TileRect target)
+    {
+        bool overlap = !a.Intersect(target).IsEmpty;
+        bool xTouch = (a.X1 == target.X || target.X1 == a.X) && a.Z < target.Z1 && a.Z1 > target.Z;
+        bool zTouch = (a.Z1 == target.Z || target.Z1 == a.Z) && a.X < target.X1 && a.X1 > target.X;
+        return !overlap && (xTouch || zTouch);
+    }
+
+    // The click, then run held until the body stands in range, for at most 60 ticks. The first tile the body is in
+    // range on comes back too, so a caller can pin that the body never moved once it got there.
+    static TileMoveState Chase(TileMoveSimulator sim, TileMoveState s, TileRect rect, out TileCoord firstInRange)
+    {
+        s = sim.Step(s, TileCommand.Attack(TargetId, TileMoveMode.Run), Dt);
+        bool seen = InRange(sim, s, rect);
+        firstInRange = seen ? s.Tile : default;
+        for (int i = 0; i < 60 && !Standing(sim, s, rect); i++)
+        {
+            s = sim.Step(s, TileCommand.Continue(TileMoveMode.Run), Dt);
+            if (!seen && InRange(sim, s, rect))
+            {
+                seen = true;
+                firstInRange = s.Tile;
+            }
+        }
+        Assert.True(seen, "the body never came into range");
+        return s;
+    }
+
+    static void HoldsFor(TileMoveSimulator sim, TileMoveState s, int ticks)
+    {
+        TileCoord tile = s.Tile;
+        for (int i = 0; i < ticks; i++)
+        {
+            s = sim.Step(s, TileCommand.Continue(TileMoveMode.Run), Dt);
+            Assert.Equal(tile, s.Tile);
+            Assert.True(s.Route.IsIdle);
+            Assert.Equal(TargetId, s.CombatTarget);
+        }
+    }
+
+    [Theory, MemberData(nameof(Pairings))]
+    public void An_approach_from_open_ground_stops_on_an_in_range_anchor_and_stands(int n, int m)
+    {
+        (TileMoveSimulator sim, FakeFootprints targets) = Sim();
+        TileRect rect = Target(m);
+        targets.Rects[TargetId] = rect;
+
+        TileMoveState s = Chase(sim, At(10, 21, n), rect, out TileCoord firstInRange);
+
+        Assert.True(s.Route.IsIdle);
+        Assert.False(s.IsStepping);
+        Assert.True(TileReach.Contains(sim.Map, rect, 0, s.Tile, n));
+        Assert.Equal(TargetId, s.CombatTarget);
+        Assert.Equal(TileDirection.E, s.Facing);
+        Assert.Equal(firstInRange, s.Tile);
+        HoldsFor(sim, s, 12);
+    }
+
+    [Theory, MemberData(nameof(Pairings))]
+    public void An_overlapping_attacker_steps_out_then_stands(int n, int m)
+    {
+        (TileMoveSimulator sim, FakeFootprints targets) = Sim();
+        TileRect rect = Target(m);
+        targets.Rects[TargetId] = rect;
+
+        TileMoveState s = Chase(sim, At(rect.X, rect.Z, n), rect, out _);
+
+        Assert.Equal(n, s.FootprintSize);
+        Assert.True(s.Footprint.Intersect(rect).IsEmpty);
+        Assert.True(Standing(sim, s, rect));
+        Assert.Equal(TargetId, s.CombatTarget);
+        HoldsFor(sim, s, 12);
+    }
+
+    // Slides the target one tile along the side it touches, north first. A 1x1 against a 1x1 has no slide that keeps
+    // contact, so that one pairing moves round the attacker's corner onto its next side instead.
+    [Theory, MemberData(nameof(Pairings))]
+    public void A_target_that_moves_within_range_costs_no_re_path(int n, int m)
+    {
+        (TileMoveSimulator sim, FakeFootprints targets) = Sim();
+        TileRect rect = Target(m);
+        targets.Rects[TargetId] = rect;
+        TileMoveState s = Chase(sim, At(10, 21, n), rect, out _);
+        Assert.True(Standing(sim, s, rect));
+
+        TileRect moved = default;
+        bool found = false;
+        foreach ((int dx, int dz) in new[] { (0, 1), (0, -1), (-1, 1), (-1, -1) })
+        {
+            var candidate = new TileRect(rect.X + dx, rect.Z + dz, m, m);
+            if (!TouchesOnOpenGround(s.Footprint, candidate)) continue;
+            moved = candidate;
+            found = true;
+            break;
+        }
+        Assert.True(found);
+        Assert.True(n + m == 2 || moved.X == rect.X, "a slide along the touching side whenever one exists");
+
+        TileCoord tile = s.Tile;
+        targets.Rects[TargetId] = moved;
+        s = sim.Step(s, TileCommand.Continue(TileMoveMode.Run), Dt);
+
+        Assert.True(s.Route.IsIdle);
+        Assert.Equal(tile, s.Tile);
+        Assert.False(s.IsStepping);
+        Assert.Equal(TargetId, s.CombatTarget);
+    }
+
+    // #741. A footprint that IS the attacker moves with the body, so no tile it could step to is off it, and the lock
+    // clears on the tick it is applied rather than holding forever.
+    [Fact]
+    public void A_self_lock_clears_on_the_tick_it_is_applied()
+    {
+        (TileMoveSimulator sim, FakeFootprints targets) = Sim();
+        TileMoveState start = At(10, 10, 2);
+        targets.Rects[7L] = start.Footprint;
+
+        TileMoveState s = sim.Step(start, TileCommand.Attack(7L, TileMoveMode.Run), Dt, self: 7L);
+        Assert.Equal(0L, s.CombatTarget);
+        Assert.True(s.Route.IsIdle);
+        Assert.Equal(start.Tile, s.Tile);
+        Assert.False(s.IsStepping);
+
+        // A lock that reached the state some other way, a direct write, clears on the next tick the same way.
+        s.CombatTarget = 7L;
+        s = sim.Step(s, TileCommand.Continue(TileMoveMode.Run), Dt, self: 7L);
+        Assert.Equal(0L, s.CombatTarget);
+        Assert.True(s.Route.IsIdle);
+        Assert.Equal(start.Tile, s.Tile);
+    }
+
+    [Fact]
+    public void AgentSize_is_a_floor_under_the_state_size()
+    {
+        TileCollisionMap map = TileMoveSimulatorTests.Bake(TileMoveSimulatorTests.FlatWorld());
+        var sim = new TileMoveSimulator(map, TileMoveSimulatorTests.Ticks, null, new TileMoveOptions { AgentSize = 2 });
+
+        Assert.Equal(new TileRect(5, 6, 2, 2), sim.FootprintOf(At(5, 6, 1)));
+        Assert.Equal(new TileRect(5, 6, 3, 3), sim.FootprintOf(At(5, 6, 3)));
+
+        var plain = new TileMoveSimulator(map, TileMoveSimulatorTests.Ticks);
+        Assert.Equal(new TileRect(5, 6, 1, 1), plain.FootprintOf(TileMoveState.At(new TileCoord(5, 6, 0),
+            TileDirection.N)));
+    }
+
+    // Two parallel wall lines, on the west and east edges of column x 20, from row 10 to the region's north edge. The
+    // column between them is a one tile corridor whose only mouth is its south end, and the goal is inside it.
+    [Fact]
+    public void A_large_walker_cannot_enter_a_corridor_a_one_tile_walker_walks()
+    {
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        for (int z = 10; z < TileRegion.Size; z++)
+        {
+            doc.AddObject("wall", 19, z, 0, 2);                      // east edge of (19,z), west edge of (20,z)
+            doc.AddObject("wall", 21, z, 0, 0);                      // west edge of (21,z), east edge of (20,z)
+        }
+        var sim = new TileMoveSimulator(TileMoveSimulatorTests.Bake(doc), TileMoveSimulatorTests.Ticks);
+        var goal = new TileCoord(20, 16, 0);
+
+        TileMoveState Walk(int size)
+        {
+            TileMoveState s = sim.Step(At(20, 4, size), TileCommand.WalkTo(goal, TileMoveMode.Run), Dt);
+            if (size > 1) Assert.True(s.Route.IsIdle || !s.Route.End.Equals(goal), "the route ends short");
+            for (int i = 0; i < 60 && (!s.Route.IsIdle || s.IsStepping); i++)
+                s = sim.Step(s, TileCommand.Continue(TileMoveMode.Run), Dt);
+            Assert.True(s.Route.IsIdle);
+            Assert.False(s.IsStepping);
+            return s;
+        }
+
+        Assert.Equal(goal, Walk(1).Tile);
+        Assert.NotEqual(goal, Walk(2).Tile);
+    }
+}

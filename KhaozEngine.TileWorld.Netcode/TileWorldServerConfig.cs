@@ -75,7 +75,7 @@ public sealed record TileWorldServerConfig
     public int MaxActorsPerCell { get; init; } = 64;
 
     /// <summary>How many ground items one cell may hold. The drop-side sibling of
-    /// <see cref="MaxActorsPerCell"/>, enforced as a refusal at <see cref="TileWorldServer.SpawnGroundItem"/>
+    /// <see cref="MaxActorsPerCell"/>, enforced as a refusal at <see cref="TileWorldServer.SpawnGroundItem(TileCoord, int, int, long)"/>
     /// for the same reason: a kill farm piling drops must degrade to refused spawns, never to an unbounded
     /// cell.</summary>
     public int MaxGroundItemsPerCell { get; init; } = 64;

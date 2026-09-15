@@ -49,7 +49,7 @@ public sealed partial class TileWorldServer
     /// <summary>
     /// Puts an object into a state, or moves the state of one already in one, and returns the entity's net id.
     /// The engine assigns <paramref name="state"/> no meaning at all: see <see cref="TileObjectState"/>.
-    /// <para>Never refused for capacity, unlike <see cref="SpawnGroundItem"/>: there is one state per object and
+    /// <para>Never refused for capacity, unlike <see cref="SpawnGroundItem(TileCoord, int, int, long)"/>: there is one state per object and
     /// an object is authored, so the population is the document's rather than an event rate's. A malformed
     /// placement (a plane the world does not have, a region the collision map never loaded) still THROWS, and a
     /// negative TTL throws, because both are caller bugs in the class the drop door already refuses.</para>

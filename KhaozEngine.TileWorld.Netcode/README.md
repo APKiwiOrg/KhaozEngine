@@ -567,6 +567,43 @@ The intended pickup shape, all game code: click routes a walk to the drop's tile
 own TAKE message naming the net id, your handler re-proves tile proximity per request, moves the
 stack into your own storage, and despawns.
 
+### An item INSTANCE on a drop, when a stack is not just an id and a count
+
+A game whose items are individuals rather than quantities drops one through the six-argument overload,
+`SpawnGroundItem(at, itemId, count, ttlTicks, instanceId, payload)`, and the four-argument call above
+delegates to it with no instance, so nothing that already compiles changes. The identity and the bytes
+ride a SIBLING component, `TileGroundItemInstance` (`InstanceId`, `Payload`), seated only when
+`instanceId` is non-zero: a drop with no instance carries no component and pays nothing on the wire.
+`TryGetGroundItemInstance(netId, out instance)` is the server read a claim goes through, beside
+`TryGetGroundItem`, and clients read it off `client.World` for the entity `client.View.Entities` holds
+under the drop's net id.
+
+Both halves are opaque, exactly as `TileGroundItem`'s `ItemId` is opaque. The engine never decodes a
+payload, has no way to, and never mints an instance id of its own: the same id and the same bytes come
+out of a claim as went into the drop, whoever is claiming, so a drop-and-claim cycle cannot launder an
+item into a fresh one. What the engine owns is still existence.
+
+Three rules, all of them the codec's:
+
+- **`TileProtocol.MaxInstancePayloadBytes` is 512**, mirroring `ItemSlot.MaxPayloadBytes` in
+  `KhaozEngine.Items` (a mirror because this package carries no dependency on the item packages, held
+  equal by a test in `KhaozEngine.Server.Tests`). The spawn throws above it, and so does the encoder.
+- **A payload with instance id 0 throws.** Zero means the drop has no instance, no component is seated,
+  and the bytes would go nowhere. It is a caller bug of the same shape as a drop of nothing.
+- **The reader is total.** A declared length past the component's own framed payload, or above the cap,
+  arrives as an instance with an EMPTY payload rather than as a dropped session. It is the one component
+  reader in this package that answers instead of throwing, because the engine assigns these bytes no
+  meaning and so has nothing to rebuild wrongly out of a short read.
+
+It is a sibling component rather than five more fields on `TileGroundItem` because that component's
+codec writes twenty bytes with no declared length, so a client built against it consumes twenty bytes
+and then reads the next component's type id. A new field would make every already-shipped client
+misparse the rest of the entity. A new extension id is length prefixed, so a client that never
+registered it skips it and keeps reading, which is what makes this additive on a live wire. It is also
+not registered `OwnerOnly`: that channel scopes a component to the client whose own net id equals the
+ENTITY's, and a drop's net id is never a viewer's, so it would hide the instance from everybody
+including the player who dropped it.
+
 ## Object states, an authored object that has left its authored form
 
 A world document's objects are static: a `TileObject` is an id, an archetype, a tile, a plane, a rotation and

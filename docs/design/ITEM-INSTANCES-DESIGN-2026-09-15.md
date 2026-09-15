@@ -1743,3 +1743,229 @@ rejection sampling rather than modulo (contracts 14.2), because modulo bias on a
 (`DeterministicRng.cs:70-76`, "negligible bias for game ranges"). That is fine for a test and would not be
 fine in production, which is exactly why the two implementations differ and why gate 0 decision 11 makes
 running the seeded source on a hosted server log a Warning on every boot.
+
+## 10. Crafting framework
+
+### 10.1 The shape, in one paragraph
+
+The owner's decision is "engine primitives composed in data, plus game-registered code for exotic
+operations" (#884). So the engine ships a CLOSED set of fourteen primitives, a guard vocabulary, and a
+`crafting_currency` row that is an ordered list of (guard set, primitive, parameters). A currency is
+data. A primitive is code the engine owns. An exotic operation is code the GAME owns, reached through a
+registry by id, and it is handed the same working copy and the same refusal vocabulary. v1 ships the
+framework and zero currency rows, which is #884's "Out of scope for v1" taken literally.
+
+**A craft NEVER mutates in place.** It decodes the target into a working payload builder, applies its
+steps, re-encodes canonically and writes the result through `SetSlotAt` (4.7). A refusal at any step
+discards the builder and the durable bytes are untouched, so there is no partial craft and no rollback
+path to get wrong. That is the same all-or-nothing shape `OwnedItemStacking.TryFold` already has in
+Ruinborne (`c-ruinborne.md:22-26`) and `GrimhollowTrade`'s bag clone has in Grimhollow
+(`b-grimhollow.md:1055-1078`).
+
+### 10.2 The fourteen primitives
+
+| # | Primitive | Parameters | What it does |
+|---|---|---|---|
+| 1 | `AddRandomMod` | kind, tier ceiling or 0 | one pick through 9.4 steps 6 to 8 against the item's own base and item level |
+| 2 | `RemoveMod` | selector | removes one affix chosen by the selector, 10.3 |
+| 3 | `RerollValues` | selector | new `NextRollPosition()` for every selected affix, same mods and tiers |
+| 4 | `RerollMods` | kind mask | discards the selected affixes and re-runs 9.4 steps 4 to 9 for that kind |
+| 5 | `SetRarity` | rarity id or 0 for `UpgradeFrom` | writes kind 130, then trims or fills affixes to the new rule's counts |
+| 6 | `AddSocket` | socket type id or 0 | appends one empty socket to kind 132 |
+| 7 | `Socket` | socket index, source slot | moves an item INTO a socket, keeping its instance id |
+| 8 | `Unsocket` | socket index, destination slot | moves it back out, keeping its instance id |
+| 9 | `ApplyEnchant` | mod id, tier | writes one entry into kind 133 |
+| 10 | `RemoveEnchant` | selector | removes one entry from kind 133 |
+| 11 | `Repair` | amount or 0 for full | raises kind 5's current toward its maximum |
+| 12 | `SetQuality` | delta or absolute | writes kind 3 |
+| 13 | `Identify` | | sets kind 128's state to 1 and its revealed mask to all ones |
+| 14 | `SetFlag` | bit, value | writes one bit of kind 1, and refuses a bit above 2 in v1 |
+
+Four notes an implementer needs and would otherwise guess:
+
+- **`SetRarity` is the only primitive that can both add and remove affixes**, and it does so in a defined
+  order: trim from the END of the sorted list first (highest mod id) when the new rule permits fewer, and
+  fill by repeating steps 5 to 8 when it permits more and the currency asked for a fill. Trimming from the
+  sorted end rather than at random makes the operation reproducible from the journal event without a draw.
+- **`Socket` and `Unsocket` are the only primitives that touch TWO slots**, which makes them the only ones
+  that can make a craft a two-page commit (5.6).
+- **`AddRandomMod` uses the item's OWN item level** from kind 2, never the crafter's level and never the
+  base's. That is what makes item level worth storing per instance.
+- **`Identify` is the only primitive with no content parameters at all**, and it is in the list rather than
+  being a game concern because the unidentified mechanic is engine machinery (12.7).
+
+### 10.3 The guard vocabulary and the selector
+
+A guard is a PRECONDITION evaluated against the working copy before a step runs. Every guard is a closed
+kind plus at most two integer parameters, so a guard set encodes in a few bytes and a refusal names a
+guard rather than a message.
+
+| Kind | Guard | Parameters | True when |
+|---|---|---|---|
+| 1 | `RarityIs` | rarity id | kind 130 equals it |
+| 2 | `RarityIsAtMost` | rarity id | kind 130's `UpgradeFrom` chain reaches it |
+| 3 | `AffixCountAtMost` | mod kind, count | the item carries at most that many of that kind |
+| 4 | `AffixCountAtLeast` | mod kind, count | likewise |
+| 5 | `HasMod` | mod id | kind 131 or 133 carries it |
+| 6 | `LacksMod` | mod id | it does not |
+| 7 | `HasTag` | tag id | the BASE carries it |
+| 8 | `ItemLevelBetween` | min, max | kind 2 is inside the range, inclusive |
+| 9 | `QualityBetween` | min, max | kind 3 is inside the range |
+| 10 | `SocketCountBetween` | min, max | kind 132's count is inside the range |
+| 11 | `SocketEmpty` | socket index | that socket's contained definition is 0 |
+| 12 | `IsIdentified` | state | kind 128's state equals it |
+| 13 | `FlagIs` | bit, value | that bit of kind 1 equals it |
+| 14 | `NotLegacy` | | no affix on the item names a `Legacy` mod row |
+| 15 | `IsCorruptible` | | kind 1 bit 0 is clear, the standing refusal every currency inherits |
+
+**Guards are ANDed and there is no OR, no NOT and no nesting.** An OR is two currency rows, which is one
+more authored row and no evaluator. That refusal is the same one contracts 4.6 makes about tags and the
+same one the guard vocabulary makes about itself: a small closed language whose every refusal is
+attributable beats an expression tree whose failures need explaining.
+
+**`NotLegacy` is the crafting guard contracts 5.4 names**, and it is a STANDING guard rather than an
+authored one: every primitive that would add a mod refuses a legacy row regardless of the currency's guard
+set, and `NotLegacy` as an authored guard is the stronger statement that the item must carry none at all.
+
+**The selector**, used by primitives 2, 3 and 10, is a third closed vocabulary and the smallest one:
+
+| Kind | Selector | Chooses |
+|---|---|---|
+| 1 | `ByModId` | the entry naming that mod, or a refusal when absent |
+| 2 | `ByIndex` | the entry at that index of the SORTED list |
+| 3 | `RandomOfKind` | one uniform draw over the entries of that kind |
+| 4 | `AllOfKind` | every entry of that kind |
+| 5 | `LowestTier`, 6 `HighestTier` | by tier ordinal, ties broken by lower mod id |
+
+`RandomOfKind` is the only selector that draws, and it draws exactly once, so a currency's draw count is a
+function of its step list rather than of the item it hits.
+
+### 10.4 A `crafting_currency` row
+
+| Field | Value kind | Notes |
+|---|---|---|
+| `Id` | int | |
+| `Key` | string key | |
+| `NameKey`, `DescriptionKey` | localized text key | |
+| `ConsumesDefinitionId` | key reference to `item_base` | what is spent, 0 for a free operation |
+| `ConsumesCount` | int | |
+| `TargetGuards` | guard set | evaluated once, before any step |
+| `Steps` | ordered list | each step is `(guard set, primitive or operation id, parameters)` |
+| `MaxSteps` | int | a publish-checked ceiling, at most 16 in v1 |
+
+A step naming an id at or above 1,024 is a GAME operation rather than a primitive (10.5). The two share
+the step list so a currency can mix them, which is the point of having a registry at all.
+
+**Worked example, and it is deliberately not a PoE currency.** A "whetstone" that repairs and adds one
+quality point, refusing a corrupted or unidentified item:
+
+```
+ConsumesDefinitionId = whetstone, ConsumesCount = 1
+TargetGuards = [ IsCorruptible, IsIdentified(1) ]
+Steps:
+  1. guards [ QualityBetween(0, 19) ]  ->  SetQuality(delta +1)
+  2. guards [ ]                        ->  Repair(0)
+```
+
+Two properties of that encoding are worth naming. A step whose guard set is false is SKIPPED rather than
+refusing the whole craft, so the whetstone repairs an item already at quality 20. And `TargetGuards`
+failing refuses the whole craft and consumes NOTHING, which is the difference between a precondition and a
+step guard and is the reason the row carries both.
+
+### 10.5 Game operations through a registry
+
+```csharp
+public interface ICraftOperation
+{
+    int Id { get; }                                  // >= 1024
+    CraftRefusal? Apply(ref CraftWorkingCopy copy, ReadOnlySpan<int> parameters, IRandomSource random);
+}
+
+CraftingRegistry.Register(ICraftOperation operation);   // process start, frozen at first pack load
+```
+
+The registry follows `InstancePropertyRegistry` (3.3), which follows `ReplicationRegistry.Register`
+(`TileProtocol.Components.cs:122`): registration once, at process start, frozen at the first pack load,
+a later registration throws, and the id ranges below 1,024 are the engine's and cannot be registered into.
+
+**A game operation gets the working copy and the same refusal vocabulary, and it gets NO new powers.** It
+cannot write an unregistered property kind, cannot exceed `MaxInstancePayloadBytes`, cannot produce a
+non-canonical payload and cannot allocate an instance id, because the working copy is a builder rather
+than a byte array and the encode at the end enforces all four. An operation that violates one of them
+throws at encode, which is a game bug caught at the first test rather than a corrupt item in a page.
+
+**An operation is not durable and is not versioned by the pack.** A currency row names its id, so an
+operation the process does not have registered makes that currency refuse with `operation-unregistered`
+at the moment it is used rather than at boot. That is a deliberate softening of contracts 10.5's
+fail-closed rule, and the reason is that the rule is about a missing CONTENT VERSION rather than about a
+code registration: a server that shipped without an operation is a deploy mismatch, which is loud at the
+first use and would be a boot failure for every player if it were fail-closed at boot. It is open question 8.
+
+### 10.6 The journal operation for a craft
+
+**Action kind.** A durable string, `item-craft`, never renamed and never switched on, following
+`ProcessingActionKinds`' stated rule (`b-grimhollow.md:569-604`).
+
+**The normalized intent**, which is what the journal hashes to detect a conflicting replay
+(`JournalValidation.Hash`, `JournalLimits.cs:135`):
+
+```
+[IntentVersion: byte = 1]
+[CurrencyId: varint int32]
+[TargetContainerId: varint uint16][TargetSlot: varint uint16]
+[SourceContainerId: varint uint16][SourceSlot: varint uint16]   // the currency's own slot
+[TargetInstanceId: varint uint64]                               // 0 when the target is a plain stack
+[ExtraParameterCount: varint][ Extra: varint int32 ] * count    // a socket index, a selector choice
+```
+
+**The target's INSTANCE ID is in the intent and that is the load bearing field.** Without it, a replayed
+craft whose slot has since been refilled by a different item would hash identically and apply to the wrong
+item. With it, the same operation id carrying a different instance id is an `OperationConflict`, and the
+same operation id carrying the same instance id is a `Replayed` that returns the original receipt
+(`a-engine.md:535-564`). Section 15.1 is the exploit this closes.
+
+**The resolved outcome** is one `JournalEvent`, `item-crafted`:
+
+```
+[EventVersion: byte = 1]
+[CurrencyId: varint int32][InstanceId: varint uint64]
+[ContentVersion: varint int32]
+[BeforeLength: varint int32][Before: bytes]     // the payload as it stood
+[AfterLength: varint int32][After: bytes]       // the payload as it stands
+```
+
+Before AND after, which is 42 bytes more than after alone on a rare and is worth every one of them. The
+page is rewritten whole on the next commit, so without the before bytes nothing in the durable record can
+answer what a craft changed, which is the exact failure Ruinborne's audit has (`c-ruinborne.md:328-346`,
+audit rows recording that a row changed and carrying no values). Contracts 4.7 makes the same argument for
+the content audit, and this is it applied to the instance audit.
+
+A REFUSED craft writes nothing durable. It is not an operation, it never reaches the journal, and the
+client is answered with the `CraftRefusal` naming the guard or the primitive that refused. That is the
+existing shape for a refused Grimhollow mutation, which is a silent refusal plus a resync
+(`ITEM-DROP-DESIGN-2026-09-14.md` section 4).
+
+### 10.7 Keep-legacy at publish
+
+Contracts 5.4 and 8.2 own the mechanism. What this section owns is the AUTHORING FLOW and the default.
+
+1. An author changes a mod tier's `Min` or `Max` in the authoring store and publishes.
+2. The publish diff (contracts 4.7) reports every mod whose ranges moved, with the count of live items
+   carrying it left UNKNOWN, because the engine does not index instances by mod and section 1.3 rules out
+   building the index that would answer it.
+3. The author chooses per mod, and the default is **RESCALE**: nothing is written, no rule is emitted, and
+   every stored position maps through 6.4's formula into the new range on the next read. Gate 0 decision 4
+   makes the rescale SILENT, so no notification, no flag and no event.
+4. The other choice is **KEEP LEGACY**: the authoring store copies the mod to a NEW id in the same id
+   space with `Legacy` set (contracts 5.4), leaves the original id carrying the new ranges, and emits one
+   `MovedToLegacy` remap rule (contracts 8.2 kind 3) from the original id to the legacy copy.
+5. Every stored page whose stamp is older than that publish moves its entries onto the legacy id at load
+   (5.5 step 2), lazily, and is rewritten on its next commit. Items generated after the publish carry the
+   original id with its new ranges. The two coexist forever.
+
+**The rule set's idempotence is what makes step 5 safe, and there is one trap.** Contracts 8.3 forbids a
+rule whose `ToId` is an earlier rule's `FromId` for the same type. A second keep-legacy publish on the SAME
+mod would emit a rule from the original id to a second legacy copy, which is legal, and a rule from the
+FIRST legacy copy to anywhere would not be. So a legacy copy is terminal by construction: it can never be
+generated, never be crafted, and never be the source of another rule. The publish validator's existing walk
+catches an author who tries.

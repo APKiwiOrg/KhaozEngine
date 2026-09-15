@@ -130,7 +130,7 @@ oversized game message.
 | `ItemInstancePayload` | static: `TryDecode`, `Encode`, `Validate`, `PublicView`, `SequenceEqual` | 3.2 |
 | `ItemInstancePayloadBuilder` | mutable field set, encodes to canonical bytes | 3.2 |
 | `InstancePropertyKind` | `public const ushort` per engine and Scope B kind | 3.3 |
-| `InstancePropertyRegistry` | `Register(kind, codec, visibility, identificationGated, shape, references)`, frozen at first pack load | 3.3 |
+| `InstancePropertyRegistry` | `Register(kind, codec, visibility, identificationMaskBit, shape, references)`, frozen at first pack load | 3.3 |
 | `InstanceFieldShape`, `InstanceReferenceTarget` | where a kind's content ids sit and which type each belongs to | 3.3 |
 | `PropertyVisibility` | enum `ServerOnly`, `OwnerOnly`, `Everyone` | 12.5 |
 | `ItemSlot` | `readonly record struct (ItemStack Stack, ReadOnlyMemory<byte> Payload, bool Quarantined)` | 4.3 |
@@ -147,7 +147,7 @@ oversized game message.
 
 | Type | Shape | Section |
 |---|---|---|
-| `ItemGenerator` | `Generate(in GenerationContext, IRandomSource)` | 9.4 |
+| `ItemGenerator` | `ctor(ModCandidateTables, IRandomSource)`, `Generate(in GenerationContext)` | 9.4 |
 | `GenerationContext`, `GenerationResult` | inputs and the resolved item | 9.4 |
 | `ModCandidateTables` | built at pack load, queried per roll | 9.2 |
 | `IRandomSource`, `CryptographicRandomSource`, `SeededRandomSource` | contracts 14.1 and 14.2 | 9.3 |
@@ -319,13 +319,33 @@ InstancePropertyRegistry.Register(
     ushort kind,
     IInstancePropertyCodec codec,
     PropertyVisibility visibility,
-    bool identificationGated,
+    int identificationMaskBit,
     in InstanceFieldShape shape,
     ReadOnlySpan<InstanceReferenceTarget> references);
 ```
 
 It runs ONCE at process start, before any pack is loaded, and the registry freezes when the first pack
-loads. A later registration throws. That is `ReplicationRegistry.Register`'s shape
+loads. A later registration throws.
+
+**`identificationMaskBit` is a FIXED bit, assigned at registration, and it is -1 for a kind that is not
+identification gated.** It is not the kind's position in the ascending list of gated kinds. An earlier
+draft derived the bit that way and it is a durable-format bug: `RevealedMask` lives inside kind 128 in
+every stored payload (12.7), the derived index is computed from the live registration set and is recorded
+nowhere, and 3.3 reserves engine kinds 9 to 127, so ANY future engine gated kind lands below 129 and
+shifts every stored mask by one. A partially identified item would then reveal a different field than the
+one the player paid to reveal, with no rule applied, no quarantine and no counter, because the bytes did
+not change and nothing checks them. The v1 assignments are constants and are pinned in section 21:
+
+| Kind | `identificationMaskBit` |
+|---|---|
+| 129 `UniqueTemplate` | 0 |
+| 131 `Affixes` | 1 |
+| 133 `Enchantments` | 2 |
+| 134 `RareName` | 3 |
+
+Bits 4 to 31 are unassigned and zero in v1. A new gated kind takes the NEXT FREE BIT, never a bit a
+released engine has used, and registration throws on a duplicate bit exactly as it throws on a duplicate
+kind. That makes the hazard a startup failure instead of a silent renumber. That is `ReplicationRegistry.Register`'s shape
 (`TileProtocol.Components.cs:122`) and contracts 4.2's rule for the content type registry, applied one
 level down. A game MAY register in the game range and MAY NOT register into the engine or Scope B
 ranges, replace a registered codec, or unregister anything. Section 15.4 is why unregistering is
@@ -1983,12 +2003,22 @@ base drops: that is a loot table, which is Scope A's engine-range content type a
 seam is deliberate, because a loot roll and an affix roll are different questions and Ruinborne's
 `LootRoll` already owns the first one (`c-ruinborne.md:718-734`).
 
-It holds an `IRandomSource` handed to it per CALL rather than per instance, which is a narrowing of
-contracts 14.4 and worth the sentence. The contract says a type that rolls takes the source in its
-constructor. The generator is a stateless function over precomputed tables, so a per-call source lets one
-generator serve a live server on the cryptographic source and a replay tool on a seeded one without
-building two, and it keeps "does this method roll" answerable from the signature, which is the property
-14.4 actually wants.
+**It takes its `IRandomSource` in the CONSTRUCTOR and holds it**, which is contracts 14.4 verbatim
+rather than the narrowing an earlier draft of this section proposed. The contract is explicit: "A
+constructor parameter, never an ambient static, never a service locator, never a default. A type that
+rolls takes `IRandomSource` in its constructor and holds it. A type with no `IRandomSource` cannot roll,
+which is the property that makes 'does this class have gameplay randomness' answerable by reading its
+signature." A per-call source keeps that answerable at the METHOD and loses it at the TYPE, which is the
+half the contract cares about: a caller anywhere in the fleet could hand a `SeededRandomSource` to the
+production generator with nothing in any signature to notice.
+
+**A replay tool builds a SECOND generator.** That is the whole cost of taking the source in the
+constructor, and it is one line, because the expensive part of a generator is `ModCandidateTables` (9.2)
+and the two instances SHARE it: the tables are immutable after the boot that built them. So a replay
+harness constructs `new ItemGenerator(tables, new SeededRandomSource(seed))` beside the live
+`new ItemGenerator(tables, new CryptographicRandomSource())`, at the cost of one object and no table
+build. `ICraftOperation` follows the same rule (10.5). `IRandomSource` and both implementations live in
+`KhaozEngine.Primitives` (contracts 14.1), so taking one costs no package reference.
 
 ### 9.2 The precomputed tables, and what they cost
 
@@ -2075,7 +2105,11 @@ public readonly record struct GenerationContext(
 public readonly record struct GenerationResult(
     int BaseId, long InstanceId, ReadOnlyMemory<byte> Payload, int RarityId, int ContentVersion);
 
-GenerationResult Generate(in GenerationContext context, IRandomSource random);
+public sealed class ItemGenerator
+{
+    public ItemGenerator(ModCandidateTables tables, IRandomSource random);
+    public GenerationResult Generate(in GenerationContext context);
+}
 ```
 
 Every step is numbered because the ORDER of the draws is the reproducibility contract.
@@ -2099,9 +2133,15 @@ Every step is numbered because the ORDER of the draws is the reproducibility con
    several tiers of one mod are live in the band, they are separate candidates and the weights decide,
    which is how "a better tier is rarer" is authored rather than coded.
 8. **Roll the position.** One `NextRollPosition()` per affix. Record `(mod id, tier ordinal, position,
-   flags 0)`. Repeat steps 5 to 8 until `count` affixes are placed. A pick whose filtered pool is EMPTY
-   places nothing, consumes no further draw for that pick, and the item ends with fewer affixes than the
-   count asked for, which is a legal outcome and is reported in the result rather than retried.
+   flags 0)`. Repeat steps 5 to 8 until `count` picks have been MADE. **A pick whose filtered pool is
+   EMPTY still draws and discards, one `NextInt(0, 1)` in place of step 7's weighted pick and one
+   `NextRollPosition()` in place of this step**, places nothing, and the item ends with fewer affixes
+   than the count asked for, which is a legal outcome and is reported in the result rather than retried.
+   The two discarded draws are what keep 9.3's property true: without them one item consumes fewer draws
+   than another of the same rarity on the same base, and a seeded session diverges at the first item
+   whose pool empties. `NextInt(0, 1)` rather than nothing because step 7's real draw is
+   `NextInt(0, weightTotal)` and a weight total of zero is not a legal argument, so the discard has to be
+   a defined call rather than the same call on an empty pool.
 9. **Sort the affix list ascending by mod id** (3.4). No draw.
 10. **Roll the rare name.** For each position 1 to `rule.name_word_positions`, one `NextInt(0, total)` over
     that position's words weighted against the base's tags through their `rare_name_word_weight` rows. Record the word ids in position order.
@@ -2256,6 +2296,25 @@ attributable beats an expression tree whose failures need explaining.
 authored one: every primitive that would add a mod refuses a legacy row regardless of the currency's guard
 set, and `NotLegacy` as an authored guard is the stronger statement that the item must carry none at all.
 
+**A LEGACY AFFIX ENTRY IS FROZEN, and that is a second standing rule rather than a restatement of the
+first.** No primitive and no game operation rewrites any part of an affix entry whose mod row carries
+`legacy`: not its roll position, not its tier, not its flags. `RerollValues` skips it, `SetRarity`'s trim
+and fill leave it where it is and count it against the rule's limits, and an `ICraftOperation` that
+touches kind 131 or 133 is handed a working copy that refuses the write. The reason is contracts 5.4's
+own words, "a legacy id that can never be generated or crafted again", read conservatively: an earlier
+draft scoped the standing refusal to primitives that ADD a mod, which left `RerollValues` free to draw a
+fresh `NextRollPosition()` against a legacy tier's preserved range, over and over, until the roll sat at
+65,535. The mechanism the owner chose in order to FREEZE old rolls would have become a farm for them, and
+the item would be strictly better than anything obtainable, forever.
+
+Frozen is the conservative reading and it costs something real, so it is flagged for the owner at gate 1
+rather than assumed: an item with one legacy affix can never have its OTHER affixes rerolled by any
+currency that touches the whole list, because a `RerollValues(AllOfKind)` would have to skip one entry and
+rewrite the rest, which it may do, and a currency authored as `RerollValues(ByIndex)` on the frozen entry
+simply refuses. If the owner wants the softer rule, the place to relax it is here, and the relaxation is
+"a legacy entry may be rewritten only by a primitive that cannot IMPROVE it", which is a judgement about
+content rather than a property the engine can check.
+
 **The selector**, used by primitives 2, 3 and 10, is a third closed vocabulary and the smallest one:
 
 | Kind | Selector | Chooses |
@@ -2332,11 +2391,16 @@ refusal is standing and every currency inherits it (10.3).
 public interface ICraftOperation
 {
     int Id { get; }                                  // >= 1024
-    CraftRefusal? Apply(ref CraftWorkingCopy copy, ReadOnlySpan<int> parameters, IRandomSource random);
+    CraftRefusal? Apply(ref CraftWorkingCopy copy, ReadOnlySpan<int> parameters);
 }
 
 CraftingRegistry.Register(ICraftOperation operation);   // process start, frozen at first pack load
 ```
+
+**An operation that rolls takes its `IRandomSource` in ITS constructor**, per contracts 14.4 and for the
+same reason the generator does (9.1): the registry holds instances rather than types, so the game
+constructs its operation with the source the process is running on, and an operation with no source in
+its constructor provably cannot roll. That is why `Apply` has no random parameter.
 
 The registry follows `InstancePropertyRegistry` (3.3), which follows `ReplicationRegistry.Register`
 (`TileProtocol.Components.cs:122`): registration once, at process start, frozen at the first pack load,
@@ -2416,7 +2480,10 @@ Contracts 5.4 and 8.2 own the mechanism. What this section owns is the AUTHORING
    makes the rescale SILENT, so no notification, no flag and no event.
 4. The other choice is **KEEP LEGACY**: the authoring store copies the mod to a NEW id in the same id
    space with `legacy` set (contracts 5.4), leaves the original id carrying the new ranges, and emits one
-   `MovedToLegacy` remap rule (contracts 8.2 kind 3) from the original id to the legacy copy.
+   `MovedToLegacy` remap rule (contracts 8.2 kind 3) from the original id to the legacy copy. Every affix
+   entry the rule moves becomes FROZEN at that moment (10.3): its stored position is the roll it was
+   made with and no craft rewrites it again, which is the whole of what "keep legacy" means to a player
+   holding one.
 5. Every stored page whose stamp is older than that publish moves its entries onto the legacy id at load
    (5.5 step 2), lazily, and is rewritten on its next commit. Items generated after the publish carry the
    original id with its new ranges. The two coexist forever.
@@ -2424,9 +2491,10 @@ Contracts 5.4 and 8.2 own the mechanism. What this section owns is the AUTHORING
 **The rule set's idempotence is what makes step 5 safe, and there is one trap.** Contracts 8.3 forbids a
 rule whose `ToId` is an earlier rule's `FromId` for the same type. A second keep-legacy publish on the SAME
 mod would emit a rule from the original id to a second legacy copy, which is legal, and a rule from the
-FIRST legacy copy to anywhere would not be. So a legacy copy is terminal by construction: it can never be
-generated, never be crafted, and never be the source of another rule. The publish validator's existing walk
-catches an author who tries.
+FIRST legacy copy to anywhere would not be. So a legacy copy is terminal in three directions at once: it
+can never be generated (9.2 skips it), never be added by a craft, never have an entry naming it rewritten
+by one (10.3), and never be the source of another rule. The publish validator's existing walk catches an
+author who tries the last of those.
 
 ## 11. Stat evaluation base
 
@@ -2530,9 +2598,9 @@ Contracts 13.2's formula verbatim, with the steps this document owns marked:
 3. Drop every line whose ConditionId is non-zero and evaluates false.                            // 11.3
 4. flat      = Base + sum(Flat)                                  // long arithmetic
 5. increased = 10000 + sum(IncreasedBasisPoints)
-6. value     = (flat * increased + 5000) / 10000                 // round half up
+6. value     = floordiv(flat * increased + 5000, 10000)          // round half up, every sign
 7. for each More m, in the step 1 order:
-       value = (value * (10000 + m.Value) + 5000) / 10000
+       value = floordiv(value * (10000 + m.Value) + 5000, 10000)
 8. value     = clamp(checked int, stat.min, stat.max)
 ```
 
@@ -2554,11 +2622,30 @@ public sealed class ContentStatEvaluator
 cycle return the prior value EXACTLY. With integers that property is free rather than delicate, which is
 the one place this evaluator is simpler than the float one it sits beside.
 
-**`+ 5000` before the divide is round half up, on a NON-NEGATIVE numerator only.** A negative `flat` with a
-positive `increased` makes the numerator negative, and C# integer division truncates toward zero, so
-`(-15000 + 5000) / 10000` is 0 rather than -1. The evaluator therefore computes the sign, rounds the
-magnitude and restores the sign, and the test in 17.7 pins a negative case, because a stat that can go
-negative (a resistance, a cold damage penalty) is ordinary and the trap is silent.
+**Every division above is FLOOR division, and that is the contracts' rule rather than this document's
+workaround.** Contracts 13.2 says it in as many words: `floordiv(x + 5000, 10000)` is round half up for
+EVERY sign, while C# `/` truncates toward zero, which makes a debuff round differently from a buff of the
+same size. An earlier draft of this section invented a sign-magnitude rule instead, computing the sign,
+rounding the magnitude and restoring the sign, which is a second rounding rule in a system the contract
+built to have one, and it was filed nowhere.
+
+**The worked negative case, corrected.** That draft's example was `(-15000 + 5000) / 10000` "is 0 rather
+than -1", which is wrong twice over: the numerator is `-10000`, and `-10000 / 10000` is exactly `-1` in
+C# with nothing to truncate, so the example demonstrated nothing. The case that does demonstrate it is
+`flat * increased = -14000`, a penalty of 1.4 scaled units:
+`floordiv(-14000 + 5000, 10000) = floordiv(-9000, 10000) = -1`, the nearest integer with the tie going up,
+where C# `(-9000) / 10000` gives `0` and reports NO penalty at all. Negative values are ordinary here,
+because a `Flat` modifier may be negative and a stat's `min` may sit below zero.
+
+The implementation is `Math.DivRem` with a negative-remainder adjustment, subtracting one from the
+quotient when the remainder is non-zero and its sign differs from the divisor's, never `Math.Round`, which
+takes a `double` and would put floating point on the determinism path contracts 13.4 exists to keep clear
+of it. Test 17.7 pins the `-14000` case specifically, because a stat that can go negative (a resistance, a
+cold damage penalty) is ordinary and the trap is silent.
+
+**Section 6.4's roll formula is unaffected** and keeps its `/`: `position` is a `ushort` and `max - min`
+is non-negative by the tier's own bounds, so its numerator is never negative and floor and truncation
+agree on every input it can be given (contracts 13.2).
 
 ### 11.7 How the two consumers map onto it
 
@@ -2609,6 +2696,7 @@ touch a counter and does not mutate the page. The caller does all three.
 | 10 | the instance id is unique within the page | structural | `instance-id-duplicate` | quarantine |
 | 11 | an entry carrying kind 5 or 132 has count 1 | structural | `stack-not-instanceable` | quarantine |
 | 12 | the entry's count is at most the definition's cap, OR the over-cap shrink rule applies | policy | `over-cap` | tolerated |
+| 13 | the entry's definition id, and every socket's `ContainedDefinitionId`, is not RETIRED in the active version | policy | `definition-retired` | retired |
 
 **Checks 6 and 7 are DERIVED from the registry rather than from a list in this section.** They walk the
 same `InstanceReferenceTarget` descriptors the remap pass walks (3.3), in the same recursive order, over
@@ -2647,9 +2735,44 @@ direction that matters: the player who sells it has already been paid when the r
 of defence is not this validator anyway, it is the publish validator's own retire-and-remap checks
 (contracts 10.4), which are what stop the missing rule from ever shipping.
 
+**A RETIRED definition is a thirteenth CHECK and not a fourth outcome.** Contracts 8.2's kind 2 policy
+`0x01` keeps a retired id as it stands and displays the item "through a placeholder. It is not usable, not
+tradable and not droppable", explicitly the same presentation as quarantine. A retired row stays in the
+pack forever (contracts 5.1), so check 6 RESOLVES it and the item would otherwise be Valid and fully
+usable, which is precisely the behaviour Scope A deleted a game mechanism in order to inherit: its 3.9
+argues the engine needs no tradable rule for a retired item because "the placeholder presentation of
+contracts 10.2 makes it undroppable and untradeable anyway". Nothing was building it. Check 13 is that
+thing. It reads the active snapshot's `IsRetired(id)` and produces the `Retired` outcome, which is NOT a
+quarantine: the bytes are not wrapped, the entry still decodes, the page still loads, and what changes is
+the PRESENTATION and the refusals that come with it. Under contracts 10.1 the record is Valid or Remapped
+as its ids say, with a presentation the content itself asked for, which is why this is a check with a
+policy rather than a fourth outcome. It increments no counter and adds no log category, because contracts
+10.2's counter is for quarantined records and this document does not invent a second one: the finding
+rides in the validation report the caller already reads, and Scope A's publish diff is where a retire is
+visible in the first place.
+
 **Check 12 is the one tolerated failure and it is tolerated BY CONTRACT.** Contracts 8.2 kind 4's over-cap
 stack rule is legal, may only shrink and is self-healing, so an over-cap count is a state the contract
 declares valid rather than a drift the validator caught. It is counted and it changes nothing.
+
+**Three placeholder presentations are player facing, so all three are `StringId`s and none is a
+literal**, which is AGENTS.md's founding rule and contracts 12.1's derivation applied to the one part of
+this document that renders text. The keys are engine owned and fixed:
+
+| Key | Presented when |
+|---|---|
+| `khaoz.item.quarantined` | an entry failed a check and carries a `KECQ` wrapper (12.4) |
+| `khaoz.item.retired` | check 13's `Retired` outcome, the contracts 8.2 kind 2 placeholder |
+| `khaoz.item.unidentified` | a gated kind is hidden from the viewer by 12.7's mechanic |
+
+All three resolve through `ContentStringCatalog`, Scope A's implementation of contracts 12.4's layered
+`IStringCatalog`, which reads the pack's text chunks first, then the game's own resx, then the key itself,
+and formats through the `SafeFormat` path contracts 12.3 adopts so a translator's malformed template falls
+back rather than throwing inside the frame loop. They are prefixed `khaoz.` deliberately: they are ENGINE
+strings rather than content rows, so contracts 12.1's derived `<type key>.<content key>.<field>` grammar
+does not name them and the prefix keeps them out of its space. The engine ships the keys and NO
+translation, exactly as it ships no mod row. A reason code and a stamped version are NOT player text and
+are never formatted into these strings, they belong in the log line of 12.6.
 
 Quarantine is still a strictly softer answer than the one Grimhollow has today, which is why section 18
 row 4 is early in its adoption plan. `ValidateContainer` THROWS on an unknown item id
@@ -2700,7 +2823,7 @@ no server.
 
 The rule, in order: `ServerOnly` is never visible to anyone. `OwnerOnly` is visible when the viewer level
 is `OwnerOnly`. `Everyone` is visible always. Then, and only then, the identification gate: a kind marked
-`identificationGated` at registration (3.3) is hidden when `identified` is false and its bit in
+an `identificationMaskBit` at registration (3.3) is hidden when `identified` is false and its bit in
 `revealedMask` is clear, EVEN FROM THE OWNER. That last clause is gate 0 decision 8 and it is why
 unidentified is a mechanic rather than a fourth level.
 
@@ -2720,12 +2843,15 @@ counter is what a dashboard reads and a log line is what a human reads.
 ### 12.7 Unidentified, built on OwnerOnly
 
 Kind 128 is `[State: byte][RevealedMask: varint uint32]` (3.3). State 0 is unidentified. `RevealedMask`
-bit N corresponds to the Nth `identificationGated` kind in ASCENDING KIND ORDER, which is well defined
-because the registry is frozen (3.3) and kinds are ascending in the payload (3.2). Four kinds are gated in
-v1 (129, 131, 133, 134), so bits 4 to 31 are reserved and zero.
+bit N is the bit a kind was REGISTERED with, `identificationMaskBit` (3.3), never the kind's position in
+the ascending list of gated kinds. Four kinds are gated in v1, at bits 0, 1, 2 and 3 for kinds 129, 131,
+133 and 134, so bits 4 to 31 are unassigned and zero. The registered bit is the only shape that survives
+an engine release: the mask is durable and the registration set is not, so a derived index is a number
+stored under one meaning and read under another.
 
 The mechanic: an unidentified item replicates and tooltips WITHOUT its gated kinds, to everyone including
-its owner. The `Identify` primitive (10.2) sets state 1 and the mask to all ones. A partial reveal is
+its owner, and what a viewer sees in their place is `khaoz.item.unidentified` through
+`ContentStringCatalog` (12.3), never a hardcoded string and never a blank line. The `Identify` primitive (10.2) sets state 1 and the mask to all ones. A partial reveal is
 already expressible: a primitive parameterised to set one bit reveals one affix, which is an authoring
 choice rather than an engine one and needs no format change.
 
@@ -2885,8 +3011,10 @@ literals with a comment beside them saying they must not survive to a shared ser
 The mitigation is contracts 14: `IRandomSource` with no readable seed and no readable state, the
 cryptographic implementation on hosted servers with rejection sampling rather than modulo, and gate 0
 decision 11's Warning line on every boot a hosted server runs the seeded source. What this document adds
-is that the generator takes the source PER CALL (9.1), so a server cannot accidentally hold a seeded one
-for its lifetime.
+is that the generator and every craft operation take the source in their CONSTRUCTOR (9.1, 10.5), so
+"does this object roll, and on what" is answerable by reading the composition root rather than by tracing
+every call site. A seeded generator is a different object from the production one, which is what makes
+gate 0 decision 11's boot Warning able to see it at all.
 
 **Modulo bias is the subtle half and it is farmable.** A weighted pick with modulo over a weight total
 that does not divide the generator's range biases the low candidates by a fraction a patient player can
@@ -2924,8 +3052,11 @@ Test: 17.14, two concurrent moves of one stack, asserting exactly one succeeds a
 
 **A legacy mod that can never be generated is a feature, and it is also an audit tool.** An item carrying
 one provably predates the publish that created it, which is how a support question about a suspiciously
-good item is answered. The guard that keeps it ungeneratable is standing rather than authored (10.3), so a
-currency cannot opt out of it.
+good item is answered. Two standing rules keep that true and a currency can opt out of neither (10.3):
+nothing ADDS a legacy mod, and nothing REWRITES an affix entry that already names one. The second is what
+closes the reroll farm, and without it the audit tool would have been the exploit: a currency whose only
+step is `RerollValues(ByModId <legacy id>)` draws a fresh position against the preserved range every time
+it is applied, so patience alone walks the roll to the top of a range no live mod has.
 
 **The visibility leak surface is three holes, two closed and one accepted.** A tooltip computing its own
 answer is closed by there being one function both paths call (12.5) and one test asserting they agree
@@ -3011,8 +3142,8 @@ Numbered so the sections above can cite a test rather than describe one, and a r
 | 3 | Decoder fuzzing | `ItemInstances.Tests` | mutation over the goldens (bit flips, truncations, length lies, kind swaps): NEVER throws, reasons are stable per mutation class, no recursion past one level |
 | 4 | Cross-version round trips | `Foundation.Tests` | a version 1 container blob read by the version 2 reader, seated at instance id 0 with an empty payload, then written back as version 2 (4.5) |
 | 5 | Scale | `Benchmarks` plus a structural test in `Server.Tests` | a bank of 1,000 affixed stacks, several million instances in memory against budget 12, 20 crafts in one batch, mirroring `MutationJournalBenchmarkTests` |
-| 6 | Generator distribution | `ItemInstances.Tests` | weights proportional within an integer bound, positions uniform and both ends reachable, draw count a function of the affix count (9.6) |
-| 7 | Evaluator determinism | `ItemInstances.Tests` | the `More` fold order changes the answer and the stated order is stable, add-then-remove restores exactly, negative rounding (11.6) |
+| 6 | Generator distribution | `ItemInstances.Tests` | weights proportional within an integer bound, positions uniform and both ends reachable, and draw count a function of the affix count including an item whose pool empties mid roll (9.3, 9.4 step 8) |
+| 7 | Evaluator determinism | `ItemInstances.Tests` | the `More` fold order changes the answer and the stated order is stable, add-then-remove restores exactly, and floor division rounds `-14000` to `-1` where C# `/` gives 0 (11.6) |
 | 8 | Remap idempotence | `ItemInstances.Tests` | applying the full ordered rule set twice produces the same bytes as once (contracts 8.3) |
 | 9 | Visibility agreement | `ItemInstances.Tests` | the replication filter and the tooltip builder call `CanSee` and agree on every kind, at every level, identified and not (12.5) |
 | 10 | Craft replay | `Server.Tests` | same id and same intent replays to the original receipt, same id with a refilled slot is `OperationConflict` (15.1) |
@@ -3167,13 +3298,17 @@ consumer's production database.
 | The craft intent carries the target instance id | 10.6 | Without it a replay applies to whatever refilled the slot |
 | `item-crafted` carries BEFORE and AFTER payloads | 10.6 | Nothing else in the durable record can answer what a craft changed |
 | The `KECQ` wrapper layout | 12.4 | It is durable and holds the only copy of a failed item's bytes |
-| `RevealedMask` bits are the ascending order of gated kinds | 12.7 | Registering a gated kind below an existing one renumbers every stored mask |
+| `RevealedMask` bit assignments, 129 to 0, 131 to 1, 133 to 2, 134 to 3 | 3.3, 12.7 | The mask is durable inside kind 128, so a bit that moves re-points every partially identified item in the world |
 
-**The last row is the sharpest and is easy to miss.** A game that later registers a gated kind at 130 would
-shift every existing mask bit by one, silently revealing or hiding the wrong affix on every partially
-identified item in the world. The mitigation is that 3.3 reserves 135 to 1,023 for Scope B and the engine
-only ever APPENDS, so a new gated kind takes a higher id than every existing one. That rule is worth a
-comment on the registry rather than only a line here.
+**The last row is the sharpest and is easy to miss, and the vector is not the one an earlier draft
+named.** That draft wrote the hazard as "a game that later registers a gated kind at 130", which 3.3
+forbids outright: a game may not register into the Scope B range at all. The REACHABLE vector is the
+ENGINE's own reserved range, kinds 9 to 127. An engine release adding a gated kind there lands BELOW 129,
+so under a derived ascending index it would take bit 0 and shift all four v1 assignments by one, on every
+stored payload, with no byte changing and nothing to detect it. That is why the bit is a REGISTERED
+constant (3.3) rather than an index, why registration throws on a duplicate bit, and why the four v1
+assignments are in the table above rather than only in a sentence. The mitigation for the kind ID is
+still append-only, and the mitigation for the MASK is that the bit never moves whatever the id does.
 
 ## 22. Contract change requests
 

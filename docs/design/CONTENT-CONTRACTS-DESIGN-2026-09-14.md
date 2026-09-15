@@ -11,7 +11,8 @@ stage 4 review of both specs: the `IRandomSource` seam and its two implementatio
 previous published snapshot as an argument and runs its change-shaped checks only when it is non-null
 (10.4), 9.5's contained instance id is an unsigned varint, 13.2's fold divides toward negative infinity so
 the rounding holds for negative values, and 4.7's localized text key kind is a marker that stores nothing.
-Nothing here is implemented yet.
+AMENDED A FOURTH TIME on 2026-09-15: a legacy affix entry is frozen against rerolls (5.4) and the instance
+id allocator's persisted record carries the store epoch (6.2). Nothing here is implemented yet.
 This document exists so the two parallel specs cannot contradict each other. Scope A is the versioned
 content catalog, [#882](https://github.com/APKiwiOrg/KhaozEngine/issues/882). Scope B is
 owned item instances, affixes, sockets, crafting and the stat evaluation base,
@@ -643,6 +644,13 @@ id came from before it can look the row up. A flag on the row is read by exactly
 everywhere else. It also means a legacy mod's stat lines and display text resolve through the ordinary
 path with no special case.
 
+**A legacy affix entry is FROZEN.** "Never crafted again" is read conservatively: no crafting primitive and
+no game operation rewrites the roll position of an affix entry that names a legacy mod, so the old range
+stays exactly where the keep-legacy choice left it and cannot be farmed back to its top through a reroll. A
+legacy entry can only be REMOVED, by a primitive that removes affixes, never rerolled in place. This is a
+tightening taken at the stage 4 review and flagged for the owner at gate 1, and relaxing it later changes
+no byte.
+
 ### 5.5 What a consumer's existing string id becomes
 
 **Contract: a consumer's existing string item id is a KEY, not an ID.** Ruinborne's
@@ -706,6 +714,13 @@ persisting after issuing leaves a window in which a crash hands the next boot an
 an item, and a duplicate instance id is the single failure this section exists to prevent. `NetIdAllocator`
 persists its packed high-water mark for exactly this reason (`a-engine.md:1158-1175`), and the order is
 written down here because a batching optimisation is where it gets quietly inverted.
+
+**The persisted allocator record carries the store epoch.** The high-water mark is written beside the
+journal store's epoch it was persisted under, and the allocator REFUSES to issue when the live epoch
+differs. A point-in-time restore rolls the allocator's own state back with everything else, so a retired
+node list cannot protect against it, and the refusal forces the epoch rotate the journal's restore runbook
+already requires (`docs/design/DURABLE-PLAYER-JOURNAL-DESIGN-2026-09-06.md`, section 10) before any id can
+be handed out against restored data.
 
 **Which items get an instance id.** Any item carrying properties, per the owner's ruling that per-instance
 properties are required and that an item may carry up to six affix rolls, enchantments, durability and

@@ -1080,14 +1080,22 @@ Sockets are ONE field kind holding an ordered list:
 [Count: varint][ for each socket:
     [SocketTypeId: varint int32]      // 0 means no type restriction
     [ContainedDefinitionId: varint int32]  // 0 means the socket is empty
+    [ContainedInstanceId: varint int64]    // 0 means empty, or a contained item with no instance
     [NestedLength: varint int32]
     [Nested: NestedLength bytes]      // a payload in this same format
 ]
 ```
 
+**The socket carries the contained item's INSTANCE ID, and that is the owner's decision at gate 0.** A
+socketed item keeps its own identity while it sits in the socket, so unsocketing RESTORES that identity
+rather than minting a new one, and an item duplicated by a bug or an exploit stays traceable to the instance
+it was copied from. The field is 0 when the socket is empty, and also 0 when the contained item has no
+instance of its own, which is the ordinary case for a plain gem (section 6.2). The cost is one varint per
+occupied socket.
+
 **Nesting is ONE LEVEL ONLY and the DECODER enforces it.** A nested payload containing a socket field is
 malformed and the decoder returns a reason rather than recursing. This is a hard structural limit rather
-than a convention, because recursion is the one way a 40 byte payload becomes a denial of service, and
+than a convention, because recursion is the one way a 45 byte payload becomes a denial of service, and
 because the owner ruled sockets in and links out (#884 body), which is exactly the one-level shape.
 
 Socket order is AUTHORED and preserved, never sorted. This mirrors `TileObjectArchetype.Tags`, whose
@@ -1113,7 +1121,7 @@ The two caps it has to live under, with the arithmetic:
   precedent at `TileWorldServer.Tick.cs:241-259`, which is the one place the engine already sends a
   logical payload across several reliable ordered frames (`a-engine.md:818-838`).
 
-512 is also about 12 times the realistic size computed in 9.7, so it is a guard rail rather than a budget.
+512 is also about 11 times the realistic size computed in 9.8, so it is a guard rail rather than a budget.
 A larger cap would buy nothing and would let one pathological item consume a page. A smaller one, say 256,
 would still fit a six-affix socketed item but would leave no room for the game-range fields a consumer has
 not thought of yet.
@@ -1150,8 +1158,9 @@ placeholder.
 
 ### 9.8 A worked byte example
 
-A rare Greatsword at item level 68, durability 90 of 100, three affixes and one socket holding an item.
-The definition id lives in the container slot entry, not the payload, so the payload is properties only.
+A rare Greatsword at item level 68, durability 90 of 100, three affixes and one socket holding an item that
+has an instance id of its own. The definition id lives in the container slot entry, not the payload, so the
+payload is properties only.
 
 Field kinds used: 2 item level (engine), 5 durability (engine), 130 rarity (Scope B), 131 affixes (Scope
 B), 132 sockets (Scope B). They appear in that order, which is ascending, as rule 9.3.1 requires.
@@ -1160,30 +1169,68 @@ B), 132 sockets (Scope B). They appear in that order, which is ascending, as rul
 02 01 44                                 kind 2  len 1   item level 68
 05 02 5A 64                              kind 5  len 2   durability 90 of 100
 82 01 01 03                              kind 130 len 1  rarity 3 (rare)
-83 01 0F                                 kind 131 len 15 affixes
+83 01 12                                 kind 131 len 18 affixes
    03                                       count 3
-   F2 20 03 CC CC                           mod 4210, tier 3, position 52428
-   5B 01 33 33                              mod 91,   tier 1, position 13107
-   84 02 02 FF FF                           mod 260,  tier 2, position 65535
-84 01 08                                 kind 132 len 8  sockets
+   F2 20 03 CC CC 00                        mod 4210, tier 3, position 52428, flags 0
+   5B 01 33 33 00                           mod 91,   tier 1, position 13107, flags 0
+   84 02 02 FF FF 00                        mod 260,  tier 2, position 65535, flags 0
+84 01 0A                                 kind 132 len 10 sockets
    01                                       count 1
    07                                       socket type 7
    C1 06                                    contains definition 833
+   D2 41                                    contains instance 4,201
    03                                       nested payload length 3
       02 01 37                              nested: kind 2 len 1 item level 55
 ```
 
-Forty bytes total. The varints in it: `82 01` is 130, `83 01` is 131, `84 01` is 132, `F2 20` is 4210,
-`84 02` is 260, `C1 06` is 833, and every single-byte value below 128 is itself.
+Forty-five bytes total. The arithmetic is written out because two of the five fields carry a field this
+document added after the first draft.
 
-Reading the third affix, `84 02 02 FF FF`: mod id 260, tier 2, position 65,535, which is the top of the
-tier's range. If that tier runs 10 to 40, section 6.4's formula gives
+- Item level is 3 bytes, durability 4, rarity 4. None of those moved.
+- The affix field's payload is the count byte plus three entries. An entry is a mod id varint, a tier byte,
+  a position as a `uint16` LE and the reserved flags varint of 9.9, so the three entries are 6, 5 and 6
+  bytes and the payload is `1 + 6 + 5 + 6 = 18`, the `12` in the length byte. With the two-byte kind varint
+  and the length byte the whole field is 21 bytes, up from 18 before the flags field existed.
+- The socket field's payload is the count byte, the socket type varint, the contained definition varint,
+  the contained instance varint, the nested length byte and the 3 nested bytes:
+  `1 + 1 + 2 + 2 + 1 + 3 = 10`, the `0A` in the length byte. With its kind varint and length byte the field
+  is 13 bytes, up from 11 before the instance id was carried.
+- Total: `3 + 4 + 4 + 21 + 13 = 45`.
+
+The varints in it: `82 01` is 130, `83 01` is 131, `84 01` is 132, `F2 20` is 4210, `84 02` is 260,
+`C1 06` is 833, and every single-byte value below 128 is itself. `D2 41` is instance id 4,201: zig-zag maps
+it to 8,402 (section 15), and 8,402 in LEB128 is its low seven bits, 82, with the continuation bit set,
+`D2`, followed by 65, `41`.
+
+Reading the third affix, `84 02 02 FF FF 00`: mod id 260, tier 2, position 65,535, which is the top of the
+tier's range, and flags 0 as v1 requires. If that tier runs 10 to 40, section 6.4's formula gives
 `10 + (65535 * 30 + 32767) / 65535 = 10 + 30 = 40`.
 
-Forty bytes against the 512 cap is 8 percent. Against Grimhollow's current 18-bytes-per-slot bank budget
-(`b-grimhollow.md:1044-1054`) it is 2.2 times over, which is the concrete number saying a bank of affixed
-items cannot sync as one message and must be paged. That is not a surprise, it is the arithmetic behind
-Scope B's paged-container requirement.
+Forty-five bytes against the 512 cap is under 9 percent. Against Grimhollow's current 18-bytes-per-slot
+bank budget (`b-grimhollow.md:1044-1054`) it is 2.5 times over, which is the concrete number saying a bank
+of affixed items cannot sync as one message and must be paged. That is not a surprise, it is the arithmetic
+behind Scope B's paged-container requirement.
+
+### 9.9 Affix entries reserve a flags field
+
+The affix list is SCOPE B's field and its entry layout is Scope B's to specify. This contract requires one
+thing of that layout: **every affix entry ends with a FLAGS varint, reserved and written as 0 in v1.** A
+decoder meeting a non-zero flags value in v1 reports `field-malformed` (9.7).
+
+The reason is that the per-instance facts about an affix arrive later and are not knowable now. Prefix or
+suffix, implicit, crafted, fractured, and whatever else the eventual depth of 1.4 asks for, are facts about
+ONE ROLL ON ONE ITEM, so none of them can live on the mod row and all of them would otherwise need a format
+change to arrive. One reserved varint, a single `00` byte per affix while it stays 0, carries the first
+seven of them for nothing and the rest for one more byte.
+
+This is the argument of 9.4 applied one level down, where the tagged encoding cannot help. An affix entry
+sits INSIDE a length-prefixed field, so a decoder that does not know an entry grew cannot skip the
+difference, and preserving an unknown field verbatim does nothing for it. The flags field is the entry-level
+version of the escape hatch the payload already has.
+
+**Expensive to change once data exists: yes, because** adding it later means two affix entry layouts told
+apart by the content version a page was stamped with, which is the positional-codec migration this whole
+format exists to avoid.
 
 ## 10. Validation outcomes
 

@@ -2136,8 +2136,14 @@ offset  width  field
                  [definitionId : varint uint32]   strictly ascending
                  [flags        : byte]            bit 0 retired, bits 1-7 reserved 0
                  [rowLength    : varint uint32]   bytes of this row's body
-  ..     ..    row bodies, in the SAME ORDER as the table, concatenated
+  ..     ..    row bodies, in the SAME ORDER as the table, concatenated, each
+                 [key    : varint uint32 length, then that many UTF-8 bytes]
+                 [fields : the type's codec, positional in schema order]
 ```
+
+**The key is the FIRST field of every row body**, which is what lets the runtime hold no separate `Keys`
+array: an id-to-key read is the same offset lookup and span slice as a row read, one varint further in
+(section 9.1). Section 7.9 works a two-row chunk through byte by byte.
 
 Rows are STRICTLY ASCENDING by definition id and a row id appearing twice is a refusal with
 `chunk-row-duplicate`. Disorder is `chunk-row-order`. Both mirror `ItemContainerCodec`, whose entries are
@@ -2449,37 +2455,41 @@ codec's field set is fixed by the schema it was checked against at registration 
 in the text chunk (section 7.6). Positional encoding is unaffected: a marker takes zero width in the sequence
 the way a zero-length field would, and the decoder knows to skip it from the same schema the encoder used.
 
-The row body for tag 1 is therefore one field:
+The row body for tag 1 therefore opens with the row's own content key, a varint length then the UTF-8 bytes
+(section 7.3), and the one encoded field follows it:
 
 ```
+05 6D 65 74 61 6C                                  key: varint length 5, then "metal"
 0A                                                 sort: varint 10
 ```
 
-One byte. The row body for tag 2:
+Seven bytes. The row body for tag 2:
 
 ```
+0A 74 77 6F 5F 68 61 6E 64 65 64                   key: varint length 10, then "two_handed"
 14                                                 sort: varint 20
 ```
 
-One byte. `0A` is 10 and `14` is 20, both single-byte varints because both are under 128.
+Twelve bytes. `0A` is 10 and `14` is 20, both single-byte varints because both are under 128, and tag 2's key
+length prefix is that same `0A` byte for the same reason.
 
 The row table, two entries:
 
 ```
-01 00 01       id 1, flags 0 (live),    rowLength 1
-02 01 01       id 2, flags 1 (retired), rowLength 1
+01 00 07       id 1, flags 0 (live),    rowLength 7
+02 01 0C       id 2, flags 1 (retired), rowLength 12
 ```
 
-Six bytes. The uncompressed body is `6 + 1 + 1 = 8` bytes:
+Six bytes. The uncompressed body is `6 + 7 + 12 = 25` bytes:
 
 ```
-01 00 01  02 01 01
-0A
-14
+01 00 07  02 01 0C
+05 6D 65 74 61 6C  0A
+0A 74 77 6F 5F 68 61 6E 64 65 64  14
 ```
 
 The 36 byte header, as it appears in the CANONICAL bytes the hash is taken over, so `compression = 0` and
-`storedBytes = uncompressedBytes = 8`:
+`storedBytes = uncompressedBytes = 25`:
 
 ```
 4B 45 43 43     magic  'K','E','C','C'
@@ -2492,19 +2502,19 @@ The 36 byte header, as it appears in the CANONICAL bytes the hash is taken over,
 00              visibility 0 (Client)
 00              compression 0
 00 00           reserved
-08 00 00 00     uncompressedBytes 8
-08 00 00 00     storedBytes 8
+19 00 00 00     uncompressedBytes 25
+19 00 00 00     storedBytes 25
 ```
 
-Note `00 10 00 00` is 4,096 little endian (`0x00001000`). The canonical bytes are 44 in total, 36 of header
-plus 8 of body, and
+Note `00 10 00 00` is 4,096 little endian (`0x00001000`). The canonical bytes are 61 in total, 36 of header
+plus 25 of body, and
 
 ```
-chunkHash = lowerHex(SHA256( utf8("kec/chunk/1\n") || <those 44 bytes> ))
+chunkHash = lowerHex(SHA256( utf8("kec/chunk/1\n") || <those 61 bytes> ))
 ```
 
 The STORED file differs from the canonical bytes in exactly two fields when the body compresses: byte 25 holds
-`01` and bytes 32 to 35 hold the compressed length. At 8 bytes this body will not compress smaller, so this
+`01` and bytes 32 to 35 hold the compressed length. At 25 bytes this body will not compress smaller, so this
 particular chunk stores uncompressed and the stored file is byte identical to the canonical bytes. That is the
 common case for a small chunk and it is why the `compression` byte exists per chunk rather than per pack.
 

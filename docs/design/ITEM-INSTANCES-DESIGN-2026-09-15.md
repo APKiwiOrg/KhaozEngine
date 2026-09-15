@@ -3578,6 +3578,9 @@ rejections are invisible reads as a review that found nothing to argue with.
 means part of it held. REFUTED means it did not. LEAD means it was surfaced rather than checked. The
 severity beside it is the verified one, which is not always the reviewer's.
 
+**Commit column.** The sha the fix landed on, on `feature/item-instances-design`. Section 22's rewrite and
+this log landed together in `5dc13c85`, and the consistency sweep that followed them is `94a1e571`.
+
 | Id | Claim | Reviewer | Verified | Disposition | Commit |
 |---|---|---|---|---|---|
 | F1 | A quarantine wrapper cannot fit the page entry bound, and invariant 4 rejects every wrapper | high | CONFIRMED high | FIXED 4.4, 4.7, 5.4. `PayloadLength` is bounded by the section cap, `MaxInstancePayloadBytes` binds a non-quarantined entry only, and `SetSlotAt` skips invariants 2 and 4 on a quarantined slot | 84188832 |

@@ -27,6 +27,9 @@
     <ProjectReference Include="../KhaozEngine.Identity/KhaozEngine.Identity.csproj" />
     <ProjectReference Include="../KhaozEngine.Identity.Discord/KhaozEngine.Identity.Discord.csproj" />
     <ProjectReference Include="../KhaozEngine.Identity.Oidc/KhaozEngine.Identity.Oidc.csproj" />
+    <!-- Items/InstanceIdPackingParityTests.cs holds InstanceIdAllocator's mirrored packing against
+         NetIdAllocator's. This is the only project that references both. -->
+    <ProjectReference Include="../KhaozEngine.ItemInstances/KhaozEngine.ItemInstances.csproj" />
     <ProjectReference Include="../KhaozEngine.Locomotion/KhaozEngine.Locomotion.csproj" />
     <ProjectReference Include="../KhaozEngine.NetWorld/KhaozEngine.NetWorld.csproj" />
     <ProjectReference Include="../KhaozEngine.Netcode/KhaozEngine.Netcode.csproj" />

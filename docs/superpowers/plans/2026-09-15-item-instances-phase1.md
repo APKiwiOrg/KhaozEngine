@@ -458,3 +458,365 @@ git commit -m "tileworld(netcode): fragment a logical payload across reliable or
 
 ---
 
+## Group B: the instance record (spec 3)
+
+Every task from here on is gated on **Scope A milestone 1.1**, because each one creates or edits
+`KhaozEngine.ItemInstances`, whose csproj references `KhaozEngine.Catalog` (contracts 3.2).
+
+### Task 4: The `KhaozEngine.ItemInstances` package and the property registry (medium, gate: milestone 1.1)
+
+Spec 2.1, 2.2, 2.3 and 3.3. The registry is first because the payload codec, the remap pass and the
+validator all DERIVE their behaviour from it rather than from a list written in a document, which is
+what stops a kind being remapped-but-not-validated.
+
+**Files:**
+
+- Create: `KhaozEngine.ItemInstances/KhaozEngine.ItemInstances.csproj`
+- Create: `KhaozEngine.ItemInstances/README.md`
+- Create: `KhaozEngine.ItemInstances/InstancePropertyKind.cs`
+- Create: `KhaozEngine.ItemInstances/InstanceFieldShape.cs`
+- Create: `KhaozEngine.ItemInstances/InstancePropertyRegistry.cs`
+- Create: `KhaozEngine.ItemInstances/IInstancePropertyCodec.cs`
+- Create: `KhaozEngine.ItemInstances.Tests/KhaozEngine.ItemInstances.Tests.csproj`
+- Create: `KhaozEngine.ItemInstances.Tests/InstancePropertyRegistryTests.cs`
+- Modify: `KhaozEngine.slnx`
+- Modify: `KhaozEngine.Foundation/KhaozEngine.Foundation.csproj`
+- Modify: `KhaozEngine.Tests/ArchitectureTests.cs`
+
+**Interfaces:**
+
+- Consumes: `KhaozEngine.Items`, `KhaozEngine.Catalog`, `KhaozEngine.Primitives`
+- Produces: `InstancePropertyKind`, `InstanceKindBand`, `PropertyVisibility`, `InstanceSlotKind`,
+  `InstanceCountWidth`, `InstanceReferenceSite`, `InstanceFieldShape`, `InstanceReferenceTarget`,
+  `IInstancePropertyCodec`, `InstancePropertyRegistry`
+
+- [ ] **Step 1: Write the failing registry tests.** All of these are spec 3.3's rules stated as facts, and
+  the band and bit ones are the two that stop a durable-format bug rather than a compile error:
+
+~~~csharp
+[Fact] public void A_game_band_registration_below_1024_throws()
+[Fact] public void A_ScopeB_band_registration_outside_128_to_1023_throws()
+[Fact] public void An_Engine_band_registration_above_127_throws()
+[Fact] public void Kind_zero_is_never_registrable()
+[Fact] public void A_duplicate_kind_throws()
+[Fact] public void A_duplicate_identification_mask_bit_throws()
+[Fact] public void A_registration_after_the_first_pack_load_throws()
+[Fact] public void Unregistering_and_replacing_a_codec_are_both_refused()
+[Fact] public void The_v1_engine_and_ScopeB_kinds_register_with_the_shapes_and_targets_of_3_3()
+[Fact] public void The_four_v1_identification_bits_are_129_to_0_131_to_1_133_to_2_134_to_3()
+~~~
+
+- [ ] **Step 2: Create the package and wire it in.** The csproj follows `KhaozEngine.Items` exactly:
+  `PackageId`, `<Version>$(KhaozEngineVersion)</Version>`, `PackageReadmeFile`, a `Description`, the
+  `None Include="README.md"` pack item, and `ProjectReference`s to `KhaozEngine.Items`,
+  `KhaozEngine.Catalog` and `KhaozEngine.Primitives`. Add the project to `KhaozEngine.slnx`, add it to the
+  `Foundation` umbrella's `ProjectReference` set, and update the locked umbrella membership list in
+  `ArchitectureTests.UmbrellaMembership()`, which fails CI otherwise by design.
+- [ ] **Step 3: Create the test project.** References ONLY `KhaozEngine.ItemInstances`, `KhaozEngine.Items`,
+  `KhaozEngine.Catalog` and `KhaozEngine.Primitives` (spec 2.3). It carries `<IsPackable>false</IsPackable>`
+  and `<RootNamespace>KhaozEngine.Tests</RootNamespace>`. Declared namespaces are `KhaozEngine.Tests.*`.
+  Add it to `KhaozEngine.slnx`. Do NOT add a `WorldStore` or a `TileWorld` reference: those tests live in
+  `KhaozEngine.Server.Tests` and `KhaozEngine.TileWorld.Netcode.Tests` precisely so this project's graph
+  stays narrow and push CI's selection stays sharp.
+- [ ] **Step 4: Write `InstancePropertyKind` as `public const ushort` per kind**, all fifteen of spec 3.3's:
+  1 `Flags`, 2 `ItemLevel`, 3 `Quality`, 4 `Charges`, 5 `Durability`, 6 `BoundTo`, 7 `Materials`,
+  8 `Tier`, 128 `Identification`, 129 `UniqueTemplate`, 130 `Rarity`, 131 `Affixes`, 132 `Sockets`,
+  133 `Enchantments`, 134 `RareName`. Kinds 2, 5, 130, 131 and 132 are PINNED by contracts 9.8's worked
+  example and task 5's golden reproduces it, so none of them moves.
+
+- [ ] **Step 5: Implement the shape descriptors exactly as spec 3.3 writes them.**
+
+~~~csharp
+public enum InstanceKindBand : byte { Engine = 1, ScopeB = 2, Game = 3 }
+public enum PropertyVisibility : byte { ServerOnly = 0, OwnerOnly = 1, Everyone = 2 }
+public enum InstanceSlotKind : byte { Varint = 1, Byte = 2, Fixed2 = 3, NestedPayload = 4 }
+public enum InstanceCountWidth : byte { None = 0, Byte = 1, Varint = 2 }
+public enum InstanceReferenceSite : byte { Header = 1, Entry = 2 }
+
+public readonly record struct InstanceFieldShape(
+    ReadOnlyMemory<InstanceSlotKind> Header,   // slots before the repeat count
+    InstanceCountWidth Count,                  // None for a field that does not repeat
+    ReadOnlyMemory<InstanceSlotKind> Entry);   // one repeat's slots, empty when Count is None
+
+public readonly record struct InstanceReferenceTarget(
+    string ContentTypeKey,                     // the Scope A or Scope B type key the id belongs to
+    InstanceReferenceSite Site,                // Header, or Entry for once per repeat
+    int SlotIndex);                            // which slot of that shape holds the id
+~~~
+
+  `PropertyVisibility` is ordered least to most visible so the replication comparison of contracts 11.2 is
+  a `<=` on the enum. That ordering is load bearing and belongs in the doc comment.
+
+- [ ] **Step 6: Implement `Register` with the exact signature spec 3.3 gives**, and make every refusal a
+  THROW at startup rather than a silent acceptance:
+
+~~~csharp
+public static void Register(
+    InstanceKindBand band,
+    ushort kind,
+    IInstancePropertyCodec codec,
+    PropertyVisibility visibility,
+    int identificationMaskBit,
+    in InstanceFieldShape shape,
+    ReadOnlySpan<InstanceReferenceTarget> references);
+~~~
+
+  `band` is the caller's own declaration of which range it may register into and a mismatch throws.
+  `identificationMaskBit` is a FIXED bit assigned at registration and -1 for a kind that is not gated.
+  It is never the kind's position in the ascending list of gated kinds: spec 3.3 and spec 21's last row
+  explain that a derived index re-points every partially identified item in the world the moment an engine
+  release adds a gated kind below 129, silently, with no byte changing. Registration throws on a duplicate
+  bit exactly as it throws on a duplicate kind. The registry FREEZES when the first pack loads, exposed as
+  `Freeze()` called by the pack load path, and a later registration throws.
+  `ReplicationRegistry.Register` (`TileProtocol.Components.cs:122`) is the engine's precedent one level up.
+
+- [ ] **Step 7: Register the v1 kinds with spec 3.3's shape and target table, verbatim.** These eight rows
+  are the whole of what the remap pass and the validator later walk, so a typo here is a data bug rather
+  than a test failure:
+
+| Kind | Shape | Reference targets |
+|---|---|---|
+| 1 to 6, 8 | a header of scalars, `Count` None | none |
+| 7 `Materials` | `Count` Varint, entry `[Varint, Varint]` | (`item`, Entry, 0) |
+| 128 `Identification` | header `[Byte, Varint]`, `Count` None | none |
+| 129 `UniqueTemplate` | header `[Varint]`, `Count` None | (`unique_template`, Header, 0) |
+| 130 `Rarity` | header `[Byte]`, `Count` None | (`rarity_rule`, Header, 0) |
+| 131 `Affixes`, 133 `Enchantments` | `Count` Byte, entry `[Varint, Byte, Fixed2, Varint]` | (`mod`, Entry, 0) |
+| 132 `Sockets` | `Count` Varint, entry `[Varint, Varint, Varint, NestedPayload]` | (`socket_type`, Entry, 0), (`item`, Entry, 1) |
+| 134 `RareName` | header `[Varint]`, `Count` Byte, entry `[Varint]` | (`rarity_rule`, Header, 0), (`rare_name_word`, Entry, 0) |
+
+  Kind 132's count is a VARINT and kind 131's is a BYTE, and the difference is deliberate (spec 3.3).
+  Contracts 9.5 writes the socket count as a varint and narrowing it would be a width change, invisible in
+  the golden file because the worked example writes `01` and that is both. Put that sentence in the code
+  comment beside the two registrations, because it is exactly the kind of thing a later reader tidies.
+  Kind 134's header slot is a `rarity_rule` id rather than a `unique_template` one: it records WHICH
+  rarity rule's display format composed the name.
+
+- [ ] **Step 8: Write the package README.** It ships INSIDE the nupkg and is read standalone on NuGet, so
+  it is self-contained: what the package is, the payload format in one block, the kind ranges, the
+  registration rule and the three placeholder `StringId`s. Do not point it at a design doc.
+- [ ] **Step 9: Run the focused tests green and commit.**
+
+~~~bash
+dotnet test KhaozEngine.ItemInstances.Tests/KhaozEngine.ItemInstances.Tests.csproj -c Release
+dotnet test KhaozEngine.Tests/KhaozEngine.Tests.csproj -c Release --filter FullyQualifiedName~ArchitectureTests
+git add KhaozEngine.ItemInstances KhaozEngine.ItemInstances.Tests KhaozEngine.slnx KhaozEngine.Foundation/KhaozEngine.Foundation.csproj KhaozEngine.Tests/ArchitectureTests.cs
+git commit -m "iteminstances(registry): property kinds, bands and field shapes"
+~~~
+
+---
+
+### Task 5: `ItemInstancePayload`, the canonical TLV codec and its goldens (large, gate: milestone 1.1)
+
+Spec 3.2, 3.4, 3.5, 3.7 and 3.8, over contracts 9.1 through 9.9. This is the format everything else in
+the plan rests on, and spec 21 records most of it as expensive to change once data exists.
+
+**LIFT FROM THE SPIKE, do not rewrite.** `KhaozEngine.Benchmarks/Items/InstancePayload.cs` (327 lines) is
+a clean, measured implementation of this exact format: the same field walk, the same closed reason set,
+the same per-kind shape checks, the same one-level socket refusal, the same retained-run public view. Lift
+its structure and its logic. Three things change on the way in, and nothing else should:
+
+1. Its `Varint` (`KhaozEngine.Benchmarks/Items/Varint.cs`) is REPLACED by `ContentVarint` from
+   `KhaozEngine.Catalog`. Contracts 15 wants one varint implementation in the tree and the spike's copy
+   exists only because Scope A had not shipped.
+2. Its `CheckShape` switch is REPLACED by a walk of the registry's `InstanceFieldShape` from task 4. The
+   spike hard-codes the kinds because it was a spike. Deriving the walk is what gives a GAME kind at or
+   above 1,024 remap, drift detection and quarantine for free (spec 3.3).
+3. Its `internal` surface becomes `public` with XML doc, and its types move to the names spec 2.2 gives.
+
+**The spike stays and keeps building.** Do not delete it, do not make it reference the new package, and do
+not edit it in this task. Its numbers are what section 16's measured column reports.
+
+**Files:**
+
+- Create: `KhaozEngine.ItemInstances/ItemInstancePayload.cs`
+- Create: `KhaozEngine.ItemInstances/ItemInstancePayload.Shapes.cs`
+- Create: `KhaozEngine.ItemInstances/ItemInstancePayloadBuilder.cs`
+- Create: `KhaozEngine.ItemInstances/InstancePayloadReason.cs`
+- Create: `KhaozEngine.ItemInstances.Tests/Payload/ItemInstancePayloadTests.cs`
+- Create: `KhaozEngine.ItemInstances.Tests/Payload/PayloadGoldenTests.cs`
+- Create: `KhaozEngine.ItemInstances.Tests/Payload/Goldens/*.bin` (checked in)
+
+**Interfaces:**
+
+- Consumes: `ContentVarint`, task 4's registry, `ItemSlot.MaxPayloadBytes`
+- Produces: `ItemInstancePayload` (`TryDecode`, `Encode`, `Validate`, `PublicView`, `SequenceEqual`,
+  `IsCanonical`), `ItemInstancePayloadBuilder`, the closed reason token set
+
+- [ ] **Step 1: Write the GOLDEN test first, and make it contracts 9.8's forty-five bytes.** This is spec
+  17 row 1 and spec 20 phase 1's acceptance in one fact. Spec 3.7 reproduces the block in canonical order
+  so it can be copied into the golden file exactly as it stands:
+
+~~~
+02 01 44                                 kind 2   len 1   item level 68
+05 02 5A 64                              kind 5   len 2   durability 90 of 100
+82 01 01 03                              kind 130 len 1   rarity 3
+83 01 12                                 kind 131 len 18  affixes
+   03                                       count 3
+   5B 01 33 33 00                           mod 91,   tier 1, position 13107, flags 0
+   84 02 02 FF FF 00                        mod 260,  tier 2, position 65535, flags 0
+   F2 20 03 CC CC 00                        mod 4210, tier 3, position 52428, flags 0
+84 01 0A                                 kind 132 len 10  sockets
+   01                                       count 1
+   07                                       socket type 7
+   C1 06                                    contains definition 833
+   E9 20                                    contains instance 4201
+   03                                       nested length 3
+      02 01 37                              nested kind 2 len 1, item level 55
+~~~
+
+  The fact asserts BOTH directions: building that item through `ItemInstancePayloadBuilder` produces those
+  45 bytes exactly, and decoding those 45 bytes produces those fields. Add the four spec 3.8 rows as
+  goldens in the same file, with their payload and slot-entry byte counts asserted: OSRS 0 and 7, Tibia
+  7 and 15, Mortal Online 20 and 30, PoE 58 and 69. Those numbers are budgets 1 and 2.
+
+- [ ] **Step 2: Write the canonical-form facts.** Contracts 9.3's three rules, each as a refusal:
+
+~~~csharp
+[Fact] public void Fields_out_of_ascending_order_answer_kind_out_of_order()
+[Fact] public void A_duplicate_kind_answers_kind_duplicate()
+[Fact] public void A_non_minimal_varint_answers_varint_not_minimal()   // 0x81 0x00 is not 1
+[Fact] public void A_varint_that_does_not_terminate_answers_varint_overflow()
+[Fact] public void A_declared_length_past_the_end_answers_field_truncated()
+[Fact] public void A_payload_above_the_cap_answers_payload_too_long()
+[Fact] public void A_nested_payload_carrying_kind_132_answers_socket_nesting()
+[Fact] public void A_known_kinds_wrong_shape_answers_field_malformed()
+[Fact] public void A_non_zero_affix_flags_varint_answers_field_malformed()   // contracts 9.9
+[Fact] public void Affix_entries_not_ascending_by_mod_id_answer_field_malformed()
+[Fact] public void The_encoder_never_produces_a_payload_the_decoder_refuses()
+~~~
+
+- [ ] **Step 3: Run them and confirm the missing type fails the build.**
+
+~~~bash
+dotnet test KhaozEngine.ItemInstances.Tests/KhaozEngine.ItemInstances.Tests.csproj -c Release --filter FullyQualifiedName~Payload
+~~~
+
+- [ ] **Step 4: Implement the format.** No header, no magic and no version byte, because a payload never
+  travels alone (contracts 9.1). `[Kind: varint uint16][Length: varint int32][Bytes: Length bytes]`,
+  repeated zero or more times. An EMPTY payload is zero bytes, which is what a plain stack has.
+- [ ] **Step 5: Implement the affix entry exactly as spec 3.4 pins it.**
+
+~~~
+[ModId: varint int32]     // a `mod` content row, never 0
+[Tier: byte]              // the mod's AUTHORED tier ordinal, 1 to 255, never 0
+[Position: uint16 LE]     // the roll position, contracts 6.4
+[Flags: varint uint32]    // reserved, 0 in v1, contracts 9.9
+~~~
+
+  `Position` is a FIXED two byte little endian `ushort` and not a varint: positions are uniform over the
+  whole range, so a varint would cost more on average. The list is sorted ASCENDING BY MOD ID, and a mod
+  id appears at most once, which is what makes the field canonical and therefore what makes spec 4.6's
+  byte comparison the stacking rule. Prefix versus suffix is NOT in the entry, it is read off the mod row.
+
+- [ ] **Step 6: Implement the socket entry and the ONE LEVEL rule.** Spec 3.5 over contracts 9.5:
+
+~~~
+[SocketTypeId: varint int32]           // 0 means no restriction
+[ContainedDefinitionId: varint int32]  // 0 means empty
+[ContainedInstanceId: varint uint64]   // 0 when empty, or when the contained item has no instance
+[NestedLength: varint int32]
+[Nested: NestedLength bytes]           // a payload in this same format
+~~~
+
+  The DECODER enforces the nesting limit: a nested payload containing kind 132 answers `socket-nesting`
+  rather than recursing. That is a structural limit and not a convention, and it is what stops a 45 byte
+  payload becoming a denial of service (spec 15.6). Socket ORDER is AUTHORED and never sorted, unlike the
+  affix list. The consequence is worth a doc comment: two otherwise identical items whose gems sit in
+  different sockets do not stack, which is correct, because they are different items.
+
+- [ ] **Step 7: Pin the closed reason set in ONE place.** `InstancePayloadReason` holds contracts 9.7's
+  eight tokens as `public const string`: `payload-too-long`, `field-truncated`, `kind-out-of-order`,
+  `kind-duplicate`, `varint-not-minimal`, `varint-overflow`, `socket-nesting`, `field-malformed`. A
+  counter is keyed on them (spec 12.6), so the set is closed and a ninth is a deliberate additive act.
+  Add a test asserting the public constant list has exactly those eight members, so a drive-by addition
+  goes red.
+- [ ] **Step 8: Expose the four members spec 2.2 names, plus the one task 1 needs.**
+
+~~~csharp
+public static bool TryDecode(ReadOnlySpan<byte> payload, Span<PayloadField> fields, out int fieldCount, out string? reason);
+public static int  Encode(ItemInstancePayloadBuilder builder, Span<byte> destination);
+public static string? Validate(ReadOnlySpan<byte> payload);
+public static int  PublicView(ReadOnlySpan<byte> payload, PropertyVisibility level, bool identified, uint revealedMask, Span<byte> destination);
+public static bool SequenceEqual(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right);
+public static bool IsCanonical(ReadOnlyMemory<byte> payload);
+public const int MaxInstancePayloadBytes = ItemSlot.MaxPayloadBytes;   // 512, contracts 9.6
+~~~
+
+  `PublicView` is implemented here as a stub returning the whole payload and is FINISHED in task 8, which
+  is where the visibility rule belongs. `TryDecode` NEVER throws.
+
+- [ ] **Step 9: Keep the unknown kind verbatim.** A decoder that meets a kind it does not know keeps the
+  field's exact bytes and its position, and re-emits them unchanged (contracts 9.4). The builder records
+  it as an opaque `(kind, bytes)` pair in its ordered field list. The preserved bytes participate in byte
+  equality, so two items differing only in an unknown field do not stack, which is the conservative answer.
+- [ ] **Step 10: Run the payload suite green, then run it once in Release.**
+
+~~~bash
+dotnet test KhaozEngine.ItemInstances.Tests/KhaozEngine.ItemInstances.Tests.csproj -c Release
+~~~
+
+- [ ] **Step 11: Commit.**
+
+~~~bash
+git add KhaozEngine.ItemInstances/ItemInstancePayload.cs KhaozEngine.ItemInstances/ItemInstancePayload.Shapes.cs KhaozEngine.ItemInstances/ItemInstancePayloadBuilder.cs KhaozEngine.ItemInstances/InstancePayloadReason.cs KhaozEngine.ItemInstances.Tests/Payload
+git commit -m "iteminstances(payload): the canonical tagged field codec and its goldens"
+~~~
+
+---
+
+### Task 6: Decoder fuzzing and the unknown-kind round trip (medium, gate: milestone 1.1)
+
+Spec 17 rows 2 and 3. Both are fences around task 5 rather than new behaviour, which is why they are their
+own task: a fuzzer folded into the codec commit is a fuzzer nobody tunes.
+
+**Files:**
+
+- Create: `KhaozEngine.ItemInstances.Tests/Payload/PayloadFuzzTests.cs`
+- Create: `KhaozEngine.ItemInstances.Tests/Payload/PayloadMutator.cs`
+- Create: `KhaozEngine.ItemInstances.Tests/Payload/UnknownKindTests.cs`
+
+**Interfaces:**
+
+- Consumes: task 5's codec and its goldens, `SeededRandomSource` from `KhaozEngine.Primitives`
+- Produces: a mutation corpus that widens for free whenever a golden is added
+
+- [ ] **Step 1: Write the unknown-kind round trip first.** A decoder whose registry deliberately OMITS a
+  kind the encoder wrote reproduces the input byte for byte, and the two items do NOT merge (spec 15.4).
+  Two facts, and the second is the one that matters: this is why unregistering a kind is forbidden, because
+  it would make two previously distinct items stack and destroy one identity.
+- [ ] **Step 2: Write the fuzzer as MUTATION OVER GOLDENS, never random bytes.** Spec 17's note says why:
+  random bytes reject at the first varint and prove nothing, while a mutation of a valid golden exercises
+  the paths a real corruption reaches. The corpus IS the checked-in goldens, so a new golden widens the
+  fuzzer for nothing.
+- [ ] **Step 3: Assert the triple, on every mutation.** No throw. A reason from the CLOSED set of eight.
+  The SAME reason for the same mutation across runs. The mutation classes are bit flips, truncations,
+  length lies, kind swaps, count lies and nested-depth injection, and each class is its own `[Theory]` case
+  so a red run names which class moved.
+
+~~~csharp
+[Theory]
+[InlineData(MutationClass.BitFlip)]
+[InlineData(MutationClass.Truncate)]
+[InlineData(MutationClass.LengthLie)]
+[InlineData(MutationClass.KindSwap)]
+[InlineData(MutationClass.CountLie)]
+[InlineData(MutationClass.NestDeeper)]
+public void Mutating_a_golden_never_throws_and_answers_a_stable_closed_reason(MutationClass kind)
+~~~
+
+- [ ] **Step 4: Assert no recursion past one level**, by feeding a mutation that nests kind 132 three deep
+  and asserting `socket-nesting` and a bounded stack. This is the denial-of-service fence of spec 15.6.
+- [ ] **Step 5: Take the seed as a constant in the test and never from the clock.** Contracts 14.2's
+  `SeededRandomSource` wraps `DeterministicRng`, so a failing mutation is reproducible from the seed the
+  test printed. A fuzzer whose corpus changes per run is a flake generator.
+- [ ] **Step 6: Run green and commit.**
+
+~~~bash
+dotnet test KhaozEngine.ItemInstances.Tests/KhaozEngine.ItemInstances.Tests.csproj -c Release --filter FullyQualifiedName~Payload
+git add KhaozEngine.ItemInstances.Tests/Payload
+git commit -m "iteminstances(payload): mutation fuzzing over the goldens"
+~~~
+
+---
+

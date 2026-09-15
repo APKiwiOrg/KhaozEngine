@@ -734,6 +734,33 @@ instance id 0. The first Grimhollow item that gains a property is the first inst
 **Expensive to change once data exists: yes for Ruinborne, no for Grimhollow.** Ruinborne's is a data
 migration over millions of rows with a dual-read window. Grimhollow's is a no-op.
 
+### 6.6 Dropped instances ride the region ground streams
+
+Grimhollow's drop design puts a dropped stack on a REGION GROUND STREAM as a `loot-created` event and takes
+it back through the unchanged `loot-claim` path (Grimhollow's
+`docs/design/ITEM-DROP-DESIGN-2026-09-14.md` section 5, "Durable ground sources": one atomic commit across
+the player's `bag-replaced` and one `loot-created` per ground stack on
+`grimhollow/loot/hollowmere/ground/{rx}_{rz}`, with claims and expiry staying on the paths goblin loot
+already uses). That design lands BEFORE these contracts (section 17, decision 12), so the contract is
+written against it rather than around it.
+
+**Contract: a ground stack carries the instance with it.**
+
+- A ground stack whose item has an instance carries the INSTANCE ID and the FULL PAYLOAD, both in the
+  durable `loot-created` event and in the engine's ground item spawn. Neither is re-derived at claim time
+  and neither is left out of the event.
+- The payload is FILTERED PER VIEWER by section 11 when it is replicated. What is durable is the whole
+  payload. What a viewer receives is what their level allows, through the one function 11.2 names, and a
+  ground item is no different from an equipped one in that respect.
+- A claim MOVES the same instance id into the claimant's container. It does not mint a new one. The
+  claimant is not special-cased either, so the dropper reclaiming their own drop takes the same path a
+  stranger does.
+
+Identity therefore survives a drop and a pickup, which is what keeps a dropped item traceable and what stops
+a drop-and-claim cycle from laundering one. `TileGroundItem.ItemId` is an `int` today (section 5.1), so the
+instance id and the payload are ADDITIVE fields on the ground item rather than a widening of an existing
+one, and an ordinary stack with no instance carries 0 and an empty payload for no cost.
+
 ## 7. Version identity and the per-page stamp
 
 ### 7.1 A content version is a number AND a hash
@@ -885,7 +912,8 @@ check must stay innermost because it needs the subject the token produced
 ### 7.6 How Grimhollow's joined config hash is replaced
 
 Grimhollow's door carries four layers today, and the fourth is the skilling config hash
-(`b-grimhollow.md:420-434`). The in-flight `feature/item-drop` branch changes that fourth layer's value to
+(`b-grimhollow.md:420-434`). The `feature/item-drop` branch, which lands first (section 17, decision 12),
+changes that fourth layer's value to
 `GrimhollowGameDataHash.Current`, a HYPHEN-JOINED pair of the skilling hash and a new item-properties
 hash, joined rather than rehashed so an operator reading a refusal can see which half moved, and with no
 colon in it because `GrimhollowConfigGate.TryParseMismatch` splits on colons
@@ -900,10 +928,13 @@ version layer of section 7.5, and `GrimhollowConfigGate` is deleted rather than 
 - The operator-legibility property the hyphen join was built for is preserved and improved: the refusal
   token in 7.5 carries BOTH sides' version numbers, so an operator sees "server 47, client 44" rather than
   having to diff two digests. That is strictly more legible than knowing which of two files moved.
-- Until phase 1 lands, the joined hash stands as shipped. This contract does not ask the in-flight branch
-  to change, and it explicitly does NOT adopt the hyphen join into the engine: an engine layer that joins
-  two sub-hashes would need a rule for how many sub-hashes there are, and the content version number
-  answers the same question with one comparable integer.
+- **The `feature/item-drop` branch lands FIRST**, decided by the owner at gate 0, so the joined hash stands
+  as shipped until adoption phase 1 replaces it. This contract does not ask that branch to change. It also
+  does NOT adopt the hyphen join into the engine: an engine layer that joins two sub-hashes would need a
+  rule for how many sub-hashes there are, and the content version number answers the same question with one
+  comparable integer. Landing the branch first is what keeps its `assets/config/items.jsonc` a migration
+  absorbed AT adoption, rather than a third authored content mechanism appearing after the contracts and
+  needing migration the moment it lands.
 - The `tradable` flag from `items.jsonc` becomes a per-definition field on the engine item base type, and
   the fail-closed every-live-item-needs-a-row rule becomes the publish validator's coverage check
   (section 10). The retired-items-answer-untradable rule becomes the retire policy in section 8.

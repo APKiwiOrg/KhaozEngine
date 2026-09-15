@@ -3866,10 +3866,11 @@ numbers are not representative (`KhaozEngine.Benchmarks/README.md:43`).
 Measured on an Apple Silicon Mac, macOS 26.6.2 arm64, .NET 10.0.12, 12 logical processors, always
 `-c Release`, seed 835, one language, `item` at 1,024 chunk slots and fetch concurrency 4 over a 20 Mbit
 token bucket. Every figure below is one run of `KhaozEngine.Benchmarks --catalog`, EXCEPT P3, P10 and P11,
-which were re-measured after the layout revision of 9.1 and 7.6 and are the median of five runs, for the
-reason the last block of this section gives. That re-measurement rewrote all three baselines whole, so their
-stored-byte fields are byte identical to stage 5's, which is the check that the publish path did not move,
-and their timing fields are the later session's. The baselines are checked in as
+which were re-measured after the layout revision of 9.1 and 7.6, for the reason the last block of this
+section gives: P3 and P10 are the median run of five at 50,000, taken by P3's own total, and P11 is the
+median of five compose runs. That re-measurement rewrote all three baselines whole, the 1,000,000 one as the
+median of three, so their stored-byte fields are byte identical to stage 5's, which is the check that the
+publish path did not move, and their timing fields are the later session's. The baselines are checked in as
 `KhaozEngine.Benchmarks/Baselines/catalog-v1-seed835-50000.json`,
 `catalog-v1-seed835-50000-compose.json` and `catalog-v1-seed835-1000000.json`. The command lines are in
 `KhaozEngine.Benchmarks/README.md` and are reproduced here in the order they must run:

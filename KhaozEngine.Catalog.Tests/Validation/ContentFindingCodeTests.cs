@@ -279,6 +279,67 @@ public class ContentFindingCodeTests
     }
 
     [Fact]
+    public void KEC0017_accepts_a_historic_rule_whose_destination_has_since_been_retired()
+    {
+        ContentTypeRegistry registry = EngineRegistry();
+        ContentSnapshot candidate = SnapshotAt(
+            registry,
+            7,
+            Item(10, "one", isRetired: true),
+            Item(11, "two", isRetired: true),
+            Item(12, "three"));
+        RemapRule[] rules =
+        [
+            new RemapRule(1, 3, ItemType, RemapRuleKind.ReplacedBy, 10, 11, default),
+            new RemapRule(2, 7, ItemType, RemapRuleKind.ReplacedBy, 11, 12, default),
+        ];
+
+        ContentValidationReport report = Validate(candidate, registry, rules: rules);
+
+        AssertNone(report, "KEC0017");
+        Assert.True(report.IsValid, Describe(report));
+    }
+
+    [Fact]
+    public void KEC0017_fires_on_a_historic_rule_whose_destination_never_existed()
+    {
+        ContentTypeRegistry registry = EngineRegistry();
+        ContentSnapshot candidate = SnapshotAt(registry, 7, Item(10, "one", isRetired: true));
+        RemapRule[] rules = [new RemapRule(1, 3, ItemType, RemapRuleKind.ReplacedBy, 10, 999, default)];
+
+        ContentValidationReport report = Validate(candidate, registry, rules: rules);
+
+        ContentFinding finding = Single(report, "KEC0017");
+        Assert.Equal(ItemType, finding.Type);
+        Assert.Equal(10, finding.Id);
+        Assert.Contains("does not exist", finding.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void KEC0017_fires_on_a_rule_introduced_now_whose_destination_is_retired_now()
+    {
+        ContentTypeRegistry registry = EngineRegistry();
+        ContentSnapshot candidate = SnapshotAt(
+            registry,
+            7,
+            Item(10, "one", isRetired: true),
+            Item(11, "two", isRetired: true),
+            Item(12, "three"));
+        RemapRule[] rules =
+        [
+            new RemapRule(1, 7, ItemType, RemapRuleKind.ReplacedBy, 10, 11, default),
+            new RemapRule(2, 7, ItemType, RemapRuleKind.ReplacedBy, 11, 12, default),
+        ];
+
+        ContentValidationReport report = Validate(candidate, registry, rules: rules);
+
+        ContentFinding finding = Single(report, "KEC0017");
+        Assert.Equal(ItemType, finding.Type);
+        Assert.Equal(10, finding.Id);
+        Assert.Contains("live at version 7", finding.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void KEC0018_fires_on_a_sequence_that_is_not_contiguous_from_one()
     {
         ContentTypeRegistry registry = EngineRegistry();

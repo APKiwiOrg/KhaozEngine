@@ -1,9 +1,7 @@
 using System;
-using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.IO.Compression;
 
 namespace KhaozEngine.Catalog;
 
@@ -74,7 +72,7 @@ public static class ContentChunkCodec
     /// The declared <c>uncompressedBytes</c> is over <see cref="ContentPackFormat.MaxChunkUncompressedBytes"/>,
     /// or a Brotli body expanded past the length its own header claims.
     /// </summary>
-    public const string ReasonTooLarge = "chunk-too-large";
+    public const string ReasonTooLarge = ContentCompression.ReasonTooLarge;
 
     /// <summary>The declared <c>storedBytes</c> differs from the body actually received.</summary>
     public const string ReasonStoredLength = "chunk-stored-length";
@@ -98,7 +96,7 @@ public static class ContentChunkCodec
     public const string ReasonTrailingBytes = "chunk-trailing-bytes";
 
     /// <summary>The Brotli body is not a stream this decoder can finish reading.</summary>
-    public const string ReasonDecompress = "chunk-decompress";
+    public const string ReasonDecompress = ContentCompression.ReasonDecompress;
 
     /// <summary>A stored file's canonical bytes do not digest to the hash the manifest named.</summary>
     public const string ReasonHashMismatch = "hash-mismatch";
@@ -175,17 +173,18 @@ public static class ContentChunkCodec
 
         string hash = ContentHash.OfChunk(canonical);
         ReadOnlySpan<byte> body = canonical.AsSpan(ContentPackFormat.ChunkHeaderBytes);
-        if (!TryCompress(body, brotliQuality, out byte[]? compressed))
+        byte[] scratch = new byte[body.Length];
+        if (!ContentCompression.TryCompress(body, brotliQuality, scratch, out int compressed))
         {
             return new EncodedContentChunk(
                 type.Type, chunkIndex, visibility, rows.Count, hash, canonical, canonical, false);
         }
 
-        byte[] stored = new byte[ContentPackFormat.ChunkHeaderBytes + compressed.Length];
+        byte[] stored = new byte[ContentPackFormat.ChunkHeaderBytes + compressed];
         canonical.AsSpan(0, ContentPackFormat.ChunkHeaderBytes).CopyTo(stored);
         stored[25] = ContentPackFormat.CompressionBrotli;
-        BinaryPrimitives.WriteUInt32LittleEndian(stored.AsSpan(32), (uint)compressed.Length);
-        compressed.CopyTo(stored.AsSpan(ContentPackFormat.ChunkHeaderBytes));
+        BinaryPrimitives.WriteUInt32LittleEndian(stored.AsSpan(32), (uint)compressed);
+        scratch.AsSpan(0, compressed).CopyTo(stored.AsSpan(ContentPackFormat.ChunkHeaderBytes));
 
         return new EncodedContentChunk(
             type.Type, chunkIndex, visibility, rows.Count, hash, canonical, stored, true);
@@ -440,25 +439,6 @@ public static class ContentChunkCodec
         BinaryPrimitives.WriteUInt32LittleEndian(destination[32..], (uint)storedBytes);
     }
 
-    static bool TryCompress(ReadOnlySpan<byte> body, int quality, [NotNullWhen(true)] out byte[]? compressed)
-    {
-        compressed = null;
-        if (body.Length == 0)
-        {
-            return false;
-        }
-
-        byte[] scratch = new byte[BrotliEncoder.GetMaxCompressedLength(body.Length)];
-        if (!BrotliEncoder.TryCompress(body, scratch, out int written, quality, ContentPackFormat.BrotliWindow)
-            || written >= body.Length)
-        {
-            return false;
-        }
-
-        compressed = scratch.AsSpan(0, written).ToArray();
-        return true;
-    }
-
     static bool CheckLengths(in ContentChunkHeader header, int fileLength, out string? reason)
     {
         if (header.StoredBytes != (uint)(fileLength - ContentPackFormat.ChunkHeaderBytes))
@@ -532,24 +512,10 @@ public static class ContentChunkCodec
             return true;
         }
 
-        using var decoder = new BrotliDecoder();
-        OperationStatus status = decoder.Decompress(stored, body, out int consumed, out int written);
-        if (status == OperationStatus.DestinationTooSmall)
-        {
-            // The stream expands past the length its own container claims, which is the case the bounded
-            // buffer exists for: it is a resource refusal and not a corrupt stream.
-            reason = ReasonTooLarge;
-            return false;
-        }
-
-        if (status != OperationStatus.Done || written != body.Length || consumed != stored.Length)
-        {
-            reason = ReasonDecompress;
-            return false;
-        }
-
-        reason = null;
-        return true;
+        // The stream expanding past the length its own container claims is the case the bounded buffer
+        // exists for, and ContentCompression is what keeps it a resource refusal rather than a corrupt
+        // stream in all three chunk formats.
+        return ContentCompression.TryFill(stored, body, out reason);
     }
 
     static bool TryWalkRowTable(

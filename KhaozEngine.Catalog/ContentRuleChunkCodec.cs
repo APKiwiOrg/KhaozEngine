@@ -2,7 +2,6 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.IO.Compression;
 
 namespace KhaozEngine.Catalog;
 
@@ -37,14 +36,17 @@ public static class ContentRuleChunkCodec
     /// <summary>The compression byte names a compressor this reader does not have.</summary>
     public const string ReasonCompression = "chunk-compression";
 
-    /// <summary>The declared uncompressed length is over the chunk ceiling, taken from the header alone.</summary>
-    public const string ReasonTooLarge = "chunk-too-large";
+    /// <summary>
+    /// The declared uncompressed length is over the chunk ceiling, taken from the header alone, or a Brotli
+    /// body expanded past the length its own header claims.
+    /// </summary>
+    public const string ReasonTooLarge = ContentCompression.ReasonTooLarge;
 
     /// <summary>The declared stored length is not the body length actually received.</summary>
     public const string ReasonStoredLength = "chunk-stored-length";
 
-    /// <summary>The body did not decompress to the length its header declared.</summary>
-    public const string ReasonDecompress = "chunk-decompress";
+    /// <summary>The body is not a stream this decoder can finish reading.</summary>
+    public const string ReasonDecompress = ContentCompression.ReasonDecompress;
 
     /// <summary>A sequence number skips one, so the chunk is not the full list from sequence 1.</summary>
     public const string ReasonSequenceGap = "rule-sequence-gap";
@@ -98,8 +100,7 @@ public static class ContentRuleChunkCodec
         ReadOnlySpan<byte> body = canonical.AsSpan(ContentPackFormat.RuleHeaderBytes);
 
         byte[] scratch = new byte[body.Length];
-        if (!BrotliEncoder.TryCompress(body, scratch, out int compressed, ContentPackFormat.BrotliQuality, ContentPackFormat.BrotliWindow)
-            || compressed >= body.Length)
+        if (!ContentCompression.TryCompress(body, ContentPackFormat.BrotliQuality, scratch, out int compressed))
         {
             return canonical;
         }
@@ -142,11 +143,10 @@ public static class ContentRuleChunkCodec
             if (stored.Length != body.Length) { reason = ReasonStoredLength; return false; }
             stored.CopyTo(body);
         }
-        else if (!BrotliDecoder.TryDecompress(stored, body, out int decompressed) || decompressed != body.Length)
+        else if (!ContentCompression.TryFill(stored, body, out reason))
         {
             // The destination is exactly the declared length, so a stream that expands past what its
-            // container claims is refused here rather than allocated for.
-            reason = ReasonDecompress;
+            // container claims is a resource refusal rather than a corrupt stream, and is told apart.
             return false;
         }
 

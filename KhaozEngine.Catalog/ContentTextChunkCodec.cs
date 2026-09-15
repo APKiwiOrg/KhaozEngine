@@ -3,7 +3,6 @@ using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.IO.Compression;
 using System.Text;
 using System.Text.Unicode;
 
@@ -55,14 +54,17 @@ public static class ContentTextChunkCodec
     /// <summary>The compression byte names a compressor this reader does not have.</summary>
     public const string ReasonCompression = "chunk-compression";
 
-    /// <summary>The declared uncompressed length is over the chunk ceiling, taken from the header alone.</summary>
-    public const string ReasonTooLarge = "chunk-too-large";
+    /// <summary>
+    /// The declared uncompressed length is over the chunk ceiling, taken from the header alone, or a Brotli
+    /// body expanded past the length its own header claims.
+    /// </summary>
+    public const string ReasonTooLarge = ContentCompression.ReasonTooLarge;
 
     /// <summary>The declared stored length is not the body length actually received.</summary>
     public const string ReasonStoredLength = "chunk-stored-length";
 
-    /// <summary>The body did not decompress to the length its header declared.</summary>
-    public const string ReasonDecompress = "chunk-decompress";
+    /// <summary>The body is not a stream this decoder can finish reading.</summary>
+    public const string ReasonDecompress = ContentCompression.ReasonDecompress;
 
     /// <summary>A key length is 0 or over 192.</summary>
     public const string ReasonKeyLength = "text-key-length";
@@ -110,8 +112,7 @@ public static class ContentTextChunkCodec
         ReadOnlySpan<byte> body = canonical.AsSpan(headerBytes);
 
         byte[] scratch = new byte[body.Length];
-        if (!BrotliEncoder.TryCompress(body, scratch, out int compressed, ContentPackFormat.BrotliQuality, ContentPackFormat.BrotliWindow)
-            || compressed >= body.Length)
+        if (!ContentCompression.TryCompress(body, ContentPackFormat.BrotliQuality, scratch, out int compressed))
         {
             return canonical;
         }
@@ -160,9 +161,8 @@ public static class ContentTextChunkCodec
             if (stored.Length != body.Length) { reason = ReasonStoredLength; return false; }
             stored.CopyTo(body);
         }
-        else if (!BrotliDecoder.TryDecompress(stored, body, out int decompressed) || decompressed != body.Length)
+        else if (!ContentCompression.TryFill(stored, body, out reason))
         {
-            reason = ReasonDecompress;
             return false;
         }
 

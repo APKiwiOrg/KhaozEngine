@@ -10,15 +10,16 @@ namespace KhaozEngine.Tests.Catalog.Validation;
 /// candidate that triggers exactly that code, in memory, with no store and no file, and asserts the code,
 /// the type and the id.
 /// <para>
-/// <b>Ten codes are present and cannot fire in phase 1</b>, and each has a test that pins it QUIET rather
-/// than one that triggers it, which is the same shape the four inheritance codes take. The reason is always
-/// that the code's producer has not shipped: <c>KEC0010</c>, <c>KEC0011</c>, <c>KEC0012</c> and
+/// <b>Twelve codes are present and cannot fire in phase 1</b>, and each has a test that pins it QUIET
+/// rather than one that triggers it, which is the same shape the four inheritance codes take. The reason is
+/// always that the code's producer has not shipped: <c>KEC0010</c>, <c>KEC0011</c>, <c>KEC0012</c> and
 /// <c>KEC0037</c> need the family declarations and the per-row family claim, which are authoring data that
 /// never enters a pack and that no snapshot carries. <c>KEC0028</c> is refused earlier, at registration,
 /// so a live registry cannot hold the value it looks for. <c>KEC0032</c> to <c>KEC0035</c> wait on the
 /// inheritance resolver, which <c>KEC0031</c> refuses the input to. <c>KEC0041</c> is a statement about a
 /// Fork EDIT and <c>KEC0039</c> about a rollback, and both are emitted by the authoring store rather than
-/// by this sweep.
+/// by this sweep. <c>KEC0014</c> waits on the client chunk encode, and its two tests pin the legal
+/// per-field override of spec 6.7 ACCEPTED, which is the reading that got <c>KEC0013</c> withdrawn.
 /// </para>
 /// </summary>
 public class ContentFindingCodeTests
@@ -200,7 +201,7 @@ public class ContentFindingCodeTests
     }
 
     [Fact]
-    public void KEC0014_fires_on_a_server_only_field_in_a_client_side_type()
+    public void KEC0014_accepts_the_per_field_server_only_override_on_a_client_type()
     {
         ContentFieldSchema schema = Schema(
             new ContentFieldEntry("secret", ContentFieldKind.Int, null, ContentVisibility.ServerOnly, false));
@@ -209,9 +210,22 @@ public class ContentFindingCodeTests
 
         ContentValidationReport report = Validate(Snapshot(registry, row), registry);
 
-        ContentFinding finding = Single(report, "KEC0014");
-        Assert.Equal(GameType, finding.Type);
-        Assert.Equal(5, finding.Id);
+        AssertNone(report, "KEC0014");
+        Assert.True(report.IsValid, Describe(report));
+    }
+
+    [Fact]
+    public void KEC0014_accepts_a_required_server_only_field_carrying_a_value()
+    {
+        ContentFieldSchema schema = Schema(
+            new ContentFieldEntry("secret", ContentFieldKind.Int, null, ContentVisibility.ServerOnly, true));
+        ContentTypeRegistry registry = GameRegistry(schema);
+        ContentRow row = GameRow(5, "thing", ContentFieldValue.OfNumber(ContentFieldKind.Int, 3));
+
+        ContentValidationReport report = Validate(Snapshot(registry, row), registry);
+
+        AssertNone(report, "KEC0014", "KEC0005");
+        Assert.True(report.IsValid, Describe(report));
     }
 
     [Fact]

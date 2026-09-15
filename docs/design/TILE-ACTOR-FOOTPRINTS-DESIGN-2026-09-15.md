@@ -2,7 +2,7 @@
 
 Date: 2026-09-15
 
-Status: Draft, awaiting owner sign-off on section 13
+Status: Signed off by the owner on 2026-09-15 (section 13), implementation in rounds (section 14)
 
 Issue: [#897](https://github.com/APKiwiOrg/KhaozEngine/issues/897). Resolves
 [#741](https://github.com/APKiwiOrg/KhaozEngine/issues/741). First consumer: Grimhollow's 2x2 cow,
@@ -287,7 +287,9 @@ Additive unless marked.
 - **Interest measured from the footprint.** Section 8.1.
 - **Sizes on `TileAttackContext`.** No rule reads them yet. Ranged combat is the round that will.
 
-## 13. Open choices for owner sign-off
+## 13. Choices, ruled by the owner (2026-09-15)
+
+All seven were taken as recommended.
 
 1. **Where the size lives.** Recommended: on `TileMoveState` (section 4), not a per-definition simulator.
 2. **How clients learn it.** Recommended: the field on the replicated move state (section 5), not a separate

@@ -109,8 +109,9 @@ spec's status codes require:
 | `KhaozEngine.Primitives` | Gains `IRandomSource`, `SeededRandomSource` and `CryptographicRandomSource` (contracts 3.2 and 14.1). Additive, and it is the CONTRACTS' change rather than this spec's: it is listed here because this spec takes a dependency on the result. |
 
 The first two land in phase 1 milestone 1.4 (section 18.1) and neither is a contract change. The third lands
-whenever either scope needs it first, which is milestone 1.3 here, and it is already written into the
-contracts. Section 10.1 spends the reasoning for the admin pair.
+whenever either scope needs it first, which is milestone 1.1 here: the decoder fuzzer that GATES 1.1 is seeded
+with `SeededRandomSource` (15.2), well before `LootRoller` takes an `IRandomSource` in 1.3. It is already
+written into the contracts. Section 10.1 spends the reasoning for the admin pair.
 
 The layering rules are the README's, surveyed at `a-engine.md:1373-1407`. A pure catalog with no SQL belongs in
 `Foundation` beside `Items` and `Stats`. Anything with a SQL provider is an opt-in SIBLING pair and is never
@@ -4808,7 +4809,7 @@ each with its own gate, so it is not one undivided landing:
 
 | Milestone | Ships | Gate |
 |---|---|---|
-| 1.1 | `KhaozEngine.Catalog`: registry, field schema, codecs, varint, hashes, the four pack formats, remap rules, `FileSystemPackStore`, `ContentPackReader`, plus `IContentSnapshot` and `ItemRow` (2.2) | The golden files of 15.1, the decoder fuzzing of 15.2, the cross-version round trips of 15.3 |
+| 1.1 | `KhaozEngine.Catalog`: registry, field schema, codecs, varint, hashes, the four pack formats, remap rules, `FileSystemPackStore`, `ContentPackReader`, plus `IContentSnapshot` and `ItemRow` (2.2), and the `KhaozEngine.Primitives` random seam of 2.1 that the fuzzer seeds from | The golden files of 15.1, the decoder fuzzing of 15.2, the cross-version round trips of 15.3 |
 | 1.2 | `Catalog.Authoring`, `Catalog.Sqlite`, `Catalog.SqlServer`: temporal rows, draft, change set, field audit, id allocator, publish | The provider conformance suite of 15.5 on both backends, the crash-safety cases of 15.6 |
 | 1.3 | `ContentRuntime`, the boot sequence, fail-closed exit 3, the derived indexes, `IContentLoadIndex` and boot step 7b, `LootRoller`, the `--catalog` benchmark mode | The twelve boot facts of 15.7, plus P3, P7, P9 and P11 measured at 50,000 |
 | 1.4 | The sixteen actions, the bundle, the empty-database rule, operator identity, and the admin-result change of section 10.1: `AdminActionStatus.Conflict`, an object-carrying error payload on `AdminActionResult`, and the matching arm in `AdminHttpServer.DispatchActionAsync` | The action tests, including one asserting a real 409 body with `expectedBaseVersion`, plus P5 and P6 measured |

@@ -3376,3 +3376,53 @@ Ruinborne's durable rows reference the catalog by a key that is about to gain an
    reported it. Nothing converts silently and nothing converts wrongly without a line.
 4. **`ThePublishedManifestIsStable`.** The same shuffled-registration-order test as Grimhollow's fourth,
    against Ruinborne's type set, which is section 15.7's engine test applied to a second real consumer.
+
+### 17.9 The Ruinborne issues this resolves
+
+Each row names the issue, what in this design resolves it, and where. A resolution is written against this
+spec's sections rather than against a promise, so a reviewer can check the claim.
+
+| Issue | State today | What resolves it | Where |
+|---|---|---|---|
+| [#506](https://github.com/APKiwiOrg/Ruinborne/issues/506) | open | The console cannot write a row the server will reject: an undeclared field is a 400 at the API boundary, `KEC0025` refuses `stackable` with `max_stack` 1 at publish, and boot fails closed rather than falling back. The ungated facade method is deleted with the facade. | 3.7, 5.2, 6.4, 9.6, 17.7 |
+| [#509](https://github.com/APKiwiOrg/Ruinborne/issues/509) | open | A field-level audit through the schema: one row per changed field with before and after, plus the forwarded operator identity instead of a display name. | 4.6, 10.10, 17.7 |
+| [#510](https://github.com/APKiwiOrg/Ruinborne/issues/510) | open | A type gets its editor by registering, so `item_stat` and `item_ability_modifier` stop being hand-SQL-only content. There is no such thing as a registered type with no page. | 10.3, 17.7 |
+| [#511](https://github.com/APKiwiOrg/Ruinborne/issues/511) | open | `base_stats_json` is not in the `item` schema, so after the import it is not a column, not a drawer field and not a codec arm. | 3.3, 17.2, 17.7 |
+| [#512](https://github.com/APKiwiOrg/Ruinborne/issues/512) | open | There is no code-default catalog to fall back to, and a load failure is exit code 3 with findings on stderr rather than a `Console.WriteLine`. Resolved by removing the destination, not by improving the message. | 9.6, 17.5 |
+| [#325](https://github.com/APKiwiOrg/Ruinborne/issues/325) | open | The wholesale rejection the issue argues to KEEP is kept, because a pack is atomic. The diagnostic the issue names as the defect is fixed: a content finding and a transport failure are different rows of section 9.6's table and are never confusable. | 9.5, 9.6, 17.5 |
+| [#199](https://github.com/APKiwiOrg/Ruinborne/issues/199) | open | `item_type` and `slot` stop being bare varchars. `item_type` becomes `item.tags`, whose vocabulary is the `tag` content type with a real id and a real reference, and `slot` becomes `item.equip_profile`, a key reference to a game type. A tag row IS the reference table the issue asks for. | 3.2, 3.3, 17.2 |
+| [#313](https://github.com/APKiwiOrg/Ruinborne/issues/313) | open | There is one decode path per type, the registered codec, so the hand-built `RarityDef` the item loader constructs instead of calling the shared mapper has nothing to drift from. The loader is deleted. | 3.6, 17.5 |
+
+Two more are touched and neither is claimed as resolved.
+[#279](https://github.com/APKiwiOrg/Ruinborne/issues/279), asking that `ItemDef.Validate` forbid equippable
+plus stackable, is GENERALIZED by `KEC0022` (a definition declaring durability or sockets is stackable) rather
+than answered: a row with an `equip_profile` and no durability is still publishable, and a game that wants the
+stricter rule registers it as a per-type validator. [#299](https://github.com/APKiwiOrg/Ruinborne/issues/299)
+stays open and stays Scope B's precondition, as section 17.1 says.
+
+### 17.10 The order of steps
+
+1. Engine phase 1 ships (section 18) and Ruinborne pins it. Unlike Grimhollow there is no branch to land
+   first, so this is the first step.
+2. Register the five engine types and the game types of section 17.2. No behaviour change, nothing reads them.
+3. Deploy normally, so every pending PostDeploy correction has been applied to the live rows.
+4. Build the bundle tool, run it against a restored copy of the live database, and read the conversion report
+   (section 17.6). This is the human review gate and it is the step that cannot be automated away, because
+   only the owner knows whether a value that moved by a rounding step is acceptable.
+5. Import into an empty catalog database and publish version 1 through `catalog-import` then
+   `catalog-publish`.
+6. Land the four tests of section 17.8. All four green before anything reads the catalog.
+7. Switch the SERVER's readers over, one type at a time, each with its loader deleted in the same commit:
+   items and rarities, then weapons, then abilities and modifiers, then loot, then NPCs and spawns.
+8. Switch the CLIENT over: read the cached pack instead of `ItemClientState`, delete `ItemRosterPush`, retire
+   message kinds 16 and 17, and change the bag message's `ItemIndex` from a byte position to an int32 id.
+9. Add the content layer to the connect door. This is the step that requires every client to update at once,
+   the same boundary Grimhollow's step 9 has, and for the same reason.
+10. Delete the five loaders, `RuinborneItems`, `RuinborneRarities.DefaultRarities`, and every content block
+    and content correction in `PostDeploy.sql`. The owned-item repairs stay.
+11. Rewire the console onto the authoring API and delete `ContentStore` and the seven pages (section 17.7).
+12. Scope B, separately: migrate `character_inventory.item_id` to the int32 definition id, after
+    [#299](https://github.com/APKiwiOrg/Ruinborne/issues/299) is closed.
+
+Steps 1 to 7 are additive and shippable one at a time. Step 8 and step 9 ship together or the bag names ids a
+client cannot resolve, and step 9 is the release boundary.

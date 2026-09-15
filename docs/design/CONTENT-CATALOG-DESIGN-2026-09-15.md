@@ -3572,3 +3572,98 @@ cheap, and this spec's rule that codes are never renumbered is a convenience for
 durability constraint), the exit code 3 and its stderr text, the `FileSystemPackStore` directory sharding, the
 action names and their status codes, the per-field visibility assignments, the package names, the benchmark
 flags, and every localization key including Grimhollow's two renames in 16.5.
+
+## 20. Contract change requests
+
+Contracts 18 sets the rule: a spec may REFINE anything in the contracts and may not CONTRADICT it, and when
+a spec finds it NEEDS a contradiction, the change comes back to the contracts first, is amended there, and
+both specs are re-read against the new text before either is approved. Two requests follow. Both are narrow,
+both are stated with the change written out, and the rest of this spec is designed on the contracts AS
+WRITTEN so that a refusal of either costs an editor feature and a paragraph rather than a redesign.
+
+### CCR-1: an `AssetReference` value kind in contracts 4.7
+
+**Contract section:** 4.7, the value kind list.
+
+**What needs to change:** add `asset reference` to the list of value kinds, defined as a varint length
+followed by UTF-8 bytes, character set `a-z0-9_./-`, at most 128 bytes.
+
+**Why.** Three of the `item` type's fields are asset references: `icon`, `mesh` and `held_mesh`, replacing
+Grimhollow's `ItemIcons.RosterIcons`, `GroundItemMeshes.Roster` and `GrimhollowHeldMeshes.For` and
+Ruinborne's `item_def.icon_id` (section 3.3). Their values look like `kit/unknown_item.glb`
+(`b-grimhollow.md:709`), which cannot be a content key because keys are `a-z0-9_` only with no dot and no
+slash (contracts 5.3), and contracts 4.7's kind list has no plain-string kind. So on the contracts as
+written the only home for them is `opaque bytes`, which is what section 3.3 specifies and what the design
+assumes throughout.
+
+**What the absence costs, exactly.** Nothing in the pack format, nothing in the runtime and nothing in
+validation: the codec constrains the character set and the length either way, and `KEC0026` still caps the
+row. It costs ONE thing, and it is the thing contracts 4.7 lists first among its three reasons for existing:
+a generic editor cannot know these bytes are text, so it renders a hex box where an author wants a file path
+with a typeahead. Every consumer console would then special-case three field names by hand, which is the
+bespoke-screen-per-type outcome the field schema exists to prevent.
+
+**If refused:** section 3.3 stands unchanged, the three fields stay `opaque bytes`, and each console adds a
+hand-maintained list of which opaque fields are really paths. Section 21 does not carry this as a question,
+because it is a contracts decision rather than an owner preference.
+
+### CCR-2: contracts 5.1 needs a narrow exception for a one-time bundle import
+
+**Contract sections:** 5.1 (allocation), against 6.5 (how the two consumers' existing identities map).
+
+**What needs to change:** contracts 5.1 says "Ids are allocated by the AUTHORING STORE, never by an
+importer, a code constant or a file order." Add the exception: **`catalog-import` into an EMPTY database MAY
+carry explicit ids, and the store adopts them and sets its high-water mark above the highest imported id per
+type. No other write path may name an id, ever.**
+
+**Why.** Contracts 6.5 already requires the outcome that 5.1 forbids the mechanism for. It says of
+Grimhollow: "its definition ids map one to one and no stored container changes value", and grades the
+migration "no" in its own expensive column because it is a no-op. That is only true if the import PRESERVES
+ids 1 to 35 rather than allocating fresh ones. Section 16.4 specifies exactly that, and it is the only way
+the outcome contracts 6.5 promises can be reached, because the ids already exist in every stored
+`ItemContainer` blob and `GrimhollowJournalContracts.ValidateContainer` THROWS on an unknown item id, so a
+moved id is a player who cannot log in (`b-grimhollow.md:545-556`).
+
+So this is a contradiction INTERNAL to the contracts, surfaced by writing the adoption plan, rather than
+this spec wanting something new. Two sections cannot both be right.
+
+**Why the exception is safe as scoped.** The empty-database rule (section 10.9) already makes import a
+once-ever operation per database, refused with a 409 otherwise, so there is no second import to disagree
+with the first. The store sets `reserved_through` and `issued_through` to the maximum imported id per type
+immediately afterwards (section 16.4), so every subsequent id comes from the allocator under the ordinary
+reserve-before-issue rule and the never-reuse guarantee of contracts 5.1 is untouched. The spirit of 5.1 is
+that no ONGOING path mints an id outside the store, and that spirit survives intact.
+
+**If refused:** Grimhollow cannot adopt without renumbering its 35 item ids, which rewrites every stored
+container in production and contradicts contracts 6.5's own grading. There is no third option, so this
+request is a genuine blocker on phase 1 rather than a preference.
+
+### A note that is NOT a change request
+
+`KECT`, the per-language text chunk magic, is added by this spec (section 7.1) and contracts 15 does not
+list it. That is not a contradiction: contracts 15 gives the RULE for magics, a four-character ASCII prefix
+on a format stored standalone, and lists the four it knew about. It also grades the case explicitly,
+"expensive to change once data exists: yes for endianness, the varint definition and the digest algorithm.
+**No for adding a magic** or bumping a version." So `KECT` is a refinement under the rule and is recorded
+here only so a reader diffing the two magic lists knows it was deliberate.
+
+### What was re-read, and found consistent
+
+Sections 1 to 15 of this spec were re-read against the contracts after the adoption plans were written,
+because an adoption plan is where a drift shows up. CCR-2 is what that pass found. These are the places the
+pass checked hardest and cleared, named so a reviewer knows where to look rather than re-deriving the list:
+
+| This spec | Contract | Verdict |
+|---|---|---|
+| The five packages, 2.1 | 3.2 | Identical set. `KhaozEngine.Content` untouched, as 3.1 requires. |
+| Engine type ids 1 to 5, 3.1 | 4.3 | Inside `1` to `255`. Scope B's `256` to `1023` and the games' `1024` upward left alone. |
+| `chunkSlots` 4,096 and 16,384, 3.1 | 4.5 | Both powers of two inside `256` to `65,536`. 4.5 explicitly licences per-type tuning with spike measurements. |
+| Loot entries as their own type, 3.1 | 4.7 | A refinement. 4.7's kind list has no repeated group, and this avoids needing one, which is why no CCR asks for one. |
+| Family blocks, 3.8 | 5.2 | Same bounds, same alignment rule, same second-block behaviour, same never-deleted rule. |
+| Definition ids allocated reserve-before-issue, 4.7 | 5.1, 6.2 | A refinement. 6.2 states the ORDER rule for instance ids and 5.1 leaves definition-id mechanics open, so applying the same order is narrowing, not contradicting. |
+| `KEC0014`, a `Client` chunk carrying a `ServerOnly` field, 5.2 | 11.3 | Exactly 11.3's second bullet, a publish-time refusal rather than a warning or a silent strip. |
+| `chance_bp` basis points out of 10,000, 3.5 | 13.2 | The same percent representation and the same round-half-up shape, so there is one convention rather than two. |
+| The connect door layer order, 8.5 | 7.5 | Content sits inside world and outside auth, and a client that is behind is refused rather than admitted read-only, which is gate 0 decision 6. |
+| The page stamp is the number, 12.1 | 7.2, gate 0 decision 5 | This spec supplies the number and never asks a page to carry a hash. |
+| Version number monotonic and never skipped, 12.1 | 7.1, 8.3 | A refinement. 7.1 makes the number the ordering, and "never skipped" is what makes "older than the rule" decidable. |
+| Retired rows stay in the pack forever, 3.9 | 5.1, 8.6 | Same rule, same irreversibility, and the retire policy is on the remap rule rather than the row, as 8.2 has it. |

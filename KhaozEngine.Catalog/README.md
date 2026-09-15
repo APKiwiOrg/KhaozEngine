@@ -64,6 +64,145 @@ string chunkHash = ContentHash.OfChunk(canonicalChunkBytes);
 var key = new ContentKey(rowBlob, start, length);       // no string materialised
 ```
 
+## The registry and the schema
+
+- `ContentTypeRegistry` - the registry of contracts 4.2, per INSTANCE and never a static: registration runs
+  once at process start, `Freeze()` closes it at the first pack load, and a later registration throws. Lookup
+  is by `ContentTypeId` or by type key, ordinally, and `ByTypeId` is sorted ascending always, so no ordinal
+  anywhere depends on the order a host registered in.
+- `ContentTypeRegistration` - what one registration was handed, held immutably: the band, the id, the key, the
+  codec, the optional per-type validator, the schema, the default visibility, the chunk slots, the row cap,
+  the optional id ceiling and the optional load index.
+- `ContentRegistrationBand` - which ids a caller is entitled to, `Engine` 1 to 255, `Instances` 256 to 1023
+  and `Game` 1024 to 65535. It is an entitlement rather than a capability, and id 0 is reserved forever.
+- `ContentTypeId` - the stable numeric type id as a value, with `IsEngine`, `IsInstances` and `IsGame`.
+- `ContentFieldSchema` and `ContentFieldEntry` - one type's ORDERED field list, which a row's values are
+  parallel to BY INDEX rather than keyed by name, so a codec is a positional walk. An entry carries its name,
+  its kind, a reference target, its visibility, whether a live row must carry it and a scaled int's scale.
+- `ContentFieldKind` - the seven value kinds of contracts 4.7, numbered durably because the authoring store
+  writes the number: `Int`, `ScaledInt`, `Bool`, `KeyReference`, `TagList`, `LocalizedTextKey` and
+  `OpaqueBytes`. A `LocalizedTextKey` is a MARKER carrying no value and no bytes.
+- `ContentVisibility` - `Client` or `ServerOnly`, per type and per field, and the whole basis of the two
+  manifests.
+- `IContentRowCodec` and `ContentRowCodecBase` - the only path between a row and its canonical bytes.
+  The base class IS the positional walk, driven by the schema: a row body opens with the row's own key,
+  every field follows in declared order, an ABSENT optional field writes the zero form of its kind (one
+  `00` byte in every case) and a derived marker writes nothing at all. A type subclasses it only to add a
+  constraint the generic walk cannot express, checked on both sides so an encoder cannot write a row its own
+  decoder refuses.
+- `IContentLoadIndex` - a derived table one type builds ONCE at boot, after the engine's own indexes, in type
+  id order, before the validator. It may read another type's rows and may not read another index, and it
+  throws to fail the boot closed rather than returning a partial index.
+- `ContentRegistrationException` - a registration rule of contracts 4.2 to 4.5 or 4.7 was broken, which is a host
+  bug at process start and never a content defect.
+- `ContentTextKey` - the ONE derivation of a content string's localization key,
+  `<type key>.<content key>.<field>` (contracts 12.1). Derived, never authored, never stored, capped at
+  `MaxKeyLength` 192.
+
+## The six engine content types
+
+`EngineContentTypes.Register(registry)` registers all six, once, before any pack loads. It carries their
+stable ids and keys, plus the two type keys the engine writes down and a GAME registers under,
+`equip_profile` and `socket_type`.
+
+- `TagContentType` - `tag`, id 1, the tag vocabulary contracts 4.6 makes content rather than strings. A
+  derived name and the console's `sort` order, nothing else.
+- `ItemContentType` - `item`, id 2, the item base of spec 3.3: tags, stacking, tradability, value, three
+  asset references, the two icon-shot angles, durability, the socket CAP and the late-bound equip profile.
+  `IsAssetReference` is the shape it enforces, at most 128 bytes of `a-z0-9_./-`.
+- `StatContentType` - `stat`, id 3, contracts 13.1's table. A fixed power-of-ten `scale` with the stored
+  integer scaled by it, so there is no float stat and no float modifier anywhere.
+- `LootTableContentType` - `loot_table`, id 4, `ServerOnly` at the type level, so the whole family is omitted
+  from every client manifest.
+- `LootEntryContentType` - `loot_entry`, id 5, one weighted row of one table, with a larger chunk and a row
+  cap of its own because entries outnumber tables.
+- `BaseSocketContentType` - `base_socket`, id 6, one socket an item base is authored WITH, in authored order,
+  which `item.socket_max` caps rather than describes.
+
+## The four pack formats
+
+Every one of them opens with a four-character ASCII magic and a `ushort` format version, and a version
+mismatch refuses the WHOLE record with a reason token. Every decode entry point is total.
+
+- `ContentChunkCodec` - the `KECC` chunk file: a 36 byte header that is never compressed, then a row table of
+  `[id varint][flags byte][length varint]` strictly ascending by id and the row bodies concatenated in the
+  same order. A row's offset is not stored, it is the running sum. `Encode` produces the canonical bytes, the
+  content address and the stored file, storing uncompressed whenever Brotli does not shrink the body.
+  `TryReadHeader` takes every refusal derivable from the header alone and allocates nothing, `TryDecode`
+  walks the table, and `TryVerify` checks a stored file against an address without decoding its rows.
+- `ContentChunk`, `ContentChunkRow`, `ContentChunkHeader` and `EncodedContentChunk` - the decoded chunk with
+  its walked table, one row on its way in, the 36 header bytes as a value, and the encode result carrying the
+  canonical bytes, the hash and the stored file. `IsRetired(id)` is answered from the table with no row
+  decode.
+- `ContentChunkAssembler` - the publish-side arena: every row body lands in ONE growable buffer and the row
+  list is built from offsets at the end, so a chunk of a thousand rows is one buffer rather than a thousand.
+  It is itself the `IBufferWriter<byte>` a row codec encodes into.
+- `ContentManifestCodec` - the `KECM` manifest FILE, hashes raw 32 bytes in the file and lower hex only as
+  text. It refuses the other side's manifest, a client manifest naming a server-only type, a slot count that
+  disagrees with the local registry, and any ordering the format declares.
+- `ContentManifest`, `ManifestTypeEntry`, `ManifestChunkEntry`, `ManifestLanguageEntry` and
+  `ContentManifestSide` - one side's manifest: the version number, the engine format generation, the two
+  consumer build ordinals, the rule chunk hash, every type with its chunks and every language.
+  `TryMatchChunkHeader` is the one refusal that binds the per-chunk `uncompressedBytes` to reality.
+- `ContentManifestText` - the canonical TEXT the two manifest digests are taken over, which is a different
+  thing from the file layout: collections are sorted here rather than assumed sorted, so the digest does not
+  depend on the order a publisher walked its registry in.
+- `ContentRuleChunkCodec`, `RemapRule`, `RemapRuleKind`, `RemapRuleCodec` and `RemapRuleSet` - the `KECR`
+  chunk, ONE per manifest, holding the FULL rule list from sequence 1 rather than a delta, because a durable
+  page can be arbitrarily old. Four v1 kinds (`ReplacedBy`, `Retired`, `MovedToLegacy`, `StackCapLowered`),
+  append only, no delete kind and no delete path. `RemapRuleSet.TryResolve` walks a from-id and a page stamp
+  forward to the id a page should carry now.
+- `ContentTextChunkCodec`, `ContentTextChunk` and `ContentTextChunkEnumerator` - the `KECT` per-language
+  chunk, one per language with its own hash so a client downloads only what it wants. The header is VARIABLE
+  because the language tag sits inside it and inside the digest, and the decoded chunk keeps its body as
+  BYTES with a non-allocating walk over it, so nothing becomes a string until something asks.
+
+The four formats are pinned by the checked-in golden set in `KhaozEngine.Catalog.Tests/Goldens`, which every
+decoder is also fuzzed against.
+
+## The read side
+
+- `IContentSnapshot` - the narrow read seam every consumer outside this package is written against, seven
+  members: the version number, the identity, a row by id, an id by key, every row of a type, the rule list
+  and the retired bit. It carries no authoring concept, no chunk and no mutation.
+- `ContentSnapshot` - the immutable holder behind it, rows ordered by id whatever order they arrived in.
+- `ContentSnapshotBuilder` - the ONE way a snapshot is made, so publish, boot and a test build one the same
+  way. It refuses a programming error and never a content defect: a duplicate id, a duplicate key and a
+  malformed key all go in untouched, because each of them IS a finding for the validator to report.
+- `ContentRow` and `ContentFieldValue` - the generic row a codec-free consumer sees, its values parallel to
+  the schema by index. A value holds a number or bytes, never both, and an absent optional field carries
+  `IsAbsent` rather than a sentinel.
+- `ContentVersionIdentity` - the version number and its manifest hash, the pair that travels together.
+- `ItemRow` - the typed view over the engine `item` type, and the only typed view in the catalog: a
+  `ref struct` over the row body with the four hot fields decoded at construction, for the stacking and
+  generation paths a field-by-name walk does not budget for.
+
+## Pack store and reader
+
+- `IPackStore` - the content-addressed store of spec 8.1, four members and no more: `ExistsAsync`,
+  `GetAsync` (null for absent rather than a throw), `PutAsync` and `ListAsync`. The name IS the content.
+- `IPackStorePruning` - the delete path, deliberately separate, so a read-only provider cannot be asked to
+  prune and a misconfigured one cannot delete a production pack through the common interface.
+- `PackVersionPointer` and `PackDurability` - the two manifest hashes of one published version, which is the
+  ONE object in a store not named by its own hash, and how hard a provider works to survive a power cut.
+- `FileSystemPackStore` - the local provider: one file per hash under a two-level shard derived from the
+  hash itself, written to a temporary name in the same directory and then moved. The version pointer lives
+  outside the shard tree under `versions/`, because a shard name is derived from a hash and a version number
+  is not one.
+- `ContentPackReader` - the ONE reader, shared by the server and the client, which differ only in when they
+  call it. `ReadAllAsync` is the server's eager boot path, `ReadRowAsync` is the client's lazy one and
+  touches at most the chunk whose slots cover the id, and `ReadChunkAsync` never refetches a chunk it holds.
+  Verify comes before decode, always. `ReadManifestAsync` fetches one manifest by hash and checks that its
+  canonical text digests back to the name it was fetched under, and the static `TryVerify` dispatches on the
+  magic, so a caller hashes an object the way the publisher did rather than guessing.
+- `ContentManifestRead`, `ContentChunkRead`, `ContentRowRead` and `ContentPackRead` - one attempt each, every
+  one carrying a stable reason token rather than throwing. The reasons this type adds (`hash-mismatch`,
+  `manifest-hash-mismatch`, `chunk-fetch-failed`, `chunk-type-unregistered`) are FETCH outcomes and are
+  outside the decode set on purpose.
+- `ContentPackException` - a pack STORE asked to write bytes under a name they do not digest to, or under a
+  name that is not a content address at all. It is the one pack failure here that throws, because a bad PUT
+  is the publisher's own programming error on the publisher's own machine and not bytes from a peer.
+
 ## Validation
 
 `ContentValidator.Validate(candidate, previous, rules, registry)` is the ONE validator, shared by publish,

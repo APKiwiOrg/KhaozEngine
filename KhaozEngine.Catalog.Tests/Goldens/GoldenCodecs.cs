@@ -14,12 +14,20 @@ namespace KhaozEngine.Tests.Catalog.Goldens;
 /// <param name="Canonical">The file's OWN canonical bytes, decompressed, or null when it refused.</param>
 /// <param name="ReEncoded">What re-encoding the decoded values produced, or null when it refused.</param>
 /// <param name="Stage">Which half a throw came out of, for an assertion message that names it.</param>
+/// <param name="RowReason">
+/// The first ROW refusal from walking a decoded chunk's rows through the registered type's codec, or null
+/// when every row decoded or when the chunk's type is not one this build registers. It is separate from
+/// <paramref name="Reason"/> because a chunk whose container is well formed and whose row bodies are garbage
+/// is a chunk that DECODED: the container round trip still has to hold, and a mutated row body is expected
+/// to be nonsense most of the time.
+/// </param>
 internal sealed record GoldenRoundTrip(
     bool Decoded,
     string? Reason,
     byte[]? Canonical,
     byte[]? ReEncoded,
-    string Stage);
+    string Stage,
+    string? RowReason = null);
 
 /// <summary>
 /// The shared decode, canonicalise and re-encode path the golden assertions and the decoder fuzzer both
@@ -34,6 +42,13 @@ internal sealed record GoldenRoundTrip(
 /// </summary>
 internal static class GoldenCodecs
 {
+    /// <summary>
+    /// The six engine types, registered once and shared across every round trip. It is only READ after
+    /// construction, so the goldens and the fuzzer's theory cases may run against it in parallel, and the
+    /// alternative of a fresh registry per mutant would register six types 60,000 times a run.
+    /// </summary>
+    static readonly ContentTypeRegistry Engine = EngineRegistry();
+
     /// <summary>The <c>KECC</c> chunk kind, as <c>goldens.json</c> names it.</summary>
     public const string ChunkKind = "chunk";
 
@@ -180,21 +195,25 @@ internal static class GoldenCodecs
 
     static GoldenRoundTrip Chunk(byte[] file)
     {
-        if (!ContentChunkCodec.TryDecode(file, registry: null, out ContentChunk? chunk, out string? reason))
+        // The engine registry rather than null, so the mutant meets the slot-count cross-check a real loader
+        // applies, and so a decoded row can be walked through the codec its type actually ships.
+        if (!ContentChunkCodec.TryDecode(file, Engine, out ContentChunk? chunk, out string? reason))
         {
             return new GoldenRoundTrip(false, reason, null, null, "decode");
         }
 
+        string? rowReason = WalkRows(chunk);
+
         if (!TryCanonical(file, out byte[] canonical))
         {
-            return new GoldenRoundTrip(true, null, null, null, "canonical");
+            return new GoldenRoundTrip(true, null, null, null, "canonical", rowReason);
         }
 
         // A chunk carrying type id 0 cannot be re-encoded, because 0 is reserved and no registration may take
         // it, so there is no registration to hand the encoder. Every other id is registrable in its own band.
         if (chunk.Type.Value == 0)
         {
-            return new GoldenRoundTrip(true, null, canonical, canonical, "type-zero");
+            return new GoldenRoundTrip(true, null, canonical, canonical, "type-zero", rowReason);
         }
 
         var rows = new ContentChunkRow[chunk.RowCount];
@@ -208,7 +227,34 @@ internal static class GoldenCodecs
             chunk.ChunkIndex,
             chunk.Visibility,
             rows);
-        return new GoldenRoundTrip(true, null, canonical, encoded.Canonical.ToArray(), "re-encode");
+        return new GoldenRoundTrip(true, null, canonical, encoded.Canonical.ToArray(), "re-encode", rowReason);
+    }
+
+    /// <summary>
+    /// Walks a decoded chunk's rows through the codec its type actually registers, which is the layer under
+    /// the container that the fuzzer otherwise never reached: a chunk decode walks the row TABLE and hands
+    /// back body slices without ever asking a codec to read one. Returns the first refusal token, or null.
+    /// <para>
+    /// A type this build does not register is skipped, because there is no codec to walk with, and that is
+    /// the same call an unknown type gets everywhere else: the CALLER's decision, never the decoder's.
+    /// </para>
+    /// </summary>
+    static string? WalkRows(ContentChunk chunk)
+    {
+        if (!Engine.TryGet(chunk.Type, out ContentTypeRegistration? registration))
+        {
+            return null;
+        }
+
+        for (int i = 0; i < chunk.RowCount; i++)
+        {
+            if (!chunk.TryDecodeRowAt(i, registration.Codec, out _, out string? reason))
+            {
+                return reason ?? ContentRowCodecBase.ReasonFieldMalformed;
+            }
+        }
+
+        return null;
     }
 
     static GoldenRoundTrip Manifest(byte[] file, ContentManifestSide side)

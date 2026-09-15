@@ -81,6 +81,14 @@ public sealed class DecoderFuzzTests
             }
 
             decoded++;
+
+            // A chunk whose container decoded but whose row bodies are nonsense is still a chunk that
+            // decoded, so the row refusal is checked for MEMBERSHIP rather than treated as a container
+            // refusal. It is the layer the fuzzer could not see while the chunk arm passed no registry.
+            Assert.True(
+                trip.RowReason is null || AcceptedReasons.Contains(trip.RowReason),
+                Where(golden, i, mutant) + " decoded a row refused with '" + trip.RowReason + "', which no decoder declares.");
+
             Assert.True(trip.Canonical is not null && trip.ReEncoded is not null, Where(golden, i, mutant));
             Assert.True(
                 ((ReadOnlySpan<byte>)trip.Canonical).SequenceEqual(trip.ReEncoded),

@@ -1203,7 +1203,7 @@ Sockets are ONE field kind holding an ordered list:
 [Count: varint][ for each socket:
     [SocketTypeId: varint int32]      // 0 means no type restriction
     [ContainedDefinitionId: varint int32]  // 0 means the socket is empty
-    [ContainedInstanceId: varint int64]    // 0 means empty, or a contained item with no instance
+    [ContainedInstanceId: varint uint64]   // 0 means empty, or a contained item with no instance
     [NestedLength: varint int32]
     [Nested: NestedLength bytes]      // a payload in this same format
 ]
@@ -1214,7 +1214,8 @@ socketed item keeps its own identity while it sits in the socket, so unsocketing
 rather than minting a new one, and an item duplicated by a bug or an exploit stays traceable to the instance
 it was copied from. The field is 0 when the socket is empty, and also 0 when the contained item has no
 instance of its own, which is the ordinary case for a plain gem (section 6.2). The cost is one varint per
-occupied socket.
+occupied socket, and the field is UNSIGNED per section 15, because the id is node prefixed and a node id of
+65,535 sets the high bit, so a signed declaration would zig-zag every id on that node into ten bytes.
 
 **Nesting is ONE LEVEL ONLY and the DECODER enforces it.** A nested payload containing a socket field is
 malformed and the decoder returns a reason rather than recursing. This is a hard structural limit rather

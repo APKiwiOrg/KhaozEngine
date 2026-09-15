@@ -1279,9 +1279,9 @@ B), 132 sockets (Scope B). They appear in that order, which is ascending, as rul
 82 01 01 03                              kind 130 len 1  rarity 3 (rare)
 83 01 12                                 kind 131 len 18 affixes
    03                                       count 3
-   F2 20 03 CC CC 00                        mod 4210, tier 3, position 52428, flags 0
    5B 01 33 33 00                           mod 91,   tier 1, position 13107, flags 0
    84 02 02 FF FF 00                        mod 260,  tier 2, position 65535, flags 0
+   F2 20 03 CC CC 00                        mod 4210, tier 3, position 52428, flags 0
 84 01 0A                                 kind 132 len 10 sockets
    01                                       count 1
    07                                       socket type 7
@@ -1296,9 +1296,11 @@ document added after the first draft.
 
 - Item level is 3 bytes, durability 4, rarity 4. None of those moved.
 - The affix field's payload is the count byte plus three entries. An entry is a mod id varint, a tier byte,
-  a position as a `uint16` LE and the reserved flags varint of 9.9, so the three entries are 6, 5 and 6
-  bytes and the payload is `1 + 6 + 5 + 6 = 18`, the `12` in the length byte. With the two-byte kind varint
-  and the length byte the whole field is 21 bytes, up from 18 before the flags field existed.
+  a position as a `uint16` LE and the reserved flags varint of 9.9, so the three entries are 5, 6 and 6
+  bytes and the payload is `1 + 5 + 6 + 6 = 18`, the `12` in the length byte. With the two-byte kind varint
+  and the length byte the whole field is 21 bytes, up from 18 before the flags field existed. The entries
+  are written ascending by mod id, as 9.9 requires, so this block may be copied into a golden file as it
+  stands.
 - The socket field's payload is the count byte, the socket type varint, the contained definition varint,
   the contained instance varint, the nested length byte and the 3 nested bytes:
   `1 + 1 + 2 + 2 + 1 + 3 = 10`, the `0A` in the length byte. With its kind varint and length byte the field
@@ -1310,7 +1312,7 @@ The varints in it: `82 01` is 130, `83 01` is 131, `84 01` is 132, `F2 20` is 42
 bits are 105, `69` with the continuation bit set giving `E9`, followed by 32, `20`. No value in this example
 is zig-zagged, because every field in it is declared unsigned (section 15).
 
-Reading the third affix, `84 02 02 FF FF 00`: mod id 260, tier 2, position 65,535, which is the top of the
+Reading the second affix, `84 02 02 FF FF 00`: mod id 260, tier 2, position 65,535, which is the top of the
 tier's range, and flags 0 as v1 requires. If that tier runs 10 to 40, section 6.4's formula gives
 `10 + (65535 * 30 + 32767) / 65535 = 10 + 30 = 40`.
 
@@ -1335,6 +1337,14 @@ This is the argument of 9.4 applied one level down, where the tagged encoding ca
 sits INSIDE a length-prefixed field, so a decoder that does not know an entry grew cannot skip the
 difference, and preserving an unknown field verbatim does nothing for it. The flags field is the entry-level
 version of the escape hatch the payload already has.
+
+This contract requires one thing of the LIST as well: **affix entries are ordered ASCENDING BY MOD ID, and
+a mod id appears at most once in one list.** Rule 9.3.1 orders FIELDS and says nothing about entries inside
+one, so without this the same three affixes encode six ways and byte equality stops being property equality
+(9.3), which is what a stack check and a page digest both rest on. The example in 9.8 is written in that
+order for the same reason. Changing the entry order later costs what changing 9.3's field order costs:
+every stored payload is already canonical under the old rule, so the new rule rewrites every page that
+carries an affix.
 
 **Expensive to change once data exists: yes, because** adding it later means two affix entry layouts told
 apart by the content version a page was stamped with, which is the positional-codec migration this whole

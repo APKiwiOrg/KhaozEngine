@@ -1031,6 +1031,12 @@ expected next, which also discards the assembly it contradicts). Both carry the 
 Memory is bounded by what the peer actually SENT: a buffer grows with the bytes that arrive rather than with the
 chunk count a header claims, so a lying `ChunkCount` buys nothing.
 
+**A whole page is the FLOOR, not the steady state.** A game syncing item container pages over this fragmenter
+sends a one frame DELTA for the ordinary case and falls back to a full page send only when the delta will not
+fit. That delta, its budget arithmetic and the two byte resync request a client answers with are
+`ContainerPageDelta` and `ContainerPageSyncRequest` in `KhaozEngine.ItemInstances`, because the entry body they
+carry is the container codec's and this package gains no items dependency.
+
 ## Known limits in this release
 
 - **`TileWorldServerConfig.MaxCommandsPerSecond` is a simulated-time rate.** Each whole tick tops the bucket up

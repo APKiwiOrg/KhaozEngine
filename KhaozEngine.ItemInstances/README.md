@@ -441,6 +441,65 @@ content, so it saturates at the engine ceiling and the load-time validator is wh
 Where that rule should live is
 [#924](https://github.com/APKiwiOrg/KhaozEngine/issues/924).
 
+## The page delta and the resync request
+
+`ContainerPageDelta` is the one frame message that says which slots of one page changed and what they hold
+now, so a craft costs 73 bytes rather than a 6.9 KB page. It is the OPTIMISATION beside the fragmenter of
+`KhaozEngine.TileWorld.Netcode`, not an alternative to it: a cold open and a correction resync both have to
+send a whole page, and a delta cannot express "this page is now these bytes".
+
+```
+[ContainerId: byte][PageIndex: byte][ChangedCount: byte]
+
+then ChangedCount changes, strictly ascending by slot:
+[Slot - FirstSlot: varint] then either
+  [0x00]                       the slot is now empty
+  [0x01][the entry body]       the 4.4 entry WITHOUT its slot field, projected for this viewer
+```
+
+**It MEASURES as it writes and ABANDONS rather than truncates.** Nothing bounds how many slots one operation
+changes, so a sort over a hundred slot page produces a delta many times the frame cap. That is not a
+truncated message, it is a THROW out of the per-viewer serve loop, which takes the tick down for every player
+on the server. So `TryBuild` answers the bytes written, or `-1` when the next change would not fit, and `-1`
+means the caller sends the WHOLE PAGE through the fragmenter. Never a second delta frame: two deltas for one
+page would have to be applied in order by a client that may have missed the first, which is the reassembly
+problem the fragmenter already solves once.
+
+- The budget is `MaxChangeBytes`, 1,017: the 1,024 byte frame cap less the four byte game message envelope
+  less the delta's own three byte header. A changed rare slot costs 70 bytes, so FOURTEEN fit in one frame
+  and the fifteenth does not. An emptied slot costs two or three, so bytes are not what binds there and
+  `MaxChanges` is, at the 255 a byte count field holds.
+- The frame cap is COPIED rather than referenced, because `TileProtocol` is a Server package and this one is
+  Foundation. `PageSyncFrameBoundTests` in `KhaozEngine.TileWorld.Netcode.Tests` is the one place that sees
+  both and holds the copy equal.
+- On `-1` the destination's contents are UNSPECIFIED, because the builder writes as it measures rather than
+  sizing twice. A short destination simply lowers the budget, so it abandons early rather than overruns.
+- `WriteEntryBody` and `EntryBodySize` on `ItemContainerPageCodec` are what write the body, so the delta and
+  the page cannot come to write an entry differently.
+
+**The bodies are PER VIEWER, and there is one door.** `TryBuild` takes the viewer's level and each change
+takes the item's identification state, and every payload goes through `ItemInstanceVisibility.PublicView`
+before it is written. A caller cannot build a delta that skipped the filter, which is the point: an
+owner-only field reaches the owner and nobody else. The same change to the same rare is 73 bytes to the
+owner and 69 to everyone else, and the four bytes are the durability field. A payload that does not project
+carries NO bytes, which is the same fail-closed direction an unregistered kind takes, and which is what a
+quarantine wrapper hits by construction.
+
+`ContainerPageSyncRequest` is the other half and the ONE new client-to-server message: two bytes,
+`[ContainerId][PageIndex]`, carrying nothing about an item's properties. It is what the client sends when it
+cannot apply a delta, and what it sends for each page a journal correction named.
+
+- **A client REFUSES a delta for a page it has not fully received** and sends this instead, so a delta is
+  never applied to bytes the client guessed at.
+- **On the last chunk of a fragmented page the assembled bytes go through the SAME decoder the server encoded
+  with**, `ItemContainerPageCodec.TryDecode`, and a failure quarantines rather than throwing. A client that
+  trusted its own reassembly would draw a bank from bytes nothing validated.
+- **The server rate limits this at ONE PAGE PER CLIENT PER TICK.** That is a documented server rule rather
+  than engine code, because the engine caps the frame while the game owns the message kinds and the tick. It
+  bounds the worst case a malicious client can ask for at one page of fragments per tick, the same shape the
+  snapshot already costs. A server that serves every request it receives has handed an unauthenticated peer
+  an amplifier: two bytes in, about 7 KB out, for as long as it cares to ask.
+
 ## The validator
 
 `InstanceValidator` sweeps a decoded container through thirteen checks and reports everything it found.
@@ -559,7 +618,7 @@ data exists. What is absent is breadth, which is content.
 | the container section naming (`<container>/p<NN>`) | `docs/superpowers/plans/2026-09-15-item-instances-phase2-3.md` |
 | the registry-derived remap pass, which is what produces the `Remapped` outcome | the same plan, with the pages |
 | the journal commit path (`ContainerCommitBuilder`) | the same plan |
-| the wire: the fragmenter, the ground component and the page delta | the same plan |
+| the wire: the fragmenter and the ground component, which are the netcode package's | the same plan |
 | the affix content types and the item generator | spec 20 phase 4, gated on the authoring registry and publish path being real |
 | the crafting framework and the content stat evaluator | spec 20 phase 5 |
 

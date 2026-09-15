@@ -10,6 +10,13 @@
     <PackageReference Include="xunit.runner.visualstudio" />
   </ItemGroup>
   <ItemGroup>
+    <!-- KhaozEngine.ItemInstances is here for PageSyncFrameBoundTests and nothing else. Spec 7.5's page sync
+         has two halves in two packages on purpose: the delta builder is in ItemInstances, because only the
+         page codec may write the entry body of spec 4.4, and the fragmenter and the frame cap are here,
+         because only this package owns the envelope. The SERVER composes them, so the frame bound facts have
+         to see both, and this is the test project spec 17 row 17 names as their home. The reference is not
+         over-broad in the sense AGENTS.md means: those tests really do use it. -->
+    <ProjectReference Include="../KhaozEngine.ItemInstances/KhaozEngine.ItemInstances.csproj" />
     <ProjectReference Include="../KhaozEngine.TileWorld.Netcode/KhaozEngine.TileWorld.Netcode.csproj" />
     <ProjectReference Include="../KhaozEngine.TileWorld/KhaozEngine.TileWorld.csproj" />
     <ProjectReference Include="../KhaozEngine.Netcode/KhaozEngine.Netcode.csproj" />

@@ -4,8 +4,9 @@ using System.Collections.Generic;
 namespace KhaozEngine.Catalog.SqlServer;
 
 /// <summary>
-/// Every schema object version 1 declares, by NAME, as three sets: the tables, the named indexes (the primary
-/// keys among them, since a primary key IS an index in <c>sys.indexes</c>) and the check constraints.
+/// Every schema object version 1 declares, by NAME, as five sets: the tables, the named indexes (the primary
+/// keys among them, since a primary key IS an index in <c>sys.indexes</c>), the check constraints, the
+/// foreign keys and the default constraints.
 /// <para>
 /// <b>Names are the whole mechanism, which is why the DDL names every constraint.</b> SQL Server generates a
 /// name for an unnamed constraint, and a generated name differs per database, so a schema built from unnamed
@@ -13,7 +14,9 @@ namespace KhaozEngine.Catalog.SqlServer;
 /// <c>table.object</c> here, so a correctly named object hanging off the wrong table is caught too.
 /// </para>
 /// <para>
-/// These lists are TRANSCRIBED from <c>CatalogSchemaV1.sql</c> and drift from it is what
+/// These lists are TRANSCRIBED from <c>CatalogSchemaV1.sql</c>, and <c>SqlServerCatalogSchemaDriftTests</c>
+/// parses that file and asserts set equality against every one of them without needing an instance. Drift is
+/// also what
 /// <c>SqlServerCatalogSchemaTests</c>'s AutoCreate case exists to catch: it creates the schema from the file
 /// and then validates it against these, so a constraint added to one and not the other goes red on the first
 /// run against a live instance.
@@ -66,6 +69,54 @@ internal static class SqlServerCatalogSchemaExpectations
         "catalog_type.pk_catalog_type",
         "catalog_type.ux_catalog_type_key",
         "catalog_version.pk_catalog_version",
+    };
+
+    /// <summary>
+    /// Every foreign key, as <c>table.constraint</c>. A foreign key is the only thing keeping a chunk row
+    /// pointing at a version that exists, so a schema missing one accepts writes this build assumes cannot
+    /// happen.
+    /// </summary>
+    internal static IReadOnlySet<string> ForeignKeys { get; } = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "catalog_chunk.fk_catalog_chunk_type",
+        "catalog_chunk.fk_catalog_chunk_version",
+        "catalog_draft_edit.fk_catalog_draft_edit_type",
+        "catalog_draft_edit_field.fk_catalog_draft_edit_field_edit",
+        "catalog_family.fk_catalog_family_type",
+        "catalog_family_block.fk_catalog_family_block_family",
+        "catalog_id_high_water.fk_catalog_id_high_water_type",
+        "catalog_remap_rule.fk_catalog_remap_rule_type",
+        "catalog_remap_rule.fk_catalog_remap_rule_version",
+        "catalog_row.fk_catalog_row_family",
+        "catalog_row.fk_catalog_row_type",
+        "catalog_row.fk_catalog_row_version",
+        "catalog_row_field.fk_catalog_row_field_row",
+    };
+
+    /// <summary>
+    /// Every default constraint, as <c>table.constraint</c>. A missing default turns an insert that omits
+    /// the column into a NULL in a NOT NULL column, which fails at run time on a schema that validated.
+    /// </summary>
+    internal static IReadOnlySet<string> Defaults { get; } = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "catalog_audit.df_catalog_audit_definition",
+        "catalog_audit.df_catalog_audit_field",
+        "catalog_audit.df_catalog_audit_key",
+        "catalog_audit.df_catalog_audit_note",
+        "catalog_audit.df_catalog_audit_operator",
+        "catalog_audit.df_catalog_audit_type",
+        "catalog_audit.df_catalog_audit_version",
+        "catalog_draft.df_catalog_draft_note",
+        "catalog_draft_edit.df_catalog_draft_edit_definition",
+        "catalog_draft_edit.df_catalog_draft_edit_imported",
+        "catalog_draft_edit.df_catalog_draft_edit_policy",
+        "catalog_draft_edit.df_catalog_draft_edit_replacement",
+        "catalog_family.df_catalog_family_retired",
+        "catalog_metadata.df_catalog_metadata_active",
+        "catalog_remap_rule.df_catalog_remap_rule_payload",
+        "catalog_remap_rule.df_catalog_remap_rule_to",
+        "catalog_row.df_catalog_row_parent",
+        "catalog_row.df_catalog_row_retired",
     };
 
     /// <summary>Every check constraint, as <c>table.constraint</c>.</summary>

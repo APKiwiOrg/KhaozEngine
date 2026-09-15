@@ -39,8 +39,9 @@ insensitive. Every size cap is a `CHECK`, `LEN` for text and `DATALENGTH` for bi
 declared, so a row can never point at a version that does not exist.
 
 **Every constraint is named**, `ck_<table>_<what>`, `pk_<table>`, `fk_<table>_<what>`, `df_<table>_<column>`.
-Validation compares NAMES against `sys.tables`, `sys.indexes` and `sys.check_constraints`, so an unnamed
-constraint (SQL Server would generate a per-database name for it) could not be verified at all.
+Validation compares NAMES against `sys.tables`, `sys.indexes`, `sys.check_constraints`, `sys.foreign_keys`
+and `sys.default_constraints`, so an unnamed constraint (SQL Server would generate a per-database name for it)
+could not be verified at all.
 
 `ContentAuthoringSchemaMode.AutoCreate` creates the schema when the database carries no catalog table and then
 validates it, under an exclusive application lock inside one transaction, so two hosts starting at once do not

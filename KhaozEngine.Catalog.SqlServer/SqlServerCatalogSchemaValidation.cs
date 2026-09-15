@@ -25,9 +25,9 @@ namespace KhaozEngine.Catalog.SqlServer;
 /// lock is the journal's, held for the transaction and released with it.
 /// </para>
 /// <para>
-/// Validation compares the NAMES of every catalog table, every named index and every check constraint against
-/// what version 1 declares, both directions, because a missing object and an extra one are each a schema this
-/// build cannot write to safely. A mismatch names the object and the required migration, since an operator can
+/// Validation compares the NAMES of every catalog table, every named index, every check constraint, every
+/// foreign key and every default constraint against what version 1 declares, both directions, because a
+/// missing object and an extra one are each a schema this build cannot write to safely. A mismatch names the object and the required migration, since an operator can
 /// act on those two facts and cannot act on "schema is wrong".
 /// </para>
 /// </summary>
@@ -172,7 +172,7 @@ internal static class SqlServerCatalogSchemaValidation
     }
 
     /// <summary>
-    /// The three name sets read back and compared against what version 1 declares. Tables outside the
+    /// The five name sets read back and compared against what version 1 declares. Tables outside the
     /// <c>catalog_</c> namespace are invisible here on purpose: a host may keep its own tables in the same
     /// database, and this schema has no opinion about them.
     /// </summary>
@@ -208,6 +208,32 @@ internal static class SqlServerCatalogSchemaValidation
             """,
             cancellationToken).ConfigureAwait(false);
         Compare("check constraint", checks, SqlServerCatalogSchemaExpectations.Checks);
+
+        // The foreign keys and the defaults, which the journal's own validator has always compared and this
+        // one did not. A missing foreign key accepts a chunk row pointing at a version that is not there, and
+        // a missing default turns an insert that omits a column into a NULL in a NOT NULL column. Both are
+        // writes this build believes the schema makes impossible, so neither can be left unchecked.
+        IReadOnlySet<string> foreignKeys = await ReadNamesAsync(
+            connection,
+            """
+            SELECT t.name + N'.' + f.name
+            FROM sys.foreign_keys f
+            JOIN sys.tables t ON t.object_id = f.parent_object_id
+            WHERE t.schema_id = SCHEMA_ID(N'dbo') AND t.name LIKE N'catalog[_]%';
+            """,
+            cancellationToken).ConfigureAwait(false);
+        Compare("foreign key", foreignKeys, SqlServerCatalogSchemaExpectations.ForeignKeys);
+
+        IReadOnlySet<string> defaults = await ReadNamesAsync(
+            connection,
+            """
+            SELECT t.name + N'.' + d.name
+            FROM sys.default_constraints d
+            JOIN sys.tables t ON t.object_id = d.parent_object_id
+            WHERE t.schema_id = SCHEMA_ID(N'dbo') AND t.name LIKE N'catalog[_]%';
+            """,
+            cancellationToken).ConfigureAwait(false);
+        Compare("default constraint", defaults, SqlServerCatalogSchemaExpectations.Defaults);
     }
 
     static async Task<IReadOnlySet<string>> ReadNamesAsync(

@@ -9,11 +9,12 @@ namespace KhaozEngine.Tests.Catalog.SqlServer;
 
 /// <summary>
 /// The one SQL Server schema test that needs NO SQL Server: the embedded <c>CatalogSchemaV1.sql</c> read as
-/// text against the three name sets the validator compares a live database to.
+/// text against the five name sets the validator compares a live database to.
 /// <para>
-/// <b>Why it exists.</b> <c>SqlServerCatalogSchemaExpectations</c> holds 117 names transcribed BY HAND from
-/// that file, and <c>SqlServerCatalogSchemaValidation</c> compares <c>sys.tables</c>,
-/// <c>sys.indexes</c> and <c>sys.check_constraints</c> against them in both directions. A constraint added to
+/// <b>Why it exists.</b> <c>SqlServerCatalogSchemaExpectations</c> holds every object name transcribed BY
+/// HAND from that file, and <c>SqlServerCatalogSchemaValidation</c> compares <c>sys.tables</c>,
+/// <c>sys.indexes</c>, <c>sys.check_constraints</c>, <c>sys.foreign_keys</c> and
+/// <c>sys.default_constraints</c> against them in both directions. A constraint added to
 /// the DDL and not to the list, or renamed in one and not the other, still builds and still passes every
 /// other test in this project, because all of those skip without an instance. The first sign would be a
 /// production <c>ValidateOnly</c> start refusing a schema this same build created, naming an object an
@@ -61,6 +62,26 @@ public partial class SqlServerCatalogSchemaDriftTests
     }
 
     [Fact]
+    public void TheEmbeddedDdlDeclaresExactlyTheForeignKeysTheValidatorExpects()
+    {
+        SchemaObjects declared = Parse();
+
+        Assert.Equal(
+            Ordered(SqlServerCatalogSchemaExpectations.ForeignKeys),
+            Ordered(declared.ForeignKeys));
+    }
+
+    [Fact]
+    public void TheEmbeddedDdlDeclaresExactlyTheDefaultConstraintsTheValidatorExpects()
+    {
+        SchemaObjects declared = Parse();
+
+        Assert.Equal(
+            Ordered(SqlServerCatalogSchemaExpectations.Defaults),
+            Ordered(declared.Defaults));
+    }
+
+    [Fact]
     public void EveryConstraintInTheEmbeddedDdlIsNamed()
     {
         // The whole comparison above is by NAME, and SQL Server invents a per-database name for an unnamed
@@ -74,14 +95,18 @@ public partial class SqlServerCatalogSchemaDriftTests
         Assert.Empty(unnamed);
     }
 
-    /// <summary>The three name sets one reading of the DDL produced.</summary>
+    /// <summary>The five name sets one reading of the DDL produced.</summary>
     /// <param name="Tables">Every table, bare.</param>
     /// <param name="Indexes">Every named index and primary key, as <c>table.index</c>.</param>
     /// <param name="Checks">Every check constraint, as <c>table.constraint</c>.</param>
+    /// <param name="ForeignKeys">Every foreign key, as <c>table.constraint</c>.</param>
+    /// <param name="Defaults">Every default constraint, as <c>table.constraint</c>.</param>
     sealed record SchemaObjects(
         IReadOnlySet<string> Tables,
         IReadOnlySet<string> Indexes,
-        IReadOnlySet<string> Checks);
+        IReadOnlySet<string> Checks,
+        IReadOnlySet<string> ForeignKeys,
+        IReadOnlySet<string> Defaults);
 
     /// <summary>
     /// The DDL read the way the transcription read it: line by line, attributing every inline constraint to
@@ -93,6 +118,8 @@ public partial class SqlServerCatalogSchemaDriftTests
         var tables = new HashSet<string>(StringComparer.Ordinal);
         var indexes = new HashSet<string>(StringComparer.Ordinal);
         var checks = new HashSet<string>(StringComparer.Ordinal);
+        var foreignKeys = new HashSet<string>(StringComparer.Ordinal);
+        var defaults = new HashSet<string>(StringComparer.Ordinal);
         string? table = null;
 
         foreach (string raw in SqlServerCatalogSchema.SchemaSql.Split('\n'))
@@ -131,10 +158,27 @@ public partial class SqlServerCatalogSchemaDriftTests
             if (check.Success)
             {
                 checks.Add(table + "." + check.Groups[1].Value);
+                continue;
+            }
+
+            Match foreignKey = ForeignKey().Match(line);
+            if (foreignKey.Success)
+            {
+                foreignKeys.Add(table + "." + foreignKey.Groups[1].Value);
+                continue;
+            }
+
+            // A default is declared INLINE on its column, so the line it sits on also carries the column's
+            // type and its nullability. Nothing else on that line can be mistaken for one, because every
+            // other constraint kind is on a line of its own.
+            Match value = DefaultConstraint().Match(line);
+            if (value.Success)
+            {
+                defaults.Add(table + "." + value.Groups[1].Value);
             }
         }
 
-        return new SchemaObjects(tables, indexes, checks);
+        return new SchemaObjects(tables, indexes, checks, foreignKeys, defaults);
     }
 
     /// <summary>The set as a sorted list, so a failure message names what differs rather than reporting false.</summary>
@@ -156,6 +200,12 @@ public partial class SqlServerCatalogSchemaDriftTests
 
     [GeneratedRegex(@"CONSTRAINT (\w+) CHECK")]
     private static partial Regex CheckConstraint();
+
+    [GeneratedRegex(@"CONSTRAINT (\w+) FOREIGN KEY")]
+    private static partial Regex ForeignKey();
+
+    [GeneratedRegex(@"CONSTRAINT (\w+) DEFAULT")]
+    private static partial Regex DefaultConstraint();
 
     [GeneratedRegex(@"^(?:PRIMARY KEY|CHECK|UNIQUE|FOREIGN KEY)\b")]
     private static partial Regex UnnamedConstraint();

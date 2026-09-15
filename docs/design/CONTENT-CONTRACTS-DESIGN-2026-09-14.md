@@ -82,6 +82,50 @@ owner did not decide, the choice is marked as a recommendation and repeated in s
 18. A missing or invalid active content version fails the boot CLOSED. There is no runtime fallback to
     code defaults. (#882 body, 2026-09-14.)
 
+### 1.4 Owner framing, 2026-09-15
+
+At gate 0 the owner framed the game as a mix of OSRS, Tibia, Path of Exile and Mortal Online, and framed
+the item work against that mix.
+
+- **PoE-level complexity is the eventual target, not the v1 target.** The number of mods and the variance
+  of items are meant to reach that depth over time. What is built now is the SCAFFOLDING able to carry it,
+  extended gradually as the game progresses. PoE's own mods are never copied verbatim, so neither spec may
+  assume a PoE mod table, a PoE currency set or PoE names as data.
+- **The item model has to be right now, because it is the part that must be extensible.** A model that
+  cannot grow a field is the failure being designed against, which is why section 9's tagged encoding, the
+  reserved ranges in 4.3 and 9.2 and the reserved flags field in 9.9 are contract rather than convenience.
+- **One source of truth for item definitions, and it is the DATABASE.** Seeding aside, a definition exists
+  in the authoring store and nowhere else. There is no code-constant catalog, no authored file and no
+  per-consumer copy the database is reconciled against.
+- **Server authoritative, edited in each game's admin app.** Tags, rolls, rollable mods, values, the item's
+  3D model reference and every other field are authored there, which is what the field schema of section
+  4.7 exists to render, validate and audit.
+
+### 1.5 Coverage of the four reference games
+
+The mix is a coverage test these contracts have to pass, so each reference game's item is mapped onto the
+model once, here, and neither spec has to re-derive it.
+
+**OSRS.** An item is a definition plus a count and carries no per-instance state at all, so its instance id
+is 0 and its payload is empty. That is byte for byte what `ItemStack(int ItemId, int Count)` stores today
+(section 6.1, `KhaozEngine.Items/ItemContainer.cs:9-17`), so an OSRS-shaped catalog costs nothing over the
+current format. This is the compatibility hinge the rest of the model hangs on.
+
+**Tibia.** An item with charges, or with an upgrade tier, is a plain stack plus one or two small fields
+from the ENGINE range of section 9.2. A charge count and a tier are each a single-byte varint below 128, so
+a charged wand is a definition, a count and a payload of a few bytes. It gets an instance id because its
+payload is non-empty (section 6.2), and it needs no mod, no roll and no socket to be expressed.
+
+**Mortal Online.** An item crafted from chosen materials is an instance whose payload names the MATERIAL
+content ids rather than the numbers derived from them, each a varint int32 content reference (section 6.3).
+The resulting stats are computed by the content evaluator of section 13 from those ids. Storing the inputs
+rather than the outputs is what makes a materials rebalance a publish instead of a rewrite of every crafted
+item, and it is the same argument that makes a roll a position rather than a value (section 6.4).
+
+**Path of Exile.** A rare carrying a rarity, several rolled affixes and a socket holding another item is
+the worked byte example of section 9.8. It is the deepest of the four and the one the payload cap in 9.6 is
+sized against.
+
 ## 2. Facts the contracts must honour today
 
 Nothing below is a proposal. It is what the three surveys found in the code on 2026-09-14, and every

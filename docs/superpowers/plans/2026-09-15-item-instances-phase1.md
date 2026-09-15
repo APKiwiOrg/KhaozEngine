@@ -1589,3 +1589,218 @@ git commit -m "iteminstances(journal): one commit per tick from a batch of page 
 
 ---
 
+## Group D: the wire (spec 7)
+
+### Task 16: `TileGroundItemInstance` and the `SpawnGroundItem` overload (medium, gate: milestone 1.1)
+
+Spec 7.2 and 7.3. A SIBLING component rather than a widened `TileGroundItem`, and the deciding row of spec
+7.2's table is not a preference: `WriteGroundItem` writes exactly twenty bytes with no declared length
+(`TileProtocol.Components.cs:321-344`), so a reader built against today's protocol consumes twenty bytes
+and then reads the next component's type id. Adding a field makes every already-shipped client misparse the
+rest of the entity. A sibling is a NEW extension type id, and `SnapshotWriter` length prefixes extension
+components precisely so an older client skips an id it never registered (`SnapshotWriter.cs:11-13`).
+
+**Files:**
+
+- Create: `KhaozEngine.TileWorld.Netcode/TileGroundItemInstance.cs`
+- Modify: `KhaozEngine.TileWorld.Netcode/TileProtocol.Components.cs`
+- Modify: `KhaozEngine.TileWorld.Netcode/TileWorldServer.GroundItems.cs`
+- Create: `KhaozEngine.TileWorld.Netcode.Tests/TileGroundItemInstanceTests.cs`
+
+**Interfaces:**
+
+- Consumes: `ReplicationRegistry.FirstExtensionTypeId`, `SnapshotWriter`
+- Produces: `TileGroundItemInstance`, `TileGroundItemInstanceTypeId`, one `SpawnGroundItem` overload
+
+- [ ] **Step 1: Write the failing tests, including the engine half of spec 17 row 11.**
+
+~~~csharp
+[Fact] public void A_drop_with_no_instance_seats_NO_sibling_component_and_costs_no_wire_bytes()
+[Fact] public void A_drop_with_an_instance_round_trips_the_id_and_the_payload()
+[Fact] public void An_OLD_client_registry_skips_the_sibling_and_still_parses_the_rest_of_the_entity()
+[Fact] public void A_declared_length_longer_than_the_frame_answers_a_ZERO_length_payload_not_a_throw()
+[Fact] public void A_declared_length_above_MaxInstancePayloadBytes_answers_a_zero_length_payload()
+[Fact] public void SpawnGroundItem_throws_on_a_payload_above_the_cap_and_on_bytes_with_instance_id_0()
+[Fact] public void The_existing_SpawnGroundItem_overload_still_compiles_and_seats_instance_id_0()
+[Fact] public void The_instance_id_survives_a_drop_and_a_claim_by_a_stranger_and_by_the_dropper()
+~~~
+
+  The third is the compatibility claim the whole design choice rests on, so it is a test rather than a
+  paragraph: build a registry WITHOUT the sibling registration, write a snapshot with it, and read back.
+
+- [ ] **Step 2: Implement the component exactly as spec 7.2 writes it**, carrying NO dependency on
+  `KhaozEngine.ItemInstances`. It holds an opaque `long` and opaque bytes, exactly as `TileGroundItem`
+  holds an opaque `int`. The tile netcode still does not know what an item is.
+
+~~~csharp
+public struct TileGroundItemInstance : IComponent
+{
+    public long InstanceId;     // 0 is never seated: a drop with no instance carries no component
+    public byte[] Payload;      // the PUBLIC view, see spec 7.4. Never mutated in place
+}
+~~~
+
+- [ ] **Step 3: Register it at `FirstExtensionTypeId + 8` on the default channels.** The tile netcode owns
+  ids up to `FirstExtensionTypeId + 15` (`TileProtocol.Components.cs`), so 8 is inside the block and does
+  not eat the game's range. The write delegate writes the id as an unsigned varint and the payload length
+  prefixed. The read delegate is TOTAL: a declared length longer than the frame, or longer than
+  `MaxInstancePayloadBytes`, answers a zero length payload rather than throwing, which is the file's own
+  rule because the bytes come from a remote peer (`TileProtocol.Frames.cs:27-34`).
+- [ ] **Step 4: Do NOT register it `OwnerOnly`.** `ReplicationChannels.OwnerOnly` scopes a component to
+  the client whose own net id equals the ENTITY's net id (`ReplicationChannels.cs:49-53`), and a drop's
+  entity net id is never a viewer's, so registering it that way hides it from everyone including the
+  person who dropped it. Spec 7.4 says so. Put that sentence in the registration comment, because it is
+  the obvious-looking wrong answer.
+- [ ] **Step 5: Add the ONE overload and delegate the existing one to it**, so no existing call site
+  changes (spec 7.3):
+
+~~~csharp
+public long SpawnGroundItem(TileCoord at, int itemId, int count, long ttlTicks,
+                            long instanceId, ReadOnlySpan<byte> payload);
+~~~
+
+  It throws on a payload above `MaxInstancePayloadBytes` and on a non-empty payload with instance id 0,
+  because both are caller bugs in the same class as the existing non-positive count throw
+  (`TileWorldServer.GroundItems.cs:64-69`). The engine does not DECODE the payload: the bytes came from
+  the server's own container and the server is the only thing that ever writes them (spec 15.3).
+- [ ] **Step 6: Take the cap as a constant local to `TileWorld.Netcode`**, mirroring
+  `ItemSlot.MaxPayloadBytes` with a doc comment naming contracts 9.6, because this package has no items
+  dependency and must not gain one. Add a fact in `KhaozEngine.Server.Tests`, which sees both, asserting
+  the two constants are equal.
+- [ ] **Step 7: Run green and commit.**
+
+~~~bash
+dotnet test KhaozEngine.TileWorld.Netcode.Tests/KhaozEngine.TileWorld.Netcode.Tests.csproj -c Release
+git add KhaozEngine.TileWorld.Netcode/TileGroundItemInstance.cs KhaozEngine.TileWorld.Netcode/TileProtocol.Components.cs KhaozEngine.TileWorld.Netcode/TileWorldServer.GroundItems.cs KhaozEngine.TileWorld.Netcode.Tests/TileGroundItemInstanceTests.cs
+git commit -m "tileworld(netcode): a sibling ground component carrying opaque instance bytes"
+~~~
+
+---
+
+### Task 17: The page delta, its one-frame bound and the resync request (large, gate: milestone 1.1)
+
+Spec 7.5 and 7.6. **LIFT FROM THE SPIKE:** `KhaozEngine.Benchmarks/Items/PageWire.cs` has the delta
+builder that MEASURES as it writes and answers -1 when the next change would not fit, which is the whole
+mechanism.
+
+**Where the delta builder lives, because the spec does not say and the layering forces it.** Spec 2.2 says
+`KhaozEngine.TileWorld.Netcode` gains NO items dependency, and the delta body is "the entry body of 4.4
+without its Slot field", which only the page codec can write. **The plan's choice:** the delta ENCODER and
+its budget arithmetic live in `KhaozEngine.ItemInstances` as `ContainerPageDelta`, and
+`KhaozEngine.TileWorld.Netcode` carries only the item-agnostic fragmenter from task 3. The SERVER that
+owns both composes them. Flag this to the spec owner in the task report.
+
+**Files:**
+
+- Create: `KhaozEngine.ItemInstances/ContainerPageDelta.cs`
+- Create: `KhaozEngine.ItemInstances/ContainerPageSyncRequest.cs`
+- Create: `KhaozEngine.ItemInstances.Tests/Pages/ContainerPageDeltaTests.cs`
+- Create: `KhaozEngine.TileWorld.Netcode.Tests/PageSyncFrameBoundTests.cs`
+
+**Interfaces:**
+
+- Consumes: task 10's entry body writer, task 3's fragmenter, `TileProtocol.MaxGameMessageBytes`
+- Produces: `ContainerPageDelta.TryBuild`, `ContainerPageSyncRequest`
+
+- [ ] **Step 1: Write the frame-bound facts, which are spec 17 row 17 exactly.**
+
+~~~csharp
+[Fact] public void Fourteen_changed_rare_slots_produce_ONE_delta_frame()
+[Fact] public void Fifteen_changed_rare_slots_produce_a_FRAGMENTED_page_send()
+[Fact] public void A_100_slot_reorder_produces_a_fragmented_page_send()
+[Fact] public void No_path_encodes_a_game_message_above_MaxGameMessageBytes()
+[Fact] public void A_cold_open_of_a_full_rare_page_is_at_most_8_KB_in_at_most_8_frames()
+[Fact] public void A_single_craft_costs_73_bytes_in_one_frame()
+~~~
+
+  The last two are budgets 7 and 8. The fourth is the one that protects the tick: `EncodeGameMessage`
+  THROWS above the cap (`TileProtocol.Frames.cs:173-174`), the delta is sent from inside the per-viewer
+  serve loop, and nothing in `TileWorld.Netcode` catches around it. The combat path already paid for this
+  exact shape and its comment says the throw "took the tick down for every player on the server"
+  (`TileWorldServer.Tick.cs:236-247`).
+
+- [ ] **Step 2: Implement the delta message exactly as spec 7.5 writes it.**
+
+~~~
+[ContainerId: byte][PageIndex: byte][ChangedCount: byte]
+[ per change: [Slot: varint uint16] then either
+              [0x00] for "now empty"
+              or [0x01] then the entry body of 4.4 without its Slot field ]
+~~~
+
+- [ ] **Step 3: MEASURE as you write and ABANDON rather than truncate.** The budget is
+  `MaxGameMessageBytes` less the four byte envelope (`TileProtocol.Frames.cs:77`) less the delta's own
+  three byte header, so 1,017 bytes of changes. When the next change would not fit, the builder abandons
+  the delta and the caller sends the WHOLE PAGE through the fragmenter. **Not a second delta frame:** two
+  deltas for one page would have to be applied in order by a client that may have missed the first, which
+  is the reassembly problem the fragmenter already solves once.
+- [ ] **Step 4: Implement the resync request, which is the ONE new client-to-server message and carries
+  two bytes.** `[ContainerId: byte][PageIndex: byte]`. The server rate limits it at one page per client
+  per tick, which bounds the worst case a malicious client can ask for at one page of fragments per tick,
+  the same shape the snapshot already costs. That rate limit is a documented server rule rather than
+  engine code here, so write it into the type's XML doc and into the package README.
+- [ ] **Step 5: State the client rules the delta leans on, in the XML doc.** A client REFUSES a delta for a
+  page it has not fully received and asks for a full page sync instead, so a delta can never be applied to
+  bytes the client guessed at. On the last chunk of a fragmented page the assembled bytes go through the
+  SAME decoder the server encoded with, and a failure quarantines rather than throwing.
+- [ ] **Step 6: Assert the invariant of spec 7.6 as an architecture-shaped test.** No client-to-server
+  message in this design carries an instance payload, and every one of them names an item by id. The full
+  version of that test is spec 17 row 13 and belongs to a later phase with the craft messages, so here it
+  covers only the resync request and the take request.
+- [ ] **Step 7: Run green and commit.**
+
+~~~bash
+dotnet test KhaozEngine.ItemInstances.Tests/KhaozEngine.ItemInstances.Tests.csproj -c Release
+dotnet test KhaozEngine.TileWorld.Netcode.Tests/KhaozEngine.TileWorld.Netcode.Tests.csproj -c Release
+git add KhaozEngine.ItemInstances/ContainerPageDelta.cs KhaozEngine.ItemInstances/ContainerPageSyncRequest.cs KhaozEngine.ItemInstances.Tests/Pages KhaozEngine.TileWorld.Netcode.Tests/PageSyncFrameBoundTests.cs
+git commit -m "iteminstances(wire): a one-frame page delta that abandons to the fragmenter"
+~~~
+
+**Group D acceptance:** spec 17 rows 9, 11 and 17 green, and budgets 7 and 8 measured.
+
+---
+
+### Task 18: The `--items` benchmark structural test (medium, gate: milestone 1.1)
+
+Spec 2.3 and 17 row 5. The `--items` mode ALREADY EXISTS in `KhaozEngine.Benchmarks/Items/` with a
+checked-in baseline at `KhaozEngine.Benchmarks/Baselines/items-sqlite-v1-seed915.json`, and section 16's
+measured column came from it. What is MISSING is the structural test beside it, which is the half that
+actually runs in CI. Spec 17's note is blunt about why: a benchmark that only runs by hand is a benchmark
+nobody runs.
+
+**Files:**
+
+- Create: `KhaozEngine.Server.Tests/Benchmarks/ItemsBenchmarkTests.cs`
+
+**Interfaces:**
+
+- Consumes: `ItemsBenchmarkConfig`, `ItemsBenchmarkRunner`, `ItemsBenchmarkResult`, the checked-in baseline
+- Produces: the structural fence around the `--items` mode
+
+- [ ] **Step 1: Mirror `MutationJournalBenchmarkTests` exactly** (`KhaozEngine.Server.Tests/WorldStore/
+  Journal/MutationJournalBenchmarkTests.cs`, 605 lines, 16 facts). Same shape, same split: `Parse` accepts
+  explicit options and REJECTS hard-limit violations, `--quick` runs end to end and produces a result, the
+  result serialises to JSON and back, and `--output` writes a readable file.
+- [ ] **Step 2: Pin the config's hard limits as refusals**, because that is what the precedent test spends
+  most of its facts on: `MaximumPlayers`, `MaximumGenerations` and `MaximumCrafts` from
+  `ItemsBenchmarkConfig`, plus a relative `--database` path.
+- [ ] **Step 3: Run `--quick` inside the test and assert the STRUCTURE, never the numbers.** A budget's
+  measured value belongs in the baseline JSON, which a human diffs. What the test asserts is that every
+  budget the runner claims to measure is PRESENT in the result and that none is NaN, zero or absent. A
+  test that asserts a microsecond figure is a test that goes red on a busy runner and teaches everyone to
+  rerun it.
+- [ ] **Step 4: Assert the one structural number that IS a design property.** Twenty crafts in one held
+  action produce exactly ONE commit (budget 4). That is a count, not a timing, and it is the property the
+  whole of spec 6 exists for, so a regression there must be red rather than slow.
+- [ ] **Step 5: Do NOT touch the spike.** This task adds a test project file and nothing else. The spike
+  keeps building and keeps its numbers.
+- [ ] **Step 6: Run green and commit.**
+
+~~~bash
+dotnet test KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj -c Release --filter FullyQualifiedName~ItemsBenchmarkTests
+git add KhaozEngine.Server.Tests/Benchmarks/ItemsBenchmarkTests.cs
+git commit -m "bench(items): structural facts beside the --items mode"
+~~~
+
+---
+

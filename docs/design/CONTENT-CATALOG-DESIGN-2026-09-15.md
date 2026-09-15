@@ -3681,7 +3681,7 @@ spike #882 item 12 requires. Every target is justified by arithmetic rather than
 |---|---|---|---|---|
 | P1 | Pack size at 50,000 definitions | Server pack under 12 MB stored, client pack under 9 MB stored | `KhaozEngine.Benchmarks --catalog --definitions 50000`, summing `storedBytes` across the manifest | **2.96 MB** server, **2.66 MB** client. MEETS |
 | P2 | Pack size at 1,000,000 definitions | Server pack under 240 MB stored, client pack under 180 MB stored | the same run at `--definitions 1000000` | **58.9 MB** server, **52.9 MB** client. MEETS |
-| P3 | Server load time and memory at 50,000 | Under 400 ms wall clock from manifest to validated runtime, under 20 MB of managed heap for the runtime | `Stopwatch` around boot steps 3 to 8, `GC.GetTotalAllocatedBytes` delta and `GC.GetTotalMemory(true)` after | **310 ms**, **26.3 MB** heap. MISSES on heap |
+| P3 | Server load time and memory at 50,000 | Under 400 ms wall clock from manifest to validated runtime, under 20 MB of managed heap for the runtime | `Stopwatch` around boot steps 3 to 8, `GC.GetTotalAllocatedBytes` delta and `GC.GetTotalMemory(true)` after | **334 ms**, **12.3 MB** heap. MEETS |
 | P4 | Client cold start at 50,000 | Under 6 s on a 20 Mbit link to first joinable, of which under 300 ms is local work | the fetch loop against a local HTTP server with a token-bucket shaper, timed from refusal to reconnect | **1.05 s**, **57 ms** local. MEETS |
 | P4b | Client COLD start at 1,000,000 | Under 90 s on a 20 Mbit link to first joinable. Stated rather than targeted: it is the transfer, and the design cannot beat it | the same run at `--definitions 1000000` | **22.1 s**. MEETS |
 | P5 | Publish time, one item edited, 50,000 definitions | Under 1.5 s wall clock end to end | `catalog-publish` elapsed, reported in its own response | **93 ms**. MEETS |
@@ -3689,8 +3689,8 @@ spike #882 item 12 requires. Every target is justified by arithmetic rather than
 | P7 | Lookup by id, server runtime | Under 5 ns, zero allocation | a tight loop over random live ids, `GC.GetAllocatedBytesForCurrentThread` delta asserted 0 | **1.76 ns**, 0 B. MEETS |
 | P8 | Validator sweep at 1,000,000 | Under 20 s | `ContentValidator.Validate` timed over a synthetic snapshot | **609 ms**. MEETS |
 | P9 | Weighted loot draw | Under 100 ns, zero allocation | a loop over a 200-entry table through the prefix-summed array (9.4) | **33.8 ns**, 0 B. MEETS |
-| P10 | Text chunk decode, one language at 50,000 | Under 250 ms, under 32 MB resident | decode timed, `GC.GetTotalMemory(true)` after | **36.6 ms**, **44.2 MB** resident. MISSES on resident |
-| P11 | **Total cold boot to accepting connections** | Under 1.5 s wall clock, under 80 MB of managed heap, at 50,000 definitions with Scope B's types registered | `KhaozEngine.Benchmarks --catalog --compose`, timed from process start to the listener opening, `GC.GetTotalMemory(true)` after | **376 ms**, **25.1 MB** heap. MEETS |
+| P10 | Text chunk decode, one language at 50,000 | Under 250 ms, under 32 MB resident | decode timed, `GC.GetTotalMemory(true)` after | **15.8 ms**, **9.2 MB** resident. MEETS |
+| P11 | **Total cold boot to accepting connections** | Under 1.5 s wall clock, under 80 MB of managed heap, at 50,000 definitions with Scope B's types registered | `KhaozEngine.Benchmarks --catalog --compose`, timed from process start to the listener opening, `GC.GetTotalMemory(true)` after | **395 ms**, **21.5 MB** heap. MEETS |
 
 **P3 EXCLUDES the per-type load indexes, and P11 is the number an operator actually restarts against.** P3 is
 scoped to boot steps 3 to 8, which is the engine's own work: decompress, decode, validate and build the four
@@ -3739,7 +3739,9 @@ twenty, which is linear because every term above is per definition, except that 
 linearly as ONE chunk: 2,000,000 entries at 86 bytes is 172 MB against a `MaxChunkUncompressedBytes` of 16
 MiB, so sharding is mandatory rather than optional at the stress figure. Section 7.6 states that rule.
 
-**P3, server load time and memory.** The memory table is section 9.2's, about 10 MB at 50,000. The time is
+**P3, server load time and memory.** The memory table is section 9.2's, about 7.1 MB for the item type at
+50,000, and the whole runtime is that plus the five smaller engine types and the derived indexes of 9.4,
+which measured 10.7 MB by the runtime's own accounting. The time is
 dominated by three linear passes: decompress about 19 MB, decode 50,000 rows, and validate. Brotli
 decompresses at well over 100 MB/s, a row decode is a handful of varint reads, and the validator is five
 linear passes with two dictionary builds. Four hundred milliseconds gives each pass a generous share and it
@@ -3815,12 +3817,18 @@ derived from linear passes is exactly the term that surprises someone at ten tim
 
 **P9 and P10** are Scope B adjacent but belong here because the arrays they read are built by this spec. P9's
 prefix-summed binary search over 200 entries is 8 comparisons. P10 is the 8.7 MB language chunk computed
-above, decoded into a frozen dictionary of 100,800 entries, and it is dominated by the dictionary build. Its
-RESIDENT number follows from the same arithmetic: a 24-character key and a 60-character value are 48 and 120
-bytes as UTF-16 plus 24 bytes of object header each, which is about 216 bytes per entry plus the dictionary's
-own slot, so 100,800 entries are roughly 25 MB. The budget is set at 32 MB rather than 25, because the
-measured value is what decides whether the frozen dictionary should hold one UTF-8 blob with offsets the way
-section 9.2 does for keys, and a budget that leaves no room says nothing when it is missed by a megabyte.
+above, held the way section 7.6 says a decoded language is held: the decompressed body itself plus an
+open-addressed index of entry offsets over it. Its RESIDENT number follows from that directly. The body is
+the 8.7 MB, and the index is 4 bytes a bucket at a power-of-two capacity of at least twice the entry count,
+so 100,800 entries take 262,144 buckets and about 1 MB, and the bounded cache in front of `Get` adds at most
+512 materialised values, about 80 KB. Call it 9.7 MB, and the time is one linear pass plus a hash and a probe
+an entry rather than a dictionary build.
+
+**The 32 MB budget was set against the layout this one replaced, and it stays where it is.** The frozen
+dictionary of 100,800 UTF-16 pairs computed to about 216 bytes an entry, roughly 25 MB, and the budget was
+put at 32 so that the measured value would decide whether to hold the blob instead. It decided: the string
+layout measured 460 bytes an entry and 44.2 MB, the blob measures 96 and 9.2 MB (14.3), and the target does
+not move because a budget is a ceiling on what may be spent rather than a record of what was.
 
 **P11, the composed cold boot.** The terms are P3 at 400 ms and 20 MB, P10 at 250 ms and 32 MB for one
 language, and the registered per-type indexes of step 7b, of which Scope B's generator tables are the only
@@ -3857,8 +3865,12 @@ numbers are not representative (`KhaozEngine.Benchmarks/README.md:43`).
 
 Measured on an Apple Silicon Mac, macOS 26.6.2 arm64, .NET 10.0.12, 12 logical processors, always
 `-c Release`, seed 835, one language, `item` at 1,024 chunk slots and fetch concurrency 4 over a 20 Mbit
-token bucket. Every figure below is one run of `KhaozEngine.Benchmarks --catalog`, and the three baselines
-it wrote are checked in as `KhaozEngine.Benchmarks/Baselines/catalog-v1-seed835-50000.json`,
+token bucket. Every figure below is one run of `KhaozEngine.Benchmarks --catalog`, EXCEPT P3, P10 and P11,
+which were re-measured after the layout revision of 9.1 and 7.6 and are the median of five runs, for the
+reason the last block of this section gives. That re-measurement rewrote all three baselines whole, so their
+stored-byte fields are byte identical to stage 5's, which is the check that the publish path did not move,
+and their timing fields are the later session's. The baselines are checked in as
+`KhaozEngine.Benchmarks/Baselines/catalog-v1-seed835-50000.json`,
 `catalog-v1-seed835-50000-compose.json` and `catalog-v1-seed835-1000000.json`. The command lines are in
 `KhaozEngine.Benchmarks/README.md` and are reproduced here in the order they must run:
 
@@ -3880,7 +3892,9 @@ dotnet run --project KhaozEngine.Benchmarks -c Release -- --catalog --definition
   into 12 at 2,000,800 entries, so section 7.6's sharding rule is exercised rather than assumed.
 - **P3** is `ContentRuntime.Load` with chunk hash verification on, plus the validator, timed by `Stopwatch`
   and bracketed by `GC.GetTotalMemory(true)`. The heap figure is that delta. The runtime's own accounting of
-  what it retains is 20.4 MB, so both readings are over the 20 MB target rather than only the pessimistic one.
+  what it retains is 10.7 MB, so both readings are inside the 20 MB target rather than only the optimistic
+  one. The widest term in the time is the chunk fetch at 156 ms of the 334, which is a local file read and
+  swings with the file cache, and the validator is the next at 81 ms.
 - **P4** runs the real fetch loop against a local HTTP server behind a token bucket. It is a loopback
   transfer, so link latency and TCP slow start are absent and the measured 1.05 s for 2.66 MB sits at the
   1.12 s floor the shaper alone imposes on those bytes. Treat it as that floor plus local work rather than
@@ -3900,24 +3914,54 @@ dotnet run --project KhaozEngine.Benchmarks -c Release -- --catalog --definition
   against a 20 s target set at roughly ten times the arithmetic. The `KEC0100` band is NOT in this number,
   because Scope B's validators do not exist yet.
 - **P9** is 50,000,000 draws through the prefix-summed array over a 200-entry table, allocation free.
-- **P10** decodes the one language chunk of 100,800 entries into the frozen dictionary and measures the
-  `GC.GetTotalMemory(true)` delta as resident.
+- **P10** decodes the one language chunk of 100,800 entries into the body-plus-index form of section 7.6 and
+  measures the `GC.GetTotalMemory(true)` delta as resident. The catalog's own accounting is 9.16 MB of the
+  9.18 MB measured, which is the 8.16 MB body plus 262,144 buckets. The same run also times `Get` over a
+  64-key working set, which is the evidence for the bounded cache: 28.1 ns and 18 bytes a call through it
+  against 55.7 ns and 144 bytes materialising on every call, and the 18 is the direct-mapped collisions
+  inside those 64 keys rather than a leak.
 - **P11** boots a second process against the pack the first one published, so the timer from process start
   is a real cold boot rather than a publish. It builds the text chunk and a STAND-IN per-type load index of
   25 MB, which is the flattering approximation in this table: the stand-in built in 29 ms where section 14.1
   sizes Scope B's real generator tables at 500 ms, so the composed figure understates the third term by
-  roughly half a second. Even carrying that half second the budget holds. Repeated runs put process start to
-  listener between 376 and 689 ms, the upper end being the first start after a rebuild.
+  roughly half a second. Even carrying that half second the budget holds. Five runs put process start to
+  listener between 385 and 511 ms, with one outlier at 1,008 ms on the first start after a rebuild, which is
+  the file cache rather than the boot.
 
-**The misses, with the number.**
+**The two misses stage 5 recorded, and what the revision did to them.** Both were UTF-16 inflation of bytes
+the pack already carries as UTF-8, which is what sections 9.1 and 7.6 now hold as blobs.
 
-- **P3 heap: 26.3 MB against a 20 MB target.** The time half of P3 passes at 310 ms against 400 ms. The heap
-  is over by a third, and P10 below says why: the two share the string representation.
-- **P10 resident: 44.2 MB against a 32 MB target.** Section 14.1 sized this at about 25 MB from 216 bytes
-  per entry and set the budget at 32 MB expressly so that the measured value would decide whether the frozen
-  dictionary should hold one UTF-8 blob with offsets the way section 9.2 already does for keys. The measured
-  value decides it: 44.2 MB for 100,800 entries is 460 bytes per entry, roughly twice the arithmetic, and
-  the UTF-16 inflation of a 24-character key and a 60-character value is the whole gap.
+- **P3 heap: 12.3 MB against a 20 MB target, from 26.3 MB.** The stage 5 reading was over by a third on a
+  `Keys` array holding a .NET string per row. A key is now read out of `Bodies` where the encoder already
+  wrote it, and the key-to-id index is an open-addressed `int[]` rather than a dictionary keyed on those
+  strings, so the two structures the keys cost became one. The runtime's own accounting went from 20.4 MB to
+  10.7 MB with it.
+- **P10 resident: 9.2 MB against a 32 MB target, from 44.2 MB.** 460 bytes an entry became 96, which is the
+  body plus 4 bytes a bucket, and the decode got faster with it, 36.6 ms to 15.8 ms, because it no longer
+  builds 201,600 strings and a dictionary to hold them.
+
+**The re-measurement session was noisier than stage 5's, so it carries its own control.** The same machine
+was under other load, and budgets the revision cannot touch came back 20 to 40 percent slower, which is
+enough to read as a regression if nobody checks. So the pre-change tree was rebuilt from `355b79d8` and
+measured in the SAME session, same pack, same seed, same commands, warm through `--phases load`:
+
+| Back to back, warm | Before | After |
+|---|---|---|
+| At 50,000: load steps 3 to 8 | 217 to 225 ms | 206 to 236 ms |
+| At 50,000: validator sweep | 104 to 108 ms | 104 to 107 ms |
+| At 50,000: decode | 37 ms | 31 to 33 ms |
+| At 50,000: runtime heap | 25.1 MB | 12.3 MB |
+| At 1,000,000: validator sweep | 694 to 697 ms | 652 to 821 ms |
+| At 1,000,000: decode | 572 to 590 ms | 387 to 453 ms |
+| At 1,000,000: runtime heap | 424.8 MB | 194.9 MB |
+| At 1,000,000: one decoded language | 485.8 MB | 184.9 MB |
+
+Every row is warm against warm, which matters because a full run measures the heap at a different point and
+reads lower: the checked-in 1,000,000 baseline says 179.5 MB where the warm row above says 194.9. So the
+revision buys about half the runtime heap and a fifth of a decoded language, pays nothing for it in load
+time, and the one term worth watching is the validator at the stress figure, whose spread straddles the
+before figure rather than clearing it. The 1,000,000 figures are informational: P3 and P10 are budgeted at
+50,000 and nothing in section 14 targets the runtime heap at the stress figure.
 
 Nothing else misses. **Question Q3 is confirmed by measurement rather than by arithmetic alone:** the same
 one-item edit at 4,096 `item` chunk slots downloads 129.7 KB against the 80 KB target, so the 1,024
@@ -4998,8 +5042,9 @@ pass checked hardest and cleared, named so a reviewer knows where to look rather
 Seven, each with a recommended default so a non-answer is still a decision rather than a stall. Nothing here
 is a contracts question: those are section 20's three change requests. Q3, Q4 and Q5 are referenced from the
 sections that raised them and are repeated here in full so this section reads standalone. Q3 and Q4 are
-ANSWERED in the spec rather than left open, because both are expensive after the first publish, and they stay
-in this section so the owner can overrule them.
+ANSWERED in the spec rather than left open, because both are expensive after the first publish, and Q5's key
+half is answered by the stage 5 measurement that missed two budgets against it. All three stay in this section
+so the owner can overrule them.
 
 ### Q1. Where do the chunks get served from in production
 
@@ -5069,21 +5114,27 @@ than a performance one.
 
 ### Q5. How hard to work at runtime memory before it is measured
 
-Two related choices, both in section 9, and both numbers here are the CORRECTED ones. The first is the sparse
-table: `Offsets` is sized to the highest live id plus one, and `Lengths`, `Keys` and `RetiredBits` are all
-parallel to it, so a type with a family block based at 65,536 and 40 members costs about 1.06 MB for 40 rows,
-not the 262 KB that counting `Offsets` alone suggested (section 9.1). The second is `Keys`, an array of
-`ContentKey` each wrapping a string, which is 72 MB of a 205 MB runtime at 1,000,000 definitions once the
-UTF-16 characters are counted (section 9.2), and is the biggest avoidable line there by a wide margin.
+**The key half is ANSWERED BY MEASUREMENT, and the answer was "harder than this question's default said".**
+The default was to ship the string-keyed layout and measure. The measurement missed two budgets: P3's heap at
+26.3 MB against 20, and P10's resident at 44.2 MB against 32, both of them UTF-16 inflation of bytes the pack
+already carries as UTF-8. So the layout changed before the spec moved on, which is what 9.1, 9.2 and 7.6 now
+describe, and the numbers are on the record in 14.3 rather than in a recommendation here.
 
-**Recommended default: ship the simple version of both and measure, and the corrected numbers do not change
-that.** They change the SIZE of the prize rather than the order of the work. For `Offsets`, switch a type to a
-sorted-id binary search when live density falls below one in sixteen, and do it in phase 3 with a number
-rather than in phase 1 with a guess: four times the cost still buys nothing until a real type is sparse, and
-no engine type is. For `Keys`, hold one UTF-8 blob plus an offset array, the same trick `Bodies` already uses,
-which saves about 48 MB rather than the 24 first claimed and is a contained change to one type. Neither is a
-format change, which is why both can wait, and the second is now worth doing the moment the stress figure
-stops being hypothetical rather than merely worth remembering.
+At 50,000 definitions the runtime heap went from 26.3 MB to 12.3 MB and the runtime's own accounting from
+20.4 MB to 10.7 MB, and one decoded language went from 44.2 MB to 9.2 MB, which is 460 bytes an entry to 96.
+At 1,000,000, where nothing is budgeted and the figures are informational, the runtime went from about 425 MB
+to about 180 MB and one language from 486 MB to 185 MB. Load time did not pay for it: the decode pass stops
+building a string per row and got faster, 37 ms to 32 at 50,000 and about 580 ms to about 390 at 1,000,000.
+The prize the old recommendation quoted was 48 MB at the stress figure, and taking the key-to-id dictionary
+with it made the measured saving five times that.
+
+**The sparse table is the half that stays open, and it is the same recommendation as before.** `Offsets` and
+`Lengths` are parallel to the id space rather than to the row count, so a type with a family block based at
+65,536 and 40 members costs about 533 KB for 40 rows (section 9.1, halved by the key change and still the
+shape of the problem). Switch a type to a sorted-id binary search when live density falls below one in
+sixteen, in phase 3 with a number rather than in phase 1 with a guess, because no engine type is sparse
+today. Worth noting that the two halves did NOT have the same answer: the key half was worth doing before the
+first line of the implementation, and this one is still worth deferring.
 
 ### Q6. How many superseded versions the pack store keeps
 

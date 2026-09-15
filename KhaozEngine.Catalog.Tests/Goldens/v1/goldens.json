@@ -1,0 +1,583 @@
+{
+  "formatVersion": 1,
+  "files": [
+    {
+      "file": "chunk-tag-0.kecc",
+      "kind": "chunk",
+      "hash": "30e4bc839a66a488deea911fb794193c4ae35b0be4115f3edbd9e27500b5a2a1",
+      "canonicalLength": 61,
+      "uncompressedBytes": 25,
+      "storedLength": 61,
+      "storedCompressed": false,
+      "chunk": {
+        "typeId": 1,
+        "typeKey": "tag",
+        "chunkIndex": 0,
+        "slotBase": 0,
+        "slotCount": 4096,
+        "visibility": "Client",
+        "rowCount": 2,
+        "rows": [
+          {
+            "id": 1,
+            "retired": false,
+            "key": "metal",
+            "fields": [
+              {
+                "name": "name",
+                "kind": "LocalizedTextKey",
+                "absent": true
+              },
+              {
+                "name": "sort",
+                "kind": "Int",
+                "number": 10
+              }
+            ]
+          },
+          {
+            "id": 2,
+            "retired": true,
+            "key": "two_handed",
+            "fields": [
+              {
+                "name": "name",
+                "kind": "LocalizedTextKey",
+                "absent": true
+              },
+              {
+                "name": "sort",
+                "kind": "Int",
+                "number": 20
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "file": "chunk-item-0.kecc",
+      "kind": "chunk",
+      "hash": "1e361d1b5175eca88953cdd73df4428567f987a1222325ad84aea2e30019e611",
+      "canonicalLength": 328,
+      "uncompressedBytes": 292,
+      "storedLength": 185,
+      "storedCompressed": true,
+      "chunk": {
+        "typeId": 2,
+        "typeKey": "item",
+        "chunkIndex": 0,
+        "slotBase": 0,
+        "slotCount": 1024,
+        "visibility": "Client",
+        "rowCount": 3,
+        "rows": [
+          {
+            "id": 4,
+            "retired": false,
+            "key": "bronze_sword",
+            "fields": [
+              {
+                "name": "name",
+                "kind": "LocalizedTextKey",
+                "absent": true
+              },
+              {
+                "name": "examine",
+                "kind": "LocalizedTextKey",
+                "absent": true
+              },
+              {
+                "name": "tags",
+                "kind": "TagList",
+                "tags": [
+                  7,
+                  9
+                ]
+              },
+              {
+                "name": "stackable",
+                "kind": "Bool",
+                "number": 0
+              },
+              {
+                "name": "max_stack",
+                "kind": "Int",
+                "number": 1
+              },
+              {
+                "name": "tradable",
+                "kind": "Bool",
+                "number": 1
+              },
+              {
+                "name": "value",
+                "kind": "ScaledInt",
+                "number": 250
+              },
+              {
+                "name": "icon",
+                "kind": "OpaqueBytes",
+                "bytesHex": "69636f6e2f6974656d732f62726f6e7a655f73776f72642e706e67"
+              },
+              {
+                "name": "mesh",
+                "kind": "OpaqueBytes",
+                "bytesHex": "6d6573682f6974656d732f62726f6e7a655f73776f72642e676c62"
+              },
+              {
+                "name": "held_mesh",
+                "kind": "OpaqueBytes",
+                "bytesHex": "6d6573682f6974656d732f62726f6e7a655f73776f72645f68656c642e676c62"
+              },
+              {
+                "name": "ground_pose",
+                "kind": "Int",
+                "number": 1
+              },
+              {
+                "name": "icon_tilt",
+                "kind": "ScaledInt",
+                "number": 15000
+              },
+              {
+                "name": "icon_spin",
+                "kind": "ScaledInt",
+                "number": 45000
+              },
+              {
+                "name": "durability_max",
+                "kind": "Int",
+                "number": 100
+              },
+              {
+                "name": "socket_max",
+                "kind": "Int",
+                "number": 3
+              },
+              {
+                "name": "equip_profile",
+                "kind": "KeyReference",
+                "number": 12
+              }
+            ]
+          },
+          {
+            "id": 9,
+            "retired": true,
+            "key": "iron_sword",
+            "fields": [
+              {
+                "name": "name",
+                "kind": "LocalizedTextKey",
+                "absent": true
+              },
+              {
+                "name": "examine",
+                "kind": "LocalizedTextKey",
+                "absent": true
+              },
+              {
+                "name": "tags",
+                "kind": "TagList",
+                "absent": true
+              },
+              {
+                "name": "stackable",
+                "kind": "Bool",
+                "number": 1
+              },
+              {
+                "name": "max_stack",
+                "kind": "Int",
+                "number": 64
+              },
+              {
+                "name": "tradable",
+                "kind": "Bool",
+                "number": 0
+              },
+              {
+                "name": "value",
+                "kind": "ScaledInt",
+                "number": 0
+              },
+              {
+                "name": "icon",
+                "kind": "OpaqueBytes",
+                "bytesHex": "69636f6e2f6974656d732f69726f6e5f73776f72642e706e67"
+              },
+              {
+                "name": "mesh",
+                "kind": "OpaqueBytes",
+                "absent": true
+              },
+              {
+                "name": "held_mesh",
+                "kind": "OpaqueBytes",
+                "absent": true
+              },
+              {
+                "name": "ground_pose",
+                "kind": "Int",
+                "absent": true
+              },
+              {
+                "name": "icon_tilt",
+                "kind": "ScaledInt",
+                "absent": true
+              },
+              {
+                "name": "icon_spin",
+                "kind": "ScaledInt",
+                "absent": true
+              },
+              {
+                "name": "durability_max",
+                "kind": "Int",
+                "absent": true
+              },
+              {
+                "name": "socket_max",
+                "kind": "Int",
+                "absent": true
+              },
+              {
+                "name": "equip_profile",
+                "kind": "KeyReference",
+                "absent": true
+              }
+            ]
+          },
+          {
+            "id": 1000,
+            "retired": false,
+            "key": "rune_sword",
+            "fields": [
+              {
+                "name": "name",
+                "kind": "LocalizedTextKey",
+                "absent": true
+              },
+              {
+                "name": "examine",
+                "kind": "LocalizedTextKey",
+                "absent": true
+              },
+              {
+                "name": "tags",
+                "kind": "TagList",
+                "tags": [
+                  7,
+                  9,
+                  21
+                ]
+              },
+              {
+                "name": "stackable",
+                "kind": "Bool",
+                "number": 0
+              },
+              {
+                "name": "max_stack",
+                "kind": "Int",
+                "number": 1
+              },
+              {
+                "name": "tradable",
+                "kind": "Bool",
+                "number": 1
+              },
+              {
+                "name": "value",
+                "kind": "ScaledInt",
+                "number": 12500
+              },
+              {
+                "name": "icon",
+                "kind": "OpaqueBytes",
+                "bytesHex": "69636f6e2f6974656d732f72756e655f73776f72642e706e67"
+              },
+              {
+                "name": "mesh",
+                "kind": "OpaqueBytes",
+                "bytesHex": "6d6573682f6974656d732f72756e655f73776f72642e676c62"
+              },
+              {
+                "name": "held_mesh",
+                "kind": "OpaqueBytes",
+                "bytesHex": "6d6573682f6974656d732f72756e655f73776f72645f68656c642e676c62"
+              },
+              {
+                "name": "ground_pose",
+                "kind": "Int",
+                "number": 1
+              },
+              {
+                "name": "icon_tilt",
+                "kind": "ScaledInt",
+                "number": 15000
+              },
+              {
+                "name": "icon_spin",
+                "kind": "ScaledInt",
+                "number": 45000
+              },
+              {
+                "name": "durability_max",
+                "kind": "Int",
+                "number": 250
+              },
+              {
+                "name": "socket_max",
+                "kind": "Int",
+                "number": 5
+              },
+              {
+                "name": "equip_profile",
+                "kind": "KeyReference",
+                "number": 12
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "file": "manifest-server.kecm",
+      "kind": "manifest",
+      "hash": "6978a1166037acc7778af60b01cf041e2ca80b1763de2e556b00ffe9c24dd692",
+      "canonicalLength": 303,
+      "manifest": {
+        "side": "Server",
+        "versionNumber": 7,
+        "formatGeneration": 1,
+        "minimumServerBuild": 11,
+        "minimumClientBuild": 12,
+        "remapRuleChunkHash": "9335125764ffacce1b310f02fbdb160248744760b9f5894390f73a0ce9df90a2",
+        "types": [
+          {
+            "typeId": 2,
+            "typeKey": "item",
+            "chunkSlots": 1024,
+            "visibility": "Client",
+            "chunks": [
+              {
+                "chunkIndex": 0,
+                "uncompressedBytes": 292,
+                "hash": "1e361d1b5175eca88953cdd73df4428567f987a1222325ad84aea2e30019e611"
+              },
+              {
+                "chunkIndex": 1,
+                "uncompressedBytes": 119,
+                "hash": "d045d1efa54e00255c042b731d44234330e0bb5a6de12ded38d2466f3e7c6546"
+              }
+            ]
+          },
+          {
+            "typeId": 4,
+            "typeKey": "loot_table",
+            "chunkSlots": 4096,
+            "visibility": "ServerOnly",
+            "chunks": [
+              {
+                "chunkIndex": 0,
+                "uncompressedBytes": 20,
+                "hash": "750c1d79bf15e63bc3b1e530b030569f32c24ef7f79d829e6722759c3f8ac382"
+              },
+              {
+                "chunkIndex": 1,
+                "uncompressedBytes": 20,
+                "hash": "44940ad2a98ef02f36f0d31c52b17fc2fab5ea9067beb623c30af80146619cbd"
+              }
+            ]
+          }
+        ],
+        "languages": [
+          {
+            "tag": "en-US",
+            "textHash": "d557a62dd90314dcd8285bb0a6a1a0369c4bb117fa817fefe2aec6814a82656e"
+          },
+          {
+            "tag": "fr-FR",
+            "textHash": "69bde56fba670eba12bea5720e0f41081b3aefc5aab84b0c07fbb19a6f959b77"
+          }
+        ]
+      }
+    },
+    {
+      "file": "manifest-client.kecm",
+      "kind": "manifest",
+      "hash": "f582f83e2706d96f18b6c9e3cc34a9b7b5312da42015e455d6373a16fcb115db",
+      "canonicalLength": 216,
+      "manifest": {
+        "side": "Client",
+        "versionNumber": 7,
+        "formatGeneration": 1,
+        "minimumServerBuild": 11,
+        "minimumClientBuild": 12,
+        "remapRuleChunkHash": "9335125764ffacce1b310f02fbdb160248744760b9f5894390f73a0ce9df90a2",
+        "types": [
+          {
+            "typeId": 2,
+            "typeKey": "item",
+            "chunkSlots": 1024,
+            "visibility": "Client",
+            "chunks": [
+              {
+                "chunkIndex": 0,
+                "uncompressedBytes": 292,
+                "hash": "1e361d1b5175eca88953cdd73df4428567f987a1222325ad84aea2e30019e611"
+              },
+              {
+                "chunkIndex": 1,
+                "uncompressedBytes": 119,
+                "hash": "d045d1efa54e00255c042b731d44234330e0bb5a6de12ded38d2466f3e7c6546"
+              }
+            ]
+          }
+        ],
+        "languages": [
+          {
+            "tag": "en-US",
+            "textHash": "d557a62dd90314dcd8285bb0a6a1a0369c4bb117fa817fefe2aec6814a82656e"
+          },
+          {
+            "tag": "fr-FR",
+            "textHash": "69bde56fba670eba12bea5720e0f41081b3aefc5aab84b0c07fbb19a6f959b77"
+          }
+        ]
+      }
+    },
+    {
+      "file": "rules.kecr",
+      "kind": "rules",
+      "hash": "9335125764ffacce1b310f02fbdb160248744760b9f5894390f73a0ce9df90a2",
+      "canonicalLength": 79,
+      "storedLength": 73,
+      "rules": [
+        {
+          "sequence": 1,
+          "introducedIn": 3,
+          "typeId": 2,
+          "kind": "ReplacedBy",
+          "fromId": 5,
+          "toId": 3,
+          "payloadHex": "",
+          "destination": 3
+        },
+        {
+          "sequence": 2,
+          "introducedIn": 4,
+          "typeId": 2,
+          "kind": "Retired",
+          "fromId": 9,
+          "toId": 0,
+          "payloadHex": "0203000000",
+          "destination": 3
+        },
+        {
+          "sequence": 3,
+          "introducedIn": 4,
+          "typeId": 2,
+          "kind": "Retired",
+          "fromId": 11,
+          "toId": 0,
+          "payloadHex": "01",
+          "destination": 0
+        },
+        {
+          "sequence": 4,
+          "introducedIn": 5,
+          "typeId": 2,
+          "kind": "MovedToLegacy",
+          "fromId": 12,
+          "toId": 1500,
+          "payloadHex": "",
+          "destination": 1500
+        },
+        {
+          "sequence": 5,
+          "introducedIn": 6,
+          "typeId": 2,
+          "kind": "StackCapLowered",
+          "fromId": 20,
+          "toId": 0,
+          "payloadHex": "10000000",
+          "destination": 0
+        },
+        {
+          "sequence": 6,
+          "introducedIn": 7,
+          "typeId": 1,
+          "kind": "ReplacedBy",
+          "fromId": 30,
+          "toId": 31,
+          "payloadHex": "",
+          "destination": 31
+        }
+      ]
+    },
+    {
+      "file": "text-en-us.kect",
+      "kind": "text",
+      "hash": "d557a62dd90314dcd8285bb0a6a1a0369c4bb117fa817fefe2aec6814a82656e",
+      "canonicalLength": 648,
+      "storedLength": 272,
+      "text": {
+        "languageTag": "en-US",
+        "entryCount": 12,
+        "entries": [
+          {
+            "key": "item.abbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.name",
+            "value": "The longest key contracts 12.2 allows."
+          },
+          {
+            "key": "item.bronze_sword.examine",
+            "value": "A plain bronze blade."
+          },
+          {
+            "key": "item.bronze_sword.name",
+            "value": "Bronze sword"
+          },
+          {
+            "key": "item.iron_sword.examine",
+            "value": ""
+          },
+          {
+            "key": "item.iron_sword.name",
+            "value": "Iron sword"
+          },
+          {
+            "key": "item.rune_sword.examine",
+            "value": "It hums."
+          },
+          {
+            "key": "item.rune_sword.lore",
+            "value": "Forged before the first age."
+          },
+          {
+            "key": "item.rune_sword.name",
+            "value": "Rune sword"
+          },
+          {
+            "key": "loot_table.dragon_hoard.name",
+            "value": "Dragon hoard"
+          },
+          {
+            "key": "loot_table.goblin_common.name",
+            "value": "Goblin drops"
+          },
+          {
+            "key": "tag.metal.name",
+            "value": "Metal"
+          },
+          {
+            "key": "tag.two_handed.name",
+            "value": "Two handed"
+          }
+        ]
+      }
+    }
+  ]
+}

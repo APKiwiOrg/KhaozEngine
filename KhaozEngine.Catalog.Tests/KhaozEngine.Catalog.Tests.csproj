@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <OutputType>Library</OutputType>
+    <!-- Pinned so the declared namespaces stay KhaozEngine.Tests.Catalog.*, per AGENTS.md. -->
+    <RootNamespace>KhaozEngine.Tests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The golden format sets of spec 15.1, one directory per format version, copied beside the assembly so
+         GoldenFormatVersionsTests can ENUMERATE them. Adding a format version means adding a directory and
+         nothing else: the glob picks it up, and forgetting to keep reading the old one goes red. -->
+    <Content Include="Goldens/v*/**/*.*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- KhaozEngine.Catalog ONLY, which brings KhaozEngine.Primitives transitively. Push CI selects test
+         projects by the reference graph, so a second reference for a type that is already in the graph
+         would silently degrade that selection. -->
+    <ProjectReference Include="../KhaozEngine.Catalog/KhaozEngine.Catalog.csproj" />
+  </ItemGroup>
+</Project>

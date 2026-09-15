@@ -414,6 +414,37 @@ rather than impossible.
 **Open question for the owner.** None. The default is a recommendation the specs may tune per type with
 measurements from the proof spikes both issues require.
 
+### 4.6 The tag vocabulary is a content type
+
+**Tags are content, not strings.** A `tag` content type registers in the ENGINE range of 4.3. Its rows
+carry int ids and string keys under section 5's rules, and item bases, mods, stats, stores and drop tables
+reference a tag by ID. A row's tags are an ORDERED LIST of tag ids, authored order preserved and never
+sorted, for the reason section 9.5 gives for socket order and `TileWorldHash` gives for
+`TileObjectArchetype.Tags` (`TileWorldHash.cs:117-120`, `a-engine.md:1224-1226`): the order is authored
+information, and sorting it calls two different rows one row.
+
+One mechanism, covering every case the three surveys found:
+
+- Spawn and drop weighting by tag, so a drop table names a tag rather than enumerating ids.
+- Store rates by item class, the same lookup from the other side.
+- Tool families. Grimhollow's `CanBeAHatchet` and `CanBeAPickaxe` predicates are CODE today
+  (`b-grimhollow.md:56-59`), and a tag reference replaces each predicate with a row.
+- Ability and modifier grouping. Ruinborne's `item_ability_modifier` holds comma-joined tag STRINGS in a
+  column (`c-ruinborne.md:67-72`), which is a set membership test spelled as a substring search.
+
+Families (5.2) and tags answer different questions and both stay. A family is a contiguous ID BLOCK, so
+membership is two comparisons and the runtime array stays dense. A tag is a MANY-TO-MANY label, so one row
+carries several and one tag spans several families. A sword sits in the sword family and carries the
+`two_handed` and `metal` tags.
+
+**Strings are never the tag representation.** Not in a pack, not in a payload, not on the wire, not in a
+durable row. A tag KEY exists for authoring and for a log line, exactly as every other content key does
+(5.3).
+
+**Expensive to change once data exists: no for adding a tag, yes for the representation.** Adding a tag is
+an ordinary publish and putting one on a row is an edit. Moving to strings, or dropping the ordering rule,
+restates every row that carries tags and every digest taken over them.
+
 ## 5. Id spaces and allocation
 
 ### 5.1 The definition id
@@ -1382,7 +1413,7 @@ problem rather than a content one.
 | `Key` | string | Section 5.3 rules. |
 | `Scale` | `int` | A fixed power of ten. The stored integer is the value times `Scale`. |
 | `Min`, `Max` | `int` | Inclusive clamp, in scaled units. |
-| `Tags` | ordered list of tag ids | Authored order preserved, per section 9.5's reasoning. |
+| `Tags` | ordered list of tag ids | The `tag` content type of section 4.6. Authored order preserved. |
 | `DisplayFormatKey` | string | A localization key, section 12. |
 
 The VALUE KIND is integer with a fixed scale, always. `Scale = 100` gives two decimal places, which is what

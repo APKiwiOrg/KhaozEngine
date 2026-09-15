@@ -1068,3 +1068,291 @@ byte for byte. That is spec 20 phase 1's acceptance in full.
 
 ---
 
+## Group C: the container, the pages and the commit (spec 4, 5 and 6)
+
+### Task 10: Container codec version 2 and the version 1 reader (large, gate: milestone 1.1)
+
+Spec 4.4 and 4.5. **LIFT FROM THE SPIKE:** `KhaozEngine.Benchmarks/Items/ContainerPageCodec.cs` (210
+lines) already writes this format byte for byte with the redundant `FirstSlot` check and the trailing-byte
+refusal. What it does NOT have is the version 1 dispatch, because the spike never met a stored v1 blob.
+Lift the encoder and the decoder, add the dispatch, swap its `Varint` for `ContentVarint`, and make the
+types public with the spec 2.2 names.
+
+**Files:**
+
+- Create: `KhaozEngine.ItemInstances/ItemContainerPageCodec.cs`
+- Create: `KhaozEngine.ItemInstances/ItemContainerPageCodec.Decode.cs`
+- Create: `KhaozEngine.ItemInstances/PageEntry.cs`
+- Modify: `KhaozEngine.Items/ItemContainerCodec.cs`
+- Create: `KhaozEngine.ItemInstances.Tests/Pages/ItemContainerPageCodecTests.cs`
+- Create: `KhaozEngine.Foundation.Tests/Items/ItemContainerCodecVersionTests.cs`
+- Create: `KhaozEngine.Foundation.Tests/Items/Fixtures/container-v1-*.blob` (checked in)
+
+**Interfaces:**
+
+- Consumes: `ContentVarint`, task 5's payload codec, task 7's wrapper, `ItemSlot`
+- Produces: `ItemContainerPageCodec` (`Encode`, `TryDecode`, `Validate`, `Version`), `PageHeader`,
+  `PageEntry`, `PageSlotInput`, and `ItemContainerCodec.Version` as a `public const ushort` at 2
+
+- [ ] **Step 1: Write the cross-version facts FIRST, which are spec 17 row 4.** They need a checked-in
+  version 1 blob, so produce one with the CURRENT encoder before changing anything and commit it as a
+  fixture. `KhaozEngine.Server.Tests/NetWorld/Fixtures/cell-v1-32bit.blob` is the precedent for a
+  checked-in pre-change blob and its `None Include ... CopyToOutputDirectory` csproj shape.
+
+~~~csharp
+[Fact] public void A_version_1_blob_decodes_through_the_version_2_reader_unchanged()
+[Fact] public void Every_slot_from_a_version_1_blob_seats_instance_id_0_empty_payload_and_flag_clear()
+[Fact] public void A_version_1_blob_takes_content_version_stamp_0_so_every_rule_applies()
+[Fact] public void A_version_1_blobs_eleven_Validate_rules_are_all_still_enforced()
+[Fact] public void A_version_1_blob_whose_declared_slot_count_differs_is_still_refused_whole()
+[Fact] public void A_version_2_writer_never_produces_a_version_1_blob()
+[Fact] public void Byte_0_value_1_dispatches_to_version_1_and_anything_else_to_the_ushort_reader()
+~~~
+
+  The fifth is load bearing for Grimhollow, whose `WidenBag` and `NarrowBag` helpers exist precisely
+  because of that refusal. Do not "improve" it.
+
+- [ ] **Step 2: Write the version 2 page facts.**
+
+~~~csharp
+[Fact] public void A_page_round_trips_every_field_of_4_4()
+[Fact] public void A_FirstSlot_that_is_not_PageIndex_times_the_page_size_is_refused()
+[Fact] public void Entries_out_of_ascending_slot_order_are_refused()
+[Fact] public void A_blob_that_runs_out_of_bytes_before_EntryCount_is_refused()
+[Fact] public void Trailing_bytes_after_the_last_entry_are_refused()
+[Fact] public void A_non_quarantined_entry_above_MaxInstancePayloadBytes_answers_payload_oversize()
+[Fact] public void A_QUARANTINED_entry_above_MaxInstancePayloadBytes_encodes_and_decodes()
+[Fact] public void An_OSRS_slot_entry_is_seven_bytes_against_version_1s_fixed_ten()
+[Fact] public void A_full_page_of_100_rares_is_under_eight_kilobytes()
+~~~
+
+  The seventh is the cap-raise case spec 4.4 exists for and it is not hypothetical: engine 20.x raises
+  the cap, a six socket item reaches 700 bytes, a shard still on 19.x loads the page, the entry
+  quarantines, the wrapper is about 711 bytes, and it HAS to be writable or the page cannot be re-encoded
+  and the whole container becomes uncommittable. One oversize item must not cost a player their bank.
+  The eighth and ninth are budgets 2 and 3.
+
+- [ ] **Step 3: Implement the format exactly as spec 4.4 writes it.**
+
+~~~
+[FormatVersion: uint16 LE]             // 2. Byte 0 is also the legacy dispatch byte
+[PageIndex: varint uint16]             // 0 for a whole container
+[FirstSlot: varint uint16]             // the container slot this page's slot 0 is
+[SlotCount: uint16 LE]                 // slots in THIS page
+[ContentVersion: varint int32]         // the page stamp, contracts 7.2
+[EntryCount: varint int32]
+then EntryCount entries, strictly ascending by Slot:
+  [Slot: varint uint16]                // RELATIVE to FirstSlot
+  [EntryFlags: varint uint32]          // bit 0 quarantined, bits 1 to 31 reserved and 0 in v1
+  [DefinitionId: varint int32]         // never 0 on an occupied entry
+  [Count: varint int32]                // always positive
+  [InstanceId: varint uint64]          // the int64 bit pattern, unsigned, never zig-zagged
+  [PayloadLength: varint int32]        // bounded by the SECTION cap, see step 5
+  [Payload: PayloadLength bytes]
+~~~
+
+- [ ] **Step 4: Implement the byte 0 dispatch and write the rule down where it will be read.** Version 1
+  put a single `byte` at offset 0, so a reader has to tell a v1 blob from a v2 one before it knows how
+  wide the version field is. **Byte 0 is the dispatch: the value 1 means the version 1 format, and
+  anything else means a `ushort` version whose low byte is that value.** The only cost is that container
+  codec versions congruent to 1 modulo 256 are never assigned, so version 257 is skipped and versions 2
+  through 256 are free. Put that sentence in the XML doc on `ItemContainerCodec.Version`, because a later
+  implementer would otherwise assign 257 and break every stored v1 bank in the fleet. Spec 21 records it.
+
+- [ ] **Step 5: Apply the two payload bounds, which contradict on purpose and are settled here.** Spec 4.4:
+  a NON-quarantined entry's payload is at most `MaxInstancePayloadBytes` and a larger one is refused with
+  `payload-oversize`. A QUARANTINED entry's payload is the wrapper, bounded by the page's own bound, which
+  is the journal's 2 MiB projection section cap less the rest of the page (`JournalLimits.cs:16`). Both
+  bounds live in the decoder and the encoder, and the quarantined exception is guarded by the entry's own
+  `EntryFlags` bit 0 rather than by sniffing the payload for `KECQ`: `K` is 0x4B, which is a perfectly
+  legal property kind varint, so the sniff is ambiguous and the flag byte is what exists to avoid it.
+- [ ] **Step 6: Keep `PageIndex` and `FirstSlot` both present, redundantly, on purpose.** The decoder
+  checks `FirstSlot == PageIndex * expectedPageSlots` and refuses a mismatch. Two bytes per page, twenty
+  on a ten page bank, and it catches a page written into the wrong section, which is otherwise silent.
+- [ ] **Step 7: Bump `ItemContainerCodec.Version` to a `public const ushort` at 2 and keep the version 1
+  path verbatim.** All eleven of `Validate`'s current rules stay exactly as they are
+  (`ItemContainerCodec.cs:74-104`). The version 1 decode path seats every slot with instance id 0, an
+  empty payload and the quarantined flag clear, and takes stamp 0. Do not refactor the v1 reader while
+  you are here: it is the thing the fixtures pin.
+- [ ] **Step 8: Name the page-level reason tokens and record that the spec did not.** Contracts 9.7's
+  eight tokens are PAYLOAD reasons. A page can also fail at the page level (bad version, bad header,
+  truncated, entries out of order, wrong slot origin, trailing bytes), and neither spec names those
+  tokens. **The plan's choice:** a second closed set in `ItemContainerPageReason`, using the spike's own
+  names so the benchmark and the package agree: `page-version`, `page-truncated`, `page-slot-origin`,
+  `page-slot-order`, `page-entry-count`, `page-entry-malformed`, `page-trailing-bytes`. They are page
+  reasons rather than quarantine reason CODES, because spec 5.5 step 1 quarantines a failed page as a UNIT
+  and the wrapper's `ReasonCode` byte is an ordinal from the payload set. Flag this to the spec owner in
+  the task's report so the spec can adopt or rename them.
+- [ ] **Step 9: Run both suites green, then the whole solution once.**
+
+~~~bash
+dotnet test KhaozEngine.ItemInstances.Tests/KhaozEngine.ItemInstances.Tests.csproj -c Release
+dotnet test KhaozEngine.Foundation.Tests/KhaozEngine.Foundation.Tests.csproj -c Release
+dotnet test KhaozEngine.slnx -c Release
+~~~
+
+- [ ] **Step 10: Commit.**
+
+~~~bash
+git add KhaozEngine.ItemInstances/ItemContainerPageCodec.cs KhaozEngine.ItemInstances/ItemContainerPageCodec.Decode.cs KhaozEngine.ItemInstances/PageEntry.cs KhaozEngine.Items/ItemContainerCodec.cs KhaozEngine.ItemInstances.Tests/Pages KhaozEngine.Foundation.Tests/Items
+git commit -m "items(codec): container codec version 2 reads version 1"
+~~~
+
+---
+
+### Task 11: `ItemContainerPage`, `PagedItemContainer` and the merge rule (large, gate: milestone 1.1)
+
+Spec 4.6, 5.2, 5.3 and 5.7. Write fresh rather than lifting: the spike has no paged container at all, only
+a page codec.
+
+**Files:**
+
+- Create: `KhaozEngine.ItemInstances/ItemContainerPage.cs`
+- Create: `KhaozEngine.ItemInstances/PagedItemContainer.cs`
+- Create: `KhaozEngine.ItemInstances/PagedItemContainer.Capacity.cs`
+- Create: `KhaozEngine.ItemInstances/InstanceStacking.cs`
+- Create: `KhaozEngine.ItemInstances.Tests/Pages/PagedItemContainerTests.cs`
+- Create: `KhaozEngine.ItemInstances.Tests/Pages/InstanceStackingTests.cs`
+
+**Interfaces:**
+
+- Consumes: `ItemSlot`, task 10's page codec, `ItemRow` from `KhaozEngine.Catalog` for the definition's
+  durability, socket and stack-cap facts
+- Produces: `ContainerPageSlots`, `ItemContainerPage`, `PagedItemContainer`, `InstanceStacking.CanMerge`
+
+- [ ] **Step 1: Write the stacking facts, because rule 4 is the whole of "their properties are identical".**
+
+~~~csharp
+[Fact] public void Two_entries_merge_only_when_all_four_of_4_6_hold()
+[Fact] public void Equal_payload_bytes_merge_and_one_differing_byte_does_not()
+[Fact] public void An_entry_carrying_kind_5_or_132_never_merges_whatever_the_predicate_says()
+[Fact] public void A_quarantined_entry_never_merges()
+[Fact] public void The_predicate_is_consulted_per_operation_and_never_cached()
+[Fact] public void A_merge_keeps_the_numerically_LOWER_instance_id_so_a_replay_in_either_order_agrees()
+[Fact] public void A_merge_saturates_at_int_MaxValue_exactly_as_Add_does_today()
+[Fact] public void Two_items_differing_only_in_an_UNKNOWN_field_do_not_merge()
+~~~
+
+  Rule 4 is a `memcmp` rather than a structural comparison ONLY because the payload is canonical. A
+  reviewer who sees a decode inside `CanMerge` should reject it.
+
+- [ ] **Step 2: Write the page and capacity facts, which are Ruinborne's model restated (spec 5.7).**
+
+~~~csharp
+[Fact] public void A_grant_that_opens_a_NEW_slot_is_refused_at_or_above_capacity()
+[Fact] public void A_grant_that_merges_entirely_into_existing_stacks_is_allowed_at_any_occupancy()
+[Fact] public void Lowering_capacity_below_occupancy_is_legal_and_trims_nothing()
+[Fact] public void Capacity_is_never_read_from_content()
+[Fact] public void A_hole_survives_a_load_a_save_and_a_remap_and_costs_zero_bytes()
+[Fact] public void Reading_a_page_never_dirties_it()
+[Fact] public void Slot_743_is_page_7_slot_43()
+~~~
+
+- [ ] **Step 3: Implement the geometry.** `public const int ContainerPageSlots = 100`. One hundred rather
+  than 128, deliberately: the power of two buys a shift a compiler produces anyway and costs legibility
+  everywhere a human reads a page number. Contracts 4.5's power-of-two rule binds CONTENT chunk sizes and
+  says nothing about container pages. Spec 21 records 100 as expensive to change, so it is a const with a
+  doc comment and not a constructor parameter.
+- [ ] **Step 4: Implement `ItemContainerPage` with exactly two things that dirty it**, spec 5.3: an
+  operation that changed a slot, and a remap that changed an id. Nothing else, and in particular READING
+  one never does. It holds the decoded slots, the stamp, the dirty flag and the page index.
+- [ ] **Step 5: Implement `PagedItemContainer` splitting the two concepts `ItemContainer` conflates.**
+  SLOT SPACE is the page geometry, fixed at construction, `PageCount * ContainerPageSlots`, an address
+  space that never shrinks. CAPACITY is a separate mutable integer, the number of OCCUPIED slots a grant
+  may leave behind, consulted by `Add` and by nothing else. Ruinborne's four rules of spec 5.7 are the
+  behaviour, and rule 3 is the surprising one: lowering capacity below occupancy is LEGAL, the container
+  loads intact, is never trimmed, and is refused new slots until occupancy falls. That is the
+  generalisation of contracts 8.2 kind 4's over-cap stack policy.
+- [ ] **Step 6: Keep entries SPARSE and never compact.** A hole is the absence of an entry and costs zero
+  bytes, exactly as version 1's sparse form already did. The dense renumber Ruinborne's repair explicitly
+  refuses to do is not something this container can do by accident, and a test pins that.
+- [ ] **Step 7: Expose the dirty set**, because task 15's commit builder asks the container for it and
+  folds those pages into whatever commit comes next (spec 5.6). That is what makes the lazy rewrite cost
+  nothing: it never causes a commit, it only joins one.
+- [ ] **Step 8: Run green and commit.**
+
+~~~bash
+dotnet test KhaozEngine.ItemInstances.Tests/KhaozEngine.ItemInstances.Tests.csproj -c Release
+git add KhaozEngine.ItemInstances/ItemContainerPage.cs KhaozEngine.ItemInstances/PagedItemContainer.cs KhaozEngine.ItemInstances/PagedItemContainer.Capacity.cs KhaozEngine.ItemInstances/InstanceStacking.cs KhaozEngine.ItemInstances.Tests/Pages
+git commit -m "iteminstances(pages): paged containers, the capacity gate and byte-equal stacking"
+~~~
+
+---
+
+### Task 12: `InstanceValidator`, its thirteen checks, the counter and the log line (large, gate: milestone 1.1)
+
+Spec 12.2, 12.3, 12.6 and 12.7 over contracts 10.1, 10.2 and 10.4. Write fresh: the spike has no
+validator. `KhaozEngine.Content/JsonSchemaValidator.cs:11-101` is the run-to-the-end sweep shape to copy.
+
+**Files:**
+
+- Create: `KhaozEngine.ItemInstances/InstanceValidator.cs`
+- Create: `KhaozEngine.ItemInstances/InstanceValidator.References.cs`
+- Create: `KhaozEngine.ItemInstances/InstanceValidationReport.cs`
+- Create: `KhaozEngine.ItemInstances/InstanceValidationStrings.cs`
+- Create: `KhaozEngine.ItemInstances.Tests/Validation/InstanceValidatorTests.cs`
+
+**Interfaces:**
+
+- Consumes: `IContentSnapshot` (`TryGetRow`, `IsRetired`), task 4's registry, task 5's field walk
+- Produces: `InstanceValidator.Validate(page, snapshot)`, `InstanceValidationReport`,
+  `InstanceValidationFinding`, `InstanceValidationOutcome`
+
+- [ ] **Step 1: Write one fact per check, thirteen of them**, naming the reason token spec 12.2 assigns.
+  Checks 1 to 5, 9, 10 and 11 are STRUCTURAL and quarantine. Checks 6, 7 and 8 are DRIFT and also
+  quarantine. Check 12 is POLICY and is TOLERATED. Check 13 is POLICY and produces `Retired`.
+  The two that a reader will get wrong without a test are 12 and 13, so write those first:
+
+~~~csharp
+[Fact] public void Check_12_an_over_cap_count_is_counted_and_changes_nothing()
+[Fact] public void Check_13_a_RETIRED_definition_is_not_a_quarantine_and_the_page_still_loads()
+[Fact] public void A_structural_failure_quarantines_that_ENTRY_and_leaves_the_rest_of_the_page_alone()
+[Fact] public void An_unresolved_content_reference_quarantines_because_no_rule_covered_it()
+[Fact] public void The_validator_accumulates_and_never_stops_at_the_first_finding()
+[Fact] public void The_validator_never_throws_never_logs_never_counts_and_never_mutates_the_page()
+~~~
+
+- [ ] **Step 2: DERIVE checks 6 and 7 from the registry's `InstanceReferenceTarget` descriptors**, in the
+  same recursive order the remap pass of task 13 walks, over the same nested payloads. Spec 12.2 says why:
+  an earlier draft wrote check 7 as a closed enumeration and it already omitted kind 7's material ids and
+  a socket's `ContainedDefinitionId`, and it would have omitted every game kind at or above 1,024 forever.
+  A kind cannot be remapped-but-not-validated or validated-but-not-remapped. Check 8 stays hand written,
+  because a tier ordinal is not a content id: it is a key INTO the row check 7 already resolved.
+- [ ] **Step 3: Keep it PURE.** No store reads, no ambient state, no logging, no counter, no throw for a
+  content reason. A throw from it is a bug in the validator. The caller logs, counts and quarantines.
+
+- [ ] **Step 4: Ship the three placeholder `StringId`s and no translation.** `khaoz.item.quarantined`,
+  `khaoz.item.retired`, `khaoz.item.unidentified` (spec 12.3). All three are player facing, so none is a
+  literal, which is AGENTS.md's founding rule. They are prefixed `khaoz.` deliberately: they are ENGINE
+  strings rather than content rows, so contracts 12.1's derived `<type key>.<content key>.<field>` grammar
+  does not name them and the prefix keeps them out of its space. They resolve through
+  `ContentStringCatalog` on the `SafeFormat` path, so a translator's malformed template falls back to the
+  unformatted template rather than throwing inside the frame loop. A reason code and a stamped version are
+  NOT player text and are never formatted into these strings.
+- [ ] **Step 5: Name the counter and the log line, and invent no others.** Counter
+  `khaoz.content.quarantined_records`, dimensioned by content type id and reason code. ONE log line per
+  PAGE under category `ContentValidation` at Warning, naming the reason code, the stamped version, the
+  active version and the owning stream key, and NEVER the payload bytes or a raw account id. One per page
+  rather than per entry, because a page that fails wholesale would otherwise emit a hundred identical
+  lines, which is how an operator learns to filter the category out. The COUNTER is still incremented per
+  record, because a counter is what a dashboard reads and a log line is what a human reads. Add a fact
+  asserting a wholesale page failure emits exactly one line and a hundred counter increments.
+- [ ] **Step 6: Implement kind 128's identification mechanic on the registered bit.** `RevealedMask` bit N
+  is the bit a kind was REGISTERED with, never its position in the ascending list of gated kinds (spec
+  12.7 and spec 21's last row). Add a fact that registering a NEW gated engine kind at, say, 9 does NOT
+  move bits 0 to 3, which is the exact hazard the registered constant exists to prevent.
+- [ ] **Step 7: Add the unidentified stacking fact and its accepted leak.** An unidentified item still
+  STACKS by byte equality, and two unidentified items with different hidden affixes have different bytes,
+  so they do not merge. That leaks one bit: a player who tries to stack two unidentified items learns
+  whether they are identical. The leak is inherent to stacking by bytes and spec 15.8 records it as
+  accepted. Pin the behaviour so nobody "fixes" it later without reading that section.
+- [ ] **Step 8: Run green and commit.**
+
+~~~bash
+dotnet test KhaozEngine.ItemInstances.Tests/KhaozEngine.ItemInstances.Tests.csproj -c Release
+git add KhaozEngine.ItemInstances/InstanceValidator.cs KhaozEngine.ItemInstances/InstanceValidator.References.cs KhaozEngine.ItemInstances/InstanceValidationReport.cs KhaozEngine.ItemInstances/InstanceValidationStrings.cs KhaozEngine.ItemInstances.Tests/Validation
+git commit -m "iteminstances(validation): thirteen checks, three outcomes, one counter"
+~~~
+
+---
+

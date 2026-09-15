@@ -1695,17 +1695,37 @@ Three kinds, and exactly three:
 The formula, in integer math, evaluated per stat in this order:
 
 ```
-flat      = Base + sum(Flat)                                   // scaled units
-increased = 10000 + sum(IncreasedBasisPoints)                  // 10000 == 100 percent
-value     = (flat * increased + 5000) / 10000                  // round half up
+flat      = Base + sum(Flat)                                     // scaled units
+increased = 10000 + sum(IncreasedBasisPoints)                    // 10000 == 100 percent
+value     = floordiv(flat * increased + 5000, 10000)             // round half up
 for each More m, in ascending (SourceOrder, ModifierIndex):
-    value = (value * (10000 + m.BasisPoints) + 5000) / 10000   // round half up
+    value = floordiv(value * (10000 + m.BasisPoints) + 5000, 10000)
 value     = clamp(value, Min, Max)
 ```
 
 Percentages are BASIS POINTS, integers where 10,000 is 100 percent. `+ 5000` before the divide is round
 half up, the same shape as the roll formula in section 6.4, so there is one rounding rule in the whole
 system rather than two.
+
+**Every division in the fold is FLOOR division, toward negative infinity, and that is the rule rather than
+a detail of one implementation.** `floordiv(x + 5000, 10000)` is round half up for EVERY SIGN. C# integer
+division truncates toward zero instead, which makes `/` the wrong operator here and makes a debuff round
+differently from the buff of the same size.
+
+The negative case, worked. A stat whose `flat * increased` comes to `-14000`, that is `-1.4` scaled units:
+`floor((-14000 + 5000) / 10000) = floor(-9000 / 10000) = floor(-0.9) = -1`, the nearest integer with the
+tie going up. C# `(-9000) / 10000` gives `0`, so a plain `/` loses a whole unit of a penalty and reports no
+penalty at all. Negative values are ordinary here, because a `Flat` modifier may be negative and a stat's
+`Min` may sit below zero.
+
+The implementation is `Math.DivRem` with a negative-remainder adjustment, subtracting one from the quotient
+when the remainder is non-zero and its sign differs from the divisor's, or any equivalent that computes the
+same integer. It is NEVER `Math.Round`, which takes a floating point argument and would put a `double` on
+the determinism path that 13.4 exists to keep clear of it.
+
+**Section 6.4's roll formula has no negative case and is unaffected.** `position` is a `ushort` and
+`max - min` is non-negative by the tier's own bounds, so its numerator is never negative and truncation and
+floor agree on every input it can be given. It is written with `/` and stays that way.
 
 The `More` loop order is FIXED and stated because multiplication of integers with rounding at each step is
 NOT associative: `(a * x) * y` and `(a * y) * x` can differ by one unit. Ordering by (source order,

@@ -1,8 +1,13 @@
 # Content contracts: the shared ground under Scope A and Scope B
 
-**Status:** APPROVED BY THE OWNER AT GATE 0 on 2026-09-15, and BINDING ON BOTH SPECS. Nothing here is
-implemented yet. This document exists so the two parallel specs cannot contradict each other. Scope A is
-the versioned content catalog, [#882](https://github.com/APKiwiOrg/KhaozEngine/issues/882). Scope B is
+**Status:** APPROVED BY THE OWNER AT GATE 0 on 2026-09-15, and BINDING ON BOTH SPECS. AMENDED after both
+specs were drafted, under the section 18 rule that a spec brings a needed change back here first: 4.7 gains
+an asset reference value kind, 5.1 gains a one-time import exception that 6.5 now cross-references, 3.2
+gains `KhaozEngine.ItemInstances.Journal`, 9.8 and 9.9 make the affix list canonical ascending by mod id,
+9.6 restates the payload cap against the deepest legal item rather than the typical one, and 10.5 says the
+fail-closed rule binds the content version and not the code a row names. Nothing here is implemented yet.
+This document exists so the two parallel specs cannot contradict each other. Scope A is the versioned
+content catalog, [#882](https://github.com/APKiwiOrg/KhaozEngine/issues/882). Scope B is
 owned item instances, affixes, sockets, crafting and the stat evaluation base,
 [#884](https://github.com/APKiwiOrg/KhaozEngine/issues/884). Consumers are
 [Grimhollow #208](https://github.com/APKiwiOrg/Grimhollow/issues/208) and
@@ -759,9 +764,10 @@ mapping rule is:
   into one (`c-ruinborne.md:939-948`). Instances cannot land in Ruinborne before that repair is fixed.
 
 **Grimhollow** has int item ids already, so its definition ids map one to one and no stored container
-changes value. That one-to-one mapping rides 5.1's empty-database import exception, which is the
-only path by which the existing ids survive the move into the authoring store. Its items carry no per-instance state at all today, so every existing stack maps to
-instance id 0. The first Grimhollow item that gains a property is the first instance id it allocates.
+changes value. That one-to-one mapping rides 5.1's empty-database import exception, which is the only path
+by which the existing ids survive the move into the authoring store. Its items carry no per-instance state
+at all today, so every existing stack maps to instance id 0. The first Grimhollow item that gains a
+property is the first instance id it allocates.
 
 **Expensive to change once data exists: yes for Ruinborne, no for Grimhollow.** Ruinborne's is a data
 migration over millions of rows with a dual-read window. Grimhollow's is a no-op.

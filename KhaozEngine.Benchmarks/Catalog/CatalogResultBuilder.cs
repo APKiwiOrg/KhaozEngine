@@ -56,6 +56,11 @@ public sealed class CatalogResultBuilder
         }
         foreach (TextChunkRecord text in _publish.TextChunks) textEntries += text.EntryCount;
 
+        // A rehydrated pack still has true STORED sizes, because those are a property of the bytes on disk.
+        // What it has no honest answer for is anything the encoder counted while producing them, so those
+        // stay null rather than reporting the zero they were never given.
+        bool encoded = !_publish.Rehydrated;
+
         Dictionary<string, double>? attribution = ComposeBootMs is null ? null : new Dictionary<string, double>
         {
             ["p3LoadMs"] = ComposeP3Ms ?? 0,
@@ -87,17 +92,17 @@ public sealed class CatalogResultBuilder
             ServerManifestBytes = _publish.ServerManifestBytes,
             ClientManifestBytes = _publish.ClientManifestBytes,
             TextStoredBytes = _publish.TextStoredBytes,
-            TextUncompressedBytes = _publish.TextUncompressedBytes,
+            TextUncompressedBytes = encoded ? _publish.TextUncompressedBytes : null,
             TextChunkCount = _publish.TextChunks.Count,
-            TextEntryCount = textEntries,
+            TextEntryCount = encoded ? textEntries : null,
             ChunkCount = _publish.Chunks.Count,
             ItemChunkCount = itemChunks,
-            TotalRows = _publish.TotalRows,
-            MeanItemRowBytes = _publish.MeanItemRowBytes,
-            ContentKeyBodyBytes = _publish.KeyBodyBytes,
-            LargestRowBytes = _publish.LargestRowBytes,
-            LargestChunkUncompressedBytes = _publish.LargestChunkUncompressedBytes,
-            PublishFullMs = _publish.TotalMs,
+            TotalRows = encoded ? _publish.TotalRows : null,
+            MeanItemRowBytes = encoded ? _publish.MeanItemRowBytes : null,
+            ContentKeyBodyBytes = encoded ? _publish.KeyBodyBytes : null,
+            LargestRowBytes = encoded ? _publish.LargestRowBytes : null,
+            LargestChunkUncompressedBytes = encoded ? _publish.LargestChunkUncompressedBytes : null,
+            PublishFullMs = encoded ? _publish.TotalMs : null,
 
             LoadTotalMs = Timing?.TotalMs,
             LoadManifestMs = Timing?.ManifestMs,

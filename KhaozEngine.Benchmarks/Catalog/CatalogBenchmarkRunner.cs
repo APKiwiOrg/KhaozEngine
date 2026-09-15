@@ -308,6 +308,8 @@ public static class CatalogBenchmarkRunner
         ContentManifestCodec.TryDecode(clientFile, out ContentManifest? clientManifest, out _);
         var chunks = new Dictionary<(ushort, int), ChunkRecord>();
         var text = new List<TextChunkRecord>();
+        long serverStored = 0;
+        long serverUncompressed = 0;
         foreach (ManifestTypeEntry type in serverManifest!.Types)
         {
             foreach (ManifestChunkEntry chunk in type.Chunks)
@@ -315,15 +317,37 @@ public static class CatalogBenchmarkRunner
                 byte[]? file = store.Get(chunk.Hash);
                 chunks[(type.TypeId, chunk.ChunkIndex)] = new ChunkRecord(type.TypeId, chunk.ChunkIndex,
                     type.Visibility, chunk.Hash, file?.Length ?? 0, chunk.UncompressedBytes, 0);
+                serverStored += file?.Length ?? 0;
+                serverUncompressed += chunk.UncompressedBytes;
             }
         }
+        // The client pack is its own manifest's chunk set, which is smaller by exactly the ServerOnly
+        // families, so it is summed over the client manifest rather than filtered out of the server one.
+        long clientStored = 0;
+        long clientUncompressed = 0;
+        foreach (ManifestTypeEntry type in clientManifest!.Types)
+        {
+            foreach (ManifestChunkEntry chunk in type.Chunks)
+            {
+                clientStored += store.Get(chunk.Hash)?.Length ?? 0;
+                clientUncompressed += chunk.UncompressedBytes;
+            }
+        }
+        long textStored = 0;
         foreach (ManifestLanguageEntry language in serverManifest.Languages)
         {
             byte[]? file = store.Get(language.TextHash);
             text.Add(new TextChunkRecord(language.Tag, language.TextHash, file?.Length ?? 0, 0, 0));
+            textStored += file?.Length ?? 0;
         }
         var outcome = new PublishOutcome
         {
+            Rehydrated = true,
+            ServerChunkStoredBytes = serverStored,
+            ClientChunkStoredBytes = clientStored,
+            ServerUncompressedBytes = serverUncompressed,
+            ClientUncompressedBytes = clientUncompressed,
+            TextStoredBytes = textStored,
             VersionNumber = serverManifest.VersionNumber,
             ServerManifest = serverManifest,
             ClientManifest = clientManifest!,

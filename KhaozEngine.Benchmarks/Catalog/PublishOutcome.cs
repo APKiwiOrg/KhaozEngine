@@ -37,6 +37,13 @@ public sealed class PublishOutcome
     /// <summary>Bytes the content key cost across every row, so P1 can be read with and without it.</summary>
     public long KeyBodyBytes { get; init; }
 
+    /// <summary>
+    /// True when this outcome was read back off an already published pack rather than produced by a
+    /// publish in this process. The stored sizes are still true, because they are a property of the pack,
+    /// but every row derived and publish timing figure was never measured here and is reported as null.
+    /// </summary>
+    public bool Rehydrated { get; init; }
+
     public long ServerChunkStoredBytes { get; set; }
     public long ClientChunkStoredBytes { get; set; }
     public long ServerUncompressedBytes { get; set; }

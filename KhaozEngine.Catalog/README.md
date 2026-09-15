@@ -133,7 +133,8 @@ mismatch refuses the WHOLE record with a reason token. Every decode entry point 
 - `ContentChunk`, `ContentChunkRow`, `ContentChunkHeader` and `EncodedContentChunk` - the decoded chunk with
   its walked table, one row on its way in, the 36 header bytes as a value, and the encode result carrying the
   canonical bytes, the hash and the stored file. `IsRetired(id)` is answered from the table with no row
-  decode.
+  decode. `RowBodyAt` and `RowBodyMemoryAt` both slice the chunk's own body rather than copying it, the
+  second in the form a caller can store.
 - `ContentChunkAssembler` - the publish-side arena: every row body lands in ONE growable buffer and the row
   list is built from offsets at the end, so a chunk of a thousand rows is one buffer rather than a thousand.
   It is itself the `IBufferWriter<byte>` a row codec encodes into.

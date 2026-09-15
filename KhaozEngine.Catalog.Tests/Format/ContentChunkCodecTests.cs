@@ -3,6 +3,7 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO.Compression;
 using System.Linq;
+using System.Runtime.InteropServices;
 using KhaozEngine.Catalog;
 using Xunit;
 
@@ -587,6 +588,32 @@ public class ContentChunkCodecTests
         assembler.Reset();
         Assert.Equal(0, assembler.RowCount);
         Assert.Equal(0, assembler.LargestRowBytes);
+    }
+
+    [Fact]
+    public void TheMemoryRowBodyAccessorAliasesTheChunkBodyRatherThanCopyingIt()
+    {
+        ContentTypeRegistry registry = Registry();
+        EncodedContentChunk encoded = SpecSevenNineChunk(Tag(registry));
+        Assert.True(ContentChunkCodec.TryDecode(encoded.StoredFile.Span, registry, out ContentChunk? chunk, out _));
+        Assert.NotNull(chunk);
+
+        byte[]? shared = null;
+        for (int i = 0; i < chunk.RowCount; i++)
+        {
+            ReadOnlyMemory<byte> memory = chunk.RowBodyMemoryAt(i);
+            Assert.True(chunk.RowBodyAt(i).SequenceEqual(memory.Span));
+
+            // The slice is over the chunk's own body array, whole, so nothing here was copied.
+            Assert.True(MemoryMarshal.TryGetArray(memory, out ArraySegment<byte> segment));
+            Assert.NotNull(segment.Array);
+            Assert.Equal(chunk.Body.Length, segment.Array.Length);
+            shared ??= segment.Array;
+            Assert.Same(shared, segment.Array);
+        }
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => chunk.RowBodyMemoryAt(-1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => chunk.RowBodyMemoryAt(chunk.RowCount));
     }
 
     [Fact]

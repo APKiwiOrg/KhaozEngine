@@ -310,6 +310,22 @@ public sealed class ContentChunk
         return _body.AsSpan(_offsets[index], _lengths[index]);
     }
 
+    /// <summary>
+    /// One row's body as a <see cref="ReadOnlyMemory{T}"/> slice of <see cref="Body"/>, with no copy. It is
+    /// the same bytes <see cref="RowBodyAt"/> gives, in the form that can be STORED: the chunk owns the
+    /// array, so a caller keeping the slice (the pack reader hands it to
+    /// <see cref="ContentSnapshotBuilder.AddRow(ContentRow, ReadOnlyMemory{byte})"/>) keeps the chunk alive
+    /// rather than copying out of it. Spec 9.2 asks for no copy beyond the decompress, and a per-row
+    /// <c>ToArray</c> on the load path is exactly the copy it names.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">The index is outside the table.</exception>
+    public ReadOnlyMemory<byte> RowBodyMemoryAt(int index)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(index);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, _ids.Length);
+        return _body.AsMemory(_offsets[index], _lengths[index]);
+    }
+
     /// <summary>One row's body by definition id, with no copy.</summary>
     public bool TryGetRowBody(int definitionId, out ReadOnlySpan<byte> body)
     {

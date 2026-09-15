@@ -456,7 +456,10 @@ public sealed class ContentPackReader
             }
 
             rows[i] = row;
-            bodies[i] = chunk.RowBodyAt(i).ToArray();
+
+            // A SLICE of the chunk's body, not a copy of it: spec 9.2 asks for no growth and no copy beyond
+            // the decompress, and the snapshot takes its own copy into one blob per type anyway.
+            bodies[i] = chunk.RowBodyMemoryAt(i);
         }
 
         reason = null;

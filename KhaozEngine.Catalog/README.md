@@ -197,7 +197,9 @@ decoder is also fuzzed against.
   touches at most the chunk whose slots cover the id, and `ReadChunkAsync` never refetches a chunk it holds.
   Verify comes before decode, always. `ReadManifestAsync` fetches one manifest by hash and checks that its
   canonical text digests back to the name it was fetched under, and the static `TryVerify` dispatches on the
-  magic, so a caller hashes an object the way the publisher did rather than guessing.
+  magic, so a caller hashes an object the way the publisher did rather than guessing. `BuildSnapshot` HANDS
+  the decoded chunks over: the snapshot copies every row body into its own blob, so the reader drops them
+  and reading rows through the reader afterwards is not a supported mode.
 - `ContentManifestRead`, `ContentChunkRead`, `ContentRowRead` and `ContentPackRead` - one attempt each, every
   one carrying a stable reason token rather than throwing. The reasons this type adds (`hash-mismatch`,
   `manifest-hash-mismatch`, `chunk-fetch-failed`, `chunk-type-unregistered`) are FETCH outcomes and are

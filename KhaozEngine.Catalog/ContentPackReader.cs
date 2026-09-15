@@ -73,6 +73,18 @@ public sealed class ContentPackReader
     /// </summary>
     public const string ReasonTypeUnregistered = "chunk-type-unregistered";
 
+    /// <summary>
+    /// The chunks fetched, verified and decoded but NOT yet handed to a snapshot. <see cref="BuildSnapshot"/>
+    /// empties it, because the snapshot copies every row body into its own per-type blob and holding both is
+    /// paying for the catalog twice.
+    /// <para>
+    /// That bounds the EAGER path, which is the one that reads every chunk the manifest names: boot's peak is
+    /// the decoded chunks OR the snapshot rather than both. It does not bound the lazy client path, where a
+    /// reader that never builds a snapshot accumulates a chunk per slot range touched and frees none. That is
+    /// https://github.com/APKiwiOrg/KhaozEngine/issues/902 and it needs an eviction policy rather than a
+    /// hand-off point.
+    /// </para>
+    /// </summary>
     readonly Dictionary<string, LoadedChunk> _chunks = new(StringComparer.Ordinal);
     RemapRuleSet? _rules;
 
@@ -310,6 +322,19 @@ public sealed class ContentPackReader
     /// The snapshot over the chunks read SO FAR, rows ascending by id whatever order the chunks arrived in.
     /// A reader that has only been asked for one row therefore builds a snapshot holding one chunk's rows,
     /// which is the whole shape of the lazy client path.
+    /// <para>
+    /// <b>It HANDS the chunks over rather than sharing them.</b> The snapshot copies every row body into its
+    /// own per-type blob, so a reader that kept its decoded chunks afterwards would hold the whole catalog
+    /// twice for the rest of the process, and boot's peak is exactly where that is least affordable. The
+    /// decoded chunks are therefore dropped here, and a second call with nothing read since builds an EMPTY
+    /// snapshot rather than the same one.
+    /// </para>
+    /// <para>
+    /// Reading rows through the READER after building is therefore not a supported mode: read them from the
+    /// snapshot, which is the thing that owns them. A lazy caller that keeps looking rows up through
+    /// <see cref="ReadRowAsync"/> simply does not build a snapshot in between, and one that does pays a
+    /// refetch for the slot ranges it asks for again.
+    /// </para>
     /// </summary>
     public ContentSnapshot BuildSnapshot()
     {
@@ -337,7 +362,11 @@ public sealed class ContentPackReader
             }
         }
 
-        return builder.Build();
+        ContentSnapshot snapshot = builder.Build();
+
+        // Build COPIED every body into the snapshot's own blob, so the decoded chunks are dead weight now.
+        _chunks.Clear();
+        return snapshot;
     }
 
     static ContentManifestRead DecodeManifest(

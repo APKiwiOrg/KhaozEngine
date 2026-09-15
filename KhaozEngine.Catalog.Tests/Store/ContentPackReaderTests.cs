@@ -58,13 +58,15 @@ public class ContentPackReaderTests
         Assert.True((await reader.ReadChunkAsync(pack.ItemChunkOne.Hash)).Success);
         Assert.True((await reader.ReadChunkAsync(pack.ItemChunkZero.Hash)).Success);
 
+        // Before the build, because BuildSnapshot hands the decoded chunks over and keeps none.
+        Assert.Equal(2, reader.ChunksRead);
+
         IReadOnlyList<ContentRow> rows = reader.BuildSnapshot().Rows(CatalogPack.ItemType);
 
         Assert.Equal([3, 5, 1030, 1031], rows.Select(r => r.Id));
         Assert.Equal("bronze_sword", rows[0].Key.ToString());
         Assert.True(rows[1].IsRetired);
         Assert.False(rows[0].IsRetired);
-        Assert.Equal(2, reader.ChunksRead);
     }
 
     [Fact]
@@ -85,13 +87,42 @@ public class ContentPackReaderTests
         Assert.Equal([pack.ItemChunkOne.Hash], store.Gets);
         Assert.Equal(1, reader.ChunksRead);
 
+        // A second lookup inside the same chunk is answered from the chunk already decoded. It goes BEFORE
+        // the build, because BuildSnapshot hands the decoded chunks over: reading rows through the reader
+        // afterwards is not a supported mode, and the snapshot is what owns them from then on.
+        Assert.True((await reader.ReadRowAsync(CatalogPack.ItemType, 1031)).Success);
+        Assert.Equal(1, store.GetCount);
+
         ContentSnapshot snapshot = reader.BuildSnapshot();
         Assert.Equal([1030, 1031], snapshot.Rows(CatalogPack.ItemType).Select(r => r.Id));
         Assert.Empty(snapshot.Rows(CatalogPack.TagType));
+    }
 
-        // A second lookup inside the same chunk is answered from the chunk already decoded.
-        Assert.True((await reader.ReadRowAsync(CatalogPack.ItemType, 1031)).Success);
-        Assert.Equal(1, store.GetCount);
+    [Fact]
+    public async Task Building_a_snapshot_hands_the_chunks_over_and_the_reader_keeps_none()
+    {
+        using var root = new TemporaryRoot();
+        var backing = new FileSystemPackStore(root.Path);
+        CatalogPack pack = CatalogPack.Build();
+        await pack.WriteAsync(backing);
+
+        var store = new RecordingPackStore(backing);
+        ContentPackReader reader = Reader(store, pack);
+        Assert.True((await reader.ReadChunkAsync(pack.ItemChunkZero.Hash)).Success);
+        Assert.True((await reader.ReadChunkAsync(pack.ItemChunkOne.Hash)).Success);
+        Assert.Equal(2, reader.ChunksRead);
+
+        ContentSnapshot snapshot = reader.BuildSnapshot();
+
+        // The snapshot copied every row body into its own per-type blob, so the decoded chunks are dead
+        // weight the moment it exists. A boot that kept both paid for the whole catalog twice.
+        Assert.Equal(0, reader.ChunksRead);
+        Assert.Equal([3, 5, 1030, 1031], snapshot.Rows(CatalogPack.ItemType).Select(r => r.Id));
+        Assert.Equal("bronze_sword", snapshot.Rows(CatalogPack.ItemType)[0].Key.ToString());
+
+        // And a snapshot built again over nothing is empty rather than wrong, which is what says the rows
+        // went with the first one rather than being shared with it.
+        Assert.Empty(reader.BuildSnapshot().Rows(CatalogPack.ItemType));
     }
 
     [Fact]

@@ -2426,3 +2426,299 @@ rule.
 list of chunks that do not match. It is the detection half of section 11 row 1 and it is what an operator runs
 when a runtime decode reason appears in a log. It is read only and it never repairs, because a repair means
 deciding which copy is right and only a republish can know that.
+
+## 11. Failure modes and recovery
+
+| # | Failure | Detection | Effect | Recovery |
+|---|---|---|---|---|
+| 1 | A chunk file on the server's disk is corrupt | Hash mismatch at boot step 6, or `catalog-verify` (10.11) on demand | Boot fails closed, exit 3, the hash and reason on stderr (9.6). A running server is unaffected, its bytes are already decoded and in memory. | Delete the file and refetch from the remote store, or republish the version. The chunk is content addressed, so any copy that hashes correctly is the right one. |
+| 2 | A chunk is missing on the client | `missing` is non-empty after the fetch loop (8.7) | The client stays at the connect door showing a fetch-progress notice. It never joins with a partial catalog. | Retry with backoff. If the remote genuinely lacks it, the pack store is broken and an operator runs `catalog-verify` server side. |
+| 3 | The manifest hash does not match | The `CachingPackStore` verify on read (8.4) | The manifest is discarded, refetched once, and a second mismatch leaves the client at the door with `manifest-hash-mismatch`. | Operator side. Either a store wrote bytes under the wrong name, which `PutAsync`'s verify (8.1) makes impossible for the engine's own providers, or a cache or proxy is serving stale bytes for a content address, which is a deployment defect. |
+| 4 | Two consoles publish concurrently | `expectedBaseVersion` optimistic concurrency (10.6), plus the draft row lock (6.2) | The second publish gets 409 naming both version numbers. On SQL Server a `Serializable` transaction may instead abort with a serialization failure, reported as the same 409. | The second operator refreshes, sees the first publish's diff, and decides. No torn version is possible, because the whole commit is one transaction (4.8). |
+| 5 | The authoring database is unreachable at boot | The provider throws on connect at boot step 2 | Boot fails closed, exit 3. | The database is only needed to READ the active version number when the server is configured to take it from the store. A server configured with a pinned version and a pack store needs no database at boot at all, which is the deployment this design recommends for a game server: the authoring database is a TOOLING dependency, not a runtime one. |
+| 6 | A client download is interrupted part way | The next `missing` recomputation (8.7) | Nothing. The chunks that arrived are cached and verified. | Resume by recomputing `missing`. There is no resume state beyond the cache, because a chunk is atomic. |
+| 7 | Client cache poisoning: a local file is replaced with attacker bytes | Hash verify on every read from the cache (8.4) | The entry is discarded and refetched. | Automatic. This is the reason the cache verifies on READ and not only on write. Section 13.5 spends what a local attacker can and cannot achieve. |
+| 8 | A rollback publishes while clients hold the newer pack | The door's ordinal hash comparison (8.5) | Every client on the newer version is refused with `ke:content-mismatch` carrying both versions. | The client fetches the ROLLBACK version's pack, which is a new version number with mostly-reused chunk hashes, so the download is small, and reconnects. A client holding a newer pack is not special: it is simply on the wrong version. |
+| 9 | An id block is exhausted mid-publish | `AllocateInFamilyAsync` finds every block full (4.7) | Nothing torn. A new block is reserved and the publish continues. If the type's id space itself were exhausted, which needs 2.1 billion ids, the allocator throws and the publish aborts at step 3 with nothing written (6.3). | None needed for the common case. The block reservation commits on its own before any id is issued, so a crash between the two leaves a gap and never a duplicate. |
+| 10 | A validator bug rejects everything | Every publish returns 400 with the same finding code across unrelated edits | No publish is possible. Nothing durable is damaged, because the validator runs before any write (6.4) and has no side effects (5.1). | The validator is PURE and takes its whole world as an argument, so a failing candidate is exported through `catalog-export` and replayed in a unit test against a fixed build. There is deliberately NO override flag: a publish that bypasses validation is how a bad row reaches a pack, and the repair path is an engine patch, not an operator escape hatch. |
+| 11 | A game validator throws | The per-type catch in the sweep (5.3) | One `KEC0040` finding naming the type and the exception message. The other types still validate. | The game fixes its validator. One bad game validator cannot take the publish down with a stack trace instead of a finding. |
+| 12 | The pack store is full or read only at publish step 9 | `PutAsync` throws | The publish aborts with nothing committed. Orphan chunk files may exist. | Fix the store, republish. The `ExistsAsync` check makes the retry skip everything already written (6.11). |
+
+Row 10 is the one worth reading twice. The absence of an override is a deliberate cost: it means a validator
+bug blocks content authoring until the engine ships a fix. The alternative, a force flag, converts a
+correctness gate into a habit, and the whole reason the validator is shared by publish, boot and tests
+(contracts 10.4) is so that the answer is the same in all three. A force flag would make boot the only real
+gate, and boot fails closed, so the operator would have published a version that cannot be served.
+
+## 12. Versioning and rollback
+
+### 12.1 The four numbers
+
+| Number | Width | Owner | Moves when |
+|---|---|---|---|
+| Version number | `int`, from 1, plus exactly 1 per publish, never reused, never skipped | The engine | Every publish, including a rollback. |
+| Manifest hash | SHA-256 lower hex, 64 characters, one per side | The engine | Any chunk changes, any of the three numbers below changes, or the scheme version bumps. |
+| `MinimumServerBuild` and `MinimumClientBuild` | `int`, monotonic | The GAME, supplied per publish | The publisher says so. The engine only compares. |
+| `FormatGeneration` | `int`, from 1 | The ENGINE | An engine-owned row codec or the pack format gains a field an older reader cannot skip. |
+
+The version number is the ORDERING and the manifest hash is the IDENTITY, and neither substitutes for the
+other (contracts 7.1). Both travel together everywhere a version is named: in the door layer, in the refusal
+token, in `catalog-versions` and in the `catalog_version` row.
+
+A durable container page stamps the version NUMBER, never the hash (contracts 7.2, gate 0 decision 5), because
+a remap rule applies to any page whose stamp is OLDER than the rule's version and a digest has no order.
+That is Scope B's field to carry and this spec only supplies the number.
+
+### 12.2 What a rollback does to ids
+
+**Every id introduced since the target version KEEPS its id and its values** (#882 body item 8). A rollback
+does not renumber, does not free ids and does not delete rows. Concretely, rolling version 48 back to 46:
+
+- A row edited in 47 or 48 gets an `Update` restoring the version 46 field values. Its id does not move.
+- A row ADDED in 47 or 48 is untouched. It stays live with its id, its key and its values.
+- A row RETIRED in 47 or 48 is blocked if a remap rule names it (section 6.13 step 3), and otherwise gets its
+  `retired` flag cleared by an `Update`.
+- The result publishes as version 49.
+
+The reason a rollback does not remove a newly added row is that the id has already been handed out: a player
+may own one, a ground stack may carry one, and a journal projection may name one. Contracts 5.1 puts it
+directly, an id is never reused and never deleted, and taking one back is deleting it.
+
+### 12.3 What a rollback does to remap rules
+
+Nothing is removed, because rules are append only and the list is a permanent part of every published version
+(contracts 8.1). A rollback APPENDS rules only when it needs to move references, which is the
+`replacementKey` case, and a plain value rollback appends none.
+
+The consequence worth stating: **a rollback cannot un-retire a definition that pages have already migrated
+past** (contracts 8.6). Once a page is brought forward past a `Retired` or `ReplacedBy` rule the old id is
+gone from that page, because a remap is a rewrite rather than a log, and the idempotence check `KEC0015`
+forbids the rule that would point back. So the way out is to MINT A NEW ID carrying the old values, which is
+an ordinary `Add` with a new key under 5.3's immutability rule, plus a `ReplacedBy` rule moving whatever the
+owner wants moved onto it.
+
+Pages that were never brought forward need nothing special. They still hold the old id, the full ordered rule
+set still applies to them, and they arrive where every other page arrives.
+
+### 12.4 What an operator sees
+
+At publish: the new version number, both hashes, how many chunks were written and how many reused, the bytes
+written, the rules appended and the elapsed time (section 10.6).
+
+At rollback: a DRAFT with its edit count and the diff, or a 409 naming every blocking rule with the
+mint-new-id remedy spelled out (section 10.8). A rollback is never a single irreversible button.
+
+After publish, before restart: `catalog-versions` shows `activeVersion` ahead of what the running server
+loaded. The engine logs one line at Information on the publish, naming the new version and both hashes, so a
+log reader can see the gap. There is no pressure to restart, because the running server keeps serving what it
+loaded (section 6.10).
+
+At restart: one line at Information naming the version loaded, its hash, its chunk count and its decode time,
+which is the shape both consumers' skilling and economy boot lines already take
+(`b-grimhollow.md:322-327`, `b-grimhollow.md:386-388`).
+
+On a refusal: the player's client shows a localized notice derived from the stable wire token, which is what
+`NoticeStrings.ForRefusal` already does for the four existing refusal kinds
+(`b-grimhollow.md:472-484`). The token carries BOTH sides' version numbers, so an operator reading a support
+report sees "server 48, client 46" rather than two digests to diff. That is the operator-legibility property
+Grimhollow's hyphen-joined game data hash was built for, improved (contracts 7.6).
+
+## 13. Security and exploit analysis
+
+### 13.1 The client half is public data
+
+Everything in a client manifest is data the client is meant to have, so **nothing secret goes in a `Client`
+chunk**. That is not a hope, it is a publish-time refusal: `KEC0014` refuses a `ServerOnly` field appearing in
+a `Client` chunk, as a publish ERROR rather than a warning and rather than a silent strip, because a silent
+strip makes the field's absence indistinguishable from an authoring mistake (contracts 11.3).
+
+The two families that are `ServerOnly` at the TYPE level, so no client ever sees a row of them at all, are
+`loot_table` and `loot_entry` (section 3.5). Drop rates are the motivating case and the owner put drop tables
+in the same versioned content as items on purpose (#882 comment 2).
+
+A game registering its own type sets its own default visibility and the engine does not second guess it.
+Grimhollow's `store` type is `ServerOnly` for its RATES and its shelf list is `Client`, which is why they are
+two types (section 3.6): visibility is per type and per field, and the cleanest way to hold a public list
+beside a private rate is to split them.
+
+### 13.2 Integrity is by hash, end to end
+
+Every object in the pack is addressed by the digest of its own canonical bytes, and every read verifies
+(sections 7.8, 8.4). A tampered chunk does not hash to its own name, so it is not the chunk. There is no
+signature and no key, deliberately: a content address IS the integrity check as long as the NAME arrives over
+a channel the attacker does not control, and the name arrives inside the connect handshake from the
+authenticated server (section 8.5).
+
+That is the whole trust chain, stated once: **the client trusts the server's manifest hash because it came
+over the game connection, and it trusts every byte after that because every byte hashes to a name the
+manifest gave it.** A CDN in the middle is untrusted by construction and needs no credential.
+
+This is why the refusal token must never carry a URL (section 8.5). A URL in a token is a redirect the peer
+controls, and a client that fetched from it would be fetching attacker-chosen bytes under attacker-chosen
+names. The hash chain would still refuse them, but the client would have made a request to an attacker-chosen
+host, which is a server-side request forgery primitive handed out for free.
+
+### 13.3 Authoring is behind TLS, a bearer token and an operator identity
+
+`AdminHttpServer` makes TLS mandatory (`AdminHttpServer.cs:57`, `Certificate` is `required`) and compares the
+bearer token constant time as the FIRST middleware before any route (`:61-71`). It binds to
+`IPAddress.Loopback` by default (`AdminEndpointOptions.cs:29`) and carries pre-auth limits because the TLS
+handshake completes before the bearer check: `MaxConcurrentConnections` 64, `RequestHeadersTimeout` 10 s,
+`KeepAliveTimeout` 30 s (`AdminEndpointOptions.cs:39-51`). The content actions inherit all of it and add
+nothing, which is the point of registering rather than opening a second listener.
+
+Three Ruinborne admin lessons are answered by the design rather than by a control, and they are worth naming
+because each is an OPEN issue whose fix is structural:
+
+- [Ruinborne #506](https://github.com/APKiwiOrg/Ruinborne/issues/506), `UpsertItemDefAsync` has no domain gate
+  so the console can save one bad row that reverts the whole item catalog at boot. Answered by validating at
+  the API boundary (section 3.7) and again at publish (section 6.4) and again at boot (section 9.5), and by
+  boot failing closed rather than falling back (section 9.6).
+- [Ruinborne #509](https://github.com/APKiwiOrg/Ruinborne/issues/509), content-edit audit rows record no
+  field, no old value and no new value. Answered by the field-level audit through the schema (section 4.6),
+  which is the contracts' own second consumer for the field schema existing at all (contracts 4.7).
+- [Ruinborne #512](https://github.com/APKiwiOrg/Ruinborne/issues/512), a catalog load failure is a
+  `Console.WriteLine` with no metric and no refusal to boot, so players see a stale catalog. Answered by exit
+  code 3 with findings on stderr (section 9.6) and by there being no code-default catalog to fall back TO.
+
+### 13.4 Rate limits on fetch
+
+Fetch is served by a static host or CDN (section 8.6), so the rate limit is that host's and the engine
+specifies only what the CLIENT does: bounded concurrency 4 (section 8.7), one retry per chunk on a hash
+mismatch, and exponential backoff on a failed set starting at 1 s and capped at 60 s with full jitter. The
+jitter is what stops a thundering herd after a world restart from becoming a synchronized retry storm.
+
+The engine's own `HttpPackStore` sets no credential and follows no redirect. `HttpClientHandler.AllowAutoRedirect`
+is set false, because a redirect from a content-addressed store is either a misconfiguration or a
+redirection attack, and the hash check would catch the latter only after the request was made.
+
+The admin endpoint serves no chunks (section 8.6), so the engine's only bandwidth-heavy path is the one the
+operator's static host owns, and the tick loop is never in it.
+
+### 13.5 What a malicious client can and cannot do
+
+**Cannot:**
+
+- Read a `ServerOnly` chunk. It is not in the client manifest and the client manifest is the only thing it is
+  told the hash of. Guessing the hash of a chunk whose contents it does not have is guessing SHA-256.
+- Forge a pack. Every byte must hash to a name the server-supplied manifest gave, and the manifest hash comes
+  over the authenticated game connection.
+- Join with a catalog the server did not publish. The door compares ORDINAL on
+  `<versionNumber>|<clientManifestHash>` and refuses on any difference (section 8.5).
+- Change what the server believes. The server reads content from its own loaded runtime and never from
+  anything a client sends. A client's catalog is a rendering copy, exactly as Grimhollow's economy copy is
+  display only (`b-grimhollow.md:336-339`).
+- Make the server fetch anything. Fetch is a client-side path and the server loads from its configured store.
+
+**Can:**
+
+- Read every `Client` chunk, including the ones for content its character will never see. Item stats, values
+  and names are public by construction, and that is the same position Grimhollow's economy already takes by
+  pushing the whole table to every client on join (`b-grimhollow.md:320-339`).
+- Modify its own cached pack, and see the result immediately: the cache verifies on read (section 8.4), so a
+  modified chunk is discarded and refetched. Deleting the cache costs it a redownload. Neither reaches the
+  server.
+- Compute a chunk hash and check whether the CDN holds it. That is a membership oracle over content the
+  client already has the manifest for, so it leaks nothing.
+- Spend the CDN's bandwidth by refetching. That is the CDN's rate limit to enforce and the reason section 8.6
+  puts fetch off the game process.
+
+**The residual risk, named:** a client can enumerate every `Client` chunk hash from the manifest and therefore
+knows the exact size of every chunk it does not need. That leaks the ROUGH SHAPE of the catalog, for example
+that the item type has 245 chunks. It leaks nothing about `ServerOnly` content, because those chunks are
+absent from the client manifest entirely rather than present with their hashes withheld.
+
+## 14. Performance budgets
+
+Each row is a TARGET, the method it is measured by, and a `Measured` column filled at stage 5 by the proof
+spike #882 item 12 requires. Every target is justified by arithmetic rather than by a feeling.
+
+| # | Budget | Target | How it is measured | Measured |
+|---|---|---|---|---|
+| P1 | Pack size at 50,000 definitions | Server pack under 12 MB stored, client pack under 9 MB stored | `KhaozEngine.Benchmarks --catalog --definitions 50000`, summing `storedBytes` across the manifest | TBD (stage 5) |
+| P2 | Pack size at 1,000,000 definitions | Server pack under 240 MB stored, client pack under 180 MB stored | the same run at `--definitions 1000000` | TBD (stage 5) |
+| P3 | Server load time and memory at 50,000 | Under 400 ms wall clock from manifest to validated runtime, under 20 MB of managed heap for the runtime | `Stopwatch` around boot steps 3 to 8, `GC.GetTotalAllocatedBytes` delta and `GC.GetTotalMemory(true)` after | TBD (stage 5) |
+| P4 | Client cold start at 50,000 | Under 6 s on a 20 Mbit link to first joinable, of which under 300 ms is local work | the fetch loop against a local HTTP server with a token-bucket shaper, timed from refusal to reconnect | TBD (stage 5) |
+| P5 | Publish time, one item edited, 50,000 definitions | Under 1.5 s wall clock end to end | `catalog-publish` elapsed, reported in its own response | TBD (stage 5) |
+| P6 | Download size after a one-item edit | Under 80 KB, including the manifest | the publish response's `bytesWritten` plus the manifest size | TBD (stage 5) |
+| P7 | Lookup by id, server runtime | Under 5 ns, zero allocation | a tight loop over random live ids, `GC.GetAllocatedBytesForCurrentThread` delta asserted 0 | TBD (stage 5) |
+| P8 | Validator sweep at 1,000,000 | Under 20 s | `ContentValidator.Validate` timed over a synthetic snapshot | TBD (stage 5) |
+| P9 | Weighted loot draw | Under 100 ns, zero allocation | a loop over a 200-entry table through the prefix-summed array (9.4) | TBD (stage 5) |
+| P10 | Text chunk decode, one language at 50,000 | Under 250 ms, under 24 MB resident | decode timed, `GC.GetTotalMemory(true)` after | TBD (stage 5) |
+
+### 14.1 Where the numbers come from
+
+**P1 and P2, pack size.** The item base row of section 3.3 encodes to roughly 200 bytes: two localized keys
+averaging 24 bytes each with a length byte, three asset references averaging 28, a tag list of 4 tags at 5
+bytes, and eleven ints averaging 2 bytes as varints, plus the 6-byte row table entry. At 50,000 that is 10.0
+MB uncompressed for the item type. The other four engine types are small by comparison: 200 tags, a few
+hundred stats, and loot entries at maybe 4 per item averaging 20 bytes, which is 4 MB. Text is the other half:
+50,000 items times a name and an examine line at 60 bytes plus a 30-byte key is about 6 MB per language. So an
+uncompressed one-language server pack is about 20 MB, and Brotli at quality 5 on this kind of structured
+repetitive text and varint data reliably lands between 2:1 and 4:1. Twelve megabytes stored is the
+conservative end of that band, and the target is set at the conservative end on purpose so a miss means
+something is actually wrong.
+
+The client pack is smaller by exactly the `ServerOnly` families, which is `loot_table` and `loot_entry`, so
+about 9 MB. P2 scales P1 by twenty, which is linear because every term above is per definition.
+
+**P3, server load time and memory.** The memory table is section 9.2's, which is 12 MB at 50,000. The time is
+dominated by three linear passes: decompress about 20 MB, decode 50,000 rows, and validate. Brotli
+decompresses at well over 100 MB/s, a row decode is a handful of varint reads, and the validator is five
+linear passes with two dictionary builds. Four hundred milliseconds gives each pass a generous share and it
+is the number that matters operationally, because it is added to every server restart and v1 applies a new
+version at restart.
+
+**P4, client cold start.** Nine megabytes over 20 Mbit is 3.6 s of pure transfer. Bounded concurrency 4 and
+connection setup put a realistic floor near 4.5 s. Six seconds leaves headroom for the door round trip and
+the reconnect, and the 300 ms local-work budget is the manifest parse plus the hash verification of every
+chunk, which is 9 MB of SHA-256 at typical throughput of over 1 GB/s on any machine that can run the client.
+This is a ONE TIME cost per version per client, because the cache is by hash and a subsequent version reuses
+every unchanged chunk.
+
+**P5, publish time.** One item edited touches ONE chunk of 4,096 slots holding at most 4,096 rows, so the
+encode and compress is at most 800 KB of work. Everything else is fixed cost: the candidate build is a query
+over the live set, the validator is P8 scaled down by twenty, and the commit is one transaction. The dominant
+term at 50,000 is the validator sweep at roughly 1 s by P8's ratio, which is why the target is 1.5 s rather
+than 200 ms. If the measurement comes in far under, the validator can stop rebuilding indexes it could
+incrementally maintain, and that optimization is deliberately not designed now.
+
+**P6, download size after a one-item edit.** One chunk of 4,096 item rows at 200 bytes is 800 KB
+uncompressed, which is far over the 80 KB target, so the target is NOT met by the chunk alone. The target is
+met because **a one-item edit at 50,000 definitions touches a chunk holding about 4,096 rows only if the ids
+are dense in that range.** Two mitigations are already in the design and the target assumes both: the
+manifest is a few kilobytes and is always refetched, and the chunk is the only other object. So the honest
+arithmetic is 800 KB compressed to roughly 250 KB, which is three times the target. **P6's target is
+therefore the one budget this spec expects the spike to move**, and section 21 question Q3 puts the resolution
+to the owner: either accept about 250 KB per edit, or lower the default `chunkSlots` for the item type to
+1,024, which quarters the re-download to about 65 KB at the cost of four times the manifest entries, which is
+still only 49 entries at 50,000 definitions. The recommended default is to lower `chunkSlots` for `item` to
+1,024 and leave every other type at 4,096, and the whole point of making the chunk size a per-type
+registration parameter (contracts 4.5) is that this is a one-line change measured rather than argued.
+
+**P7, lookup.** One array index into `Offsets`, one bounds check, one span slice. Five nanoseconds is a
+generous ceiling for that on any current hardware and the real value should be under 2. The budget exists to
+catch a regression that introduces a dictionary or a lock, not to celebrate the number.
+
+**P8, validator sweep.** Five linear passes over 1,000,000 rows with two dictionary builds at 1,000,000
+entries each. A dictionary build at that size is a few hundred milliseconds, a linear pass with a few
+comparisons per row is a few tens of milliseconds, and the reference pass does a lookup per reference field.
+Twenty seconds is roughly ten times the arithmetic, which is the right margin for a publish-time check that
+runs once.
+
+**P9 and P10** are Scope B adjacent but belong here because the arrays they read are built by this spec. P9's
+prefix-summed binary search over 200 entries is 8 comparisons. P10's 6 MB of UTF-8 into a frozen dictionary of
+100,000 entries is dominated by the dictionary build.
+
+### 14.2 The benchmark it runs in
+
+`KhaozEngine.Benchmarks` gets a `--catalog` mode following the journal's shape exactly
+(`a-engine.md:1322-1349`): a `CatalogBenchmarkConfig` with a static `Parse(args)`, a
+`CatalogBenchmarkRunner.RunAsync(config, ct)`, a `CatalogBenchmarkResult` with `ToJson()`, a
+`CatalogBenchmarkOutput.WriteAsync(result, path)` for `--output`, and a checked-in JSON baseline under
+`Baselines/`. New flags are `--definitions`, `--types`, `--chunk-slots`, `--languages` and `--edit-count`.
+
+The benchmark is `IsPackable=false`, is not on the engine version line, and CI's `dotnet test` never invokes
+its timing loop. Its STRUCTURAL behaviour is tested in CI, as a `CatalogBenchmarkTests` class in
+`KhaozEngine.Server.Tests`, mirroring `MutationJournalBenchmarkTests`. Always `-c Release`, because Debug
+numbers are not representative (`KhaozEngine.Benchmarks/README.md:43`).

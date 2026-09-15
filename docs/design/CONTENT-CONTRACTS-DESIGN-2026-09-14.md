@@ -1,9 +1,9 @@
 # Content contracts: the shared ground under Scope A and Scope B
 
-**Status:** CONTRACTS DRAFT, awaiting owner gate 0. Nothing here is implemented and nothing is approved.
-This document exists so the two parallel specs cannot contradict each other. Scope A is the versioned
-content catalog, [#882](https://github.com/APKiwiOrg/KhaozEngine/issues/882). Scope B is owned item
-instances, affixes, sockets, crafting and the stat evaluation base,
+**Status:** APPROVED BY THE OWNER AT GATE 0 on 2026-09-15, and BINDING ON BOTH SPECS. Nothing here is
+implemented yet. This document exists so the two parallel specs cannot contradict each other. Scope A is
+the versioned content catalog, [#882](https://github.com/APKiwiOrg/KhaozEngine/issues/882). Scope B is
+owned item instances, affixes, sockets, crafting and the stat evaluation base,
 [#884](https://github.com/APKiwiOrg/KhaozEngine/issues/884). Consumers are
 [Grimhollow #208](https://github.com/APKiwiOrg/Grimhollow/issues/208) and
 [Ruinborne #465](https://github.com/APKiwiOrg/Ruinborne/issues/465). Neither spec is implemented before
@@ -12,7 +12,7 @@ the owner approves both.
 Every rule below is written to be coded against: types, widths, byte order, ranges and reserved values.
 Each contract section carries the rule, the engine precedent it follows or deliberately departs from with
 the file cited, a short rationale, an explicit note on whether the decision is expensive to change once
-data exists, and any question that has to go back to the owner.
+data exists, and the gate 0 answer wherever the draft carried a question.
 
 The file-and-line citations come from three read-only surveys taken on 2026-09-14 against
 KhaozEngine `1eb60de7`, Grimhollow `36f0139a` and Ruinborne `1b85e1aa`. Where a survey and this document
@@ -598,10 +598,8 @@ What follows from it, with the survey's evidence:
 would put a 64 character string in every container slot, every ground item and every journal projection
 entry, which the 1,024 byte message cap alone rules out.
 
-**Open question for the owner.** Whether an engine-allocated int id is exposed to authors at all, or
-whether the admin console shows keys only. Recommended default: show the id read-only beside the key,
-because an operator reading a quarantine reason or a log line sees ids, and a console that cannot show
-one makes the log unreadable.
+**Decided at gate 0:** the engine-allocated int id is shown to authors, read-only beside the key
+(section 17, decision 3).
 
 ## 6. How instances reference content
 
@@ -699,10 +697,8 @@ anything but the constant 65,535.
 this formula. Changing the formula silently restates every item in the world. Changing the width from
 `ushort` would do the same.
 
-**Open question for the owner.** Whether a rescale is silent or whether the player is told. Recommended
-default: silent, because a rescale is a balance edit and the item's displayed value simply changes. If the
-owner wants it visible, the remap rule already carries the sequence number and version needed to build a
-notification, and nothing in the byte format has to change.
+**Decided at gate 0:** a rescale is silent, and nothing in the byte format turns on it (section 17,
+decision 4).
 
 ### 6.5 How the two consumers' existing identities map
 
@@ -801,8 +797,8 @@ identity, and it is what Grimhollow's door carries today).
 Recommendation: the NUMBER on the page, the HASH on the connect door and in the manifest. The "both"
 column scores well and loses on bytes: 36 bytes on every page of every container of millions of owned
 items, to detect a case (two publish lines against one durable store) the owner has explicitly ruled out
-for v1 by having no staging environment (#882 comment 2, 2026-09-14). Section 17 carries this as the
-question to revisit if staging arrives.
+for v1 by having no staging environment (#882 comment 2, 2026-09-14). Section 17 records the decision and
+the condition to revisit it: the moment staging arrives.
 
 **Expensive to change once data exists: yes, because** the stamp is a field on every durable page, and
 both the loader's remap decision and the rewrite-on-commit rule read it.
@@ -913,10 +909,9 @@ check must stay innermost because it needs the subject the token produced
 
 Grimhollow's door carries four layers today, and the fourth is the skilling config hash
 (`b-grimhollow.md:420-434`). The `feature/item-drop` branch, which lands first (section 17, decision 12),
-changes that fourth layer's value to
-`GrimhollowGameDataHash.Current`, a HYPHEN-JOINED pair of the skilling hash and a new item-properties
-hash, joined rather than rehashed so an operator reading a refusal can see which half moved, and with no
-colon in it because `GrimhollowConfigGate.TryParseMismatch` splits on colons
+changes that fourth layer's value to `GrimhollowGameDataHash.Current`, a HYPHEN-JOINED pair of the skilling
+hash and a new item-properties hash, joined rather than rehashed so an operator reading a refusal can see
+which half moved, and with no colon in it because `GrimhollowConfigGate.TryParseMismatch` splits on colons
 (`b-grimhollow.md:1341-1350`).
 
 **Contract.** In phase 1 of Grimhollow's adoption, the joined game-data hash is REPLACED by the content
@@ -944,10 +939,8 @@ negotiated fresh on every connect and carries nothing durable. The manifest hash
 published version, so changing the algorithm or the canonicalisation requires a scheme version bump and
 re-digesting every version, which is why `SchemeVersion` exists.
 
-**Open question for the owner.** Whether a client that is BEHIND on content should be refused or should be
-allowed in read-only while it fetches. Recommended default: refused, matching every other gate in the nest
-and the owner's server-restart apply model. A fetch-then-rejoin loop is the client's own business and needs
-no server state.
+**Decided at gate 0:** a client that is behind on content is refused at the door rather than admitted
+read-only while it fetches (section 17, decision 6).
 
 ## 8. Remap rule format
 
@@ -1063,10 +1056,8 @@ durable page in the world. The `Kind` byte is the extension point: a new kind is
 that meet it must fail closed rather than skip it, which is what the engine's `FormatGeneration` (7.4) is
 for.
 
-**Open question for the owner.** Whether a retired definition's placeholder items should be automatically
-converted to a currency refund at some later version. Recommended default: no, and leave it to a
-deliberate `ReplacedBy` rule pointing at whatever the owner decides to give. Automation here is a policy
-the engine should not have.
+**Decided at gate 0:** placeholder items are never auto-converted to a refund, and a deliberate
+`ReplacedBy` rule is the only path (section 17, decision 7).
 
 ### 8.6 A retire is irreversible for migrated pages
 
@@ -1495,10 +1486,8 @@ and called it important (#882 comment 2), and a drop table is exactly the conten
 Changing a field from `Everyone` to `OwnerOnly` is a publish. Adding a fourth property level changes the
 comparison every replication and tooltip site performs.
 
-**Open question for the owner.** Whether an unidentified item is an `OwnerOnly` case or its own mechanic.
-Recommended default: its own mechanic, built on `OwnerOnly` rather than replacing it, because
-"unidentified" also has to hide fields from the OWNER, which is a fourth level the three above deliberately
-do not have.
+**Decided at gate 0:** an unidentified item is its own mechanic built on `OwnerOnly`, so there is no
+fourth visibility level (section 17, decision 8).
 
 ## 12. Localization key conventions
 
@@ -1581,10 +1570,8 @@ per-consumer exception table forever, for two rows. The rename is tracked in
 change is a content edit plus a catalog edit, and a miss degrades to a visible placeholder rather than a
 failure. That is precisely why the rename is affordable and the special case is not.
 
-**Open question for the owner.** Whether the engine ships a per-language text chunk for languages the game
-does not, so content can be translated ahead of the client. Recommended default: yes, since the chunks are
-per language and independently addressed, and a language the client has no font for is a presentation
-problem rather than a content one.
+**Decided at gate 0:** the engine ships per-language text chunks for languages the game does not, so
+content can be translated ahead of the client (section 17, decision 9).
 
 ## 13. Stat definition shape
 
@@ -1686,10 +1673,7 @@ integer.
 are baked into every stored roll and every authored range. Changing any of them restates every number in
 the game.
 
-**Open question for the owner.** Whether `Increased` and `More` are the right two names, given the owner's
-crafting design is deliberately not a PoE copy (#884 body). Recommended default: keep them, because they
-are the clearest available names for additive-pool versus multiplicative and the alternative is inventing
-vocabulary for a distinction everyone already understands.
+**Decided at gate 0:** `Increased` and `More` keep their names (section 17, decision 10).
 
 ## 14. Random source contract
 
@@ -1770,9 +1754,8 @@ test source. Both consumers are already shaped for this and both are adopters:
 **Expensive to change once data exists: no.** No seed, state or draw index is ever durable, by rule 14.3.
 That is precisely what makes the source swappable at any time.
 
-**Open question for the owner.** Whether a hosted server should be able to run the seeded source at all,
-for a debugging session. Recommended default: yes, behind an explicit host option that logs a Warning line
-on every boot it is set, so it cannot be left on by accident.
+**Decided at gate 0:** a hosted server may run the seeded source, behind an explicit host option that logs
+a Warning line on every boot it is set (section 17, decision 11).
 
 ## 15. Integer and encoding rules shared by every format
 
@@ -1872,59 +1855,61 @@ Everything NOT in this table is cheap by comparison: package names, visibility l
 field, localization keys, the random source implementation, the validator's findings, the alert names and
 every runtime policy in section 10.
 
-## 17. Open questions for the owner
+## 17. Owner decisions at gate 0 (2026-09-15)
 
-Each carries the recommended default, which is what both specs assume unless the owner says otherwise, and
-what changes if the answer is different.
+Every question this document carried into gate 0 was answered on 2026-09-15, and the RECOMMENDED DEFAULT
+was taken in all twelve. Entry 13 is a decision the owner added rather than an answer to a question the
+draft asked. Each entry states the decision, names the section it binds, and keeps what the other answer
+would have cost, so a later revisit does not have to reconstruct the reasoning.
 
-1. **Do socketed items gain experience or levels while socketed?** (From #884, "Open for the owner at the
-   first design gate".) Recommended default: NO for v1. What changes if yes: a socketed item becomes a
-   high-frequency write path, so the nested payload needs a checkpoint policy and the container page
-   commit stops being driven by player action. The issue names this itself. Nothing in the byte format
-   changes, because a nested payload can already carry an experience field, so this is a v2 decision that
-   does not block either spec.
-2. **Do socket types restrict what a socket accepts?** (From #884, same list.) Recommended default: YES,
-   and the restriction is content on the socket type row rather than code. What changes if no: the
-   `SocketTypeId` field in section 9.5 stays in the format (it is one varint and the byte cost is already
-   paid) but every value is 0, and the socket type content type registers with no rows. Either answer
-   leaves the format unchanged, which is why it is safe to defer.
-3. **Is the engine-allocated int definition id shown to authors at all?** (Section 5.5.) Recommended
-   default: shown read-only beside the key. If hidden, an operator reading a quarantine reason or a log
-   line sees an id they cannot look up, so the admin console would need an id-to-key search instead.
-4. **Is a rescale silent, or is the player told?** (Section 6.4.) Recommended default: silent. If the
-   player is told, nothing in the byte format changes: the remap rule already carries the sequence number
-   and version a notification needs.
-5. **Should the page stamp carry the manifest hash as well as the version number?** (Section 7.2.)
-   Recommended default: no, on 36 bytes per page across millions of owned items, and because the case it
-   detects (two publish lines against one durable store) is ruled out by there being no staging
-   environment. Revisit the moment staging arrives, because adding it later is a page format change.
-6. **Is a client that is behind on content refused, or admitted read-only while it fetches?**
-   (Section 7.5.) Recommended default: refused, matching every other gate in the nest. If admitted, the
-   server needs a per-connection content version and a partial replication rule, which is a large amount
-   of new machinery for a case the fetch-then-rejoin loop already covers.
-7. **Should a retired definition's placeholder items be auto-converted to a refund later?** (Section 8.5.)
-   Recommended default: no, leave it to a deliberate `ReplacedBy` rule. If yes, the engine acquires a
-   policy about what player property is worth, which it should not have.
-8. **Is an unidentified item an `OwnerOnly` case or its own mechanic?** (Section 11.3.) Recommended
-   default: its own mechanic built on `OwnerOnly`. Unidentified has to hide fields from the OWNER too,
-   which is a fourth visibility level the three in section 11.1 deliberately do not have. If the owner
-   wants a fourth level instead, it has to be decided BEFORE either spec, because the level count is in
-   section 16's expensive table.
-9. **Does the engine ship per-language text chunks for languages the game does not?** (Section 12.4.)
-   Recommended default: yes. If no, a translation cannot ship ahead of a client release, which partly
-   defeats the "new content without a client release" decision.
-10. **Are `Increased` and `More` the right names?** (Section 13.4.) Recommended default: keep them. If
-    renamed, it is a rename of content field values and costs nothing durable, so this is the cheapest
-    question in the list and can be answered late.
-11. **May a hosted server run the seeded random source for debugging?** (Section 14.4.) Recommended
-    default: yes, behind an explicit host option that logs a Warning on every boot it is set. If no, a
-    production-shaped repro of a crafting bug is impossible.
-12. **Does Grimhollow's in-flight `feature/item-drop` branch land before or after the contracts?**
-    (Section 7.6, evidence at `b-grimhollow.md:1316-1379`.) This is a sequencing question rather than a
-    design one, and it is the owner's to answer because it is about two repos' release order.
-    Recommended default: let it land as shipped, and absorb it in Grimhollow adoption phase 1. If the
-    contracts land first, the branch's `assets/config/items.jsonc` becomes a third authored content
-    mechanism that has to be migrated immediately rather than at adoption.
+1. **A socketed item does NOT gain experience or levels while socketed, in v1.** (From #884, "Open for the
+   owner at the first design gate", section 9.5.) The other answer makes a socketed item a high-frequency
+   write path, so the nested payload would need a checkpoint policy and the container page commit would
+   stop being driven by player action. Nothing in the byte format turns on it, because a nested payload can
+   already carry an experience field, so v2 can revisit it without a format change.
+2. **Socket types DO restrict what a socket accepts, and the restriction is CONTENT on the socket type row
+   rather than code.** (From #884's same list, section 9.5.) Had the answer been no, the `SocketTypeId`
+   field would have stayed in the format with every value 0 and the socket type content type would have
+   registered with no rows. Either answer left the format alone, which is why it was safe to defer.
+3. **The engine-allocated int definition id IS shown to authors, read-only beside the key.** (Section 5.5.)
+   Hiding it would send an operator reading a quarantine reason or a log line to an id they cannot look up,
+   so the admin console would have needed an id-to-key search instead.
+4. **A rescale is SILENT.** (Section 6.4.) A rescale is a balance edit and the item's displayed value simply
+   changes. Telling the player would have cost nothing in the byte format: the remap rule already carries
+   the sequence number and the version a notification needs.
+5. **The page stamp carries the version NUMBER only.** (Section 7.2.) The hash would have added 36 bytes to
+   every page across millions of owned items, to detect a case (two publish lines against one durable store)
+   that is ruled out while there is no staging environment. **Revisit the moment staging arrives**, because
+   adding the hash later is a page format change.
+6. **A client that is BEHIND on content is REFUSED at the door**, not admitted read-only while it fetches.
+   (Section 7.5.) Admitting it needs a per-connection content version and a partial replication rule, which
+   is a large amount of new machinery for a case the fetch-then-rejoin loop already covers.
+7. **A retired definition's placeholder items are NOT auto-converted to a refund.** (Section 8.5.) A
+   deliberate `ReplacedBy` rule pointing at whatever the owner decides to give is the only path. Automating
+   it would give the engine a policy about what player property is worth, which it should not have.
+8. **An unidentified item is ITS OWN MECHANIC, built on `OwnerOnly` rather than replacing it.**
+   (Section 11.3.) Unidentified has to hide fields from the OWNER too, which is a fourth level the three in
+   11.1 deliberately do not have. A fourth level had to be decided here or not at all, because the level
+   count is in section 16's expensive table.
+9. **The engine DOES ship per-language text chunks for languages the game does not.** (Section 12.4.) The
+   chunks are per language and independently addressed, so the cost is a chunk nobody fetches. The other
+   answer stops a translation shipping ahead of a client release, which partly defeats the
+   new-content-without-a-client-release decision.
+10. **`Increased` and `More` keep their names.** (Section 13.4.) They are the clearest available names for
+    additive-pool versus multiplicative, and a rename costs nothing durable, so this stays the cheapest
+    decision in the list to revisit.
+11. **A hosted server MAY run the seeded random source**, behind an explicit host option that logs a Warning
+    line on every boot it is set. (Section 14.4.) Forbidding it makes a production-shaped repro of a
+    crafting bug impossible.
+12. **Grimhollow's `feature/item-drop` branch lands FIRST**, before these contracts, and is absorbed in
+    Grimhollow adoption phase 1. (Sections 6.6 and 7.6, evidence at `b-grimhollow.md:1316-1379`.) This was
+    a sequencing question about two repos' release order rather than a design one. Had the contracts landed
+    first, the branch's `assets/config/items.jsonc` would have become a third authored content mechanism
+    needing migration immediately rather than at adoption.
+13. **A socket entry carries the CONTAINED INSTANCE ID.** (Sections 9.5 and 9.8.) The owner added this at
+    gate 0. A socketed item keeps its own identity while it is socketed, unsocketing restores that identity
+    rather than minting a new one, and an item duplicated by a bug stays traceable to the instance it came
+    from. It costs one varint per occupied socket, two bytes in the worked example.
 
 ## 18. How the two specs consume this document
 

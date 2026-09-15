@@ -1434,11 +1434,13 @@ simply means it is remapped again on the next load. That is safe because the rul
 ONE validator implementation is shared by publish, server boot and tests. Its contract shape:
 
 ```
-ContentValidationReport Validate(ContentSnapshot candidate, IReadOnlyList<RemapRule> rules)
+ContentValidationReport Validate(ContentSnapshot candidate, ContentSnapshot? previous, IReadOnlyList<RemapRule> rules)
 ```
 
-- INPUT is a complete candidate snapshot plus the full ordered rule set. Nothing is read from a database,
-  a file or an ambient static inside it.
+- INPUT is a complete candidate snapshot, the PREVIOUS published snapshot or null, and the full ordered
+  rule set. Nothing is read from a database, a file or an ambient static inside it.
+- `previous` is NULL at boot and in tests, where there is nothing to compare against and nothing to load,
+  and is the LAST PUBLISHED version at publish, loaded by the caller and handed in.
 - OUTPUT is a report: a bool plus an ordered list of findings, each carrying a content type id, an id, a
   code and a message. It accumulates rather than stopping at the first, following
   `JsonSchemaValidator.ValidationReport(bool IsValid, IReadOnlyList<string> Errors)` and its
@@ -1460,6 +1462,23 @@ anything off it:
 - Every LIVE definition carries every field its schema marks required (4.7). This is the engine's form of
   Grimhollow's every-live-item-needs-a-row rule, which fails the config load closed when a live item has no
   properties row (`b-grimhollow.md:1316-1358`).
+
+**The CHANGE-SHAPED checks run only when `previous` is non-null, and each is documented PUBLISH-ONLY.**
+Every one of them compares the candidate against the last published version, so at boot and in a test,
+where `previous` is null, they do not run and cannot appear in the report. That is a property of the
+argument rather than a mode flag, which is what keeps one implementation honest across the three callers:
+
+- A KEY changed on a row that is already published. 5.3 makes a key immutable once published, and a rename
+  is a retire plus a new row plus a remap rule, so this is the check that enforces it.
+- A registered type's id, key or CHUNK SIZE changed after that type's first publish (4.3, 4.5). A chunk
+  size change repaginates every chunk hash and every page stamp derived from it.
+- A mod's TIERS were reordered. A stored affix entry is a mod id, a tier byte and a position (9.9), so
+  reordering tiers repoints every affix already in the world at a range it was never rolled in.
+
+Nothing above weakens the two rules that make the validator testable. It still has NO SIDE EFFECTS, and it
+still performs NO AMBIENT READS: `previous` is an ARGUMENT, loaded by the caller that has a store to load
+it from, never a lookup the validator performs. A test that wants a change-shaped finding constructs both
+snapshots in memory and passes the pair.
 
 Because it is pure and takes its whole world as an argument, a test builds a snapshot in memory and asserts
 on findings, publish runs it before writing anything, and boot runs it against the loaded pack. Ruinborne's

@@ -2,7 +2,8 @@
 
 Date: 2026-09-15
 
-Status: Signed off by the owner on 2026-09-15 (section 13), implementation in rounds (section 14)
+Status: Implemented, shipping in the next release. Signed off by the owner on 2026-09-15 (section 13), built in
+the rounds of section 14.
 
 Issue: [#897](https://github.com/APKiwiOrg/KhaozEngine/issues/897). Resolves
 [#741](https://github.com/APKiwiOrg/KhaozEngine/issues/741). First consumer: Grimhollow's 2x2 cow,
@@ -265,8 +266,9 @@ Additive unless marked.
 - `TileReach.Set`, `Contains` and `FacingToward` gain an agent-size overload. **Behaviour:** `TryNearest`'s existing
   `agentSize` now shapes the candidates as well as the walk. Identical for size 1.
 - `TileMoveSimulator.FootprintOf`.
-- `TilePresenter.PoseAt(TileRect, int, TileDirection)`, `TileWorldClient.TryGetRemoteFootprint`. **Behaviour:**
-  `Pose` centres a large body.
+- `TilePresenter.PoseAt(TileRect, int, TileDirection)`, `TileWorldClient.TryGetRemoteFootprint`,
+  `TileWorldClient.TryGetLatestRemoteFootprint` (the newest-snapshot twin, which `TileRemoteTargets` resolves a
+  remote to). **Behaviour:** `Pose` centres a large body.
 - **Behaviour:** an `Attack` naming the attacker itself clears on the tick it is applied and answers
   `CannotReach`, rather than holding the lock forever.
 - **Behaviour:** `SetPlayerState` refuses a footprint above 1.
@@ -275,17 +277,22 @@ Additive unless marked.
 ## 12. Deferred, with the reason
 
 - **Actors as movement blockers.** Ruling 6. The occupancy overlay stays gated behind the remote timeline.
-- **Footprint-aware `TileDrawPriority`.** Section 9. Filed as its own issue when this lands.
+- **Footprint-aware `TileDrawPriority`.** Section 9.
+  [#899](https://github.com/APKiwiOrg/KhaozEngine/issues/899).
 - **A multi-goal reach search.** Candidates grow with footprints, and a player at radius 64 against a walled-in
   4x4 can flood up to 16 windows. One breadth-first search visiting the same goals returns the identical path
   (discovery order does not depend on the goal), so it is a pure optimisation. The cow is 8 candidates, the same as
   a 2x2 authored object today, so this waits for a profile, beside
   [#669](https://github.com/APKiwiOrg/KhaozEngine/issues/669).
+  [#901](https://github.com/APKiwiOrg/KhaozEngine/issues/901).
 - **Removing `TileMoveOptions.AgentSize`.** Section 4.2. Next major.
+  [#900](https://github.com/APKiwiOrg/KhaozEngine/issues/900).
 - **[#756](https://github.com/APKiwiOrg/KhaozEngine/issues/756), the in-phase chase.** A step clock problem, not a
   geometry one. A footprint does not change it and this work does not fix it.
 - **Interest measured from the footprint.** Section 8.1.
+  [#906](https://github.com/APKiwiOrg/KhaozEngine/issues/906).
 - **Sizes on `TileAttackContext`.** No rule reads them yet. Ranged combat is the round that will.
+  [#907](https://github.com/APKiwiOrg/KhaozEngine/issues/907).
 
 ## 13. Choices, ruled by the owner (2026-09-15)
 

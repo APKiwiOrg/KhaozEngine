@@ -236,7 +236,7 @@ differs from the hash after the place alone. Same world to play, different objec
 | Verb | What it does |
 |---|---|
 | `collision_at(x, z, plane)` | The flag names, whether the tile is blocked outright, and whether a one-tile agent standing there could step north, east, south or west. Use it to work out why a path refuses to go somewhere. |
-| `is_walkable(x, z, plane, agentSize = 1)` | Whether an agent that many tiles square, anchored here and extending north and east, stands clear. The same footprint rule the pathfinder walks with. |
+| `is_walkable(x, z, plane, agentSize = 1)` | Whether an agent that many tiles square, anchored here and extending north and east, stands clear: no tile of the footprint is blocked and no wall lies between two of its tiles (`TileCollision.CanStand`). The same footprint rule the pathfinder walks with. |
 | `path(fromX, fromZ, toX, toZ, plane, agentSize = 1, maxRadius = 64)` | The walk between two tiles on one plane, and the tiles it steps through. |
 | `walkable_rect(x, z, width, height, plane)` | What a one-tile agent could stand on over a rect, as an ASCII map: `#` blocked, `.` open. North first. |
 

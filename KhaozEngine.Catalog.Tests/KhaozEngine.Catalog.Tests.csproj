@@ -17,13 +17,15 @@
     <Content Include="Goldens/v*/**/*.*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
-    <!-- The three catalog packages the tests actually compile against, and nothing else. Catalog.Authoring
-         brings Catalog and Catalog brings Primitives, so no further reference is needed for those two, and
-         Catalog.Sqlite is here because the provider suite instantiates SqliteContentAuthoringStore directly:
-         push CI selects test projects by the reference graph, and a reference for a type these tests do not
-         use would silently degrade that selection. -->
+    <!-- The four catalog packages the tests actually compile against, and nothing else. Catalog.Authoring
+         brings Catalog and Catalog brings Primitives, so no further reference is needed for those two, and the
+         two providers are here because the provider suites instantiate their stores directly: push CI selects
+         test projects by the reference graph, and a reference for a type these tests do not use would silently
+         degrade that selection. The SQL Server suite needs a live instance and skips without one, so the
+         reference costs a build and no run time. -->
     <ProjectReference Include="../KhaozEngine.Catalog/KhaozEngine.Catalog.csproj" />
     <ProjectReference Include="../KhaozEngine.Catalog.Authoring/KhaozEngine.Catalog.Authoring.csproj" />
     <ProjectReference Include="../KhaozEngine.Catalog.Sqlite/KhaozEngine.Catalog.Sqlite.csproj" />
+    <ProjectReference Include="../KhaozEngine.Catalog.SqlServer/KhaozEngine.Catalog.SqlServer.csproj" />
   </ItemGroup>
 </Project>

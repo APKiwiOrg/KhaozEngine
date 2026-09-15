@@ -1233,10 +1233,15 @@ The two caps it has to live under, with the arithmetic:
   precedent at `TileWorldServer.Tick.cs:241-259`, which is the one place the engine already sends a
   logical payload across several reliable ordered frames (`a-engine.md:818-838`).
 
-512 is also about 11 times the realistic size computed in 9.8, so it is a guard rail rather than a budget.
-A larger cap would buy nothing and would let one pathological item consume a page. A smaller one, say 256,
-would still fit a six-affix socketed item but would leave no room for the game-range fields a consumer has
-not thought of yet.
+512 sits between two item sizes rather than above one, and both numbers matter. The 45 bytes worked out in
+9.8 is a TYPICAL rare, three affixes and one socket. The DEEPEST item the v1 field kinds can express is
+about 410 bytes: six affixes, a full socket set with every socket holding a nested item, enchantments, and
+a rare name assembled from word ids. So 512 is a guard rail at about 1.25 times the deepest legal item and
+about 11 times the typical one, and anyone sizing a page or a message budget should plan against the 410
+rather than the 45. A larger cap would buy nothing and would let one pathological item consume a page. A
+smaller one, say 256, would fit the typical item with room over and would REFUSE the deepest one, which
+turns a legal roll into an encode failure and leaves no room at all for the game-range fields a consumer
+has not thought of yet.
 
 **Expensive to change once data exists: no to raise, yes to lower.** Raising the cap is backward
 compatible: every existing payload is still legal. Lowering it strands items that are already over it, and

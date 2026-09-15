@@ -87,6 +87,18 @@ JSON config loader plus a schema validator, 143 lines across two files (contract
 | `KhaozEngine.Catalog.SqlServer` | none, opt-in sibling | `Catalog.Authoring`, `Microsoft.Data.SqlClient` | The SQL Server authoring provider. |
 | `KhaozEngine.Catalog.Netcode` | `Server` | `Catalog`, `KhaozEngine.Netcode` | The content handshake layer and its gate authenticator. |
 
+**Two EXISTING packages change, and no third is added.** The authoring API is registered actions on the admin
+surface (section 10.1), and that surface cannot express the 409 or the structured error body this spec's
+status codes require:
+
+| Package | Change |
+|---|---|
+| `KhaozEngine.NetWorld` | `AdminActionStatus.Conflict`, and an object-carrying error payload on `AdminActionResult` beside the existing string one. Additive, no caller breaks. |
+| `KhaozEngine.Server.Admin` | The matching arm in `AdminHttpServer.DispatchActionAsync`, so `Conflict` is a 409 with a JSON body and an object-carrying `BadRequest` is a 400 with one. |
+
+Both land in phase 1 milestone 1.4 (section 18.1) and neither is a contract change. Section 10.1 spends the
+reasoning.
+
 The layering rules are the README's, surveyed at `a-engine.md:1373-1407`. A pure catalog with no SQL belongs in
 `Foundation` beside `Items` and `Stats`. Anything with a SQL provider is an opt-in SIBLING pair and is never
 bundled in an umbrella, stated twice in the README (lines 101 and 104) and followed by both `WorldStore` and
@@ -792,9 +804,12 @@ CREATE TABLE IF NOT EXISTS catalog_draft_edit_field (
 ```
 
 The unique index on `(type_id, definition_id, content_key)` is what makes an edit IDEMPOTENT per target: a
-console that saves the same row twice updates the one edit rather than queueing two. An `Add` carries
+console that saves the same row twice updates the one edit rather than queueing two. An ORDINARY `Add` carries
 `definition_id = 0` because no id exists yet, so its uniqueness comes from the key half of the index, which is
-also what refuses two `Add` edits for the same key in one draft.
+also what refuses two `Add` edits for the same key in one draft. **The one exception is an `Add` written by
+`catalog-import`, which MAY carry the bundle's own id** (sections 6.3 and 10.9). The index holds either way,
+because the key half is unique across a bundle and the id half is unique per type, and the publish tells the
+two apart by the value rather than by who wrote it.
 
 ```sql
 CREATE TABLE IF NOT EXISTS catalog_audit (
@@ -1199,17 +1214,29 @@ carry.
 
 For each `Add`, in edit ordinal order:
 
-1. If the edit names a family, call `AllocateInFamilyAsync(familyId)` (section 4.7).
-2. Otherwise call `AllocateAsync(typeId, 1)`.
+1. If the edit already CARRIES an id, meaning its `definition_id` is non-zero, keep it and allocate nothing.
+   Only `catalog-import` writes an `Add` that way, and only into an empty database (section 10.9).
+2. Otherwise, if the edit names a family, call `AllocateInFamilyAsync(familyId)` (section 4.7).
+3. Otherwise call `AllocateAsync(typeId, 1)`.
 
-Both go through the reserve-before-issue rule, so the reservation commits on its own before the id appears
-anywhere. **An allocation that fails aborts the publish with nothing written**, because no durable row carries
-the id yet. A reservation that COMMITTED and then aborted leaves a gap of reserved-but-unissued ids, which is
-the safe direction and costs nothing (section 4.7).
+Both allocating branches go through the reserve-before-issue rule, so the reservation commits on its own
+before the id appears anywhere. **An allocation that fails aborts the publish with nothing written**, because
+no durable row carries the id yet. A reservation that COMMITTED and then aborted leaves a gap of
+reserved-but-unissued ids, which is the safe direction and costs nothing (section 4.7).
 
-Ids are allocated in edit ordinal order, so two publishes of the same bundle into two empty databases produce
-the same ids. That is what makes a bundle export and re-import reproducible (section 10.9) and what makes the
-Grimhollow import preserve ids 1 to 35 (section 16.4).
+**After every `Add` has an id, the high-water marks are SEEDED from the ids that were carried.** For each type
+with at least one carried id, `reserved_through` and `issued_through` move to the greater of their current
+value and the largest carried id of that type. Without it the first ordinary `Add` after an import allocates
+id 1 straight onto an imported row. The step is a no-op for an ordinary publish, because nothing carries an id
+there.
+
+**So there is ONE path with two id sources, and which one runs is a property of the EDIT rather than of the
+caller.** An `Add` with `definition_id = 0` is allocated one, an `Add` with a non-zero `definition_id` keeps
+it, and a bundle may mix the two because the id is per row. Ids that ARE allocated come in edit ordinal order,
+so two publishes of the same id-free bundle into two empty databases produce the same ids, which is what makes
+an export and re-import reproducible (section 10.9) and what fixes Ruinborne's ids at import (section 17.3).
+Ids that are CARRIED are kept exactly, which is what makes Grimhollow's import preserve ids 1 to 35 and leave
+every stored container decoding unchanged (section 16.4). Ordering does not preserve an id, carrying it does.
 
 ### 6.4 Step 4, validate
 
@@ -1524,6 +1551,24 @@ because a reader validating a chunk it just downloaded should not need the regis
 malformed. The reader CHECKS them against the registry (`slotBase == chunkIndex * slotCount` and `slotCount`
 matching the type's registration) and refuses a mismatch with `chunk-range-mismatch`.
 
+**Two more header-level refusals run BEFORE any allocation, and they are the size gate the hash cannot be.**
+The chunk hash is over the UNCOMPRESSED canonical bytes (section 7.3), deliberately, so a reader cannot verify
+a stored file without first running the sender's bytes through the decompressor. The integrity check is sound
+and it is LATE, so the resource check has to be early:
+
+- `chunk-too-large` when the header's declared `uncompressedBytes` exceeds
+  `ContentPackFormat.MaxChunkUncompressedBytes`. Taken from the 36 header bytes alone, before one body byte is
+  read and before any buffer is sized.
+- `chunk-stored-length` when `storedBytes` differs from the length of the body actually received. A declared
+  length that disagrees with the delivered one is a malformed file whatever a hash would later say, and the
+  comparison is free because the transport already knows the body length.
+
+Without the first, a hostile proxy or a compromised CDN answers a chunk GET with a 40 KB Brotli stream whose
+header declares `uncompressedBytes = 0xFFFFFFFF`, and the reader allocates and decompresses before it can
+compute a hash to compare with. The hash check does discard every one of them, which is exactly the problem:
+it discards them AFTER the allocation, across the bounded concurrency of 4 and across the retry-with-backoff
+loop of section 13.4. Section 8.4 states the matching rule for the decompressor itself.
+
 ### 7.3 The chunk body, and the canonical bytes the hash is taken over
 
 The body is a row table followed by the rows. Both are inside the compressed region.
@@ -1692,6 +1737,12 @@ per entry, ASCENDING ORDINAL BY KEY:
 Keys are the derived keys of contracts 12.1, `<type key>.<content key>.<field>`, ordinal ascending so the
 chunk is canonical and its hash is stable. The value cap of 8,192 bytes is generous for a UI string and
 bounded, so a malformed length cannot make a reader allocate a gigabyte.
+
+**`KECT` takes the same two header-level refusals as `KECC`**, `chunk-too-large` when the declared
+`uncompressedBytes` exceeds `ContentPackFormat.MaxChunkUncompressedBytes` and `chunk-stored-length` when
+`storedBytes` differs from the received body length (section 7.2). Both are taken from the variable-length
+header before any allocation and before the compressor is touched. The 8,192 byte value cap bounds one entry
+and these two bound the file, which is the pairing the entry cap alone was never going to give.
 
 **One chunk per language, not one per language per type.** At 50,000 items with a name and an examine line
 averaging 60 bytes, one language is about 6 MB uncompressed and roughly 1.5 MB Brotli, which is one fetch. The
@@ -1924,6 +1975,16 @@ if (actual != hash) -> discard, do NOT cache, report reason "hash-mismatch", try
 `OfBytesForKind` dispatches on the magic in the first four bytes, so a chunk is hashed under `kec/chunk/` and
 a manifest under its own sub-domain, and a file whose magic does not match any known kind is rejected before
 any length field is read.
+
+**The decompression that feeds it is BOUNDED, and that ordering is load bearing.** Verifying a hash taken over
+uncompressed bytes means decompressing bytes that are not yet trusted, so the steps are fixed: check
+`storedBytes` against the received body length (`chunk-stored-length`), check the declared
+`uncompressedBytes` against `ContentPackFormat.MaxChunkUncompressedBytes` (`chunk-too-large`), allocate
+exactly the declared length, decompress INTO that buffer and refuse with `chunk-too-large` on the first byte
+that would overrun it, THEN rebuild the canonical form and hash. The overrun refusal is not redundant with the
+declared-length check, because a Brotli stream can expand past whatever its container claims and the declared
+length is the sender's number too. Only bytes that survive all of that are hashed, and only bytes whose hash
+matches are cached.
 
 **A mismatching object is never cached and never used.** That is the entire defence against a poisoned CDN or
 a corrupted proxy, and it is why the cache is keyed by hash rather than by version: a cache entry that does
@@ -2205,6 +2266,30 @@ and the runtime the tick loop does read is immutable and only replaced at boot.
 Action names match `^[a-z0-9][a-z0-9-]{0,63}$`, enforced at `ServerAdmin.cs:127-130`, and a duplicate
 registration throws.
 
+**One engine change IS required, and it is not free.** "No new transport" is true of the listener, the TLS,
+the auth and the routing, and false of the RESULT type. `AdminActionStatus` today is exactly
+`{ Ok, Accepted, BadRequest }` (`KhaozEngine.NetWorld/AdminActionResult.cs:10-20`),
+`AdminActionResult.BadRequest(string error)` carries a bare string, and `DispatchActionAsync` maps
+`BadRequest` to `Results.BadRequest(new { error = result.Error })` with everything else falling to 500
+(`KhaozEngine.Server.Admin/AdminHttpServer.cs:156-172`). Section 10.2 assigns 409 to five actions and section
+10.6 returns a 400 body carrying a `findings` ARRAY and a 409 body carrying `expectedBaseVersion`,
+`blockedByRules` and `remedy`. Neither is expressible today: every 409 in this spec would be a 500 and every
+structured body would collapse to one string. So phase 1 milestone 1.4 ships three small additions to two
+existing packages:
+
+- `AdminActionStatus.Conflict` in `KhaozEngine.NetWorld`, and an `AdminActionResult.Conflict(object payload)`
+  factory beside `BadRequest`.
+- An object-carrying error payload on `AdminActionResult`, so `BadRequest` can return a document rather than a
+  message. The string overload stays and keeps its shape, because every existing caller uses it.
+- The matching arm in `AdminHttpServer.DispatchActionAsync`, mapping `Conflict` to
+  `Results.Json(payload, statusCode: 409)` and the object-carrying `BadRequest` to the same at 400.
+
+This is additive and breaks no caller, which is why it is a milestone item rather than a CCR: contracts 10.4
+and 10.5 say nothing about the admin result type. It is named here because the spec's entire answer to two
+named failure modes rides on it. `expectedBaseVersion` optimistic concurrency (section 10.6) is what section
+11 row 4 resolves with, and the empty-database 409 (section 10.9) is what the Ruinborne seeding class resolves
+with. An unnamed engine change is an unbudgeted one.
+
 ### 10.2 The eleven actions
 
 | Action | Verb | Status codes | Audit action |
@@ -2226,8 +2311,12 @@ registration throws.
 
 That is fourteen rows for eleven concepts, because `catalog-draft` and `catalog-discard` are the draft pair
 and `catalog-pin` and `catalog-rollback` are the version pair. The status conventions are `AdminHttpServer`'s
-own: reads return `Results.Json`, a bad request body or a bad id returns 400 with `new { error = ... }`, and
-an unwired capability returns 501 (`AdminHttpServer.cs:156-172`, `a-engine.md:1059-1076`).
+own: reads return `Results.Json` and a bad request body or a bad id returns 400 with `new { error = ... }`,
+both in the action dispatch at `AdminHttpServer.cs:156-172`. The 501 arms are NOT on that path: they are on
+the four BUILT-IN routes, `/accounts`, `/bans`, `/ban` and `/unban`, each gated on an `admin.*Supported`
+capability flag (`AdminHttpServer.cs:100`, `:105`, `:111`, `:128`). A registered action that does not exist is
+a 404 from `TryGetAction`, not a 501, so no content action returns 501 and none of them is listed as
+returning one. The 409 column is the engine change named in section 10.1.
 
 **None of these returns 202 Accepted**, which is a deliberate departure from the built-in mutation routes. A
 202 means the command was enqueued to the host thread and will complete
@@ -2446,10 +2535,24 @@ Both are the same defect: a seed that runs repeatedly against live data. An impo
 empty database cannot have it. A deployed database's values change through `catalog-edit` and `catalog-publish`
 and through nothing else, ever.
 
-`catalog-export` takes `{ "version": 48 }` and returns the bundle for that version. Export at version `N`
-then import into an empty database reproduces exactly version 1 of a new database with the same ids and the
-same keys (section 6.3's ordered allocation), which is what makes the bundle a real backup rather than an
-approximation.
+**A bundle row's id is OPTIONAL, and that is the whole of the import id rule.** It is stated here and in
+section 6.3 and nowhere else, because two mechanisms described in two places is how this became contradictory
+in the first place:
+
+- A row that NAMES an id is imported with it. `catalog-import` writes an `Add` edit carrying the
+  `definition_id`, step 3 of the publish skips allocation for it, and the type's high-water marks are seeded
+  from the largest carried id afterwards. This is the case that makes an adoption a no-op for stored data, it
+  is contracts 5.1's narrow exception (CCR-2), and it is why the exception is licensed only into an empty
+  database: nothing is there to collide with.
+- A row that names NO id is allocated one in edit ordinal order, so the bundle's row order determines the ids.
+
+Both run through one path, `catalog-import` producing a draft of `Add` edits and `catalog-publish` publishing
+it, and a bundle may mix the two because the id is per row. There is no second import mechanism anywhere.
+
+`catalog-export` takes `{ "version": 48 }` and returns the bundle for that version, ids included. Export at
+version `N` then import into an empty database reproduces the same rows with the same keys and the SAME IDS,
+because the export carries them and the import keeps them, which is what makes the bundle a real backup rather
+than an approximation.
 
 ### 10.10 Operator identity
 
@@ -2839,6 +2942,22 @@ Two invariants, and they are the whole test. **It never throws.** Every decode e
 from the fixed token list, and the test asserts the token is in the list rather than asserting a specific
 token per mutant, because a bit flip can legitimately turn one failure into another.
 
+The fixed list, in two halves. A DECODE entry point may return only:
+
+```
+chunk-format-version   chunk-reserved-set     chunk-range-mismatch   chunk-too-large
+chunk-stored-length    chunk-row-duplicate    chunk-row-order        chunk-row-flags
+manifest-wrong-side    manifest-chunk-slots   rule-kind              rule-sequence-gap
+rule-sequence-order
+```
+
+A FETCH may additionally report `hash-mismatch`, `manifest-hash-mismatch` and `chunk-fetch-failed`, which are
+outcomes of a transfer rather than of a decode and which the fuzzer never produces, because it mutates bytes
+the test already holds. The boot refusals of section 9.6 are a third set and are not decode reasons at all.
+`chunk-too-large` and `chunk-stored-length` are in the decode half deliberately: the fuzzer's truncate
+mutation and its varint-continuation mutation both reach them, so they are exercised on every run rather than
+only by a hand-written hostile-CDN test.
+
 A third invariant catches the dangerous case: **a mutant that DECODES must round trip.** If a mutated chunk
 decodes successfully, re-encoding it must reproduce the mutated bytes. That is what catches a decoder that
 silently normalizes away a difference, which is how a canonical format stops being canonical and how byte
@@ -3079,8 +3198,10 @@ The bundle is generated by reading, in this order:
    so the tool is a CLIENT-side generator writing a JSON fragment the bundle builder merges. That layering
    cost is real and it is one tool run, once.
 
-**Ids are carried in the bundle, not reallocated.** `ContentBundle` names each row's id explicitly and
-`catalog-import` into an empty database honours it, setting `catalog_id_high_water.reserved_through` and
+**Ids are carried in the bundle, not reallocated.** This is the carried-id case of section 6.3 step 1 and
+section 10.9's first bullet: `ContentBundle` names each row's id explicitly, `catalog-import` writes `Add`
+edits carrying them, publish skips allocation for every one, and the commit seeds
+`catalog_id_high_water.reserved_through` and
 `issued_through` to the maximum imported id per type afterwards. So item 13 is `stone_sword` before and after,
 every stored container decodes unchanged, and no player's bank moves. Contracts 6.5 states the outcome
 directly: Grimhollow's adoption is a no-op for stored data.
@@ -3251,10 +3372,13 @@ unchanged, because the key survives: `character_inventory`, `item_stat`, `weapon
 `character_inventory.item_id` to the int definition id is Scope B's work, because it is the owned-item half,
 and it is not a precondition for anything in this section.
 
-**Allocation order is pinned at import, and the reason is reproducibility.** Ids are allocated in edit ordinal
-order (section 6.3), so the bundle's row order determines the ids. The bundle builder orders every type's rows
-by KEY ascending, ordinal, which is the order `SqlRuinborneStore.cs:433` already reads them in
-(`ORDER BY [item_id]`). Two consequences: an export at version N re-imported into an empty database reproduces
+**Ruinborne's bundle carries NO ids, so it is the allocated case, and the order is what pins them.**
+Grimhollow's bundle carries ids because it has ids to keep (section 16.4). Ruinborne has none: its catalog is
+keyed by a string and the int32 definition id is new here, so every row goes in with `definition_id = 0` and
+comes out with an allocated one. The two are the two bullets of section 10.9, one import path, chosen per row
+by whether the row names an id. Ids that are allocated come in edit ordinal order (section 6.3), so the
+bundle's row order determines them. The bundle builder orders every type's rows by KEY ascending, ordinal,
+which is the order `SqlRuinborneStore.cs:433` already reads them in (`ORDER BY [item_id]`). Two consequences: an export at version N re-imported into an empty database reproduces
 the same ids (section 10.9), and the ordering that was a hazard when it was a WIRE index becomes harmless the
 moment it is only an allocation order, because the id it produces is then stored rather than derived.
 
@@ -3551,7 +3675,7 @@ each with its own gate, so it is not one undivided landing:
 | 1.1 | `KhaozEngine.Catalog`: registry, field schema, codecs, varint, hashes, the four pack formats, remap rules, `FileSystemPackStore`, `ContentPackReader` | The golden files of 15.1, the decoder fuzzing of 15.2, the cross-version round trips of 15.3 |
 | 1.2 | `Catalog.Authoring`, `Catalog.Sqlite`, `Catalog.SqlServer`: temporal rows, draft, change set, field audit, id allocator, publish | The provider conformance suite of 15.5 on both backends, the crash-safety cases of 15.6 |
 | 1.3 | `ContentRuntime`, the boot sequence, fail-closed exit 3, the derived indexes, the `--catalog` benchmark mode | The eight boot facts of 15.7, plus P3 and P7 measured at 50,000 |
-| 1.4 | The fourteen actions, the bundle, the empty-database rule, operator identity | The action tests, plus P5 and P6 measured |
+| 1.4 | The sixteen actions, the bundle, the empty-database rule, operator identity, and the admin-result change of section 10.1: `AdminActionStatus.Conflict`, an object-carrying error payload on `AdminActionResult`, and the matching arm in `AdminHttpServer.DispatchActionAsync` | The action tests, including one asserting a real 409 body with `expectedBaseVersion`, plus P5 and P6 measured |
 | 1.5 | `Catalog.Netcode`, `HttpPackStore`, `CachingPackStore`, the client fetch loop, `ContentStringCatalog` | The door tests of 15.7, plus P4 and P10 measured |
 
 **Acceptance:** the four Grimhollow tests of section 16.7 green, and section 16.8's eleven steps complete.

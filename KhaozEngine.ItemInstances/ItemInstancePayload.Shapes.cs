@@ -38,7 +38,7 @@ public static partial class ItemInstancePayload
         // The one level limit of contracts 9.5, derived: a field that CARRIES a nested payload may not sit
         // INSIDE one. Keying it on the shape rather than on kind 132 is what makes the limit structural for
         // a game kind too, and recursion is the one way a 45 byte payload becomes a denial of service.
-        if (nested && Nests(shape))
+        if (nested && shape.Nests)
         {
             reason = InstancePayloadReason.SocketNesting;
             return false;
@@ -78,29 +78,20 @@ public static partial class ItemInstancePayload
         return registration.Codec.TryValidate(body, out reason);
     }
 
-    /// <summary>Whether a shape carries a nested payload anywhere, in its header or in one repeat.</summary>
-    static bool Nests(in InstanceFieldShape shape)
-        => Nests(shape.Header.Span) || Nests(shape.Entry.Span);
-
-    static bool Nests(ReadOnlySpan<InstanceSlotKind> slots)
-    {
-        foreach (InstanceSlotKind slot in slots)
-        {
-            if (slot == InstanceSlotKind.NestedPayload)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     /// <summary>
     /// Walks one run of slots. A <see cref="InstanceSlotKind.Varint"/> is read at the FULL unsigned 64 bit
     /// width, because the shape declares a value's POSITION and not its width: kind 6's bound-to subject
     /// and a socket's contained instance id are both <c>uint64</c> (contracts 9.5), and a node prefixed
     /// instance id sets the high bit, so narrowing the read here would refuse a legal payload. Narrowing a
     /// particular kind's value is that kind's own codec's business.
+    /// <para>
+    /// <b>This walk and <c>InstanceValidator.ReadRun</c> are a PAIR.</b> They read the same four
+    /// <see cref="InstanceSlotKind"/> members off the same shapes and differ only in what they do with what
+    /// they find: this one discards the values and recurses STRUCTURALLY, and the validator's keeps the
+    /// values, because resolving a reference needs them, and answers <c>field-malformed</c> for every
+    /// failure, because the bytes have already decoded here and a refusal there is defensive. A fifth slot
+    /// kind is added to BOTH or to neither.
+    /// </para>
     /// </summary>
     static bool ReadSlots(
         InstancePropertyRegistry registry,

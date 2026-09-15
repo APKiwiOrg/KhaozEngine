@@ -106,7 +106,29 @@ public enum InstanceReferenceSite : byte
 public readonly record struct InstanceFieldShape(
     ReadOnlyMemory<InstanceSlotKind> Header,
     InstanceCountWidth Count,
-    ReadOnlyMemory<InstanceSlotKind> Entry);
+    ReadOnlyMemory<InstanceSlotKind> Entry)
+{
+    /// <summary>
+    /// Whether the shape carries a nested payload anywhere, in its header or in one repeat. It lives HERE
+    /// rather than beside either walker because both need it and a second copy is how the two would start
+    /// disagreeing about what nests: the decoder derives the one level limit of contracts 9.5 from this
+    /// answer and the validator derives which references are CONTAINED items from the same one.
+    /// </summary>
+    internal bool Nests => Carries(Header.Span) || Carries(Entry.Span);
+
+    static bool Carries(ReadOnlySpan<InstanceSlotKind> slots)
+    {
+        foreach (InstanceSlotKind slot in slots)
+        {
+            if (slot == InstanceSlotKind.NestedPayload)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+}
 
 /// <summary>
 /// WHICH content type one slot of a shape holds an id for. <c>ContentFieldSchema</c>'s reference target is

@@ -46,7 +46,7 @@ public static partial class InstanceValidator
             }
 
             bool tiered = IsTiered(field.Kind);
-            if (registration.References.IsEmpty && !tiered && !Nests(registration.Shape))
+            if (registration.References.IsEmpty && !tiered && !registration.Shape.Nests)
             {
                 continue;
             }
@@ -80,7 +80,7 @@ public static partial class InstanceValidator
         // A field that CARRIES a nested payload is a field whose item references are CONTAINED items, which
         // is what spec 12.2 rows 6 and 13 mean by "every socket's ContainedDefinitionId". Reading it off the
         // shape rather than off kind 132 is what keeps the rule true for a game kind that nests too.
-        bool contains = Nests(shape);
+        bool contains = shape.Nests;
         int slots = Math.Max(shape.Header.Length, shape.Entry.Length);
         Span<ulong> values = context.Values.Length >= slots ? context.Values : new ulong[slots];
 
@@ -212,6 +212,13 @@ public static partial class InstanceValidator
     /// <summary>
     /// Reads one run of slots into <paramref name="values"/>. The bytes already decoded against these same
     /// shapes, so every refusal here is defensive: it answers <c>field-malformed</c> rather than throwing.
+    /// <para>
+    /// <b>This walk and <c>ItemInstancePayload.ReadSlots</c> are a PAIR.</b> They read the same four
+    /// <see cref="InstanceSlotKind"/> members off the same shapes and differ only in what they do with what
+    /// they find: the decoder's discards the values and recurses structurally, and this one KEEPS them,
+    /// because resolving a reference needs them, and recurses through the reference walk instead. A fifth
+    /// slot kind is added to BOTH or to neither.
+    /// </para>
     /// </summary>
     static bool ReadRun(
         ReadOnlySpan<InstanceSlotKind> slots,
@@ -341,22 +348,6 @@ public static partial class InstanceValidator
     {
         check = 3;
         reason = InstancePayloadReason.FieldMalformed;
-        return false;
-    }
-
-    /// <summary>Whether a shape carries a nested payload anywhere, in its header or in one repeat.</summary>
-    static bool Nests(in InstanceFieldShape shape) => Nests(shape.Header.Span) || Nests(shape.Entry.Span);
-
-    static bool Nests(ReadOnlySpan<InstanceSlotKind> slots)
-    {
-        foreach (InstanceSlotKind slot in slots)
-        {
-            if (slot == InstanceSlotKind.NestedPayload)
-            {
-                return true;
-            }
-        }
-
         return false;
     }
 

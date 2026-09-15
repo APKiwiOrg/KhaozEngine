@@ -19,6 +19,12 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.Benchmarks/KhaozEngine.Benchmarks.csproj" />
+    <!-- The content catalog provider suites: the conformance class runs against the in-memory reference
+         store (Catalog.Authoring), SQLite and SQL Server, which is why all three are here and the read side
+         (Catalog) arrives transitively. -->
+    <ProjectReference Include="../KhaozEngine.Catalog.Authoring/KhaozEngine.Catalog.Authoring.csproj" />
+    <ProjectReference Include="../KhaozEngine.Catalog.Sqlite/KhaozEngine.Catalog.Sqlite.csproj" />
+    <ProjectReference Include="../KhaozEngine.Catalog.SqlServer/KhaozEngine.Catalog.SqlServer.csproj" />
     <ProjectReference Include="../KhaozEngine.Commerce/KhaozEngine.Commerce.csproj" />
     <ProjectReference Include="../KhaozEngine.Commerce.Sqlite/KhaozEngine.Commerce.Sqlite.csproj" />
     <ProjectReference Include="../KhaozEngine.Commerce.SqlServer/KhaozEngine.Commerce.SqlServer.csproj" />

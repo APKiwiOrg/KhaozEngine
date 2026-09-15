@@ -242,6 +242,24 @@ database path, operation GUID, and either `before-commit` or `after-commit-befor
 provider hook it writes and flushes exactly one `JOURNAL_CHECKPOINT <phase>` line, then waits on standard input so the
 parent can kill the process tree and prove recovery.
 
+The `--catalog-crash-probe` mode is the out-of-process half of the content catalog's publish crash safety, spec 15.6.
+It runs BOTH roles of the same executable. Run alone it is the harness: for each of the nine `ContentPublishStep`
+points it seeds a fresh SQLite catalog and `FileSystemPackStore` in a temp directory, stages one reprice in the open
+draft, spawns a child that publishes it, waits for the child's `CATALOG_CHECKPOINT <step>` line, kills the process
+tree there, then REOPENS the database under `ValidateOnly` and asserts the three properties: the store is entirely at
+the old version or entirely at the new one, every hash any version references is in the pack and readable, and the
+retried publish produces the same manifest hash the uninterrupted publish did. One line per step, a summary line, and
+a nonzero exit code if any step did not recover.
+
+```bash
+dotnet run --project KhaozEngine.Benchmarks -c Release -- --catalog-crash-probe
+```
+
+With `--child --root <absolute dir> --pause-at <step>` it is the victim instead, which is what the harness spawns and
+never something to run by hand. In-process hooks prove the ORDERING, which the suite in
+`KhaozEngine.Catalog.Tests/Publish/PublishCrashSafetyTests.cs` does by throwing from the same hook, and a real kill
+proves the DURABILITY: a thrown exception unwinds the stack and lets every connection close run, and a kill does not.
+
 ## Item instances (`--items`)
 
 The stage 5 proof spike for `docs/design/ITEM-INSTANCES-DESIGN-2026-09-15.md`. It measures every one of

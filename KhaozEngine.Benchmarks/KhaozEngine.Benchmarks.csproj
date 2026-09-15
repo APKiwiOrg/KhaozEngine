@@ -17,5 +17,11 @@
     <ProjectReference Include="../KhaozEngine.WorldStore/KhaozEngine.WorldStore.csproj" />
     <ProjectReference Include="../KhaozEngine.WorldStore.Sqlite/KhaozEngine.WorldStore.Sqlite.csproj" />
     <ProjectReference Include="../KhaozEngine.WorldStore.SqlServer/KhaozEngine.WorldStore.SqlServer.csproj" />
+    <!-- The catalog crash probe mode drives the REAL authoring stack: the SQLite provider, the publish
+         commit and a FileSystemPackStore, so a killed child leaves state the harness reopens and checks.
+         The catalog benchmark mode beside it measures a synthetic prototype and takes none of these. -->
+    <ProjectReference Include="../KhaozEngine.Catalog/KhaozEngine.Catalog.csproj" />
+    <ProjectReference Include="../KhaozEngine.Catalog.Authoring/KhaozEngine.Catalog.Authoring.csproj" />
+    <ProjectReference Include="../KhaozEngine.Catalog.Sqlite/KhaozEngine.Catalog.Sqlite.csproj" />
   </ItemGroup>
 </Project>

@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Threading;
 using KhaozEngine.Benchmarks;
 using KhaozEngine.Benchmarks.Catalog;
+using KhaozEngine.Benchmarks.CatalogCrash;
 using KhaozEngine.Benchmarks.Items;
 using KhaozEngine.Benchmarks.Journal;
 using KhaozEngine.Simulation;
@@ -46,6 +47,12 @@ if (Array.IndexOf(args, "--catalog") >= 0)
     {
         Console.CancelKeyPress -= catalogCancel;
     }
+    return;
+}
+
+if (Array.IndexOf(args, "--catalog-crash-probe") >= 0)
+{
+    await CatalogCrashProbe.RunAsync(args);
     return;
 }
 

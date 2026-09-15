@@ -15,7 +15,14 @@ namespace KhaozEngine.ItemInstances;
 /// is a retire under the placeholder policy and a lowered stack cap, adds nothing here.</param>
 /// <param name="BytesDelta">How much the page's payload bytes grew, which is negative when a replacement id
 /// is narrower than the one it replaced.</param>
-public readonly record struct InstanceRemapOutcome(int EntriesTouched, int IdsRewritten, int BytesDelta)
+/// <param name="EntriesAbandoned">Entries a rule NAMED and the pass could not rewrite: a destination that
+/// collides with an id the same item already carries, a destination too wide for the slot that holds it, and
+/// a result the page's own door would refuse. Zero on a page no rule touched, so a non-zero count is the one
+/// thing that tells an abandoned entry apart from an entry no rule named
+/// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/931">#931</see>). The entry keeps the bytes it
+/// had, so it is left where the validator will judge it.</param>
+public readonly record struct InstanceRemapOutcome(
+    int EntriesTouched, int IdsRewritten, int BytesDelta, int EntriesAbandoned = 0)
 {
     /// <summary>Whether the pass changed anything at all, which is what marks the page dirty.</summary>
     public bool Changed => EntriesTouched > 0;
@@ -51,7 +58,9 @@ public readonly record struct InstanceRemapOutcome(int EntriesTouched, int IdsRe
 /// <para>
 /// <b>ONE pass, no fixed-point loop.</b> Contracts 8.3 forbids a rule whose destination is an earlier rule's
 /// source for the same type, so one pass is enough. A loop "just in case" would hide a publish validator bug
-/// rather than surface it, so a set that breaks the rule is REFUSED here instead.
+/// rather than surface it, so a set that breaks the rule is REFUSED instead, by
+/// <see cref="VettedRemapRules.Vet"/>. That check is quadratic and the set does not change between pages, so a
+/// caller with many pages vets ONCE and hands the vetted set to every page (#928).
 /// </para>
 /// <para>
 /// <b>It never writes the page to storage.</b> The rewrite is lazy and rides the next ordinary commit (spec
@@ -103,6 +112,27 @@ public static partial class InstanceRemapPass
         ContentTypeRegistry types)
     {
         ArgumentNullException.ThrowIfNull(page);
+        return Apply(page, VettedRemapRules.Vet(rules), pageStamp, properties, types, new PageSlotInput[page.EntryCount]);
+    }
+
+    /// <summary>
+    /// The same door over an already vetted set, for a caller holding one page.
+    /// </summary>
+    /// <param name="page">The page, already seated from its stored bytes.</param>
+    /// <param name="rules">The vetted rule set.</param>
+    /// <param name="pageStamp">The stamp the page was stored under.</param>
+    /// <param name="properties">The property kinds this build knows.</param>
+    /// <param name="types">The content types the active pack registers.</param>
+    /// <exception cref="ArgumentNullException">An argument is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="pageStamp"/> is negative.</exception>
+    public static InstanceRemapOutcome Apply(
+        ItemContainerPage page,
+        VettedRemapRules rules,
+        int pageStamp,
+        InstancePropertyRegistry properties,
+        ContentTypeRegistry types)
+    {
+        ArgumentNullException.ThrowIfNull(page);
         return Apply(page, rules, pageStamp, properties, types, new PageSlotInput[page.EntryCount]);
     }
 
@@ -120,10 +150,10 @@ public static partial class InstanceRemapPass
     /// payload that does not decode, and a rewrite whose result the decoder would refuse, which is what a rule
     /// naming an id the same item already carries produces. Moving the definition id alone would strand a
     /// payload whose stale ids no rule will ever visit again, because the stamp moves past the rule that named
-    /// them. An abandoned entry is not counted anywhere yet
-    /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/931">#931</see>), and bringing a
-    /// QUARANTINED one back is the load path's unwrap step rather than the pass's
-    /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/929">#929</see>).
+    /// them. An abandoned entry is COUNTED, in
+    /// <see cref="InstanceRemapOutcome.EntriesAbandoned"/> and in the caller's slot span, so it is tellable
+    /// from an entry no rule named rather than reading later as a missing rule. Bringing a QUARANTINED one
+    /// back is the load path's unwrap step rather than the pass's, because the wrapper carries its own stamp.
     /// </para>
     /// </summary>
     /// <param name="page">The page, already seated from its stored bytes.</param>
@@ -147,6 +177,39 @@ public static partial class InstanceRemapPass
         InstancePropertyRegistry properties,
         ContentTypeRegistry types,
         Span<PageSlotInput> destination)
+        => Apply(page, VettedRemapRules.Vet(rules), pageStamp, properties, types, destination);
+
+    /// <summary>
+    /// Applies an already vetted rule set to one page and answers what changed. This is the door a LOAD PATH
+    /// uses, because it vets the set once for the whole container rather than once per page (#928).
+    /// <para>
+    /// A rule that changes nothing is a SCAN: the page is not dirtied, its stamp does not move, and no byte of
+    /// it is replaced. A rule that DOES change something dirties the page and moves its in-memory stamp to the
+    /// version the set brings it to, and never lowers it.
+    /// </para>
+    /// </summary>
+    /// <param name="page">The page, already seated from its stored bytes.</param>
+    /// <param name="rules">The vetted rule set, walked for idempotence once by
+    /// <see cref="VettedRemapRules.Vet"/> rather than once per page.</param>
+    /// <param name="pageStamp">The stamp the page was stored under.</param>
+    /// <param name="properties">The property kinds this build knows.</param>
+    /// <param name="types">The content types the active pack registers.</param>
+    /// <param name="destination">At least <see cref="ItemContainerPage.EntryCount"/> long. It receives the
+    /// page's entries AS THE PASS LEFT THEM, ready for the codec, so a commit needs no second walk.</param>
+    /// <param name="abandonedSlots">Where the CONTAINER slot of each abandoned entry is written, as far as it
+    /// reaches. Left empty, the count in <see cref="InstanceRemapOutcome.EntriesAbandoned"/> is still exact:
+    /// the span is what turns the count into a finding a load path can name a slot in (#931).</param>
+    /// <exception cref="ArgumentNullException">An argument is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="pageStamp"/> is negative.</exception>
+    /// <exception cref="ArgumentException"><paramref name="destination"/> is too short.</exception>
+    public static InstanceRemapOutcome Apply(
+        ItemContainerPage page,
+        VettedRemapRules rules,
+        int pageStamp,
+        InstancePropertyRegistry properties,
+        ContentTypeRegistry types,
+        Span<PageSlotInput> destination,
+        Span<int> abandonedSlots = default)
     {
         ArgumentNullException.ThrowIfNull(page);
         ArgumentNullException.ThrowIfNull(rules);
@@ -160,15 +223,7 @@ public static partial class InstanceRemapPass
         // meets no applicable rule, because a rule applies to a stamp STRICTLY older than its own.
         if (count == 0 || pageStamp >= rules.ActiveStamp) return default;
 
-        if (!rules.IsIdempotent(out RemapRule? offending))
-        {
-            throw new ArgumentException(
-                FormattableString.Invariant(
-                    $"Remap rule {offending!.Sequence} sends content type {offending.Type.Value} id {offending.FromId} to an id that is an earlier rule's source, so applying the set twice would not answer what applying it once answered (contracts 8.3). The publish validator refuses this set and the pass will not guess around it."),
-                nameof(rules));
-        }
-
-        var resolver = new RemapResolver(rules, types, pageStamp);
+        var resolver = new RemapResolver(rules.Rules, types, pageStamp);
 
         // Every buffer the walk needs, once per page rather than once per entry, so no stackalloc sits inside
         // a loop and a scan allocates nothing at all.
@@ -195,30 +250,34 @@ public static partial class InstanceRemapPass
             lengths,
             keys);
 
-        return Rewrite(page, rules, properties, resolver, walk, payload, destination, count);
+        return Rewrite(page, rules, properties, resolver, walk, payload, destination, count, abandonedSlots);
     }
 
     static InstanceRemapOutcome Rewrite(
         ItemContainerPage page,
-        RemapRuleSet rules,
+        VettedRemapRules rules,
         InstancePropertyRegistry properties,
         RemapResolver resolver,
         in RemapWalk walk,
         Span<byte> payload,
         Span<PageSlotInput> entries,
-        int count)
+        int count,
+        Span<int> abandonedSlots)
     {
         int touched = 0;
         int rewritten = 0;
         int delta = 0;
+        int abandoned = 0;
 
         for (int index = 0; index < count; index++)
         {
             PageSlotInput entry = entries[index];
 
             // A quarantined entry carries a WRAPPER rather than a payload, and contracts 10.2 keeps those
-            // bytes verbatim so the first load after the missing rule lands restores the item exactly. What
-            // no step unwraps one is https://github.com/APKiwiOrg/KhaozEngine/issues/929.
+            // bytes verbatim so the first load after the missing rule lands restores the item exactly. The
+            // step that unwraps one and offers it to this pass at the WRAPPER's own stamp is the load path's
+            // (ContainerLoad in KhaozEngine.ItemInstances.Journal), because the page stamp governs live
+            // entries only and a wrapper carries its own.
             if (entry.Quarantined) continue;
 
             int before = resolver.Rewritten;
@@ -229,6 +288,11 @@ public static partial class InstanceRemapPass
                 written = walk.RewritePayload(entry.Payload.Span, payload, level: 0);
                 if (written < 0)
                 {
+                    // A rule NAMED this entry and the rewrite could not be expressed, which is the case #931
+                    // is about. A payload that does not decode at all reaches here too, and it is counted
+                    // only when a rule moved something, so the count means "a rule could not be applied"
+                    // rather than "these bytes were already broken".
+                    if (resolver.Rewritten > before) Abandoned(entry.Slot, abandonedSlots, ref abandoned);
                     resolver.Rewind(before);
                     continue;
                 }
@@ -244,6 +308,7 @@ public static partial class InstanceRemapPass
             // cannot see it coming, because it cannot see stored payloads.
             if (!entry.Payload.IsEmpty && ItemInstancePayload.Validate(properties, bytes) is not null)
             {
+                Abandoned(entry.Slot, abandonedSlots, ref abandoned);
                 resolver.Rewind(before);
                 continue;
             }
@@ -257,6 +322,7 @@ public static partial class InstanceRemapPass
             // holding is the slot it already held.
             if (!page.ApplyRemap(entry.Slot, slot, rules.ActiveStamp))
             {
+                Abandoned(entry.Slot, abandonedSlots, ref abandoned);
                 resolver.Rewind(before);
                 continue;
             }
@@ -267,7 +333,14 @@ public static partial class InstanceRemapPass
         }
 
         if (touched > 0) _ = page.CopyEntriesTo(entries);
-        return new InstanceRemapOutcome(touched, rewritten, delta);
+        return new InstanceRemapOutcome(touched, rewritten, delta, abandoned);
+    }
+
+    /// <summary>Records one abandoned entry: always counted, and named as far as the caller's span reaches.</summary>
+    static void Abandoned(int slot, Span<int> abandonedSlots, ref int abandoned)
+    {
+        if (abandoned < abandonedSlots.Length) abandonedSlots[abandoned] = slot;
+        abandoned++;
     }
 
     /// <summary>

@@ -448,11 +448,19 @@ the page stamp, in `Sequence` order, in ONE pass. It runs BEFORE the validator, 
 finding mean "no rule covered it".
 
 ```csharp
+VettedRemapRules vetted = VettedRemapRules.Vet(rules);   // once per container, never once per page
 InstanceRemapOutcome outcome = InstanceRemapPass.Apply(
-    page, rules, page.ContentVersion, properties, types, entries);
-// outcome.EntriesTouched, outcome.IdsRewritten, outcome.BytesDelta
+    page, vetted, page.ContentVersion, properties, types, entries, abandonedSlots);
+// outcome.EntriesTouched, outcome.IdsRewritten, outcome.BytesDelta, outcome.EntriesAbandoned
 // entries now holds the page's entries as the pass left them, ready for the codec
+// abandonedSlots names the entries a rule reached and the pass could not move
 ```
+
+**The rule set is vetted ONCE.** `RemapRuleSet.IsIdempotent` is a nested loop over the whole rule list, about
+`n^2 / 2` comparisons, and the set cannot change between a container's pages, so `VettedRemapRules.Vet` does
+the walk and the pass takes the vetted handle. The type IS the assertion: there is no "already vetted" flag
+for a caller to get wrong, and the doors taking a bare `RemapRuleSet` vet on the way through, so a broken set
+earns the same refusal whichever one is used ([#928](https://github.com/APKiwiOrg/KhaozEngine/issues/928)).
 
 **The walk is DERIVED from the property registry.** It visits the entry's own definition id, every id a
 registered `InstanceReferenceTarget` names inside every field, and, through a nesting slot, every id inside a
@@ -491,10 +499,11 @@ validator is required to reject that shape, and a fixed-point loop here would hi
 it. An entry the pass cannot rewrite is left WHOLE, its definition id included: a quarantined entry, whose
 wrapper preserves bytes verbatim rather than offering them to be read, a payload that does not decode, and a
 rewrite whose result the decoder would refuse, which is what a rule naming an id the same item already carries
-produces. Nothing counts an abandoned entry yet
-([#931](https://github.com/APKiwiOrg/KhaozEngine/issues/931)), bringing a quarantined one back is the load
-path's unwrap step ([#929](https://github.com/APKiwiOrg/KhaozEngine/issues/929)), and a game kind with its own
-sorted list cannot ask for the re-sort ([#930](https://github.com/APKiwiOrg/KhaozEngine/issues/930)).
+produces. **An abandoned entry is COUNTED**, in `EntriesAbandoned` and in the caller's slot span, so a rule
+that could not be APPLIED is tellable from a rule nobody wrote. Bringing a quarantined entry back is the load
+path's unwrap step, in `KhaozEngine.ItemInstances.Journal`, because the page stamp governs a page's live
+entries and a wrapper carries its own. A game kind with its own sorted list still cannot ask for the re-sort
+([#930](https://github.com/APKiwiOrg/KhaozEngine/issues/930)).
 ## The page delta and the resync request
 
 `ContainerPageDelta` is the one frame message that says which slots of one page changed and what they hold
@@ -660,6 +669,14 @@ emitter with its own wording.
   rather than through the ambient facade. Null emits no line.
 - Nothing at all is emitted when nothing was quarantined, which is why checks 12 and 13 are never an alert.
 
+**Two doors, one emitter.** The pair above takes ONE report, which is one page's sweep.
+`Report(reports, loadReasons, streamKey, activeVersion, logger, counter)` takes a whole PAGED container: one
+report per page that decoded, plus one reason token per record no report covers (a page quarantined as a unit,
+an entry that arrived already wrapped, an entry whose remap was abandoned). It emits one line for the
+container and counts every record once. The load tokens ride the same histogram deliberately, because an
+operator reading one line wants the whole picture, and an abandoned entry is counted under its own token as
+well as under whatever the validator then says about it: the two answer different questions.
+
 ## What phase 1 does not ship, and where it lands
 
 This package is a strong base rather than a partial catalog. What is settled in it is every byte format,
@@ -668,8 +685,8 @@ data exists. What is absent is breadth, which is content.
 
 | Not here | Where it lands |
 |---|---|
-| the container section naming (`<container>/p<NN>`) | `docs/superpowers/plans/2026-09-15-item-instances-phase2-3.md` |
-| the journal commit path (`ContainerCommitBuilder`) | the same plan |
+| the container section naming (`<container>/p<NN>`) and the load path | `KhaozEngine.ItemInstances.Journal`, which is a `Server` package because composing a `JournalCommit` needs `KhaozEngine.WorldStore` |
+| the journal commit path (`ContainerCommitBuilder`) | `docs/superpowers/plans/2026-09-15-item-instances-phase2-3.md` |
 | the wire: the fragmenter and the ground component, which are the netcode package's | the same plan |
 | the affix content types and the item generator | spec 20 phase 4, gated on the authoring registry and publish path being real |
 | the crafting framework and the content stat evaluator | spec 20 phase 5 |

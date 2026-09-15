@@ -18,8 +18,9 @@ namespace KhaozEngine.ItemInstances;
 /// that cannot be expressed answers <see cref="Abandon"/> and the entry keeps the bytes it had. That covers a
 /// payload that does not decode, a replacement id too wide for the slot that holds it (kind 130's rarity id
 /// is a BYTE and there is no wider form of the field to widen into), and a result that would break the
-/// payload's own canonical form. Nothing counts an abandoned entry yet
-/// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/931">#931</see>).
+/// payload's own canonical form. The entry loop COUNTS each one into
+/// <see cref="InstanceRemapOutcome.EntriesAbandoned"/> and names its slot, so a rule that could not be
+/// applied never reads downstream as a rule that was never written.
 /// </para>
 /// </summary>
 public static partial class InstanceRemapPass

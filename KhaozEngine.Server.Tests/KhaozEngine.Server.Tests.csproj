@@ -30,6 +30,10 @@
     <!-- Items/InstanceIdPackingParityTests.cs holds InstanceIdAllocator's mirrored packing against
          NetIdAllocator's. This is the only project that references both. -->
     <ProjectReference Include="../KhaozEngine.ItemInstances/KhaozEngine.ItemInstances.csproj" />
+    <!-- ItemInstances/ holds the container load path's facts, which need a real JournalProjectionSection
+         and the page codec in one place. Spec 2.3 puts them here rather than in a new project because this
+         one already references WorldStore and both providers. -->
+    <ProjectReference Include="../KhaozEngine.ItemInstances.Journal/KhaozEngine.ItemInstances.Journal.csproj" />
     <ProjectReference Include="../KhaozEngine.Locomotion/KhaozEngine.Locomotion.csproj" />
     <ProjectReference Include="../KhaozEngine.NetWorld/KhaozEngine.NetWorld.csproj" />
     <ProjectReference Include="../KhaozEngine.Netcode/KhaozEngine.Netcode.csproj" />

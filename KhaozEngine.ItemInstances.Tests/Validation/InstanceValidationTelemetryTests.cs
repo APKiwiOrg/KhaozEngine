@@ -130,6 +130,83 @@ public class InstanceValidationTelemetryTests
         Assert.All(InstanceValidationStrings.All, key => Assert.StartsWith("khaoz.", key, StringComparison.Ordinal));
     }
 
+    [Fact]
+    public void A_whole_CONTAINER_emits_ONE_line_over_every_page_and_counts_every_reason()
+    {
+        // The list shaped door, which is what a paged load calls once (spec 5.5). Ten pages each emitting
+        // their own line is the same failure one line per entry would be, one order of magnitude down.
+        ContentTypeRegistry types = InstanceValidationFixtures.Types();
+        ContentSnapshot snapshot = InstanceValidationFixtures.Snapshot(types);
+        InstanceValidationReport first = InstanceValidationFixtures.Sweep(
+            [InstanceValidationFixtures.Slot(0, InstanceValidationFixtures.MissingId, instanceId: 1)],
+            types,
+            snapshot,
+            stamp: 4);
+        InstanceValidationReport second = InstanceValidationFixtures.Sweep(
+            [InstanceValidationFixtures.Slot(0, InstanceValidationFixtures.MissingId, instanceId: 2)],
+            types,
+            snapshot,
+            stamp: 6);
+        var logger = new RecordingLogger();
+        var counted = new List<(int Type, string Reason)>();
+
+        InstanceValidationTelemetry.Report(
+            [first, second],
+            ["page-truncated", InstanceQuarantineReason.UnknownDefinition],
+            StreamKey,
+            InstanceValidationFixtures.ActiveVersion,
+            logger,
+            (type, reason) => counted.Add((type, reason)));
+
+        // Two swept records plus two the sweeps never saw, each counted once, under its own token.
+        Assert.Equal(4, counted.Count);
+        Assert.Equal(3, CountOf(counted, InstanceQuarantineReason.UnknownDefinition));
+        Assert.Equal(1, CountOf(counted, "page-truncated"));
+
+        (LogLevel level, string message) = Assert.Single(logger.Entries);
+        Assert.Equal(LogLevel.Warn, level);
+        Assert.Contains("4 records quarantined across 2 pages", message, StringComparison.Ordinal);
+        Assert.Contains("reason unknown-definition", message, StringComparison.Ordinal);
+        Assert.Contains("unknown-definition=3 page-truncated=1", message, StringComparison.Ordinal);
+
+        // The OLDEST page stamp in the sweep, which is the version the load is bringing the container
+        // forward from, against the one active version it is being brought forward to.
+        Assert.Contains("stamped version 4", message, StringComparison.Ordinal);
+        Assert.Contains(
+            FormattableString.Invariant($"active version {InstanceValidationFixtures.ActiveVersion}"),
+            message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_container_with_nothing_quarantined_emits_NOTHING()
+    {
+        ContentTypeRegistry types = InstanceValidationFixtures.Types();
+        ContentSnapshot snapshot = InstanceValidationFixtures.Snapshot(types);
+        InstanceValidationReport clean = InstanceValidationFixtures.Sweep(
+            [InstanceValidationFixtures.Slot(0, InstanceValidationFixtures.LiveItem, count: 3)], types, snapshot);
+        var logger = new RecordingLogger();
+        var counted = new List<(int Type, string Reason)>();
+
+        InstanceValidationTelemetry.Report(
+            [clean], [], StreamKey, InstanceValidationFixtures.ActiveVersion, logger,
+            (type, reason) => counted.Add((type, reason)));
+
+        Assert.Empty(logger.Entries);
+        Assert.Empty(counted);
+    }
+
+    static int CountOf(List<(int Type, string Reason)> counted, string reason)
+    {
+        int count = 0;
+        foreach ((int _, string held) in counted)
+        {
+            if (string.Equals(held, reason, StringComparison.Ordinal)) count++;
+        }
+
+        return count;
+    }
+
     sealed class RecordingLogger : ILogger
     {
         public List<(LogLevel Level, string Message)> Entries { get; } = new();

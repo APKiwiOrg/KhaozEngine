@@ -214,6 +214,14 @@ public sealed class ItemContainerPage
     /// whose stamp is NEWER than the active version: that page is not an error and is never rewound, so it
     /// is already correct when the newer version returns.
     /// </para>
+    /// <para>
+    /// <b>The page stamp governs the page's LIVE entries, and a quarantined entry carries its own.</b> A
+    /// wrapper stores the version the record failed under (spec 12.4), which is not the page's, so moving
+    /// this stamp because some OTHER entry changed says nothing about the wrapped one either way. That is
+    /// what lets a load path bring a quarantined entry forward from the version it failed at, long after the
+    /// page itself has moved past the rule that rescues it, and it is why this method is never the door a
+    /// wrapped entry is re-read through.
+    /// </para>
     /// </summary>
     /// <param name="containerSlot">The absolute container slot.</param>
     /// <param name="rewritten">The entry as the rule set left it, re-encoded rather than patched in place,

@@ -19,6 +19,10 @@ Pulls in:
 - `KhaozEngine.WorldStore` - dependency-free checkpoint and durable-mutation seams. It includes `IWorldStore`,
   `IMutationJournalStore`, both in-memory reference stores, immutable journal values, checked recovery, and the
   bounded `MutationJournalExecutor`.
+- `KhaozEngine.ItemInstances.Journal` - the paged container's projection section naming
+  (`ContainerSectionNames`, `<container>/p<NN>`) and its load path (`ContainerLoad.Load`: decode, remap,
+  unwrap, validate, in one pass with no store read). It is a `Server` package because composing a
+  `JournalCommit` needs `KhaozEngine.WorldStore`, and the record itself stays in `Foundation`.
 - `KhaozEngine.Sharding` - the cell-grid world topology (`ShardHost`, ghosting, handoff).
 - `KhaozEngine.NetWorld` - the authoritative movement server + client glue + `WorldPersistence`.
 - `KhaozEngine.TileWorld.Netcode` - the tile movement stack (`TileWorldServer` / `TileWorldClient`,

@@ -307,6 +307,72 @@ public class InstanceRemapPassTests
         Assert.True(page.IsDirty);
     }
 
+    [Fact]
+    public void An_entry_the_pass_ABANDONS_is_COUNTED_and_its_slot_is_named()
+    {
+        // https://github.com/APKiwiOrg/KhaozEngine/issues/931. An abandoned entry used to contribute zero to
+        // every field of the outcome, so it was indistinguishable from an entry no rule named, and it then
+        // read downstream as a missing rule rather than as a rule that could not be applied.
+        ContentTypeRegistry types = Types();
+        InstancePropertyRegistry properties = Properties();
+        ItemContainerPage page = Page();
+        Seat(page, 0, Sword, Affixed(new InstanceAffix(Mod, Tier, 17)));
+        Seat(page, 6, Sword, Affixed(new InstanceAffix(Mod, Tier, 17), new InstanceAffix(SecondMod, 2, 4_000)));
+
+        var entries = new PageSlotInput[page.EntryCount];
+        Span<int> abandoned = stackalloc int[page.EntryCount];
+        VettedRemapRules rules = VettedRemapRules.Vet(Rules(Replaced(1, 3, Type(types, ModKey), Mod, SecondMod)));
+        InstanceRemapOutcome outcome = InstanceRemapPass.Apply(
+            page, rules, 0, properties, types, entries, abandoned);
+
+        // Slot 0 moves: it carries the source and not the destination. Slot 6 carries both, so the rewritten
+        // list would hold one mod twice and the pass writes nothing for it.
+        Assert.Equal(1, outcome.EntriesTouched);
+        Assert.Equal(1, outcome.EntriesAbandoned);
+        Assert.Equal(6, abandoned[0]);
+        Assert.Equal(Affixed(new InstanceAffix(SecondMod, Tier, 17)), PayloadAt(page, 0));
+    }
+
+    [Fact]
+    public void A_page_no_rule_reaches_abandons_NOTHING()
+    {
+        // The count means "a rule could not be applied", so an entry no rule named must not reach it, and
+        // neither must a payload that was already broken before any rule ran.
+        ContentTypeRegistry types = Types();
+        InstancePropertyRegistry properties = Properties();
+        ItemContainerPage page = ThreeEntries();
+
+        InstanceRemapOutcome outcome = InstanceRemapPass.Apply(
+            page, Rules(Replaced(1, 3, Type(types, ModKey), 4_242, SecondMod)), 0, properties, types);
+
+        Assert.False(outcome.Changed);
+        Assert.Equal(0, outcome.EntriesAbandoned);
+    }
+
+    [Fact]
+    public void A_VETTED_set_is_walked_for_idempotence_once_rather_than_once_per_page()
+    {
+        // https://github.com/APKiwiOrg/KhaozEngine/issues/928. The check is about n^2 / 2 comparisons and the
+        // set cannot change between a container's pages, so the load path vets once and hands the vetted
+        // handle to every page. The TYPE is the assertion: there is no flag for a caller to get wrong, and
+        // the refusal a broken set earns is the same from either door.
+        ContentTypeRegistry types = Types();
+        InstancePropertyRegistry properties = Properties();
+        ContentTypeId item = Type(types, ItemKey);
+        RemapRuleSet chained = Rules(Replaced(1, 2, item, Sword, 200), Replaced(2, 2, item, 300, Sword));
+
+        Assert.Throws<ArgumentException>(() => VettedRemapRules.Vet(chained));
+
+        VettedRemapRules vetted = VettedRemapRules.Vet(Rules(Replaced(1, 4, item, Gem, 103)));
+        Assert.Equal(4, vetted.ActiveStamp);
+        Assert.Single(vetted.Rules.Rules);
+
+        ItemContainerPage page = Page();
+        Seat(page, 0, Sword, Socketed(Gem));
+        Assert.True(InstanceRemapPass.Apply(page, vetted, 0, properties, types).Changed);
+        Assert.Equal(Socketed(103), PayloadAt(page, 0));
+    }
+
     static ContentTypeId Type(ContentTypeRegistry types, string typeKey) => RemapFixtures.Type(types, typeKey);
 
     /// <summary>A nested payload carrying one affix and a pad field of a chosen width, so a test can put the

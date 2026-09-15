@@ -2722,3 +2722,186 @@ The benchmark is `IsPackable=false`, is not on the engine version line, and CI's
 its timing loop. Its STRUCTURAL behaviour is tested in CI, as a `CatalogBenchmarkTests` class in
 `KhaozEngine.Server.Tests`, mirroring `MutationJournalBenchmarkTests`. Always `-c Release`, because Debug
 numbers are not representative (`KhaozEngine.Benchmarks/README.md:43`).
+
+## 15. Test plan
+
+### 15.1 Golden format files, checked in
+
+Under `KhaozEngine.Catalog.Tests/Goldens/v1/`, one set per format version, added to and never edited:
+
+| File | Contents |
+|---|---|
+| `chunk-tag-0.kecc` | The exact two-row chunk of section 7.9, stored uncompressed. |
+| `chunk-item-0.kecc` | A three-row item chunk exercising every value kind including an empty tag list, a null optional field and a retired row, stored Brotli compressed. |
+| `manifest-server.kecm` | A two-type, four-chunk, two-language server manifest. |
+| `manifest-client.kecm` | The same version's client manifest, with the `ServerOnly` type omitted. |
+| `rules.kecr` | Six rules covering all four kinds of contracts 8.2, including a 5-byte replacement payload and a zero-length payload. |
+| `text-en-us.kect` | Twelve entries including an empty value and a 192-character key. |
+| `goldens.json` | Every file's expected chunk hash, uncompressed length and decoded field values. |
+
+Three assertions per golden. **Decode**: the reader produces exactly the values in `goldens.json`.
+**Hash**: `ContentHash` over the canonical bytes equals the recorded hash, which is what pins the digest
+domain, the scheme version and the canonical form all at once. **Re-encode**: encoding the decoded values
+reproduces the UNCOMPRESSED canonical bytes byte for byte.
+
+The compressed bytes are deliberately NOT pinned (section 7.5). `chunk-item-0.kecc` is checked in compressed
+so the decompression path has a golden, and the test asserts on the decompressed result rather than on the
+stored bytes, so a .NET upgrade that changes Brotli's output does not turn into a red test with no defect
+behind it.
+
+### 15.2 Decoder fuzzing
+
+A mutation fuzzer over the goldens, in `KhaozEngine.Catalog.Tests/Fuzz/`:
+
+- Seeded with `SeededRandomSource` wrapping `DeterministicRng` (contracts 14.2), so a failure reproduces from
+  the seed printed in the assertion message.
+- Mutations: flip a random bit, truncate at a random offset, zero a random run, splice two goldens, set a
+  random varint byte's continuation bit, and set a reserved field non-zero.
+- 10,000 mutants per golden per run in CI, which is a few seconds, and a `--soak` mode for more.
+
+Two invariants, and they are the whole test. **It never throws.** Every decode entry point returns
+`false` plus a reason, never an exception, which is the whole-tree rule for bytes from a remote peer
+(`a-engine.md:814-817`) and `ItemContainerCodec.TryDecode`'s own shape
+(`KhaozEngine.Items/ItemContainerCodec.cs:49-104`). **Reasons are stable.** Every rejection carries a reason
+from the fixed token list, and the test asserts the token is in the list rather than asserting a specific
+token per mutant, because a bit flip can legitimately turn one failure into another.
+
+A third invariant catches the dangerous case: **a mutant that DECODES must round trip.** If a mutated chunk
+decodes successfully, re-encoding it must reproduce the mutated bytes. That is what catches a decoder that
+silently normalizes away a difference, which is how a canonical format stops being canonical and how byte
+equality stops being property equality (contracts 9.3).
+
+### 15.3 Cross-version round trips
+
+A version 1 pack read by a version 2 reader, which is the test that only pays off later and is impossible to
+add retroactively:
+
+- The v1 goldens stay checked in unchanged forever. When `ChunkFormatVersion` becomes 2, the v1 goldens are
+  still read by the current reader and every assertion still holds.
+- A v2 reader handed a v1 chunk reads it. A v1 reader handed a v2 chunk REFUSES with `chunk-format-version`,
+  because a mismatched version is a refusal of the whole record and never a best-effort partial read
+  (contracts 15).
+- A manifest whose `formatGeneration` exceeds the reader's `ContentPackFormat.Generation` is refused on both
+  sides, server at boot and client at the door, with no consumer involvement (contracts 7.4).
+
+The test that makes this real is a `GoldenFormatVersionsTests` class that ENUMERATES the `Goldens/` directory
+and asserts every version subdirectory present is readable by the current reader. Adding a format version
+means adding a directory, and forgetting to keep reading the old one goes red immediately.
+
+### 15.4 Scale tests
+
+In `KhaozEngine.Benchmarks --catalog` (section 14.2), at 50,000 and 1,000,000 synthetic definitions, producing
+the ten budget numbers of section 14 as a JSON result with a checked-in baseline. Synthetic generation is
+deterministic from a seed, so two runs at the same seed and size produce byte-identical packs, which is itself
+an assertion: **the same input publishes the same bytes.** That is contracts 4.3's registration-order
+independence made measurable.
+
+The structural half runs in CI as `CatalogBenchmarkTests` in `KhaozEngine.Server.Tests`: the generator is
+deterministic, the config parses, the result serializes, and a tiny run completes. The timing half runs only
+under `dotnet run -c Release`.
+
+### 15.5 Provider conformance
+
+`KhaozEngine.Server.Tests/Catalog/ContentAuthoringStoreConformance.cs`, an abstract class with
+`protected abstract IContentAuthoringStore NewStore()`, subclassed by `SqliteContentAuthoringStoreTests` and
+`SqlServerContentAuthoringStoreTests` (section 2.6). That is the pattern
+(`KhaozEngine.Server.Tests/Commerce/WalletStoreContract.cs:9-11`, and the journal's 22-fact
+`MutationJournalStoreConformance` at larger scale).
+
+The facts, each asserting OBSERVABLE behaviour and never a mechanism:
+
+| # | Fact |
+|---|---|
+| 1 | `AutoCreate` on an empty database creates the schema and reports version 1. |
+| 2 | `ValidateOnly` on an empty database throws naming the required migration. |
+| 3 | `ValidateOnly` on a correct schema succeeds. |
+| 4 | A key differing only in case is a DIFFERENT key, which is the binary collation assertion. |
+| 5 | Two `Add` edits for the same key in one draft collide on the unique index. |
+| 6 | An `Update` merges fields rather than replacing the row's field set. |
+| 7 | Publish assigns version 1 then 2, never skipping. |
+| 8 | Publish with a stale `expectedBaseVersion` is refused and nothing is written. |
+| 9 | A row untouched by a publish keeps its `valid_from_version`. |
+| 10 | The live set at an old version excludes a row added later. |
+| 11 | A retire writes a successor row plus exactly one remap rule. |
+| 12 | A remap rule cannot be updated or deleted through the API surface. |
+| 13 | Allocation reserves before issuing, asserted by reading `reserved_through` after a single allocate. |
+| 14 | Two allocations never return the same id, across 10,000 in a loop. |
+| 15 | A family allocation stays inside its aligned block and reserves a second block when full. |
+| 16 | Every audit row carries a before and an after for a field change. |
+| 17 | An audit insert failure rolls back the edit. |
+| 18 | Import into an empty database succeeds and reproduces the source ids. |
+| 19 | Import into a non-empty database is refused with nothing written. |
+| 20 | Export at version N then import into an empty store gives identical rows, keys and ids. |
+| 21 | A publish that fails at the validator leaves the draft intact. |
+| 22 | The active pointer and the version row commit together, asserted by a reader seeing both or neither. |
+
+### 15.6 Publish crash safety
+
+A `ContentPublishStep` internal enum and an `OnStep` hook on the publisher, copied from
+`MapTiledSaveStep` and `MapTiledSaveOptions.OnStep` (`KhaozEngine.MapDoc/MapDocumentForm.cs:58-74`,
+`MapTiledFile.Save.cs:94-101`):
+
+```csharp
+internal enum ContentPublishStep
+{
+    BeforeIdAllocation, AfterIdAllocation,
+    BeforeChunkWrite,   AfterChunkWrite,
+    BeforeManifestWrite, AfterManifestWrite,
+    BeforeCommit,       AfterCommit,
+    DuringSweep,
+}
+```
+
+One test per step: the hook throws, and the test then asserts the store is either entirely at the old version
+or entirely at the new one, that the pack store holds no file any version references but cannot serve, and
+that a REPUBLISH after the kill succeeds and produces the same manifest hash it would have produced without
+the kill. That last clause is the idempotence assertion and it is the one that matters, because a publish that
+merely fails safely but cannot be retried is not recoverable.
+
+The out-of-process version runs in `KhaozEngine.Benchmarks --catalog-crash-probe`, killing a child process at
+each step against a real SQLite file, mirroring `JournalCrashProbe.cs` and the `--journal-crash-probe` mode
+(`KhaozEngine.Benchmarks/Journal/JournalCrashProbe.cs`). In-process hooks prove the ordering and a real kill
+proves the durability.
+
+### 15.7 The rest
+
+**Validator tests.** One per finding code, 40 of them, each building the smallest `ContentSnapshot` that
+triggers exactly that code and asserting the code, the type and the id. Plus three sweep-level facts: findings
+accumulate rather than stopping at the first, the validator never throws for content reasons, and a game
+validator that throws becomes one `KEC0040` rather than an escaping exception.
+
+**Remap idempotence.** Apply the full ordered rule set to a byte array twice and assert the result equals
+applying it once, over a generated corpus of rule sets and pages. Plus the negative: a rule set where a rule's
+`ToId` is an earlier rule's `FromId` for the same type is refused by `KEC0015` AND, applied twice, would
+genuinely differ, so the test proves the check is guarding a real failure rather than a hypothetical one.
+
+**Manifest hash stability across registration order.** Register the same five types in a shuffled order,
+publish the same content, and assert the manifest hashes are byte identical. Ten shuffles from a seeded
+source. This is the direct test for contracts 4.3's registration-order independence and it is the test
+Ruinborne's wire index would have failed, since the same item has a different byte index depending on whether
+the catalog loaded from SQL or from code defaults (`c-ruinborne.md:517-536`).
+
+**Chunk reuse.** Publish, edit one row, publish again, and assert exactly one chunk hash changed and every
+other is identical to the previous version's. Then edit a row in a different chunk and assert two changed.
+This is P6's correctness half and it is what would catch a chunk boundary accidentally becoming row-relative.
+
+**Visibility.** Publish a type with one `ServerOnly` field, then assert the client chunk decodes without that
+field, that its hash differs from the server chunk's, that the client manifest omits every `ServerOnly` type,
+and that a hand-built candidate placing a `ServerOnly` field in a `Client` chunk is refused by `KEC0014`.
+
+**Boot fail-closed.** Eight facts, one per row of section 9.6's exit table, each asserting exit code 3 and the
+exact stderr prefix. Run in process against a test host that captures the exit rather than calling
+`Environment.Exit`.
+
+**The door.** In `KhaozEngine.TileWorld.Netcode.Tests`: a matching layer admits, a version mismatch refuses
+with both sides in the token, a hash mismatch with matching versions refuses, an absent layer refuses with
+empty client fields, and a client below `minimumClientBuild` gets `ke:content-client-too-old` rather than the
+generic mismatch.
+
+**Localization coverage, opt in.** A test helper a GAME can call, asserting every derived key for every live
+row resolves in its shipped catalog. Not an engine test, because contracts 12.4 makes a miss a visible
+placeholder rather than a failure, and not every game wants the stronger guarantee. Grimhollow does: its
+`EveryDeclaredKeyResolvesAgainstTheShippedCatalog` already walks every declared key constant
+(`b-grimhollow.md:773-780`), and this helper is what that test becomes after adoption, walking the CATALOG
+rather than a reflected constant list, which closes the gap the survey names (the current test cannot catch an
+item with no name field at all).

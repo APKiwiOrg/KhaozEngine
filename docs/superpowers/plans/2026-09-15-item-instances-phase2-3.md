@@ -2,11 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (- [ ]) syntax for tracking.
 
-**This plan starts only after the phase 1 release has landed.** `docs/superpowers/plans/2026-09-15-item-instances-phase1.md`, cited below as the phase 1 plan, ships the instance record and the container, which is every durable byte format this plan builds on: the payload codec, the property registry, the `KECQ` wrapper, the instance id allocator, `ItemStack`'s third component, `ItemSlot`, and container codec version 2. Confirm that release is on `main` and packed to `local-feed` before starting task 2. Task 1 alone is independent of it.
+**This plan starts only after the phase 1 release has landed.** `docs/superpowers/plans/2026-09-15-item-instances-phase1.md`, cited below as the phase 1 plan, ships the instance record and the container, which is every durable byte format this plan builds on: the payload codec, the property registry, the `KECQ` wrapper, the instance validator, the instance id allocator, `ItemStack`'s third component, `ItemSlot`, and container codec version 2. Confirm that release is on `main` and packed to `local-feed` before starting task 2. Task 1 alone is independent of it.
 
-**Goal:** Ship spec 20's phases 2 and 3 as one release: the paged container, the full instance validator, the remap pass, the journal package and the tick-bounded commit batch, then the wire, which is the fragmenter, the visibility function and its public view, the sibling ground component and the page delta.
+**The instance validator is NOT in this plan, it shipped in phase 1**, whole, with all thirteen checks of spec 12.2, the counter and the log line, because spec 20 phase 1's list names it. What this plan adds around it is the remap pass that runs BEFORE it and the load path that CALLS it, and lighting up the one outcome phase 1 left dormant: `Remapped`.
 
-**Architecture:** `KhaozEngine.ItemInstances` (Foundation) gains the paged container, validation, visibility, the remap pass and the page delta encoder. `KhaozEngine.ItemInstances.Journal` (Server) is new and owns everything that composes a `JournalCommit`, because `Foundation` cannot reference a `Server` package. `KhaozEngine.TileWorld.Netcode` gains an item-agnostic fragmenter and a sibling ground component holding opaque bytes, and gains NO items dependency. Nothing in the engine learns what an item means.
+**Goal:** Ship spec 20's phases 2 and 3 as one release: the paged container, the remap pass, the journal package and the tick-bounded commit batch, then the wire, which is the fragmenter, the visibility function and its public view, the sibling ground component and the page delta.
+
+**Architecture:** `KhaozEngine.ItemInstances` (Foundation) gains the paged container, visibility, the remap pass and the page delta encoder. `KhaozEngine.ItemInstances.Journal` (Server) is new and owns everything that composes a `JournalCommit`, because `Foundation` cannot reference a `Server` package. `KhaozEngine.TileWorld.Netcode` gains an item-agnostic fragmenter and a sibling ground component holding opaque bytes, and gains NO items dependency. Nothing in the engine learns what an item means.
 
 **Tech Stack:** .NET 10, `KhaozEngine.Items`, `KhaozEngine.ItemInstances`, `KhaozEngine.Primitives`, `KhaozEngine.Catalog` (Scope A), `KhaozEngine.WorldStore`, `KhaozEngine.TileWorld.Netcode`, `KhaozEngine.Replication`, xUnit.
 
@@ -34,14 +36,16 @@ because the two phases share one package set and one version bump.
 
 ## What this plan covers, and what it defers
 
-- **The full `InstanceValidator` lands HERE**, not in phase 1, and task 3 is where. Spec 20 puts "the
-  instance validator" in phase 1's list, but defines phase 1 as the whole of sections 3 and 4, and
-  section 12 is neither. What phase 1 shipped is what the CODEC enforces, spec 12.2's structural checks
-  1 to 5 as decoder refusals. What is left is everything that needs an `IContentSnapshot` and a PAGE:
-  the drift checks, the policy checks, the per-page report, the three placeholder `StringId`s, the
-  counter and the log line. A page is spec 5, so the validator arrives with the load path that calls it.
-  Nothing durable moved with it: the quarantine wrapper, its reason ordinals and the entry flag bit all
-  shipped in phase 1.
+- **The `InstanceValidator` is the phase 1 plan's task 9 and nothing here re-implements it.** All
+  thirteen checks of spec 12.2, the report, the three placeholder `StringId`s, the counter and the log
+  line shipped with the container they sweep, which is where spec 20 phase 1's list puts them. This plan
+  CALLS it from the load path (task 4) and widens what it sees from a decoded container to a page, which
+  is the same header plus entries under a new type.
+- **What this plan adds to validation is the REMAP PASS (task 3), and the `Remapped` outcome it lights
+  up.** `InstanceValidationOutcome` shipped complete in phase 1 with `Remapped` dormant, because no
+  phase 1 path rewrites an id. Task 3 is the path, and the ORDER is the thing to get right: rules apply
+  first (spec 5.5 step 2) and the validator runs after, so a drift finding means NO RULE COVERED IT.
+  Task 4 step 2 asserts that order rather than assuming it.
 
 **Deferred exactly as spec 20 defers them, and out of scope here:**
 
@@ -71,14 +75,14 @@ What this plan consumes from it, by name, all from catalog 2.2 and 2.5:
 
 | Name | Where this plan reads it |
 |---|---|
-| `IContentSnapshot` | `InstanceValidator.Validate`, the container load path |
+| `IContentSnapshot` | the container load path, which hands it to the phase 1 plan's `InstanceValidator.Validate` |
 | `ContentVersionIdentity` and its `int Number` | the page stamp, spec 5.3 |
-| `ContentTypeId`, `ContentKey`, `ContentRow` | reference-target resolution in the validator |
+| `ContentTypeId`, `ContentKey`, `ContentRow` | reference-target resolution in the remap pass |
 | `ItemRow` | the four hot `item` fields the stacking and capacity paths read |
 | `RemapRule`, `RemapRuleKind`, `RemapRuleSet` | the instance remap pass, spec 5.5 step 2 |
-| `IContentSnapshot.IsRetired(type, id)` | validator check 13, spec 12.2 |
+| `IContentSnapshot.IsRetired(type, id)` | NOT read here. It is validator check 13 and it shipped with the validator in phase 1, spec 12.2 |
 | `ContentVarint` | every varint this plan writes, contracts 15 |
-| `ContentStringCatalog` | the three placeholder `StringId`s of spec 12.3 |
+| `ContentStringCatalog` | NOT read here. The three placeholder `StringId`s of spec 12.3 shipped with the validator in phase 1 |
 | `IRandomSource` (`KhaozEngine.Primitives`, contracts 14.1) | not used by this plan, named so a later phase does not re-derive the seam |
 
 **Task 1 has NO Scope A gate and no phase 1 gate either.** It lives in `KhaozEngine.TileWorld.Netcode`,
@@ -148,28 +152,27 @@ breaks one of these is wrong even when its own tests pass.
 |---|---|---|---|
 | 1 | `TileFragmentedMessage`, the item-agnostic fragmenter and reassembler | medium | none |
 | 2 | `ItemContainerPage`, `PagedItemContainer`, the capacity gate and the merge rule | large | phase 1 release |
-| 3 | `InstanceValidator`, its thirteen checks, the counter and the log line | large | phase 1 release |
-| 4 | The registry-derived remap pass and its idempotence | large | phase 1 release |
-| 5 | `KhaozEngine.ItemInstances.Journal`, section names and the container load path | medium | phase 1 release |
-| 6 | `ContainerCommitBuilder`, the tick-bounded batch and its crash facts | large | phase 1 release |
-| 7 | The `--items` benchmark structural test in `KhaozEngine.Server.Tests` | medium | phase 1 release |
-| 8 | `ItemInstanceVisibility`: `CanSee`, `PublicView` and the owner remainder | medium | phase 1 release |
-| 9 | `TileGroundItemInstance` and the `SpawnGroundItem` overload | medium | phase 1 release |
-| 10 | The page delta, its one-frame bound and the resync request | large | phase 1 release, tasks 1 and 2 |
-| 11 | Documentation sweep: package READMEs, README catalog, USING, DEPENDENCY-SEAMS | medium | phase 1 release |
-| 12 | The finishing ritual: one version bump, changelog, pack, no tag | medium | phase 1 release |
+| 3 | The registry-derived remap pass and its idempotence | large | phase 1 release |
+| 4 | `KhaozEngine.ItemInstances.Journal`, section names and the container load path | medium | phase 1 release |
+| 5 | `ContainerCommitBuilder`, the tick-bounded batch and its crash facts | large | phase 1 release |
+| 6 | The `--items` benchmark structural test in `KhaozEngine.Server.Tests` | medium | phase 1 release |
+| 7 | `ItemInstanceVisibility`: `CanSee`, `PublicView` and the owner remainder | medium | phase 1 release |
+| 8 | `TileGroundItemInstance` and the `SpawnGroundItem` overload | medium | phase 1 release |
+| 9 | The page delta, its one-frame bound and the resync request | large | phase 1 release, tasks 1 and 2 |
+| 10 | Documentation sweep: package READMEs, README catalog, USING, DEPENDENCY-SEAMS | medium | phase 1 release |
+| 11 | The finishing ritual: one version bump, changelog, pack, no tag | medium | phase 1 release |
 
 Groups and their acceptances:
 
 - **Group A, task 1.** The one change that needs nothing from Scope A and nothing from phase 1. It is
-  first because it is unblocked, and because task 10 abandons to it. Acceptance: the reassembler facts of
+  first because it is unblocked, and because task 9 abandons to it. Acceptance: the reassembler facts of
   spec 17 row 15 green, and `dotnet test -c Release` green across the solution.
-- **Group B, tasks 2 to 7.** The pages, the validation and the commit, spec 5, 6 and 12. Acceptance:
-  spec 17 rows 5, 8 and 14 green, and budget 4 measured at ONE commit. **This is spec 20 phase 2's
-  acceptance.**
-- **Group C, tasks 8 to 10.** The wire, spec 7. Acceptance: spec 17 rows 9, 11 and 17 green, and budgets
+- **Group B, tasks 2 to 6.** The pages, the remap pass and the commit, spec 5 and 6, calling phase 1's
+  validator from the load path. Acceptance: spec 17 rows 5, 8 and 14 green, and budget 4 measured at ONE
+  commit. **This is spec 20 phase 2's acceptance.**
+- **Group C, tasks 7 to 9.** The wire, spec 7. Acceptance: spec 17 rows 9, 11 and 17 green, and budgets
   7 and 8 measured. With row 15 from task 1, **that is spec 20 phase 3's acceptance.**
-- **Group D, tasks 11 and 12.** Documentation and release. Acceptance: `scripts/check-doc-versions.sh`,
+- **Group D, tasks 10 and 11.** Documentation and release. Acceptance: `scripts/check-doc-versions.sh`,
   `scripts/check-dashes.sh --tree`, `scripts/check-prose.sh --tree` and `scripts/check-file-size.sh --tree`
   all exit 0, the full solution green in Release, and `local-feed` packed with NO tag.
 
@@ -263,14 +266,14 @@ across the solution.
 
 ---
 
-## Group B: the pages, the validation and the commit (spec 5, 6 and 12)
+## Group B: the pages, the remap pass and the commit (spec 5 and 6)
 
 Every task from here on is gated on the **phase 1 release** being on `main`, because each one builds on
 the payload codec, the property registry, the quarantine wrapper and container codec version 2 that
 release shipped. They are also gated on **Scope A milestone 1.1**, which phase 1 already required.
 
-The validator sits in this group rather than with the record it validates, for the reason the header
-gives: spec 12.2's remaining checks need an `IContentSnapshot` and a PAGE, and the page is spec 5.
+The validator is NOT in this group. It shipped whole in phase 1, and what this group adds around it is
+the remap pass that runs before it (task 3) and the load path that calls it (task 4).
 
 ### Task 2: `ItemContainerPage`, `PagedItemContainer` and the merge rule (large, gate: phase 1 release)
 
@@ -338,7 +341,7 @@ a page codec.
 - [ ] **Step 6: Keep entries SPARSE and never compact.** A hole is the absence of an entry and costs zero
   bytes, exactly as version 1's sparse form already did. The dense renumber Ruinborne's repair explicitly
   refuses to do is not something this container can do by accident, and a test pins that.
-- [ ] **Step 7: Expose the dirty set**, because task 6's commit builder asks the container for it and
+- [ ] **Step 7: Expose the dirty set**, because task 5's commit builder asks the container for it and
   folds those pages into whatever commit comes next (spec 5.6). That is what makes the lazy rewrite cost
   nothing: it never causes a commit, it only joins one.
 - [ ] **Step 8: Run green and commit.**
@@ -351,85 +354,7 @@ git commit -m "iteminstances(pages): paged containers, the capacity gate and byt
 
 ---
 
-### Task 3: `InstanceValidator`, its thirteen checks, the counter and the log line (large, gate: phase 1 release)
-
-Spec 12.2, 12.3, 12.6 and 12.7 over contracts 10.1, 10.2 and 10.4. Write fresh: the spike has no
-validator. `KhaozEngine.Content/JsonSchemaValidator.cs:11-101` is the run-to-the-end sweep shape to copy.
-
-**Files:**
-
-- Create: `KhaozEngine.ItemInstances/InstanceValidator.cs`
-- Create: `KhaozEngine.ItemInstances/InstanceValidator.References.cs`
-- Create: `KhaozEngine.ItemInstances/InstanceValidationReport.cs`
-- Create: `KhaozEngine.ItemInstances/InstanceValidationStrings.cs`
-- Create: `KhaozEngine.ItemInstances.Tests/Validation/InstanceValidatorTests.cs`
-
-**Interfaces:**
-
-- Consumes: `IContentSnapshot` (`TryGetRow`, `IsRetired`), the phase 1 plan's property registry and
-  its payload field walk
-- Produces: `InstanceValidator.Validate(page, snapshot)`, `InstanceValidationReport`,
-  `InstanceValidationFinding`, `InstanceValidationOutcome`
-
-- [ ] **Step 1: Write one fact per check, thirteen of them**, naming the reason token spec 12.2 assigns.
-  Checks 1 to 5, 9, 10 and 11 are STRUCTURAL and quarantine. Checks 6, 7 and 8 are DRIFT and also
-  quarantine. Check 12 is POLICY and is TOLERATED. Check 13 is POLICY and produces `Retired`.
-  The two that a reader will get wrong without a test are 12 and 13, so write those first:
-
-~~~csharp
-[Fact] public void Check_12_an_over_cap_count_is_counted_and_changes_nothing()
-[Fact] public void Check_13_a_RETIRED_definition_is_not_a_quarantine_and_the_page_still_loads()
-[Fact] public void A_structural_failure_quarantines_that_ENTRY_and_leaves_the_rest_of_the_page_alone()
-[Fact] public void An_unresolved_content_reference_quarantines_because_no_rule_covered_it()
-[Fact] public void The_validator_accumulates_and_never_stops_at_the_first_finding()
-[Fact] public void The_validator_never_throws_never_logs_never_counts_and_never_mutates_the_page()
-~~~
-
-- [ ] **Step 2: DERIVE checks 6 and 7 from the registry's `InstanceReferenceTarget` descriptors**, in the
-  same recursive order the remap pass of task 4 walks, over the same nested payloads. Spec 12.2 says why:
-  an earlier draft wrote check 7 as a closed enumeration and it already omitted kind 7's material ids and
-  a socket's `ContainedDefinitionId`, and it would have omitted every game kind at or above 1,024 forever.
-  A kind cannot be remapped-but-not-validated or validated-but-not-remapped. Check 8 stays hand written,
-  because a tier ordinal is not a content id: it is a key INTO the row check 7 already resolved.
-- [ ] **Step 3: Keep it PURE.** No store reads, no ambient state, no logging, no counter, no throw for a
-  content reason. A throw from it is a bug in the validator. The caller logs, counts and quarantines.
-
-- [ ] **Step 4: Ship the three placeholder `StringId`s and no translation.** `khaoz.item.quarantined`,
-  `khaoz.item.retired`, `khaoz.item.unidentified` (spec 12.3). All three are player facing, so none is a
-  literal, which is AGENTS.md's founding rule. They are prefixed `khaoz.` deliberately: they are ENGINE
-  strings rather than content rows, so contracts 12.1's derived `<type key>.<content key>.<field>` grammar
-  does not name them and the prefix keeps them out of its space. They resolve through
-  `ContentStringCatalog` on the `SafeFormat` path, so a translator's malformed template falls back to the
-  unformatted template rather than throwing inside the frame loop. A reason code and a stamped version are
-  NOT player text and are never formatted into these strings.
-- [ ] **Step 5: Name the counter and the log line, and invent no others.** Counter
-  `khaoz.content.quarantined_records`, dimensioned by content type id and reason code. ONE log line per
-  PAGE under category `ContentValidation` at Warning, naming the reason code, the stamped version, the
-  active version and the owning stream key, and NEVER the payload bytes or a raw account id. One per page
-  rather than per entry, because a page that fails wholesale would otherwise emit a hundred identical
-  lines, which is how an operator learns to filter the category out. The COUNTER is still incremented per
-  record, because a counter is what a dashboard reads and a log line is what a human reads. Add a fact
-  asserting a wholesale page failure emits exactly one line and a hundred counter increments.
-- [ ] **Step 6: Implement kind 128's identification mechanic on the registered bit.** `RevealedMask` bit N
-  is the bit a kind was REGISTERED with, never its position in the ascending list of gated kinds (spec
-  12.7 and spec 21's last row). Add a fact that registering a NEW gated engine kind at, say, 9 does NOT
-  move bits 0 to 3, which is the exact hazard the registered constant exists to prevent.
-- [ ] **Step 7: Add the unidentified stacking fact and its accepted leak.** An unidentified item still
-  STACKS by byte equality, and two unidentified items with different hidden affixes have different bytes,
-  so they do not merge. That leaks one bit: a player who tries to stack two unidentified items learns
-  whether they are identical. The leak is inherent to stacking by bytes and spec 15.8 records it as
-  accepted. Pin the behaviour so nobody "fixes" it later without reading that section.
-- [ ] **Step 8: Run green and commit.**
-
-~~~bash
-dotnet test KhaozEngine.ItemInstances.Tests/KhaozEngine.ItemInstances.Tests.csproj -c Release
-git add KhaozEngine.ItemInstances/InstanceValidator.cs KhaozEngine.ItemInstances/InstanceValidator.References.cs KhaozEngine.ItemInstances/InstanceValidationReport.cs KhaozEngine.ItemInstances/InstanceValidationStrings.cs KhaozEngine.ItemInstances.Tests/Validation
-git commit -m "iteminstances(validation): thirteen checks, three outcomes, one counter"
-~~~
-
----
-
-### Task 4: The registry-derived remap pass and its idempotence (large, gate: phase 1 release)
+### Task 3: The registry-derived remap pass and its idempotence (large, gate: phase 1 release)
 
 Spec 5.5 step 2 over contracts 8.1 through 8.6. **LIFT FROM THE SPIKE:**
 `KhaozEngine.Benchmarks/Items/RemapRuleSet.cs` (269 lines) has the whole shape: the applicable-rule
@@ -494,7 +419,7 @@ git commit -m "iteminstances(remap): the registry-derived pass and its idempoten
 
 ---
 
-### Task 5: `KhaozEngine.ItemInstances.Journal` and the container load path (medium, gate: phase 1 release)
+### Task 4: `KhaozEngine.ItemInstances.Journal` and the container load path (medium, gate: phase 1 release)
 
 Spec 2.1, 5.2 and 5.5. The package exists for a LAYERING reason rather than a size one: composing a
 `JournalCommit` needs `KhaozEngine.WorldStore`, and putting that inside `ItemInstances` would drag a
@@ -514,7 +439,8 @@ Spec 2.1, 5.2 and 5.5. The package exists for a LAYERING reason rather than a si
 
 **Interfaces:**
 
-- Consumes: `KhaozEngine.ItemInstances`, `KhaozEngine.WorldStore`
+- Consumes: `KhaozEngine.ItemInstances` (the phase 1 plan's `InstanceValidator` and
+  `InstanceValidationTelemetry`, task 3's remap pass), `KhaozEngine.WorldStore`
 - Produces: `ContainerSectionNames` (`Format`, `Parse`), `ContainerLoad.Load`, `ContainerLoadResult`,
   `ItemInstanceEvents`
 
@@ -546,7 +472,10 @@ public static ContainerLoadResult Load(
 ~~~
 
   It returns the decoded pages, the accumulated findings and the dirty set. No store reads, no ambient
-  state, following the one-validator shape contracts 10.4 sets for the content side.
+  state, following the one-validator shape contracts 10.4 sets for the content side. The findings come
+  from the phase 1 plan's `InstanceValidator`, called once per page after task 3's rules have run, and the
+  counter and the log line come from `InstanceValidationTelemetry`. This is the CALLER spec 12.2 means
+  when it says the validator stays pure, so do not write a second emitter here.
 
 - [ ] **Step 4: Check the page against the SECTION it arrived in**, using `ContainerSectionNames.Parse`
   plus the page header's own `PageIndex`. That is spec 13 row 10 and it is otherwise silent.
@@ -557,7 +486,7 @@ public static ContainerLoadResult Load(
 - [ ] **Step 6: Write the package README and its README catalog row IN THIS TASK**, self-contained,
   naming the layering reason the package exists. Same guard reason as the phase 1 plan's package
   skeleton task: a packable package with no catalog row reddens `scripts/check-doc-versions.sh` from
-  here until task 11.
+  here until task 10.
 - [ ] **Step 7: Run green and commit.**
 
 ~~~bash
@@ -568,7 +497,7 @@ git commit -m "iteminstances(journal): page section names and the container load
 
 ---
 
-### Task 6: `ContainerCommitBuilder`, the tick-bounded batch and its crash facts (large, gate: phase 1 release)
+### Task 5: `ContainerCommitBuilder`, the tick-bounded batch and its crash facts (large, gate: phase 1 release)
 
 Spec 6.4, 6.5 and 6.6. Option A of spec 6.2's weighed table, with the batch window fixed at ONE SERVER
 TICK. **LIFT THE COMMIT SHAPES FROM THE SPIKE:** `KhaozEngine.Benchmarks/Items/ItemsCommitFactory.cs`
@@ -649,7 +578,7 @@ JournalCommit commit = batch.Close(identityFactory);
   operation changed, and no others. A move across two pages of one container is ONE commit with TWO
   projection writes on the SAME stream, which `JournalCommit` already allows (`JournalCommit.cs:37`,
   `:125-138`): one stream, two sections, one event. Atomicity is the database transaction's.
-- [ ] **Step 7: Measure budget 4 here rather than in task 7.** Twenty crafts in one held action is at most
+- [ ] **Step 7: Measure budget 4 here rather than in task 6.** Twenty crafts in one held action is at most
   20 KB and ONE commit, summed over `JournalCommit.OwnedByteCount`. Assert the commit COUNT in the test
   and leave the byte number to the benchmark, so a structural regression is a red test rather than a
   slower number nobody reads.
@@ -663,7 +592,7 @@ git commit -m "iteminstances(journal): one commit per tick from a batch of page 
 
 ---
 
-### Task 7: The `--items` benchmark structural test (medium, gate: phase 1 release)
+### Task 6: The `--items` benchmark structural test (medium, gate: phase 1 release)
 
 Spec 2.3 and 17 row 5. The `--items` mode ALREADY EXISTS in `KhaozEngine.Benchmarks/Items/` with a
 checked-in baseline at `KhaozEngine.Benchmarks/Baselines/items-sqlite-v1-seed915.json`, and section 16's
@@ -712,7 +641,7 @@ measured at ONE commit.
 
 ## Group C: the wire (spec 7)
 
-### Task 8: `ItemInstanceVisibility`, the ONE `CanSee` and `PublicView` (medium, gate: phase 1 release)
+### Task 7: `ItemInstanceVisibility`, the ONE `CanSee` and `PublicView` (medium, gate: phase 1 release)
 
 Spec 7.4 and 12.5 over contracts 11.1 and 11.2. There is exactly ONE function answering "may this viewer
 see this field", and both the replication filter and the tooltip builder call it. A tooltip that computed
@@ -800,7 +729,7 @@ git commit -m "iteminstances(visibility): one CanSee behind replication and tool
 
 ---
 
-### Task 9: `TileGroundItemInstance` and the `SpawnGroundItem` overload (medium, gate: phase 1 release)
+### Task 8: `TileGroundItemInstance` and the `SpawnGroundItem` overload (medium, gate: phase 1 release)
 
 Spec 7.2 and 7.3. A SIBLING component rather than a widened `TileGroundItem`, and the deciding row of spec
 7.2's table is not a preference: `WriteGroundItem` writes exactly twenty bytes with no declared length
@@ -886,7 +815,7 @@ git commit -m "tileworld(netcode): a sibling ground component carrying opaque in
 
 ---
 
-### Task 10: The page delta, its one-frame bound and the resync request (large, gate: phase 1 release, tasks 1 and 2)
+### Task 9: The page delta, its one-frame bound and the resync request (large, gate: phase 1 release, tasks 1 and 2)
 
 Spec 7.5 and 7.6. **LIFT FROM THE SPIKE:** `KhaozEngine.Benchmarks/Items/PageWire.cs` has the delta
 builder that MEASURES as it writes and answers -1 when the next change would not fit, which is the whole
@@ -973,7 +902,7 @@ green from task 1, and budgets 7 and 8 measured.
 
 ## Group D: documentation and release
 
-### Task 11: The full documentation sweep (medium, gate: phase 1 release)
+### Task 10: The full documentation sweep (medium, gate: phase 1 release)
 
 AGENTS.md's "Full doc sweep on EVERY feature" rule. `scripts/check-doc-versions.sh` verifies the
 engine-version declarations, the newest changelog heading and the package INVENTORY. What it does NOT
@@ -993,12 +922,13 @@ package arrives in this plan and a missed row is a guard failure at release time
 - [ ] **Step 1: Add the `KhaozEngine.ItemInstances.Journal` catalog row to `README.md`**, in the same
   voice and depth as the `KhaozEngine.ItemInstances` row beside it, plus the `Depends on` column. Add it
   to the repo-layout block and to the `Server` umbrella table row. The minimal row landed with the
-  package in task 5 step 6, so nothing here is what unblocks the inventory check. The README table is
+  package in task 4 step 6, so nothing here is what unblocks the inventory check. The README table is
   the SINGLE source for the catalog, so do not re-enumerate any of it in `AGENTS.md`.
 - [ ] **Step 2: Update the MODIFIED packages' own READMEs**, which ship inside their nupkgs and are
   read standalone on NuGet, so each rots independently of the master catalog. `KhaozEngine.ItemInstances`
-  gains the paged container, the capacity gate, validation, visibility, the remap pass and the page
-  delta. `KhaozEngine.TileWorld.Netcode` gains the sibling ground component, the spawn overload and the
+  gains the paged container, the capacity gate, visibility, the remap pass and the page delta, and its
+  validator section gains the `Remapped` outcome that is no longer dormant.
+  `KhaozEngine.TileWorld.Netcode` gains the sibling ground component, the spawn overload and the
   fragmenter. Both umbrella READMEs gain their new member.
 - [ ] **Step 3: Extend the `docs/USING-KHAOZENGINE.md` section phase 1 opened.** Follow the file's
   existing shape: take the worked example that encodes an item and seats it in a container on through a
@@ -1029,12 +959,12 @@ git commit -m "docs(items): the journal catalog row, the package READMEs and the
 ~~~
 
   All four guards must exit 0 here. If `check-doc-versions.sh` is red, read the message: a complaint
-  about the version line means task 12 has not run yet and is expected, and anything else is a real miss
+  about the version line means task 11 has not run yet and is expected, and anything else is a real miss
   in this task.
 
 ---
 
-### Task 12: The finishing ritual, one version bump, no tag (medium, gate: phase 1 release)
+### Task 11: The finishing ritual, one version bump, no tag (medium, gate: phase 1 release)
 
 AGENTS.md's finishing ritual, in order. **ONE version bump for the whole batch**, not one per task and
 not one per phase, which is the rule that stops the engine version creeping through a run of one-line
@@ -1074,10 +1004,10 @@ grep -n '<KhaozEngineVersion>' Directory.Build.props
   The first sentence is: `Paged item containers, one commit per tick, and the item wire.` Then the
   detail, which is the public API and behaviour change: the new `KhaozEngine.ItemInstances.Journal`
   package, `PagedItemContainer` and the capacity gate, `ItemContainerPage` and the section naming, the
-  full `InstanceValidator` with its three outcomes and one counter, the remap pass, the container load
-  path, `ContainerCommitBuilder` and its batch window, the visibility function with `PublicView` and the
-  owner remainder, the sibling ground component and the spawn overload, the fragmenter, the page delta
-  and the resync request. Name the deferred half in one sentence so a reader does not go looking for a
+  remap pass and the `Remapped` outcome it makes reachable, the container load path that runs the phase 1
+  validator after it, `ContainerCommitBuilder` and its batch window, the visibility function with
+  `PublicView` and the owner remainder, the sibling ground component and the spawn overload, the
+  fragmenter, the page delta and the resync request. Name the deferred half in one sentence so a reader does not go looking for a
   generator that is not there.
 - [ ] **Step 4: Update every engine-version declaration the guard checks.** EVERY `<PackageReference>`
   example line in `README.md` and in `docs/USING-KHAOZENGINE.md`, one per umbrella, not just one.
@@ -1087,7 +1017,7 @@ grep -n '<KhaozEngineVersion>' Directory.Build.props
   actually resolved, or reference them with `Closes #NNN` in the commit. Anything this work knowingly
   leaves undone, defers or works around becomes a GitHub issue AT THIS POINT, with a `confidence/*`
   label, per AGENTS.md. The four open questions spec 20 leaves live in the spec and do not need issues.
-  The owner-remainder home of task 8 and the delta-builder home of task 10 DO, because both are choices
+  The owner-remainder home of task 7 and the delta-builder home of task 9 DO, because both are choices
   this plan made that the spec should adopt or overrule.
 - [ ] **Step 6: Run every guard and the full Release verification.**
 
@@ -1156,9 +1086,9 @@ restated at the task that acts on it. The phase 1 plan carries its own table, an
 
 | # | The gap | The plan's choice | Task |
 |---|---|---|---|
-| 1 | Spec 7.6 lists an owner remainder message and no package builds it | `ItemInstanceVisibility.OwnerRemainder`, beside `PublicView` so the two cannot disagree, with the message KIND left to the game | 8 |
-| 2 | The page delta body is a page entry body, and `TileWorld.Netcode` must gain no items dependency | `ContainerPageDelta` lives in `KhaozEngine.ItemInstances` and the server composes it with the fragmenter | 10 |
-| 3 | `MaxInstancePayloadBytes` is one number in `ItemSlot.MaxPayloadBytes` (phase 1), and `KhaozEngine.TileWorld.Netcode` needs it and may reference neither package | A local const mirroring it, with a cross-package equality fact in `KhaozEngine.Server.Tests`, which sees both | 9 |
+| 1 | Spec 7.6 lists an owner remainder message and no package builds it | `ItemInstanceVisibility.OwnerRemainder`, beside `PublicView` so the two cannot disagree, with the message KIND left to the game | 7 |
+| 2 | The page delta body is a page entry body, and `TileWorld.Netcode` must gain no items dependency | `ContainerPageDelta` lives in `KhaozEngine.ItemInstances` and the server composes it with the fragmenter | 9 |
+| 3 | `MaxInstancePayloadBytes` is one number in `ItemSlot.MaxPayloadBytes` (phase 1), and `KhaozEngine.TileWorld.Netcode` needs it and may reference neither package | A local const mirroring it, with a cross-package equality fact in `KhaozEngine.Server.Tests`, which sees both | 8 |
 
-Choices 1 and 2 become GitHub issues in task 12 step 5, because each is something the spec should adopt
+Choices 1 and 2 become GitHub issues in task 11 step 5, because each is something the spec should adopt
 or overrule rather than inherit from a plan. Choice 3 is recorded here and in its task.

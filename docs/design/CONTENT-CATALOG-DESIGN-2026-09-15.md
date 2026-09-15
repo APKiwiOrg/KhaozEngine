@@ -3622,18 +3622,18 @@ spike #882 item 12 requires. Every target is justified by arithmetic rather than
 
 | # | Budget | Target | How it is measured | Measured |
 |---|---|---|---|---|
-| P1 | Pack size at 50,000 definitions | Server pack under 12 MB stored, client pack under 9 MB stored | `KhaozEngine.Benchmarks --catalog --definitions 50000`, summing `storedBytes` across the manifest | TBD (stage 5) |
-| P2 | Pack size at 1,000,000 definitions | Server pack under 240 MB stored, client pack under 180 MB stored | the same run at `--definitions 1000000` | TBD (stage 5) |
-| P3 | Server load time and memory at 50,000 | Under 400 ms wall clock from manifest to validated runtime, under 20 MB of managed heap for the runtime | `Stopwatch` around boot steps 3 to 8, `GC.GetTotalAllocatedBytes` delta and `GC.GetTotalMemory(true)` after | TBD (stage 5) |
-| P4 | Client cold start at 50,000 | Under 6 s on a 20 Mbit link to first joinable, of which under 300 ms is local work | the fetch loop against a local HTTP server with a token-bucket shaper, timed from refusal to reconnect | TBD (stage 5) |
-| P4b | Client COLD start at 1,000,000 | Under 90 s on a 20 Mbit link to first joinable. Stated rather than targeted: it is the transfer, and the design cannot beat it | the same run at `--definitions 1000000` | TBD (stage 5) |
-| P5 | Publish time, one item edited, 50,000 definitions | Under 1.5 s wall clock end to end | `catalog-publish` elapsed, reported in its own response | TBD (stage 5) |
-| P6 | Download size after a one-item edit | Under 80 KB, including the manifest | the publish response's `bytesWritten` plus the manifest size | TBD (stage 5) |
-| P7 | Lookup by id, server runtime | Under 5 ns, zero allocation | a tight loop over random live ids, `GC.GetAllocatedBytesForCurrentThread` delta asserted 0 | TBD (stage 5) |
-| P8 | Validator sweep at 1,000,000 | Under 20 s | `ContentValidator.Validate` timed over a synthetic snapshot | TBD (stage 5) |
-| P9 | Weighted loot draw | Under 100 ns, zero allocation | a loop over a 200-entry table through the prefix-summed array (9.4) | TBD (stage 5) |
-| P10 | Text chunk decode, one language at 50,000 | Under 250 ms, under 32 MB resident | decode timed, `GC.GetTotalMemory(true)` after | TBD (stage 5) |
-| P11 | **Total cold boot to accepting connections** | Under 1.5 s wall clock, under 80 MB of managed heap, at 50,000 definitions with Scope B's types registered | `KhaozEngine.Benchmarks --catalog --compose`, timed from process start to the listener opening, `GC.GetTotalMemory(true)` after | TBD (stage 5) |
+| P1 | Pack size at 50,000 definitions | Server pack under 12 MB stored, client pack under 9 MB stored | `KhaozEngine.Benchmarks --catalog --definitions 50000`, summing `storedBytes` across the manifest | **2.96 MB** server, **2.66 MB** client. MEETS |
+| P2 | Pack size at 1,000,000 definitions | Server pack under 240 MB stored, client pack under 180 MB stored | the same run at `--definitions 1000000` | **58.9 MB** server, **52.9 MB** client. MEETS |
+| P3 | Server load time and memory at 50,000 | Under 400 ms wall clock from manifest to validated runtime, under 20 MB of managed heap for the runtime | `Stopwatch` around boot steps 3 to 8, `GC.GetTotalAllocatedBytes` delta and `GC.GetTotalMemory(true)` after | **310 ms**, **26.3 MB** heap. MISSES on heap |
+| P4 | Client cold start at 50,000 | Under 6 s on a 20 Mbit link to first joinable, of which under 300 ms is local work | the fetch loop against a local HTTP server with a token-bucket shaper, timed from refusal to reconnect | **1.05 s**, **57 ms** local. MEETS |
+| P4b | Client COLD start at 1,000,000 | Under 90 s on a 20 Mbit link to first joinable. Stated rather than targeted: it is the transfer, and the design cannot beat it | the same run at `--definitions 1000000` | **22.1 s**. MEETS |
+| P5 | Publish time, one item edited, 50,000 definitions | Under 1.5 s wall clock end to end | `catalog-publish` elapsed, reported in its own response | **93 ms**. MEETS |
+| P6 | Download size after a one-item edit | Under 80 KB, including the manifest | the publish response's `bytesWritten` plus the manifest size | **34.9 KB** at 1,024 slots. MEETS |
+| P7 | Lookup by id, server runtime | Under 5 ns, zero allocation | a tight loop over random live ids, `GC.GetAllocatedBytesForCurrentThread` delta asserted 0 | **1.76 ns**, 0 B. MEETS |
+| P8 | Validator sweep at 1,000,000 | Under 20 s | `ContentValidator.Validate` timed over a synthetic snapshot | **609 ms**. MEETS |
+| P9 | Weighted loot draw | Under 100 ns, zero allocation | a loop over a 200-entry table through the prefix-summed array (9.4) | **33.8 ns**, 0 B. MEETS |
+| P10 | Text chunk decode, one language at 50,000 | Under 250 ms, under 32 MB resident | decode timed, `GC.GetTotalMemory(true)` after | **36.6 ms**, **44.2 MB** resident. MISSES on resident |
+| P11 | **Total cold boot to accepting connections** | Under 1.5 s wall clock, under 80 MB of managed heap, at 50,000 definitions with Scope B's types registered | `KhaozEngine.Benchmarks --catalog --compose`, timed from process start to the listener opening, `GC.GetTotalMemory(true)` after | **376 ms**, **25.1 MB** heap. MEETS |
 
 **P3 EXCLUDES the per-type load indexes, and P11 is the number an operator actually restarts against.** P3 is
 scoped to boot steps 3 to 8, which is the engine's own work: decompress, decode, validate and build the four
@@ -3795,6 +3795,77 @@ The benchmark is `IsPackable=false`, is not on the engine version line, and CI's
 its timing loop. Its STRUCTURAL behaviour is tested in CI, as a `CatalogBenchmarkTests` class in
 `KhaozEngine.Server.Tests`, mirroring `MutationJournalBenchmarkTests`. Always `-c Release`, because Debug
 numbers are not representative (`KhaozEngine.Benchmarks/README.md:43`).
+
+### 14.3 Stage 5 measurements
+
+Measured on an Apple Silicon Mac, macOS 26.6.2 arm64, .NET 10.0.12, 12 logical processors, always
+`-c Release`, seed 835, one language, `item` at 1,024 chunk slots and fetch concurrency 4 over a 20 Mbit
+token bucket. Every figure below is one run of `KhaozEngine.Benchmarks --catalog`, and the three baselines
+it wrote are checked in as `KhaozEngine.Benchmarks/Baselines/catalog-v1-seed835-50000.json`,
+`catalog-v1-seed835-50000-compose.json` and `catalog-v1-seed835-1000000.json`. The command lines are in
+`KhaozEngine.Benchmarks/README.md` and are reproduced here in the order they must run:
+
+```bash
+dotnet run --project KhaozEngine.Benchmarks -c Release -- --catalog --definitions 50000 --seed 835 --pack-root /tmp/kecat-50k --output "$PWD/KhaozEngine.Benchmarks/Baselines/catalog-v1-seed835-50000.json"
+
+dotnet run --project KhaozEngine.Benchmarks -c Release -- --catalog --definitions 50000 --seed 835 --compose --pack-root /tmp/kecat-50k --output "$PWD/KhaozEngine.Benchmarks/Baselines/catalog-v1-seed835-50000-compose.json"
+
+dotnet run --project KhaozEngine.Benchmarks -c Release -- --catalog --definitions 1000000 --seed 835 --pack-root /tmp/kecat-1m --output "$PWD/KhaozEngine.Benchmarks/Baselines/catalog-v1-seed835-1000000.json"
+```
+
+**Per budget, the method and what is approximated.**
+
+- **P1** sums the stored bytes of every chunk, every text shard, the rule chunk and the manifest, per side,
+  off one publish of 92,166 rows into 61 chunks. Uncompressed the server pack is 14.8 MB against the 19 MB
+  section 14.1 predicted, and Brotli at quality 5 returned 5:1 rather than the conservative 2:1 that target
+  was set at, which is where the four times headroom comes from.
+- **P2** is the same sum at 1,000,000 definitions, 1,833,833 rows into 1,054 chunks. The text chunk sharded
+  into 12 at 2,000,800 entries, so section 7.6's sharding rule is exercised rather than assumed.
+- **P3** is `ContentRuntime.Load` with chunk hash verification on, plus the validator, timed by `Stopwatch`
+  and bracketed by `GC.GetTotalMemory(true)`. The heap figure is that delta. The runtime's own accounting of
+  what it retains is 20.4 MB, so both readings are over the 20 MB target rather than only the pessimistic one.
+- **P4** runs the real fetch loop against a local HTTP server behind a token bucket. It is a loopback
+  transfer, so link latency and TCP slow start are absent and the measured 1.05 s for 2.66 MB sits at the
+  1.12 s floor the shaper alone imposes on those bytes. Treat it as that floor plus local work rather than
+  as a field number. Local work was 57 ms of manifest parse and SHA-256 over 58 objects.
+- **P4b** is the same loop at 1,000,000, fetching 1,016 objects and 52.9 MB, and it is transfer bound
+  exactly as the section predicted: 22.15 s wall against a 22.19 s shaper floor.
+- **P5** publishes a one-item edit through the benchmark's own publisher rather than through a
+  `catalog-publish` service call, so it carries no transport or transaction commit. Its dominant term is the
+  validator at 81 ms of the 93 ms, which is the shape section 14.1 predicted at a twentieth of the cost.
+- **P6** is the rewritten chunk plus the client manifest and nothing else. At 1,000,000 the same edit is
+  69.3 KB, because the manifest grows to 36.7 KB at 981 item chunks, and that figure is reported for
+  information rather than against this target, which is stated at 50,000.
+- **P7** is 50,000,000 iterations over a power-of-two ring of live ids scattered by a fixed stride, with a
+  `GC.GetAllocatedBytesForCurrentThread` delta of 0. The typed `ItemRowView` accessor over the same ring is
+  72.3 ns and also allocation free, which is the row decode rather than the lookup.
+- **P8** is the validator over the 1,000,000 definition snapshot, 1,833,833 rows and 0 findings, at 609 ms
+  against a 20 s target set at roughly ten times the arithmetic. The `KEC0100` band is NOT in this number,
+  because Scope B's validators do not exist yet.
+- **P9** is 50,000,000 draws through the prefix-summed array over a 200-entry table, allocation free.
+- **P10** decodes the one language chunk of 100,800 entries into the frozen dictionary and measures the
+  `GC.GetTotalMemory(true)` delta as resident.
+- **P11** boots a second process against the pack the first one published, so the timer from process start
+  is a real cold boot rather than a publish. It builds the text chunk and a STAND-IN per-type load index of
+  25 MB, which is the flattering approximation in this table: the stand-in built in 29 ms where section 14.1
+  sizes Scope B's real generator tables at 500 ms, so the composed figure understates the third term by
+  roughly half a second. Even carrying that half second the budget holds. Repeated runs put process start to
+  listener between 376 and 689 ms, the upper end being the first start after a rebuild.
+
+**The misses, with the number.**
+
+- **P3 heap: 26.3 MB against a 20 MB target.** The time half of P3 passes at 310 ms against 400 ms. The heap
+  is over by a third, and P10 below says why: the two share the string representation.
+- **P10 resident: 44.2 MB against a 32 MB target.** Section 14.1 sized this at about 25 MB from 216 bytes
+  per entry and set the budget at 32 MB expressly so that the measured value would decide whether the frozen
+  dictionary should hold one UTF-8 blob with offsets the way section 9.2 already does for keys. The measured
+  value decides it: 44.2 MB for 100,800 entries is 460 bytes per entry, roughly twice the arithmetic, and
+  the UTF-16 inflation of a 24-character key and a 60-character value is the whole gap.
+
+Nothing else misses. **Question Q3 is confirmed by measurement rather than by arithmetic alone:** the same
+one-item edit at 4,096 `item` chunk slots downloads 129.7 KB against the 80 KB target, so the 1,024
+registration of section 3.1 is load bearing and the earlier 4,096 would have shipped a budget its own
+section refuted.
 
 ## 15. Test plan
 

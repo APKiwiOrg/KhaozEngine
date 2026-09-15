@@ -73,9 +73,9 @@ public sealed class ContentValidator
             if (type.ChunkSlots < 256 || type.ChunkSlots > 65_536 || (type.ChunkSlots & (type.ChunkSlots - 1)) != 0)
                 report.Add(type.TypeId, 0, "KEC0028", "chunk_slots is not a power of two between 256 and 65536.");
             if (!runtime.Tables.TryGetValue(type.TypeId, out ContentTypeTable? table)) continue;
-            // Uniqueness is the key index rather than a HashSet of strings: the index keeps one id per key,
-            // so a row that looks its own key up and gets someone else's id is the duplicate. That is one
-            // probe per row against a build of a second table, and it materialises a string only on a finding.
+            // Uniqueness comes from the key index rather than from a HashSet of strings. The index build
+            // probes every key once already and records the ids whose key was taken, so this pass reads that
+            // list instead of paying a second random probe per row, and the walk below stays sequential.
             table.EnsureKeyIndex();
             for (int id = 0; id < table.Offsets.Length; id++)
             {
@@ -85,8 +85,11 @@ public sealed class ContentValidator
                 ReadOnlySpan<byte> key = table.KeyUtf8(id);
                 if (!IsWellFormedKey(key))
                     report.Add(type.TypeId, id, "KEC0001", "A key is not well formed: " + Encoding.UTF8.GetString(key));
-                if (table.TryGetId(key, out int owner) && owner != id)
-                    report.Add(type.TypeId, id, "KEC0002", "A key is not unique within its type: " + Encoding.UTF8.GetString(key));
+            }
+            foreach (int id in table.DuplicateKeyIds)
+            {
+                report.Add(type.TypeId, id, "KEC0002",
+                    "A key is not unique within its type: " + Encoding.UTF8.GetString(table.KeyUtf8(id)));
             }
         }
     }

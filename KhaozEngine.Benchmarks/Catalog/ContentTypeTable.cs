@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace KhaozEngine.Benchmarks.Catalog;
 
@@ -15,6 +16,7 @@ namespace KhaozEngine.Benchmarks.Catalog;
 public sealed class ContentTypeTable
 {
     private int[] _keyIds = [];
+    private int[] _duplicateKeyIds = [];
 
     public ContentTypeTable(ushort typeId, string typeKey, int chunkSlots, int highestId, int bodyBytes)
     {
@@ -45,6 +47,13 @@ public sealed class ContentTypeTable
 
     /// <summary>The open-addressed key to id table: an id in an occupied bucket, 0 in an empty one.</summary>
     public int[] KeyIds => _keyIds;
+
+    /// <summary>
+    /// Ids whose key was already taken when the index was built, which is validator finding KEC0002. The
+    /// build probes every key once already, so the duplicates fall out of it and the validator does not pay
+    /// a second probe per row to rediscover them. Empty on a valid pack, which is every pack that published.
+    /// </summary>
+    public int[] DuplicateKeyIds => _duplicateKeyIds;
 
     public int RowCount { get; set; }
 
@@ -98,21 +107,29 @@ public sealed class ContentTypeTable
         int capacity = ContentKeyHash.CapacityFor(RowCount);
         int[] buckets = new int[capacity];
         int mask = capacity - 1;
+        List<int>? duplicates = null;
         for (int id = 1; id < Offsets.Length; id++)
         {
             if (Offsets[id] < 0) continue;
             ReadOnlySpan<byte> key = KeyUtf8(id);
             int slot = (int)(ContentKeyHash.Of(key) & (uint)mask);
+            bool taken = false;
             while (buckets[slot] != 0)
             {
                 // A duplicate key is a validator finding (KEC0002), not a load failure, so the first id wins
-                // and the loser is what the validator sees when it looks its own key back up.
-                if (KeyUtf8(buckets[slot]).SequenceEqual(key)) break;
+                // and the loser is recorded for the validator rather than costing it a probe of its own.
+                if (KeyUtf8(buckets[slot]).SequenceEqual(key))
+                {
+                    taken = true;
+                    break;
+                }
                 slot = (slot + 1) & mask;
             }
-            if (buckets[slot] == 0) buckets[slot] = id;
+            if (taken) (duplicates ??= []).Add(id);
+            else buckets[slot] = id;
         }
         _keyIds = buckets;
+        _duplicateKeyIds = duplicates is null ? [] : duplicates.ToArray();
     }
 
     public bool TryGetId(ReadOnlySpan<byte> key, out int id)

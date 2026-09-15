@@ -10,7 +10,8 @@ namespace KhaozEngine.Catalog;
 /// <para>
 /// Two passes over the <c>loot_entry</c> rows, so every array is sized exactly and nothing grows: count the
 /// entries per table, then fill. The weights are prefix summed in the fill's last step, which is what turns a
-/// draw into one binary search.
+/// draw into one binary search, and a GUARANTEED entry contributes zero to that sum because it rolls its own
+/// chance instead of competing in the draw.
 /// </para>
 /// </summary>
 internal static class ContentLootIndexBuilder
@@ -42,7 +43,6 @@ internal static class ContentLootIndexBuilder
         var start = new int[slots];
         var count = new int[slots];
         var rollCount = new int[slots];
-        var guaranteed = new bool[slots];
         var seen = new bool[slots];
 
         for (int i = 0; i < tableRows.Count; i++)
@@ -57,7 +57,6 @@ internal static class ContentLootIndexBuilder
 
             seen[row.Id] = true;
             rollCount[row.Id] = (int)Number(row, schema.RollCountField);
-            guaranteed[row.Id] = Number(row, schema.GuaranteedField) != 0;
         }
 
         // Pass one: how many entries each table owns, so the flat arrays are sized rather than grown.
@@ -114,17 +113,22 @@ internal static class ContentLootIndexBuilder
             ContentRow row = entryRows[each.RowIndex];
             int slot = start[each.TableId] + cursor[each.TableId]++;
 
+            bool guaranteed = Number(row, schema.GuaranteedField) != 0;
             int weight = (int)Number(row, schema.WeightField);
             entries[slot] = new ContentLootEntry(
                 row.Id,
                 (int)Number(row, schema.ItemField),
                 (int)Number(row, schema.NestedTableField),
+                guaranteed,
                 0,
                 (int)Number(row, schema.ChanceField),
                 (int)Number(row, schema.MinCountField),
                 (int)Number(row, schema.MaxCountField),
                 each.Sort);
-            prefixWeights[slot] = weight < 0 ? 0 : weight;
+
+            // A guaranteed entry is out of the weighted pool, so it widens the running total by nothing and a
+            // pick can never land on it.
+            prefixWeights[slot] = guaranteed || weight < 0 ? 0 : weight;
 
             candidateStart[slot] = candidates.Count;
             ResolveCandidates(runtime, tags, row, schema, candidates);
@@ -158,7 +162,6 @@ internal static class ContentLootIndexBuilder
             start,
             count,
             rollCount,
-            guaranteed,
             entries,
             prefixWeights,
             candidateStart,
@@ -264,12 +267,12 @@ internal static class ContentLootIndexBuilder
             tableType,
             entryType,
             IndexOf(tables.Schema, LootTableContentType.RollCountField),
-            IndexOf(tables.Schema, LootTableContentType.GuaranteedField),
             IndexOf(entries.Schema, LootEntryContentType.TableField),
             IndexOf(entries.Schema, LootEntryContentType.ItemField),
             IndexOf(entries.Schema, LootEntryContentType.NestedTableField),
             IndexOf(entries.Schema, LootEntryContentType.WeightField),
             IndexOf(entries.Schema, LootEntryContentType.ChanceBasisPointsField),
+            IndexOf(entries.Schema, LootEntryContentType.GuaranteedField),
             IndexOf(entries.Schema, LootEntryContentType.MinCountField),
             IndexOf(entries.Schema, LootEntryContentType.MaxCountField),
             IndexOf(entries.Schema, LootEntryContentType.SortField),
@@ -309,12 +312,12 @@ internal static class ContentLootIndexBuilder
         ContentTypeId TableType,
         ContentTypeId EntryType,
         int RollCountField,
-        int GuaranteedField,
         int TableField,
         int ItemField,
         int NestedTableField,
         int WeightField,
         int ChanceField,
+        int GuaranteedField,
         int MinCountField,
         int MaxCountField,
         int SortField,

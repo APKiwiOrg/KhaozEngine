@@ -117,7 +117,6 @@ public sealed class VisibilityTests
                 new ContentKey("goblin"),
                 [
                     new ContentFieldEdit(LootTableContentType.RollCountField, ContentFieldValue.OfNumber(ContentFieldKind.Int, 1)),
-                    new ContentFieldEdit(LootTableContentType.GuaranteedField, ContentFieldValue.OfNumber(ContentFieldKind.Bool, 0)),
                 ])));
 
         Assert.Contains(plan.ServerManifest!.Types, entry => entry.TypeId == EngineContentTypes.LootTableTypeId);

@@ -14,6 +14,14 @@ namespace KhaozEngine.Catalog;
 /// row carrying two of them has to reach the validator intact to be reported, and a precedence order would
 /// be a silent choice between two things an author wrote down.
 /// </para>
+/// <para>
+/// <b><c>guaranteed</c> sits HERE rather than on the table.</b> Spec 3.5 carried it on <c>loot_table</c> in its
+/// schema table and read it per entry in its draw-order prose, and this type is where that is settled: the
+/// composition the whole section is written around is a table that drops its bread on its own chance AND its
+/// coin purse out of a weighted draw, which needs the two shapes side by side in one table. On the table it
+/// would also make <c>roll_count</c> meaningless, because a table whose entries were all guaranteed has no
+/// non-guaranteed entry for a weighted pick to land on.
+/// </para>
 /// </summary>
 public static class LootEntryContentType
 {
@@ -37,6 +45,12 @@ public static class LootEntryContentType
 
     /// <summary>The entry's own chance, in basis points out of 10,000.</summary>
     public const string ChanceBasisPointsField = "chance_bp";
+
+    /// <summary>
+    /// Whether this entry rolls its own <see cref="ChanceBasisPointsField"/> before the weighted draw instead
+    /// of competing in it. A guaranteed entry is out of the weighted pool entirely and contributes no weight.
+    /// </summary>
+    public const string GuaranteedField = "guaranteed";
 
     /// <summary>The smallest count a drawn line carries.</summary>
     public const string MinCountField = "min_count";
@@ -73,6 +87,7 @@ public static class LootEntryContentType
             false),
         new ContentFieldEntry(WeightField, ContentFieldKind.Int, null, ContentVisibility.ServerOnly, true),
         new ContentFieldEntry(ChanceBasisPointsField, ContentFieldKind.Int, null, ContentVisibility.ServerOnly, true),
+        new ContentFieldEntry(GuaranteedField, ContentFieldKind.Bool, null, ContentVisibility.ServerOnly, true),
         new ContentFieldEntry(MinCountField, ContentFieldKind.Int, null, ContentVisibility.ServerOnly, true),
         new ContentFieldEntry(MaxCountField, ContentFieldKind.Int, null, ContentVisibility.ServerOnly, true),
         new ContentFieldEntry(SortField, ContentFieldKind.Int, null, ContentVisibility.ServerOnly, true),

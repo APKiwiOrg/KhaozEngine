@@ -214,7 +214,6 @@ internal static class ContentValidationFixtures
             [
                 ContentFieldValue.OfNumber(ContentFieldKind.Int, 1),
                 ContentFieldValue.Absent(ContentFieldKind.TagList),
-                ContentFieldValue.OfNumber(ContentFieldKind.Bool, 0),
             ]);
 
     /// <summary>A loot entry row, which names its draw exactly one of three ways.</summary>
@@ -237,6 +236,7 @@ internal static class ContentValidationFixtures
                 Reference(nestedTable),
                 ContentFieldValue.OfNumber(ContentFieldKind.Int, 1),
                 ContentFieldValue.OfNumber(ContentFieldKind.Int, 10000),
+                ContentFieldValue.OfNumber(ContentFieldKind.Bool, 0),
                 ContentFieldValue.OfNumber(ContentFieldKind.Int, 1),
                 ContentFieldValue.OfNumber(ContentFieldKind.Int, 1),
                 ContentFieldValue.OfNumber(ContentFieldKind.Int, 0),

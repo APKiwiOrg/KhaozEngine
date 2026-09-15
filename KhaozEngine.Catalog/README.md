@@ -117,9 +117,12 @@ stable ids and keys, plus the two type keys the engine writes down and a GAME re
 - `StatContentType` - `stat`, id 3, contracts 13.1's table. A fixed power-of-ten `scale` with the stored
   integer scaled by it, so there is no float stat and no float modifier anywhere.
 - `LootTableContentType` - `loot_table`, id 4, `ServerOnly` at the type level, so the whole family is omitted
-  from every client manifest.
+  from every client manifest. Two fields: `roll_count` and `tags`.
 - `LootEntryContentType` - `loot_entry`, id 5, one weighted row of one table, with a larger chunk and a row
-  cap of its own because entries outnumber tables.
+  cap of its own because entries outnumber tables. **`guaranteed` is a field of this type and not of the
+  table**, settled by `LootRoller` below: the composition spec 3.5 is written around is a table that drops one
+  thing on its own chance AND another out of a weighted draw, which a table-level flag cannot express and which
+  would make `roll_count` meaningless on the table that set it.
 - `BaseSocketContentType` - `base_socket`, id 6, one socket an item base is authored WITH, in authored order,
   which `item.socket_max` caps rather than describes.
 
@@ -237,9 +240,50 @@ build inside a tick is a latency spike.
 - `ContentLootIndex` and `ContentLootEntry` - per `loot_table`, the resolved entries with the weights PREFIX
   SUMMED, so a weighted draw is one `NextInt(0, total)` and one binary search over an `int[]` with no
   allocation and no per-roll summation. Entries come back in `sort` then id order, a negative weight is clamped
-  and the running total saturates, both so the prefix array stays monotonic and searchable. A `required_tags`
-  entry resolves at load into a candidate array of the live items carrying every listed tag, retired rows
-  excluded.
+  and the running total saturates, both so the prefix array stays monotonic and searchable. The sums run over
+  the NON-GUARANTEED entries only: a guaranteed entry rolls its own chance instead of competing, so it has zero
+  width and a pick steps straight over it, which keeps one array and one search. `TotalWeight` is therefore the
+  weighted pool's total rather than the sum of every authored weight. A `required_tags` entry resolves at load
+  into a candidate array of the live items carrying every listed tag, retired rows excluded.
+
+## The loot roll
+
+`LootRoller(runtime, random)` is the ONE implementation of spec 3.5's composition rule, and it exists because
+the rule is the engine's: the spec defined the two types, said how guaranteed entries, weighted picks, nested
+tables and tag draws compose, and shipped no code performing it, so every consumer would have written it again
+and the first table using both `guaranteed` and `roll_count` would have had two answers.
+
+```csharp
+Span<LootDraw> drops = stackalloc LootDraw[16];
+var roller = new LootRoller(runtime, random);                 // IRandomSource, by constructor, no default
+
+if (!roller.TryRoll(tableId, drops, out int written))
+    // the table had more lines than the span: size up and roll again
+```
+
+- **The draw order is the contract.** Every `guaranteed` entry in `sort` order first, each rolling its own
+  `chance_bp` independently, then `roll_count` weighted picks over the non-guaranteed entries, each one
+  `NextInt(0, total)` plus a binary search over the prefix-summed array. A `nested_table` entry recurses at the
+  point it is drawn and a `required_tags` entry draws uniformly from its precomputed candidates.
+- **A weighted pick does not roll `chance_bp`.** Winning the draw was its chance, and its share of the pool is
+  what that chance IS. `chance_bp` is read for a guaranteed entry and nowhere else. A chance at or above 10,000
+  is a certainty and consumes no draw, one at or below zero drops nothing and consumes no draw, so a table of
+  certainties never advances the stream.
+- **`LootDraw` is `(ItemId, Count, TableId)` and nothing else.** `TableId` names the table the LINE came from,
+  which after a nested draw is the nested table, and it is the one thing a caller cannot reconstruct. A game's
+  own drop event passes it back through.
+- **A destination too small is FILLED**, `Roll` returns the span's length and `TryRoll` reports the overflow, so
+  a caller sizes up rather than silently losing drops. The roll stops at the first line that does not fit, so
+  nothing is drawn for lines nobody gets and the same seeded source rolled into a bigger span gives the whole
+  table.
+- **`MaxNestedDepth` is 16**, a hard cap below `KEC0024`'s acyclicity guarantee. A published pack cannot reach
+  it, and a roll runs over bytes a pack store handed the process, so a hand-edited pack must not be able to run
+  a server out of stack. A nested entry at the cap draws nothing and the rest of the table still rolls.
+- **It creates nothing**: no instance, no ground stack, no inventory write, no event, no journal. It reads
+  content and a random source and returns numbers, which is what lets a generator take its output as an input
+  without the two depending on each other. That is asserted by absence of API, not by a comment.
+- **Zero allocation**, which is budget P9 together with under 100 ns for one weighted draw over a 200 entry
+  table: it writes into the caller's span, walks the load-time arrays and recurses on the stack.
 
 ## Pack store and reader
 

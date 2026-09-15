@@ -12,6 +12,15 @@ namespace KhaozEngine.Catalog;
 /// field. A blob would cost the generic editor, the field-level audit and the field-level diff, which is
 /// everything the field schema exists to give.
 /// </para>
+/// <para>
+/// <b><c>guaranteed</c> is a field of <c>loot_entry</c> and not of this type.</b> Spec 3.5's schema table put
+/// it here and its draw-order prose read it per entry, and the prose is the one that describes a table anyone
+/// would author: the goblin drops its bread on its own chance AND its coin purse out of a weighted draw, which
+/// is two roll shapes composed in ONE table. A table-level flag cannot express that, and it would also make
+/// <c>roll_count</c> meaningless on the table that set it, because there would be no non-guaranteed entry left
+/// for a weighted pick to land on. See <see cref="LootEntryContentType.GuaranteedField"/> and
+/// <c>LootRoller</c>, which owns the composition rule.
+/// </para>
 /// </summary>
 public static class LootTableContentType
 {
@@ -24,9 +33,6 @@ public static class LootTableContentType
     /// <summary>The table's tags, in authored order.</summary>
     public const string TagsField = "tags";
 
-    /// <summary>Whether the table's entries roll their own chance independently.</summary>
-    public const string GuaranteedField = "guaranteed";
-
     /// <summary>The ordered field list, spec 3.5's first table exactly.</summary>
     public static ContentFieldSchema CreateSchema() => new(
     [
@@ -37,7 +43,6 @@ public static class LootTableContentType
             ContentFieldEntry.TagReferenceTarget,
             ContentVisibility.ServerOnly,
             false),
-        new ContentFieldEntry(GuaranteedField, ContentFieldKind.Bool, null, ContentVisibility.ServerOnly, true),
     ]);
 
     /// <summary>The loot table row codec, which is the generic positional walk with nothing added.</summary>

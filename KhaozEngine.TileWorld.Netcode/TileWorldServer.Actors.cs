@@ -88,37 +88,47 @@ public sealed partial class TileWorldServer
     internal TileActorTraversalProfile ActorTraversalProfileOf(long netId) =>
         actorTraversalByNetId.GetValueOrDefault(netId, TileActorTraversalProfile.Unresolved);
 
-    // The map an entity's movement uses. Players always use the constructor map. A live actor whose server index
+    // The simulator an entity's movement uses. Players always use the constructor's. A live actor whose server index
     // is unexpectedly missing gets no answer, which keeps combat from falling back after movement already froze.
-    internal bool TryGetMoverTraversalMap(long netId, out TileCollisionMap map)
+    internal bool TryGetMoverSimulator(long netId, out TileMoveSimulator mover)
     {
         if (actorTraversalByNetId.TryGetValue(netId, out TileActorTraversalProfile profile))
-            return TryGetActorTraversal(profile, out map);
-        if (actorNetIds.Contains(netId))
         {
-            map = null!;
+            if (actorTraversalProfiles.TryGet(profile, out TileActorTraversalEntry entry))
+            {
+                mover = entry.Simulator;
+                return true;
+            }
+            mover = null!;
             return false;
         }
-        map = simulator.Map;
+        if (actorNetIds.Contains(netId))
+        {
+            mover = null!;
+            return false;
+        }
+        mover = simulator;
         return true;
     }
 
-    internal bool IsActorTraversalPlacementBlocked(TileActorTraversalProfile profile, TileCoord at)
+    internal bool IsActorTraversalPlacementBlocked(TileActorTraversalProfile profile, TileCoord at, int size)
     {
-        if (profile == TileActorTraversalProfile.Default) return false;
+        // The default profile keeps the legacy one-tile rule that a blocked home still spawns, because content predates
+        // this check. No content predates a footprint, so a large body is checked on every profile.
+        if (profile == TileActorTraversalProfile.Default && size == 1) return false;
         return !TryGetActorTraversal(profile, out TileCollisionMap map)
             || !map.HasRegion(at.Region)
-            || TileCollision.IsBlocked(map, at.X, at.Z, at.Plane);
+            || !TileCollision.CanStand(map, at.X, at.Z, at.Plane, size);
     }
 
-    internal void ValidateActorTraversalPlacement(TileActorTraversalProfile profile, TileCoord at,
+    internal void ValidateActorTraversalPlacement(TileActorTraversalProfile profile, TileCoord at, int size,
         string parameterName)
     {
         if (!TryGetActorTraversal(profile, out _))
             throw new ArgumentException($"Actor traversal profile {profile.Value} is not registered.", parameterName);
-        if (IsActorTraversalPlacementBlocked(profile, at))
+        if (IsActorTraversalPlacementBlocked(profile, at, size))
             throw new ArgumentException(
-                $"Actor traversal profile {profile.Value} blocks the spawn tile {at}.", parameterName);
+                $"Actor traversal profile {profile.Value} blocks the footprint of size {size} at {at}.", parameterName);
     }
 
     /// <summary>Live actors' net ids in SPAWN ORDER, which is the order every actor pass runs in. The live list, so
@@ -151,9 +161,11 @@ public sealed partial class TileWorldServer
     /// <see cref="TileWorldServerConfig.MaxActorsPerCell"/> actors.</returns>
     /// <exception cref="ArgumentException"><paramref name="at"/> is on a plane at or above
     /// <see cref="TileWorldServerConfig.PlaneCount"/>, or in a region the collision map has not loaded. Also thrown
-    /// when the spawn names an unregistered profile or a non-default profile blocks the spawn tile. The default
-    /// profile retains the legacy blocked-home rule.</exception>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="spec"/> asks for a max health of zero.</exception>
+    /// when the spawn names an unregistered profile, or its profile's map does not let the whole footprint stand at
+    /// <paramref name="at"/> (<see cref="TileCollision.CanStand"/>). A one-tile spawn on the default profile retains
+    /// the legacy blocked-home rule. A larger footprint is checked on every profile.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="spec"/> asks for a max health of zero, or a
+    /// footprint size outside 1 through <see cref="TileMoveState.MaxFootprintSize"/>.</exception>
     public long SpawnActor(TileCoord at, in TileActorSpawn spec) => SpawnActorFrom(at, spec, null);
 
     // The same door with the SPAWNER the actor came from, so the host's index is written before OnActorSpawned
@@ -166,16 +178,21 @@ public sealed partial class TileWorldServer
         if (spec.MaxHealth == 0)
             throw new ArgumentOutOfRangeException(nameof(spec), spec.MaxHealth,
                 "An actor's MaxHealth must be above zero: one at zero is dead on the tick it exists.");
+        if (spec.FootprintSize < 1 || spec.FootprintSize > TileMoveState.MaxFootprintSize)
+            throw new ArgumentOutOfRangeException(nameof(spec), spec.FootprintSize,
+                $"An actor's FootprintSize must be 1 through {TileMoveState.MaxFootprintSize}.");
         TileMoveState state = TileMoveState.At(at, spec.Facing);
         // The cadence goes on the STATE rather than into a command, so an actor stands at its definition's mode from
         // the tick it exists and the actor pass has a mode to fall back to that nothing has to keep re-stating.
         state.Mode = spec.Mode;
+        // The size rides the state too, which is what the stepper, the reach, the wire and a Migrate capture all read.
+        state.FootprintSize = spec.FootprintSize;
         // The same door a written player state comes through, and deliberately the same one: a plane the world does
         // not have and a region the map never loaded both leave an entity nobody can see and that can never step,
         // whether the entity has a connection behind it or not. A freshly placed state has no route, so the array
         // this hands back is empty and is written out for the same reason SpawnPlayer writes an empty one.
         TileDirection[] steps = ValidatePlayerState(state);
-        ValidateActorTraversalPlacement(spec.TraversalProfile, at, nameof(spec));
+        ValidateActorTraversalPlacement(spec.TraversalProfile, at, spec.FootprintSize, nameof(spec));
 
         CellCoord target = CellCoord.FromWorld(at.X, at.Z, config.CellSize);
         if (ActorsIn(target) >= config.MaxActorsPerCell)

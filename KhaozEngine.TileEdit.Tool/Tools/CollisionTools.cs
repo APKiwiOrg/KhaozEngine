@@ -23,7 +23,7 @@ public sealed class CollisionTools(QueryService query)
         => ToolGuard.Guard(() => query.CollisionAt(x, z, plane));
 
     /// <summary>Whether an agent of a given size stands clear.</summary>
-    [McpServerTool(Name = "is_walkable"), Description("Reports whether an agent that many tiles square, anchored at this tile and extending north and east, stands clear: every tile of that footprint must be unblocked. This is the same footprint rule the pathfinder walks with. Returns the flag, the agent size and the anchor tile's collision flags.")]
+    [McpServerTool(Name = "is_walkable"), Description("Reports whether an agent that many tiles square, anchored at this tile and extending north and east, stands clear: every tile of that footprint must be unblocked, and no wall may lie between two tiles of the footprint. This is the same footprint rule the pathfinder walks with. Returns the flag, the agent size and the anchor tile's collision flags.")]
     public WalkableInfo IsWalkable(
         [Description("Anchor tile x (east).")] int x,
         [Description("Anchor tile z (north).")] int z,

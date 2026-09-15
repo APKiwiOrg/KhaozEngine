@@ -31,7 +31,8 @@ public sealed class TileActorSpawner
     /// <param name="home">Where to build it, and the tile the leash and the wander radius are measured from.</param>
     /// <exception cref="ArgumentNullException"><paramref name="definition"/> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="definition"/> asks for a max health of zero, a
-    /// negative radius, or a negative respawn delay. Taken at the door for the same reason
+    /// negative radius, a negative respawn delay, or a footprint size outside 1 through
+    /// <see cref="TileMoveState.MaxFootprintSize"/>. Taken at the door for the same reason
     /// <see cref="TileWorldServer.SpawnActor"/> takes its own there: a refusal that waits for the first respawn
     /// surfaces inside a server tick, hours after the content shipped.</exception>
     public TileActorSpawner(TileActorDefinition definition, TileCoord home)
@@ -46,6 +47,9 @@ public sealed class TileActorSpawner
         if (definition.RespawnDelayTicks < 0)
             throw new ArgumentOutOfRangeException(nameof(definition), definition.RespawnDelayTicks,
                 "An actor definition's RespawnDelayTicks must not be negative.");
+        if (definition.FootprintSize < 1 || definition.FootprintSize > TileMoveState.MaxFootprintSize)
+            throw new ArgumentOutOfRangeException(nameof(definition), definition.FootprintSize,
+                $"An actor definition's FootprintSize must be 1 through {TileMoveState.MaxFootprintSize}.");
         Definition = definition;
         Home = home;
     }

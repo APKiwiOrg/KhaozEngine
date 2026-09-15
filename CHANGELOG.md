@@ -5,6 +5,129 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 18.51.0
+
+The item instance record and the container arrive: a canonical tagged payload, node-prefixed instance ids,
+quarantine, the instance validator, and container codec version 2 reading version 1.
+
+- `KhaozEngine.ItemInstances` is a new package, in the `Foundation` umbrella, over `KhaozEngine.Items`,
+  `KhaozEngine.Catalog`, `KhaozEngine.Primitives` and `KhaozEngine.Diagnostics` (an `ILogger` argument for one
+  log line and nothing else). `KhaozEngine.Items` holds a slot's bytes and never reads them, and this package
+  owns what they mean, so a game CLIENT decodes an owned item with no database and no journal type anywhere in
+  its graph. `ItemInstancePayload` is the format, `[Kind: varint][Length: varint][Body]` repeated with no
+  header and no terminator, fields strictly ascending by kind, no kind twice and every varint minimal. An
+  unknown kind is preserved VERBATIM, its position in the ordering included, so a client built against content
+  build N reads, shows and re-saves an item carrying a field only build N+1 knows.
+  `ItemInstancePayloadBuilder` is what MAKES the encoding canonical, which is what turns the stacking rule
+  into `SequenceEqual`, a byte compare: nothing anywhere decodes two payloads to compare them. The builder
+  throws on every refusal, because it is handed values by code, and the decoder answers a token instead,
+  because it is handed bytes by a peer.
+- **`ItemStack` takes a third component, and two-component deconstruction BREAKS.** The record struct is now
+  `ItemStack(int ItemId, int Count, long InstanceId = 0)`, so `new ItemStack(id, count)` still compiles and
+  `var (id, count) = stack` no longer does, because a positional record struct deconstructs into exactly its
+  components. `InstanceId` 0 is the ABSENCE of an instance rather than a low id, so a plain stack carries 0
+  forever and costs nothing, `HasInstance` is the question to ask, and `ItemStack.MergeInstanceId` keeps the
+  numerically lower of two merging ids, so the merge is commutative and a replay in either order agrees on one
+  id.
+- `ItemSlot(ItemStack Stack, ReadOnlyMemory<byte> Payload, bool Quarantined)` is one slot's WHOLE state, with
+  BYTE equality over the payload rather than the reference equality a record struct would generate for a
+  `ReadOnlyMemory<byte>` field, and a `MaxPayloadBytes` cap of 512 that moves ONE WAY. `SlotAt`, `SetSlotAt`
+  and `TakeSlotAt` are its doors on `ItemContainer`, a slot carrying a payload or a quarantine flag is never a
+  stack-first top-up target, and every door that empties or overwrites a slot drops the payload and the flag
+  with it. `ItemContainer` takes TWO optional predicates at construction, `payloadCanonical` and
+  `quarantineWellFormed`, rather than a reference to the package that owns the decoder, which would be a
+  cycle. Left null, the matching door is SHUT rather than half open: no `payloadCanonical` refuses every
+  non-empty payload, and no `quarantineWellFormed` refuses every quarantined slot.
+  `ItemInstancePayload.IsCanonical` and `QuarantineWrapper.Verify` are the implementations a host passes.
+  `SetSlotAt` enforces four invariants and THROWS for each, because its only caller is a decoder that has
+  already validated and a violation is a caller bug rather than bad data.
+- `ItemContainerPageCodec` is container codec version 2, a page of a container sparse by slot, carrying an
+  instance id, an opaque payload and an entry flag per occupied slot, under a header that declares which page
+  it is and which content version it was last brought up to date with. **Byte 0 dispatches**, exactly as
+  `ItemContainerCodec.Version` describes it: the value 1 runs the version 1 path, which seats every entry with
+  instance id 0, an empty payload, the quarantined flag clear and page stamp 0, which is older than every
+  published version, and anything else is a `ushort` version, which must be 2. `ItemContainerCodec.Version` is
+  now that `ushort` 2, `ItemContainerCodec.Version1` is the legacy byte, and `ItemContainerCodec.Encode` still
+  writes the version 1 format, which is the only one its own package can write. `ContainerPageSlots` is 100
+  rather than 128, so slot 743 is page 7 slot 43 and an operator reading a section name can do the arithmetic
+  in their head. `FirstSlot` is redundant against `PageIndex` ON PURPOSE, two bytes that catch a page written
+  into the wrong section. `EntryFlagQuarantined` is bit 0 of an entry's flags and is what says a payload is a
+  wrapper, rather than a sniff for the magic. A non-quarantined entry payload is capped at
+  `ItemSlot.MaxPayloadBytes` and a quarantined one by `MaxPageBytes` instead, 2 MiB, the journal's projection
+  section cap, copied rather than referenced because the package declaring it is a Server package.
+  `ItemContainerPageReason` is the page-level token set, `Encode` throws because its caller has already
+  validated, and `TryDecode` refuses with a stable token.
+- `InstancePropertyRegistry` gives every property kind a band, a `PropertyVisibility`, a FIXED identification
+  mask bit, an `InstanceFieldShape` and its `InstanceReferenceTarget`s, and `CreateV1()` returns one holding
+  every kind the engine and this package assign. **The band is the caller's own declaration of which range it
+  may register into, and a mismatch throws**: `Engine` 1 to 127, `ScopeB` 128 to 1023, `Game` 1024 and above,
+  with kind 0 reserved forever. Without it, the first sign of a collision is an engine release landing on a
+  kind a game took, months later, with two codecs and stored payloads under both. The mask bit is fixed at
+  registration rather than derived from a kind's position, because the revealed mask lives inside kind 128 in
+  every stored payload and a derived index would re-point every partially identified item in the world the
+  moment a gated kind was added below it, with no byte changing. Registration runs ONCE at process start, the
+  registry freezes at the first pack load and a later `Register` throws, a kind is never unregistered and a
+  codec never replaced, because either would make two previously distinct items stack and destroy one
+  identity. The shape and the targets are what make the remap pass and the drift checks DERIVED from the
+  registration, so a game kind at or above 1024 gets remap, drift detection and quarantine by declaring
+  nothing but its shape.
+- `InstancePayloadReason` is the CLOSED set of eight decoder tokens (`payload-too-long`, `field-truncated`,
+  `kind-out-of-order`, `kind-duplicate`, `varint-not-minimal`, `varint-overflow`, `socket-nesting`,
+  `field-malformed`), answered instead of a throw because the bytes arrive from a remote peer or a stored
+  page, and closed because a counter is dimensioned by the token and the quarantine wrapper stores a durable
+  ordinal per token. `QuarantineWrapper` is the `KECQ` envelope that keeps a failed record's bytes VERBATIM
+  under its reason and the content version it was stamped with, nothing truncated, normalized or re-encoded,
+  and `Wrap` accepts an original of any length, the cap included, because refusing to wrap the thing that
+  failed for being too big would destroy exactly the item the wrapper exists to keep. `Verify` and
+  `TryUnwrap` are TOTAL and answer false at every length. `InstanceQuarantineReason` is the durable ordinal
+  table behind the wrapper's `ReasonCode` byte: ordinal 0 is reserved and never assigned, so a half written
+  wrapper is detectable, 1 to 8 are the payload tokens in contract order rather than re-typed, 9 to 13 are the
+  validator's own, a new reason appends at the next free number, and an assigned number is never reused.
+- `InstanceValidator` sweeps a decoded page through THIRTEEN checks and reports everything it found. It is
+  PURE: no store read, no ambient state, no logging, no counter and no throw for a content reason, so the
+  caller logs, counts and quarantines. `Validate` takes a whole decoded page and `ValidateEntry` is the
+  standalone door for a caller holding one item, both over ONE sweep, which stops at the first quarantine,
+  because every later check would be reading bytes already shown to mean nothing, and runs past a policy
+  finding, because those change nothing about how the bytes are read. Checks 1 to 5 are one call into
+  `ItemInstancePayload.TryDecode` rather than a second copy of the canonical rules, checks 6 and 7 walk the
+  registry's own reference targets in the same recursive order the remap pass will, check 10 quarantines every
+  sharer of a duplicated instance id, the first included, and checks 12 and 13, the count cap and a retired
+  definition, are tolerated policy findings that never write a wrapper. `InstanceValidationOutcome` has three
+  members and no fourth: a record that did not resolve is KEPT, unusable, never discarded, and `Remapped` is
+  unreachable in phase 1 because the remap pass ships with the pages. `InstanceValidationStrings` ships three
+  engine-owned placeholder `StringId` keys and no translation, `khaoz.item.quarantined`, `khaoz.item.retired`
+  and `khaoz.item.unidentified`. `InstanceValidationTelemetry.Report` is the ONE named place a finished report
+  becomes side effects: one warning line per CONTAINER under the `ContentValidation` category, never carrying
+  payload bytes or a raw account id, and one `khaoz.content.quarantined_records` increment per quarantined
+  RECORD, dimensioned by content type id and reason code, over an `Action<int, string>` delegate because the
+  engine has no counter seam of its own.
+- `InstanceIdAllocator` mints the durable name an owned item carries, `(node << 48) | counter`, 16 node bits
+  and 48 counter bits, the counter starting at 1, never recycled, throwing rather than wrapping. The packing
+  is `NetIdAllocator`'s and the counter is NOT, because a net id and an instance id are different spaces that
+  must never share one, and a test in the one project that references both pins the two producing identical
+  packed values. `IInstanceIdStore` is the durable half, a CONSTRUCTOR seam the host implements: the engine
+  ships the seam, the arithmetic and no provider at all, which is what keeps the package in `Foundation` with
+  no reference to a server package. The high-water mark is persisted BEFORE any id in its block is issued,
+  `ReservationBlock` is 4,096, and a boot SKIPS the unissued remainder of the previous block, which is free at
+  2^48 per node and is what makes a reissue impossible. **`CanIssue` is false when the persisted store epoch
+  is not the live one**, which is a point-in-time restore nobody rotated after, and every issue then refuses.
+  That refusal ships with the allocator rather than later, because adding it later needs a durable migration.
+  `Rotate(newNodeId)` moves the store onto a fresh node and retires the old one, and a boot on a retired node
+  throws. `NeedsInstanceId` is the pure which-items-get-an-id rule, a property of the ITEM rather than of its
+  definition, so a definition gaining a per-instance property later does not reach back into every stored
+  copy.
+- Phase 1 settles every byte format, every id space, every ordering rule and the stacking test, which are the
+  expensive things to change once data exists, and defers the breadth: paging, the registry-derived remap pass
+  that makes `Remapped` reachable, the journal commit path and the wire (the fragmenter, the ground component,
+  the page delta, the owner remainder and a real `PublicView`) are the next release, and the affix content
+  types, the item generator, the crafting framework and the content stat evaluator are after that.
+- This is phase 1 of the item instances program
+  ([#884](https://github.com/APKiwiOrg/KhaozEngine/issues/884)). 18.50.0 was RELEASED with the content
+  catalog's milestone 1.1 in it, so the catalog's later milestones
+  ([#882](https://github.com/APKiwiOrg/KhaozEngine/issues/882)) ride 18.51.0 from here. The design is
+  `docs/design/ITEM-INSTANCES-DESIGN-2026-09-15.md`, written against the shared contracts in
+  `docs/design/CONTENT-CONTRACTS-DESIGN-2026-09-14.md`.
+
 ## 18.50.0
 
 The content catalog lands its read half: a frozen registry of content types, four content-addressed pack
@@ -94,6 +217,57 @@ formats, and one pure validator behind them.
   ([#884](https://github.com/APKiwiOrg/KhaozEngine/issues/884)) rides it too, because its package depends on
   this one. The design is `docs/design/CONTENT-CATALOG-DESIGN-2026-09-15.md`, written against the gate 0
   contracts in `docs/design/CONTENT-CONTRACTS-DESIGN-2026-09-14.md`.
+
+Tile actors can be NxN bodies (1x1 to 8x8) anchored on their south-west tile, with pathing, melee reach, wander,
+placement and presentation all honouring the whole footprint
+([#897](https://github.com/APKiwiOrg/KhaozEngine/issues/897)). A self-targeted lock now clears instead of holding
+forever ([#741](https://github.com/APKiwiOrg/KhaozEngine/issues/741)). Design:
+`docs/design/TILE-ACTOR-FOOTPRINTS-DESIGN-2026-09-15.md`.
+
+- **The size lives on the body.** `TileMoveState.FootprintSize` (1 through `TileMoveState.MaxFootprintSize`, 8) and
+  the derived `TileMoveState.Footprint` rect. A default or `TileMoveState.At` state is one tile. `TileActorDefinition`
+  and `TileActorSpawn` gain `FootprintSize` (default 1, refused outside 1 through 8 at the door), and the spawn writes
+  it onto the actor's state. `TileActorContext.FootprintSize` hands it to a behaviour.
+- **Wire.** A one-tile state encodes exactly the bytes it did. A larger one always writes the optional domain byte
+  (0 when no entity interaction is pending) followed by one size byte. An older reader decodes the state and skips
+  the size, so it draws and predicts a large body as one tile: upgrade both heads together before authoring a size
+  above 1. The size crosses a region handoff in the same codec.
+- **Melee range is one predicate for every range question.** A body is in range when its footprint does not overlap
+  the target's and some tile it covers is in the target's one-tile reach set, so walls still deny exactly the tiles
+  they sit beside. New overloads `TileReach.Set`, `Contains` and `FacingToward` take the agent size.
+  **Behaviour:** `TileReach.TryNearest`'s existing `agentSize` now shapes the candidate ANCHORS as well as the walk,
+  and admits a footprint up to `maxRadius + agentSize` away. Identical for size 1, including candidate order.
+- **The one stepper steps by footprint.** `TileMoveSimulator.FootprintOf(state)` is the stepped footprint, the
+  state's size floored at `TileMoveOptions.AgentSize` (kept as a floor, removal tracked by
+  [#900](https://github.com/APKiwiOrg/KhaozEngine/issues/900)). Walk, interact, follow, facing and repath all use it,
+  the server's combat roll asks it of the attacker's own simulator, and the target side is always the target state's
+  own footprint on both heads. A body overlapping its target steps out before it swings.
+- **Standing.** `TileCollision.CanStand(map, x, z, plane, size)`: no footprint tile is Blocked and no wall lies
+  between two of its tiles. **Behaviour:** `TileCollision.CanStep` and `TilePathfinder.FindPath` for a size above 1
+  refuse a destination a body could not stand on, so a large body cannot straddle a fence. Size 1 is unchanged. The
+  editor's `is_walkable` uses the same rule.
+- **Actors.** Spawn placement checks the whole footprint on the actor's traversal map for a size above 1, on every
+  profile (a one-tile actor on the default profile keeps the legacy rule that a blocked home still spawns). The
+  respawn retry uses the same check. `TileActorHost.CanPlace(definition, home)` answers it without throwing, for a
+  game's content test over its authored markers. `TileEntityTargets` answers the full footprint, including through
+  the migrating grace window. The wander only picks goals the whole body can stand on, and the leash and wander
+  radius measure anchor to home anchor.
+- **Presentation.** `TilePresenter.Pose` (and so `TileWorldClient.TryGetRemotePose`) centres a large body on its
+  footprint, a constant offset through the glide, so a consumer's large mesh needs no offset of its own.
+  `TilePresenter.PoseAt(TileRect, int, TileDirection)` is the overlay form. `TileWorldClient.TryGetRemoteFootprint`
+  (the delayed timeline the body rides, for click bounds and highlights) and `TryGetLatestRemoteFootprint` (the
+  newest snapshot, for rules) are new, and the client's `TileRemoteTargets` answers the real footprint, so an
+  approach to a large monster is predicted exactly as the server runs it.
+- **Behaviour (#741):** an `Attack` naming the attacker itself clears on the tick it is applied, drops the route and
+  is answered with the ordinary `CannotReach`, on both heads. It used to hold the lock forever with no roll possible,
+  which left a self-locked player permanently in combat for the logout linger.
+- **Behaviour:** `TileWorldServer.SetPlayerState` refuses a state whose footprint is above 1. Players stay one tile.
+- Known limits, filed: `TileDrawPriority` judges a large body on its anchor tile only
+  ([#899](https://github.com/APKiwiOrg/KhaozEngine/issues/899)), interest is measured from the anchor so a large
+  body enters view up to N-1 tiles late on its north and east edges
+  ([#906](https://github.com/APKiwiOrg/KhaozEngine/issues/906)), the reach search floods one window per candidate
+  ([#901](https://github.com/APKiwiOrg/KhaozEngine/issues/901)), and `TileAttackContext` carries no sizes yet
+  ([#907](https://github.com/APKiwiOrg/KhaozEngine/issues/907)).
 
 ## 18.49.0
 

@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>KhaozEngine.ItemInstances</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>Game-agnostic per-item instance record (in Foundation): the canonical tagged payload an item carries beyond its definition id, over KhaozEngine.Items and KhaozEngine.Catalog. InstancePropertyRegistry assigns every property kind a band, a visibility, a fixed identification mask bit, a field shape and its content reference targets, so the remap pass, the drift checks and quarantine are DERIVED from the registration rather than from a list in a document. Unsigned minimal LEB128 varints, little endian through BinaryPrimitives, integers everywhere, and decoders that answer a stable reason token instead of throwing. The engine never learns what an item means.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Items/KhaozEngine.Items.csproj" />
+    <ProjectReference Include="../KhaozEngine.Catalog/KhaozEngine.Catalog.csproj" />
+    <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
+    <!-- ILogger for InstanceValidationTelemetry's one log line, and nothing else. Diagnostics references no
+         project of its own, so it sits below this package and the edge is acyclic. The logger ARRIVES by
+         argument (LogManager.GetLogger), never through the ambient Log facade. -->
+    <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
+  </ItemGroup>
+
+</Project>

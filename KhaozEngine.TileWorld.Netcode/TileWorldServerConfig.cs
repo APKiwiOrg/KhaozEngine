@@ -106,8 +106,7 @@ public sealed record TileWorldServerConfig
     /// <c>TilePathfinder.FindPath</c> allocates its scratch per call at <c>(2r+1)^2</c> entries: at 64 that is about
     /// 83 KB of Gen0 per call and at 12 it is about 3 KB, a 26-fold saving on the one path a chasing actor runs most
     /// often. Size it against the LEASH rather than against a player's click, since an actor never legitimately
-    /// paths further than its leash. This is also where a larger <see cref="TileMoveOptions.AgentSize"/> would go
-    /// the day multi-tile actors land.</summary>
+    /// paths further than its leash.</summary>
     public TileMoveOptions ActorMove { get; init; } = new() { MaxPathRadius = 12 };
 
     /// <summary>How many ticks a player who was in combat keeps their entity in world after the session drops. Zero,

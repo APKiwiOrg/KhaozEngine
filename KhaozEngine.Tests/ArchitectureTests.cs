@@ -2,9 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
+using KhaozEngine.Items;
 using Xunit;
 
 namespace KhaozEngine.Tests;
@@ -319,10 +321,10 @@ public partial class ArchitectureTests
             new[]
             {
                 "App", "Catalog", "CodeHealth.Analyzers", "Collision", "Content", "Determinism",
-                "Diagnostics", "Dungeon", "Ecs", "Http", "Identity", "Items", "Locomotion", "MapDoc",
-                "Navigation", "Objectives", "Persistence", "Physics", "Platform", "Primitives", "Progression",
-                "Serialization", "ServerStatus", "Social", "Stats", "Terrain", "TileWorld", "TileWorld.Editing",
-                "Updates",
+                "Diagnostics", "Dungeon", "Ecs", "Http", "Identity", "ItemInstances", "Items", "Locomotion",
+                "MapDoc", "Navigation", "Objectives", "Persistence", "Physics", "Platform", "Primitives",
+                "Progression", "Serialization", "ServerStatus", "Social", "Stats", "Terrain", "TileWorld",
+                "TileWorld.Editing", "Updates",
             }
         },
         {
@@ -580,6 +582,23 @@ public partial class ArchitectureTests
         string[] backendEdges = actual.Where(OptInBackends.Contains).ToArray();
         bool noBackend = backendEdges.Length == 0;
         Assert.True(noBackend, "Render3D must never reference an opt-in backend package but references: " + string.Join(", ", backendEdges));
+    }
+
+    /// <summary>
+    /// <see cref="ItemStack"/> has exactly three components, and the empty stack is the all-zero one. The
+    /// point is not the shape. A positional record struct generates a Deconstruct with one out parameter per
+    /// component, so every <c>var (id, count) = stack</c> in the fleet stops compiling the moment a component
+    /// is added, and equality widens with it. That break is fine when it is chosen and paid for, which is what
+    /// the third component was. What this fact refuses is a FOURTH arriving as a side effect of someone adding
+    /// a field to a record header, because the consumer sweep that pays for it only happens when somebody
+    /// knows it is due.
+    /// </summary>
+    [Fact]
+    public void ItemStack_has_three_components_so_a_fourth_is_a_deliberate_fleet_break()
+    {
+        MethodInfo deconstruct = typeof(ItemStack).GetMethod("Deconstruct")!;
+        Assert.Equal(3, deconstruct.GetParameters().Length);
+        Assert.Equal(new ItemStack(0, 0, 0), ItemStack.Empty);
     }
 
     // A parsed engine project: its ProjectReference / PackageReference sets, whether it is a scan target

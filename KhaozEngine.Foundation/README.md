@@ -15,6 +15,11 @@ Pulls in:
   field schemas and the six engine content types, the content-addressed pack formats, the `IPackStore` seam,
   the `IContentSnapshot` read side and the pure validator. No third-party dependency.
 - `KhaozEngine.Persistence` - tamper-deterrent saves, atomic writes, `SettingsManager<T>`, `GameStorage`.
+- `KhaozEngine.ItemInstances` - the per-item instance record over `Items` and `Catalog`: the canonical tagged
+  property payload an owned item carries beyond its definition id, the property registry that gives every kind a
+  band, a visibility, a fixed identification mask bit and a field shape, the `KECQ` quarantine wrapper, container
+  codec version 2 (`ItemContainerPageCodec`), the `IInstanceIdStore`-backed instance id allocator and the
+  thirteen-check instance validator. Also references `Diagnostics`, for the validator's one injected log line.
 - `KhaozEngine.Diagnostics` - logging (sinks, categories, crash hooks) + `FrameStats` telemetry.
 - `KhaozEngine.Ecs` - struct-based archetype `World`/`Entity`/`ISystem` ECS with `ParallelForEach`.
 - `KhaozEngine.Identity` - pluggable player-identity seam: provider sign-in + server-side verified-subject

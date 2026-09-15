@@ -7,10 +7,11 @@ using KhaozEngine.Sharding;
 namespace KhaozEngine.TileWorld.Netcode;
 
 /// <summary>
-/// The ENTITY-backed <see cref="ITileTargets"/>: a target id is a NET ID, and the footprint is the 1x1 rect on the
-/// tile that entity is committed to. The server half of the combat target seam, and the sibling of
-/// <see cref="TileDocumentTargets"/>, which answers the OBJECT space instead. Two resolvers rather than one because
-/// the two id spaces overlap exactly, which is what <see cref="TileCommandKind.Attack"/> exists to discriminate.
+/// The ENTITY-backed <see cref="ITileTargets"/>: a target id is a NET ID, and the footprint is that entity's own
+/// <see cref="TileMoveState.Footprint"/>, anchored on the tile it is committed to. The server half of the combat
+/// target seam, and the sibling of <see cref="TileDocumentTargets"/>, which answers the OBJECT space instead. Two
+/// resolvers rather than one because the two id spaces overlap exactly, which is what
+/// <see cref="TileCommandKind.Attack"/> exists to discriminate.
 /// <para>SNAPSHOTTED ONCE PER TICK rather than read through, and that is the one place this type deliberately
 /// differs from <see cref="TileDocumentTargets"/>. An authored object does not move on a tick, so reading it
 /// through is free and correct. An entity moves on every tick, and the FOLLOW that consults this runs inside
@@ -50,12 +51,12 @@ public sealed class TileEntityTargets : ITileTargets
     /// completes cannot hold a lock for a noticeable time.</summary>
     public const int DefaultMigratingGraceRefreshes = 4;
 
-    readonly Dictionary<long, TileCoord> tiles = new();
+    readonly Dictionary<long, (TileCoord tile, int size)> tiles = new();
     readonly Dictionary<long, long> attackerByTarget = new();
     // Everything the walk saw frozen mid handoff, in walk order, folded in AFTER the owned pass so an entity the
     // destination cell already owns wins over the source's frozen copy of it. A list rather than a map because it
     // is enumerated, and because two cells cannot both hold one net id as Migrating.
-    readonly List<(long netId, TileCoord tile, long combatTarget)> migrating = new();
+    readonly List<(long netId, TileCoord tile, int size, long combatTarget)> migrating = new();
     // How many consecutive refreshes each held entity has been frozen for. Two maps swapped rather than one
     // rebuilt, so an entity whose handoff completed stops being counted without a second pass to find it.
     Dictionary<long, int> heldRefreshes = new();
@@ -79,9 +80,10 @@ public sealed class TileEntityTargets : ITileTargets
     public int MigratingGraceRefreshes { get; }
 
     /// <summary>
-    /// Snapshots every owned entity's COMMITTED tile, once, at the top of a server tick. Everything that asks this
-    /// resolver for the rest of that tick gets the same answer, which is the property the follow's determinism rests
-    /// on. Allocation-free after the first call: the map is cleared and refilled and the callback is cached.
+    /// Snapshots every owned entity's COMMITTED tile and footprint size, once, at the top of a server tick. Everything
+    /// that asks this resolver for the rest of that tick gets the same answer, which is the property the follow's
+    /// determinism rests on. Allocation-free after the first call: the map is cleared and refilled and the callback is
+    /// cached.
     /// <para>ONE THREAD AT A TIME, per instance. The cached callback reads the cell being walked out of a field, so
     /// two threads refreshing one instance would read each other's world. That is the price of not allocating a
     /// closure per cell per tick, and it is the right trade for something a server tick calls once: a caller wanting
@@ -123,12 +125,12 @@ public sealed class TileEntityTargets : ITileTargets
         nextHeldRefreshes.Clear();
         for (int i = 0; i < migrating.Count; i++)
         {
-            (long netId, TileCoord tile, long combatTarget) = migrating[i];
+            (long netId, TileCoord tile, int size, long combatTarget) = migrating[i];
             if (tiles.ContainsKey(netId)) continue;          // the destination already owns it, nothing to hold
             int held = heldRefreshes.GetValueOrDefault(netId) + 1;
             if (held > MigratingGraceRefreshes) continue;
             nextHeldRefreshes[netId] = held;
-            tiles[netId] = tile;
+            tiles[netId] = (tile, size);
             if (combatTarget == 0L) continue;
             if (!attackerByTarget.TryGetValue(combatTarget, out long holder) || netId < holder)
                 attackerByTarget[combatTarget] = netId;
@@ -137,16 +139,19 @@ public sealed class TileEntityTargets : ITileTargets
     }
 
     /// <inheritdoc/>
-    /// <remarks>A 1x1 rect on the committed tile, because both parties are one tile this round.
-    /// <see cref="TileReach"/> states three times that its set is anchor tiles for a ONE TILE actor, so a larger
-    /// footprint is a rule this package does not have yet rather than a bigger rect.</remarks>
+    /// <remarks>The target's WHOLE footprint, a square of its <see cref="TileMoveState.FootprintSize"/> anchored on
+    /// its committed tile as the south-west corner, which is <see cref="TileMoveState.Footprint"/> as it stood when
+    /// the snapshot was taken. The target side of every reach question is the target's own footprint, and the
+    /// attacker side is its own simulator's <see cref="TileMoveSimulator.FootprintOf"/>, so the follow and the
+    /// combat roll ask <see cref="TileReach"/> the same question by the same rule. They do not ask it of the same
+    /// tiles: the follow reads this tick-start snapshot, and the roll reads where both bodies ended the tick.</remarks>
     public bool TryGetFootprint(long target, out TileRect footprint, out int plane)
     {
         footprint = default;
         plane = 0;
-        if (!tiles.TryGetValue(target, out TileCoord tile)) return false;
-        footprint = new TileRect(tile.X, tile.Z, 1, 1);
-        plane = tile.Plane;
+        if (!tiles.TryGetValue(target, out (TileCoord tile, int size) held)) return false;
+        footprint = new TileRect(held.tile.X, held.tile.Z, held.size, held.size);
+        plane = held.tile.Plane;
         return true;
     }
 
@@ -170,10 +175,10 @@ public sealed class TileEntityTargets : ITileTargets
         // the OWNED map once the whole walk is done. See HoldMigrating.
         if (world.Has<Migrating>(e))
         {
-            migrating.Add((id.Value, state.Tile, state.CombatTarget));
+            migrating.Add((id.Value, state.Tile, state.FootprintSize, state.CombatTarget));
             return;
         }
-        tiles[id.Value] = state.Tile;
+        tiles[id.Value] = (state.Tile, state.FootprintSize);
         // The reverse of the lock, built in the same walk the tiles are. The min rule is what keeps the
         // answer independent of cell and ECS iteration order, which nothing here may depend on.
         if (state.CombatTarget == 0L) return;

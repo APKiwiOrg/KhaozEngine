@@ -47,8 +47,9 @@ public sealed class TileWanderBehaviour : ITileActorBehaviour
     /// tick roll rather than a countdown, so the behaviour keeps no per-actor state: the pause is randomised with
     /// this as its mean rather than bounded inside a band, and <see cref="TileActorContext.Walking"/> is what stops
     /// an actor re-rolling a destination it is still walking to. It is a mean on OPEN GROUND and a floor anywhere
-    /// else: a destination that comes back blocked, outside the baked map or equal to the tile the actor is already
-    /// on is dropped and re-rolled next tick, so on a cluttered map the pauses observed are longer than this.</param>
+    /// else: a destination the whole footprint cannot stand on, outside the baked map or equal to the tile the actor
+    /// is already on is dropped and re-rolled next tick, so on a cluttered map the pauses observed are longer than
+    /// this.</param>
     /// <param name="retaliateWindowTicks">How recent an incoming SWING has to be to provoke a counterattack, so
     /// an actor does not retaliate against something that swung at it a minute ago. A miss counts exactly as a
     /// landed hit does, which is the rule <see cref="TileCombatState.LastAttackedBy"/> itself carries: aggression
@@ -104,10 +105,11 @@ public sealed class TileWanderBehaviour : ITileActorBehaviour
             context.Home.Plane);
         // A destination nobody can stand on is dropped rather than walked toward, because the pathfinder's
         // nearest-reachable fallback would walk the actor to the edge of the obstruction and look like it was stuck
-        // on it. Rolling again next tick is free.
+        // on it. Rolling again next tick is free. For a large body that is a goal the WHOLE body cannot stand on: an
+        // anchor-only check parks a 2x2 against a tree on its far tiles the same way.
         TileCollisionMap? map = context.TraversalMap ?? fallbackMap;
         if (map is null || goal.Equals(context.Tile) || !map.HasRegion(goal.Region)
-            || TileCollision.IsBlocked(map, goal.X, goal.Z, goal.Plane))
+            || !TileCollision.CanStand(map, goal.X, goal.Z, goal.Plane, context.FootprintSize))
             return TileActorIntent.Idle;
         return TileActorIntent.WalkTo(goal);
     }

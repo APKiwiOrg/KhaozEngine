@@ -12,13 +12,37 @@ namespace KhaozEngine.Items;
 /// from the caller's expectation is refused whole, which is the same severity the quarantine path wants.</remarks>
 public static class ItemContainerCodec
 {
-    /// <summary>The format byte every blob starts with. Bump it when the shape changes, never reuse it.</summary>
-    public const byte Version = 1;
+    /// <summary>
+    /// The container codec's CURRENT format version, contracts 15's public <c>ushort</c> named constant.
+    /// Bump it when the shape changes, never reuse a number.
+    /// <para>
+    /// <b>Byte 0 is the dispatch, and it costs one rule.</b> Version 1 put a single <c>byte</c> at offset
+    /// 0, so a reader has to tell a version 1 blob from a version 2 one before it knows how wide the
+    /// version field is. The value 1 at byte 0 means the version 1 format, and ANYTHING ELSE means a
+    /// <c>ushort</c> version whose low byte is that value. The cost is that container codec versions
+    /// CONGRUENT TO 1 MODULO 256 are never assigned: version 257 is skipped, and versions 2 through 256
+    /// are free. Assigning 257 would make every stored version 1 bank in the fleet unreadable, so it is
+    /// written here rather than only in spec 4.4 and spec 21.
+    /// </para>
+    /// <para>
+    /// This type reads version 1 and writes version 1. Version 2 is a PAGE, carrying instance ids, opaque
+    /// payloads and a content version stamp, and its codec is <c>ItemContainerPageCodec</c> in
+    /// <c>KhaozEngine.ItemInstances</c>, the package above this one. A version 2 blob handed to this type
+    /// is refused by number rather than guessed at.
+    /// </para>
+    /// </summary>
+    public const ushort Version = 2;
+
+    /// <summary>The legacy single-byte version this type reads and writes, and the value byte 0 carries on
+    /// every blob written before version 2 existed.</summary>
+    public const byte Version1 = 1;
 
     const int HeaderBytes = 1 + 2;
     const int EntryBytes = 2 + 4 + 4;
 
-    /// <summary>Encodes a container. Never null, never empty.</summary>
+    /// <summary>Encodes a container in the VERSION 1 format, which is what this type writes: a version 2
+    /// page carries instance ids and payloads this package has no reader for, and its writer is
+    /// <c>ItemContainerPageCodec.Encode</c> one package up. Never null, never empty.</summary>
     /// <param name="container">The container to encode.</param>
     public static byte[] Encode(ItemContainer container)
     {
@@ -26,7 +50,7 @@ public static class ItemContainerCodec
         using var buffer = new MemoryStream();
         using (var writer = new BinaryWriter(buffer, System.Text.Encoding.UTF8, leaveOpen: true))
         {
-            writer.Write(Version);
+            writer.Write(Version1);
             writer.Write((ushort)container.SlotCount);
             for (int i = 0; i < container.SlotCount; i++)
             {
@@ -75,7 +99,15 @@ public static class ItemContainerCodec
     {
         if (blob is null or { Length: 0 }) return null;
         if (blob.Length < HeaderBytes) return "item container blob is shorter than its own header";
-        if (blob[0] != Version) return $"item container blob version {blob[0]}, this build reads {Version}";
+        // Byte 0 is the version dispatch (see Version). The value 1 is the version 1 format; anything else
+        // means the version field is a ushort, so the refusal names the number the ushort reader found
+        // rather than the byte, and a version 2 page is refused here by number for its own codec to read.
+        if (blob[0] != Version1)
+        {
+            ushort declaredVersion = BinaryPrimitives.ReadUInt16LittleEndian(blob);
+            return $"item container blob version {declaredVersion}, this build's version 1 reader reads {Version1}";
+        }
+
         int declared = BinaryPrimitives.ReadUInt16LittleEndian(blob.AsSpan(1));
         if (declared != expectedSlotCount)
             return $"item container blob declares {declared} slots, this consumer runs {expectedSlotCount}";

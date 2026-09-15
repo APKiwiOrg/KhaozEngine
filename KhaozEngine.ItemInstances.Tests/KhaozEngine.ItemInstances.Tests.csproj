@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <OutputType>Library</OutputType>
+    <!-- Pinned so the declared namespaces stay KhaozEngine.Tests.ItemInstances.*, per AGENTS.md. -->
+    <RootNamespace>KhaozEngine.Tests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The checked-in payload goldens, copied beside the assembly so a golden fact reads the same bytes
+         the repository holds. A change that moves one of these files has changed a stored byte format. -->
+    <Content Include="Payload/Goldens/*.bin" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Pages/Goldens/*.bin" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The version 1 container blobs KhaozEngine.Foundation.Tests pins, LINKED rather than copied, so one
+         set of stored bytes serves both suites and neither can drift from the other. The pattern follows
+         KhaozEngine.Render.Tests, which links KhaozEngine.Showcase's dungeon assets the same way. No
+         project reference comes with it, so the reference graph push CI selects on is unchanged. -->
+    <Content Include="../KhaozEngine.Foundation.Tests/Items/Fixtures/container-v1-*.blob"
+             Link="Items/Fixtures/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- KhaozEngine.ItemInstances ONLY, which brings Items, Catalog and Primitives transitively (spec 2.3).
+         Push CI selects test projects by the reference graph, so a second reference for a type already in
+         the graph would silently degrade that selection. The journal, ground item and container tests live
+         in KhaozEngine.Server.Tests, KhaozEngine.TileWorld.Netcode.Tests and KhaozEngine.Foundation.Tests
+         for the same reason. -->
+    <ProjectReference Include="../KhaozEngine.ItemInstances/KhaozEngine.ItemInstances.csproj" />
+  </ItemGroup>
+</Project>

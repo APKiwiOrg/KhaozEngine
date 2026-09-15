@@ -8,7 +8,13 @@
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
   </ItemGroup>
-  <!-- No ProjectReference to any KhaozEngine.* package: the rump is ArchitectureTests.cs (pure XML parsing of
-       every *.csproj) and CetCompatDefaultTests.cs (pure file/XML parsing of KhaozEngine.Foundation's packaging
-       assets via a repo-root-relative path), neither of which has a single `using KhaozEngine.*` directive. -->
+  <!-- ONE engine reference, and it is the whole reason this project selects on an Items change. Everything
+       else here is pure parsing: ArchitectureTests reads every *.csproj as XML, CetCompatDefaultTests reads
+       KhaozEngine.Foundation's packaging assets from a repo-root-relative path. The exception is
+       ItemStack_has_three_components_so_a_fourth_is_a_deliberate_fleet_break, which reflects over the real
+       type because a parsed record header proves nothing about the Deconstruct the compiler emitted, and a
+       component count is the one shape in the engine whose change is a fleet-wide compile break. -->
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Items/KhaozEngine.Items.csproj" />
+  </ItemGroup>
 </Project>

@@ -1257,7 +1257,10 @@ rather than minting a new one, and an item duplicated by a bug or an exploit sta
 it was copied from. The field is 0 when the socket is empty, and also 0 when the contained item has no
 instance of its own, which is the ordinary case for a plain gem (section 6.2). The cost is one varint per
 occupied socket, and the field is UNSIGNED per section 15, because the id is node prefixed and a node id of
-65,535 sets the high bit, so a signed declaration would zig-zag every id on that node into ten bytes.
+65,535 sets the high bit, so the unsigned and the zig-zag encodings of one id are different bytes and the
+contract has to say which it means. Unsigned costs the high node and buys node 0: `Pack(65535, 1)` is ten
+bytes unsigned against a zig-zag's seven, while a node 0 id stays four bytes up to 268,435,455 where a
+zig-zag would double the value and cost five.
 
 **Nesting is ONE LEVEL ONLY and the DECODER enforces it.** A nested payload containing a socket field is
 malformed and the decoder returns a reason rather than recursing. This is a hard structural limit rather

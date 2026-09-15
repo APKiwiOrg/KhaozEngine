@@ -130,7 +130,8 @@ oversized game message.
 | `ItemInstancePayload` | static: `TryDecode`, `Encode`, `Validate`, `PublicView`, `SequenceEqual` | 3.2 |
 | `ItemInstancePayloadBuilder` | mutable field set, encodes to canonical bytes | 3.2 |
 | `InstancePropertyKind` | `public const ushort` per engine and Scope B kind | 3.3 |
-| `InstancePropertyRegistry` | `Register(kind, codec, visibility, identificationGated)`, frozen at first pack load | 3.3 |
+| `InstancePropertyRegistry` | `Register(kind, codec, visibility, identificationGated, shape, references)`, frozen at first pack load | 3.3 |
+| `InstanceFieldShape`, `InstanceReferenceTarget` | where a kind's content ids sit and which type each belongs to | 3.3 |
 | `PropertyVisibility` | enum `ServerOnly`, `OwnerOnly`, `Everyone` | 12.5 |
 | `ItemSlot` | `readonly record struct (ItemStack Stack, ReadOnlyMemory<byte> Payload, bool Quarantined)` | 4.3 |
 | `ItemContainerPage` | one page's slots plus its content version stamp and dirty flag | 5.3 |
@@ -311,13 +312,80 @@ optimisation contracts 11.2 offers (assigning kinds so an owner-only projection 
 Coupling the kind ranges to the visibility vocabulary forever would have bought a memcpy over a
 filtered copy, and section 7.4 shows the filtered copy is already a memcpy of the kept runs.
 
-**Registration.** `InstancePropertyRegistry.Register(kind, codec, visibility, identificationGated)` runs
-ONCE at process start, before any pack is loaded, and the registry freezes when the first pack loads. A
-later registration throws. That is `ReplicationRegistry.Register`'s shape
+**Registration.**
+
+```csharp
+InstancePropertyRegistry.Register(
+    ushort kind,
+    IInstancePropertyCodec codec,
+    PropertyVisibility visibility,
+    bool identificationGated,
+    in InstanceFieldShape shape,
+    ReadOnlySpan<InstanceReferenceTarget> references);
+```
+
+It runs ONCE at process start, before any pack is loaded, and the registry freezes when the first pack
+loads. A later registration throws. That is `ReplicationRegistry.Register`'s shape
 (`TileProtocol.Components.cs:122`) and contracts 4.2's rule for the content type registry, applied one
 level down. A game MAY register in the game range and MAY NOT register into the engine or Scope B
 ranges, replace a registered codec, or unregister anything. Section 15.4 is why unregistering is
 forbidden: it would make two previously distinct items stack and destroy one identity.
+
+**The last two arguments are what make the remap pass and the two drift checks DERIVED rather than
+hard-coded, and they are the whole reason this signature is longer than it looks.** A remap rule carries
+a `TypeId` and a `FromId` (contracts 8.1) and `RemapRuleSet.Apply` lives in `KhaozEngine.Catalog`, which
+cannot reference `ItemInstances` and therefore cannot know that kind 131's entries begin with a `mod` id.
+Something has to say so. `ContentFieldSchema` already carries a "Reference target" for exactly this
+purpose one level up (contracts 4.7), and this is that idea applied to a property kind.
+
+```csharp
+public enum InstanceSlotKind : byte { Varint = 1, Byte = 2, Fixed2 = 3, NestedPayload = 4 }
+public enum InstanceCountWidth : byte { None = 0, Byte = 1, Varint = 2 }
+public enum InstanceReferenceSite : byte { Header = 1, Entry = 2 }
+
+public readonly record struct InstanceFieldShape(
+    ReadOnlyMemory<InstanceSlotKind> Header,   // slots before the repeat count
+    InstanceCountWidth Count,                  // None for a field that does not repeat
+    ReadOnlyMemory<InstanceSlotKind> Entry);   // one repeat's slots, empty when Count is None
+
+public readonly record struct InstanceReferenceTarget(
+    string ContentTypeKey,                     // the Scope A or Scope B type key the id belongs to
+    InstanceReferenceSite Site,                // Header, or Entry for once per repeat
+    int SlotIndex);                            // which slot of that shape holds the id
+```
+
+The shape says WHERE a value sits in the field's bytes and the target says WHICH content type it belongs
+to. A walker that has both can find, read and rewrite every content id in a payload without knowing what
+any kind means. The v1 assignments:
+
+| Kind | Shape | Reference targets |
+|---|---|---|
+| 1 to 6, 8 | a header of scalars, `Count` None | none |
+| 7 `Materials` | `Count` Varint, entry `[Varint, Varint]` | (`item`, Entry, 0) |
+| 128 `Identification` | header `[Byte, Varint]`, `Count` None | none |
+| 129 `UniqueTemplate` | header `[Varint]`, `Count` None | (`unique_template`, Header, 0) |
+| 130 `Rarity` | header `[Byte]`, `Count` None | (`rarity_rule`, Header, 0) |
+| 131 `Affixes`, 133 `Enchantments` | `Count` Byte, entry `[Varint, Byte, Fixed2, Varint]` | (`mod`, Entry, 0) |
+| 132 `Sockets` | `Count` Varint, entry `[Varint, Varint, Varint, NestedPayload]` | (`socket_type`, Entry, 0), (`item`, Entry, 1) |
+| 134 `RareName` | header `[Varint]`, `Count` Byte, entry `[Varint]` | (`rarity_rule`, Header, 0), (`rare_name_word`, Entry, 0) |
+
+Kind 134's header slot is a `rarity_rule` id rather than a `unique_template` one: it records WHICH rarity
+rule's `display_format` composed this name (8.5), which is why a later `SetRarity` does not strip the
+name off the item.
+
+Three consequences, and the first two were defects in an earlier draft of this document:
+
+- **Kind 7's material ids are `item` references and no list in this document had them.** Materials are
+  input item definitions (3.8), so a retired material was invisible to both the rule pass and the
+  validator. Deriving the walk from the registry found it rather than a reader finding it in production.
+- **A socket's `ContainedDefinitionId` is an `item` reference at every depth**, which the closed
+  enumeration also missed. It is slot 1 of kind 132's entry, so it is covered now by construction.
+- **A GAME kind at or above 1,024 that carries a content id gets remap, drift detection and quarantine
+  for free** by declaring its targets at registration. Without this it got none of the three, silently,
+  which made a retire in a game's own type a slow data rot with no counter and no log line.
+
+A kind that declares no references is never visited, which is every engine scalar kind above, so the walk
+costs a dictionary lookup per field and nothing else on an ordinary payload.
 
 ### 3.4 The affix entry
 
@@ -802,13 +870,30 @@ the content side.
    failure and is quarantined as a unit, because a page that cannot be parsed has no entries to keep.
 2. For each decoded page, apply the remap rule set (contracts 8.3): every rule whose `IntroducedIn` is
    strictly greater than the page stamp, in `Sequence` order, in one pass. A rule that changes nothing
-   is a scan rather than a rewrite, which is almost every rule on almost every page.
+   is a scan rather than a rewrite, which is almost every rule on almost every page. The pass visits
+   every id the REGISTRY's reference targets name (3.3), never a list written in this document: the
+   entry's own definition id, every id inside every registered field, and, through kind 132's
+   `NestedPayload` slot, every id inside every socket's nested payload along with that socket's own
+   `ContainedDefinitionId`. Nothing is skipped for being nested. A gem socketed into a sword before a
+   re-base is rewritten by the same rule that rewrites the same gem lying in a bag slot, which is the
+   property that stops an item surviving three publishes invisibly and then quarantining on the day a
+   player unsockets it.
 3. If any rule changed anything, mark the page DIRTY and set its in-memory stamp to the active version.
    Do NOT write it (5.6).
 4. Validate each entry (12.2). A failed check quarantines that ENTRY and leaves the rest of the page
    alone, for a structural failure and for an unresolved content reference alike (12.3). The one check
    that does not is 12, the over-cap count, which contracts 8.2 kind 4 declares legal.
 5. Return the pages, the accumulated findings and the dirty set.
+
+**A nested rewrite recomputes two lengths above it, and that is why the pass RE-ENCODES rather than
+patches bytes in place.** A `ReplacedBy` rule can change a varint's WIDTH: a nested payload carrying mod
+91 is one byte shorter than the same payload carrying mod 4210. So after a rule changes anything the
+re-encode recomputes, innermost first, the nested payload's own canonical bytes, then the socket entry's
+`NestedLength`, then the kind 132 field's `Length`, then the entry's `PayloadLength` in the page (4.4).
+It also restores CANONICAL ORDER, because a `ReplacedBy` can move an affix's mod id past its neighbour
+and the list is ascending by mod id (3.4), and because a re-sort that did not happen would leave a page
+whose items no longer stack with their own twins. Contracts 8.3 forbids a rule whose `ToId` is an earlier
+rule's `FromId` for the same type, so one pass is enough and the result is idempotent, which is test 8.
 
 **Remapped pages are rewritten LAZILY, on the next ordinary commit, and contracts 10.3 says why.**
 Eagerly rewriting every touched page at boot would be a write storm proportional to the whole player
@@ -2441,13 +2526,22 @@ touch a counter and does not mutate the page. The caller does all three.
 | 3 | a registered kind's bytes decode through its codec | structural | `field-malformed` | quarantine |
 | 4 | kind 132's nested payloads carry no kind 132 | structural | `socket-nesting` | quarantine |
 | 5 | the payload is at most `MaxInstancePayloadBytes` | structural | `payload-oversize` | quarantine |
-| 6 | the entry's definition id resolves in the active version | drift | `unknown-definition` | quarantine |
+| 6 | the entry's definition id, and every socket's `ContainedDefinitionId` at every depth, resolves in the active version | drift | `unknown-definition` | quarantine |
 | 7 | every content id the registry's reference targets name resolves, at every depth (3.3) | drift | `unknown-content-reference` | quarantine |
 | 8 | a `(mod id, tier ordinal)` pair names a live tier | drift | `unknown-content-reference` | quarantine |
 | 9 | a non-empty payload has a non-zero instance id | structural | `instance-id-missing` | quarantine |
 | 10 | the instance id is unique within the page | structural | `instance-id-duplicate` | quarantine |
 | 11 | an entry carrying kind 5 or 132 has count 1 | structural | `stack-not-instanceable` | quarantine |
 | 12 | the entry's count is at most the definition's cap, OR the over-cap shrink rule applies | policy | `over-cap` | tolerated |
+
+**Checks 6 and 7 are DERIVED from the registry rather than from a list in this section.** They walk the
+same `InstanceReferenceTarget` descriptors the remap pass walks (3.3), in the same recursive order, over
+the same nested payloads, so a kind cannot be remapped-but-not-validated or validated-but-not-remapped.
+An earlier draft wrote check 7 as "every mod id, socket type id, rarity id, template id and word id
+resolves", a closed enumeration that already omitted kind 7's material ids and a socket's
+`ContainedDefinitionId`, and that would have omitted every game kind at or above 1,024 forever. Check 8
+stays hand-written because a tier ordinal is not a content id: it is a key INTO the row check 7 already
+resolved, so it is the one relationship the descriptors cannot express.
 
 ### 12.3 What each failure does
 

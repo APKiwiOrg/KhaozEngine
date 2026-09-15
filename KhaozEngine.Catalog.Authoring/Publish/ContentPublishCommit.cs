@@ -74,6 +74,12 @@ public sealed class ContentPublishCommit
 
     /// <summary>
     /// The whole publish: steps 1 to 8 through the pipeline, then 9, 10 and 11 here.
+    /// <para>
+    /// <b>An exception thrown AFTER step 10 means the version may already be live.</b> The commit is the only
+    /// commit point, and step 11's sweep runs past it, so a throw from the sweep leaves a published version
+    /// behind a failed call. A caller reads the active version, or republishes: the same draft against a base
+    /// that has moved is refused, which makes the retry idempotent rather than a second version.
+    /// </para>
     /// </summary>
     /// <param name="request">The publish request, carrying the required expected base version.</param>
     /// <param name="cancellationToken">Cancels the publish.</param>

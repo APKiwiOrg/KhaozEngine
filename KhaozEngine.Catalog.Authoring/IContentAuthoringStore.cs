@@ -202,6 +202,12 @@ public interface IContentAuthoringStore
     /// <summary>
     /// Publishes the open draft as a new immutable version: validate, allocate, encode, write the pack, then
     /// ONE transaction that moves the active pointer together with every row, rule, chunk and audit entry.
+    /// <para>
+    /// <b>An exception thrown AFTER that transaction means the version may already be live.</b> The sweep of
+    /// step 11 runs past the only commit point there is, so a throw from it leaves a published version behind
+    /// a failed call. A caller reads the active version, or republishes: the same draft against a base that
+    /// has moved is refused, which makes the retry idempotent rather than a second version.
+    /// </para>
     /// </summary>
     /// <param name="request">The publish request, carrying the required expected base version.</param>
     /// <param name="cancellationToken">Cancels the call.</param>

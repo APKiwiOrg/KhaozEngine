@@ -2905,3 +2905,248 @@ placeholder rather than a failure, and not every game wants the stronger guarant
 (`b-grimhollow.md:773-780`), and this helper is what that test becomes after adoption, walking the CATALOG
 rather than a reflected constant list, which closes the gap the survey names (the current test cannot catch an
 item with no name field at all).
+
+## 16. Grimhollow adoption plan
+
+This is written, not executed. It is phase 1's acceptance (#882, "Grimhollow adoption (phase 1 acceptance)")
+and it is tracked in [Grimhollow #208](https://github.com/APKiwiOrg/Grimhollow/issues/208).
+
+### 16.1 The premise: `feature/item-drop` lands first
+
+Gate 0 decision 12 puts Grimhollow's `feature/item-drop` branch BEFORE these contracts, so this plan is
+written against the branch as shipped rather than around it. What it brings is a third authored content
+mechanism, `assets/config/items.jsonc`, with a `tradable` flag per live item, a fail-closed every-live-item
+needs-a-row rule, a `GrimhollowItemProperties` ambient shaped like `GrimhollowSkilling`, and
+`GrimhollowGameDataHash.Current` as a HYPHEN-JOINED pair of the skilling hash and the item-properties hash
+carried in the existing fourth door layer (`b-grimhollow.md:1332-1370`, item-drop design sections 1 and 5).
+
+Landing it first is what keeps `items.jsonc` a migration absorbed AT adoption rather than a third mechanism
+appearing after the contracts and needing migration the moment it lands (contracts 7.6).
+
+### 16.2 Every source mapped
+
+| Source today | Becomes | Notes |
+|---|---|---|
+| `GrimhollowItems.ItemId` consts, lines 13-68 | The `item` type's definition ids | 35 ids preserved exactly, section 16.4. |
+| `GrimhollowItems.ConfigKeys`, lines 191-227 | The `item` type's content keys | Already snake case and already the key table. |
+| `GrimhollowItems.Stackable`, lines 131-132 | `item.stackable` | Four ids, three of them retired, so one live stackable. |
+| `GrimhollowItems.RetiredIds` 134-143, `IsRetired` 151 | The `retired` row flag plus 18 `Retired` remap rules | Section 16.4. |
+| `GrimhollowItems.CanBeAHatchet` 164-165, `CanBeAPickaxe` 169-170 | Two `tag` rows, `hatchet` and `pickaxe`, on `item.tags` | Contracts 4.6's first named replacement. |
+| `GrimhollowItems.ValueOf` 159 and the `item.<key>.value` economy rows | `item.value` | 35 rows. |
+| `GrimhollowItems.FoodFor` 180, `FoodValueOf` 186, `item.<key>.heals`, `.attackDelayTicks` | A `food` game type, one row per food, key-referencing `item` | One row today, bread. |
+| `EconomyTable`, `EconomyCodec`, `EconomyRows`, `GrimhollowEconomy` (692 lines across five files) | DELETED. Values move to `item.value`, rates to the `store` type, drop numbers to `monster_drop`. | Section 16.3. |
+| The `economy` database table and `EconomySchema` | DELETED after a one-time export into the bundle | Section 16.4. |
+| `GrimhollowEconomyMigration` (67 lines) | DELETED | Its whole job was the one-time reset a code-owned `Defaults` made necessary (`b-grimhollow.md:304-319`). With the database as the only source there is no `Defaults` and no reset. |
+| `GrimhollowEconomySync` and message kind 27 | DELETED | The economy no longer arrives after the door as a game message. It is in the client pack, gated at the door. |
+| `GrimhollowEquipmentRoster.For`'s 9-arm switch, lines 132-155 | An `equip_profile` game type with `slot`, `accuracy`, `strength`, `defence`, `weapon_archetype`, referenced from `item.equip_profile` | The `EquipSlot` enum VALUES stay durable, because they are container indices (`b-grimhollow.md:80-85`). |
+| `GrimhollowShop.GeneralStore` 46-56 | A `store` row plus eight `store_shelf` rows carrying the draw order | The draw order becomes a `sort` field, not a list position. |
+| `GrimhollowShop.RatesFor` 96-100 and `store.general.sellRateBp` / `buyRateBp` | `store.sell_rate_bp`, `store.buy_rate_bp`, `ServerOnly` | AGENTS.md already anticipates "different rates per CLASS of item" (`b-grimhollow.md:1097-1099`), which is a `store_rate` row keyed by tag once the tag vocabulary exists. |
+| `GrimhollowDrops.Roll`'s one-armed switch 27-52, `drop.goblin.coins`, `drop.goblin.breadOneIn` | A `monster_drop` game type keyed by monster kind, referencing a `loot_table` | The STRUCTURE moves out of code, which is the five-edit growth path (`b-grimhollow.md:269-284`) collapsing to one edit. |
+| `skilling.jsonc` `trees` and `rocks` (lines 101-143) | `gathering_node` rows | Item references stay keys. |
+| `skilling.jsonc` `processing` (152-174) | `recipe`, `recipe_input`, `recipe_output` rows | Recipe ids are append only because they key per-character quantity memory (file comment 147-149), so they import as definition ids preserved exactly. |
+| `skilling.jsonc` `hatchets` and `pickaxes` (58-68) | `tool_tier` rows | The family validation becomes a tag reference, so `SkillingConfig.cs:455-457`'s double check collapses into `KEC0008`. |
+| `skilling.jsonc` `maxLevel`, `xp`, `gathering`, `parents`, `stamina`, `skills` | `skill_curve` rows | The stamina hundredths trick (`SkillingConfig.cs:410-443`) becomes a `ScaledInt` with scale 100, which is what it already was in spirit. |
+| `items.jsonc` `tradable` | `item.tradable` | Contracts 7.6. |
+| `items.jsonc` `drop.despawnSeconds` | A `skill_curve` style singleton row, or a game config outside content | It is a global knob rather than per-definition tunable content. Recommended: a one-row `game_tuning` type, so it is versioned with everything else. |
+| `GrimhollowGameDataHash` and `GrimhollowConfigGate` | DELETED, replaced by the engine's content layer | Contracts 7.6 is explicit: deleted rather than re-pointed. |
+| `GrimhollowCatalogGate` and `GrimhollowCatalogHash` | KEPT, unchanged | They gate the WORLD catalogs (archetype collision, size, tags), which section 3.10 keeps out of content. |
+| `ItemStrings` 35 name fields plus two 35-arm switches | The `item.name` and `item.examine` localized keys, resolved through `ContentStringCatalog` | Section 16.5. |
+| `ItemIcons.RosterIcons` 88-125 | `item.icon` | The icon id is already `item.<config_key>` and already the source png filename. |
+| `GroundItemMeshes.Roster` 21-58 AND its duplicated 35-arm `MeshRefFor` switch 77-115 | `item.mesh`, once | The duplication is deleted by construction: there is one field. |
+| `GroundItemMeshes.GroundTransformFor`'s 12-id lie-flat list 147-169 | `item.ground_pose` | 0 upright, 1 lie flat. The minimum-Y walk stays code. |
+| `GrimhollowHeldMeshes.For`'s 12-arm switch 20-35 | `item.held_mesh` | Its null-means-empty-hand rule stays: an absent field is an empty hand, never a greybox. |
+| `GrimhollowHeldMeshes.ActionSourceItems` 42-47 | A `held_in_off_hand` tag | Eight ids become eight tag references. |
+| `IconShots.TiltFor` 70-78 and `SpinFor` 88-95 | `item.icon_tilt`, `item.icon_spin` | Two of the three per-item switches in the snapshot tool. |
+| `IconShots.MeshRefFor` 108-143, the THIRD copy of 32 mesh refs | DELETED, reads `item.held_mesh` then `item.mesh` | The tool joins the catalog like everything else. |
+| `ItemInspection` and `ItemCatalogInspector` (`Grimhollow.Shared/Admin/ItemInspection.cs`) | DELETED | Its 15 fields gathered from five sources are what a `catalog-list` response is. |
+| `Items.razor`, the read-only 14-column table | An EDITOR over the authoring API | Section 16.6. |
+
+### 16.3 The five-edit growth path, collapsed
+
+Adding one property to Grimhollow's economy today touches five places: the `EconomyTable` constructor, the
+`EconomyCodec` version plus its encode and decode arms, `EconomyRows.From`, `EconomyRows.Parse` plus a key
+constant, and the key table in `docs/DEVELOPMENT.md` (`b-grimhollow.md:269-284`, issue 208 defect 1). A second
+monster's drops is a schema change across all five, because the goblin numbers are NAMED FIELDS rather than a
+table.
+
+After adoption it is ONE edit: add the field to the type's `ContentFieldSchema` and to its codec, which are
+two lines in one file and are checked against each other at registration (section 3.6). There is no wire
+format to version, because the field travels inside a chunk whose row codec declares it. There is no key
+table to update, because `catalog-schema` IS the key table and it is generated. There is no `Parse` to extend,
+because the editor is generated from the schema.
+
+A second monster's drops is ZERO code edits: a `monster_drop` row and a `loot_table` with its entries, through
+the console.
+
+### 16.4 The import that preserves ids 1 to 35 and the 18 retired flags
+
+A one-time `ContentBundle` built by a throwaway tool in the Grimhollow repo, imported into an empty catalog
+database through `catalog-import` (section 10.9), which is the only write path that accepts a whole bundle
+and only into an empty database.
+
+The bundle is generated by reading, in this order:
+
+1. `typeof(ItemId)`'s public static int literals, exactly as `ItemCatalogInspector.Capture()` already reflects
+   them (`b-grimhollow.md:900-915`), filtered by nothing, so RETIRED ids are included.
+2. `GrimhollowItems.ConfigKeys` for the key of each.
+3. `GrimhollowItems.RetiredIds` for the retired flag of each.
+4. The live `economy` table through `IGrimhollowEconomyStore.LoadAsync`, merged over `EconomyTable.Defaults`
+   exactly as the boot does today (`b-grimhollow.md:320-327`), so the OPERATOR's tuned values win and are
+   what gets imported. Not `Defaults`. This is the one step where getting it backwards silently discards
+   every number the owner has tuned on the live server.
+5. `GrimhollowEquipmentRoster.For(id)` for each, giving the `equip_profile` rows.
+6. `GrimhollowShop.GeneralStore` for the store and its shelves.
+7. `GrimhollowItemProperties.Current` for `tradable`.
+8. `GrimhollowSkilling.Current` for the nodes, recipes, tool tiers and curves.
+9. `ItemIcons.RosterIcons`, `GroundItemMeshes.Roster`, `GrimhollowHeldMeshes.For` and `IconShots`'s two
+   switches for the presentation fields. These live in `Grimhollow.Core`, which the server does not reference,
+   so the tool is a CLIENT-side generator writing a JSON fragment the bundle builder merges. That layering
+   cost is real and it is one tool run, once.
+
+**Ids are carried in the bundle, not reallocated.** `ContentBundle` names each row's id explicitly and
+`catalog-import` into an empty database honours it, setting `catalog_id_high_water.reserved_through` and
+`issued_through` to the maximum imported id per type afterwards. So item 13 is `stone_sword` before and after,
+every stored container decodes unchanged, and no player's bank moves. Contracts 6.5 states the outcome
+directly: Grimhollow's adoption is a no-op for stored data.
+
+**The 18 retired ids import as rows with `retired = 1` plus 18 `Retired` remap rules with policy `0x01`
+placeholder.** They are not replacements, because Grimhollow's retired items have no destination: the
+comment's own rule is that retired ids are never removed so a stored stack still decodes and the player
+upgrade can find it (`GrimhollowItems.cs:133-151`). A placeholder policy preserves exactly that, and
+`GrimhollowPlayerUpgrade`'s use of `IsRetired` becomes a runtime `IsRetired(id)` off the retired bit (section
+7.3) with no behavioural change.
+
+### 16.5 The localization key rename
+
+Two keys break the derivation of contracts 12.1: `ItemPineLogs = "item.pinelogs.name"` and
+`ItemOakLogs = "item.oaklogs.name"` drop the underscore every other key keeps
+(`Grimhollow.Core/Localization/GrimhollowStrings.cs:583, 586`, `b-grimhollow.md:765-772`). They are RENAMED to
+`item.pine_logs.name` and `item.oak_logs.name` at adoption. Not special cased, not aliased, not exempted
+(contracts 12.5).
+
+It is one line in the `.resx` and one constant in `GrimhollowStrings.cs`, and the existing reflection test
+walks every declared key constant against the shipped catalog so a half-done rename goes red immediately
+(`b-grimhollow.md:773-780`). Tracked in
+[Grimhollow #222](https://github.com/APKiwiOrg/Grimhollow/issues/222).
+
+The examine keys rename with them, since they share the stem.
+
+### 16.6 The connect door, and the admin console
+
+**`GrimhollowConfigGate` is DELETED, not re-pointed** (contracts 7.6). The door after adoption, outermost
+first: protocol version, world hash, CONTENT (the engine's layer), `GrimhollowCatalogGate`, the game's token
+auth, the ban check. Note the content layer sits OUTSIDE the game's catalog gate, matching contracts 7.5's
+ordering rule that content sits inside world and outside auth.
+
+`GrimhollowCatalogGate` and `GrimhollowCatalogHash` are KEPT, because they gate the WORLD catalogs (archetype
+collision kind, size, interactive flag and tags), which section 3.10 deliberately leaves outside content.
+`NoticeStrings.ForRefusal` gains one arm for `ke:content-mismatch` and one for
+`ke:content-client-too-old` and loses the `GrimhollowConfigGate` arm
+(`Grimhollow.Core/Client/NoticeStrings.cs:104-111`).
+
+**The admin console's Items page becomes an editor.** Today it is a single read-only table with 14 columns
+served from an immutable snapshot captured at server start, and its subtitle says so
+(`b-grimhollow.md:866-899`). After adoption:
+
+- `AdminApiClient` gains the fourteen `actions/catalog-*` calls beside its existing `actions/item-catalog`
+  (`Grimhollow.Admin/Services/AdminApiClient.cs:139`), and `actions/item-catalog` and
+  `actions/skilling-config` are deleted.
+- `Items.razor` renders its grid and its edit drawer FROM `catalog-schema` rather than from a hand-written
+  column list, so a new field appears with no console change. That is the generic editor of section 10.3 and
+  it is what makes the same page serve `store`, `recipe` and every Scope B type.
+- The name column reads the catalog's localized name instead of title-casing the config key, which closes
+  [Grimhollow #226](https://github.com/APKiwiOrg/Grimhollow/issues/226) for free, exactly as that issue
+  predicts.
+- The console forwards its Entra identity as the `operator` field on every mutating call (section 10.10). It
+  already resolves one: `Program.cs` narrows authorization to a single `AllowedObjectId`
+  (`b-grimhollow.md:927-945`), so the stable oid is in hand and needs only to be passed.
+- The write path is bearer-token plus pinned-certificate-thumbprint as today
+  (`Grimhollow.Admin/Program.cs:127-135`), unchanged.
+
+### 16.7 The tests that pin it
+
+There is NO test today pinning the catalog against a previous release's serialized form. What exists pins it
+against hand-written literals in the same commit: `NewItemIdsAppendWithoutMovingTheOldRoster` asserting six
+ids, `TheTenMiningAndMasonryItemsAppendInSpecOrder`, `EveryDurableItemHasAConfigKeyAndIsKnown`,
+`TheEighteenRetiredItemsAreKnownAndNothingCanMintThem` and four more
+(`Grimhollow.Tests/Shared/GrimhollowItemsTests.cs`, `b-grimhollow.md:1158-1184`). So #208's proposal of a test
+against the previous release's catalog is genuinely new work, and it is where the risk of this migration
+lives.
+
+Four tests, in order of how much they buy:
+
+1. **`TheImportedBundleMatchesTheShippedRoster`.** Build the bundle from the sources of section 16.4, import
+   into an empty in-memory store, publish version 1, and assert row by row against the SAME literals
+   `GrimhollowItemsTests` already asserts. The existing eight tests keep passing unchanged, against the
+   catalog instead of against the constants, which is what makes this a migration rather than a rewrite.
+2. **`EveryStoredContainerStillDecodes`.** A corpus of real encoded `ItemContainer` blobs checked in from a
+   production export, decoded before and after against `GrimhollowJournalContracts.ValidateContainer`, with
+   identical results. This is the test that would catch an id moving, and it matters because
+   `ValidateContainer` is a HARD REFUSAL that THROWS on an unknown item id, so a moved id turns into a player
+   who cannot log in (`b-grimhollow.md:545-556`,
+   [Grimhollow #224](https://github.com/APKiwiOrg/Grimhollow/issues/224)).
+3. **`TheEconomyNumbersSurviveTheImport`.** Load a fixture `economy` table holding OPERATOR-tuned values that
+   differ from `EconomyTable.Defaults`, run the bundle build, and assert the tuned values are what landed.
+   This is the test for step 4 of section 16.4 and it is the one that catches the backwards merge.
+4. **`ThePublishedManifestIsStable`.** Publish the imported bundle twice from two shuffled registration orders
+   and assert identical manifest hashes, which is section 15.7's engine test applied to the real Grimhollow
+   type set.
+
+`Grimhollow.Tests/Shared/GrimhollowItemsTests.cs` line 225's known gap, that
+`OnlyCoinsArrowShaftsAndJoineryPegsStackInTheBag` loops ids 1 to 25 so a new stackable would be pinned by
+nothing ([Grimhollow #225](https://github.com/APKiwiOrg/Grimhollow/issues/225)), is closed as a side effect:
+the catalog-driven version loops every live row.
+
+### 16.8 The order of steps
+
+1. `feature/item-drop` merges (gate 0 decision 12). Nothing in this plan starts before it.
+2. Engine phase 1 ships (section 18) and Grimhollow pins it.
+3. Register the four engine types and the nine game types. No behaviour change, nothing reads them yet.
+4. Build the bundle tool and land test 3 of section 16.7. Run it against a production export and eyeball the
+   diff. This is the review gate and it is a human one.
+5. Import the bundle into an empty catalog database and publish version 1 through the API.
+6. Land tests 1, 2 and 4. All four green before anything reads the catalog.
+7. Switch the SERVER's readers over, one subsystem at a time, each with the old source deleted in the same
+   commit: items, then economy values, then equipment, then shop, then drops, then skilling. Deleting in the
+   same commit is what stops two sources of truth existing for a release.
+8. Switch the CLIENT's readers over: strings, icons, meshes, poses. Delete `GrimhollowEconomySync` and message
+   kind 27.
+9. Replace the door's fourth layer with the content layer. Delete `GrimhollowConfigGate`,
+   `GrimhollowGameDataHash`, `ItemPropertiesConfig` and `items.jsonc`.
+10. Delete `skilling.jsonc`, `SkillingConfig`'s parser, `EconomyTable`, `EconomyCodec`, `EconomyRows`,
+    `GrimhollowEconomy`, `GrimhollowEconomyMigration`, `EconomySchema` and the `economy` table.
+11. Rewire the admin console (section 16.6) and do the localization rename (section 16.5).
+
+Steps 7 and 8 are where the release boundary sits: everything up to step 6 is additive and shippable, and
+step 9 is the one that requires every client to update at once, because it changes the door.
+
+## 17. Ruinborne adoption plan
+
+Written, not executed. Tracked in [Ruinborne #465](https://github.com/APKiwiOrg/Ruinborne/issues/465).
+
+### 17.1 The precondition
+
+[Ruinborne #299](https://github.com/APKiwiOrg/Ruinborne/issues/299) is a PRECONDITION on the owned-item half,
+not on this half. Its PostDeploy duplicate-row collapse partitions by `(character_id, item_id)` with no
+`instance_json` term and runs on every redeploy, so the moment two differently rolled copies of one
+non-stackable item exist they collapse into one (`c-ruinborne.md:939-948`). Scope A can land without it,
+because Scope A does not create instances. Scope B cannot.
+
+### 17.2 `item_def` and its satellites, mapped
+
+| Source today | Becomes |
+|---|---|
+| `item_def.item_id NVARCHAR(64)`, the clustered PK | The `item` type's content KEY. The int32 definition id is NEW and allocated at import (contracts 5.5). |
+| `item_def.display_name` (already a localization key) | `item.name` |
+| `item_def.item_type` and `.slot`, bare varchars with no reference table | `item.tags` plus `item.equip_profile`. This is [Ruinborne #199](https://github.com/APKiwiOrg/Ruinborne/issues/199) resolved: the complaint is that rarity gets a proper reference table and these do not, and a tag row IS the reference table. |
+| `item_def.stackable`, `.max_stack` | `item.stackable`, `item.max_stack` |
+| `item_def.base_stats_json`, the dead column with no reader | DELETED at import. It is [Ruinborne #511](https://github.com/APKiwiOrg/Ruinborne/issues/511), a dead column that is still editable, still encoded and still carried, and it stops being any of the three. |
+| `item_def.rarity_id` and the `item_rarity` table | A Scope B `rarity` content type, id range 256 to 1023. Scope A imports the rows and Scope B owns the schema. |
+| `item_def.icon_id` | `item.icon` |
+| `item_stat` (composite PK, `flat REAL`, `percent REAL`) | An `item_stat` game type key-referencing `item` and `stat`, with `flat` and `percent` as `ScaledInt`. The REAL columns become integers, which is contracts 13.4's determinism rule and is a real behaviour change: a value of 0.1 becomes 10 at scale 100. |
+| `weapon_def` (1:1-optional, `damage`, `range REAL`, `half_arc_deg REAL`, `cooldown_seconds REAL`) | A `weapon_profile` game type, the same `ScaledInt` conversion. |
+| `item_ability_modifier`, whose `required_tags` and `excluded_tags` are COMMA-JOINED STRINGS in one column | Two `TagList` fields on an `ability_modifier` game type. A set membership test stops being a substring search (contracts 4.6). |
+| `stat_def` (whose own comment says the C# `StatChannel` enum stays the source of truth for the index) | The engine `stat` type. The enum stops being the source of truth for anything, which is what the comment asks for. |
+| `loot_table` and `loot_table_entry` | The engine `loot_table` and `loot_entry` types, one to one. Section 3.5 chose the child-type shape partly because Ruinborne already has it. |
+| `ability_def`, `npc_archetype`, `npc_spawn` | Game types, `1024` upward. |
+| The five `RuinborneItems` code defaults | DELETED. There is no code-default catalog under contracts 1.4 ("a definition exists in the authoring store and nowhere else"), and deleting them is what closes [#512](https://github.com/APKiwiOrg/Ruinborne/issues/512). |

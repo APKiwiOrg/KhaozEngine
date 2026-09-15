@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Catalog</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>Game-agnostic tunable-content catalog (in Foundation): the content type registry, the row codecs, the content-addressed pack format (KECC chunks, KECM manifests, KECT text chunks, KECR remap rules), the kec/ domain-separated SHA-256 digests, the pure validator, the pack store seam, the read-side runtime of arrays indexed by id, and the loot roller. Integers everywhere, little endian through BinaryPrimitives, unsigned LEB128 varints, and decoders that return a stable reason token instead of throwing. Takes no third-party dependency at all, so a game client pulls the read side with no database in its graph.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
+  </ItemGroup>
+
+</Project>

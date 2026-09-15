@@ -631,6 +631,14 @@ Scope B SHOULD reuse the `NetIdAllocator` type rather than writing a second one,
 INSTANCE of it with its own persisted high-water mark, because a net id and an item instance id are
 different spaces that must not share a counter.
 
+**A range is RESERVED durably BEFORE any id in it is issued.** The allocator persists the new high-water
+mark first and only then hands out ids from below it, so the worst a crash can do is skip a block of ids
+that were never issued, and it can never reissue one. The ORDER is the contract, not the batch size:
+persisting after issuing leaves a window in which a crash hands the next boot an id it has already put on
+an item, and a duplicate instance id is the single failure this section exists to prevent. `NetIdAllocator`
+persists its packed high-water mark for exactly this reason (`a-engine.md:1158-1175`), and the order is
+written down here because a batching optimisation is where it gets quietly inverted.
+
 **Which items get an instance id.** Any item carrying properties, per the owner's ruling that per-instance
 properties are required and that an item may carry up to six affix rolls, enchantments, durability and
 quality (#882 comment 2 and #884 body, 2026-09-14). Concretely: an item gets an instance id when its
@@ -1027,6 +1035,27 @@ for.
 converted to a currency refund at some later version. Recommended default: no, and leave it to a
 deliberate `ReplacedBy` rule pointing at whatever the owner decides to give. Automation here is a policy
 the engine should not have.
+
+### 8.6 A retire is irreversible for migrated pages
+
+Once a page has been brought forward past a `Retired` or a `ReplacedBy` rule, the old id is GONE from that
+page. Nothing records that it was ever there, because a remap is a rewrite rather than a log.
+
+A later rule pointing back is not the way out, and the idempotence check of 8.3 already forbids it. A rule
+whose `ToId` is an earlier rule's `FromId` for the same type is rejected by the publish validator, and that
+is exactly the shape an undo would take. So there is no undo.
+
+**A rollback that wants the definition back MINTS A NEW ID carrying the old values.** It is an ordinary new
+row with an ordinary new id and a new key under 5.3's immutability rule, plus a `ReplacedBy` rule moving
+whatever the owner wants moved onto it. The version NUMBER keeps climbing throughout: a rollback is a new
+version and never a return to an old one (#882 body), which is the same property that lets the page stamp
+be an ordering comparison in 7.2.
+
+Pages that were never brought forward are a different case and need nothing special. They still hold the old
+id, the full ordered rule set still applies to them, and they arrive where every other page arrives.
+
+**Expensive to change once data exists: yes, because** this irreversibility is what keeps the rule set
+idempotent, and idempotence is what makes a crash between apply and commit safe (8.3, 10.3).
 
 ## 9. Tagged field encoding
 

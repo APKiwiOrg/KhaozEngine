@@ -199,7 +199,9 @@ decoder is also fuzzed against.
   canonical text digests back to the name it was fetched under, and the static `TryVerify` dispatches on the
   magic, so a caller hashes an object the way the publisher did rather than guessing. `BuildSnapshot` HANDS
   the decoded chunks over: the snapshot copies every row body into its own blob, so the reader drops them
-  and reading rows through the reader afterwards is not a supported mode.
+  and reading rows through the reader afterwards is not a supported mode. The constructor cross-checks every
+  manifest type's `chunkSlots` against the local registration and throws on a disagreement, because the
+  manifest digest does not cover `chunkSlots` and a registry-free decode leaves it unchecked.
 - `ContentManifestRead`, `ContentChunkRead`, `ContentRowRead` and `ContentPackRead` - one attempt each, every
   one carrying a stable reason token rather than throwing. The reasons this type adds (`hash-mismatch`,
   `manifest-hash-mismatch`, `chunk-fetch-failed`, `chunk-type-unregistered`) are FETCH outcomes and are

@@ -94,6 +94,9 @@ public sealed class ContentPackReader
     /// <param name="manifest">The version's manifest, already fetched and verified.</param>
     /// <param name="manifestHash">The manifest's own content address, which becomes the snapshot's identity.</param>
     /// <exception cref="ArgumentNullException">A reference argument is null.</exception>
+    /// <exception cref="ContentPackException">
+    /// A manifest type's <c>chunkSlots</c> disagrees with the local registration for that type.
+    /// </exception>
     public ContentPackReader(
         IPackStore store,
         ContentTypeRegistry registry,
@@ -105,10 +108,49 @@ public sealed class ContentPackReader
         ArgumentNullException.ThrowIfNull(manifest);
         ArgumentNullException.ThrowIfNull(manifestHash);
 
+        CheckChunkSlots(registry, manifest);
+
         Store = store;
         Registry = registry;
         Manifest = manifest;
         ManifestHash = manifestHash;
+    }
+
+    /// <summary>
+    /// Every manifest type's <c>chunkSlots</c> against the local registration for that type, throwing on a
+    /// disagreement because a reader that carried on would be paginating rows into chunks the publisher put
+    /// somewhere else.
+    /// <para>
+    /// <b>It is here because the manifest DIGEST omits <c>chunkSlots</c> by design</b> (contracts 7.3), so
+    /// the only thing binding it is <see cref="ContentManifestCodec"/>'s cross-check, and that runs only
+    /// when a registry is handed in. The static <see cref="ReadManifestAsync"/> and <see cref="TryVerify"/>
+    /// cannot hold one, so a manifest CAN reach this constructor unchecked. Every caller in the tree passes
+    /// the registry today, which makes this defence in depth rather than a live refusal, and the reason it
+    /// belongs here anyway is that the constructor is the first place that holds both halves.
+    /// </para>
+    /// <para>
+    /// It THROWS rather than reporting a token, because a constructor has no report to write to and because
+    /// the fail-closed shape is the one that cannot be ignored. A type the registry does not carry is left
+    /// alone, exactly as the codec leaves it: an unknown type is the loader's decision, not this one's.
+    /// </para>
+    /// </summary>
+    static void CheckChunkSlots(ContentTypeRegistry registry, ContentManifest manifest)
+    {
+        for (int t = 0; t < manifest.Types.Count; t++)
+        {
+            ManifestTypeEntry entry = manifest.Types[t];
+            if (!registry.TryGet(new ContentTypeId(entry.TypeId), out ContentTypeRegistration? registration)
+                || registration.ChunkSlots == entry.ChunkSlots)
+            {
+                continue;
+            }
+
+            throw new ContentPackException(
+                FormattableString.Invariant(
+                    $"The manifest gives type '{entry.TypeKey}' {entry.ChunkSlots} chunk slots and this build registers {registration.ChunkSlots}. The two sides disagree about which chunk an id falls in, and the manifest digest does not cover chunk_slots, so nothing earlier could have caught it."),
+                null,
+                ContentManifestCodec.ReasonChunkSlots);
+        }
     }
 
     /// <summary>The store every fetch goes to.</summary>

@@ -99,6 +99,37 @@ public class ContentPackReaderTests
     }
 
     [Fact]
+    public void A_manifest_whose_chunk_slots_disagree_with_the_registry_is_refused_at_construction()
+    {
+        // The manifest digest omits chunkSlots by design (contracts 7.3), so the only binding on it is the
+        // codec's cross-check, and that runs only when a registry is passed. The static ReadManifestAsync
+        // and TryVerify cannot hold one, and the reader's constructor holds BOTH halves.
+        CatalogPack pack = CatalogPack.Build();
+        var types = new List<ManifestTypeEntry>(pack.ServerManifest.Types);
+        int index = types.FindIndex(entry => entry.TypeId == CatalogPack.ItemType.Value);
+        Assert.True(index >= 0);
+        Assert.NotEqual(256, types[index].ChunkSlots);
+        types[index] = types[index] with { ChunkSlots = 256 };
+
+        ContentManifest rewritten = pack.ServerManifest with { Types = types };
+        byte[] file = ContentManifestCodec.Encode(rewritten);
+
+        // It really does get through a registry-free decode, which is what makes the constructor the place.
+        Assert.True(ContentManifestCodec.TryDecode(
+            file, ContentManifestSide.Server, null, out ContentManifest? decoded, out _));
+        Assert.NotNull(decoded);
+
+        ContentPackException refused = Assert.Throws<ContentPackException>(
+            () => new ContentPackReader(
+                new FileSystemPackStore(System.IO.Path.GetTempPath()),
+                pack.Registry,
+                decoded,
+                pack.ServerManifestHash));
+
+        Assert.Equal(ContentManifestCodec.ReasonChunkSlots, refused.Reason);
+    }
+
+    [Fact]
     public async Task Building_a_snapshot_hands_the_chunks_over_and_the_reader_keeps_none()
     {
         using var root = new TemporaryRoot();

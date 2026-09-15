@@ -334,8 +334,8 @@ it costs every consumer a breaking package id change for a cosmetic gain.
 consumers and carries no data migration. It is expensive to change once RELEASED, which is a different
 and lesser cost, and the reason to settle it here.
 
-**Open question for the owner.** None. The naming is the contracts author's call, and section 17 records
-it as a decision rather than a question.
+**Open question for the owner.** None. The naming is the contracts author's call, recorded here rather
+than in section 17, which holds only the questions that went to the owner.
 
 ## 4. Content type registry
 
@@ -349,7 +349,7 @@ visibility default. Item bases are a type. Stats are a type. Mods are a type. A 
 ```
 RegisterContentType(
     ushort  typeId,          // stable numeric id, see 4.3
-    string  typeKey,         // stable string key, see 5.5 character rules
+    string  typeKey,         // stable string key, see 5.3 character rules
     IContentRowCodec codec,  // encode and decode one row
     IContentValidator validator,
     ContentFieldSchema schema,             // the type's fields, see 4.7
@@ -1254,7 +1254,7 @@ B), 132 sockets (Scope B). They appear in that order, which is ascending, as rul
    01                                       count 1
    07                                       socket type 7
    C1 06                                    contains definition 833
-   D2 41                                    contains instance 4,201
+   E9 20                                    contains instance 4,201
    03                                       nested payload length 3
       02 01 37                              nested: kind 2 len 1 item level 55
 ```
@@ -1274,9 +1274,9 @@ document added after the first draft.
 - Total: `3 + 4 + 4 + 21 + 13 = 45`.
 
 The varints in it: `82 01` is 130, `83 01` is 131, `84 01` is 132, `F2 20` is 4210, `84 02` is 260,
-`C1 06` is 833, and every single-byte value below 128 is itself. `D2 41` is instance id 4,201: zig-zag maps
-it to 8,402 (section 15), and 8,402 in LEB128 is its low seven bits, 82, with the continuation bit set,
-`D2`, followed by 65, `41`.
+`C1 06` is 833, and every single-byte value below 128 is itself. `E9 20` is instance id 4,201: its low seven
+bits are 105, `69` with the continuation bit set giving `E9`, followed by 32, `20`. No value in this example
+is zig-zagged, because every field in it is declared unsigned (section 15).
 
 Reading the third affix, `84 02 02 FF FF 00`: mod id 260, tier 2, position 65,535, which is the top of the
 tier's range, and flags 0 as v1 requires. If that tier runs 10 to 40, section 6.4's formula gives
@@ -1770,11 +1770,12 @@ side relies on `BinaryWriter`'s documented little endian, an asymmetry the surve
 because it is host endian: `TileProtocol`'s game-message `kind` uses it and is the one latent
 inconsistency in the tree (`TileProtocol.Frames.cs:179`, `a-engine.md:1629-1635`).
 
-**Varint.** Unsigned LEB128 over the ZIG-ZAG encoding of a signed value, so a negative number does not
-cost ten bytes. Seven value bits per byte, low group first, high bit set on every byte but the last, at
-most five bytes for a 32 bit value and ten for a 64 bit one. Encodings must be MINIMAL, and a
+**Varint.** Unsigned LEB128: seven value bits per byte, low group first, high bit set on every byte but
+the last, at most five bytes for a 32 bit value and ten for a 64 bit one. A field DECLARED SIGNED is
+zig-zag encoded first, `(n << 1) ^ (n >> 31)` for 32 bit, so 0 is 0, -1 is 1, 1 is 2, and a negative number
+does not cost ten bytes. Content ids, instance ids, kind ids, lengths, counts and roll positions are all
+declared unsigned and are never zig-zagged, so a small id costs one byte. Encodings must be MINIMAL, and a
 non-minimal or non-terminating varint is a decode failure with the reasons named in section 9.7.
-Zig-zag maps `n` to `(n << 1) ^ (n >> 31)` for 32 bit, so 0 is 0, -1 is 1, 1 is 2.
 
 **Version field first, always.** The FIRST field of every standalone format is its version, and a version
 number is bumped and never reused. Three shapes exist in the tree and the contract picks one:
@@ -1850,6 +1851,9 @@ bytes that already exist in a consumer's production database, rather than a reco
 | Stat scale, basis points, and the rounding rule | 13.1, 13.2 | Restates every number in the game. |
 | Integers only where client and server must agree | 13.4 | The disagreement is order dependent, so it appears only sometimes. |
 | Little endian, varint definition, SHA-256 | 15 | Read by every durable byte in both programs. |
+| Tag ids are the tag representation in packs and payloads | 4.6 | A string tag anywhere durable is a second representation to migrate. |
+| A published field in a type's schema | 4.7 | Removing it strands every row that carried it, so a field is retired, never removed. |
+| Affix entries carry a flags varint | 9.9 | Adding it later changes the byte length of every stored affix. |
 
 Everything NOT in this table is cheap by comparison: package names, visibility levels assigned to a
 field, localization keys, the random source implementation, the validator's findings, the alert names and

@@ -2,11 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (- [ ]) syntax for tracking.
 
-**Goal:** Ship the durable, byte-level foundation for owned item instances: the canonical tagged payload, the property registry, the instance id allocator, quarantine, the paged container and container codec version 2, the tick-bounded commit batch, and the ground-item and page-sync wire, as two new packages plus changes to three existing ones.
+**Goal:** Ship the instance record and the container, which is spec 20's phase 1 exactly: the canonical tagged payload, the property registry, quarantine, the instance id allocator, `ItemStack`'s third component, `ItemSlot`, and container codec version 2 with its version 1 reader, as one new package plus changes to one existing one.
 
-**Architecture:** `KhaozEngine.ItemInstances` (Foundation) owns the payload codec, the property registry, validation, quarantine, visibility, the page codec, the paged container and the remap pass. `KhaozEngine.ItemInstances.Journal` (Server) owns everything that composes a `JournalCommit`, because `Foundation` cannot reference a `Server` package. `KhaozEngine.Items` gains a third `ItemStack` component, `ItemSlot`, and codec version 2 with its version 1 reader. `KhaozEngine.TileWorld.Netcode` gains an item-agnostic fragmenter and a sibling ground component holding opaque bytes, and gains NO items dependency. Nothing in the engine learns what an item means.
+**Acceptance, which is spec 20 phase 1's own:** spec 17 rows 1, 2, 3, 4, 12 and 16 green, and contracts 9.8's forty-five byte example reproduced BYTE FOR BYTE. Nothing else counts as done, and no group here is finished until its own acceptance below also holds.
 
-**Tech Stack:** .NET 10, `KhaozEngine.Items`, `KhaozEngine.Primitives`, `KhaozEngine.Catalog` (Scope A), `KhaozEngine.WorldStore`, `KhaozEngine.TileWorld.Netcode`, `KhaozEngine.Replication`, xUnit.
+**Architecture:** `KhaozEngine.ItemInstances` (Foundation) owns the payload codec, the property registry, the `KECQ` wrapper, the instance id allocator and the page codec. `KhaozEngine.Items` gains a third `ItemStack` component, `ItemSlot`, the payload doors and codec version 2 with its version 1 reader. Nothing in the engine learns what an item means.
+
+**Tech Stack:** .NET 10, `KhaozEngine.Items`, `KhaozEngine.Primitives`, `KhaozEngine.Catalog` (Scope A), xUnit. `KhaozEngine.Replication` is read for the id packing SCHEME only and is never referenced (task 7).
 
 **Spec:** `docs/design/ITEM-INSTANCES-DESIGN-2026-09-15.md` (cited below as spec N.N)
 
@@ -14,15 +16,27 @@
 
 **Scope A spec:** `docs/design/CONTENT-CATALOG-DESIGN-2026-09-15.md` (cited as catalog N.N)
 
+**The next plan:** `docs/superpowers/plans/2026-09-15-item-instances-phase2-3.md` carries spec 20's phases 2 and 3, and starts only after the release this plan ends with has landed.
+
 ## What this plan calls phase 1, and what it defers
 
-Spec 20 divides Scope B into five phases. **This plan implements the ENGINE HALF, which is spec 20's
-phases 1, 2 and 3 taken together**, because those three are one package set, one durable format family
-and one wire, and splitting them across three releases would ship a container that cannot commit and a
-commit that cannot sync. The plan keeps spec 20's own grouping visible: the group acceptances below are
-spec 20's phase acceptances, unchanged.
+Spec 20 divides Scope B into five phases. **This plan implements phase 1 AT THE SPEC'S OWN BOUNDARY**,
+which is "the instance record and the container, the whole of sections 3 and 4". It is deliberately
+narrower than the engine half: paging, the journal, the commit batch and the wire are one further
+release, and they are the sibling plan's, so the durable byte formats settle and ship before anything
+starts building on them.
 
-**Deferred exactly as spec 20 defers them, and out of scope here:**
+**Deferred to `docs/superpowers/plans/2026-09-15-item-instances-phase2-3.md`, which starts after this
+release lands:**
+
+- **Paging and the journal** (spec 5 and 6, `PagedItemContainer`, `ItemContainerPage`, the section
+  naming, the load path with remap, `ContainerCommitBuilder`). Spec 20 phase 2.
+- **The wire** (spec 7, the fragmenter, the sibling ground component, the spawn overload, the page
+  delta, the owner remainder and `PublicView`). Spec 20 phase 3.
+- **The full `InstanceValidator`** (spec 12.2). See the paragraph below, which is the one place this
+  plan reads spec 20's phase 1 sentence more narrowly than its list of names.
+
+**Deferred exactly as spec 20 defers them, and out of scope for both plans:**
 
 - **The eighteen affix content types and the item generator** (spec 8 and 9, `ItemGenerator`,
   `GenerationContext`, `GenerationResult`, `ModCandidateTables`). Spec 20 phase 4, gated on Scope A's
@@ -31,15 +45,27 @@ spec 20's phase acceptances, unchanged.
   `CraftRefusal`, `CraftingRegistry`, `ICraftOperation`). Spec 20 phase 5.
 - **The stat evaluator** (spec 11, `ContentStatEvaluator`, `StatModifierLine`, `StatCombineKind`,
   `StatSourceKey`, `StatContext`, `IStatConditionRegistry`). Spec 20 phase 5.
-- **Consumer adoption** (spec 18 and 19). Runs per consumer after this plan lands, not inside it.
+- **Consumer adoption** (spec 18 and 19). Runs per consumer after the wire lands, not inside either plan.
+
+**The validator is SPLIT, and this is the one judgement call in the split.** Spec 20 phase 1 names "the
+instance validator" in its list, and then says what phase 1 IS: the whole of sections 3 and 4. Section 12
+is neither. Phase 1's acceptance names no validator row either (rows 1, 2, 3, 4, 12 and 16 are goldens,
+unknown kinds, fuzzing, cross-version container round trips, the allocator and quarantine bytes). So what
+ships here is what the CODEC itself enforces, which is spec 12.2's checks 1 to 5 arriving as decoder
+refusals rather than as a validator sweep: canonical ascending order, no duplicate kind, minimal varints,
+every declared length inside the payload, the one-level socket rule and the cap. `ItemInstancePayload.Validate`
+is that surface and task 4 ships it. The DRIFT checks (6, 7, 8 and 13), the policy checks (12 and 13), the
+per-page `InstanceValidationReport`, the counter and the log line all need an `IContentSnapshot` and a
+PAGE, and a page is spec 5, so the full `InstanceValidator` lands in the phase 2-3 plan beside the load
+path that calls it. Nothing durable is decided later by that ordering: the quarantine wrapper, its reason
+ordinals and the entry flag bit all ship here.
 
 Phase 1 is a STRONG BASE rather than a partial catalog (spec 1.2, spec 20). What it settles is every
 byte format, every id space, every ordering rule and the stacking test, which are the expensive things
 (spec 21). What it does not ship is breadth, which is content the owner authors afterwards.
 
-**Spec test plan rows this plan lands:** 1, 2, 3, 4, 5 (structural half), 8, 9, 11 (engine half), 12,
-14, 15, 16 and 17. Rows 6, 7, 10 and 13 belong to the deferred phases and are named where a later phase
-picks them up.
+**Spec test plan rows this plan lands:** 1, 2, 3, 4, 12 and 16. Rows 5, 8, 9, 11, 14, 15 and 17 are the
+phase 2-3 plan's, and rows 6, 7, 10 and 13 belong to spec 20 phases 4 and 5.
 
 ## Scope A dependency, per task
 
@@ -53,24 +79,22 @@ What this plan consumes from it, by name, all from catalog 2.2 and 2.5:
 
 | Name | Where this plan reads it |
 |---|---|
-| `IContentSnapshot` | `InstanceValidator.Validate`, the container load path |
-| `ContentVersionIdentity` and its `int Number` | the page stamp, spec 5.3 |
-| `ContentTypeId`, `ContentKey`, `ContentRow` | reference-target resolution in the validator |
-| `ItemRow` | the four hot `item` fields the stacking and capacity paths read |
-| `RemapRule`, `RemapRuleKind`, `RemapRuleSet` | the instance remap pass, spec 5.5 step 2 |
-| `IContentSnapshot.IsRetired(type, id)` | validator check 13, spec 12.2 |
 | `ContentVarint` | every varint this plan writes, contracts 15 |
-| `ContentStringCatalog` | the three placeholder `StringId`s of spec 12.3 |
-| `IRandomSource` (`KhaozEngine.Primitives`, contracts 14.1) | not used by phase 1, named so a later phase does not re-derive the seam |
+| `ContentTypeId`, `ContentKey` | the type keys an `InstanceReferenceTarget` names, task 3 |
+| `ContentVersionIdentity` and its `int Number` | the page stamp the container codec writes, task 8, spec 5.3 |
+| `IContentSnapshot`, `ContentRow`, `ItemRow`, `IContentSnapshot.IsRetired(type, id)` | NOT read by phase 1. The full validator and the container load path read them, and both are the phase 2-3 plan's |
+| `RemapRule`, `RemapRuleKind`, `RemapRuleSet` | NOT read by phase 1. The remap pass is the phase 2-3 plan's, spec 5.5 step 2 |
+| `ContentStringCatalog` | NOT read by phase 1. The three placeholder `StringId`s of spec 12.3 ship with the validator |
+| `IRandomSource` (`KhaozEngine.Primitives`, contracts 14.1) | not used by either plan, named so a later phase does not re-derive the seam |
 
-**Tasks 1, 2 and 3 have NO Scope A gate at all.** They live in `KhaozEngine.Items` and
-`KhaozEngine.TileWorld.Netcode`, neither of which references `KhaozEngine.Catalog`, so implementation
-starts on them the day this plan is approved. Every task from 4 onward creates or edits
-`KhaozEngine.ItemInstances`, whose csproj references `KhaozEngine.Catalog` (contracts 3.2), so all of
-them are gated on milestone 1.1 having landed. Each task states its gate in its own header.
+**Tasks 1 and 2 have NO Scope A gate at all.** They live in `KhaozEngine.Items`, which does not
+reference `KhaozEngine.Catalog`, so implementation starts on them the day this plan is approved. Every
+task from 3 onward creates or edits `KhaozEngine.ItemInstances`, whose csproj references
+`KhaozEngine.Catalog` (contracts 3.2), so all of them are gated on milestone 1.1 having landed. Each
+task states its gate in its own header.
 
 **The one ordering edge between the two programs** is spec 20's: task 1 takes `ItemStack` to three
-components and task 6 takes `ItemContainerCodec` to version 2, which is a fleet-wide compile break plus
+components and task 8 takes `ItemContainerCodec` to version 2, which is a fleet-wide compile break plus
 a durable codec bump, and it must land BEFORE step 7 or AFTER step 11 of Scope A's Grimhollow adoption
 (catalog 16.8, spec 20). Never inside that window. Confirm with the Scope A implementer which side of
 the window you are on before starting task 1, and record the answer in the task 1 commit message.
@@ -80,7 +104,7 @@ the window you are on before starting task 1, and record the answer in the task 
 Binding on every task. Each restates a rule from the spec, the contracts or AGENTS.md, and a task that
 breaks one of these is wrong even when its own tests pass.
 
-- **Work in a fresh worktree** at `/Users/antonio/KhaozEngine/.claude/worktrees/item-instances-phase1`
+- **Work in a fresh worktree** at `~/KhaozEngine/.claude/worktrees/item-instances-phase1`
   branched from the latest `origin/main`. Engine program
   [#884](https://github.com/APKiwiOrg/KhaozEngine/issues/884) owns this work.
 - **The payload is a canonical TLV and the encoder is the thing that makes it canonical.** Fields
@@ -100,13 +124,12 @@ breaks one of these is wrong even when its own tests pass.
   9.7 (spec 3.2). A counter is keyed on those tokens, so adding one is a deliberate, additive act and
   never something a task does in passing.
 - **No ambient statics and no service locator.** Every dependency arrives through a constructor or a
-  method argument, including `IContentSnapshot` and, in later phases, `IRandomSource` (contracts 14.4).
-  No test in this plan writes process-global state, so no test needs a `DisableParallelization`
-  collection. If one later does, it enlists in a named collection with the shared state in its doc
-  comment, per the #349 rule in AGENTS.md.
-- **One operation identity per commit**, unchanged from what the journal does today
-  (`JournalCommit.cs:14-22`, spec 6.1). Nothing in this plan changes `KhaozEngine.WorldStore`, either
-  provider schema, or the store conformance suite (spec 2.4).
+  method argument, including `IInstanceIdStore` and, in later phases, `IContentSnapshot` and
+  `IRandomSource` (contracts 14.4). No test in this plan writes process-global state, so no test needs a
+  `DisableParallelization` collection. If one later does, it enlists in a named collection with the
+  shared state in its doc comment, per the #349 rule in AGENTS.md.
+- **Nothing in this plan changes `KhaozEngine.WorldStore`**, either provider schema, or the store
+  conformance suite (spec 2.4). Phase 1 writes no commit at all: the journal half is the phase 2-3 plan's.
 - **One responsibility per file, every file under 800 lines.** When the KESIZE ratchet fires, put the new
   code in a new type. Never split a file at an arbitrary line, and never hand-edit `.filesize-baseline`.
 - **Warnings are errors** in every configuration. Fix at the source, never with `NoWarn` or a pragma.
@@ -116,8 +139,8 @@ breaks one of these is wrong even when its own tests pass.
   and pins `<RootNamespace>KhaozEngine.Tests</RootNamespace>` (spec 2.3, AGENTS.md). Push CI selects
   test projects by the reference graph, so an over-broad reference silently degrades selection.
 - **Every player-facing string is a `StringId`.** The three placeholder keys are engine owned and fixed:
-  `khaoz.item.quarantined`, `khaoz.item.retired`, `khaoz.item.unidentified` (spec 12.3). The engine ships
-  the keys and no translation.
+  `khaoz.item.quarantined`, `khaoz.item.retired`, `khaoz.item.unidentified` (spec 12.3). They ship with
+  the validator in the phase 2-3 plan, and nothing here invents a literal in their place.
 - **No em dashes, no en dashes, no semicolons in prose** in any file this plan writes, code comments and
   XML doc included. Run `scripts/check-dashes.sh --tree` and `scripts/check-prose.sh --tree` before every
   push, not only at the end.
@@ -132,38 +155,25 @@ breaks one of these is wrong even when its own tests pass.
 |---|---|---|---|
 | 1 | `ItemStack` third component, `ItemSlot`, the payload-carrying container doors | medium | none |
 | 2 | The fleet-wide `ItemStack` deconstruction break and its consumer sweep | medium | none |
-| 3 | `TileFragmentedMessage`, the item-agnostic fragmenter and reassembler | medium | none |
-| 4 | The `KhaozEngine.ItemInstances` package skeleton and the property registry | medium | milestone 1.1 |
-| 5 | `ItemInstancePayload`: the canonical TLV codec, sockets, goldens | large | milestone 1.1 |
-| 6 | Decoder fuzzing and the unknown-kind round trip | medium | milestone 1.1 |
-| 7 | `QuarantineWrapper`, the `KECQ` format | small | milestone 1.1 |
-| 8 | `ItemInstanceVisibility`: `CanSee`, `PublicView` and the owner remainder | medium | milestone 1.1 |
-| 9 | `InstanceIdAllocator`, the store epoch and the rotation guard | medium | milestone 1.1 |
-| 10 | Container codec version 2 and the version 1 reader | large | milestone 1.1 |
-| 11 | `ItemContainerPage`, `PagedItemContainer`, the capacity gate and the merge rule | large | milestone 1.1 |
-| 12 | `InstanceValidator`, its thirteen checks, the counter and the log line | large | milestone 1.1 |
-| 13 | The registry-derived remap pass and its idempotence | large | milestone 1.1 |
-| 14 | `KhaozEngine.ItemInstances.Journal`, section names and the container load path | medium | milestone 1.1 |
-| 15 | `ContainerCommitBuilder`, the tick-bounded batch and its crash facts | large | milestone 1.1 |
-| 16 | `TileGroundItemInstance` and the `SpawnGroundItem` overload | medium | milestone 1.1 |
-| 17 | The page delta, its one-frame bound and the resync request | large | milestone 1.1 |
-| 18 | The `--items` benchmark structural test in `KhaozEngine.Server.Tests` | medium | milestone 1.1 |
-| 19 | Documentation sweep: package READMEs, README catalog, USING, DEPENDENCY-SEAMS | medium | milestone 1.1 |
-| 20 | The finishing ritual: one version bump, changelog, pack, no tag | medium | milestone 1.1 |
+| 3 | The `KhaozEngine.ItemInstances` package skeleton and the property registry | medium | milestone 1.1 |
+| 4 | `ItemInstancePayload`: the canonical TLV codec, sockets, goldens | large | milestone 1.1 |
+| 5 | Decoder fuzzing and the unknown-kind round trip | medium | milestone 1.1 |
+| 6 | `QuarantineWrapper`, the `KECQ` format | small | milestone 1.1 |
+| 7 | `InstanceIdAllocator`, the store epoch and the rotation guard | medium | milestone 1.1 |
+| 8 | Container codec version 2 and the version 1 reader | large | milestone 1.1 |
+| 9 | Documentation sweep: the package README, the README catalog, USING, DEPENDENCY-SEAMS | medium | milestone 1.1 |
+| 10 | The finishing ritual: one version bump, changelog, pack, no tag | medium | milestone 1.1 |
 
 Groups and their acceptances:
 
-- **Group A, tasks 1 to 3.** The changes that need nothing from Scope A. Acceptance: `dotnet test -c Release`
-  green across the solution with `ItemStack` at three components, and the reassembler facts of spec 17 row
-  15 green.
-- **Group B, tasks 4 to 9.** The instance record, spec 3. Acceptance: spec 17 rows 1, 2, 3, 12 and 16
-  green, and contracts 9.8's 45 bytes reproduced byte for byte. This is spec 20 phase 1's acceptance.
-- **Group C, tasks 10 to 15.** The container, the pages and the commit, spec 4, 5 and 6. Acceptance: spec
-  17 rows 4, 8 and 14 green, and budget 4 measured at ONE commit. This is spec 20 phase 2's acceptance
-  plus phase 1's row 4.
-- **Group D, tasks 16 to 18.** The wire, spec 7. Acceptance: spec 17 rows 9, 11 and 17 green, and budgets
-  7 and 8 measured. This is spec 20 phase 3's acceptance.
-- **Group E, tasks 19 and 20.** Documentation and release. Acceptance: `scripts/check-doc-versions.sh`,
+- **Group A, tasks 1 and 2.** The changes that need nothing from Scope A. Acceptance: `dotnet test -c Release`
+  green across the solution with `ItemStack` at three components.
+- **Group B, tasks 3 to 7.** The instance record, spec 3. Acceptance: spec 17 rows 1, 2, 3, 12 and 16
+  green, and contracts 9.8's 45 bytes reproduced byte for byte.
+- **Group C, task 8.** The container, spec 4. Acceptance: spec 17 row 4 green, a version 1 blob decoding
+  through the version 2 reader unchanged, and an OSRS slot entry at seven bytes against version 1's fixed
+  ten. Groups B and C together are spec 20 phase 1's acceptance in full.
+- **Group D, tasks 9 and 10.** Documentation and release. Acceptance: `scripts/check-doc-versions.sh`,
   `scripts/check-dashes.sh --tree`, `scripts/check-prose.sh --tree` and `scripts/check-file-size.sh --tree`
   all exit 0, the full solution green in Release, and `local-feed` packed with NO tag.
 
@@ -244,8 +254,8 @@ bytes the container owns and never mutates in place.
     door, which is why the clear is the only correct reading of what it already meant.
   - `SetSlotAt(int slot, ItemSlot value)` throws `ArgumentException` for each of spec 4.7's four
     invariants. Invariants 2 (at most `MaxInstancePayloadBytes`) and 4 (canonical) are SKIPPED when
-    `value.Quarantined` is set, and `QuarantineWrapper.Verify` stands in for them from task 7. Until task
-    7 lands, the quarantined path accepts the bytes unchecked and carries a `TODO` naming task 7. The
+    `value.Quarantined` is set, and `QuarantineWrapper.Verify` stands in for them from task 6. Until task
+    6 lands, the quarantined path accepts the bytes unchecked and carries a `TODO` naming task 6. The
     canonical check runs on EVERY call and never under a `Debug.Assert`, because `[Conditional("DEBUG")]`
     members do not exist in the Release configuration CI builds.
   - `TakeSlotAt(int slot)` returns the whole `ItemSlot` and seats `ItemSlot.Empty`.
@@ -255,7 +265,7 @@ bytes the container owns and never mutates in place.
   is contracts 9.6's number and `KhaozEngine.Items` cannot reference `KhaozEngine.ItemInstances` (the
   dependency runs the other way). Declare it as `public const int ItemSlot.MaxPayloadBytes = 512` in
   `KhaozEngine.Items` and have `KhaozEngine.ItemInstances` expose
-  `ItemInstancePayload.MaxInstancePayloadBytes => ItemSlot.MaxPayloadBytes` in task 5, so there is ONE
+  `ItemInstancePayload.MaxInstancePayloadBytes => ItemSlot.MaxPayloadBytes` in task 4, so there is ONE
   number. Add a one-line comment on the const naming contracts 9.6 and the one-way raise rule.
 
 - [ ] **Step 6: Take the canonical check as a CONSTRUCTOR PREDICATE, because the spec leaves this open
@@ -375,95 +385,12 @@ git commit -m "items(instances): pin ItemStack at three components"
 
 ---
 
-### Task 3: `TileFragmentedMessage`, the item-agnostic fragmenter and reassembler (medium, no Scope A gate)
-
-Spec 7.5. The engine has no fragmentation layer at all today, verified by grep, and the single precedent
-for a larger logical payload is hand-rolled application-level chunking on the reliable ordered channel,
-done once for combat (`TileWorldServer.Tick.cs:241-259`). This task builds the general one. **It knows
-nothing about items**, which is both correct layering and the reason it can land before Scope A.
-
-**Files:**
-
-- Create: `KhaozEngine.TileWorld.Netcode/TileFragmentedMessage.cs`
-- Create: `KhaozEngine.TileWorld.Netcode/TileFragmentReassembler.cs`
-- Create: `KhaozEngine.TileWorld.Netcode.Tests/TileFragmentedMessageTests.cs`
-
-**Interfaces:**
-
-- Consumes: `TileProtocol.MaxGameMessageBytes` (1024, `TileProtocol.Frames.cs:65`) and the four byte
-  envelope `[tag:1][kind:ushort 2][flags:1]` (`TileProtocol.Frames.cs:77`)
-- Produces: a fragmenter over any `ReadOnlySpan<byte>`, and a bounded reassembler
-
-- [ ] **Step 1: Write the failing tests, which are spec 17 row 15 verbatim plus the round trip.**
-
-~~~csharp
-[Fact] public void A_payload_under_one_chunk_is_one_chunk_and_round_trips()
-[Fact] public void A_page_sized_payload_round_trips_through_every_chunk_in_order()
-[Fact] public void A_chunk_whose_sequence_differs_mid_assembly_discards_and_restarts()
-[Fact] public void A_fifth_concurrent_assembly_evicts_the_oldest_and_counts_it()
-[Fact] public void A_truncated_final_chunk_answers_a_reason_rather_than_throwing()
-[Fact] public void A_dropped_connection_discards_every_partial_assembly()
-[Fact] public void No_chunk_exceeds_the_game_message_cap()
-~~~
-
-  **NOT out-of-order chunks.** The channel is `ReliableOrdered`, so that cannot happen and the
-  reassembler deliberately does not handle it. Spec 17 row 15 says so in as many words, and a test
-  asserting reordering would pin behaviour the design refuses to have.
-
-- [ ] **Step 2: Run them and confirm the missing type fails the build.**
-
-~~~bash
-dotnet test KhaozEngine.TileWorld.Netcode.Tests/KhaozEngine.TileWorld.Netcode.Tests.csproj -c Release --filter FullyQualifiedName~TileFragmentedMessageTests
-~~~
-
-- [ ] **Step 3: Implement the header exactly as spec 7.5 writes it.** Five bytes, all fixed width, no
-  varint anywhere, which is what lets this task precede Scope A:
-
-~~~
-[StreamId: byte]        // which logical stream, the GAME assigns these
-[Sequence: uint16 LE]   // increments per transmission of that stream, wraps
-[ChunkIndex: byte]
-[ChunkCount: byte]      // 1 to 255
-[Bytes: the rest]
-~~~
-
-  A chunk carries `MaxGameMessageBytes - 4 - 5 = 1015` payload bytes and 255 chunks carry 258 KB, which
-  is forty times the largest page and five times the worst case page of spec 5.4. `Sequence` is little
-  endian through `BinaryPrimitives.WriteUInt16LittleEndian`, per contracts 15.
-
-- [ ] **Step 4: Implement the reassembler's four rules, which are spec 7.5's, in order.**
-  1. A chunk whose `Sequence` differs from the assembly in progress DISCARDS that assembly and starts a
-     new one. That is what a server restarting a page mid-transmission looks like. It is not an error and
-     it does not throw.
-  2. At most FOUR partial assemblies are held at once. A fifth evicts the oldest and increments a public
-     counter. A bounded-memory rule rather than a timer, because a timer on a reliable ordered channel
-     measures nothing.
-  3. On the last chunk the assembled bytes are handed BACK to the caller for decoding, and a decode
-     failure is the caller's quarantine rather than a throw here. The reassembler itself answers
-     `TryComplete(out ReadOnlyMemory<byte> assembled, out string? reason)`.
-  4. A partial assembly still open when the connection drops is discarded with the connection, through an
-     explicit `DropConnection(int slot)` the server calls. Nothing here holds a timer or a background task.
-
-- [ ] **Step 5: Keep the encoder total in the direction that matters.** The FRAGMENTER throws on a payload
-  above `255 * 1015` bytes, because that is a local caller bug in the same class as the existing cap throw.
-  The REASSEMBLER never throws, because its bytes come from a remote peer, which is the rule every frame
-  decoder in `TileProtocol` already follows (`TileProtocol.Frames.cs:27-34`).
-- [ ] **Step 6: Run green and commit.**
-
-~~~bash
-dotnet test KhaozEngine.TileWorld.Netcode.Tests/KhaozEngine.TileWorld.Netcode.Tests.csproj -c Release
-git add KhaozEngine.TileWorld.Netcode/TileFragmentedMessage.cs KhaozEngine.TileWorld.Netcode/TileFragmentReassembler.cs KhaozEngine.TileWorld.Netcode.Tests/TileFragmentedMessageTests.cs
-git commit -m "tileworld(netcode): fragment a logical payload across reliable ordered frames"
-~~~
-
----
-
 ## Group B: the instance record (spec 3)
 
 Every task from here on is gated on **Scope A milestone 1.1**, because each one creates or edits
 `KhaozEngine.ItemInstances`, whose csproj references `KhaozEngine.Catalog` (contracts 3.2).
 
-### Task 4: The `KhaozEngine.ItemInstances` package and the property registry (medium, gate: milestone 1.1)
+### Task 3: The `KhaozEngine.ItemInstances` package and the property registry (medium, gate: milestone 1.1)
 
 Spec 2.1, 2.2, 2.3 and 3.3. The registry is first because the payload codec, the remap pass and the
 validator all DERIVE their behaviour from it rather than from a list written in a document, which is
@@ -522,7 +449,7 @@ what stops a kind being remapped-but-not-validated.
   1 `Flags`, 2 `ItemLevel`, 3 `Quality`, 4 `Charges`, 5 `Durability`, 6 `BoundTo`, 7 `Materials`,
   8 `Tier`, 128 `Identification`, 129 `UniqueTemplate`, 130 `Rarity`, 131 `Affixes`, 132 `Sockets`,
   133 `Enchantments`, 134 `RareName`. Kinds 2, 5, 130, 131 and 132 are PINNED by contracts 9.8's worked
-  example and task 5's golden reproduces it, so none of them moves.
+  example and task 4's golden reproduces it, so none of them moves.
 
 - [ ] **Step 5: Implement the shape descriptors exactly as spec 3.3 writes them.**
 
@@ -597,8 +524,8 @@ public static void Register(
   payload format in one block, the kind ranges, the registration rule and the three placeholder
   `StringId`s. Do not point it at a design doc. `scripts/check-doc-versions.sh` requires every packable
   package to have BOTH its own README and a row in the root `README.md` catalog, so a minimal row lands
-  here and task 19 brings it up to the depth of the rows beside it. Without this step the guard is red
-  from this task until task 19.
+  here and task 9 brings it up to the depth of the rows beside it. Without this step the guard is red
+  from this task until task 9.
 - [ ] **Step 9: Run the focused tests green and commit.**
 
 ~~~bash
@@ -610,10 +537,19 @@ git commit -m "iteminstances(registry): property kinds, bands and field shapes"
 
 ---
 
-### Task 5: `ItemInstancePayload`, the canonical TLV codec and its goldens (large, gate: milestone 1.1)
+### Task 4: `ItemInstancePayload`, the canonical TLV codec and its goldens (large, gate: milestone 1.1)
 
 Spec 3.2, 3.4, 3.5, 3.7 and 3.8, over contracts 9.1 through 9.9. This is the format everything else in
 the plan rests on, and spec 21 records most of it as expensive to change once data exists.
+
+**The STRUCTURAL checks live here, and the full `InstanceValidator` does not.** Spec 12.2's thirteen
+checks are section 12, which is neither of the two sections spec 20 puts in phase 1, and phase 1's
+acceptance names no validator row. What this task ships is what the CODEC enforces, which is checks 1 to
+5 arriving as decoder refusals: canonical ascending order, no duplicate kind, minimal varints, every
+declared length inside the payload, the one-level socket rule and the cap. `Validate` in step 8 is that
+surface. The drift and policy checks, the per-page report, the counter and the log line need an
+`IContentSnapshot` and a PAGE, so the full validator lands in
+`docs/superpowers/plans/2026-09-15-item-instances-phase2-3.md` beside the load path that calls it.
 
 **LIFT FROM THE SPIKE, do not rewrite.** `KhaozEngine.Benchmarks/Items/InstancePayload.cs` (327 lines) is
 a clean, measured implementation of this exact format: the same field walk, the same closed reason set,
@@ -623,7 +559,7 @@ its structure and its logic. Three things change on the way in, and nothing else
 1. Its `Varint` (`KhaozEngine.Benchmarks/Items/Varint.cs`) is REPLACED by `ContentVarint` from
    `KhaozEngine.Catalog`. Contracts 15 wants one varint implementation in the tree and the spike's copy
    exists only because Scope A had not shipped.
-2. Its `CheckShape` switch is REPLACED by a walk of the registry's `InstanceFieldShape` from task 4. The
+2. Its `CheckShape` switch is REPLACED by a walk of the registry's `InstanceFieldShape` from task 3. The
    spike hard-codes the kinds because it was a spike. Deriving the walk is what gives a GAME kind at or
    above 1,024 remap, drift detection and quarantine for free (spec 3.3).
 3. Its `internal` surface becomes `public` with XML doc, and its types move to the names spec 2.2 gives.
@@ -643,7 +579,7 @@ not edit it in this task. Its numbers are what section 16's measured column repo
 
 **Interfaces:**
 
-- Consumes: `ContentVarint`, task 4's registry, `ItemSlot.MaxPayloadBytes`
+- Consumes: `ContentVarint`, task 3's registry, `ItemSlot.MaxPayloadBytes`
 - Produces: `ItemInstancePayload` (`TryDecode`, `Encode`, `Validate`, `PublicView`, `SequenceEqual`,
   `IsCanonical`), `ItemInstancePayloadBuilder`, the closed reason token set
 
@@ -747,8 +683,9 @@ public static bool IsCanonical(ReadOnlyMemory<byte> payload);
 public const int MaxInstancePayloadBytes = ItemSlot.MaxPayloadBytes;   // 512, contracts 9.6
 ~~~
 
-  `PublicView` is implemented here as a stub returning the whole payload and is FINISHED in task 8, which
-  is where the visibility rule belongs. `TryDecode` NEVER throws.
+  `PublicView` is implemented here as a stub returning the whole payload and is FINISHED by the
+  visibility task of `docs/superpowers/plans/2026-09-15-item-instances-phase2-3.md`, which is where the
+  visibility rule belongs and which spec 20 puts in phase 3. `TryDecode` NEVER throws.
 
 - [ ] **Step 9: Keep the unknown kind verbatim.** A decoder that meets a kind it does not know keeps the
   field's exact bytes and its position, and re-emits them unchanged (contracts 9.4). The builder records
@@ -769,9 +706,9 @@ git commit -m "iteminstances(payload): the canonical tagged field codec and its 
 
 ---
 
-### Task 6: Decoder fuzzing and the unknown-kind round trip (medium, gate: milestone 1.1)
+### Task 5: Decoder fuzzing and the unknown-kind round trip (medium, gate: milestone 1.1)
 
-Spec 17 rows 2 and 3. Both are fences around task 5 rather than new behaviour, which is why they are their
+Spec 17 rows 2 and 3. Both are fences around task 4 rather than new behaviour, which is why they are their
 own task: a fuzzer folded into the codec commit is a fuzzer nobody tunes.
 
 **Files:**
@@ -782,7 +719,7 @@ own task: a fuzzer folded into the codec commit is a fuzzer nobody tunes.
 
 **Interfaces:**
 
-- Consumes: task 5's codec and its goldens, `SeededRandomSource` from `KhaozEngine.Primitives`
+- Consumes: task 4's codec and its goldens, `SeededRandomSource` from `KhaozEngine.Primitives`
 - Produces: a mutation corpus that widens for free whenever a golden is added
 
 - [ ] **Step 1: Write the unknown-kind round trip first.** A decoder whose registry deliberately OMITS a
@@ -824,7 +761,7 @@ git commit -m "iteminstances(payload): mutation fuzzing over the goldens"
 
 ---
 
-### Task 7: `QuarantineWrapper`, the `KECQ` format (small, gate: milestone 1.1)
+### Task 6: `QuarantineWrapper`, the `KECQ` format (small, gate: milestone 1.1)
 
 Spec 12.4 over contracts 10.2 and 15. The bytes of a failed item are kept VERBATIM, and this is the
 durable envelope that keeps them.
@@ -837,7 +774,7 @@ durable envelope that keeps them.
 
 **Interfaces:**
 
-- Consumes: `ContentVarint`, task 5's reason set
+- Consumes: `ContentVarint`, task 4's reason set
 - Produces: `QuarantineWrapper` with `Wrap`, `TryUnwrap` and `Verify`
 
 - [ ] **Step 1: Write the failing tests, which are spec 17 row 16 plus the version refusal.**
@@ -856,7 +793,7 @@ durable envelope that keeps them.
 ~~~
 [Magic: 4 bytes 'K','E','C','Q']   // 0x4B 0x45 0x43 0x51
 [Version: uint16 LE]               // 1
-[ReasonCode: byte]                 // an ordinal from the closed set of QUARANTINE reasons in 12.2
+[ReasonCode: byte]                 // the ordinal spec 12.4's reason table assigns that reason
 [StampedVersion: varint int32]     // the page stamp the record failed under
 [OriginalLength: varint int32]
 [Original: OriginalLength bytes]   // verbatim, never re-encoded
@@ -866,6 +803,14 @@ durable envelope that keeps them.
   format always embedded in a larger versioned record, and a payload is such a format. A wrapper is not:
   it must be distinguishable from a payload at a glance in a hex dump of a page, and by a tool that never
   saw the entry flag. Four bytes for that, once per quarantined entry, on a path that is rare by definition.
+
+  **The `ReasonCode` byte values come from spec 12.4's reason ordinal table, and this task does not
+  choose them.** That table is the single source for which byte a reason is written as, and the byte is
+  DURABLE: a wrapper stored under one ordinal is read back under the same one forever, so a task that
+  numbered the reasons itself would pin a second meaning to the same byte the first time the two lists
+  diverged. Read the ordinals off 12.4 at implementation time. The full validator that raises most of
+  those reasons is the phase 2-3 plan's, which is why the ordinals live in the spec rather than in the
+  type that first writes them.
 
 - [ ] **Step 3: Let `OriginalLength` exceed `MaxInstancePayloadBytes`.** `payload-oversize` is a reason,
   and refusing to wrap the thing that failed for being too big destroys exactly the item the wrapper exists
@@ -886,94 +831,7 @@ git commit -m "iteminstances(quarantine): the KECQ wrapper keeps failed bytes ve
 
 ---
 
-### Task 8: `ItemInstanceVisibility`, the ONE `CanSee` and `PublicView` (medium, gate: milestone 1.1)
-
-Spec 7.4 and 12.5 over contracts 11.1 and 11.2. There is exactly ONE function answering "may this viewer
-see this field", and both the replication filter and the tooltip builder call it. A tooltip that computed
-its own answer is how a client eventually renders something the server never sent.
-
-**Files:**
-
-- Create: `KhaozEngine.ItemInstances/ItemInstanceVisibility.cs`
-- Modify: `KhaozEngine.ItemInstances/ItemInstancePayload.cs` (finish task 5's `PublicView` stub)
-- Create: `KhaozEngine.ItemInstances.Tests/Visibility/ItemInstanceVisibilityTests.cs`
-
-**Interfaces:**
-
-- Consumes: task 4's registry (visibility and `identificationMaskBit` per kind), task 5's field walk
-- Produces: `ItemInstanceVisibility.CanSee` and `ItemInstanceVisibility.PublicView`
-
-- [ ] **Step 1: Write the failing tests, which are spec 17 row 9 plus the identification gate.**
-
-~~~csharp
-[Fact] public void ServerOnly_is_never_visible_to_anyone_including_the_owner()
-[Fact] public void OwnerOnly_is_visible_only_when_the_viewer_level_is_OwnerOnly()
-[Fact] public void Everyone_is_always_visible()
-[Fact] public void A_gated_kind_is_hidden_from_the_OWNER_too_while_unidentified()
-[Fact] public void A_set_RevealedMask_bit_reveals_exactly_its_own_registered_kind()
-[Fact] public void The_replication_filter_and_the_tooltip_builder_agree_on_every_kind_at_every_level()
-[Fact] public void PublicView_of_a_rare_drops_kinds_4_5_and_6_and_keeps_the_rest()
-[Fact] public void PublicView_output_is_still_canonical_and_still_decodes()
-[Fact] public void PublicView_allocates_nothing_beyond_its_destination_span()
-~~~
-
-  The sixth is spec 17 row 9 itself and it is a table-driven `[Theory]` over every registered kind times
-  the three levels times identified and not, asserting the two call sites produce the same answer. The
-  point is that there is one function, so the test drives the SAME function from both call shapes.
-
-- [ ] **Step 2: Implement `CanSee` with spec 12.5's rule, in order.**
-
-~~~csharp
-public static bool CanSee(ushort kind, PropertyVisibility viewerLevel, bool identified, uint revealedMask);
-public static int  PublicView(ReadOnlySpan<byte> payload, PropertyVisibility level, bool identified,
-                              uint revealedMask, Span<byte> destination);
-~~~
-
-  `ServerOnly` is never visible to anyone. `OwnerOnly` is visible when the viewer level is `OwnerOnly`.
-  `Everyone` is visible always. THEN, and only then, the identification gate: a kind carrying an
-  `identificationMaskBit` is hidden when `identified` is false and its bit in `revealedMask` is clear,
-  EVEN FROM THE OWNER. That last clause is gate 0 decision 8 and is why unidentified is a mechanic rather
-  than a fourth visibility level. Both members are pure and static, so a test calls them with no server.
-
-- [ ] **Step 3: Implement `PublicView` as the forward pass over RETAINED RUNS**, which is the spike's
-  `InstancePayload.PublicView` and its `Flush` helper. Because fields are already ascending and each is
-  length prefixed, a filtered payload is a sequence of memcpy calls over contiguous ranges with no decode,
-  no re-sort and no allocation beyond the output. That is why spec 3.3 declines contracts 11.2's optional
-  coupling of kind ids to visibility: the coupling would buy a single memcpy instead of two or three,
-  forever, in exchange for constraining every future kind assignment. Note the visibility levels are NOT
-  monotonic in the kind id (4, 5 and 6 are `OwnerOnly` while 7 and 8 are `Everyone`), so the run walk is
-  the only correct shape.
-- [ ] **Step 4: Add the OWNER REMAINDER as a second projection, and record that the spec left its home
-  open.** Spec 7.6 lists an "owner remainder" server-to-client message and spec 7.4 says the owner-only
-  remainder rides a targeted game message, but neither says which package builds the bytes. The plan's
-  choice: `ItemInstanceVisibility.OwnerRemainder(payload, revealedMask, destination)` writes the
-  COMPLEMENT of `PublicView(payload, Everyone, ...)`, in the same retained-run shape, and lives here
-  beside `PublicView` so the two cannot disagree. The MESSAGE KIND stays the game's, because
-  `TileProtocol` reserves the `ushort` kind space to the game and the engine only caps the frame
-  (`TileProtocol.Frames.cs:65`). Add a fact that `PublicView` bytes plus `OwnerRemainder` bytes reconstruct
-  the full payload for an identified item at `OwnerOnly`.
-- [ ] **Step 5: State the ground-item rule in code, because it is a rule and not an omission.** A drop's
-  entity net id is nobody's, so there is no viewer this design calls the owner of a ground stack (spec
-  7.4). A ground item's public view is `PublicView(payload, PropertyVisibility.Everyone, ...)` and there
-  is NO owner remainder for a drop. Kind 6 `BoundTo` is therefore stripped before the component is
-  written, so a passer-by cannot read who a dropped item is bound to, which is a fact about a PLAYER
-  rather than about an item. Put that paragraph in the XML doc, and add the fact that a rare's 58 byte
-  payload replicates as 54 on the ground, which is budget 11's input.
-- [ ] **Step 6: Add the allocation fact under the existing `AllocSensitive` collection** if and only if
-  `KhaozEngine.ItemInstances.Tests` gains one. It does not have that collection today and this task does
-  not add a process-global one: assert instead that `PublicView` writes into a caller `Span<byte>` and
-  returns a length, so the absence of allocation is a property of the signature.
-- [ ] **Step 7: Run green and commit.**
-
-~~~bash
-dotnet test KhaozEngine.ItemInstances.Tests/KhaozEngine.ItemInstances.Tests.csproj -c Release
-git add KhaozEngine.ItemInstances/ItemInstanceVisibility.cs KhaozEngine.ItemInstances/ItemInstancePayload.cs KhaozEngine.ItemInstances.Tests/Visibility
-git commit -m "iteminstances(visibility): one CanSee behind replication and tooltips"
-~~~
-
----
-
-### Task 9: `InstanceIdAllocator`, the store epoch and the rotation guard (medium, gate: milestone 1.1)
+### Task 7: `InstanceIdAllocator`, the store epoch and the rotation guard (medium, gate: milestone 1.1)
 
 Spec 3.6 over contracts 6.2. Spec 20 puts spec 17 row 12 in phase 1 for a stated reason: the allocator
 ships in this phase and its epoch refusal is the one behaviour in it that cannot be added afterwards
@@ -1068,13 +926,13 @@ git commit -m "iteminstances(ids): node-prefixed instance ids bound to the store
 ~~~
 
 **Group B acceptance:** spec 17 rows 1, 2, 3, 12 and 16 green, and contracts 9.8's 45 bytes reproduced
-byte for byte. That is spec 20 phase 1's acceptance in full.
+byte for byte.
 
 ---
 
-## Group C: the container, the pages and the commit (spec 4, 5 and 6)
+## Group C: the container (spec 4)
 
-### Task 10: Container codec version 2 and the version 1 reader (large, gate: milestone 1.1)
+### Task 8: Container codec version 2 and the version 1 reader (large, gate: milestone 1.1)
 
 Spec 4.4 and 4.5. **LIFT FROM THE SPIKE:** `KhaozEngine.Benchmarks/Items/ContainerPageCodec.cs` (210
 lines) already writes this format byte for byte with the redundant `FirstSlot` check and the trailing-byte
@@ -1094,7 +952,7 @@ types public with the spec 2.2 names.
 
 **Interfaces:**
 
-- Consumes: `ContentVarint`, task 5's payload codec, task 7's wrapper, `ItemSlot`
+- Consumes: `ContentVarint`, task 4's payload codec, task 6's wrapper, `ItemSlot`
 - Produces: `ItemContainerPageCodec` (`Encode`, `TryDecode`, `Validate`, `Version`), `PageHeader`,
   `PageEntry`, `PageSlotInput`, and `ItemContainerCodec.Version` as a `public const ushort` at 2
 
@@ -1202,653 +1060,53 @@ git add KhaozEngine.ItemInstances/ItemContainerPageCodec.cs KhaozEngine.ItemInst
 git commit -m "items(codec): container codec version 2 reads version 1"
 ~~~
 
----
-
-### Task 11: `ItemContainerPage`, `PagedItemContainer` and the merge rule (large, gate: milestone 1.1)
-
-Spec 4.6, 5.2, 5.3 and 5.7. Write fresh rather than lifting: the spike has no paged container at all, only
-a page codec.
-
-**Files:**
-
-- Create: `KhaozEngine.ItemInstances/ItemContainerPage.cs`
-- Create: `KhaozEngine.ItemInstances/PagedItemContainer.cs`
-- Create: `KhaozEngine.ItemInstances/PagedItemContainer.Capacity.cs`
-- Create: `KhaozEngine.ItemInstances/InstanceStacking.cs`
-- Create: `KhaozEngine.ItemInstances.Tests/Pages/PagedItemContainerTests.cs`
-- Create: `KhaozEngine.ItemInstances.Tests/Pages/InstanceStackingTests.cs`
-
-**Interfaces:**
-
-- Consumes: `ItemSlot`, task 10's page codec, `ItemRow` from `KhaozEngine.Catalog` for the definition's
-  durability, socket and stack-cap facts
-- Produces: `ContainerPageSlots`, `ItemContainerPage`, `PagedItemContainer`, `InstanceStacking.CanMerge`
-
-- [ ] **Step 1: Write the stacking facts, because rule 4 is the whole of "their properties are identical".**
-
-~~~csharp
-[Fact] public void Two_entries_merge_only_when_all_four_of_4_6_hold()
-[Fact] public void Equal_payload_bytes_merge_and_one_differing_byte_does_not()
-[Fact] public void An_entry_carrying_kind_5_or_132_never_merges_whatever_the_predicate_says()
-[Fact] public void A_quarantined_entry_never_merges()
-[Fact] public void The_predicate_is_consulted_per_operation_and_never_cached()
-[Fact] public void A_merge_keeps_the_numerically_LOWER_instance_id_so_a_replay_in_either_order_agrees()
-[Fact] public void A_merge_saturates_at_int_MaxValue_exactly_as_Add_does_today()
-[Fact] public void Two_items_differing_only_in_an_UNKNOWN_field_do_not_merge()
-~~~
-
-  Rule 4 is a `memcmp` rather than a structural comparison ONLY because the payload is canonical. A
-  reviewer who sees a decode inside `CanMerge` should reject it.
-
-- [ ] **Step 2: Write the page and capacity facts, which are Ruinborne's model restated (spec 5.7).**
-
-~~~csharp
-[Fact] public void A_grant_that_opens_a_NEW_slot_is_refused_at_or_above_capacity()
-[Fact] public void A_grant_that_merges_entirely_into_existing_stacks_is_allowed_at_any_occupancy()
-[Fact] public void Lowering_capacity_below_occupancy_is_legal_and_trims_nothing()
-[Fact] public void Capacity_is_never_read_from_content()
-[Fact] public void A_hole_survives_a_load_a_save_and_a_remap_and_costs_zero_bytes()
-[Fact] public void Reading_a_page_never_dirties_it()
-[Fact] public void Slot_743_is_page_7_slot_43()
-~~~
-
-- [ ] **Step 3: Implement the geometry.** `public const int ContainerPageSlots = 100`. One hundred rather
-  than 128, deliberately: the power of two buys a shift a compiler produces anyway and costs legibility
-  everywhere a human reads a page number. Contracts 4.5's power-of-two rule binds CONTENT chunk sizes and
-  says nothing about container pages. Spec 21 records 100 as expensive to change, so it is a const with a
-  doc comment and not a constructor parameter.
-- [ ] **Step 4: Implement `ItemContainerPage` with exactly two things that dirty it**, spec 5.3: an
-  operation that changed a slot, and a remap that changed an id. Nothing else, and in particular READING
-  one never does. It holds the decoded slots, the stamp, the dirty flag and the page index.
-- [ ] **Step 5: Implement `PagedItemContainer` splitting the two concepts `ItemContainer` conflates.**
-  SLOT SPACE is the page geometry, fixed at construction, `PageCount * ContainerPageSlots`, an address
-  space that never shrinks. CAPACITY is a separate mutable integer, the number of OCCUPIED slots a grant
-  may leave behind, consulted by `Add` and by nothing else. Ruinborne's four rules of spec 5.7 are the
-  behaviour, and rule 3 is the surprising one: lowering capacity below occupancy is LEGAL, the container
-  loads intact, is never trimmed, and is refused new slots until occupancy falls. That is the
-  generalisation of contracts 8.2 kind 4's over-cap stack policy.
-- [ ] **Step 6: Keep entries SPARSE and never compact.** A hole is the absence of an entry and costs zero
-  bytes, exactly as version 1's sparse form already did. The dense renumber Ruinborne's repair explicitly
-  refuses to do is not something this container can do by accident, and a test pins that.
-- [ ] **Step 7: Expose the dirty set**, because task 15's commit builder asks the container for it and
-  folds those pages into whatever commit comes next (spec 5.6). That is what makes the lazy rewrite cost
-  nothing: it never causes a commit, it only joins one.
-- [ ] **Step 8: Run green and commit.**
-
-~~~bash
-dotnet test KhaozEngine.ItemInstances.Tests/KhaozEngine.ItemInstances.Tests.csproj -c Release
-git add KhaozEngine.ItemInstances/ItemContainerPage.cs KhaozEngine.ItemInstances/PagedItemContainer.cs KhaozEngine.ItemInstances/PagedItemContainer.Capacity.cs KhaozEngine.ItemInstances/InstanceStacking.cs KhaozEngine.ItemInstances.Tests/Pages
-git commit -m "iteminstances(pages): paged containers, the capacity gate and byte-equal stacking"
-~~~
+**Group C acceptance:** spec 17 row 4 green. Together with group B that is spec 20 phase 1's acceptance
+in full: rows 1, 2, 3, 4, 12 and 16 green, and the forty-five byte example reproduced byte for byte.
 
 ---
 
-### Task 12: `InstanceValidator`, its thirteen checks, the counter and the log line (large, gate: milestone 1.1)
+## Group D: documentation and release
 
-Spec 12.2, 12.3, 12.6 and 12.7 over contracts 10.1, 10.2 and 10.4. Write fresh: the spike has no
-validator. `KhaozEngine.Content/JsonSchemaValidator.cs:11-101` is the run-to-the-end sweep shape to copy.
-
-**Files:**
-
-- Create: `KhaozEngine.ItemInstances/InstanceValidator.cs`
-- Create: `KhaozEngine.ItemInstances/InstanceValidator.References.cs`
-- Create: `KhaozEngine.ItemInstances/InstanceValidationReport.cs`
-- Create: `KhaozEngine.ItemInstances/InstanceValidationStrings.cs`
-- Create: `KhaozEngine.ItemInstances.Tests/Validation/InstanceValidatorTests.cs`
-
-**Interfaces:**
-
-- Consumes: `IContentSnapshot` (`TryGetRow`, `IsRetired`), task 4's registry, task 5's field walk
-- Produces: `InstanceValidator.Validate(page, snapshot)`, `InstanceValidationReport`,
-  `InstanceValidationFinding`, `InstanceValidationOutcome`
-
-- [ ] **Step 1: Write one fact per check, thirteen of them**, naming the reason token spec 12.2 assigns.
-  Checks 1 to 5, 9, 10 and 11 are STRUCTURAL and quarantine. Checks 6, 7 and 8 are DRIFT and also
-  quarantine. Check 12 is POLICY and is TOLERATED. Check 13 is POLICY and produces `Retired`.
-  The two that a reader will get wrong without a test are 12 and 13, so write those first:
-
-~~~csharp
-[Fact] public void Check_12_an_over_cap_count_is_counted_and_changes_nothing()
-[Fact] public void Check_13_a_RETIRED_definition_is_not_a_quarantine_and_the_page_still_loads()
-[Fact] public void A_structural_failure_quarantines_that_ENTRY_and_leaves_the_rest_of_the_page_alone()
-[Fact] public void An_unresolved_content_reference_quarantines_because_no_rule_covered_it()
-[Fact] public void The_validator_accumulates_and_never_stops_at_the_first_finding()
-[Fact] public void The_validator_never_throws_never_logs_never_counts_and_never_mutates_the_page()
-~~~
-
-- [ ] **Step 2: DERIVE checks 6 and 7 from the registry's `InstanceReferenceTarget` descriptors**, in the
-  same recursive order the remap pass of task 13 walks, over the same nested payloads. Spec 12.2 says why:
-  an earlier draft wrote check 7 as a closed enumeration and it already omitted kind 7's material ids and
-  a socket's `ContainedDefinitionId`, and it would have omitted every game kind at or above 1,024 forever.
-  A kind cannot be remapped-but-not-validated or validated-but-not-remapped. Check 8 stays hand written,
-  because a tier ordinal is not a content id: it is a key INTO the row check 7 already resolved.
-- [ ] **Step 3: Keep it PURE.** No store reads, no ambient state, no logging, no counter, no throw for a
-  content reason. A throw from it is a bug in the validator. The caller logs, counts and quarantines.
-
-- [ ] **Step 4: Ship the three placeholder `StringId`s and no translation.** `khaoz.item.quarantined`,
-  `khaoz.item.retired`, `khaoz.item.unidentified` (spec 12.3). All three are player facing, so none is a
-  literal, which is AGENTS.md's founding rule. They are prefixed `khaoz.` deliberately: they are ENGINE
-  strings rather than content rows, so contracts 12.1's derived `<type key>.<content key>.<field>` grammar
-  does not name them and the prefix keeps them out of its space. They resolve through
-  `ContentStringCatalog` on the `SafeFormat` path, so a translator's malformed template falls back to the
-  unformatted template rather than throwing inside the frame loop. A reason code and a stamped version are
-  NOT player text and are never formatted into these strings.
-- [ ] **Step 5: Name the counter and the log line, and invent no others.** Counter
-  `khaoz.content.quarantined_records`, dimensioned by content type id and reason code. ONE log line per
-  PAGE under category `ContentValidation` at Warning, naming the reason code, the stamped version, the
-  active version and the owning stream key, and NEVER the payload bytes or a raw account id. One per page
-  rather than per entry, because a page that fails wholesale would otherwise emit a hundred identical
-  lines, which is how an operator learns to filter the category out. The COUNTER is still incremented per
-  record, because a counter is what a dashboard reads and a log line is what a human reads. Add a fact
-  asserting a wholesale page failure emits exactly one line and a hundred counter increments.
-- [ ] **Step 6: Implement kind 128's identification mechanic on the registered bit.** `RevealedMask` bit N
-  is the bit a kind was REGISTERED with, never its position in the ascending list of gated kinds (spec
-  12.7 and spec 21's last row). Add a fact that registering a NEW gated engine kind at, say, 9 does NOT
-  move bits 0 to 3, which is the exact hazard the registered constant exists to prevent.
-- [ ] **Step 7: Add the unidentified stacking fact and its accepted leak.** An unidentified item still
-  STACKS by byte equality, and two unidentified items with different hidden affixes have different bytes,
-  so they do not merge. That leaks one bit: a player who tries to stack two unidentified items learns
-  whether they are identical. The leak is inherent to stacking by bytes and spec 15.8 records it as
-  accepted. Pin the behaviour so nobody "fixes" it later without reading that section.
-- [ ] **Step 8: Run green and commit.**
-
-~~~bash
-dotnet test KhaozEngine.ItemInstances.Tests/KhaozEngine.ItemInstances.Tests.csproj -c Release
-git add KhaozEngine.ItemInstances/InstanceValidator.cs KhaozEngine.ItemInstances/InstanceValidator.References.cs KhaozEngine.ItemInstances/InstanceValidationReport.cs KhaozEngine.ItemInstances/InstanceValidationStrings.cs KhaozEngine.ItemInstances.Tests/Validation
-git commit -m "iteminstances(validation): thirteen checks, three outcomes, one counter"
-~~~
-
----
-
-### Task 13: The registry-derived remap pass and its idempotence (large, gate: milestone 1.1)
-
-Spec 5.5 step 2 over contracts 8.1 through 8.6. **LIFT FROM THE SPIKE:**
-`KhaozEngine.Benchmarks/Items/RemapRuleSet.cs` (269 lines) has the whole shape: the applicable-rule
-prefilter keyed on `(typeId, fromId)`, the scan that never writes when nothing matched, the innermost-first
-re-encode, and the affix re-sort. Two things change on the way in. Its `RemapRule` is REPLACED by Scope A's
-`RemapRule` and `RemapRuleSet` from `KhaozEngine.Catalog`, and its hard-coded `ScanPayload` switch is
-REPLACED by a walk of the registry's reference targets, for the same reason task 5 step 2 gives.
-
-**Files:**
-
-- Create: `KhaozEngine.ItemInstances/InstanceRemapPass.cs`
-- Create: `KhaozEngine.ItemInstances/InstanceRemapPass.Rewrite.cs`
-- Create: `KhaozEngine.ItemInstances.Tests/Remap/InstanceRemapPassTests.cs`
-
-**Interfaces:**
-
-- Consumes: `RemapRule`, `RemapRuleKind`, `RemapRuleSet` from `KhaozEngine.Catalog`, task 4's registry,
-  task 10's page codec
-- Produces: `InstanceRemapPass.Apply(page, rules, pageStamp, destination)` returning what changed
-
-- [ ] **Step 1: Write the idempotence fact first, which is spec 17 row 8.** Applying the full ordered rule
-  set TWICE produces the same bytes as applying it once (contracts 8.3). That is what makes a crash between
-  apply and commit safe, and it is why the lazy rewrite is safe at all.
-- [ ] **Step 2: Write the depth and width facts, which are the two an implementer gets wrong.**
-
-~~~csharp
-[Fact] public void A_gem_socketed_into_a_sword_is_rewritten_by_the_same_rule_that_rewrites_it_in_a_bag()
-[Fact] public void A_ReplacedBy_that_WIDENS_a_varint_recomputes_the_two_lengths_above_it()
-[Fact] public void A_rewrite_restores_canonical_affix_order_when_a_replacement_moves_a_mod_id()
-[Fact] public void A_rule_matching_nothing_is_a_SCAN_and_writes_zero_bytes()
-[Fact] public void A_rule_whose_IntroducedIn_is_at_or_below_the_page_stamp_does_not_apply()
-[Fact] public void Rules_apply_in_Sequence_order_in_ONE_pass()
-[Fact] public void A_page_stamped_NEWER_than_the_active_version_is_not_an_error_and_is_not_lowered()
-~~~
-
-  The second is the whole reason the pass RE-ENCODES rather than patching bytes in place: a nested payload
-  carrying mod 91 is one byte shorter than the same payload carrying mod 4210, so a hit recomputes,
-  innermost first, the nested payload's bytes, then the socket entry's `NestedLength`, then kind 132's
-  `Length`, then the entry's `PayloadLength` in the page.
-
-- [ ] **Step 3: Walk every id the REGISTRY's reference targets name, never a list in a document.** The
-  entry's own definition id, every id inside every registered field, and, through kind 132's
-  `NestedPayload` slot, every id inside every socket's nested payload along with that socket's own
-  `ContainedDefinitionId`. Nothing is skipped for being nested. That is the property that stops an item
-  surviving three publishes invisibly and then quarantining on the day a player unsockets it.
-- [ ] **Step 4: Mark the page DIRTY and set its IN-MEMORY stamp to the active version when anything
-  changed, and do NOT write it.** The rewrite is lazy and rides the next ordinary commit (spec 5.5 step 3,
-  contracts 10.3). Eagerly rewriting at boot is a write storm proportional to the whole player base
-  arriving exactly when the server is coldest. The cost of lazy is that a remapped page can be lost on a
-  crash, which means it is remapped again on the next load, and that is safe because the set is idempotent.
-- [ ] **Step 5: Rely on contracts 8.3's publish-side guarantee rather than re-deriving it.** No rule's
-  `ToId` is any earlier rule's `FromId` for the same type, so ONE pass is enough. Do not add a fixed-point
-  loop "just in case": it would hide a publish validator bug rather than surface it. Add a defensive fact
-  that a rule set violating that shape is REFUSED by `RemapRuleSet` before the pass runs.
-- [ ] **Step 6: Run green and commit.**
-
-~~~bash
-dotnet test KhaozEngine.ItemInstances.Tests/KhaozEngine.ItemInstances.Tests.csproj -c Release --filter FullyQualifiedName~Remap
-git add KhaozEngine.ItemInstances/InstanceRemapPass.cs KhaozEngine.ItemInstances/InstanceRemapPass.Rewrite.cs KhaozEngine.ItemInstances.Tests/Remap
-git commit -m "iteminstances(remap): the registry-derived pass and its idempotence"
-~~~
-
----
-
-### Task 14: `KhaozEngine.ItemInstances.Journal` and the container load path (medium, gate: milestone 1.1)
-
-Spec 2.1, 5.2 and 5.5. The package exists for a LAYERING reason rather than a size one: composing a
-`JournalCommit` needs `KhaozEngine.WorldStore`, and putting that inside `ItemInstances` would drag a
-`Server` package into `Foundation` and therefore into every client build.
-
-**Files:**
-
-- Create: `KhaozEngine.ItemInstances.Journal/KhaozEngine.ItemInstances.Journal.csproj`
-- Create: `KhaozEngine.ItemInstances.Journal/README.md`
-- Create: `KhaozEngine.ItemInstances.Journal/ContainerSectionNames.cs`
-- Create: `KhaozEngine.ItemInstances.Journal/ContainerLoad.cs`
-- Create: `KhaozEngine.ItemInstances.Journal/ContainerLoadResult.cs`
-- Create: `KhaozEngine.ItemInstances.Journal/ItemInstanceEvents.cs`
-- Create: `KhaozEngine.Server.Tests/ItemInstances/ContainerLoadTests.cs`
-- Modify: `KhaozEngine.slnx`, `KhaozEngine.Server/KhaozEngine.Server.csproj`,
-  `KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj`, `KhaozEngine.Tests/ArchitectureTests.cs`
-
-**Interfaces:**
-
-- Consumes: `KhaozEngine.ItemInstances`, `KhaozEngine.WorldStore`
-- Produces: `ContainerSectionNames` (`Format`, `Parse`), `ContainerLoad.Load`, `ContainerLoadResult`,
-  `ItemInstanceEvents`
-
-- [ ] **Step 1: Write the section naming facts.** `<container>/p<NN>`, zero padded to two digits, unpadded
-  above page 99 (spec 5.2). `bank/p00` through `bank/p09` for a 1,000 slot bank, `bag/p00`, `worn/p00`.
-  `JournalProjectionWrite`'s section name is an identifier capped at 128 characters over
-  `[A-Za-z0-9._:/-]` (`JournalProjectionWrite.cs:13`, `JournalLimits.cs:86-98`), and the slash is in that
-  set, so nothing needs escaping. `Parse` is the ONE place the name is taken apart, and a round-trip
-  `[Theory]` over pages 0, 9, 10, 99, 100 and 563 pins it.
-- [ ] **Step 2: Write the load facts, which are spec 5.5's five steps as five assertions.**
-
-~~~csharp
-[Fact] public void A_page_that_fails_at_the_PAGE_level_quarantines_as_a_UNIT()
-[Fact] public void Rules_apply_BEFORE_the_validator_runs_so_a_drift_finding_means_no_rule_covered_it()
-[Fact] public void A_rule_that_changed_something_marks_the_page_dirty_and_does_not_write_it()
-[Fact] public void A_failed_entry_check_quarantines_that_entry_and_leaves_the_page_loading()
-[Fact] public void Load_reads_no_store_touches_no_ambient_state_and_makes_one_pass()
-~~~
-
-  The ORDER in the second fact is the part that is easy to get backwards and it changes the meaning of
-  every drift finding, so it is asserted rather than assumed.
-
-- [ ] **Step 3: Implement the load signature spec 5.5 gives**, taking its whole world as arguments:
-
-~~~csharp
-public static ContainerLoadResult Load(
-    IReadOnlyList<JournalProjectionSection> sections,
-    IContentSnapshot snapshot);
-~~~
-
-  It returns the decoded pages, the accumulated findings and the dirty set. No store reads, no ambient
-  state, following the one-validator shape contracts 10.4 sets for the content side.
-
-- [ ] **Step 4: Check the page against the SECTION it arrived in**, using `ContainerSectionNames.Parse`
-  plus the page header's own `PageIndex`. That is spec 13 row 10 and it is otherwise silent.
-- [ ] **Step 5: Wire the package in.** Add to `KhaozEngine.slnx`, to the `Server` umbrella's
-  `ProjectReference` set, and update the locked umbrella membership in `ArchitectureTests`. Add a
-  `ProjectReference` from `KhaozEngine.Server.Tests`, which already references `WorldStore` and both
-  providers, which is exactly why spec 2.3 puts these tests there rather than in a new project.
-- [ ] **Step 6: Write the package README and its README catalog row IN THIS TASK**, self-contained,
-  naming the layering reason the package exists. Same guard reason as task 4 step 8: a packable package
-  with no catalog row reddens `scripts/check-doc-versions.sh` from here until task 19.
-- [ ] **Step 7: Run green and commit.**
-
-~~~bash
-dotnet test KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj -c Release --filter FullyQualifiedName~ItemInstances
-git add KhaozEngine.ItemInstances.Journal KhaozEngine.Server.Tests/ItemInstances KhaozEngine.slnx KhaozEngine.Server/KhaozEngine.Server.csproj KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj KhaozEngine.Tests/ArchitectureTests.cs
-git commit -m "iteminstances(journal): page section names and the container load path"
-~~~
-
----
-
-### Task 15: `ContainerCommitBuilder`, the tick-bounded batch and its crash facts (large, gate: milestone 1.1)
-
-Spec 6.4, 6.5 and 6.6. Option A of spec 6.2's weighed table, with the batch window fixed at ONE SERVER
-TICK. **LIFT THE COMMIT SHAPES FROM THE SPIKE:** `KhaozEngine.Benchmarks/Items/ItemsCommitFactory.cs`
-already builds the exact `JournalCommit` this task emits, with one identity, one event per operation and
-one projection write per page, and `ItemsJournalMeasurements.cs` drives it against a real SQLite store.
-
-**This task changes NOTHING in `KhaozEngine.WorldStore`.** No change to either provider schema and no
-change to the store conformance suite (spec 2.4). That is a RESULT rather than an accident: option B of
-spec 6.2 would have needed all three and spec 6.3 prices it exactly. If an implementer finds themselves
-editing `JournalCommit`, `JournalLimits` or a provider, STOP: the design has drifted to option B and the
-owner has to choose it knowingly.
-
-**Files:**
-
-- Create: `KhaozEngine.ItemInstances.Journal/ContainerCommitBuilder.cs`
-- Create: `KhaozEngine.ItemInstances.Journal/ContainerBatchWindow.cs`
-- Create: `KhaozEngine.ItemInstances.Journal/ContainerOperation.cs`
-- Create: `KhaozEngine.Server.Tests/ItemInstances/ContainerCommitBuilderTests.cs`
-
-**Interfaces:**
-
-- Consumes: `JournalCommit`, `JournalStreamMutation`, `JournalEvent`, `JournalProjectionWrite`,
-  `JournalOperationIdentity`, `JournalLimits`, task 11's dirty set
-- Produces: `ContainerCommitBuilder.Open`, `Apply`, `Close`
-
-- [ ] **Step 1: Write the window facts, which are spec 6.4's five closers.** The batch closes on the FIRST
-  of: the tick boundary, an operation that would touch a SECOND stream, an operation that sets
-  `PresentAtCommit`, a CLIENT originated operation, or 128 events, 64 projection writes or the 8 MiB
-  aggregate cap (`JournalLimits.cs:10, 11, 19`). One fact each, and one asserting the FIRST of them wins.
-- [ ] **Step 2: Write the identity facts, which are spec 6.5 and the half that is easy to get wrong.**
-
-~~~csharp
-[Fact] public void A_batch_never_merges_two_CLIENT_originated_operations()
-[Fact] public void A_SERVER_minted_batchs_intent_is_the_canonical_ORDERED_operation_list()
-[Fact] public void A_CLIENT_headed_batchs_intent_is_the_clients_own_operation_ALONE()
-[Fact] public void A_client_headed_resubmit_omitting_the_server_work_still_resolves_Replayed()
-[Fact] public void A_client_resubmit_with_different_parameters_is_OperationConflict()
-~~~
-
-  The fourth is the load bearing one. If a client-headed batch's intent were the whole ordered list, the
-  resubmit would hash differently, `ResolveOperationAsync` would answer `OperationConflict`, and the
-  consumer would treat a COMMITTED withdraw as a failed one: `Withdraw` rolls the admitted view back and
-  supersedes everything queued behind it transitively (`JournalAdmittedState.cs:117-147`), the player is
-  told the action failed, and a re-click applies it twice.
-
-- [ ] **Step 3: Write the crash and replay facts, which are spec 6.6 case by case**, against a real SQLite
-  store the way `MutationJournalStoreConformance` already does:
-
-~~~csharp
-[Fact] public void Crash_BEFORE_admission_leaves_nothing_and_a_client_resubmit_resolves_NotFound()
-[Fact] public void Crash_AFTER_admission_before_commit_reverts_the_pages_and_SKIPS_the_allocated_ids()
-[Fact] public void Crash_AFTER_commit_replays_to_the_ORIGINAL_receipt_and_result()
-[Fact] public void A_terminal_store_failure_attaches_a_correction_whose_section_keys_ARE_the_pages_to_resync()
-[Fact] public void A_transient_retry_corrects_nothing_and_the_batch_stays_admitted()
-[Fact] public void Two_moves_of_one_stack_across_containers_leave_exactly_one_winner()
-~~~
-
-  The last is spec 17 row 14. The fourth needs no new journal shape: because a batch writes whole pages,
-  the section keys in `JournalCorrection` are exactly the pages the consumer must resync.
-
-- [ ] **Step 4: Implement the API spec 6.4 gives.**
-
-~~~csharp
-var batch = ContainerCommitBuilder.Open(streamKey, actionKind, scope, containers);
-batch.Apply(operation);          // repeated, against an in-memory working copy
-JournalCommit commit = batch.Close(identityFactory);
-~~~
-
-  `Close` emits ONE `JournalOperationIdentity`, ONE `JournalEvent` per logical operation in order, ONE
-  `JournalProjectionWrite` per touched page carrying the page's FINAL bytes plus the pages the container's
-  dirty set names, and ONE result. The audit trail is not collapsed, only the projection is.
-
-- [ ] **Step 5: Encode the server-minted intent canonically.** `[Count: varint][ per operation: [Kind:
-  varint][Parameters] ]`, little endian, minimal varints, contracts 15. Canonical because the journal
-  hashes the intent to detect a conflicting replay (`JournalValidation.Hash` is `SHA256.HashData`,
-  `JournalLimits.cs:135`), so two encodings of one batch must produce one byte sequence.
-- [ ] **Step 6: Apply the page rule of spec 5.6 and nothing wider:** the pages holding the slots the
-  operation changed, and no others. A move across two pages of one container is ONE commit with TWO
-  projection writes on the SAME stream, which `JournalCommit` already allows (`JournalCommit.cs:37`,
-  `:125-138`): one stream, two sections, one event. Atomicity is the database transaction's.
-- [ ] **Step 7: Measure budget 4 here rather than in task 18.** Twenty crafts in one held action is at most
-  20 KB and ONE commit, summed over `JournalCommit.OwnedByteCount`. Assert the commit COUNT in the test
-  and leave the byte number to the benchmark, so a structural regression is a red test rather than a
-  slower number nobody reads.
-- [ ] **Step 8: Run green and commit.**
-
-~~~bash
-dotnet test KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj -c Release --filter FullyQualifiedName~ContainerCommitBuilder
-git add KhaozEngine.ItemInstances.Journal KhaozEngine.Server.Tests/ItemInstances
-git commit -m "iteminstances(journal): one commit per tick from a batch of page operations"
-~~~
-
-**Group C acceptance:** spec 17 rows 4, 8 and 14 green, and budget 4 measured at ONE commit.
-
----
-
-## Group D: the wire (spec 7)
-
-### Task 16: `TileGroundItemInstance` and the `SpawnGroundItem` overload (medium, gate: milestone 1.1)
-
-Spec 7.2 and 7.3. A SIBLING component rather than a widened `TileGroundItem`, and the deciding row of spec
-7.2's table is not a preference: `WriteGroundItem` writes exactly twenty bytes with no declared length
-(`TileProtocol.Components.cs:321-344`), so a reader built against today's protocol consumes twenty bytes
-and then reads the next component's type id. Adding a field makes every already-shipped client misparse the
-rest of the entity. A sibling is a NEW extension type id, and `SnapshotWriter` length prefixes extension
-components precisely so an older client skips an id it never registered (`SnapshotWriter.cs:11-13`).
-
-**Files:**
-
-- Create: `KhaozEngine.TileWorld.Netcode/TileGroundItemInstance.cs`
-- Modify: `KhaozEngine.TileWorld.Netcode/TileProtocol.Components.cs`
-- Modify: `KhaozEngine.TileWorld.Netcode/TileWorldServer.GroundItems.cs`
-- Create: `KhaozEngine.TileWorld.Netcode.Tests/TileGroundItemInstanceTests.cs`
-
-**Interfaces:**
-
-- Consumes: `ReplicationRegistry.FirstExtensionTypeId`, `SnapshotWriter`
-- Produces: `TileGroundItemInstance`, `TileGroundItemInstanceTypeId`, one `SpawnGroundItem` overload
-
-- [ ] **Step 1: Write the failing tests, including the engine half of spec 17 row 11.**
-
-~~~csharp
-[Fact] public void A_drop_with_no_instance_seats_NO_sibling_component_and_costs_no_wire_bytes()
-[Fact] public void A_drop_with_an_instance_round_trips_the_id_and_the_payload()
-[Fact] public void An_OLD_client_registry_skips_the_sibling_and_still_parses_the_rest_of_the_entity()
-[Fact] public void A_declared_length_longer_than_the_frame_answers_a_ZERO_length_payload_not_a_throw()
-[Fact] public void A_declared_length_above_MaxInstancePayloadBytes_answers_a_zero_length_payload()
-[Fact] public void SpawnGroundItem_throws_on_a_payload_above_the_cap_and_on_bytes_with_instance_id_0()
-[Fact] public void The_existing_SpawnGroundItem_overload_still_compiles_and_seats_instance_id_0()
-[Fact] public void The_instance_id_survives_a_drop_and_a_claim_by_a_stranger_and_by_the_dropper()
-~~~
-
-  The third is the compatibility claim the whole design choice rests on, so it is a test rather than a
-  paragraph: build a registry WITHOUT the sibling registration, write a snapshot with it, and read back.
-
-- [ ] **Step 2: Implement the component exactly as spec 7.2 writes it**, carrying NO dependency on
-  `KhaozEngine.ItemInstances`. It holds an opaque `long` and opaque bytes, exactly as `TileGroundItem`
-  holds an opaque `int`. The tile netcode still does not know what an item is.
-
-~~~csharp
-public struct TileGroundItemInstance : IComponent
-{
-    public long InstanceId;     // 0 is never seated: a drop with no instance carries no component
-    public byte[] Payload;      // the PUBLIC view, see spec 7.4. Never mutated in place
-}
-~~~
-
-- [ ] **Step 3: Register it at `FirstExtensionTypeId + 8` on the default channels.** The tile netcode owns
-  ids up to `FirstExtensionTypeId + 15` (`TileProtocol.Components.cs`), so 8 is inside the block and does
-  not eat the game's range. The write delegate writes the id as an unsigned varint and the payload length
-  prefixed. The read delegate is TOTAL: a declared length longer than the frame, or longer than
-  `MaxInstancePayloadBytes`, answers a zero length payload rather than throwing, which is the file's own
-  rule because the bytes come from a remote peer (`TileProtocol.Frames.cs:27-34`).
-- [ ] **Step 4: Do NOT register it `OwnerOnly`.** `ReplicationChannels.OwnerOnly` scopes a component to
-  the client whose own net id equals the ENTITY's net id (`ReplicationChannels.cs:49-53`), and a drop's
-  entity net id is never a viewer's, so registering it that way hides it from everyone including the
-  person who dropped it. Spec 7.4 says so. Put that sentence in the registration comment, because it is
-  the obvious-looking wrong answer.
-- [ ] **Step 5: Add the ONE overload and delegate the existing one to it**, so no existing call site
-  changes (spec 7.3):
-
-~~~csharp
-public long SpawnGroundItem(TileCoord at, int itemId, int count, long ttlTicks,
-                            long instanceId, ReadOnlySpan<byte> payload);
-~~~
-
-  It throws on a payload above `MaxInstancePayloadBytes` and on a non-empty payload with instance id 0,
-  because both are caller bugs in the same class as the existing non-positive count throw
-  (`TileWorldServer.GroundItems.cs:64-69`). The engine does not DECODE the payload: the bytes came from
-  the server's own container and the server is the only thing that ever writes them (spec 15.3).
-- [ ] **Step 6: Take the cap as a constant local to `TileWorld.Netcode`**, mirroring
-  `ItemSlot.MaxPayloadBytes` with a doc comment naming contracts 9.6, because this package has no items
-  dependency and must not gain one. Add a fact in `KhaozEngine.Server.Tests`, which sees both, asserting
-  the two constants are equal.
-- [ ] **Step 7: Run green and commit.**
-
-~~~bash
-dotnet test KhaozEngine.TileWorld.Netcode.Tests/KhaozEngine.TileWorld.Netcode.Tests.csproj -c Release
-git add KhaozEngine.TileWorld.Netcode/TileGroundItemInstance.cs KhaozEngine.TileWorld.Netcode/TileProtocol.Components.cs KhaozEngine.TileWorld.Netcode/TileWorldServer.GroundItems.cs KhaozEngine.TileWorld.Netcode.Tests/TileGroundItemInstanceTests.cs
-git commit -m "tileworld(netcode): a sibling ground component carrying opaque instance bytes"
-~~~
-
----
-
-### Task 17: The page delta, its one-frame bound and the resync request (large, gate: milestone 1.1)
-
-Spec 7.5 and 7.6. **LIFT FROM THE SPIKE:** `KhaozEngine.Benchmarks/Items/PageWire.cs` has the delta
-builder that MEASURES as it writes and answers -1 when the next change would not fit, which is the whole
-mechanism.
-
-**Where the delta builder lives, because the spec does not say and the layering forces it.** Spec 2.2 says
-`KhaozEngine.TileWorld.Netcode` gains NO items dependency, and the delta body is "the entry body of 4.4
-without its Slot field", which only the page codec can write. **The plan's choice:** the delta ENCODER and
-its budget arithmetic live in `KhaozEngine.ItemInstances` as `ContainerPageDelta`, and
-`KhaozEngine.TileWorld.Netcode` carries only the item-agnostic fragmenter from task 3. The SERVER that
-owns both composes them. Flag this to the spec owner in the task report.
-
-**Files:**
-
-- Create: `KhaozEngine.ItemInstances/ContainerPageDelta.cs`
-- Create: `KhaozEngine.ItemInstances/ContainerPageSyncRequest.cs`
-- Create: `KhaozEngine.ItemInstances.Tests/Pages/ContainerPageDeltaTests.cs`
-- Create: `KhaozEngine.TileWorld.Netcode.Tests/PageSyncFrameBoundTests.cs`
-
-**Interfaces:**
-
-- Consumes: task 10's entry body writer, task 3's fragmenter, `TileProtocol.MaxGameMessageBytes`
-- Produces: `ContainerPageDelta.TryBuild`, `ContainerPageSyncRequest`
-
-- [ ] **Step 1: Write the frame-bound facts, which are spec 17 row 17 exactly.**
-
-~~~csharp
-[Fact] public void Fourteen_changed_rare_slots_produce_ONE_delta_frame()
-[Fact] public void Fifteen_changed_rare_slots_produce_a_FRAGMENTED_page_send()
-[Fact] public void A_100_slot_reorder_produces_a_fragmented_page_send()
-[Fact] public void No_path_encodes_a_game_message_above_MaxGameMessageBytes()
-[Fact] public void A_cold_open_of_a_full_rare_page_is_at_most_8_KB_in_at_most_8_frames()
-[Fact] public void A_single_craft_costs_73_bytes_in_one_frame()
-~~~
-
-  The last two are budgets 7 and 8. The fourth is the one that protects the tick: `EncodeGameMessage`
-  THROWS above the cap (`TileProtocol.Frames.cs:173-174`), the delta is sent from inside the per-viewer
-  serve loop, and nothing in `TileWorld.Netcode` catches around it. The combat path already paid for this
-  exact shape and its comment says the throw "took the tick down for every player on the server"
-  (`TileWorldServer.Tick.cs:236-247`).
-
-- [ ] **Step 2: Implement the delta message exactly as spec 7.5 writes it.**
-
-~~~
-[ContainerId: byte][PageIndex: byte][ChangedCount: byte]
-[ per change: [Slot: varint uint16] then either
-              [0x00] for "now empty"
-              or [0x01] then the entry body of 4.4 without its Slot field ]
-~~~
-
-- [ ] **Step 3: MEASURE as you write and ABANDON rather than truncate.** The budget is
-  `MaxGameMessageBytes` less the four byte envelope (`TileProtocol.Frames.cs:77`) less the delta's own
-  three byte header, so 1,017 bytes of changes. When the next change would not fit, the builder abandons
-  the delta and the caller sends the WHOLE PAGE through the fragmenter. **Not a second delta frame:** two
-  deltas for one page would have to be applied in order by a client that may have missed the first, which
-  is the reassembly problem the fragmenter already solves once.
-- [ ] **Step 4: Implement the resync request, which is the ONE new client-to-server message and carries
-  two bytes.** `[ContainerId: byte][PageIndex: byte]`. The server rate limits it at one page per client
-  per tick, which bounds the worst case a malicious client can ask for at one page of fragments per tick,
-  the same shape the snapshot already costs. That rate limit is a documented server rule rather than
-  engine code here, so write it into the type's XML doc and into the package README.
-- [ ] **Step 5: State the client rules the delta leans on, in the XML doc.** A client REFUSES a delta for a
-  page it has not fully received and asks for a full page sync instead, so a delta can never be applied to
-  bytes the client guessed at. On the last chunk of a fragmented page the assembled bytes go through the
-  SAME decoder the server encoded with, and a failure quarantines rather than throwing.
-- [ ] **Step 6: Assert the invariant of spec 7.6 as an architecture-shaped test.** No client-to-server
-  message in this design carries an instance payload, and every one of them names an item by id. The full
-  version of that test is spec 17 row 13 and belongs to a later phase with the craft messages, so here it
-  covers only the resync request and the take request.
-- [ ] **Step 7: Run green and commit.**
-
-~~~bash
-dotnet test KhaozEngine.ItemInstances.Tests/KhaozEngine.ItemInstances.Tests.csproj -c Release
-dotnet test KhaozEngine.TileWorld.Netcode.Tests/KhaozEngine.TileWorld.Netcode.Tests.csproj -c Release
-git add KhaozEngine.ItemInstances/ContainerPageDelta.cs KhaozEngine.ItemInstances/ContainerPageSyncRequest.cs KhaozEngine.ItemInstances.Tests/Pages KhaozEngine.TileWorld.Netcode.Tests/PageSyncFrameBoundTests.cs
-git commit -m "iteminstances(wire): a one-frame page delta that abandons to the fragmenter"
-~~~
-
-**Group D acceptance:** spec 17 rows 9, 11 and 17 green, and budgets 7 and 8 measured.
-
----
-
-### Task 18: The `--items` benchmark structural test (medium, gate: milestone 1.1)
-
-Spec 2.3 and 17 row 5. The `--items` mode ALREADY EXISTS in `KhaozEngine.Benchmarks/Items/` with a
-checked-in baseline at `KhaozEngine.Benchmarks/Baselines/items-sqlite-v1-seed915.json`, and section 16's
-measured column came from it. What is MISSING is the structural test beside it, which is the half that
-actually runs in CI. Spec 17's note is blunt about why: a benchmark that only runs by hand is a benchmark
-nobody runs.
-
-**Files:**
-
-- Create: `KhaozEngine.Server.Tests/Benchmarks/ItemsBenchmarkTests.cs`
-
-**Interfaces:**
-
-- Consumes: `ItemsBenchmarkConfig`, `ItemsBenchmarkRunner`, `ItemsBenchmarkResult`, the checked-in baseline
-- Produces: the structural fence around the `--items` mode
-
-- [ ] **Step 1: Mirror `MutationJournalBenchmarkTests` exactly** (`KhaozEngine.Server.Tests/WorldStore/
-  Journal/MutationJournalBenchmarkTests.cs`, 605 lines, 16 facts). Same shape, same split: `Parse` accepts
-  explicit options and REJECTS hard-limit violations, `--quick` runs end to end and produces a result, the
-  result serialises to JSON and back, and `--output` writes a readable file.
-- [ ] **Step 2: Pin the config's hard limits as refusals**, because that is what the precedent test spends
-  most of its facts on: `MaximumPlayers`, `MaximumGenerations` and `MaximumCrafts` from
-  `ItemsBenchmarkConfig`, plus a relative `--database` path.
-- [ ] **Step 3: Run `--quick` inside the test and assert the STRUCTURE, never the numbers.** A budget's
-  measured value belongs in the baseline JSON, which a human diffs. What the test asserts is that every
-  budget the runner claims to measure is PRESENT in the result and that none is NaN, zero or absent. A
-  test that asserts a microsecond figure is a test that goes red on a busy runner and teaches everyone to
-  rerun it.
-- [ ] **Step 4: Assert the one structural number that IS a design property.** Twenty crafts in one held
-  action produce exactly ONE commit (budget 4). That is a count, not a timing, and it is the property the
-  whole of spec 6 exists for, so a regression there must be red rather than slow.
-- [ ] **Step 5: Do NOT touch the spike.** This task adds a test project file and nothing else. The spike
-  keeps building and keeps its numbers.
-- [ ] **Step 6: Run green and commit.**
-
-~~~bash
-dotnet test KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj -c Release --filter FullyQualifiedName~ItemsBenchmarkTests
-git add KhaozEngine.Server.Tests/Benchmarks/ItemsBenchmarkTests.cs
-git commit -m "bench(items): structural facts beside the --items mode"
-~~~
-
----
-
-## Group E: documentation and release
-
-### Task 19: The full documentation sweep (medium, gate: milestone 1.1)
+### Task 9: The documentation sweep for what phase 1 ships (medium, gate: milestone 1.1)
 
 AGENTS.md's "Full doc sweep on EVERY feature" rule. `scripts/check-doc-versions.sh` verifies the
 engine-version declarations, the newest changelog heading and the package INVENTORY. What it does NOT
 check is whether any of that prose is CORRECT, so a stale catalog row or a package README describing
-removed API sails through. This task is the content accuracy half, and it is its own task because two
-packages arrive in this plan and a missed row is a guard failure at release time.
+removed API sails through. This task is the content accuracy half, and it is its own task because a
+package arrives in this plan and a missed row is a guard failure at release time.
 
 **Files:**
 
 - Modify: `README.md` (package table, umbrella table, repo-layout block)
 - Modify: `KhaozEngine.Items/README.md`
-- Modify: `KhaozEngine.TileWorld.Netcode/README.md`
-- Modify: `KhaozEngine.Foundation/README.md`, `KhaozEngine.Server/README.md`
-- Modify: `KhaozEngine.ItemInstances/README.md`, `KhaozEngine.ItemInstances.Journal/README.md`
+- Modify: `KhaozEngine.Foundation/README.md`
+- Modify: `KhaozEngine.ItemInstances/README.md`
 - Modify: `docs/USING-KHAOZENGINE.md`
 - Modify: `docs/DEPENDENCY-SEAMS.md`
 
-- [ ] **Step 1: Add the two package catalog rows to `README.md`**, in the same voice and depth as the
-  `KhaozEngine.Items` row beside them, plus the `Depends on` column. Add both to the repo-layout block.
-  `KhaozEngine.ItemInstances` joins the `Foundation` umbrella table row and
-  `KhaozEngine.ItemInstances.Journal` joins the `Server` one. The README table is the SINGLE source for
-  the catalog, so do not re-enumerate any of it in `AGENTS.md`.
-- [ ] **Step 2: Update the three MODIFIED packages' own READMEs**, which ship inside their nupkgs and are
-  read standalone on NuGet, so each rots independently of the master catalog. `KhaozEngine.Items` gains
-  the third `ItemStack` component, `ItemSlot`, the payload doors and codec version 2 reading version 1.
-  `KhaozEngine.TileWorld.Netcode` gains the sibling ground component, the spawn overload and the
-  fragmenter. Both umbrella READMEs gain their new member.
-- [ ] **Step 3: Add a `docs/USING-KHAOZENGINE.md` section for the new public API.** One section, following
-  the file's existing shape: a worked example that encodes an item, seats it in a paged container, commits
-  it through the builder and syncs a page. State explicitly what is NOT here yet and where it lands: the
-  generator, crafting and the stat evaluator are spec 20 phases 4 and 5.
-- [ ] **Step 4: Add the seams to `docs/DEPENDENCY-SEAMS.md`.** Three edges changed: `ItemInstances` sits
-  above `Items` and `Catalog` in `Foundation`, `ItemInstances.Journal` sits above `ItemInstances` and
-  `WorldStore` in `Server`, and `TileWorld.Netcode` gained a component and a fragmenter and NO items
-  dependency. That last one is the interesting entry, because it is a seam that was deliberately not
-  crossed. `IInstanceIdStore` is a new seam with no engine-shipped provider and belongs in the table.
+- [ ] **Step 1: Bring the `KhaozEngine.ItemInstances` catalog row in `README.md` up to depth**, in the
+  same voice as the `KhaozEngine.Items` row beside it, plus the `Depends on` column. Add it to the
+  repo-layout block and to the `Foundation` umbrella table row. The minimal row landed with the package
+  in task 3 step 8, so nothing here is what unblocks the inventory check. The README table is the SINGLE
+  source for the catalog, so do not re-enumerate any of it in `AGENTS.md`.
+- [ ] **Step 2: Update the MODIFIED package's own README**, which ships inside its nupkg and is read
+  standalone on NuGet, so it rots independently of the master catalog. `KhaozEngine.Items` gains the
+  third `ItemStack` component, `ItemSlot`, the payload doors and codec version 2 reading version 1. The
+  `Foundation` umbrella README gains its new member. Finish `KhaozEngine.ItemInstances/README.md` to the
+  same depth: the payload format in one block, the kind ranges, the registration rule, the `KECQ`
+  wrapper and the allocator's `IInstanceIdStore` seam.
+- [ ] **Step 3: Add a `docs/USING-KHAOZENGINE.md` section for the new public API.** One section,
+  following the file's existing shape: a worked example that builds a payload, seats it in a container
+  slot through `SetSlotAt`, saves and reloads the container through codec version 2, and reads an
+  instance id off an `ItemStack`. State explicitly what is NOT here yet and where it lands: paging, the
+  journal, the commit batch and the wire are
+  `docs/superpowers/plans/2026-09-15-item-instances-phase2-3.md`, and the generator, crafting and the
+  stat evaluator are spec 20 phases 4 and 5.
+- [ ] **Step 4: Add the seams to `docs/DEPENDENCY-SEAMS.md`.** Two edges changed: `ItemInstances` sits
+  above `Items` and `Catalog` in `Foundation`, and `Items` gained an optional canonical-payload predicate
+  on its constructor rather than a dependency on the package that owns the decoder. That second one is
+  the interesting entry, because it is a seam that was deliberately not crossed. `IInstanceIdStore` is a
+  new seam with no engine-shipped provider and belongs in the table.
 - [ ] **Step 5: Do the mechanical check before committing.** Grep every new type, package and constant name
   across ALL `*.md` recursively (root, `docs/`, `docs/design/`, and every per-package `<Package>/README.md`)
   plus `AGENTS.md`, and confirm every place that should mention it does.
@@ -1863,21 +1121,21 @@ scripts/check-doc-versions.sh
 scripts/check-dashes.sh --tree
 scripts/check-prose.sh --tree
 scripts/check-file-size.sh --tree
-git add README.md docs/USING-KHAOZENGINE.md docs/DEPENDENCY-SEAMS.md KhaozEngine.Items/README.md KhaozEngine.TileWorld.Netcode/README.md KhaozEngine.Foundation/README.md KhaozEngine.Server/README.md KhaozEngine.ItemInstances/README.md KhaozEngine.ItemInstances.Journal/README.md
-git commit -m "docs(items): catalog rows, package READMEs and the usage section"
+git add README.md docs/USING-KHAOZENGINE.md docs/DEPENDENCY-SEAMS.md KhaozEngine.Items/README.md KhaozEngine.Foundation/README.md KhaozEngine.ItemInstances/README.md
+git commit -m "docs(items): the catalog row, the package READMEs and the usage section"
 ~~~
 
-  All four guards must exit 0 here. The catalog rows landed with their packages in tasks 4 and 14, so
-  nothing in this task is what unblocks the inventory check. If `check-doc-versions.sh` is red, read the
-  message: a complaint about the version line means task 20 has not run yet and is expected, and anything
-  else is a real miss in this task.
+  All four guards must exit 0 here. If `check-doc-versions.sh` is red, read the message: a complaint
+  about the version line means task 10 has not run yet and is expected, and anything else is a real miss
+  in this task.
 
 ---
 
-### Task 20: The finishing ritual, one version bump, no tag (medium, gate: milestone 1.1)
+### Task 10: The finishing ritual, one version bump, no tag (medium, gate: milestone 1.1)
 
 AGENTS.md's finishing ritual, in order. **ONE version bump for the whole batch**, not one per task, which
-is the rule that stops the engine version creeping through a run of one-line releases.
+is the rule that stops the engine version creeping through a run of one-line releases. The phase 2-3 plan
+cuts its own single bump when it finishes, and starts only after this release has landed.
 
 **Files:**
 
@@ -1911,14 +1169,14 @@ grep -n '<KhaozEngineVersion>' Directory.Build.props
   tagged since. A collision here is auto-resolved and needs no asking.
 - [ ] **Step 3: Write the changelog entry in the SAME commit as the version bump.** Newest first, detailed,
   with a tight one-line summary as the entry's FIRST sentence so the file doubles as the history view.
-  The first sentence is: `Owned item instances arrive: a canonical tagged payload, paged containers,
-  container codec version 2, and one commit per tick.` Then the detail, which is the public API and
-  behaviour change: the two new packages, `ItemStack`'s third component and the deconstruction break it
-  causes, `ItemSlot` and the payload doors, codec version 2 and its version 1 reader, the property
-  registry and its band rule, `KECQ`, the visibility function, the allocator and its epoch refusal, the
-  paged container and the capacity gate, the remap pass, `ContainerCommitBuilder`, the sibling ground
-  component and the spawn overload, the fragmenter, the page delta and the resync request. Name the
-  deferred half in one sentence so a reader does not go looking for a generator that is not there.
+  The first sentence is: `The item instance record and the container arrive: a canonical tagged payload,
+  node-prefixed instance ids, quarantine, and container codec version 2 reading version 1.` Then the
+  detail, which is the public API and behaviour change: the new `KhaozEngine.ItemInstances` package,
+  `ItemStack`'s third component and the deconstruction break it causes, `ItemSlot` and the payload doors,
+  codec version 2 and its version 1 reader, the property registry and its band rule, the closed reason
+  set, `KECQ`, and the allocator with its epoch refusal. Name the deferred half in one sentence so a
+  reader does not go looking for a paged container that is not there: paging, the journal, the commit
+  batch and the wire are the next release, and generation, crafting and the evaluator are after that.
 - [ ] **Step 4: Update every engine-version declaration the guard checks.** EVERY `<PackageReference>`
   example line in `README.md` and in `docs/USING-KHAOZENGINE.md`, one per umbrella, not just one.
 
@@ -1927,8 +1185,8 @@ grep -n '<KhaozEngineVersion>' Directory.Build.props
   or reference them with `Closes #NNN` in the commit. Anything this work knowingly leaves undone, defers
   or works around becomes a GitHub issue AT THIS POINT, with a `confidence/*` label, per AGENTS.md. The
   four open questions spec 20 leaves live in the spec and do not need issues. The page-level reason tokens
-  of task 10 step 8 and the delta-builder home of task 17 DO, because both are choices this plan made that
-  the spec should adopt or overrule.
+  of task 8 step 8 DO, because they are a choice this plan made that the spec should adopt or overrule.
+  The phase 2-3 plan files its own two, so do not pre-file them here.
 - [ ] **Step 6: Run every guard and the full Release verification.**
 
 ~~~bash
@@ -1959,7 +1217,7 @@ scripts/pack-local-feed.sh
 ~~~bash
 engine_version=$(sed -n 's:.*<KhaozEngineVersion>\([^<]*\)</KhaozEngineVersion>.*:\1:p' Directory.Build.props)
 git add Directory.Build.props CHANGELOG.md README.md docs/USING-KHAOZENGINE.md
-git commit -m "items(${engine_version}): owned item instances, paged containers and codec version 2"
+git commit -m "items(${engine_version}): the instance record, the payload codec and codec version 2"
 ~~~
 
 - [ ] **Step 9: Reconcile once more, fast-forward main, verify and push main right away.**
@@ -1968,8 +1226,8 @@ git commit -m "items(${engine_version}): owned item instances, paged containers 
 git fetch --prune
 git merge origin/main
 dotnet test KhaozEngine.slnx -c Release
-git -C /Users/antonio/KhaozEngine merge --ff-only feature/item-instances-phase1
-git -C /Users/antonio/KhaozEngine push origin main
+git -C ~/KhaozEngine merge --ff-only feature/item-instances-phase1
+git -C ~/KhaozEngine push origin main
 ~~~
 
   If main advanced after the branch merge, merge it into the feature branch and repeat verification before
@@ -1977,14 +1235,17 @@ git -C /Users/antonio/KhaozEngine push origin main
 
 - [ ] **Step 10: STOP. Do NOT tag.** A `vX.Y.Z` tag is a separate, deliberate act that the user starts.
   The one sanctioned exception in AGENTS.md is a game pinned-and-waiting on this change, and no consumer is
-  pinned on Scope B phase 1: Grimhollow's adoption is spec 18 and runs AFTER this, and the other four
-  consumers do not use `KhaozEngine.Items` at all. So the default ending applies: merge, push `main`, pack
-  to `local-feed`, stop. If the situation has changed and a game really is blocked, say so in the report
-  and let the user start the release.
-- [ ] **Step 11: Ask about releasing only if `git worktree list` shows you are the last chat standing**,
+  pinned on Scope B phase 1: Grimhollow's adoption is spec 18 and runs after the wire lands, and the other
+  four consumers do not use `KhaozEngine.Items` at all. So the default ending applies: merge, push `main`,
+  pack to `local-feed`, stop. If the situation has changed and a game really is blocked, say so in the
+  report and let the user start the release.
+- [ ] **Step 11: Hand the next plan over.** Say in the report that
+  `docs/superpowers/plans/2026-09-15-item-instances-phase2-3.md` is now unblocked, and which engine
+  version it builds on.
+- [ ] **Step 12: Ask about releasing only if `git worktree list` shows you are the last chat standing**,
   once, as the last line of the report.
 
-**Group E acceptance:** all four guards exit 0, the full solution is green in Release, `local-feed` holds
+**Group D acceptance:** all four guards exit 0, the full solution is green in Release, `local-feed` holds
 the new version, `main` is pushed, and no tag exists.
 
 ---
@@ -1998,14 +1259,11 @@ restated at the task that acts on it.
 | # | The gap | The plan's choice | Task |
 |---|---|---|---|
 | 1 | Spec 4.7 wants `SetSlotAt` to refuse a non-canonical payload, but the decoder lives in a package that DEPENDS on `KhaozEngine.Items`, and contracts 15 forbids a second varint reader | The container takes the check as an optional constructor predicate, the same shape the stacking rule already arrives in, and refuses every non-empty payload when it is absent | 1 |
-| 2 | `MaxInstancePayloadBytes` is declared in `KhaozEngine.ItemInstances` (spec 2.2) but `KhaozEngine.Items` and `KhaozEngine.TileWorld.Netcode` both need it and cannot reference that package | ONE number in `ItemSlot.MaxPayloadBytes`, mirrored by a local const in `TileWorld.Netcode`, with a cross-package equality fact in `KhaozEngine.Server.Tests` | 1, 16 |
-| 3 | Contracts 9.7's eight reason tokens are PAYLOAD reasons, and nothing names the PAGE-level ones | A second closed set, `ItemContainerPageReason`, using the spike's names so the benchmark and the package agree | 10 |
-| 4 | Spec 3.6 says reuse `NetIdAllocator`, which lives in a `Server` package the `Foundation` allocator cannot reference | `InstanceIdAllocator` mirrors the scheme with its own constants and a cross-package equality fact in `KhaozEngine.Server.Tests` | 9 |
-| 5 | The allocator's durable state has no named home | An `IInstanceIdStore` constructor seam, engine ships no provider | 9 |
-| 6 | Spec 7.6 lists an owner remainder message and no package builds it | `ItemInstanceVisibility.OwnerRemainder`, beside `PublicView` so the two cannot disagree, with the message KIND left to the game | 8 |
-| 7 | The page delta body is a page entry body, and `TileWorld.Netcode` must gain no items dependency | `ContainerPageDelta` lives in `KhaozEngine.ItemInstances` and the server composes it with the fragmenter | 17 |
-| 8 | Spec 20's phase 1 is narrower than the engine half this plan is asked for | The plan implements spec 20 phases 1, 2 and 3 as one release, keeps their acceptances as group acceptances, and defers phases 4 and 5 unchanged | header |
+| 2 | `MaxInstancePayloadBytes` is declared in `KhaozEngine.ItemInstances` (spec 2.2) but `KhaozEngine.Items` needs it and cannot reference that package | ONE number in `ItemSlot.MaxPayloadBytes`, which `ItemInstancePayload` re-exposes rather than redeclares. The phase 2-3 plan mirrors it once more in `TileWorld.Netcode`, with a cross-package equality fact | 1 |
+| 3 | Contracts 9.7's eight reason tokens are PAYLOAD reasons, and nothing names the PAGE-level ones | A second closed set, `ItemContainerPageReason`, using the spike's names so the benchmark and the package agree | 8 |
+| 4 | Spec 3.6 says reuse `NetIdAllocator`, which lives in a `Server` package the `Foundation` allocator cannot reference | `InstanceIdAllocator` mirrors the scheme with its own constants and a cross-package equality fact in `KhaozEngine.Server.Tests` | 7 |
+| 5 | The allocator's durable state has no named home | An `IInstanceIdStore` constructor seam, engine ships no provider | 7 |
+| 6 | Spec 20 phase 1 lists "the instance validator" among what it ships, and then defines phase 1 as the whole of sections 3 and 4, which section 12 is not | The codec's own structural refusals ship here and the full `InstanceValidator` ships with the page it validates, in the phase 2-3 plan. Nothing durable moves with it | 4 |
 
-Choices 3, 6 and 7 become GitHub issues in task 20 step 5, because each is something the spec should
-adopt or overrule rather than inherit from a plan.
-
+Choice 3 becomes a GitHub issue in task 10 step 5, because it is something the spec should adopt or
+overrule rather than inherit from a plan. Choices 1, 2, 4, 5 and 6 are recorded here and in their tasks.

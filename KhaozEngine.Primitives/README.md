@@ -21,6 +21,19 @@ automatically, so this is transparent to every other package.
   contract (persisted `State`, seed-generated content), so the variant is pinned by known vectors and stays.
 - `XorRng` - tiny xorshift32 value-type PRNG for allocation-free hot paths (particles, audio noise).
   Copy the struct to snapshot. Use `DeterministicRng` when you need resume or derived streams.
+- `IRandomSource` / `SeededRandomSource` / `CryptographicRandomSource` - the engine's one gameplay-randomness
+  seam, for a loot draw, a craft roll, a spawn choice or a decoder fuzzer. Four members
+  (`NextInt(minInclusive, maxExclusive)`, `NextULong`, `NextRollPosition` over 0 to 65535, `NextBytes`), no
+  float, and deliberately NO `Seed`, `State` or `CreateDerived`: a source whose seed is readable is a source
+  a crafting system can leak, and a durable record carries the resolved outcome rather than a seed or a draw
+  index. `NextInt` throws `ArgumentOutOfRangeException` on an empty range, which is a caller bug rather than
+  a draw, and a one-wide range answers without consuming a draw. `CryptographicRandomSource` draws from the
+  OS through `System.Security.Cryptography.RandomNumberGenerator` and is what a hosted server runs.
+  `SeededRandomSource(ulong seed)` wraps `DeterministicRng`, so a seeded replay and a test reuse the engine's
+  one seeded stream definition, and the seed is not readable back off the instance. Both bound a draw by
+  rejection sampling rather than modulo, because modulo bias on a crafting roll is an edge a player can farm.
+  A consumer takes one as a constructor parameter: there is no ambient instance and no default, because a
+  default is how a production server ends up on the test source.
 - `StableHash` (14.9.0) - stateless, allocation-free integer hashing: `Mix(uint)`, `Mix(uint, uint)`,
   `Mix(uint, uint, uint)` fixed-arity hashes (FNV-1a accumulate + a Murmur3-style avalanche finalizer) and
   `ToUnitFloat(uint)` folding bits to a float in [0, 1). A pure key-to-value map (same inputs, same hash on every

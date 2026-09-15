@@ -24,8 +24,7 @@ internal static class ContentRemapChecks
             return;
         }
 
-        bool ordered = CheckSequences(run, rules);
-        if (ordered)
+        if (CheckSequences(run, rules))
         {
             CheckIdempotence(run, rules);
         }
@@ -46,27 +45,40 @@ internal static class ContentRemapChecks
     /// <c>KEC0018</c>: sequences are contiguous from 1 and strictly ascending. The sequence IS the apply
     /// order, so a set that lost or repeated one is not the list any durable page was brought forward
     /// through.
+    /// <para>
+    /// Answers whether <see cref="RemapRuleSet"/> can HOLD the set, which is a weaker question than the one
+    /// the finding asks. Its constructor throws on a null rule and on a sequence that is not strictly
+    /// ascending, and the validator never throws for a content reason, so those two shapes skip the
+    /// idempotence walk below. A set that is ascending but does not start at 1 is <c>KEC0018</c> and is
+    /// still walked, because a finding that masked another finding would be the sweep stopping early.
+    /// </para>
     /// </summary>
     static bool CheckSequences(ContentValidationRun run, IReadOnlyList<RemapRule> rules)
     {
-        bool ordered = true;
+        bool constructible = true;
+        int last = int.MinValue;
         for (int i = 0; i < rules.Count; i++)
         {
             RemapRule rule = rules[i];
             if (rule is null)
             {
-                // A null rule is a programming error rather than a content defect, so it is skipped and the
-                // set is never handed to RemapRuleSet, whose constructor would throw on it.
-                ordered = false;
+                // A null rule is a programming error rather than a content defect, so it is skipped rather
+                // than reported, and the set is never handed to a constructor that would throw on it.
+                constructible = false;
                 continue;
             }
 
+            if (rule.Sequence <= last)
+            {
+                constructible = false;
+            }
+
+            last = rule.Sequence;
             if (rule.Sequence == i + 1)
             {
                 continue;
             }
 
-            ordered = false;
             run.Add(
                 rule.Type,
                 rule.FromId,
@@ -75,7 +87,7 @@ internal static class ContentRemapChecks
                     $"Remap rule at position {i} carries sequence {rule.Sequence} where the set runs contiguously from 1, so it should carry {i + 1}. The sequence is the apply order, and a gap or a repeat is a set no page was migrated through."));
         }
 
-        return ordered;
+        return constructible;
     }
 
     /// <summary>

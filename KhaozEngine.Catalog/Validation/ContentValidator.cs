@@ -192,11 +192,6 @@ public static class ContentValidator
 
             foreach (ContentFinding finding in own)
             {
-                if (finding is null)
-                {
-                    continue;
-                }
-
                 run.Add(
                     finding.Type,
                     finding.Id,

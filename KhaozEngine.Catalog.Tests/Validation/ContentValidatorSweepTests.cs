@@ -60,6 +60,25 @@ public class ContentValidatorSweepTests
     }
 
     [Fact]
+    public void A_broken_rule_sequence_does_not_mask_the_idempotence_check()
+    {
+        ContentTypeRegistry registry = EngineRegistry();
+        ContentSnapshot candidate = Snapshot(registry, Item(10, "one"), Item(11, "two"), Item(12, "three"));
+
+        // Ascending, so the set is one the rule set can hold, and starting nowhere, so it is still KEC0018.
+        RemapRule[] rules =
+        [
+            new RemapRule(5, 1, ItemType, RemapRuleKind.ReplacedBy, 10, 11, default),
+            new RemapRule(6, 1, ItemType, RemapRuleKind.ReplacedBy, 12, 10, default),
+        ];
+
+        ContentValidationReport report = Validate(candidate, registry, rules: rules);
+
+        Assert.True(Has(report, "KEC0018"), Describe(report));
+        Assert.True(Has(report, "KEC0015"), Describe(report));
+    }
+
+    [Fact]
     public void The_five_passes_report_in_order_and_none_of_them_stops_early()
     {
         ContentTypeRegistry registry = EngineRegistry();

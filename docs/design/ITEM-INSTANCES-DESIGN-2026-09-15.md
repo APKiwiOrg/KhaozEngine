@@ -3440,42 +3440,77 @@ still append-only, and the mitigation for the MASK is that the bit never moves w
 
 ## 22. Contract change requests
 
-Sections 1 to 6 were re-read against the contracts for this section, and nothing in them CONTRADICTS the
-contracts. Four requests follow, and every one is a clarification or a correction to the contracts' PROSE
-rather than to a rule, so none of them changes a width, a reserved value, a byte order, an ordering rule, a
-formula or a vocabulary. Under contracts 18 the amendment still comes back to that document first.
+**All four of the requests this section opened with were ACCEPTED by the owner and are already folded
+into the contracts.** They are kept below rather than deleted, because the reasoning is what a later
+reader needs when they meet the amended text and wonder why it says what it says. Two further requests
+follow them, raised by the stage 4 review round and not yet answered.
 
-**1. Section 9.8, the worked byte example: restate the affix list in canonical order.** The example writes
-mod ids 4210, 91, 260. Section 3.4 of this document makes the affix list canonically ASCENDING BY MOD ID,
-which contracts 9.9 leaves to Scope B ("The affix list is SCOPE B's field and its entry layout is Scope B's
-to specify") and which contracts 9.3's ascending rule does not cover, because that rule is about FIELDS
-rather than entries. So there is no conflict of rules, and there is a conflict of EXAMPLES: an implementer
-copying 9.8's byte block into a golden file produces a non-canonical payload, which then fails to stack
-with a correctly encoded twin. **Requested change:** reorder the three entries in 9.8 to 91, 260, 4210, or
-add one sentence saying the example illustrates the entry layout and not the list order. The byte COUNT and
-every entry's bytes are unchanged either way.
+**The third-round contract amendments this document is written against**, which land with the contracts
+rather than here and which several sections above depend on:
 
-**2. Section 3.2, the package set: record `KhaozEngine.ItemInstances.Journal`.** Contracts 3.2 places
-`KhaozEngine.ItemInstances` in `Foundation`. Section 2.1 of this document adds a second, small,
-`Server`-umbrella package for the commit builder, because composing a `JournalCommit` needs
-`KhaozEngine.WorldStore` and `Foundation` cannot reference a `Server` package. **Requested change:** add the
-row to 3.2's table, with the layering reason. This is filed because contracts 18 does not say whether adding
-a package is a refinement or a contradiction, and the safer reading is that a package set is a vocabulary.
+| Amendment | Contracts | What depends on it here |
+|---|---|---|
+| `IRandomSource`, `CryptographicRandomSource` and `SeededRandomSource` live in `KhaozEngine.Primitives` | 3.2, 14.1 | 2.2 declares none of the three, 9.1 and 10.5 take the seam in a constructor |
+| The one validator takes an optional PREVIOUS snapshot, null at boot and in tests | 10.4 | 8.9's three publish-only checks, which had no input before it |
+| `ContainedInstanceId` is `varint uint64` | 9.5 | 3.5's socket entry and 3.8's five byte instance id sizing |
+| Every division in the stat fold is FLOOR division, so round half up holds for every sign | 13.2 | 11.6's algorithm and its worked negative case |
+| The localized text key value kind is a MARKER carrying no stored value | 4.7 | every `localized text key` field in section 8 and 10.4 |
 
-**3. Section 9.6, the payload cap's characterisation.** The contract calls 512 "about 11 times the realistic
-size" and therefore "a guard rail rather than a budget". Section 3.8 computes the DEEPEST item the v1 field
-set can express at 410 bytes, which is 1.25 times the cap rather than one eleventh of it. Both readings are
-true of different items and the RULE is unaffected, since raising the cap stays backward compatible and
-lowering it stays forbidden. **Requested change:** restate the characterisation so a later reader does not
-plan against an eleven-times margin that a six-socket item does not have.
+**1. ACCEPTED. Section 9.8, the worked byte example: restate the affix list in canonical order.** The
+example wrote mod ids 4210, 91, 260. Section 3.4 of this document makes the affix list canonically
+ASCENDING BY MOD ID, so an implementer copying 9.8's byte block into a golden file produced a
+non-canonical payload, which then failed to stack with a correctly encoded twin. The byte COUNT and every
+entry's bytes were unchanged either way. Contracts 9.8 now writes the entries 91, 260, 4210, and contracts
+9.9 carries the list rule itself, so the ordering is the CONTRACT's rather than this document's refinement.
+3.7 reproduces the amended block as it stands.
 
-**4. Section 10.5, fail closed at boot: say what it binds.** The contract says a missing or invalid active
-content version fails the boot, with no runtime fallback. Section 10.5 of this document has a server meet a
-currency naming a craft operation id the process never registered, and refuses at the moment of USE rather
-than at boot. That is a code deploy mismatch rather than a content version problem, and failing the boot for
-it would take every player down for one unusable currency. **Requested change:** one sentence in 10.5 saying
-the rule binds the CONTENT VERSION and the pack's validity, and that a missing code registration a content
-row names is a refusal at use with a counter. It is open question 8 either way.
+**2. ACCEPTED. Section 3.2, the package set: record `KhaozEngine.ItemInstances.Journal`.** Contracts 3.2
+placed `KhaozEngine.ItemInstances` in `Foundation`. Section 2.1 adds a second, small, `Server`-umbrella
+package for the commit builder, because composing a `JournalCommit` needs `KhaozEngine.WorldStore` and
+`Foundation` cannot reference a `Server` package. It was filed because contracts 18 does not say whether
+adding a package is a refinement or a contradiction, and the safer reading is that a package set is a
+vocabulary. Contracts 3.2 now carries the row and the layering reason.
+
+**3. ACCEPTED. Section 9.6, the payload cap's characterisation.** The contract called 512 "about 11 times
+the realistic size" and therefore "a guard rail rather than a budget". The request was filed against a
+figure of 410 bytes for the deepest item, which the stage 4 review found to be wrong, so the request is
+recorded here with the ARITHMETIC IT SHOULD HAVE CARRIED: 3.8's table counts a maximal item at 160 fixed
+bytes plus 352 of nested payload, which is the cap exactly, so 512 is 11 times the 45 byte worked example
+and 1.0 times a maximal item. Both readings are true of different items. The rule is unaffected, since
+raising the cap stays backward compatible and lowering it stays forbidden, and the amended contracts 9.6
+no longer promises a margin a six socket item does not have.
+
+**4. ACCEPTED. Section 10.5, fail closed at boot: say what it binds.** The contract said a missing or
+invalid active content version fails the boot, with no runtime fallback. Section 10.5 of this document has
+a server meet a currency naming a craft operation id the process never registered, and refuses at the
+moment of USE rather than at boot, because that is a code deploy mismatch rather than a content version
+problem and failing the boot for it takes every player down for one unusable currency. Contracts 10.5 now
+binds the rule to the CONTENT VERSION and the pack's validity, and names a missing code registration a
+refusal at use with a counter. It is open question 8 either way.
+
+**5. NEW. Section 6.2, the instance allocator: say that its persisted state carries the store epoch.**
+Contracts 6.2 fixes the allocation scheme and says the packed high-water mark is persisted per node. What
+it does not say is what else that record carries, and section 3.6 of this document now requires one more
+field: the `store_epoch` the mark was written under, with a refusal to issue when the live epoch differs.
+The reason is that a point-in-time restore rolls back every guard that lives in the store being restored,
+including a retired node list, so the only guard that can fire is one comparing a restored value against a
+value an operator rotated. The journal already requires that rotate of any restore
+(`DURABLE-PLAYER-JOURNAL-DESIGN-2026-09-06.md` section 10). **Requested change:** one sentence in
+contracts 6.2 saying the persisted allocator record carries the store epoch and refuses to issue on a
+mismatch. It is a refinement of what a durable record contains rather than a change to the id scheme, and
+it is filed because the id scheme is a contract and this adds to its durable state. 15.2 has the operator
+procedure.
+
+**6. NEW. Section 5.4, keep-legacy: say whether "never crafted again" covers REWRITING an existing
+entry.** Contracts 5.4 says a legacy copy is "a legacy id that can never be generated or crafted again".
+Read narrowly that covers adding the mod to an item. Read conservatively it also covers rewriting an
+affix entry that already names it, which is the reading 10.3 takes: no primitive and no game operation
+rewrites a legacy entry's roll position, tier or flags. The narrow reading leaves `RerollValues` free to
+draw a fresh position against a legacy tier's preserved range as many times as a player can pay for it,
+walking the roll to the top of a range no live mod can produce, which turns the mechanism the owner chose
+in order to FREEZE old rolls into a farm for them. **Requested change:** one sentence in contracts 5.4
+stating which reading binds. This document builds the conservative one and section 10.3 says what it
+costs, so the owner can relax it at gate 1 with the consequence in front of them.
 
 ## 23. Open questions for the owner
 
@@ -3532,4 +3567,113 @@ change that gets Ruinborne instances, and it leaves the larger question to its o
 
 ## 24. Appendix A: review log
 
-Filled at stage 4.
+Stage 4 ran one adversarial review of this document (F1 to F28) and one cross-spec consistency review
+against Scope A and the contracts (C1 to C30, of which fifteen touch this document). Every finding is
+below with the reviewer's severity, the orchestrator's verified verdict, and what this document did about
+it. A finding is recorded whether it was fixed, rejected or taken as a direction, because a review whose
+rejections are invisible reads as a review that found nothing to argue with.
+
+**Verdict column.** CONFIRMED means the orchestrator read the cited lines and the claim held. PARTIAL
+means part of it held. REFUTED means it did not. LEAD means it was surfaced rather than checked. The
+severity beside it is the verified one, which is not always the reviewer's.
+
+| Id | Claim | Reviewer | Verified | Disposition | Commit |
+|---|---|---|---|---|---|
+| F1 | A quarantine wrapper cannot fit the page entry bound, and invariant 4 rejects every wrapper | high | CONFIRMED high | FIXED 4.4, 4.7, 5.4. `PayloadLength` is bounded by the section cap, `MaxInstancePayloadBytes` binds a non-quarantined entry only, and `SetSlotAt` skips invariants 2 and 4 on a quarantined slot | 84188832 |
+| F2 | An unresolved content reference is counted and tolerated, which is a fourth outcome | high | CONFIRMED high | FIXED 12.2, 12.3, 5.5, 13 rows 5 and 6. Checks 7 and 8 quarantine per contracts 10.1 and 10.2. The tolerance argument is recorded as REJECTED below | 84188832 |
+| F3 | The restore-from-backup guard cannot fire, because the retired node list is restored too | high | CONFIRMED medium | FIXED 3.6, 13 row 7, 15.2, test 12. The allocator binds its persisted mark to the store epoch and refuses on a mismatch, the retired list is demoted to a re-boot guard, and 15.2 carries the procedure and a weaker honest claim. Contract request 5 | b8a37d9d |
+| F4 | Remap rules and the validator never descend into a socket's nested payload | high | PARTIAL medium | FIXED 5.5 step 2, 12.2 check 6. The pass and the checks traverse nested payloads and `ContainedDefinitionId` at every depth, and the re-encode recomputes `NestedLength`, the kind 132 field length and the entry payload length | 74b16f21 |
+| F5 | A client-headed batch's intent is the whole ordered list, so a resubmit conflicts instead of replaying | high | CONFIRMED high | FIXED 6.4, 6.5, 6.6. A client-headed batch's normalized intent is the client operation's own alone, server-caused work rides as events and projection writes | 84188832 |
+| F6 | `RerollValues` farms a legacy mod, which contracts 5.4 says can never be crafted again | high | REFUTED as a contradiction | DIRECTION TAKEN, see below. The text contradiction was refuted and the conservative reading was applied anyway: a legacy affix entry is FROZEN (10.3, 10.7, 15.8). Contract request 6 puts it to the owner | fcc1c6fe |
+| F7 | A multi-slot page delta exceeds 1,024 bytes and the encoder throws inside the serve loop | high | CONFIRMED high | FIXED 7.5, 13 row 12, test 17, phase 3. The builder measures as it writes, fourteen rare slots fit, and an oversize delta is abandoned for a fragmented page | 84188832 |
+| F8 | Ground item payloads are re-sent full-state per viewer per tick and never priced | high | CONFIRMED medium | FIXED 7.4, budget 11. The tile serve is stated as full state, `AoiDeltaReplicator` is named as unused, and the cost is a budget in bytes per viewer per second at the 250 ms tick | b8a37d9d |
+| F9 | `RevealedMask` bits are derived from registration order, so a future engine gated kind re-points every stored mask | medium | CONFIRMED medium | FIXED 3.3, 12.7, 21. A gated kind carries a fixed `identificationMaskBit`, the four v1 bits are pinned, and 21 names the engine 9 to 127 range as the reachable vector | fcc1c6fe |
+| F10 | The craft event is quoted at 40 and 83 bytes and is about 127 | medium | CONFIRMED medium | FIXED 6.4, 6.7, 9.5, 10.6, budget 4. `item-generated` is 72 bytes, `item-crafted` is 127, before-and-after costs 59 not 42, and the factor is 146 not 180 | b8a37d9d |
+| F11 | No steady-state commits-per-second budget, and no stated action on `Backpressure` | medium | PARTIAL low | FIXED 16 budget 13 and its derivation. 1,000 players at 4 Hz offer 4,000 per second pre-coalescing, the consumer refuses rather than retries, and the 698 figure is recast as offered load in 5.5 and 16 | beb4750a |
+| F12 | The deepest expressible item is understated, so request 3 and question 4 rest on a wrong figure | medium | CONFIRMED medium | FIXED 3.5, 3.8, 22 request 3, question 4. The item is counted field by field: 160 fixed plus 352 nested is the cap, so the field set fills 512 by construction | b8a37d9d |
+| F13 | A snapshot frame is not subject to the 1,024 byte cap | medium | CONFIRMED medium | FIXED 7.6, 13 row 11, question 6. The cap is only in `EncodeGameMessage`, so the row is bandwidth rather than a throw | b8a37d9d |
+| F14 | "The same number of draws" is false, because step 8 skips draws on an empty pool | medium | CONFIRMED medium | FIXED 9.4 step 8, test 6. An empty pool draws and discards one `NextInt(0, 1)` and one `NextRollPosition()`, and test 6 cites 9.3 | fcc1c6fe |
+| F15 | The negative rounding rule departs from contracts 13.2 and its example is wrong | medium | CONFIRMED medium | FIXED 11.6, test 7. Floor division per the amended contracts 13.2, the sign-magnitude rule dropped, the example corrected to `-14000` giving -1 | fcc1c6fe |
+| F16 | No `StringId` keys are named for the placeholder presentations | medium | CONFIRMED medium | FIXED 12.3, 12.7. Three engine keys, `khaoz.item.quarantined`, `khaoz.item.retired` and `khaoz.item.unidentified`, resolved through `ContentStringCatalog` on the `SafeFormat` path | fcc1c6fe |
+| F17 | The generator memo is understated by about 2.5 times and is small for its key space | medium | CONFIRMED medium | FIXED 9.2, budget 9. The memo is 9.8 MB, the total is 30 MB, and the eviction and the 19,200 key space are stated | b8a37d9d |
+| F18 | `IRandomSource` per call contradicts contracts 14.4's constructor rule | medium | CONFIRMED medium | FIXED 2.2, 9.1, 9.4, 10.5, 15.5. Constructor injection, and a replay builds a second generator sharing the tables | fcc1c6fe |
+| F19 | No resident memory budget for millions of instances against the journal's double clone | medium | CONFIRMED medium | FIXED budget 12 and its derivation, test 5. About 70 MB of page bytes at 1,000 players, two to three copies, 250 MB ceiling | b8a37d9d |
+| F20 | A ground item has no owner viewer, so its owner-only behaviour is undefined | lead | LEAD | FIXED 7.4. A ground item has no owner viewer in v1, its public view is its whole replicated payload, and `BoundTo` is stripped before the component is written | beb4750a |
+| F21 | The header says section 22 is empty and it holds four requests | low | CONFIRMED low | FIXED the header. It names the four requests and the amendment round | beb4750a |
+| F22 | Test 12 appears in no phase's acceptance list | low | CONFIRMED low | FIXED phase 1 acceptance | beb4750a |
+| F23 | A live table swap at publish contradicts the no-live-apply decision | low | CONFIRMED low | FIXED 9.2. A boot builds the tables, the beside-then-swap shape stays as the later hook. Same fix as C15 | 6acc3048 |
+| F24 | The rarity ceiling is 255 rows ever allocated, not 255 live rarities | low | CONFIRMED low | FIXED 21. The row now says the ceiling counts every retired rarity, because contracts 5.1 never reuses an id | beb4750a |
+| F25 | `IsCorruptible` is called standing in 10.3 and authored in 10.4 | low | CONFIRMED low | FIXED 10.3, 10.4. It is STANDING, the whetstone no longer authors it, and the guard row stays for an authored restatement | beb4750a |
+| F26 | Test 15 asks for out-of-order chunks, which 7.5 rule 1 says cannot happen | low | CONFIRMED low | FIXED test 15. The four cases are a sequence change, a fifth assembly, a truncated final chunk and a dropped connection | beb4750a |
+| F27 | The OSRS row reaches 7 bytes with a one-byte definition id against a two-byte preamble | low | CONFIRMED low | FIXED 3.8's preamble. One byte under 128, two under 16,384, three above, and the OSRS row is stated as the floor | beb4750a |
+| F28 | 8.5 misquotes contracts 9.8's rarity bytes and 3.7's sentence contradicts itself | low | CONFIRMED low | FIXED 8.5 and 3.7. The rarity bytes are `82 01 01 03`, and 3.7 reproduces the amended contract block in canonical order | 177b0b39, beb4750a |
+| C1 | The `IRandomSource` seam is declared in Scope B's package and Scope A needs it below | high | CONFIRMED high | FIXED 2.2, 9.3. The three rows are gone and the seam is `KhaozEngine.Primitives` per contracts 14.1 | beb4750a |
+| C2 | Seven Scope B types carry opaque bytes and list-valued fields that no value kind names | high | CONFIRMED high | FIXED 8.1 to 8.10, 9.2, 10.4. Eleven child types at 263 to 273, weights as whole `ServerOnly` types, no opaque bytes and no ad hoc list left | 177b0b39 |
+| C6 | A remap rule cannot be applied to an instance payload: no kind-to-content-type mapping exists | high | CONFIRMED high | FIXED 3.3, 2.2, 5.5, 12.2. `Register` takes a field shape and reference targets, and the pass and the checks are derived from them | 74b16f21 |
+| C8 | Scope B references a content type key `item_base` that Scope A registers as `item` | medium | CONFIRMED medium | FIXED 8.6 and 10.4. Both targets name `item` | 177b0b39 |
+| C9 | Scope B's field names are PascalCase against the contracts' lower-case rule | medium | CONFIRMED medium | FIXED every schema in 8 and 10.4, and the prose that named them in 9.4, 10.2, 10.3 and 23. The mod line field is `line` and the rare name word field is `text` | 177b0b39 |
+| C10 | Scope B narrows the socket count from a varint to a byte without filing it | medium | CONFIRMED medium | FIXED 3.3. The count is a varint per contracts 9.5, with the reason the byte would have been invisible in the golden file | 6acc3048 |
+| C15 | Scope B says a publish swaps the candidate tables live, and v1 has no live apply | medium | CONFIRMED medium | FIXED 9.2, same fix as F23 | 6acc3048 |
+| C17 | The retired-definition placeholder is assumed by Scope A and built by neither | medium | CONFIRMED medium | FIXED 12.2 check 13, 12.3. A `Retired` outcome carries the placeholder presentation without quarantining the bytes | fcc1c6fe |
+| C18 | `ItemStack` gaining a third component is a fleet-wide break neither plan sequences | medium | CONFIRMED medium | FIXED phase 1, 18 row 10. Phase 1 lands before Scope A's Grimhollow reader-switch window opens or after it closes | 6acc3048 |
+| C22 | `PlayerJournalSections` as a `ushort` is one bit short of this document's own 17 | low | CONFIRMED low | FIXED 18 row 3. `uint`, citing the 17 | beb4750a |
+| C24 | Contracts 12.3's composed rare-name template has no row in either spec | low | CONFIRMED low | FIXED 8.5, 8.8. `rarity_rule.display_format` IS the template, its arguments are the word texts in position order then the base name | 177b0b39, 74b16f21 |
+| C25 | `stat.tags` is authored by Scope A and read by nobody | lead | LEAD | FIXED 11.3. A line's tag scope is matched against the union of the context tags and the target stat row's own tags | beb4750a |
+| C26 | Nothing enforces the three-way type id split at registration | low | CONFIRMED low | FIXED 3.3, 2.2, 10.5. `Register` takes an `InstanceKindBand` and throws on a mismatch | beb4750a |
+| C27 | Placeholder lines and tooltips are rendered without naming the layered catalog | low | CONFIRMED low | FIXED 7.4, 12.3. Both name `ContentStringCatalog` and the `SafeFormat` path | beb4750a |
+| C30 | Neither spec says whether a Scope B format change bumps `FormatGeneration` | lead | LEAD | FIXED 14. A fifth number is named: Scope A bumps `ContentPackFormat.Generation` for any pack-carried change including a new remap rule kind, and Scope B has no generation of its own | beb4750a |
+
+### F2, the rejected argument, recorded in full
+
+The draft this review read made validator checks 7 and 8 "counted and tolerated": an unresolvable content
+reference inside a payload kept its bytes verbatim, contributed nothing to the evaluator, rendered as a
+placeholder line and was re-checked on every load, while the item stayed equipped, tradable and craftable.
+**The argument for it was a real one and it is why the draft said what it said.** A payload-level unknown
+reference is strictly more likely than an unknown definition, because there are more mods than bases, so
+quarantining on it multiplies the blast radius of one forgotten remap rule from one item to every item
+carrying that mod. Tolerance keeps a player playing through the window in which an author fixes a publish.
+
+**It was rejected because it is a contradiction rather than a refinement.** Contracts 10.1 says every
+durable record resolves to exactly one of Valid, Remapped or Quarantined and that "there is no fourth",
+and defines Quarantined as "Something did not resolve or did not parse". Contracts 10.2 names
+`unknown-content-reference` as a QUARANTINE reason code and says a quarantined item "is unusable,
+untradeable and undroppable". Tolerating it is a fourth outcome under a reason code the contract assigned
+to the third, and section 22 did not file it, so it would have shipped as a silent divergence. The
+concrete failure the reviewer built: an affix whose tier no longer resolves stays on a TRADABLE item, the
+player sells it as top tier, the buyer applies a `RerollValues` that writes a fresh position against a
+range that does not exist, and the missing `ReplacedBy` rule then lands and reads that position against a
+nerfed mod's range. The trade already happened. Under the contract the item quarantines at the first load,
+is untradeable by definition, and returns intact when the rule publishes, because the bytes were never
+touched.
+
+The tolerance argument would still be available as a CHANGE REQUEST against contracts 10.1 and 10.2, and
+this document does not make one, because the second half of the rejected reading is the expensive half:
+tolerance without untradeability is the exploit, and tolerance WITH untradeability is most of what
+quarantine already is.
+
+### F6, the direction taken over a refuted finding
+
+The reviewer's finding was that `RerollValues` farms a legacy mod because 10.3's standing refusal covers
+only primitives that ADD a mod. **The text claim was REFUTED**: the draft defined "crafted" as added by a
+craft and already offered `NotLegacy` as an authored guard, so the document did not contradict itself.
+
+**The conservative reading was applied anyway, on the orchestrator's direction**, because the owner's
+words in contracts 5.4 are "a legacy id that can never be generated or crafted again" and the exploit the
+reviewer constructed is real whatever the draft meant: a currency whose only step is
+`RerollValues(ByModId <legacy id>)` draws a fresh position against the preserved range every application,
+so patience alone walks a roll to the top of a range no live mod can produce, and the mechanism the owner
+chose in order to FREEZE old rolls becomes a farm for them. So 10.3 now carries a second standing rule: a
+legacy affix entry is FROZEN and no primitive and no game operation rewrites its roll position, tier or
+flags. 10.7 and 15.8 are aligned with it.
+
+**It is a TIGHTENING and the owner can relax it at gate 1**, which is why contract request 6 exists. The
+cost is stated in 10.3: an item with one legacy affix cannot have that entry rerolled by any currency,
+and a currency authored to reroll one entry by index simply refuses when that entry is the legacy one.
+
+### Findings this document did not act on
+
+None. Every F and every C in the table above is either fixed here or is a contracts amendment carried by
+that document and depended on from section 22's table. The fifteen consistency findings that name Scope A
+or the contracts rather than this document (C3, C4, C5, C7, C11, C12, C13, C14, C16, C19, C20, C21, C23,
+C28 and C29) belong to those documents and are not restated here. Four of them reach this one through the
+contracts and are in section 22's amendment table.

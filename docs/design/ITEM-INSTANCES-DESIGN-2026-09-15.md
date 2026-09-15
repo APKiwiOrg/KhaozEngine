@@ -442,10 +442,11 @@ stating: two otherwise identical items whose gems sit in different sockets do NO
 correct, because they are different items.
 
 **The nested budget is finite and here is the arithmetic.** A six socket item spends
-`6 * (1 + 2 + 5 + 1) = 54` bytes on socket overhead at typical id widths, plus about 100 bytes on its
-own fields, leaving about 358 of the 512 byte cap across six nested payloads, so about 59 bytes each.
-Fifty-nine bytes is one rare's worth of payload (3.8), so a six socket item can hold six ordinary gems
-comfortably and cannot hold six six-affix rares. That ceiling is a v1 design consequence rather than a
+`6 * (1 + 2 + 5 + 1) = 54` bytes on socket ENTRY overhead at typical id widths, plus five more on kind
+132's own two byte kind varint, two byte length varint and count byte, plus 101 on its other fields,
+which 3.8 counts one at a time. That is 160 bytes fixed, leaving 352 of the 512 byte cap across six
+nested payloads, so about 58 bytes each. Fifty-eight bytes is one rare's worth of payload (3.8), so a six
+socket item can hold six ordinary gems comfortably and cannot hold six six-affix rares. That ceiling is a v1 design consequence rather than a
 defect, and raising `MaxInstancePayloadBytes` later is backward compatible by contracts 9.6. It is open
 question 4.
 
@@ -470,10 +471,24 @@ Four refinements the contract leaves to this spec:
   encode it as a ten byte value with the sign flipped into the low bit. Node 0, the only shape a single
   process server has, keeps ids numerically identical to a plain counter and costs four varint bytes up
   to 268,435,455.
-- **A restore from backup ROTATES the node id.** Section 13, row 7, has the reasoning. The allocator
-  exposes `Rotate(ushort newNodeId)` and the boot refuses a node id already on the persisted retired
-  list, so a post-restore id can never collide with a pre-restore one. A restore burns one of 65,535
-  node ids.
+- **The allocator's persisted state is bound to the STORE EPOCH, and a restore rotates both.** An
+  earlier draft guarded a restore with the persisted retired node list, and that guard cannot fire: a
+  point-in-time restore rolls the high-water mark, the node id AND the retired list back together,
+  because all three live in the store being restored, so in the restored bytes the node in use was never
+  retired and the check passes. What a restore does NOT roll back is everything outside the store, which
+  is exactly what collides: client caches, other shards, a ground stack on another host's region stream,
+  an external system that recorded an id. So the allocator records the `store_epoch` its high-water mark
+  was persisted under and REFUSES TO ISSUE when the live epoch differs. That is a comparison between a
+  restored value and a value an operator rotated, rather than between two values the same restore
+  rewound, which is the property the retired list could never have. The journal already owns both the
+  mechanism and the runbook: `IMutationJournalMaintenance.RotateStoreEpochAsync`, and
+  `DURABLE-PLAYER-JOURNAL-DESIGN-2026-09-06.md` section 10, "A point-in-time database restore must
+  rotate `store_epoch` through the maintenance API before writers reopen." 15.2 is the procedure.
+- **The retired node list stays, demoted to a RE-BOOT guard.** `Rotate(ushort newNodeId)` appends the old
+  node id to it, and a boot refuses a node id already on the list. That catches an operator who rotates
+  onto a node id this store has already used, which is an ordinary configuration mistake worth one
+  refusal at boot. It is no longer the restore guard, because it cannot be one. A restore still burns one
+  of 65,535 node ids.
 - **Which items get an id** is contracts 6.2's rule verbatim, restated because it is easy to get
   backwards: an item gets an instance id when its encoded payload is NON-EMPTY, or its definition
   declares durability, sockets or any per-instance field. The rule is a property of the ITEM rather
@@ -544,19 +559,47 @@ The arithmetic, because the numbers carry the rest of the document:
   of rare name. Sixty-nine bytes per bank slot, so a hundred slot page of nothing but rares is about
   6.9 KB, which is the number sections 5, 6, 7 and 16 are all sized against.
 
-**The deepest item v1 can express, for the guard rail.** Six affixes at three byte mod ids, six occupied
-sockets each holding a forty byte nested payload with its own instance id, plus flags, item level,
-quality, durability, a bound-to subject, identification, rarity, one enchantment and a rare name, is
-**410 bytes**. That is 80 percent of `MaxInstancePayloadBytes = 512`.
+**The deepest item v1 can express, field by field.** An earlier draft of this document put it at 410
+bytes and called 512 "1.25 times the deepest item", using forty byte nested payloads, while 3.5 computed
+the nested budget at about 59 bytes each. Both could not be true. Here is the arithmetic so that neither
+number has to be taken on trust. Every field is at its widest realistic encoding, six affixes at three
+byte mod ids, six occupied sockets, and the item identified with a bound-to subject.
 
-This is worth stating plainly because it revises the characterisation in contracts 9.6, which called
-512 "about 11 times the realistic size" and therefore "a guard rail rather than a budget". Both readings
-are true of different items: 512 is 11 times the WORKED example of 9.8, and 1.25 times the deepest item
-the v1 field set can produce. So the cap is a guard rail for an ordinary item and close to a budget for
-a maximal one, and the practical consequence is that raising it is more likely than the contract
-implies. Raising it is backward compatible and lowering it is not (contracts 9.6), so nothing is at
-risk, but contracts 16 already lists the cap as expensive to lower and open question 4 puts the trigger
-to watch in front of the owner.
+| Field | Kind bytes | Length bytes | Body | Total |
+|---|---|---|---|---|
+| 1 `Flags`, bits 0 to 2 set | 1 | 1 | 1 | 3 |
+| 2 `ItemLevel`, above 127 | 1 | 1 | 2 | 4 |
+| 3 `Quality` | 1 | 1 | 1 | 3 |
+| 5 `Durability`, two `uint16` varints | 1 | 1 | 4 | 6 |
+| 6 `BoundTo`, a subject varint | 1 | 1 | 5 | 7 |
+| 128 `Identification` | 2 | 1 | 2 | 5 |
+| 130 `Rarity` | 2 | 1 | 1 | 4 |
+| 131 `Affixes`, count plus six seven byte entries | 2 | 1 | 43 | 46 |
+| 133 `Enchantments`, count plus one entry | 2 | 1 | 8 | 11 |
+| 134 `RareName`, a template id and three words | 2 | 1 | 9 | 12 |
+| Subtotal, every field but the sockets | | | | **101** |
+| 132 `Sockets` header: kind varint, two byte length, count | 2 | 2 | 1 | 5 |
+| Six socket entries at `1 + 2 + 5 + 1` of overhead each | | | 54 | 54 |
+| Fixed total | | | | **160** |
+| Six nested payloads, whatever is left | | | 352 | **352** |
+| `MaxInstancePayloadBytes` | | | | **512** |
+
+Three readings come out of that and the third is the one that matters:
+
+- A six socket item holding six FORTY byte gems is `160 + 240 = 400` bytes, 78 percent of the cap. That
+  is the item the 410 figure was reaching for, and it was ten bytes out because it never counted kind
+  132's own five byte header.
+- The same item with its nested budget fully spent is 508 bytes, four short of the cap.
+- **So the deepest item v1 can express IS the cap, by construction.** The field set can fill 512 exactly,
+  and what the cap actually decides is how DEEP A GEM may be, which is precisely why
+  `socket_type.max_nested_bytes` (8.7) exists: it turns that into an authored publish-time number instead
+  of a refusal at the moment a player clicks socket.
+
+Against contracts 9.6, which calls 512 "about 11 times the realistic size" and therefore "a guard rail
+rather than a budget": 512 is 11 times the 45 byte worked example of contracts 9.8 and exactly 1.0 times
+a maximal item, so both readings are true of different items and neither is true of both. Raising the cap
+is backward compatible and lowering it is not (contracts 9.6), so nothing is at risk. Change request 3
+and open question 4 are restated against this table rather than against 410.
 
 ## 4. `ItemStack`, `ItemContainer` and container codec version 2
 
@@ -1068,8 +1111,11 @@ What `Close` emits:
   `SHA256.HashData`, `JournalLimits.cs:135`), so two encodings of one batch must produce one byte
   sequence.
 - **ONE `JournalEvent` per logical operation**, in order. The audit trail is not collapsed, only the
-  projection is. At about forty bytes an event and a cap of 128 events per operation
-  (`JournalLimits.cs:10`), a batch is bounded at 128 operations and about 5 KB of events.
+  projection is. Event sizes are per TYPE and each is written out where the type is: an `item-generated`
+  event is about 72 bytes on a rare (9.5) and an `item-crafted` event is about 127, because it carries a
+  before AND an after payload (10.6). At the cap of 128 events per operation (`JournalLimits.cs:10`) a
+  batch is bounded at 128 operations and about 16 KB of events, which is 6 percent of the 256 KiB event
+  payload cap (`JournalLimits.cs:14`).
 - **ONE `JournalProjectionWrite` per touched page**, carrying the page's FINAL bytes, plus the pages the
   container's dirty set names from a lazy remap (5.6).
 - **ONE result**, the resolved state the consumer presents.
@@ -1167,13 +1213,15 @@ The arithmetic that justifies the section, using 3.8's 69 byte entry and 5.4's 6
 | Workload | Today, one section per container | Paged, one commit each | Paged and batched |
 |---|---|---|---|
 | One craft on a 1,000 stack bank | 69 KB | 6.9 KB | 6.9 KB |
-| Twenty crafts in a held action | 1,380 KB | 138 KB | **7.7 KB** |
+| Twenty crafts in a held action | 1,380 KB | 138 KB | **9.4 KB** |
 | Twenty crafts, as journal events | 20 events | 20 events | 20 events |
 | Commits issued | 20 | 20 | **1** |
 
-Twenty crafts go from 1,380 KB and twenty commits to 7.7 KB and one, a factor of about 180 on bytes and
-20 on commits. The 7.7 KB is one 6.9 KB page plus twenty events of about forty bytes. Section 16 turns
-those into measured budgets.
+Twenty crafts go from 1,380 KB and twenty commits to 9.4 KB and one, a factor of about 146 on bytes and
+20 on commits. The 9.4 KB is one 6.9 KB page plus twenty `item-crafted` events at about 127 bytes each
+(10.6), which is the before-and-after event rather than the 40 byte figure an earlier draft used and the
+83 byte figure it used elsewhere. Section 16 turns these into measured budgets, and budget 4 carries the
+same arithmetic.
 
 ## 7. Ground items and the network
 
@@ -1321,6 +1369,17 @@ O(world) plus O(viewers times changed) into O(viewers times world). Paying that 
 server to avoid a targeted message for a case that arises when an owner looks at their own item is the
 wrong trade.
 
+**The tile serve is FULL STATE today, and this section prices that rather than assuming a delta.** Step 5
+of the tick builds `SnapshotWriter.WriteFiltered(world, registry, interest,
+ReplicationChannels.Replicate, netId)` and sends it inside the per-slot loop, every tick, for every slot
+(`TileWorldServer.Tick.cs:204-221`). `AoiDeltaReplicator` lives in `KhaozEngine.Replication` and
+`KhaozEngine.TileWorld.Netcode` does not use it. So a sibling component's payload is retransmitted WHOLE,
+per viewer, per tick, for as long as the drop lies there, and computing the public view once per item
+rather than once per viewer saves the COMPUTE and not the BYTES. Budget 11 of section 16 measures it, at
+the 250 ms tile tick rather than at a 10 Hz one. Moving the sibling component onto an AoI delta path is
+the obvious next optimisation and it is not v1: v1 ships the full-state cost with the budget that says
+what it is.
+
 The second row matters too. Option c needs no engine API change at all: the targeted message is exactly
 the shape `SendCombatTo(slot, interest)` already is, a second non-snapshot per-viewer filtered send driven
 off the same interest set (`TileWorldServer.Tick.cs:248-259`), and `PickupState.OwnerNetId` is the
@@ -1460,15 +1519,19 @@ and a client that receives a `JournalCorrection`'s section key list asks for eac
 rate limits it at one page per client per tick, which bounds the worst case a malicious client can ask
 for at one page of fragments per tick, the same shape the snapshot already costs.
 
-**A ground item's payload is capped independently of the frame.** The sibling component rides inside a
-snapshot, and a snapshot frame is subject to the same 1,024 byte cap, so a cell holding several deep
-items could in principle overflow one. The engine's answer is the one it already uses: the ground item
-cap is a game budget rather than an engine one, and `TileWorldServer`'s cell occupancy limit
-(`SpawnGroundItem` answers 0 on a full cell, `TileWorldServer.GroundItems.cs:62-98`) is where a game
-tunes it. What this document adds is the arithmetic: at the 69 byte public view of a rare (3.8), a
-snapshot carrying twenty ground rares in one interest set spends 1,380 bytes and overflows. Section 13
-row 11 carries it as a failure mode with a detection, and open question 6 asks the owner whether the
-engine should cap ground payload bytes per cell rather than leaving it to the game.
+**A ground item's payload is capped per ITEM and not by the frame, and an earlier draft had that
+backwards.** A snapshot frame is NOT subject to the 1,024 byte game message cap: `EncodeSnapshotFrame`
+allocates `SnapshotHeader + snapshot.Length` with no cap test (`TileProtocol.Frames.cs:112-125`),
+`TryDecodeSnapshotFrame` has no cap either (`:132-152`), and the only throw in that file is in
+`EncodeGameMessage` (`:173-174`), which a snapshot never goes through. Snapshots already exceed 1,024
+bytes for an ordinary interest set today. So "twenty ground rares overflow a frame" was never a failure
+mode, and correcting it exposes the one it was hiding: by 7.4 the tile serve is FULL STATE, so every
+ground payload in an interest set is re-sent to every viewer on every tick, for as long as the drop lies
+there. That is a bandwidth cost rather than a throw, it is budget 11 in section 16, and section 13 row 11
+carries it with the detection that actually applies. `TileWorldServer`'s cell occupancy limit
+(`SpawnGroundItem` answers 0 on a full cell, `TileWorldServer.GroundItems.cs:62-98`) is where a game tunes
+the COUNT today, and open question 6 asks the owner whether the engine should cap ground payload BYTES per
+cell as well.
 
 ## 8. Affix content types
 
@@ -1954,8 +2017,14 @@ the `ServerOnly` weight type builds no tables at all, which is exactly what a cl
    ignoring later ones. That is 8.3's first-tag-wins rule executed rather than precomputed.
 4. **The memo.** The merge is keyed by (tag signature, band), where the tag signature is the base's
    ordered tag list interned to an int. Bases sharing a tag list share a merge. A bounded dictionary
-   holds the most recent 4,096, which at a live server's hot base set is effectively a full cache and at
-   a pathological one degrades to a merge per roll, which is still microseconds.
+   holds the most recent 4,096 on an LRU eviction, and the ratio is worth writing down rather than
+   calling it a cache: a few hundred authored tag signatures over 64 bands is a key space of about
+   19,200, so 4,096 entries is a FIFTH of it. That is deliberate. The 4,096 is a MEMORY bound, not a
+   claim that the cache is complete: covering the whole key space at the entry size below would cost
+   about 46 MB. What makes the hit rate high anyway is that a live server rolls a small hot set of bases
+   at a small hot set of levels, so the working set at any moment is a handful of bands times the bases
+   actually dropping, and a miss costs one merge over a few hundred entries, which is microseconds. A
+   pathological pack degrades to a merge per roll and nothing worse.
 
 **The arithmetic, at the owner's scale of 50,000 bases and 2,000 mods.** Take 8 tiers per mod (16,000
 tiers), 5 tag weights per tier and 64 bands, with a tier spanning on average a third of them.
@@ -1965,13 +2034,14 @@ tiers), 5 tag weights per tier and 64 bands, with a tier spanning on average a t
 | Tag-band table entries | `16,000 tiers * 5 tags * 21 bands` | about 1.7 million |
 | Bytes at 12 per entry | `1.7M * 12` | **about 20 MB** |
 | Distinct tag signatures | authored, bounded by base count | a few hundred |
-| Memo entries held | `4,096 * (merged array + header)` | **about 4 MB at 200 entries each** |
+| Memo entries held | `4,096 * 200 entries * 12 bytes` | **about 9.8 MB at 200 entries each** |
 | Base-derived memory | `50,000 * 8` for the signature intern | **400 KB** |
 | Build: appends | one per table entry | 1.7 million |
 | Build: sort | 1.7M entries across about 19,000 buckets | dominated by the appends |
 
-**About 25 MB resident and a build measured in low hundreds of milliseconds**, both of which belong in
-16's budget table as targets rather than as claims, because neither is measured. The number that matters
+**About 30 MB resident and a build measured in low hundreds of milliseconds**, both of which belong in
+16's budget table as targets rather than as claims, because neither is measured. The 30 is `20 + 9.8 +
+0.4`, and an earlier draft wrote 25 because it priced the memo at 4 MB against its own 12 bytes an entry. The number that matters
 for the SHAPE is the last row of the top half: 400 KB for fifty thousand bases. A base costs eight bytes
 because it never enters a table, only its tag list does. That is what makes the design survive the
 owner's "millions of owned items" over a large catalog.
@@ -2072,10 +2142,12 @@ would have to be re-rolled to mean anything.
 
 **The full payload rather than a reference to the page.** A page is rewritten whole on every later commit
 (`JournalProjectionWrite.cs:10-29`), so the page bytes at the moment of generation are not recoverable
-from anything except this event. At 69 bytes for a rare (3.8) plus about 14 of header, an
-`item-generated` event is about 83 bytes against the 128 events per operation cap
-(`JournalLimits.cs:10`), so a drop burst of twenty rares is about 1.7 KB of events, which is inside the
-one-tick batch budget of 6.4.
+from anything except this event. The event carries the PAYLOAD, which is 58 bytes for the rare of 3.8 and
+not the 69 byte slot entry, plus fourteen of header
+(`1 + 2 + 5 + 1 + 1 + 1 + 2 + 1`), so an `item-generated` event is about **72 bytes**. Against the 128
+events per operation cap (`JournalLimits.cs:10`) a drop burst of twenty rares is about 1.4 KB of events,
+which is inside the one-tick batch budget of 6.4. An `item-crafted` event is a different size and 10.6
+counts it.
 
 **Content version on the event is what makes the audit answerable.** A support question of the form "what
 did this item look like when it dropped" is answered by decoding the event's payload against the version
@@ -2316,11 +2388,15 @@ same operation id carrying the same instance id is a `Replayed` that returns the
 [AfterLength: varint int32][After: bytes]       // the payload as it stands
 ```
 
-Before AND after, which is 42 bytes more than after alone on a rare and is worth every one of them. The
-page is rewritten whole on the next commit, so without the before bytes nothing in the durable record can
-answer what a craft changed, which is the exact failure Ruinborne's audit has (`c-ruinborne.md:328-346`,
-audit rows recording that a row changed and carrying no values). Contracts 4.7 makes the same argument for
-the content audit, and this is it applied to the instance audit.
+**An `item-crafted` event is about 127 bytes on a rare, and here is the count:**
+`1 + 2 + 5 + 1 + 1 + 58 + 1 + 58`, which is the version byte, a currency id, the instance id, the content
+version, and each payload with its length varint at 3.8's 58 byte rare. After alone would be 68, so
+carrying the BEFORE costs **59 bytes**, not the 42 an earlier draft claimed. It is worth every one of
+them: the page is rewritten whole on the next commit, so without the before bytes nothing in the durable
+record can answer what a craft changed, which is the exact failure Ruinborne's audit has
+(`c-ruinborne.md:328-346`, audit rows recording that a row changed and carrying no values). Contracts 4.7
+makes the same argument for the content audit, and this is it applied to the instance audit. Twenty crafts
+in one batch is therefore `6,900 + 20 * 127 = 9,440` bytes, which is 6.7's table and budget 4.
 
 A REFUSED craft writes nothing durable. It is not an operation, it never reaches the journal, and the
 client is answered with the `CraftRefusal` naming the guard or the primitive that refused. That is the
@@ -2672,17 +2748,21 @@ and are stable.
 | 4 | Crash mid page rewrite | none needed | impossible to observe. A projection write is a whole section replacement inside the store's transaction (`JournalProjectionWrite.cs:10-29`), so a page is entirely old or entirely new | none required. This row exists to record that there is no torn page to repair |
 | 5 | A socket references a socket type that resolves to nothing | validator check 7 (12.2) | the ENTRY quarantines, bytes kept verbatim, the item is unusable and untradeable until a rule lands (12.3) | a `ReplacedBy` rule (contracts 8.2 kind 1) points it at a live type. The next load re-validates and the item returns intact, because nothing was rewritten |
 | 6 | A mod is retired with no remap rule | validator check 7 or 8 | the ENTRY quarantines. Every item carrying that mod quarantines, which is the blast radius 12.3 names | the author publishes the missing rule. Every page is re-checked on its next load, so there is no rewrite pass and no support edit. The publish validator (contracts 10.4) is what should have caught it first |
-| 7 | An instance id collides after a restore from backup | the allocator refuses to boot on a node id in its persisted retired list (3.6) | the boot fails closed rather than issuing a colliding id | rotate the node id with `Rotate`, which burns one of 65,535. Ids issued after the backup point and lost by it are simply never reissued |
+| 7 | An instance id collides after a restore from backup | the allocator's persisted `store_epoch` does not match the live one, so it refuses to issue (3.6). The retired node list cannot detect this, because a restore rolls the list back with everything else | the first allocation fails closed rather than issuing a colliding id, so the server refuses to create items until an operator acts | the 15.2 procedure, in order: quiesce, restore, rotate the store epoch, rotate the node id, reopen. Ids issued after the backup point and lost by it are never reissued |
 | 8 | A page exceeds the journal's section cap | arithmetically impossible: 100 entries at the maximum size is 53,209 bytes against 2 MiB (5.4) | none | the row exists so the 2.5 percent margin is written down. A page geometry change reruns the arithmetic |
 | 9 | A client never acknowledges a page sync | no acknowledgement exists, deliberately | nothing. `ReliableOrdered` means delivery or a dead connection (7.5 rule 1), and a partial assembly dies with the connection (rule 4) | the client re-requests on rejoin, at two bytes (7.6). Adding an acknowledgement would build a second reliability layer over a reliable channel |
 | 10 | A page is written into the wrong section | the decoder's `FirstSlot == PageIndex * expectedPageSlots` check (4.4) | the page fails to decode and is quarantined as a unit | the redundant two bytes are what make this loud instead of silent. Recovery is the journal's, from the event tail |
 | 12 | A page delta names more changes than one game message holds | the builder measures the encoded size as it writes and stops before the cap (7.5) | the delta is abandoned before it is encoded and the page is sent through the fragmenter instead, so nothing reaches `EncodeGameMessage` above the cap | none needed. The row exists because the failure it prevents is a THROW INSIDE THE PER-VIEWER SERVE LOOP, which the combat path already paid for once (`TileWorldServer.Tick.cs:236-247`) |
-| 11 | Ground item payloads overflow a snapshot frame | the encoder throws above 1,024 bytes (`TileProtocol.Frames.cs:173-174`) | today, a throw inside the serve loop, which takes the tick down for every player | the fix is the chunking shape `SendCombatTo` already uses (`TileWorldServer.Tick.cs:241-259`) plus a per-cell ground payload budget. Open question 6 |
+| 11 | Ground item payloads dominate a viewer's bandwidth | budget 11 of section 16: public view bytes times instances in interest divided by the tick length (7.4) | no throw and no overflow. A snapshot frame carries no cap (`TileProtocol.Frames.cs:112-125`), so the effect is bytes per viewer per second, repeated every tick for the life of the drop | a per-cell payload byte budget on `SpawnGroundItem` (open question 6), or moving the sibling component onto the AoI delta path. `AoiDeltaReplicator` exists in `KhaozEngine.Replication` and the tile serve does not use it (7.4) |
 
-**Row 11 is the only row whose CURRENT behaviour is worse than its recovery**, and it is worth naming as
-the one place this design puts new pressure on an existing throw. The combat path already learned this
-lesson and its comment says so in as many words, that the throw was inside the loop and cost every player
-on the server rather than the one viewer. Ground instances put the same pressure on the snapshot path.
+**Row 12 is the only row whose CURRENT behaviour would be worse than its recovery**, and it is worth
+naming as the one place this design puts new pressure on an existing throw. The combat path already
+learned the lesson and its comment says so in as many words, that the throw was inside the serve loop and
+cost every player on the server rather than the one viewer (`TileWorldServer.Tick.cs:236-247`). The page
+delta puts the same pressure on the same encoder, which is why 7.5 makes the size test part of BUILDING
+the message rather than a rule an implementer is trusted to remember. **Row 11 was written as that same
+throw in an earlier draft and is not one**, because a snapshot frame is not capped (7.6). It is a
+bandwidth row, and its answer is a budget rather than a catch.
 
 ## 14. Versioning and rollback
 
@@ -2739,10 +2819,35 @@ Four doors, and the journal closes three of them before this document starts.
 
 A restore from backup rewinds pages and can therefore restore an item that was consumed, which is
 duplication by administration rather than by exploit. The engine cannot prevent it and does not pretend
-to. What it does is make the aftermath survivable: the node id rotates (3.6), the retired list refuses the
-old one, and every id issued after the backup point is never reissued, so the restored world and the lost
-one can never name the same item. Test: 17.12, `Rotate` then an allocation, asserting no overlap with the
-pre-rotation range and that a boot on a retired node id throws.
+to. What it does is make the aftermath survivable, and the guard has to be one the restore cannot also
+rewind: the allocator's persisted state carries the `store_epoch` it was written under and refuses to
+issue when the live epoch differs (3.6). A restored allocator therefore STOPS rather than reissuing, and
+starting it again is an explicit operator act.
+
+**The procedure, in order, and every step is load bearing:**
+
+1. **Quiesce.** Stop every writer against the database being restored. An allocator still running on the
+   old process is the one thing an epoch cannot tell apart, because it holds its state in memory.
+2. **Restore** the point-in-time backup.
+3. **Rotate the store epoch** through `IMutationJournalMaintenance.RotateStoreEpochAsync`, which the
+   journal's own runbook already requires of any point-in-time restore
+   (`DURABLE-PLAYER-JOURNAL-DESIGN-2026-09-06.md` section 10). This is the step that makes the restored
+   allocator state refuse, and skipping it is what the whole guard exists to catch.
+4. **Rotate the node id** with `Rotate(ushort)`, which appends the old node id to the retired list and
+   writes the new node id and the LIVE epoch together.
+5. **Reopen** to writers.
+
+**What that buys, stated exactly rather than optimistically.** Every id issued after the rotate comes from
+a node id no pre-restore item can carry, so a post-rotate item and a pre-restore item can never share an
+id. What it does not undo is the window the restore itself opened: ids issued between the backup point and
+the restore were handed to real items, those items are gone from the store, and copies of them may survive
+in a client cache, on another shard, on another host's region stream or in an operator's export. Those ids
+are never reissued, because the counter never goes backwards past the rotate, so a surviving copy resolves
+to nothing rather than to a DIFFERENT item, which is the property that matters. That is weaker than the
+earlier draft's claim that "the restored world and the lost one can never name the same item", and it is
+the claim the mechanism actually supports. Test: 17.12, `Rotate` then an allocation, asserting no overlap
+with the pre-rotation range, that a boot on a retired node id throws, and that an allocator whose
+persisted epoch differs from the live one refuses to issue.
 
 ### 15.3 Payload tampering
 
@@ -2842,13 +2947,15 @@ the last column says.
 | 1 | Bytes per rare item, payload | at most 80 | encode the 3.8 PoE row, count bytes | TBD (stage 5) |
 | 2 | Bytes per rare item, slot entry | at most 96 | the same, through 4.4 | TBD (stage 5) |
 | 3 | Page commit size, 100 rares | at most 8 KB | encode a full page, count bytes | TBD (stage 5) |
-| 4 | Write volume, 20 crafts in one held action | at most 16 KB and 1 commit | `--items` bench, sum `JournalCommit.OwnedByteCount` | TBD (stage 5) |
+| 4 | Write volume, 20 crafts in one held action | at most 20 KB and 1 commit | `--items` bench, sum `JournalCommit.OwnedByteCount` | TBD (stage 5) |
 | 5 | Rare generation time | under 20 microseconds per item | `--items` bench, 1M generations, report p50 and p99 | TBD (stage 5) |
 | 6 | Stat evaluation per attack | under 2 microseconds, 0 bytes allocated | evaluate one stat over 11 worn items with 6 affixes each | TBD (stage 5) |
 | 7 | Container page sync size, cold open | at most 8 KB and 8 frames per page | encode and fragment a full page (7.5) | TBD (stage 5) |
 | 8 | Steady-state sync after one craft | 1 frame, at most 96 bytes | the delta of 7.5 | TBD (stage 5) |
 | 9 | Generator table build at 2,000 mods | under 500 ms, under 40 MB resident | build the 9.2 tables from a synthetic pack | TBD (stage 5) |
 | 10 | Container load, 10 pages with a full remap pass | under 5 ms, under 200 KB allocated | `Load` over 10 pages and 200 rules | TBD (stage 5) |
+| 11 | Ground instance bytes per viewer per second | at most 8 KB per second per viewer at 28 ground instances in interest | public view bytes times instances in interest divided by `TickSeconds` (7.4) | TBD (stage 5) |
+| 12 | Resident page bytes at 1,000 logged-in players | under 250 MB | sum the decoded page bytes plus the admitted layer's two dictionaries, at a 1,000 stack bank each | TBD (stage 5) |
 
 Where each number comes from, because a target with no derivation is a guess in a table:
 
@@ -2856,16 +2963,35 @@ Where each number comes from, because a target with no derivation is a guess in 
   bytes (3.8), so these are TYPICAL budgets and the 512 cap is the ceiling.
 - **3 and 7** are 5.4's 6.9 KB page plus header and fragmentation overhead. Eight frames because
   `ceil(6900 / 1015)` is seven and one is spare (7.5).
-- **4** is 6.7's measured arithmetic: one 6.9 KB page plus twenty events of about 83 bytes (9.5) is 8.6 KB,
-  and the 16 KB target leaves room for a two-page craft.
+- **4** is 6.7's arithmetic with the right event size: one 6.9 KB page plus twenty `item-crafted` events
+  at about 127 bytes (10.6) is 9.4 KB. The 20 KB target is what covers the two-page case as well, because
+  a craft that consumes a currency from a second page writes both, at `13.8 + 2.5 = 16.3` KB. An earlier
+  draft targeted 16 KB off an 8.6 KB derivation that used the `item-generated` event size, which would
+  have made the two-page case a failing budget for the wrong reason.
 - **5** is twenty draws and six passes over a few-hundred-entry array (9.4), which is hundreds of
   nanoseconds of real work, budgeted at 20 microseconds so the answer is about the ALLOCATION and the
   memo, not about the arithmetic.
 - **6** is the one that must be checked hardest. Eleven worn items times up to thirteen lines each is about
   140 lines, folded through 11.6's eight steps. Two microseconds is generous, and zero allocation is the
   binding half: an evaluation that allocates per attack is an evaluation that runs per attack.
-- **9** is 9.2's 1.7 million appends and 20 MB, doubled for the memo and the build's transient arrays.
+- **9** is 9.2's 1.7 million appends: 20 MB of tag-band tables plus a 9.8 MB memo is about 30 MB, and the
+  budget adds the build's transient arrays on top.
 - **10** is 5.5's one pass over 10 pages with 200 rules, each rule a no-op on a page holding no reference.
+- **11** is the one the design introduces rather than inherits, and it is the cost of the tile serve being
+  full state (7.4). A rare's PUBLIC view is its 58 byte payload less the four bytes of `OwnerOnly`
+  durability, so 54, and the component adds its instance id varint and a payload length, so about 60 bytes
+  on the wire per ground instance. A 28 slot bag dropped into one cell is `28 * 60 = 1,680` bytes in every
+  snapshot that cell is in, and the tile tick is 250 ms, so one viewer standing there receives about
+  6.7 KB per second of REPEATED bytes, for the whole 300 second despawn window. Ten viewers in that cell
+  is 67 KB per second of the server's egress for one death pile. The budget is per viewer because that is
+  the number an operator can act on.
+- **12** is test 5's "several million instances in memory" given a number. A 1,000 stack bank is about
+  70 KB of page bytes (5.4), so 1,000 logged-in players is about 70 MB before anything copies it.
+  `JournalLimits` clones every byte array on the way in and again on EVERY property read
+  (`JournalLimits.cs:107`, `:137`), and the admitted layer holds a committed and an uncommitted section
+  dictionary per stream, so the resident figure is two to three copies of that 70 MB. 250 MB is the
+  ceiling that covers three copies with headroom, and it is the budget that says whether "millions of
+  owned items" is a memory problem or a disk one.
 
 **Every one of these lands in `KhaozEngine.Benchmarks` as an `--items` mode with a checked-in baseline**
 (2.3), following the journal set's shape exactly, so the numbers are reproducible and a regression is a
@@ -2884,14 +3010,14 @@ Numbered so the sections above can cite a test rather than describe one, and a r
 | 2 | Unknown-kind round trip | `ItemInstances.Tests` | a decoder whose registry omits a kind the encoder wrote reproduces the input byte for byte, and the two items do not merge (15.4) |
 | 3 | Decoder fuzzing | `ItemInstances.Tests` | mutation over the goldens (bit flips, truncations, length lies, kind swaps): NEVER throws, reasons are stable per mutation class, no recursion past one level |
 | 4 | Cross-version round trips | `Foundation.Tests` | a version 1 container blob read by the version 2 reader, seated at instance id 0 with an empty payload, then written back as version 2 (4.5) |
-| 5 | Scale | `Benchmarks` plus a structural test in `Server.Tests` | a bank of 1,000 affixed stacks, several million instances in memory, 20 crafts in one batch, mirroring `MutationJournalBenchmarkTests` |
+| 5 | Scale | `Benchmarks` plus a structural test in `Server.Tests` | a bank of 1,000 affixed stacks, several million instances in memory against budget 12, 20 crafts in one batch, mirroring `MutationJournalBenchmarkTests` |
 | 6 | Generator distribution | `ItemInstances.Tests` | weights proportional within an integer bound, positions uniform and both ends reachable, draw count a function of the affix count (9.6) |
 | 7 | Evaluator determinism | `ItemInstances.Tests` | the `More` fold order changes the answer and the stated order is stable, add-then-remove restores exactly, negative rounding (11.6) |
 | 8 | Remap idempotence | `ItemInstances.Tests` | applying the full ordered rule set twice produces the same bytes as once (contracts 8.3) |
 | 9 | Visibility agreement | `ItemInstances.Tests` | the replication filter and the tooltip builder call `CanSee` and agree on every kind, at every level, identified and not (12.5) |
 | 10 | Craft replay | `Server.Tests` | same id and same intent replays to the original receipt, same id with a refilled slot is `OperationConflict` (15.1) |
 | 11 | Drop and claim | `TileWorld.Netcode.Tests` plus `Server.Tests` | the instance id survives a drop, a claim by a stranger and a claim by the dropper |
-| 12 | Allocator rotation | `ItemInstances.Tests` | `Rotate` issues no id in the old node's range, a boot on a retired node id throws, a crash skips the unissued block (3.6) |
+| 12 | Allocator rotation and the epoch refusal | `ItemInstances.Tests` | `Rotate` issues no id in the old node's range, a boot on a retired node id throws, an allocator whose persisted `store_epoch` differs from the live one refuses to issue, and a crash skips the unissued block (3.6) |
 | 13 | No client payload route | `Server.Tests` | an architecture test over the message routes asserting none carries a payload-shaped field (15.3) |
 | 14 | Concurrent cross-container move | `Server.Tests` | two moves of one stack, exactly one succeeds |
 | 15 | Page sync under loss and reorder | `TileWorld.Netcode.Tests` | a reassembler fed chunks out of order, with a sequence change mid assembly, with a fifth concurrent assembly, and with a truncated final chunk |
@@ -3105,9 +3231,13 @@ name, 128 is a shift a compiler produces either way. **Recommended default: 100.
 ids for the journal's retention window. A FIELD on the payload carrying dead ids would keep it forever and
 would grow without bound. **Recommended default: the event.**
 
-**4. Is `MaxInstancePayloadBytes = 512` right, given a six-socket item reaches 410?** (3.5, 3.8, and change
-request 3.) Raising it later is backward compatible and lowering it is not, so the cost of being wrong is
-asymmetric in the safe direction. **Recommended default: keep 512 for v1 and revisit when a real six-socket
+**4. Is `MaxInstancePayloadBytes = 512` right, given that a six socket item can fill it exactly?** (3.5,
+3.8's table, and change request 3.) The v1 field set reaches the cap by construction: 160 bytes are fixed
+on a maximal item and the remaining 352 are the six nested payloads, so the cap is what decides how deep a
+gem may be rather than a rail nothing approaches. Raising it later is backward compatible and lowering it
+is not, so the cost of being wrong is asymmetric in the safe direction. **Recommended default: keep 512
+for v1, author `socket_type.max_nested_bytes` on every socket type that admits a deep item (8.7) so the
+ceiling is a publish-time refusal rather than a runtime one, and revisit the cap when a real six socket
 item is authored.**
 
 **5. Are mod tiers a list on the mod row, or their own content type?** (8.3.) A list makes the tier ordinal
@@ -3115,9 +3245,12 @@ stable by construction and makes a reorder a publish refusal. A content type wou
 id, its own remap rule and its own retire path, at the cost of putting a second content id in every stored
 affix entry. **Recommended default: the list.**
 
-**6. Should the ENGINE cap ground item payload bytes per cell?** (7.6, and 13 row 11.) Today the spawn is
-capped per item and the frame throws on overflow, inside the serve loop. **Recommended default: yes, add a
-per-cell budget to `SpawnGroundItem` and chunk the snapshot the way `SendCombatTo` already chunks combat.**
+**6. Should the ENGINE cap ground item payload bytes per cell?** (7.4, 7.6, and 13 row 11.) Today the
+spawn is capped per ITEM, the cell is capped by COUNT, and a snapshot frame is not capped at all, so the
+exposure is bandwidth rather than a throw: a full-state serve re-sends every ground payload in interest to
+every viewer on every tick. **Recommended default: yes, add a per-cell payload BYTE budget beside the
+existing occupancy limit on `SpawnGroundItem`, and measure budget 11 before deciding whether the sibling
+component also needs the AoI delta path.**
 
 **7. Should the engine cap the affix COUNT, or leave it to the rarity rules?** (3.3, 8.5.) Kind 131's count
 is a byte, so 255 is the format ceiling, and the owner's stated shape is six. **Recommended default: no

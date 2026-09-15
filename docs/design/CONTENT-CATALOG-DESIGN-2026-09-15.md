@@ -140,6 +140,7 @@ game's graph, so the dependency costs a consumer nothing. In particular it does 
 | `IContentValidator` | One type's own checks, run after the engine's, contracts 4.4. |
 | `ContentTypeRegistry` | Registration, the freeze at first pack load, and lookup by type id or type key. |
 | `ContentRow` | The generic row a codec-free consumer sees: id, key, parent id, an ordered field-value list. |
+| `ItemRow` | The typed `ref struct` view over the engine `item` type's four hot fields, section 9.1. |
 | `IContentSnapshot` | The narrow READ side every consumer outside this package compiles against, below. |
 | `ContentSnapshot` | A complete candidate or loaded version: every type's rows plus the version header. Implements `IContentSnapshot`. |
 | `ContentValidationReport` | `(bool IsValid, IReadOnlyList<ContentFinding> Findings)`, accumulating, contracts 10.4. |
@@ -322,7 +323,7 @@ are candidates to breach it, and each is split by TYPE from the start rather tha
 
 ### 3.1 The engine content types
 
-Five types register in the ENGINE range `1` to `255` of contracts 4.3. The range holds 255 ids and five are
+Six types register in the ENGINE range `1` to `255` of contracts 4.3. The range holds 255 ids and six are
 spent, which is deliberate headroom: an engine release adding a type can never collide with a game's, which is
 the property `ReplicationRegistry.FirstExtensionTypeId` already gives components
 (`TileProtocol.Components.cs:17-30`, `a-engine.md:880-916`).
@@ -334,7 +335,8 @@ the property `ReplicationRegistry.FirstExtensionTypeId` already gives components
 | `3` | `stat` | The stat definition of contracts 13.1. | `Client` | 4,096 |
 | `4` | `loot_table` | A named drop or reward table. | `ServerOnly` | 4,096 |
 | `5` | `loot_entry` | One weighted row of one loot table. | `ServerOnly` | 16,384 |
-| `6` to `255` | reserved | Future engine types. Never assigned by a game. | | |
+| `6` | `base_socket` | One socket an item base is authored with, in authored order. | `Client` | 16,384 |
+| `7` to `255` | reserved | Future engine types. Never assigned by a game. | | |
 
 **`item` takes 1,024 slots and every other type takes more, which is a download decision rather than a
 storage one.** A chunk is the unit of re-download, so the type that is edited one row at a time wants the
@@ -347,9 +349,12 @@ measured afterwards.
 
 `loot_entry` takes a larger chunk than its parents because entries outnumber tables by roughly the branching
 factor, and a chunk is a transport unit sized for download economics rather than an authoring unit (contracts
-4.5). At 4,096 slots a table of 50 entries would straddle chunks for no reason. It is also the one engine type
-that declares its own row cap, `maxRowBytes: 512` rather than the 1,024 default, because 16,384 slots at the
-default would break the registration bound of section 7.1 and its rows are about 20 bytes.
+4.5). At 4,096 slots a table of 50 entries would straddle chunks for no reason. `base_socket` takes the same
+16,384 for the same reason, being a child that outnumbers its parent.
+
+Those two are also the only engine types that declare their own row cap, `maxRowBytes: 512` rather than the
+1,024 default, because 16,384 slots at the default would break the registration bound of section 7.1. Their
+rows are about 20 bytes for a loot entry and under 10 for a base socket, so 512 is already generous.
 
 **Why loot entries are their OWN content type and not a repeated field on the table.** This is the one
 structural choice in the data model that is genuinely contested, because contracts 4.7's value kinds are a
@@ -444,8 +449,38 @@ justified by a real consumer field it replaces, and nothing is speculative.
 | `ground_pose` | int | | `Client` | no | Grimhollow's 12-id lie-flat list inside `GroundTransformFor` (`b-grimhollow.md:715-721`). 0 upright, 1 lie flat. |
 | `icon_tilt`, `icon_spin` | scaled int, scale 1000 | | `Client` | no | The two per-item switches in `tools/SnapshotTool/IconShots.cs` (`b-grimhollow.md:737-754`). |
 | `durability_max` | int | | `Client` | no | New. 0 means the base has no durability. Scope B reads it. |
-| `socket_max` | int | | `Client` | no | New. 0 means the base takes no sockets. Scope B reads it. |
+| `socket_max` | int | | `Client` | no | New. The CAP, not the authored set. 0 means the base takes no sockets. The sockets a base is authored WITH are `base_socket` rows (below). Scope B reads both. |
 | `equip_profile` | key reference | game type | `Client` | no | Grimhollow `GrimhollowEquipmentRoster.For` 9-arm switch (`b-grimhollow.md:78-104`), Ruinborne `weapon_def` and `item_stat` (`c-ruinborne.md:78-95`). |
+
+**`socket_max` is a cap and `base_socket` is the declaration, and one int could not be both.** A count says
+HOW MANY sockets a base may end up with. It cannot say which socket TYPES those sockets are, nor in what
+order, and Scope B's generator seats "the base's authored socket declaration, in authored order, every socket
+empty". With only the int, every base generated from an `item` row would produce sockets with socket type 0,
+meaning no restriction, and the decision that socket types restrict what a socket accepts and that the
+restriction is CONTENT would be unreachable for anything except a unique template, which is the one row
+carrying its own forced socket list. The `socket_type` rows would exist with nothing pointing at them.
+
+So a base's sockets are `base_socket` rows, a sixth engine content type, by the same rule that made
+`loot_entry` its own type rather than a blob on `loot_table`:
+
+| `base_socket` field | Value kind | Reference target | Visibility | Required |
+|---|---|---|---|---|
+| `item` | key reference | `item` | `Client` | yes |
+| `sort` | int | | `Client` | yes |
+| `socket_type` | key reference | game or Scope B type key `socket_type` | `Client` | yes |
+
+`sort` is the AUTHORED ORDER, which is what makes "the second socket" a stable phrase across a republish, and
+it is the order the generator seats them in. `socket_type` is a key reference resolved at registry freeze, the
+same late binding as `equip_profile` above: Scope B registers the type under that key, and a game that does
+not use instances leaves the type unregistered and authors no `base_socket` rows at all.
+
+**`socket_max` stays, and it is the cap the `AddSocket` primitive checks.** The two numbers answer different
+questions and both are read. The authored rows say what a base STARTS with, and crafting adds sockets beyond
+that up to the cap, so a base authored with one socket and a cap of three is a perfectly ordinary row.
+`socket_max` below the base's `base_socket` count is refused at publish, because a base that starts above its
+own cap is authored nonsense. The finding comes from Scope B's band, `KEC0100` to `KEC0199`, rather than from
+an engine code, because the AddSocket rule it contradicts is Scope B's and the engine has no opinion about
+what a socket is for.
 
 **`equip_profile` points at a GAME type and the engine does not own its shape.** An equip slot vocabulary is
 game specific: Grimhollow has eleven slots whose numbers are durable because they shipped in that order
@@ -472,8 +507,34 @@ late binding. Two outcomes and no third:
   by `KEC0007`, which is exactly "a key reference names a content type that was never registered". A game that
   leaves equip profiles unwired therefore leaves the field at 0 and never notices it exists.
 
-The same pattern is available to any engine field that has to reach into game-owned content, and this is the
-only one in the engine schema today.
+The same pattern is available to any engine field that has to reach into game-owned content, and `socket_type`
+on `base_socket` is the second use of it.
+
+**An `equip_profile` row holds the SLOT and the ARCHETYPE, and the NUMBERS are stat lines.** This is the one
+place where this plan and Scope B's were pointed at the same nine-arm switch with two different destinations:
+this spec mapped it to an `equip_profile` row carrying `slot`, `accuracy`, `strength`, `defence` and
+`weapon_archetype` as plain ints, and Scope B mapped it to `stat` rows plus `Flat` lines per equipable base
+that its evaluator folds. Both cannot be right, and a game would have implemented one and discovered the other
+at the point where the shipped `item` field set is expensive to change. The reconciliation is a split rather
+than a winner:
+
+| Lives on the `equip_profile` row | Lives on child stat line rows |
+|---|---|
+| `slot`, the game's own equip slot vocabulary | `accuracy`, `strength`, `defence` and anything else numeric |
+| `weapon_archetype`, which selects the attack speed row | Each as a `Flat` line against a `stat`, at source kind 1 |
+
+Three ints on a game row are invisible to the stat evaluator: it folds LINES, and a line is a stat reference
+plus a combine kind plus a value. Three ints as stat lines are invisible to the equipment code that asks which
+slot a thing goes in, because a slot is not a number to fold. So the row keeps what is structural and the
+lines carry what is numeric, `item.equip_profile` survives with something to point at, and Scope B's source
+kind 1 has rows to fold.
+
+The child type is the GAME's, registered in the game range under a key of its own, and it is the same shape
+as Scope B's own `stat_line`: a key reference to its parent row, a `stat` key reference, a `combine` kind and
+a value. It is NOT registered under the key `stat_line`, which Scope B takes for the child of a mod tier, and
+a type key is unique across the whole registry. Grimhollow registers it as `equip_stat_line` (3.6). The
+evaluator does not care what the type is called, because it reads lines through the snapshot at source kind 1,
+and the key is only how an author and the generic editor name the rows.
 
 **Asset references are `opaque bytes` with a declared shape, and section 20 asks for better.** Contracts 4.7's
 value kinds have no plain-string kind, and a mesh reference like `kit/unknown_item.glb`
@@ -690,13 +751,18 @@ Grimhollow's game types, from #882's phase 1 acceptance list and `b-grimhollow.m
 |---|---|---|
 | `1024` | `store` | `GrimhollowShop.GeneralStore` and `RatesFor` (`b-grimhollow.md:105-122`). |
 | `1025` | `store_shelf` | The eight-element `int[]` draw order inside `GeneralStore`. |
-| `1026` | `equip_profile` | `GrimhollowEquipmentRoster.For`'s 9-arm switch (`b-grimhollow.md:78-104`). |
+| `1026` | `equip_profile` | The SLOT and the weapon archetype of `GrimhollowEquipmentRoster.For`'s 9-arm switch (`b-grimhollow.md:78-104`). |
+| `1035` | `equip_stat_line` | The NUMBERS of the same switch, one `Flat` line per stat per profile, folded at source kind 1 (3.3). |
 | `1027` | `food` | The `item.<key>.heals` and `.attackDelayTicks` economy rows (`b-grimhollow.md:208-234`). |
 | `1028` | `gathering_node` | `skilling.jsonc` `trees` and `rocks` blocks (`b-grimhollow.md:347-368`). |
 | `1029` | `recipe`, `1030` `recipe_input`, `1031` `recipe_output` | `skilling.jsonc` `processing` block. |
 | `1032` | `tool_tier` | `skilling.jsonc` `hatchets` and `pickaxes` blocks. |
 | `1033` | `skill_curve` | `skilling.jsonc` `xp`, `gathering`, `parents`, `stamina` and `skills` blocks. |
 | `1034` | `monster_drop` | The `GrimhollowDrops.Roll` switch, whose STRUCTURE is code today (`b-grimhollow.md:123-136`). |
+
+`1035` is listed out of order because it was added when 3.3 reconciled the two plans for `EquipStats`, and ids
+are assigned in the order they are decided rather than renumbered to read tidily. Nothing in a game's range is
+reserved by the engine, and Grimhollow may keep going from `1036`.
 
 Ruinborne's are in section 17. Scope B's are `256` to `1023` and are its spec's to assign.
 
@@ -1860,7 +1926,7 @@ they committed together.
 
 **The active pointer moves at publish, and the SERVER does not.** v1 applies a new version at server restart
 (contracts 1.3 item 8), so moving the pointer makes the version ACTIVE FOR THE NEXT BOOT. A running server
-keeps serving the version it loaded. Section 12.5 says what an operator sees and section 10.7 gives them the
+keeps serving the version it loaded. Section 12.4 says what an operator sees and section 10.7 gives them the
 pin action for holding a version back.
 
 ### 6.11 Idempotence and crash safety, step by step
@@ -2000,8 +2066,8 @@ two: `KEC0026` bounds one row and `KEC0028` bounds only the slot count. A publis
 chunk the reader's own cap refuses, which is a version no reader loads.
 
 Under the bound the engine types fit with room: 4,096 slots at the 1,024 default is 4.2 MB, and `loot_entry`
-declares `maxRowBytes: 512` for its 16,384 slots, giving 8.5 MB against rows that are about 20 bytes in
-practice. A type that genuinely wants 4,096-byte rows may have at most 2,048 slots, which is the honest trade
+and `base_socket` each declare `maxRowBytes: 512` for their 16,384 slots, giving 8.5 MB against rows that are
+about 20 bytes in practice. A type that genuinely wants 4,096-byte rows may have at most 2,048 slots, which is the honest trade
 and is visible at registration rather than at a failed boot.
 
 **`KEC0038` is the check that the bound actually held.** It refuses a publish whose assembled chunk canonical
@@ -2673,6 +2739,36 @@ entries, and `Lengths`, `Keys` and `RetiredBits` all follow:
 That is four times the 262 KB this paragraph used to quote, because it counted `Offsets` alone, and it is the
 number question Q5's sparse-table threshold should be argued against. The recommended default there is to
 switch a type to a sorted-id binary search when live density falls below one in sixteen.
+
+**`ItemRow` is the typed view over the `item` type, and it exists because four of its fields are read per
+operation.** The generic read side is `ContentRow`, an ordered field-value list, which is right for an editor,
+a diff and a game type the engine has never heard of. It is wrong for the stacking rule: Scope B consults
+`stackable` and `max_stack` on every merge test and caches neither, reads `durability_max` at every
+generation, and reads `socket_max` in its container validator. A field-by-name walk over a value list on that
+path is not the sub-5 ns operation P7 budgets, and the alternative, each consumer caching its own decoded
+copy, is four caches that can disagree with the runtime after a version swap.
+
+```csharp
+public readonly ref struct ItemRow
+{
+    public bool Stackable    { get; }
+    public int  MaxStack     { get; }
+    public int  DurabilityMax{ get; }
+    public int  SocketMax    { get; }
+    public ContentKey Key    { get; }
+    public bool IsRetired    { get; }
+}
+
+// on ContentRuntime
+public bool TryGetItem(int id, out ItemRow row);
+```
+
+A `ref struct` over the body span, with the four hot fields decoded at construction from known offsets rather
+than searched by name. It is the ENGINE `item` type only, which is what makes fixed offsets legal: the schema
+is this spec's, it is in section 3.3, and a game cannot add a field to it. The budget is P7's, under 5 ns and
+zero allocation, and it is the same array index plus span slice as a generic lookup with four varint reads
+after it. Nothing else gets a typed view: `ContentRow` stays the answer for every other type, because a typed
+view over a schema the engine does not own could not be written.
 
 ### 9.2 Memory layout and the arithmetic
 
@@ -3559,6 +3655,13 @@ is 60 percent of the item type and it is NOT "small by comparison", so it is nam
 small types are `tag` at 200 rows and `stat` at a few hundred, which together are under 50 KB and round to
 nothing.
 
+`base_socket` contributes nothing to these figures and that is not an oversight. A game that does not use
+instances authors no socket rows at all, which is both adopting consumers today, and a game that does authors
+them only on the bases that take sockets: at a socketed tenth of 50,000 bases averaging two sockets each, 10,000
+rows of under 10 bytes is under 100 KB. It joins `tag` and `stat` in the round-to-nothing group unless a game
+sockets nearly everything, which would be a decision visible in its own authoring long before it showed up
+here.
+
 **Text is now the largest single term, and it is computed once in this paragraph.** Every localized field of
 every engine type is an entry in the language chunk: `item.name` and `item.examine` at 50,000 rows each,
 `tag.name` at 200, `stat.name` and `stat.display_format` at 300 each, which is 100,800 entries. Each entry is
@@ -3938,7 +4041,8 @@ appearing after the contracts and needing migration the moment it lands (contrac
 | The `economy` database table and `EconomySchema` | DELETED after a one-time export into the bundle | Section 16.4. |
 | `GrimhollowEconomyMigration` (67 lines) | DELETED | Its whole job was the one-time reset a code-owned `Defaults` made necessary (`b-grimhollow.md:304-319`). With the database as the only source there is no `Defaults` and no reset. |
 | `GrimhollowEconomySync` and message kind 27 | DELETED | The economy no longer arrives after the door as a game message. It is in the client pack, gated at the door. |
-| `GrimhollowEquipmentRoster.For`'s 9-arm switch, lines 132-155 | An `equip_profile` game type with `slot`, `accuracy`, `strength`, `defence`, `weapon_archetype`, referenced from `item.equip_profile` | The `EquipSlot` enum VALUES stay durable, because they are container indices (`b-grimhollow.md:80-85`). |
+| `GrimhollowEquipmentRoster.For`'s 9-arm switch, lines 132-155, the SLOT and archetype half | An `equip_profile` game type with `slot` and `weapon_archetype`, referenced from `item.equip_profile` | The `EquipSlot` enum VALUES stay durable, because they are container indices (`b-grimhollow.md:80-85`). |
+| The same switch, the `accuracy`, `strength` and `defence` half | Three `stat` rows plus one `equip_stat_line` row per stat per profile, `Flat`, folded at source kind 1 | Section 3.3 reconciles this with Scope B, which maps the same switch to stat lines. Both halves land in the same adoption step, because a profile with no lines equips a weapon that does nothing. |
 | `GrimhollowShop.GeneralStore` 46-56 | A `store` row plus eight `store_shelf` rows carrying the draw order | The draw order becomes a `sort` field, not a list position. |
 | `GrimhollowShop.RatesFor` 96-100 and `store.general.sellRateBp` / `buyRateBp` | `store.sell_rate_bp`, `store.buy_rate_bp`, `ServerOnly` | AGENTS.md already anticipates "different rates per CLASS of item" (`b-grimhollow.md:1097-1099`), which is a `store_rate` row keyed by tag once the tag vocabulary exists. |
 | `GrimhollowDrops.Roll`'s one-armed switch 27-52, `drop.goblin.coins`, `drop.goblin.breadOneIn` | A `monster_drop` game type keyed by monster kind, referencing a `loot_table` | The STRUCTURE moves out of code, which is the five-edit growth path (`b-grimhollow.md:269-284`) collapsing to one edit. |
@@ -4088,11 +4192,20 @@ Four tests, in order of how much they buy:
    `GrimhollowItemsTests` already asserts. The existing eight tests keep passing unchanged, against the
    catalog instead of against the constants, which is what makes this a migration rather than a rewrite.
 2. **`EveryStoredContainerStillDecodes`.** A corpus of real encoded `ItemContainer` blobs checked in from a
-   production export, decoded before and after against `GrimhollowJournalContracts.ValidateContainer`, with
-   identical results. This is the test that would catch an id moving, and it matters because
-   `ValidateContainer` is a HARD REFUSAL that THROWS on an unknown item id, so a moved id turns into a player
-   who cannot log in (`b-grimhollow.md:545-556`,
-   [Grimhollow #224](https://github.com/APKiwiOrg/Grimhollow/issues/224)).
+   production export, decoded before and after the import, asserting that every blob **decodes to the same
+   slots**: the same item id and the same count in the same slot index, blob by blob and slot by slot. This is
+   the test that would catch an id moving, and an id moving is a player who cannot log in
+   (`b-grimhollow.md:545-556`, [Grimhollow #224](https://github.com/APKiwiOrg/Grimhollow/issues/224)).
+
+   **The assertion is about the SLOTS and not about which validator runs, deliberately.** Written against
+   `GrimhollowJournalContracts.ValidateContainer` throwing on an unknown id, this test would assert on a
+   mechanism Scope B replaces: its Grimhollow row 4 swaps that hard throw for the engine validator plus
+   quarantine, on purpose, so that a bad id stops being a crash. A test pinned to the throw would go red the
+   day that lands and would have to be rewritten under time pressure, and the thing it was protecting, the
+   ids, would be unguarded in between. Pinned to the slots, it passes unchanged through the replacement: the
+   whole point of preserving ids 1 to 35 is that a stored blob still names the same things, and that is true
+   whether an unknown id throws, quarantines or is refused at the door. The substitution is a strictly better
+   failure mode for the same property, and this test is indifferent to it by construction.
 3. **`TheEconomyNumbersSurviveTheImport`.** Load a fixture `economy` table holding OPERATOR-tuned values that
    differ from `EconomyTable.Defaults`, run the bundle build, and assert the tuned values are what landed.
    This is the test for step 4 of section 16.4 and it is the one that catches the backwards merge.
@@ -4109,7 +4222,7 @@ the catalog-driven version loops every live row.
 
 1. `feature/item-drop` merges (gate 0 decision 12). Nothing in this plan starts before it.
 2. Engine phase 1 ships (section 18) and Grimhollow pins it.
-3. Register the four engine types and the nine game types. No behaviour change, nothing reads them yet.
+3. Register the four engine types and the ten game types. No behaviour change, nothing reads them yet.
 4. Build the bundle tool and land test 3 of section 16.7. Run it against a production export and eyeball the
    diff. This is the review gate and it is a human one.
 5. Import the bundle into an empty catalog database and publish version 1 through the API.
@@ -4127,6 +4240,17 @@ the catalog-driven version loops every live row.
 
 Steps 7 and 8 are where the release boundary sits: everything up to step 6 is additive and shippable, and
 step 9 is the one that requires every client to update at once, because it changes the door.
+
+**One coordination point with Scope B, and it is a scheduling constraint rather than a dependency.** Scope B's
+phase 1 changes `ItemStack` to a three-component record struct and takes `ItemContainerCodec` to version 2. It
+does not wait on this plan and this plan does not wait on it, but a three-component record struct generates a
+three-out-parameter `Deconstruct`, so every `var (id, count) = stack` in the fleet stops compiling and stack
+equality starts including the instance id. **That bump lands BEFORE step 7 or AFTER step 11, never inside the
+window.** Inside it, Grimhollow is half migrated: some subsystems read the catalog and some still read the old
+source, every one of them touches stacks, and a deconstruction break lands on both halves at once with a codec
+version bump underneath. It would also put `EveryStoredContainerStillDecodes` (16.7) either side of a codec
+version change it never mentions, which turns the plan's sharpest regression fence into a test comparing two
+different formats. Neither ordering costs anything to choose. Choosing neither costs a half-migrated game.
 
 ## 17. Ruinborne adoption plan
 
@@ -4217,7 +4341,21 @@ it lacks from the pack store and reconnects (section 8.5, gate 0 decision 6). So
 | `ItemDefCodec` and `RarityDefCodec` | The registered row codecs of section 3.6, one per type. |
 | `ItemClientState` and `RarityClientState`, their `totalCount` sizing and their out-of-order fill (`ItemClientState.cs:24-80`) | `ContentRuntime` on the client half, loaded from the cached pack at startup. |
 | The 255-item and 255-rarity ceilings | `int32` ids. |
-| `InventoryStack.ItemIndex`, a `byte` list position | The int32 definition id as a varint. Scope B's message change, not durable, so it is a message version bump rather than a migration. |
+| `InventoryStack.ItemIndex`, a `byte` list position | The int32 definition id as a varint. **Scope A's change**, not durable, so it is a message version bump rather than a migration. |
+
+**That last row is claimed by THIS spec, and the claim is the fix for a scheduling contradiction.** It was
+labelled Scope B's message change, and it cannot be: Scope A's phase 2 IS Ruinborne's adoption, step 8 of
+17.10 performs the substitution, and step 8 and step 9 ship together or the bag names ids a client cannot
+resolve. Scope B's own Ruinborne adoption runs after its phase 3, several phases later, so leaving the row
+with Scope B would have made Scope A's phase 2 block on a phase no table draws an edge to, silently, until
+someone tried to sequence it.
+
+It is also genuinely this spec's work by content. The change substitutes one number for another in a message
+body: a byte holding a list position becomes a varint holding a definition id, with no payload, no instance,
+no roll and no property anywhere in it. Everything Scope B would contribute to that message arrives LATER,
+when a stack gains its third component, and that is a separate change in a separate phase (18.1). So the
+wire-index substitution lands in Scope A's phase 2, with the rest of Ruinborne's adoption, and Scope B's
+Ruinborne row 8 records the outcome without scheduling anything.
 
 **Two documented holes close by construction rather than by a fix.** The first is the ordering hole at
 `ItemRosterPush.cs:43-48`: a killing blow attributed to the slot, landing after the character binding exists
@@ -4432,6 +4570,8 @@ stays open and stays Scope B's precondition, as section 17.1 says.
    items and rarities, then weapons, then abilities and modifiers, then loot, then NPCs and spawns.
 8. Switch the CLIENT over: read the cached pack instead of `ItemClientState`, delete `ItemRosterPush`, retire
    message kinds 16 and 17, and change the bag message's `ItemIndex` from a byte position to an int32 id.
+   **All four are Scope A's, in this phase** (17.4). The index substitution in particular waits on nothing
+   from Scope B: it is one number replacing another in a message body with no payload attached.
 9. Add the content layer to the connect door. This is the step that requires every client to update at once,
    the same boundary Grimhollow's step 9 has, and for the same reason.
 10. Delete the five loaders, `RuinborneItems`, `RuinborneRarities.DefaultRarities`, and every content block
@@ -4485,15 +4625,24 @@ each with its own gate, so it is not one undivided landing:
 |---|---|---|
 | 1.1 | `KhaozEngine.Catalog`: registry, field schema, codecs, varint, hashes, the four pack formats, remap rules, `FileSystemPackStore`, `ContentPackReader`, plus `IContentSnapshot` and `ItemRow` (2.2) | The golden files of 15.1, the decoder fuzzing of 15.2, the cross-version round trips of 15.3 |
 | 1.2 | `Catalog.Authoring`, `Catalog.Sqlite`, `Catalog.SqlServer`: temporal rows, draft, change set, field audit, id allocator, publish | The provider conformance suite of 15.5 on both backends, the crash-safety cases of 15.6 |
-| 1.3 | `ContentRuntime`, the boot sequence, fail-closed exit 3, the derived indexes, `IContentLoadIndex` and boot step 7b, `LootRoller`, the `--catalog` benchmark mode | The eleven boot facts of 15.7, plus P3, P7, P9 and P11 measured at 50,000 |
+| 1.3 | `ContentRuntime`, the boot sequence, fail-closed exit 3, the derived indexes, `IContentLoadIndex` and boot step 7b, `LootRoller`, the `--catalog` benchmark mode | The twelve boot facts of 15.7, plus P3, P7, P9 and P11 measured at 50,000 |
 | 1.4 | The sixteen actions, the bundle, the empty-database rule, operator identity, and the admin-result change of section 10.1: `AdminActionStatus.Conflict`, an object-carrying error payload on `AdminActionResult`, and the matching arm in `AdminHttpServer.DispatchActionAsync` | The action tests, including one asserting a real 409 body with `expectedBaseVersion`, plus P5 and P6 measured |
 | 1.5 | `Catalog.Netcode`, `HttpPackStore`, `CachingPackStore`, the client fetch loop, `ContentStringCatalog` | The door tests of 15.7, plus P4 and P10 measured |
 
 **Acceptance:** the four Grimhollow tests of section 16.7 green, and section 16.8's eleven steps complete.
 Concretely, `TheImportedBundleMatchesTheShippedRoster` asserts row by row against the same literals
 `GrimhollowItemsTests` asserts today, and `EveryStoredContainerStillDecodes` decodes a checked-in corpus of
-real production container blobs identically before and after. Those two are the acceptance. The other two are
-the regression fence around it.
+real production container blobs to the SAME SLOTS before and after, an assertion that survives Scope B
+replacing the validator underneath it (16.7). Those two are the acceptance. The other two are the regression
+fence around it.
+
+**Coordination with Scope B, named here because a phase table that names no edge implies there is none.**
+Scope A phase 1 and Scope B phase 1 do not depend on each other and may land in either order, which is what
+`IContentSnapshot` shipping in milestone 1.1 (2.2) is for. One thing between them IS ordered: Scope B phase 1
+takes `ItemStack` to three components and `ItemContainerCodec` to version 2, a fleet-wide compile break plus a
+durable codec bump, and it must land OUTSIDE the window of Grimhollow's adoption steps 7 to 11 (16.8). Before
+step 7 or after step 11, either is fine. Inside is not, and nothing except these two sentences would have
+stopped it, because each spec's phase 1 is written as though the other's is not happening.
 
 **Consumer:** Grimhollow, [#208](https://github.com/APKiwiOrg/Grimhollow/issues/208). Its
 `feature/item-drop` branch lands before any of this (gate 0 decision 12, section 16.1).
@@ -4568,13 +4717,13 @@ production database, or in a player's cached pack, rather than a recompile or a 
 
 | Decision | Section | Cost if changed later |
 |---|---|---|
-| The five engine type ids and their keys: 1 `tag`, 2 `item`, 3 `stat`, 4 `loot_table`, 5 `loot_entry` | 3.1 | Every chunk in every published pack is addressed by type id, and `KEC0029` refuses the change outright. A renumber is a new catalog. |
+| The six engine type ids and their keys: 1 `tag`, 2 `item`, 3 `stat`, 4 `loot_table`, 5 `loot_entry`, 6 `base_socket` | 3.1 | Every chunk in every published pack is addressed by type id, and `KEC0029` refuses the change outright. A renumber is a new catalog. |
 | Engine ids stop at 255, Scope B takes 256 to 1023, games start at 1024 | 3.1, contracts 4.3 | A game type sitting in a range the engine later claims collides silently at registration in a future engine release. |
 | Loot entries are their OWN content type, not a repeated group in an opaque field | 3.1 | Every entry has an id and a key. Folding them into the table later retires every entry id and rewrites every table row. |
 | The `item` type's field set as shipped | 3.3 | A published field is retired, never removed (contracts 4.7). Adding is cheap, so the cost here is only in what shipped wrong. |
 | Asset references are `opaque bytes` holding a varint length plus UTF-8, capped at 128 bytes, character set `a-z0-9_./-` | 3.3 | Changing the encoding restates every row carrying an icon, mesh or held mesh. Raising the cap is safe. Lowering it strands rows already over it, the same shape as contracts' `MaxInstancePayloadBytes`. |
 | `MaxContentRowBytes = 4096` | 7.3 | Raising is safe. Lowering strands every row already over it and makes a published version unrepublishable. |
-| The default `chunkSlots` per engine type: 1,024 for `item`, 4,096 for `tag`, `stat` and `loot_table`, 16,384 for `loot_entry` | 3.1, 4.5 | Renumbers every chunk of that type and invalidates every cached client pack for it. `KEC0029` refuses a change after the type's first publish. Question Q3 is why `item` is the odd one out, and it is settled before the first publish rather than after. |
+| The default `chunkSlots` per engine type: 1,024 for `item`, 4,096 for `tag`, `stat` and `loot_table`, 16,384 for `loot_entry` and `base_socket` | 3.1, 4.5 | Renumbers every chunk of that type and invalidates every cached client pack for it. `KEC0029` refuses a change after the type's first publish. Question Q3 is why `item` is the odd one out, and it is settled before the first publish rather than after. |
 | The chunk body's canonical byte layout, which is what the chunk hash is taken over | 7.3 | Every chunk hash in every manifest of every published version changes, so it needs a `SchemeVersion` bump and a re-digest. |
 | The hash domain prefix `kec/` and its five sub-domains | 7.8 | The same re-digest, plus a gate that compared one manifest side could start agreeing with the other. |
 | The version number is monotonic from 1, plus exactly one per publish, never reused and never skipped | 12.1 | A durable container page stamps it and a remap rule applies to any page stamped OLDER than the rule. A gap or a reuse makes "older" ambiguous. |
@@ -4582,7 +4731,7 @@ production database, or in a player's cached pack, rather than a recompile or a 
 | The `ContentBundle` format version | 10.9 | A bundle is the lossless export format as well as the seeding format, so an old bundle needs a reader for as long as anyone might import one. |
 | The authoring store's temporal row shape: `valid_from_version` and `replaced_in_version` per row version | 3.7, 4.3 | Rewrites the operator's whole authoring database. Cheaper than the rows above because the store HAS a migration path by design (4.2's `CurrentVersion` and `RequiredMigration`), which is exactly what a pack format does not have. |
 | `catalog_row_field`, one row per field, rather than one encoded blob per row | 4.3 | The same migration, plus every audit row before the migration loses its field-level meaning. |
-| Grimhollow: definition ids 1 to 35 preserved exactly at import | 16.4 | Every stored `ItemContainer` blob names them, and `ValidateContainer` THROWS on an unknown id, so a moved id is a player who cannot log in. |
+| Grimhollow: definition ids 1 to 35 preserved exactly at import | 16.4 | Every stored `ItemContainer` blob names them, so a moved id is a player whose items are not the items they had. Today `ValidateContainer` THROWS on an unknown id and they cannot log in at all. After Scope B replaces it with the engine validator plus quarantine the failure is gentler, and the id is no less load bearing. |
 | Ruinborne: ids allocated in key-ascending order at import | 17.3 | The ids exist after the import. A different order is a different catalog, and `character_inventory` will reference them after Scope B. |
 | Ruinborne: the four REAL-to-`ScaledInt` scales, 100 for stats and modifier values, 1000 for range, arc and cooldown, basis points for drop chance | 17.6 | Restates every number those columns hold, in both directions, and a rescale after publish is a balance edit applied silently (gate 0 decision 4). |
 

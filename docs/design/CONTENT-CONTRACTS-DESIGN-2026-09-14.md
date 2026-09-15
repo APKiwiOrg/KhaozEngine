@@ -303,6 +303,7 @@ README catalog cannot confuse the two.
 | `KhaozEngine.Catalog.Sqlite` | The SQLite authoring provider. Sits on `KhaozEngine.Sqlite`. | none, opt-in sibling |
 | `KhaozEngine.Catalog.SqlServer` | The SQL Server authoring provider. | none, opt-in sibling |
 | `KhaozEngine.ItemInstances` | Scope B's instance record, the tagged field codec, sockets, the container page codec, the generator and the crafting framework. Depends on `KhaozEngine.Items` and `KhaozEngine.Catalog`. | `Foundation` |
+| `KhaozEngine.ItemInstances.Journal` | The container page commit builder and the tick-bounded commit batch, which turn instance operations into `JournalCommit`s. Depends on `KhaozEngine.ItemInstances` and `KhaozEngine.WorldStore`. | `Server` |
 | `KhaozEngine.Catalog.Netcode` | `ContentIdentityGateAuthenticator` and the content-version handshake layer. Depends on `KhaozEngine.Netcode` and `KhaozEngine.Catalog`. | `Server` |
 
 **Engine precedent.** The layering rules are the README's, surveyed at `a-engine.md:1373-1407`. Three of
@@ -311,7 +312,10 @@ them bind here. A pure catalog with no SQL belongs in `Foundation` beside `Items
 Anything with a SQL provider is an opt-in SIBLING pair and is NEVER bundled in an umbrella, stated twice
 in the README (lines 101 and 104) and followed by both `WorldStore` and `Commerce`. `Foundation` cannot
 reference `Server`-side packages, which is why the handshake gate is its own small package rather than a
-type inside `KhaozEngine.Catalog`.
+type inside `KhaozEngine.Catalog`, and why the commit builder is its own package rather than a type inside
+`KhaozEngine.ItemInstances`. Composing a `JournalCommit` needs `KhaozEngine.WorldStore`, which is a server
+package, and the other half of the same split is the client: a client decodes an instance payload, and it
+must be able to do that with no journal type and no store dependency anywhere in its graph.
 
 **Rationale.** `Catalog` is the word the engine already uses for this shape (`IProductCatalog`,
 `TileWorldCatalogs`), it does not collide with `Content`, and it reads correctly in a package table next

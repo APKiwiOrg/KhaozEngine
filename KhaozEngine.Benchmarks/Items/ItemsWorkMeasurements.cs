@@ -38,13 +38,14 @@ internal static class ItemsWorkMeasurements
         int count,
         int hotBaseCount,
         int levelSpan,
-        int seed)
+        int seed,
+        int forcedRarityId = 0)
     {
         var hotBases = new int[Math.Max(hotBaseCount, 1)];
         for (int index = 0; index < hotBases.Length; index++) hotBases[index] = random.NextInt(0, content.BaseCount);
 
         for (int warmup = 0; warmup < 20_000; warmup++)
-            _ = generator.Generate(new GenerationContext(hotBases[warmup % hotBases.Length], 40 + (warmup % levelSpan), 0, 0));
+            _ = generator.Generate(new GenerationContext(hotBases[warmup % hotBases.Length], 40 + (warmup % levelSpan), forcedRarityId, 0));
 
         var samples = new JournalLatencySamples(seed);
         long deadBefore = generator.DeadEntriesWalked;
@@ -58,7 +59,7 @@ internal static class ItemsWorkMeasurements
             int baseIndex = hotBases[index % hotBases.Length];
             int itemLevel = 40 + (index % levelSpan);
             long before = Stopwatch.GetTimestamp();
-            GenerationResult result = generator.Generate(new GenerationContext(baseIndex, itemLevel, 0, 0));
+            GenerationResult result = generator.Generate(new GenerationContext(baseIndex, itemLevel, forcedRarityId, 0));
             samples.Add((Stopwatch.GetTimestamp() - before) * ticksToMicroseconds);
             poolTotal += generator.LastPoolSize;
             affixTotal += result.AffixCount;

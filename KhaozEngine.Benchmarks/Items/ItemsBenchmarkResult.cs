@@ -61,6 +61,10 @@ public sealed record ItemsBenchmarkResult
     public double Budget5WarmP50Microseconds { get; init; }
     public double Budget5WarmP99Microseconds { get; init; }
     public double Budget5WarmAllocatedBytesPerGeneration { get; init; }
+    public double Budget5DenseP50Microseconds { get; init; }
+    public double Budget5DenseP99Microseconds { get; init; }
+    public double Budget5DenseMeanMicroseconds { get; init; }
+    public double Budget5DenseMeanAffixCount { get; init; }
 
     public double Budget6Nanoseconds { get; init; }
     public double Budget6CachedNanoseconds { get; init; }

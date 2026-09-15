@@ -59,6 +59,9 @@ public static class ItemsBenchmarkRunner
             generator, tables, content, random, config.Generations, config.HotBaseCount, 60, config.Seed);
         GenerationMeasurement warm = ItemsWorkMeasurements.MeasureGeneration(
             generator, tables, content, random, Math.Min(config.Generations, 200_000), 64, 4, config.Seed + 2);
+        GenerationMeasurement dense = ItemsWorkMeasurements.MeasureGeneration(
+            generator, tables, content, random, Math.Min(config.Generations, 200_000), config.HotBaseCount, 60,
+            config.Seed + 3, content.RarityCount);
         GenerationMeasurement cold = ItemsWorkMeasurements.MeasureColdGeneration(
             generator, content, random, Math.Min(config.Generations / 10, 100_000), config.Seed);
         StatMeasurement stat = ItemsWorkMeasurements.MeasureStatEvaluation(content, random);
@@ -126,6 +129,10 @@ public static class ItemsBenchmarkRunner
             Budget5WarmP50Microseconds = warm.P50Microseconds,
             Budget5WarmP99Microseconds = warm.P99Microseconds,
             Budget5WarmAllocatedBytesPerGeneration = warm.AllocatedBytesPerGeneration,
+            Budget5DenseP50Microseconds = dense.P50Microseconds,
+            Budget5DenseP99Microseconds = dense.P99Microseconds,
+            Budget5DenseMeanMicroseconds = dense.MeanMicroseconds,
+            Budget5DenseMeanAffixCount = dense.MeanAffixCount,
             Budget6Nanoseconds = stat.Nanoseconds,
             Budget6CachedNanoseconds = stat.CachedNanoseconds,
             Budget6AllocatedBytes = stat.AllocatedBytes,

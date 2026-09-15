@@ -10,9 +10,8 @@ namespace KhaozEngine.Tests.TileNetcode;
 /// tile centre for a one-tile body and the middle of the NxN square anchored on the south-west tile for a larger
 /// one. The client carries the size in both of its remote stores, so the delayed read agrees with the drawn body
 /// and the newest-snapshot read is what the client's target resolver answers a rule with.
-/// <para>A remote with a footprint above one is spawned through the server by the actor tests, which own the spawn
-/// field. What is pinned here is what the client can already hold: its own predicted state and a one-tile remote.
-/// </para>
+/// <para>A large remote is spawned through the server and read back on both timelines, and a client predicting an
+/// approach to it lands on the same in-range anchor as the server with nothing corrected.</para>
 /// </summary>
 public class TileFootprintPresentationTests
 {
@@ -96,6 +95,47 @@ public class TileFootprintPresentationTests
         Assert.True(new TileRemoteTargets(h.Client).TryGetFootprint(actor, out TileRect resolved, out int plane));
         Assert.Equal(latest, resolved);
         Assert.Equal(latestPlane, plane);
+    }
+
+    // A client predicting an approach to a 2x2 at (26, 20) matches the server tick for tick. From the WEST the
+    // in-range anchor (25, 20) is also where a one-tile answer stops, so that case alone cannot tell a footprint from
+    // a dropped one. From the EAST and the NORTH a one-tile answer picks (27, 20) and (26, 21), both inside the body,
+    // so a resolver on either head that lost the size either corrects or stops inside it.
+    [Theory]
+    [InlineData(20, 20, 25, 20)]
+    [InlineData(30, 20, 28, 20)]
+    [InlineData(26, 25, 26, 22)]
+    public void A_client_predicts_an_approach_to_a_large_remote_with_nothing_corrected(int fromX, int fromZ,
+        int anchorX, int anchorZ)
+    {
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        TileCollisionMap map = TileMoveSimulatorTests.Bake(doc);
+        using var h = new TileCombatHarness(doc, new TileCoord(fromX, fromZ, 0));
+        long actor = h.Server.SpawnActor(new TileCoord(26, 20, 0),
+            new TileActorSpawn(100, 4, TileDirection.S) { FootprintSize = 2 });
+        h.Frames(8);
+        var body = new TileRect(26, 20, 2, 2);
+        Assert.True(h.Client.TryGetRemoteFootprint(actor, out TileRect early, out _));
+        Assert.Equal(body, early);
+
+        h.Client.Queue(TileCommand.Attack(actor, TileMoveMode.Run));
+        h.Frames(60);
+
+        Assert.Equal(0, h.Client.CorrectionCount);
+        Assert.Equal(0, h.Client.SnapCount);
+        TileMoveState predicted = h.Client.Prediction.PredictedState;
+        Assert.True(h.Server.TryGetActorState(h.Client.LocalNetId, out TileMoveState server));
+        Assert.Equal(server.Tile, predicted.Tile);
+        Assert.Equal(new TileCoord(anchorX, anchorZ, 0), server.Tile);
+        Assert.Equal(actor, server.CombatTarget);
+        Assert.Equal(actor, predicted.CombatTarget);
+        Assert.True(TileReach.Contains(map, body, 0, server.Tile, 1), $"stopped on {server.Tile}");
+        Assert.True(h.Client.TryGetRemoteFootprint(actor, out TileRect delayed, out int delayedPlane));
+        Assert.Equal(body, delayed);
+        Assert.Equal(0, delayedPlane);
+        Assert.True(h.Client.TryGetLatestRemoteFootprint(actor, out TileRect latest, out int latestPlane));
+        Assert.Equal(body, latest);
+        Assert.Equal(0, latestPlane);
     }
 
     // Both reads refuse what their tile twins refuse, with default outs: an id nobody is tracking and the local

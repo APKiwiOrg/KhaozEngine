@@ -236,3 +236,337 @@ are candidates to breach it, and each is split by TYPE from the start rather tha
 - The validator. `ContentValidator.cs` holds the sweep and the finding list. Each check family is its own
   internal static class (`ContentReferenceChecks`, `ContentKeyChecks`, `ContentRemapChecks`,
   `ContentVisibilityChecks`, `ContentSchemaChecks`), so adding a check never grows the sweep.
+
+## 3. Data model
+
+### 3.1 The engine content types
+
+Five types register in the ENGINE range `1` to `255` of contracts 4.3. The range holds 255 ids and five are
+spent, which is deliberate headroom: an engine release adding a type can never collide with a game's, which is
+the property `ReplicationRegistry.FirstExtensionTypeId` already gives components
+(`TileProtocol.Components.cs:17-30`, `a-engine.md:880-916`).
+
+| Type id | Type key | What it is | Default visibility | Default chunk slots |
+|---|---|---|---|---|
+| `1` | `tag` | The tag vocabulary of contracts 4.6. | `Client` | 4,096 |
+| `2` | `item` | The item base. | `Client` | 4,096 |
+| `3` | `stat` | The stat definition of contracts 13.1. | `Client` | 4,096 |
+| `4` | `loot_table` | A named drop or reward table. | `ServerOnly` | 4,096 |
+| `5` | `loot_entry` | One weighted row of one loot table. | `ServerOnly` | 16,384 |
+| `6` to `255` | reserved | Future engine types. Never assigned by a game. | | |
+
+`loot_entry` takes a larger chunk than its parents because entries outnumber tables by roughly the branching
+factor, and a chunk is a transport unit sized for download economics rather than an authoring unit (contracts
+4.5). At 4,096 slots a table of 50 entries would straddle chunks for no reason.
+
+**Why loot entries are their OWN content type and not a repeated field on the table.** This is the one
+structural choice in the data model that is genuinely contested, because contracts 4.7's value kinds are a
+flat list with no repeated group, so the alternative is `opaque bytes` carrying an encoded entry list.
+
+| Criterion | Entries as their own type | Entries as `opaque bytes` on the table |
+|---|---|---|
+| Renders in the generic editor with no bespoke screen | 10 | 2 |
+| Field-level audit names the changed entry and its before value | 10 | 2 |
+| Field-level publish diff | 10 | 2 |
+| Cross-reference validation reaches the item id | 9 | 5 |
+| Bytes in the pack | 6 | 9 |
+| Matches the consumer shape being adopted | 10 (Ruinborne has `loot_table` plus `loot_table_entry`, `c-ruinborne.md:104-109`) | 4 |
+| Cost to add a field to an entry | 9 | 5 |
+| Total | 64 | 29 |
+
+Recommendation: entries as their own content type. The `opaque bytes` option wins only on pack size, and the
+margin is a varint per entry for the parent key reference against a count prefix. Everything the field schema
+exists to give (contracts 4.7: a generic editor, a field-level audit, a field-level diff) is lost the moment a
+repeating group hides inside a blob, and Ruinborne's `item_ability_modifier` is the cautionary version of the
+blob answer already in production: its tags are a comma-joined string in one column, which makes a set
+membership test a substring search (`c-ruinborne.md:67-72`).
+
+The same rule generalizes: **any repeating child structure in engine or game content is its own content type
+with a key reference to its parent, never a blob field.** Section 20 does not raise a change request for a
+repeated-group value kind, because this rule removes the need for one.
+
+### 3.2 The `tag` type
+
+| Field | Value kind | Reference target | Visibility | Required |
+|---|---|---|---|---|
+| `name` | localized text key | | `Client` | yes |
+| `sort` | int | | `Client` | no |
+
+A tag row is an id, a key and a display name. That is all contracts 4.6 asks for: tags are referenced BY ID
+from item bases, mods, stats, stores and drop tables, a row's tags are an ORDERED LIST whose authored order is
+preserved and never sorted, and strings are never the tag representation in a pack, a payload, on the wire or
+in a durable row.
+
+`sort` exists only so a console can list tags in an authored order rather than by id. It is the single case in
+this spec where a field exists for the editor's benefit, and it is named so nobody later mistakes it for a
+gameplay field.
+
+### 3.3 The `item` type
+
+The schema below is the union of what the three surveys found in production plus the `tradable` flag absorbed
+from Grimhollow's `feature/item-drop` branch (contracts 7.6, `b-grimhollow.md:1332-1358`). Every field is
+justified by a real consumer field it replaces, and nothing is speculative.
+
+| Field | Value kind | Reference target | Visibility | Required | Replaces |
+|---|---|---|---|---|---|
+| `name` | localized text key | | `Client` | yes | Grimhollow `ItemStrings.NameFor` 35-arm switch (`b-grimhollow.md:673-685`), Ruinborne `item_def.display_name` (`c-ruinborne.md:49-60`). |
+| `examine` | localized text key | | `Client` | no | Grimhollow `ItemStrings.ExamineFor` (`b-grimhollow.md:679-681`). |
+| `tags` | tag list | `tag` | `Client` | no | Grimhollow `CanBeAHatchet` and `CanBeAPickaxe` predicates (`b-grimhollow.md:56-59`), Ruinborne `item_def.item_type` and `.slot` bare varchars (`c-ruinborne.md:63-66`, Ruinborne [#199](https://github.com/APKiwiOrg/Ruinborne/issues/199)). |
+| `stackable` | bool | | `Client` | yes | Grimhollow `GrimhollowItems.Stackable` (`b-grimhollow.md:52`), Ruinborne `item_def.stackable`. |
+| `max_stack` | int | | `Client` | yes | Ruinborne `item_def.max_stack`. Grimhollow has no cap today, so its import writes `int.MaxValue` for a stackable and 1 otherwise. |
+| `tradable` | bool | | `Client` | yes | Grimhollow `assets/config/items.jsonc` `tradable` (item-drop design section 1). |
+| `value` | scaled int, scale 1 | | `Client` | yes | Grimhollow `item.<key>.value` economy row (`b-grimhollow.md:208-234`). |
+| `icon` | opaque bytes, asset reference | | `Client` | no | Grimhollow `ItemIcons.RosterIcons` (`b-grimhollow.md:686-705`), Ruinborne `item_def.icon_id`. |
+| `mesh` | opaque bytes, asset reference | | `Client` | no | Grimhollow `GroundItemMeshes.Roster` and its duplicated 35-arm switch (`b-grimhollow.md:706-724`). |
+| `held_mesh` | opaque bytes, asset reference | | `Client` | no | Grimhollow `GrimhollowHeldMeshes.For` 12-arm switch (`b-grimhollow.md:725-736`). |
+| `ground_pose` | int | | `Client` | no | Grimhollow's 12-id lie-flat list inside `GroundTransformFor` (`b-grimhollow.md:715-721`). 0 upright, 1 lie flat. |
+| `icon_tilt`, `icon_spin` | scaled int, scale 1000 | | `Client` | no | The two per-item switches in `tools/SnapshotTool/IconShots.cs` (`b-grimhollow.md:737-754`). |
+| `durability_max` | int | | `Client` | no | New. 0 means the base has no durability. Scope B reads it. |
+| `socket_max` | int | | `Client` | no | New. 0 means the base takes no sockets. Scope B reads it. |
+| `equip_profile` | key reference | game type | `Client` | no | Grimhollow `GrimhollowEquipmentRoster.For` 9-arm switch (`b-grimhollow.md:78-104`), Ruinborne `weapon_def` and `item_stat` (`c-ruinborne.md:78-95`). |
+
+**`equip_profile` points at a GAME type and the engine does not own its shape.** An equip slot vocabulary is
+game specific: Grimhollow has eleven slots whose numbers are durable because they shipped in that order
+(`b-grimhollow.md:80-85`), Ruinborne has a nullable `slot NVARCHAR(32)` with no reference table. The engine
+declares the FIELD and the game registers the type it points at, which is exactly the `IProductCatalog` seam's
+stated shape: "The engine defines the shape, the game supplies entries"
+(`KhaozEngine.Commerce/IProductCatalog.cs:5`, `a-engine.md:668-676`).
+
+The consequence for contracts 4.7 is that a reference target may name a type the ENGINE does not register, so
+the validator resolves the target at REGISTRY FREEZE rather than at compile time, and a game that leaves
+`equip_profile` unwired registers no target and every row leaves the field at 0. Finding `KEC0007` covers a
+non-zero reference whose target type was never registered.
+
+**Asset references are `opaque bytes` with a declared shape, and section 20 asks for better.** Contracts 4.7's
+value kinds have no plain-string kind, and a mesh reference like `kit/unknown_item.glb`
+(`b-grimhollow.md:709`) cannot be a content key, because keys are `a-z0-9_` only with no dot and no slash
+(contracts 5.3). So on the contracts as written, an asset reference is `opaque bytes` whose codec writes a
+varint length followed by UTF-8, and the type's codec constrains the character set to `a-z0-9_./-` and the
+length to 128 bytes. That works, and it costs the generic editor: with no way to say in the schema that these
+bytes are text, a console renders a hex box. CCR-1 in section 20 asks for an `AssetReference` value kind. The
+whole design works either way and only the editor changes.
+
+### 3.4 The `stat` type
+
+Contracts 13.1 fixes this schema and this spec adds nothing to it.
+
+| Field | Value kind | Reference target | Visibility | Required |
+|---|---|---|---|---|
+| `name` | localized text key | | `Client` | yes |
+| `scale` | int | | `Client` | yes |
+| `min` | int | | `Client` | yes |
+| `max` | int | | `Client` | yes |
+| `tags` | tag list | `tag` | `Client` | no |
+| `display_format` | localized text key | | `Client` | yes |
+
+`scale` is a fixed power of ten and the stored integer is the value times `scale` (contracts 13.1). `min` and
+`max` are in scaled units and are the inclusive clamp of the evaluation formula (contracts 13.2). The
+validator refuses a `scale` that is not a power of ten and refuses `min > max` (`KEC0020`, `KEC0021`).
+
+`Client` throughout, because a client tooltip computes a displayed stat with the same integer arithmetic the
+server uses (contracts 13.4), and it cannot do that without the scale and the clamp.
+
+### 3.5 The `loot_table` and `loot_entry` types
+
+| `loot_table` field | Value kind | Reference target | Visibility | Required |
+|---|---|---|---|---|
+| `roll_count` | int | | `ServerOnly` | yes |
+| `tags` | tag list | `tag` | `ServerOnly` | no |
+| `guaranteed` | bool | | `ServerOnly` | yes |
+
+| `loot_entry` field | Value kind | Reference target | Visibility | Required |
+|---|---|---|---|---|
+| `table` | key reference | `loot_table` | `ServerOnly` | yes |
+| `item` | key reference | `item` | `ServerOnly` | no |
+| `nested_table` | key reference | `loot_table` | `ServerOnly` | no |
+| `weight` | int | | `ServerOnly` | yes |
+| `chance_bp` | int | | `ServerOnly` | yes |
+| `min_count` | int | | `ServerOnly` | yes |
+| `max_count` | int | | `ServerOnly` | yes |
+| `sort` | int | | `ServerOnly` | yes |
+| `required_tags` | tag list | `tag` | `ServerOnly` | no |
+
+Both types are `ServerOnly` at the TYPE level, so the whole family is omitted from every client manifest
+(contracts 11.3). A drop table is exactly the content a client must not have, and the owner put drop tables in
+the same versioned content as items and called it important (#882 comment 2).
+
+Two roll shapes are covered by one schema, and they compose, which is what Grimhollow's goblin already needs:
+a `guaranteed` entry rolls its own `chance_bp` independently (Grimhollow's bread, one kill in four,
+`b-grimhollow.md:123-136`), and a non-guaranteed entry competes in a weighted draw of `roll_count` picks
+(Grimhollow's coin purse, drawn from `CoinDropChoices`). `chance_bp` is basis points out of 10,000, the same
+convention as contracts 13.2, so there is one percent representation in the system.
+
+`nested_table` is how a table references another table, which is what a rarity tier or a sub-table needs.
+Exactly one of `item` and `nested_table` is set, checked by the validator (`KEC0023`). A cycle through
+`nested_table` is refused (`KEC0024`) by a depth-first walk with a visited set, because a cyclic loot table is
+an infinite roll at runtime and the validator is the only place that can see the whole graph.
+
+`required_tags` is the tag filter a drop table uses to name a CLASS of item rather than enumerating ids
+(contracts 4.6, first bullet). When it is non-empty and `item` is unset, the entry draws uniformly from live
+items carrying every listed tag, resolved at pack load into a precomputed candidate array (section 9.4).
+
+### 3.6 How Scope B and a game register their own
+
+Registration is contracts 4.2's call, once, at process start, before any pack loads:
+
+```csharp
+registry.RegisterContentType(
+    typeId: 1024,
+    typeKey: "store",
+    codec: new GrimhollowStoreCodec(),
+    validator: new GrimhollowStoreValidator(),
+    schema: GrimhollowStoreSchema.Create(),
+    defaultVisibility: ContentVisibility.ServerOnly,
+    chunkSlots: 256);
+```
+
+The registry freezes when the first pack loads and a later registration throws (contracts 4.2). A game MAY
+register a type in the game range, supply its own codec and validator, set its default visibility, set its
+chunk size, and register an ADDITIONAL validator for an engine type that runs after the engine's own. A game
+MAY NOT register into the engine or Scope B ranges, replace an engine type's codec, weaken an engine
+validator, change a type's id or key after the first publish, or register the same type id twice (contracts
+4.4).
+
+**The codec is checked against the schema at registration** (contracts 4.7). `IContentRowCodec` exposes
+`IReadOnlyList<string> WrittenFields { get; }`, registration compares that set against the schema's field
+names, and a mismatch in either direction throws `ContentRegistrationException` naming both sides before the
+registry freezes. The check costs one set comparison per type at process start and it is what stops an editor
+writing a field nothing reads.
+
+Grimhollow's game types, from #882's phase 1 acceptance list and `b-grimhollow.md` sections 2 to 4:
+
+| Type id | Type key | Source it replaces |
+|---|---|---|
+| `1024` | `store` | `GrimhollowShop.GeneralStore` and `RatesFor` (`b-grimhollow.md:105-122`). |
+| `1025` | `store_shelf` | The eight-element `int[]` draw order inside `GeneralStore`. |
+| `1026` | `equip_profile` | `GrimhollowEquipmentRoster.For`'s 9-arm switch (`b-grimhollow.md:78-104`). |
+| `1027` | `food` | The `item.<key>.heals` and `.attackDelayTicks` economy rows (`b-grimhollow.md:208-234`). |
+| `1028` | `gathering_node` | `skilling.jsonc` `trees` and `rocks` blocks (`b-grimhollow.md:347-368`). |
+| `1029` | `recipe`, `1030` `recipe_input`, `1031` `recipe_output` | `skilling.jsonc` `processing` block. |
+| `1032` | `tool_tier` | `skilling.jsonc` `hatchets` and `pickaxes` blocks. |
+| `1033` | `skill_curve` | `skilling.jsonc` `xp`, `gathering`, `parents`, `stamina` and `skills` blocks. |
+| `1034` | `monster_drop` | The `GrimhollowDrops.Roll` switch, whose STRUCTURE is code today (`b-grimhollow.md:123-136`). |
+
+Ruinborne's are in section 17. Scope B's are `256` to `1023` and are its spec's to assign.
+
+### 3.7 The row model in the authoring store
+
+A content row has THREE identities and they are not interchangeable:
+
+- The `int` DEFINITION ID, unique within its type, allocated by the authoring store, never reused, never
+  deleted, 0 reserved for none (contracts 5.1). This is what durable player data and the wire carry.
+- The `string` KEY, unique within its type, immutable once published, `a-z0-9_` only, at most 64 characters
+  (contracts 5.3). This is what an author, a debug console, a localization key and a cross-content reference
+  use.
+- The `(type, id, valid_from_version)` ROW VERSION, which is what the authoring store actually stores rows of.
+
+**Rows are temporal.** Every stored row carries `valid_from_version` and `replaced_in_version`:
+
+```
+live set at version V  =  rows where valid_from_version <= V
+                           and (replaced_in_version is null or replaced_in_version > V)
+```
+
+An edit does not update a row. It sets the old row's `replaced_in_version` to the version being published and
+inserts a new row with `valid_from_version` set to the same number. So the history of a definition is the
+ordered set of its rows, and "what did item 12 look like at version 40" is a query rather than an audit
+replay. That is the #882 requirement stated directly: "Each row records the version it became valid in and the
+version it was replaced in."
+
+A row that is NOT edited in a publish is not touched at all. Its `valid_from_version` stays where it was and
+its `replaced_in_version` stays null. This is what makes "rebuild only affected chunks" (section 6.6) a query
+over `valid_from_version = <new version>` rather than a diff of every row.
+
+**The draft is a change set against the last published version**, not a copy of it. There is exactly one open
+draft per database (#882 body, "One open draft"). It holds an ordered list of `ContentEdit` records, each one
+of:
+
+| Operation | Carries | Effect at publish |
+|---|---|---|
+| `Add` | type, key, field values, optional family | Allocates an id, writes a row with `valid_from_version = new version`. |
+| `Update` | type, id, the changed fields only | Closes the current row and writes a successor with the merged field set. |
+| `Retire` | type, id, retire policy, optional replacement id | Closes the current row, writes a successor with `retired = 1`, and appends a `Retired` remap rule. |
+
+An edit is stored as the CHANGED FIELDS ONLY, never the whole row. That is what lets the audit record a field
+level before and after with no extra table (section 4.6), and it is what makes two operators editing different
+fields of one row a merge rather than a last-write-wins clobber.
+
+**A draft edit that names a field the schema does not declare is refused at the API boundary**, not at
+publish, with HTTP 400 and finding `KEC0004`. This is the direct answer to Ruinborne's
+`ContentStore.UpsertItemDefAsync`, the one upsert in its whole facade with no `Require(...)` gate
+(`c-ruinborne.md:370-383`, Ruinborne [#506](https://github.com/APKiwiOrg/Ruinborne/issues/506)), which lets an
+operator save a row the server then rejects at boot while the console reports success.
+
+### 3.8 Families, blocks and the parent reference
+
+A FAMILY is an author-declared grouping within one content type whose members are allocated ids from one
+contiguous block, so a membership test is two comparisons rather than a set lookup (contracts 5.2).
+
+- A family reserves a block at creation. Block size is declared then, is a power of two between 16 and 65,536,
+  and cannot be changed later.
+- A block is aligned to its own size, so membership is `(id & ~(size - 1)) == base`.
+- Block boundaries do NOT have to align to chunk boundaries, and nothing in this spec assumes they do.
+- When a block fills, a SECOND block is reserved for the same family and the family carries an ordered block
+  list. The runtime caches the list, so a membership test is a short loop.
+- A family is never deleted. It is retired like a definition.
+
+The `parent_id` column is on every row, is 0 by default, and in phase 1 the validator refuses any non-zero
+value (`KEC0031`). When inheritance ships it resolves as: walk the parent chain to its root, then apply each
+descendant's field set over its parent's, field by field, with a descendant's presence of a field winning and
+its absence inheriting. The chain is capped at 8 (`KEC0032`), the parent must be the same content type
+(`KEC0033`), the parent must be live at the version being published (`KEC0034`), and a cycle is refused
+(`KEC0035`). All five findings exist in the validator from phase 1 and all five are unreachable until the
+resolver ships, which is the cheapest way to make sure the row model really does allow it.
+
+### 3.9 Retirement
+
+A definition that leaves play is RETIRED, which is a flag on the row plus a remap rule, and the row stays in
+the pack forever so a stored stack still decodes (contracts 5.1). Grimhollow already does this by hand: 18 of
+its 35 item ids are retired and the comment states the rule (`b-grimhollow.md:30-36` citing
+`GrimhollowItems.cs:133-151`).
+
+A retired row keeps its chunk slot and its bytes. It gains one bit in the chunk row header (section 7.3), so
+a runtime reader can answer `IsRetired(id)` without decoding the row. The retire POLICY is carried by the
+remap rule, not by the row, and contracts 8.2 fixes the two policies: `0x01` placeholder and `0x02`
+replacement. A retire is IRREVERSIBLE for pages already migrated past it (contracts 8.6), which section 12.4
+spends in full.
+
+The engine does NOT make the tradable decision for a retired item. Grimhollow's `items.jsonc` rule that
+retired items are left out and answer untradable (item-drop design section 1) becomes, in engine terms, the
+retired row keeping whatever `tradable` value it last had, plus the placeholder presentation of contracts
+10.2 making it undroppable and untradeable anyway. So the observable behaviour is identical and it comes from
+one mechanism rather than two.
+
+### 3.10 The boundary with world data
+
+World geometry and placed objects stay in the tile world document and are NOT content (#882 body, item 11).
+The boundary is a REFERENCE BY KEY, validated at boot.
+
+The world side is two surfaces, both already string keyed and both already carrying free-form tags:
+
+- `TileObjectArchetype.Id` is a catalog-unique string and `TileObjectArchetype.Tags` is a `List<string>?` of
+  free-form authoring tags (`KhaozEngine.TileWorld/TileWorldCatalogs.cs:55-79`, the only free-form tag surface
+  in the tree, `a-engine.md:328-343`).
+- `TileMarker.Name` is a document-unique string and `TileMarker.Tags` is the same `List<string>?`
+  (`KhaozEngine.TileWorld/TileObject.cs:32-46`).
+
+**The rule.** A world archetype or marker tag that names content does so with a content KEY, resolved once at
+boot against the loaded pack. Concretely: Grimhollow places gathering nodes in the world and
+`SkillingConfig` already requires every world-placeable node key to have a config entry
+(`SkillingConfig.cs:393-399`, "the world places nodes that read it", `b-grimhollow.md:378-380`). After
+adoption that check reads the `gathering_node` content type instead of the jsonc, and it stays a boot-time
+fail-closed check.
+
+Three things follow, and they are stated so neither this spec nor a consumer drifts:
+
+1. **The world document never carries a content ID.** Ids are allocated by the authoring store and the world
+   document is edited by a different tool on a different schedule. A world file naming id 17 would break the
+   moment a content database was rebuilt from a bundle. Keys are immutable once published (contracts 5.3), so
+   a key is the only stable thing to write into a world file.
+2. **The resolution is one way.** Content never references a world object, a marker or a coordinate. A drop
+   table names an item, not a tile. This keeps `TileWorldHash` and the content manifest hash independent, so a
+   world edit does not invalidate a content pack and a content publish does not invalidate a cached world.
+3. **The check is at boot and it fails closed.** An unresolved world-to-content key is a boot failure with the
+   offending key and the world source named, matching the fail-closed rule of contracts 10.5 and
+   `TileWorldCatalogs.LoadJson`'s own behaviour of throwing a `TileWorldException` naming the source
+   (`a-engine.md:315-320`).

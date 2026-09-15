@@ -931,6 +931,69 @@ WHOLE datagram, pad byte included. A lying length is the shape a probe takes and
 so the strictness is deliberate, but it constrains transport choice: a transport that pads every datagram out to a
 fixed size cannot carry these notices, because the padding it adds is length the frame never declared.
 
+## A payload too large for one game message
+
+`TileFragmentedMessage` splits any `ReadOnlySpan<byte>` into chunks that each fit inside one game message, and
+`TileFragmentReassembler` puts them back. Both are ITEM AGNOSTIC and know nothing about what they carry: the game
+picks the kind, the stream id and the decoder, exactly as it does for an ordinary envelope.
+
+```
+[StreamId: byte]        // which logical stream, the GAME assigns these
+[Sequence: uint16 LE]   // increments per transmission of that stream, wraps
+[ChunkIndex: byte]
+[ChunkCount: byte]      // 1 to 255
+[Bytes: the rest]
+```
+
+A chunk is a game message PAYLOAD, not a frame, so the caller wraps each one with
+`TileProtocol.EncodeGameMessage` under its own kind and sends it `ReliableOrdered`.
+`TileFragmentedMessage.MaxChunkPayloadBytes` is `MaxGameMessageBytes` less the four byte envelope less the five
+byte header, so a chunk carries 1015 bytes and 255 of them carry about 258 KB. Every chunk but the last carries a
+FULL load, which is what lets a reader tell a truncated chunk from a legitimately short final one.
+
+`Fragment` THROWS above `MaxPayloadBytes`, on the same grounds as the game message cap throw: a payload that long
+is a local caller bug. Everything on the reading side is total and never throws, because those bytes came from a
+remote peer.
+
+```csharp
+foreach (byte[] chunk in TileFragmentedMessage.Fragment(streamId: 1, sequence: page.Version, encodedPage))
+    server.SendGameMessageTo(slot, kind: GameKinds.PageChunk, chunk);
+
+// On the client, one reassembler per connection.
+if (reassembler.TryComplete(payload, out ReadOnlyMemory<byte> assembled, out string? reason))
+    ApplyPage(assembled.Span);      // decode HERE, and quarantine what will not decode
+else if (reason != null)
+    Telemetry.Count(reason);        // refused, and the token says why
+```
+
+**One reassembler per connection slot.** The type holds the partial assemblies of ONE peer and no connection
+table of its own, so a server keeps an array or a map of them beside its session table and forwards each peer's
+chunks to that peer's instance. `Slot` is carried as identity and `DropConnection(slot)` refuses a slot that is
+not its own, so a mis-wired forward cannot wipe the wrong peer's assemblies.
+
+Four rules, and none of them is a timer, because a timer on a reliable ordered channel measures nothing:
+
+- A chunk whose `Sequence` differs from the assembly in progress for its stream discards that assembly and starts
+  a new one. That is what a server restarting a page mid transmission looks like, and it is not an error.
+- At most four partial assemblies are held at once. A fifth evicts the one fed longest ago and increments
+  `EvictedAssemblies`. A restart is not an eviction and is not counted as one.
+- The last chunk hands the assembled bytes BACK through `TryComplete`. Nothing here decodes them, so a payload
+  that will not decode is the caller's quarantine rather than a throw from the wire. A final chunk cut in its body
+  is the case that reaches the caller, because the header declares no total length.
+- A partial assembly still open when the connection drops goes with an explicit `DropConnection(slot)` the server
+  calls from its own disconnect path.
+
+It does not REORDER, deliberately. The channel is `ReliableOrdered`, so a chunk cannot arrive out of order or be
+lost without the connection failing, and a chunk that is not the next one expected is refused rather than
+buffered. `TryComplete` returns false two ways and the `reason` out tells them apart: null means the chunk was
+accepted and more are expected, non null means it was refused. The two refusal tokens are `ke:fragment-malformed`
+(a chunk this format never produces) and `ke:fragment-out-of-sequence` (a well formed chunk that is not the one
+expected next, which also discards the assembly it contradicts). Both carry the `ke:` prefix for the same reason
+`TileServerReason` does, so a game counting its own tokens alongside them can never collide.
+
+Memory is bounded by what the peer actually SENT: a buffer grows with the bytes that arrive rather than with the
+chunk count a header claims, so a lying `ChunkCount` buys nothing.
+
 ## Known limits in this release
 
 - **`TileWorldServerConfig.MaxCommandsPerSecond` is a simulated-time rate.** Each whole tick tops the bucket up

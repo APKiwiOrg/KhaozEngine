@@ -311,6 +311,11 @@ README catalog cannot confuse the two.
 | `KhaozEngine.ItemInstances.Journal` | The container page commit builder and the tick-bounded commit batch, which turn instance operations into `JournalCommit`s. Depends on `KhaozEngine.ItemInstances` and `KhaozEngine.WorldStore`. | `Server` |
 | `KhaozEngine.Catalog.Netcode` | `ContentIdentityGateAuthenticator` and the content-version handshake layer. Depends on `KhaozEngine.Netcode` and `KhaozEngine.Catalog`. | `Server` |
 
+**The random seam is not in this set and is not a new package.** `IRandomSource` and its two
+implementations go in the EXISTING `KhaozEngine.Primitives`, which already owns `DeterministicRng` and
+sits below every package in the table, so both programs reach the seam without a new dependency edge
+(section 14.1 carries the rule and the cycle it avoids).
+
 **Engine precedent.** The layering rules are the README's, surveyed at `a-engine.md:1373-1407`. Three of
 them bind here. A pure catalog with no SQL belongs in `Foundation` beside `Items` and `Stats`, and is
 "Pure .NET" as long as it defines its own codec rather than borrowing `Content`'s JsonSchema.Net.
@@ -1770,7 +1775,21 @@ made with `NextInt` over an integer weight total.
 `TileActorRandom`, with nothing between them (`a-engine.md:1259-1269`). So this is new, and it is
 deliberately narrow.
 
+**`IRandomSource` lives in `KhaozEngine.Primitives`**, not in either new package. `Primitives` already
+owns `DeterministicRng` (`KhaozEngine.Primitives/DeterministicRng.cs`), which `SeededRandomSource` wraps,
+and it sits below every package either program names, so a seam declared there is reachable from both with
+no new dependency edge and no new package (section 3.2).
+
+Declaring it in `KhaozEngine.ItemInstances`, beside the crafting code that does most of the rolling, would
+close a cycle. Scope A's `KhaozEngine.Catalog` is a `Foundation` package and needs the seam itself, for the
+loot draw it owns and for the decoder fuzzing that feeds it random bytes, and `ItemInstances` already
+depends on `Catalog` (section 3.2). `Catalog` referencing `ItemInstances` back for the interface points the
+graph both ways, which is not a thing to discover at implementation time.
+
 ### 14.2 The two implementations
+
+Both ship in `KhaozEngine.Primitives` beside the seam, so taking `IRandomSource` never costs a second
+package reference.
 
 **`CryptographicRandomSource`**, for hosted servers. Seeded from the OS through
 `System.Security.Cryptography.RandomNumberGenerator`, which is the only cryptographic randomness in the

@@ -3667,3 +3667,102 @@ pass checked hardest and cleared, named so a reviewer knows where to look rather
 | The page stamp is the number, 12.1 | 7.2, gate 0 decision 5 | This spec supplies the number and never asks a page to carry a hash. |
 | Version number monotonic and never skipped, 12.1 | 7.1, 8.3 | A refinement. 7.1 makes the number the ordering, and "never skipped" is what makes "older than the rule" decidable. |
 | Retired rows stay in the pack forever, 3.9 | 5.1, 8.6 | Same rule, same irreversibility, and the retire policy is on the remap rule rather than the row, as 8.2 has it. |
+
+## 21. Open questions for the owner
+
+Seven, each with a recommended default so a non-answer is still a decision rather than a stall. Nothing here
+is a contracts question: those are section 20's two change requests. Q3, Q4 and Q5 are referenced from the
+sections that raised them and are repeated here in full so this section reads standalone.
+
+### Q1. Where do the chunks get served from in production
+
+Section 8.6 weighs three endpoints and recommends a static host or CDN by a wide margin, 66 to 33 to 28, with
+the thundering-herd row decisive: v1 applies a version at server restart, so every connected player
+reconnects at once and every one of them wants the same chunks. The engine ships `HttpPackStore` and cares
+about nothing else, so this is a provisioning decision rather than a design one, and it is here because it
+costs the owner real money and real setup and phase 1 milestone 5 cannot be accepted without it.
+
+**Recommended default: the same Azure Blob feed each game already uses for its client updater.** Both
+consumers already ship one, for the reason AGENTS.md records (a private repo cannot serve Release assets to
+an unauthenticated client), so the deployment shape, the auth model and the operator's familiarity are all
+already paid for. A separate container per game, addressed by hash, with no listing enabled.
+
+### Q2. Who sets `MinimumClientBuild` and `MinimumServerBuild` on each publish
+
+Section 12.1 makes these the GAME's numbers, supplied per publish, with the engine only comparing them. What
+it does not settle is the console's behaviour: does the operator type them every publish, or do they carry
+forward. Typing them every time invites a typo that locks every client out of a version, which is the worst
+operational failure in this spec that is not a data failure. Carrying them forward invites a publish that
+needed to raise one and did not, which refuses nobody and lets an old client decode a row it cannot
+understand.
+
+**Recommended default: carry forward from the previous version, and require an explicit tick plus the new
+number to raise either.** The asymmetry is deliberate. A forgotten raise is caught by the format generation
+check (section 9.6 row 4), because an engine-owned codec change bumps `FormatGeneration` and that is the case
+a stale minimum build actually matters for. A typo'd raise is caught by nothing.
+
+### Q3. The `item` type's default `chunkSlots`
+
+Section 14.1's P6 is the one budget this spec expects the measurement spike to move. A one-item edit at 50,000
+definitions rebuilds one chunk of 4,096 slots, which is about 800 KB uncompressed and roughly 250 KB stored,
+against a target of 80 KB. Two answers: accept about 250 KB per edit, or lower the `item` type's `chunkSlots`
+to 1,024, which quarters the re-download to about 65 KB at the cost of four times the manifest entries, still
+only 49 entries at 50,000 definitions.
+
+**Recommended default: lower `chunkSlots` for `item` to 1,024 and leave every other type at 4,096.** Section
+19 puts this in the expensive table, so it is a decision to take BEFORE the first publish rather than after.
+Phase 0 measures it, and the whole point of making chunk size a per-type registration parameter (contracts
+4.5) is that the answer is a one-line change.
+
+### Q4. When a language's text chunk should shard
+
+Section 7.6 ships ONE text chunk per language, about 1.5 MB stored at 50,000 items in one language. Sharding
+by type or id range would buy a smaller re-download when one string changes and would cost a manifest entry
+per shard plus a lookup that spans shards.
+
+**Recommended default: one chunk per language, sharding only when a language exceeds 8 MB uncompressed.** At
+the 50,000 stress figure a language is about 6 MB, so the threshold is just above the designed-for case and
+the sharding code does not have to exist in phase 1. It becomes a phase 3 concern with a measurement behind
+it, which is the same treatment section 18.3 gives the other two deferred optimizations.
+
+### Q5. How hard to work at runtime memory before it is measured
+
+Two related choices, both in section 9. The first is `Offsets`, sized to the highest live id plus one, which
+makes a type with a family block based at 65,536 and 40 members allocate 262 KB for 40 rows. The second is
+`Keys`, an array of `ContentKey` each wrapping a string, which is 32 MB of the 240 MB runtime at 1,000,000
+definitions and is the biggest avoidable line there.
+
+**Recommended default: ship the simple version of both and measure.** For `Offsets`, switch a type to a
+sorted-id binary search when live density falls below one in sixteen, and do it in phase 3 with a number
+rather than in phase 1 with a guess. For `Keys`, hold one UTF-8 blob plus an offset array, the same trick
+`Bodies` already uses, which saves roughly 24 MB of object headers and is a contained change to one type.
+Neither is a format change, which is why both can wait.
+
+### Q6. How many superseded versions the pack store keeps
+
+Section 6.12's sweep deletes only files referenced by NO version, deliberately, because a pinned server and a
+rollback both need older versions fetchable. So the store grows by the changed chunks of every publish,
+forever, and nothing in this spec ever prunes a version that was once published. At one item edited per
+publish and 250 KB per edit that is slow growth, and at a large content drop per publish it is not.
+
+**Recommended default: retain the last 20 versions plus every pinned one, and prune below that with an
+explicit operator action rather than automatically.** The action is a new one, not designed here, because a
+prune is the one operation in this spec that destroys something a rollback might want and it should not be a
+side effect of an ordinary publish. Until it exists, an operator deletes by hand against `catalog-versions`,
+and `catalog-verify` is what confirms the active version survived.
+
+### Q7. Grimhollow's global tuning knobs
+
+Section 16.2 maps `items.jsonc`'s `drop.despawnSeconds` to "a `skill_curve` style singleton row, or a game
+config outside content" and recommends the former. It is a global knob rather than per-definition tunable
+content, so it is the one row in the Grimhollow mapping that does not obviously belong.
+
+**Recommended default: a one-row `game_tuning` game type, id `1035`.** The argument is that it is versioned,
+audited, rolled back and diffed with everything else for free, and the alternative leaves one number in a
+jsonc file that section 16.8 step 9 is otherwise deleting, which reopens the two-sources-of-truth problem the
+adoption exists to close. The cost is one content type holding one row, which is cheap, and a type with one
+row is still rendered by the generic editor with no extra work.
+
+## 22. Appendix A: review log
+
+Filled at stage 4.

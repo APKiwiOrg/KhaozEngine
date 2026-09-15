@@ -383,6 +383,9 @@ git add KhaozEngine.Tests/ArchitectureTests.cs
 git commit -m "items(instances): pin ItemStack at three components"
 ~~~
 
+**Group A acceptance:** `dotnet test -c Release` green across the solution with `ItemStack` at three
+components, and every consumer break from task 2 filed rather than carried in someone's head.
+
 ---
 
 ## Group B: the instance record (spec 3)

@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (- [ ]) syntax for tracking.
 
-**This plan starts only after the phase 1 release has landed.** `docs/superpowers/plans/2026-09-15-item-instances-phase1.md` ships the instance record and the container, which is every durable byte format this plan builds on: the payload codec, the property registry, the `KECQ` wrapper, the instance id allocator, `ItemStack`'s third component, `ItemSlot`, and container codec version 2. Confirm that release is on `main` and packed to `local-feed` before starting task 2. Task 1 alone is independent of it.
+**This plan starts only after the phase 1 release has landed.** `docs/superpowers/plans/2026-09-15-item-instances-phase1.md`, cited below as the phase 1 plan, ships the instance record and the container, which is every durable byte format this plan builds on: the payload codec, the property registry, the `KECQ` wrapper, the instance id allocator, `ItemStack`'s third component, `ItemSlot`, and container codec version 2. Confirm that release is on `main` and packed to `local-feed` before starting task 2. Task 1 alone is independent of it.
 
 **Goal:** Ship spec 20's phases 2 and 3 as one release: the paged container, the full instance validator, the remap pass, the journal package and the tick-bounded commit batch, then the wire, which is the fragmenter, the visibility function and its public view, the sibling ground component and the page delta.
 

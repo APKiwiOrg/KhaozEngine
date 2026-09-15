@@ -241,3 +241,45 @@ The `--journal-crash-probe` mode is an internal release gate used by the test su
 database path, operation GUID, and either `before-commit` or `after-commit-before-response`. At the requested internal
 provider hook it writes and flushes exactly one `JOURNAL_CHECKPOINT <phase>` line, then waits on standard input so the
 parent can kill the process tree and prove recovery.
+
+## `--catalog`
+
+The content catalog mode measures every budget of section 14 of
+`docs/design/CONTENT-CATALOG-DESIGN-2026-09-15.md` against a synthetic catalog it publishes first. It runs
+alone, like `--journal`, and prints one stable JSON result to standard output while the per-budget log goes
+to standard error.
+
+Flags are `--definitions`, `--types`, `--chunk-slots`, `--languages`, `--edit-count` and `--compose`, plus
+`--seed`, `--output`, `--quick`, `--pack-root`, `--link-mbit`, `--fetch-concurrency`,
+`--comparison-chunk-slots` and `--phases`. `--phases` takes a comma separated list of `publish`, `edit`,
+`load`, `text`, `fetch`, `compose` or `all`, which is how the stress figure is run in pieces when one
+process would sit past a harness timeout. `--pack-root` is an absolute path that keeps the published pack
+instead of writing it to a temporary directory that is removed after the run. A run that finds a pack
+already at that root reuses it rather than republishing, which is what makes a true cold boot measurable in
+a second process.
+
+`--compose` is P11's flag. It boots against an already published pack, builds the text chunk and a stand-in
+per-type load index of 25 MB, and times from process start to a listener opening, reporting the composed
+figure alongside its attribution. Used alone it implies `--phases compose`. A run that had to publish the
+pack itself reports `composeProcessStartMs` as null, because its own publish is inside the elapsed time and
+that is not a boot.
+
+The checked-in baselines are `Baselines/catalog-v1-seed835-50000.json`,
+`Baselines/catalog-v1-seed835-50000-compose.json` and `Baselines/catalog-v1-seed835-1000000.json`.
+Reproduce them on the current machine, in this order, with:
+
+```bash
+dotnet run --project KhaozEngine.Benchmarks -c Release -- --catalog --definitions 50000 --seed 835 --pack-root /tmp/kecat-50k --output "$PWD/KhaozEngine.Benchmarks/Baselines/catalog-v1-seed835-50000.json"
+
+dotnet run --project KhaozEngine.Benchmarks -c Release -- --catalog --definitions 50000 --seed 835 --compose --pack-root /tmp/kecat-50k --output "$PWD/KhaozEngine.Benchmarks/Baselines/catalog-v1-seed835-50000-compose.json"
+
+dotnet run --project KhaozEngine.Benchmarks -c Release -- --catalog --definitions 1000000 --seed 835 --pack-root /tmp/kecat-1m --output "$PWD/KhaozEngine.Benchmarks/Baselines/catalog-v1-seed835-1000000.json"
+```
+
+The compose command must run second and against the same `--pack-root` as the command before it, because it
+reports a cold boot only when it finds the pack already published. A one line sanity check that finishes in
+a few seconds is `--catalog --quick`, which drops to 5,000 definitions and shortens the timed loops.
+
+Always `-c Release`. Debug numbers are not representative, and the P7 and P9 figures in particular are
+timed loops whose Debug values say nothing. Like every mode here the project is `IsPackable=false`, is not
+on the engine version line, and CI never invokes its timing loop.

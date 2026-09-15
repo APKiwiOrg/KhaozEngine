@@ -2088,49 +2088,72 @@ below is keyed so that the BASE COUNT contributes almost nothing, which is the w
 a scan of three indexed row sets rather than a decode of a blob per mod, and a server whose pack omits
 the `ServerOnly` weight type builds no tables at all, which is exactly what a client does.
 
-**Two levels. Tag-band tables, built once, and a memoized merge per tag signature.**
+**Three levels: bands, tag tables split by mod kind, and the precomputed OVERLAP between the tables one
+base's tags select.** The first draft of this section had a fourth thing, a memoized merge of those
+tables per roll, and stage 5 measured it as the larger half of budget 5's miss (16.1). The union it
+merged is not built any more, at a roll or at boot.
 
 1. **Bands.** Collect every distinct `item_level_min` and `item_level_max + 1` across every `mod_tier`
    row. Sort them. The intervals between consecutive values are the BANDS, and within one band no tier's
-   gate changes, so the live tier set is constant. At 2,000 mods and 8 tiers each the boundary count is
-   bounded by 32,000 and in practice is the authored level curve, tens rather than thousands.
-2. **Tag-band tables.** For each `(tag id, band)` pair, an array of `(mod id, tier ordinal, weight)` for
-   every `mod_tier` row live in that band with a `mod_tier_weight` row naming that tag at a non-zero
-   weight, sorted ascending by (mod id, tier ordinal). Sorted rather than insertion ordered, because the sort is what makes the
-   weighted pick reproducible from a seed and independent of pack load order (contracts 4.3).
-3. **The merge, at roll time.** A base's candidate set is the merge of the tables for its tags, walked in
-   the base's AUTHORED tag order, taking the first weight found for each `(mod id, tier ordinal)` and
-   ignoring later ones. That is 8.3's first-tag-wins rule executed rather than precomputed.
-4. **The memo.** The merge is keyed by (tag signature, band), where the tag signature is the base's
-   ordered tag list interned to an int. Bases sharing a tag list share a merge. A bounded dictionary
-   holds the most recent 4,096 on an LRU eviction, and the ratio is worth writing down rather than
-   calling it a cache: a few hundred authored tag signatures over 64 bands is a key space of about
-   19,200, so 4,096 entries is a FIFTH of it. That is deliberate. The 4,096 is a MEMORY bound, not a
-   claim that the cache is complete: covering the whole key space at the entry size below would cost
-   about 46 MB. What makes the hit rate high anyway is that a live server rolls a small hot set of bases
-   at a small hot set of levels, so the working set at any moment is a handful of bands times the bases
-   actually dropping, and a miss costs one merge over a few hundred entries, which is microseconds. A
-   pathological pack degrades to a merge per roll and nothing worse.
+   gate changes, so the live tier set is constant. The count is the authored level curve and nothing
+   else decides it, so this design does not get to pick it: the synthetic set's 32 breakpoint levels
+   produce 50 bands, and at 2,000 mods and 8 tiers each the bound is 32,000.
+2. **Tag-kind-band tables.** For each `(tag id, mod kind, band)`, one bucket of a flat pair of arrays:
+   the PACKED key `(mod id << 4) | tier ordinal` and the CUMULATIVE weight through that entry, for every
+   `mod_tier` row live in that band with a `mod_tier_weight` row naming that tag at a non-zero weight.
+   Ascending packed order is (mod id, tier ordinal) order, so the bucket is sorted by construction
+   rather than by a sort pass, which is what makes a pick reproducible from a seed and independent of
+   pack load order (contracts 4.3). Three things are folded in at BUILD time rather than tested per
+   candidate: the kind, which is now the bucket, the LEGACY flag, because a legacy tier never enters a
+   table at all, and the running weight, because a cumulative array is a binary search and a weight
+   array is a walk.
+3. **The overlap, precomputed per (tag signature, kind, band, tag position).** A base's candidate set is
+   the union of the tables for its tags, walked in the base's AUTHORED tag order, taking the first weight
+   found for each `(mod id, tier ordinal)` and ignoring later ones. That is 8.3's first-tag-wins rule,
+   and what v1 precomputes is what the rule DISCARDS: for each tag position, the sorted list of entry
+   indices an earlier tag of the same signature already carries, plus their summed weight and their
+   count. A roll subtracts those two scalars from the bucket's own count and total, which gives the
+   union's count and total without the union, and skips the listed entries inside the draw (9.4 step 7).
+   The lists are 16 bit indices into a bucket, so a bucket is capped at 65,535 entries.
 
-**The arithmetic, at the owner's scale of 50,000 bases and 2,000 mods.** Take 8 tiers per mod (16,000
-tiers), 5 tag weights per tier and 64 bands, with a tier spanning on average a third of them.
+**Why the difference and not the union, in measured numbers.** Both were built and run.
+
+| Shape | Memory | Cost at the roll |
+|---|---|---|
+| Union materialised for every key | `15,000 keys * 1,232 entries * 8 bytes` = **148 MB** | none |
+| Union merged per roll, memoized at 1,024 keys | 11.8 MB of tables plus 21 MB of memo | **11 us per merge**, and 86 percent of rolls merged |
+| Overlap precomputed, no union anywhere | 11.8 MB of tables plus **5.2 MB** | **0**, and nothing is allocated |
+
+The merge is 1,358 source entries per key and it does not get cheap: it was rewritten twice, to a
+branchless four cursor form, and stayed at about 10 ns an entry because the loop is a dependency chain
+and not arithmetic. A memo big enough to hide it is the 148 MB row. The overlap is 1,880,255 entries
+over the whole key space, 9.2 percent of the union's 18,485,478, at two bytes each.
+
+**The arithmetic, at the owner's scale of 50,000 bases and 2,000 mods**, measured against the synthetic
+set rather than estimated: 2,000 mods at 8 tiers and 5 tag weights each, 64 tags, 50 bands, 300 authored
+tag signatures.
 
 | Quantity | Formula | Result |
 |---|---|---|
-| Tag-band table entries | `16,000 tiers * 5 tags * 21 bands` | about 1.7 million |
-| Bytes at 12 per entry | `1.7M * 12` | **about 20 MB** |
-| Distinct tag signatures | authored, bounded by base count | a few hundred |
-| Memo entries held | `4,096 * 200 entries * 12 bytes` | **about 9.8 MB at 200 entries each** |
+| Tag-kind-band table entries | 77,600 live tier weights, each in the 19 bands its gate spans | 1,475,105 |
+| Bytes at 8 per entry | `1,475,105 * 8` | **11.8 MB** |
+| Overlap entries | measured, 9.2 percent of the union | 1,880,255 |
+| Bytes at 2 per entry, plus 120,000 headers at 12 | `1,880,255 * 2 + 1.44M` | **5.2 MB** |
+| Keys carrying a header | `300 signatures * 50 bands * 2 kinds * 4 tag positions` | 120,000 |
 | Base-derived memory | `50,000 * 8` for the signature intern | **400 KB** |
-| Build: appends | one per table entry | 1.7 million |
-| Build: sort | 1.7M entries across about 19,000 buckets | dominated by the appends |
+| Build: the overlap pass | one merge per (signature, kind, band) over 20.4 million source entries | 288 ms |
 
-**About 30 MB resident and a build measured in low hundreds of milliseconds**, both of which belong in
-16's budget table as targets rather than as claims, because neither is measured. The 30 is `20 + 9.8 +
-0.4`, and an earlier draft wrote 25 because it priced the memo at 4 MB against its own 12 bytes an entry. The number that matters
-for the SHAPE is the last row of the top half: 400 KB for fifty thousand bases. A base costs eight bytes
-because it never enters a table, only its tag list does. That is what makes the design survive the
-owner's "millions of owned items" over a large catalog.
+**About 17 MB by the array sum and 24 MB as the heap reads it, built in 288 ms**, all three measured
+(16.1), against budget 9's 40 MB and 500 ms. The number that matters for the SHAPE is the second to last
+row: 400 KB for fifty thousand bases. A base costs eight bytes because it never enters a table, only its
+tag list does. That is what makes the design survive the owner's "millions of owned items" over a large
+catalog. The build is 18 times what the first draft's tables cost, and it buys the whole of budget 5:
+the overlap pass is the merge, run once per key at boot instead of once per roll forever.
+
+**Nothing is allocated, memoized or evicted at a roll.** There is no cache, so there is no hit rate, no
+eviction policy and no pathological pack that degrades to a merge per roll. A roll reads the two to four
+buckets its base's tags name and nothing else, which is also why its cost does not scale with the
+candidate pool (9.4).
 
 **A BOOT builds the tables, not a publish, and they are immutable for the life of the process.** An
 earlier draft said a publish builds new tables beside the old ones and swaps the reference. That is a
@@ -2141,14 +2164,20 @@ version active for the NEXT boot. The beside-then-swap shape is kept as the HOOK
 use, and `GrimhollowEconomy.Current` is that shape in a game today (`b-grimhollow.md:56-59`), but nothing
 in v1 calls it. Weights are `ServerOnly` (8.3), so a CLIENT builds none of this and holds none of it.
 
+**The one thing the build must check, because nothing downstream can.** The overlap lists ARE the merge,
+so a wrong list is a wrong weight rather than a crash. The build therefore computes the merged count and
+weight along the same pass that records the discards, compares them against the count and total the
+suppression scalars imply, and counts any disagreement. The measured count is zero over all 15,000 keys
+and it is reported beside budget 9.
+
 ### 9.3 The random source, restated at the call site
 
 `IRandomSource` is contracts 14.1 verbatim and lives in `KhaozEngine.Primitives` (2.2). Three of its four
 members are used here:
 `NextInt(minInclusive, maxExclusive)` for a count and for a weighted pick, `NextRollPosition()` for a
 `ushort` roll position, and neither `NextULong` nor `NextBytes`. A weighted pick is
-`NextInt(0, weightTotal)` followed by a walk of the cumulative array, never a floating point draw and
-never a rejection loop, which is contracts 13.4 and 14.1 applied together.
+`NextInt(0, weightTotal)` followed by a binary search of the cumulative array, never a floating point
+draw and never a rejection loop, which is contracts 13.4 and 14.1 applied together.
 
 **Every draw the algorithm makes is a function of the affix COUNT and nothing else.** A candidate that is
 filtered out is removed from the pool BEFORE the draw rather than drawn and rejected, so two items of the
@@ -2175,7 +2204,13 @@ public sealed class ItemGenerator
 
 Every step is numbered because the ORDER of the draws is the reproducibility contract.
 
-1. **Resolve the band** from `context.ItemLevel` by binary search over the band boundaries. No draw.
+1. **Resolve the band and open the pool.** The band is a binary search over the band boundaries from
+   `context.ItemLevel`. Opening the pool is reading, for each mod kind and each of the base's two to four
+   tag positions, the (tag, kind, band) bucket's start, length and total, and that position's overlap
+   header (9.2 item 3). The live count of a kind is the sum over its tag positions of
+   `bucket length - suppressed count`, and the live weight of a tag position is
+   `bucket total - suppressed weight`. Eight scalars in, nothing merged, nothing copied, nothing
+   allocated. No draw.
 2. **Resolve the unique**, if `ForcedUniqueTemplateId` is non-zero. Skip to step 9 with the template's
    `unique_line` rows as the affix list and its `unique_socket` rows as the socket list. No draw. A unique is FORCED by the
    caller rather than rolled here, because deciding that a unique drops is the loot table's job (9.1).
@@ -2183,25 +2218,39 @@ Every step is numbered because the ORDER of the draws is the reproducibility con
    `rarity_weight` rows against the base's tags, using 8.3's first-tag-wins rule.
 4. **Roll the affix count.** One `NextInt(rule.min_affixes, rule.max_affixes + 1)`.
 5. **Roll the prefix and suffix split.** For each of the `count` picks in turn, decide the kind FIRST:
-   one `NextInt(0, openKindTotal)` over the kinds still under their per kind cap, weighted by the number
-   of candidates of that kind. Kind before mod, so a rarity permitting three prefixes and three suffixes
-   does not produce six prefixes because prefixes happen to outnumber suffixes in the pool.
-6. **Filter the pool** for this pick: drop every candidate whose kind is not the chosen one, whose mod id
-   is already on the item, whose `mod_group` is at `max_per_item`, or whose mod row carries `legacy`. No
-   draw. The filter is a forward pass over the memoized merged array, producing a cumulative weight
-   array in the same order.
-7. **Pick the mod and tier.** One `NextInt(0, weightTotal)` and a walk of the cumulative array. When
-   several tiers of one mod are live in the band, they are separate candidates and the weights decide,
-   which is how "a better tier is rarer" is authored rather than coded.
+   one `NextInt(0, openKindTotal)` over the kinds still under their per kind cap, weighted by the LIVE
+   candidate count of that kind, which step 1 computed and step 6 has been decrementing. Kind before mod,
+   so a rarity permitting three prefixes and three suffixes does not produce six prefixes because
+   prefixes happen to outnumber suffixes in the pool.
+6. **Deduct, rather than filter.** There is no per pick pass over the candidates. A candidate leaves the
+   pool exactly once, when the thing that excludes it happens, and it leaves by SUBTRACTION: placing a
+   mod deducts that mod's whole run of tiers, in every tag table of its kind, from that table's live
+   weight and from its kind's live count, and records the run in a short per table list kept sorted by
+   index. A mod's tiers are contiguous in a table, because the table is sorted by the packed key, so one
+   run covers them all and finding it is a binary search. When the placed mod carries a `mod_group`, the
+   same deduction runs for every other mod of that group once the group is at `max_per_item`, found
+   through a group index built at boot. An entry the overlap already suppressed is not deducted twice.
+   A legacy mod needs no rule here at all, because it was never in a table (9.2). No draw.
+7. **Pick the mod and tier.** One `NextInt(0, liveWeight)` over the chosen kind's live weight, which is
+   the sum of its tag positions' live weights. The draw then resolves in three moves, all of them cheap
+   in the pool size: walk the two to four tag positions to find the one the draw falls in, walk that
+   table's DEAD entries in index order (its suppressed list and its excluded runs, merged) adding their
+   weights while they sit behind the draw, and binary search the table's cumulative array for the
+   shifted draw. The landing entry is live by construction, because consecutive dead entries share one
+   shifted position, so a dead entry is either wholly behind the draw or wholly ahead of it and can
+   never be the answer. This is filter-before-draw exactly as 9.3 states it: a filtered candidate is
+   absent from the weight the draw is taken over, rather than drawn and rejected. When several tiers of
+   one mod are live in the band, they are separate candidates and the weights decide, which is how "a
+   better tier is rarer" is authored rather than coded.
 8. **Roll the position.** One `NextRollPosition()` per affix. Record `(mod id, tier ordinal, position,
-   flags 0)`. Repeat steps 5 to 8 until `count` picks have been MADE. **A pick whose filtered pool is
+   flags 0)`. Repeat steps 5 to 8 until `count` picks have been MADE. **A pick whose live pool is
    EMPTY still draws and discards, one `NextInt(0, 1)` in place of step 7's weighted pick and one
    `NextRollPosition()` in place of this step**, places nothing, and the item ends with fewer affixes
    than the count asked for, which is a legal outcome and is reported in the result rather than retried.
    The two discarded draws are what keep 9.3's property true: without them one item consumes fewer draws
    than another of the same rarity on the same base, and a seeded session diverges at the first item
    whose pool empties. `NextInt(0, 1)` rather than nothing because step 7's real draw is
-   `NextInt(0, weightTotal)` and a weight total of zero is not a legal argument, so the discard has to be
+   `NextInt(0, liveWeight)` and a weight total of zero is not a legal argument, so the discard has to be
    a defined call rather than the same call on an empty pool.
 9. **Sort the affix list ascending by mod id** (3.4). No draw.
 10. **Roll the rare name.** For each position 1 to `rule.name_word_positions`, one `NextInt(0, total)` over
@@ -2216,9 +2265,14 @@ Every step is numbered because the ORDER of the draws is the reproducibility con
 13. **Allocate the instance id** when the payload is non-empty, from `InstanceIdAllocator` (3.6). An
     empty payload takes id 0 and the item is a plain stack.
 
-**Cost, per rare.** Six affixes cost six kind draws, six mod draws, six position draws and up to two name
-draws, so twenty draws and six cumulative-array passes over a filtered pool of a few hundred. The
-allocation is one payload buffer. Section 16 budgets it at under 20 microseconds and calls it TBD.
+**Cost, per rare, and what it is NOT a function of.** Six affixes cost six kind draws, six mod draws, six
+position draws and up to two name draws, so twenty draws. The work around those draws is eight scalar
+reads to open the pool, then per pick a walk of at most four tag positions, a walk of the dead entries
+that sit behind the draw, and a binary search of about ten steps. None of those is a function of the
+candidate pool's SIZE, which is the property the first draft did not have: it walked the merged pool once
+per pick, and 16.1 measured that as 4,454 candidate visits and 47.8 microseconds at the median. The
+measured shape now is 36 dead entries walked per generation, p50 1.9 microseconds and p99 11.9, with the
+one allocation being the payload buffer.
 
 ### 9.5 The journal event
 

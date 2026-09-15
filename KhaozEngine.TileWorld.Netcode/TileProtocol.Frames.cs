@@ -26,12 +26,13 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// message pays, which is what makes the pad unambiguous to strip on the way back in.</para>
 /// <para>Every FRAME decoder here (the <c>TryDecode*</c> family) is total, on the same grounds as the command
 /// decoder: it returns false for a truncated, mis-tagged, over-capped or internally inconsistent frame and never
-/// throws, because the bytes come from a remote peer. The COMPONENT readers in this type's other partial do not
-/// share that shape and are not meant to: a payload that lies about a declared length throws
+/// throws, because the bytes come from a remote peer. The COMPONENT readers in this type's other partial mostly do
+/// not share that shape and are not meant to: a payload that lies about a declared length throws
 /// <see cref="System.IO.InvalidDataException"/> by design, and the conversion to a false plus a reason happens one
 /// layer out, in <c>ClientReplicationView.TryApply</c>'s catch, which the caller treats as terminal for the
-/// session. <see cref="CreateRegistry"/> carries the reasoning for refusing a lying length there rather than
-/// clamping it.</para>
+/// session. The ONE component reader that is total is the item instance's, whose payload the engine never decodes
+/// and which therefore answers an empty payload instead. <see cref="CreateRegistry"/> carries both halves of that
+/// reasoning: why a lying length is refused rather than clamped, and why that one reader answers instead.</para>
 /// </summary>
 public static partial class TileProtocol
 {

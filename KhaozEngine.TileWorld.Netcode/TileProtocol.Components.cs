@@ -39,9 +39,14 @@ public static partial class TileProtocol
     /// <summary>Extension id of <see cref="TileObjectState"/>, an authored object away from its authored form.</summary>
     public const ushort TileObjectStateTypeId = ReplicationRegistry.FirstExtensionTypeId + 7;
 
+    /// <summary>Extension id of <see cref="TileGroundItemInstance"/>, the instance a drop carries when it has
+    /// one. A SIBLING of <see cref="TileGroundItemTypeId"/> rather than a wider version of it, so a client that
+    /// never registered this id skips it and keeps reading the entity.</summary>
+    public const ushort TileGroundItemInstanceTypeId = ReplicationRegistry.FirstExtensionTypeId + 8;
+
     /// <summary>The first id a GAME may register. Everything from
     /// <see cref="ReplicationRegistry.FirstExtensionTypeId"/> up to here belongs to the tile netcode, which is a
-    /// block of SIXTEEN ids and leaves eight free after <see cref="TileObjectStateTypeId"/>.
+    /// block of SIXTEEN ids and leaves seven free after <see cref="TileGroundItemInstanceTypeId"/>.
     /// <para>It was <c>+8</c> until 18.14.0, which left a window TWO ids wide, and
     /// <see cref="TileObjectState"/> would have spent one of them. A window that runs out is not a minor
     /// release: ids at and above this one belong to games, so widening it renumbers every game registration in
@@ -50,7 +55,7 @@ public static partial class TileProtocol
     /// of that trade. Sixteen because it is the width
     /// <see cref="ReplicationRegistry.FirstExtensionTypeId"/> itself reserves for engine built-ins, so the
     /// boundary reads as one block rather than as a running count of whatever has been added so far, and
-    /// because eight free is more than the tile netcode has spent in its entire life.</para>
+    /// because the eight it left free was more than the tile netcode had spent in its entire life.</para>
     /// <para>A type id is a <see cref="ushort"/> and the space above this is not scarce, so nothing was taken
     /// from a game by moving it. What moved is where a game's own ids START, which is a WIRE break for any
     /// consumer whose two heads are not upgraded together. See the 18.14.0 changelog entry.</para></summary>
@@ -73,6 +78,15 @@ public static partial class TileProtocol
     /// a codepoint boundary, and on read, where a longer declared length is a malformed frame rather than something
     /// to clamp: no encoder on this wire emits one.</summary>
     public const int MaxDisplayNameBytes = 64;
+
+    /// <summary>Cap on a <see cref="TileGroundItemInstance"/> payload, in bytes, and the number a peer's declared
+    /// length is measured against before anything is allocated to its word.
+    /// <para>It MIRRORS <c>ItemSlot.MaxPayloadBytes</c>, the same 512 that contracts 9.6 sizes a container page
+    /// and a single-item game message against. A copy rather than a reference because this package carries no
+    /// dependency on the item packages and must not gain one: the component is an opaque long and opaque bytes,
+    /// and knowing what is IN them is exactly what it must not do. <c>KhaozEngine.Server.Tests</c> sees both
+    /// packages and holds the two constants equal, which is where a drift is caught.</para></summary>
+    public const int MaxInstancePayloadBytes = 512;
 
     /// <summary>
     /// Builds the registry BOTH heads must agree on, then hands it to <paramref name="registerExtensions"/> for the
@@ -99,6 +113,13 @@ public static partial class TileProtocol
     /// plausible-looking answer to a question nobody asked. Bounding the check at the payload rather than at the
     /// end of the stream is what makes it fire on a real snapshot: with another entity behind this one, an
     /// unbounded check finds the bytes the lie asked for and passes.</para>
+    /// <para>There is now a THIRD way, and exactly one reader takes it.
+    /// <see cref="ReadGroundItemInstance"/> is TOTAL: a declared length past its own framed payload, or above
+    /// <see cref="MaxInstancePayloadBytes"/>, answers an empty payload rather than throwing. The other two
+    /// refuse because a short read there would rebuild something plausible out of bytes that belong elsewhere.
+    /// An instance payload is opaque to the engine, so there is nothing for it to rebuild wrongly, and the
+    /// honest answer to bytes that did not arrive whole is a drop carrying no instance rather than a session
+    /// that loses every other drop and every body in it with the frame.</para>
     /// <para>A tile COORDINATE is neither, and it is the first rule's limit rather than a third case. The x and z
     /// of <see cref="TileMoveState"/> are whole ints, so every value a frame can name is one the type holds, and
     /// the plane rides in ONE byte (<see cref="WriteMove"/>), so the wire itself is the only bound there is. A
@@ -120,6 +141,14 @@ public static partial class TileProtocol
         reg.Register<TileCombatState>(TileCombatStateTypeId, WriteCombat, ReadCombat,
             channels: ReplicationChannels.Migrate);
         reg.Register<TileGroundItem>(TileGroundItemTypeId, WriteGroundItem, ReadGroundItem);
+        // The DEFAULT channels, and NOT OwnerOnly, which is the obvious-looking wrong answer here. OwnerOnly
+        // scopes a component to the client whose OWN net id equals the ENTITY's, and a drop's entity net id is
+        // never a viewer's, so it would hide the instance from everyone including the player who dropped it.
+        // It is the right modifier for a component on a player's own entity and for nothing else. What rides
+        // here is the PUBLIC view of the payload, computed where the item changes rather than per viewer, and
+        // an owner-only remainder is a targeted message rather than a channel flag.
+        reg.Register<TileGroundItemInstance>(TileGroundItemInstanceTypeId,
+            WriteGroundItemInstance, ReadGroundItemInstance);
         reg.Register<TileObjectState>(TileObjectStateTypeId, WriteObjectState, ReadObjectState);
         reg.Register<PendingTileCommand>(PendingTileCommandTypeId, WritePendingCommand, ReadPendingCommand,
             channels: ReplicationChannels.Migrate);
@@ -359,6 +388,96 @@ public static partial class TileProtocol
         int z = r.ReadInt32();
         int plane = r.ReadInt32();
         return new TileGroundItem { ItemId = itemId, Count = Math.Max(1, count), X = x, Z = z, Plane = plane };
+    }
+
+    // The id as an unsigned varint over its int64 bit pattern, then the payload behind its own varint length. Two
+    // bytes for a drop whose instance has no fields, and one byte of id for the first 127 instances a world ever
+    // mints, which is what makes a sibling component cheap enough to send every tick beside a twenty byte drop.
+    //
+    // REFUSES an over-cap payload rather than truncating one, WriteRoute's rule and for a sharper version of its
+    // reason: these bytes are opaque, so a truncated payload is not a shorter instance, it is a DIFFERENT one that
+    // every reader below would take at face value. Nothing the engine owns can reach this: SpawnGroundItem throws
+    // at the door, so a component over the cap was seated by hand and the stack trace names the head that did it.
+    static void WriteGroundItemInstance(TileGroundItemInstance v, BinaryWriter w)
+    {
+        byte[] payload = v.Payload ?? Array.Empty<byte>();
+        if (payload.Length > MaxInstancePayloadBytes)
+            throw new ArgumentException(
+                $"A replicated item instance is capped at {MaxInstancePayloadBytes} payload bytes and this one " +
+                $"carries {payload.Length}. TileWorldServer.SpawnGroundItem refuses one that long, so this " +
+                "component was seated directly.", nameof(v));
+        WriteUnsignedVarint(w, (ulong)v.InstanceId);
+        WriteUnsignedVarint(w, (ulong)payload.Length);
+        w.Write(payload);
+    }
+
+    // TOTAL, which is the third answer to this file's hostile-frame question and the only reader here that gives
+    // it. A declared length past this component's own framed payload, or above the cap, answers a ZERO LENGTH
+    // payload rather than throwing. The route and the display name throw because a short read there is a
+    // plausible-looking answer to a question nobody asked (a route rebuilt out of another component's bytes), and
+    // this is the case where it is not: the engine never decodes these bytes, so the only thing it can offer a
+    // game is that what it hands over arrived whole. An empty payload says the instance did not, visibly, at the
+    // cost of one drop, where a throw would cost the session every other drop and every body in it.
+    static TileGroundItemInstance ReadGroundItemInstance(BinaryReader r)
+    {
+        if (!TryReadUnsignedVarint(r, out ulong rawId))
+            return new TileGroundItemInstance { InstanceId = 0L, Payload = Array.Empty<byte>() };
+        var instance = new TileGroundItemInstance { InstanceId = (long)rawId, Payload = Array.Empty<byte>() };
+        if (!TryReadUnsignedVarint(r, out ulong declared)
+            || declared > MaxInstancePayloadBytes
+            || declared > (ulong)PayloadRemaining(r))
+            return instance;
+        var payload = new byte[(int)declared];
+        if (r.Read(payload, 0, payload.Length) != payload.Length)   // the unbounded fallback, as in ReadRoute
+            return instance;
+        instance.Payload = payload;
+        return instance;
+    }
+
+    // Unsigned minimal LEB128, seven value bits per byte, low group first, at most ten bytes for a 64 bit value,
+    // never zig-zagged. PRIVATE, and that is the point rather than an oversight: contracts 15 puts ONE definition
+    // of this in the tree, KhaozEngine.Catalog's ContentVarint, and this package carries no dependency on it and
+    // must not gain one to encode a number it treats as opaque. A private pair that cannot be called from
+    // anywhere else is not a second definition anyone can pick up by mistake, and TileGroundItemInstanceTests
+    // pins its bytes against the known encodings so it cannot drift from the one that is.
+    static void WriteUnsignedVarint(BinaryWriter w, ulong value)
+    {
+        while (value >= 0x80)
+        {
+            w.Write((byte)(value | 0x80));
+            value >>= 7;
+        }
+
+        w.Write((byte)value);
+    }
+
+    // Total, through BaseStream.ReadByte rather than BinaryReader.ReadByte: the stream answers -1 at the end of
+    // the framed payload where the reader throws, so running off the end is an answer here rather than an
+    // exception. Refuses a non-terminating, over-wide or non-minimal encoding, because contracts 15 gives one
+    // value exactly one byte form and a reader that accepted two would let a peer choose which.
+    static bool TryReadUnsignedVarint(BinaryReader r, out ulong value)
+    {
+        value = 0;
+        int shift = 0;
+        int read = 0;
+        while (shift <= 63)
+        {
+            int b = r.BaseStream.ReadByte();
+            if (b < 0) { value = 0; return false; }
+            read++;
+            if (shift == 63 && (b & 0xFE) != 0) { value = 0; return false; }   // the tenth byte carries bit 63 alone
+            value |= (ulong)(b & 0x7F) << shift;
+            if ((b & 0x80) == 0)
+            {
+                if (b == 0 && read > 1) { value = 0; return false; }   // minimal: only a one byte form ends in a zero group
+                return true;
+            }
+
+            shift += 7;
+        }
+
+        value = 0;
+        return false;
     }
 
     // Twenty-four bytes, every field whole. No length prefix and nothing declared, so there is no lie a frame can

@@ -336,28 +336,6 @@ public class ItemInstancePayloadTests
     }
 
     [Fact]
-    public void PublicView_is_the_whole_payload_until_the_visibility_task_finishes_it()
-    {
-        // Step 8 of task 4 ships this as a stub and the phase 2-3 plan's visibility task finishes it, which
-        // is where the rule of spec 12.5 belongs. The fact exists so the stub is DELIBERATE rather than
-        // forgotten, and so the day it stops returning everything is a red test rather than a surprise.
-        byte[] payload = new ItemInstancePayloadBuilder()
-            .AddScalars(InstancePropertyKind.Durability, 90, 100)
-            .ToArray();
-
-        byte[] view = new byte[payload.Length];
-        int written = ItemInstancePayload.PublicView(
-            payload,
-            PropertyVisibility.Everyone,
-            identified: false,
-            revealedMask: 0,
-            view);
-
-        Assert.Equal(payload.Length, written);
-        Assert.Equal(payload, view);
-    }
-
-    [Fact]
     public void The_reason_set_is_exactly_the_eight_tokens_of_contracts_9_7()
     {
         string[] expected =

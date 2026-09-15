@@ -147,12 +147,66 @@ sit in different sockets do NOT stack, and that is correct, because they are dif
 | `IsCanonical(...)` | the same as a bool, and the registry-free overload is the shape `ItemContainer`'s door predicate takes. That overload is STRUCTURAL: it reads no field body, so it never recurses into a nested payload, and a host wanting the per-kind checks at the container door passes a registry-bound predicate instead |
 | `SequenceEqual(left, right)` | the stacking rule, a byte compare, because the encoding is canonical |
 | `Encode(builder, destination)` | writes a builder's fields out and answers the bytes written |
-| `PublicView(...)` | a STUB in phase 1 that returns the whole payload. The visibility rule lands with the wire |
+| `PublicView(registry, payload, level, identified, revealedMask, destination)` | the payload one viewer may see. It DELEGATES to `ItemInstanceVisibility` rather than repeating the rule |
 
 A decode hands back `PayloadField` positions rather than copies, so an unknown kind is kept verbatim by
 construction and nothing on the read path copies a body to look at it. `MaxInstancePayloadBytes` is the cap,
 which is `ItemSlot.MaxPayloadBytes` rather than a second copy of it, and `MaxFields` is the most fields a
 legal payload can hold, which is what a caller sizes its `PayloadField` span to.
+
+## Visibility: one `CanSee`, two projections
+
+`ItemInstanceVisibility` holds the only function in the engine answering "may this viewer see this field".
+The replication filter calls it and the tooltip builder calls it, and nothing else does. A tooltip that
+computed its own answer is how a client eventually renders something the server never sent, so the one
+function is a call-site constraint rather than a convenience.
+
+| Member | Answers |
+|---|---|
+| `CanSee(kind, viewerLevel, identified, revealedMask)` | the rule, over a registration the caller already holds, which is the replication filter's door |
+| `CanSee(registry, kind, viewerLevel, identified, revealedMask)` | the same rule reached by kind id, which is the tooltip builder's door |
+| `PublicView(registry, payload, level, identified, revealedMask, destination)` | the payload one viewer may see, as bytes written into the caller's span |
+| `OwnerRemainder(registry, payload, identified, revealedMask, destination)` | the exact complement of `PublicView` at `Everyone`, which is what the targeted owner message carries |
+
+**The rule, in order.** `ServerOnly` is never visible to anyone. `OwnerOnly` is visible when the viewer
+level is `OwnerOnly`. `Everyone` is visible always. THEN, and only then, the identification gate: a kind
+registered with an `identificationMaskBit` is hidden while the item is unidentified and its bit in the
+revealed mask is clear, EVEN FROM THE OWNER. That last clause is why unidentified is a mechanic rather than
+a fourth visibility level, and it is the whole of the partial reveal: a primitive that sets one bit uncovers
+one field, with no format change.
+
+Two things fail CLOSED and both are deliberate. A viewer level of `ServerOnly` sees nothing, because a
+viewer has two levels (`Everyone`, and `OwnerOnly` for the item it owns) and `ServerOnly` is a level a KIND
+carries. And an UNREGISTERED kind is visible to nobody, because the rule is an if and only if over the
+kind's registered visibility and a kind this process cannot classify may well be `ServerOnly` in the build
+that wrote it. That is about a projection only: an unknown kind is still kept verbatim in storage and still
+survives a decode and rebuild untouched.
+
+**Both projections are a forward pass over the RETAINED RUNS of the input.** Fields are already ascending
+and each is length prefixed, so a filtered payload is a sequence of copies over contiguous ranges with no
+decode into values, no re-sort and no allocation beyond the destination span. The levels are deliberately
+not monotonic in the kind id (kinds 4, 5 and 6 are owner-only while 7 and 8 are public), so the run walk is
+the only correct shape, and that is the measurement behind declining to couple kind ids to visibility. The
+output is canonical and decodes, because what is left is still a subsequence of an ascending,
+duplicate-free, minimally encoded list. A destination as long as the payload always suffices, and a
+destination that is too short answers `-1` with nothing written rather than a truncated view.
+
+The revealed mask is a `ulong` on every member here. Kind 128's mask is a varint and the shape walk reads a
+varint at the full 64 bits, so taking a `uint` would force a narrowing at some call site. Bits above
+`InstancePropertyRegistry.MaxIdentificationMaskBit` gate nothing, because the registry refuses to register
+one.
+
+**A GROUND item has no owner, and that is a rule rather than an omission.** A drop's entity is the drop,
+whose net id is nobody's, so there is no viewer this design calls the owner of a ground stack. A ground
+item's public view is `PublicView` at `Everyone` and there is NO owner remainder for a drop. Kind 6
+`BoundTo` is owner-only, so it is stripped before the sibling component is written and a passer-by cannot
+read who a dropped item is bound to, which is a fact about a PLAYER rather than about an item. Kinds 4 and 5
+go with it, which is why the 58 byte reference rare replicates as 54 bytes on the ground: it carries one of
+the three owner-only kinds, kind 5 durability, whose whole field is four bytes.
+
+The owner remainder's BYTES live here, beside the projection they complement, so the two cannot disagree.
+The MESSAGE KIND stays the game's, because `TileProtocol` reserves the `ushort` kind space to the game and
+the engine only caps the frame.
 
 ## Refusals: one closed set per layer
 
@@ -434,7 +488,7 @@ data exists. What is absent is breadth, which is content.
 | paging (`PagedItemContainer`, `ItemContainerPage`, the section naming) | `docs/superpowers/plans/2026-09-15-item-instances-phase2-3.md` |
 | the registry-derived remap pass, which is what produces the `Remapped` outcome | the same plan, with the pages |
 | the journal commit path (`ContainerCommitBuilder`) | the same plan |
-| the wire: the fragmenter, the ground component, the page delta, the owner remainder, and a real `PublicView` | the same plan |
+| the wire: the fragmenter, the ground component and the page delta | the same plan |
 | the affix content types and the item generator | spec 20 phase 4, gated on the authoring registry and publish path being real |
 | the crafting framework and the content stat evaluator | spec 20 phase 5 |
 

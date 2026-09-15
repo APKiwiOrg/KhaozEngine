@@ -68,7 +68,11 @@ public static partial class ItemContainerPageCodec
     /// would write, so a caller can size a buffer without writing.</summary>
     /// <param name="pageIndex">Which page of the container this is.</param>
     /// <param name="firstSlot">The container slot this page's slot 0 is.</param>
-    /// <param name="slotCount">Slots in THIS page.</param>
+    /// <param name="slotCount">Slots in THIS page. It does not change the answer, because the header writes
+    /// it as a fixed two bytes, and it is a parameter so that a caller sizes a buffer with EXACTLY the
+    /// arguments it will encode with rather than a subset it has to keep in step by hand. Whether an entry
+    /// fits inside those slots is checked once, by <see cref="Encode(Span{byte},int,int,int,int,ReadOnlySpan{PageSlotInput})"/>,
+    /// which throws: a sizing query answers a size and never a verdict.</param>
     /// <param name="contentVersion">The page stamp.</param>
     /// <param name="entries">The occupied entries, ascending by slot.</param>
     public static int EncodedSize(
@@ -81,6 +85,9 @@ public static partial class ItemContainerPageCodec
             + ContentVarint.Size((uint)contentVersion)
             + ContentVarint.Size((uint)entries.Length);
         foreach (PageSlotInput entry in entries) size += EntrySize(entry, firstSlot);
+
+        // Deliberately unread: see the parameter's own doc. The header's slot count field is two fixed
+        // bytes, already counted above, so the VALUE cannot move the size.
         _ = slotCount;
         return size;
     }

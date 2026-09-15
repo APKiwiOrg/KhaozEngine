@@ -105,6 +105,30 @@ public class ItemContainerPageCodecTests
     }
 
     [Fact]
+    public void A_page_declaring_more_slots_than_the_callers_geometry_is_refused()
+    {
+        // The FirstSlot check of 4.4 bounds where a page STARTS and said nothing about how far it runs, so
+        // a page declaring 65,535 slots decoded against a hundred slot geometry and seated an entry at
+        // container slot 60,000. The bound is one sided rather than an equality, because a SHORT last page
+        // is legal (5.2, PageEntry.SlotCount) and #916 is where the phase 2 loader decides whether it stays
+        // legal.
+        byte[] wide = ItemContainerPageCodec.Encode(0, 0, ushort.MaxValue, 1, [Entry(60_000, 5, 1, 0)]);
+
+        Span<PageEntry> decoded = new PageEntry[PageSlots];
+        Assert.False(ItemContainerPageCodec.TryDecode(wide, PageSlots, decoded, out _, out _, out string? reason));
+        Assert.Equal(ItemContainerPageReason.SlotOrigin, reason);
+
+        // A page declaring FEWER slots than the geometry still reads, which is what keeps the bound one
+        // sided.
+        byte[] shortPage = ItemContainerPageCodec.Encode(0, 0, 50, 1, [Entry(49, 5, 1, 0)]);
+        Assert.True(ItemContainerPageCodec.TryDecode(shortPage, PageSlots, decoded, out PageHeader header, out int count, out reason));
+        Assert.Null(reason);
+        Assert.Equal(50, header.SlotCount);
+        Assert.Equal(1, count);
+        Assert.Equal(49, decoded[0].Slot);
+    }
+
+    [Fact]
     public void Entries_out_of_ascending_slot_order_are_refused()
     {
         byte[] page = ItemContainerPageCodec.Encode(0, 0, PageSlots, 1, [Entry(0, 5, 1, 0), Entry(1, 6, 1, 0)]);

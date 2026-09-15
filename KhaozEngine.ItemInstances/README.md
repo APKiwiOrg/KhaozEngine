@@ -287,7 +287,10 @@ page stamp 0, which is older than every published version. Anything else is a `u
 - `ContainerPageSlots` is 100 rather than 128, so slot 743 is page 7 slot 43 and an operator reading a
   section name can do the arithmetic in their head.
 - `FirstSlot` is redundant against `PageIndex` ON PURPOSE. It costs two bytes per page and it is what catches
-  a page written into the wrong section.
+  a page written into the wrong section. `SlotCount` is bounded by the caller's geometry in the same breath
+  and under the same `page-slot-origin` token, so a page cannot declare more slots than the container it is
+  read into holds. That bound is ONE SIDED: a short last page is legal, so an equality would refuse a
+  container whose slot count is not a whole number of pages.
 - `EntryFlagQuarantined` is bit 0 of an entry's flags. Bits 1 to 31 are reserved and 0 in v1. The flag is
   what says a payload is a wrapper, rather than a sniff for the `KECQ` magic.
 - The two payload bounds contradict on purpose. A NON-quarantined payload is capped at
@@ -298,7 +301,9 @@ page stamp 0, which is older than every published version. Anything else is a `u
   Nothing realistic approaches it: a hundred entries at the maximum non-quarantined entry size is 53,209
   bytes.
 
-`Encode` and `EncodedSize` are the write half and they THROW, because the caller has already validated.
+`Encode` is the write half and it THROWS, because the caller has already validated. `EncodedSize` beside it
+is a pure sizing query that answers the bytes `Encode` would write and never a verdict, which is why it takes
+the slot count and does not read it.
 `WriteEntry` and `EntrySize` are one entry on its own, so a page delta can reuse the entry shape without
 re-deriving it. `TryDecode` REFUSES rather than throws, answering a `ItemContainerPageReason` token, and
 `Validate` is the same call shaped for a persistence layer. `PageHeader` and `PageEntry` are what comes back,

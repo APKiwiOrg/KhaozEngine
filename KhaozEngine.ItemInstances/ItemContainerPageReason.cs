@@ -30,9 +30,15 @@ public static class ItemContainerPageReason
     public const string Truncated = "page-truncated";
 
     /// <summary>
-    /// <c>FirstSlot</c> is not <c>PageIndex</c> times the caller's page size, which is what catches a page
-    /// written into the wrong section. The redundancy costs two bytes per page and the failure it catches
-    /// is otherwise silent.
+    /// The page's slot ORIGIN or EXTENT does not fit the caller's geometry: <c>FirstSlot</c> is not
+    /// <c>PageIndex</c> times the caller's page size, which is what catches a page written into the wrong
+    /// section, or <c>SlotCount</c> is larger than that page size, which is what stops a page declaring
+    /// more slots than the container it is being read into holds. The redundancy costs two bytes per page
+    /// and the failures it catches are otherwise silent.
+    /// <para>
+    /// The extent bound is one sided on purpose. A SHORT last page is legal (5.2), so an equality would
+    /// refuse a container whose slot count is not a whole number of pages.
+    /// </para>
     /// </summary>
     public const string SlotOrigin = "page-slot-origin";
 

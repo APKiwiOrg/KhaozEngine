@@ -19,7 +19,8 @@ public static partial class ItemContainerPageCodec
     /// </summary>
     /// <param name="page">The stored bytes.</param>
     /// <param name="expectedPageSlots">The page geometry this consumer runs. <c>FirstSlot</c> must be
-    /// <c>PageIndex</c> times this number, and a version 1 blob must declare exactly this many slots.</param>
+    /// <c>PageIndex</c> times this number, <c>SlotCount</c> may not exceed it, and a version 1 blob must
+    /// declare exactly this many slots.</param>
     /// <param name="entries">Where the decoded entries go. A page declaring more than this holds is
     /// refused with <see cref="ItemContainerPageReason.EntryCount"/>.</param>
     /// <param name="header">The decoded header.</param>
@@ -71,6 +72,16 @@ public static partial class ItemContainerPageCodec
         if (!ReadInt32Field(page, ref offset, out int contentVersion, out reason)) return false;
         if (!ReadInt32Field(page, ref offset, out int declaredEntries, out reason)) return false;
         if (firstSlot != (long)pageIndex * expectedPageSlots)
+        {
+            reason = ItemContainerPageReason.SlotOrigin;
+            return false;
+        }
+
+        // The origin check bounds where the page STARTS and says nothing about how far it runs, so a page
+        // declaring 65,535 slots used to seat an entry at container slot 60,000 against a hundred slot
+        // geometry. The bound is ONE SIDED rather than an equality, because a short last page is legal
+        // (5.2) and this reader is not the one that decides whether it stays legal.
+        if (slotCount > expectedPageSlots)
         {
             reason = ItemContainerPageReason.SlotOrigin;
             return false;

@@ -301,8 +301,38 @@ repeated-group value kind, because this rule removes the need for one.
 
 | Field | Value kind | Reference target | Visibility | Required |
 |---|---|---|---|---|
-| `name` | localized text key | | `Client` | yes |
+| `name` | localized text key (derived marker) | | `Client` | yes |
 | `sort` | int | | `Client` | no |
+
+**A `localized text key` field is a MARKER. It carries no value, and the row carries no bytes for it.** The
+key is DERIVED as `<type key>.<content key>.<field>` (contracts 12.1), so `name` on the `tag` row `metal` is
+`tag.metal.name` and can be nothing else, computed identically by the encoder, the console and every reader.
+That is contracts 12.1's own rule, "derivation rather than authoring, because an authored key rots
+independently of the row it names", carried all the way through to the storage. A stored value that can only
+ever hold one legal string is a field that can hold an ILLEGAL one: authored, `stone_sword.name` can read
+`item.iron_sword.name` and silently show another row's display name, and no check can catch it without
+deriving the right answer and comparing, at which point the stored copy was the only thing that could be
+wrong.
+
+The consequences, stated once here because every localized field in section 3 inherits them:
+
+- `catalog_row_field` writes NO row for a marker field, in neither the published table nor the draft one
+  (section 4.4). There is no value to hold and no version at which it differs.
+- The row codec writes NO bytes for it. Section 7.9's worked example is 15 bytes per row shorter for exactly
+  this reason, and every pack is smaller by one derived key per localized field per row (section 14.1).
+- The derived key and the translated string live in the TEXT chunk (section 7.6), which is the one place a
+  localized string lives at all.
+- A console shows the derived key READ ONLY beside its resolved text, and an edit payload never carries one
+  (sections 10.3 and 10.5).
+- `KEC0030` checks the DERIVED key, and it still has teeth: a 64-character type key, a 64-character content
+  key and a 64-character field name derive a 194-character key, past contracts 12.1's 192-character bound.
+- `required` on a marker field means the console expects a string for it, not that the row carries one. A
+  derivable key is always present, so `KEC0005` cannot fire on a marker. Whether a LANGUAGE carries a string
+  is the localization catalog's business, layered and non fatal (section 5.5), with section 15.7's opt-in
+  coverage sweep for a game that wants the stronger guarantee.
+
+Section 20's CCR-3 asks contracts 4.7 to say this in its kind list, because `localized text key` currently
+reads there as a value kind like any other.
 
 A tag row is an id, a key and a display name. That is all contracts 4.6 asks for: tags are referenced BY ID
 from item bases, mods, stats, stores and drop tables, a row's tags are an ORDERED LIST whose authored order is
@@ -321,8 +351,8 @@ justified by a real consumer field it replaces, and nothing is speculative.
 
 | Field | Value kind | Reference target | Visibility | Required | Replaces |
 |---|---|---|---|---|---|
-| `name` | localized text key | | `Client` | yes | Grimhollow `ItemStrings.NameFor` 35-arm switch (`b-grimhollow.md:673-685`), Ruinborne `item_def.display_name` (`c-ruinborne.md:49-60`). |
-| `examine` | localized text key | | `Client` | no | Grimhollow `ItemStrings.ExamineFor` (`b-grimhollow.md:679-681`). |
+| `name` | localized text key (derived marker) | | `Client` | yes | Grimhollow `ItemStrings.NameFor` 35-arm switch (`b-grimhollow.md:673-685`), Ruinborne `item_def.display_name` (`c-ruinborne.md:49-60`). |
+| `examine` | localized text key (derived marker) | | `Client` | no | Grimhollow `ItemStrings.ExamineFor` (`b-grimhollow.md:679-681`). |
 | `tags` | tag list | `tag` | `Client` | no | Grimhollow `CanBeAHatchet` and `CanBeAPickaxe` predicates (`b-grimhollow.md:56-59`), Ruinborne `item_def.item_type` and `.slot` bare varchars (`c-ruinborne.md:63-66`, Ruinborne [#199](https://github.com/APKiwiOrg/Ruinborne/issues/199)). |
 | `stackable` | bool | | `Client` | yes | Grimhollow `GrimhollowItems.Stackable` (`b-grimhollow.md:52`), Ruinborne `item_def.stackable`. |
 | `max_stack` | int | | `Client` | yes | Ruinborne `item_def.max_stack`. Grimhollow has no cap today, so its import writes `int.MaxValue` for a stackable and 1 otherwise. |
@@ -364,16 +394,20 @@ Contracts 13.1 fixes this schema and this spec adds nothing to it.
 
 | Field | Value kind | Reference target | Visibility | Required |
 |---|---|---|---|---|
-| `name` | localized text key | | `Client` | yes |
+| `name` | localized text key (derived marker) | | `Client` | yes |
 | `scale` | int | | `Client` | yes |
 | `min` | int | | `Client` | yes |
 | `max` | int | | `Client` | yes |
 | `tags` | tag list | `tag` | `Client` | no |
-| `display_format` | localized text key | | `Client` | yes |
+| `display_format` | localized text key (derived marker) | | `Client` | yes |
 
 `scale` is a fixed power of ten and the stored integer is the value times `scale` (contracts 13.1). `min` and
 `max` are in scaled units and are the inclusive clamp of the evaluation formula (contracts 13.2). The
 validator refuses a `scale` that is not a power of ten and refuses `min > max` (`KEC0020`, `KEC0021`).
+
+`name` and `display_format` are derived markers (section 3.2). The row stores neither, and
+`stat.<content key>.display_format` resolves through the text chunk like every other string, which is also
+what lets a translator move a unit suffix without touching the stat row.
 
 `Client` throughout, because a client tooltip computes a displayed stat with the same integer arithmetic the
 server uses (contracts 13.4), and it cannot do that without the scale and the clamp.
@@ -735,8 +769,13 @@ CREATE TABLE IF NOT EXISTS catalog_row_field (
 ```
 
 `catalog_row_field` stores exactly one of the three value columns per row, chosen by `field_kind`: `int`,
-`ScaledInt`, `Bool` and `KeyReference` use `int_value`, `LocalizedTextKey` uses `text_value`, and `TagList`
-and `OpaqueBytes` use `blob_value`. A tag list is stored as a `blob_value` of varint tag ids in AUTHORED
+`ScaledInt`, `Bool` and `KeyReference` use `int_value`, and `TagList` and `OpaqueBytes` use `blob_value`.
+**`LocalizedTextKey` stores nothing and writes no `catalog_row_field` row at all**, because it is a derived
+marker (section 3.2) whose key is a function of the row it sits on. So `text_value` has no user among the
+current value kinds, and the column stays regardless: it is where CCR-1's `AssetReference` lands if contracts
+4.7 takes it, being constrained text rather than opaque bytes.
+
+A tag list is stored as a `blob_value` of varint tag ids in AUTHORED
 ORDER, which is what contracts 4.6 requires and what a column of joined text would lose. The 4,096 byte cap on
 `blob_value` is a guard rail, not a budget: a 128-byte asset reference and a 60-tag list are both far under
 it.
@@ -1085,7 +1124,7 @@ decode reasons. Codes are never reused and never renumbered.
 | `KEC0027` | A row's codec round trip is not byte identical. | 7.3 here |
 | `KEC0028` | A `chunk_slots` value is not a power of two between 256 and 65,536. | 4.5 |
 | `KEC0029` | A type id or type key changed after its first publish. | 4.4 |
-| `KEC0030` | A localized text key exceeds 192 characters or breaks 12.2's character rules. | 12.2 |
+| `KEC0030` | A row's DERIVED localized text key exceeds 192 characters. Three 64-character parts derive 194, so the bound is reachable. | 12.1, 12.2 |
 | `KEC0031` | A `parent_id` is non-zero while inheritance is unimplemented. | 3.8 here |
 | `KEC0032` to `KEC0035` | The four inheritance checks of section 3.8, unreachable in phase 1. | 3.8 here |
 | `KEC0036` | Two live rows of one type carry the same `definition_id`. | 5.1, 4.7 here |
@@ -1515,9 +1554,10 @@ public static class ContentPackFormat
 ```
 
 `MaxContentRowBytes = 4096` is the row-level guard rail behind `KEC0026`. The arithmetic: the largest realistic
-engine row is an item base with three asset references at 128 bytes each, two localized keys at 192, a 20 tag
-list and a dozen ints, which is under 900 bytes. Four kilobytes is four times that and it is what stops one
-pathological row from dominating a chunk. `MaxChunkUncompressedBytes = 16 MiB` is the matching chunk-level
+engine row is an item base with three asset references at 128 bytes each, a 20 tag list and a dozen ints,
+which is under 450 bytes. Its two localized fields contribute NOTHING, because a localized text key is a
+derived marker with no bytes in the row (section 3.2). Four kilobytes is nearly ten times the realistic worst
+case and it is what stops one pathological row from dominating a chunk. `MaxChunkUncompressedBytes = 16 MiB` is the matching chunk-level
 guard: at 4,096 slots a chunk would have to average 4 KB per row to reach it, which `MaxContentRowBytes`
 makes the absolute worst case, so the two caps are consistent by construction.
 
@@ -1819,47 +1859,47 @@ re-digests every version, which is precisely why it exists.
 
 ### 7.9 A worked hex example: a two-row chunk
 
-The `tag` type, type id 1, chunk 0, slots 4,096, holding two rows. Tag 1 is `metal` with name key
-`tag.metal.name` and sort 10. Tag 2 is `two_handed` with name key `tag.two_handed.name` and sort 20 and is
-retired. The `tag` schema of section 3.2 is two fields, `name` (localized text key) and `sort` (int), and the
-`tag` codec writes them positionally in schema order, because a row codec's field set is fixed by the schema
-it was checked against at registration (section 3.6).
+The `tag` type, type id 1, chunk 0, slots 4,096, holding two rows. Tag 1 is `metal` with sort 10. Tag 2 is
+`two_handed` with sort 20 and is retired. The `tag` schema of section 3.2 is two fields, `name` (localized
+text key) and `sort` (int), and the `tag` codec writes them positionally in schema order, because a row
+codec's field set is fixed by the schema it was checked against at registration (section 3.6).
 
-The row body for tag 1, field by field:
+**`name` is a derived marker, so it occupies no bytes here** (section 3.2). Its keys, `tag.metal.name` and
+`tag.two_handed.name`, are derived from the type key and each row's content key, and the strings they name are
+in the text chunk (section 7.6). Positional encoding is unaffected: a marker takes zero width in the sequence
+the way a zero-length field would, and the decoder knows to skip it from the same schema the encoder used.
+
+The row body for tag 1 is therefore one field:
 
 ```
-0E 74 61 67 2E 6D 65 74 61 6C 2E 6E 61 6D 65      name: varint len 14, "tag.metal.name"
 0A                                                 sort: varint 10
 ```
 
-Sixteen bytes. The row body for tag 2:
+One byte. The row body for tag 2:
 
 ```
-13 74 61 67 2E 74 77 6F 5F 68 61 6E 64 65 64 2E 6E 61 6D 65
-                                                   name: varint len 19, "tag.two_handed.name"
 14                                                 sort: varint 20
 ```
 
-Twenty-one bytes. `0E` is 14 and `13` is 19, both single-byte varints because both are under 128. `0A` is 10
-and `14` is 20.
+One byte. `0A` is 10 and `14` is 20, both single-byte varints because both are under 128.
 
 The row table, two entries:
 
 ```
-01 00 10       id 1, flags 0 (live),    rowLength 16
-02 01 15       id 2, flags 1 (retired), rowLength 21
+01 00 01       id 1, flags 0 (live),    rowLength 1
+02 01 01       id 2, flags 1 (retired), rowLength 1
 ```
 
-Six bytes. The uncompressed body is `6 + 16 + 21 = 43` bytes:
+Six bytes. The uncompressed body is `6 + 1 + 1 = 8` bytes:
 
 ```
-01 00 10  02 01 15
-0E 74 61 67 2E 6D 65 74 61 6C 2E 6E 61 6D 65  0A
-13 74 61 67 2E 74 77 6F 5F 68 61 6E 64 65 64 2E 6E 61 6D 65  14
+01 00 01  02 01 01
+0A
+14
 ```
 
 The 36 byte header, as it appears in the CANONICAL bytes the hash is taken over, so `compression = 0` and
-`storedBytes = uncompressedBytes = 43`:
+`storedBytes = uncompressedBytes = 8`:
 
 ```
 4B 45 43 43     magic  'K','E','C','C'
@@ -1872,19 +1912,19 @@ The 36 byte header, as it appears in the CANONICAL bytes the hash is taken over,
 00              visibility 0 (Client)
 00              compression 0
 00 00           reserved
-2B 00 00 00     uncompressedBytes 43
-2B 00 00 00     storedBytes 43
+08 00 00 00     uncompressedBytes 8
+08 00 00 00     storedBytes 8
 ```
 
-Note `00 10 00 00` is 4,096 little endian (`0x00001000`) and `2B` is 43. The canonical bytes are 79 in total,
-36 of header plus 43 of body, and
+Note `00 10 00 00` is 4,096 little endian (`0x00001000`). The canonical bytes are 44 in total, 36 of header
+plus 8 of body, and
 
 ```
-chunkHash = lowerHex(SHA256( utf8("kec/chunk/1\n") || <those 79 bytes> ))
+chunkHash = lowerHex(SHA256( utf8("kec/chunk/1\n") || <those 44 bytes> ))
 ```
 
 The STORED file differs from the canonical bytes in exactly two fields when the body compresses: byte 25 holds
-`01` and bytes 32 to 35 hold the compressed length. At 43 bytes this body will not compress smaller, so this
+`01` and bytes 32 to 35 hold the compressed length. At 8 bytes this body will not compress smaller, so this
 particular chunk stores uncompressed and the stored file is byte identical to the canonical bytes. That is the
 common case for a small chunk and it is why the `compression` byte exists per chunk rather than per pack.
 
@@ -2336,7 +2376,7 @@ every type including one the console has never heard of (contracts 4.7, first co
   "types": [
     { "typeId": 2, "typeKey": "item", "visibility": "Client", "chunkSlots": 4096,
       "fields": [
-        { "name": "name",      "kind": "LocalizedTextKey", "target": null,  "visibility": "Client", "required": true  },
+        { "name": "name",      "kind": "LocalizedTextKey", "target": null,  "visibility": "Client", "required": true, "derived": true },
         { "name": "tags",      "kind": "TagList",          "target": "tag", "visibility": "Client", "required": false },
         { "name": "stackable", "kind": "Bool",             "target": null,  "visibility": "Client", "required": true  },
         { "name": "value",     "kind": "ScaledInt", "scale": 1, "target": null, "visibility": "Client", "required": true }
@@ -2344,7 +2384,12 @@ every type including one the console has never heard of (contracts 4.7, first co
 }
 ```
 
-A console renders a text box for `LocalizedTextKey`, a checkbox for `Bool`, a numeric with a scale hint for
+A console renders a READ-ONLY display for `LocalizedTextKey`, showing the derived key and, when the console
+has the language loaded, the string it currently resolves to. There is no text box, because the value is not
+the console's to set: the key is derived from the row (section 3.2) and the string is the localization
+catalog's. `"derived": true` on the field is what tells a generic editor that, without it having to special
+case a kind name. A console that wants to offer translation editing edits the TEXT side, which is a separate
+surface this spec does not define in v1. It renders a checkbox for `Bool`, a numeric with a scale hint for
 `ScaledInt`, a typeahead over the target type's keys for `KeyReference`, and a multi-select over the `tag`
 type for `TagList`. It also validates CLIENT SIDE against the same schema, so an obviously bad value never
 reaches the server, and the server validates again because a client-side check is a convenience and never a
@@ -2368,6 +2413,9 @@ registering, so there is no such thing as a content type with no page.
       "fields": { "name": "item.stone_sword.name", "stackable": false, "value": 42 } } ] }
 ```
 
+The `name` in that response is DERIVED at read time and is not a stored value (section 3.2). It is returned
+because a console lists rows by display name, and it is returned read only.
+
 `version: 0` means the current live set, which is the active version when one exists and the DRAFT-APPLIED set
 when a draft is open. `take` is capped at 500 server side and the response carries `total`, which is what
 makes a console page rather than fetch a million rows. Ruinborne's bag silently showing only the first 30
@@ -2390,7 +2438,7 @@ that an operator reading a quarantine reason or a log line needs to look the id 
     { "op": "update", "typeKey": "item", "id": 13, "fields": { "value": 45 } },
     { "op": "add",    "typeKey": "item", "key": "iron_sword",
       "family": "swords",
-      "fields": { "name": "item.iron_sword.name", "stackable": false, "max_stack": 1,
+      "fields": { "stackable": false, "max_stack": 1,
                   "tradable": true, "value": 120, "tags": ["metal", "two_handed"] } },
     { "op": "retire", "typeKey": "item", "id": 25, "policy": "replacement", "replacementKey": "oak_shield_v2" } ] }
 
@@ -2406,6 +2454,12 @@ that an operator reading a quarantine reason or a log line needs to look the id 
 Every edit in one request is applied in ONE database transaction or none of them is, so a batch save from a
 grid is atomic. The edits are checked against the schema AT THE BOUNDARY (section 3.7) and the response
 carries every finding rather than the first, matching the validator's own accumulate-to-the-end rule.
+
+**No edit ever carries a localized text key**, which is why the `add` above sets no `name` even though the
+schema marks it required. The key is derived from the type key, the row key and the field name (section 3.2),
+so an edit that named one could only either repeat the derivation or contradict it. A payload carrying a
+marker field is refused with `KEC0004`, the same finding as any other field the schema does not accept a value
+for, and the message names the derived key so an operator sees what they were trying to set.
 
 A `retire` names its policy as `placeholder` or `replacement`, matching contracts 8.2's payload byte, and a
 `replacement` policy without a resolvable `replacementKey` is a 400 with `KEC0017`.
@@ -2820,26 +2874,41 @@ spike #882 item 12 requires. Every target is justified by arithmetic rather than
 | P7 | Lookup by id, server runtime | Under 5 ns, zero allocation | a tight loop over random live ids, `GC.GetAllocatedBytesForCurrentThread` delta asserted 0 | TBD (stage 5) |
 | P8 | Validator sweep at 1,000,000 | Under 20 s | `ContentValidator.Validate` timed over a synthetic snapshot | TBD (stage 5) |
 | P9 | Weighted loot draw | Under 100 ns, zero allocation | a loop over a 200-entry table through the prefix-summed array (9.4) | TBD (stage 5) |
-| P10 | Text chunk decode, one language at 50,000 | Under 250 ms, under 24 MB resident | decode timed, `GC.GetTotalMemory(true)` after | TBD (stage 5) |
+| P10 | Text chunk decode, one language at 50,000 | Under 250 ms, under 32 MB resident | decode timed, `GC.GetTotalMemory(true)` after | TBD (stage 5) |
 
 ### 14.1 Where the numbers come from
 
-**P1 and P2, pack size.** The item base row of section 3.3 encodes to roughly 200 bytes: two localized keys
-averaging 24 bytes each with a length byte, three asset references averaging 28, a tag list of 4 tags at 5
-bytes, and eleven ints averaging 2 bytes as varints, plus the 6-byte row table entry. At 50,000 that is 10.0
-MB uncompressed for the item type. The other four engine types are small by comparison: 200 tags, a few
-hundred stats, and loot entries at maybe 4 per item averaging 20 bytes, which is 4 MB. Text is the other half:
-50,000 items times a name and an examine line at 60 bytes plus a 30-byte key is about 6 MB per language. So an
-uncompressed one-language server pack is about 20 MB, and Brotli at quality 5 on this kind of structured
+**P1 and P2, pack size.** The item base row of section 3.3 encodes to about 120 bytes: three asset references
+averaging 28, a tag list of 4 tags at 5 bytes, and eleven ints averaging 2 bytes as varints, plus the 6-byte
+row table entry. Its `name` and `examine` contribute NOTHING, because a localized text key is a derived marker
+with no bytes in the row (section 3.2). Rounded to 130 for the fields a game adds, that is 6.5 MB uncompressed
+for the item type at 50,000.
+
+The second largest type is `loot_entry`, at maybe 4 entries per item averaging 20 bytes, which is 4 MB. That
+is 60 percent of the item type and it is NOT "small by comparison", so it is named separately here: the two
+small types are `tag` at 200 rows and `stat` at a few hundred, which together are under 50 KB and round to
+nothing.
+
+**Text is now the largest single term, and it is computed once in this paragraph.** Every localized field of
+every engine type is an entry in the language chunk: `item.name` and `item.examine` at 50,000 rows each,
+`tag.name` at 200, `stat.name` and `stat.display_format` at 300 each, which is 100,800 entries. Each entry is
+`[keyLen][key][valueLen][value]` (section 7.6), so at a 24-byte derived key and a 60-byte string that is 86
+bytes, and the chunk is **about 8.7 MB uncompressed per language.** Section 7.6 and question Q4 use this
+number and do not recompute it.
+
+So an uncompressed one-language server pack is about 19 MB, and Brotli at quality 5 on this kind of structured
 repetitive text and varint data reliably lands between 2:1 and 4:1. Twelve megabytes stored is the
 conservative end of that band, and the target is set at the conservative end on purpose so a miss means
 something is actually wrong.
 
 The client pack is smaller by exactly the `ServerOnly` families, which is `loot_table` and `loot_entry`, so
-about 9 MB. P2 scales P1 by twenty, which is linear because every term above is per definition.
+about 15 MB uncompressed and comfortably inside the 9 MB stored target at the same ratio. P2 scales P1 by
+twenty, which is linear because every term above is per definition, except that the text chunk cannot scale
+linearly as ONE chunk: 2,000,000 entries at 86 bytes is 172 MB against a `MaxChunkUncompressedBytes` of 16
+MiB, so sharding is mandatory rather than optional at the stress figure. Section 7.6 states that rule.
 
 **P3, server load time and memory.** The memory table is section 9.2's, which is 12 MB at 50,000. The time is
-dominated by three linear passes: decompress about 20 MB, decode 50,000 rows, and validate. Brotli
+dominated by three linear passes: decompress about 19 MB, decode 50,000 rows, and validate. Brotli
 decompresses at well over 100 MB/s, a row decode is a handful of varint reads, and the validator is five
 linear passes with two dictionary builds. Four hundred milliseconds gives each pass a generous share and it
 is the number that matters operationally, because it is added to every server restart and v1 applies a new
@@ -2883,8 +2952,13 @@ Twenty seconds is roughly ten times the arithmetic, which is the right margin fo
 runs once.
 
 **P9 and P10** are Scope B adjacent but belong here because the arrays they read are built by this spec. P9's
-prefix-summed binary search over 200 entries is 8 comparisons. P10's 6 MB of UTF-8 into a frozen dictionary of
-100,000 entries is dominated by the dictionary build.
+prefix-summed binary search over 200 entries is 8 comparisons. P10 is the 8.7 MB language chunk computed
+above, decoded into a frozen dictionary of 100,800 entries, and it is dominated by the dictionary build. Its
+RESIDENT number follows from the same arithmetic: a 24-character key and a 60-character value are 48 and 120
+bytes as UTF-16 plus 24 bytes of object header each, which is about 216 bytes per entry plus the dictionary's
+own slot, so 100,800 entries are roughly 25 MB. The budget is set at 32 MB rather than 25, because the
+measured value is what decides whether the frozen dictionary should hold one UTF-8 blob with offsets the way
+section 9.2 does for keys, and a budget that leaves no room says nothing when it is missed by a megabyte.
 
 ### 14.2 The benchmark it runs in
 
@@ -3783,9 +3857,9 @@ flags, and every localization key including Grimhollow's two renames in 16.5.
 
 Contracts 18 sets the rule: a spec may REFINE anything in the contracts and may not CONTRADICT it, and when
 a spec finds it NEEDS a contradiction, the change comes back to the contracts first, is amended there, and
-both specs are re-read against the new text before either is approved. Two requests follow. Both are narrow,
-both are stated with the change written out, and the rest of this spec is designed on the contracts AS
-WRITTEN so that a refusal of either costs an editor feature and a paragraph rather than a redesign.
+both specs are re-read against the new text before either is approved. Three requests follow. All are narrow,
+all are stated with the change written out, and the rest of this spec is designed on the contracts AS
+WRITTEN so that a refusal costs an editor feature and a paragraph rather than a redesign.
 
 ### CCR-1: an `AssetReference` value kind in contracts 4.7
 
@@ -3843,6 +3917,32 @@ that no ONGOING path mints an id outside the store, and that spirit survives int
 **If refused:** Grimhollow cannot adopt without renumbering its 35 item ids, which rewrites every stored
 container in production and contradicts contracts 6.5's own grading. There is no third option, so this
 request is a genuine blocker on phase 1 rather than a preference.
+
+### CCR-3: contracts 4.7 should say the `localized text key` kind is a MARKER
+
+**Contract sections:** 4.7 (the value kind list), against 12.1 (key derivation).
+
+**What needs to change:** contracts 4.7 lists `localized text key` beside `int`, `bool` and the rest, which
+reads as a kind whose field HOLDS a value. Say instead: **a `localized text key` field carries no value. Its
+key is derived as `<type key>.<content key>.<field>` per 12.1, the authoring store holds nothing for it, the
+row codec writes no bytes for it, and the string it names lives in the language text chunk.**
+
+**Why.** 12.1 already requires the derivation and gives the reason, "derivation rather than authoring, because
+an authored key rots independently of the row it names". 4.7 read alone does not carry that through to
+storage, and this spec originally stored the derived string in `catalog_row_field.text_value`, wrote it into
+every row body, showed it in an editable box and accepted it on an edit payload. A stored copy of a derived
+value is a field that can disagree with its own derivation: `stone_sword.name` holding
+`item.iron_sword.name` shows another row's display name, passes every check that does not re-derive the
+answer, and costs 14 to 25 bytes per localized field per row in every chunk and every client download for a
+value the reader can compute. Section 3.2 now states the marker rule and the rest of the spec follows it.
+
+**What the absence costs, exactly.** Nothing, as long as every spec reads 4.7 through 12.1 the way this one
+now does. The request is for the contracts to say it once so the next spec does not have to find it the way
+this one did, through a review.
+
+**If refused:** section 3.2 stands as a Scope A refinement of 4.7 rather than a restatement of it, because
+"carries no value" is narrower than "carries a value of this kind" and a refinement is licensed. Nothing in
+this spec changes.
 
 ### A note that is NOT a change request
 

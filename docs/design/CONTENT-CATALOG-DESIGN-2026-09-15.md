@@ -5030,3 +5030,43 @@ the argument was tested and survived.
 
 One procedural note, because the appendix is the place for it: F17's verdict is carried by the stage 4
 disposition rather than by a verifier line of its own, unlike the other 28.
+
+### The cross-spec consistency round
+
+A second adversarial read followed, this one across THREE documents at once: the contracts, this spec and the
+Scope B instances spec, looking for the failures a single-document review structurally cannot see. Two specs
+that each read correctly on their own can still disagree about who owns a type, which package a seam lives in,
+what a shared signature takes and which phase a fleet-wide break lands in. It raised 30 findings across both
+scopes. The rows below are the ones this spec owns, and the disposition on each is the verified one.
+
+Three of them are the same finding seen from two sides, so they appear here and again in the Scope B spec with
+the half each owns: C18, C26 and C30.
+
+| ID | Claim | Reviewer severity | Verified verdict | Disposition | Commit |
+|---|---|---|---|---|---|
+| C1 | The `IRandomSource` seam sits in Scope B's package, which depends on this one, so the edge this spec needs would close a cycle | high | Confirmed, high | Fixed by the contracts amendment. The seam and both implementations live in `KhaozEngine.Primitives`, below both, and this spec takes that edge. 2.1, 2.5, 2.6, 3.5, 9.4 | `17b05e5f` |
+| C3 | Nothing can produce the `MovedToLegacy` rule Scope B's keep-legacy flow depends on: three edit operations and none emits kind 3 | high | Confirmed, high | Fixed. A fourth operation, `Fork`, with the alternative of a keep-legacy `Retire` policy weighed and rejected. It allocates the id, copies the field set, sets the caller-named flag field and appends the kind 3 rule as one atomic edit. 2.3, 3.7, 4.4, 6.3, 6.5, 10.5, 5.2 `KEC0041`, 15.7 | `ec3bd641` |
+| C4 | Nobody owns the loot roll: this spec indexes and budgets it, Scope B disclaims it | high | Confirmed, high | Fixed. `LootRoller` is a ninth deliverable, the one implementation of 3.5's composition rule. It returns item ids and counts, creates nothing, and the journal event a game records stays the game's. 1.1, 2.2, 3.5, 18.1 milestone 1.3 | `ec3bd641` |
+| C5 | Scope B's phase 1 is designed behind an `IContentSnapshot` that appears nowhere here, and "the one shared type is `ContentVarint`" is not true of the coupling either spec describes | high | Confirmed, high | Fixed. `IContentSnapshot` with seven members ships in milestone 1.1, and 2.5 now tables the real shared surface instead of naming one type. 2.2, 2.5, 18.1 | `17b05e5f` |
+| C7 | Grimhollow's `EquipStats` has two destinations, an `equip_profile` row here and stat lines in Scope B, and neither plan cites the other | medium | Confirmed, medium | Fixed by splitting rather than choosing. The row holds the slot and the archetype, a child game type holds the numbers as `Flat` lines the evaluator folds at source kind 1. Both plans now say so. 3.3, 3.6, 16.2 | `e28dea2d` |
+| C11 | `socket_max` is an int, and Scope B's generator needs to know which socket TYPES a base is authored with, and in what order | medium | Confirmed, medium | Fixed. `base_socket`, a sixth engine content type, the same child shape as `loot_entry`. `socket_max` stays as the cap the AddSocket primitive checks. 3.1, 3.3, 7.1, 14.1, 19 | `e28dea2d` |
+| C12 | A rarity id must fit a byte and nothing stops the allocator issuing a 256th | medium | Confirmed, medium | Fixed. An optional `maxDefinitionId` at registration, refused by the allocator and by `KEC0042`, with retired rows counting toward it and Scope B declaring 255 on `rarity_rule`. 3.6, 4.4, 4.7, 5.2 | `ec3bd641` |
+| C13 | Three required checks are statements about a CHANGE and the validator cannot see the previous version | medium | Confirmed, medium | Fixed by the contracts amendment. `Validate` takes `ContentSnapshot? previous`, null at boot and in tests, populated at publish. `KEC0003`, `KEC0029` and Scope B's tier-order check are publish-only and `KEC0000` names them when they are skipped. 5.1, 5.2, 5.3, 5.4, 6.4 | `17b05e5f` |
+| C14 | The boot order is closed and has no hook for a Scope B or game load-time derived table | medium | Confirmed, medium | Fixed. `IContentLoadIndex` registered beside a codec, boot step 7b after the engine's four indexes and before the validator, with P3 stated to exclude them. 3.6, 9.4, 9.5, 9.6, 14, 18.1 | `17b05e5f` |
+| C16 | Ruinborne's wire-index change is scheduled by this spec's phase 2 and labelled Scope B's work, whose adoption is three phases later | medium | Confirmed, medium | Fixed by claiming it. A definition-id substitution with no payload is this spec's, in phase 2, and Scope B's row records the outcome without scheduling anything. 17.4, 17.10 step 8 | `e28dea2d` |
+| C18 | Scope B phase 1 takes `ItemStack` to three components, a fleet-wide compile break neither phase table sequences against Grimhollow's adoption | medium | Confirmed, medium, both | Fixed, this spec's half. The bump lands before step 7 or after step 11 of 16.8, never inside the window, named in both the adoption plan and the phase table. 16.8, 18.1 | `e28dea2d` |
+| C19 | Scope B's seven validators have no home in the finding codes or the sweep, so they would report as game findings | medium | Confirmed, medium | Fixed. `KEC0100` to `KEC0199` reserved for Scope B, run as pass 6 inside the sweep and before any game validator, with the cross-product check added to P8's derivation. 5.2, 5.3, 14.1 | `17b05e5f` |
+| C20 | P3 is a 400 ms restart that is really about 1.15 s, because the text decode and the per-type index builds are outside it | medium | Confirmed, medium | Fixed. P11, total cold boot to accepting connections, measured in one harness through a `--compose` flag rather than summed on paper. 14, 14.1, 14.2, 18.1 | `17b05e5f` |
+| C21 | `EveryStoredContainerStillDecodes` asserts through a `ValidateContainer` that Scope B deletes | medium | Confirmed, medium | Fixed. The assertion is "decodes to the same slots", independent of which validator runs, and 16.7 says why the replacement does not weaken it. 16.7, 18.1, 19 | `e28dea2d` |
+| C23 | The derived localization key is stored as a field value, which the contracts derive | low | Confirmed, medium, as F17 | Already fixed in the first round as F17, which is the same finding reached from the contracts side. A localized text key is a derived marker carrying no value and no row bytes. 3.2 | `6f41bf93` |
+| C26 | Contracts 4.4 forbids a game registering into the engine or Scope B ranges and nothing enforces it | low | Confirmed, low, both | Fixed, this spec's half. `RegisterContentType` takes a `ContentRegistrationBand` and throws on a type id outside it, the shape `ReplicationRegistry.FirstExtensionTypeId` already uses for components. 3.6 | `17b05e5f` |
+| C29 | Scope B reads four `item` fields per operation out of an untyped `ContentRow` | lead | LEAD, confirmed in the direction it named | Fixed. `ItemRow`, a typed `ref struct` view over the engine `item` type's four hot fields at P7's budget. Nothing else gets one, because a typed view over a schema the engine does not own cannot be written. 2.2, 9.1 | `e28dea2d` |
+| C30 | Neither spec says whether a Scope B format change bumps `FormatGeneration` | lead | LEAD, confirmed for one case | Fixed, this spec's half. 12.1 states what moves `ContentPackFormat.Generation`, including a new remap rule kind, and states that a durable format outside the pack does not. 12.1 | `17b05e5f` |
+| Pre-existing | 6.10 pointed at a section 12.5 that does not exist in this spec | not raised | Found while applying the above | Fixed. The reference is 12.4, "What an operator sees". The `(contracts 12.5)` citation in 16.5 is correct and untouched, since the contracts do have one. 6.10 | `e28dea2d` |
+
+**What this round says about the first one.** Every finding above was invisible to a review of this document
+alone, and most of them were invisible to a review of the contracts too. C4 is the sharpest: this spec defines
+the loot composition rule, builds its arrays, budgets its draw and ships no roller, and nothing inside it is
+wrong. The gap only exists in the space between two specs that each believed the other owned the code. A
+third document is what made it visible, and that is the argument for reading specs in groups rather than one
+at a time.

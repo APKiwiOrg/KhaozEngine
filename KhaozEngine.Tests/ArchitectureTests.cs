@@ -228,6 +228,27 @@ public partial class ArchitectureTests
     }
 
     [Fact]
+    public void Catalog_CarriesNoPackage_AndNeverReachesItsAuthoringHalf()
+    {
+        // The content catalog splits in two on purpose: KhaozEngine.Catalog is the read side a game CLIENT
+        // links, and KhaozEngine.Catalog.Authoring plus its two SQL providers are the server-only authoring
+        // half. A client that reached the authoring half would drag a database into its graph, so the edge is
+        // checked mechanically rather than by review, in both directions that matter: no package reference at
+        // all (System.IO.Compression and System.Security.Cryptography are in box), and no path to Authoring
+        // through anything. The Authoring package need not exist yet for this to hold, which is the point.
+        IReadOnlyDictionary<string, Project> graph = LoadGraph();
+        Project catalog = graph["KhaozEngine.Catalog"];
+        string[] packages = catalog.PackageRefs.Where(p => !IgnoredInfraPackages.Contains(p)).ToArray();
+
+        bool bare = packages.Length == 0;
+        Assert.True(bare, "KhaozEngine.Catalog takes no third-party dependency at all, and references: " + string.Join(", ", packages));
+
+        HashSet<string> closure = TransitiveClosure("KhaozEngine.Catalog", graph);
+        bool clean = !closure.Contains("KhaozEngine.Catalog.Authoring");
+        Assert.True(clean, "KhaozEngine.Catalog must never reference KhaozEngine.Catalog.Authoring: the authoring types stay out of a client graph.");
+    }
+
+    [Fact]
     public void Simulation_ReferencesOnlyDeterminism()
     {
         // Simulation was a zero-dependency leaf until 16.12.0, when ThreadPoolJobScheduler took on pinning the

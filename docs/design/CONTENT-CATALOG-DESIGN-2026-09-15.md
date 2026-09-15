@@ -269,7 +269,9 @@ the property `ReplicationRegistry.FirstExtensionTypeId` already gives components
 
 `loot_entry` takes a larger chunk than its parents because entries outnumber tables by roughly the branching
 factor, and a chunk is a transport unit sized for download economics rather than an authoring unit (contracts
-4.5). At 4,096 slots a table of 50 entries would straddle chunks for no reason.
+4.5). At 4,096 slots a table of 50 entries would straddle chunks for no reason. It is also the one engine type
+that declares its own row cap, `maxRowBytes: 512` rather than the 1,024 default, because 16,384 slots at the
+default would break the registration bound of section 7.1 and its rows are about 20 bytes.
 
 **Why loot entries are their OWN content type and not a repeated field on the table.** This is the one
 structural choice in the data model that is genuinely contested, because contracts 4.7's value kinds are a
@@ -443,13 +445,24 @@ a `guaranteed` entry rolls its own `chance_bp` independently (Grimhollow's bread
 convention as contracts 13.2, so there is one percent representation in the system.
 
 `nested_table` is how a table references another table, which is what a rarity tier or a sub-table needs.
-Exactly one of `item` and `nested_table` is set, checked by the validator (`KEC0023`). A cycle through
-`nested_table` is refused (`KEC0024`) by a depth-first walk with a visited set, because a cyclic loot table is
-an infinite roll at runtime and the validator is the only place that can see the whole graph.
+
+**An entry names its draw exactly one of three ways, and `KEC0023` refuses every other count.** The three are
+`item` set, `nested_table` set, and a non-empty `required_tags`. Exactly one, never two, never none. The
+earlier wording was "exactly one of `item` and `nested_table`", which made the third shape unreachable: with
+`item` unset the rule forced `nested_table` set, so an entry could never be a tag draw at all, and the
+paragraph below described a path the validator refused.
+
+**If more than one is present, nothing wins and the entry is refused.** A precedence order would be a silent
+choice between two things an author wrote down, and an author who set both an `item` and a `required_tags`
+filter meant one of them, which only they know. `KEC0023`'s message names every one that is set.
 
 `required_tags` is the tag filter a drop table uses to name a CLASS of item rather than enumerating ids
-(contracts 4.6, first bullet). When it is non-empty and `item` is unset, the entry draws uniformly from live
-items carrying every listed tag, resolved at pack load into a precomputed candidate array (section 9.4).
+(contracts 4.6, first bullet). When it is the one that is set, the entry draws uniformly from live items
+carrying every listed tag, resolved at pack load into a precomputed candidate array (section 9.4).
+
+A cycle through `nested_table` is refused (`KEC0024`) by a depth-first walk with a visited set, because a
+cyclic loot table is an infinite roll at runtime and the validator is the only place that can see the whole
+graph.
 
 ### 3.6 How Scope B and a game register their own
 
@@ -463,12 +476,19 @@ registry.RegisterContentType(
     validator: new GrimhollowStoreValidator(),
     schema: GrimhollowStoreSchema.Create(),
     defaultVisibility: ContentVisibility.ServerOnly,
-    chunkSlots: 256);
+    chunkSlots: 256,
+    maxRowBytes: ContentPackFormat.DefaultMaxRowBytes);
 ```
+
+`maxRowBytes` is optional and defaults to `ContentPackFormat.DefaultMaxRowBytes`. It may not exceed
+`MaxContentRowBytes`, and registration refuses a type whose
+`chunkSlots * (maxRowBytes + 8) + 36` exceeds `MaxChunkUncompressedBytes` (section 7.1), which is the check
+that keeps a publish from building a chunk no reader will load.
 
 The registry freezes when the first pack loads and a later registration throws (contracts 4.2). A game MAY
 register a type in the game range, supply its own codec and validator, set its default visibility, set its
-chunk size, and register an ADDITIONAL validator for an engine type that runs after the engine's own. A game
+chunk size, set its row cap, and register an ADDITIONAL validator for an engine type that runs after the
+engine's own. A game
 MAY NOT register into the engine or Scope B ranges, replace an engine type's codec, weaken an engine
 validator, change a type's id or key after the first publish, or register the same type id twice (contracts
 4.4).
@@ -674,7 +694,7 @@ required migration.
 
 | Table | Rows | Why it exists |
 |---|---|---|
-| `catalog_metadata` | exactly 1 | Schema version, store epoch, the ACTIVE version pointer. |
+| `catalog_metadata` | exactly 1 | Schema version, store epoch, the ACTIVE version pointer, the operator's PIN. |
 | `catalog_type` | one per registered type ever seen | Pins a type id to its key so a rename or a reassignment is refused. |
 | `catalog_version` | one per published version | Version number, both manifest hashes, minimum builds, format generation, publisher, note, published-at. |
 | `catalog_row` | one per row VERSION | The temporal row of section 3.7. |
@@ -713,6 +733,7 @@ CREATE TABLE IF NOT EXISTS catalog_metadata (
     schema_version INTEGER NOT NULL CHECK (schema_version >= 1),
     store_epoch TEXT COLLATE BINARY NOT NULL CHECK (length(store_epoch) IN (32, 36)),
     active_version INTEGER NOT NULL DEFAULT 0 CHECK (active_version >= 0),
+    pinned_version INTEGER NULL CHECK (pinned_version IS NULL OR pinned_version >= 1),
     updated_at_utc INTEGER NOT NULL);
 
 CREATE TABLE IF NOT EXISTS catalog_type (
@@ -733,8 +754,7 @@ CREATE TABLE IF NOT EXISTS catalog_version (
     base_version INTEGER NOT NULL CHECK (base_version >= 0),
     published_by TEXT COLLATE BINARY NOT NULL CHECK (length(published_by) BETWEEN 1 AND 128),
     note TEXT COLLATE BINARY NOT NULL CHECK (length(note) <= 1024),
-    published_at_utc INTEGER NOT NULL,
-    sealed_flag INTEGER NOT NULL DEFAULT 0 CHECK (sealed_flag IN (0, 1)));
+    published_at_utc INTEGER NOT NULL);
 
 CREATE TABLE IF NOT EXISTS catalog_row (
     type_id INTEGER NOT NULL,
@@ -861,8 +881,8 @@ CREATE TABLE IF NOT EXISTS catalog_audit (
     definition_id INTEGER NOT NULL DEFAULT 0,
     content_key TEXT COLLATE BINARY NOT NULL DEFAULT '' CHECK (length(content_key) <= 64),
     field_name TEXT COLLATE BINARY NOT NULL DEFAULT '' CHECK (length(field_name) <= 64),
-    before_value TEXT COLLATE BINARY NULL CHECK (before_value IS NULL OR length(before_value) <= 512),
-    after_value TEXT COLLATE BINARY NULL CHECK (after_value IS NULL OR length(after_value) <= 512),
+    before_value TEXT COLLATE BINARY NULL CHECK (before_value IS NULL OR length(before_value) <= 4096),
+    after_value TEXT COLLATE BINARY NULL CHECK (after_value IS NULL OR length(after_value) <= 4096),
     version_number INTEGER NOT NULL DEFAULT 0,
     note TEXT COLLATE BINARY NOT NULL DEFAULT '' CHECK (length(note) <= 1024));
 CREATE INDEX IF NOT EXISTS ix_catalog_audit_time ON catalog_audit(occurred_at_utc, audit_id);
@@ -893,9 +913,27 @@ CREATE TABLE IF NOT EXISTS catalog_chunk (
     FOREIGN KEY (type_id) REFERENCES catalog_type(type_id));
 CREATE INDEX IF NOT EXISTS ix_catalog_chunk_hash ON catalog_chunk(chunk_hash);
 
-INSERT OR IGNORE INTO catalog_metadata(metadata_key, schema_version, store_epoch, active_version, updated_at_utc)
-VALUES (1, 1, lower(hex(randomblob(16))), 0, CAST(strftime('%s', 'now') AS INTEGER) * 1000);
+INSERT OR IGNORE INTO catalog_metadata(metadata_key, schema_version, store_epoch, active_version, pinned_version, updated_at_utc)
+VALUES (1, 1, lower(hex(randomblob(16))), 0, NULL, CAST(strftime('%s', 'now') AS INTEGER) * 1000);
 ```
+
+**`catalog_metadata` carries three facts and each one has a job.** `active_version` is what the last publish
+committed. `pinned_version` is the operator's HOLD, written by `catalog-pin` (section 10.7) and read at boot
+by a server configured to take its version from the store, and it is nullable because no pin is the ordinary
+state. It carries no foreign key to `catalog_version`, deliberately: `catalog_metadata` is seeded before any
+version exists, and the existence check belongs where the operator can be told about it, which is
+`catalog-pin` answering 400 for a version that does not exist. `store_epoch` is the IDENTITY OF THIS
+DATABASE, minted once at schema creation, and its job is to make "version 12" answerable: a bundle import into
+an empty database restarts the version line at 1 (section 10.9), so two databases can hold a version 12 that
+share no history, and the epoch is what tells them apart in a `catalog-versions` response, in a bundle and in
+an operator's log. It is the same instrument the journal uses for its projection cursors
+(`RotateStoreEpochAsync`), pointed at a different question.
+
+**There is no `sealed_flag`, and there was.** A published version is immutable from the moment its
+transaction commits, because every table this spec writes at publish is append only or temporal, so a flag
+saying "this one is sealed" would be a second representation of a fact the schema already guarantees, with the
+usual consequence that it can disagree. Holding a version back from a restart is the PIN, which is one column
+on `catalog_metadata` and an operator action rather than a property of the version row.
 
 **A remap rule has no delete path and the schema says so.** Rules are append only (contracts 8.1), so there is
 no `UPDATE` and no `DELETE` statement for `catalog_remap_rule` anywhere in either provider. The journal takes
@@ -973,6 +1011,24 @@ catches and logs a warning so an audit failure never blocks the edit (`c-ruinbor
 no-SQL developer mode there is no audit at all. Both are the wrong default for content, because a content edit
 with no audit row is indistinguishable from no edit, and the whole reason this store exists is that the owner
 authors values a player's economy depends on. If the audit insert fails, the edit fails.
+
+**Which is exactly why `before_value` and `after_value` are capped at 4,096 and not lower.** The audit insert
+sharing the edit's transaction means a value the COLUMN refuses is an EDIT the database refuses, arriving as a
+SQL constraint error rather than as a finding. At the 512 these columns first carried, a 60-tag list of
+64-character keys renders to about 3,900 characters and every edit touching it fails with a message about an
+audit column. Four thousand and ninety-six matches `blob_value`'s own cap, so the ordinary case is bounded by
+the same number on both sides of the transaction.
+
+**A rendering that STILL would not fit is abbreviated, visibly.** Two kinds can exceed 4,096 characters while
+their field stays inside its cap: a tag list, whose `blob_value` of varint ids renders to keys many times
+longer than the ids, and `opaque bytes`, whose 4,096 bytes render to 8,192 characters of lower hex. The rule
+is the same for both. Write as much of the rendering as fits inside the cap minus the marker, then
+`+<n> more` for a tag list or `+<n> bytes` for a blob, so a reader can never take an abbreviated value for a
+complete one. Nothing is lost by it: the audit is the record of who changed what and when, and the record of
+the VALUE is the temporal row table, which holds every version of every field and is read through
+`catalog-get`'s history (section 10.4). Truncating SILENTLY is the option this rules out, because a partial
+value that reads as whole is Ruinborne
+[#509](https://github.com/APKiwiOrg/Ruinborne/issues/509)'s defect wearing a different hat.
 
 ### 4.7 The id allocator
 
@@ -1117,10 +1173,10 @@ decode reasons. Codes are never reused and never renumbered.
 | `KEC0020` | A stat `scale` is not a power of ten, or is below 1. | 13.1 |
 | `KEC0021` | A stat `min` exceeds its `max`. | 13.1 |
 | `KEC0022` | A definition declaring durability or sockets is stackable. | 10.4 |
-| `KEC0023` | A loot entry sets both `item` and `nested_table`, or neither. | 3.5 here |
+| `KEC0023` | A loot entry does not set exactly one of `item`, `nested_table` and a non-empty `required_tags`. | 3.5 here |
 | `KEC0024` | A loot table graph contains a cycle through `nested_table`. | 3.5 here |
 | `KEC0025` | `max_stack` is below 1, or is 1 on a stackable row. | 3.3 here |
-| `KEC0026` | A row's encoded bytes exceed `MaxContentRowBytes`. | 7.3 here |
+| `KEC0026` | A row's encoded bytes exceed its TYPE's `maxRowBytes`. | 7.1 here |
 | `KEC0027` | A row's codec round trip is not byte identical. | 7.3 here |
 | `KEC0028` | A `chunk_slots` value is not a power of two between 256 and 65,536. | 4.5 |
 | `KEC0029` | A type id or type key changed after its first publish. | 4.4 |
@@ -1129,6 +1185,8 @@ decode reasons. Codes are never reused and never renumbered.
 | `KEC0032` to `KEC0035` | The four inheritance checks of section 3.8, unreachable in phase 1. | 3.8 here |
 | `KEC0036` | Two live rows of one type carry the same `definition_id`. | 5.1, 4.7 here |
 | `KEC0037` | A row that names no family carries an id inside a block of one of its type's families. | 5.2, 4.7 here |
+| `KEC0038` | A chunk's canonical uncompressed bytes exceed `MaxChunkUncompressedBytes`. | 7.1 here |
+| `KEC0039` | A rollback would restore a row that has been retired. A retire is irreversible. | 8.6 |
 | `KEC0040` | A game validator returned a finding. The message is the game's, the code is prefixed with its type key. | 4.4 |
 
 `KEC0022` and `KEC0025` are the two checks that make Ruinborne's stackable defects impossible to publish:
@@ -1152,8 +1210,12 @@ The sweep runs in five passes over the candidate, in this order, and never stops
    `KEC0035`.
 3. **References.** Key references, tag lists, loot graphs. `KEC0006` to `KEC0008`, `KEC0023`, `KEC0024`.
 4. **Visibility and codec.** Field visibility against the SIDE a chunk is encoded for, the round trip, the row
-   size cap. `KEC0014`, `KEC0022`, `KEC0026`, `KEC0027`.
+   size cap and the chunk size cap. `KEC0014`, `KEC0022`, `KEC0026`, `KEC0027`, `KEC0038`.
 5. **Remap rules.** The full ordered set. `KEC0015` to `KEC0019`.
+
+`KEC0039` is in no pass. It is emitted by `RollbackToAsync` while it builds the draft (section 6.13), before
+the validator runs at all, and it carries a finding code because the rollback action returns findings the same
+way a publish does.
 
 `KEC0036` and `KEC0037` are in pass 1 because they are the property the id allocator's counter discipline
 (section 4.7) is a mechanism for, and pass 1 is already walking every id of every type with the family block
@@ -1426,8 +1488,26 @@ content-addressed names nothing references yet.
   document's idiom (`MapTiledFile.Save.cs:183-192`), with a `stream.Flush(flushToDisk: true)` before the move
   when the store is configured for power-fail durability.
 
-Nothing points at any of these files until step 10, so a crash here leaves orphans and nothing else. Step 11
-sweeps them.
+**Step 9 also writes the version POINTER, and it is the one object in the store that is not named by its own
+hash.** It goes at `versions/<n>`, it holds that version's two manifest hashes and nothing else, and it is the
+only way a CONTENT-ADDRESSED store can answer "what does version 47 contain". The authoring database knows,
+and the store has no access to it while the sweep runs against the store (section 6.12), so the fact has to
+exist on both sides. `IPackStore.ListAsync(versionNumber)` reads the pointer and then the manifests it names
+(sections 8.1 and 8.2).
+
+Two consequences, stated so nobody treats the pointer as a second content address:
+
+- **A client never reads it.** A client learns its manifest hash from the connect door (section 8.5), which is
+  the authenticated channel the whole trust chain hangs on (section 13.2). A mutable name in the store is
+  therefore never in the integrity path, and a pointer an attacker rewrote costs the publisher's own sweep and
+  nothing else.
+- **A crash between step 9 and step 10 leaves a pointer for a version that never committed.** That keeps a set
+  of orphan files ALIVE rather than deleting live ones, which is the safe direction, and it self-repairs:
+  version numbers are never skipped (contracts 7.1), so the retried publish takes the same number and
+  overwrites the pointer with its own.
+
+Nothing else points at any of these files until step 10, so a crash here leaves orphans and nothing else. Step
+11 sweeps them.
 
 ### 6.10 Step 10, the commit
 
@@ -1461,7 +1541,7 @@ pin action for holding a version back.
 | During step 1 to 8 | Nothing written. The draft is intact. | Republish. Nothing to clean. |
 | Between step 3's reservation commit and step 4 | A gap of reserved-but-unissued ids. | None needed. The gap is invisible and bounded by 1,024 per type (section 4.7). |
 | During step 9, part way through the chunk files | Some chunk files exist that nothing references. The old version is still active. | Republish writes them again idempotently, since a chunk file's name is its own hash. Step 11 of the NEXT successful publish sweeps any that are never referenced. |
-| Between step 9 and step 10 | Every file of the new version exists. Nothing references them. The old version is still active. | Republish. The `ExistsAsync` check at step 9 makes the rewrite free, so a retried publish after a crash here is fast. |
+| Between step 9 and step 10 | Every file of the new version exists, and so does its `versions/<n>` pointer. Nothing in the database references them. The old version is still active. | Republish. The `ExistsAsync` check at step 9 makes the rewrite free, so a retried publish after a crash here is fast, and it takes the same version number and overwrites the stale pointer (section 6.9). |
 | During step 10 | The transaction rolls back. The old version is active. The orphan files remain. | Republish, then sweep. |
 | Between step 10 and step 11 | The new version is fully live. Orphan files from a PREVIOUS failed attempt remain. | The next publish sweeps them. An operator may run the sweep alone (section 10.11). |
 
@@ -1475,19 +1555,23 @@ names nothing points at yet" with the manifest rename as the commit
 ### 6.12 Step 11, the sweep
 
 After the commit, and only after a SUCCESSFUL commit, the publisher lists the pack store and deletes any file
-outside the keep set. **The keep set is the union, over EVERY version the store knows, of that version's two
-manifest hashes and every hash named INSIDE either manifest.** It is defined against the manifests and not
-against `catalog_chunk`, because the manifest is the complete enumeration and `catalog_chunk` is not: the
+outside the keep set. **The keep set is the union, over EVERY version the store knows, of that version's
+`versions/<n>` pointer, the two manifest hashes the pointer holds, and every hash named INSIDE either
+manifest.** That is exactly `IPackStore.ListAsync(v)` for every `v`, which is why the interface has that
+member at all (section 8.1). Every pointer is kept unconditionally, because a pointer is how the NEXT sweep
+finds the version again. The keep set is defined against the manifests and not against `catalog_chunk`,
+because the manifest is the complete enumeration and `catalog_chunk` is not: the
 remap rule chunk sits at a reserved address outside any type's id space (section 7.7) and the text chunks are
 per language (section 7.6), so neither has a `catalog_type` row to hang a `catalog_chunk` row on, while both
 are named by both manifests (section 6.8). A keep set read from `catalog_chunk` would delete the rule chunk
 and every text chunk at the first publish, and every later boot would fail closed on `chunk <hash> absent`,
 for every version, forever. Reading the manifests also settles the per-side case for free, since the client
-manifest names the client hash and the server manifest names the server hash (section 6.7). The sweep is
-SKIPPED when
-the store listing fails for any reason, because deleting files on the authority of a listing that failed is
-how a bad publish turns into a lost pack. That skip rule is the map document's, which skips its own sweep when
-the previous manifest could not be read (`MapTiledFile.Save.cs:105-107`).
+manifest names the client hash and the server manifest names the server hash (section 6.7).
+
+The sweep is SKIPPED when the store listing fails for any reason, and a pointer that is absent or unreadable
+for any version IS a listing failure. Deleting files on the authority of a listing that failed is how a bad
+publish turns into a lost pack. That skip rule is the map document's, which skips its own sweep when the
+previous manifest could not be read (`MapTiledFile.Save.cs:105-107`).
 
 The sweep never deletes a file referenced by ANY version, not just the active one, because a pinned server
 (section 10.7) and a rollback (section 12.3) both need older versions to stay fetchable.
@@ -1502,19 +1586,26 @@ property that lets the page stamp be an ordering comparison (contracts 7.2, 8.6)
 
 1. Read the live row set at `targetVersion` and the live row set at the current version.
 2. For every row live at BOTH whose field set differs, emit an `Update` restoring the target's field values.
-3. For every row live at `targetVersion` and retired since, emit an `Update` clearing `retired` AND refuse if
-   any remap rule of kind 1, 2 or 3 names that id, because contracts 8.6 makes a retire irreversible for
-   migrated pages.
+3. For every row live at `targetVersion` and RETIRED since, REFUSE the rollback with `KEC0039`, naming the row
+   and the rule that retired it.
 4. For every row introduced AFTER `targetVersion`, do NOTHING. It keeps its id and its values. This is #882's
    "keeps every id introduced since" and it is the difference between a rollback and a restore.
 5. Publish the draft in the ordinary way.
 
-Step 3 is the one place a rollback can fail, and it fails EARLY with finding `KEC0017` plus a message naming
-the rule sequence, rather than silently producing a version whose remap rules contradict its rows. The way out
-is the contracts' own: **a rollback that wants a retired definition back MINTS A NEW ID carrying the old
-values** (contracts 8.6), which is an ordinary `Add` with a new key, plus a `ReplacedBy` rule if the owner
-wants existing references moved onto it. The API surfaces this as a 409 with the blocking rules listed and the
-mint-new-id path named, so the operator is not left guessing.
+**Step 3 is a flat refusal because a retire is NEVER reversible by rollback** (contracts 8.6). There is no
+un-retire branch and there never was a reachable one: step 5 of the publish appends exactly one kind `2`
+`Retired` rule for every retire (section 6.5), so every retired row is named by a rule, so a branch conditioned
+on "no rule names that id" could not run. Writing the branch and the condition beside each other made the rule
+look like a special case when it is the whole case.
+
+The way out is the contracts' own: **a rollback that wants a retired definition back MINTS A NEW ID carrying
+the old values** (contracts 8.6), which is an ordinary `Add` with a new key, plus a `ReplacedBy` rule if the
+owner wants existing references moved onto it. The API surfaces the refusal as a 409 listing every blocking
+row and rule with the mint-new-id path named, so the operator is not left guessing.
+
+`KEC0039` is its own code rather than a second meaning for `KEC0017`. `KEC0017` is "a remap rule's `ToId`
+names a row that is not live at `IntroducedIn`", which is a different check about a different object, and
+section 5.2's own rule is that codes are never reused.
 
 Section 12 spends the operator-facing half of this.
 
@@ -1548,18 +1639,46 @@ public static class ContentPackFormat
     public const ushort TextChunkFormatVersion = 1;
     public const int    Generation            = 1;   // contracts 7.4
     public const int    HashSchemeVersion     = 1;   // contracts 7.3
-    public const int    MaxContentRowBytes    = 4096;
+    public const int    MaxContentRowBytes    = 4096;   // absolute ceiling, no type may exceed it
+    public const int    DefaultMaxRowBytes    = 1024;   // a type's cap when it declares none
     public const int    MaxChunkUncompressedBytes = 16 * 1024 * 1024;
 }
 ```
 
-`MaxContentRowBytes = 4096` is the row-level guard rail behind `KEC0026`. The arithmetic: the largest realistic
-engine row is an item base with three asset references at 128 bytes each, a 20 tag list and a dozen ints,
-which is under 450 bytes. Its two localized fields contribute NOTHING, because a localized text key is a
-derived marker with no bytes in the row (section 3.2). Four kilobytes is nearly ten times the realistic worst
-case and it is what stops one pathological row from dominating a chunk. `MaxChunkUncompressedBytes = 16 MiB` is the matching chunk-level
-guard: at 4,096 slots a chunk would have to average 4 KB per row to reach it, which `MaxContentRowBytes`
-makes the absolute worst case, so the two caps are consistent by construction.
+`MaxContentRowBytes = 4096` is the ABSOLUTE row ceiling and no type may declare a cap above it. The
+arithmetic: the largest realistic engine row is an item base with three asset references at 128 bytes each, a
+20 tag list and a dozen ints, which is under 450 bytes. Its two localized fields contribute NOTHING, because a
+localized text key is a derived marker with no bytes in the row (section 3.2).
+
+**Each TYPE carries its own row cap, `DefaultMaxRowBytes = 1024` unless registration declares another, and
+`KEC0026` checks a row against its type's cap rather than against the ceiling.** That is what makes the two
+caps in this block relate to each other by a CHECK rather than by a hope, because they do not relate by
+construction:
+
+```
+chunkSlots * (maxRowBytes + 8) + 36  <=  MaxChunkUncompressedBytes
+```
+
+Registration refuses a type that fails it, throwing `ContentRegistrationException` naming both numbers, before
+the registry freezes. The `+ 8` is the row table entry (a varint id, a flags byte and a varint length, section
+7.3) and the `+ 36` is the header.
+
+**The old claim that the caps were "consistent by construction" was arithmetic backwards.** At 4,096 slots and
+a 4,096-byte row cap the product is 16,777,216, which is EXACTLY `MaxChunkUncompressedBytes` before the row
+table and the header, so a full chunk of maximum rows was already over. Worse, `loot_entry` registers at
+16,384 slots (section 3.1), where the same product is 64 MiB, four times the cap, and nothing connected the
+two: `KEC0026` bounds one row and `KEC0028` bounds only the slot count. A publish could therefore build a
+chunk the reader's own cap refuses, which is a version no reader loads.
+
+Under the bound the engine types fit with room: 4,096 slots at the 1,024 default is 4.2 MB, and `loot_entry`
+declares `maxRowBytes: 512` for its 16,384 slots, giving 8.5 MB against rows that are about 20 bytes in
+practice. A type that genuinely wants 4,096-byte rows may have at most 2,048 slots, which is the honest trade
+and is visible at registration rather than at a failed boot.
+
+**`KEC0038` is the check that the bound actually held.** It refuses a publish whose assembled chunk canonical
+bytes exceed `MaxChunkUncompressedBytes`, measured after the encode at publish step 7. With the registration
+bound in place it cannot fire, which is exactly the relationship `KEC0014` has to the encode-time omission
+(section 6.7): the construction argument is the design and the finding is the proof it held.
 
 ### 7.2 The chunk file, `KECC`
 
@@ -1951,9 +2070,12 @@ Content addressed, so `hash` is the 64 character lower hex of whatever the objec
 - `PutAsync` is idempotent. Putting a hash that exists is a no-op, and a provider MAY verify rather than
   rewrite.
 - `ListAsync` takes a version number rather than listing everything, because a cloud container may hold every
-  version ever published and the only caller that needs a list is the publish sweep (section 6.12). A provider
-  that cannot enumerate returns an empty sequence and the sweep is skipped, which is section 6.12's own skip
-  rule.
+  version ever published and the only caller that needs a list is the publish sweep (section 6.12). It answers
+  from the VERSION POINTER the publisher writes at `versions/<n>` (section 6.9), which holds that version's two
+  manifest hashes: a content-addressed store has no version index and cannot derive one, so the pointer is the
+  index and this is the only member that reads it. A provider that cannot enumerate returns an empty sequence
+  and the sweep is skipped, which is section 6.12's own skip rule, and so does a provider whose pointer for
+  that version is absent or unreadable.
 - There is no delete. The sweep calls a provider-specific `IPackStorePruning.DeleteAsync` when the provider
   implements it, so a read-only provider cannot be asked to prune and a misconfigured one cannot delete a
   production pack through the common interface.
@@ -1973,10 +2095,17 @@ Writes go to `<hash>.tmp` in the same shard directory and then `File.Move(temp, 
 map document's idiom (`MapTiledFile.Save.cs:183-192`). `overwrite: true` is correct here precisely because
 the name is the content: rewriting a hash with its own bytes is a no-op by definition.
 
-`ListAsync(version)` reads the manifest for that version and yields the hashes it names, rather than walking
-the directory. A directory walk would find orphans, and a store's job is to answer what a version contains,
-not what happens to be on disk. The publish sweep needs BOTH, and it gets the orphan half from a separate
-provider-specific enumeration behind `IPackStorePruning`.
+`ListAsync(version)` reads `<root>/versions/<n>`, the pointer written at publish step 9, takes the two
+manifest hashes it holds, reads both manifests out of the shard tree and yields every hash they name plus the
+two manifest hashes themselves. It does NOT walk the directory. A directory walk would find orphans, and a
+store's job is to answer what a version contains, not what happens to be on disk. The publish sweep needs
+BOTH, and it gets the orphan half from a separate provider-specific enumeration behind `IPackStorePruning`.
+
+The pointer lives OUTSIDE the two-level shard tree, under a `versions/` directory, because the shards are
+named from a hash and a version number is not one. It is written with the same temp-then-move idiom as every
+other file, so a reader never sees a half-written pointer. `HttpPackStore` reads `<base>/versions/<n>` by the
+same rule, and still throws `NotSupportedException` from `ListAsync` because it is a fetch path and the sweep
+is the publisher's.
 
 An `fsync` before the move happens only when the store is constructed with `PackDurability.PowerFail`,
 matching `MapSaveDurability` (`MapTiledFile.Save.cs:190`). The default is the cheaper mode, because a pack
@@ -2154,10 +2283,23 @@ by id, immutable and swapped atomically, with no lock per lookup".
 
 `Offsets` is sized to the highest live id plus one, not to the sum of chunk slots. A type with ids 1 to 35 and
 a chunk size of 4,096 allocates a 36-element array, not a 4,096-element one. Chunk slots are a TRANSPORT unit
-(contracts 4.5) and the runtime does not inherit their sparseness. A type with a family block at base 65,536
-and 40 members allocates 65,577 ints, which is 262 KB, and section 21 question Q5 puts the sparse-table
-threshold to the owner with a recommended default of switching a type to a sorted-id binary search when the
-live density falls below one in sixteen.
+(contracts 4.5) and the runtime does not inherit their sparseness.
+
+**Every array in `ContentTypeTable` except `Bodies` is parallel to `Offsets`, so the sparse cost is four
+arrays and not one.** A type with a family block at base 65,536 and 40 members sizes `Offsets` to 65,577
+entries, and `Lengths`, `Keys` and `RetiredBits` all follow:
+
+| Array | At 65,577 slots |
+|---|---|
+| `Offsets`, `int[]` | 262 KB |
+| `Lengths`, `int[]` | 262 KB |
+| `Keys`, one reference per slot | 525 KB, plus about 2.6 KB for the 40 real keys |
+| `RetiredBits`, 1,025 `ulong` | 8 KB |
+| Total | about 1.06 MB, for 40 rows |
+
+That is four times the 262 KB this paragraph used to quote, because it counted `Offsets` alone, and it is the
+number question Q5's sparse-table threshold should be argued against. The recommended default there is to
+switch a type to a sorted-id binary search when live density falls below one in sixteen.
 
 ### 9.2 Memory layout and the arithmetic
 
@@ -2166,22 +2308,30 @@ per chunk. The reason is allocation count and locality: at 1,000,000 item defini
 245 chunks, so 245 byte arrays per type would be 245 large-object-heap allocations that a walk over ids
 touches in 245 discontiguous regions. One array is one allocation and a sequential walk is sequential.
 
-The concatenation happens ONCE at load, chunk by chunk, into a buffer sized from the manifest's own
-`uncompressedBytes` sum, so there is no growth and no copy beyond the decompress.
+The concatenation happens ONCE at load, chunk by chunk, into a buffer sized from the per-chunk
+`uncompressedBytes` the manifest carries (section 7.4), so there is no growth and no copy beyond the
+decompress.
 
-Per-type memory at the two owner figures, with the item base's realistic row of about 200 bytes encoded
+Per-type memory at the two owner figures, with the item base's realistic row of about 124 bytes encoded
 (section 14, P1 arithmetic):
 
 | Definitions | `Bodies` | `Offsets` + `Lengths` | `Keys` | `RetiredBits` | Total |
 |---|---|---|---|---|---|
-| 50,000 | 10.0 MB | 0.4 MB | 1.6 MB | 6 KB | about 12 MB |
-| 1,000,000 | 200 MB | 8 MB | 32 MB | 125 KB | about 240 MB |
+| 50,000 | 6.2 MB | 0.4 MB | 3.6 MB | 6 KB | about 10 MB |
+| 1,000,000 | 124 MB | 8 MB | 72 MB | 125 KB | about 205 MB |
 
-`Keys` is the biggest avoidable line at the stress figure, being an array of `ContentKey` each wrapping a
-string. It exists for logging, for an admin lookup and for the quarantine reason of contracts 10.2, which
-needs to name what failed. The mitigation, if the stress figure ever becomes real, is to hold the keys as one
-UTF-8 blob plus an offset array, which is the same trick as `Bodies` and saves roughly 24 MB of object
-headers. Section 21 question Q5 covers it and the default is to ship the simple version and measure.
+**`Keys` counts the CHARACTERS, which is the line this table used to get wrong.** It is an array of
+`ContentKey`, each wrapping a string, so per key it is 8 bytes of reference in the array plus a string object,
+and a 20-character key as UTF-16 is 40 bytes of payload on top of about 24 bytes of header and length, which
+rounds to 64. Seventy-two bytes per key, so 3.6 MB at 50,000 and 72 MB at 1,000,000. The figures here were 1.6
+MB and 32 MB, which counted the references and the object headers and left the characters out entirely.
+
+`Keys` is therefore the biggest avoidable line at the stress figure by a wider margin than before, 72 MB of a
+205 MB runtime rather than 32 of 240. It exists for logging, for an admin lookup and for the quarantine reason
+of contracts 10.2, which needs to name what failed. The mitigation, if the stress figure ever becomes real, is
+to hold the keys as one UTF-8 blob plus an offset array, the same trick as `Bodies`: 20 bytes of UTF-8 per key
+plus a 4-byte offset is 24 MB against 72, so it saves about 48 MB rather than the 24 this section used to
+claim. Section 21 question Q5 covers it and the default is to ship the simple version and measure.
 
 ### 9.3 Decode is lazy on the client and eager on the server
 
@@ -2217,8 +2367,8 @@ The prefix-summed weight array is the one that matters for the tick: a weighted 
 
 ```
 1. Register every content type.                                  (registry not yet frozen)
-2. Read the active version number and manifest hash from config or the authoring store.
-3. Fetch the server manifest from the pack store, verify its hash.
+2. Resolve the version: config pin, else catalog_metadata.pinned_version, else active_version (10.7).
+3. Fetch that version's server manifest, verify its hash AND its embedded versionNumber.
 4. Refuse if manifest.formatGeneration > ContentPackFormat.Generation.
 5. Refuse if localServerBuild < manifest.minimumServerBuild.
 6. Fetch and verify every chunk the manifest names. Freeze the registry.
@@ -2230,6 +2380,13 @@ The prefix-summed weight array is the one that matters for the tick: a weighted 
 12. Build the connect door with the content layer.                (section 8.5)
 13. Start accepting connections.
 ```
+
+**Step 2 takes the version from exactly one place and step 3 cross-checks it.** The precedence is section
+10.7's and is not restated here. The cross-check is contracts 7.4's `versionNumber` at manifest offset 8: a
+manifest whose embedded number differs from the version the boot resolved means the pointer and the pack
+disagree, which is a store misconfiguration or a hand-copied file, and it is refused rather than served
+(section 9.6). Without it the server would announce one version number at the door while serving another
+version's chunks, and every client would compare hashes correctly against the wrong number.
 
 **Content loads BEFORE the world and both load before the door opens.** Content first, because step 11 needs
 it and because a world that references content the pack does not carry is a boot failure that should name the
@@ -2245,9 +2402,12 @@ A missing or invalid active content version FAILS THE BOOT. There is no runtime 
 |---|---|---|
 | 2, no active version | 3 | `content: no active version. Publish one or set the pinned version.` |
 | 3, manifest absent or hash mismatch | 3 | `content: manifest <hash> <absent or hash mismatch> from <store>.` |
+| 3, manifest names a different version | 3 | `content: manifest <hash> declares version <n>, expected <v>.` |
 | 4, generation too new | 3 | `content: pack generation <n> needs a newer server. This build reads <m>.` |
 | 5, server build too old | 3 | `content: version <v> requires server build <n>. This build is <m>.` |
 | 6, a chunk absent or mismatched | 3 | `content: chunk <hash> <reason>.` |
+| 6, the manifest names an unregistered type | 3 | `content: version <v> names type <id> which this build does not register.` |
+| 6, a registered type is absent from the manifest | 3 | `content: type <key> (<id>) is registered and absent from version <v>.` |
 | 7, a chunk decode failure | 3 | `content: chunk <hash> <reason token>.` |
 | 8, validator findings | 3 | one line per finding, `content: <code> <type>/<id> <message>`, then `content: <n> findings, refusing to serve.` |
 | 11, unresolved world key | 3 | `content: world <source> references <typeKey>.<contentKey> which is not live in version <v>.` |
@@ -2255,6 +2415,16 @@ A missing or invalid active content version FAILS THE BOOT. There is no runtime 
 Exit code 3 throughout, distinct from the 2 both Grimhollow heads already return for a bad skilling config
 (`b-grimhollow.md:389-391`), so an operator or a supervisor script can tell a content failure from a config
 failure without parsing text.
+
+**The two type-registration rows are both refusals, in both directions, and the mirror case is the one worth
+arguing.** A manifest naming a type this build does not register is the ordinary shape of a server rolled back
+past a game type, or a type behind a feature flag that is off: there is no codec to decode its rows with, and
+carrying the chunks undecoded would mean a runtime that cannot answer a reference into them. A REGISTERED type
+absent from the manifest is the same failure seen from the other side, a build ahead of the pack rather than
+behind it, and the tempting answer, an empty runtime table, is worse than a refusal: every reference into that
+type then resolves to nothing, `KEC0006` fires at boot for each one, and the operator reads a page of
+reference findings instead of one line naming the type that is missing. Both refuse at step 6, before a single
+chunk is fetched, because the manifest's type list is enough to decide it.
 
 This is stated as a hard rule because the consumer precedent is the opposite. Ruinborne's loader falls back to
 five hardcoded code defaults on any failure, announces it with a `Console.WriteLine`, and serves a different
@@ -2534,11 +2704,24 @@ so a publisher who has nothing to say about builds says nothing rather than acci
       "publishedAtUtc": "...", "baseVersion": 47 } ] }
 ```
 
-`catalog-pin` takes `{ "version": 47 }` or `{ "version": null }` and writes the pin into
-`catalog_metadata`. A pinned version is what the NEXT BOOT loads, regardless of the active pointer. That is
-the only lever v1 gives an operator between publishing and restarting, and it exists because there is no
-staging environment (contracts 1.3 item 9): pinning is how a publish is staged for a later restart, and
-unpinning is how a server catches up.
+`catalog-pin` takes `{ "version": 47 }` or `{ "version": null }` and writes `catalog_metadata.pinned_version`
+(section 4.4). That is the only lever v1 gives an operator between publishing and restarting, and it exists
+because there is no staging environment (contracts 1.3 item 9): pinning is how a publish is staged for a later
+restart, and unpinning is how a server catches up.
+
+**Which version a server boots has ONE order of precedence, and it is written here once.** Boot step 2
+(section 9.5) resolves it in this order and takes the first that answers:
+
+1. A version pinned in the SERVER'S OWN CONFIG. Config wins, always.
+2. Otherwise `catalog_metadata.pinned_version`, when it is not null.
+3. Otherwise `catalog_metadata.active_version`.
+
+**When both pins are present, config wins and the ACTION SAYS SO.** A `catalog-pin` against a server whose
+config already pins a version returns 200 carrying `"configPinnedVersion": 52` and a warning naming it. The
+write happened and it takes effect the moment the config pin is removed, so the response is not a refusal, but
+an operator who gets a bare 200 for a call with no effect on the next restart is precisely the failure this
+section exists to prevent. Rule 1 is also why a server configured with a pinned version and a pack store needs
+no authoring database at boot at all (section 11 row 5): it never reaches rules 2 or 3.
 
 A pin naming a version that does not exist is a 400. A pin naming a version whose `minimumServerBuild` exceeds
 the running build is ACCEPTED with a warning in the response, because the operator may be pinning ahead of a
@@ -2554,7 +2737,7 @@ server upgrade on purpose, and the boot-time check (section 9.6) is the real gat
 { "draftCreated": true, "editCount": 18, "blockedByRules": [] }
 
 // response 409
-{ "error": "rollback blocked by an irreversible retire",
+{ "error": "rollback blocked by an irreversible retire", "code": "KEC0039",
   "blockedByRules": [ { "sequence": 31, "introducedIn": 47, "type": "item", "fromId": 25, "kind": "Retired" } ],
   "remedy": "mint a new definition carrying the old values and add a ReplacedBy rule" }
 ```
@@ -2702,8 +2885,8 @@ does not renumber, does not free ids and does not delete rows. Concretely, rolli
 
 - A row edited in 47 or 48 gets an `Update` restoring the version 46 field values. Its id does not move.
 - A row ADDED in 47 or 48 is untouched. It stays live with its id, its key and its values.
-- A row RETIRED in 47 or 48 is blocked if a remap rule names it (section 6.13 step 3), and otherwise gets its
-  `retired` flag cleared by an `Update`.
+- A row RETIRED in 47 or 48 BLOCKS the rollback, with `KEC0039` naming it (section 6.13 step 3). There is no
+  un-retire: a retire is irreversible (contracts 8.6) and the way back is a new id carrying the old values.
 - The result publishes as version 49.
 
 The reason a rollback does not remove a newly added row is that the id has already been handed out: a player
@@ -2907,7 +3090,7 @@ twenty, which is linear because every term above is per definition, except that 
 linearly as ONE chunk: 2,000,000 entries at 86 bytes is 172 MB against a `MaxChunkUncompressedBytes` of 16
 MiB, so sharding is mandatory rather than optional at the stress figure. Section 7.6 states that rule.
 
-**P3, server load time and memory.** The memory table is section 9.2's, which is 12 MB at 50,000. The time is
+**P3, server load time and memory.** The memory table is section 9.2's, which is about 10 MB at 50,000. The time is
 dominated by three linear passes: decompress about 19 MB, decode 50,000 rows, and validate. Brotli
 decompresses at well over 100 MB/s, a row decode is a handful of varint reads, and the validator is five
 linear passes with two dictionary builds. Four hundred milliseconds gives each pass a generous share and it
@@ -3158,7 +3341,7 @@ under the one `(version, type, chunk index)` at two sides, that the next publish
 both forward, that the client manifest omits every `ServerOnly` TYPE, and that a stub encoder which leaves the
 field in the client-side bytes is refused by `KEC0014`.
 
-**Boot fail-closed.** Eight facts, one per row of section 9.6's exit table, each asserting exit code 3 and the
+**Boot fail-closed.** Eleven facts, one per row of section 9.6's exit table, each asserting exit code 3 and the
 exact stderr prefix. Run in process against a test host that captures the exit rather than calling
 `Environment.Exit`.
 
@@ -3748,7 +3931,7 @@ each with its own gate, so it is not one undivided landing:
 |---|---|---|
 | 1.1 | `KhaozEngine.Catalog`: registry, field schema, codecs, varint, hashes, the four pack formats, remap rules, `FileSystemPackStore`, `ContentPackReader` | The golden files of 15.1, the decoder fuzzing of 15.2, the cross-version round trips of 15.3 |
 | 1.2 | `Catalog.Authoring`, `Catalog.Sqlite`, `Catalog.SqlServer`: temporal rows, draft, change set, field audit, id allocator, publish | The provider conformance suite of 15.5 on both backends, the crash-safety cases of 15.6 |
-| 1.3 | `ContentRuntime`, the boot sequence, fail-closed exit 3, the derived indexes, the `--catalog` benchmark mode | The eight boot facts of 15.7, plus P3 and P7 measured at 50,000 |
+| 1.3 | `ContentRuntime`, the boot sequence, fail-closed exit 3, the derived indexes, the `--catalog` benchmark mode | The eleven boot facts of 15.7, plus P3 and P7 measured at 50,000 |
 | 1.4 | The sixteen actions, the bundle, the empty-database rule, operator identity, and the admin-result change of section 10.1: `AdminActionStatus.Conflict`, an object-carrying error payload on `AdminActionResult`, and the matching arm in `AdminHttpServer.DispatchActionAsync` | The action tests, including one asserting a real 409 body with `expectedBaseVersion`, plus P5 and P6 measured |
 | 1.5 | `Catalog.Netcode`, `HttpPackStore`, `CachingPackStore`, the client fetch loop, `ContentStringCatalog` | The door tests of 15.7, plus P4 and P10 measured |
 
@@ -4033,16 +4216,21 @@ it, which is the same treatment section 18.3 gives the other two deferred optimi
 
 ### Q5. How hard to work at runtime memory before it is measured
 
-Two related choices, both in section 9. The first is `Offsets`, sized to the highest live id plus one, which
-makes a type with a family block based at 65,536 and 40 members allocate 262 KB for 40 rows. The second is
-`Keys`, an array of `ContentKey` each wrapping a string, which is 32 MB of the 240 MB runtime at 1,000,000
-definitions and is the biggest avoidable line there.
+Two related choices, both in section 9, and both numbers here are the CORRECTED ones. The first is the sparse
+table: `Offsets` is sized to the highest live id plus one, and `Lengths`, `Keys` and `RetiredBits` are all
+parallel to it, so a type with a family block based at 65,536 and 40 members costs about 1.06 MB for 40 rows,
+not the 262 KB that counting `Offsets` alone suggested (section 9.1). The second is `Keys`, an array of
+`ContentKey` each wrapping a string, which is 72 MB of a 205 MB runtime at 1,000,000 definitions once the
+UTF-16 characters are counted (section 9.2), and is the biggest avoidable line there by a wide margin.
 
-**Recommended default: ship the simple version of both and measure.** For `Offsets`, switch a type to a
+**Recommended default: ship the simple version of both and measure, and the corrected numbers do not change
+that.** They change the SIZE of the prize rather than the order of the work. For `Offsets`, switch a type to a
 sorted-id binary search when live density falls below one in sixteen, and do it in phase 3 with a number
-rather than in phase 1 with a guess. For `Keys`, hold one UTF-8 blob plus an offset array, the same trick
-`Bodies` already uses, which saves roughly 24 MB of object headers and is a contained change to one type.
-Neither is a format change, which is why both can wait.
+rather than in phase 1 with a guess: four times the cost still buys nothing until a real type is sparse, and
+no engine type is. For `Keys`, hold one UTF-8 blob plus an offset array, the same trick `Bodies` already uses,
+which saves about 48 MB rather than the 24 first claimed and is a contained change to one type. Neither is a
+format change, which is why both can wait, and the second is now worth doing the moment the stress figure
+stops being hypothetical rather than merely worth remembering.
 
 ### Q6. How many superseded versions the pack store keeps
 

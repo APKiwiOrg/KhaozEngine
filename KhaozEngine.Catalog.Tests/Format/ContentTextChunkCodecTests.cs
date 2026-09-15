@@ -349,6 +349,23 @@ public class ContentTextChunkCodecTests
         Assert.Equal(fromCanonical.ComputeHash(), fromStored.ComputeHash());
     }
 
+    [Fact]
+    public void ABrotliStreamThatExpandsPastItsDeclaredLengthIsRefusedAsTooLarge()
+    {
+        // The same refusal ContentChunkCodec gives, because spec 8.4 names the overrun kind generically and
+        // spec 7.6 takes KECC's header refusals whole. A static TryDecompress cannot tell the two apart.
+        byte[] stored = ContentTextChunkCodec.Encode("en-US", Twelve);
+        Assert.Equal(ContentPackFormat.CompressionBrotli, stored[7 + 5]);
+
+        // The stream still decompresses, it just claims one byte less room than it needs.
+        uint declared = BinaryPrimitives.ReadUInt32LittleEndian(stored.AsSpan(9 + 5));
+        BinaryPrimitives.WriteUInt32LittleEndian(stored.AsSpan(9 + 5), declared - 1);
+
+        Assert.False(ContentTextChunkCodec.TryDecode(stored, out ContentTextChunk? chunk, out string? reason));
+        Assert.Null(chunk);
+        Assert.Equal(ContentTextChunkCodec.ReasonTooLarge, reason);
+    }
+
     // ---- The derived key, contracts 12.1 and 12.2 ----
 
     [Fact]

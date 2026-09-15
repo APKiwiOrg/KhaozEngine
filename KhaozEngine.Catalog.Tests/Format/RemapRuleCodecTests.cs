@@ -475,6 +475,29 @@ public class RemapRuleCodecTests
     }
 
     [Fact]
+    public void ABrotliStreamThatExpandsPastItsDeclaredLengthIsRefusedAsTooLarge()
+    {
+        // The same refusal ContentChunkCodec gives, because spec 8.4 names the overrun kind generically. A
+        // static TryDecompress collapses a resource refusal and a corrupt stream into one false.
+        var many = new List<RemapRule>();
+        for (int i = 1; i <= 400; i++)
+        {
+            many.Add(Rule(i, 4, 1, RemapRuleKind.ReplacedBy, i, i + 1000));
+        }
+
+        byte[] stored = ContentRuleChunkCodec.Encode(many);
+        Assert.Equal(ContentPackFormat.CompressionBrotli, stored[6]);
+
+        // The stream still decompresses, it just claims one byte less room than it needs.
+        uint declared = BinaryPrimitives.ReadUInt32LittleEndian(stored.AsSpan(12));
+        BinaryPrimitives.WriteUInt32LittleEndian(stored.AsSpan(12), declared - 1);
+
+        Assert.False(ContentRuleChunkCodec.TryDecode(stored, out RemapRuleSet? rules, out string? reason));
+        Assert.Null(rules);
+        Assert.Equal(ContentRuleChunkCodec.ReasonTooLarge, reason);
+    }
+
+    [Fact]
     public void AChunkIsNeverStoredLargerThanItsCanonicalForm()
     {
         // A body whose compressed form is not SMALLER is stored uncompressed, so the compression byte and

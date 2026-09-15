@@ -25,6 +25,7 @@ internal static class ContentVisibilityChecks
     internal static void Run(ContentValidationRun run)
     {
         CheckPerInstanceShape(run);
+        CheckVisibility(run);
 
         foreach (ContentTypeRegistration registration in run.Registry.ByTypeId)
         {
@@ -33,8 +34,8 @@ internal static class ContentVisibilityChecks
     }
 
     /// <summary>
-    /// Walks one type's rows once: the visibility check, the encode, the round trip, the row cap, and the
-    /// running per-chunk byte count the chunk cap is taken from.
+    /// Walks one type's rows once: the encode, the round trip, the row cap, and the running per-chunk byte
+    /// count the chunk cap is taken from.
     /// </summary>
     static void CheckType(ContentValidationRun run, ContentTypeRegistration registration)
     {
@@ -50,8 +51,6 @@ internal static class ContentVisibilityChecks
 
         foreach (ContentRow row in rows)
         {
-            CheckVisibility(run, registration, row);
-
             written.ResetWrittenCount();
             if (!TryEncode(run, registration, row, written, out ReadOnlySpan<byte> canonical))
             {
@@ -76,43 +75,33 @@ internal static class ContentVisibilityChecks
     }
 
     /// <summary>
-    /// <c>KEC0014</c>: a field whose visibility is <c>ServerOnly</c> inside a type the client manifest
-    /// carries. It is a publish-time REFUSAL rather than a silent strip, because a stripped field's absence
-    /// is indistinguishable from an authoring mistake once the bytes are on a client.
+    /// <c>KEC0014</c>: the CLIENT-side encoded bytes of a chunk still carrying a field whose visibility is
+    /// <c>ServerOnly</c> (spec 6.7, contracts 11.3).
     /// <para>
-    /// A type whose registration default is <c>ServerOnly</c> is omitted from the client manifest whole, so
-    /// its own <c>ServerOnly</c> fields never reach a client and are not a defect. Drop tables are the
-    /// motivating case and are exactly that shape.
+    /// <b>It has no input in this milestone and so cannot fire.</b> Its trigger is an ENCODER defect, not an
+    /// authoring one: the client chunk for a <c>Client</c> type is written with every <c>ServerOnly</c> field
+    /// omitted, and the code fires when those bytes still carry one. No field-omitting client encoder exists
+    /// yet, because <see cref="ContentChunkCodec"/> writes row bodies verbatim, so the check hangs off the
+    /// client chunk encode and starts firing when that lands.
+    /// </para>
+    /// <para>
+    /// <b>It is emphatically NOT a per-row check on the candidate.</b> A <c>Client</c> type MAY carry a
+    /// per-field <c>ServerOnly</c> override, which is the case the two-chunk path of spec 6.7 exists for:
+    /// nothing refuses it and nothing needs to. Reading the code as a refusal of an authored value is how
+    /// <c>KEC0013</c> was written, and spec 5.2 WITHDREW that code for exactly this mistake. It also made a
+    /// <c>Client</c> type with a REQUIRED <c>ServerOnly</c> field unpublishable both ways, absent drawing
+    /// <c>KEC0005</c> and present drawing <c>KEC0014</c>. A type whose registration default is
+    /// <c>ServerOnly</c> is separately omitted from the client manifest whole, so its own fields never reach
+    /// a client either.
+    /// </para>
+    /// <para>
+    /// Left as the named hook rather than as a code nobody can find, because the code is issued and a reader
+    /// looking for <c>KEC0014</c> has to land somewhere that says why it is quiet.
     /// </para>
     /// </summary>
-    static void CheckVisibility(ContentValidationRun run, ContentTypeRegistration registration, ContentRow row)
+    static void CheckVisibility(ContentValidationRun run)
     {
-        if (registration.DefaultVisibility != ContentVisibility.Client)
-        {
-            return;
-        }
-
-        IReadOnlyList<ContentFieldEntry> fields = registration.Schema.Fields;
-        for (int i = 0; i < fields.Count; i++)
-        {
-            ContentFieldEntry field = fields[i];
-            if (field.Visibility != ContentVisibility.ServerOnly || field.IsDerivedMarker)
-            {
-                continue;
-            }
-
-            if (ContentValidationRun.Value(row, i, field.Kind).IsAbsent)
-            {
-                continue;
-            }
-
-            run.Add(
-                registration.Type,
-                row.Id,
-                "KEC0014",
-                FormattableString.Invariant(
-                    $"Row {row.Id} of type '{registration.TypeKey}' carries a value for '{field.Name}', which is ServerOnly, and the type's chunks go to the client. The client manifest omits a ServerOnly field rather than carrying it, so this is a refusal and never a strip."));
-        }
+        _ = run;
     }
 
     /// <summary>

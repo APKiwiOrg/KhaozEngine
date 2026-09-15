@@ -316,6 +316,75 @@ and an entry's payload is a WINDOW into the page buffer rather than a copy, so a
 entry. `PageSlotInput` is one entry on the way in, and its payload is borrowed rather than copied until the
 page is written.
 
+## Paged containers, the capacity gate and the merge rule
+
+`PagedItemContainer` is a container held as pages, which is the shape a journal commit can rewrite one page
+of instead of rewriting the whole thing. It splits the two concepts `ItemContainer` conflates.
+
+- **Slot space** is the page geometry, fixed at construction and `PageCount * ContainerPageSlots`. It is an
+  ADDRESS space and it never shrinks.
+- **Capacity** is a separate mutable integer, the number of OCCUPIED slots a grant may leave behind. It is a
+  gate consulted by `Add` and by nothing else.
+
+The four capacity rules, which are one consumer's bag model restated as engine behaviour:
+
+1. A grant that opens a NEW slot is refused when occupancy is at or above capacity.
+2. A grant that merges entirely into existing stacks is allowed at any occupancy.
+3. Lowering capacity below occupancy is LEGAL. The container loads intact, is never trimmed, and is refused
+   new slots until occupancy falls. State that already exists is never destroyed to satisfy a number that
+   moved under it, which is the generalisation of the over-cap stack policy.
+4. Capacity is never read from content. It is a per-owner number the game sets, because it is player
+   progression rather than balance data, and nothing in the type's surface names a content type.
+
+**Every page declares the FULL geometry.** Slot space is always the whole multiple, so a 30 slot bag is ONE
+full page whose capacity is 30 rather than a page declaring 30 slots. Slot 743 is page 7 slot 43 for every
+container in the fleet, a bag that grows from 30 slots to 40 is a capacity edit rather than a re-paging of
+stored bytes, and a stored page declaring fewer slots than the geometry is a codec level anomaly for the load
+path to refuse. `ContainerPageSlots` itself has ONE home, on `ItemContainerPageCodec`, and the page
+references it rather than declaring a second copy.
+
+**Entries are SPARSE and nothing compacts them.** A hole is the absence of an entry and costs zero bytes, so
+a dense renumber is not something this container can do by accident.
+
+`ItemContainerPage` holds one page's decoded slots, its content version stamp, its dirty flag and its page
+index. Its slots live in an `ItemContainer` of exactly one page's width rather than in a second array, so the
+payload doors and their four invariants are the SAME code a whole-container consumer runs.
+
+**Exactly two things dirty a page**: an operation that CHANGED a slot (`Write`, `Take`) and a remap that
+changed an id (`ApplyRemap`). Reading never does, a write that leaves the slot holding what it already held
+never does, and seating a decoded page (`Seat`, `SeatStamp`) never does either, because that IS the page's
+stored state. `ApplyRemap` moves the stamp only when something changed and only upward, because a clean page
+claiming a version no stored byte carries would lose the claim on the next load anyway, and a page stamped
+NEWER than the active version is never rewound. `CopyDirtyPagesTo` is what the commit builder asks for: the
+dirty pages join whatever commit comes next rather than causing one.
+
+```csharp
+var bag = new PagedItemContainer(
+    pageCount: 1,
+    capacity: 30,
+    stackable: definitionId => catalog.Item(definitionId).Stackable,
+    payloadCanonical: ItemInstancePayload.IsCanonical,
+    quarantineWellFormed: QuarantineWrapper.Verify);
+
+int entered = bag.Add(potionId, 40);      // merges into one stack, or opens one slot
+ItemContainerPage page = bag.PageForSlot(12);
+Span<PageSlotInput> entries = new PageSlotInput[page.SlotCount];
+int count = page.CopyEntriesTo(entries);  // ready for ItemContainerPageCodec.Encode
+```
+
+`InstanceStacking.CanMerge` is the merge rule: the definition matches, the game's predicate says yes, neither
+entry is quarantined, and the two payloads are byte identical. Rule 4 is a `memcmp` rather than a structural
+comparison ONLY because the payload is canonical, so a decode inside it would be a defect. Two items
+differing only in a field neither build understands do not merge, which is the conservative answer. On top of
+the four rules, an entry carrying durability (kind 5) or sockets (kind 132) never merges whatever the
+predicate says, because a definition can gain either AFTER its items exist and publish only sees the
+definitions it publishes. `InstanceStacking.Merge` is the arithmetic and never the rules: the surviving
+instance id is the numerically LOWER of the two, so a replay in either order agrees, and the count saturates
+at `int.MaxValue` rather than overflowing.
+
+**The stack cap of a lowered `max_stack` is the CALLER's**, applied above this kernel. The container reads no
+content, so it saturates at the engine ceiling and the load-time validator is what reports an over-cap count.
+
 ## The validator
 
 `InstanceValidator` sweeps a decoded container through thirteen checks and reports everything it found.
@@ -431,7 +500,7 @@ data exists. What is absent is breadth, which is content.
 
 | Not here | Where it lands |
 |---|---|
-| paging (`PagedItemContainer`, `ItemContainerPage`, the section naming) | `docs/superpowers/plans/2026-09-15-item-instances-phase2-3.md` |
+| the container section naming (`<container>/p<NN>`) | `docs/superpowers/plans/2026-09-15-item-instances-phase2-3.md` |
 | the registry-derived remap pass, which is what produces the `Remapped` outcome | the same plan, with the pages |
 | the journal commit path (`ContainerCommitBuilder`) | the same plan |
 | the wire: the fragmenter, the ground component, the page delta, the owner remainder, and a real `PublicView` | the same plan |

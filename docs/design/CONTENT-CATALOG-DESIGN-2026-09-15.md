@@ -1767,3 +1767,346 @@ The STORED file differs from the canonical bytes in exactly two fields when the 
 `01` and bytes 32 to 35 hold the compressed length. At 43 bytes this body will not compress smaller, so this
 particular chunk stores uncompressed and the stored file is byte identical to the canonical bytes. That is the
 common case for a small chunk and it is why the `compression` byte exists per chunk rather than per pack.
+
+## 8. Pack store and transport
+
+### 8.1 The pack store abstraction
+
+```csharp
+public interface IPackStore
+{
+    Task<bool>          ExistsAsync(string hash, CancellationToken ct = default);
+    Task<ReadOnlyMemory<byte>?> GetAsync(string hash, CancellationToken ct = default);
+    Task                PutAsync(string hash, ReadOnlyMemory<byte> bytes, CancellationToken ct = default);
+    IAsyncEnumerable<string> ListAsync(int versionNumber, CancellationToken ct = default);
+}
+```
+
+Content addressed, so `hash` is the 64 character lower hex of whatever the object's own digest rule is
+(section 7.8). Four members and no more, deliberately:
+
+- `GetAsync` returns null for absent rather than throwing, matching
+  `TileWorldCatalogs.Archetype(string? id)` returning null rather than throwing so a validation pass is never
+  taken down by one lookup (`a-engine.md:321-322`).
+- `PutAsync` is idempotent. Putting a hash that exists is a no-op, and a provider MAY verify rather than
+  rewrite.
+- `ListAsync` takes a version number rather than listing everything, because a cloud container may hold every
+  version ever published and the only caller that needs a list is the publish sweep (section 6.12). A provider
+  that cannot enumerate returns an empty sequence and the sweep is skipped, which is section 6.12's own skip
+  rule.
+- There is no delete. The sweep calls a provider-specific `IPackStorePruning.DeleteAsync` when the provider
+  implements it, so a read-only provider cannot be asked to prune and a misconfigured one cannot delete a
+  production pack through the common interface.
+
+**`PutAsync` VERIFIES the hash before writing.** Every provider recomputes the digest of the bytes it was
+handed and throws `ContentPackException` on a mismatch. That is one SHA-256 over bytes already in memory at
+publish time, and it is the check that makes every later "verify on read" meaningful, because a store that
+will write anything under any name is not content addressed.
+
+### 8.2 `FileSystemPackStore`
+
+One file per hash under a two-level shard, `<root>/<hash[0..2]>/<hash[2..4]>/<hash>.kec`. Two levels of 256
+because a flat directory of 245 chunks times 50 versions is fine and a flat directory of a million is not, and
+the shard is derived from the hash so it needs no index.
+
+Writes go to `<hash>.tmp` in the same shard directory and then `File.Move(temp, final, overwrite: true)`, the
+map document's idiom (`MapTiledFile.Save.cs:183-192`). `overwrite: true` is correct here precisely because
+the name is the content: rewriting a hash with its own bytes is a no-op by definition.
+
+`ListAsync(version)` reads the manifest for that version and yields the hashes it names, rather than walking
+the directory. A directory walk would find orphans, and a store's job is to answer what a version contains,
+not what happens to be on disk. The publish sweep needs BOTH, and it gets the orphan half from a separate
+provider-specific enumeration behind `IPackStorePruning`.
+
+An `fsync` before the move happens only when the store is constructed with `PackDurability.PowerFail`,
+matching `MapSaveDurability` (`MapTiledFile.Save.cs:190`). The default is the cheaper mode, because a pack
+file lost to a power cut is refetchable from its hash and a lost world file is not.
+
+### 8.3 `HttpPackStore`, the cloud provider
+
+Read only, over one injected `HttpClient`, with the base address being any HTTP-addressable container: an
+Azure Blob container with public read or a SAS, an S3 bucket, or a CDN in front of either. `GetAsync` issues
+`GET <base>/<hash[0..2]>/<hash[2..4]>/<hash>.kec`, the same shard layout as the filesystem provider, so the
+same tree serves both.
+
+**No cloud SDK, and that is a deliberate package decision.** Taking `Azure.Storage.Blobs` would put a
+third-party dependency into `KhaozEngine.Catalog`, which is `Foundation` and is Pure .NET (section 2.1), and
+would force every client of every game to carry it. Every blob service worth using serves an HTTP GET, and
+the WRITE side is the publisher's, which runs on a server that can implement `IPackStore` over whatever SDK
+the game already has. So the engine ships the two providers that need no dependency and the seam for the rest.
+
+`PutAsync` and `ListAsync` throw `NotSupportedException` on `HttpPackStore`, which is what makes it obviously
+a fetch path rather than a half-working publish target.
+
+### 8.4 `CachingPackStore`
+
+A decorator taking a LOCAL store and a REMOTE store. `GetAsync` asks local, and on a miss asks remote,
+VERIFIES the hash, writes through to local, and returns. `ExistsAsync` asks local then remote. `PutAsync` goes
+to local only.
+
+The verification is the whole value of the decorator and it is not optional:
+
+```
+bytes = await remote.GetAsync(hash)
+actual = ContentHash.OfBytesForKind(kind, bytes)
+if (actual != hash) -> discard, do NOT cache, report reason "hash-mismatch", try the next source
+```
+
+`OfBytesForKind` dispatches on the magic in the first four bytes, so a chunk is hashed under `kec/chunk/` and
+a manifest under its own sub-domain, and a file whose magic does not match any known kind is rejected before
+any length field is read.
+
+**A mismatching object is never cached and never used.** That is the entire defence against a poisoned CDN or
+a corrupted proxy, and it is why the cache is keyed by hash rather than by version: a cache entry that does
+not hash to its own key is self-evidently wrong and can be discarded without any other information.
+
+### 8.5 How a client learns the version at the connect door
+
+Contracts 7.5 fixes this and `KhaozEngine.Catalog.Netcode` implements it. A new labelled `HandshakeToken`
+layer carries `<versionNumber>|<clientManifestHash>`, gated by `ContentIdentityGateAuthenticator` modelled
+directly on `WorldIdentityGateAuthenticator` (`KhaozEngine.Netcode/ConnectionGate.cs:53-96`): unwrap one
+layer, compare ORDINAL, refuse with a stable wire token carrying both sides, otherwise delegate inward.
+
+Layer order in the nest, outermost first: protocol version, world, CONTENT, the game's token auth, the ban
+check (contracts 7.5).
+
+```
+ke:content-mismatch:<serverVersion>|<serverHash>|<clientVersion>|<clientHash>
+ke:content-client-too-old:<minimumClientBuild>
+```
+
+A client presenting no layer at all unwraps to the empty label and is refused with empty client fields, which
+is what `GrimhollowConfigGate` already does (`b-grimhollow.md:449-456`).
+
+**A client that is behind is REFUSED, not admitted read-only while it fetches** (gate 0 decision 6). So the
+client loop is: connect, get refused with the server's version and hash, fetch the manifest by that hash, fetch
+the chunks the manifest names that the local cache lacks, verify each, then reconnect. The refusal token
+carries everything the fetch needs, which is why it carries the hash and not just the number.
+
+**Where the client gets the base URL.** Not from the refusal token. A URL in a refusal token is a redirect an
+unauthenticated party controls, and section 13.4 spends why that is unacceptable. The client is configured
+with its pack base address the same way it is configured with its server address, which for the two consumers
+is already how the Azure Blob client update feed works (AGENTS.md, Consumers).
+
+### 8.6 Which endpoint serves the chunks, weighed
+
+This is genuinely contested, because the obvious answer (the game server already has an admin HTTP endpoint)
+is wrong for reasons that only show up at scale.
+
+| Criterion | Game server's admin HTTP | Static host or CDN | Game-owned game endpoint |
+|---|---|---|---|
+| Bytes served do not compete with the tick loop | 1 | 10 | 3 |
+| Works for a client that has not authenticated yet | 2 | 10 | 5 |
+| Survives a thundering herd after a world restart | 1 | 10 | 3 |
+| Costs the engine no new transport | 8 | 10 | 5 |
+| Reuses an existing consumer deployment shape | 4 | 10 (both consumers already ship an Azure Blob client update feed) | 6 |
+| Operator effort to stand up | 9 | 6 | 5 |
+| Can be rate limited independently of gameplay | 3 | 10 | 6 |
+| Total | 28 | 66 | 33 |
+
+Recommendation: **a static host or CDN**, addressed by `HttpPackStore`, with the game server's admin HTTP
+serving nothing but the manifest for an operator diagnostic. The admin endpoint is bearer gated behind one
+token (`AdminHttpServer.cs:61-71`) and binds to loopback by default (`AdminEndpointOptions.cs:29`), so it is
+not a thing a player's client can reach at all, and its pre-auth connection cap defaults to 64
+(`AdminEndpointOptions.cs:39`). Serving a megabyte pack to every reconnecting player through it would put
+client bandwidth on the same process as the simulation, which is the exact failure the owner's original
+chunked-push-on-join proposal was revised away from (#882 comment 1: "That is thousands of 1024-byte messages
+per join, multiplied by every player reconnecting after a world restart").
+
+The thundering-herd row is the decisive one. v1 applies a new version at server restart, so every connected
+player reconnects at once and every one of them needs the same set of chunks. A CDN serves that from cache.
+
+### 8.7 The client fetch loop
+
+```
+1. Refused at the door with ke:content-mismatch:<v>|<serverHash>|...
+2. manifest = cache.Get(serverHash)
+   if absent: manifest = remote.Get(serverHash), verify, cache
+3. if manifest.formatGeneration > reader.Generation           -> fail, ask the player to update
+   if localBuild < manifest.minimumClientBuild                -> fail, ask the player to update
+4. missing = [ every chunk hash in manifest not in local cache ]
+5. for each hash in missing, bounded concurrency 4:
+       bytes = remote.Get(hash)
+       verify hash; on mismatch retry once against the same source, then fail this chunk
+       cache.Put(hash, bytes)
+6. if every chunk arrived: reconnect
+   else: report progress and retry the missing set with backoff
+```
+
+Bounded concurrency 4, because a cold start at 1,000,000 definitions is 245 chunks per type and unbounded
+parallelism against a CDN buys nothing over a link a player's home connection saturates at two or three
+streams.
+
+**Decode is LAZY.** Step 5 stores bytes. Nothing is decompressed or decoded until a lookup asks for a row in
+that chunk (section 9.3). A client that walks its inventory touches a handful of item chunks and never opens
+the rest, which is what makes the cold start budget (section 14, P4) a download budget rather than a decode
+budget.
+
+### 8.8 Partial download, corrupt chunk, hash mismatch
+
+| Situation | What the client does |
+|---|---|
+| Fetch interrupted part way through the missing set | The chunks that arrived are cached and verified. The next attempt recomputes `missing` and fetches only the rest. There is no resume state beyond the cache itself. |
+| A chunk arrives truncated | Its hash does not match. Discarded, not cached, retried once, then the whole fetch reports `chunk-fetch-failed` with the hash and the client stays at the door. |
+| A chunk arrives with a valid hash but a malformed body | Impossible for a whole-file corruption, since the hash covers the whole canonical form. A body that decodes badly under a matching hash means the PUBLISHER wrote a bad chunk, which `KEC0027` should have caught, and the client refuses with the decode reason and does not cache it. |
+| A cached chunk goes bad on disk | Detected on first use (section 9.6 and section 11 row 1), the cache entry is deleted, and the chunk is refetched. |
+| The manifest hash does not match | The manifest is discarded and refetched once. A second mismatch is `manifest-hash-mismatch` and the client stays at the door with the server version in the notice, because it cannot distinguish a bad CDN from a bad configuration and guessing is worse than stopping. |
+| The server's version moves mid fetch | The client finishes the fetch it started and then reconnects. The door refuses again with the NEW hash, and the second fetch downloads only the chunks that differ. No special casing, because chunk addresses are content addresses. |
+
+Every one of these is a reason token, never an exception across the boundary, following the whole-tree rule
+that a decoder handed remote bytes is total (`a-engine.md:814-817`).
+
+**A partial download never becomes a partial catalog.** The client does not reconnect until every chunk in
+the manifest verifies, so there is no state in which a client holds half a version. That is what makes the
+door comparison a simple hash equality rather than a negotiation.
+
+## 9. Server runtime
+
+### 9.1 The loaded shape
+
+The active version loads into `ContentRuntime`, which holds, per registered content type:
+
+```csharp
+internal sealed class ContentTypeTable
+{
+    public readonly int SlotBase;          // always 0 for a type's table 0
+    public readonly int[] Offsets;         // index by (id - SlotBase), -1 for absent
+    public readonly byte[] Bodies;         // every row body of every chunk, concatenated
+    public readonly int[] Lengths;         // parallel to Offsets
+    public readonly ulong[] RetiredBits;   // one bit per slot
+    public readonly ContentKey[] Keys;     // parallel, for logging and admin lookup
+}
+```
+
+A lookup is `offsets[id]`, one array read, then a `ReadOnlySpan<byte>` slice of `Bodies`. No dictionary, no
+lock, no allocation. That is #882's requirement stated directly: "load the active version into arrays indexed
+by id, immutable and swapped atomically, with no lock per lookup".
+
+`Offsets` is sized to the highest live id plus one, not to the sum of chunk slots. A type with ids 1 to 35 and
+a chunk size of 4,096 allocates a 36-element array, not a 4,096-element one. Chunk slots are a TRANSPORT unit
+(contracts 4.5) and the runtime does not inherit their sparseness. A type with a family block at base 65,536
+and 40 members allocates 65,577 ints, which is 262 KB, and section 21 question Q5 puts the sparse-table
+threshold to the owner with a recommended default of switching a type to a sorted-id binary search when the
+live density falls below one in sixteen.
+
+### 9.2 Memory layout and the arithmetic
+
+One `Bodies` array per type holding every row body concatenated in ascending id order, rather than one array
+per chunk. The reason is allocation count and locality: at 1,000,000 item definitions and 4,096 slots that is
+245 chunks, so 245 byte arrays per type would be 245 large-object-heap allocations that a walk over ids
+touches in 245 discontiguous regions. One array is one allocation and a sequential walk is sequential.
+
+The concatenation happens ONCE at load, chunk by chunk, into a buffer sized from the manifest's own
+`uncompressedBytes` sum, so there is no growth and no copy beyond the decompress.
+
+Per-type memory at the two owner figures, with the item base's realistic row of about 200 bytes encoded
+(section 14, P1 arithmetic):
+
+| Definitions | `Bodies` | `Offsets` + `Lengths` | `Keys` | `RetiredBits` | Total |
+|---|---|---|---|---|---|
+| 50,000 | 10.0 MB | 0.4 MB | 1.6 MB | 6 KB | about 12 MB |
+| 1,000,000 | 200 MB | 8 MB | 32 MB | 125 KB | about 240 MB |
+
+`Keys` is the biggest avoidable line at the stress figure, being an array of `ContentKey` each wrapping a
+string. It exists for logging, for an admin lookup and for the quarantine reason of contracts 10.2, which
+needs to name what failed. The mitigation, if the stress figure ever becomes real, is to hold the keys as one
+UTF-8 blob plus an offset array, which is the same trick as `Bodies` and saves roughly 24 MB of object
+headers. Section 21 question Q5 covers it and the default is to ship the simple version and measure.
+
+### 9.3 Decode is lazy on the client and eager on the server
+
+**The server decodes eagerly at boot**, because the validator runs on the full snapshot (contracts 10.5) and
+because a server that decodes lazily pays a first-touch cost inside a tick. The decode is one pass over
+`Bodies` and it is what builds any per-type derived index the runtime holds (section 9.4).
+
+**The client decodes lazily**, per chunk, on first lookup into that chunk's id range. It holds the compressed
+bytes from the cache and decompresses a chunk the first time a row in it is asked for. A client that walks a
+30-slot inventory touches at most a handful of chunks, which is the whole reason the cold start budget is a
+download budget (section 14, P4).
+
+The two paths share one reader and differ only in when they call it, so there is one decoder and one set of
+reason tokens.
+
+### 9.4 Derived indexes, built once at load
+
+Four are built at load and none is built lazily, because each is walked inside gameplay and a lazy build
+inside a tick is a latency spike:
+
+| Index | Shape | Who reads it |
+|---|---|---|
+| Key to id, per type | A frozen `Dictionary<ContentKey, int>` | Admin lookup, world boot resolution (3.10), bulk import. |
+| Tag to ids | Per tag id, a sorted `int[]` per content type | Drop tables with a `required_tags` filter (3.5), store rates by item class. |
+| Family membership | The block list per family, cached | The two-comparison membership test of contracts 5.2. |
+| Loot candidate arrays | Per `loot_table`, the resolved entry list with weights prefixed-summed | The roll, so a weighted draw is one binary search over an `int[]`. |
+
+The prefix-summed weight array is the one that matters for the tick: a weighted draw over `n` entries becomes
+`NextInt(0, total)` plus a binary search, with no allocation and no per-roll summation. The random source is
+`IRandomSource` handed in by constructor (contracts 14.4), never an ambient static and never a default.
+
+### 9.5 Boot order
+
+```
+1. Register every content type.                                  (registry not yet frozen)
+2. Read the active version number and manifest hash from config or the authoring store.
+3. Fetch the server manifest from the pack store, verify its hash.
+4. Refuse if manifest.formatGeneration > ContentPackFormat.Generation.
+5. Refuse if localServerBuild < manifest.minimumServerBuild.
+6. Fetch and verify every chunk the manifest names. Freeze the registry.
+7. Decode into ContentRuntime. Build the derived indexes.
+8. Run the validator on the decoded snapshot plus the rule set.   (section 5.4)
+9. Publish the runtime: Volatile.Write of the new instance into the single field.
+10. Load the world document.
+11. Resolve every world-to-content key against the runtime.        (section 3.10)
+12. Build the connect door with the content layer.                (section 8.5)
+13. Start accepting connections.
+```
+
+**Content loads BEFORE the world and both load before the door opens.** Content first, because step 11 needs
+it and because a world that references content the pack does not carry is a boot failure that should name the
+missing key rather than a null reference inside a tick. The door last, because contracts 7.5 puts the content
+layer inside the world layer, and a door built before the runtime exists would have nothing to compare.
+
+### 9.6 Fail closed, and the exact exit path
+
+A missing or invalid active content version FAILS THE BOOT. There is no runtime fallback to code defaults
+(#882 body item 8, contracts 10.5).
+
+| Failure at step | Exit code | stderr |
+|---|---|---|
+| 2, no active version | 3 | `content: no active version. Publish one or set the pinned version.` |
+| 3, manifest absent or hash mismatch | 3 | `content: manifest <hash> <absent or hash mismatch> from <store>.` |
+| 4, generation too new | 3 | `content: pack generation <n> needs a newer server. This build reads <m>.` |
+| 5, server build too old | 3 | `content: version <v> requires server build <n>. This build is <m>.` |
+| 6, a chunk absent or mismatched | 3 | `content: chunk <hash> <reason>.` |
+| 7, a chunk decode failure | 3 | `content: chunk <hash> <reason token>.` |
+| 8, validator findings | 3 | one line per finding, `content: <code> <type>/<id> <message>`, then `content: <n> findings, refusing to serve.` |
+| 11, unresolved world key | 3 | `content: world <source> references <typeKey>.<contentKey> which is not live in version <v>.` |
+
+Exit code 3 throughout, distinct from the 2 both Grimhollow heads already return for a bad skilling config
+(`b-grimhollow.md:389-391`), so an operator or a supervisor script can tell a content failure from a config
+failure without parsing text.
+
+This is stated as a hard rule because the consumer precedent is the opposite. Ruinborne's loader falls back to
+five hardcoded code defaults on any failure, announces it with a `Console.WriteLine`, and serves a different
+catalog than the database holds with no metric, no exit code and no refusal to admit joins
+(`c-ruinborne.md:176-196`, Ruinborne [#512](https://github.com/APKiwiOrg/Ruinborne/issues/512)). A silent
+fallback catalog is worse than an outage, because an outage is noticed.
+
+### 9.7 The atomic swap, and why there is no lock
+
+The runtime is one field:
+
+```csharp
+private ContentRuntime? current;
+public ContentRuntime Current => Volatile.Read(ref current)
+    ?? throw new InvalidOperationException("content runtime not loaded");
+```
+
+A reader takes the reference ONCE at the top of whatever it is doing and uses that instance throughout, so a
+swap mid-operation cannot give it a half-old half-new answer. `ContentRuntime` and everything reachable from
+it is immutable after construction: the arrays are never written after the load, so there is no torn read and
+no memory barrier needed beyond the `Volatile.Write` that publishes the new instance.
+
+v1 never swaps at runtime, because a new version applies at server restart (contracts 1.3 item 8). The field
+and the `Volatile` pair exist anyway, for two reasons: a test swaps a runtime to exercise a fixture, and a
+later live-apply phase needs exactly this shape and nothing else. The cost of building it now is two lines.

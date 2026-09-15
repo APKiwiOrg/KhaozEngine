@@ -1485,10 +1485,11 @@ The `catalog_chunk` row set carries both hashes (section 4.4) and section 6.6 co
 Two manifests per version, the SERVER manifest over every chunk and the CLIENT manifest over the
 client-visible chunks only (contracts 7.3, 11.3). Each is built by reading the version's `catalog_chunk` rows
 and taking one side: the server manifest takes `visibility = 1` where it exists and `visibility = 0`
-otherwise, the client manifest takes `visibility = 0` and names nothing for a type that has no such row. Each gets its own hash under its own sub-domain,
-`kec/manifest/server/` and `kec/manifest/client/`, so a head gating on one can never accidentally agree with a
-head gating on the other. That last property is `TileWorldHash.OfWorldAndCatalogs`'s stated reason for
-existing (`a-engine.md:1206-1209`).
+otherwise, the client manifest takes `visibility = 0` and names nothing for a type that has no such row.
+
+Each gets its own hash under its own sub-domain, `kec/manifest/server/` and `kec/manifest/client/`, so a head
+gating on one can never accidentally agree with a head gating on the other. That last property is
+`TileWorldHash.OfWorldAndCatalogs`'s stated reason for existing (`a-engine.md:1206-1209`).
 
 The canonical manifest text, in order (contracts 7.3):
 
@@ -2615,13 +2616,15 @@ with. An unnamed engine change is an unbudgeted one.
 of section 10.11, `catalog-sweep` and `catalog-verify`. Earlier drafts counted eleven in one place, fourteen
 in another and sixteen nowhere, by collapsing pairs that a caller still has to know the names of, so the
 pairing is now a reading aid rather than a count: `catalog-draft` with `catalog-discard`, `catalog-pin` with
-`catalog-rollback`, `catalog-import` with `catalog-export` and `catalog-sweep` with `catalog-verify`. The status conventions are `AdminHttpServer`'s
-own: reads return `Results.Json` and a bad request body or a bad id returns 400 with `new { error = ... }`,
-both in the action dispatch at `AdminHttpServer.cs:156-172`. The 501 arms are NOT on that path: they are on
-the four BUILT-IN routes, `/accounts`, `/bans`, `/ban` and `/unban`, each gated on an `admin.*Supported`
-capability flag (`AdminHttpServer.cs:100`, `:105`, `:111`, `:128`). A registered action that does not exist is
-a 404 from `TryGetAction`, not a 501, so no content action returns 501 and none of them is listed as
-returning one. The 409 column is the engine change named in section 10.1.
+`catalog-rollback`, `catalog-import` with `catalog-export` and `catalog-sweep` with `catalog-verify`.
+
+The status conventions are `AdminHttpServer`'s own: reads return `Results.Json` and a bad request body or a
+bad id returns 400 with `new { error = ... }`, both in the action dispatch at `AdminHttpServer.cs:156-172`.
+The 501 arms are NOT on that path: they are on the four BUILT-IN routes, `/accounts`, `/bans`, `/ban` and
+`/unban`, each gated on an `admin.*Supported` capability flag (`AdminHttpServer.cs:100`, `:105`, `:111`,
+`:128`). A registered action that does not exist is a 404 from `TryGetAction`, not a 501, so no content action
+returns 501 and none of them is listed as returning one. The 409 column is the engine change named in section
+10.1.
 
 **None of these returns 202 Accepted**, which is a deliberate departure from the built-in mutation routes. A
 202 means the command was enqueued to the host thread and will complete
@@ -3205,9 +3208,9 @@ bytes, and the chunk is **about 8.7 MB uncompressed per language.** Section 7.6 
 number and do not recompute it.
 
 So an uncompressed one-language server pack is about 19 MB, and Brotli at quality 5 on this kind of structured
-repetitive text and varint data reliably lands between 2:1 and 4:1. Twelve megabytes stored is the
-conservative end of that band, and the target is set at the conservative end on purpose so a miss means
-something is actually wrong.
+repetitive text and varint data reliably lands between 2:1 and 4:1. At the conservative 2:1 that is 9.5 MB
+stored, so the 12 MB target carries about a quarter of headroom over the pessimistic end on purpose: a miss
+against it means something is actually wrong rather than that the compressor had a bad day.
 
 The client pack is smaller by exactly the `ServerOnly` families, which is `loot_table` and `loot_entry`, so
 about 15 MB uncompressed and comfortably inside the 9 MB stored target at the same ratio. P2 scales P1 by
@@ -3215,7 +3218,7 @@ twenty, which is linear because every term above is per definition, except that 
 linearly as ONE chunk: 2,000,000 entries at 86 bytes is 172 MB against a `MaxChunkUncompressedBytes` of 16
 MiB, so sharding is mandatory rather than optional at the stress figure. Section 7.6 states that rule.
 
-**P3, server load time and memory.** The memory table is section 9.2's, which is about 10 MB at 50,000. The time is
+**P3, server load time and memory.** The memory table is section 9.2's, about 10 MB at 50,000. The time is
 dominated by three linear passes: decompress about 19 MB, decode 50,000 rows, and validate. Brotli
 decompresses at well over 100 MB/s, a row decode is a handful of varint reads, and the validator is five
 linear passes with two dictionary builds. Four hundred milliseconds gives each pass a generous share and it
@@ -3385,7 +3388,7 @@ means adding a directory, and forgetting to keep reading the old one goes red im
 ### 15.4 Scale tests
 
 In `KhaozEngine.Benchmarks --catalog` (section 14.2), at 50,000 and 1,000,000 synthetic definitions, producing
-the ten budget numbers of section 14 as a JSON result with a checked-in baseline. Synthetic generation is
+the eleven budget numbers of section 14 as a JSON result with a checked-in baseline. Synthetic generation is
 deterministic from a seed, so two runs at the same seed and size produce byte-identical packs, which is itself
 an assertion: **the same input publishes the same bytes.** That is contracts 4.3's registration-order
 independence made measurable.
@@ -3785,7 +3788,8 @@ keyed by a string and the int32 definition id is new here, so every row goes in 
 comes out with an allocated one. The two are the two bullets of section 10.9, one import path, chosen per row
 by whether the row names an id. Ids that are allocated come in edit ordinal order (section 6.3), so the
 bundle's row order determines them. The bundle builder orders every type's rows by KEY ascending, ordinal,
-which is the order `SqlRuinborneStore.cs:433` already reads them in (`ORDER BY [item_id]`). Two consequences: an export at version N re-imported into an empty database reproduces
+which is the order `SqlRuinborneStore.cs:433` already reads them in (`ORDER BY [item_id]`). Two consequences:
+an export at version N re-imported into an empty database reproduces
 the same ids (section 10.9), and the ordering that was a hazard when it was a WIRE index becomes harmless the
 moment it is only an allocation order, because the id it produces is then stored rather than derived.
 

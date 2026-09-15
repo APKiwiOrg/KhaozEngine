@@ -28,6 +28,12 @@ static class ContentForkChecks
     const int MaxKeyLength = 64;
 
     /// <summary>
+    /// The ordinal a key the BASE VERSION already carries is recorded under. It is below every edit ordinal,
+    /// so a fork can never be the edit that introduced a key a published row holds.
+    /// </summary>
+    const int BaselineOrdinal = -1;
+
+    /// <summary>
     /// Checks every <c>Fork</c> edit in the change set against the base version's rows.
     /// </summary>
     /// <param name="baseline">The base version, whose live rows a fork's source must be one of.</param>
@@ -41,7 +47,7 @@ static class ContentForkChecks
     {
         var findings = new List<ContentFinding>();
         IReadOnlyList<ContentEdit> edits = changes.Edits;
-        HashSet<(ushort Type, string Key)>? taken = null;
+        Dictionary<(ushort Type, string Key), int>? taken = null;
 
         for (int ordinal = 0; ordinal < edits.Count; ordinal++)
         {
@@ -62,7 +68,7 @@ static class ContentForkChecks
         List<ContentFinding> findings,
         ContentPublishBaseline baseline,
         ContentTypeRegistry registry,
-        HashSet<(ushort Type, string Key)> taken,
+        Dictionary<(ushort Type, string Key), int> taken,
         ContentEdit edit,
         int ordinal)
     {
@@ -104,7 +110,7 @@ static class ContentForkChecks
                 FormattableString.Invariant(
                     $"Edit {ordinal} forks row {edit.DefinitionId} of type '{registration.TypeKey}' under key '{forkKey}', which is {defect}. A key is 1 to {MaxKeyLength} characters of a-z, 0-9 and underscore, with no leading digit, no leading or trailing underscore and no double underscore.")));
         }
-        else if (taken.Contains((edit.Type.Value, forkKey)))
+        else if (taken.TryGetValue((edit.Type.Value, forkKey), out int introducedBy) && introducedBy != ordinal)
         {
             findings.Add(new ContentFinding(
                 edit.Type,
@@ -143,28 +149,42 @@ static class ContentForkChecks
     }
 
     /// <summary>
-    /// Every key that is already spoken for on each type: the base version's live rows, plus every key an
-    /// edit in this same draft introduces. A draft that adds <c>sword_legacy</c> and then forks a row under
-    /// the same key collides at publish, and saying so as a precondition is more useful than a duplicate-key
+    /// Every key that is already spoken for on each type, mapped to WHAT introduced it: the base version's
+    /// live rows under <see cref="BaselineOrdinal"/>, then every key an edit in this same draft introduces
+    /// under that edit's own ordinal. A draft that adds <c>sword_legacy</c> and then forks a row under the
+    /// same key collides at publish, and saying so as a precondition is more useful than a duplicate-key
     /// finding on a candidate that should never have been built.
+    /// <para>
+    /// <b>A fork's key is a key it INTRODUCES, exactly as an add's is.</b> Two forks under one key would
+    /// otherwise reach the candidate and be refused by <c>KEC0002</c> instead, naming two ids the author
+    /// never wrote. The ordinal is what keeps a fork from colliding with itself: the edit that introduced
+    /// the key is the one holding it, and only a LATER edit naming it is a collision.
+    /// </para>
     /// </summary>
-    static HashSet<(ushort Type, string Key)> TakenKeys(
+    static Dictionary<(ushort Type, string Key), int> TakenKeys(
         ContentPublishBaseline baseline,
         IReadOnlyList<ContentEdit> edits)
     {
-        var taken = new HashSet<(ushort, string)>();
+        var taken = new Dictionary<(ushort Type, string Key), int>();
         for (int i = 0; i < baseline.Rows.Count; i++)
         {
             ContentRow row = baseline.Rows[i].Row;
-            taken.Add((row.Type.Value, row.Key.ToString()));
+            taken[(row.Type.Value, row.Key.ToString())] = BaselineOrdinal;
         }
 
         for (int i = 0; i < edits.Count; i++)
         {
             ContentEdit edit = edits[i];
-            if (edit.Operation == ContentEditOperation.Add)
+            (ushort Type, string Key)? introduced = edit.Operation switch
             {
-                taken.Add((edit.Type.Value, edit.Key.ToString()));
+                ContentEditOperation.Add => (edit.Type.Value, edit.Key.ToString()),
+                ContentEditOperation.Fork => (edit.Type.Value, edit.ForkKey.ToString()),
+                _ => null,
+            };
+
+            if (introduced is { } key && !taken.ContainsKey(key))
+            {
+                taken.Add(key, i);
             }
         }
 

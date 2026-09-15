@@ -3165,24 +3165,24 @@ The owner's six from #884 item 13, plus four this document's design introduces. 
 from arithmetic already in this document or from the recorded journal baseline (698 commits per second at
 1,000 players with no backpressure recorded, 42,365 bytes allocated per operation, `a-engine.md:607-641`).
 **That 698 is an OFFERED load that the store kept up with, not a ceiling it hit**, so it is a starting
-point for budget 13 rather than a limit anything here is measured against. Nothing in this table is
-measured yet, which is what the last column says.
+point for budget 13 rather than a limit anything here is measured against. Section 16.1 is where the
+last column came from, and it is also where the one budget that misses is written up.
 
 | # | Budget | Target | How measured | Measured |
 |---|---|---|---|---|
-| 1 | Bytes per rare item, payload | at most 80 | encode the 3.8 PoE row, count bytes | TBD (stage 5) |
-| 2 | Bytes per rare item, slot entry | at most 96 | the same, through 4.4 | TBD (stage 5) |
-| 3 | Page commit size, 100 rares | at most 8 KB | encode a full page, count bytes | TBD (stage 5) |
-| 4 | Write volume, 20 crafts in one held action | at most 20 KB and 1 commit | `--items` bench, sum `JournalCommit.OwnedByteCount` | TBD (stage 5) |
-| 5 | Rare generation time | under 20 microseconds per item | `--items` bench, 1M generations, report p50 and p99 | TBD (stage 5) |
-| 6 | Stat evaluation per attack | under 2 microseconds, 0 bytes allocated | evaluate one stat over 11 worn items with 6 affixes each | TBD (stage 5) |
-| 7 | Container page sync size, cold open | at most 8 KB and 8 frames per page | encode and fragment a full page (7.5) | TBD (stage 5) |
-| 8 | Steady-state sync after one craft | 1 frame, at most 96 bytes | the delta of 7.5 | TBD (stage 5) |
-| 9 | Generator table build at 2,000 mods | under 500 ms, under 40 MB resident | build the 9.2 tables from a synthetic pack | TBD (stage 5) |
-| 10 | Container load, 10 pages with a full remap pass | under 5 ms, under 200 KB allocated | `Load` over 10 pages and 200 rules | TBD (stage 5) |
-| 11 | Ground instance bytes per viewer per second | at most 8 KB per second per viewer at 28 ground instances in interest | public view bytes times instances in interest divided by `TickSeconds` (7.4) | TBD (stage 5) |
-| 12 | Resident page bytes at 1,000 logged-in players | under 250 MB | sum the decoded page bytes plus the admitted layer's two dictionaries, at a 1,000 stack bank each | TBD (stage 5) |
-| 13 | Commits per second offered, 1,000 players at 4 Hz | 4,000 per second pre-coalescing, and what the store sustains is the number to find | `--items` bench against SQLite and SQL Server, offered load against accepted | TBD (stage 5) |
+| 1 | Bytes per rare item, payload | at most 80 | encode the 3.8 PoE row, count bytes | **58 bytes, MEETS** |
+| 2 | Bytes per rare item, slot entry | at most 96 | the same, through 4.4 | **69 bytes, MEETS** |
+| 3 | Page commit size, 100 rares | at most 8 KB | encode a full page, count bytes | **6,908 bytes, MEETS** |
+| 4 | Write volume, 20 crafts in one held action | at most 20 KB and 1 commit | `--items` bench, sum `JournalCommit.OwnedByteCount` | **9,519 bytes in 1 commit, MEETS** |
+| 5 | Rare generation time | under 20 microseconds per item | `--items` bench, 1M generations, report p50 and p99 | **p50 47.8, p99 161.1 microseconds, MISSES** |
+| 6 | Stat evaluation per attack | under 2 microseconds, 0 bytes allocated | evaluate one stat over 11 worn items with 6 affixes each | **444 ns, 0 bytes, MEETS** |
+| 7 | Container page sync size, cold open | at most 8 KB and 8 frames per page | encode and fragment a full page (7.5) | **6,943 bytes in 7 frames, MEETS** |
+| 8 | Steady-state sync after one craft | 1 frame, at most 96 bytes | the delta of 7.5 | **73 bytes in 1 frame, MEETS** |
+| 9 | Generator table build at 2,000 mods | under 500 ms, under 40 MB resident | build the 9.2 tables from a synthetic pack | **16 ms, 17.5 MB, MEETS** |
+| 10 | Container load, 10 pages with a full remap pass | under 5 ms, under 200 KB allocated | `Load` over 10 pages and 200 rules | **0.27 ms, 0 bytes, MEETS** |
+| 11 | Ground instance bytes per viewer per second | at most 8 KB per second per viewer at 28 ground instances in interest | public view bytes times instances in interest divided by `TickSeconds` (7.4) | **6,720 bytes per second, MEETS** |
+| 12 | Resident page bytes at 1,000 logged-in players | under 250 MB | sum the decoded page bytes plus the admitted layer's two dictionaries, at a 1,000 stack bank each | **103.0 MB, MEETS** |
+| 13 | Commits per second offered, 1,000 players at 4 Hz | 4,000 per second pre-coalescing, and what the store sustains is the number to find | `--items` bench against SQLite and SQL Server, offered load against accepted | **3,968 offered, 2,097 sustained on SQLite, MEETS** |
 
 Where each number comes from, because a target with no derivation is a guess in a table:
 
@@ -3243,6 +3243,161 @@ uses.
 diff rather than an opinion. The 42,365 bytes per journal operation is the number to watch on budgets 4
 and 10: every journal byte array is cloned on write and again on read (`JournalLimits.cs:107, 137`), so a
 page that doubles in size doubles two copies and not one.
+
+### 16.1 Stage 5 measurements
+
+The last column is a full `--items` run in Release on a twelve core Apple silicon machine, .NET 10.0.12,
+seed 915, against synthetic content at the owner's scale: 2,000 mods with eight tiers and five tag
+weights each, 50,000 bases over 300 authored tag signatures, 20 rarities and 200 rare name words, every
+row built from the seed through `DeterministicRng`. The baseline is
+`KhaozEngine.Benchmarks/Baselines/items-sqlite-v1-seed915.json` and the run that wrote it is:
+
+```bash
+dotnet run --project KhaozEngine.Benchmarks -c Release -- --items --seed 915 \
+  --output "$PWD/KhaozEngine.Benchmarks/Baselines/items-sqlite-v1-seed915.json"
+```
+
+The spike is `KhaozEngine.Benchmarks/Items/`, a throwaway but clean implementation of the byte formats
+and algorithms this document and the contracts define, and of nothing else. Anything that commits goes
+through the REAL journal, `SqliteMutationJournalStore` under `MutationJournalExecutor` at
+`JournalLimits.Maximum`, because a 6.9 KB page has to sit against the engine's own section cap rather
+than a benchmark-shaped one.
+
+**How each one was measured.**
+
+- **1 and 2, 58 and 69 bytes.** The 3.8 PoE row, kinds 2, 5, 128, 130, 131, 132 and 134, encoded field by
+  field through the same writer everything else in the spike uses, then seated in a version 2 slot entry
+  at a two byte definition id and a five byte instance id, which is what 3.8's arithmetic assumed. Both
+  numbers are 3.8's, reproduced rather than restated.
+- **3, 6,908 bytes.** A hundred of those entries plus the eight byte page header. A page of GENERATED
+  rares is 5,524, at 55.2 bytes an entry, because the generator writes no identification field and the
+  synthetic rarity weights roll a mean of 3.01 affixes rather than the row's three at a two byte mod id.
+  So 6,908 is the pessimistic figure and the budget is met at either.
+- **4, 9,519 bytes in one commit.** One `JournalCommit` carrying one identity, twenty `item-crafted`
+  events at 127 bytes each and one projection write of the 6,908 byte page, submitted to SQLite and
+  answered `Applied`. 6.7's arithmetic said 9,440, and the difference is the 13 byte intent and the 58
+  byte result, which that derivation did not count. The same twenty crafts as twenty commits are 142,120
+  bytes, so coalescing is a factor of 14.9 on top of paging.
+- **5, p50 47.8 and p99 161.1 microseconds. MISSES**, and the write-up is below.
+- **6, 444 ns and zero bytes**, folding 143 lines on one stat, which is the worst case the derivation
+  names. Zero allocation is the binding half and it holds: the read walks a per-stat inverted index of
+  `int` offsets into one line array and allocates nothing at all. A cached read, which is what 11.5 says
+  an unchanged source costs, is 0.8 ns.
+- **7, 6,943 bytes in 7 frames.** The 6,908 byte page fragmented at 1,015 payload bytes a chunk, so 6,971
+  bytes once the four byte envelope is counted. Seven frames, one inside the budget's eight, exactly as
+  `ceil(6900 / 1015)` predicted.
+- **8, 73 bytes in one frame**, which is 7.5's own count. Fourteen changed rare slots fit one frame and
+  the fifteenth does not, which is what 7.5 claims and what test 17 pins.
+- **9, 16 ms and 17.5 MB resident** for 1,521,885 tag-band entries over 64 tags and 50 bands. Thirty times
+  inside the time budget and at half the memory. 9.2's estimate of 1.7 million entries and 20 MB was
+  close. The memo is not in that figure, because it is empty at boot and bounded at 4,096 entries after.
+- **10, 0.27 ms and ZERO bytes** for ten pages and 200 rules, against 5 ms and 200 KB. The no-rewrite case
+  is a scan exactly as contracts 8.3 says: 8,729 reference ids visited per load, every one a dictionary
+  miss, nothing re-encoded and nothing allocated. With 20 of the 200 rules hitting, so that most pages
+  re-encode, it is 0.54 ms and 117,328 bytes, still inside both halves.
+- **11, 6,720 bytes per viewer per second.** A rare's public view is 54 bytes, the 58 byte payload less
+  the four bytes of `OwnerOnly` durability, and the component adds a five byte instance id varint and a
+  one byte length for 60. Twenty eight of those in one cell at the 250 ms tile tick is 7.4's arithmetic,
+  confirmed against a real `PublicView` call rather than assumed.
+- **12, 103.0 MB** for 1,000 players each holding a ten page bank of 1,000 rares. 50.6 MB of page bytes,
+  which the exact sum of the byte arrays puts at 50.3 MB, and 52.4 MB more once those pages are seated in
+  the admitted layer through `SeedCommitted`, which clones every one of them. That is TWO copies rather
+  than the two to three the derivation allowed for, at 41 percent of the ceiling.
+- **13, 3,968 offered and 2,097 sustained.** Below, because the sustained number is the one the budget
+  was written to find.
+- **The scale test of 17.5, 151.8 MB for 3,000,000 instances**, 53.1 bytes an instance, in 30,000 pages.
+  Several million instances in memory is 150 MB of page blobs and no objects, which is the strongest
+  evidence for 3.1's claim that an instance IS its slot entry.
+
+**Budget 5 misses, and there are two independent causes.**
+
+At a hot set of 512 bases over 60 item levels, one million generations run at p50 47.8 and p99 161.1
+microseconds, mean 54.6, allocating 8,969 bytes each. Against a 20 microsecond target that is 2.4 times
+over at the median.
+
+1. **The candidate pool is four times what the derivation assumed.** 9.4's cost note says "six passes over
+   a few-hundred-entry array". A few hundred is not what this document's own table shape produces: 16,000
+   tiers times five tag weights spread over 64 tags, with a tier live in about a third of 50 bands, puts
+   about 400 entries in each (tag, band) table, and a base carries two to four tags, so the merged pool is
+   1,480. The measured shape is 4,454 candidate visits per generation at 12.3 ns each, and that cost alone
+   is visible in isolation: with the memo warm, at 64 bases and 4 item levels and a 100 percent hit rate,
+   p50 is still 33.4 microseconds and allocation falls to 68 bytes.
+2. **The memo is an eighth of the key space it is asked to cover.** 4,096 entries keyed by (tag signature,
+   band) against 512 bases over 60 item levels hits 50.8 percent of the time, and a miss both re-merges
+   and allocates the merged array. That is where 8,969 bytes a generation comes from. 9.2 predicted this
+   in as many words and called a miss "microseconds", which the measurement agrees with. What it did not
+   price is a miss rate of one in two.
+
+**And the measured item is not the budget's item.** The synthetic rarity weights roll a mean of 3.01
+affixes. A six affix rare walks the pool six times rather than three, so by the same 12.3 ns per visit it
+costs about 109 microseconds. The budget's own worked example is the six affix case, so the honest
+reading of budget 5 is that a six affix rare is about five times its target, not 2.4 times.
+
+Nothing in that is a coding accident, and the spike deliberately did not optimise its way out: folding
+`kind` and `legacy` into the table entry, widening it from 12 bytes to 16, would remove three
+data-dependent array reads per candidate visit, and splitting each (tag, band) table by mod kind would
+halve the pass. Both are table shape changes with a memory cost, which makes them 9.2's decision rather
+than an implementation detail. The orchestrator decides whether the target moves, the table shape moves,
+or both.
+
+**Budget 13 meets its offered half, and the number it was written to find is 2,097 per second.**
+
+A thousand player streams each committing one 7,106 byte page every 250 ms offered 3,968 commits per
+second for 60 seconds. SQLite accepted 2,207 and committed 2,097 of them, refused 44.4 percent with
+`Backpressure`, refused none with `StreamBusy` or `VersionConflict`, and answered at p50 3,263 ms and p99
+9,503 ms measured from `Submit` to the completion being dequeued. Three readings:
+
+- **The 698 baseline was an offered load and not a ceiling, and this document was right to say so.** The
+  same machine sustains three times it at commits thirty seven times the size, which is about 15 MB of
+  durable page bytes a second.
+- **The store is the limit and the queue is where it shows.** A 44 percent refusal rate with latency in
+  seconds is what a stream queue of depth 8 does when the offered load is twice what the store drains.
+  That is the case 16's `Backpressure` paragraph exists for, and it is now a measured shape rather than a
+  hypothetical one.
+- **4,000 commits a second is not a load one SQLite store serves.** Either the batch window coalesces more
+  than one commit per player per tick, or a shard at that population needs a store that is not SQLite.
+  SQL Server is still unmeasured, which is budget 13's other half and is not something this spike could
+  answer without an instance to point at.
+
+**The misses, plainly.**
+
+- **Budget 5, rare generation time.** Target under 20 microseconds per item. Measured p50 47.8 and p99
+  161.1 at the hot set, p50 33.4 with a perfectly warm memo, and about 109 by arithmetic at the six affix
+  item the budget's derivation describes.
+
+Nothing else misses. Budgets 1, 2, 3, 4, 6, 7, 8, 9, 10, 11 and 12 meet their targets, and budget 13 meets
+the offered half it can meet.
+
+**Every approximation, so none of them has to be inferred.**
+
+- **Resident memory is read as the heap size after a forced compacting collection**, not as
+  `GC.GetTotalMemory(true)`. Against a known live set of 27,620,000 bytes built with the churn a page
+  builder produces, `GetTotalMemory(true)` answered 61,105,168 and `GetGCMemoryInfo().HeapSizeBytes`
+  answered 27,800,304. Budgets 9 and 12 and the scale test would all read about twice their true size on
+  the obvious instrument, and budget 9 would have read 35.1 MB against a 40 MB target. Both readings and
+  the exact byte sums are in the baseline JSON.
+- **Budget 12 and the scale test cycle a pool of 10,000 distinct generated rares** rather than generating
+  three million. A page blob copies the payload bytes into itself and every slot still takes a fresh
+  instance id, so the page bytes are identical and the run is minutes shorter.
+- **Budget 12's pages are generated rares at 55.2 bytes an entry**, not the 69 byte row of 3.8. A bank of
+  nothing but that row would be a factor of 1.25 more, so about 129 MB rather than 103.0, which is still
+  inside the 250 MB ceiling.
+- **Budget 4 measures the one page case only.** The 20 KB target was set to cover the two page case, and
+  by the same measured page and event sizes that case is `6,908 + 6,908 + 2,540 + 71 = 16,427` bytes. That
+  is arithmetic over measured parts rather than a measurement.
+- **Budget 13's latency includes queueing.** It is measured from `Submit` to the completion being
+  dequeued, which is what a consumer waits, not what the store's own commit takes. A refused submission is
+  DROPPED and never retried, which is what 16 says a consumer must do on `Backpressure`.
+- **The generator precomputes its rare name weights per tag signature**, memoized exactly as 9.2's mod
+  merge is. Step 10 of 9.4 does not say whether those weights are precomputed, and doing it per roll over
+  200 words would have added cost this document never asked for.
+- **The content set is synthetic and its shape drives budgets 5 and 9 more than any code does.** The
+  parameters are this document's own, from 9.2's arithmetic table, but an author's real curve would move
+  both numbers. That is the first thing to re-measure against a real pack.
+- **The engine's `IRandomSource` does not exist yet**, so the spike carries a local copy of the contracts
+  14.1 shape and a `SeededRandomSource` wrapping `DeterministicRng`. Nothing was added to
+  `KhaozEngine.Primitives`.
+- **SQL Server is unmeasured.** Budget 13 names both providers and the spike ran SQLite only.
 
 ## 17. Test plan
 

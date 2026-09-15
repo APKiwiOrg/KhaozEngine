@@ -468,10 +468,27 @@ for every field the type's rows carry:
 | Schema entry | Meaning |
 |---|---|
 | Name | The field name, under section 5.3's character rules, and the name section 12.1 derives a localization key from. |
-| Value kind | One of: int, scaled int with its scale (13.1), bool, key reference to a named content type, tag list (4.6), localized text key (section 12), asset reference (defined below), opaque bytes. |
+| Value kind | One of: int, scaled int with its scale (13.1), bool, key reference to a named content type, tag list (4.6), localized text key (a MARKER carrying no stored value, defined below), asset reference (defined below), opaque bytes. |
 | Reference target | For a key reference, the content type key it points at. For a tag list, that it is tags. Empty otherwise. |
 | Content visibility | `Client` or `ServerOnly`, per section 11, defaulting to the type's own default. |
 | Required | Whether a live row must carry a value. |
+
+**The `localized text key` kind is a MARKER. It carries NO value in the row and NO bytes in the chunk**,
+because the key is DERIVED at encode and at decode time from the type key, the content key and the field
+name, by section 12.1's concatenation. An authored override does not exist, and there is no place to put
+one.
+
+The entry is still in the schema because three readers need to know the field is there. The editor shows
+the derived key READ-ONLY beside the field, so an author sees exactly what a translator will be handed. The
+audit and the publish diff know the field exists, so a type gaining a text field is a visible schema change
+rather than a silent one. The text chunk builder of 12.4 knows which strings the ROW OWNS, which is how it
+decides what goes into each per-language chunk.
+
+The rationale for storing nothing is 12.1's, restated at the schema: an authored key rots independently of
+the row it names, and Grimhollow has two keys out of thirty-five that already dropped the underscore their
+item key carries, which is enough to force every downstream tool into a lookup where a concatenation would
+have done (`b-grimhollow.md:765-772`). A stored key would give every type that carries text its own copy of
+that failure, so the kind stores nothing and the derivation is the only path to a key.
 
 **The `asset reference` kind is a varint length followed by that many UTF-8 bytes**, character set `a-z`,
 `0-9`, `_`, `.`, `/` and `-`, at most 128 bytes. It is never a content key and it is never localized. It

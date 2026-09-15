@@ -2127,7 +2127,8 @@ merged is not built any more, at a roll or at boot.
 The merge is 1,358 source entries per key and it does not get cheap: it was rewritten twice, to a
 branchless four cursor form, and stayed at about 10 ns an entry because the loop is a dependency chain
 and not arithmetic. A memo big enough to hide it is the 148 MB row. The overlap is 1,880,255 entries
-over the whole key space, 9.2 percent of the union's 18,485,478, at two bytes each.
+over the whole key space at two bytes each, which is 9.2 percent of the 20,365,733 entries those tables
+hold across every key and leaves a union of 18,485,478 the design never writes down.
 
 **The arithmetic, at the owner's scale of 50,000 bases and 2,000 mods**, measured against the synthetic
 set rather than estimated: 2,000 mods at 8 tiers and 5 tag weights each, 64 tags, 50 bands, 300 authored
@@ -2137,13 +2138,13 @@ tag signatures.
 |---|---|---|
 | Tag-kind-band table entries | 77,600 live tier weights, each in the 19 bands its gate spans | 1,475,105 |
 | Bytes at 8 per entry | `1,475,105 * 8` | **11.8 MB** |
-| Overlap entries | measured, 9.2 percent of the union | 1,880,255 |
+| Overlap entries | measured, 9.2 percent of what the tags' tables hold | 1,880,255 |
 | Bytes at 2 per entry, plus 120,000 headers at 12 | `1,880,255 * 2 + 1.44M` | **5.2 MB** |
 | Keys carrying a header | `300 signatures * 50 bands * 2 kinds * 4 tag positions` | 120,000 |
 | Base-derived memory | `50,000 * 8` for the signature intern | **400 KB** |
-| Build: the overlap pass | one merge per (signature, kind, band) over 20.4 million source entries | 288 ms |
+| Build: the overlap pass | one merge per (signature, kind, band) over 20.4 million source entries | 266 ms |
 
-**About 17 MB by the array sum and 24 MB as the heap reads it, built in 288 ms**, all three measured
+**About 17 MB by the array sum and 24 MB as the heap reads it, built in 266 ms**, all three measured
 (16.1), against budget 9's 40 MB and 500 ms. The number that matters for the SHAPE is the second to last
 row: 400 KB for fifty thousand bases. A base costs eight bytes because it never enters a table, only its
 tag list does. That is what makes the design survive the owner's "millions of owned items" over a large
@@ -3220,7 +3221,8 @@ from arithmetic already in this document or from the recorded journal baseline (
 1,000 players with no backpressure recorded, 42,365 bytes allocated per operation, `a-engine.md:607-641`).
 **That 698 is an OFFERED load that the store kept up with, not a ceiling it hit**, so it is a starting
 point for budget 13 rather than a limit anything here is measured against. Section 16.1 is where the
-last column came from, and it is also where the one budget that misses is written up.
+last column came from, and it is also where the one budget that MISSED, budget 5, is written up with
+what 9.2's revised table shape did to it.
 
 | # | Budget | Target | How measured | Measured |
 |---|---|---|---|---|
@@ -3228,11 +3230,11 @@ last column came from, and it is also where the one budget that misses is writte
 | 2 | Bytes per rare item, slot entry | at most 96 | the same, through 4.4 | **69 bytes, MEETS** |
 | 3 | Page commit size, 100 rares | at most 8 KB | encode a full page, count bytes | **6,908 bytes, MEETS** |
 | 4 | Write volume, 20 crafts in one held action | at most 20 KB and 1 commit | `--items` bench, sum `JournalCommit.OwnedByteCount` | **9,519 bytes in 1 commit, MEETS** |
-| 5 | Rare generation time | under 20 microseconds per item | `--items` bench, 1M generations, report p50 and p99 | **p50 47.8, p99 161.1 microseconds, MISSES** |
+| 5 | Rare generation time | under 20 microseconds per item | `--items` bench, 1M generations, report p50 and p99 | **p50 1.9, p99 5.8 microseconds, MEETS** |
 | 6 | Stat evaluation per attack | under 2 microseconds, 0 bytes allocated | evaluate one stat over 11 worn items with 6 affixes each | **444 ns, 0 bytes, MEETS** |
 | 7 | Container page sync size, cold open | at most 8 KB and 8 frames per page | encode and fragment a full page (7.5) | **6,943 bytes in 7 frames, MEETS** |
 | 8 | Steady-state sync after one craft | 1 frame, at most 96 bytes | the delta of 7.5 | **73 bytes in 1 frame, MEETS** |
-| 9 | Generator table build at 2,000 mods | under 500 ms, under 40 MB resident | build the 9.2 tables from a synthetic pack | **16 ms, 17.5 MB, MEETS** |
+| 9 | Generator table build at 2,000 mods | under 500 ms, under 40 MB resident | build the 9.2 tables from a synthetic pack | **266 ms, 24.1 MB, MEETS** |
 | 10 | Container load, 10 pages with a full remap pass | under 5 ms, under 200 KB allocated | `Load` over 10 pages and 200 rules | **0.27 ms, 0 bytes, MEETS** |
 | 11 | Ground instance bytes per viewer per second | at most 8 KB per second per viewer at 28 ground instances in interest | public view bytes times instances in interest divided by `TickSeconds` (7.4) | **6,720 bytes per second, MEETS** |
 | 12 | Resident page bytes at 1,000 logged-in players | under 250 MB | sum the decoded page bytes plus the admitted layer's two dictionaries, at a 1,000 stack bank each | **103.0 MB, MEETS** |
@@ -3249,14 +3251,18 @@ Where each number comes from, because a target with no derivation is a guess in 
   a craft that consumes a currency from a second page writes both, at `13.8 + 2.5 = 16.3` KB. An earlier
   draft targeted 16 KB off an 8.6 KB derivation that used the `item-generated` event size, which would
   have made the two-page case a failing budget for the wrong reason.
-- **5** is twenty draws and six passes over a few-hundred-entry array (9.4), which is hundreds of
-  nanoseconds of real work, budgeted at 20 microseconds so the answer is about the ALLOCATION and the
-  memo, not about the arithmetic.
+- **5** is twenty draws and, since the 9.2 revision, no pass over the candidate array at all: opening the
+  pool is eight scalar reads and a pick is a walk of at most four tag positions, a walk of the dead
+  entries behind the draw and a binary search. The 20 microseconds was set when the answer was expected
+  to be about allocation and a memo. It is now about neither, because there is no memo and the only
+  allocation is the payload.
 - **6** is the one that must be checked hardest. Eleven worn items times up to thirteen lines each is about
   140 lines, folded through 11.6's eight steps. Two microseconds is generous, and zero allocation is the
   binding half: an evaluation that allocates per attack is an evaluation that runs per attack.
-- **9** is 9.2's 1.7 million appends: 20 MB of tag-band tables plus a 9.8 MB memo is about 30 MB, and the
-  budget adds the build's transient arrays on top.
+- **9** is 9.2's two build passes: 1.5 million table entries at 8 bytes is 11.8 MB, the overlap pass adds
+  5.2 MB and is one merge per (signature, kind, band) over 20.4 million source entries, and the budget
+  adds the build's transient arrays on top. The overlap pass is where budget 5's old per roll merge
+  went, which is why this budget grew by an order of magnitude and budget 5 fell by a factor of 25.
 - **10** is 5.5's one pass over 10 pages with 200 rules, each rule a no-op on a page holding no reference.
 - **11** is the one the design introduces rather than inherits, and it is the cost of the tile serve being
   full state (7.4). A rare's PUBLIC view is its 58 byte payload less the four bytes of `OwnerOnly`
@@ -3298,7 +3304,7 @@ diff rather than an opinion. The 42,365 bytes per journal operation is the numbe
 and 10: every journal byte array is cloned on write and again on read (`JournalLimits.cs:107, 137`), so a
 page that doubles in size doubles two copies and not one.
 
-### 16.1 Stage 5 measurements
+### 16.1 Stage 5 measurements, and the budget 5 revision
 
 The last column is a full `--items` run in Release on a twelve core Apple silicon machine, .NET 10.0.12,
 seed 915, against synthetic content at the owner's scale: 2,000 mods with eight tiers and five tag
@@ -3317,6 +3323,18 @@ through the REAL journal, `SqliteMutationJournalStore` under `MutationJournalExe
 `JournalLimits.Maximum`, because a 6.9 KB page has to sit against the engine's own section cap rather
 than a benchmark-shaped one.
 
+**Budgets 5 and 9 are a SECOND run, after 9.2's table shape was revised.** Stage 5 measured budget 5 at
+p50 47.8 and p99 161.1 microseconds against a 20 microsecond target, wrote up the two causes, and left
+the table shape to the owner. 9.2 and 9.4 were then rewritten around that measurement, the spike was
+changed to match, and the whole suite was re-run on the same machine at the same seed. Budgets 5 and 9
+below are what the revision produced. Every other budget is the stage 5 number, re-confirmed by that
+same re-run to within its own noise: budget 6 read 430 ns against 444, budget 10 read 0.28 ms against
+0.27, budget 12 read 103.0 MB against 103.0, and the scale test read 53.0 bytes an instance against
+53.1. Two read further apart and neither is a code change. Budget 13 is store bound and load sensitive,
+reading 2,068 sustained against 2,097 and a p99 of 5.6 seconds against 9.5, and budget 3's GENERATED
+page reads 5,526 bytes against 5,524, because the revised draw resolves the same seeded stream onto
+different items. The checked in baseline JSON is the re-run.
+
 **How each one was measured.**
 
 - **1 and 2, 58 and 69 bytes.** The 3.8 PoE row, kinds 2, 5, 128, 130, 131, 132 and 134, encoded field by
@@ -3332,7 +3350,8 @@ than a benchmark-shaped one.
   answered `Applied`. 6.7's arithmetic said 9,440, and the difference is the 13 byte intent and the 58
   byte result, which that derivation did not count. The same twenty crafts as twenty commits are 142,120
   bytes, so coalescing is a factor of 14.9 on top of paging.
-- **5, p50 47.8 and p99 161.1 microseconds. MISSES**, and the write-up is below.
+- **5, p50 1.9 and p99 5.8 microseconds. MEETS**, ten times inside the target at the median, and the
+  write-up of what moved is below.
 - **6, 444 ns and zero bytes**, folding 143 lines on one stat, which is the worst case the derivation
   names. Zero allocation is the binding half and it holds: the read walks a per-stat inverted index of
   `int` offsets into one line array and allocates nothing at all. A cached read, which is what 11.5 says
@@ -3342,9 +3361,12 @@ than a benchmark-shaped one.
   `ceil(6900 / 1015)` predicted.
 - **8, 73 bytes in one frame**, which is 7.5's own count. Fourteen changed rare slots fit one frame and
   the fifteenth does not, which is what 7.5 claims and what test 17 pins.
-- **9, 16 ms and 17.5 MB resident** for 1,521,885 tag-band entries over 64 tags and 50 bands. Thirty times
-  inside the time budget and at half the memory. 9.2's estimate of 1.7 million entries and 20 MB was
-  close. The memo is not in that figure, because it is empty at boot and bounded at 4,096 entries after.
+- **9, 266 ms and 24.1 MB resident** for 1,475,105 tag-kind-band entries over 64 tags, two kinds and 50
+  bands, plus 1,880,255 overlap entries. The exact array sum is 16.3 MB and the heap-size delta is 24.1,
+  and the budget is read at the larger. Both halves are inside, at about half the time and 60 percent of
+  the memory. About 240 of the 266 ms is the overlap pass, measured against the same build with the pass
+  removed, which read 17 to 26 ms. Nothing is added to the figure after boot, because there is no cache:
+  this is the whole of what the generator holds, for the life of the process.
 - **10, 0.27 ms and ZERO bytes** for ten pages and 200 rules, against 5 ms and 200 KB. The no-rewrite case
   is a scan exactly as contracts 8.3 says: 8,729 reference ids visited per load, every one a dictionary
   miss, nothing re-encoded and nothing allocated. With 20 of the 200 rules hitting, so that most pages
@@ -3363,36 +3385,43 @@ than a benchmark-shaped one.
   Several million instances in memory is 150 MB of page blobs and no objects, which is the strongest
   evidence for 3.1's claim that an instance IS its slot entry.
 
-**Budget 5 misses, and there are two independent causes.**
+**Budget 5 met after the 9.2 revision, and both of stage 5's causes are gone rather than reduced.**
 
-At a hot set of 512 bases over 60 item levels, one million generations run at p50 47.8 and p99 161.1
-microseconds, mean 54.6, allocating 8,969 bytes each. Against a 20 microsecond target that is 2.4 times
-over at the median.
+At the same hot set of 512 bases over 60 item levels, one million generations run at p50 1.9 and p99 5.8
+microseconds, mean 2.1, allocating 68.8 bytes each. Against a 20 microsecond target that is ten times
+inside at the median and three times inside at the 99th. The two causes stage 5 recorded were these,
+and this is what the revision did to each.
 
-1. **The candidate pool is four times what the derivation assumed.** 9.4's cost note says "six passes over
-   a few-hundred-entry array". A few hundred is not what this document's own table shape produces: 16,000
-   tiers times five tag weights spread over 64 tags, with a tier live in about a third of 50 bands, puts
-   about 400 entries in each (tag, band) table, and a base carries two to four tags, so the merged pool is
-   1,480. The measured shape is 4,454 candidate visits per generation at 12.3 ns each, and that cost alone
-   is visible in isolation: with the memo warm, at 64 bases and 4 item levels and a 100 percent hit rate,
-   p50 is still 33.4 microseconds and allocation falls to 68 bytes.
-2. **The memo is an eighth of the key space it is asked to cover.** 4,096 entries keyed by (tag signature,
-   band) against 512 bases over 60 item levels hits 50.8 percent of the time, and a miss both re-merges
-   and allocates the merged array. That is where 8,969 bytes a generation comes from. 9.2 predicted this
-   in as many words and called a miss "microseconds", which the measurement agrees with. What it did not
-   price is a miss rate of one in two.
+1. **The candidate pool is not walked, by anything.** Stage 5 measured 4,454 candidate visits per
+   generation at 12.3 ns each, because every pick made a filtering pass over the merged pool. A pick now
+   walks at most four tag positions, walks the dead entries that sit behind its draw, and binary searches
+   about ten steps. The measured walk is **35.8 dead entries per generation**, which is the suppressed
+   and excluded set rather than the pool, and it does not grow when the pool does. The live pool is
+   1,377 candidates, almost exactly stage 5's 1,480 less the legacy tiers the tables no longer carry, so
+   the pool did not shrink: it stopped being read.
+2. **The memo is gone with the merge it cached.** 8,969 bytes a generation became **68.8**, which is the
+   payload buffer and nothing else. There is no hit rate to report because there is no cache: the
+   coldest access pattern the tables can be given, a different tag signature and band on every roll over
+   the whole 50,000 base catalog, reads p50 2.0 and p99 5.8, inside the hot set's own numbers.
 
-**And the measured item is not the budget's item.** The synthetic rarity weights roll a mean of 3.01
-affixes. A six affix rare walks the pool six times rather than three, so by the same 12.3 ns per visit it
-costs about 109 microseconds. The budget's own worked example is the six affix case, so the honest
-reading of budget 5 is that a six affix rare is about five times its target, not 2.4 times.
+**The measured item is now the budget's item as well.** Stage 5 noted that the synthetic rarity weights
+roll a mean of 3.01 affixes while the budget's worked example is a six affix rare, and priced that item
+at about 109 microseconds by arithmetic. The run now forces the top rarity too, which rolls 4 to 6
+affixes at a mean of 5.00, and measures it: **p50 2.9, p99 7.5, mean 3.4 microseconds**. A dense rare is
+about 1.6 times a typical one rather than 3.6 times its target.
 
-Nothing in that is a coding accident, and the spike deliberately did not optimise its way out: folding
-`kind` and `legacy` into the table entry, widening it from 12 bytes to 16, would remove three
-data-dependent array reads per candidate visit, and splitting each (tag, band) table by mod kind would
-halve the pass. Both are table shape changes with a memory cost, which makes them 9.2's decision rather
-than an implementation detail. The orchestrator decides whether the target moves, the table shape moves,
-or both.
+**What it cost, so the trade is on the record.** Budget 9's build went from 16 ms to 266 ms and its
+memory from 17.5 MB to 24.1 MB. That is the same merge stage 5 measured, moved from once per roll to
+once per (tag signature, kind, band) at boot: 15,000 keys, 20.4 million source entries, run through the
+same four cursor scan. The exchange rate is the point. One million rolls at stage 5's median spent 47.8
+seconds in that merge, and the whole boot pass costs 0.25 of one second, once.
+
+**Two checks ride with the numbers, because a wrong weight is silent.** The run validates 100,000
+generated items against the properties the old per pick filter enforced (no mod twice, no exclusivity
+group twice, no legacy mod, every tier inside its own level gate, and the per kind caps) and reports
+**zero violations**. The build compares the merged count and weight it computes along the overlap pass
+against the count and weight the suppression scalars imply, for every one of the 15,000 keys, and
+reports **zero disagreements**. Both are in the baseline JSON.
 
 **Budget 13 meets its offered half, and the number it was written to find is 2,097 per second.**
 
@@ -3413,14 +3442,13 @@ second for 60 seconds. SQLite accepted 2,207 and committed 2,097 of them, refuse
   SQL Server is still unmeasured, which is budget 13's other half and is not something this spike could
   answer without an instance to point at.
 
-**The misses, plainly.**
+**The misses, plainly: none.**
 
-- **Budget 5, rare generation time.** Target under 20 microseconds per item. Measured p50 47.8 and p99
-  161.1 at the hot set, p50 33.4 with a perfectly warm memo, and about 109 by arithmetic at the six affix
-  item the budget's derivation describes.
-
-Nothing else misses. Budgets 1, 2, 3, 4, 6, 7, 8, 9, 10, 11 and 12 meet their targets, and budget 13 meets
-the offered half it can meet.
+Budgets 1 through 12 meet their targets, and budget 13 meets the offered half it can meet. Budget 5 was
+the one that missed at stage 5 and it is met by the 9.2 revision rather than by a target that moved: the
+20 microseconds is the number the owner's item 13 asked for, unchanged. What is still open is budget
+13's other half, which is SQL Server, and it is open for want of an instance rather than for want of a
+measurement.
 
 **Every approximation, so none of them has to be inferred.**
 
@@ -3442,12 +3470,16 @@ the offered half it can meet.
 - **Budget 13's latency includes queueing.** It is measured from `Submit` to the completion being
   dequeued, which is what a consumer waits, not what the store's own commit takes. A refused submission is
   DROPPED and never retried, which is what 16 says a consumer must do on `Backpressure`.
-- **The generator precomputes its rare name weights per tag signature**, memoized exactly as 9.2's mod
-  merge is. Step 10 of 9.4 does not say whether those weights are precomputed, and doing it per roll over
-  200 words would have added cost this document never asked for.
+- **The generator precomputes its rare name weights per tag signature** and memoizes them, which is the
+  one memo left in the spike and is not the mod merge's: that one is gone with the 9.2 revision. Step 10
+  of 9.4 does not say whether those weights are precomputed, and doing it per roll over 200 words would
+  have added cost this document never asked for. At 300 signatures the memo covers its whole key space,
+  so it misses 300 times in a run and never again.
 - **The content set is synthetic and its shape drives budgets 5 and 9 more than any code does.** The
   parameters are this document's own, from 9.2's arithmetic table, but an author's real curve would move
-  both numbers. That is the first thing to re-measure against a real pack.
+  both numbers. That is the first thing to re-measure against a real pack, and budget 9 is now the
+  sensitive one: its overlap pass is one merge per (tag signature, kind, band), so a pack with three
+  times the authored tag signatures pays three times the boot, while budget 5 does not move at all.
 - **The engine's `IRandomSource` does not exist yet**, so the spike carries a local copy of the contracts
   14.1 shape and a `SeededRandomSource` wrapping `DeterministicRng`. Nothing was added to
   `KhaozEngine.Primitives`.

@@ -1026,3 +1026,244 @@ The arithmetic that justifies the section, using 3.8's 69 byte entry and 5.4's 6
 Twenty crafts go from 1,380 KB and twenty commits to 7.7 KB and one, a factor of about 180 on bytes and
 20 on commits. The 7.7 KB is one 6.9 KB page plus twenty events of about forty bytes. Section 16 turns
 those into measured budgets.
+
+## 7. Ground items and the network
+
+### 7.1 What exists
+
+`TileGroundItem` is five raw ints, `ItemId`, `Count`, `X`, `Z`, `Plane`, whose remark is explicit that it
+is "two meaning-free integers rather than a dependency on `KhaozEngine.Items`"
+(`TileGroundItem.cs:7-12`). Its codec writes twenty bytes with no length prefix and nothing declared,
+and its reader CLAMPS a non-positive count rather than rejecting, on the stated grounds that every bit
+pattern is a meaningful id to some world (`TileProtocol.Components.cs:321-344`). It is registered as
+extension type id `FirstExtensionTypeId + 5` (`TileProtocol.Components.cs:33`, `:122`).
+
+`SpawnGroundItem(TileCoord at, int itemId, int count, long ttlTicks)` throws on a caller bug, answers 0
+on a full cell, allocates a net id, seats the component and marks the entity
+`Transient { Scope = TransientScope.DurableOnly }` (`TileWorldServer.GroundItems.cs:62-98`).
+`DespawnGroundItem` is idempotent by answer, which is the engine's existing anti-duplication rule for
+pickup (`TileWorldServer.GroundItems.cs:113-118`).
+
+The game message cap is `TileProtocol.MaxGameMessageBytes = 1024`, the encoder THROWS above it and the
+decoder REFUSES (`TileProtocol.Frames.cs:65`, `:173-174`, `:211`). There is no fragmentation or
+reassembly anywhere in the tile netcode, verified by grep (`a-engine.md:818-838`). The single precedent
+for a larger logical payload is hand-rolled application-level chunking on the reliable ordered channel,
+done once for combat events (`TileWorldServer.Tick.cs:241-259`).
+
+### 7.2 Where the instance rides: a sibling component
+
+| Criterion (1 to 10) | Widen `TileGroundItem` | Sibling `TileGroundItemInstance` |
+|---|---|---|
+| Wire cost for a plain drop, which is almost every drop | 4 | 10 |
+| An already-shipped client keeps decoding | 1 | 10 |
+| `TryGetGroundItem`'s signature and meaning survive | 3 | 9 |
+| The codec's no-length-prefix property survives | 2 | 8 |
+| One place a reader looks for a drop | 8 | 6 |
+| A spawn with no instance allocates nothing | 8 | 10 |
+| Total | 26 | 53 |
+
+**Recommendation: a sibling, `TileGroundItemInstance`.**
+
+The deciding row is the second and it is not a preference. `WriteGroundItem` writes exactly twenty bytes
+with no declared length, so a reader built against today's protocol consumes twenty bytes and then reads
+the next component's type id. Adding a field to that component makes every already-shipped client
+misparse the rest of the entity. A sibling is a NEW extension type id, and `SnapshotWriter` length
+prefixes extension components precisely so an older client can skip an id it never registered
+(`SnapshotWriter.cs:11-13`), so an old client skips it for free and a new one reads it.
+
+```csharp
+public struct TileGroundItemInstance : IComponent
+{
+    public long InstanceId;     // 0 is never seated: a drop with no instance carries no component
+    public byte[] Payload;      // the PUBLIC view, see 7.4. Never mutated in place
+}
+```
+
+Registered at `FirstExtensionTypeId + 8` on the default channels, with a write delegate that writes the
+id as an unsigned varint and the payload length prefixed, and a read delegate that is TOTAL: a declared
+length longer than the frame, or longer than `MaxInstancePayloadBytes`, answers a zero length payload
+rather than throwing, following the file's own rule that every frame decoder is total because the bytes
+come from a remote peer (`TileProtocol.Frames.cs:27-34`).
+
+**The component carries no dependency on `KhaozEngine.ItemInstances`.** It holds an opaque `long` and
+opaque bytes, exactly as `TileGroundItem` holds an opaque `int`. The tile netcode still does not know
+what an item is.
+
+### 7.3 Spawning, the durable event, and the claim
+
+**`SpawnGroundItem` gains ONE overload** and the existing one delegates to it with instance id 0 and an
+empty payload, so no existing call site changes:
+
+```csharp
+public long SpawnGroundItem(TileCoord at, int itemId, int count, long ttlTicks,
+                            long instanceId, ReadOnlySpan<byte> payload);
+```
+
+It throws on a payload longer than `MaxInstancePayloadBytes`, and on a non-empty payload with instance
+id 0, because both are caller bugs in the same class as the existing non-positive count throw
+(`TileWorldServer.GroundItems.cs:64-69`). The engine does not decode the payload: the bytes came from
+the server's own container, and the server is the only thing that ever writes them (15.3).
+
+**The durable half is the region ground stream**, which Grimhollow's item-drop design lands FIRST (gate
+0 decision 12). That design puts a drop on `grimhollow/loot/hollowmere/ground/{rx}_{rz}` as one atomic
+commit across the player's `bag-replaced` and one `loot-created` per ground stack, with claims and
+expiry on the paths goblin loot already uses (`ITEM-DROP-DESIGN-2026-09-14.md` section 5). Contracts 6.6
+binds the instance to that event. The `loot-created` payload therefore gains four fields:
+
+```
+[InstanceId: varint uint64]
+[PayloadLength: varint int32]
+[Payload: PayloadLength bytes]        // the FULL payload, not the public view
+[ContentVersion: varint int32]        // the stamp, see below
+```
+
+**The FULL payload is what is durable** (contracts 6.6: "What is durable is the whole payload"). Only
+the replicated component carries the filtered view. **And the event carries a content version stamp**,
+which the contract does not say in as many words and which follows from 7.2 of it: a ground stack can
+sit on a region stream across a server restart and a content publish, so it is a durable record carrying
+content ids and it stamps the version it was last brought up to date with. Without the stamp a claim
+after a publish would have no way to know which remap rules to apply to the payload it is about to move
+into a page.
+
+**A claim MOVES the same instance id** (contracts 6.6). The `loot-claim` operation is one commit across
+the loot source stream and the player stream, and the page write seats the SAME instance id and the same
+payload bytes into the claimant's container. It does not mint a new id, and the claimant is not special
+cased, so a dropper reclaiming their own drop takes the same path a stranger does. Identity therefore
+survives a drop and a pickup, which is what stops a drop-and-claim cycle from laundering an item.
+
+**A contested claim sets `PresentAtCommit`.** The journal design names a contested loot claim as one of
+the two cases for it (`JournalCommit.cs:56-62`), and Grimhollow sets it nowhere today
+(`b-grimhollow.md:618-639`). Section 18 carries that as an adoption item.
+
+### 7.4 Per-viewer visibility
+
+Contracts 11.2 sets the RULE and leaves the mechanism to this spec: a viewer receives a field if and only
+if its kind's visibility is at or below the viewer's level for that item, tooltips use the SAME function,
+and nothing is ever `ServerOnly` on the wire. The engine has no mechanism at all today: every filter is
+per ENTITY, a `HashSet<long>` of net ids handed to `SnapshotWriter.WriteFiltered`
+(`SnapshotWriter.cs:43`), and the component write delegates registered at `TileProtocol.Components.cs:122`
+take `(value, BinaryWriter)` with NO viewer argument.
+
+There is one existing per-recipient mechanism and it does not fit. `ReplicationChannels.OwnerOnly` scopes
+a component to the client whose OWN net id equals the ENTITY's net id
+(`ReplicationChannels.cs:49-53`, `ReplicationRegistry.cs:187-195`). A ground drop's entity is the drop,
+whose net id is never a viewer's, so registering the sibling component `OwnerOnly` would hide it from
+everyone including the person who dropped it. It works for a component on a PLAYER's own entity and for
+nothing else.
+
+| Criterion (1 to 10) | a: viewer-aware write delegate | b: per-viewer projection before the writer | c: public component plus a targeted owner message |
+|---|---|---|---|
+| `ServerReplicator` keeps its ONE shared capture across viewers | 2 | 4 | 10 |
+| Engine API change size | 4 | 5 | 9 |
+| One rule and one function, per contracts 11.2 | 9 | 9 | 8 |
+| Cost per viewer per tick | 4 | 3 | 9 |
+| Works for a ground drop, where the entity is not the viewer | 9 | 9 | 9 |
+| Works for an equipped item on another player | 9 | 9 | 8 |
+| Client complexity | 9 | 9 | 6 |
+| Total | 46 | 48 | 59 |
+
+**Recommendation: c.** The replicated component carries the PUBLIC VIEW of the payload, computed once
+when the item changes rather than once per viewer, and the owner-only remainder rides a targeted game
+message to the one viewer entitled to it.
+
+The deciding row is the first. `ServerReplicator` and `AoiDeltaReplicator` build ONE capture of the world
+and owner-scope it per client afterwards (`ServerReplicator.cs:155`, `AoiDeltaReplicator.cs:119`), and a
+viewer-aware write delegate would make the capture unshareable, turning the delta path's cost from
+O(world) plus O(viewers times changed) into O(viewers times world). Paying that on every tick of every
+server to avoid a targeted message for a case that arises when an owner looks at their own item is the
+wrong trade.
+
+The second row matters too. Option c needs no engine API change at all: the targeted message is exactly
+the shape `SendCombatTo(slot, interest)` already is, a second non-snapshot per-viewer filtered send driven
+off the same interest set (`TileWorldServer.Tick.cs:248-259`), and `PickupState.OwnerNetId` is the
+existing precedent for the engine owning the TAG and not the RULE.
+
+**`ItemInstanceVisibility.PublicView(payload, kinds)` is the one function**, and it is a forward pass that
+copies the RETAINED RUNS of the input. Because fields are already ascending and each is length prefixed,
+a filtered payload is a sequence of memcpy calls over contiguous ranges with no decode, no re-sort and no
+allocation beyond the output. That is why 3.3 declines contracts 11.2's optional coupling of kind ids to
+visibility: the coupling would buy a single memcpy instead of two or three, forever, in exchange for
+constraining every future kind assignment.
+
+The same function answers the tooltip. A tooltip builder that computed its own answer is how a client
+eventually renders something the server never sent, so `CanSee` (12.5) is called by the replication
+filter and by the tooltip builder and by nothing else, and 17.9 is the test that proves the two agree.
+
+### 7.5 Page sync over the wire
+
+A 100 slot page of rares is about 6.9 KB (3.8), which is 6.7 times the 1,024 byte game message cap. Sizing
+pages to fit one frame is not an option and the arithmetic says why: at 69 bytes an entry, a frame holds
+fourteen entries, so a 1,000 slot bank would need 72 pages and blow the 64 section per stream cap (5.4).
+So the page must fragment.
+
+| Criterion (1 to 10) | 1: fragmented reliable stream | 3: per-slot deltas | 4: an HTTP side channel |
+|---|---|---|---|
+| Cold open of a 1,000 stack bank | 8 | 3 | 9 |
+| Steady state after one craft | 4 | 10 | 2 |
+| Resync after a `JournalCorrection` | 9 | 4 | 7 |
+| Rides the existing reliable ordered channel | 9 | 10 | 1 |
+| New engine machinery | 5 | 7 | 2 |
+| Client complexity | 6 | 5 | 3 |
+| Total | 41 | 39 | 24 |
+
+**Recommendation: 1 and 3 together, because they are not alternatives.** The fragmenter is the FLOOR: a
+cold open and a correction resync both need to send a whole page, and a delta cannot express "this page is
+now these bytes". The delta is the OPTIMISATION that makes the steady state one frame: after a craft, the
+client needs one slot, not 6.9 KB. Building only the fragmenter would make every craft a seven frame burst.
+Building only the delta would leave no way to open a bank.
+
+Option 4 is scored and dismissed for one reason beyond its total: it is a second transport with a second
+auth story for data the reliable ordered channel already carries correctly, and Scope A needs an HTTP pack
+fetch anyway (#882 comment 1), so the temptation to reuse it here is exactly the kind of coupling that
+makes an outage in one take out the other.
+
+**`TileFragmentedMessage`, in `KhaozEngine.TileWorld.Netcode`, is item-agnostic.** It fragments any
+`ReadOnlySpan<byte>` into game messages and reassembles them, and it knows nothing about items. That is
+both correct layering and the right shape for the engine, which has no fragmentation layer at all today
+and will want one again.
+
+```
+[StreamId: byte]        // which logical stream, the game assigns these
+[Sequence: uint16 LE]   // increments per transmission of that stream, wraps
+[ChunkIndex: byte]
+[ChunkCount: byte]      // 1 to 255
+[Bytes: the rest]
+```
+
+Five bytes of header. The envelope is `[tag:1][kind:ushort 2][flags:1]`
+(`TileProtocol.Frames.cs:77`), so a chunk carries `1024 - 4 - 5 = 1015` payload bytes and 255 chunks
+carry 258 KB, which is forty times the largest page and five times the worst case page of 5.4.
+
+Reassembly rules, all on the client:
+
+1. The channel is `ReliableOrdered`, so a chunk cannot arrive out of order or be lost without the
+   connection failing. The reassembler therefore checks for CONSISTENCY rather than reordering: a chunk
+   whose `Sequence` differs from the assembly in progress DISCARDS that assembly and starts a new one,
+   which is what a server restarting a page mid-transmission looks like.
+2. At most four partial assemblies are held at once. A fifth evicts the oldest and increments a counter.
+   That is a bounded-memory rule rather than a timer, because a timer on a reliable ordered channel
+   measures nothing.
+3. On the last chunk, the assembled bytes go through the SAME decoder the server encoded with, and a
+   failure quarantines rather than throwing (12.4). A client that trusted its own reassembly would draw a
+   bank from bytes nothing validated.
+4. A partial assembly still open when the connection drops is discarded with the connection.
+
+**The delta message** is one frame and names slots rather than pages:
+
+```
+[ContainerId: byte][PageIndex: byte][ChangedCount: byte]
+[ per change: [Slot: varint uint16] then either
+              [0x00] for "now empty"
+              or [0x01] then the entry body of 4.4 without its Slot field ]
+```
+
+A single crafted rare changes one slot, so a craft costs `3 + 1 + 1 + 68 = 73` bytes and one frame. A
+delta names the page it applies to, and the client REFUSES a delta for a page it has not fully received,
+asking for a full page sync instead, so a delta can never be applied to bytes the client guessed at.
+
+### 7.6 The ground item message vocabulary
+
+Only one new client-to-server message is needed and it carries no bytes about an item's properties: the
+take request already names the drop by net id and its durable source id
+(`b-grimhollow.md:975-990`). That is 15.3's invariant in practice: **no client-to-server message in this
+design carries an instance payload, and every one of them names an item by id.**

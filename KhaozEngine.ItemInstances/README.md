@@ -147,12 +147,66 @@ sit in different sockets do NOT stack, and that is correct, because they are dif
 | `IsCanonical(...)` | the same as a bool, and the registry-free overload is the shape `ItemContainer`'s door predicate takes. That overload is STRUCTURAL: it reads no field body, so it never recurses into a nested payload, and a host wanting the per-kind checks at the container door passes a registry-bound predicate instead |
 | `SequenceEqual(left, right)` | the stacking rule, a byte compare, because the encoding is canonical |
 | `Encode(builder, destination)` | writes a builder's fields out and answers the bytes written |
-| `PublicView(...)` | a STUB in phase 1 that returns the whole payload. The visibility rule lands with the wire |
+| `PublicView(registry, payload, level, identified, revealedMask, destination)` | the payload one viewer may see. It DELEGATES to `ItemInstanceVisibility` rather than repeating the rule |
 
 A decode hands back `PayloadField` positions rather than copies, so an unknown kind is kept verbatim by
 construction and nothing on the read path copies a body to look at it. `MaxInstancePayloadBytes` is the cap,
 which is `ItemSlot.MaxPayloadBytes` rather than a second copy of it, and `MaxFields` is the most fields a
 legal payload can hold, which is what a caller sizes its `PayloadField` span to.
+
+## Visibility: one `CanSee`, two projections
+
+`ItemInstanceVisibility` holds the only function in the engine answering "may this viewer see this field".
+The replication filter calls it and the tooltip builder calls it, and nothing else does. A tooltip that
+computed its own answer is how a client eventually renders something the server never sent, so the one
+function is a call-site constraint rather than a convenience.
+
+| Member | Answers |
+|---|---|
+| `CanSee(kind, viewerLevel, identified, revealedMask)` | the rule, over a registration the caller already holds, which is the replication filter's door |
+| `CanSee(registry, kind, viewerLevel, identified, revealedMask)` | the same rule reached by kind id, which is the tooltip builder's door |
+| `PublicView(registry, payload, level, identified, revealedMask, destination)` | the payload one viewer may see, as bytes written into the caller's span |
+| `OwnerRemainder(registry, payload, identified, revealedMask, destination)` | the exact complement of `PublicView` at `Everyone`, which is what the targeted owner message carries |
+
+**The rule, in order.** `ServerOnly` is never visible to anyone. `OwnerOnly` is visible when the viewer
+level is `OwnerOnly`. `Everyone` is visible always. THEN, and only then, the identification gate: a kind
+registered with an `identificationMaskBit` is hidden while the item is unidentified and its bit in the
+revealed mask is clear, EVEN FROM THE OWNER. That last clause is why unidentified is a mechanic rather than
+a fourth visibility level, and it is the whole of the partial reveal: a primitive that sets one bit uncovers
+one field, with no format change.
+
+Two things fail CLOSED and both are deliberate. A viewer level of `ServerOnly` sees nothing, because a
+viewer has two levels (`Everyone`, and `OwnerOnly` for the item it owns) and `ServerOnly` is a level a KIND
+carries. And an UNREGISTERED kind is visible to nobody, because the rule is an if and only if over the
+kind's registered visibility and a kind this process cannot classify may well be `ServerOnly` in the build
+that wrote it. That is about a projection only: an unknown kind is still kept verbatim in storage and still
+survives a decode and rebuild untouched.
+
+**Both projections are a forward pass over the RETAINED RUNS of the input.** Fields are already ascending
+and each is length prefixed, so a filtered payload is a sequence of copies over contiguous ranges with no
+decode into values, no re-sort and no allocation beyond the destination span. The levels are deliberately
+not monotonic in the kind id (kinds 4, 5 and 6 are owner-only while 7 and 8 are public), so the run walk is
+the only correct shape, and that is the measurement behind declining to couple kind ids to visibility. The
+output is canonical and decodes, because what is left is still a subsequence of an ascending,
+duplicate-free, minimally encoded list. A destination as long as the payload always suffices, and a
+destination that is too short answers `-1` with nothing written rather than a truncated view.
+
+The revealed mask is a `ulong` on every member here. Kind 128's mask is a varint and the shape walk reads a
+varint at the full 64 bits, so taking a `uint` would force a narrowing at some call site. Bits above
+`InstancePropertyRegistry.MaxIdentificationMaskBit` gate nothing, because the registry refuses to register
+one.
+
+**A GROUND item has no owner, and that is a rule rather than an omission.** A drop's entity is the drop,
+whose net id is nobody's, so there is no viewer this design calls the owner of a ground stack. A ground
+item's public view is `PublicView` at `Everyone` and there is NO owner remainder for a drop. Kind 6
+`BoundTo` is owner-only, so it is stripped before the sibling component is written and a passer-by cannot
+read who a dropped item is bound to, which is a fact about a PLAYER rather than about an item. Kinds 4 and 5
+go with it, which is why the 58 byte reference rare replicates as 54 bytes on the ground: it carries one of
+the three owner-only kinds, kind 5 durability, whose whole field is four bytes.
+
+The owner remainder's BYTES live here, beside the projection they complement, so the two cannot disagree.
+The MESSAGE KIND stays the game's, because `TileProtocol` reserves the `ushort` kind space to the game and
+the engine only caps the frame.
 
 ## Refusals: one closed set per layer
 
@@ -441,6 +495,64 @@ produces. Nothing counts an abandoned entry yet
 ([#931](https://github.com/APKiwiOrg/KhaozEngine/issues/931)), bringing a quarantined one back is the load
 path's unwrap step ([#929](https://github.com/APKiwiOrg/KhaozEngine/issues/929)), and a game kind with its own
 sorted list cannot ask for the re-sort ([#930](https://github.com/APKiwiOrg/KhaozEngine/issues/930)).
+## The page delta and the resync request
+
+`ContainerPageDelta` is the one frame message that says which slots of one page changed and what they hold
+now, so a craft costs 73 bytes rather than a 6.9 KB page. It is the OPTIMISATION beside the fragmenter of
+`KhaozEngine.TileWorld.Netcode`, not an alternative to it: a cold open and a correction resync both have to
+send a whole page, and a delta cannot express "this page is now these bytes".
+
+```
+[ContainerId: byte][PageIndex: byte][ChangedCount: byte]
+
+then ChangedCount changes, strictly ascending by slot:
+[Slot - FirstSlot: varint] then either
+  [0x00]                       the slot is now empty
+  [0x01][the entry body]       the 4.4 entry WITHOUT its slot field, projected for this viewer
+```
+
+**It MEASURES as it writes and ABANDONS rather than truncates.** Nothing bounds how many slots one operation
+changes, so a sort over a hundred slot page produces a delta many times the frame cap. That is not a
+truncated message, it is a THROW out of the per-viewer serve loop, which takes the tick down for every player
+on the server. So `TryBuild` answers the bytes written, or `-1` when the next change would not fit, and `-1`
+means the caller sends the WHOLE PAGE through the fragmenter. Never a second delta frame: two deltas for one
+page would have to be applied in order by a client that may have missed the first, which is the reassembly
+problem the fragmenter already solves once.
+
+- The budget is `MaxChangeBytes`, 1,017: the 1,024 byte frame cap less the four byte game message envelope
+  less the delta's own three byte header. A changed rare slot costs 70 bytes, so FOURTEEN fit in one frame
+  and the fifteenth does not. An emptied slot costs two or three, so bytes are not what binds there and
+  `MaxChanges` is, at the 255 a byte count field holds.
+- The frame cap is COPIED rather than referenced, because `TileProtocol` is a Server package and this one is
+  Foundation. `PageSyncFrameBoundTests` in `KhaozEngine.TileWorld.Netcode.Tests` is the one place that sees
+  both and holds the copy equal.
+- On `-1` the destination's contents are UNSPECIFIED, because the builder writes as it measures rather than
+  sizing twice. A short destination simply lowers the budget, so it abandons early rather than overruns.
+- `WriteEntryBody` and `EntryBodySize` on `ItemContainerPageCodec` are what write the body, so the delta and
+  the page cannot come to write an entry differently.
+
+**The bodies are PER VIEWER, and there is one door.** `TryBuild` takes the viewer's level and each change
+takes the item's identification state, and every payload goes through `ItemInstanceVisibility.PublicView`
+before it is written. A caller cannot build a delta that skipped the filter, which is the point: an
+owner-only field reaches the owner and nobody else. The same change to the same rare is 73 bytes to the
+owner and 69 to everyone else, and the four bytes are the durability field. A payload that does not project
+carries NO bytes, which is the same fail-closed direction an unregistered kind takes, and which is what a
+quarantine wrapper hits by construction.
+
+`ContainerPageSyncRequest` is the other half and the ONE new client-to-server message: two bytes,
+`[ContainerId][PageIndex]`, carrying nothing about an item's properties. It is what the client sends when it
+cannot apply a delta, and what it sends for each page a journal correction named.
+
+- **A client REFUSES a delta for a page it has not fully received** and sends this instead, so a delta is
+  never applied to bytes the client guessed at.
+- **On the last chunk of a fragmented page the assembled bytes go through the SAME decoder the server encoded
+  with**, `ItemContainerPageCodec.TryDecode`, and a failure quarantines rather than throwing. A client that
+  trusted its own reassembly would draw a bank from bytes nothing validated.
+- **The server rate limits this at ONE PAGE PER CLIENT PER TICK.** That is a documented server rule rather
+  than engine code, because the engine caps the frame while the game owns the message kinds and the tick. It
+  bounds the worst case a malicious client can ask for at one page of fragments per tick, the same shape the
+  snapshot already costs. A server that serves every request it receives has handed an unauthenticated peer
+  an amplifier: two bytes in, about 7 KB out, for as long as it cares to ask.
 
 ## The validator
 
@@ -558,7 +670,7 @@ data exists. What is absent is breadth, which is content.
 |---|---|
 | the container section naming (`<container>/p<NN>`) | `docs/superpowers/plans/2026-09-15-item-instances-phase2-3.md` |
 | the journal commit path (`ContainerCommitBuilder`) | the same plan |
-| the wire: the fragmenter, the ground component, the page delta, the owner remainder, and a real `PublicView` | the same plan |
+| the wire: the fragmenter and the ground component, which are the netcode package's | the same plan |
 | the affix content types and the item generator | spec 20 phase 4, gated on the authoring registry and publish path being real |
 | the crafting framework and the content stat evaluator | spec 20 phase 5 |
 

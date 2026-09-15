@@ -97,12 +97,26 @@ public static partial class ItemContainerPageCodec
     /// <param name="firstSlot">The page's first container slot, which the entry's slot is written relative to.</param>
     public static int EntrySize(in PageSlotInput entry, int firstSlot)
         => ContentVarint.Size((uint)(entry.Slot - firstSlot))
-            + ContentVarint.Size(entry.Flags)
-            + ContentVarint.Size((uint)entry.DefinitionId)
-            + ContentVarint.Size((uint)entry.Count)
-            + InstanceIdAllocator.SizeOf(entry.InstanceId)
-            + ContentVarint.Size((uint)entry.Payload.Length)
-            + entry.Payload.Length;
+            + EntryBodySize(entry.Flags, entry.DefinitionId, entry.Count, entry.InstanceId, entry.Payload.Length);
+
+    /// <summary>
+    /// The bytes one entry costs WITHOUT its slot field, which is what
+    /// <see cref="ContainerPageDelta"/> measures against its one frame budget: spec 7.5's delta carries "the
+    /// entry body of 4.4 without its Slot field", so the body is named here rather than re-derived there.
+    /// </summary>
+    /// <param name="flags">The entry flags. Bit 0 is quarantined.</param>
+    /// <param name="definitionId">The content definition.</param>
+    /// <param name="count">How many.</param>
+    /// <param name="instanceId">The durable instance id, 0 for a plain stack.</param>
+    /// <param name="payloadLength">The payload's length, which for a delta is the PROJECTED length rather
+    /// than the stored one, because a viewer receives the fields its level entitles it to (spec 7.4).</param>
+    public static int EntryBodySize(uint flags, int definitionId, int count, long instanceId, int payloadLength)
+        => ContentVarint.Size(flags)
+            + ContentVarint.Size((uint)definitionId)
+            + ContentVarint.Size((uint)count)
+            + InstanceIdAllocator.SizeOf(instanceId)
+            + ContentVarint.Size((uint)payloadLength)
+            + payloadLength;
 
     /// <summary>Encodes a page into a fresh array.</summary>
     /// <param name="pageIndex">Which page of the container this is. 0 for a whole container.</param>
@@ -164,13 +178,31 @@ public static partial class ItemContainerPageCodec
     public static int WriteEntry(Span<byte> destination, in PageSlotInput entry, int firstSlot)
     {
         int written = ContentVarint.Write(destination, (uint)(entry.Slot - firstSlot));
-        written += ContentVarint.Write(destination[written..], entry.Flags);
-        written += ContentVarint.Write(destination[written..], (uint)entry.DefinitionId);
-        written += ContentVarint.Write(destination[written..], (uint)entry.Count);
-        written += InstanceIdAllocator.WriteId(destination[written..], entry.InstanceId);
-        written += ContentVarint.Write(destination[written..], (uint)entry.Payload.Length);
-        entry.Payload.Span.CopyTo(destination[written..]);
-        return written + entry.Payload.Length;
+        return written + WriteEntryBody(
+            destination[written..], entry.Flags, entry.DefinitionId, entry.Count, entry.InstanceId, entry.Payload.Span);
+    }
+
+    /// <summary>
+    /// Writes one entry WITHOUT its slot field and answers the bytes written, which is the body spec 7.5's
+    /// delta carries. <see cref="WriteEntry"/> is the slot varint plus this, so the page and the delta cannot
+    /// come to write an entry differently.
+    /// </summary>
+    /// <param name="destination">At least <see cref="EntryBodySize"/> bytes.</param>
+    /// <param name="flags">The entry flags. Bit 0 is quarantined.</param>
+    /// <param name="definitionId">The content definition.</param>
+    /// <param name="count">How many.</param>
+    /// <param name="instanceId">The durable instance id, 0 for a plain stack.</param>
+    /// <param name="payload">The payload to write, which a delta hands in already projected for its viewer.</param>
+    public static int WriteEntryBody(
+        Span<byte> destination, uint flags, int definitionId, int count, long instanceId, ReadOnlySpan<byte> payload)
+    {
+        int written = ContentVarint.Write(destination, flags);
+        written += ContentVarint.Write(destination[written..], (uint)definitionId);
+        written += ContentVarint.Write(destination[written..], (uint)count);
+        written += InstanceIdAllocator.WriteId(destination[written..], instanceId);
+        written += ContentVarint.Write(destination[written..], (uint)payload.Length);
+        payload.CopyTo(destination[written..]);
+        return written + payload.Length;
     }
 
     /// <summary>

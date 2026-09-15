@@ -60,6 +60,36 @@ public sealed partial class TileWorldServer
     /// <param name="ttlTicks">Ticks until the server despawns it unprompted. At least 1.</param>
     /// <returns>The drop's net id, or 0 when the cell is full.</returns>
     public long SpawnGroundItem(TileCoord at, int itemId, int count, long ttlTicks)
+        => SpawnGroundItem(at, itemId, count, ttlTicks, instanceId: 0L, payload: default);
+
+    /// <summary>
+    /// Drops a stack carrying an item INSTANCE and returns its net id, or 0 when the destination cell is already
+    /// at its ground-item budget. Everything the four-argument overload says holds here too, and that overload
+    /// delegates to this one with no instance, so no existing call site changes.
+    /// <para>The instance is <see cref="TileGroundItemInstance"/>, seated beside
+    /// <see cref="TileGroundItem"/> only when <paramref name="instanceId"/> is non-zero. The engine does not
+    /// DECODE <paramref name="payload"/> and has no way to: the bytes came out of the server's own container and
+    /// the server is the only thing that ever writes them, which is what makes the whole class of "craft a
+    /// payload, send it, get the item" unreachable rather than mitigated. What the engine owns here is the same
+    /// thing it owns for a plain drop, existence, and the two throws below are the cap and the pairing.</para>
+    /// </summary>
+    /// <param name="at">The tile the drop sits on, as above.</param>
+    /// <param name="itemId">The game's item id. Opaque to the engine.</param>
+    /// <param name="count">How many ride the stack. At least 1.</param>
+    /// <param name="ttlTicks">Ticks until the server despawns it unprompted. At least 1.</param>
+    /// <param name="instanceId">The instance's identity, opaque to the engine. 0 means the drop has none, and a
+    /// drop with none carries no component at all.</param>
+    /// <param name="payload">The instance's public payload, opaque to the engine, at most
+    /// <see cref="TileProtocol.MaxInstancePayloadBytes"/> bytes. Copied, so a caller may reuse its buffer.</param>
+    /// <returns>The drop's net id, or 0 when the cell is full.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="payload"/> is over
+    /// <see cref="TileProtocol.MaxInstancePayloadBytes"/>, or <paramref name="count"/> or
+    /// <paramref name="ttlTicks"/> is non-positive.</exception>
+    /// <exception cref="ArgumentException"><paramref name="payload"/> is non-empty while
+    /// <paramref name="instanceId"/> is 0, which would drop the bytes on the floor: nothing replicates them and
+    /// nothing can ever ask for them again.</exception>
+    public long SpawnGroundItem(TileCoord at, int itemId, int count, long ttlTicks,
+        long instanceId, ReadOnlySpan<byte> payload)
     {
         if (count <= 0)
             throw new ArgumentOutOfRangeException(nameof(count), count,
@@ -67,6 +97,16 @@ public sealed partial class TileWorldServer
         if (ttlTicks <= 0)
             throw new ArgumentOutOfRangeException(nameof(ttlTicks), ttlTicks,
                 "A ground item lives at least one tick: born expired is a caller bug.");
+        // Both are caller bugs in the class the two above are in, so both get a stack trace rather than a
+        // refusal a tick has to survive. The cap first: no encoder on this wire emits a longer payload and every
+        // reader refuses one, so a drop over it would replicate as an instance with nothing in it.
+        if (payload.Length > TileProtocol.MaxInstancePayloadBytes)
+            throw new ArgumentOutOfRangeException(nameof(payload), payload.Length,
+                $"An item instance payload is capped at {TileProtocol.MaxInstancePayloadBytes} bytes.");
+        if (payload.Length > 0 && instanceId == 0L)
+            throw new ArgumentException(
+                "A payload with instance id 0 is a caller bug: 0 means the drop has no instance, so no component " +
+                "is seated and the bytes would be dropped on the floor.", nameof(instanceId));
         // The same door a spawned state goes through, used for its throws alone: a bad plane or an unloaded
         // region must fail the caller loudly, and this is the one validator that knows both.
         ValidatePlayerState(TileMoveState.At(at, TileDirection.S));
@@ -88,6 +128,15 @@ public sealed partial class TileWorldServer
             Z = at.Z,
             Plane = at.Plane,
         });
+        // Seated ONLY when there is an instance, so the drop a kill usually leaves behind carries no component
+        // and costs nothing on the wire. The copy is deliberate: the component holds the bytes for as long as the
+        // drop lies there, and a caller that reused its buffer afterwards would be editing a live drop.
+        if (instanceId != 0L)
+            cell.World.Set(e, new TileGroundItemInstance
+            {
+                InstanceId = instanceId,
+                Payload = payload.ToArray(),
+            });
         // The actor's scope for the actor's reason: a drop has nothing worth persisting, while an in-process
         // cell eviction and a route back should hand back the same entity under the same net id.
         cell.World.Set(e, new Transient { Scope = TransientScope.DurableOnly });
@@ -108,6 +157,25 @@ public sealed partial class TileWorldServer
             && host.TryGetOwner(netId, out CellSim cell, out Entity e)
             && cell.World.IsAlive(e)
             && cell.World.TryGet(e, out item);
+    }
+
+    /// <summary>A live drop's INSTANCE, by net id, and the read a claim carries the identity through: a game's
+    /// take handler asks this beside <see cref="TryGetGroundItem"/>, moves both into its own storage, and then
+    /// despawns. The same id and the same bytes come out as went in, whoever is claiming, because the engine has
+    /// no claimant to special case and never mints an id of its own. That is what stops a drop-and-claim cycle
+    /// from laundering an instance into a fresh one.</summary>
+    /// <param name="netId">The drop's net id.</param>
+    /// <param name="instance">The instance, when the answer is true. The server's own array: read it, do not
+    /// mutate it.</param>
+    /// <returns>False when this server holds no ground item under that id, and false for a drop that carries no
+    /// instance, which is every drop spawned through the four-argument overload.</returns>
+    public bool TryGetGroundItemInstance(long netId, out TileGroundItemInstance instance)
+    {
+        instance = default;
+        return groundItemExpiry.ContainsKey(netId)
+            && host.TryGetOwner(netId, out CellSim cell, out Entity e)
+            && cell.World.IsAlive(e)
+            && cell.World.TryGet(e, out instance);
     }
 
     /// <summary>

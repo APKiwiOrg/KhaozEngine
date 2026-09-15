@@ -210,39 +210,34 @@ public static partial class ItemInstancePayload
     }
 
     /// <summary>
-    /// The payload a viewer at one clearance may see. Returns the bytes written, or <c>-1</c> when
-    /// <paramref name="destination"/> is too short.
+    /// The payload a viewer at one clearance may see, which is
+    /// <see cref="ItemInstanceVisibility.PublicView"/> reached through the type the container and the codec
+    /// were written against. It DELEGATES rather than repeating the rule, because there is exactly one
+    /// function answering "may this viewer see this field" (spec 12.5) and a second copy here is how a
+    /// projection eventually disagrees with the tooltip beside it.
     /// <para>
-    /// <b>This is a STUB that returns the whole payload</b>, and it is deliberate rather than forgotten.
-    /// The visibility rule of spec 12.5, the one <c>CanSee</c> function and the forward pass over retained
-    /// runs, ships with the visibility task of the phase 2-3 plan, which is where spec 20 puts it. The
-    /// member exists here because the container and the codec are written against it now.
+    /// The registry arrives as an argument because visibility is a PER KIND fact the registry holds, and
+    /// the registry is per instance rather than an ambient static. The mask is a <c>ulong</c> for the same
+    /// reason it is one there: a decoded mask carries the full varint width.
     /// </para>
     /// </summary>
+    /// <param name="registry">The property kinds this process knows.</param>
     /// <param name="payload">The full payload.</param>
-    /// <param name="level">The viewer's clearance, unused until the visibility task lands.</param>
-    /// <param name="identified">Whether the item is identified, unused until then.</param>
-    /// <param name="revealedMask">Kind 128's revealed mask, unused until then.</param>
+    /// <param name="level">The viewer's clearance for this item.</param>
+    /// <param name="identified">Whether the item is identified.</param>
+    /// <param name="revealedMask">Kind 128's revealed mask.</param>
     /// <param name="destination">Where to write the view.</param>
+    /// <returns>The bytes written, or <c>-1</c> when <paramref name="destination"/> is too short or
+    /// <paramref name="payload"/> does not decode.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="registry"/> is null.</exception>
     public static int PublicView(
+        InstancePropertyRegistry registry,
         ReadOnlySpan<byte> payload,
         PropertyVisibility level,
         bool identified,
-        uint revealedMask,
+        ulong revealedMask,
         Span<byte> destination)
-    {
-        _ = level;
-        _ = identified;
-        _ = revealedMask;
-
-        if (destination.Length < payload.Length)
-        {
-            return -1;
-        }
-
-        payload.CopyTo(destination);
-        return payload.Length;
-    }
+        => ItemInstanceVisibility.PublicView(registry, payload, level, identified, revealedMask, destination);
 
     /// <summary>
     /// The cap rule, in ONE place, so the encoder and the builder cannot come to differ about it.

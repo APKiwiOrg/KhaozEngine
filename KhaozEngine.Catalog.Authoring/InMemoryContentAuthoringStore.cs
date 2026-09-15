@@ -59,15 +59,20 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
 
     /// <summary>Builds an empty store over one registry.</summary>
     /// <param name="registry">The registry this store's types are declared in, which is where a type's id ceiling comes from. Per instance, never ambient.</param>
+    /// <param name="packStore">The pack target a publish writes its files to, or null on a store that only holds a draft and allocates ids.</param>
     /// <param name="clock">The clock every stamp is read from, or null for the system clock.</param>
     /// <exception cref="ArgumentNullException"><paramref name="registry"/> is null.</exception>
-    public InMemoryContentAuthoringStore(ContentTypeRegistry registry, Func<DateTimeOffset>? clock = null)
+    public InMemoryContentAuthoringStore(
+        ContentTypeRegistry registry,
+        IPackStore? packStore = null,
+        Func<DateTimeOffset>? clock = null)
     {
         ArgumentNullException.ThrowIfNull(registry);
         _registry = registry;
         _clock = clock ?? (static () => DateTimeOffset.UtcNow);
         _audit = new InMemoryContentAuditLog(_clock);
         _allocator = new ContentIdAllocator(this);
+        PackStore = packStore;
     }
 
     /// <summary>The allocator this store hands its two allocation members to.</summary>
@@ -171,15 +176,6 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
     }
 
     /// <inheritdoc />
-    /// <remarks>The snapshot is built by the publish pipeline, which owns the candidate and the codecs, so
-    /// this store answers it only once that pipeline is wired into it.</remarks>
-    public Task<ContentSnapshot> LoadSnapshotAsync(
-        int versionNumber,
-        ContentTypeRegistry registry,
-        CancellationToken cancellationToken = default)
-        => throw NotYetPublishing(nameof(LoadSnapshotAsync));
-
-    /// <inheritdoc />
     public Task<ContentDraft?> GetOpenDraftAsync(CancellationToken cancellationToken = default)
     {
         lock (_gate)
@@ -263,25 +259,6 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
             return Task.CompletedTask;
         }
     }
-
-    /// <inheritdoc />
-    /// <remarks>Publishing is the ordered pipeline of spec 6, which owns the candidate, the chunk bytes and
-    /// both manifests. This store answers it only once that pipeline is wired into it.</remarks>
-    public Task<ContentPublishResult> PublishAsync(
-        ContentPublishRequest request,
-        CancellationToken cancellationToken = default)
-        => throw NotYetPublishing(nameof(PublishAsync));
-
-    /// <inheritdoc />
-    /// <remarks>A rollback is a DRAFT built from a published version's field values, so it needs the same
-    /// pipeline the publish does.</remarks>
-    public Task<ContentDraft> RollbackToAsync(
-        int targetVersion,
-        string actor,
-        string operatorId,
-        string note,
-        CancellationToken cancellationToken = default)
-        => throw NotYetPublishing(nameof(RollbackToAsync));
 
     /// <inheritdoc />
     /// <remarks>Version 0 reads the ACTIVE version's live set. The draft-applied overlay the seam describes
@@ -425,7 +402,7 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
             }
 
             familyId = _nextFamilyId++;
-            _families.Add(familyId, new FamilyRecord(familyId, type, familyKey, blockSize, _activeVersion));
+            _families.Add(familyId, new FamilyRecord(familyId, type, familyKey, blockSize, _activeVersion + 1));
         }
 
         try
@@ -566,7 +543,7 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
                 baseId,
                 family.BlockSize,
                 baseId,
-                _activeVersion);
+                _activeVersion + 1);
 
             // The block insert and the advance of the issued mark land together, because a block row written
             // without the advance would leave the plain counter walking into the new block.

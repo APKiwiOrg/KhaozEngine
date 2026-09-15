@@ -152,6 +152,18 @@ internal static class PublishFixtures
     public static InMemoryContentAuthoringStore Store(ContentTypeRegistry registry)
         => new(registry);
 
+    /// <summary>A store that can PUBLISH, which needs the pack store step 9 writes its files to.</summary>
+    public static InMemoryContentAuthoringStore Store(ContentTypeRegistry registry, IPackStore packStore)
+        => new(registry, packStore);
+
+    /// <summary>The commit half over one store, one pack target and a publisher carrying the step hook.</summary>
+    public static ContentPublishCommit Commit(
+        InMemoryContentAuthoringStore store,
+        IPackStore packStore,
+        ContentTypeRegistry registry,
+        Action<ContentPublishStep>? onStep = null)
+        => new(store, packStore, Publisher(store, registry, onStep));
+
     /// <summary>A publisher over one store, with the step hook and the row encoder both optional.</summary>
     public static ContentPublisher Publisher(
         InMemoryContentAuthoringStore store,

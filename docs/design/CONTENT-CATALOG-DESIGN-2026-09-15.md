@@ -98,17 +98,19 @@ JSON config loader plus a schema validator, 143 lines across two files (contract
 | `KhaozEngine.Catalog.SqlServer` | none, opt-in sibling | `Catalog.Authoring`, `Microsoft.Data.SqlClient` | The SQL Server authoring provider. |
 | `KhaozEngine.Catalog.Netcode` | `Server` | `Catalog`, `KhaozEngine.Netcode` | The content handshake layer and its gate authenticator. |
 
-**Two EXISTING packages change, and no third is added.** The authoring API is registered actions on the admin
-surface (section 10.1), and that surface cannot express the 409 or the structured error body this spec's
-status codes require:
+**Three EXISTING packages change, and no sixth is added.** The authoring API is registered actions on the
+admin surface (section 10.1), and that surface cannot express the 409 or the structured error body this
+spec's status codes require:
 
 | Package | Change |
 |---|---|
 | `KhaozEngine.NetWorld` | `AdminActionStatus.Conflict`, and an object-carrying error payload on `AdminActionResult` beside the existing string one. Additive, no caller breaks. |
 | `KhaozEngine.Server.Admin` | The matching arm in `AdminHttpServer.DispatchActionAsync`, so `Conflict` is a 409 with a JSON body and an object-carrying `BadRequest` is a 400 with one. |
+| `KhaozEngine.Primitives` | Gains `IRandomSource`, `SeededRandomSource` and `CryptographicRandomSource` (contracts 3.2 and 14.1). Additive, and it is the CONTRACTS' change rather than this spec's: it is listed here because this spec takes a dependency on the result. |
 
-Both land in phase 1 milestone 1.4 (section 18.1) and neither is a contract change. Section 10.1 spends the
-reasoning.
+The first two land in phase 1 milestone 1.4 (section 18.1) and neither is a contract change. The third lands
+whenever either scope needs it first, which is milestone 1.3 here, and it is already written into the
+contracts. Section 10.1 spends the reasoning for the admin pair.
 
 The layering rules are the README's, surveyed at `a-engine.md:1373-1407`. A pure catalog with no SQL belongs in
 `Foundation` beside `Items` and `Stats`. Anything with a SQL provider is an opt-in SIBLING pair and is never
@@ -724,9 +726,9 @@ its own band, and registration throws `ContentRegistrationException` when the ty
 
 | Band | Type ids | Who passes it |
 |---|---|---|
-| `Engine` | 1 to 255 | This spec's own registrations only (3.1). |
-| `Instances` | 256 to 1023 | Scope B's registrations only. |
-| `Game` | 1024 to 65,535 | Every consumer. |
+| `Engine` | 1 to 255 | The engine's own registration helper for the six types of 3.1. A game host CALLS that helper, and the helper passes the band, so an adoption step that says "register the engine types" is calling one method rather than claiming a band. |
+| `Instances` | 256 to 1023 | Scope B's registration helper, the same way. |
+| `Game` | 1024 to 65,535 | Every consumer, directly. |
 
 This is the shape `ReplicationRegistry.FirstExtensionTypeId` already uses for components, which is the
 precedent contracts 4.3 cites for the split in the first place, so the engine now enforces the rule in the

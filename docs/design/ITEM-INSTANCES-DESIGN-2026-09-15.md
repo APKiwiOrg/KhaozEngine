@@ -2636,3 +2636,92 @@ shift every existing mask bit by one, silently revealing or hiding the wrong aff
 identified item in the world. The mitigation is that 3.3 reserves 135 to 1,023 for Scope B and the engine
 only ever APPENDS, so a new gated kind takes a higher id than every existing one. That rule is worth a
 comment on the registry rather than only a line here.
+
+## 22. Contract change requests
+
+Sections 1 to 6 were re-read against the contracts for this section, and nothing in them CONTRADICTS the
+contracts. Four requests follow, and every one is a clarification or a correction to the contracts' PROSE
+rather than to a rule, so none of them changes a width, a reserved value, a byte order, an ordering rule, a
+formula or a vocabulary. Under contracts 18 the amendment still comes back to that document first.
+
+**1. Section 9.8, the worked byte example: restate the affix list in canonical order.** The example writes
+mod ids 4210, 91, 260. Section 3.4 of this document makes the affix list canonically ASCENDING BY MOD ID,
+which contracts 9.9 leaves to Scope B ("The affix list is SCOPE B's field and its entry layout is Scope B's
+to specify") and which contracts 9.3's ascending rule does not cover, because that rule is about FIELDS
+rather than entries. So there is no conflict of rules, and there is a conflict of EXAMPLES: an implementer
+copying 9.8's byte block into a golden file produces a non-canonical payload, which then fails to stack
+with a correctly encoded twin. **Requested change:** reorder the three entries in 9.8 to 91, 260, 4210, or
+add one sentence saying the example illustrates the entry layout and not the list order. The byte COUNT and
+every entry's bytes are unchanged either way.
+
+**2. Section 3.2, the package set: record `KhaozEngine.ItemInstances.Journal`.** Contracts 3.2 places
+`KhaozEngine.ItemInstances` in `Foundation`. Section 2.1 of this document adds a second, small,
+`Server`-umbrella package for the commit builder, because composing a `JournalCommit` needs
+`KhaozEngine.WorldStore` and `Foundation` cannot reference a `Server` package. **Requested change:** add the
+row to 3.2's table, with the layering reason. This is filed because contracts 18 does not say whether adding
+a package is a refinement or a contradiction, and the safer reading is that a package set is a vocabulary.
+
+**3. Section 9.6, the payload cap's characterisation.** The contract calls 512 "about 11 times the realistic
+size" and therefore "a guard rail rather than a budget". Section 3.8 computes the DEEPEST item the v1 field
+set can express at 410 bytes, which is 1.25 times the cap rather than one eleventh of it. Both readings are
+true of different items and the RULE is unaffected, since raising the cap stays backward compatible and
+lowering it stays forbidden. **Requested change:** restate the characterisation so a later reader does not
+plan against an eleven-times margin that a six-socket item does not have.
+
+**4. Section 10.5, fail closed at boot: say what it binds.** The contract says a missing or invalid active
+content version fails the boot, with no runtime fallback. Section 10.5 of this document has a server meet a
+currency naming a craft operation id the process never registered, and refuses at the moment of USE rather
+than at boot. That is a code deploy mismatch rather than a content version problem, and failing the boot for
+it would take every player down for one unusable currency. **Requested change:** one sentence in 10.5 saying
+the rule binds the CONTENT VERSION and the pack's validity, and that a missing code registration a content
+row names is a refusal at use with a counter. It is open question 8 either way.
+
+## 23. Open questions for the owner
+
+Nine, each with a recommended default this document already builds to, so silence is an answer.
+
+**1. Are `Corrupted`, `Mirrored` and `Fractured` the right three bits for the ENGINE's `Flags` kind?**
+(3.3.) They are engine-range, so every game gets them, and all three are recognisably from one game's
+vocabulary. **Recommended default: keep them, and treat the NAMES as the engine's shorthand for "cannot be
+modified further", "is a copy" and "one property is locked".** They are the three facts a crafting system of
+any shape needs, the bits are free, and 29 more are reserved.
+
+**2. Is a 100 slot page right, against 128?** (5.2.) One hundred is legible in a log line and a section
+name, 128 is a shift a compiler produces either way. **Recommended default: 100.**
+
+**3. A stack merge destroys one instance id. Is an event enough?** (4.6.) A `stack-merged` event names both
+ids for the journal's retention window. A FIELD on the payload carrying dead ids would keep it forever and
+would grow without bound. **Recommended default: the event.**
+
+**4. Is `MaxInstancePayloadBytes = 512` right, given a six-socket item reaches 410?** (3.5, 3.8, and change
+request 3.) Raising it later is backward compatible and lowering it is not, so the cost of being wrong is
+asymmetric in the safe direction. **Recommended default: keep 512 for v1 and revisit when a real six-socket
+item is authored.**
+
+**5. Are mod tiers a list on the mod row, or their own content type?** (8.3.) A list makes the tier ordinal
+stable by construction and makes a reorder a publish refusal. A content type would give every tier its own
+id, its own remap rule and its own retire path, at the cost of putting a second content id in every stored
+affix entry. **Recommended default: the list.**
+
+**6. Should the ENGINE cap ground item payload bytes per cell?** (7.6, and 13 row 11.) Today the spawn is
+capped per item and the frame throws on overflow, inside the serve loop. **Recommended default: yes, add a
+per-cell budget to `SpawnGroundItem` and chunk the snapshot the way `SendCombatTo` already chunks combat.**
+
+**7. Should the engine cap the affix COUNT, or leave it to the rarity rules?** (3.3, 8.5.) Kind 131's count
+is a byte, so 255 is the format ceiling, and the owner's stated shape is six. **Recommended default: no
+engine cap. The rarity rule's `MaxAffixes` is the cap, it is content, and 255 stays the format's ceiling.**
+
+**8. An unregistered craft operation: refuse at use, or fail the boot?** (10.5, and change request 4.)
+**Recommended default: refuse at use, with a counter, because the alternative takes a server down for one
+unusable currency row.**
+
+**9. For Ruinborne, do the journal pages become durable, or do the SQL rows stay durable with a payload
+column?** (19, row 4.) Pages buy paging, batching, quarantine and one shared code path. Rows keep the two
+filtered unique indexes, the foreign keys and the two SQL repairs that are only expressible over rows.
+**Recommended default: the middle path. Keep the rows durable, add the payload as a column, and adopt the
+page machinery for the BANK only, where the write amplification actually hurts.** That is the smallest
+change that gets Ruinborne instances, and it leaves the larger question to its own design.
+
+## 24. Appendix A: review log
+
+Filled at stage 4.

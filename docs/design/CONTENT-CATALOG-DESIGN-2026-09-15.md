@@ -2110,3 +2110,319 @@ no memory barrier needed beyond the `Volatile.Write` that publishes the new inst
 v1 never swaps at runtime, because a new version applies at server restart (contracts 1.3 item 8). The field
 and the `Volatile` pair exist anyway, for two reasons: a test swaps a runtime to exercise a fixture, and a
 later live-apply phase needs exactly this shape and nothing else. The cost of building it now is two lines.
+
+## 10. Authoring API for game consoles
+
+### 10.1 It is registered actions, and there is no new transport
+
+`ServerAdmin.RegisterAction` is the whole extension mechanism and it already exists
+(`KhaozEngine.NetWorld/ServerAdmin.cs:101` async, `:114` sync). `AdminHttpServer` dispatches `GET /actions`,
+`GET /actions/{name}` with a null payload and `POST /actions/{name}` with an optional JSON body
+(`KhaozEngine.Server.Admin/AdminHttpServer.cs:136-152`). A content authoring API is registered actions on
+that surface, with no new package and no new transport, which is the engine survey's own conclusion
+(`a-engine.md:1027-1034`).
+
+An engine-side helper, `CatalogAdminActions.Register(ServerAdmin admin, IContentAuthoringStore store,
+ContentTypeRegistry registry)`, registers all eleven. A game calls it once beside its own registrations, the
+way Grimhollow registers its inspection actions today
+(`Grimhollow.Server/Admin/AdminInspectionActions.cs:63-65`, `b-grimhollow.md:878-899`).
+
+**The threading contract is load bearing and this API honours it.** A handler runs on the HTTP REQUEST THREAD
+and "must never touch simulation state directly: enqueue mutations to the host thread and return published
+snapshots for reads" (`ServerAdmin.cs:92-95`). Every action here touches the AUTHORING STORE and never the
+simulation, so it is compliant by construction: the authoring store is a database the tick loop does not read,
+and the runtime the tick loop does read is immutable and only replaced at boot.
+
+Action names match `^[a-z0-9][a-z0-9-]{0,63}$`, enforced at `ServerAdmin.cs:127-130`, and a duplicate
+registration throws.
+
+### 10.2 The eleven actions
+
+| Action | Verb | Status codes | Audit action |
+|---|---|---|---|
+| `catalog-schema` | GET | 200 | none |
+| `catalog-list` | POST | 200, 400 | none |
+| `catalog-get` | POST | 200, 400 | none |
+| `catalog-edit` | POST | 200, 400, 409 | `draft-edit` |
+| `catalog-draft` | GET | 200 | none |
+| `catalog-discard` | POST | 200, 409 | `draft-discard` |
+| `catalog-validate` | POST | 200, 400 | none |
+| `catalog-diff` | POST | 200, 400 | none |
+| `catalog-publish` | POST | 200, 400, 409 | `publish` |
+| `catalog-versions` | GET | 200 | none |
+| `catalog-pin` | POST | 200, 400 | `pin` |
+| `catalog-rollback` | POST | 200, 400, 409 | `rollback` |
+| `catalog-import` | POST | 200, 400, 409 | `bulk-import` |
+| `catalog-export` | POST | 200, 400 | none |
+
+That is fourteen rows for eleven concepts, because `catalog-draft` and `catalog-discard` are the draft pair
+and `catalog-pin` and `catalog-rollback` are the version pair. The status conventions are `AdminHttpServer`'s
+own: reads return `Results.Json`, a bad request body or a bad id returns 400 with `new { error = ... }`, and
+an unwired capability returns 501 (`AdminHttpServer.cs:156-172`, `a-engine.md:1059-1076`).
+
+**None of these returns 202 Accepted**, which is a deliberate departure from the built-in mutation routes. A
+202 means the command was enqueued to the host thread and will complete
+(`AdminHttpServer.cs:107-108`). A content edit completes INSIDE the request against the database, so the
+operator gets the real answer rather than an optimistic one. Ruinborne's console reporting success on a row
+the server then rejects at boot is exactly the failure a 202 invites here
+(`c-ruinborne.md:364-369`).
+
+### 10.3 `catalog-schema`, the action the generic editor is built on
+
+`GET /admin/actions/catalog-schema` returns the full registered schema, which is what makes ONE editor render
+every type including one the console has never heard of (contracts 4.7, first consumer).
+
+```json
+{
+  "generation": 1,
+  "types": [
+    { "typeId": 2, "typeKey": "item", "visibility": "Client", "chunkSlots": 4096,
+      "fields": [
+        { "name": "name",      "kind": "LocalizedTextKey", "target": null,  "visibility": "Client", "required": true  },
+        { "name": "tags",      "kind": "TagList",          "target": "tag", "visibility": "Client", "required": false },
+        { "name": "stackable", "kind": "Bool",             "target": null,  "visibility": "Client", "required": true  },
+        { "name": "value",     "kind": "ScaledInt", "scale": 1, "target": null, "visibility": "Client", "required": true }
+      ] } ] }
+}
+```
+
+A console renders a text box for `LocalizedTextKey`, a checkbox for `Bool`, a numeric with a scale hint for
+`ScaledInt`, a typeahead over the target type's keys for `KeyReference`, and a multi-select over the `tag`
+type for `TagList`. It also validates CLIENT SIDE against the same schema, so an obviously bad value never
+reaches the server, and the server validates again because a client-side check is a convenience and never a
+gate.
+
+This is what closes Ruinborne #510, `item_stat` and `item_ability_modifier` having no admin page at all so
+per-item stats are hand SQL only (`c-ruinborne.md:334-339`,
+[#510](https://github.com/APKiwiOrg/Ruinborne/issues/510)). Under this design a type gets its editor by
+registering, so there is no such thing as a content type with no page.
+
+### 10.4 `catalog-list` and `catalog-get`
+
+```json
+// request  POST /admin/actions/catalog-list
+{ "typeKey": "item", "version": 0, "keyPrefix": "stone", "includeRetired": false,
+  "skip": 0, "take": 200 }
+
+// response 200
+{ "version": 47, "total": 35, "rows": [
+    { "id": 13, "key": "stone_sword", "retired": false, "validFrom": 41,
+      "fields": { "name": "item.stone_sword.name", "stackable": false, "value": 42 } } ] }
+```
+
+`version: 0` means the current live set, which is the active version when one exists and the DRAFT-APPLIED set
+when a draft is open. `take` is capped at 500 server side and the response carries `total`, which is what
+makes a console page rather than fetch a million rows. Ruinborne's bag silently showing only the first 30
+stacks with no indication ([#233](https://github.com/APKiwiOrg/Ruinborne/issues/233), closed) is the shape
+this cap exists to avoid repeating.
+
+`catalog-get` takes `{ "typeKey", "id" }` or `{ "typeKey", "key" }` and returns one row plus its full version
+HISTORY, which is the temporal model's payoff: an operator asking "when did this price change and what was it
+before" gets an answer from the row table rather than from an audit reconstruction.
+
+**The int id is shown to authors, read-only beside the key.** That is gate 0 decision 3, and the reason is
+that an operator reading a quarantine reason or a log line needs to look the id up.
+
+### 10.5 `catalog-edit`, `catalog-draft`, `catalog-discard`
+
+```json
+// request  POST /admin/actions/catalog-edit
+{ "operator": "oid:8f2c...", "note": "autumn price pass",
+  "edits": [
+    { "op": "update", "typeKey": "item", "id": 13, "fields": { "value": 45 } },
+    { "op": "add",    "typeKey": "item", "key": "iron_sword",
+      "family": "swords",
+      "fields": { "name": "item.iron_sword.name", "stackable": false, "max_stack": 1,
+                  "tradable": true, "value": 120, "tags": ["metal", "two_handed"] } },
+    { "op": "retire", "typeKey": "item", "id": 25, "policy": "replacement", "replacementKey": "oak_shield_v2" } ] }
+
+// response 200
+{ "draft": { "baseVersion": 47, "editCount": 12, "openedBy": "oid:8f2c...", "openedAtUtc": "..." },
+  "applied": 3 }
+
+// response 400
+{ "error": "content edit refused", "findings": [
+    { "code": "KEC0004", "type": "item", "id": 13, "message": "no field 'valeu' on type 'item'" } ] }
+```
+
+Every edit in one request is applied in ONE database transaction or none of them is, so a batch save from a
+grid is atomic. The edits are checked against the schema AT THE BOUNDARY (section 3.7) and the response
+carries every finding rather than the first, matching the validator's own accumulate-to-the-end rule.
+
+A `retire` names its policy as `placeholder` or `replacement`, matching contracts 8.2's payload byte, and a
+`replacement` policy without a resolvable `replacementKey` is a 400 with `KEC0017`.
+
+`catalog-draft` returns the open draft with its edits expanded, so a console can show a pending-changes panel.
+`catalog-discard` deletes the draft and writes one `draft-discard` audit row carrying the edit count, so a
+discarded draft leaves a trace. It is a 409 while a publish is in flight.
+
+### 10.6 `catalog-validate`, `catalog-diff`, `catalog-publish`
+
+```json
+// request  POST /admin/actions/catalog-validate   (no body needed)
+// response 200
+{ "valid": false, "findingCount": 2, "findings": [
+    { "code": "KEC0005", "type": "item", "id": 61, "message": "required field 'tradable' is absent" },
+    { "code": "KEC0006", "type": "loot_entry", "id": 418, "message": "field 'item' references item id 25, retired in version 46" } ] }
+```
+
+`catalog-validate` builds the candidate and runs the full section 5 sweep WITHOUT allocating ids and without
+writing anything. That is the dry run an operator runs before a publish, and it is the same validator, so a
+green validate followed by a red publish can only mean the draft changed in between.
+
+```json
+// request  POST /admin/actions/catalog-diff
+{ "from": 46, "to": 0 }            // 0 means the draft-applied candidate
+
+// response 200
+{ "from": 46, "to": null, "changes": [
+    { "type": "item", "id": 13, "key": "stone_sword", "op": "update",
+      "fields": [ { "field": "value", "before": "42", "after": "45" } ] },
+    { "type": "item", "id": 61, "key": "iron_sword", "op": "add", "fields": [ ... ] } ],
+  "chunkSummary": [ { "type": "item", "changedChunks": 1, "totalChunks": 13 } ] }
+```
+
+The diff is FIELD LEVEL, computed over `catalog_row_field` (contracts 4.7, third consumer), so "what changed
+between version 46 and 47" is a field-level answer rather than a chunk hash inequality. `chunkSummary` is what
+lets an operator see the download cost of their edit before they publish it, which is the operator-facing half
+of the one-item-edit budget (section 14, P6).
+
+```json
+// request  POST /admin/actions/catalog-publish
+{ "operator": "oid:8f2c...", "note": "autumn price pass",
+  "minimumServerBuild": 4120, "minimumClientBuild": 4118,
+  "expectedBaseVersion": 47 }
+
+// response 200
+{ "version": 48, "serverManifestHash": "9f3c...", "clientManifestHash": "1a7d...",
+  "formatGeneration": 1, "chunksWritten": 2, "chunksReused": 63,
+  "bytesWritten": 41207, "rulesAppended": 1, "elapsedMs": 830 }
+
+// response 409
+{ "error": "base version moved", "expectedBaseVersion": 47, "actualBaseVersion": 48 }
+```
+
+`expectedBaseVersion` is optimistic concurrency and it is REQUIRED. Two consoles cannot both publish the same
+draft, because the second one's expectation is stale and it gets a 409 naming both numbers. That is the same
+shape as `JournalStreamMutation.ExpectedVersion` (`a-engine.md:424-427`), and it turns section 11 row 4 from a
+race into an error message.
+
+`minimumServerBuild` and `minimumClientBuild` are CONSUMER-SUPPLIED and the engine never interprets them
+beyond comparing (contracts 7.4). The default when omitted is to carry FORWARD the previous version's values,
+so a publisher who has nothing to say about builds says nothing rather than accidentally resetting them to 0.
+
+### 10.7 `catalog-versions` and `catalog-pin`
+
+```json
+// response  GET /admin/actions/catalog-versions
+{ "activeVersion": 48, "pinnedVersion": null, "versions": [
+    { "version": 48, "serverManifestHash": "9f3c...", "clientManifestHash": "1a7d...",
+      "minimumServerBuild": 4120, "minimumClientBuild": 4118, "formatGeneration": 1,
+      "publishedBy": "oid:8f2c...", "operator": "ana", "note": "autumn price pass",
+      "publishedAtUtc": "...", "baseVersion": 47 } ] }
+```
+
+`catalog-pin` takes `{ "version": 47 }` or `{ "version": null }` and writes the pin into
+`catalog_metadata`. A pinned version is what the NEXT BOOT loads, regardless of the active pointer. That is
+the only lever v1 gives an operator between publishing and restarting, and it exists because there is no
+staging environment (contracts 1.3 item 9): pinning is how a publish is staged for a later restart, and
+unpinning is how a server catches up.
+
+A pin naming a version that does not exist is a 400. A pin naming a version whose `minimumServerBuild` exceeds
+the running build is ACCEPTED with a warning in the response, because the operator may be pinning ahead of a
+server upgrade on purpose, and the boot-time check (section 9.6) is the real gate.
+
+### 10.8 `catalog-rollback`
+
+```json
+// request  POST /admin/actions/catalog-rollback
+{ "operator": "oid:8f2c...", "toVersion": 46, "note": "revert the autumn pass" }
+
+// response 200
+{ "draftCreated": true, "editCount": 18, "blockedByRules": [] }
+
+// response 409
+{ "error": "rollback blocked by an irreversible retire",
+  "blockedByRules": [ { "sequence": 31, "introducedIn": 47, "type": "item", "fromId": 25, "kind": "Retired" } ],
+  "remedy": "mint a new definition carrying the old values and add a ReplacedBy rule" }
+```
+
+Rollback BUILDS A DRAFT rather than publishing directly (section 6.13). The operator then reviews the diff and
+publishes it, which is what makes a rollback reviewable rather than a second uncontrolled change. The 409 case
+is contracts 8.6's irreversibility surfaced as an operator message with the way out named.
+
+### 10.9 `catalog-import` and `catalog-export`, and the empty-database rule
+
+A `ContentBundle` is the whole catalog as one JSON document: a format version, the registered type list with
+their schemas, every live row with its id, key and fields, every family with its blocks, and the full remap
+rule list. It is the seeding format and the backup format and there is only one of them.
+
+**`catalog-import` works into an EMPTY database ONLY, and is refused otherwise** (#882 body item 8, "Seeding
+imports a whole bundle into an empty database only"). Empty means `catalog_version` has no rows. A non-empty
+database gets a 409 with `{ "error": "catalog is not empty", "activeVersion": 48 }` and no partial write.
+
+That single rule is the answer to Ruinborne's entire seeding class of defects, and it is worth naming them
+because the rule looks unhelpfully strict until they are on the page:
+
+- Insert-if-absent seeding never reaches an existing row, so PostDeploy carries a growing set of guarded
+  `UPDATE ... WHERE column = <old literal>` corrections that knowingly revert an operator value. The file says
+  so in its own comments: an operator who retuned a number "would see it reverted on the next deploy, the same
+  limit every other numeric correction in this file already accepts" (`c-ruinborne.md:197-220`, Ruinborne
+  [#111](https://github.com/APKiwiOrg/Ruinborne/issues/111)).
+- Grimhollow's economy has the same shape from the other side: a stored row WINS over a changed default
+  forever, so a `GrimhollowEconomyMigration` one-time reset had to exist to push the owner's approved values
+  onto a live database once (`b-grimhollow.md:304-319`).
+
+Both are the same defect: a seed that runs repeatedly against live data. An import that runs ONCE into an
+empty database cannot have it. A deployed database's values change through `catalog-edit` and `catalog-publish`
+and through nothing else, ever.
+
+`catalog-export` takes `{ "version": 48 }` and returns the bundle for that version. Export at version `N`
+then import into an empty database reproduces exactly version 1 of a new database with the same ids and the
+same keys (section 6.3's ordered allocation), which is what makes the bundle a real backup rather than an
+approximation.
+
+### 10.10 Operator identity
+
+**The bearer token is ONE token and it is not an identity.** `AdminEndpointOptions.BearerToken` is a single
+required string compared constant time as the first middleware (`AdminHttpServer.cs:61-71`,
+`AdminEndpointOptions.cs:23`). There is no per-operator layer at the engine endpoint and this spec does not
+add one, because adding an identity provider to `KhaozEngine.Server.Admin` would put an authentication stack
+into the engine for a problem both consumers have already solved in their own consoles.
+
+So the CONSOLE forwards an operator identity, as an `operator` field on every mutating request body, and the
+engine records it in `catalog_audit.operator` beside its own `actor`. The engine does not verify it, and the
+audit row says so by keeping both columns: `actor` is what the engine authenticated (the bearer token's
+holder) and `operator` is what the console asserted.
+
+Two consumer lessons say why this is the right shape and why the field is required rather than optional:
+
+- **[Ruinborne #371](https://github.com/APKiwiOrg/Ruinborne/issues/371)**, open: its console's owned-item
+  verbs hardcode `AdminActors.AdminConsole` on all ten including `grant_item`, `delete_item` and `move_item`,
+  so an audit row cannot say which operator did it. Its CONTENT edits do carry a name, and they carry the
+  operator's DISPLAY NAME rather than the stable object id, even though a stable `oid:` identity exists in the
+  same codebase and the content pages simply do not use it (`c-ruinborne.md:432-437`). So the engine's field
+  is documented as taking a STABLE identity, and a console passing a display name gets an audit trail that
+  breaks when someone changes their name.
+- **[Grimhollow #226](https://github.com/APKiwiOrg/Grimhollow/issues/226)**, open: its console derives the
+  item Name column from the config key because `Grimhollow.Shared` cannot reference the client's
+  `ItemStrings`, so an operator is not seeing the name a player sees. The survey's matching finding is that
+  the only identity available to a write today is the bearer token, so an audit row would name
+  `AdminActors.AdminEndpoint` rather than an operator unless the console forwards its Entra identity
+  (`b-grimhollow.md:955-960`). Both halves of that issue are things the console cannot fix alone and the
+  catalog fixes for free: names become a catalog lookup and identity becomes a forwarded field.
+
+A mutating request with no `operator` field is ACCEPTED and audited with an empty operator, because refusing
+it would break a scripted maintenance call that has no human behind it. A request whose `operator` exceeds 128
+characters is a 400.
+
+### 10.11 Two operational actions
+
+`catalog-sweep` runs step 11 of the publish alone (section 6.12), for an operator cleaning up after a crashed
+publish. It returns the count deleted and the count skipped and it obeys the same skip-on-listing-failure
+rule.
+
+`catalog-verify` walks the active version's manifest, fetches every chunk and rehashes it, and returns the
+list of chunks that do not match. It is the detection half of section 11 row 1 and it is what an operator runs
+when a runtime decode reason appears in a log. It is read only and it never repairs, because a repair means
+deciding which copy is right and only a republish can know that.

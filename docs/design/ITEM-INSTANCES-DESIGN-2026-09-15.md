@@ -1559,3 +1559,187 @@ the ordinal carry no ordering meaning (3.4). Second, a unique's lines are mod ro
 an author who gives one a weight has quietly added it to the rare pool for every base carrying that tag.
 Check 5 of 8.9 catches the second at publish. Nothing catches the first, because a reorder is refused
 and an append is legal, which is the correct outcome and a surprising one to read for the first time.
+
+## 9. Item generator
+
+### 9.1 What it is and is not
+
+`ItemGenerator` turns (base, item level, source of randomness) into a payload. It does NOT decide WHICH
+base drops: that is a loot table, which is Scope A's engine-range content type and is `ServerOnly`. The
+seam is deliberate, because a loot roll and an affix roll are different questions and Ruinborne's
+`LootRoll` already owns the first one (`c-ruinborne.md:718-734`).
+
+It holds an `IRandomSource` handed to it per CALL rather than per instance, which is a narrowing of
+contracts 14.4 and worth the sentence. The contract says a type that rolls takes the source in its
+constructor. The generator is a stateless function over precomputed tables, so a per-call source lets one
+generator serve a live server on the cryptographic source and a replay tool on a seeded one without
+building two, and it keeps "does this method roll" answerable from the signature, which is the property
+14.4 actually wants.
+
+### 9.2 The precomputed tables, and what they cost
+
+The naive table is keyed by (base, item level) and it does not fit. At 50,000 bases and 100 item levels
+that is 5,000,000 candidate arrays, and at even 500 candidates each it is tens of gigabytes. The shape
+below is keyed so that the BASE COUNT contributes almost nothing, which is the whole trick.
+
+**Two levels. Tag-band tables, built once, and a memoized merge per tag signature.**
+
+1. **Bands.** Collect every distinct `ItemLevelMin` and `ItemLevelMax + 1` across every tier of every
+   mod. Sort them. The intervals between consecutive values are the BANDS, and within one band no tier's
+   gate changes, so the live tier set is constant. At 2,000 mods and 8 tiers each the boundary count is
+   bounded by 32,000 and in practice is the authored level curve, tens rather than thousands.
+2. **Tag-band tables.** For each `(tag id, band)` pair, an array of `(mod id, tier ordinal, weight)` for
+   every tier that is live in that band and names that tag with a non-zero weight, sorted ascending by
+   (mod id, tier ordinal). Sorted rather than insertion ordered, because the sort is what makes the
+   weighted pick reproducible from a seed and independent of pack load order (contracts 4.3).
+3. **The merge, at roll time.** A base's candidate set is the merge of the tables for its tags, walked in
+   the base's AUTHORED tag order, taking the first weight found for each `(mod id, tier ordinal)` and
+   ignoring later ones. That is 8.3's first-tag-wins rule executed rather than precomputed.
+4. **The memo.** The merge is keyed by (tag signature, band), where the tag signature is the base's
+   ordered tag list interned to an int. Bases sharing a tag list share a merge. A bounded dictionary
+   holds the most recent 4,096, which at a live server's hot base set is effectively a full cache and at
+   a pathological one degrades to a merge per roll, which is still microseconds.
+
+**The arithmetic, at the owner's scale of 50,000 bases and 2,000 mods.** Take 8 tiers per mod (16,000
+tiers), 5 tag weights per tier and 64 bands, with a tier spanning on average a third of them.
+
+| Quantity | Formula | Result |
+|---|---|---|
+| Tag-band table entries | `16,000 tiers * 5 tags * 21 bands` | about 1.7 million |
+| Bytes at 12 per entry | `1.7M * 12` | **about 20 MB** |
+| Distinct tag signatures | authored, bounded by base count | a few hundred |
+| Memo entries held | `4,096 * (merged array + header)` | **about 4 MB at 200 entries each** |
+| Base-derived memory | `50,000 * 8` for the signature intern | **400 KB** |
+| Build: appends | one per table entry | 1.7 million |
+| Build: sort | 1.7M entries across about 19,000 buckets | dominated by the appends |
+
+**About 25 MB resident and a build measured in low hundreds of milliseconds**, both of which belong in
+16's budget table as targets rather than as claims, because neither is measured. The number that matters
+for the SHAPE is the last row of the top half: 400 KB for fifty thousand bases. A base costs eight bytes
+because it never enters a table, only its tag list does. That is what makes the design survive the
+owner's "millions of owned items" over a large catalog.
+
+**The tables are built when a pack LOADS and are immutable after.** A publish builds new tables beside
+the old ones and swaps the reference, so a roll in flight finishes against the tables it started with,
+which is the same live-swap shape `GrimhollowEconomy.Current` uses (`b-grimhollow.md:56-59`). Weights are
+`ServerOnly` (8.3), so a CLIENT builds none of this and holds none of it.
+
+### 9.3 The random source, restated at the call site
+
+`IRandomSource` is contracts 14.1 verbatim. Three of its four members are used here:
+`NextInt(minInclusive, maxExclusive)` for a count and for a weighted pick, `NextRollPosition()` for a
+`ushort` roll position, and neither `NextULong` nor `NextBytes`. A weighted pick is
+`NextInt(0, weightTotal)` followed by a walk of the cumulative array, never a floating point draw and
+never a rejection loop, which is contracts 13.4 and 14.1 applied together.
+
+**Every draw the algorithm makes is a function of the affix COUNT and nothing else.** A candidate that is
+filtered out is removed from the pool BEFORE the draw rather than drawn and rejected, so two items of the
+same rarity on the same base at the same item level consume exactly the same number of draws. That is
+Grimhollow's always-draw rule (`GrimhollowDrops.cs:35-37`, both rolls always drawn so the stream stays
+position stable) generalised, and it is what makes a seeded replay of a drop session reproducible when
+one item's pool differs from another's.
+
+### 9.4 The algorithm, step by step
+
+```csharp
+public readonly record struct GenerationContext(
+    int BaseId, int ItemLevel, int ForcedRarityId, int ForcedUniqueTemplateId, int Quality);
+
+public readonly record struct GenerationResult(
+    int BaseId, long InstanceId, ReadOnlyMemory<byte> Payload, int RarityId, int ContentVersion);
+
+GenerationResult Generate(in GenerationContext context, IRandomSource random);
+```
+
+Every step is numbered because the ORDER of the draws is the reproducibility contract.
+
+1. **Resolve the band** from `context.ItemLevel` by binary search over the band boundaries. No draw.
+2. **Resolve the unique**, if `ForcedUniqueTemplateId` is non-zero. Skip to step 9 with the template's
+   lines as the affix list and its `ForcedSockets` as the socket list. No draw. A unique is FORCED by the
+   caller rather than rolled here, because deciding that a unique drops is the loot table's job (9.1).
+3. **Roll the rarity**, unless `ForcedRarityId` is non-zero. One `NextInt(0, total)` over the rarity
+   rules' weights against the base's tags, using 8.3's first-tag-wins rule.
+4. **Roll the affix count.** One `NextInt(rule.MinAffixes, rule.MaxAffixes + 1)`.
+5. **Roll the prefix and suffix split.** For each of the `count` picks in turn, decide the kind FIRST:
+   one `NextInt(0, openKindTotal)` over the kinds still under their per kind cap, weighted by the number
+   of candidates of that kind. Kind before mod, so a rarity permitting three prefixes and three suffixes
+   does not produce six prefixes because prefixes happen to outnumber suffixes in the pool.
+6. **Filter the pool** for this pick: drop every candidate whose kind is not the chosen one, whose mod id
+   is already on the item, whose `mod_group` is at `MaxPerItem`, or whose mod row carries `Legacy`. No
+   draw. The filter is a forward pass over the memoized merged array, producing a cumulative weight
+   array in the same order.
+7. **Pick the mod and tier.** One `NextInt(0, weightTotal)` and a walk of the cumulative array. When
+   several tiers of one mod are live in the band, they are separate candidates and the weights decide,
+   which is how "a better tier is rarer" is authored rather than coded.
+8. **Roll the position.** One `NextRollPosition()` per affix. Record `(mod id, tier ordinal, position,
+   flags 0)`. Repeat steps 5 to 8 until `count` affixes are placed. A pick whose filtered pool is EMPTY
+   places nothing, consumes no further draw for that pick, and the item ends with fewer affixes than the
+   count asked for, which is a legal outcome and is reported in the result rather than retried.
+9. **Sort the affix list ascending by mod id** (3.4). No draw.
+10. **Roll the rare name.** For each position 1 to `rule.NameWordPositions`, one `NextInt(0, total)` over
+    that position's words weighted against the base's tags. Record the word ids in position order.
+11. **Seat the sockets.** A unique's `ForcedSockets` verbatim, otherwise the base's authored socket
+    declaration, in authored order, every socket empty. No draw in v1: a rolled socket COUNT is a craft
+    primitive (`add socket`, 10.2) rather than a generation step, so nothing here consumes a draw the
+    owner has not asked for.
+12. **Assemble the payload.** Kind 2 item level, kind 3 quality when non-zero, kind 129 when a unique,
+    kind 130 rarity, kind 131 affixes, kind 132 sockets when non-empty, kind 134 rare name when rolled,
+    plus kind 5 durability at full when the base declares it. Encode canonically (3.2).
+13. **Allocate the instance id** when the payload is non-empty, from `InstanceIdAllocator` (3.6). An
+    empty payload takes id 0 and the item is a plain stack.
+
+**Cost, per rare.** Six affixes cost six kind draws, six mod draws, six position draws and up to two name
+draws, so twenty draws and six cumulative-array passes over a filtered pool of a few hundred. The
+allocation is one payload buffer. Section 16 budgets it at under 20 microseconds and calls it TBD.
+
+### 9.5 The journal event
+
+One event type, `item-generated`, written on the commit that first seats the item somewhere durable.
+
+```
+[EventVersion: byte = 1]
+[BaseId: varint int32]
+[InstanceId: varint uint64]
+[RarityId: byte]
+[ContentVersion: varint int32]
+[SourceKind: byte]              // 1 drop, 2 craft, 3 admin grant, 4 migration, 5 to 255 game
+[SourceId: varint int32]        // the loot table, currency or migration id, 0 when none
+[PayloadLength: varint int32]
+[Payload: PayloadLength bytes]  // the FULL payload, exactly as encoded
+```
+
+**It records the resolved item and never a seed, a state or a draw index**, which is contracts 14.3
+verbatim and is also the only shape that survives the journal's replay model: a replay returns the
+original receipt rather than re-running anything (`a-engine.md:535-564`), so an event carrying a seed
+would have to be re-rolled to mean anything.
+
+**The full payload rather than a reference to the page.** A page is rewritten whole on every later commit
+(`JournalProjectionWrite.cs:10-29`), so the page bytes at the moment of generation are not recoverable
+from anything except this event. At 69 bytes for a rare (3.8) plus about 14 of header, an
+`item-generated` event is about 83 bytes against the 128 events per operation cap
+(`JournalLimits.cs:10`), so a drop burst of twenty rares is about 1.7 KB of events, which is inside the
+one-tick batch budget of 6.4.
+
+**Content version on the event is what makes the audit answerable.** A support question of the form "what
+did this item look like when it dropped" is answered by decoding the event's payload against the version
+it names, rather than against today's, which is the whole reason contracts 7.2's stamp is a comparable
+number.
+
+### 9.6 Distribution, and the one property the tests must pin
+
+Two claims a test has to hold the generator to (17.6), both falsifiable:
+
+- **Weights are proportional.** Over a large seeded run on one base and one item level, each candidate's
+  share of the outcomes is its weight divided by the pool total, within a tolerance the test states as an
+  integer bound rather than a float (a chi-squared style bound stated as counts, so the assertion itself
+  obeys contracts 13.4).
+- **Positions are uniform.** `NextRollPosition` is uniform over 0 to 65,535 by contract, so the value
+  distribution through 6.4's formula is uniform over the tier's range up to rounding, and the test asserts
+  both ends are reachable, which is the property contracts 6.4's worked table demonstrates.
+
+**Modulo bias is the one real trap and the contract already handles it.** `CryptographicRandomSource` uses
+rejection sampling rather than modulo (contracts 14.2), because modulo bias on an affix pool is farmable.
+`SeededRandomSource` wraps `DeterministicRng`, whose own `Next(int)` uses modulo and says so
+(`DeterministicRng.cs:70-76`, "negligible bias for game ranges"). That is fine for a test and would not be
+fine in production, which is exactly why the two implementations differ and why gate 0 decision 11 makes
+running the seeded source on a hosted server log a Warning on every boot.

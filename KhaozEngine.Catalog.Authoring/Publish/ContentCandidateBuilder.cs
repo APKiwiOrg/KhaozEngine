@@ -408,7 +408,10 @@ static class ContentCandidateBuilder
             Fields = fields,
             DefinitionId = edit.DefinitionId,
             ParentId = 0,
-            IsRetired = false,
+
+            // Only an import ever enters ALREADY retired, and only because the bundle it came from carries
+            // the rule that retired the row. Every other path reaches the flag through a Retire edit.
+            IsRetired = edit.ImportedAsRetired,
             FamilyId = edit.FamilyId,
             ValidFromVersion = version,
             IsEntering = true,

@@ -80,7 +80,8 @@ public sealed class ContentEdit
         int replacementId,
         ContentKey forkKey,
         string? forkFlagField,
-        long? familyId)
+        long? familyId,
+        bool importedAsRetired = false)
     {
         Type = type;
         DefinitionId = definitionId;
@@ -92,6 +93,7 @@ public sealed class ContentEdit
         ForkKey = forkKey;
         ForkFlagField = forkFlagField;
         FamilyId = familyId;
+        ImportedAsRetired = importedAsRetired;
     }
 
     /// <summary>The content type the edited row belongs to.</summary>
@@ -135,6 +137,15 @@ public sealed class ContentEdit
     /// <summary>The family an add joins, or null when the row is allocated from the plain id counter.</summary>
     public long? FamilyId { get; }
 
+    /// <summary>
+    /// Whether the imported row is ALREADY RETIRED, which only <see cref="Import"/> ever sets. A bundle
+    /// carries every live row including the retired ones, and a lossless import has to reproduce them
+    /// without appending a second retire rule, because the bundle already carries the rule that retired
+    /// them. Every other path reaches the retired flag through a <see cref="ContentEditOperation.Retire"/>,
+    /// which is the operation that appends the rule.
+    /// </summary>
+    public bool ImportedAsRetired { get; }
+
     /// <summary>A new row. Its id is allocated at publish, so the edit carries none.</summary>
     /// <param name="type">The content type.</param>
     /// <param name="key">The new row's key, unique within its type and immutable once published.</param>
@@ -162,6 +173,7 @@ public sealed class ContentEdit
     /// <param name="key">The row's key.</param>
     /// <param name="fields">The fields the row is created with.</param>
     /// <param name="familyId">The family the row belongs to, or null.</param>
+    /// <param name="isRetired">Whether the row is already retired, which a bundle's retired rows carry.</param>
     /// <exception cref="ArgumentException"><paramref name="key"/> is empty.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="definitionId"/> is negative.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="fields"/> is null.</exception>
@@ -170,7 +182,8 @@ public sealed class ContentEdit
         int definitionId,
         ContentKey key,
         IReadOnlyList<ContentFieldEdit> fields,
-        long? familyId = null)
+        long? familyId = null,
+        bool isRetired = false)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(definitionId);
         RequireKey(key, nameof(key));
@@ -184,7 +197,8 @@ public sealed class ContentEdit
             0,
             default,
             null,
-            familyId);
+            familyId,
+            isRetired);
     }
 
     /// <summary>Changes some of an existing row's fields, leaving every field it does not name alone.</summary>

@@ -443,23 +443,6 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
     }
 
     /// <inheritdoc />
-    /// <remarks>An import is a publish of the whole bundle as version 1, so it needs the publish pipeline.</remarks>
-    public Task<ContentPublishResult> ImportBundleAsync(
-        ContentBundle bundle,
-        string actor,
-        string operatorId,
-        string note,
-        CancellationToken cancellationToken = default)
-        => throw NotYetPublishing(nameof(ImportBundleAsync));
-
-    /// <inheritdoc />
-    /// <remarks>An export reads a published version's rows, which arrive with the publish pipeline.</remarks>
-    public Task<ContentBundle> ExportBundleAsync(
-        int versionNumber,
-        CancellationToken cancellationToken = default)
-        => throw NotYetPublishing(nameof(ExportBundleAsync));
-
-    /// <inheritdoc />
     public Task<ContentIdHighWater> ReadHighWaterAsync(
         ContentTypeId type,
         CancellationToken cancellationToken = default)
@@ -588,10 +571,6 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
     static bool IsLiveAt(ContentRowRevision revision, int versionNumber)
         => revision.ValidFromVersion <= versionNumber
             && (revision.ReplacedInVersion is not int replaced || replaced > versionNumber);
-
-    static NotSupportedException NotYetPublishing(string member)
-        => new(FormattableString.Invariant(
-            $"{nameof(InMemoryContentAuthoringStore)}.{member} needs the publish pipeline, which is not wired into this store yet."));
 
     ContentIdHighWater WithIssued(ContentTypeId type, ContentIdHighWater mark, int issuedThrough)
     {

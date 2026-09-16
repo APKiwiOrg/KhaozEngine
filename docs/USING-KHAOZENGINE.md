@@ -9759,6 +9759,9 @@ leaves another free to reach, and a body inside its target is never in range. `S
 agentSize)` lists the in-range ANCHORS in the one-tile set's own order, and at size 1 it is that set element for
 element, so every one-tile tie break stays. `TryNearest(map, footprint, plane, from, agentSize, maxRadius, ...)`
 walks to the nearest of those anchors, so the tile it answers is one `Contains` at the same size answers true for.
+It runs ONE search over the whole anchor list through `TilePathfinder.FindPathToAny`, so a click on a 4x4 target
+nobody can reach costs one window rather than sixteen, and the tile it picks and the scan-order tie rule are the
+ones a search per anchor gave.
 The same predicate is the follow's range test, the entity interaction's arrival and the combat roll, so a large
 body and a small one agree on reach whichever of them is attacking.
 

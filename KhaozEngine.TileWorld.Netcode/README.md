@@ -205,13 +205,13 @@ and cuts settled losers to zero through a caller-supplied comparison.
   `4(M + N - 1)` of them against an MxM target on open ground and element for element the one-tile set at size 1.
   It asks reach only, so it can list an anchor no agent of that size could stand on. `TryNearest`'s existing
   `agentSize` now shapes those candidates as well as the walk, and pathing is what filters the unstandable ones
-  out. `TryNearest` refuses a footprint further than `maxRadius` + `agentSize` away without searching, since no
-  candidate of one is inside the pathfinder's window: the answer is the same false, and it is what stops a client
-  naming a far target it has never seen from buying a full window flood per candidate. Past that it prunes per
-  candidate, skipping one outside the window or already at or past the best length found so far, both of which
-  the loop would have discarded after paying for the search: a walk is eight-connected, so its step count is
-  never below the Chebyshev distance to its goal. The chosen tile and the tie rule are unchanged by either.
-  Its overload accepting `TilePathfinderScratch` reuses the same working memory across candidate searches.
+  out, because the search never enters a cell the whole body does not fit on. `TryNearest` refuses a footprint
+  further than `maxRadius` + `agentSize` away without searching, since no candidate of one is inside the
+  pathfinder's window: the answer is the same false, and it is what stops a client naming a far target it has
+  never seen from buying a window flood at all. Past that it runs ONE search over the whole candidate list
+  through `TilePathfinder.FindPathToAny`, never one per candidate. Same chosen tile, same walk and the same
+  scan-order tie rule, for one window instead of up to `4(M + N - 1)` of them against a target nobody can reach.
+  Its overload accepting `TilePathfinderScratch` hands that search its working memory.
   `agentSize` and `maxRadius` are validated at the top of `TryNearest` rather than left to the first search, so a
   bad argument throws whether the target is open, walled in, out of range or on another plane.
 - **`ITileTargets`** / **`TileDocumentTargets`** / **`TileEntityTargets`** / **`TileRemoteTargets`** - the seam

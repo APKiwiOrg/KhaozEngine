@@ -66,8 +66,16 @@ public readonly record struct ItemCraftedEvent(
     /// <summary>A declared payload length does not fit what is left of the body.</summary>
     public const string PayloadLength = "event-payload-length";
 
-    /// <summary>A value the field's width cannot hold, or an id that names nothing, which is a writer from
-    /// another build.</summary>
+    /// <summary>
+    /// A field whose value this build cannot accept: a currency id or a content version past <c>int</c>,
+    /// or an id that names nothing at all.
+    /// <para>
+    /// <b>The instance id has no width bound here and is only checked against 0.</b> It is a <c>ulong</c>
+    /// whose WHOLE range is legal, because a node prefixed id at node 65,535 sets the high bit, and the
+    /// round trip fact pins exactly that. Instance 0 is a plain stack, which nothing crafts, so a body
+    /// naming it describes a craft that cannot have happened.
+    /// </para>
+    /// </summary>
     public const string FieldRange = "event-field-range";
 
     /// <summary>The bytes <see cref="Write"/> writes.</summary>

@@ -34,6 +34,15 @@ namespace KhaozEngine.Tests.Server.ItemInstances;
 /// </para>
 /// </para>
 /// <para>
+/// <b>The LIMIT of the sweep, so nobody reads it as more than it is.</b> The rule is NAME shaped and
+/// ASSEMBLY shaped, so a new client to server type is caught here only when it is named
+/// <c>*Request</c>, <c>*Command</c> or <c>*Operation</c> AND it lives in one of those three assemblies.
+/// A public type under any other suffix, or one in a fourth assembly, carries a payload past this fact
+/// without failing it. The equality assertion below is what makes the gap visible rather than silent: the
+/// expected list has to be edited by hand when the set moves, and the person editing it is the one who has
+/// to judge whether the new name belongs in <c>MessageSuffixes</c> too.
+/// </para>
+/// <para>
 /// <b>Phase 3's narrow version stays where it is and stays green.</b>
 /// <c>PageSyncFrameBoundTests.No_client_to_server_message_carries_an_instance_payload</c> in
 /// <c>KhaozEngine.TileWorld.Netcode.Tests</c> covers the resync request and the take request from the

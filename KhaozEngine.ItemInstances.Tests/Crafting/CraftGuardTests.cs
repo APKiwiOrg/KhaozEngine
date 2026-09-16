@@ -199,6 +199,26 @@ public sealed class CraftGuardTests
     }
 
     [Fact]
+    public void RarityIsAtMost_stops_at_a_RETIRED_rule_in_the_chain()
+    {
+        // Every other reader of a rarity rule gates on the LIVE row: CraftPrimitives.Resolve refuses a
+        // retired rarity id outright and walks upgrade_from over LiveRows alone. This guard read the row
+        // whatever its retired bit said, so a rule a later version retired still carried its link and an
+        // exalted item still answered "at most mythic" through it.
+        CraftWorld live = Chain();
+        CraftWorkingCopy joined = live.Open(live.Payload(60, MagicRarity, [Affix(1)]));
+        Assert.True(Guard(CraftGuardKind.RarityIsAtMost, Mythic, 0, in joined));
+
+        CraftWorld retired = ChainWithRetired(RareRarity);
+        CraftWorkingCopy broken = retired.Open(retired.Payload(60, MagicRarity, [Affix(1)]));
+        Assert.False(Guard(CraftGuardKind.RarityIsAtMost, Mythic, 0, in broken));
+
+        // The links ABOVE the retired one still join, so what broke is that rule rather than the walk.
+        CraftWorkingCopy above = retired.Open(retired.Payload(60, Exalted, [Affix(1)]));
+        Assert.True(Guard(CraftGuardKind.RarityIsAtMost, Mythic, 0, in above));
+    }
+
+    [Fact]
     public void AffixCountAtMost_counts_the_entries_of_one_mod_kind()
     {
         CraftWorld world = Chain();
@@ -625,6 +645,27 @@ internal static class CraftGuardWorld
         ]);
 
         return new CraftWorld(registry, Snapshot(registry, [.. rows]), Greatsword);
+    }
+
+    /// <summary>The same four step chain with one of its rules RETIRED, which is what breaks a link.</summary>
+    public static CraftWorld ChainWithRetired(int rarityId)
+    {
+        CraftWorld chain = Chain();
+        var rows = new List<ContentRow>();
+        foreach (ContentRow row in chain.Snapshot.Rows(new ContentTypeId(InstanceContentTypeIds.RarityRuleTypeId)))
+        {
+            rows.Add(row.Id == rarityId ? row.WithIdentity(row.Id, isRetired: true) : row);
+        }
+
+        foreach (ContentTypeId type in chain.Snapshot.Types)
+        {
+            if (type.Value != InstanceContentTypeIds.RarityRuleTypeId)
+            {
+                rows.AddRange(chain.Snapshot.Rows(type));
+            }
+        }
+
+        return chain with { Snapshot = Snapshot(chain.Registry, [.. rows]) };
     }
 
     /// <summary>The generation world plus two legacy mods, which no table and no draw can ever reach.</summary>

@@ -132,7 +132,9 @@ public static class CraftGuardEvaluator
     /// </para>
     /// <para>
     /// An item carrying no kind 130 at all is at most NOTHING, because no rule names it and the chain is
-    /// the only order there is.
+    /// the only order there is. A RETIRED rule breaks the chain at that link for the same reason: the
+    /// version no longer makes the statement its <c>upgrade_from</c> carries, and every other reader of a
+    /// rarity rule already gates on the live row.
     /// </para>
     /// </summary>
     static bool AtMost(in CraftWorkingCopy copy, IContentSnapshot snapshot, int rarityId)
@@ -149,7 +151,12 @@ public static class CraftGuardEvaluator
                 return true;
             }
 
-            if (!snapshot.TryGetRow(type, walked, out ContentRow? rule))
+            // The LIVE row, as every other reader of a rarity rule does: CraftPrimitives.Resolve refuses a
+            // retired rarity id and walks upgrade_from over LiveRows alone. A retired rule BREAKS the chain
+            // here rather than passing its link on, because a link only a retired row states is a link the
+            // version no longer makes.
+            if (!InstanceContentChecks.IsLive(snapshot, InstanceContentTypeIds.RarityRuleTypeId, walked)
+                || !snapshot.TryGetRow(type, walked, out ContentRow? rule))
             {
                 return false;
             }

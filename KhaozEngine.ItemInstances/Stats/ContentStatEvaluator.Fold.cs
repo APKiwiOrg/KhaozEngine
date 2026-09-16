@@ -7,6 +7,17 @@ namespace KhaozEngine.ItemInstances;
 /// order and FLOOR division. They sit together because they are one decision. The order matters only
 /// because the division rounds, and the division is written out only because the order made the rounding
 /// observable.
+/// <para>
+/// <b>The ONE divergence from contracts 13.2, written down rather than discovered.</b> Step 6 saturates the
+/// flat sum and the increased pool into int range BEFORE multiplying them, rather than multiplying in
+/// <c>long</c> and saturating the product once. The two answers differ in exactly one shape: a flat sum that
+/// needs more than an <c>int</c> to state, combined with an increased pool near zero, where the true product
+/// is small and the product of the saturated halves is a different small number. A flat of 3,000,000,000
+/// with a pool of one basis point is the worked case, and both of those inputs are already far outside
+/// anything a <c>stat</c> row's own <c>min</c> and <c>max</c> can hold, so no authored content reaches it.
+/// Saturating first is what bounds every OTHER product below <c>long</c>'s ceiling and makes step 8's
+/// checked narrowing provably safe, which is the trade this takes deliberately.
+/// </para>
 /// </summary>
 public sealed partial class ContentStatEvaluator
 {

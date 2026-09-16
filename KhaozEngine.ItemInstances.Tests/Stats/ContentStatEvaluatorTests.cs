@@ -188,15 +188,11 @@ public sealed class ContentStatEvaluatorTests
         evaluator.SetBase(Hottest, 100);
         evaluator.AddSource(Key(1, 0, 0), new[] { Flat(50, 0, 2) }, new[] { FireTag, SpellTag });
 
+        // Nothing dirties between these reads. The cache is keyed by the whole context, so a read under
+        // one answers that one.
         Assert.Equal(150, evaluator.Value(Hottest, Context(SpellTag)));
-
-        evaluator.Recompute(Key(1, 0, 0));
         Assert.Equal(100, evaluator.Value(Hottest, Context()));
-
-        evaluator.Recompute(Key(1, 0, 0));
         Assert.Equal(100, evaluator.Value(Hottest, Context(ColdTag)));
-
-        evaluator.Recompute(Key(1, 0, 0));
         Assert.Equal(150, evaluator.Value(Hottest, Context(SpellTag, ColdTag)));
     }
 
@@ -215,8 +211,6 @@ public sealed class ContentStatEvaluatorTests
         untagged.SetBase(Hottest, 100);
         untagged.AddSource(Key(1, 0, 0), new[] { Increased(5_000, 0, 1) }, new[] { FireTag });
         Assert.Equal(100, untagged.Value(Hottest, Context()));
-
-        untagged.Recompute(Key(1, 0, 0));
         Assert.Equal(150, untagged.Value(Hottest, Context(FireTag)));
     }
 
@@ -230,9 +224,7 @@ public sealed class ContentStatEvaluatorTests
         evaluator.AddSource(Key(1, 0, 0), new[] { Flat(50) }, Array.Empty<int>());
 
         Assert.Equal(150, evaluator.Value(Hottest, Context()));
-        evaluator.Recompute(Key(1, 0, 0));
         Assert.Equal(150, evaluator.Value(Hottest, Context(ColdTag)));
-        evaluator.Recompute(Key(1, 0, 0));
         Assert.Equal(150, evaluator.Value(Hottest, Context(FireTag, SpellTag, ColdTag)));
     }
 
@@ -421,6 +413,82 @@ public sealed class ContentStatEvaluatorTests
     }
 
     [Fact]
+    public void Two_reads_of_one_stat_under_two_contexts_answer_the_two_contexts()
+    {
+        // The stat row carries fire and the line's scope asks for fire AND spell, so the line applies under
+        // a spell context and not under an empty one. NOTHING dirties between the two reads, because a
+        // context is not a source and spec 11.5's dirty events are all source events. A cache keyed by stat
+        // id alone would credit the spell read's 150 to the melee read of the same stat in the same tick.
+        var evaluator = new ContentStatEvaluator(TaggedStat(FireTag));
+        evaluator.SetBase(Hottest, 100);
+        evaluator.AddSource(Key(1, 0, 0), new[] { Flat(50, 0, 2) }, new[] { FireTag, SpellTag });
+
+        Assert.Equal(150, evaluator.Value(Hottest, Context(SpellTag)));
+        Assert.Equal(100, evaluator.Value(Hottest, Context()));
+    }
+
+    [Fact]
+    public void A_context_change_and_back_is_answered_from_the_refreshed_cache()
+    {
+        // The CONDITION MASK is half of a context, so it is compared like the tags are: a read under a
+        // different mask refolds, and the refold REPLACES the stored context, so going back folds again.
+        var registry = new MaskConditionRegistry();
+        var evaluator = new ContentStatEvaluator(OneStat(-1_000_000, 1_000_000), registry);
+        evaluator.SetBase(Hottest, 100);
+        evaluator.AddSource(Key(1, 0, 0), new[] { Flat(50, 0, 0, 4_096) }, Array.Empty<int>());
+
+        Assert.Equal(150, evaluator.Value(Hottest, Masked(1)));
+        Assert.Equal(100, evaluator.Value(Hottest, Masked(0)));
+        Assert.Equal(150, evaluator.Value(Hottest, Masked(1)));
+        Assert.Equal(3, registry.Calls);
+
+        // And the SAME context twice is still ONE fold, which is what the cache is for.
+        Assert.Equal(150, evaluator.Value(Hottest, Masked(1)));
+        Assert.Equal(3, registry.Calls);
+
+        // A tag list equal by VALUE is the same context, even though it is a different array.
+        var tagged = new ContentStatEvaluator(TaggedStat(FireTag), registry);
+        tagged.SetBase(Hottest, 100);
+        tagged.AddSource(Key(1, 0, 0), new[] { Flat(50, 0, 2, 4_096) }, new[] { FireTag, SpellTag });
+        Assert.Equal(150, tagged.Value(Hottest, new StatContext(new[] { SpellTag }, 1)));
+        Assert.Equal(150, tagged.Value(Hottest, new StatContext(new[] { SpellTag }, 1)));
+        Assert.Equal(4, registry.Calls);
+    }
+
+    [Fact]
+    public void A_context_wider_than_MaxContextTags_is_read_uncached_and_still_right()
+    {
+        // The stored context is a fixed width buffer, so a context wider than it cannot be compared and is
+        // folded on EVERY read rather than answered from a number belonging to some other context.
+        Assert.Equal(16, ContentStatEvaluator.MaxContextTags);
+
+        var registry = new MaskConditionRegistry();
+        var evaluator = new ContentStatEvaluator(OneStat(-1_000_000, 1_000_000), registry);
+        evaluator.SetBase(Hottest, 100);
+        evaluator.AddSource(
+            Key(1, 0, 0),
+            new[] { Flat(50, 0, 1), Flat(0, 0, 0, 4_096) },
+            new[] { SpellTag });
+
+        int[] without = Wide(ColdTag);
+        int[] with = Wide(ColdTag);
+        with[0] = SpellTag;
+
+        Assert.Equal(100, evaluator.Value(Hottest, new StatContext(without, 1)));
+        Assert.Equal(1, registry.Calls);
+        Assert.Equal(150, evaluator.Value(Hottest, new StatContext(with, 1)));
+        Assert.Equal(2, registry.Calls);
+        Assert.Equal(100, evaluator.Value(Hottest, new StatContext(without, 1)));
+        Assert.Equal(3, registry.Calls);
+
+        // A context back inside the width caches again, so the wide read stored nothing on its way past.
+        Assert.Equal(150, evaluator.Value(Hottest, Context(SpellTag)));
+        Assert.Equal(4, registry.Calls);
+        Assert.Equal(150, evaluator.Value(Hottest, Context(SpellTag)));
+        Assert.Equal(4, registry.Calls);
+    }
+
+    [Fact]
     public void Recompute_marks_dirty_and_nothing_else()
     {
         var registry = new RecordingConditionRegistry();
@@ -470,6 +538,21 @@ public sealed class ContentStatEvaluatorTests
     static StatSourceKey Key(byte kind, int ordinal, long instanceId) => new(kind, ordinal, instanceId);
 
     static StatContext Context(params int[] tags) => new(tags, 0);
+
+    /// <summary>A context with no tags at all and one condition mask, for the facts about the mask.</summary>
+    static StatContext Masked(int conditionMask) => new(Array.Empty<int>(), conditionMask);
+
+    /// <summary>One tag repeated past the cached width, which is the shape a wide context takes here.</summary>
+    static int[] Wide(int tag)
+    {
+        var tags = new int[ContentStatEvaluator.MaxContextTags + 1];
+        for (int index = 0; index < tags.Length; index++)
+        {
+            tags[index] = tag + index;
+        }
+
+        return tags;
+    }
 
     static StatModifierLine Flat(int value, int scopeStart = 0, int scopeLength = 0, int conditionId = 0)
         => new(Hottest, StatCombineKind.Flat, value, scopeStart, scopeLength, conditionId);
@@ -531,6 +614,21 @@ public sealed class ContentStatEvaluatorTests
     /// A game registry that answers true for every id it is asked about and records the asking, which is
     /// what turns "the engine never calls the registry for its own band" into an observable.
     /// </summary>
+    /// <summary>
+    /// A game registry that reads bit 0 of the context's condition MASK and counts the asking, which is what
+    /// turns "the cached context is compared by value, mask included" into an observable.
+    /// </summary>
+    sealed class MaskConditionRegistry : IStatConditionRegistry
+    {
+        public int Calls { get; private set; }
+
+        public bool Evaluate(int conditionId, in StatContext context)
+        {
+            Calls++;
+            return (context.ConditionMask & 1) != 0;
+        }
+    }
+
     sealed class RecordingConditionRegistry : IStatConditionRegistry
     {
         public List<int> Asked { get; } = new();

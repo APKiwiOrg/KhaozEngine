@@ -25,11 +25,24 @@ namespace KhaozEngine.ItemInstances;
 /// other for a given stat, never both.
 /// </para>
 /// <para>
-/// <b>The cache is per stat and assumes ONE live context.</b> A read of a clean stat answers the cached
-/// number without folding, which is spec 11.5's lazy model, so a caller evaluating one stat under two
-/// different contexts must dirty between them through <see cref="Recompute(in StatSourceKey)"/>. That is
-/// the same rule spec 11.3 states for a condition over a moving value, and it is what keeps a tick from
-/// costing a fold.
+/// <b>The cache is keyed by the stat AND the whole context, compared by VALUE.</b> A read of a clean stat
+/// whose stored context equals the incoming one answers the cached number without folding, which is spec
+/// 11.5's lazy model, and a read under any OTHER context refolds and refreshes what is stored. That is what
+/// it takes for the model to be safe: spec 11.5's dirty events are all SOURCE events and a context is not
+/// one, so a cache keyed by stat id alone credits a <c>[fire, spell]</c> line read under a spell context to
+/// the melee read of the same stat in the same tick, and <see cref="Recompute(in StatSourceKey)"/> is not an
+/// escape because it names a source rather than a context.
+/// </para>
+/// <para>
+/// <b>What is compared is the condition mask, the tag count and every tag ELEMENT, in order.</b> The
+/// comparison is deliberately conservative: two contexts holding the same tags in a different order are two
+/// contexts here and the second one refolds, because an order insensitive compare is a sort or a set on the
+/// read path and the read path allocates nothing. The stored context lives in an evaluator owned buffer
+/// sized at <see cref="AddSource"/> time, <see cref="MaxContextTags"/> wide per stat, so the compare and the
+/// refresh both write into memory that already exists. A context wider than that is read UNCACHED every
+/// time and stores nothing, because a number that cannot be compared is a number that cannot be trusted.
+/// <see cref="CopyValuesTo"/> goes through the same rule, one stat at a time, and
+/// <see cref="Recompute(in StatSourceKey)"/>'s own meaning is unchanged.
 /// </para>
 /// <para>
 /// <b>Two engine schema positions are read by index here and no engine type declares an index constant</b>
@@ -54,6 +67,13 @@ public sealed partial class ContentStatEvaluator
     /// <summary>Where <c>stat.tags</c> sits, which is the stat's own half of a scope match.</summary>
     internal const int StatTagsIndex = 4;
 
+    /// <summary>
+    /// The most context tags one cached read compares, which is the width of the per stat context buffer.
+    /// A context carrying more is read UNCACHED every time, because a number that cannot be compared is a
+    /// number that cannot be trusted.
+    /// </summary>
+    public const int MaxContextTags = 16;
+
     /// <summary>One hundred percent in basis points, which is the identity for both percent kinds.</summary>
     internal const long BasisPointScale = 10_000;
 
@@ -72,6 +92,10 @@ public sealed partial class ContentStatEvaluator
     readonly int[] _statIndexCount;
     readonly int[] _cachedValue;
     readonly bool[] _cachedValid;
+    readonly int[] _cachedMask;
+    readonly int[] _cachedTagCount;
+
+    int[] _cachedTags = Array.Empty<int>();
 
     readonly List<StatSource> _sources = new();
 
@@ -116,6 +140,8 @@ public sealed partial class ContentStatEvaluator
         _statIndexCount = new int[slots];
         _cachedValue = new int[slots];
         _cachedValid = new bool[slots];
+        _cachedMask = new int[slots];
+        _cachedTagCount = new int[slots];
         for (int slot = 0; slot < slots; slot++)
         {
             _statScale[slot] = 1;
@@ -215,6 +241,13 @@ public sealed partial class ContentStatEvaluator
             }
         }
 
+        if (_cachedTags.Length == 0)
+        {
+            // The read path's buffer, allocated HERE so nothing on the read path ever does. It is the one
+            // event that can make a stat worth caching in the first place.
+            _cachedTags = new int[_cachedValid.Length * MaxContextTags];
+        }
+
         int position = Find(in key);
         if (position >= 0)
         {
@@ -278,17 +311,26 @@ public sealed partial class ContentStatEvaluator
     }
 
     /// <summary>
-    /// One stat's value, folded if the stat is dirty and read from the cache if it is not. Allocates
-    /// nothing.
+    /// One stat's value, folded when the stat is dirty or when the cached number belongs to a DIFFERENT
+    /// context, and read from the cache when neither is true. Allocates nothing.
     /// </summary>
     /// <param name="statId">The stat id.</param>
-    /// <param name="context">The evaluation context.</param>
+    /// <param name="context">The evaluation context, which is compared by value against the one the cached
+    /// number was folded under.</param>
     /// <returns>The clamped value, in the stat's scaled units.</returns>
     /// <exception cref="ArgumentOutOfRangeException">This content version carries no stat under that id.</exception>
     public int Value(int statId, in StatContext context)
     {
         CheckStat(statId);
-        if (_cachedValid[statId])
+        ReadOnlySpan<int> tags = context.Tags.Span;
+        if (tags.Length > MaxContextTags || _cachedTags.Length == 0)
+        {
+            // Nothing to compare against, so nothing is stored either: a context past the buffer's width,
+            // and the case where no source has ever been added and there is no buffer at all.
+            return Fold(statId, in context);
+        }
+
+        if (_cachedValid[statId] && SameContext(statId, tags, context.ConditionMask))
         {
             return _cachedValue[statId];
         }
@@ -296,7 +338,39 @@ public sealed partial class ContentStatEvaluator
         int value = Fold(statId, in context);
         _cachedValue[statId] = value;
         _cachedValid[statId] = true;
+        StoreContext(statId, tags, context.ConditionMask);
         return value;
+    }
+
+    /// <summary>
+    /// Whether the number cached for one stat was folded under the context now being asked about: the
+    /// condition mask, then the tag count, then every tag element in order.
+    /// </summary>
+    bool SameContext(int statId, ReadOnlySpan<int> tags, int conditionMask)
+    {
+        if (_cachedMask[statId] != conditionMask || _cachedTagCount[statId] != tags.Length)
+        {
+            return false;
+        }
+
+        int start = statId * MaxContextTags;
+        for (int position = 0; position < tags.Length; position++)
+        {
+            if (_cachedTags[start + position] != tags[position])
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>Records the context a freshly folded number belongs to, into the buffer that already exists.</summary>
+    void StoreContext(int statId, ReadOnlySpan<int> tags, int conditionMask)
+    {
+        _cachedMask[statId] = conditionMask;
+        _cachedTagCount[statId] = tags.Length;
+        tags.CopyTo(_cachedTags.AsSpan(statId * MaxContextTags, MaxContextTags));
     }
 
     /// <summary>

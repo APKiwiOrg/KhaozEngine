@@ -322,12 +322,13 @@ public class AuthoringValueTests
     }
 
     [Fact]
-    public void TheStoreSeamCarriesTheTwentySevenMembersEveryProviderImplements()
+    public void TheStoreSeamCarriesTheTwentyEightMembersEveryProviderImplements()
     {
         // Spec 2.3 and the phase 1 plan name these so a provider implements ONE shape. A member added here
         // without being added to every backend is the drift this pins. The two freeze members are spec 6.2's:
         // a publish marks the draft frozen and releases it, and a provider missing either one would accept a
-        // draft edit into a change set a publish in flight has already read.
+        // draft edit into a change set a publish in flight has already read. PackStore is the pack target the
+        // operational pair (catalog-sweep, catalog-verify) works on, promoted to the seam by task 28.
         string[] expected =
         [
             "AllocateAsync",
@@ -353,6 +354,7 @@ public class AuthoringValueTests
             "ListRowsAsync",
             "ListVersionsAsync",
             "LoadSnapshotAsync",
+            "PackStore",
             "PublishAsync",
             "ReadPublishBaselineAsync",
             "RollbackToAsync",
@@ -361,6 +363,7 @@ public class AuthoringValueTests
 
         string[] actual = typeof(IContentAuthoringStore)
             .GetMembers(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+            .Where(static member => member is not MethodInfo { IsSpecialName: true })
             .Select(static member => member.Name)
             .OrderBy(static name => name, StringComparer.Ordinal)
             .ToArray();

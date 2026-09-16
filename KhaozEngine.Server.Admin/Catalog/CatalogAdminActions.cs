@@ -83,7 +83,11 @@ public static class CatalogAdminActions
     /// <summary>The open draft deleted, leaving one audit row carrying the edit count.</summary>
     public const string DiscardAction = "catalog-discard";
 
-    /// <summary>The full sweep over the draft-applied candidate, allocating nothing and writing nothing.</summary>
+    /// <summary>
+    /// The full sweep over the draft-applied candidate, allocating no id and writing no row. Its baseline
+    /// read performs the same stale-freeze recovery a publish's does, which is the one write it is not
+    /// silent about.
+    /// </summary>
     public const string ValidateAction = "catalog-validate";
 
     /// <summary>The field-level diff, plus the chunk summary that says what publishing would cost.</summary>

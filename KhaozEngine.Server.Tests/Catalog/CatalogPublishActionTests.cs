@@ -34,11 +34,11 @@ public sealed class CatalogPublishActionTests : IDisposable
 
     /// <summary>
     /// The dry run builds the candidate and runs the full sweep WITHOUT allocating an id and without
-    /// writing anything. It is the same validator a publish runs, so a green validate followed by a red
-    /// publish can only mean the draft changed in between.
+    /// writing a version or a row. It is the same validator a publish runs, so a green validate followed by
+    /// a red publish can only mean the draft changed in between.
     /// </summary>
     [Fact]
-    public async Task Validate_OnACleanDraft_IsGreenAndWritesNothing()
+    public async Task Validate_OnACleanDraft_IsGreenAndAllocatesNothing()
     {
         int published = await _harness.PublishThingsAsync("stone_sword");
         await _harness.OkAsync("catalog-edit", """
@@ -53,9 +53,36 @@ public sealed class CatalogPublishActionTests : IDisposable
         Assert.Equal(published, body.GetProperty("baseVersion").GetInt32());
         Assert.Equal(published + 1, body.GetProperty("candidateVersion").GetInt32());
 
-        // Nothing was written: the active version has not moved and the draft is still pending.
+        // Nothing was allocated: the active version has not moved and the draft is still pending.
         Assert.Equal(published, await _harness.Store.GetActiveVersionAsync());
         Assert.Equal(1, (await _harness.Store.GetOpenDraftAsync())!.EditCount);
+    }
+
+    /// <summary>
+    /// The dry run's baseline read performs the same STALE FREEZE recovery a publish's does, which is the one
+    /// thing it is not silent about. <c>ContentDraftCandidate</c> itself writes nothing, but the baseline the
+    /// action hands it comes from <c>ReadPublishBaselineAsync</c>, whose contract clears a marker naming a
+    /// base version the store no longer stands at. That is a recovery rather than a side effect (only a
+    /// publish that died between its commit and its own cleanup leaves one, and the draft it names would
+    /// otherwise refuse every edit forever), and "writes nothing" was too strong a sentence for it.
+    /// </summary>
+    [Fact]
+    public async Task Validate_ClearsAStaleFreezeMarkerTheSameWayAPublishDoes()
+    {
+        int published = await _harness.PublishThingsAsync("stone_sword");
+        await _harness.OkAsync("catalog-edit", """
+        { "edits": [ { "op": "add", "typeKey": "thing", "key": "iron_sword",
+                       "fields": { "value": 12000, "stackable": false } } ] }
+        """);
+
+        // A marker naming a base version the store no longer stands at, which is what a publish that died
+        // after its commit leaves behind. Every edit against the draft refuses while it is there.
+        await _harness.Store.FreezeDraftAsync(published - 1);
+        Assert.True((await _harness.Store.GetOpenDraftAsync())!.IsFrozen);
+
+        await _harness.OkAsync("catalog-validate", null);
+
+        Assert.False((await _harness.Store.GetOpenDraftAsync())!.IsFrozen);
     }
 
     /// <summary>

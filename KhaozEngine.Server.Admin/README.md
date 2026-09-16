@@ -136,7 +136,11 @@ validator would make boot the only real gate while boot fails closed. The repair
 an engine patch: export the failing candidate and replay it in a unit test.
 
 `catalog-validate` builds the candidate and runs the full sweep without allocating an id and without writing
-anything, so a green validate followed by a red publish can only mean the draft changed in between. Ids on
+a version or a row, so a green validate followed by a red publish can only mean the draft changed in between.
+Its baseline read does perform the same stale-freeze recovery a publish's does, clearing a marker that names a
+base version the store no longer stands at, which is a recovery rather than a side effect: only a publish that
+died between its commit and its own cleanup leaves one, and the draft it names would otherwise refuse every
+edit forever. Ids on
 rows the draft ADDS are provisional there and in a diff against the candidate, which `provisionalIds` says:
 the allocator issues the real ones at publish.
 

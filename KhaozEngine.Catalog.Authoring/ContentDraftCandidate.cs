@@ -5,7 +5,9 @@ namespace KhaozEngine.Catalog.Authoring;
 
 /// <summary>
 /// The DRY RUN of spec 10.6: the base version with the open draft's edits applied, swept by the one
-/// validator, with nothing allocated and nothing written.
+/// validator, with no id allocated and no row written. This type writes nothing at all, and a CALLER that
+/// obtains its baseline from <see cref="IContentAuthoringStore.ReadPublishBaselineAsync"/> gets that
+/// member's stale-freeze recovery along with it, which is a recovery rather than a side effect.
 /// <para>
 /// <b>It exists because two read-only actions need the candidate a publish builds at step 2</b>, and the
 /// seam offers no way to reach it. <c>catalog-validate</c> is the sweep an operator runs before publishing

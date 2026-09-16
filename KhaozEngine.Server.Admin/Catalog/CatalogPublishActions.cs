@@ -42,7 +42,13 @@ internal sealed class CatalogPublishActions(IContentAuthoringStore store, Conten
 
     /// <summary>
     /// The DRY RUN: the candidate a publish would build, swept by the same validator, with no id allocated
-    /// and nothing written. It needs no body.
+    /// and no row written. It needs no body.
+    /// <para>
+    /// The one write it makes is the one a publish's own first read makes: <c>ReadPublishBaselineAsync</c>
+    /// clears a STALE freeze marker, meaning one naming a base version the store no longer stands at. Only a
+    /// publish that died between its commit and its own cleanup leaves one, and the draft it names would
+    /// otherwise refuse every edit forever, so this is a recovery rather than a side effect.
+    /// </para>
     /// </summary>
     async Task<AdminActionResult> ValidateAsync(JsonElement? payload, CancellationToken cancellationToken)
     {

@@ -270,18 +270,21 @@ leaves, and not the origin or the present-at-commit flag, which are routing rath
 replayed operation whose slot has been refilled by a different item would hash identically and apply to the
 wrong one.
 
-**A craft carries its event body and every other kind writes its own canonical encoding as one.** Spec 10.6
-owns the `item-crafted` body and the crafting framework encodes it, so this package carries those bytes rather
-than freezing a format under a durable event name before its first writer exists.
+**A craft carries its event body and every other kind writes its own canonical encoding as one.** The
+`item-crafted` body is `ItemCraftedEvent` below, so a craft operation carries those bytes rather than
+re-deriving the body from its own parameters.
 
 **A craft that consumes NO currency carries no currency fields**, and `Validate` refuses one that does. The
 intent writes all four whether or not the craft reads them, and a craft with a currency definition id of 0
 reads none of them, so a currency slot left set by a caller's own defaults gave one action two encodings and
 one resubmit resolved as a conflict rather than as a replay.
 
-**The vocabulary names a container by NAME**, which is what its section names are filed under, and the craft
-intent of spec 10.6 names container IDs. The two have to be reconciled before a craft message crosses a wire
-([#942](https://github.com/APKiwiOrg/KhaozEngine/issues/942)).
+**The vocabulary names a container by NAME, and that is the one encoding.** A container's identity on this
+path is what `ContainerSectionNames.Format` files its pages under, so the name is already durable data every
+consumer owns, and a numbering invented for the intent would be a SECOND durable identity for the same thing.
+So `ContainerOperation.WriteCanonical` writes `[Length: varint][UTF8]` names, a craft hashes under that, and
+there is no id-based intent anywhere in the tree to disagree with it
+([#942](https://github.com/APKiwiOrg/KhaozEngine/issues/942), closed with that answer).
 
 ## Event names
 
@@ -291,8 +294,26 @@ container operation writes (`item-moved`, `stack-split`, `stack-merged`, `item-g
 `All` is the seven event types in spec order. A durable string is never renamed and never switched on, which
 is why they are constants rather than an enum, and `EventTypeOf` switches on the operation KIND rather than
 on a stored string: the number is this build's and the string is the durable one.
-The payload codecs for `item-generated` and `item-crafted` arrive with the generator and the crafting framework
-that emit them.
+
+`ItemGeneratedEvent` and `ItemCraftedEvent` are the two payload bodies, and they ship HERE rather than beside
+the generator and the crafting framework, which is what keeps `Foundation` free of event-shaped types: the
+generator hands back a `GenerationResult`, the executor hands back a re-encoded payload, and the caller that
+composes the commit encodes either one. **Neither the generator nor the crafting framework writes a journal
+byte.**
+
+A generated body records the RESOLVED item and never a seed, a state or a draw index: the base, the instance
+id, the rarity, the content version the roll read, why the item exists (`SourceDrop`, `SourceCraft`,
+`SourceAdminGrant`, `SourceMigration`, or a game's own kind from `FirstGameSourceKind`), the row that caused
+it, and the FULL canonical payload. The full payload rather than a reference to the page, because the page is
+rewritten whole on every later commit, so the bytes as they stood are recoverable from nothing else. About 72
+bytes on a rare.
+
+A crafted body carries the `crafting_currency` row that ran, the target's instance id, the content version,
+and BOTH the before and the after payload. About 127 bytes on a rare, of which the before costs 59, and it is
+worth every one of them: without the before bytes the durable record says an item changed and cannot say what
+it changed from. **A REFUSED craft writes nothing durable and never reaches the journal**, so there is no
+refusal field in the body and never will be: the client is answered with the `CraftRefusal` naming the guard
+or the primitive that refused, and the journal hears nothing at all.
 
 **Two of the seven bodies read back and five do not.** `ItemGeneratedEvent` and `ItemCraftedEvent` each ship
 a `TryRead` beside their `Write`, total, answering false plus a reason from a closed set on the type rather

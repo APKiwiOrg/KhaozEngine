@@ -95,6 +95,7 @@ this doc cannot silently drift apart.
 | Content authoring store | `KhaozEngine.Catalog.Authoring` (`IContentAuthoringStore`, TWENTY-NINE members and the one shape every backend implements: schema init and version, the store epoch, the active version and the operator pin, the one open draft with its edits, freeze and discard, the publish baseline, commit and publish, rollback, row page and history reads, audit reads and the operational audit append, id allocation plain and in-family, family listing and creation, bundle import and export, plus the `PackStore` the operational pair works on. Pinned member by member by a test, so a member added to one provider and not the others is red rather than latent. `IContentIdPersistence` is the smaller seam `ContentIdAllocator` sits on, and `IContentRowSideEncoder` is the publish's row-encoding seam) | `InMemoryContentAuthoringStore` ships in the seam package for tests and tools, and the two durable backends are OPT-IN siblings in no umbrella: `KhaozEngine.Catalog.Sqlite` (`SqliteContentAuthoringStore`, over `KhaozEngine.Sqlite`'s `SqliteStoreConnection` like every other SQLite store in the engine) and `KhaozEngine.Catalog.SqlServer` (`SqlServerContentAuthoringStore`, a fresh pooled connection per call, every write `Serializable`). The same conformance suite runs against all three, and the SQL Server leg is gated on `KE_CATALOG_SQLSERVER` because CI has no instance | Microsoft.Data.Sqlite / SqlClient, only in the two provider packages. The seam package itself takes NO third-party dependency and no SQL |
 | Content load index | `KhaozEngine.Catalog` (`IContentLoadIndex`, one member, `Build(IContentSnapshot)`, handed to `RegisterContentType` beside the codec) | **game-side**, and the engine ships none through this seam on purpose. The engine's own four derived indexes (key to id, `ContentTagIndex`, `ContentFamilyIndex`, `ContentLootIndex`) are built by `ContentDerivedIndexes` from the runtime's own constructor rather than registered through the seam, because a runtime must never exist with them missing. The seam is for a GAME's derived table, built eagerly at load beside them, because a lazy build inside a tick is the latency spike the design refuses | (no extra dep) |
 | Content validation | `KhaozEngine.Catalog` (`IContentValidator`, one member, `Validate(type, candidate, findings)`, ACCUMULATING into the caller's collection rather than throwing or returning at the first problem, because an operator fixing content wants every finding at once) | the engine's own `ContentValidator` runs the cross-cutting sweep and its `KEC` finding codes. A per-TYPE validator is registered beside the codec, so a game type's own rule is checked by the same pass and reported in the same report. Null is legal and means the schema checks alone | (no extra dep) |
+| Content validation against the PREVIOUS version | `KhaozEngine.Catalog` (`IContentHistoryValidator : IContentValidator`, one extra member, `Validate(candidate, previous, rules, findings)`, with the same PURE and ACCUMULATING contract. It exists because the plain seam carries no way to hand over the version a candidate is BASED on, so a change-shaped check reached from a publish saw the same null a boot does and was silently dead code) | reached ONLY by pass 6, the item-instances band, which is engine code and trusted. Pass 6 falls back to the plain seam for a band registration that does not implement it, and the GAME band never reaches this overload at all: a game validator is untrusted code and the previous snapshot is not something the engine hands it | (no extra dep) |
 | Content strings under the game's own | `KhaozEngine.Catalog` (`ContentStringFallback`, a `delegate bool (string key, out string value)`, handed to `ContentStringCatalog`'s constructor) | **game-side**, and a DELEGATE rather than an interface because `IStringCatalog` lives in `KhaozEngine.App` and `KhaozEngine.Catalog` depends on `Primitives` alone. `ContentStringCatalog` matches `IStringCatalog`'s member shape without the implements clause for exactly that reason, so a game wires it in as the catalog `LocalizationManager` hands out and a key the pack does not carry falls through to the shipped resources | (no extra dep) |
 | Audio | `KhaozEngine.Audio` (`IMusicBackend`, `ISfxBackend`, `Null*` no-op defaults) | (in-package) `OpenAlMusicBackend` / `OpenAlSfxBackend` | Silk.NET.OpenAL (+ NLayer mp3 / NVorbis ogg decode, contained) |
 | Server-status fetch | `KhaozEngine.ServerStatus` (`IServerStatusSource`, `ServerStatusReport` wire contract, `ServerStatusClient`, `ServerStatusEvaluator`) | (in-package) `HttpServerStatusSource`, a fake source in tests | System.Net.Http (BCL `HttpClient`, contained in `HttpServerStatusSource`) |
@@ -110,7 +111,7 @@ this doc cannot silently drift apart.
 | Per-frame input composition | `KhaozEngine.Windowing` `AppWindow.InputFilter`, a `Func<InputState, InputState>?` applied to the snapshot `BuildInput()` just built and before the frame latches it (`AppWindow.InputFilter.cs`, called from `AppWindow.Frames.cs`). Null is the raw snapshot with no allocation | `KhaozEngine.Automation`'s `AutomationInputInjector` is the only in-tree filter. It is a COMPOSITION seam and not an input source: it never reaches `InputAccumulator` and never touches a Silk or GLFW static, so the row above (`AppWindow` is the sole toucher) is unchanged | (no extra dep) |
 | Playtest automation state and verbs | `KhaozEngine.Automation` (`AutomationHost.StateProvider`, a `Func<JsonNode?>`, and `Register(string, Func<JsonElement, JsonNode?>)`), both invoked on the WINDOW thread at the frame boundary | **game-side**, and deliberately no engine implementation. Projecting a tile to a screen pixel needs the live camera and only the game has it, so the engine defines the seam and knows nothing about tiles, inventories or panels | (no extra dep, `System.Text.Json` from the BCL) |
 | Playtest automation diagnostics | `KhaozEngine.Automation` `AutomationOptions.Log`, an `Action<string, Exception?>?` called from a socket thread when a loop or a connection ends for a reason other than shutdown | **game-side and optional**, null by default (silent, which is what a headless test wants). A delegate rather than a dependency on `KhaozEngine.Diagnostics`, which `KhaozEngine.Windowing` does not reference either, so the package's one edge stays `Automation -> Windowing` | (no extra dep) |
-| Gameplay randomness | `KhaozEngine.Primitives` (`IRandomSource`: `NextInt`, `NextULong`, `NextRollPosition`, `NextBytes`. No seed, no state, no derived stream and no way to ask an instance what it will draw next, so a durable record carries the RESOLVED OUTCOME rather than a seed and a draw index, which is what makes the source swappable at any time. Integer draws only, so a weighted choice is made over an integer weight total. A consumer takes one as a CONSTRUCTOR PARAMETER and there is no engine-provided default instance, because a default is how a production server ends up on the test source) | flavour 2 below: both implementations ship in the seam package, because neither takes a dependency. `CryptographicRandomSource` is what a hosted server runs, drawing from the OS through `RandomNumberGenerator`. `SeededRandomSource(ulong seed)` is the deterministic one for tests and seeded replay, wrapping `DeterministicRng` so the engine keeps exactly one seeded stream definition. Both draw a bounded integer by rejection sampling rather than modulo, because modulo bias on a roll is an edge a player can farm | (no extra dep, `System.Security.Cryptography` is in box) |
+| Gameplay randomness | `KhaozEngine.Primitives` (`IRandomSource`: `NextInt`, `NextULong`, `NextRollPosition`, `NextBytes`, `Skip`. `Skip` advances the stream by exactly one draw, for a caller that must consume a draw it will not use, and it is a DEFAULT interface method so a foreign implementation gets the advance for free. It exists because `NextInt(0, 1)` consumes nothing at all, so a position-stable generator cannot discard through `NextInt`: the stream position after an item would depend on what its pool held rather than on how many picks it made. No seed, no state, no derived stream and no way to ask an instance what it will draw next, so a durable record carries the RESOLVED OUTCOME rather than a seed and a draw index, which is what makes the source swappable at any time. Integer draws only, so a weighted choice is made over an integer weight total. A consumer takes one as a CONSTRUCTOR PARAMETER and there is no engine-provided default instance, because a default is how a production server ends up on the test source) | flavour 2 below: both implementations ship in the seam package, because neither takes a dependency. `CryptographicRandomSource` is what a hosted server runs, drawing from the OS through `RandomNumberGenerator`. `SeededRandomSource(ulong seed)` is the deterministic one for tests and seeded replay, wrapping `DeterministicRng` so the engine keeps exactly one seeded stream definition. Both draw a bounded integer by rejection sampling rather than modulo, because modulo bias on a roll is an edge a player can farm | (no extra dep, `System.Security.Cryptography` is in box) |
 
 `KhaozEngine.Sharding` gained the snapshot/restore primitives the per-cell persistence seam above is built on
 (`CellSim.SnapshotOwned`/`RestoreOwned`/`MaxOwnedNetId`, `ShardHost.CellCreated`/`EnsureCell`) with no storage
@@ -600,6 +601,15 @@ KhaozEngine.Catalog -> KhaozEngine.Primitives   (the foundation leaf, and where 
 KhaozEngine.Foundation -> KhaozEngine.Catalog   (umbrella ProjectReference, like every other Foundation package)
 ```
 
+**Pass 6 of the validator did not change that count.** The sweep's item-instances band runs a
+registration's own validator, and `IContentHistoryValidator` hands it the previous version, yet
+`KhaozEngine.Catalog` still references only `KhaozEngine.Primitives`. It CANNOT name the band: referencing
+the package that registers it would close a cycle, since `KhaozEngine.ItemInstances -> KhaozEngine.Catalog`
+already runs the other way. So the band arrives through the registration it already carried, dispatched on by
+its declared `ContentRegistrationBand` and reached through an interface this package declares, and the
+reserved `KEC0100` to `KEC0199` code range is what tells an operator whose finding it is. That is the whole
+shape of the pass, and it is why it looks like an inversion rather than a call.
+
 The four packages above it add these, and nothing else:
 
 ```
@@ -642,7 +652,7 @@ have no row: `IContentRowCodec` is how a type turns a row into bytes and back, r
 and `IContentSnapshot` is the read face of one loaded version, which `ContentSnapshot` and `ContentRuntime`
 both implement and which is what `KhaozEngine.ItemInstances` reads content through.
 
-## Item instance package edges, and the one deliberately not crossed
+## Item instance package edges, and the two deliberately not crossed
 
 `KhaozEngine.ItemInstances` adds five edges, every one forward and acyclic:
 
@@ -691,6 +701,44 @@ predicate gets a refusal instead of an unchecked write. The check runs on every 
 The consequence a reader should expect: `KhaozEngine.Items` still declares zero project references and ships
 as a leaf, and a consumer that wants plain stacks and nothing else never pulls the instance decoder in.
 
+### The content types, the generator, crafting and the stat evaluator add NO edge
+
+`KhaozEngine.ItemInstances` gained four whole subsystems and its `ProjectReference` list did not move. The five
+edges above are still the five. Each of the four is worth naming, because the obvious implementation of each
+one would have added an edge:
+
+- **The eighteen content types and their `KEC0100` validator** need the catalog's registry, schemas, row
+  codecs and `IContentSnapshot`, which the package already referenced for the content ids a payload carries.
+  They need no authoring store and no publish path: a type is REGISTERED from code and VALIDATED from a
+  snapshot, and both sides of that are `KhaozEngine.Catalog`, the read half. `KhaozEngine.Catalog.Authoring`
+  is a `Server` package and is not in the graph.
+- **The candidate tables and the generator** need `IRandomSource`, which lives in `KhaozEngine.Primitives`
+  and was already an edge. A generator takes one by CONSTRUCTOR, so the seam does not widen.
+- **The crafting framework** needs nothing new either. `ICraftOperation` is an INVERTED seam: a game
+  implements it and registers an instance in a `CraftingRegistry` the host constructs, so an exotic
+  operation reaches the engine without the engine referencing the game, the same shape
+  `GpuBackendProviders` uses one stack over.
+- **The stat evaluator** reads `stat` rows off the same snapshot and folds integers.
+
+**The interesting entry is again a seam deliberately not crossed: `KhaozEngine.Stats` is untouched, and
+`ContentStatEvaluator` deliberately does not live in it.**
+
+```
+KhaozEngine.ItemInstances -> KhaozEngine.Stats    (NOT added, and the type stays out of Stats)
+```
+
+`KhaozEngine.Stats` is a shipped FLOAT kernel, and every number on this path is an integer because a client
+and a server have to agree on a displayed value bit for bit. Putting the content stat evaluator inside
+`Stats` would mean one package holding two incompatible arithmetics under one name, and the first reader
+looking for "the stat system" would find whichever one the file order gave them. Putting it here instead
+keeps each package answering one question, and the layering follows: `Stats` sits beside this package in
+`Foundation` rather than under it, `ItemInstances` does not reference it, and a game picks ONE of the two for
+a given stat rather than both. The engine's own `StatSet` is unchanged by any of this.
+
+The consequence a reader should expect: `KhaozEngine.Foundation`'s graph is the same set of packages it was
+before the four subsystems landed, and a client that decodes an item still pulls no database, no journal type
+and no float stat kernel.
+
 ## The item instance JOURNAL edges, and the tile netcode edge that was not added
 
 `KhaozEngine.ItemInstances.Journal` adds three edges, every one forward and acyclic:
@@ -709,6 +757,14 @@ item with no database and no journal type in its graph. Putting it inside `Khaoz
 would give the journal an opinion about items, which the journal design ruled out and which the code still
 honours: a grep for `ItemStack`, `ItemContainer` or `KhaozEngine.Items` across `WorldStore`, both providers
 and both journal design docs returns zero hits.
+
+**The two event BODIES added no edge either.** `ItemGeneratedEvent` and `ItemCraftedEvent` live here rather
+than beside the generator and the executor that cause them, which is the same layering argument the package
+itself is: an event body is a `Server`-side durable record, and putting one in `KhaozEngine.ItemInstances`
+would put an event-shaped type in `Foundation`. The generator hands back a `GenerationResult` and the
+executor hands back a re-encoded payload, and the caller composing the commit encodes either one, so neither
+the generator nor the crafting framework writes a journal byte and neither needs to know a journal exists.
+Both bodies are written in terms of types this package already had in its graph.
 
 **The interesting entry here is again an edge that was NOT added: `KhaozEngine.TileWorld.Netcode` gained a
 component and a fragmenter and NO items dependency.** A drop's instance is `TileGroundItemInstance`, an

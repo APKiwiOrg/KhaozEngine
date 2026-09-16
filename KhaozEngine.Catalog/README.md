@@ -490,11 +490,24 @@ reports every defect rather than the earliest.
   than a mode flag, and `KEC0000` is the one finding that leaves `IsValid` true.
 - **Five passes, in order, none of them stopping early**: structure, schema, references, visibility and
   codec, then the remap rules. `KEC0001` to `KEC0099` are the engine's own and 1 to 42 are issued.
-  `KEC0100` to `KEC0199` are reserved for the item-instances band, which runs INSIDE the sweep after pass 5.
-- A per-type `IContentValidator` runs LAST, one per registered type, and may only ADD a constraint. Its
-  findings come back as `KEC0040` with its type key on the message, so the token stays stable. A per-type
-  validator is untrusted code, so a throw from one is caught and reported as `KEC0040` rather than taking a
-  publish down with a stack trace where a finding was expected.
+- **Pass 6 is the item-instances band**, which runs INSIDE the sweep after pass 5 and emits the reserved
+  `KEC0100` to `KEC0199`. It reaches a registration the way every other pass does, through the registry: a
+  type registered in the `Instances` band whose registration carries a validator has that validator run HERE,
+  TRUSTED, with its findings added UNCHANGED rather than folded into `KEC0040`, and a throw from one
+  PROPAGATES rather than becoming a finding, because a throw in the engine's own band is a bug and not
+  untrusted input. A band validator implementing `IContentHistoryValidator` is reached through that seam's
+  extra overload and is handed the run's OWN `previous` and rule set, and one that implements only
+  `IContentValidator` is reached through the plain one. **This package cannot NAME the band**, because
+  referencing the package that registers it would close a cycle, so the band arrives through the
+  registration it already carries and the reserved code range is what tells an operator whose finding it is.
+  A band type does NOT run again below: pass 6 owns it, so its finding reaches the report once and under its
+  own token rather than twice under two. Two skips keep the pass at nothing, a process that registers no band
+  type and a band registration that declares no validator.
+- A per-type `IContentValidator` runs LAST, one per registered type outside that band, and may only ADD a
+  constraint. Its findings come back as `KEC0040` with its type key on the message, so the token stays stable.
+  A per-type validator is untrusted code, so a throw from one is caught and reported as `KEC0040` rather than
+  taking a publish down with a stack trace where a finding was expected, and it is never handed the previous
+  version: that is the one thing pass 6 does that this loop deliberately does not.
 - **What it deliberately does NOT check**: whether a value is sensible, whether a client has the art,
   whether a localization key resolves, and whether a remap rule is a good idea. The owner owns the numbers.
 

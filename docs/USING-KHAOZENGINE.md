@@ -14490,6 +14490,183 @@ bytes. Checks 12 and 13 are tolerated policy findings that leave the record vali
 alert. `KhaozEngine.ItemInstances/README.md` is the type-by-type reference, including the thirteen checks in
 full, the `KECQ` layout, the durable reason ordinals and the kind bands.
 
+### Content, a roll, a craft and a stat (the four things over the record)
+
+The sections above are the RECORD, the container and the wire, which is what an item IS and how it travels.
+This one is the four things that PRODUCE and CHANGE one. All four sit in the same package, none of them adds
+a dependency, and every one of them takes the content version and the randomness seam as ARGUMENTS.
+
+**What is NOT here is consumer adoption.** Wiring a game's own loot tables, worn slots, tooltips and craft
+bench UI onto these types is per game, and each game does it in its own repo against its own content. This
+section is the engine side and stops at the last engine call.
+
+**Registering the eighteen content types, and building the tables at boot.** The instance band's types are a
+single `Register` call beside the engine's own, and the two optional index arguments are the whole of the
+difference between a server and a client.
+
+```csharp
+using KhaozEngine.Catalog;
+using KhaozEngine.ItemInstances;
+
+// ONCE at process start, before any pack loads, beside the engine's own six types.
+var types = new ContentTypeRegistry();
+EngineContentTypes.Register(types);
+
+// A host that ROLLS hands in a candidate table index. A host that CRAFTS hands in a plan index,
+// which also freezes the game operation registry at the first pack load. A client passes neither
+// and pays nothing: the weight rows it downloads none of would build empty tables anyway.
+var candidates = new ModCandidateTablesIndex();
+var operations = new CraftingRegistry();
+operations.Register(new MyExoticCraftOperation(random));      // ids at 1024 and above
+var plans = new CraftPlanIndex(operations);
+
+InstanceContentTypes.Register(types, candidates, plans);
+
+// ContentBoot freezes the registry, loads the pack and runs step 7b, which is what BUILDS both
+// indexes, in type id order, before the validator. Nothing above this line touched content.
+ContentBootResult boot = await ContentBoot.RunAsync(bootOptions, ct);
+```
+
+Both indexes throw if they are asked for before step 7b built them, and both refuse a second `Build`, because
+a process holds exactly one table set and a new content version becomes active at server RESTART rather than
+through a swap. A host either keeps the instances it constructed, as above, or reads one back off the runtime
+with `TryGetLoadIndex<ModCandidateTablesIndex>(new ContentTypeId(InstanceContentTypeIds.ModTypeId), out ...)`.
+
+**Rolling one item.** `ItemGenerator` turns (base, item level, randomness) into a canonical payload. It does
+NOT decide which base drops: that is a loot table, one package down, and the seam is deliberate.
+
+```csharp
+// The tables are immutable, so a replay harness builds a SECOND generator over the same ones and
+// pays one object. The generator is NOT reentrant: one per thread, or per craft loop.
+var generator = new ItemGenerator(candidates.Generation, random, allocator);
+
+GenerationResult rolled = generator.Generate(new GenerationContext(
+    BaseId: bronzeSword,
+    ItemLevel: 42,
+    ForcedRarityId: 0,               // 0 rolls one against the base's tags
+    ForcedUniqueTemplateId: 0,       // a unique is FORCED by the loot table, and draws NOTHING
+    Quality: 0));
+
+// The instance id is 0 when the payload came out empty, which is a plain stack (spec 3.6).
+bank.SetSlotAt(0, new ItemSlot(
+    new ItemStack(rolled.BaseId, 1, rolled.InstanceId), rolled.Payload, Quarantined: false));
+
+if (rolled.AffixCount < rolled.RequestedAffixCount)
+{
+    // A legal outcome, REPORTED rather than retried: the rarity rule asked for more affixes than
+    // the pool could give. It is the signal that a pack's pool is thinner than its rules assume.
+    LogThinPool(rolled.BaseId, rolled.RequestedAffixCount, rolled.AffixCount);
+}
+```
+
+`rolled.ContentVersion` is what makes "what did this item look like when it dropped" answerable against the
+right catalog rather than against today's. The draw COUNT is a function of the affix count and of nothing
+else: a pick whose pool is empty still consumes both of its draws, and a collapsed bound goes through
+`IRandomSource.Skip` rather than `NextInt(0, 1)`, which consumes nothing at all. Without both, a seeded
+session diverges at the first item whose pool runs dry.
+
+**Crafting it.** A currency is authored data resolved into a `CraftPlan` at boot. The executor runs the
+target guard set once, then every step in authored order with its own guard set immediately before it.
+
+```csharp
+if (!plans.TryGetPlan(orbOfAlteration, out CraftPlan? plan))
+{
+    return;                                   // this content version carries no such currency
+}
+
+// One per thread, like the generator it owns. Its generator is built over the SAME source, so a
+// craft's draws all come off one stream, and over an allocator that refuses every request, so a
+// craft provably cannot mint an instance id.
+var executor = new CraftExecutor(content, candidates.Generation, operations, random);
+
+ItemSlot target = bank.SlotAt(slot);
+var copy = CraftWorkingCopy.Open(properties, content, target.Stack.ItemId, target.Payload.Span);
+CraftOutcome outcome = executor.Apply(plan, ref copy);
+
+if (outcome.IsRefused)
+{
+    // A refusal is an ordinary answer, not an exception: a KIND a counter can bucket and a client
+    // can localize, plus the one number it is about. NOTHING durable was written.
+    return Refuse(outcome.Refusal.Kind, outcome.Refusal.Subject);
+}
+
+if (copy.TryEncode(out byte[] crafted))
+{
+    // The craft never patched a stored byte: this is a fresh canonical encode.
+    bank.SetSlotAt(slot, target with { Payload = crafted });
+}
+```
+
+`outcome.Ran(i)` and `outcome.Skipped(i)` answer per step, as two `uint` masks rather than a list, and they
+are NOT complements: a refused craft stops where it stopped, so a step after the refusal is in neither, which
+is the difference between a step a guard skipped and one the craft never reached. A step guard that fails
+skips ONE step and the craft continues, which is how a whetstone repairs an item already at quality 20 rather
+than refusing to touch it, while a TARGET guard that fails refuses everything and consumes nothing.
+
+**Evaluating a stat off it.** `InstanceStatLines` turns a payload plus its content into modifier lines and
+`ContentStatEvaluator` folds them. Both are per content version, both are built once, and the read path
+allocates nothing at all.
+
+```csharp
+var lines = new InstanceStatLines(content);                    // indexes mod_tier and stat_line once
+var evaluator = new ContentStatEvaluator(content, conditions); // conditions may be null
+
+// Size the spans off the builder rather than guessing. A Build that cannot finish answers
+// InstanceStatLines.Refused and writes nothing, because the bytes came from a page or a peer.
+Span<StatModifierLine> produced = stackalloc StatModifierLine[64];
+Span<int> scopes = stackalloc int[64];
+Span<InstanceStatSource> sources = stackalloc InstanceStatSource[8];
+
+int written = lines.Build(
+    slot.Payload.Span,
+    wornSlot: 3,
+    slot.Stack.InstanceId,
+    produced,
+    scopes,
+    sources,
+    out int tagCount,
+    out int sourceCount);
+
+if (written == InstanceStatLines.Refused)
+{
+    return;
+}
+
+// The lines and the tags come back TOGETHER because AddSource takes them together: each line's
+// scope start is relative to its own source's tag run.
+for (int i = 0; i < sourceCount; i++)
+{
+    InstanceStatSource source = sources[i];
+    evaluator.AddSource(
+        source.Key,
+        produced.Slice(source.LineStart, source.LineCount),
+        scopes.Slice(source.TagStart, source.TagCount));
+}
+
+evaluator.SetBase(armour, characterArmour);
+
+// The read. Nothing allocates, and a clean stat answers from the cache without folding.
+Span<int> values = stackalloc int[2];
+evaluator.CopyValuesTo([armour, fireResistance], values, new StatContext(tagsInPlay, conditionMask));
+```
+
+The fold order is `(SourceKind, Ordinal, InstanceId, ModifierIndex)`, always, and **the order IS the displayed
+number**: integer multiplication with rounding at each step is not associative, so two orders can differ by a
+unit. That is why the key is fixed on `StatSourceKey` rather than left to whichever order a player equipped
+in. There is no float anywhere, every divide is FLOOR division, and the result is checked into `int` before
+the clamp to the `stat` row's own `min` and `max`.
+
+Adding a source is the path that allocates, and it runs on exactly five events: equip, unequip, socket,
+unsocket, and a craft that rewrote a worn item's payload. Everything else is a read. A cached value asks the
+condition registry nothing, so a condition over a MOVING value is one the game must dirty through
+`evaluator.Recompute(key)`.
+
+**`KhaozEngine.Stats` is untouched by all of this.** It stays the float kernel it always was, beside this
+rather than under it, and a game uses one or the other for a given stat rather than both.
+`KhaozEngine.ItemInstances/README.md` is the type-by-type reference for everything above: the eighteen content
+types with their ids, parents, chunk slots and row caps, the eighteen `KEC0100` codes, the candidate table
+shape, the thirteen generation steps, the fourteen primitives with the three standing rules, and the fold.
+
 ### A container held as pages, and loading one back (19.0.0)
 
 `ItemContainer` conflates two numbers, and `PagedItemContainer` splits them. SLOT SPACE is the page geometry,

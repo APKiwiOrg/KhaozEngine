@@ -36,8 +36,8 @@ internal sealed class CatalogBundleActions(IContentAuthoringStore store, Content
     public void Register(ServerAdmin admin)
     {
         ArgumentNullException.ThrowIfNull(admin);
-        admin.RegisterAction(CatalogAdminActions.ImportAction, ImportAsync);
-        admin.RegisterAction(CatalogAdminActions.ExportAction, ExportAsync);
+        admin.RegisterAction(CatalogAdminActions.ImportAction, ImportAsync, mutating: true);
+        admin.RegisterAction(CatalogAdminActions.ExportAction, ExportAsync, mutating: true);
     }
 
     /// <summary>Imports a whole bundle into an empty database, publishing it as version 1.</summary>

@@ -512,11 +512,17 @@ with an `ArgumentException`: that id names a seat the allocator recycles, so the
 seated there next while the player who earned it reconnects onto another slot. Kick the slot instead.
 
 **Game-registered admin actions (since 10.131.0).** `ServerAdmin` also carries a name-keyed action registry:
-`RegisterAction(string name, Func<JsonElement?, CancellationToken, Task<AdminActionResult>> handler)` (and a
-synchronous convenience overload taking `Func<JsonElement?, AdminActionResult>`), `ActionNames`, and
-`TryGetAction`. A name must match `^[a-z0-9][a-z0-9-]{0,63}$`. An invalid or already-registered name throws
-`ArgumentException`. The registry is a `ConcurrentDictionary`, so registering is safe from any thread, though
-registration normally happens once at startup before the endpoint starts.
+`RegisterAction(string name, Func<JsonElement?, CancellationToken, Task<AdminActionResult>> handler, bool mutating = false)`
+(and a synchronous convenience overload taking `Func<JsonElement?, AdminActionResult>`), `ActionNames`,
+`TryGetAction` and `IsMutatingAction`. A name must match `^[a-z0-9][a-z0-9-]{0,63}$`. An invalid or
+already-registered name throws `ArgumentException`. The registry is a `ConcurrentDictionary`, so registering is
+safe from any thread, though registration normally happens once at startup before the endpoint starts.
+
+`mutating` declares the action is NOT safe to reach by GET, and an endpoint answers 405 with `Allow: POST` to a
+GET on one. It matters because an endpoint maps both verbs onto every registered name, so a destructive action
+with no required body is otherwise reachable by any GET a browser address bar, a link preview or a crawler
+makes unasked. It defaults to false, so an action that says nothing keeps the old behaviour, and it is a
+declaration: the engine cannot infer what a game's handler does.
 
 ```csharp
 var admin = new ServerAdmin(server, banStore, accountStore);

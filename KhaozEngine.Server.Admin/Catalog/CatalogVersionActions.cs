@@ -37,8 +37,8 @@ internal sealed class CatalogVersionActions(
     public void Register(ServerAdmin admin)
     {
         ArgumentNullException.ThrowIfNull(admin);
-        admin.RegisterAction(CatalogAdminActions.PinAction, PinAsync);
-        admin.RegisterAction(CatalogAdminActions.RollbackAction, RollbackAsync);
+        admin.RegisterAction(CatalogAdminActions.PinAction, PinAsync, mutating: true);
+        admin.RegisterAction(CatalogAdminActions.RollbackAction, RollbackAsync, mutating: true);
     }
 
     /// <summary>

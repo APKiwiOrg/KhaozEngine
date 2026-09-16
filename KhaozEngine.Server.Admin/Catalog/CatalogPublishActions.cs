@@ -35,9 +35,9 @@ internal sealed class CatalogPublishActions(IContentAuthoringStore store, Conten
     public void Register(ServerAdmin admin)
     {
         ArgumentNullException.ThrowIfNull(admin);
-        admin.RegisterAction(CatalogAdminActions.ValidateAction, ValidateAsync);
-        admin.RegisterAction(CatalogAdminActions.DiffAction, DiffAsync);
-        admin.RegisterAction(CatalogAdminActions.PublishAction, PublishAsync);
+        admin.RegisterAction(CatalogAdminActions.ValidateAction, ValidateAsync, mutating: true);
+        admin.RegisterAction(CatalogAdminActions.DiffAction, DiffAsync, mutating: true);
+        admin.RegisterAction(CatalogAdminActions.PublishAction, PublishAsync, mutating: true);
     }
 
     /// <summary>

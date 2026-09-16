@@ -92,6 +92,12 @@ this price change and what was it before" is answered from the row table rather 
 audit. `includeAudit` adds the row's own audit entries, newest first and filtered to that row, and is off by
 default because the history is the answer to the usual question.
 
+The other ELEVEN actions are registered `mutating: true`, which makes them POST only: a GET on one is a 405
+with `Allow: POST` and never reaches the handler. `catalog-discard` and `catalog-sweep` are why, because both
+are destructive and neither needs a body, so a bare GET used to run them. The other nine take a body a GET
+cannot carry anyway, and one verb for the whole family is easier to hold than a per-action rule. The five
+reads above take either verb.
+
 The seven mutating actions:
 
 | Action | Verb | Request | Response |
@@ -241,5 +247,10 @@ ever returns one.
 Routes (under `/admin`, all require `Authorization: Bearer <token>`): `GET /online`, `POST /teleport`, `POST /kick`,
 `POST /broadcast`, `GET /accounts?prefix=`, `GET /bans`, `POST /ban`, `POST /unban`, `GET /actions` (lists registered
 action names), `GET /actions/{name}` (dispatches with a null payload), `POST /actions/{name}` (dispatches with an
-optional JSON body, an absent, empty, whitespace-only, or JSON-null body all reaching the handler as null). See
+optional JSON body, an absent, empty, whitespace-only, or JSON-null body all reaching the handler as null).
+
+An action registered with `mutating: true` is POST ONLY: the GET route answers 405 with `Allow: POST` and
+never reaches the handler. Without it a destructive action with no required body is reachable by any GET a
+browser address bar, a link preview or a crawler makes unasked. The flag defaults to false, so an action that
+says nothing keeps the old behaviour. See
 `docs/USING-KHAOZENGINE.md` ("Server administration").

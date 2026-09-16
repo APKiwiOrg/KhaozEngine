@@ -11,6 +11,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.NetWorld;
 using KhaozEngine.Server.Admin;
+using KhaozEngine.Tests.Catalog;
 using Xunit;
 
 namespace KhaozEngine.Tests.ServerAdminEndpoint;
@@ -255,5 +256,85 @@ public class AdminActionHttpTests
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
         Assert.True(captured.CanBeCanceled,
             "dispatch should hand the handler the request's RequestAborted token, not default.");
+    }
+
+    /// <summary>
+    /// An action registered as MUTATING answers 405 to GET, and the read route is untouched.
+    /// <para>
+    /// The endpoint maps both verbs onto every registered name, so a destructive action with no required body
+    /// was reachable by any GET: a browser address bar, a link preview, a crawler following the name out of
+    /// <c>/actions</c>. The engine's own destructive routes have always been <c>MapPost</c> only, and a
+    /// registered action is the one place that guarantee was missing.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Get_OnAMutatingAction_Is405AndNamesThePostItAllows()
+    {
+        var admin = new ServerAdmin(new NullAdminControllable());
+        admin.RegisterAction("wipe", _ => AdminActionResult.Ok(), mutating: true);
+        admin.RegisterAction("peek", _ => AdminActionResult.Ok());
+        await using Harness h = await StartAsync(admin);
+
+        HttpResponseMessage blocked = await h.Client.GetAsync(h.BaseUrl + "/actions/wipe");
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, blocked.StatusCode);
+        Assert.Contains("POST", blocked.Content.Headers.Allow);
+
+        HttpResponseMessage posted = await h.Client.PostAsync(
+            h.BaseUrl + "/actions/wipe", new StringContent(string.Empty, Encoding.UTF8, "application/json"));
+        Assert.Equal(HttpStatusCode.OK, posted.StatusCode);
+
+        HttpResponseMessage read = await h.Client.GetAsync(h.BaseUrl + "/actions/peek");
+        Assert.Equal(HttpStatusCode.OK, read.StatusCode);
+    }
+
+    /// <summary>
+    /// The real registration: the eleven catalog actions that write are POST only and the five reads take
+    /// either verb. <c>catalog-discard</c> and <c>catalog-sweep</c> are the two that matter most, because
+    /// both are destructive and neither needs a body, so a bare GET used to run them.
+    /// </summary>
+    /// <param name="action">The action name.</param>
+    /// <param name="mutating">Whether the name is one of the eleven.</param>
+    [Theory]
+    [InlineData("catalog-discard", true)]
+    [InlineData("catalog-sweep", true)]
+    [InlineData("catalog-edit", true)]
+    [InlineData("catalog-publish", true)]
+    [InlineData("catalog-import", true)]
+    [InlineData("catalog-list", false)]
+    [InlineData("catalog-schema", false)]
+    [InlineData("catalog-versions", false)]
+    public async Task Get_OnTheCatalogActions_Is405ForTheElevenThatWrite(string action, bool mutating)
+    {
+        using var catalog = new CatalogActionHarness();
+        await using Harness h = await StartAsync(catalog.Admin);
+
+        HttpResponseMessage got = await h.Client.GetAsync(h.BaseUrl + "/actions/" + action);
+
+        Assert.Equal(mutating, got.StatusCode == HttpStatusCode.MethodNotAllowed);
+    }
+
+    /// <summary>
+    /// A GET that would have discarded the open draft does not, and the POST that is meant to still does.
+    /// The 405 has to be a REFUSAL rather than a different rendering of the same side effect.
+    /// </summary>
+    [Fact]
+    public async Task Get_OnCatalogDiscard_LeavesTheDraftStanding()
+    {
+        using var catalog = new CatalogActionHarness();
+        await catalog.PublishThingsAsync("stone_sword");
+        await catalog.OkAsync("catalog-edit", """
+        { "edits": [ { "op": "add", "typeKey": "thing", "key": "iron_sword",
+                       "fields": { "value": 12000, "stackable": false } } ] }
+        """);
+        await using Harness h = await StartAsync(catalog.Admin);
+
+        HttpResponseMessage blocked = await h.Client.GetAsync(h.BaseUrl + "/actions/catalog-discard");
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, blocked.StatusCode);
+        Assert.NotNull(await catalog.Store.GetOpenDraftAsync());
+
+        HttpResponseMessage posted = await h.Client.PostAsync(
+            h.BaseUrl + "/actions/catalog-discard", new StringContent(string.Empty, Encoding.UTF8, "application/json"));
+        Assert.Equal(HttpStatusCode.OK, posted.StatusCode);
+        Assert.Null(await catalog.Store.GetOpenDraftAsync());
     }
 }

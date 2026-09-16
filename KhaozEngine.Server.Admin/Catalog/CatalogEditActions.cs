@@ -30,8 +30,8 @@ internal sealed class CatalogEditActions(IContentAuthoringStore store, ContentTy
     public void Register(ServerAdmin admin)
     {
         ArgumentNullException.ThrowIfNull(admin);
-        admin.RegisterAction(CatalogAdminActions.EditAction, EditAsync);
-        admin.RegisterAction(CatalogAdminActions.DiscardAction, DiscardAsync);
+        admin.RegisterAction(CatalogAdminActions.EditAction, EditAsync, mutating: true);
+        admin.RegisterAction(CatalogAdminActions.DiscardAction, DiscardAsync, mutating: true);
     }
 
     /// <summary>

@@ -28,6 +28,9 @@ public sealed partial class ServerAdmin
     private readonly IEnumerableWorldStore? accounts;
     private readonly ConcurrentDictionary<string, Func<JsonElement?, CancellationToken, Task<AdminActionResult>>> actions
         = new(StringComparer.Ordinal);
+    // The names registered as mutating. A separate set rather than a flag beside the handler, so the handler
+    // tuple stays what every dispatcher already reads and an action that never declares one costs nothing.
+    private readonly ConcurrentDictionary<string, bool> mutatingActions = new(StringComparer.Ordinal);
 
     public ServerAdmin(IAdminControllable server, IBanStore? bans = null, IEnumerableWorldStore? accounts = null)
     {
@@ -96,29 +99,50 @@ public sealed partial class ServerAdmin
     /// it enqueues should not). <paramref name="name"/> must match <c>^[a-z0-9][a-z0-9-]{0,63}$</c>. Registrations
     /// normally happen before the endpoint starts, but the backing store is a <see cref="ConcurrentDictionary{TKey, TValue}"/>
     /// so registering from any thread is safe.
+    /// <para>
+    /// <paramref name="mutating"/> declares the action is NOT safe to reach by GET, which makes it POST only. The
+    /// endpoint maps both verbs onto every registered name, so a destructive action with no required body is
+    /// otherwise reachable by any GET a browser address bar, a link preview or a crawler makes unasked. It defaults
+    /// to false, so an action that says nothing keeps today's behaviour, and it is a DECLARATION: the engine cannot
+    /// infer what a game's handler does. A registrant that gives a whole family one verb by contract declares the
+    /// whole family, including the members that only happen to read.
+    /// </para>
     /// </summary>
     /// <exception cref="ArgumentException">The name is invalid or already registered.</exception>
-    public void RegisterAction(string name, Func<JsonElement?, CancellationToken, Task<AdminActionResult>> handler)
+    public void RegisterAction(
+        string name,
+        Func<JsonElement?, CancellationToken, Task<AdminActionResult>> handler,
+        bool mutating = false)
     {
         ValidateActionName(name);
         ArgumentNullException.ThrowIfNull(handler);
         if (!actions.TryAdd(name, handler))
             throw new ArgumentException($"An admin action named '{name}' is already registered.", nameof(name));
+        if (mutating) mutatingActions[name] = true;
     }
 
     /// <summary>
     /// Registers a synchronous admin action, a convenience wrapper over the async overload for handlers that read a
-    /// published snapshot or enqueue a command without awaiting. Same name rule and threading contract apply.
+    /// published snapshot or enqueue a command without awaiting. Same name rule, threading contract and
+    /// <paramref name="mutating"/> meaning apply.
     /// </summary>
     /// <exception cref="ArgumentException">The name is invalid or already registered.</exception>
-    public void RegisterAction(string name, Func<JsonElement?, AdminActionResult> handler)
+    public void RegisterAction(string name, Func<JsonElement?, AdminActionResult> handler, bool mutating = false)
     {
         ArgumentNullException.ThrowIfNull(handler);
-        RegisterAction(name, (payload, _) => Task.FromResult(handler(payload)));
+        RegisterAction(name, (payload, _) => Task.FromResult(handler(payload)), mutating);
     }
 
     /// <summary>The names of every registered action, in no particular order (a snapshot of the registry).</summary>
     public IReadOnlyCollection<string> ActionNames => actions.Keys.ToArray();
+
+    /// <summary>
+    /// True when <paramref name="name"/> was registered as mutating, which makes it POST only on the endpoint.
+    /// False for an unregistered name too, so a caller checking this before dispatch does not have to order the two
+    /// lookups: an unknown name is a 404 from the dispatch, not a 405 from here.
+    /// </summary>
+    /// <param name="name">The action name.</param>
+    public bool IsMutatingAction(string name) => name is not null && mutatingActions.ContainsKey(name);
 
     /// <summary>Looks up a registered action's handler by name.</summary>
     public bool TryGetAction(string name, [MaybeNullWhen(false)] out Func<JsonElement?, CancellationToken, Task<AdminActionResult>> handler)

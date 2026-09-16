@@ -135,8 +135,20 @@ public sealed class AdminHttpServer : IAsyncDisposable
         // and reads published snapshots, never touching the simulation directly.
         g.MapGet("/actions", IResult () => Results.Json(admin.ActionNames.OrderBy(n => n, StringComparer.Ordinal)));
 
-        g.MapGet("/actions/{name}", Task<IResult> (HttpContext ctx, string name) =>
-            DispatchActionAsync(admin, name, null, ctx.RequestAborted));
+        g.MapGet("/actions/{name}", async Task<IResult> (HttpContext ctx, string name) =>
+        {
+            // An action that declared itself MUTATING is POST only. Both verbs map onto every registered name,
+            // so a destructive action with no required body was otherwise reachable by any GET: a browser
+            // address bar, a link preview, a crawler walking the names out of /actions. The engine's own
+            // destructive routes have always been MapPost, and this closes the one hole a game could fall into.
+            if (admin.IsMutatingAction(name))
+            {
+                ctx.Response.Headers.Allow = "POST";
+                return Results.StatusCode(StatusCodes.Status405MethodNotAllowed);
+            }
+
+            return await DispatchActionAsync(admin, name, null, ctx.RequestAborted);
+        });
 
         g.MapPost("/actions/{name}", async Task<IResult> (HttpContext ctx, string name) =>
         {

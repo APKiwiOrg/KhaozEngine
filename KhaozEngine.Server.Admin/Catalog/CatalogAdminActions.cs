@@ -54,7 +54,7 @@ public sealed record CatalogAdminActionOptions
 /// </para>
 /// <para>
 /// <b>Every handler runs on the HTTP request thread and touches only the authoring store</b>, never the
-/// simulation, which is what keeps the threading contract of <see cref="ServerAdmin.RegisterAction(string, System.Func{System.Text.Json.JsonElement?, System.Threading.CancellationToken, System.Threading.Tasks.Task{AdminActionResult}})"/>
+/// simulation, which is what keeps the threading contract of <see cref="ServerAdmin.RegisterAction(string, System.Func{System.Text.Json.JsonElement?, System.Threading.CancellationToken, System.Threading.Tasks.Task{AdminActionResult}}, bool)"/>
 /// satisfied by construction.
 /// </para>
 /// <para>

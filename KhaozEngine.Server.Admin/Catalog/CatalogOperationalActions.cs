@@ -35,8 +35,8 @@ internal sealed class CatalogOperationalActions(IContentAuthoringStore store, Co
     public void Register(ServerAdmin admin)
     {
         ArgumentNullException.ThrowIfNull(admin);
-        admin.RegisterAction(CatalogAdminActions.SweepAction, SweepAsync);
-        admin.RegisterAction(CatalogAdminActions.VerifyAction, VerifyAsync);
+        admin.RegisterAction(CatalogAdminActions.SweepAction, SweepAsync, mutating: true);
+        admin.RegisterAction(CatalogAdminActions.VerifyAction, VerifyAsync, mutating: true);
     }
 
     /// <summary>

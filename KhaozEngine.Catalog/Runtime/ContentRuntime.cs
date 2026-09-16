@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Threading;
 
 namespace KhaozEngine.Catalog;
 
@@ -43,6 +44,13 @@ public sealed class ContentRuntime : IContentSnapshot
     /// The registered load indexes of spec 9.4, or null until <see cref="BuildLoadIndexes"/> has run them.
     /// The ONE field here that is not readonly, and it is assigned exactly once: null IS the "still building"
     /// state, which is what makes "an index may not read another index" a refusal rather than a comment.
+    /// <para>
+    /// Written and read VOLATILE, which is the same publishing write as <see cref="ContentRuntimeHolder"/>
+    /// and for the same reason. The boot builds these before it publishes the runtime, so the holder's write
+    /// already orders them for every reader that arrives that way. This pair is for the other order the
+    /// public API allows, a runtime published first and step 7b run after: without it a reader could see the
+    /// map before the entries the build wrote into it.
+    /// </para>
     /// </summary>
     Dictionary<ushort, IContentLoadIndex>? _loadIndexes;
 
@@ -125,7 +133,7 @@ public sealed class ContentRuntime : IContentSnapshot
     public ContentDerivedIndexes Indexes { get; }
 
     /// <summary>True once <see cref="BuildLoadIndexes"/> has run every registered index to completion.</summary>
-    public bool LoadIndexesBuilt => _loadIndexes is not null;
+    public bool LoadIndexesBuilt => Volatile.Read(ref _loadIndexes) is not null;
 
     /// <inheritdoc />
     public bool TryGetRow(ContentTypeId type, int id, [MaybeNullWhen(false)] out ContentRow row)
@@ -212,7 +220,7 @@ public sealed class ContentRuntime : IContentSnapshot
     /// <exception cref="ContentLoadIndexException">A registered index threw, or this ran twice.</exception>
     public void BuildLoadIndexes()
     {
-        if (_loadIndexes is not null)
+        if (Volatile.Read(ref _loadIndexes) is not null)
         {
             throw new ContentLoadIndexException(
                 "The load indexes of this content runtime are built already. They are built ONCE, at boot step 7b, and are immutable after.",
@@ -252,7 +260,9 @@ public sealed class ContentRuntime : IContentSnapshot
             built[registration.Type.Value] = index;
         }
 
-        _loadIndexes = built;
+        // The publishing write, after every index has finished: a reader that sees the map non-null sees
+        // everything the build put in it.
+        Volatile.Write(ref _loadIndexes, built);
     }
 
     /// <summary>
@@ -267,7 +277,7 @@ public sealed class ContentRuntime : IContentSnapshot
     public bool TryGetLoadIndex<T>(ContentTypeId type, [MaybeNullWhen(false)] out T index)
         where T : class, IContentLoadIndex
     {
-        Dictionary<ushort, IContentLoadIndex>? built = _loadIndexes
+        Dictionary<ushort, IContentLoadIndex>? built = Volatile.Read(ref _loadIndexes)
             ?? throw new ContentLoadIndexException(
                 FormattableString.Invariant(
                     $"The load index for type {type.Value} was asked for before boot step 7b finished. An index may read another type's ROWS through the snapshot and may not read another index, which would make the registration order load bearing."),

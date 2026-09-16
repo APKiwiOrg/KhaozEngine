@@ -423,7 +423,9 @@ public class ContentRuntimeTests
 
         // The runtime's ONE exception is the registered load-index map of boot step 7b, which is null while
         // step 7b runs and assigned exactly once when it finishes. That null IS the refusal an index reading
-        // another index meets, so it is state with a job rather than a leftover setter.
+        // another index meets, so it is state with a job rather than a leftover setter. It is written and
+        // read volatile, because the public API allows the step to run after a publish, where the holder's
+        // own write no longer orders it.
         AssertReadOnlyFields(typeof(ContentRuntime), "_loadIndexes");
     }
 

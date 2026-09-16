@@ -32,12 +32,23 @@ public sealed record TileWorldServerConfig
     public float CellSize { get; init; } = TileCells.CellSize;
 
     /// <summary>Area-of-interest radius in tiles: how far a player sees other players. 15 is the tile stack's
-    /// traditional view distance, and a bigger one costs a bigger snapshot on every tick for every player.</summary>
+    /// traditional view distance, and a bigger one costs a bigger snapshot on every tick for every player.
+    /// <para>Measured to the NEAREST tile of an entity's footprint, Euclidean, from the viewer's own anchor tile.
+    /// So an NxN body is in interest from the tick its near edge crosses this radius rather than from the tick its
+    /// anchor does, and a one-tile world is measured exactly as it always was. The serve pays for that with a wider
+    /// grid query, which is where <see cref="OverlapMargin"/> comes in.</para></summary>
     public float InterestRadius { get; init; } = 15f;
 
     /// <summary>Border overlap in tiles. Must be at least <see cref="InterestRadius"/> or the home cell cannot hold
     /// the whole interest as ghosts, which is checked at construction rather than left to the first serve after a
-    /// player walks near an edge.</summary>
+    /// player walks near an edge.
+    /// <para>PAD IT FOR LARGE BODIES. Interest is measured from the nearest footprint tile, so the serve asks the
+    /// grid for <c>InterestRadius + (N - 1) * sqrt(2)</c>, where N is the largest
+    /// <see cref="TileMoveState.FootprintSize"/> the server has spawned: a body's ANCHOR can sit its own diagonal
+    /// behind the near tile that put it in range, and the home cell has to be holding that anchor as a ghost. This
+    /// must be at least that query radius, which at the default 15 tile radius is 16.42 for a 2x2 and 24.9 for an
+    /// 8x8. <see cref="TileWorldServer.SpawnActor"/> refuses a body the margin cannot cover, at the spawn rather
+    /// than on the tick a player walks near a cell edge.</para></summary>
     public float OverlapMargin { get; init; } = 16f;
 
     /// <summary>Session slot capacity, and the ceiling on how many players the command queue tracks.</summary>

@@ -131,8 +131,12 @@ public sealed class TileActorHost
     /// default profile keeps the legacy rule that a blocked home is admitted. <see cref="CanPlace"/> asks the same
     /// question without throwing.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="definition"/> is refused by
-    /// <see cref="TileActorSpawner"/>'s own door, or its <see cref="TileActorDefinition.LeashRadius"/> is above
-    /// this server's <see cref="TileMoveOptions.MaxPathRadius"/> for actors.</exception>
+    /// <see cref="TileActorSpawner"/>'s own door, its <see cref="TileActorDefinition.LeashRadius"/> is above
+    /// this server's <see cref="TileMoveOptions.MaxPathRadius"/> for actors, or its
+    /// <see cref="TileActorDefinition.FootprintSize"/> is wider than
+    /// <see cref="TileWorldServerConfig.OverlapMargin"/> leaves room for once interest is measured from the
+    /// footprint (see <see cref="TileWorldServer.LargestFootprintSize"/>). That last one is a CONFIG mismatch rather
+    /// than a placement failure, so <see cref="CanPlace"/> does not ask it: no home in the world would fit.</exception>
     public TileActorSpawner Add(TileActorDefinition definition, TileCoord home)
     {
         ArgumentNullException.ThrowIfNull(definition);
@@ -143,6 +147,11 @@ public sealed class TileActorHost
                 + $"({pathRadius}, TileWorldServerConfig.ActorMove.MaxPathRadius). A leash beyond that window is a "
                 + "walk home the pathfinder cannot plan in one go.");
         var spawner = new TileActorSpawner(definition, home);
+        // The same reason as the leash above, and the one refusal that is about the SERVER rather than the content:
+        // a footprint the overlap margin cannot cover throws out of the serve, and a definition added without this
+        // check would first throw from inside TrySpawn on the tick the spawner fires. See
+        // TileWorldServer.Interest.cs.
+        server.ValidateFootprintFitsInterest(definition.FootprintSize, nameof(definition));
         server.ValidateActorTraversalPlacement(definition.TraversalProfile, home, definition.FootprintSize,
             nameof(definition));
         spawners.Add(spawner);

@@ -9761,6 +9761,7 @@ var config = new TileWorldServerConfig
     StepTicks   = new TileStepTicks(walk: 4, run: 2),      // ticks per step, per mode
     Spawn       = new TileCoord(64, 64, Plane: 0),
     InterestRadius = 15f,                                  // tiles a player sees other players
+    OverlapMargin  = 26f,                                  // >= InterestRadius + (largest body - 1) * sqrt(2)
     MaxGoalRadius  = 64,                                   // farthest a single click may name
     CanRun      = slot => energy.Has(slot),                // null allows everyone. See the run gate below
     IsBanned    = bans.IsBanned,
@@ -10431,11 +10432,22 @@ crosses a region handoff and reaches both heads with no second lookup.
   its own state's `FootprintSize`, and `TileMoveSimulator.FootprintOf(state)` stays as the name the combat roll asks
   the attacker's own simulator for that square. A head that set `AgentSize = 1` deletes the initializer, and one
   that set it higher gives each of those bodies its own `FootprintSize` instead.
+- **Interest is measured from the nearest footprint tile.** A viewer holds a body when the nearest tile of its
+  footprint is within `TileWorldServerConfig.InterestRadius` of the viewer's own anchor tile, Euclidean, the metric
+  the interest grid has always used. A 2x2 enters a snapshot on the same tick a one-tile body on its near tile
+  would, and an 8x8 seven tiles before its anchor arrives. Cell ownership and region handoff still measure from the
+  anchor, unchanged.
+  **Pad `OverlapMargin` for it.** The serve queries the grid at `InterestRadius + (N - 1) * sqrt(2)`, where N is
+  `TileWorldServer.LargestFootprintSize`, the largest body the server has spawned, because an anchor can sit its
+  own diagonal behind the near tile that put it in range and the home cell has to hold that anchor as a ghost. At
+  the default 15 tile radius that is 16.42 for a 2x2 and 24.9 for an 8x8, both above the default `OverlapMargin` of
+  16, so a game authoring large bodies MUST widen it. `TileActorHost.Add` and `TileWorldServer.SpawnActor` refuse a
+  body the margin cannot cover, naming both numbers, rather than throwing out of the first serve. A world of
+  one-tile bodies is served exactly the set it was served before footprints existed and pays nothing for any of
+  this.
 
-One interest gap remains. Interest is measured from the anchor, so a large body enters view up to N - 1 tiles late
-on its north and east edges ([#906](https://github.com/APKiwiOrg/KhaozEngine/issues/906)). A game with big bosses
-pads `InterestRadius`. The draw rule is no longer in that list: a settled body's stack covers its whole square,
-which the draw priority section above describes.
+Neither the interest gap nor the presentation gap remains. Interest is measured from the footprint as above, and a
+settled body's draw stack covers its whole square, which the draw priority section above describes.
 
 ### Combat
 

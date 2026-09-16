@@ -229,6 +229,11 @@ anchor, and every step goes through `CanStep` with the size. The editor's `Query
 | Wander goal validity | `CanStand` over the whole footprint | An anchor-only check lets the pathfinder's nearest-reachable fallback park a 2x2 against the obstruction, which is the failure the current check exists to prevent. |
 | Interest radius | anchor, unchanged | Interest is a grid query on the entity's position, and that position is also what decides cell ownership and handoff. Measuring from the footprint would either move handoffs by half a body or inflate every viewer's query. The cost is that a large body enters a viewer's interest up to N - 1 tiles late on its north and east edges, at a 15 tile radius. A game with big bosses pads `InterestRadius`. |
 
+Shipped in 19.0.0 as the NEAREST footprint tile instead ([#906](https://github.com/APKiwiOrg/KhaozEngine/issues/906)):
+the serve inflates its grid query by the largest spawned body's diagonal and post filters it per viewer, ownership
+and handoff still measure from the anchor as the row says, and `OverlapMargin` now has to cover
+`InterestRadius + (N - 1) * sqrt(2)`, which is refused at the spawn door rather than out of the serve.
+
 ## 9. Presentation
 
 - **`TilePresenter.Pose`** centres on the footprint: anchor plus `N / 2` on each axis instead of plus one half.
@@ -290,7 +295,7 @@ Additive unless marked.
 - **[#756](https://github.com/APKiwiOrg/KhaozEngine/issues/756), the in-phase chase.** A step clock problem, not a
   geometry one. A footprint does not change it and this work does not fix it.
 - **Interest measured from the footprint.** Section 8.1.
-  [#906](https://github.com/APKiwiOrg/KhaozEngine/issues/906).
+  [#906](https://github.com/APKiwiOrg/KhaozEngine/issues/906). Shipped in 19.0.0, see the note under 8.1.
 - **Sizes on `TileAttackContext`.** No rule reads them yet. Ranged combat is the round that will.
   [#907](https://github.com/APKiwiOrg/KhaozEngine/issues/907).
 

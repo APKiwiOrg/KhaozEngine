@@ -428,7 +428,8 @@ always keep the constructor map.
 
   Actors are `Actors` (the `TileActorHost`, including its authored-spawner `SpawnAdmission` gate), `SpawnActor`,
   `DespawnActor`, `TryGetActorState`, `ActorCount`,
-  `ActorNetIds`, `OnActorSpawned` and `RefusedActorSpawnCount`. `OnActorSpawned` fires with the spawner link
+  `ActorNetIds`, `OnActorSpawned`, `RefusedActorSpawnCount` and `LargestFootprintSize` (the largest body spawned so
+  far, which is what the serve inflates its interest query by, see the interest section below). `OnActorSpawned` fires with the spawner link
   ALREADY in place, so a handler attaching a game's own component can read
   `Actors.TryGetSpawnerOf(netId, out var spawner)` and dispatch on `spawner.Definition`. An actor built straight
   through `SpawnActor` has no spawner and answers false. Combat is `CombatRules`, `OnCombatEvent`, `OnDied`,
@@ -781,6 +782,30 @@ and no `ke:cannot-reach` follow, even when the write happens inside the tick fro
 `ResolveCombat` raises one step ahead of the report. The report covers only locks the simulator itself broke, an
 unreachable or vanished target. A write that keeps the same target changes nothing the report reads.
 
+## Interest is measured from the nearest footprint tile
+
+A viewer holds an entity when the NEAREST tile of that entity's footprint is within `InterestRadius` of the
+viewer's own anchor tile, Euclidean, which is the metric the interest grid has always used. So a 2x2 enters a
+viewer's snapshot on the same tick a one-tile body on its near tile would, and an 8x8 seven tiles before its anchor
+arrives. Cell ownership and region handoff are untouched and still measure from the anchor. The viewer's own
+position is its anchor too, which costs nothing because a player is one tile.
+
+**Pad `OverlapMargin` for the largest body you author.** The serve asks the grid for
+`InterestRadius + (N - 1) * sqrt(2)`, where N is `TileWorldServer.LargestFootprintSize`, the largest
+`FootprintSize` the server has spawned: a body's anchor can sit its own diagonal behind the near tile that put it
+in range, and the home cell has to be holding that anchor as a ghost. At the default 15 tile radius that is 16.42
+for a 2x2 and 24.9 for an 8x8, all above the default `OverlapMargin` of 16. A body the margin cannot cover is
+refused at `TileActorHost.Add` and at `SpawnActor`, with an `ArgumentOutOfRangeException` naming both numbers,
+rather than throwing out of the first serve and taking the tick down for every player.
+
+`LargestFootprintSize` never decreases. Despawning the world's only cow leaves the query as wide as the cow made
+it, which costs a slightly wider grid sweep and cannot cost correctness.
+
+A world of one-tile bodies pays NOTHING for any of this: the query radius is the configured one, the per-viewer
+filter never runs, and the served set is what it was before footprints existed, value for value. A world with a
+large body in it pays a wider grid sweep plus a predicate over each viewer's interest set, and no extra walk of the
+cell's world, because the footprints the filter reads are collected by the pass the plane filter already makes.
+
 ## Nearby player interest and verified names
 
 `CollectInterestSlots` exposes the same plane-filtered player set that the authoritative snapshot pass uses.
@@ -1077,14 +1102,12 @@ unauthenticated peer an amplifier of two bytes in and about 7 KB out.
 - **No actions beyond the seam.** `TileActionKind` distinguishes authored-object and entity interactions so their
   overlapping ids reach `OnInteract` and `OnInteractEntity` respectively. The engine knows nothing about what an
   interaction does after the callback.
-- **A large actor is an NxN body everywhere the RULES look, and in two places they do not.** `TileDrawPriority`
+- **A large actor is an NxN body everywhere the RULES look, and in one place it is not.** `TileDrawPriority`
   still judges a body on its ANCHOR tile alone, so a one-tile body standing on another tile of a cow's footprint
   overlaps it on screen. That is presentation only, and a footprint-aware stack is
-  [#899](https://github.com/APKiwiOrg/KhaozEngine/issues/899). Interest is measured from the anchor too, which is
-  also what decides cell ownership and handoff, so a large body enters a viewer's interest up to N - 1 tiles late
-  on its north and east edges. A game with big bosses pads `InterestRadius`, and measuring from the footprint is
-  [#906](https://github.com/APKiwiOrg/KhaozEngine/issues/906). Players stay one tile: `SetPlayerState` refuses a
-  `FootprintSize` above 1.
+  [#899](https://github.com/APKiwiOrg/KhaozEngine/issues/899). Interest is NOT one of them any more: it is measured
+  from the nearest footprint tile (see the interest section above). Players stay one tile: `SetPlayerState` refuses
+  a `FootprintSize` above 1.
 - **Actors do not block movement.** Players walk through monsters. Making an actor block would put a DYNAMIC entry
   in a collision map each head bakes for itself from files, so the two heads would disagree on every occupied tile
   and every chase would become a correction storm. The honest answer is a server-owned occupancy overlay the

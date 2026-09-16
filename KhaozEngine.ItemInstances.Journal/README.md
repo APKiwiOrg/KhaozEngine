@@ -294,9 +294,14 @@ on a stored string: the number is this build's and the string is the durable one
 The payload codecs for `item-generated` and `item-crafted` arrive with the generator and the crafting framework
 that emit them.
 
-**These events are written and nothing here reads one back.** The commit builder encodes an event body per
-operation and the package ships no decoder for one, so a correction replay or an audit tool has bytes it
-cannot take apart yet ([#941](https://github.com/APKiwiOrg/KhaozEngine/issues/941)).
+**Two of the seven bodies read back and five do not.** `ItemGeneratedEvent` and `ItemCraftedEvent` each ship
+a `TryRead` beside their `Write`, total, answering false plus a reason from a closed set on the type rather
+than throwing, because the bytes arrive from a store. Those two are the bodies that carry PAYLOADS, so a
+record nothing could read back would not be a record at all: the page is rewritten whole on every later
+commit, so the event is the only durable answer to what an item looked like when it dropped and to what a
+craft changed. The five container-operation bodies are still write only, which is fine while the only
+consumer is the intent hash and stops being fine the moment anything audits what a batch did
+([#941](https://github.com/APKiwiOrg/KhaozEngine/issues/941)).
 
 ## Design
 

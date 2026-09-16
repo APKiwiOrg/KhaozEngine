@@ -317,6 +317,32 @@ public sealed class ContainerCommitBuilderTests
     }
 
     [Fact]
+    public void A_Close_that_throws_leaves_the_batch_where_it_was_rather_than_half_closed()
+    {
+        // Close flagged the batch closed and closed the WINDOW before it built anything, so a throw out of
+        // the projection writes left a batch that could never be closed again, with its pages still dirty
+        // and no fault flag: the caller held something that had committed nothing and could do nothing.
+        // Nothing is recorded now until the commit is built and validated.
+        //
+        // The throw is reachable because Open vets a container name at page 0, where the suffix is three
+        // characters, and page 100's is five. A name four short of the identity cap opens and then cannot
+        // name its own hundredth page.
+        string wide = new('b', JournalLimits.EngineMaximumIdentityCharacters - 4);
+        PagedItemContainer bank = Container(pageCount: 101);
+        ContainerCommitBuilder batch = ContainerCommitBuilder.Open(
+            StreamKey, ItemInstanceEvents.CraftActionKind, Scope, Containers((wide, bank)), tick: 4);
+
+        Assert.True(batch.Apply(ContainerOperation.Grant(wide, slot: 10_000, Sword, 1, Instance, Payload())));
+        Assert.Equal(1, batch.ProjectionWriteCount);
+
+        Assert.Throws<ArgumentException>(() => batch.Close(Mint(ServerId)));
+
+        Assert.True(batch.Window.IsOpen);
+        Assert.Equal(ContainerBatchCloseReason.Open, batch.Window.CloseReason);
+        Assert.Equal(1, batch.ProjectionWriteCount);
+    }
+
+    [Fact]
     public void Twenty_crafts_in_one_held_action_are_ONE_commit()
     {
         PagedItemContainer bank = Container();

@@ -251,6 +251,11 @@ public sealed partial class ContainerCommitBuilder
     /// <exception cref="InvalidOperationException">The batch is already closed, was abandoned, or holds no
     /// operation. A batch of nothing has nothing to commit, and a dirty page never causes a commit of its
     /// own: it only joins one.</exception>
+    /// <remarks>
+    /// The batch is flagged closed and the window is closed LAST, after the commit is built and validated, so
+    /// a throw on the way there leaves the batch exactly where it was: still open, pages still dirty, and
+    /// closable again once the caller has fixed what threw.
+    /// </remarks>
     public JournalCommit Close(Func<Guid> identityFactory, ReadOnlyMemory<byte> result = default)
     {
         ArgumentNullException.ThrowIfNull(identityFactory);
@@ -258,9 +263,6 @@ public sealed partial class ContainerCommitBuilder
         if (_faulted) throw new InvalidOperationException("This batch was abandoned when an operation threw.");
         if (_operations.Count == 0)
             throw new InvalidOperationException("A batch holding no operation has nothing to commit.");
-
-        _closed = true;
-        Window.Close(ContainerBatchCloseReason.TickBoundary);
 
         Guid operationId = Window.HoldsClientOperation ? _operations[0].OperationId : identityFactory();
         var identity = new JournalOperationIdentity(operationId, Scope, ActionKind, BuildIntent());
@@ -274,6 +276,12 @@ public sealed partial class ContainerCommitBuilder
             _presentAtCommit,
             Options.QueueBehindAdmitted);
         commit.Validate(Options.Limits);
+
+        // Recorded LAST, once there is a commit to show for it. Flagging the batch closed first left a throw
+        // out of the writes holding a batch that could never be closed again, with its pages still dirty and
+        // no fault flag, so the caller held something that had committed nothing and could do nothing.
+        _closed = true;
+        Window.Close(ContainerBatchCloseReason.TickBoundary);
         return commit;
     }
 

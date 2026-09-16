@@ -101,5 +101,24 @@ public class ContainerSectionNamesTests
         Assert.Throws<System.ArgumentException>(() => ContainerSectionNames.Format("bank room", 0));
         Assert.Throws<System.ArgumentException>(() => ContainerSectionNames.Format("bank/deep", 0));
         Assert.Throws<System.ArgumentException>(() => ContainerSectionNames.Format("", 0));
+
+        // The LENGTH half of the same identity rule, which only the character set half used to check. A name
+        // this long formats fine and then throws out of the journal, at the far end of a commit, with the
+        // batch already closed and its pages already dirty.
+        Assert.Throws<System.ArgumentException>(() => ContainerSectionNames.Format(new string('b', 200), 0));
+    }
+
+    [Fact]
+    public void The_length_bound_is_on_the_NAME_THIS_WRITES_rather_than_on_the_container()
+    {
+        // The suffix is three characters at page 0 and five at page 100, so bounding the input would leave a
+        // container that formats at page 99 and throws at page 100. The bound is on the result.
+        const int cap = JournalLimits.EngineMaximumIdentityCharacters;
+        string widest = new('b', cap - 4);
+
+        Assert.Equal(cap, ContainerSectionNames.Format(widest, 0).Length);
+        Assert.Equal(cap, ContainerSectionNames.Format(widest, 99).Length);
+        Assert.Throws<System.ArgumentException>(() => ContainerSectionNames.Format(widest + "b", 0));
+        Assert.Throws<System.ArgumentException>(() => ContainerSectionNames.Format(widest, 100));
     }
 }

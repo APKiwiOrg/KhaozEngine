@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using KhaozEngine.ItemInstances;
+using KhaozEngine.WorldStore.Journal;
 
 namespace KhaozEngine.ItemInstances.Journal;
 
@@ -10,10 +11,16 @@ namespace KhaozEngine.ItemInstances.Journal;
 /// <c>bank/p09</c> for a 1,000 slot bank, <c>bag/p00</c> for a 30 slot bag, <c>worn/p00</c> for an 11 slot
 /// worn set.
 /// <para>
-/// <b>Nothing needs escaping.</b> A journal section name is an identity capped at 128 characters over
-/// <c>[A-Za-z0-9._:/-]</c> (<c>JournalProjectionWrite.cs:13</c>, <c>JournalLimits.cs:86-98</c>), and the
-/// slash is in that set. <see cref="Format"/> refuses a container name outside the rest of it, so a name
-/// this type writes is always a name the journal accepts.
+/// <b>Nothing needs escaping.</b> A journal section name is an identity capped at
+/// <see cref="JournalLimits.EngineMaximumIdentityCharacters"/> characters over <c>[A-Za-z0-9._:/-]</c>
+/// (<c>JournalProjectionWrite.cs:13</c>, <c>JournalLimits.cs:86-98</c>), and the slash is in that set.
+/// <see cref="Format"/> refuses BOTH halves of that rule, a container name outside the character set and a
+/// formatted name over the cap, so a name this type writes is always a name the journal accepts. The bound
+/// is on the name this WRITES rather than on the container, because the suffix is three characters at page 0
+/// and five at page 100, and bounding the input would leave a container that formats at page 99 and throws
+/// at page 100. Without it the throw arrives from
+/// <c>JournalValidation.Identity</c> at the far end of a commit, with the batch already closed and its pages
+/// already dirty.
 /// </para>
 /// <para>
 /// <b><see cref="TryParse"/> is the ONE place a name is taken apart</b>, and it is what spec 13 row 10 uses
@@ -44,8 +51,10 @@ public static class ContainerSectionNames
     /// <param name="pageIndex">Which page of the container this is, from 0 through
     /// <see cref="ItemContainerPage.MaxPageIndex"/>.</param>
     /// <exception cref="ArgumentNullException"><paramref name="container"/> is null.</exception>
-    /// <exception cref="ArgumentException"><paramref name="container"/> is empty or carries a character
-    /// outside <c>[A-Za-z0-9._:-]</c>, which is the journal's identity set less the separator.</exception>
+    /// <exception cref="ArgumentException"><paramref name="container"/> is empty, carries a character
+    /// outside <c>[A-Za-z0-9._:-]</c>, which is the journal's identity set less the separator, or is long
+    /// enough that the name this writes would pass
+    /// <see cref="JournalLimits.EngineMaximumIdentityCharacters"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="pageIndex"/> is negative or above
     /// <see cref="ItemContainerPage.MaxPageIndex"/>, which is the largest page a stored header can
     /// name.</exception>
@@ -64,7 +73,16 @@ public static class ContainerSectionNames
         // "D2" IS the padding rule: it pads to two digits and leaves a wider number alone, so page 9 is p09
         // and page 563 is p563 with no branch of its own.
         Span<char> prefix = stackalloc char[] { Separator, PagePrefix };
-        return string.Concat(container, prefix, pageIndex.ToString("D2", CultureInfo.InvariantCulture));
+        string name = string.Concat(container, prefix, pageIndex.ToString("D2", CultureInfo.InvariantCulture));
+        if (name.Length > JournalLimits.EngineMaximumIdentityCharacters)
+        {
+            throw new ArgumentException(
+                FormattableString.Invariant(
+                    $"Container '{container}' is {container.Length} characters, and its page {pageIndex} section name would be {name.Length}, over the journal's {JournalLimits.EngineMaximumIdentityCharacters} character identity cap."),
+                nameof(container));
+        }
+
+        return name;
     }
 
     /// <summary>

@@ -31,10 +31,17 @@ ContainerSectionNames.TryParse(name, out string? container, out int pageIndex);
 ContainerSectionNames.IsPageOf(name, "bank", out pageIndex);      // the question a load asks of a section
 ```
 
-**Nothing needs escaping.** A journal section name is an identity capped at 128 characters over
-`[A-Za-z0-9._:/-]`, and the slash is in that set. `Format` refuses a container name outside the rest of it, so
-a name this type writes is always a name the journal accepts, and a container name carries no slash of its own
-so one level keeps the parse unambiguous.
+**Nothing needs escaping.** A journal section name is an identity capped at
+`JournalLimits.EngineMaximumIdentityCharacters` characters over `[A-Za-z0-9._:/-]`, and the slash is in that
+set. `Format` refuses BOTH halves of that rule, a container name outside the character set and a formatted
+name over the cap, so a name this type writes is always a name the journal accepts, and a container name
+carries no slash of its own so one level keeps the parse unambiguous. The length bound is on the name `Format`
+WRITES rather than on the container, because the suffix is three characters at page 0 and five at page 100.
+Without it the refusal arrives from the journal at the far end of a commit, with the batch already closed and
+its pages already dirty.
+
+`ContainerCommitBuilder.Open` asks `Format` for each container it is opened over, at page 0, so a name that
+cannot be a section name never reaches a commit.
 
 **`TryParse` is the ONE place a name is taken apart** and it is CANONICAL rather than tolerant: it accepts
 exactly what `Format` writes, so `bank/p007` is refused rather than read as page 7. A tolerant parse would let
@@ -159,6 +166,11 @@ refused for exactly that reason.
 
 **`Close` does not clear the dirty flags and `MarkCommitted` does.** A batch whose commit fails terminally
 leaves its pages owing the next commit a rewrite, which is the state the consumer's resync agrees with.
+
+**A `Close` that THROWS leaves the batch where it was.** The batch is flagged closed and the window is closed
+last, after the commit is built and validated, so a throw on the way there leaves the batch still open with
+its pages still dirty, closable again once the caller has fixed what threw, rather than holding something that
+had committed nothing and could do nothing.
 
 `ContainerCommitOptions` carries the journal facts that are not operations, each with a right answer a caller
 usually takes: `ExpectedVersion` (the ADMITTED head rather than the committed one whenever something is

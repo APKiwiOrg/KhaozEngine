@@ -71,6 +71,16 @@ public interface IContentAuthoringStore
     Task<int> GetSchemaVersionAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The pack target this store publishes into, or null on a store that only holds a draft and allocates
+    /// ids. It is on the SEAM because two operator actions need it and neither is a publish: the orphan
+    /// sweep of spec 6.12 run on its own, and the read-only chunk verification of spec 10.11, which fetches
+    /// every chunk of a version's manifest and rehashes it. Both are about the files a publish already
+    /// wrote, so taking the target from anywhere other than the store that wrote them would let the two
+    /// disagree about which pack is under inspection.
+    /// </summary>
+    IPackStore? PackStore { get; }
+
+    /// <summary>
     /// The IDENTITY of this database, minted once at schema creation. It is what makes "version 12"
     /// answerable: an import into an empty database restarts the version line at 1, so two databases can
     /// hold a version 12 that share no history, and the epoch is what tells them apart.

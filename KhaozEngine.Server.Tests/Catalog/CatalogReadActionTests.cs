@@ -59,7 +59,8 @@ public sealed class CatalogReadActionTests : IDisposable
 
     /// <summary>
     /// The five names are registered under exactly the spec's spelling. A console binds to the NAME, so a
-    /// typo here is a 404 at the one moment an operator is trying to look at content.
+    /// typo here is a 404 at the one moment an operator is trying to look at content. The COUNT of names
+    /// the helper leaves behind is <c>CatalogActionInventoryTests</c>'s fact rather than this one's.
     /// </summary>
     [Fact]
     public void TheFiveReadActions_AreRegisteredUnderTheirSpecNames()
@@ -67,7 +68,8 @@ public sealed class CatalogReadActionTests : IDisposable
         string[] names = _admin.ActionNames.OrderBy(static name => name, StringComparer.Ordinal).ToArray();
         Assert.Equal(
             new[] { "catalog-draft", "catalog-get", "catalog-list", "catalog-schema", "catalog-versions" },
-            names);
+            names.Where(static name => name is "catalog-draft" or "catalog-get" or "catalog-list"
+                or "catalog-schema" or "catalog-versions").ToArray());
     }
 
     /// <summary>

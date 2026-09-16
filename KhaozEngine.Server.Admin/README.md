@@ -67,6 +67,9 @@ await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
 CatalogAdminActions.Register(admin, store, registry);
 ```
 
+It registers SIXTEEN action names, which is a count the spec states once and means, and a test asserts them
+literally so a rename cannot drift past review.
+
 Every handler runs on the HTTP request thread and touches only the authoring store, never the simulation, so
 the threading contract holds by construction. The read actions:
 
@@ -131,6 +134,50 @@ effect on the next restart is the failure that answer exists to prevent. A pin n
 `minimumServerBuild` exceeds the running build is accepted with a warning, because an operator may be pinning
 ahead of an upgrade on purpose and boot is the real gate. Pass a `CatalogAdminActionOptions` to `Register` to
 tell the action about both numbers.
+
+The bundle pair and the operational pair:
+
+| Action | Verb | Request | Response |
+|---|---|---|---|
+| `catalog-import` | POST | `{ operator, note, bundle }` | `{ version, rowsImported, serverManifestHash, clientManifestHash, chunksWritten, bytesWritten, elapsedMs }` |
+| `catalog-export` | POST | `{ version }`, or none for the active version | `{ version, rowCount, bundle }` |
+| `catalog-sweep` | POST | `{ operator }` | `{ ran, kept, deleted, skipReason }` |
+| `catalog-verify` | POST | `{ version }`, or none for the active version | `{ version, healthy, objectsChecked, mismatches[] }` |
+
+A `bundle` is the whole catalog as ONE JSON document: a format version, the registered types with their
+schemas, every live row with its id, key and fields, every family with its blocks, and the full remap rule
+list. It is the seeding format and the LOSSLESS EXPORT format and there is only one of them.
+
+**An import works into an EMPTY database only and is refused otherwise**, empty meaning the version table
+holds no rows, with a 409 carrying the active version and no partial write. That single rule is the answer to
+a whole class of seeding defect: an insert-if-absent seed that runs repeatedly against live data ends up
+carrying guarded corrections that knowingly revert an operator's value. A deployed database's values change
+through `catalog-edit` and `catalog-publish` and through nothing else, ever. Export at N then import into an
+empty store reproduces the same rows, keys and IDS, because the export carries them and the import keeps
+them. A bundle row's id is optional and a bundle may mix the two.
+
+**A lossless export is not a backup, and the difference is the version LINE.** An import republishes at
+version 1, so the new database's history starts there. When the version line must be preserved, the path is
+an ordinary database restore of the authoring store, which is the provider's own tooling.
+
+`catalog-sweep` runs publish step 11 alone, for an operator cleaning up after a crashed publish, and it obeys
+the same skip-on-listing-failure rule: deleting files on the authority of a listing that failed is how a bad
+publish turns into a lost pack. `catalog-verify` walks a version's two manifests, fetches every object they
+name and rehashes it. **It is read only and it never repairs**, because a repair means deciding which copy is
+right and only a republish can know that.
+
+## Operator identity
+
+**The bearer token is ONE token and it is not an identity.** There is no per-operator layer at this endpoint,
+so a console FORWARDS an operator identity as an `operator` field on every mutating request, and the engine
+records it in the audit beside its own actor. The engine does not verify it, and the audit row says so by
+keeping both columns: `actor` is what the engine AUTHENTICATED, the constant `admin-endpoint`, and `operator`
+is what the console ASSERTED.
+
+The field takes a STABLE identity, an object id rather than a display name, because a display name breaks the
+audit trail the day someone renames themselves. A request with NO `operator` is accepted and audited with an
+empty one, because refusing it would break a scripted maintenance call that has no human behind it, and one
+over 128 characters is a 400.
 
 A schema field carries `derived`, and that is what makes ONE generic editor possible: a derived field is not
 the console's to set, so the cell renders read only without the console having to know which kinds are

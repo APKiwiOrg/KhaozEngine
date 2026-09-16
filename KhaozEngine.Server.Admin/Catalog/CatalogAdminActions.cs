@@ -37,6 +37,12 @@ public sealed record CatalogAdminActionOptions
 /// once beside its own registrations and its console reaches the whole catalog through
 /// <c>GET</c> / <c>POST /admin/actions/{name}</c>.
 /// <para>
+/// <b>There is ONE action count in this spec and it is SIXTEEN</b>, the number of names a
+/// <see cref="ServerAdmin"/> holds after <c>Register</c> returns. Earlier drafts counted eleven in one place
+/// and fourteen in another by collapsing pairs a caller still has to know the names of, so the count is
+/// pinned by a test rather than by prose.
+/// </para>
+/// <para>
 /// <b>It lives in this package rather than in the authoring one, deliberately.</b> The helper needs
 /// <see cref="ServerAdmin"/> and the authoring store together. Putting it in
 /// <c>KhaozEngine.Catalog.Authoring</c> would give every opt-in SQL provider a transitive edge to the whole
@@ -95,6 +101,18 @@ public static class CatalogAdminActions
     /// <summary>A draft that would restore an earlier version's field values.</summary>
     public const string RollbackAction = "catalog-rollback";
 
+    /// <summary>A whole bundle imported into an EMPTY database, and refused into any other.</summary>
+    public const string ImportAction = "catalog-import";
+
+    /// <summary>One version as a bundle, ids included, which is what makes the export lossless.</summary>
+    public const string ExportAction = "catalog-export";
+
+    /// <summary>Publish step 11 alone, for an operator cleaning up after a crashed publish.</summary>
+    public const string SweepAction = "catalog-sweep";
+
+    /// <summary>Every object a version's manifests name, fetched and rehashed. Read only, and never a repair.</summary>
+    public const string VerifyAction = "catalog-verify";
+
     /// <summary>
     /// What the engine AUTHENTICATED, recorded on every audit row this surface writes. The bearer token is
     /// ONE token and is not an identity, so the operator identity a console forwards is recorded BESIDE it
@@ -113,7 +131,32 @@ public static class CatalogAdminActions
     public const int DefaultPageSize = 100;
 
     /// <summary>
-    /// Registers the read and mutating catalog actions on <paramref name="admin"/>. Call it ONCE, at startup, before
+    /// The sixteen names, in registration order: the reads, the draft writes, the publish trio, the version
+    /// line, the bundle pair and the operational pair. It is a count the spec states once and means, so it
+    /// is stated once here too and asserted by a test.
+    /// </summary>
+    public static readonly string[] ActionNames =
+    [
+        SchemaAction,
+        ListAction,
+        GetAction,
+        EditAction,
+        DraftAction,
+        DiscardAction,
+        ValidateAction,
+        DiffAction,
+        PublishAction,
+        VersionsAction,
+        PinAction,
+        RollbackAction,
+        ImportAction,
+        ExportAction,
+        SweepAction,
+        VerifyAction,
+    ];
+
+    /// <summary>
+    /// Registers all SIXTEEN catalog actions on <paramref name="admin"/>. Call it ONCE, at startup, before
     /// the endpoint starts.
     /// </summary>
     /// <param name="admin">The admin surface the actions are registered on.</param>
@@ -137,5 +180,7 @@ public static class CatalogAdminActions
         new CatalogEditActions(store, registry).Register(admin);
         new CatalogPublishActions(store, registry).Register(admin);
         new CatalogVersionActions(store, registry, resolved).Register(admin);
+        new CatalogBundleActions(store, registry).Register(admin);
+        new CatalogOperationalActions(store, registry).Register(admin);
     }
 }

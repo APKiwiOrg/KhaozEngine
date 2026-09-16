@@ -7750,6 +7750,16 @@ created window for each actor traversal profile the cell encounters. Walk, inter
 searches reuse those buffers. Every shared `TileMoveSimulator` remains stateless, and standalone callers can still
 pass their own scratch explicitly.
 
+**A caller with several acceptable destinations asks `FindPathToAny` once, not `FindPath` per destination.**
+`TilePathfinder.FindPathToAny(map, plane, start, goals, agentSize, maxRadius, scratch, out int goalIndex)` floods
+the window ONCE for a whole goal list and reports which goal it walked to. The answer is the one a search per goal
+gives: the shortest walk wins, a tie falls to the lowest index in the list, and the walk is that goal's own walk,
+because the pathfinder is a plain breadth-first search whose discovery order does not depend on which goal ends
+it. Both entry points share one expansion, so a multi-goal walk and a single-goal one can never disagree about a
+step. There is no nearest-reachable fallback here, unlike `FindPath`, because a goal set has no single tile to be
+near: an unreachable set answers a not-reached empty path and a `goalIndex` of -1. `TileReach.TryNearest` is built
+on it, so an interaction click against a walled-in target costs one window rather than one per reach tile.
+
 **A caller that paths on a tick hands `FindPath` a `TilePathfinderScratch`.** The default call allocates the two
 `(2r + 1)^2` window arrays every search, about 83 KB at radius 64, which is nothing for an editor click and is
 the steady-state Gen0 rate of a server walking every actor. A scratch owns those arrays plus the BFS queue and

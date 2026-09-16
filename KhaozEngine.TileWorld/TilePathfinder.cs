@@ -33,7 +33,10 @@ public sealed class TilePath
 /// <see cref="TileCollision.CanStep"/> in the fixed W, E, S, N, SW, SE, NW, NE order, bounded to a square
 /// window around the start, and an unreachable goal yields the path to the nearest reachable tile (squared
 /// Euclidean distance to the goal, then BFS distance, then scan order). Both heads replay identical paths for
-/// identical inputs, which server-authoritative movement relies on.</summary>
+/// identical inputs, which server-authoritative movement relies on.
+/// <para><see cref="FindPath"/> and <see cref="FindPathToAny"/> run ONE expansion between them, so the step
+/// rules, the window bound and the tie-breaking order cannot drift apart. Every step costs one, diagonals
+/// included, so a BFS level IS a path length and the two entry points agree on which walk is shorter.</para></summary>
 public static class TilePathfinder
 {
     /// <summary>The default half width of the search window, in tiles.</summary>
@@ -54,88 +57,190 @@ public static class TilePathfinder
     public static TilePath FindPath(TileCollisionMap map, int plane, TileCoord start, TileCoord goal, int agentSize = 1, int maxRadius = DefaultMaxRadius, TilePathfinderScratch? scratch = null)
     {
         ArgumentNullException.ThrowIfNull(map);
-        if (maxRadius < 1 || maxRadius > MaxSearchRadius)
-            throw new ArgumentOutOfRangeException(nameof(maxRadius), maxRadius, $"maxRadius must be 1..{MaxSearchRadius}");
+        RequireRadius(maxRadius);
         if (start.X == goal.X && start.Z == goal.Z) return TilePath.Empty(new TileCoord(start.X, start.Z, plane));
 
-        int side = 2 * maxRadius + 1;
-        int cells = side * side;
-        int originX = start.X - maxRadius, originZ = start.Z - maxRadius;
-        // A scratch hands back arrays it has already handed out, so every read below is bounded by cells rather
-        // than by Length: a scratch sized for a bigger radius is longer than this window needs.
-        int[] dist;
-        byte[] parent;
-        Queue<int> queue;
-        if (scratch is null)
-        {
-            dist = new int[cells];
-            parent = new byte[cells];
-            Array.Fill(dist, -1);
-            queue = new Queue<int>();
-        }
-        else
-        {
-            scratch.Reset(cells);
-            dist = scratch.Dist;
-            parent = scratch.Parent;
-            queue = scratch.Queue;
-        }
+        var window = new SearchWindow(start, maxRadius, scratch);
+        int endIndex = Flood(map, plane, agentSize, window, scratch, goals: null, goal, out _);
+        bool reached = endIndex >= 0;
+        if (!reached) endIndex = NearestReachable(window, goal);
+        return Rebuild(window, endIndex, reached, start, plane);
+    }
 
-        int startIndex = maxRadius * side + maxRadius;
-        dist[startIndex] = 0;
-        queue.Enqueue(startIndex);
-        int goalIndex = -1;
+    /// <summary>Walks from <paramref name="start"/> to the NEAREST of <paramref name="goals"/> in ONE search, and
+    /// reports which one through <paramref name="goalIndex"/>. The answer is the one a
+    /// <see cref="FindPath"/> per goal gives: same steps, and the same winner on a tie.
+    /// <para>The shortest walk wins, and goals that tie on length fall to the LOWEST index in
+    /// <paramref name="goals"/>, so a caller's own candidate order is the tie rule and both heads pick the same
+    /// goal. The search finishes the BFS level on which the first goal is discovered, which is what makes that tie
+    /// total: every goal at the winning length is known before one is chosen. A path here is the path that goal's
+    /// own <see cref="FindPath"/> builds, because a cell's parent is written once at first discovery and the
+    /// discovery order does not depend on which goal ends the search.</para>
+    /// <para>There is NO nearest-reachable fallback, which is the one place this differs from
+    /// <see cref="FindPath"/>: a goal SET has no single tile to measure nearness to. An empty list, and a list
+    /// none of whose goals the window can reach, both answer a not-reached empty path with a
+    /// <paramref name="goalIndex"/> of -1. A goal outside the window is simply never discovered, and a duplicated
+    /// goal resolves to its lowest index.</para></summary>
+    /// <param name="map">The collision map to path over.</param>
+    /// <param name="plane">The plane to search on, overriding the planes carried on the coords.</param>
+    /// <param name="start">The tile the agent's anchor stands on.</param>
+    /// <param name="goals">The candidate goals, in the caller's own tie-break order.</param>
+    /// <param name="agentSize">The agent's NxN footprint edge in tiles, anchored on its south-west tile.</param>
+    /// <param name="maxRadius">Half width of the search window, 1..<see cref="MaxSearchRadius"/>.</param>
+    /// <param name="scratch">Reusable window memory, or null to allocate one for this search.</param>
+    /// <param name="goalIndex">The index in <paramref name="goals"/> of the goal walked to, or -1 when none was
+    /// reached.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="map"/> or <paramref name="goals"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="maxRadius"/> is below 1 or above
+    /// <see cref="MaxSearchRadius"/>.</exception>
+    public static TilePath FindPathToAny(TileCollisionMap map, int plane, TileCoord start,
+        IReadOnlyList<TileCoord> goals, int agentSize, int maxRadius, TilePathfinderScratch? scratch,
+        out int goalIndex)
+    {
+        ArgumentNullException.ThrowIfNull(map);
+        ArgumentNullException.ThrowIfNull(goals);
+        RequireRadius(maxRadius);
+
+        goalIndex = -1;
+        var origin = new TileCoord(start.X, start.Z, plane);
+        if (goals.Count == 0) return new TilePath(Array.Empty<TileCoord>(), reached: false, origin);
+
+        var window = new SearchWindow(start, maxRadius, scratch);
+        int endIndex = Flood(map, plane, agentSize, window, scratch, goals, default, out goalIndex);
+        if (endIndex < 0) return new TilePath(Array.Empty<TileCoord>(), reached: false, origin);
+        if (endIndex == window.StartIndex) return TilePath.Empty(origin);
+        return Rebuild(window, endIndex, reached: true, start, plane);
+    }
+
+    static void RequireRadius(int maxRadius)
+    {
+        if (maxRadius < 1 || maxRadius > MaxSearchRadius)
+            throw new ArgumentOutOfRangeException(nameof(maxRadius), maxRadius, $"maxRadius must be 1..{MaxSearchRadius}");
+    }
+
+    // The ONE expansion both entry points run, which is what keeps the step rules, the window bound and the
+    // direction order from drifting between them. Returns the window index the walk ends on, or -1.
+    //
+    // A null `goals` is the single-goal form and stops the instant `single` is discovered, mid level, exactly
+    // where it always did. A goal list runs LEVEL BY LEVEL and stops at the top of the first level that finds a
+    // goal already discovered: everything queued at the top of a pass is one BFS distance, so expanding the pass
+    // discovers the next distance whole, and by the time distance d is dequeued every cell at d or less is
+    // written. That decides both the shortest goal and the index tie among the goals sharing its distance.
+    // Nothing in the tree depends on which goal ends the search, since a cell's dist and parent are written once
+    // at first discovery, so each goal's chain here is the chain its own single-goal search would have built.
+    static int Flood(TileCollisionMap map, int plane, int agentSize, in SearchWindow w,
+        TilePathfinderScratch? scratch, IReadOnlyList<TileCoord>? goals, TileCoord single, out int goalIndex)
+    {
+        goalIndex = -1;
+        int[] dist = w.Dist;
+        byte[] parent = w.Parent;
+        Queue<int> queue = w.Queue;
+        int side = w.Side, originX = w.OriginX, originZ = w.OriginZ;
+
+        dist[w.StartIndex] = 0;
+        queue.Enqueue(w.StartIndex);
+
+        // The window index of each goal once, so the per-level check below is one read per candidate rather than
+        // a coordinate comparison per discovered cell.
+        int[]? goalCells = goals is null ? null : GoalCells(goals, w);
+        int endIndex = -1;
+        long expanded = 0;
 
         // Indexed, not foreach: the neighbour loop runs once per dequeued tile, and IReadOnlyList's enumerator
         // is a heap allocation each time round. The order is still exactly TileDirections.All's, which the
         // tie-breaking depends on.
         IReadOnlyList<TileDirection> dirs = TileDirections.All;
-        while (queue.Count > 0 && goalIndex < 0)
+        while (queue.Count > 0)
         {
-            int cur = queue.Dequeue();
-            int cx = originX + cur % side, cz = originZ + cur / side;
-            for (int i = 0; i < dirs.Count; i++)
+            if (goalCells is not null)
             {
-                TileDirection d = dirs[i];
-                (int dx, int dz) = TileDirections.Delta(d);
-                int nx = cx + dx, nz = cz + dz;
-                int wx = nx - originX, wz = nz - originZ;
-                if ((uint)wx >= (uint)side || (uint)wz >= (uint)side) continue;
-                int ni = wz * side + wx;
-                if (dist[ni] >= 0) continue;
-                if (!TileCollision.CanStep(map, cx, cz, plane, d, agentSize)) continue;
-                dist[ni] = dist[cur] + 1;
-                parent[ni] = (byte)d;
-                if (nx == goal.X && nz == goal.Z) { goalIndex = ni; break; }
-                queue.Enqueue(ni);
+                int won = Winner(goalCells, dist);
+                if (won >= 0) { goalIndex = won; endIndex = goalCells[won]; break; }
             }
+
+            for (int pass = queue.Count; pass > 0 && endIndex < 0; pass--)
+            {
+                int cur = queue.Dequeue();
+                expanded++;
+                int cx = originX + cur % side, cz = originZ + cur / side;
+                for (int i = 0; i < dirs.Count; i++)
+                {
+                    TileDirection d = dirs[i];
+                    (int dx, int dz) = TileDirections.Delta(d);
+                    int nx = cx + dx, nz = cz + dz;
+                    int wx = nx - originX, wz = nz - originZ;
+                    if ((uint)wx >= (uint)side || (uint)wz >= (uint)side) continue;
+                    int ni = wz * side + wx;
+                    if (dist[ni] >= 0) continue;
+                    if (!TileCollision.CanStep(map, cx, cz, plane, d, agentSize)) continue;
+                    dist[ni] = dist[cur] + 1;
+                    parent[ni] = (byte)d;
+                    if (goalCells is null && nx == single.X && nz == single.Z) { goalIndex = 0; endIndex = ni; break; }
+                    queue.Enqueue(ni);
+                }
+            }
+            if (endIndex >= 0) break;
         }
 
-        bool reached = goalIndex >= 0;
-        int endIndex = reached ? goalIndex : NearestReachable(dist, cells, side, originX, originZ, goal);
-        if (endIndex == startIndex) return new TilePath(Array.Empty<TileCoord>(), reached: false, new TileCoord(start.X, start.Z, plane));
+        if (scratch is not null) { scratch.CellsExpanded += expanded; scratch.SearchesRun++; }
+        return endIndex;
+    }
+
+    // -1 for a goal the window cannot hold, which is never discovered and so never wins. In long because a goal
+    // far from the window overflows the subtraction in int, and a wrapped offset could land back inside it.
+    static int[] GoalCells(IReadOnlyList<TileCoord> goals, in SearchWindow w)
+    {
+        var cells = new int[goals.Count];
+        for (int i = 0; i < goals.Count; i++)
+        {
+            long wx = (long)goals[i].X - w.OriginX, wz = (long)goals[i].Z - w.OriginZ;
+            cells[i] = wx < 0 || wx >= w.Side || wz < 0 || wz >= w.Side ? -1 : (int)(wz * w.Side + wx);
+        }
+        return cells;
+    }
+
+    // The shortest discovered goal, ties falling to the lowest index: the >= keeps the FIRST of a tie.
+    static int Winner(int[] goalCells, int[] dist)
+    {
+        int best = -1, bestDist = int.MaxValue;
+        for (int i = 0; i < goalCells.Length; i++)
+        {
+            int cell = goalCells[i];
+            if (cell < 0) continue;
+            int d = dist[cell];
+            if (d < 0 || d >= bestDist) continue;
+            best = i;
+            bestDist = d;
+        }
+        return best;
+    }
+
+    static TilePath Rebuild(in SearchWindow w, int endIndex, bool reached, TileCoord start, int plane)
+    {
+        if (endIndex == w.StartIndex) return new TilePath(Array.Empty<TileCoord>(), reached: false, new TileCoord(start.X, start.Z, plane));
 
         var reversed = new List<TileCoord>();
         int idx = endIndex;
-        while (idx != startIndex)
+        while (idx != w.StartIndex)
         {
-            int x = originX + idx % side, z = originZ + idx / side;
+            int x = w.OriginX + idx % w.Side, z = w.OriginZ + idx / w.Side;
             reversed.Add(new TileCoord(x, z, plane));
-            (int pdx, int pdz) = TileDirections.Delta((TileDirection)parent[idx]);
-            idx = (z - pdz - originZ) * side + (x - pdx - originX);
+            (int pdx, int pdz) = TileDirections.Delta((TileDirection)w.Parent[idx]);
+            idx = (z - pdz - w.OriginZ) * w.Side + (x - pdx - w.OriginX);
         }
         reversed.Reverse();
         return new TilePath(reversed, reached, new TileCoord(start.X, start.Z, plane));
     }
 
-    static int NearestReachable(int[] dist, int cells, int side, int originX, int originZ, TileCoord goal)
+    static int NearestReachable(in SearchWindow w, TileCoord goal)
     {
+        int[] dist = w.Dist;
         int best = -1, bestDist = int.MaxValue;
         long bestSq = long.MaxValue;
-        for (int i = 0; i < cells; i++)
+        for (int i = 0; i < w.Cells; i++)
         {
             if (dist[i] < 0) continue;
-            long ex = originX + i % side - goal.X, ez = originZ + i / side - goal.Z;
+            long ex = w.OriginX + i % w.Side - goal.X, ez = w.OriginZ + i / w.Side - goal.Z;
             long sq = ex * ex + ez * ez;
             if (sq < bestSq || (sq == bestSq && dist[i] < bestDist))
             {
@@ -143,6 +248,44 @@ public static class TilePathfinder
             }
         }
         return best;
+    }
+
+    // The window one search floods, sized and reset in one place so both entry points bound themselves the same
+    // way. A scratch hands back arrays it has already handed out, so every read is bounded by Cells rather than
+    // by Length: a scratch sized for a bigger radius is longer than this window needs.
+    readonly struct SearchWindow
+    {
+        internal readonly int[] Dist;
+        internal readonly byte[] Parent;
+        internal readonly Queue<int> Queue;
+        internal readonly int Side;
+        internal readonly int Cells;
+        internal readonly int OriginX;
+        internal readonly int OriginZ;
+        internal readonly int StartIndex;
+
+        internal SearchWindow(TileCoord start, int maxRadius, TilePathfinderScratch? scratch)
+        {
+            Side = 2 * maxRadius + 1;
+            Cells = Side * Side;
+            OriginX = start.X - maxRadius;
+            OriginZ = start.Z - maxRadius;
+            StartIndex = maxRadius * Side + maxRadius;
+            if (scratch is null)
+            {
+                Dist = new int[Cells];
+                Parent = new byte[Cells];
+                Array.Fill(Dist, -1);
+                Queue = new Queue<int>();
+            }
+            else
+            {
+                scratch.Reset(Cells);
+                Dist = scratch.Dist;
+                Parent = scratch.Parent;
+                Queue = scratch.Queue;
+            }
+        }
     }
 }
 
@@ -162,6 +305,14 @@ public sealed class TilePathfinderScratch
     internal int[] Dist = Array.Empty<int>();
     internal byte[] Parent = Array.Empty<byte>();
     internal readonly Queue<int> Queue = new();
+
+    // Test seam (InternalsVisibleTo), and the reason it is not a public diagnostic is that a game has no use for
+    // it. Cells dequeued and searches run through this instance, ACCUMULATED and never cleared by Reset, because
+    // what a multi-goal search is worth is the TOTAL across a call that used to run one flood per candidate, which
+    // a per-search number cannot show. The flood counts into a local and folds it in once, so the loop itself
+    // carries no branch for this.
+    internal long CellsExpanded;
+    internal int SearchesRun;
 
     /// <summary>An empty scratch that sizes itself on its first search.</summary>
     public TilePathfinderScratch() { }
@@ -193,6 +344,12 @@ public sealed class TilePathfinderScratch
         Array.Fill(Dist, -1, 0, cells);
         Array.Clear(Parent, 0, cells);
         Queue.Clear();
+    }
+
+    internal void ClearCounters()
+    {
+        CellsExpanded = 0;
+        SearchesRun = 0;
     }
 
     void Grow(int cells)

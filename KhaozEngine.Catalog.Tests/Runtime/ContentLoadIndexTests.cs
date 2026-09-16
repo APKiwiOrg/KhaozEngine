@@ -48,9 +48,9 @@ public class ContentLoadIndexTests
         Assert.True(index.SawTagIndex);
         Assert.True(index.SawKeyIndex);
 
-        // Before the validator: nothing here runs it, and the boot's own order is task 23's. What this pins
-        // is that the index build is a step of its own that a caller sequences, rather than something the
-        // validator or a first lookup triggers.
+        // Before the validator: nothing here runs it, and the boot's own order is ContentBootTests'. What
+        // this pins is that the index build is a step of its own that a caller sequences, rather than
+        // something the validator or a first lookup triggers.
         Assert.Equal(1, index.BuildCount);
     }
 

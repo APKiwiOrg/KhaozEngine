@@ -130,7 +130,8 @@ public sealed class ContentBootResult
     /// <summary>
     /// The boot step of spec 9.5 the refusal happened at, and 0 on success. Two rows of the exit table share
     /// one line shape, a chunk that would not fetch and a chunk that would not decode, and the step is what
-    /// tells them apart without parsing the reason token.
+    /// tells them apart without parsing the reason token. Step 7b reports as 7, because the number is the
+    /// spec's and 7b is not one. <see cref="Refusal"/> names the row exactly either way.
     /// </summary>
     public int Step { get; }
 

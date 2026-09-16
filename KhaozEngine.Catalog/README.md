@@ -67,7 +67,8 @@ var key = new ContentKey(rowBlob, start, length);       // no string materialise
 ## The registry and the schema
 
 - `ContentTypeRegistry` - the registry of contracts 4.2, per INSTANCE and never a static: registration runs
-  once at process start, `Freeze()` closes it at the first pack load, and a later registration throws. Lookup
+  once at process start, `Freeze()` closes it at the first pack load (`ContentBoot` calls it at step 6), and
+  a later registration throws. Lookup
   is by `ContentTypeId` or by type key, ordinally, and `ByTypeId` is sorted ascending always, so no ordinal
   anywhere depends on the order a host registered in.
 - `ContentTypeRegistration` - what one registration was handed, held immutably: the band, the id, the key, the
@@ -90,8 +91,8 @@ var key = new ContentKey(rowBlob, start, length);       // no string materialise
   `00` byte in every case) and a derived marker writes nothing at all. A type subclasses it only to add a
   constraint the generic walk cannot express, checked on both sides so an encoder cannot write a row its own
   decoder refuses.
-- `IContentLoadIndex` - a derived table one type builds ONCE at boot, after the engine's own indexes, in type
-  id order, before the validator. It may read another type's rows and may not read another index, and it
+- `IContentLoadIndex` - a derived table one type builds ONCE at boot step 7b, after the engine's own
+  indexes, in type id order, before the validator. It may read another type's rows and may not read another index, and it
   throws to fail the boot closed rather than returning a partial index. `ContentRuntime.BuildLoadIndexes`
   runs them and `ContentRuntime.TryGetLoadIndex` hands one back typed.
 - `ContentLoadIndexException` - a registered load index failed, or one was asked for before the step that
@@ -208,10 +209,10 @@ process, and it implements the same `IContentSnapshot` seam over arrays indexed 
   `TryGetId` over raw UTF-8 and the seven seam members all answer out of those arrays. The hand-off from the
   snapshot SHARES its per-type body blob rather than copying it, so the two hold one copy of the catalog
   between them. `FromSnapshot` is boot step 7 and derives the four indexes below with it. `BuildLoadIndexes`
-  is step 7b and runs whatever the registered types declared, which the boot sequences separately because it
-  falls between the engine's four and the validator.
-- `ContentRuntimeHolder` - the ONE field the active runtime lives in, published with a `Volatile.Write` and
-  read with a `Volatile.Read`, and no lock anywhere. A reader takes the reference once at the top of an
+  is step 7b and runs whatever the registered types declared, which `ContentBoot` sequences separately
+  because it falls between the engine's four and the validator.
+- `ContentRuntimeHolder` - the ONE field the active runtime lives in, published at boot step 9 with a
+  `Volatile.Write` and read with a `Volatile.Read`, and no lock anywhere. A reader takes the reference once at the top of an
   operation and uses that instance throughout, so a swap cannot hand it a half-old half-new answer, which
   works because a runtime and everything reachable from it is immutable after construction. v1 never swaps
   at runtime, since a new version applies at server restart: the pair exists for a test fixture and for a
@@ -347,4 +348,68 @@ foreach (ContentFinding finding in report.Findings)
 
 if (!report.IsValid)
     return Refuse(report);                              // publish writes nothing, boot exits non-zero
+```
+
+## The boot
+
+`ContentBoot.RunAsync(options)` is spec 9.5's order, run once at server start, and spec 9.6's twelve
+refusals. **It fails closed and it never exits the process**: every refusal comes back as a
+`ContentBootResult` carrying exit code 3 and the operator's exact lines, and the HOST writes them and exits.
+That is what makes the whole exit table testable in process, and it is why the engine never decides the
+shutdown order of a process it knows nothing about. There is no fallback to code defaults anywhere on this
+path, because a silent fallback catalog serves content no version names and an outage is at least noticed.
+
+The order, and who owns each step. Step 1, registering every content type, is the CALLER's, and so are step
+10, loading the world document, and steps 12 and 13, the connect door and accepting connections. Content
+loads before the world and both load before the door opens.
+
+1. **Step 2, the version, from exactly one place.** A version pinned in the SERVER'S OWN CONFIG wins always,
+   otherwise the authoring database's pinned version when it is not null, otherwise its active version. A
+   server with a config pin and a pack store reads no authoring database at boot at all, which is the
+   deployment this design recommends: the authoring database is a TOOLING dependency.
+2. **Step 3, the manifest**, through the `versions/<n>` pointer, verified against the name it was fetched
+   under AND against the version the boot resolved. A manifest whose embedded number differs means the
+   pointer and the pack disagree, and the server would otherwise announce one number at the door while
+   serving another version's chunks.
+3. **Steps 4 and 5**, a pack generation this build cannot read and a server build the pack will not be
+   served by.
+4. **Step 6, both type lists, before a single chunk is fetched**, then `Freeze()` on the registry. A
+   manifest naming a type this build does not register has no codec for its rows, and a registered type
+   absent from the version is the same failure from the other side.
+5. **Steps 7 and 7b**, the runtime and its four engine indexes, then every registered `IContentLoadIndex` in
+   type id order.
+6. **Step 8**, the one validator with `previous` null. **Step 9**, one `Volatile.Write` into the holder.
+   **Step 11**, every world-to-content key resolved by KEY against the loaded version.
+
+- `ContentBootOptions` - everything the boot needs, handed in rather than reached for, so it reads no
+  ambient static, no environment variable and no file of its own: the registry, the store, the holder, this
+  build's server build number, the optional config pin, the optional `IContentVersionDirectory` and
+  `IContentVersionPointerSource`, and the world's content keys.
+- `IContentVersionDirectory` - the authoring database's pinned and active version reads, which is the only
+  thing the boot wants from one. `IContentVersionPointerSource` - the READ half of the version pointer,
+  which `FileSystemPackStore` implements and a store that does not is handed separately.
+- `ContentWorldKeyReference` - one place a world document names content, as `(source, type key, content
+  key)`. The world document never carries a content ID, because ids are allocated by the authoring store and
+  a world file naming id 17 breaks the moment a content database is rebuilt from a bundle.
+- `ContentBootResult` and `ContentBootRefusal` - the published runtime, or which of the twelve rows stopped
+  the boot, the step it stopped at, and the stderr lines. `ExitCode` is 3 for every refusal, deliberately
+  distinct from the 2 a consumer already returns for a bad config, so a supervisor script tells a content
+  failure from a config failure without parsing text.
+
+```csharp
+ContentBootResult result = await ContentBoot.RunAsync(new ContentBootOptions
+{
+    Registry = registry,                                // step 1 is the caller's, and the boot freezes it
+    Store = store,
+    Holder = holder,
+    ServerBuild = ThisBuild,
+    ConfiguredVersion = config.ContentVersion,          // wins always, and null falls to the directory
+    WorldKeys = world.ContentKeys(),                    // step 10 is the caller's too
+});
+
+if (!result.Success)
+{
+    result.WriteStandardError(Console.Error);
+    return result.ExitCode;                             // 3, and the HOST is what exits
+}
 ```

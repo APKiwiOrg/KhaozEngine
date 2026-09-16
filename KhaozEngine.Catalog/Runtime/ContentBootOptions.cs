@@ -12,7 +12,8 @@ namespace KhaozEngine.Catalog;
 /// <b>It is optional, and that is the deployment this design recommends.</b> A version pinned in the SERVER'S
 /// OWN CONFIG wins always, so a server configured with a pin and a pack store needs no authoring database at
 /// boot at all: the authoring database is a TOOLING dependency. This interface is what a server that does read
-/// one implements, and <c>IContentAuthoringStore</c> already declares both members with these signatures.
+/// one implements, and <c>IContentAuthoringStore</c> already declares both members with these signatures
+/// without declaring the interface, which is https://github.com/APKiwiOrg/KhaozEngine/issues/938.
 /// </para>
 /// </summary>
 public interface IContentVersionDirectory
@@ -57,7 +58,7 @@ public interface IContentVersionPointerSource
 public readonly record struct ContentWorldKeyReference(string Source, string TypeKey, string ContentKey);
 
 /// <summary>
-/// Everything the boot needs, handed in rather than reached for, so a boot reads no ambient
+/// Everything <see cref="ContentBoot"/> needs, handed in rather than reached for, so a boot reads no ambient
 /// static, no environment variable and no file of its own.
 /// </summary>
 public sealed class ContentBootOptions

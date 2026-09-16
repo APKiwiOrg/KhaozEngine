@@ -242,12 +242,16 @@ schema marks `ServerOnly`. That is an ENCODER defect and never an authoring one,
 that wrote them. A silent strip would be worse than the refusal, because then a field's absence on the client
 would be indistinguishable from an authoring mistake.
 
-Both manifests are built from the version's chunk rows, the server one taking the server side where it exists
-and the client one naming nothing for a type that has no client row. Each gets its own hash sub-domain, so a
-head gating on one can never accidentally agree with a head gating on the other. The two minimum builds and
-the format generation are INPUTS to the manifest hash rather than stamps beside it: raising a minimum build
-without touching a row publishes a version with a different manifest hash and identical chunk hashes, so a
-client re-reads one small manifest and downloads nothing.
+Both manifests name every REGISTERED type, carrying no chunks for a type the version authored no rows for,
+because boot refuses a version whose manifest does not name a type the build registers. The chunks under each
+type are the version's chunk rows, the server manifest taking the server side where it exists and the client
+one naming no chunk for a type that has no client row. The client manifest still omits a `ServerOnly` TYPE
+outright, which is the separate rule of contracts 11.3 and is why it names fewer types rather than the same
+list with empty entries. Each gets its own hash sub-domain, so a head gating on one can never accidentally
+agree with a head gating on the other. The two minimum builds and the format generation are INPUTS to the
+manifest hash rather than stamps beside it: raising a minimum build without touching a row publishes a
+version with a different manifest hash and identical chunk hashes, so a client re-reads one small manifest
+and downloads nothing.
 
 `ContentPublishStep` is the point a publish can be interrupted at, and `ContentPublisher.OnStep` is the hook
 a crash test throws from. Every value is declared and the steps after the manifest belong to the commit.

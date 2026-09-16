@@ -415,9 +415,11 @@ else
   special casing: the client finishes, is refused again with the new hash, and downloads the manifest plus
   the chunks that differ.
 - `ContentFetchProgress` is the report while it runs, against ONE required set for the whole call, so a
-  client draws one bar rather than one per attempt. `loop.Store` is the verifying pair the fetch went
-  through and is what a lazy row read should go through afterwards, because it verifies on every READ: a
-  cached chunk that went bad on disk is detected on first use, evicted and refetched.
+  client draws one bar rather than one per attempt. **Reports arrive on worker threads**, from whichever
+  fetch just finished an object, so a sink that touches a UI is a `Progress<T>` constructed on the UI
+  thread. `loop.Store` is the verifying pair the fetch went through and is what a lazy row read should go
+  through afterwards, because it verifies on every READ: a cached chunk that went bad on disk is detected
+  on first use, evicted and refetched.
 
 ## Content strings
 

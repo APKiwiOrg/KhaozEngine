@@ -133,7 +133,16 @@ public sealed record ContentFetchOptions
     /// </summary>
     public IReadOnlyList<string> Languages { get; init; } = [];
 
-    /// <summary>Where progress goes while the fetch runs, or null for a fetch nobody is watching.</summary>
+    /// <summary>
+    /// Where progress goes while the fetch runs, or null for a fetch nobody is watching.
+    /// <para>
+    /// <b>Reports arrive on WORKER threads</b>, from whichever of the fetches in flight just finished an
+    /// object, so a sink that touches a UI has to get itself back to the UI thread. The standard way is a
+    /// <see cref="Progress{T}"/> CONSTRUCTED on the UI thread, which captures that thread's synchronization
+    /// context and posts to it. A sink that only counts needs nothing, as long as its counting is safe from
+    /// several threads at once.
+    /// </para>
+    /// </summary>
     public IProgress<ContentFetchProgress>? Progress { get; init; }
 }
 

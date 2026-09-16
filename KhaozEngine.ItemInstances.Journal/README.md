@@ -139,6 +139,29 @@ payload on a slot whose instance id is 0, which is every plain stack. Such a rec
 `EntryUnwrappable` and counted like any other quarantined record, and its bytes are untouched
 ([#935](https://github.com/APKiwiOrg/KhaozEngine/issues/935)).
 
+## How a load's dirty page reaches a commit
+
+`Load` builds its OWN `ItemContainerPage` objects and hands them back, and a `PagedItemContainer` builds its
+own. They are not the same pages, and `Seat` never dirties one, so a page a load-time remap changed does not
+become a projection write by itself. That is the spec's shape rather than a gap: the load is pure, and the
+rewrite is lazy and rides the next ordinary commit.
+
+Two routes take it there and a host picks one.
+
+1. **Run the pass over the container's own pages.** The host holds the `PagedItemContainer`, seats the loaded
+   entries into it, and runs `InstanceRemapPass.Apply` over `container.Pages[i]` itself. The pass dirties
+   THAT page, and the next `ContainerCommitBuilder.Close` writes it beside whatever the batch's operations
+   changed. `A_hole_survives_a_load_a_save_and_a_remap_and_costs_zero_bytes` in
+   `KhaozEngine.ItemInstances.Tests` is this route end to end.
+2. **Re-seat what the load already rewrote.** The host walks `ContainerLoadResult.Dirty`, and writes each of
+   those pages' slots into its container through `SetSlotAt`, which is an OPERATION and dirties the
+   container's own page. Use this when the load's pass has already done the work and re-running it would be
+   the second copy.
+
+**The load and the container must share ONE stackable predicate.** `ContainerLoadContext`'s and the
+`PagedItemContainer`'s are separate arguments, so two different rules can be handed in, and the pages would
+then disagree about which entries may merge, which is a difference that only shows up on the next merge.
+
 ## Committing a batch of page operations
 
 ```csharp

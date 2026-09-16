@@ -250,7 +250,7 @@ baseline at `KhaozEngine.Benchmarks/Baselines/items-sqlite-v1-seed915.json`.
 
 | Budget | Target (spec 16) | The `--items` phase that measures it | Task |
 |---|---|---|---|
-| 5, rare generation time | under 20 us, measured p50 1.9 and p99 5.8 us | `ItemsWorkMeasurements.MeasureGeneration` and `MeasureColdGeneration`, reported as `Budget5P50Microseconds`, `Budget5P99Microseconds`, `Budget5AllocatedBytesPerGeneration`, `Budget5DeadEntriesPerGeneration` and `Budget5InvariantViolations` | 6 |
+| 5, rare generation time | under 20 us, measured p50 1.9 and p99 5.8 us | `ItemsWorkMeasurements.MeasureGeneration` and `MeasureColdGeneration`, reported as `Budget5P50Microseconds`, `Budget5P99Microseconds`, `Budget5AllocatedBytesPerGeneration`, `Budget5PoolSuppressedEntries` and `Budget5InvariantViolations` | 6 |
 | 9, table build at 2,000 mods | under 500 ms and 40 MB, measured 266 ms and 24.1 MB | the `ModCandidateTables.Build` call timed inside `ItemsBenchmarkRunner.RunAsync`, reported as `Budget9TableBuildMilliseconds`, `Budget9TableResidentBytes`, `Budget9TableSelfReportedBytes`, `Budget9SuppressedEntries` and `Budget9ConsistencyFailures` | 6 |
 | 6, stat evaluation per attack | under 2 us and 0 bytes, measured 444 ns and 0 bytes | `ItemsWorkMeasurements.MeasureStatEvaluation`, reported as `Budget6Nanoseconds`, `Budget6CachedNanoseconds`, `Budget6AllocatedBytes` and `Budget6LineCount` | 11 |
 

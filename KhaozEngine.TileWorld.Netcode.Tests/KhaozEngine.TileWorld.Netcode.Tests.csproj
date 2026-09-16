@@ -13,6 +13,10 @@
     <ProjectReference Include="../KhaozEngine.TileWorld.Netcode/KhaozEngine.TileWorld.Netcode.csproj" />
     <ProjectReference Include="../KhaozEngine.TileWorld/KhaozEngine.TileWorld.csproj" />
     <ProjectReference Include="../KhaozEngine.Netcode/KhaozEngine.Netcode.csproj" />
+    <!-- The content layer of the same connect door, tested beside the world gate because it is the same nest
+         and the same refusal shape (spec 2.6). It brings KhaozEngine.Catalog transitively, which is where
+         ContentVersionIdentity lives. -->
+    <ProjectReference Include="../KhaozEngine.Catalog.Netcode/KhaozEngine.Catalog.Netcode.csproj" />
     <ProjectReference Include="../KhaozEngine.Replication/KhaozEngine.Replication.csproj" />
     <ProjectReference Include="../KhaozEngine.Sharding/KhaozEngine.Sharding.csproj" />
     <ProjectReference Include="../KhaozEngine.Simulation/KhaozEngine.Simulation.csproj" />

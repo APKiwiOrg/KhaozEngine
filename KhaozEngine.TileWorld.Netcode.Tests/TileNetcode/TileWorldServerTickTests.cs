@@ -13,12 +13,16 @@ public class TileWorldServerTickTests
 {
     const float Dt = 0.25f;
 
+    // The margin is padded past the engine default of 16 because this suite authors bodies up to 8x8, and interest
+    // is measured from the nearest footprint tile: the serve's grid query is the radius plus the largest body's
+    // diagonal, and the home cell has to hold that much as ghosts. 15 + 7 * sqrt(2) is 24.9.
     internal static TileWorldServerConfig Config(TileCoord spawn) => new()
     {
         TickSeconds = Dt,
         StepTicks = new TileStepTicks(walk: 4, run: 2),
         Spawn = spawn,
         MaxPlayers = 8,
+        OverlapMargin = 26f,
     };
 
     internal static TileWorldServer Server(TileWorldDocument doc, INetTransport transport, TileCoord spawn) =>

@@ -295,6 +295,7 @@ Additive unless marked.
   a 2x2 authored object today, so this waits for a profile, beside
   [#669](https://github.com/APKiwiOrg/KhaozEngine/issues/669).
   [#901](https://github.com/APKiwiOrg/KhaozEngine/issues/901).
+  Shipped in 19.0.0 as `TilePathfinder.FindPathToAny`, which `TileReach.TryNearest` calls once.
 - **Removing `TileMoveOptions.AgentSize`.** Section 4.2. Next major. Shipped in 19.0.0.
   [#900](https://github.com/APKiwiOrg/KhaozEngine/issues/900).
 - **[#756](https://github.com/APKiwiOrg/KhaozEngine/issues/756), the in-phase chase.** A step clock problem, not a

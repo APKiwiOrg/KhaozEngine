@@ -515,6 +515,22 @@ always keep the constructor map.
   re-centring it. `PoseAt(TileRect footprint, int plane, TileDirection facing)` is the overlay form for a footprint:
   its centre with no glide, for a footprint marker or a nameplate anchor that is not a body, and exactly
   `PoseAt(tile)` for a one-tile rect.
+- **A POSE STANDS ON THE TERRAIN, not on the plane floor.** Once the planar centre is known the height comes from
+  `ITileGroundHeight`, one `HeightAt(float tileX, float tileZ, int plane)` taking TILE units on the lattice and
+  answering world METRES, sampled at the same centred point the position is built from. So a body on an authored
+  slope has its feet on the ground quad it stands on, and so does a marker or a dropped item laid down through
+  `PoseAt(tile)`. A gliding body resamples every frame at its interpolated planar position, which is what makes it
+  FOLLOW a slope between two tile centres instead of stepping at the tile edge. `new TilePresenter(document)`
+  wires `TileDocumentGroundHeight`, the document's own bilinear lattice and the same heights the terrain mesh and
+  the props are built from, so a head that builds its presenter from the world file needs no call of its own, and
+  that adapter is the single place tile units become world metres for a height read. The
+  `(tileSize, planeHeight)` placeholder has no source and stays flat at the plane index times `PlaneHeight`, the
+  only honest answer before a document is loaded, and `Ground` is null on exactly that one.
+  `new TilePresenter(tileSize, planeHeight, ground)` takes a source explicitly, for a test with a synthetic slope
+  or a head whose terrain is streamed. A plane with no authored heights keeps its derived lift, one `PlaneHeight`
+  per plane over the lattice below it, and a fractional plane index, which is what a body easing between planes
+  carries, reads between the two planes' own samples rather than popping. `Yaw` is untouched, and the aimed pose
+  draws at the same height as the plain one for the same state.
 - **A BODY HOLDING A LOCK IS DRAWN AIMING AT IT.** `TileMoveState.Facing` answers the cardinal side the two
   footprints touch on, which is exact for reach and up to 18 degrees off as a drawn yaw the moment either body is
   bigger than one tile: a player beside a 2x2 cow points at the column it touches, and so does the cow. So

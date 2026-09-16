@@ -297,15 +297,14 @@ public class TileReachAllocationTests
     }
 
     /// <summary>
-    /// The per-candidate prune, measured. A reach set holds up to eight candidates and the first successful
-    /// search bounds every later one: no eight-connected walk is shorter than the Chebyshev distance to its
-    /// goal, so a candidate already at or past the best length cannot win and its search is skipped. Here the
-    /// walker stands due west, the west tile answers in four steps, and the other three candidates are five and
-    /// six away, so one search runs instead of four. At radius 64 each skipped search is a 129x129 int plus byte
-    /// scratch, about 83 KB, which is what this counts.
+    /// ONE window per call, measured. A reach set holds up to eight candidates for a one tile target, and they all
+    /// go into a single multi-goal flood, so the whole interaction costs one window however many candidates there
+    /// are. At radius 64 a window is a 129x129 int plus byte scratch, about 83 KB, which is what this counts.
+    /// The walker stands due west and the west tile answers in four steps, which is the answer the per-candidate
+    /// loop this replaced gave for the same map.
     /// </summary>
     [Fact]
-    public void A_candidate_that_cannot_beat_the_best_so_far_pays_no_search()
+    public void A_reach_search_costs_one_window_however_many_candidates_it_has()
     {
         TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
         doc.AddObject("bank_booth", 10, 10, 0, 0);
@@ -313,7 +312,7 @@ public class TileReachAllocationTests
         var footprint = new TileRect(10, 10, 1, 1);
         var from = new TileCoord(5, 10, 0);
 
-        // Warm the JIT, and pin that the pruned call still answers exactly what the unpruned one did.
+        // Warm the JIT, and pin that the one search answers exactly what the search per candidate did.
         for (int i = 0; i < 8; i++)
         {
             Assert.True(TileReach.TryNearest(map, footprint, 0, from, 1, 64, out TileCoord tile, out TilePath path));
@@ -322,7 +321,7 @@ public class TileReachAllocationTests
         }
 
         // Best of several passes, for the reason the sibling above states: the per thread counter is only
-        // accurate to one allocation context. Four searches cannot hide under the minimum of a one-search bound.
+        // accurate to one allocation context. A second window cannot hide under the minimum of a one-window bound.
         const int passes = 5;
         long allocated = long.MaxValue;
         for (int pass = 0; pass < passes; pass++)

@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Catalog.Netcode</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>The content layer of the connect door (in the Server umbrella): ContentIdentityLayer wraps and unwraps the handshake layer value, the decimal content version number and the 64 character lower hex client manifest hash joined by a pipe; ContentIdentityGateAuthenticator compares it ordinal against the version the server serves and refuses with a stable wire token carrying both sides; ContentRefusal is those two tokens, ke:content-mismatch and ke:content-client-too-old, and their parsers. A client that is behind is refused rather than admitted read-only while it fetches, and the refusal carries everything the client fetch loop needs.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The read side for ContentVersionIdentity and the one content-address rule, plus the handshake layer
+         codec. It is its own small package rather than a type inside KhaozEngine.Catalog because Catalog is
+         Foundation and Foundation cannot reference a Server-side package (spec 2.1). -->
+    <ProjectReference Include="../KhaozEngine.Catalog/KhaozEngine.Catalog.csproj" />
+    <ProjectReference Include="../KhaozEngine.Netcode/KhaozEngine.Netcode.csproj" />
+  </ItemGroup>
+
+</Project>

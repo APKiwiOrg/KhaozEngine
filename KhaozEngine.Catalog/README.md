@@ -301,10 +301,31 @@ if (!roller.TryRoll(tableId, drops, out int written))
   prune and a misconfigured one cannot delete a production pack through the common interface.
 - `PackVersionPointer` and `PackDurability` - the two manifest hashes of one published version, which is the
   ONE object in a store not named by its own hash, and how hard a provider works to survive a power cut.
+  `PackVersionPointer.TryRead` is the pointer file's one parser, because both providers read the same two
+  lines, the local one off disk and the HTTP one off a `versions/<n>` GET.
 - `FileSystemPackStore` - the local provider: one file per hash under a two-level shard derived from the
   hash itself, written to a temporary name in the same directory and then moved. The version pointer lives
   outside the shard tree under `versions/`, because a shard name is derived from a hash and a version number
   is not one.
+- `HttpPackStore` - the read-only cloud provider, over ONE injected `HttpClient`, laying the SAME two-level
+  shard out under an HTTP base address as the file store does on disk, so one tree serves both and a
+  publisher uploads the directory as it stands. `PutAsync` and `ListAsync` throw `NotSupportedException` on
+  the CALL, which is what makes it obviously a fetch path rather than a half-working publish target, and
+  every answer that is not a 200 is null rather than a throw, a 404, a 5xx, a redirect and a connection that
+  died mid body alike. It verifies NOTHING: a store is a transport and the address check is the reader's.
+  `CreateClient` builds the client the container should be read through, following no redirect and setting
+  no credential, because a redirect off a content-addressed store is either a misconfiguration or a
+  redirection attack. No cloud SDK, deliberately: a blob SDK here would be a third-party dependency in every
+  game client's graph, and the write side belongs to the publisher's own server.
+- `CachingPackStore` - a LOCAL store in front of a REMOTE one. `GetAsync` asks local, on a miss asks remote,
+  VERIFIES, writes through to local and returns. `ExistsAsync` asks local then remote. `PutAsync`, `ListAsync`
+  and the pruning half are the CACHE's alone, so one client's eviction policy can never reach the origin.
+  The verification is the whole value of it and it is not optional: bytes that do not digest to the name they
+  were fetched under are discarded, never cached and never returned. It verifies on every READ from the cache
+  and not only on write, which is what makes a local file replaced with attacker bytes self-healing, and a
+  failed cache read is DELETED before the refetch, because a content-addressed `PutAsync` is a no-op when the
+  name already exists. Every discard is reported as `(hash, reason)` through the optional callback, which is
+  how a fetch loop says `hash-mismatch` without this type knowing what a fetch loop is.
 - `ContentPackReader` - the ONE reader, shared by the server and the client, which differ only in when they
   call it. `ReadAllAsync` is the server's eager boot path, `ReadRowAsync` is the client's lazy one and
   touches at most the chunk whose slots cover the id, and `ReadChunkAsync` never refetches a chunk it holds.
@@ -322,6 +343,113 @@ if (!roller.TryRoll(tableId, drops, out int written))
 - `ContentPackException` - a pack STORE asked to write bytes under a name they do not digest to, or under a
   name that is not a content address at all. It is the one pack failure here that throws, because a bad PUT
   is the publisher's own programming error on the publisher's own machine and not bytes from a peer.
+
+## The client fetch loop
+
+`ContentFetchLoop` is spec 8.7, from the connect door's refusal to every chunk verified. It is the client
+half: the server reads a whole pack at boot through `ContentPackReader.ReadAllAsync` and never runs this.
+
+```csharp
+var loop = new ContentFetchLoop(cache, HttpPackStore.CreateClient(config.PackBaseAddress),
+    config.PackBaseAddress, registry, new ContentFetchOptions { ClientBuild = ThisBuild });
+
+ContentFetchResult result = await loop.FetchAsync(server);        // server came from ContentRefusal
+if (result.Success)
+    Reconnect();                                                  // and not one step before
+else
+    ShowNotice(result.Outcome, result.Reason, result.Progress);
+```
+
+- **The base address comes from CONFIGURATION, never from the refusal.** A URL in a refusal token is a
+  redirect an unauthenticated party controls (spec 13.4), so the loop takes its store pair or its base
+  address as a CONSTRUCTOR argument, and takes the version as a parsed `ContentVersionIdentity` rather than
+  as a token. Nothing on this type turns a string into an address, and `KhaozEngine.Catalog` cannot see the
+  refusal token at all: parsing it is `ContentRefusal`'s, in `KhaozEngine.Catalog.Netcode`.
+- **Six steps.** Read the manifest the refusal named, through the verifying pair so it is cached only if it
+  digested to that name. Refuse a pack from a newer format generation or a version whose
+  `MinimumClientBuild` is above this build, both of which mean the player has to update rather than wait.
+  Compute `missing` as every hash the manifest names that the LOCAL cache lacks. Fetch that set at bounded
+  concurrency, verifying, retrying once. Reconnect when every one arrived, otherwise report progress and
+  retry the missing set with backoff.
+- **Bounded concurrency FOUR**, because a home connection saturates at two or three streams and unbounded
+  parallelism against a CDN buys nothing over a link that is the floor. `ContentFetchOptions.Concurrency`
+  moves it, `Attempts` and `BackoffStep` are step 6's retry, and `Languages` is which text chunks this
+  player wants, empty for every language the version ships.
+- **Decode is LAZY and the loop stores BYTES.** No row is decoded and no decompressed body is kept: the one
+  decompression a chunk pays is the verify's, inside the store pair, and its result is dropped. A client
+  that later reads one item id through `ContentPackReader.ReadRowAsync` decompresses the one chunk whose
+  slots cover it and leaves every other chunk compressed in the cache, which is what makes the cold start a
+  download budget rather than a decode budget.
+- **A partial download never becomes a partial catalog.** `Success` is `Complete` and nothing else, and
+  there is deliberately no member on the loop or the result that hands back a snapshot, a runtime or a
+  reader. That is what makes the door comparison a hash equality rather than a negotiation.
+- **The reason is the verify's own token, never one this loop invented over the top of it.** A short body
+  (`chunk-stored-length`), a wrong body (`hash-mismatch`), a body that never arrived (`chunk-fetch-failed`)
+  and a chunk the publisher wrote badly (the decoder's token, `text-entry-order` and its kind) are four
+  different lines for an operator. `ContentFetchOutcome` is the coarse half a client switches on, and
+  `ContentFetchFailure` carries the address and the token for every object the fetch gave up on.
+- **A chunk is retried ONCE against the same source whatever the refusal was**, because the loop cannot
+  tell a transfer that mangled bytes from a publisher that wrote them mangled: a decoder that refused
+  before the digest could be compared has no digest to compare. The manifest is refetched once too, and a
+  second mismatch STOPS the client, because it cannot tell a bad CDN from a bad configuration and guessing
+  is worse than stopping.
+- **There is no resume state beyond the cache.** An interrupted fetch leaves verified chunks in the cache
+  and the next call recomputes `missing` against it, so a server whose version moved mid fetch needs no
+  special casing: the client finishes, is refused again with the new hash, and downloads the manifest plus
+  the chunks that differ.
+- `ContentFetchProgress` is the report while it runs, against ONE required set for the whole call, so a
+  client draws one bar rather than one per attempt. `loop.Store` is the verifying pair the fetch went
+  through and is what a lazy row read should go through afterwards, because it verifies on every READ: a
+  cached chunk that went bad on disk is detected on first use, evicted and refetched.
+
+## Content strings
+
+`ContentStringCatalog` is the layered catalog of contracts 12.4 and spec 7.6, over `ContentTextIndex`, one
+decoded language each.
+
+```csharp
+ContentTextIndex english = ContentTextIndex.TryDecode(file, out var index, out string? reason)
+    ? index : throw new InvalidOperationException(reason);
+var strings = new ContentStringCatalog([english, french], "en-US", shipped.TryGet);
+
+strings.SelectLanguage(CultureInfo.CurrentUICulture);
+string name = strings.Get(ContentTextKey.Derive("item", row.Key.Utf8, "name"));
+```
+
+- **Content is asked FIRST, then the game's catalog, then the key itself** as a visible non-fatal
+  placeholder. Content first, because content is the thing that ships without a client release, so a content
+  string must be able to override a stale shipped one. Nothing on this path throws: a missing string is a
+  visible defect rather than a dead frame loop.
+- **It does NOT implement `IStringCatalog` and takes no reference on `KhaozEngine.App`.** That interface
+  lives in `App`, a peer `Foundation` package rather than a dependency of this one, and a reference on it
+  would widen every game client's graph for one interface. The member shape is the same (`Get`, `Format`,
+  `TryGet`), and the layer BELOW is a `ContentStringFallback` delegate whose signature is
+  `IStringCatalog.TryGet`'s, so a game passes that method group straight in and writes a three-line adapter
+  the other way. The type's own doc comment carries that adapter.
+- **The language is EXPLICIT and no ambient culture is read here.** `SelectLanguage(tag)` and
+  `SelectLanguage(CultureInfo)` pick it, the culture overload walking the parent chain so a client on
+  `en-GB` resolves against a pack that ships `en`, and a culture the content has no translation for leaves
+  the selection alone. The game's adapter is where `CultureInfo.CurrentUICulture` is read, which keeps two
+  screens or two tests in one process from moving each other's language.
+- **A miss in the selected language falls to the DEFAULT language before the game's catalog**, because a
+  translation lands string by string and a half-translated language should show the authored string rather
+  than a key.
+- **`Format` routes through `SafeFormat`**, so a malformed translator-authored template falls back to the
+  UNFORMATTED template rather than taking the frame loop down. A template is content arriving as data rather
+  than a caller bug. It formats with the SELECTED language's culture, because the string came out of that
+  language's chunk.
+- **A decoded language is the chunk BODY itself plus one index, and no decoded entry at all.**
+  `ContentTextIndex` keeps the decompressed body and builds one open-addressed `int[]` of entry offsets over
+  it, hashed on the entry's UTF-8 key through the same `ContentKey` hash the runtime's id table uses. There
+  is no `Dictionary<string, string>` and nothing exists as UTF-16 until something asks for it, which is what
+  keeps a 50,000 item language at about 9.6 MB against the 44.2 MB a string dictionary measured.
+  `TryGetUtf8` is the path that never materialises anything at all.
+- **The resolved-string cache is bounded by CONSTRUCTION**, a direct-mapped table of
+  `ContentStringCatalog.CacheEntries` (512) keyed on the entry offset, so it cannot grow into the thing the
+  budget exists to prevent. A repeat `Get` returns the same instance and allocates nothing. A miss is one
+  UTF-8 decode over a slice the catalog already holds.
+- **Two indexes carrying the same tag are SHARDS of that language**, which is how spec 7.6 holds a language
+  past the chunk ceiling, and a lookup finds a key in whichever shard carries it.
 
 ## Validation
 

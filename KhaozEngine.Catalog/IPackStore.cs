@@ -31,7 +31,44 @@ public enum PackDurability
 /// </summary>
 /// <param name="ServerManifestHash">The version's server manifest hash, lower hex.</param>
 /// <param name="ClientManifestHash">The version's client manifest hash, lower hex, never equal to the server one.</param>
-public sealed record PackVersionPointer(string ServerManifestHash, string ClientManifestHash);
+public sealed record PackVersionPointer(string ServerManifestHash, string ClientManifestHash)
+{
+    /// <summary>
+    /// Reads a pointer file: the two manifest hashes, one per line. Null for anything else, which is what
+    /// makes an absent or malformed pointer answer the same way as an unreadable one, because a listing
+    /// built on half a pointer is how a publish sweep deletes a live pack.
+    /// <para>
+    /// It lives HERE, on the pointer, because both providers read the same file: the local store off disk
+    /// and the HTTP store off a <c>versions/&lt;n&gt;</c> GET. One writer and two readers is exactly the
+    /// shape a second copy of the parse would rot in.
+    /// </para>
+    /// </summary>
+    /// <param name="file">The pointer file's bytes, UTF-8.</param>
+    public static PackVersionPointer? TryRead(ReadOnlySpan<byte> file)
+    {
+        string text;
+        try
+        {
+            text = System.Text.Encoding.UTF8.GetString(file);
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+
+        string[] lines = text.Split('\n');
+        if (lines.Length < 2)
+        {
+            return null;
+        }
+
+        string server = lines[0].TrimEnd('\r');
+        string client = lines[1].TrimEnd('\r');
+        return FileSystemPackStore.IsContentAddress(server) && FileSystemPackStore.IsContentAddress(client)
+            ? new PackVersionPointer(server, client)
+            : null;
+    }
+}
 
 /// <summary>
 /// The content-addressed pack store of spec 8.1: four members and no more, so a provider is a fetch path, a

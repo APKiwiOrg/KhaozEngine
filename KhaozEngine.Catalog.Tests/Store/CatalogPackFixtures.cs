@@ -98,8 +98,13 @@ internal sealed class CatalogPack
     /// <summary>The tag type id, the engine's own fixed 1.</summary>
     public static ContentTypeId TagType => new(EngineContentTypes.TagTypeId);
 
-    /// <summary>Builds the pack, encoding every file through the shipped encoders.</summary>
-    public static CatalogPack Build()
+    /// <summary>
+    /// Builds the pack, encoding every file through the shipped encoders. The text chunk can be supplied
+    /// instead, which is how a caller plants a chunk this reader refuses under a hash that matches it.
+    /// </summary>
+    /// <param name="textFile">The text chunk as stored, or null for the fixture's own.</param>
+    /// <param name="textHash">That chunk's content address, or null for the fixture's own.</param>
+    public static CatalogPack Build(byte[]? textFile = null, string? textHash = null)
     {
         var registry = new ContentTypeRegistry();
         EngineContentTypes.Register(registry);
@@ -146,8 +151,8 @@ internal sealed class CatalogPack
             new("item.bronze_sword.name", "Bronze sword"),
             new("item.rune_sword.name", "Rune sword"),
         ];
-        byte[] textFile = ContentTextChunkCodec.Encode(LanguageTag, text);
-        string textHash = ContentTextChunkCodec.Hash(LanguageTag, text);
+        byte[] file = textFile ?? ContentTextChunkCodec.Encode(LanguageTag, text);
+        string hash = textHash ?? ContentTextChunkCodec.Hash(LanguageTag, text);
 
         ManifestTypeEntry[] types =
         [
@@ -165,17 +170,52 @@ internal sealed class CatalogPack
                 [Entry(itemChunkZero), Entry(itemChunkOne)]),
         ];
 
-        ManifestLanguageEntry[] languages = [new(LanguageTag, textHash)];
+        ManifestLanguageEntry[] languages = [new(LanguageTag, hash)];
 
         return new CatalogPack(
             registry,
             [tagChunk, itemChunkZero, itemChunkOne],
             ruleHash,
             ruleFile,
-            textHash,
-            textFile,
-            Manifest(ContentManifestSide.Server, ruleHash, types, languages),
-            Manifest(ContentManifestSide.Client, ruleHash, types, languages));
+            hash,
+            file,
+            Manifest(ContentManifestSide.Server, VersionNumber, ruleHash, types, languages),
+            Manifest(ContentManifestSide.Client, VersionNumber, ruleHash, types, languages));
+    }
+
+    /// <summary>
+    /// The NEXT version of the same pack, with one row of one item chunk edited. Every other chunk address
+    /// is unchanged, because a chunk address is the content's, so this is what a client that was refused
+    /// again after a publish has to fetch: the new manifest and the one chunk that moved.
+    /// </summary>
+    public CatalogPack WithEditedItemChunk()
+    {
+        ContentTypeRegistration item = Registration(Registry, EngineContentTypes.ItemTypeKey);
+        EncodedContentChunk edited = ContentChunkCodec.Encode(
+            item,
+            1,
+            ContentVisibility.Client,
+            [
+                Row(Registry, EngineContentTypes.ItemTypeKey, CatalogSnapshotFixtures.ItemRow(1030, "rune_sword", false, 1, 350, 2)),
+                Row(Registry, EngineContentTypes.ItemTypeKey, CatalogSnapshotFixtures.ItemRow(1031, "dragon_sword", false, 1, 400, 3)),
+            ]);
+
+        ManifestTypeEntry[] types =
+        [
+            ClientManifest.Types[0],
+            ClientManifest.Types[1] with { Chunks = [Entry(ItemChunkZero), Entry(edited)] },
+        ];
+        ManifestLanguageEntry[] languages = [new(LanguageTag, TextChunkHash)];
+
+        return new CatalogPack(
+            Registry,
+            [TagChunk, ItemChunkZero, edited],
+            RuleChunkHash,
+            RuleChunkFile,
+            TextChunkHash,
+            TextChunkFile,
+            Manifest(ContentManifestSide.Server, VersionNumber + 1, RuleChunkHash, types, languages),
+            Manifest(ContentManifestSide.Client, VersionNumber + 1, RuleChunkHash, types, languages));
     }
 
     /// <summary>Writes every file of the pack, plus the version pointer, into a store.</summary>
@@ -212,15 +252,48 @@ internal sealed class CatalogPack
         return hashes;
     }
 
+    /// <summary>
+    /// Every hash the CLIENT side names, its own manifest included: the client manifest, the rule chunk,
+    /// the text chunk and every client-visible chunk. This is what one client cold start has to hold.
+    /// </summary>
+    public IReadOnlyList<string> EveryClientHash()
+    {
+        var hashes = new List<string> { ClientManifestHash, RuleChunkHash, TextChunkHash };
+        for (int i = 0; i < Chunks.Count; i++)
+        {
+            hashes.Add(Chunks[i].Hash);
+        }
+
+        return hashes;
+    }
+
+    /// <summary>Every client-side object as (address, bytes), the manifest first.</summary>
+    public IReadOnlyList<KeyValuePair<string, byte[]>> ClientObjects()
+    {
+        var objects = new List<KeyValuePair<string, byte[]>>
+        {
+            new(ClientManifestHash, ClientManifestFile),
+            new(RuleChunkHash, RuleChunkFile),
+            new(TextChunkHash, TextChunkFile),
+        };
+        for (int i = 0; i < Chunks.Count; i++)
+        {
+            objects.Add(new KeyValuePair<string, byte[]>(Chunks[i].Hash, Chunks[i].StoredFile.ToArray()));
+        }
+
+        return objects;
+    }
+
     static ContentManifest Manifest(
         ContentManifestSide side,
+        int versionNumber,
         string ruleHash,
         IReadOnlyList<ManifestTypeEntry> types,
         IReadOnlyList<ManifestLanguageEntry> languages)
         => new()
         {
             Side = side,
-            VersionNumber = VersionNumber,
+            VersionNumber = (uint)versionNumber,
             FormatGeneration = ContentPackFormat.Generation,
             MinimumServerBuild = 11,
             MinimumClientBuild = 12,

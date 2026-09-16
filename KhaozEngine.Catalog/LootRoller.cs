@@ -104,8 +104,15 @@ public sealed class LootRoller
 
     /// <summary>
     /// The same roll, reporting whether the whole of it fitted. False means the destination filled and the
-    /// roll stopped at the first line that did not fit, so nothing was drawn for the lines nobody got: a
-    /// caller that sizes up and rolls the same seeded source again gets the whole table.
+    /// roll stopped at the first line that did not fit, and nothing was drawn for that line or the ones after
+    /// it: the fit is tested before the draw, so a caller that sizes up and rolls the same seeded source again
+    /// gets the whole table.
+    /// <para>
+    /// The WEIGHTED PICK is the one exception, and it is exact: a pick is drawn before the entry it lands on
+    /// is known, so there is no line yet to test the fit against. An overflow inside the weighted pass
+    /// therefore consumes the one pick that chose the line nobody got, and nothing else. The guaranteed pass
+    /// consumes nothing at all.
+    /// </para>
     /// </summary>
     /// <param name="tableId">The <c>loot_table</c> to roll.</param>
     /// <param name="destination">Where the lines are written.</param>
@@ -197,6 +204,12 @@ public sealed class LootRoller
     /// One drawn entry, resolved the one way it names its draw (<c>KEC0023</c> refuses every other count): an
     /// item line, a recursion, or a uniform draw from the precomputed candidates. An entry naming none of the
     /// three draws nothing, because the validator is where that is reported.
+    /// <para>
+    /// The fit is tested FIRST, before anything is drawn and before a nested table is entered, which is what
+    /// makes "nothing was drawn for the lines nobody got" true rather than nearly true: a count, a candidate
+    /// and a whole nested table's worth of chances would otherwise come off the source for a line with
+    /// nowhere to go.
+    /// </para>
     /// </summary>
     bool Emit(
         int tableId,
@@ -206,6 +219,11 @@ public sealed class LootRoller
         ref int written,
         int depth)
     {
+        if (written >= destination.Length)
+        {
+            return false;
+        }
+
         if (entry.NestedTableId > 0)
         {
             // At the point it is drawn, so the nested table's lines land between this table's own.
@@ -230,11 +248,6 @@ public sealed class LootRoller
             // A line of nothing is not a drop. The count came from the row, so this is an authoring defect the
             // validator owns rather than a refusal the roll can report.
             return true;
-        }
-
-        if (written >= destination.Length)
-        {
-            return false;
         }
 
         destination[written++] = new LootDraw(itemId, count, tableId);

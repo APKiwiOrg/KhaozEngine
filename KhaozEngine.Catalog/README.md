@@ -280,9 +280,10 @@ if (!roller.TryRoll(tableId, drops, out int written))
   which after a nested draw is the nested table, and it is the one thing a caller cannot reconstruct. A game's
   own drop event passes it back through.
 - **A destination too small is FILLED**, `Roll` returns the span's length and `TryRoll` reports the overflow, so
-  a caller sizes up rather than silently losing drops. The roll stops at the first line that does not fit, so
-  nothing is drawn for lines nobody gets and the same seeded source rolled into a bigger span gives the whole
-  table.
+  a caller sizes up rather than silently losing drops. The roll stops at the first line that does not fit, and
+  the fit is tested before the draw, so nothing is drawn for lines nobody gets and the same seeded source
+  rolled into a bigger span gives the whole table. The weighted pick is the one exception: it is drawn before
+  the entry it lands on is known, so an overflow inside the weighted pass consumes that one pick.
 - **`MaxNestedDepth` is 16**, a hard cap below `KEC0024`'s acyclicity guarantee. A published pack cannot reach
   it, and a roll runs over bytes a pack store handed the process, so a hand-edited pack must not be able to run
   a server out of stack. A nested entry at the cap draws nothing and the rest of the table still rolls.

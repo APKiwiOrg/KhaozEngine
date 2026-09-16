@@ -227,6 +227,45 @@ public class LootRollerTests
     }
 
     [Fact]
+    public void An_overflowed_roll_draws_nothing_for_the_line_that_did_not_fit()
+    {
+        // What TryRoll's false PROMISES: the roll stopped at the first line that did not fit and nothing was
+        // drawn for the lines nobody got, so a caller that keeps rolling the same source is not left with a
+        // stream shifted by draws it never saw a line for.
+        ContentRuntime runtime = LootRollerFixtures.Runtime();
+
+        var whole = new CountingRandomSource(1);
+        Assert.True(new LootRoller(runtime, whole).TryRoll(LootRollerFixtures.ChestTable, new LootDraw[8], out int written));
+        Assert.Equal(4, written);
+        Assert.Equal(6, whole.Draws);
+
+        // One slot: the first guaranteed entry's chance and its count, and not one draw more. The nested
+        // entry that came next would have drawn a weighted pick inside the rare table for a line with
+        // nowhere to go.
+        var narrow = new CountingRandomSource(1);
+        Assert.False(new LootRoller(runtime, narrow).TryRoll(LootRollerFixtures.ChestTable, new LootDraw[1], out written));
+        Assert.Equal(1, written);
+        Assert.Equal(2, narrow.Draws);
+    }
+
+    [Fact]
+    public void An_overflow_inside_the_weighted_pass_consumes_the_pick_that_chose_the_line_and_nothing_else()
+    {
+        // The one thing the promise cannot cover: a weighted pick is drawn BEFORE the entry it lands on is
+        // known, so there is no line to test the fit against yet. Three slots take everything up to the
+        // second pick, and that pick is the only draw beyond what the three written lines cost.
+        ContentRuntime runtime = LootRollerFixtures.Runtime();
+
+        var counting = new CountingRandomSource(1);
+        bool complete = new LootRoller(runtime, counting)
+            .TryRoll(LootRollerFixtures.ChestTable, new LootDraw[3], out int written);
+
+        Assert.False(complete);
+        Assert.Equal(3, written);
+        Assert.Equal(5, counting.Draws);
+    }
+
+    [Fact]
     public void A_destination_that_fits_the_whole_roll_reports_no_overflow()
     {
         Span<LootDraw> destination = stackalloc LootDraw[8];
@@ -336,6 +375,43 @@ public class LootRollerTests
         var destination = new LootDraw[capacity];
         int written = roller.Roll(tableId, destination);
         return destination[..written];
+    }
+
+    /// <summary>
+    /// A seeded source that counts the draws taken off it, which is the only way to ask whether a roll drew
+    /// for a line it never wrote. It counts CALLS, and the roll makes no one-wide call, which is the one
+    /// shape <see cref="SeededRandomSource"/> answers without consuming anything.
+    /// </summary>
+    sealed class CountingRandomSource(ulong seed) : IRandomSource
+    {
+        readonly SeededRandomSource _source = new(seed);
+
+        /// <summary>How many draws the roll has taken.</summary>
+        public int Draws { get; private set; }
+
+        public int NextInt(int minInclusive, int maxExclusive)
+        {
+            Draws++;
+            return _source.NextInt(minInclusive, maxExclusive);
+        }
+
+        public ulong NextULong()
+        {
+            Draws++;
+            return _source.NextULong();
+        }
+
+        public ushort NextRollPosition()
+        {
+            Draws++;
+            return _source.NextRollPosition();
+        }
+
+        public void NextBytes(Span<byte> destination)
+        {
+            Draws++;
+            _source.NextBytes(destination);
+        }
     }
 
     /// <summary>The loop the allocation fact measures, which must be safe to run twice.</summary>

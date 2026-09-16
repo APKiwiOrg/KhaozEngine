@@ -448,6 +448,63 @@ public class ItemGeneratorTests
     }
 
     [Fact]
+    public void The_generated_payload_passes_the_RUNTIME_validator_and_not_only_the_shape_check()
+    {
+        // ItemInstancePayload.Validate is the SHAPE check: kinds ascending, no kind twice, minimal varints,
+        // bodies the right width. It resolves nothing. A payload naming a mod this version has no row for
+        // is perfectly shaped and is still an item nobody can equip, and only InstanceValidator.ValidateEntry
+        // against the published runtime and the property registry can say so.
+        ContentTypeRegistry types = GenerationWorld.World();
+        ContentSnapshot snapshot = GenerationWorld.Candidate(types);
+        InstancePropertyRegistry properties = InstancePropertyRegistry.CreateV1();
+
+        // Red first: the same shape with a mod id the version does not carry. Check 7 is what catches it,
+        // and the shape check waves it through.
+        var stranger = new ItemInstancePayloadBuilder();
+        _ = stranger.AddScalar(InstancePropertyKind.ItemLevel, 60);
+        _ = stranger.AddIdentification(identified: false, revealedMask: 0);
+        _ = stranger.AddByte(InstancePropertyKind.Rarity, GenerationWorld.RareRarity);
+        _ = stranger.AddAffixes(InstancePropertyKind.Affixes, [new InstanceAffix(9_999, 1, 0)]);
+        byte[] unresolved = stranger.ToArray();
+
+        Assert.Null(ItemInstancePayload.Validate(properties, unresolved));
+        Assert.Equal(
+            InstanceValidationOutcome.Quarantined,
+            InstanceValidator.ValidateEntry(
+                unresolved,
+                Entry(GenerationWorld.Greatsword, unresolved.Length),
+                snapshot.VersionNumber,
+                properties,
+                types,
+                snapshot,
+                out InstanceValidationFinding stray));
+        Assert.Equal(7, stray.Check);
+
+        // And green on what the generator actually rolls, over both bases and both rarities, because a
+        // single roll is one shape out of the several the steps can produce.
+        ItemGenerator generator = GenerationWorld.Generator(new SeededRandomSource(4_242));
+        foreach (int baseId in new[] { GenerationWorld.Greatsword, GenerationWorld.Dagger })
+        {
+            foreach (GenerationContext context in new[] { Rare(baseId), Magic(baseId) })
+            {
+                GenerationResult rolled = generator.Generate(context);
+                ReadOnlyMemory<byte> payload = rolled.Payload;
+                Assert.Equal(
+                    InstanceValidationOutcome.Valid,
+                    InstanceValidator.ValidateEntry(
+                        payload.Span,
+                        Entry(baseId, payload.Length, rolled.InstanceId),
+                        rolled.ContentVersion,
+                        properties,
+                        types,
+                        snapshot,
+                        out InstanceValidationFinding finding));
+                Assert.Null(finding.Reason);
+            }
+        }
+    }
+
+    [Fact]
     public void A_base_declaring_durability_carries_kind_5_at_FULL_and_no_socket_field()
     {
         GenerationResult result = GenerationWorld.Generator(new SeededRandomSource(11))
@@ -567,6 +624,10 @@ public class ItemGeneratorTests
         Assert.Equal(-40, RollPosition.Resolve(0, -40, -10));
         Assert.Equal(-10, RollPosition.Resolve(65_535, -40, -10));
     }
+
+    /// <summary>One page entry for a standalone validate, whose payload window the door never indexes.</summary>
+    static PageEntry Entry(int baseId, int payloadLength, long instanceId = 1)
+        => new(0, 0, baseId, 1, instanceId, 0, payloadLength);
 
     /// <summary>A forced rare on one base at item level 60, which is what most facts roll.</summary>
     static GenerationContext Rare(int baseId) => new(baseId, 60, GenerationWorld.RareRarity, 0, 0);

@@ -168,6 +168,12 @@ public sealed class AuthoredPackGenerationTests
                 Assert.Null(ItemInstancePayload.Validate(registryV1, rolled.Payload.Span));
                 Assert.Null(ItemInstancePayload.Validate(registryV1, twin.Payload.Span));
 
+                // And through the RUNTIME validator, which is the one that resolves. The shape check above
+                // says the bytes parse, and nothing more: a payload naming a mod this published version has
+                // no row for is perfectly shaped and is an item nobody can equip. Check 7 against the booted
+                // runtime is what says the rolled ids are ids this pack actually carries.
+                AssertRuntimeValid(rolled, registryV1, registry, runtime, context.BaseId);
+
                 // Byte equality IS the stacking rule (spec 4.6), so the twin merges with it and the instance
                 // ids are the only thing the two differ by.
                 Assert.True(
@@ -202,6 +208,7 @@ public sealed class AuthoredPackGenerationTests
             // the one path through the generator that reads the unique family's three types.
             GenerationResult unique = left.Generate(new GenerationContext(Maul, 40, PlainRarity, WorldsplitterTemplate, 0));
             Assert.Null(ItemInstancePayload.Validate(registryV1, unique.Payload.Span));
+            AssertRuntimeValid(unique, registryV1, registry, runtime, Maul);
             InstanceAffix line = Assert.Single(Affixes(unique.Payload));
             Assert.Equal(RelicLineMod, line.ModId);
             Assert.Equal(1, line.Tier);
@@ -210,6 +217,32 @@ public sealed class AuthoredPackGenerationTests
         {
             Delete(root);
         }
+    }
+
+    /// <summary>
+    /// One rolled item through <see cref="InstanceValidator.ValidateEntry"/> against the booted runtime,
+    /// which is the door a caller holding one item without a container uses and the only one that resolves
+    /// a mod id, a socket type or a tier ordinal against content.
+    /// </summary>
+    static void AssertRuntimeValid(
+        GenerationResult rolled,
+        InstancePropertyRegistry properties,
+        ContentTypeRegistry types,
+        IContentSnapshot snapshot,
+        int baseId)
+    {
+        ReadOnlyMemory<byte> payload = rolled.Payload;
+        InstanceValidationOutcome outcome = InstanceValidator.ValidateEntry(
+            payload.Span,
+            new PageEntry(0, 0, baseId, 1, rolled.InstanceId, 0, payload.Length),
+            rolled.ContentVersion,
+            properties,
+            types,
+            snapshot,
+            out InstanceValidationFinding finding);
+
+        Assert.Equal(InstanceValidationOutcome.Valid, outcome);
+        Assert.Null(finding.Reason);
     }
 
     /// <summary>The registry a server builds: the six engine types plus the eighteen of the band.</summary>

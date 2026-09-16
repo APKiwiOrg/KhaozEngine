@@ -47,9 +47,10 @@ public sealed record TileWorldServerConfig
     /// <see cref="TileMoveState.FootprintSize"/> the server has spawned: a body's ANCHOR can sit its own diagonal
     /// behind the near tile that put it in range, and the home cell has to be holding that anchor as a ghost. This
     /// must be at least that query radius, which at the default 15 tile radius is 16.42 for a 2x2 and 24.9 for an
-    /// 8x8. <see cref="TileWorldServer.SpawnActor"/> refuses a body the margin cannot cover, at the spawn rather
-    /// than on the tick a player walks near a cell edge.</para></summary>
-    public float OverlapMargin { get; init; } = 16f;
+    /// 8x8. The default of 25 covers every legal body at the default radius, so only a game that narrows the band
+    /// or widens the radius has to do this sum. <see cref="TileWorldServer.SpawnActor"/> refuses a body the margin
+    /// cannot cover, at the spawn rather than on the tick a player walks near a cell edge.</para></summary>
+    public float OverlapMargin { get; init; } = 25f;
 
     /// <summary>Session slot capacity, and the ceiling on how many players the command queue tracks.</summary>
     public int MaxPlayers { get; init; } = 200;

@@ -809,7 +809,8 @@ position is its anchor too, which costs nothing because a player is one tile.
 `InterestRadius + (N - 1) * sqrt(2)`, where N is `TileWorldServer.LargestFootprintSize`, the largest
 `FootprintSize` the server has spawned: a body's anchor can sit its own diagonal behind the near tile that put it
 in range, and the home cell has to be holding that anchor as a ghost. At the default 15 tile radius that is 16.42
-for a 2x2 and 24.9 for an 8x8, all above the default `OverlapMargin` of 16. A body the margin cannot cover is
+for a 2x2 and 24.9 for an 8x8. The default `OverlapMargin` of 25 covers every legal body at the default radius, so
+only a game that narrows the band or widens the radius has to do this sum. A body the margin cannot cover is
 refused at `TileActorHost.Add` and at `SpawnActor`, with an `ArgumentOutOfRangeException` naming both numbers,
 rather than throwing out of the first serve and taking the tick down for every player.
 

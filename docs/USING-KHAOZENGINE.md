@@ -9525,7 +9525,7 @@ var terrain = new TerrainCollision(field);
 var config = new ShardedWorldServerConfig
 {
     CellSize = 60f,          // align to the terrain / streaming chunk grid (one chunk per cell here)
-    OverlapMargin = 24f,     // border ghost band; MUST be >= InterestRadius
+    OverlapMargin = 25f,     // border ghost band, at least InterestRadius + (N - 1) * sqrt(2) for your largest body N
     InterestRadius = 24f,
 };
 var server = new ShardedWorldServer(transport, config, terrain.GroundHeight, MoveTuning.Default);
@@ -10440,8 +10440,9 @@ crosses a region handoff and reaches both heads with no second lookup.
   **Pad `OverlapMargin` for it.** The serve queries the grid at `InterestRadius + (N - 1) * sqrt(2)`, where N is
   `TileWorldServer.LargestFootprintSize`, the largest body the server has spawned, because an anchor can sit its
   own diagonal behind the near tile that put it in range and the home cell has to hold that anchor as a ghost. At
-  the default 15 tile radius that is 16.42 for a 2x2 and 24.9 for an 8x8, both above the default `OverlapMargin` of
-  16, so a game authoring large bodies MUST widen it. `TileActorHost.Add` and `TileWorldServer.SpawnActor` refuse a
+  the default 15 tile radius that is 16.42 for a 2x2 and 24.9 for an 8x8. The default `OverlapMargin` of 25 covers
+  every legal body at the default radius, so only a game that narrows the band or widens the radius has to do this
+  sum, and one that does MUST keep the margin above it. `TileActorHost.Add` and `TileWorldServer.SpawnActor` refuse a
   body the margin cannot cover, naming both numbers, rather than throwing out of the first serve. A world of
   one-tile bodies is served exactly the set it was served before footprints existed and pays nothing for any of
   this.

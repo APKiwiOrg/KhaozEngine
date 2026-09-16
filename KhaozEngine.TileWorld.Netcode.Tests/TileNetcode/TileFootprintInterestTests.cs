@@ -117,7 +117,8 @@ public class TileFootprintInterestTests
     [Fact]
     public void A_footprint_the_overlap_margin_cannot_ghost_is_refused_at_the_spawn()
     {
-        // The engine defaults: 15 tiles of interest inside a 16 tile border band. A 2x2 needs 16.41.
+        // 15 tiles of interest inside a 16 tile border band, the margin the engine shipped before 19.0.0. A 2x2
+        // needs 16.41.
         using var h = new Harness(radius: 15f, margin: 16f);
         var spawn = new TileActorSpawn(30, 0, TileDirection.S) { FootprintSize = 2 };
 
@@ -131,6 +132,18 @@ public class TileFootprintInterestTests
         Assert.NotEqual(0L, h.Body(new TileCoord(20, 20, 0), size: 1));
         using var wider = new Harness(radius: 15f, margin: 17f);
         Assert.NotEqual(0L, wider.Body(new TileCoord(20, 20, 0), size: 2));
+    }
+
+    [Fact]
+    public void The_default_margin_admits_every_legal_footprint_at_the_default_radius()
+    {
+        // 15 + 7 * sqrt(2) is 24.9, so a default of 25 holds the largest legal body as a ghost and a fresh config
+        // needs no sum from the game that adopts it.
+        TileWorldServerConfig defaults = TileWorldServerTickTests.Config(new TileCoord(0, 0, 0));
+        using var h = new Harness(radius: defaults.InterestRadius, margin: defaults.OverlapMargin);
+
+        Assert.NotEqual(0L, h.Body(new TileCoord(20, 20, 0), size: TileMoveState.MaxFootprintSize));
+        Assert.Equal(TileMoveState.MaxFootprintSize, h.Server.LargestFootprintSize);
     }
 
     [Fact]

@@ -131,6 +131,17 @@ public class TileFootprintActorTests
         Assert.Empty(s.Actors.Spawners);
         Assert.Equal(0, s.ActorCount);
 
+        // The positive control for the internal-wall home, which the refusals above cannot give on their own: the
+        // DEFAULT profile skips the whole check for a one tile body, so nothing so far says whether (30, 20) is a
+        // tile anything can stand on. On a CHECKED profile a one tile body is admitted there, and on both sides of
+        // the wall, so the size 2 refusal was the wall BETWEEN the two tiles and not the anchor.
+        s.Actors.RegisterTraversalProfile(Water, TileMoveSimulatorTests.Bake(doc));
+        TileActorDefinition swimmer = Body with { FootprintSize = 1, TraversalProfile = Water };
+        Assert.True(s.Actors.CanPlace(swimmer, new TileCoord(30, 20, 0)), "the walled tile is standable at size 1");
+        Assert.True(s.Actors.CanPlace(swimmer, new TileCoord(31, 20, 0)), "and so is the tile the other side of it");
+        Assert.False(s.Actors.CanPlace(swimmer with { FootprintSize = 2 }, new TileCoord(30, 20, 0)));
+        Assert.False(s.Actors.CanPlace(swimmer, new TileCoord(21, 21, 0)), "a blocked tile still refuses at size 1");
+
         // The legacy rule, one tile on the default profile only: a blocked home is still admitted and still spawns.
         var blocked = new TileCoord(21, 21, 0);
         Assert.True(s.Actors.CanPlace(Body, blocked));

@@ -251,6 +251,14 @@ public class DerivedIndexTests
         Assert.Equal(1, runtime.Indexes.Loot.EntryCount(CatalogLootFixtures.RareTable));
         Assert.Equal(0, runtime.Indexes.Loot.EntryCount(CatalogLootFixtures.MissingTable));
         Assert.Empty(runtime.Indexes.Loot.PrefixWeights(CatalogLootFixtures.MissingTable).ToArray());
+
+        // And the named id is BELOW the highest real table, which is the shape the arrays are sized for: a
+        // bound on the array length alone admits it, and it would then be a table nothing authored, counted
+        // in TableCount and rolled through the guaranteed pass.
+        Assert.True(CatalogLootFixtures.MissingTable < CatalogLootFixtures.RareTable);
+        Assert.Equal(2, runtime.Indexes.Loot.TableCount);
+        Assert.Equal(0, runtime.Indexes.Loot.RollCount(CatalogLootFixtures.MissingTable));
+        Assert.Empty(runtime.Indexes.Loot.Entries(CatalogLootFixtures.MissingTable).ToArray());
     }
 
     [Fact]

@@ -15,10 +15,14 @@ internal static class CatalogLootFixtures
     public const int GoblinTable = 101;
 
     /// <summary>The table the goblin table recurses into, whose one entry is guaranteed.</summary>
-    public const int RareTable = 102;
+    public const int RareTable = 103;
 
-    /// <summary>A table id no row carries, which the orphan entry names.</summary>
-    public const int MissingTable = 103;
+    /// <summary>
+    /// A table id no row carries, sitting BETWEEN the two real tables on purpose. An absent id ABOVE the
+    /// highest real one is caught by any bound on the array length, so a fixture that put it there could not
+    /// tell a presence test from an arithmetic one.
+    /// </summary>
+    public const int MissingTable = 102;
 
     /// <summary>The default weights of the goblin table's three entries, in sort order.</summary>
     public static IReadOnlyList<int> DefaultWeights => [10, 30, 60];

@@ -70,10 +70,13 @@ internal static class ContentLootIndexBuilder
             }
 
             int tableId = (int)Number(row, schema.TableField);
-            if (tableId < 1 || tableId >= slots)
+            if (tableId < 1 || tableId >= slots || !seen[tableId])
             {
                 // An entry naming no table, or one this version does not carry, is KEC0005 or KEC0006. The
                 // index drops it rather than failing the load, because the validator is what reports it.
+                // The test is the table ROW, not the array bound: the arrays are sized to the highest table
+                // id, so an absent id below it would otherwise become a table nothing authored, counted in
+                // TableCount and rolled through the guaranteed pass.
                 continue;
             }
 

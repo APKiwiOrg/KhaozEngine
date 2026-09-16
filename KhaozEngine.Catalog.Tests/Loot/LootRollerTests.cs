@@ -171,6 +171,40 @@ public class LootRollerTests
     }
 
     [Fact]
+    public void A_retired_entry_and_a_second_row_under_a_live_id_are_never_drawn()
+    {
+        // The chest carries a retired entry that is guaranteed and certain, dropping 5 of item 8, and a
+        // second row under entry 403's id weighing 10,000 against the pool's 100, dropping 9 of item 2. Both
+        // are dropped at load (spec 3.9, KEC0036), so neither count can appear however the seed falls.
+        ContentRuntime runtime = LootRollerFixtures.Runtime();
+
+        for (ulong seed = 1; seed <= 60; seed++)
+        {
+            var roller = new LootRoller(runtime, new SeededRandomSource(seed));
+            foreach (LootDraw draw in Draw(roller, LootRollerFixtures.ChestTable, 16))
+            {
+                Assert.False(
+                    draw.ItemId == 8 && draw.TableId == LootRollerFixtures.ChestTable,
+                    "the retired entry drew on seed " + seed);
+                Assert.True(draw.Count is 1 or 2 or 3, "an unauthored count " + draw.Count + " on seed " + seed);
+            }
+        }
+    }
+
+    [Fact]
+    public void A_retired_table_rolls_nothing_and_is_not_an_overflow()
+    {
+        // A table that has left play is a table the roll does not carry: it takes no pick, its guaranteed
+        // entries do not fire, and it is not an overflow, so a caller cannot tell it from a missing id.
+        var roller = new LootRoller(LootRollerFixtures.Runtime(), new SeededRandomSource(1));
+        Span<LootDraw> destination = stackalloc LootDraw[8];
+
+        Assert.Equal(0, roller.Roll(LootRollerFixtures.RetiredTable, destination));
+        Assert.True(roller.TryRoll(LootRollerFixtures.RetiredTable, destination, out int written));
+        Assert.Equal(0, written);
+    }
+
+    [Fact]
     public void A_destination_too_small_is_filled_and_the_overflow_is_reported_through_TryRoll()
     {
         // Spec 3.5: a destination too small is FILLED and the return is the span's length, so a caller sizes

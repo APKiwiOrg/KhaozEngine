@@ -245,7 +245,11 @@ build inside a tick is a latency spike.
   the NON-GUARANTEED entries only: a guaranteed entry rolls its own chance instead of competing, so it has zero
   width and a pick steps straight over it, which keeps one array and one search. `TotalWeight` is therefore the
   weighted pool's total rather than the sum of every authored weight. A `required_tags` entry resolves at load
-  into a candidate array of the live items carrying every listed tag, retired rows excluded.
+  into a candidate array of the live items carrying every listed tag, retired rows excluded. A RETIRED entry
+  or table row is not indexed either, on the same spec 3.9 authority: a retired entry carries no weight and
+  cannot be drawn, and a retired table answers as one the version does not carry, so it takes no pick and its
+  guaranteed entries never fire. A second row under an id another row already took contributes once, the first
+  in id order, which is `KEC0036` seen from the read side.
 
 ## The loot roll
 

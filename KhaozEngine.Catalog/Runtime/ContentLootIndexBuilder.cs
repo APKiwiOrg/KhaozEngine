@@ -43,7 +43,11 @@ internal static class ContentLootIndexBuilder
         var start = new int[slots];
         var count = new int[slots];
         var rollCount = new int[slots];
+
+        // Two arrays rather than one, because they answer different questions: seen is which ids a row has
+        // CLAIMED, which is what decides a duplicate, and rollable is which of those can be drawn from.
         var seen = new bool[slots];
+        var rollable = new bool[slots];
 
         for (int i = 0; i < tableRows.Count; i++)
         {
@@ -51,32 +55,52 @@ internal static class ContentLootIndexBuilder
             if (row.Id < 1 || seen[row.Id])
             {
                 // A duplicate id is KEC0036's finding, and the FIRST row in id order wins here exactly as it
-                // wins the type table's lookup.
+                // wins the type table's lookup, retired or not.
                 continue;
             }
 
             seen[row.Id] = true;
+            if (row.IsRetired)
+            {
+                // A retired table has LEFT PLAY (spec 3.9) and its row stays in the version so a stored
+                // stack still decodes. Leaving it out of rollable drops its entries below, which is what
+                // makes it answer RollCount 0 and an empty entry list with no second test on the draw path.
+                continue;
+            }
+
+            rollable[row.Id] = true;
             rollCount[row.Id] = (int)Number(row, schema.RollCountField);
         }
 
         // Pass one: how many entries each table owns, so the flat arrays are sized rather than grown.
         var ordered = new List<Ordered>(entryRows.Count);
+        var seenEntries = new HashSet<int>(entryRows.Count);
         for (int i = 0; i < entryRows.Count; i++)
         {
             ContentRow row = entryRows[i];
-            if (row.Id < 1)
+            if (row.Id < 1 || !seenEntries.Add(row.Id))
             {
+                // Id order decides a duplicate here too (KEC0036): the first row wins, and the loser does
+                // not get to put a second copy of its weight in the pool.
+                continue;
+            }
+
+            if (row.IsRetired)
+            {
+                // A retired entry has LEFT PLAY (spec 3.9). Indexing it would put its weight back in the
+                // draw and offer whatever it names, which is usually a retired item: every validator check
+                // skips a retired row for exactly that reason, so nothing else would refuse it.
                 continue;
             }
 
             int tableId = (int)Number(row, schema.TableField);
-            if (tableId < 1 || tableId >= slots || !seen[tableId])
+            if (tableId < 1 || tableId >= slots || !rollable[tableId])
             {
                 // An entry naming no table, or one this version does not carry, is KEC0005 or KEC0006. The
                 // index drops it rather than failing the load, because the validator is what reports it.
-                // The test is the table ROW, not the array bound: the arrays are sized to the highest table
-                // id, so an absent id below it would otherwise become a table nothing authored, counted in
-                // TableCount and rolled through the guaranteed pass.
+                // The test is a ROLLABLE table row, not the array bound: the arrays are sized to the highest
+                // table id, so an absent or retired id below it would otherwise become a table nothing
+                // authored, counted in TableCount and rolled through the guaranteed pass.
                 continue;
             }
 

@@ -11,7 +11,8 @@ namespace KhaozEngine.Tests.Catalog.Loot;
 /// The chest table composes all four shapes spec 3.5 lets a table carry: a guaranteed entry rolling its own
 /// chance, a guaranteed entry recursing into another table, a weighted item entry and a weighted tag filter.
 /// Its items come from <see cref="CatalogRuntimeFixtures"/>, so the sword tag resolves to items 1 and 2 with
-/// the retired 35 excluded.
+/// the retired 35 excluded. It also carries the two rows a roll must never see, a retired entry and a
+/// duplicate of a live id, beside a retired TABLE that rolls nothing at all.
 /// </para>
 /// </summary>
 internal static class LootRollerFixtures
@@ -30,6 +31,12 @@ internal static class LootRollerFixtures
 
     /// <summary>The second half of that cycle, which names the first back.</summary>
     public const int CycleTableBack = 312;
+
+    /// <summary>
+    /// A table whose row is RETIRED, carrying two live entries: one certain and guaranteed, one weighted. A
+    /// table that had left play and still rolled would drop both on every seed.
+    /// </summary>
+    public const int RetiredTable = 304;
 
     /// <summary>The loaded runtime the roller reads.</summary>
     public static ContentRuntime Runtime()
@@ -51,6 +58,7 @@ internal static class LootRollerFixtures
         AddTable(builder, registry, PoolTable, "pool", rollCount: 3);
         AddTable(builder, registry, CycleTable, "cycle", rollCount: 0);
         AddTable(builder, registry, CycleTableBack, "cycle_back", rollCount: 0);
+        AddTable(builder, registry, RetiredTable, "retired", rollCount: 2, isRetired: true);
 
         // The chest, in sort order: a guaranteed item on a half chance, a guaranteed recursion that is
         // certain, then the two entries the weighted picks choose between.
@@ -67,6 +75,16 @@ internal static class LootRollerFixtures
             requiredTags: [CatalogRuntimeFixtures.SwordTag]);
 
         AddEntry(builder, registry, 405, RareTable, sort: 0, weight: 5, item: 8);
+
+        // The two rows a draw must not see, both on the chest so every seeded roll is a test of them: a
+        // RETIRED entry that is guaranteed and certain, and a SECOND row under entry 403's id whose weight
+        // would swamp the pool. Their counts are 5 and 9, which nothing else on the chest can produce.
+        AddEntry(builder, registry, 412, ChestTable, sort: 4, guaranteed: true, item: 8, min: 5, max: 5, isRetired: true);
+        AddEntry(builder, registry, 403, ChestTable, sort: 5, weight: 10_000, item: 2, min: 9, max: 9);
+
+        // The retired table's own entries, live and certain, so anything it drops is the retirement's doing.
+        AddEntry(builder, registry, 413, RetiredTable, sort: 0, guaranteed: true, item: 1);
+        AddEntry(builder, registry, 414, RetiredTable, sort: 1, weight: 50, item: 8);
 
         // The pool: a guaranteed entry carrying a weight it can never win with, and one weighted entry.
         AddEntry(builder, registry, 406, PoolTable, sort: 0, guaranteed: true, weight: 1_000, item: 2, chance: 0);
@@ -86,14 +104,15 @@ internal static class LootRollerFixtures
         ContentTypeRegistry registry,
         int id,
         string key,
-        int rollCount)
+        int rollCount,
+        bool isRetired = false)
     {
         var row = new ContentRow(
             new ContentTypeId(EngineContentTypes.LootTableTypeId),
             id,
             new ContentKey(key),
             0,
-            false,
+            isRetired,
             [
                 ContentFieldValue.OfNumber(ContentFieldKind.Int, rollCount),
                 ContentFieldValue.Absent(ContentFieldKind.TagList),
@@ -115,6 +134,7 @@ internal static class LootRollerFixtures
         bool guaranteed = false,
         int min = 1,
         int max = 1,
+        bool isRetired = false,
         IReadOnlyList<int>? requiredTags = null)
     {
         var row = new ContentRow(
@@ -122,7 +142,7 @@ internal static class LootRollerFixtures
             id,
             new ContentKey("entry_" + id),
             0,
-            false,
+            isRetired,
             [
                 ContentFieldValue.OfNumber(ContentFieldKind.KeyReference, table),
                 item == 0

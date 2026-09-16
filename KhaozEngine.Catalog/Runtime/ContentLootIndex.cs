@@ -63,6 +63,21 @@ public readonly record struct ContentLootEntry(
 /// that offered one would be a drop nobody can use. The tag index is built before this one, which is what
 /// makes the resolution one intersection of sorted spans.
 /// </para>
+/// <para>
+/// <b>A RETIRED <c>loot_entry</c> or <c>loot_table</c> row is not indexed at all</b>, for the same reason and
+/// on the same authority (spec 3.9): a retired definition has left play and its row stays in the version so a
+/// stored stack still decodes. A retired entry contributes no weight and cannot be drawn, and a retired table
+/// answers as one this version does not carry, which is <see cref="RollCount"/> 0 and no entries, so its
+/// guaranteed entries never fire and an entry nesting into it draws nothing. Nothing else would catch it: a
+/// retired entry naming a retired item is the ORDINARY shape of a retirement, so every validator check skips
+/// a retired row deliberately.
+/// </para>
+/// <para>
+/// <b>A second row under an id another row already took contributes once.</b> The first row in id order wins,
+/// exactly as it wins the type table's own lookup, for both types. The duplicate is <c>KEC0036</c> on the
+/// publish side, and the index holds the line for a pack that reached the process without the validator,
+/// which would otherwise roll a pool wider than anything authored.
+/// </para>
 /// </summary>
 public sealed class ContentLootIndex
 {

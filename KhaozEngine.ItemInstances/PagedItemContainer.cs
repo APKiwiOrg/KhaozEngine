@@ -91,6 +91,13 @@ public sealed partial class PagedItemContainer
     /// <summary>The pages, in index order. Each one carries its own stamp and dirty flag.</summary>
     public IReadOnlyList<ItemContainerPage> Pages { get; }
 
+    /// <summary>
+    /// The game's rule for whether a definition merges into one slot, exposed so an operation ABOVE this
+    /// container asks the same question its own doors do. The predicate is handed out rather than its answer,
+    /// so a caller that keeps it still sees catalog edits live.
+    /// </summary>
+    public Func<int, bool> Stackable => _stackable;
+
     /// <summary>How many slots hold an entry, which is the number <see cref="Capacity"/> gates.</summary>
     public int Occupancy
     {

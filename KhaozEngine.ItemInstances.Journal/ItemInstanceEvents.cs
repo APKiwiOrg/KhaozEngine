@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace KhaozEngine.ItemInstances.Journal;
@@ -40,6 +41,46 @@ public static class ItemInstanceEvents
     /// </summary>
     public const string Crafted = "item-crafted";
 
-    /// <summary>Every event type this document defines, in the order the spec defines them.</summary>
-    public static IReadOnlyList<string> All { get; } = new[] { Generated, Crafted };
+    /// <summary>Spec 6.4's event for a relocated entry, whether inside one container or across two on one
+    /// stream.</summary>
+    public const string Moved = "item-moved";
+
+    /// <summary>Units of a plain stack leaving for an empty slot of the same container.</summary>
+    public const string StackSplit = "stack-split";
+
+    /// <summary>
+    /// Spec 4.6's event for a merge, which names BOTH instance ids and the resulting count. A merge is the
+    /// one operation that DESTROYS an instance id, and this event is the whole mitigation: the destroyed id
+    /// stays answerable from the journal for the retention window.
+    /// </summary>
+    public const string StackMerged = "stack-merged";
+
+    /// <summary>An entry arriving in a container, which is the durable half of a grant.</summary>
+    public const string Granted = "item-granted";
+
+    /// <summary>Units leaving a slot, which is the half of a withdraw the source stream owns.</summary>
+    public const string Taken = "item-taken";
+
+    /// <summary>Every event type this package defines, in the order the spec defines them.</summary>
+    public static IReadOnlyList<string> All { get; } =
+        new[] { Generated, Crafted, Moved, StackSplit, StackMerged, Granted, Taken };
+
+    /// <summary>
+    /// The durable event type one container operation writes. It is a switch on a KIND rather than on a
+    /// stored string, which is the direction the no-switching rule allows: the number is this build's and
+    /// the string is the durable one.
+    /// </summary>
+    /// <param name="kind">The operation kind.</param>
+    /// <exception cref="ArgumentException"><paramref name="kind"/> is not an operation kind.</exception>
+    public static string EventTypeOf(ContainerOperationKind kind) => kind switch
+    {
+        ContainerOperationKind.Move => Moved,
+        ContainerOperationKind.Split => StackSplit,
+        ContainerOperationKind.Merge => StackMerged,
+        ContainerOperationKind.Grant => Granted,
+        ContainerOperationKind.Take => Taken,
+        ContainerOperationKind.Craft => Crafted,
+        _ => throw new ArgumentException(
+            FormattableString.Invariant($"{kind} is not an operation kind, so it writes no event."), nameof(kind)),
+    };
 }

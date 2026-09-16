@@ -115,14 +115,105 @@ payload on a slot whose instance id is 0, which is every plain stack. Such a rec
 `EntryUnwrappable` and counted like any other quarantined record, and its bytes are untouched
 ([#935](https://github.com/APKiwiOrg/KhaozEngine/issues/935)).
 
+## Committing a batch of page operations
+
+```csharp
+var batch = ContainerCommitBuilder.Open(streamKey, actionKind, scope, containers, tick);
+batch.Apply(ContainerOperation.Craft(...));   // repeated, against an in-memory working copy
+JournalCommit commit = batch.Close(identityFactory);
+// once the commit has LANDED:
+batch.MarkCommitted();
+```
+
+`Close` emits ONE `JournalOperationIdentity`, ONE `JournalEvent` per logical operation in order, ONE
+`JournalProjectionWrite` per page the containers report dirty, and ONE result. **The audit trail is not
+collapsed, only the projection is**: twenty crafts in one held action are twenty `item-crafted` events and one
+page write, which is spec 6.7's 1,380 KB and twenty commits becoming 9.4 KB and one.
+
+**It changes nothing in the journal.** One identity per commit is what `JournalCommit` already takes, and a
+commit already carries several sections of one stream, so the store, both provider schemas and the store
+conformance suite are untouched. That is option A of spec 6.2. Option B, merging identities inside the
+executor, is what would have needed all three, and spec 6.3 prices it so the owner can choose it knowingly.
+
+**The dirty set IS the page list, so a lazy remap rewrite rides the batch for free.** `Close` writes every page
+the containers report dirty, which is the pages the operations changed plus the pages a load-time remap
+changed. The remap never causes a commit of its own, it only joins one, and a batch holding no operation is
+refused for exactly that reason.
+
+**`Close` does not clear the dirty flags and `MarkCommitted` does.** A batch whose commit fails terminally
+leaves its pages owing the next commit a rewrite, which is the state the consumer's resync agrees with.
+
+### The window and its five closers
+
+The batch window is ONE SERVER TICK, and it closes on the FIRST of the five, first-wins:
+
+| Closer | What it is |
+|---|---|
+| `TickBoundary` | the tick moved. A tick rather than a timer, so nothing durable lives in a window whose length is a configuration value |
+| `SecondStream` | an operation naming a container this batch was not opened over. A different atomic unit, never widened by an unrelated batch |
+| `PresentAtCommit` | value moving between accounts, which never shares an identity with anything else |
+| `ClientOperation` | a client originated operation. It heads its own batch, because `ResolveOperationAsync` is keyed on ONE id |
+| `LimitReached` | 128 events, 64 projection writes, the 64 KiB intent or the 8 MiB commit, all read from `JournalLimits` |
+
+A refused `Apply` changes NOTHING: the working copy is untouched, no event is written, and the caller opens the
+next batch for that operation. An operation the working copy cannot PERFORM is a different thing and throws,
+because a game refuses an illegal action before the journal ever sees it.
+
+### Whose identity, and what the intent holds
+
+A SERVER minted batch's intent is the canonical ORDERED operation list,
+`[Count: varint][ per operation: [Kind: varint][Parameters] ]`. A CLIENT headed batch's intent is the client
+operation's own canonical encoding ALONE, under the client's own id, and the server work riding behind it
+contributes no intent bytes at all.
+
+**That second half is load bearing.** The client resubmits after a reconnect with the intent it built from its
+own click, and it never saw the quest advance or the sweep the click caused. If the batch's intent were the
+whole list, the resubmit would hash differently, `ResolveOperationAsync` would answer `OperationConflict`, and
+the consumer would treat a COMMITTED withdraw as a failed one: the admitted view rolls back, everything queued
+behind it is superseded transitively, the player is told the action failed, and a re-click applies it twice.
+
+**One client operation may HEAD a batch of the server work it directly causes. Two client operations never
+share one.**
+
+### The operation vocabulary
+
+Every kind names the slots it touches, so the pages a batch will write are known before it is applied. That is
+what lets the window close on the projection write cap with no mutation to undo, and it is what makes a replay
+land where the original did rather than wherever a free-slot search would put it today.
+
+| Kind | What it does | Canonical parameters, in order | Event |
+|---|---|---|---|
+| `Move` | relocates a whole entry, or units of a plain stack, into an EMPTY slot, possibly in another container of the same stream | container, slot, destination container, destination slot, count, instance id | `item-moved` |
+| `Split` | moves units of a plain stack into an empty slot of the same container | container, slot, destination slot, count, instance id | `stack-split` |
+| `Merge` | folds one occupied slot into another under spec 4.6's byte equality | container, slot, destination slot, instance id, destination instance id | `stack-merged` |
+| `Grant` | seats an arriving entry at a named slot, merging into it or opening it under the capacity gate | container, slot, definition id, count, instance id | `item-granted` |
+| `Take` | removes units from a slot | container, slot, count, instance id | `item-taken` |
+| `Craft` | rewrites an owned item's payload in place and consumes the currency that paid for it | container, slot, currency container, currency slot, currency definition, count, instance id | `item-crafted` |
+
+Every varint is unsigned and minimal, a container name is `[Length: varint][UTF8]`, and an instance id goes
+through `InstanceIdAllocator.WriteId` so the high node's sign bit cannot make two encodings of one id.
+**Nothing that is an OUTCOME is in the encoding**: not the payload a grant seats, not the payload a craft
+leaves, and not the origin or the present-at-commit flag, which are routing rather than intent.
+
+**The declared instance id is in the intent AND held against the working copy** (spec 15.1). Without it a
+replayed operation whose slot has been refilled by a different item would hash identically and apply to the
+wrong one.
+
+**A craft carries its event body and every other kind writes its own canonical encoding as one.** Spec 10.6
+owns the `item-crafted` body and the crafting framework encodes it, so this package carries those bytes rather
+than freezing a format under a durable event name before its first writer exists.
+
 ## Event names
 
 `ItemInstanceEvents` carries the durable strings an item operation writes into the journal: the `item-craft`
-action kind, and the `item-generated` and `item-crafted` event types. A durable string is never renamed and
-never switched on, which is why they are constants rather than an enum. The payload codecs for those two
-events arrive with the generator and the crafting framework that emit them.
+action kind, the `item-generated` and `item-crafted` event types, and the five a container operation writes
+(`item-moved`, `stack-split`, `stack-merged`, `item-granted`, `item-taken`). A durable string is never renamed
+and never switched on, which is why they are constants rather than an enum, and `EventTypeOf` switches on the
+operation KIND rather than on a stored string: the number is this build's and the string is the durable one.
+The payload codecs for `item-generated` and `item-crafted` arrive with the generator and the crafting framework
+that emit them.
 
 ## Design
 
-`docs/design/ITEM-INSTANCES-DESIGN-2026-09-15.md` sections 2.1, 5.2 and 5.5, over the shared contracts in
-`docs/design/CONTENT-CONTRACTS-DESIGN-2026-09-14.md` sections 10.1 to 10.4.
+`docs/design/ITEM-INSTANCES-DESIGN-2026-09-15.md` sections 2.1, 5.2, 5.5, 5.6 and 6.1 to 6.6, over the shared
+contracts in `docs/design/CONTENT-CONTRACTS-DESIGN-2026-09-14.md` sections 10.1 to 10.4.

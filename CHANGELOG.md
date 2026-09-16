@@ -7,8 +7,10 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 18.51.0
 
-The item instance record and the container arrive: a canonical tagged payload, node-prefixed instance ids,
-quarantine, the instance validator, and container codec version 2 reading version 1.
+The item instances program lands whole: the instance record and its canonical payload, container codec
+version 2, paged containers, a load path that runs the registry-derived remap pass before the validator, one
+journal commit per tick, and the wire, with the fragmenter, the sibling ground component, the per-viewer
+projection and the one-frame page delta.
 
 - `KhaozEngine.ItemInstances` is a new package, in the `Foundation` umbrella, over `KhaozEngine.Items`,
   `KhaozEngine.Catalog`, `KhaozEngine.Primitives` and `KhaozEngine.Diagnostics` (an `ILogger` argument for one
@@ -116,14 +118,231 @@ quarantine, the instance validator, and container codec version 2 reading versio
   throws. `NeedsInstanceId` is the pure which-items-get-an-id rule, a property of the ITEM rather than of its
   definition, so a definition gaining a per-instance property later does not reach back into every stored
   copy.
-- Phase 1 settles every byte format, every id space, every ordering rule and the stacking test, which are the
-  expensive things to change once data exists, and defers the breadth: paging, the registry-derived remap pass
-  that makes `Remapped` reachable, the journal commit path and the wire (the fragmenter, the ground component,
-  the page delta, the owner remainder and a real `PublicView`) are the next release, and the affix content
-  types, the item generator, the crafting framework and the content stat evaluator are after that.
-- This is phase 1 of the item instances program
-  ([#884](https://github.com/APKiwiOrg/KhaozEngine/issues/884)). 18.50.0 was RELEASED with the content
-  catalog's milestone 1.1 in it, so the catalog's later milestones
+- `KhaozEngine.ItemInstances.Journal` is a second new package, in the `Server` umbrella, over
+  `KhaozEngine.ItemInstances` and `KhaozEngine.WorldStore`. **It exists for a layering reason rather than a
+  size one.** Composing a `JournalCommit` needs `WorldStore`, which is a `Server` package, so this code inside
+  `KhaozEngine.ItemInstances` would drag `WorldStore` into `Foundation` and therefore into every client build,
+  and inside `KhaozEngine.WorldStore` it would give the journal an opinion about items, which the journal
+  design ruled out and which the code still honours. A page of a container is one projection section named
+  `<container>/p<NN>`, zero padded to two digits and unpadded above page 99, so a 1,000 slot bank is
+  `bank/p00` through `bank/p09`. `ContainerSectionNames.Format` refuses both a container name outside the
+  journal's identity character set and a formatted name over
+  `JournalLimits.EngineMaximumIdentityCharacters`, so a name this type writes is always a name the journal
+  accepts rather than a refusal arriving at the far end of a commit with the batch already closed. `TryParse`
+  is the ONE place a name is taken apart and is CANONICAL rather than tolerant: `bank/p007` is refused rather
+  than read as page 7, because a tolerant parse would let two readers disagree about which section a page
+  belongs in.
+- `PagedItemContainer` splits the two concepts `ItemContainer` conflates. `SlotSpace` is the page geometry,
+  fixed at construction at `PageCount * ContainerPageSlots`, an ADDRESS space that never shrinks, and
+  `Capacity` is a separate mutable integer, the number of OCCUPIED slots a grant may leave behind, a gate
+  consulted by `Add` and by nothing else, so a container at capacity usually has free slots and refuses to
+  open one anyway. A grant that opens a NEW slot is refused at or above capacity, a grant that merges entirely
+  into existing stacks is allowed at any occupancy, and **lowering capacity below occupancy is LEGAL**: the
+  container loads intact, is never trimmed, and is refused new slots until occupancy falls, because state that
+  already exists is never destroyed to satisfy a number that moved under it. Capacity is never read from
+  content, being per-owner progression rather than balance data. **Every page declares the FULL geometry**, so
+  a 30 slot bag is ONE full page whose capacity is 30, slot 743 is page 7 slot 43 for every container in the
+  fleet, and a bag growing to 40 slots is a capacity edit rather than a re-paging of stored bytes. Entries are
+  SPARSE and nothing compacts them, so a hole costs zero bytes and a dense renumber is not something this
+  container can do by accident. `ItemContainerPage` holds one page's decoded slots, its content version stamp,
+  its dirty flag and its page index, in an `ItemContainer` of exactly one page's width rather than a second
+  array, so the payload doors and their four invariants are the SAME code a whole-container consumer runs.
+  **Exactly two things dirty a page**: an operation that CHANGED a slot, and a remap that changed an id.
+  Seating a decoded page never does, because that IS the page's stored state, and `CopyDirtyPagesTo` is what
+  the commit builder asks for, so dirty pages join whatever commit comes next rather than causing one.
+  `InstanceStacking.CanMerge` is the merge rule, the definition matches, the game's predicate says yes,
+  neither entry is quarantined and the two payloads are BYTE identical, which is a `memcmp` rather than a
+  structural comparison ONLY because the payload is canonical, so two items differing in a field neither build
+  understands do not merge. An entry carrying durability or sockets never merges whatever the predicate says,
+  because a definition can gain either after its items exist. `InstanceStacking.Merge` is the arithmetic and
+  never the rules: the lower instance id survives and the count saturates at `int.MaxValue`.
+- `InstanceRemapPass.Apply` brings one page forward, every rule whose `IntroducedIn` is strictly greater than
+  the page stamp, in `Sequence` order, in ONE pass, which is what makes `InstanceValidationOutcome.Remapped`
+  reachable and what gives a drift finding its meaning, no rule covered it. **The walk is DERIVED from the
+  property registry**: the entry's own definition id, every id a registered `InstanceReferenceTarget` names
+  inside every field, and, through a nesting slot, every id inside a socket's nested payload, in the SAME
+  recursive order as validator checks 6 and 7, so a kind cannot be remapped-but-not-validated. A gem socketed
+  into a sword is rewritten by the same rule that rewrites the same gem lying in a bag slot, which is what
+  stops an item surviving three publishes invisibly and quarantining on the day a player unsockets it. It
+  RE-ENCODES rather than patching bytes in place, because a replacement id can change a varint's WIDTH, and it
+  restores canonical order on a list whose codec declares one, because a replacement can move a mod id past
+  its neighbour and a list that lost its order no longer stacks with its own twins. `VettedRemapRules.Vet`
+  carries the idempotence check, which is about `n^2 / 2` comparisons and cannot change between a container's
+  pages, so the walk runs once per container rather than once per page and **the TYPE is the assertion**,
+  with no already-vetted flag for a caller to get wrong. **A rule that changes nothing is a SCAN**: the page is
+  not dirtied, the stamp does not move and no byte is replaced, which is almost every rule on almost every
+  page. A rule that DOES change something dirties the page and moves its in-memory stamp upward only, and the
+  page is NOT written: the rewrite is lazy and rides the next ordinary commit, which is safe because applying
+  the ordered set twice produces what applying it once produced. An entry the pass cannot rewrite is left
+  WHOLE, its definition id included, and is COUNTED in `EntriesAbandoned` and in the caller's slot span, so a
+  rule that could not be APPLIED is tellable from a rule nobody wrote.
+- `ContainerLoad.Load` takes a whole projection read and keeps the sections that are this container's pages,
+  so a caller never re-implements the naming rule to filter first, and it takes its whole world as arguments:
+  no store read, no file read, no ambient static. It decodes each page, quarantining as a UNIT a page that
+  fails at the PAGE level because a page that cannot be parsed has no entries to keep, checks the header's
+  page index against the one the section NAME declares, applies the rules, **unwraps and re-offers every
+  quarantined entry at the WRAPPER's own stamped version**, then validates the page's live entries and emits
+  one log line and one counter increment per record for the whole container. Rules run BEFORE the validator,
+  which is what gives an `unknown-definition` finding its meaning. That unwrap step is what makes spec 12.3's
+  promise true: the page stamp moves whenever any OTHER entry on the page changes, so the rule that would
+  rescue an entry can stop applying to its page before it ever reaches it, and the wrapper's own stamp is the
+  version the record failed under and never moves with the page. Only the two DRIFT reasons are offered to the
+  rules, because a structural failure cannot be helped by a remap rule. A rescued record is seated live and
+  the page is DIRTY, a record that still fails keeps its wrapper exactly as it stands, and **quarantining
+  never dirties a page**, so the stored bytes stay as they are and the recovery is exact. Nothing here throws
+  for a stored byte: `ContainerLoadFinding` is one of five kinds (`PageQuarantined`, `EntryQuarantined`,
+  `EntryRescued`, `RemapAbandoned`, `EntryUnwrappable`), each carrying the section name an operator greps for,
+  the page index taken from that NAME rather than from the header, the absolute slot, a reason token and the
+  version the record stands at. `ContainerLoadReason` adds the two tokens the layers below cannot say,
+  `page-section-mismatch` and `remap-abandoned`, and neither ever gets a durable ordinal because nothing on
+  this path wraps anything under either.
+- `ContainerCommitBuilder` turns a tick's worth of operations against a set of containers into ONE
+  `JournalCommit`: one `JournalOperationIdentity`, one `JournalEvent` per logical operation in order, one
+  `JournalProjectionWrite` per page the containers report dirty, and one result. **The audit trail is not
+  collapsed, only the projection is**, so twenty crafts in one held action are twenty `item-crafted` events
+  and one page write, which is spec 6.7's 1,380 KB and twenty commits becoming 9.4 KB and one. **It changes
+  nothing in the journal**: one identity per commit is what `JournalCommit` already takes and a commit already
+  carries several sections of one stream, so the store, both provider schemas and the store conformance suite
+  are untouched, which is option A of spec 6.2. The dirty set IS the page list, so a lazy remap rewrite rides
+  a batch for free and never causes a commit of its own, and a batch holding no operation is refused for
+  exactly that reason. `Close` does not clear the dirty flags and `MarkCommitted` does, so a batch whose
+  commit fails terminally leaves its pages owing the next commit a rewrite, which is the state a consumer's
+  resync agrees with, and a `Close` that THROWS leaves the batch open with its pages still dirty, closable
+  again once the caller has fixed what threw.
+- `ContainerBatchWindow` is ONE SERVER TICK and closes on the FIRST of five closers, first-wins: `TickBoundary`
+  (a tick rather than a timer, so nothing durable lives in a window whose length is a configuration value),
+  `SecondStream` (an operation naming a container the batch was not opened over), `PresentAtCommit` (value
+  moving between accounts, which never shares an identity with anything else), `ClientOperation`, and
+  `LimitReached` (128 events, 64 projection writes, the 64 KiB intent or the 8 MiB commit, all read from
+  `JournalLimits`). It DECIDES and it does not count: every total it checks arrives as an argument from the
+  builder that owns it, so there is no second copy of a number that could drift from the commit being built.
+  `ContainerBatchCloseReason.Closed` is the sixth member and the one that is NOT a closer, what `Close` itself
+  records, so a batch the caller closed and took a commit from does not read afterwards as one the clock took
+  away from it. A refused `Apply` changes NOTHING and the caller opens the next batch for that operation,
+  while an operation the working copy cannot PERFORM throws instead, because a game refuses an illegal action
+  before the journal ever sees it. **A server minted batch's intent is the canonical ordered operation list,
+  and a CLIENT headed batch's intent is the client operation's own encoding ALONE**, with the server work
+  riding behind it contributing no intent bytes at all. That second half is load bearing: the client resubmits
+  after a reconnect with the intent it built from its own click and never saw the quest advance that click
+  caused, so a whole-list intent would hash differently, `ResolveOperationAsync` would answer
+  `OperationConflict`, and a COMMITTED withdraw would be reported to the player as a failed one and re-clicked
+  into a second application. One client operation may HEAD a batch of the server work it directly causes, and
+  two client operations never share one.
+- `ContainerOperationKind` is six kinds (`Move`, `Split`, `Merge`, `Grant`, `Take`, `Craft`) and a `None` that
+  is refused, each with a durable varint that is never renumbered and never reordered, because the number is
+  written into a normalized intent and into an event payload, and `ContainerOperationOrigin` is who caused
+  one, `Server`, which has no id of its own to lose and may ride any batch, or `Client`, which carries the
+  operation id it will resubmit and therefore heads its own batch. Every kind names the slots it touches, so
+  the pages a batch will write are known before it is applied, which is what lets the window close on the
+  projection write cap with no mutation to undo and what makes a replay land where the original did rather
+  than wherever a free-slot search would put it today. Every varint is unsigned and minimal and an instance id
+  goes through `InstanceIdAllocator.WriteId`, so a high node's sign bit cannot make two encodings of one id.
+  **Nothing that is an OUTCOME is in the encoding**, not the payload a grant seats, not the payload a craft
+  leaves, and not the routing flags, and **a craft that consumes NO currency carries no currency fields**, so
+  a currency slot left set by a caller's own defaults cannot give one action two encodings. **The declared
+  instance id is in the intent AND held against the working copy**, without which a replayed operation whose
+  slot has been refilled by a different item would hash identically and apply to the wrong one.
+  `ItemInstanceEvents` carries the durable strings a container operation writes, `item-moved`, `stack-split`,
+  `stack-merged`, `item-granted` and `item-taken`, beside the `item-craft` action kind and the
+  `item-generated` and `item-crafted` types whose bodies the generator and the crafting framework encode.
+- `ItemInstanceVisibility` holds the ONE function in the engine answering whether a viewer may see a field,
+  and the replication filter and the tooltip builder both call it, because a tooltip that computed its own
+  answer is how a client eventually renders something the server never sent. The rule is `ServerOnly` never,
+  `OwnerOnly` to an owner, `Everyone` always, and THEN the identification gate: a kind registered with an
+  identification mask bit is hidden while the item is unidentified and its bit in the revealed mask is clear,
+  EVEN FROM THE OWNER, which is why unidentified is a mechanic rather than a fourth visibility level and why a
+  primitive that sets one bit uncovers one field with no format change. Two things fail CLOSED, a viewer level
+  of `ServerOnly` and an UNREGISTERED kind, because a kind this process cannot classify may well be
+  `ServerOnly` in the build that wrote it. `PublicView` writes the payload one viewer may see into the
+  caller's span and `OwnerRemainder` writes its exact complement at `Everyone`, which is what a targeted owner
+  message carries. Both are a forward pass over the RETAINED RUNS of an already ascending, length-prefixed
+  input, with no decode into values and no re-sort, **except at a field whose registered shape NESTS, which is
+  REBUILT**: a socket's own kind is public, so copying it whole shipped a socketed gem's durability and
+  bound-to to every viewer including a passer-by reading a ground stack. Each socket entry's nested payload
+  goes through the same function at the same viewer level and every length is recomputed innermost first,
+  derived from the registered SHAPE rather than from the engine's own socket kind, so a game kind declaring a
+  nesting slot is projected at both levels too. Nothing allocates beyond the destination span, and a
+  destination too short answers `-1` with nothing written rather than a truncated view. **A GROUND item has no
+  owner**, which is a rule rather than an omission: a drop's entity is nobody's, so a ground stack's view is
+  `PublicView` at `Everyone` and there is no owner remainder for a drop, and kind 6 `BoundTo` is stripped
+  before the sibling component is written, because who a dropped item is bound to is a fact about a PLAYER.
+- `ContainerPageDelta` is the one frame message that says which slots of one page changed and what they hold
+  now, so a craft costs 73 bytes rather than a 6.9 KB page. It is the OPTIMISATION beside the fragmenter
+  rather than an alternative to it, because a cold open and a correction resync both have to send a whole
+  page. **It MEASURES as it writes and ABANDONS rather than truncates**: nothing bounds how many slots one
+  operation changes, so `TryBuild` answers the bytes written, or `-1` when the next change would not fit, and
+  `-1` means the caller sends the WHOLE PAGE through the fragmenter. Never a second delta frame, because two
+  deltas for one page would have to be applied in order by a client that may have missed the first, which is
+  the reassembly problem the fragmenter already solves once. The budget is `MaxChangeBytes`, 1,017, the frame
+  cap less the four byte game message envelope less the delta's own three byte header, so fourteen changed
+  rare slots fit one frame and the fifteenth does not, and `MaxChanges` is the 255 a byte count field holds,
+  because an emptied slot costs two or three bytes and bytes are not what binds there. **The bodies are PER
+  VIEWER and there is one door**: a `ContainerPageChange` carries the item's FULL stored payload and
+  `TryBuild` takes the viewer's level, so every payload goes through `PublicView` and a caller cannot build a
+  delta that skipped the filter. The same change to the same rare is 73 bytes to the owner and 69 to everyone
+  else, and the four bytes are the durability field. **A QUARANTINED entry abandons the delta**, because a
+  wrapper never decodes and its own bytes are unprojected by construction, so writing them would hand a
+  non-owner the owner-only fields of the item inside. `ContainerPageSyncRequest` is the other half and the ONE
+  new client-to-server message, two bytes `[ContainerId][PageIndex]` carrying nothing about an item's
+  properties: a client REFUSES a delta for a page it has not fully received and sends this instead, a
+  reassembled page goes through the SAME decoder the server encoded with, and the server rate limits the
+  request at ONE PAGE PER CLIENT PER TICK, a documented server rule rather than engine code, because a server
+  that serves every request it receives has handed an unauthenticated peer two bytes in and about 7 KB out.
+- `TileFragmentedMessage` splits any `ReadOnlySpan<byte>` into chunks that each fit inside one game message
+  and `TileFragmentReassembler` puts them back, both ITEM AGNOSTIC: the game picks the kind, the stream id and
+  the decoder, and `KhaozEngine.TileWorld.Netcode` gains no items dependency at all. A chunk is
+  `[StreamId][Sequence: uint16 LE][ChunkIndex][ChunkCount]` then the bytes, a game message PAYLOAD rather than
+  a frame, so it carries 1,015 bytes and 255 of them carry about 258 KB, and every chunk but the last carries
+  a FULL load, which is what lets a reader tell a truncated chunk from a legitimately short final one.
+  `Fragment` THROWS above `MaxPayloadBytes` because a payload that long is a local caller bug, and everything
+  on the reading side is TOTAL, because those bytes came from a remote peer. One reassembler per connection
+  slot: it holds ONE peer's partial assemblies and no connection table of its own, `Slot` is carried as
+  identity so a mis-wired forward cannot wipe the wrong peer's assemblies, and `DropConnection` is the
+  explicit close a server calls from its own disconnect path. None of its four rules is a timer, because a
+  timer on a reliable ordered channel measures nothing: a chunk whose `Sequence` differs discards the assembly
+  in progress and is not an error, at most four partial assemblies are held with the longest-unfed evicted and
+  counted, the last chunk hands the assembled bytes BACK rather than decoding them, and the two refusal tokens
+  are `ke:fragment-malformed` and `ke:fragment-out-of-sequence`. Memory is bounded by what the peer actually
+  SENT, so a lying `ChunkCount` buys nothing.
+- `TileWorldServer.SpawnGroundItem(at, itemId, count, ttlTicks, instanceId, payload)` is a six-argument
+  overload and the four-argument call delegates to it with no instance, so nothing that already compiles
+  changes. The identity and the bytes ride a SIBLING component, `TileGroundItemInstance` (`InstanceId`,
+  `Payload`) at `TileProtocol.TileGroundItemInstanceTypeId`, which is
+  `ReplicationRegistry.FirstExtensionTypeId + 8`, seated only when `instanceId` is non-zero, so a drop with no
+  instance carries no component and pays nothing on the wire. It is a sibling rather than five more fields on
+  `TileGroundItem` because that component's codec writes twenty bytes with no declared length, so a new field
+  would make every already-shipped client misparse the rest of the entity, while a new extension id is length
+  prefixed and a client that never registered it skips it and keeps reading. Both halves are OPAQUE: the
+  engine never decodes a payload, has no way to, and never mints an instance id of its own, so the same id and
+  the same bytes come out of a claim as went into the drop and a drop-and-claim cycle cannot launder an item
+  into a fresh one. `TileProtocol.MaxInstancePayloadBytes` is 512, mirroring `ItemSlot.MaxPayloadBytes` and
+  held equal by a test rather than by a dependency, a payload with instance id 0 throws because zero means the
+  drop has no instance, and the reader is TOTAL: a declared length past the framed payload arrives as an
+  instance with an EMPTY payload rather than as a dropped session.
+  `TryGetGroundItemInstance(netId, out instance)` is the server read a claim goes through, beside
+  `TryGetGroundItem`.
+- The spec 16 budgets this program is priced against are MEASURED rather than estimated. Budget 4, twenty
+  crafts inside one held action, is 9,519 bytes in ONE commit against a ceiling of 20 KB and one commit, the
+  commit count asserted in `KhaozEngine.Server.Tests` and the byte total reported by the `--items` benchmark.
+  Budget 7, a cold page send, fragments the 6,908 byte page of a hundred rares into SEVEN frames against a
+  ceiling of 8 KB and eight. Budget 8, the steady state after one craft, is 73 bytes in ONE frame against a
+  ceiling of 96 bytes and one. Budget 11, a rare on the ground, is 54 bytes per viewer, the 58 byte payload
+  less the four byte owner-only durability field.
+- What 18.51.0 DEFERS is breadth plus four named gaps on surfaces that already exist. The affix content types
+  and the item generator are spec 20 phase 4, gated on the authoring registry and the publish path being real,
+  and the crafting framework and the content stat evaluator are phase 5, which is what encodes the
+  `item-crafted` event body this release writes the page and the event name for. The gaps are a READER for the
+  page delta, which ships its encoder alone while the fragmenter ships both halves
+  ([#933](https://github.com/APKiwiOrg/KhaozEngine/issues/933)), a per-viewer projection on the FULL PAGE
+  send, which carries the stored bytes and so disagrees with the delta about what a non-owner sees
+  ([#932](https://github.com/APKiwiOrg/KhaozEngine/issues/932)), the lowered `max_stack` cap on the merge
+  path, which saturates at the engine ceiling here and is reported after the fact by validator check 12
+  ([#924](https://github.com/APKiwiOrg/KhaozEngine/issues/924)), and enforcement of spec 3.3's per-kind value
+  widths, so the revealed mask is a full `ulong` at every door
+  ([#917](https://github.com/APKiwiOrg/KhaozEngine/issues/917)).
+- This is phases 1 to 3 of the item instances program
+  ([#884](https://github.com/APKiwiOrg/KhaozEngine/issues/884)), which stays open for phases 4 and 5. 18.50.0
+  was RELEASED with the content catalog's milestone 1.1 in it, so the catalog's later milestones
   ([#882](https://github.com/APKiwiOrg/KhaozEngine/issues/882)) ride 18.51.0 from here. The design is
   `docs/design/ITEM-INSTANCES-DESIGN-2026-09-15.md`, written against the shared contracts in
   `docs/design/CONTENT-CONTRACTS-DESIGN-2026-09-14.md`.

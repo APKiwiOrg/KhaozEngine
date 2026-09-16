@@ -9915,7 +9915,8 @@ which is the forward compatibility the wire wants and also the trap. The compone
 the owner route and the display name all keep working, and nothing anywhere says a thing.
 
 `Presenter` starts as a placeholder and is REPLACED once the document is loaded
-(`client.Presenter = new TilePresenter(document)`), so it carries the world's real tile size and plane height.
+(`client.Presenter = new TilePresenter(document)`), so it carries the world's real tile size and plane height and
+puts every pose on the world's authored ground rather than on the plane floor the placeholder draws at.
 It is a pure map from a tile point to a world position and carries no tuning of its own, so replacing it cannot
 change how anything MOVES. `TilePose.Yaw` is the engine's model-yaw convention, the value
 `Matrix4x4.CreateRotationY` wants for a +z-forward mesh, the same one `CharacterFacing.YawOf` and
@@ -10198,6 +10199,31 @@ footprint, anchor plus half its edge on each axis, and `TryGetRemotePose` alread
 directly and do not re-centre it. `presenter.PoseAt(footprint, plane, facing)` is the overlay form for a
 `TileRect`, the centre of a footprint marker or a nameplate anchor with no glide, and for a one-tile rect it is
 exactly `PoseAt(tile)`.
+
+**A pose stands on the TERRAIN, not on the plane floor.** Once the planar centre is known, the height is sampled
+at that same centred point, so a body on an authored slope has its feet on the ground quad it is standing on, and
+so does a marker or a dropped item laid down through `presenter.PoseAt(tile)`. A gliding body resamples every
+frame at its interpolated planar position, which is what makes it FOLLOW a slope between two tile centres instead
+of stepping at the tile edge. Nothing to wire: `new TilePresenter(document)` reads the document's own bilinear
+height lattice, the same one the terrain mesh, the props and the lights are placed with.
+
+```csharp
+client.Presenter = new TilePresenter(document);   // terrain under every pose, no further call
+TilePose me = client.LocalPose;                   // Position.Y is the ground under the body, not the plane floor
+```
+
+- **The placeholder presenter stays FLAT**, at the plane index times `PlaneHeight`, which is the only honest
+  answer before a world file is loaded. That is what `TileWorldClient` installs in its constructor, and
+  `presenter.Ground` is null on exactly that one, so a head can tell the two apart.
+- **Supply your own source** with `new TilePresenter(tileSize, planeHeight, ground)`, where `ground` is an
+  `ITileGroundHeight`: one `HeightAt(float tileX, float tileZ, int plane)` taking TILE units on the lattice and
+  answering world METRES. That is the hook for a streamed or generated terrain, and it is what a test with a
+  synthetic slope hands in. `TileDocumentGroundHeight` is the engine's document-backed one, and it is the single
+  place tile units become world metres for a height read.
+- **A plane with no authored heights keeps its derived lift**, one `PlaneHeight` per plane over the lattice
+  below it, because that is what `TileWorldDocument.HeightAt` already answers. A fractional plane index, which is
+  what a body easing between planes carries, reads between the two planes' own samples rather than popping.
+- **`Yaw` is untouched**, and the aimed pose below draws at the same height as the plain one for the same state.
 
 **A body holding a lock is drawn AIMING at it.** `TileMoveState.Facing` is the cardinal side the two footprints
 touch on. That is exactly right for reach and wrong as a drawn yaw the moment either body is bigger than one tile:

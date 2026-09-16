@@ -96,6 +96,18 @@ public interface ITileWorldScene
                   IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> parts,
                   Vector3 focus, float drawRadius);
 
+    /// <summary>Queues every placement within <paramref name="drawRadius"/> of <paramref name="focus"/> whose
+    /// archetype id has parts in <paramref name="parts"/> into the SHADOW depth pass ALONE (issue #974): they
+    /// record depth for the key light and draw nothing in the colour pass. Returns how many were queued.
+    /// <para>This is how a view keeps the shadow of geometry it hides from the eye, the hidden roof being the
+    /// first consumer. <paramref name="placements"/> is READ during the call and never retained, the same
+    /// contract <see cref="DrawProps"/> carries, so a caller may hand over a scratch list it refills.</para>
+    /// <para>Defaults to no draws, so a scene seam written before shadow-only casters existed keeps compiling
+    /// and simply casts nothing, which is the behaviour it already had.</para></summary>
+    int DrawShadowOnlyProps(IReadOnlyList<PropPlacement> placements,
+                            IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> parts,
+                            Vector3 focus, float drawRadius) => 0;
+
     /// <summary>Queues cached ground cover. Defaults to no draws for an older
     /// headless scene seam implementation.</summary>
     int DrawGroundCover(IReadOnlyList<GroundCoverInstance> cover,
@@ -216,6 +228,12 @@ public sealed class Scene3DTileWorldScene : ITileWorldScene
                          IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> parts,
                          Vector3 focus, float drawRadius) =>
         _scene.DrawProps(placements, parts, focus, drawRadius);
+
+    /// <inheritdoc />
+    public int DrawShadowOnlyProps(IReadOnlyList<PropPlacement> placements,
+                                   IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> parts,
+                                   Vector3 focus, float drawRadius) =>
+        _scene.DrawShadowOnlyProps(placements, parts, focus, drawRadius);
 
     /// <inheritdoc />
     public int DrawGroundCover(IReadOnlyList<GroundCoverInstance> cover,

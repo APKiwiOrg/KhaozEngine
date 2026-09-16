@@ -67,6 +67,17 @@ namespace KhaozEngine.Terrain
         static readonly Action<DrawState, Vector3, float> DrawBlobSink = static (s, groundPos, radius) =>
             s.Scene.AddShadowBlob(new ShadowBlob(groundPos, groundPos.Y, radius));
 
+        // The shadow-only emit carries nothing but the scene: no tint, no material and no dissolve reach a draw
+        // that is never seen, and the casts-shadows flag is implied (a shadow-only instance always casts).
+        readonly struct ShadowOnlyState
+        {
+            public readonly Scene3D Scene;
+            public ShadowOnlyState(Scene3D scene) => Scene = scene;
+        }
+
+        static readonly Action<ShadowOnlyState, MeshHandle, Matrix4x4, float, float> ShadowOnlySink =
+            static (s, handle, world, _, _) => s.Scene.DrawShadowOnly(handle, world);
+
         static readonly Action<QueueState, MeshHandle, Matrix4x4, float, float> QueueSink =
             static (s, handle, world, dissolve, complement) =>
         {
@@ -205,6 +216,23 @@ namespace KhaozEngine.Terrain
                 emitBlobs ? blobRadii : null,
                 emitBlobs ? DrawBlobSink : null,
                 lodCrossfadeWidth);
+        }
+
+        /// <summary>Scene3D convenience: queue every part of each in-range prop into the SHADOW depth pass ALONE
+        /// (issue #974), so the placements record depth for the key light and draw nothing in the colour pass. The
+        /// horizontal cull and the scale/yaw/translation transform are the multi-part
+        /// <see cref="DrawProps(Scene3D,IReadOnlyList{PropPlacement},IReadOnlyDictionary{string,IReadOnlyList{MeshHandle}},Vector3,float,Color?,float,IReadOnlyDictionary{string,IReadOnlyList{MeshHandle}},float,float,bool,IReadOnlyDictionary{string,float})"/>
+        /// path's exactly, and everything that is presentation is absent on purpose: no fade band, no LOD swap, no
+        /// ground blobs and no tint, because none of them can change a shadow that is the only thing being drawn.
+        /// For geometry a view hides from the eye while the world still contains it, the tile world's hidden roof
+        /// being the first consumer. Returns the number of PLACEMENTS queued (not part submissions).</summary>
+        public static int DrawShadowOnlyProps(this Scene3D scene, IReadOnlyList<PropPlacement> placements,
+                                              IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> parts,
+                                              Vector3 focus, float drawRadius)
+        {
+            if (scene == null) throw new ArgumentNullException(nameof(scene));
+            return EmitParts(placements, parts, null, 0f, focus, drawRadius, 0f, 0f,
+                new ShadowOnlyState(scene), ShadowOnlySink);
         }
 
         // Deterministic dissolve for one placement at squared horizontal distance d2 from the focus. Outside the fade

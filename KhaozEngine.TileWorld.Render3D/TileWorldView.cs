@@ -128,11 +128,9 @@ public sealed partial class TileWorldView : IDisposable
     readonly int _planes;
     readonly TileGroundMaterialSet _materials;
     readonly TileGroundMaterialHandle _material;
-    // The observer's own interior, and the roofs of one region-plane that survive it. The scratch list is
-    // refilled per region-plane rather than allocated, and is only ever handed to ITileWorldScene.DrawProps,
-    // which reads it during the call and does not retain it.
+    // The observer's own interior. The roof rule that reads it, and the scratch lists it splits a region-plane's
+    // roofs into, live in TileWorldView.Roofs.cs.
     readonly TileInteriorFill _interior = new();
-    readonly List<PropPlacement> _visibleRoofs = new();
     TileCoord _observer;
     bool _interiorStale = true;
     bool _interiorTruncationLogged;
@@ -266,6 +264,11 @@ public sealed partial class TileWorldView : IDisposable
     /// <summary>How many prop placements the last <see cref="Draw"/> queued, roofs included when shown.
     /// Animated foliage contributes conservative submitted candidates, including model parts.</summary>
     public int LastDrawnProps { get; private set; }
+
+    /// <summary>How many roof placements the last <see cref="Draw"/> queued as SHADOW-ONLY casters: hidden from
+    /// the eye by <see cref="RoofMode"/> and still recording depth for the key light, so the room under them
+    /// stays shaded. Counted apart from <see cref="LastDrawnProps"/>, which stays the visible total.</summary>
+    public int LastShadowOnlyProps { get; private set; }
 
     /// <summary>How many regions are loaded right now.</summary>
     public int LoadedRegionCount => _loaded.Count;
@@ -519,9 +522,10 @@ public sealed partial class TileWorldView : IDisposable
 
     /// <summary>Flushes pending rebuilds, then queues every loaded region: each plane's ground mesh at the
     /// region's world transform, that plane's ground props, and every roof <see cref="IsRoofHidden"/> leaves
-    /// visible. <paramref name="focus"/> is the point the prop draw radius is measured from, which is the
-    /// camera subject rather than the observer tile, so a camera pulled back from an indoor observer still draws
-    /// the props around it.</summary>
+    /// visible. A roof it HIDES is queued as a shadow-only caster instead of dropped, so the building it covers
+    /// keeps its shade (see TileWorldView.Roofs.cs). <paramref name="focus"/> is the point the prop draw radius is
+    /// measured from, which is the camera subject rather than the observer tile, so a camera pulled back from an
+    /// indoor observer still draws the props around it.</summary>
     public void Draw(Vector3 focus)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -529,7 +533,7 @@ public sealed partial class TileWorldView : IDisposable
         PumpGround(focus);
         _propClusters.Pump(focus);
 
-        int drawn = 0;
+        int drawn = 0, shadowOnly = 0;
         foreach (KeyValuePair<RegionCoord, RegionHandles> entry in _loaded)
         {
             Matrix4x4 world = TileGroundMesher.WorldMatrix(_doc, entry.Key);
@@ -542,16 +546,12 @@ public sealed partial class TileWorldView : IDisposable
 
                 TileRegionProps props = handles.Props[plane];
                 drawn += DrawGroundProps(handles, plane, focus);
-                if (props.Roofs.Count > 0)
-                {
-                    IReadOnlyList<PropPlacement> roofs = VisibleRoofs(props, plane);
-                    if (roofs.Count > 0)
-                        drawn += _scene.DrawProps(roofs, _propMeshes, focus, _options.PropDrawRadius);
-                }
+                if (props.Roofs.Count > 0) drawn += DrawRoofs(props, plane, focus, ref shadowOnly);
             }
         }
         _propClusters.Draw(focus);
         LastDrawnProps = drawn;
+        LastShadowOnlyProps = shadowOnly;
         DrawCover(focus);
         // Water rides the same frame: the planes are cached per region-plane and re-collected only when that
         // region-plane's mesh or the look changed, so this is a walk over the loaded regions and one submit per
@@ -640,55 +640,6 @@ public sealed partial class TileWorldView : IDisposable
 
         if (_material.IsValid) _scene.UnloadTileGroundMaterial(_material);
     }
-
-    /// <summary>The roof rule, and the whole of it. Under <see cref="RoofVisibility.Interior"/> a roof is hidden
-    /// when the observer is indoors, the roof sits on a plane ABOVE the observer's own (so the storey they stand
-    /// on keeps its own ceiling and only what is between them and the camera goes), and the roof's footprint
-    /// touches the observer's interior, which is what keeps the rule to one building. The other two modes answer
-    /// without looking at the world at all.</summary>
-    /// <param name="footprint">The world tile rect the roof covers, from <see cref="TileFootprint.Of"/>. An
-    /// empty rect is never hidden by the interior rule.</param>
-    /// <param name="plane">The plane the roof stands on.</param>
-    public bool IsRoofHidden(TileRect footprint, int plane)
-    {
-        EnsureInterior();
-        return RoofMode switch
-        {
-            RoofVisibility.AlwaysVisible => false,
-            RoofVisibility.AlwaysHidden => true,
-            _ => ObserverIndoors && plane > _observer.Plane && _interior.Intersects(footprint),
-        };
-    }
-
-    // The roofs of one region-plane this frame may draw. The region's OWN list comes back untouched whenever
-    // nothing on the plane can be hidden, which is every outdoor frame and every plane at or below the observer,
-    // so the common case copies nothing at all. Otherwise the one scratch list is refilled, which is safe to
-    // reuse across the region-planes of a frame because DrawProps reads it during the call (ITileWorldScene).
-    IReadOnlyList<PropPlacement> VisibleRoofs(TileRegionProps props, int plane)
-    {
-        if (!AnyRoofHiddenOn(plane)) return props.Roofs;
-        if (RoofMode != RoofVisibility.Interior) return Array.Empty<PropPlacement>();
-
-        _visibleRoofs.Clear();
-        IReadOnlyList<TileRect> footprints = props.RoofFootprints;
-        for (int i = 0; i < props.Roofs.Count; i++)
-        {
-            // A roof the footprint list does not reach is one nothing placed, so it is not part of any interior
-            // and stays visible. TileObjectProps.Build always fills the list, so this is the hand-built case.
-            TileRect footprint = i < footprints.Count ? footprints[i] : default;
-            if (!_interior.Intersects(footprint)) _visibleRoofs.Add(props.Roofs[i]);
-        }
-        return _visibleRoofs;
-    }
-
-    // Whether the mode and the observer can hide ANY roof on this plane, which is the per-region-plane gate that
-    // keeps the per-roof test off the outdoor path entirely.
-    bool AnyRoofHiddenOn(int plane) => RoofMode switch
-    {
-        RoofVisibility.AlwaysVisible => false,
-        RoofVisibility.AlwaysHidden => true,
-        _ => ObserverIndoors && plane > _observer.Plane && _interior.Count > 0,
-    };
 
     // Refills the observer's interior when a move or an edit left it stale. Lazy rather than eager so a game
     // that sets Observer every frame pays one flood fill per tile it actually walks onto.

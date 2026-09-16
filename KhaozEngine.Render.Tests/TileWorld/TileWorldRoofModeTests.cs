@@ -10,6 +10,9 @@ namespace KhaozEngine.Tests.TileWorld;
 /// <summary>The roof rule once it is per building rather than per plane: two houses in one region, each with its
 /// own roofs on the plane above, and an observer who is inside one of them, outside both, or looking at the world
 /// through one of the two mode overrides. Every test drives the recording fake, so none of this needs a device.
+/// <para>A roof the rule HIDES is withheld from the eye rather than removed from the world (issue #974): it is
+/// queued as a shadow-only caster instead, so the building it covers keeps its shade. The fake records the two
+/// passes into separate lists, so each test below names which pass a roof reached.</para>
 /// </summary>
 public class TileWorldRoofModeTests
 {
@@ -71,6 +74,12 @@ public class TileWorldRoofModeTests
     // fake recorded rather than over the returned totals, so the test names WHICH roofs drew.
     static int RoofsDrawn(RecordingTileWorldScene scene, bool houseA) =>
         scene.PropDraws.Sum(r => r.Placements.Count(
+            p => p.Id == "roof_flat" && (houseA ? p.X < HouseSplitX : p.X > HouseSplitX)));
+
+    // The same count over the shadow-only pass, so a test can say a roof went to the cascade atlas and nowhere
+    // else rather than only that it did not draw.
+    static int RoofsShadowOnly(RecordingTileWorldScene scene, bool houseA) =>
+        scene.ShadowOnlyPropDraws.Sum(r => r.Placements.Count(
             p => p.Id == "roof_flat" && (houseA ? p.X < HouseSplitX : p.X > HouseSplitX)));
 
     static TileCoord Inside(int houseMinX) => new(houseMinX, HouseMinZ, 0);
@@ -207,6 +216,103 @@ public class TileWorldRoofModeTests
         Assert.False(view.IsRoofHidden(new TileRect(HouseAMaxX + 2, HouseMinZ, 2, 1), RoofPlane));
         // Over house B, which the observer is not in.
         Assert.False(view.IsRoofHidden(new TileRect(HouseBMinX, HouseMinZ, 3, 2), RoofPlane));
+    }
+
+    [Fact]
+    public void A_hidden_roof_is_queued_as_a_caster_and_the_neighbours_roofs_are_not()
+    {
+        // Issue #974, and the defect it fixes: before this the six roofs over house A were filtered out before
+        // anything reached the scene, so the depth pass never saw them and the sun landed on the floor inside.
+        var scene = new RecordingTileWorldScene();
+        using TileWorldView view = View(scene, TwoHouses());
+        view.LoadRegion(TileRenderTestData.Region);
+
+        view.Observer = Inside(HouseAMinX);
+        view.Draw(Vector3.Zero);
+
+        // House A: shadow-only, and never in the colour pass.
+        Assert.Equal(RoofsPerHouse, RoofsShadowOnly(scene, houseA: true));
+        Assert.Equal(0, RoofsDrawn(scene, houseA: true));
+        // House B: the colour pass, and never a shadow-only caster. A roof the observer is not under is an
+        // ordinary prop and already casts through its own draw, so queueing it twice would double its shadow.
+        Assert.Equal(RoofsPerHouse, RoofsDrawn(scene, houseA: false));
+        Assert.Equal(0, RoofsShadowOnly(scene, houseA: false));
+
+        // The two totals are counted apart: LastDrawnProps stays the VISIBLE total.
+        Assert.Equal(RoofsPerHouse, view.LastDrawnProps);
+        Assert.Equal(RoofsPerHouse, view.LastShadowOnlyProps);
+    }
+
+    [Fact]
+    public void AlwaysHidden_sends_every_roof_to_the_shadow_pass_and_none_to_the_colour_pass()
+    {
+        var scene = new RecordingTileWorldScene();
+        using TileWorldView view = View(scene, TwoHouses());
+        view.LoadRegion(TileRenderTestData.Region);
+        view.RoofMode = RoofVisibility.AlwaysHidden;
+
+        // Outdoors, where the roofs-off setting is the only thing hiding anything: the town still shades itself.
+        view.Observer = new TileCoord(0, 0, 0);
+        view.Draw(Vector3.Zero);
+        Assert.Equal(RoofsPerHouse, RoofsShadowOnly(scene, houseA: true));
+        Assert.Equal(RoofsPerHouse, RoofsShadowOnly(scene, houseA: false));
+        Assert.DoesNotContain(scene.PropDraws, r => r.Placements.Any(p => p.Id == "roof_flat"));
+        Assert.Equal(0, view.LastDrawnProps);
+        Assert.Equal(2 * RoofsPerHouse, view.LastShadowOnlyProps);
+        scene.ClearFrame();
+
+        view.Observer = Inside(HouseAMinX);
+        view.Draw(Vector3.Zero);
+        Assert.Equal(2 * RoofsPerHouse, view.LastShadowOnlyProps);
+        Assert.Equal(0, view.LastDrawnProps);
+    }
+
+    [Fact]
+    public void A_roof_nothing_hides_is_never_queued_twice()
+    {
+        var scene = new RecordingTileWorldScene();
+        using TileWorldView view = View(scene, TwoHouses());
+        view.LoadRegion(TileRenderTestData.Region);
+
+        // Roofs on, from inside one of the houses: every roof draws, so none of them needs a second queue.
+        view.RoofMode = RoofVisibility.AlwaysVisible;
+        view.Observer = Inside(HouseAMinX);
+        view.Draw(Vector3.Zero);
+        Assert.Empty(scene.ShadowOnlyPropDraws);
+        Assert.Equal(0, view.LastShadowOnlyProps);
+        Assert.Equal(2 * RoofsPerHouse, view.LastDrawnProps);
+        scene.ClearFrame();
+
+        // And the outdoor fast path under the default mode, which hands the region's own list straight through.
+        view.RoofMode = RoofVisibility.Interior;
+        view.Observer = new TileCoord(0, 0, 0);
+        view.Draw(Vector3.Zero);
+        Assert.Empty(scene.ShadowOnlyPropDraws);
+        Assert.Equal(0, view.LastShadowOnlyProps);
+        Assert.Equal(2 * RoofsPerHouse, view.LastDrawnProps);
+    }
+
+    [Fact]
+    public void A_hidden_roof_past_the_draw_radius_is_not_queued_either()
+    {
+        // The shadow-only queue culls on the SAME focus and radius as the visible one, so a roof the view would
+        // not have drawn does not quietly become an unbounded caster.
+        var scene = new RecordingTileWorldScene();
+        const float radius = 3f;
+        using TileWorldView view = View(scene, TwoHouses(), new TileWorldViewOptions { PropDrawRadius = radius });
+        view.LoadRegion(TileRenderTestData.Region);
+        view.RoofMode = RoofVisibility.AlwaysHidden;
+        view.Observer = new TileCoord(0, 0, 0);
+
+        // Focus on house A (a tile's world Z runs negative, so house A sits at world z about -5). Its roofs are
+        // within 3 m of that point and house B's are seven metres further out along x.
+        view.Draw(new Vector3(HouseAMinX + 1.5f, 0f, -(HouseMinZ + 1f)));
+
+        Assert.Equal(RoofsPerHouse, view.LastShadowOnlyProps);
+        TilePropDrawRecord record = Assert.Single(scene.ShadowOnlyPropDraws);
+        Assert.Equal(radius, record.DrawRadius);
+        Assert.Equal(RoofsPerHouse, record.Drawn);
+        Assert.Equal(2 * RoofsPerHouse, record.Placements.Count(p => p.Id == "roof_flat"));
     }
 
     [Fact]

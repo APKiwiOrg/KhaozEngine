@@ -13,7 +13,9 @@ namespace KhaozEngine.Catalog;
 /// throughout</b>, so a swap in the middle of an operation cannot hand it a half-old half-new answer. That is
 /// the whole discipline, and it works because a <see cref="ContentRuntime"/> and everything reachable from
 /// one is immutable after construction: no array is written after the load, so there is no torn read and no
-/// barrier is needed beyond the write that publishes the new instance.
+/// barrier is needed beyond the write that publishes the new instance. The one field that is written later is
+/// the registered load-index map of boot step 7b, which the boot runs BEFORE it publishes and which carries
+/// its own volatile pair for the other order the public API allows.
 /// </para>
 /// <para>
 /// <b>v1 never swaps at runtime</b>, because a new version applies at server restart (contracts 1.3 item 8).

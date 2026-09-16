@@ -74,6 +74,19 @@ public class DerivedIndexTests
     }
 
     [Fact]
+    public void TagCount_is_the_distinct_type_and_tag_pairs_the_version_carries()
+    {
+        // Per PAIR, not per tag row and not per tag id: the index is keyed on (type, tag), so the same tag
+        // under a second type is a second pair and a tag no row carries is none at all.
+        Assert.Equal(2, CatalogRuntimeFixtures.Runtime(out _).Indexes.Tags.TagCount);
+        Assert.Equal(0, ContentTagIndex.Empty.TagCount);
+
+        // The loot fixture tags the same two ids on its items AND names them in the required_tags of its
+        // entries, which is a second type carrying them.
+        Assert.Equal(4, CatalogLootFixtures.Runtime(out _).Indexes.Tags.TagCount);
+    }
+
+    [Fact]
     public void The_tag_index_holds_a_retired_row_and_leaves_the_filtering_to_the_reader()
     {
         ContentRuntime runtime = CatalogRuntimeFixtures.Runtime(out _);
@@ -251,6 +264,66 @@ public class DerivedIndexTests
         Assert.Equal(1, runtime.Indexes.Loot.EntryCount(CatalogLootFixtures.RareTable));
         Assert.Equal(0, runtime.Indexes.Loot.EntryCount(CatalogLootFixtures.MissingTable));
         Assert.Empty(runtime.Indexes.Loot.PrefixWeights(CatalogLootFixtures.MissingTable).ToArray());
+
+        // And the named id is BELOW the highest real table, which is the shape the arrays are sized for: a
+        // bound on the array length alone admits it, and it would then be a table nothing authored, counted
+        // in TableCount and rolled through the guaranteed pass.
+        Assert.True(CatalogLootFixtures.MissingTable < CatalogLootFixtures.RareTable);
+        Assert.Equal(2, runtime.Indexes.Loot.TableCount);
+        Assert.Equal(0, runtime.Indexes.Loot.RollCount(CatalogLootFixtures.MissingTable));
+        Assert.Empty(runtime.Indexes.Loot.Entries(CatalogLootFixtures.MissingTable).ToArray());
+    }
+
+    [Fact]
+    public void A_retired_entry_carries_no_weight_and_is_not_in_its_table_s_entry_list()
+    {
+        ContentRuntime runtime = CatalogLootFixtures.Runtime(out _);
+        ContentLootIndex loot = runtime.Indexes.Loot;
+
+        // Entry 208 is retired, weighs 999 and names the retired item 35, which is the ORDINARY shape of a
+        // retirement: a retired entry pointing at a retired item is why every validator check skips retired
+        // rows, so the index is the only thing standing between it and a live draw (spec 3.9).
+        Assert.Equal(3, loot.EntryCount(CatalogLootFixtures.GoblinTable));
+        Assert.Equal([10, 40, 100], loot.PrefixWeights(CatalogLootFixtures.GoblinTable).ToArray());
+        Assert.Equal(100, loot.TotalWeight(CatalogLootFixtures.GoblinTable));
+        Assert.DoesNotContain(
+            loot.Entries(CatalogLootFixtures.GoblinTable).ToArray(),
+            entry => entry.EntryId == 208 || entry.ItemId == 35);
+    }
+
+    [Fact]
+    public void A_retired_loot_table_indexes_none_of_its_entries_and_rolls_nothing()
+    {
+        ContentRuntime runtime = CatalogLootFixtures.Runtime(out _);
+        ContentLootIndex loot = runtime.Indexes.Loot;
+
+        // The retired table's row is still in the version, for decode, and both its entries are live and
+        // heavy. A table that has left play rolls nothing, so it answers as a table this version does not
+        // carry rather than as an empty one.
+        Assert.True(runtime.IsRetired(new ContentTypeId(EngineContentTypes.LootTableTypeId), CatalogLootFixtures.RetiredTable));
+        Assert.Equal(2, loot.TableCount);
+        Assert.Equal(0, loot.EntryCount(CatalogLootFixtures.RetiredTable));
+        Assert.Equal(0, loot.RollCount(CatalogLootFixtures.RetiredTable));
+        Assert.Equal(0, loot.TotalWeight(CatalogLootFixtures.RetiredTable));
+        Assert.Empty(loot.Entries(CatalogLootFixtures.RetiredTable).ToArray());
+    }
+
+    [Fact]
+    public void A_second_entry_row_under_one_id_contributes_its_weight_once()
+    {
+        ContentRuntime runtime = CatalogLootFixtures.Runtime(out _);
+        ContentLootIndex loot = runtime.Indexes.Loot;
+
+        // Two rows carry entry id 202 and the second weighs 1,000. It is KEC0036 on the publish side, and a
+        // pack that bypassed the validator must not widen the pool by a copy of a row nobody authored twice.
+        // The first row in id order wins, exactly as it wins the type table's own lookup.
+        Assert.Equal(3, loot.EntryCount(CatalogLootFixtures.GoblinTable));
+        Assert.Equal(100, loot.TotalWeight(CatalogLootFixtures.GoblinTable));
+
+        ContentLootEntry[] entries = loot.Entries(CatalogLootFixtures.GoblinTable).ToArray();
+        Assert.Single(entries, entry => entry.EntryId == 202);
+        Assert.Equal(2, entries[0].ItemId);
+        Assert.Equal(0, entries[0].Sort);
     }
 
     [Fact]

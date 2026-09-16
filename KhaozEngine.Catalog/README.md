@@ -241,11 +241,17 @@ build inside a tick is a latency spike.
 - `ContentLootIndex` and `ContentLootEntry` - per `loot_table`, the resolved entries with the weights PREFIX
   SUMMED, so a weighted draw is one `NextInt(0, total)` and one binary search over an `int[]` with no
   allocation and no per-roll summation. Entries come back in `sort` then id order, a negative weight is clamped
-  and the running total saturates, both so the prefix array stays monotonic and searchable. The sums run over
+  and the running total saturates, both so the prefix array stays monotonic and searchable, and both the only
+  defence a weight has: no validator check reads one
+  (https://github.com/APKiwiOrg/KhaozEngine/issues/944). The sums run over
   the NON-GUARANTEED entries only: a guaranteed entry rolls its own chance instead of competing, so it has zero
   width and a pick steps straight over it, which keeps one array and one search. `TotalWeight` is therefore the
   weighted pool's total rather than the sum of every authored weight. A `required_tags` entry resolves at load
-  into a candidate array of the live items carrying every listed tag, retired rows excluded.
+  into a candidate array of the live items carrying every listed tag, retired rows excluded. A RETIRED entry
+  or table row is not indexed either, on the same spec 3.9 authority: a retired entry carries no weight and
+  cannot be drawn, and a retired table answers as one the version does not carry, so it takes no pick and its
+  guaranteed entries never fire. A second row under an id another row already took contributes once, the first
+  in id order, which is `KEC0036` seen from the read side.
 
 ## The loot roll
 
@@ -274,9 +280,10 @@ if (!roller.TryRoll(tableId, drops, out int written))
   which after a nested draw is the nested table, and it is the one thing a caller cannot reconstruct. A game's
   own drop event passes it back through.
 - **A destination too small is FILLED**, `Roll` returns the span's length and `TryRoll` reports the overflow, so
-  a caller sizes up rather than silently losing drops. The roll stops at the first line that does not fit, so
-  nothing is drawn for lines nobody gets and the same seeded source rolled into a bigger span gives the whole
-  table.
+  a caller sizes up rather than silently losing drops. The roll stops at the first line that does not fit, and
+  the fit is tested before the draw, so nothing is drawn for lines nobody gets and the same seeded source
+  rolled into a bigger span gives the whole table. The weighted pick is the one exception: it is drawn before
+  the entry it lands on is known, so an overflow inside the weighted pass consumes that one pick.
 - **`MaxNestedDepth` is 16**, a hard cap below `KEC0024`'s acyclicity guarantee. A published pack cannot reach
   it, and a roll runs over bytes a pack store handed the process, so a hand-edited pack must not be able to run
   a server out of stack. A nested entry at the cap draws nothing and the rest of the table still rolls.

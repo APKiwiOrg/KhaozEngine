@@ -54,14 +54,36 @@ public readonly record struct ContentLootEntry(
 /// therefore the weighted pool's total and the exclusive bound of a pick, not the sum of every authored
 /// weight. A weight below zero is CLAMPED to zero
 /// rather than refused, because a negative weight would make the prefix array non-monotonic and unsearchable,
-/// and refusing it here would be a load failure where the validator already has a finding. The running total
-/// saturates at <see cref="int.MaxValue"/> for the same reason.
+/// and a load failure is the wrong answer for a number a publish accepted. The running total saturates at
+/// <see cref="int.MaxValue"/> for the same reason.
+/// </para>
+/// <para>
+/// <b>The clamp and the saturation are the ONLY defence a weight has today.</b> No validator check reads a
+/// weight at all: spec 3.5 declares it a bare <c>int</c>, so a negative or an overflowing one publishes clean
+/// and arrives here. That is filed as a spec change,
+/// https://github.com/APKiwiOrg/KhaozEngine/issues/944, and until it lands nothing upstream of this line
+/// bounds the number.
 /// </para>
 /// <para>
 /// A <c>required_tags</c> entry resolves at load into a candidate array (spec 3.5): every LIVE item carrying
 /// every listed tag, ascending by id, retired rows excluded, because a retired item is out of play and a drop
 /// that offered one would be a drop nobody can use. The tag index is built before this one, which is what
 /// makes the resolution one intersection of sorted spans.
+/// </para>
+/// <para>
+/// <b>A RETIRED <c>loot_entry</c> or <c>loot_table</c> row is not indexed at all</b>, for the same reason and
+/// on the same authority (spec 3.9): a retired definition has left play and its row stays in the version so a
+/// stored stack still decodes. A retired entry contributes no weight and cannot be drawn, and a retired table
+/// answers as one this version does not carry, which is <see cref="RollCount"/> 0 and no entries, so its
+/// guaranteed entries never fire and an entry nesting into it draws nothing. Nothing else would catch it: a
+/// retired entry naming a retired item is the ORDINARY shape of a retirement, so every validator check skips
+/// a retired row deliberately.
+/// </para>
+/// <para>
+/// <b>A second row under an id another row already took contributes once.</b> The first row in id order wins,
+/// exactly as it wins the type table's own lookup, for both types. The duplicate is <c>KEC0036</c> on the
+/// publish side, and the index holds the line for a pack that reached the process without the validator,
+/// which would otherwise roll a pool wider than anything authored.
 /// </para>
 /// </summary>
 public sealed class ContentLootIndex

@@ -27,6 +27,12 @@ public static partial class CraftPrimitives
     /// <summary>
     /// Primitive 1. One pick through spec 9.4 steps 6 to 8 against the item's OWN base and item level, never
     /// the crafter's and never the base's, which is what makes item level worth storing per instance.
+    /// <para>
+    /// <b>It refuses at the item's own rarity rule's <c>max_affixes</c></b>, before the draw, rather than
+    /// letting the write fall off the end of the generator's scratch. The scratch is sized from the WIDEST
+    /// rule in the pack, so a pick past a narrower rule would sometimes land and sometimes vanish, and both
+    /// are an item outside its rule with nothing reported.
+    /// </para>
     /// </summary>
     /// <param name="copy">The craft in progress.</param>
     /// <param name="generator">The generator holding the tables and the random source.</param>
@@ -54,6 +60,17 @@ public static partial class CraftPrimitives
         Span<InstanceAffix> affixes = stackalloc InstanceAffix[CraftWorkingCopy.MaxAffixes];
         int count = copy.ReadAffixes(InstancePropertyKind.Affixes, affixes);
         if (count == CraftWorkingCopy.MaxAffixes)
+        {
+            return copy.Refuse(new CraftRefusal(CraftRefusalKind.AffixListFull, InstancePropertyKind.Affixes));
+        }
+
+        // The RULE's ceiling, not just kind 131's byte count. The generator sizes its affix scratch from the
+        // widest rarity rule in the pack, so a pick past THIS item's rule would be written into a buffer
+        // that happens to have room, or dropped where the scratch does not, and either way the item ends up
+        // outside the rule with nothing said. A ceiling the item cannot pass is a refusal at the ask.
+        _ = copy.TryGetByte(InstancePropertyKind.Rarity, out byte rarityId);
+        int ceiling = generator.AffixCeiling(rarityId);
+        if (ceiling > 0 && count >= ceiling)
         {
             return copy.Refuse(new CraftRefusal(CraftRefusalKind.AffixListFull, InstancePropertyKind.Affixes));
         }

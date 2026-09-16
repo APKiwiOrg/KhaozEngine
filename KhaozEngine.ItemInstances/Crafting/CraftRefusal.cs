@@ -37,7 +37,12 @@ public enum CraftRefusalKind : byte
     /// <summary>The selected affix is not on the item. The subject is the index or the mod id asked for.</summary>
     AffixAbsent = 5,
 
-    /// <summary>Kind 131's count is a byte, so a 256th entry has nowhere to go. The subject is the kind.</summary>
+    /// <summary>
+    /// The affix list is at its ceiling, so the entry has nowhere to go. The subject is the kind. The
+    /// ceiling is the item's own rarity rule's <c>max_affixes</c> when it names a rarity this version
+    /// carries, and kind 131's byte count otherwise, because that count is a byte and a 256th entry has
+    /// nowhere to go either way.
+    /// </summary>
     AffixListFull = 6,
 
     /// <summary>The step named a content row this version has no live copy of. The subject is the row id.</summary>

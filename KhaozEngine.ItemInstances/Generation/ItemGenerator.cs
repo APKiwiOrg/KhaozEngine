@@ -32,6 +32,15 @@ namespace KhaozEngine.ItemInstances;
 /// pool happened to hold.
 /// </para>
 /// <para>
+/// <b>It is NOT reentrant and it is NOT thread safe. One instance per thread, or per executor.</b> Every
+/// working array is instance state that a roll overwrites and reads back inside one call: the open pool,
+/// the excluded runs, the placed affixes, the sockets and the name words. A second call that starts while
+/// one is running, on another thread or through a source that calls back into this object, does not corrupt
+/// memory and does not throw. It quietly hands the outer roll the inner roll's pool and the inner roll's
+/// affix list, so the item that comes out is a legal-looking item nobody authored. Shared IMMUTABLE tables
+/// across threads are the supported shape: build a generator each.
+/// </para>
+/// <para>
 /// <b>Nothing here is a function of the candidate pool's SIZE.</b> Opening the pool is a handful of scalar
 /// reads per tag position, a pick is a walk of at most
 /// <see cref="ModCandidateTables.MaxGenerationTagPositions"/> tag positions plus a walk of the dead entries

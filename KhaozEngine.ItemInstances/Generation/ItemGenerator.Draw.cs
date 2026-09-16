@@ -28,6 +28,27 @@ public sealed partial class ItemGenerator
     public const int MaxMaskedModKind = 32;
 
     /// <summary>
+    /// How many affixes one rarity rule permits on one item, or 0 for a rarity this version carries no live
+    /// rule for and for a rarity id of 0.
+    /// <para>
+    /// It exists for the CRAFT side. The generator sizes its own affix scratch from the widest rule in the
+    /// pack, so a craft that walked past one rule's own ceiling would be dropped at the write rather than
+    /// refused at the ask, which is the fail-open shape. A primitive reads the ceiling here and refuses.
+    /// </para>
+    /// </summary>
+    /// <param name="rarityId">The item's kind 130 rarity rule id.</param>
+    public int AffixCeiling(int rarityId)
+    {
+        if (rarityId <= 0)
+        {
+            return 0;
+        }
+
+        int index = _content.IndexOfRarity(rarityId);
+        return index < 0 ? 0 : _content.MaxAffixesAt(index);
+    }
+
+    /// <summary>
     /// Spec 9.4 steps 6 to 8 as ONE pick over an affix list that ALREADY EXISTS, which is what the
     /// <c>AddRandomMod</c> craft primitive is. It lives HERE rather than in the crafting framework because
     /// a second weighted pick is a second distribution, and spec 9.2's whole argument is that there is

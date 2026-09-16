@@ -255,8 +255,8 @@ public static class TileReach
         // the footprint, and the west and south anchors sit agentSize tiles out from it, so the nearest candidate
         // is at most agentSize tiles closer than the footprint itself: a footprint whose nearest tile is further
         // than maxRadius + agentSize has no candidate inside the window AT ALL, and the whole call is decided here.
-        // Exactly the answer the searches below would have reached, for none of the (2r+1)^2 scratch entries each
-        // of them allocates.
+        // Exactly the answer the search below would have reached, for none of the (2r+1)^2 scratch entries it
+        // allocates.
         //
         // That cost is what a client naming a target it has never seen was buying. Net ids are handed out from a
         // counter, so a hostile Attack or Interact guesses a small integer rather than needing to have seen

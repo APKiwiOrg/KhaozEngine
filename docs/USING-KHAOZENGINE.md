@@ -10168,6 +10168,35 @@ directly and do not re-centre it. `presenter.PoseAt(footprint, plane, facing)` i
 `TileRect`, the centre of a footprint marker or a nameplate anchor with no glide, and for a one-tile rect it is
 exactly `PoseAt(tile)`.
 
+**A body holding a lock is drawn AIMING at it.** `TileMoveState.Facing` is the cardinal side the two footprints
+touch on. That is exactly right for reach and wrong as a drawn yaw the moment either body is bigger than one tile:
+a player beside a 2x2 cow points at the column of it they are touching, up to 18 degrees off its middle, and the cow
+points back the same way. So `client.LocalPose` and `client.TryGetRemotePose` aim a body that is NOT stepping and
+holds a `CombatTarget`, or an `InteractTarget` whose route has run out, at that target's centre. Nothing to wire: it
+is the pose you already draw.
+
+```csharp
+// Unchanged on your side. The yaw now points at the cow rather than at the tile of it you are touching.
+TilePose me = client.LocalPose;
+Draw(playerMesh, me.Position, me.Yaw);
+```
+
+- **A one-tile fight is bit-identical to before.** A one-tile target's aim point is its own tile, so the yaw IS
+  `TilePresenter.Yaw(facing)`, exactly, with no tolerance needed. Only a footprint bigger than one tile moves it.
+- **A mid-step body keeps its step facing**, and so does a body with no lock, and a body whose target stopped
+  resolving. The aim is for a body at rest, which is what a fight is between swings.
+- **Nominate an aim tile** by overriding `ITileTargets.TryGetAimPoint(target, out Vector2 tilePlanar, out int
+  plane)` on your own resolver. It is a default interface method answering the footprint centre, so an existing
+  resolver needs no change, and the override is what a long serpent, a building door or a mounted rider wants.
+- **A remote resolves its target on the DELAYED timeline** its body is drawn from, and the local body on the newest
+  capture, which is the read the reach rules already make. That is what stops an attacker leading a target that has
+  already moved on the server.
+- **Presentation only.** `Facing`, the reach rules, the server's `Facing` write and the wire are all untouched, so
+  a turn-smoothing rule of your own keeps working: it only smooths toward whatever yaw the pose reports.
+- **Placing a body by hand** uses the same formula through `presenter.Pose(state, aimTilePlanar, extraTicks)`, and
+  `TilePresenter.Yaw(Vector2 from, Vector2 to)` is the yaw on its own, in the same hand and the same north as
+  `TilePresenter.Yaw(TileDirection)`.
+
 **Run rides the tick stream, not the click.** `RunMode` is carried on EVERY command, `TileCommand.Continue`
 included, and the simulator applies it at the START of the next step. Holding run halfway through a walking step
 never shortens that step, it makes the one after it a run. A client that sent `TileCommand.None` while a route

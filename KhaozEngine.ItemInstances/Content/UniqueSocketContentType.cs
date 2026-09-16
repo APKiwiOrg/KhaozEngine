@@ -66,8 +66,15 @@ public static class UniqueSocketContentType
 
     /// <summary>
     /// The unique socket row codec. It adds the one IN-ROW bound the generic walk cannot express, checked on
-    /// BOTH sides. Whether the indices of one template's sockets are contiguous and unique is a cross-row
-    /// rule and belongs to the validator.
+    /// BOTH sides. Whether two sockets of one template share an index is a cross-row rule and is the
+    /// validator's <c>KEC0115</c>.
+    /// <para>
+    /// <b>CONTIGUITY is not checked and is not a rule spec 8.6 states.</b> The table there says the sort is
+    /// the socket's index in kind 132 in authored order and says nothing about gaps, and nothing seeds kind
+    /// 132 from these rows yet, so a gap has no reader to confuse.
+    /// Deciding it is
+    /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/966">966</see>.
+    /// </para>
     /// </summary>
     public sealed class Codec : ContentRowCodecBase
     {

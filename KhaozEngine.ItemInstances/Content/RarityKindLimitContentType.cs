@@ -21,8 +21,8 @@ namespace KhaozEngine.ItemInstances;
 /// </para>
 /// <para>
 /// There is no <c>sort</c>. The rows of this type have no order, so a child type carries none. Every
-/// CROSS-ROW rule belongs to the validator: a parent that resolves, and a kind that is not claimed twice
-/// for one rarity.
+/// CROSS-ROW rule belongs to the validator: a parent that resolves (<c>KEC0100</c>), and a kind that is not
+/// claimed twice for one rarity (<c>KEC0116</c>).
 /// </para>
 /// </summary>
 public static class RarityKindLimitContentType

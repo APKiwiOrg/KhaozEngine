@@ -340,6 +340,64 @@ public class InstanceContentValidationTests
     }
 
     [Fact]
+    public void Two_unique_sockets_of_one_template_sharing_a_sort_is_KEC0115()
+    {
+        ContentTypeRegistry registry = Registry();
+        ContentSnapshot candidate = Snapshot(
+            registry,
+            Item(registry, 40, "greatsword"),
+            UniqueTemplate(registry, 1, "sunbrand", baseId: 40),
+            UniqueSocket(registry, 1, "sunbrand_socket_1", templateId: 1, sort: 0),
+            UniqueSocket(registry, 2, "sunbrand_socket_2", templateId: 1, sort: 0));
+
+        List<ContentFinding> findings = Band(candidate);
+
+        // The second row is the one reported, because the first is where the index legitimately sits.
+        ContentFinding finding = Only(findings, InstanceContentFindings.UniqueSocketSort);
+        Assert.Equal(InstanceContentTypeIds.UniqueSocketTypeId, finding.Type.Value);
+        Assert.Equal(2, finding.Id);
+
+        // Two templates each holding index 0 is the ordinary shape: the index is per template.
+        NoneOf(
+            Band(Snapshot(
+                registry,
+                Item(registry, 40, "greatsword"),
+                UniqueTemplate(registry, 1, "sunbrand", baseId: 40),
+                UniqueTemplate(registry, 2, "moonbrand", baseId: 40),
+                UniqueSocket(registry, 1, "sunbrand_socket_1", templateId: 1, sort: 0),
+                UniqueSocket(registry, 2, "moonbrand_socket_1", templateId: 2, sort: 0))),
+            InstanceContentFindings.UniqueSocketSort);
+    }
+
+    [Fact]
+    public void Two_rarity_kind_limits_claiming_one_kind_for_one_rarity_is_KEC0116()
+    {
+        ContentTypeRegistry registry = Registry();
+        ContentSnapshot candidate = Snapshot(
+            registry,
+            RarityRule(registry, 1, "rare"),
+            RarityKindLimit(registry, 1, "rare_implicit", rarityId: 1, modKind: 3, maxCount: 1),
+            RarityKindLimit(registry, 2, "rare_implicit_again", rarityId: 1, modKind: 3, maxCount: 2));
+
+        List<ContentFinding> findings = Band(candidate);
+
+        ContentFinding finding = Only(findings, InstanceContentFindings.RarityKindClaimed);
+        Assert.Equal(InstanceContentTypeIds.RarityKindLimitTypeId, finding.Type.Value);
+        Assert.Equal(2, finding.Id);
+
+        // One rarity limiting two kinds, and two rarities limiting one kind, are both ordinary.
+        NoneOf(
+            Band(Snapshot(
+                registry,
+                RarityRule(registry, 1, "rare"),
+                RarityRule(registry, 2, "mythic"),
+                RarityKindLimit(registry, 1, "rare_implicit", rarityId: 1, modKind: 3),
+                RarityKindLimit(registry, 2, "rare_corrupt", rarityId: 1, modKind: 4),
+                RarityKindLimit(registry, 3, "mythic_implicit", rarityId: 2, modKind: 3))),
+            InstanceContentFindings.RarityKindClaimed);
+    }
+
+    [Fact]
     public void A_socket_type_whose_accept_and_reject_tag_sets_overlap_is_KEC0108()
     {
         ContentTypeRegistry registry = Registry();
@@ -593,7 +651,7 @@ public class InstanceContentValidationTests
             {
                 "KEC0100", "KEC0101", "KEC0102", "KEC0103", "KEC0104", "KEC0105", "KEC0106",
                 "KEC0107", "KEC0108", "KEC0109", "KEC0110", "KEC0111", "KEC0112", "KEC0113",
-                "KEC0114",
+                "KEC0114", "KEC0115", "KEC0116",
             },
             InstanceContentFindings.All);
     }

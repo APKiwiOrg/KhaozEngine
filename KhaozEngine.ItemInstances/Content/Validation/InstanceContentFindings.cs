@@ -3,7 +3,7 @@ using System;
 namespace KhaozEngine.ItemInstances;
 
 /// <summary>
-/// The fifteen finding codes of the <c>KEC0100</c> band and the messages that carry them. The band is
+/// The seventeen finding codes of the <c>KEC0100</c> band and the messages that carry them. The band is
 /// RESERVED for the item instances types, 100 to 199, so an affix rule and a catalog structure rule are
 /// told apart by an operator reading a code rather than by reading a message.
 /// <para>
@@ -12,13 +12,22 @@ namespace KhaozEngine.ItemInstances;
 /// treated. That is why <see cref="All"/> is a pinned list rather than a generated range.
 /// </para>
 /// <para>
-/// <b>Twelve of the fifteen are spec 8.9's twelve checks, two are the weight bounds of
-/// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/944">944</see>, and one is the generation tag
-/// position ceiling the candidate tables impose.</b> The mapping is not one code per check in two places,
+/// <b>Twelve of the seventeen are spec 8.9's twelve checks, two are the weight bounds of
+/// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/944">944</see>, one is the generation tag
+/// position ceiling the candidate tables impose, and two are cross-row rules the type doc comments of spec
+/// 8.5 and 8.6 already promised.</b> The mapping is not one code per check in two places,
 /// and both exceptions are deliberate. Check 2 SPLITS, because an item level
 /// range an author inverted and a tier ordinal outside the payload's byte are different mistakes with
 /// different fixes. Checks 3 and 12 SHARE <see cref="TierOrdinalMoved"/>, because both are the same
 /// refusal seen from two sides: a tier ordinal that a stored payload already names is not where it was.
+/// </para>
+/// <para>
+/// <b>A promise a doc comment makes is a check or it is a correction, never a silence.</b>
+/// <see cref="UniqueSocketSort"/> and <see cref="RarityKindClaimed"/> were both described as the
+/// validator's and neither existed, which reads to an author as a rule the publish enforces. The third of
+/// that set, spec 8.4's refusal of a fixed line on a rolled kind, is NOT here: spec 8.2 gives no field that
+/// says which kinds are rolled, so the claim was corrected on
+/// <see cref="StatLineContentType"/> rather than given a code it could not honestly carry.
 /// </para>
 /// </summary>
 public static class InstanceContentFindings
@@ -107,6 +116,18 @@ public static class InstanceContentFindings
     /// </summary>
     public const string GenerationTagPositions = "KEC0114";
 
+    /// <summary>
+    /// Two <c>unique_socket</c> rows of one template taking the same <c>sort</c>. The sort IS the socket's
+    /// index in payload kind 132, so two rows holding one index is a socket list with two readings.
+    /// </summary>
+    public const string UniqueSocketSort = "KEC0115";
+
+    /// <summary>
+    /// Two <c>rarity_kind_limit</c> rows claiming one mod kind for one rarity. The limit is the count that
+    /// rarity permits of that kind, so a second row is a second answer to one question.
+    /// </summary>
+    public const string RarityKindClaimed = "KEC0116";
+
     /// <summary>Every code this band emits, ascending, pinned rather than generated.</summary>
     public static readonly string[] All =
     [
@@ -125,6 +146,8 @@ public static class InstanceContentFindings
         WeightBelowZero,
         WeightBucketOverflow,
         GenerationTagPositions,
+        UniqueSocketSort,
+        RarityKindClaimed,
     ];
 
     internal static string ParentMissing(string childType, int childId, string field, string parentType, long parentId)
@@ -226,6 +249,14 @@ public static class InstanceContentFindings
     internal static string RarityIdMoved(string key, int previousId, int id, int previousVersion)
         => FormattableString.Invariant(
             $"Rarity rule '{key}' was definition id {previousId} at version {previousVersion} and is {id} now. Payload kind 130 stores the rarity id, so moving it repoints every stored item at a different rarity.");
+
+    internal static string SocketDuplicateSort(int socketId, long sort, long templateId, int firstSocketId)
+        => FormattableString.Invariant(
+            $"Unique socket {socketId} takes sort {sort} on unique_template {templateId}, which socket {firstSocketId} already holds. The sort IS the socket's index in payload kind 132 rather than an ordering key, so two rows on one index is a socket list with two readings.");
+
+    internal static string RarityKindTwice(int limitId, long modKind, long rarityId, int firstLimitId)
+        => FormattableString.Invariant(
+            $"Rarity kind limit {limitId} claims mod kind {modKind} for rarity_rule {rarityId}, which limit {firstLimitId} already claims. The row IS the count that rarity permits of that kind, so a second row is a second answer to one question.");
 
     internal static string WeightNegative(string typeKey, int rowId, long weight)
         => FormattableString.Invariant(

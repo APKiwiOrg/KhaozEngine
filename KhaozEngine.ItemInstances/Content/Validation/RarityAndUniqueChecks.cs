@@ -10,6 +10,12 @@ namespace KhaozEngine.ItemInstances;
 /// <c>rarity_kind_limit</c>, <c>unique_line</c> and <c>unique_socket</c>, the rarity rule's counts and its
 /// upgrade chain, the unique line's mod and tier, and the publish-only refusal of a rarity id that moved.
 /// <para>
+/// <b>The two UNIQUENESS rules here are not in spec 8.9's list of twelve</b>, and both are cross-row rules
+/// their own type doc comments promised an author: one socket index per template (<c>KEC0115</c>) and one
+/// mod kind per rarity (<c>KEC0116</c>). Each is a row that would otherwise give a reader two answers to
+/// one question.
+/// </para>
+/// <para>
 /// The field indices below are the positions each type's <c>CreateSchema</c> declares.
 /// </para>
 /// </summary>
@@ -23,12 +29,14 @@ internal static class RarityAndUniqueChecks
 
     const int RarityWeightRarityRuleId = 0;
     const int RarityKindLimitRarityRuleId = 0;
+    const int RarityKindLimitModKind = 1;
 
     const int UniqueLineTemplateId = 0;
     const int UniqueLineModId = 2;
     const int UniqueLineTierOrdinal = 3;
 
     const int UniqueSocketTemplateId = 0;
+    const int UniqueSocketSort = 1;
 
     const int ModTierModId = 0;
     const int ModTierOrdinal = 1;
@@ -49,7 +57,11 @@ internal static class RarityAndUniqueChecks
         }
     }
 
-    /// <summary><c>KEC0100</c> on the two rarity children. Their own values are other checks'.</summary>
+    /// <summary>
+    /// <c>KEC0100</c> on the two rarity children and <c>KEC0116</c> on a mod kind two limits claim for one
+    /// rarity. The claim is per PAIR rather than per kind: one rarity limiting two kinds and two rarities
+    /// limiting one kind are both the ordinary authored shape.
+    /// </summary>
     static void CheckRarityChildren(IContentSnapshot candidate, ICollection<ContentFinding> findings)
     {
         foreach (ContentRow row in LiveRows(candidate, InstanceContentTypeIds.RarityWeightTypeId))
@@ -65,6 +77,7 @@ internal static class RarityAndUniqueChecks
                 InstanceContentTypeIds.RarityRuleTypeKey);
         }
 
+        var claimed = new Dictionary<(long Rarity, long Kind), int>();
         foreach (ContentRow row in LiveRows(candidate, InstanceContentTypeIds.RarityKindLimitTypeId))
         {
             CheckParent(
@@ -76,6 +89,20 @@ internal static class RarityAndUniqueChecks
                 RarityKindLimitContentType.RarityRuleIdField,
                 InstanceContentTypeIds.RarityRuleTypeId,
                 InstanceContentTypeIds.RarityRuleTypeKey);
+
+            long rarityId = Number(row, RarityKindLimitRarityRuleId) ?? 0;
+            long modKind = Number(row, RarityKindLimitModKind) ?? 0;
+            if (claimed.TryGetValue((rarityId, modKind), out int firstId))
+            {
+                findings.Add(new ContentFinding(
+                    row.Type,
+                    row.Id,
+                    InstanceContentFindings.RarityKindClaimed,
+                    InstanceContentFindings.RarityKindTwice(row.Id, modKind, rarityId, firstId)));
+                continue;
+            }
+
+            claimed.Add((rarityId, modKind), row.Id);
         }
     }
 
@@ -203,6 +230,7 @@ internal static class RarityAndUniqueChecks
     /// </summary>
     static void CheckUniqueChildren(IContentSnapshot candidate, ICollection<ContentFinding> findings)
     {
+        var socketIndexTaken = new Dictionary<(long Template, long Sort), int>();
         foreach (ContentRow row in LiveRows(candidate, InstanceContentTypeIds.UniqueSocketTypeId))
         {
             CheckParent(
@@ -214,6 +242,20 @@ internal static class RarityAndUniqueChecks
                 UniqueSocketContentType.UniqueTemplateIdField,
                 InstanceContentTypeIds.UniqueTemplateTypeId,
                 InstanceContentTypeIds.UniqueTemplateTypeKey);
+
+            long templateId = Number(row, UniqueSocketTemplateId) ?? 0;
+            long sort = Number(row, UniqueSocketSort) ?? 0;
+            if (socketIndexTaken.TryGetValue((templateId, sort), out int firstId))
+            {
+                findings.Add(new ContentFinding(
+                    row.Type,
+                    row.Id,
+                    InstanceContentFindings.UniqueSocketSort,
+                    InstanceContentFindings.SocketDuplicateSort(row.Id, sort, templateId, firstId)));
+                continue;
+            }
+
+            socketIndexTaken.Add((templateId, sort), row.Id);
         }
 
         List<ContentRow> lines = LiveRows(candidate, InstanceContentTypeIds.UniqueLineTypeId);

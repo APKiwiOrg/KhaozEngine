@@ -26,10 +26,21 @@ namespace KhaozEngine.ItemInstances;
 /// reads back as.
 /// </para>
 /// <para>
-/// The <see cref="CombineField"/> domain below is the only rule this type checks. Every CROSS-ROW rule
-/// belongs to the validator: a parent that resolves, a <see cref="StatIdField"/> that resolves,
-/// <see cref="MinField"/> at or below <see cref="MaxField"/>, and the refusal of a fixed line on a rolled
-/// kind.
+/// The <see cref="CombineField"/> domain below is the only rule this type checks. The CROSS-ROW rules the
+/// validator carries are spec 8.9 check 4 exactly: a parent that resolves (<c>KEC0100</c>), and a
+/// <see cref="StatIdField"/> that resolves, a <see cref="CombineField"/> of 1, 2 or 3 and
+/// <see cref="MinField"/> at or below <see cref="MaxField"/> (<c>KEC0104</c>).
+/// </para>
+/// <para>
+/// <b>Spec 8.4's further sentence, refusing <see cref="MinField"/> equal to <see cref="MaxField"/> on a
+/// tier whose only line it is when the mod's kind is a ROLLED kind, is NOT checked and has no code.</b>
+/// Nothing the rows carry says which kinds are rolled: spec 8.2 assigns 1 prefix and 2 suffix and leaves 3
+/// to 255 to the game, and it says the generator treats every kind above 2 as its own counted pool, so
+/// every kind is rolled. What actually distinguishes a unique's guaranteed line is that its mod carries no
+/// <c>mod_tier_weight</c> row (spec 8.6), which is a different statement and is already
+/// <c>KEC0107</c>. Reading the sentence off the weight rows instead would be a rule spec 8.4 does not
+/// state, so it is recorded as
+/// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/967">967</see> rather than invented here.
 /// </para>
 /// </summary>
 public static class StatLineContentType

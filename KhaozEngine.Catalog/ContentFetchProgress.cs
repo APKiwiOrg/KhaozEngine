@@ -192,8 +192,17 @@ public sealed class ContentFetchResult
     /// <summary>The stable reason token, or null on a complete fetch.</summary>
     public string? Reason { get; }
 
-    /// <summary>The version's minimum client build, or 0 when no manifest was read.</summary>
-    public int MinimumClientBuild => Manifest is null ? 0 : (int)Manifest.MinimumClientBuild;
+    /// <summary>
+    /// The version's minimum client build, or 0 when no manifest was read. The manifest carries it as a
+    /// UINT and this surface is an INT, matching <see cref="ContentFetchOptions.ClientBuild"/> and the
+    /// refusal token, so a floor above <see cref="int.MaxValue"/> SATURATES rather than wrapping negative.
+    /// That fails closed: no build ordinal can reach the cap, so the player is told to update, which is the
+    /// right answer for a floor no build of this head can meet, and a negative would have thrown out of the
+    /// refusal that carries it.
+    /// </summary>
+    public int MinimumClientBuild => Manifest is null
+        ? 0
+        : (int)Math.Min(Manifest.MinimumClientBuild, int.MaxValue);
 
     /// <summary>How many attempts over the missing set this call made.</summary>
     public int Attempts { get; }

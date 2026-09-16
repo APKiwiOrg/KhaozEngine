@@ -515,6 +515,30 @@ public class ContentFetchLoopTests
         Assert.Equal(1.0, reports[^1].Fraction);
     }
 
+    // The manifest carries the build ordinal as a UINT and the client surface is an INT, so a version naming
+    // a floor above int.MaxValue used to hand back a NEGATIVE build, and ContentRefusal.ClientTooOld throws
+    // on a negative. Saturating fails closed instead: no client build can reach int.MaxValue, so the player
+    // is told to update, which is the right answer for a floor no build of this head can meet.
+    [Fact]
+    public async Task A_minimum_client_build_above_int_MaxValue_saturates_rather_than_going_negative()
+    {
+        CatalogPack pack = CatalogPack.Build();
+        var remote = new FetchPackStore();
+        var local = new FetchPackStore();
+        remote.PlantPack(pack);
+        ContentManifest raised = pack.ClientManifest with { MinimumClientBuild = uint.MaxValue };
+        string hash = ContentManifestText.Hash(raised);
+        remote.Plant(hash, ContentManifestCodec.Encode(raised));
+        var loop = new ContentFetchLoop(local, remote, pack.Registry, Immediate());
+
+        ContentFetchResult result = await loop.FetchAsync(
+            new ContentVersionIdentity(CatalogPack.VersionNumber, hash));
+
+        Assert.False(result.Success);
+        Assert.Equal(ContentFetchOutcome.ClientBuildTooOld, result.Outcome);
+        Assert.Equal(int.MaxValue, result.MinimumClientBuild);
+    }
+
     // Spec 13.4: exponential backoff on a failed set, from 1 s, capped at 60 s, with FULL jitter. The jitter
     // is the point rather than a refinement: without a draw, every client of a restarted world retries on one
     // schedule and the backoff turns a thundering herd into a synchronized one. The delay is a SEAM, so this

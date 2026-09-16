@@ -137,6 +137,7 @@ internal static class SqlServerCatalogSchemaExpectations
         "catalog_chunk.ck_catalog_chunk_uncompressed",
         "catalog_chunk.ck_catalog_chunk_visibility",
         "catalog_draft.ck_catalog_draft_base",
+        "catalog_draft.ck_catalog_draft_frozen",
         "catalog_draft.ck_catalog_draft_key",
         "catalog_draft.ck_catalog_draft_note",
         "catalog_draft.ck_catalog_draft_opened_by",

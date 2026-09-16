@@ -23,6 +23,12 @@ namespace KhaozEngine.Catalog.SqlServer;
 /// refusal leaves the open draft exactly as it was.
 /// </para>
 /// <para>
+/// <b>Both writers refuse while a publish holds the draft.</b> The marker is
+/// <c>catalog_draft.frozen_for_base_version</c> and the half that sets and clears it is
+/// <c>SqlServerContentAuthoringStore.Freeze.cs</c>. Serializable covers step 10 alone, so the marker rather
+/// than a lock is what spans steps 1 to 10.
+/// </para>
+/// <para>
 /// <b>An edit's field rows come back in field-name order rather than in insertion order</b>, which is the one
 /// read here that does not reproduce the SQLite provider's ordering: SQLite orders by <c>rowid</c> and SQL
 /// Server has no equivalent. It is not observable through the seam, because the candidate builder overlays a
@@ -60,6 +66,10 @@ public sealed partial class SqlServerContentAuthoringStore
         return WriteAsync(
             async (scope, token) =>
             {
+                // Spec 6.2's refusal, inside this call's OWN Serializable transaction, so the marker cannot
+                // be written between reading it and writing the edits it guards.
+                await RequireNotFrozenAsync(scope, nameof(ApplyEditsAsync), token).ConfigureAwait(false);
+
                 await OpenDraftAsync(scope, actor, note, token).ConfigureAwait(false);
                 for (int i = 0; i < edits.Count; i++)
                 {
@@ -90,6 +100,7 @@ public sealed partial class SqlServerContentAuthoringStore
         return WriteAsync(
             async (scope, token) =>
             {
+                await RequireNotFrozenAsync(scope, nameof(DiscardDraftAsync), token).ConfigureAwait(false);
                 int discarded = await ReadIntAsync(
                     scope, "SELECT COUNT(*) FROM dbo.catalog_draft_edit;", token).ConfigureAwait(false);
                 await DeleteDraftAsync(scope, token).ConfigureAwait(false);
@@ -120,9 +131,13 @@ public sealed partial class SqlServerContentAuthoringStore
         string openedBy;
         DateTimeOffset openedAt;
         string note;
+        int? frozen;
         await using (SqlCommand command = Command(
             scope,
-            "SELECT base_version, opened_by, opened_at_utc, note FROM dbo.catalog_draft WHERE draft_key = 1;"))
+            """
+            SELECT base_version, opened_by, opened_at_utc, note, frozen_for_base_version
+            FROM dbo.catalog_draft WHERE draft_key = 1;
+            """))
         {
             await using SqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken)
                 .ConfigureAwait(false);
@@ -135,10 +150,11 @@ public sealed partial class SqlServerContentAuthoringStore
             openedBy = reader.GetString(1);
             openedAt = reader.GetDateTimeOffset(2);
             note = reader.GetString(3);
+            frozen = reader.IsDBNull(4) ? null : reader.GetInt32(4);
         }
 
         IReadOnlyList<ContentEdit> edits = await ReadEditsAsync(scope, cancellationToken).ConfigureAwait(false);
-        return new ContentDraft(baseVersion, openedBy, openedAt, note, new ContentChangeSet(edits));
+        return new ContentDraft(baseVersion, openedBy, openedAt, note, new ContentChangeSet(edits), frozen);
     }
 
     /// <summary>Every pending edit in EDIT ORDINAL order, which is the order ids are allocated in.</summary>

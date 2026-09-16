@@ -70,6 +70,7 @@ public sealed partial class InMemoryContentAuthoringStore
     {
         lock (_gate)
         {
+            ClearStaleFreeze();
             return Task.FromResult(ReadBaseline());
         }
     }
@@ -149,8 +150,9 @@ public sealed partial class InMemoryContentAuthoringStore
             // 6. Every audit row, field level, against the version the rows are leaving.
             AppendPublishAudit(before, plan, request);
 
-            // 7. The draft and its edits.
-            _draft = null;
+            // 7. The draft, scoped to the edits this plan FROZE. The freeze is what makes that the whole
+            // draft, so anything else here survives rather than being deleted unpublished.
+            DeleteFrozenEdits(plan);
 
             // 8. The active pointer, LAST. It moves for the NEXT boot: a running server keeps serving the
             // version it loaded.

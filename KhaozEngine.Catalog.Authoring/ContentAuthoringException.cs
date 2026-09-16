@@ -58,6 +58,17 @@ public sealed class ContentAuthoringException : Exception
     public const string NoOpenDraftReason = "no-open-draft";
 
     /// <summary>
+    /// A draft edit or a discard arrived while a publish was in flight (spec 6.2). Step 1 marks the draft
+    /// frozen for the base version it is publishing, and every write to the draft is refused until the
+    /// publish leaves, so a second actor cannot slip an edit into a change set the pipeline has already read.
+    /// <para>
+    /// A marker naming a base version the store no longer stands at is STALE: it belongs to a publish that
+    /// died, and the next baseline read clears it rather than leaving the draft wedged forever.
+    /// </para>
+    /// </summary>
+    public const string PublishInProgressReason = "publish-in-progress";
+
+    /// <summary>
     /// An update, a retire or a fork named a row the base version carries no live revision of. It is a
     /// refusal rather than a finding, because a candidate cannot be built for an edit with no target.
     /// </summary>

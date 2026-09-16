@@ -80,9 +80,11 @@ public sealed class ContentPublisher
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(baseline);
 
-        // STEP 1. Freeze the draft. The store holds the row lock for the whole publish, so the change set
-        // read here is the one the commit will delete.
+        // STEP 1. Freeze the draft. The store writes a durable marker naming this publish's base version and
+        // refuses every draft write until it is cleared, so the change set read here is the one the commit
+        // will delete. The commit half clears the marker on every exit path.
         ContentDraft draft = await FreezeAsync(request, baseline, cancellationToken).ConfigureAwait(false);
+        IReadOnlyList<ContentEdit> frozen = draft.Changes.Edits;
         int version = baseline.VersionNumber + 1;
 
         // KEC0041, the fork preconditions, BEFORE the candidate is built. A fork of a row that is not there
@@ -92,7 +94,8 @@ public sealed class ContentPublisher
             ContentForkChecks.Check(baseline, draft.Changes, _registry);
         if (forkFindings.Count > 0)
         {
-            return Refused(version, baseline, Empty(version), new ContentValidationReport(false, forkFindings));
+            return Refused(
+                version, baseline, Empty(version), new ContentValidationReport(false, forkFindings), frozen);
         }
 
         // STEP 2. Build the candidate by applying the draft's edits to the base version. Nothing walks a row
@@ -127,7 +130,7 @@ public sealed class ContentPublisher
         {
             return Refused(
                 version, baseline, candidate, swept, allocation, closes, inserts, live, appended, rules,
-                [], ruleHash, minimumServerBuild, minimumClientBuild);
+                [], ruleHash, minimumServerBuild, minimumClientBuild, frozen);
         }
 
         // STEPS 6 AND 7. Select the affected chunks, then encode, compress and hash each one at every side
@@ -145,7 +148,7 @@ public sealed class ContentPublisher
             // honour the schema. The chunks are kept on the plan, because what they hold is the evidence.
             return Refused(
                 version, baseline, candidate, Report(findings), allocation, closes, inserts, live, appended,
-                rules, chunks, ruleHash, minimumServerBuild, minimumClientBuild);
+                rules, chunks, ruleHash, minimumServerBuild, minimumClientBuild, frozen);
         }
 
         // STEP 8. Both manifests, each under its own hash sub-domain, so a head gating on one can never
@@ -180,16 +183,27 @@ public sealed class ContentPublisher
             serverHash,
             clientHash,
             minimumServerBuild,
-            minimumClientBuild);
+            minimumClientBuild,
+            frozen);
     }
 
     /// <summary>
-    /// Step 1. The draft is frozen for the duration of the publish and the store holds the row lock, so a
-    /// draft edit arriving while a publish is in flight is refused rather than half applied.
+    /// Step 1. The draft is marked FROZEN for the whole publish, so a draft edit or a discard arriving while
+    /// one is in flight is refused with
+    /// <see cref="ContentAuthoringException.PublishInProgressReason"/> rather than half applied.
+    /// <para>
+    /// <b>The marker is durable and it is not a lock.</b> Steps 1 to 10 span step 9's pack writes, and no
+    /// provider here holds a row lock across those: SQLite leases its one connection per call and SQL
+    /// Server's Serializable transaction covers step 10 alone. So the store writes
+    /// <c>catalog_draft.frozen_for_base_version</c> under its own transaction and every draft write reads it.
+    /// <see cref="ContentPublishCommit"/> clears it on every exit path, and a marker a dead publish left
+    /// behind naming a base version the store no longer stands at is cleared by the next baseline read.
+    /// </para>
     /// <para>
     /// <see cref="ContentPublishRequest.ExpectedBaseVersion"/> is optimistic concurrency and it is checked
-    /// against the BASELINE, which the commit read under that lock. Two consoles cannot both publish the
-    /// same draft: the second one's expectation is stale and it is refused with both numbers named.
+    /// against the BASELINE, which the commit read. Two consoles cannot both publish the same draft: the
+    /// second one's expectation is stale and it is refused with both numbers named. That check runs BEFORE
+    /// the marker is written, so a publish refused for a stale expectation freezes nothing.
     /// </para>
     /// </summary>
     async Task<ContentDraft> FreezeAsync(
@@ -217,6 +231,7 @@ public sealed class ContentPublisher
                 ContentAuthoringException.NoOpenDraftReason);
         }
 
+        await _store.FreezeDraftAsync(baseline.VersionNumber, cancellationToken).ConfigureAwait(false);
         return draft;
     }
 
@@ -332,7 +347,8 @@ public sealed class ContentPublisher
         int version,
         ContentPublishBaseline baseline,
         ContentSnapshot candidate,
-        ContentValidationReport report)
+        ContentValidationReport report,
+        IReadOnlyList<ContentEdit> frozen)
         => Refused(
             version,
             baseline,
@@ -347,7 +363,8 @@ public sealed class ContentPublisher
             [],
             ContentRuleChunkCodec.Hash(baseline.Rules),
             baseline.MinimumServerBuild,
-            baseline.MinimumClientBuild);
+            baseline.MinimumClientBuild,
+            frozen);
 
     /// <summary>An empty candidate at the new version, which is what a refusal before step 2 carries.</summary>
     ContentSnapshot Empty(int version)
@@ -367,7 +384,8 @@ public sealed class ContentPublisher
         IReadOnlyList<ContentChunkRecord> chunks,
         string ruleHash,
         int minimumServerBuild,
-        int minimumClientBuild)
+        int minimumClientBuild,
+        IReadOnlyList<ContentEdit> frozen)
         => new(
             version,
             baseline.VersionNumber,
@@ -387,7 +405,8 @@ public sealed class ContentPublisher
             string.Empty,
             string.Empty,
             minimumServerBuild,
-            minimumClientBuild);
+            minimumClientBuild,
+            frozen);
 
     static ContentValidationReport Report(List<ContentFinding> findings)
     {

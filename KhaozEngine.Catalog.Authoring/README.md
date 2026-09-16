@@ -170,6 +170,30 @@ previous snapshot. `ContentPublishBaseline.After(plan)` is the baseline the next
 both publish the same draft: the second one's expectation is stale and it is refused with both numbers named,
 carrying the `base-version-moved` reason.
 
+### The draft is frozen for the whole publish
+
+Step 1 marks the open draft FROZEN for the base version it is publishing, through
+`IContentAuthoringStore.FreezeDraftAsync`, and every write to the draft is refused while the marker stands:
+`ApplyEditsAsync` and `DiscardDraftAsync` both throw with the `publish-in-progress` reason.
+`ContentDraft.FrozenForBaseVersion` and `ContentDraft.IsFrozen` are how a console reads it. Without it a
+second actor's edit lands in a change set the pipeline has already read, version N publishes without it, and
+step 10 deletes the draft it was sitting in: an edit an operator saved that no version carries and no draft
+still holds.
+
+**The marker is durable rather than a held lock, and that is forced rather than chosen.** A publish spans
+steps 1 to 10, step 9 writes the whole pack, and no provider holds a row lock across that: SQLite leases its
+one connection per call, and SQL Server's Serializable transaction covers step 10 alone.
+
+`ContentPublishCommit.PublishAsync` clears the marker in a `finally`, so a success, a refusal, a throw and a
+cancellation all release the draft. Two things recover a marker nothing cleared, which is what a killed
+process leaves. A marker naming a version the store has moved past is STALE, and
+`ReadPublishBaselineAsync` clears it, which is the read every publish starts with. A marker naming the
+version the store still stands at belongs to a publish that died before its commit, and the next publish's
+step 1 overwrites it, because a publish is exactly what an operator does to recover.
+
+Driving `ContentPublisher.PrepareAsync` on its own therefore leaves a frozen draft behind, deliberately: half
+a publish is the state the marker describes. Call `ClearDraftFreezeAsync` when standing in for the commit.
+
 ### Ids come from the edit, not from the caller
 
 There is ONE allocation path with two sources, and which one runs is a property of the edit. An `Add` with
@@ -259,6 +283,11 @@ row change, append every remap rule at the sequence above the highest, insert ev
 including the carried-forward ones, insert every audit row, delete the draft, then move the active pointer
 LAST. A reader that sees the new active version sees every row, rule, chunk and audit entry of it, because
 they committed together.
+
+The draft delete is scoped to `ContentPublishPlan.FrozenEdits`, the change set step 1 read. The freeze is
+what makes that the whole draft, so scoping it can only matter when the marker failed to hold, and that is
+the point: an edit the publish never carried survives into the next draft rather than being deleted
+unpublished.
 
 **It CONFIRMS the version number rather than trusting it.** The plan digested its number into both manifest
 hashes at step 8, so the transaction re-reads the highest published number and refuses with the

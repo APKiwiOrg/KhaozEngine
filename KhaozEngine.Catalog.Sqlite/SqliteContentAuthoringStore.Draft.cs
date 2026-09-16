@@ -23,6 +23,12 @@ namespace KhaozEngine.Catalog.Sqlite;
 /// written, and the writes share one transaction, so a batch save from a grid is atomic and one refusal
 /// leaves the open draft exactly as it was.
 /// </para>
+/// <para>
+/// <b>Both writers refuse while a publish holds the draft.</b> The marker is
+/// <c>catalog_draft.frozen_for_base_version</c> and the half that sets and clears it is
+/// <c>SqliteContentAuthoringStore.Freeze.cs</c>. The read is inside each writer's own transaction, so the
+/// marker cannot arrive between the check and the write it guards.
+/// </para>
 /// </summary>
 public sealed partial class SqliteContentAuthoringStore
 {
@@ -56,6 +62,11 @@ public sealed partial class SqliteContentAuthoringStore
         using SqliteStoreLease lease = await _connection.EnterAsync(cancellationToken).ConfigureAwait(false);
         using SqliteTransaction transaction = _connection.BeginTransaction();
 
+        // Spec 6.2's refusal, inside this call's OWN transaction, so the marker cannot be written between
+        // reading it and writing the edits it guards.
+        await RequireNotFrozenAsync(nameof(ApplyEditsAsync), transaction, cancellationToken)
+            .ConfigureAwait(false);
+
         await OpenDraftAsync(actor, note, transaction, cancellationToken).ConfigureAwait(false);
         for (int i = 0; i < edits.Count; i++)
         {
@@ -87,6 +98,8 @@ public sealed partial class SqliteContentAuthoringStore
 
         using SqliteStoreLease lease = await _connection.EnterAsync(cancellationToken).ConfigureAwait(false);
         using SqliteTransaction transaction = _connection.BeginTransaction();
+        await RequireNotFrozenAsync(nameof(DiscardDraftAsync), transaction, cancellationToken)
+            .ConfigureAwait(false);
         int discarded = await CountEditsAsync(transaction, cancellationToken).ConfigureAwait(false);
         await DeleteDraftAsync(transaction, cancellationToken).ConfigureAwait(false);
         await AppendAuditAsync(
@@ -113,8 +126,12 @@ public sealed partial class SqliteContentAuthoringStore
         string openedBy;
         DateTimeOffset openedAt;
         string note;
+        int? frozen;
         using (SqliteCommand command = Command(
-            "SELECT base_version, opened_by, opened_at_utc, note FROM catalog_draft WHERE draft_key = 1;",
+            """
+            SELECT base_version, opened_by, opened_at_utc, note, frozen_for_base_version
+            FROM catalog_draft WHERE draft_key = 1;
+            """,
             transaction))
         {
             using SqliteDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
@@ -127,11 +144,12 @@ public sealed partial class SqliteContentAuthoringStore
             openedBy = reader.GetString(1);
             openedAt = DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(2));
             note = reader.GetString(3);
+            frozen = reader.IsDBNull(4) ? null : (int)reader.GetInt64(4);
         }
 
         IReadOnlyList<ContentEdit> edits = await ReadEditsAsync(transaction, cancellationToken)
             .ConfigureAwait(false);
-        return new ContentDraft(baseVersion, openedBy, openedAt, note, new ContentChangeSet(edits));
+        return new ContentDraft(baseVersion, openedBy, openedAt, note, new ContentChangeSet(edits), frozen);
     }
 
     /// <summary>Every pending edit in EDIT ORDINAL order, which is the order ids are allocated in.</summary>

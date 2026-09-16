@@ -32,9 +32,13 @@ public sealed partial class SqlServerContentAuthoringStore
     IReadOnlyList<RemapRule>? _importRules;
 
     /// <inheritdoc />
-    public Task<ContentPublishBaseline> ReadPublishBaselineAsync(
+    public async Task<ContentPublishBaseline> ReadPublishBaselineAsync(
         CancellationToken cancellationToken = default)
-        => ReadAsync((scope, token) => ReadBaselineAsync(scope, token), cancellationToken);
+    {
+        await ClearStaleFreezeAsync(cancellationToken).ConfigureAwait(false);
+        return await ReadAsync((scope, token) => ReadBaselineAsync(scope, token), cancellationToken)
+            .ConfigureAwait(false);
+    }
 
     /// <inheritdoc />
     public Task<ContentVersionRecord> CommitPublishAsync(
@@ -119,8 +123,9 @@ public sealed partial class SqlServerContentAuthoringStore
                 // 6. Every audit row, field level, against the version the rows are leaving.
                 await AppendPublishAuditAsync(scope, before, plan, request, token).ConfigureAwait(false);
 
-                // 7. The draft and its edits.
-                await DeleteDraftAsync(scope, token).ConfigureAwait(false);
+                // 7. The draft, scoped to the edits this plan FROZE. The freeze is what makes that the whole
+                // draft, so anything else here survives rather than being deleted unpublished.
+                await DeleteFrozenEditsAsync(scope, plan, token).ConfigureAwait(false);
 
                 // 8. The active pointer, LAST. It moves for the NEXT boot: a running server keeps serving the
                 // version it loaded.

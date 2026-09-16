@@ -46,14 +46,23 @@ internal static class SqliteCatalogSchema
     internal const string BootstrapSql = "PRAGMA foreign_keys = ON;";
 
     /// <summary>
-    /// The whole schema, idempotent, exactly as spec 4.4 gives it with ONE addition named below.
+    /// The whole schema, idempotent, exactly as spec 4.4 gives it with TWO additions named below.
     /// <para>
-    /// <b>The addition is <c>catalog_draft_edit.imported_retired</c>.</b> A bundle carries every live row
+    /// <b>The first is <c>catalog_draft_edit.imported_retired</c>.</b> A bundle carries every live row
     /// including the retired ones, and a lossless import reproduces them through an <c>Add</c> edit that is
     /// already retired and appends no second retire rule, which is
     /// <see cref="ContentEdit.ImportedAsRetired"/>. Spec 4.4's <c>catalog_draft_edit</c> has no column for
     /// that fact, so a draft written to the database and read back would silently publish every imported
     /// retired row as live. The column is the smallest thing that keeps the import lossless.
+    /// </para>
+    /// <para>
+    /// <b>The second is <c>catalog_draft.frozen_for_base_version</c>, spec 6.2's freeze.</b> The spec says a
+    /// publish takes a row lock on <c>catalog_draft</c> for its duration, and this provider cannot: it leases
+    /// its one connection per call and step 9 writes the whole pack outside any lease, so no lock it can take
+    /// spans steps 1 to 10. The column holds the base version the publish in flight is standing on, every
+    /// draft write refuses while it is set, and a value naming a version the database no longer stands at is
+    /// a dead publish's leftover that the next baseline read clears. Still schema version 1: nothing has
+    /// released this schema yet, so there is no deployed database for a migration to move.
     /// </para>
     /// </summary>
     internal const string Tables = """
@@ -150,7 +159,9 @@ internal static class SqliteCatalogSchema
             base_version INTEGER NOT NULL CHECK (base_version >= 0),
             opened_by TEXT COLLATE BINARY NOT NULL CHECK (length(opened_by) BETWEEN 1 AND 128),
             opened_at_utc INTEGER NOT NULL,
-            note TEXT COLLATE BINARY NOT NULL DEFAULT '' CHECK (length(note) <= 1024));
+            note TEXT COLLATE BINARY NOT NULL DEFAULT '' CHECK (length(note) <= 1024),
+            frozen_for_base_version INTEGER NULL CHECK (frozen_for_base_version IS NULL
+                OR frozen_for_base_version >= 0));
 
         CREATE TABLE IF NOT EXISTS catalog_draft_edit (
             edit_ordinal INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,

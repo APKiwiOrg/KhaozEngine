@@ -199,6 +199,10 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
 
         lock (_gate)
         {
+            // Spec 6.2's refusal, FIRST: a draft a publish is holding takes no edit at all, so the schema
+            // sweep below never runs against a change set the caller is not allowed to touch.
+            RequireNotFrozen(nameof(ApplyEditsAsync));
+
             // Every edit is checked against the schema BEFORE any of them is applied, and the change set is
             // built on a COPY, so one refusal leaves the open draft exactly as it was. A batch save from a
             // grid lands whole or not at all.
@@ -248,6 +252,8 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
 
         lock (_gate)
         {
+            RequireNotFrozen(nameof(DiscardDraftAsync));
+
             int discarded = _draft?.EditCount ?? 0;
             _draft = null;
             _audit.Append(

@@ -137,11 +137,14 @@ CREATE TABLE dbo.catalog_draft (
     opened_by nvarchar(128) COLLATE Latin1_General_100_BIN2 NOT NULL,
     opened_at_utc datetimeoffset(7) NOT NULL,
     note nvarchar(1024) COLLATE Latin1_General_100_BIN2 NOT NULL CONSTRAINT df_catalog_draft_note DEFAULT N'',
+    frozen_for_base_version int NULL,
     CONSTRAINT pk_catalog_draft PRIMARY KEY (draft_key),
     CONSTRAINT ck_catalog_draft_key CHECK (draft_key = 1),
     CONSTRAINT ck_catalog_draft_base CHECK (base_version >= 0),
     CONSTRAINT ck_catalog_draft_opened_by CHECK (LEN(opened_by) BETWEEN 1 AND 128),
-    CONSTRAINT ck_catalog_draft_note CHECK (LEN(note) <= 1024));
+    CONSTRAINT ck_catalog_draft_note CHECK (LEN(note) <= 1024),
+    CONSTRAINT ck_catalog_draft_frozen CHECK (frozen_for_base_version IS NULL
+        OR frozen_for_base_version >= 0));
 
 CREATE TABLE dbo.catalog_draft_edit (
     edit_ordinal bigint IDENTITY(1,1) NOT NULL,

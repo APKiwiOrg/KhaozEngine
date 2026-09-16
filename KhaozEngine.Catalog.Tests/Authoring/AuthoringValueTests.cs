@@ -322,19 +322,23 @@ public class AuthoringValueTests
     }
 
     [Fact]
-    public void TheStoreSeamCarriesTheTwentyFiveMembersEveryProviderImplements()
+    public void TheStoreSeamCarriesTheTwentySevenMembersEveryProviderImplements()
     {
         // Spec 2.3 and the phase 1 plan name these so a provider implements ONE shape. A member added here
-        // without being added to every backend is the drift this pins.
+        // without being added to every backend is the drift this pins. The two freeze members are spec 6.2's:
+        // a publish marks the draft frozen and releases it, and a provider missing either one would accept a
+        // draft edit into a change set a publish in flight has already read.
         string[] expected =
         [
             "AllocateAsync",
             "AllocateInFamilyAsync",
             "ApplyEditsAsync",
+            "ClearDraftFreezeAsync",
             "CommitPublishAsync",
             "CreateFamilyAsync",
             "DiscardDraftAsync",
             "ExportBundleAsync",
+            "FreezeDraftAsync",
             "GetActiveVersionAsync",
             "GetOpenDraftAsync",
             "GetPinnedVersionAsync",

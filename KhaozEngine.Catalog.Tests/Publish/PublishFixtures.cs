@@ -184,8 +184,13 @@ internal static class PublishFixtures
         => store.ApplyEditsAsync(edits, Actor, "oid:tests", "publish tests");
 
     /// <summary>
-    /// Applies edits, prepares steps 1 to 8, and DISCARDS the draft afterwards, which is what the commit of
-    /// task 16 will do. Chaining publishes needs it, because nothing here writes anything durable.
+    /// Applies edits, prepares steps 1 to 8, and DISCARDS the draft afterwards, which stands in for the
+    /// commit. Chaining publishes needs it, because nothing the pipeline does is durable.
+    /// <para>
+    /// The freeze step 1 took is RELEASED first, because that is the other half of what the commit does and
+    /// a discard against a frozen draft is refused. It is <c>ContentPublishCommit</c> that owns the release
+    /// on a real publish, and this fixture drives the pipeline without it.
+    /// </para>
     /// </summary>
     public static async Task<ContentPublishPlan> PublishAsync(
         InMemoryContentAuthoringStore store,
@@ -197,6 +202,7 @@ internal static class PublishFixtures
         ContentPublishPlan plan = await publisher
             .PrepareAsync(Request(baseline.VersionNumber), baseline)
             .ConfigureAwait(false);
+        await store.ClearDraftFreezeAsync().ConfigureAwait(false);
         await store.DiscardDraftAsync(Actor, "oid:tests").ConfigureAwait(false);
         return plan;
     }

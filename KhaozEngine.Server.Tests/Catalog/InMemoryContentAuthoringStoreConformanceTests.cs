@@ -62,6 +62,16 @@ public sealed class InMemoryContentAuthoringStoreConformanceTests : ContentAutho
     }
 
     /// <inheritdoc />
+    protected override IPackStore PackOf(IContentAuthoringStore store)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        return store is InMemoryContentAuthoringStore { PackStore: IPackStore pack }
+            ? pack
+            : throw new InvalidOperationException(
+                "This subclass opens every store over a pack directory of its own, so one without a pack target did not come from here.");
+    }
+
+    /// <inheritdoc />
     public void Dispose()
     {
         try

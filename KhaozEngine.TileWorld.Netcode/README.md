@@ -223,6 +223,12 @@ hidden.
   the INVERSE too: `TryGetTargetAt(tile, out long id)` is the click-to-target search, the whole footprint rather
   than the anchor tile, lowest id first when two targets overlap so both heads resolve one click the same way.
   Compose it with `TileRaycast.Pick`, whose hit is a ground tile, and a click is resolved in two lines.
+  `TryGetAimPoint(target, out Vector2 tilePlanar, out int plane)` is the PRESENTATION half, a default interface
+  method every implementation inherits: the footprint centre, in the tile units `PoseAt(Vector2, float,
+  TileDirection)` takes, which is what a body holding a lock is drawn looking at. Override it on a body whose
+  centre is the wrong place to look at (the head of a long serpent, the door of a building) and every pose the
+  client draws follows it. It resolves and refuses exactly where `TryGetFootprint` does, so a stale lock points
+  nowhere new, and nothing in the rules reads it.
   `TileEntityTargets` is the server's ENTITY space, a per-tick SNAPSHOT over the live cells refreshed once before
   anything moves, which is what makes the actor pass and the movement pass order-independent in fact rather than
   in claim: every read is a keyed lookup into a map built before either pass began. `TileRemoteTargets` is the
@@ -507,6 +513,21 @@ always keep the constructor map.
   re-centring it. `PoseAt(TileRect footprint, int plane, TileDirection facing)` is the overlay form for a footprint:
   its centre with no glide, for a footprint marker or a nameplate anchor that is not a body, and exactly
   `PoseAt(tile)` for a one-tile rect.
+- **A BODY HOLDING A LOCK IS DRAWN AIMING AT IT.** `TileMoveState.Facing` answers the cardinal side the two
+  footprints touch on, which is exact for reach and up to 18 degrees off as a drawn yaw the moment either body is
+  bigger than one tile: a player beside a 2x2 cow points at the column it touches, and so does the cow. So
+  `client.TryGetRemotePose` and `client.LocalPose` aim a body that is NOT stepping and holds a `CombatTarget`, or
+  an `InteractTarget` whose route has run out, at that target's `ITileTargets.TryGetAimPoint`. A remote resolves
+  its target on the same DELAYED timeline its body is drawn from, so an attacker never leads a target that has
+  already moved on the server, and the local body resolves on the newest capture, which is the read the reach
+  rules already make. A mid-step body keeps its step facing, a body with no lock keeps the tile facing, and a
+  target that stopped resolving falls back to it too. A one-tile body beside a one-tile target draws EXACTLY its
+  cardinal, to the bit, so a game asserting `TilePresenter.Yaw(TileDirection)` against a pose for an ordinary
+  fight stays true. `TilePresenter.Yaw(Vector2 from, Vector2 to)` is the formula on its own, the same hand and the
+  same north as `Yaw(TileDirection)`, and `presenter.Pose(state, aimTilePlanar, extraTicks)` is the whole thing
+  for a body a game places by hand. Presentation only: `Facing`, the reach rules, the server's `Facing` write and
+  the wire are untouched, and a game's own turn smoothing keeps working because it only smooths toward whatever
+  yaw the pose reports.
 - **`TileDrawPriority`** - ONE BODY PER TILE AT REST, rebuilt per frame. `Rebuild(client, dt)` reads a live
   client, `Rebuild(localNetId, localTile, localLeaving, others, dt)` takes a caller's own roster and each actor's
   step progress, and the static `Select` is the winner rule with both output buffers owned by the caller. The

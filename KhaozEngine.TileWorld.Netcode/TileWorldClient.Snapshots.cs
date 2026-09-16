@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 using KhaozEngine.Ecs;
 using KhaozEngine.Netcode;
 using KhaozEngine.Replication;
@@ -214,6 +215,12 @@ public sealed partial class TileWorldClient
     /// step. Unlike <see cref="LocalPose"/>, it has no extra local prediction tick. Compared with current server
     /// truth, both this pose and that delayed tile add <see cref="TileWorldClientConfig.InterpolationDelayTicks"/>,
     /// which buys room for a lost snapshot. Size a design that reads other players against the sum.</para>
+    /// <para>A REMOTE HOLDING A LOCK IS AIMED, on the same rule <see cref="LocalPose"/> follows: standing still with
+    /// a <see cref="TileMoveState.CombatTarget"/>, or with an <see cref="TileMoveState.InteractTarget"/> it has
+    /// finished walking to, it looks at that target's <see cref="ITileTargets.TryGetAimPoint"/> instead of along
+    /// <see cref="TileMoveState.Facing"/>. The target is resolved on THIS timeline, off the same delayed capture the
+    /// two bodies are drawn from, so an attacker never leads a target that has already moved on the server. A
+    /// one-tile remote beside a one-tile target draws exactly its cardinal, unchanged.</para>
     /// </summary>
     /// <param name="netId">The remote's net id.</param>
     /// <param name="pose">Where and which way to draw it.</param>
@@ -222,7 +229,10 @@ public sealed partial class TileWorldClient
     {
         pose = default;
         if (netId == LocalNetId || !remoteSamples.TryGetValue(netId, out RemoteSample sample)) return false;
-        pose = Presenter.Pose(sample.State, (float)Math.Max(0d, (RenderTime - sample.At) / config.TickSeconds));
+        float extraTicks = (float)Math.Max(0d, (RenderTime - sample.At) / config.TickSeconds);
+        pose = TryResolveAim(sample.State, delayed: true, out Vector2 aim)
+            ? Presenter.Pose(sample.State, aim, extraTicks)
+            : Presenter.Pose(sample.State, extraTicks);
         return true;
     }
 
@@ -555,7 +565,7 @@ public sealed partial class TileWorldClient
 
     /// <summary>
     /// One remote's drawing state. <paramref name="State"/> is the replicated state verbatim, which is what
-    /// <see cref="TilePresenter.Pose"/> is handed: the tile the remote is committed to and the one its body is
+    /// <see cref="TilePresenter.Pose(in TileMoveState, float)"/> is handed: the tile the remote is committed to and the one its body is
     /// still walking out of. <paramref name="At"/> is the render-timeline instant that state was first seen at,
     /// which is what the fraction of a tick since then is measured from.
     /// </summary>

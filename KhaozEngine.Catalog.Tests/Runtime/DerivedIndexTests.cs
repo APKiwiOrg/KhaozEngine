@@ -74,6 +74,19 @@ public class DerivedIndexTests
     }
 
     [Fact]
+    public void TagCount_is_the_distinct_type_and_tag_pairs_the_version_carries()
+    {
+        // Per PAIR, not per tag row and not per tag id: the index is keyed on (type, tag), so the same tag
+        // under a second type is a second pair and a tag no row carries is none at all.
+        Assert.Equal(2, CatalogRuntimeFixtures.Runtime(out _).Indexes.Tags.TagCount);
+        Assert.Equal(0, ContentTagIndex.Empty.TagCount);
+
+        // The loot fixture tags the same two ids on its items AND names them in the required_tags of its
+        // entries, which is a second type carrying them.
+        Assert.Equal(4, CatalogLootFixtures.Runtime(out _).Indexes.Tags.TagCount);
+    }
+
+    [Fact]
     public void The_tag_index_holds_a_retired_row_and_leaves_the_filtering_to_the_reader()
     {
         ContentRuntime runtime = CatalogRuntimeFixtures.Runtime(out _);

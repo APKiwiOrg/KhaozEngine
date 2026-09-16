@@ -340,6 +340,36 @@ public class ContentRuntimeTests
     }
 
     [Fact]
+    public void ApproximateBytes_is_the_index_arrays_of_spec_9_2_plus_the_body_blobs()
+    {
+        ContentRuntime runtime = CatalogRuntimeFixtures.Runtime(out _);
+        Assert.True(runtime.TryGetTable(CatalogSnapshotFixtures.ItemType, out ContentTypeTable? items));
+        Assert.True(runtime.TryGetTable(CatalogSnapshotFixtures.TagType, out ContentTypeTable? tags));
+
+        // Spec 9.2's arithmetic, worked by hand. The item table covers ids 1 to 35, so Offsets, Lengths and
+        // RowIndex are 36 ints each, the retired bitset is one ulong, and the key index is the first power of
+        // two at twice its 5 rows.
+        const long itemArrays = (36 * 4 * 3) + 8 + (16 * 4);
+
+        // The tag table covers ids 1 to 9 and holds 2 rows, so its key index is 4 buckets.
+        const long tagArrays = (10 * 4 * 3) + 8 + (4 * 4);
+
+        // The tag INDEX: one type with a tagged row, two tags under it, and 3 plus 2 row ids beneath those.
+        // The family and loot indexes are empty for this version, so they count nothing.
+        const long tagIndex = (1 * 2) + ((1 + 1 + 2) * 4) + ((2 + 2 + 5) * 4);
+
+        Assert.Equal(tagIndex, runtime.Indexes.ApproximateBytes());
+        Assert.Equal(
+            itemArrays + tagArrays + tagIndex + items.Bodies.LongLength + tags.Bodies.LongLength,
+            runtime.ApproximateBytes());
+
+        // The decoded rows are NOT in it, which is what the summary says: the loader allocated them before
+        // the runtime existed, so counting them would be counting someone else's memory.
+        Assert.NotEmpty(items.Rows);
+        Assert.True(items.Bodies.LongLength > 0);
+    }
+
+    [Fact]
     public void FromSnapshot_refuses_a_null_argument()
     {
         var registry = CatalogSnapshotFixtures.Registry();

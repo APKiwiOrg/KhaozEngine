@@ -322,17 +322,21 @@ public class AuthoringValueTests
     }
 
     [Fact]
-    public void TheStoreSeamCarriesTheTwentyEightMembersEveryProviderImplements()
+    public void TheStoreSeamCarriesTheTwentyNineMembersEveryProviderImplements()
     {
         // Spec 2.3 and the phase 1 plan name these so a provider implements ONE shape. A member added here
         // without being added to every backend is the drift this pins. The two freeze members are spec 6.2's:
         // a publish marks the draft frozen and releases it, and a provider missing either one would accept a
         // draft edit into a change set a publish in flight has already read. PackStore is the pack target the
         // operational pair (catalog-sweep, catalog-verify) works on, promoted to the seam by task 28.
+        // AppendOperationalAuditAsync is the store-level audit row of spec 10.10, for an operation that
+        // changes the store without changing a row: a pack sweep's deletions live in files rather than in a
+        // table, so no store transaction spans them and the append is the only record they leave.
         string[] expected =
         [
             "AllocateAsync",
             "AllocateInFamilyAsync",
+            "AppendOperationalAuditAsync",
             "ApplyEditsAsync",
             "ClearDraftFreezeAsync",
             "CommitPublishAsync",

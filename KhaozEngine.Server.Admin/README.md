@@ -134,6 +134,11 @@ anything, so a green validate followed by a red publish can only mean the draft 
 rows the draft ADDS are provisional there and in a diff against the candidate, which `provisionalIds` says:
 the allocator issues the real ones at publish.
 
+`catalog-diff` reads 0 on `from` as the active version and 0 on `to` as the draft-applied candidate. Any
+NON-zero endpoint the store does not hold is a 400 under the unknown-version reason, the same as
+`catalog-pin`, `catalog-verify` and `catalog-export`, because an empty change set is the answer to "these two
+versions are the same" and answering it to a typo tells an operator their edit is already published.
+
 `catalog-pin` writes the operator's hold, and a version pinned in the SERVER'S OWN CONFIG wins over it,
 always. A pin against such a server is a 200 carrying `configPinnedVersion` and a warning naming it, because
 the write happened and takes effect the moment the config pin is removed, while a bare 200 for a call with no

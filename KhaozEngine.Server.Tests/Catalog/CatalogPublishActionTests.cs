@@ -132,6 +132,32 @@ public sealed class CatalogPublishActionTests : IDisposable
         Assert.Equal("iron_sword", change.GetProperty("key").GetString());
     }
 
+    /// <summary>
+    /// A diff endpoint that names a version the store does not hold is a 400, not a 200 with no changes.
+    /// <para>
+    /// An empty change set is the answer to "these two versions are the same", and answering it to a typo
+    /// tells an operator their edit is already published when nothing of the sort is true. The other three
+    /// actions that take a version number all refuse an unknown one, so this one does too, under the same
+    /// reason token.
+    /// </para>
+    /// </summary>
+    /// <param name="from">The source version.</param>
+    /// <param name="to">The destination version.</param>
+    [Theory]
+    [InlineData(1, 999)]
+    [InlineData(999, 1)]
+    [InlineData(998, 999)]
+    public async Task Diff_NamingAVersionThatDoesNotExist_IsRefused(int from, int to)
+    {
+        await _harness.PublishThingsAsync("stone_sword");
+
+        JsonElement body = await _harness.RefusedAsync("catalog-diff", $$"""
+        { "from": {{from}}, "to": {{to}} }
+        """);
+
+        Assert.Equal(ContentAuthoringException.UnknownVersionReason, body.GetProperty("reason").GetString());
+    }
+
     /// <summary>A publish reports the version it wrote and the work it cost.</summary>
     [Fact]
     public async Task Publish_ReportsTheNewVersionAndWhatItCost()

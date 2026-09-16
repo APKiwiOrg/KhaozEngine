@@ -88,6 +88,21 @@ internal sealed class CatalogPublishActions(IContentAuthoringStore store, Conten
             from = active;
         }
 
+        // Both endpoints are checked to EXIST. A 0 is the caller's "use the active one" on from and "diff the
+        // open draft" on to, and neither names a version. Any other number that the store does not hold is a
+        // typo, and answering an empty change set to a typo tells an operator their edit is already published
+        // when nothing of the sort is true. catalog-pin, catalog-verify and catalog-export all refuse an
+        // unknown version, so this refuses under the same token.
+        if (await UnknownVersionAsync(from, cancellationToken).ConfigureAwait(false) is AdminActionResult unknownFrom)
+        {
+            return unknownFrom;
+        }
+
+        if (await UnknownVersionAsync(to, cancellationToken).ConfigureAwait(false) is AdminActionResult unknownTo)
+        {
+            return unknownTo;
+        }
+
         try
         {
             List<ContentRowRevision> source = from == 0
@@ -114,6 +129,25 @@ internal sealed class CatalogPublishActions(IContentAuthoringStore store, Conten
         {
             return CatalogRefusal.From(failure, registry);
         }
+    }
+
+    /// <summary>
+    /// The refusal for a diff endpoint the store does not hold, or null when the number is fine. A 0 is
+    /// always fine: it is the caller declining to name a version rather than naming a missing one.
+    /// </summary>
+    /// <param name="version">The endpoint the request named.</param>
+    /// <param name="cancellationToken">Cancels the call.</param>
+    async Task<AdminActionResult?> UnknownVersionAsync(int version, CancellationToken cancellationToken)
+    {
+        if (version == 0
+            || await store.GetVersionAsync(version, cancellationToken).ConfigureAwait(false) is not null)
+        {
+            return null;
+        }
+
+        return CatalogRefusal.BadRequest(
+            FormattableString.Invariant($"Version {version} does not exist, so there is nothing to diff."),
+            ContentAuthoringException.UnknownVersionReason);
     }
 
     /// <summary>

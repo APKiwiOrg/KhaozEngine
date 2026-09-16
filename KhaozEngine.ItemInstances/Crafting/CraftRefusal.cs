@@ -34,7 +34,10 @@ public enum CraftRefusalKind : byte
     /// <summary>The item carries no field of the kind the step needs. The subject is the kind.</summary>
     FieldAbsent = 4,
 
-    /// <summary>The selected affix is not on the item. The subject is the index or the mod id asked for.</summary>
+    /// <summary>
+    /// The selected affix is not on the item. The subject is the selector's own parameter: an index, a mod
+    /// id, or a mod kind no entry carries.
+    /// </summary>
     AffixAbsent = 5,
 
     /// <summary>
@@ -95,6 +98,21 @@ public enum CraftRefusalKind : byte
     /// of whether a pool happened to be empty.
     /// </summary>
     DrawEmpty = 17,
+
+    /// <summary>
+    /// A guard failed, and the subject is the <see cref="CraftGuardKind"/> that did. Spec 10.3's "a refusal
+    /// names a guard rather than a message" is this member: an authored target guard that failed, and the
+    /// two STANDING guards of <see cref="CraftStandingRules"/>, which report by kind for the same reason.
+    /// </summary>
+    GuardFailed = 18,
+
+    /// <summary>
+    /// The write would have rewritten part of an affix entry whose mod row carries <c>legacy</c>, which
+    /// standing rule 2 freezes whole. The subject is the mod id. REMOVING the entry is still allowed, and
+    /// ADDING a legacy row is <see cref="GuardFailed"/> naming <see cref="CraftGuardKind.NotLegacy"/>
+    /// instead, because that is a different rule.
+    /// </summary>
+    LegacyEntryFrozen = 19,
 }
 
 /// <summary>

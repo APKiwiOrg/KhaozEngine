@@ -86,6 +86,14 @@ public static partial class CraftPrimitives
             return copy.Refuse(new CraftRefusal(CraftRefusalKind.DrawEmpty, modKind));
         }
 
+        // Standing rule 3, stated where the ADD is. The candidate tables leave a legacy row out entirely,
+        // so a draw cannot reach one today, and the rule is a property of the craft rather than of the
+        // table that happens to feed it.
+        if (CraftStandingRules.RefuseLegacyAddition(ref copy, drawn.ModId) is CraftRefusal legacy)
+        {
+            return legacy;
+        }
+
         affixes[count++] = drawn;
         return copy.SetAffixes(InstancePropertyKind.Affixes, affixes[..count]) ? null : copy.Refusal;
     }
@@ -101,6 +109,18 @@ public static partial class CraftPrimitives
     /// Primitive 3. A fresh <c>NextRollPosition</c> for every selected entry, same mods and same tiers. The
     /// positions are drawn in ASCENDING INDEX order, so a replay against the same seed rewrites the same
     /// entries with the same values whatever order the selector named them in.
+    /// <para>
+    /// <b>A FROZEN entry is skipped and a selection of nothing but frozen entries REFUSES</b>, which is
+    /// standing rule 2 of <see cref="CraftStandingRules"/>. A selector naming the whole list rewrites the
+    /// rest and leaves the legacy entry alone, and a currency authored as <c>RerollValues(ByIndex)</c> on
+    /// the frozen entry does nothing it was asked to do, so it says so.
+    /// </para>
+    /// <para>
+    /// <b>The position is drawn for every selected entry and DISCARDED for a frozen one</b>, so the draw
+    /// count is a function of the SELECTION rather than of how many legacy rows the item happens to carry.
+    /// That is spec 9.3's property applied to a craft, and without it a seeded session diverges at the
+    /// first legacy item it meets.
+    /// </para>
     /// </summary>
     /// <param name="copy">The craft in progress.</param>
     /// <param name="random">The gameplay randomness seam the executor is running on.</param>
@@ -126,12 +146,31 @@ public static partial class CraftPrimitives
             return refusal;
         }
 
+        int rerolled = 0;
+        int frozen = 0;
+        int firstFrozen = 0;
         for (int index = 0; index < count; index++)
         {
-            if (selected[index])
+            if (!selected[index])
             {
-                affixes[index] = affixes[index] with { Position = random.NextRollPosition() };
+                continue;
             }
+
+            ushort position = random.NextRollPosition();
+            if (CraftStandingRules.IsFrozen(in copy, affixes[index].ModId))
+            {
+                firstFrozen = frozen == 0 ? affixes[index].ModId : firstFrozen;
+                frozen++;
+                continue;
+            }
+
+            affixes[index] = affixes[index] with { Position = position };
+            rerolled++;
+        }
+
+        if (rerolled == 0 && frozen > 0)
+        {
+            return copy.Refuse(new CraftRefusal(CraftRefusalKind.LegacyEntryFrozen, firstFrozen));
         }
 
         return copy.SetAffixes(InstancePropertyKind.Affixes, affixes[..count]) ? null : copy.Refusal;
@@ -238,11 +277,7 @@ public static partial class CraftPrimitives
         int minimum = (int)(InstanceContentChecks.Number(rule, RarityRuleContentType.MinAffixesIndex) ?? 0);
         Span<InstanceAffix> affixes = stackalloc InstanceAffix[CraftWorkingCopy.MaxAffixes];
         int count = copy.ReadAffixes(InstancePropertyKind.Affixes, affixes);
-        while (count > maximum && count > 0)
-        {
-            count--;
-        }
-
+        count = Trim(in copy, affixes, count, maximum);
         if (fill && count < minimum)
         {
             if (!copy.TryGetScalar(InstancePropertyKind.ItemLevel, out ulong itemLevel))
@@ -310,6 +345,44 @@ public static partial class CraftPrimitives
     /// <returns>The refusal, or null when the step applied.</returns>
     public static CraftRefusal? RemoveEnchant(ref CraftWorkingCopy copy, scoped ReadOnlySpan<int> indexes)
         => Drop(ref copy, InstancePropertyKind.Enchantments, indexes);
+
+    /// <summary>
+    /// The trim of primitive 5: from the END of the sorted list, which is the highest mod id, until the
+    /// list is inside the rule's affix count.
+    /// <para>
+    /// <b>A FROZEN entry is stepped over and still COUNTS against the limit</b>, which is standing rule 2
+    /// of <see cref="CraftStandingRules"/>. So a trim to one on a list of one legacy and one ordinary entry
+    /// takes the ORDINARY one, and a list of nothing but frozen entries is left over the rule's count
+    /// rather than refused: the trim did everything it is permitted to do, and that is the cost the frozen
+    /// reading was priced at.
+    /// </para>
+    /// </summary>
+    static int Trim(in CraftWorkingCopy copy, scoped Span<InstanceAffix> affixes, int count, int maximum)
+    {
+        Span<bool> dropped = stackalloc bool[CraftWorkingCopy.MaxAffixes];
+        int total = count;
+        for (int index = count - 1; index >= 0 && total > maximum; index--)
+        {
+            if (CraftStandingRules.IsFrozen(in copy, affixes[index].ModId))
+            {
+                continue;
+            }
+
+            dropped[index] = true;
+            total--;
+        }
+
+        int kept = 0;
+        for (int index = 0; index < count; index++)
+        {
+            if (!dropped[index])
+            {
+                affixes[kept++] = affixes[index];
+            }
+        }
+
+        return kept;
+    }
 
     /// <summary>The removal both primitive 2 and primitive 10 are, over the kind each one names.</summary>
     static CraftRefusal? Drop(ref CraftWorkingCopy copy, ushort kind, scoped ReadOnlySpan<int> indexes)

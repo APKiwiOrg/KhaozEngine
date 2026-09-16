@@ -447,6 +447,14 @@ public ref struct CraftWorkingCopy
             }
         }
 
+        // The affix list is the ONE door both legacy standing rules sit at, so a frozen entry cannot be
+        // rewritten and a legacy row cannot be added by any primitive or by an ICraftOperation writing its
+        // own list. Spec 10.3 and contracts 5.4.
+        if (CraftStandingRules.CheckAffixWrite(ref this, kind, affixes) is not null)
+        {
+            return false;
+        }
+
         if (affixes.Length == 0)
         {
             return Remove(kind);
@@ -506,6 +514,11 @@ public ref struct CraftWorkingCopy
             return false;
         }
 
+        if (CraftStandingRules.RefuseCorrupted(ref this) is not null)
+        {
+            return false;
+        }
+
         if (!_registry.TryGet(kind, out _))
         {
             _ = Refuse(new CraftRefusal(CraftRefusalKind.PropertyKindUnregistered, kind));
@@ -546,10 +559,23 @@ public ref struct CraftWorkingCopy
         return true;
     }
 
-    /// <summary>The one write door, which is where all four of spec 10.5's powers are refused.</summary>
+    /// <summary>
+    /// The one write door, which is where all four of spec 10.5's powers are refused and where standing
+    /// rule 1 sits.
+    /// <para>
+    /// <b>A corrupted item refuses HERE rather than in fourteen primitives</b>, because "every primitive
+    /// that writes any part of the payload" IS this method, so the rule covers an <c>ICraftOperation</c>
+    /// nobody has written yet and cannot be forgotten by a fifteenth primitive.
+    /// </para>
+    /// </summary>
     bool Write(ushort kind, scoped ReadOnlySpan<byte> body)
     {
         if (IsRefused)
+        {
+            return false;
+        }
+
+        if (CraftStandingRules.RefuseCorrupted(ref this) is not null)
         {
             return false;
         }

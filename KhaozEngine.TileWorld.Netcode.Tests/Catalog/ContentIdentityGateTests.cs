@@ -157,6 +157,7 @@ public class ContentIdentityGateTests
     [InlineData("ke:content-mismatch:1|" + ServerHash + "1||")]
     [InlineData("ke:content-mismatch:1|" + ClientHash + "|2|")]
     [InlineData("ke:content-mismatch:1|" + ClientHash + "|2|not-a-hash")]
+    [InlineData("ke:content-mismatch:1\0|" + ServerHash + "||")]
     public void A_mismatch_whose_hashes_are_not_content_addresses_parses_false(string reason)
     {
         Assert.False(ContentRefusal.TryParseMismatch(reason, out ContentVersionIdentity server, out ContentVersionIdentity? client));
@@ -252,6 +253,11 @@ public class ContentIdentityGateTests
     [InlineData("47|" + ServerHash + "|")]
     [InlineData("47|" + ServerHash + "|x")]
     [InlineData("47|" + ServerHash + "|1|2")]
+    // A trailing NUL, which int.TryParse under NumberStyles.None reads as the end of the string. The doc
+    // says plain decimal digits and the gate echoes the parsed number, so nothing follows from it today,
+    // and a number that is not what it was written as is not a statement this door should accept.
+    [InlineData("47\0|" + ServerHash)]
+    [InlineData("47|" + ServerHash + "|4118\0")]
     public void A_layer_value_that_is_not_a_number_and_a_content_address_parses_false(string value)
     {
         Assert.False(ContentIdentityLayer.TryParse(value, out ContentVersionIdentity identity, out int? build));

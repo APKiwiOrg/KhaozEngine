@@ -99,7 +99,7 @@ public static class ContentRefusal
 
         string[] fields = reason[MismatchPrefix.Length..].Split(ContentIdentityLayer.FieldSeparator);
         if (fields.Length != 4
-            || !TryParseOrdinal(fields[0], out int serverVersion)
+            || !ContentIdentityLayer.TryParseOrdinal(fields[0], out int serverVersion)
             || !ContentIdentityLayer.IsContentAddress(fields[1]))
         {
             // The SERVER hash is what the client fetches by, so a field that is not a content address is a
@@ -114,7 +114,7 @@ public static class ContentRefusal
             return true;
         }
 
-        if (!TryParseOrdinal(fields[2], out int clientVersion)
+        if (!ContentIdentityLayer.TryParseOrdinal(fields[2], out int clientVersion)
             || !ContentIdentityLayer.IsContentAddress(fields[3]))
         {
             server = default;
@@ -131,11 +131,8 @@ public static class ContentRefusal
         minimumClientBuild = 0;
         return reason is not null
             && reason.StartsWith(ClientTooOldPrefix, StringComparison.Ordinal)
-            && TryParseOrdinal(reason[ClientTooOldPrefix.Length..], out minimumClientBuild);
+            && ContentIdentityLayer.TryParseOrdinal(reason[ClientTooOldPrefix.Length..], out minimumClientBuild);
     }
-
-    static bool TryParseOrdinal(string value, out int number) =>
-        int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out number);
 
     static void RequireContentAddress(string? hash, string parameterName)
     {

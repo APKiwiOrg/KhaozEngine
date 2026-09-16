@@ -103,12 +103,17 @@ public static class TileReach
         IReadOnlyList<TileCoord> reach = Set(map, footprint, plane);
         if (agentSize == 1) return reach;
         var anchors = new List<TileCoord>();
+        // The LIST carries the order and the set answers only "seen this one", never enumerated, so no hash layout
+        // can reach the output: the anchors come out in exactly the order the loops emit them, first occurrence
+        // kept, which is the order the tie rule reads and both heads have to agree on. A set rather than
+        // List.Contains because the candidate count is quadratic in the sizes and the scan was quadratic in that.
+        var seen = new HashSet<TileCoord>();
         foreach (TileCoord p in reach)
             for (int dz = 0; dz < agentSize; dz++)
                 for (int dx = 0; dx < agentSize; dx++)
                 {
                     var a = new TileCoord(p.X - dx, p.Z - dz, plane);
-                    if (Overlaps(a, agentSize, footprint) || anchors.Contains(a)) continue;
+                    if (Overlaps(a, agentSize, footprint) || !seen.Add(a)) continue;
                     anchors.Add(a);
                 }
         return anchors;
@@ -162,8 +167,8 @@ public static class TileReach
 
     /// <summary>
     /// The anchor to walk to, and the path there. Candidates are the anchors of
-    /// <see cref="Set(TileCollisionMap, TileRect, int, int)"/> for <paramref name="agentSize"/>, tried in its
-    /// order and scored by the LENGTH of the path <see cref="TilePathfinder.FindPath"/> actually reaches them by, never by
+    /// <see cref="Set(TileCollisionMap, TileRect, int, int)"/> for <paramref name="agentSize"/>, scored by the
+    /// LENGTH of the path the search actually reaches them by, never by
     /// a straight-line guess, so a tile one wall away from the target does not beat one a short walk away. Ties
     /// fall to scan order, which makes the choice total: both heads pick the same tile for the same map, and a
     /// prediction of an interaction walk reconciles instead of snapping.
@@ -185,17 +190,15 @@ public static class TileReach
     /// "cannot get there", not as "walk as close as you can": <c>FindPath</c>'s nearest-reachable fallback is
     /// deliberately discarded here, because stopping short of a target you cannot act on is worse than not
     /// moving.</para>
-    /// <para>At most one <c>FindPath</c> per candidate (so at most 2(W + H) + 4(N - 1) for a WxH footprint and an
-    /// NxN agent, which is eight for a 2x2 target and a one tile actor), and usually fewer, because a candidate
-    /// that provably cannot win is skipped before its search. Two facts do that: the pathfinder's window cannot
-    /// hold a candidate further than <paramref name="maxRadius"/> away, and an eight-connected walk is never
-    /// shorter than the Chebyshev distance to its goal, so a candidate already that far from
-    /// <paramref name="from"/> cannot come in under the best length found so far. Both are cases the loop below
-    /// would have discarded anyway, which is why the scan order the tie rule reads is untouched. The searches
-    /// that remain are deliberate. The pathfinder does not expose its
-    /// distance field, and at one interaction per click that cost is invisible next to the tick it lands in. If
-    /// it ever shows in a profile, the answer is a pooled multi-goal search on <c>TilePathfinder</c>, so both
-    /// heads keep sharing one search, not a second BFS grown here that could disagree with the first.</para>
+    /// <para>ONE search, whatever the candidate count: <see cref="TilePathfinder.FindPathToAny"/> takes the whole
+    /// candidate list and floods the window once, where this used to run a <c>FindPath</c> per candidate and keep
+    /// the shortest. It is the SAME answer, because the pathfinder is a plain breadth-first search whose discovery
+    /// order does not depend on which goal ends it, so each candidate's walk is the one its own search would have
+    /// built, and finishing the level the first candidate is found on keeps the scan-order tie rule total. What
+    /// changes is the cost: a 4x4 target against a one tile actor is 16 candidates, and a target nobody can reach
+    /// used to flood the whole window once for each of them (at the player simulator's radius of 64, 16641 cells a
+    /// time). That multi-goal search lives on <c>TilePathfinder</c> beside the single-goal one and shares its
+    /// expansion, so both heads keep pathing through one implementation rather than a second BFS grown here.</para>
     /// </summary>
     /// <param name="map">The baked collision map to path over.</param>
     /// <param name="footprint">The tiles the target covers.</param>
@@ -252,52 +255,30 @@ public static class TileReach
         // the footprint, and the west and south anchors sit agentSize tiles out from it, so the nearest candidate
         // is at most agentSize tiles closer than the footprint itself: a footprint whose nearest tile is further
         // than maxRadius + agentSize has no candidate inside the window AT ALL, and the whole call is decided here.
-        // Exactly the answer the searches below would have reached, for none of the (2r+1)^2 scratch entries each
-        // of them allocates.
+        // Exactly the answer the search below would have reached, for none of the (2r+1)^2 scratch entries it
+        // allocates.
         //
         // That cost is what a client naming a target it has never seen was buying. Net ids are handed out from a
         // counter, so a hostile Attack or Interact guesses a small integer rather than needing to have seen
-        // anything, and at the player simulator's radius of 64 each guess was up to eight floods of about 83 KB.
+        // anything, and at the player simulator's radius of 64 each guess was a flood of about 83 KB.
         // Refusing here rather than at the door is what gives both seams one rule and both heads one definition of
         // it, since the client predicts through this same member.
-        //
-        // In LONG, because the two coordinates are independent and can be far apart: a footprint near int.MinValue
-        // against a `from` at a positive tile overflows the subtraction in int, and the wrong sign would ADMIT the
-        // call rather than refuse it.
-        long dx = Math.Max(Math.Max((long)footprint.X - from.X, (long)from.X - ((long)footprint.X1 - 1)), 0L);
-        long dz = Math.Max(Math.Max((long)footprint.Z - from.Z, (long)from.Z - ((long)footprint.Z1 - 1)), 0L);
-        if (Math.Max(dx, dz) > (long)maxRadius + agentSize) return false;
+        if (FootprintDistance(footprint, from) > (long)maxRadius + agentSize) return false;
 
-        int best = int.MaxValue;
-        bool any = false;
+        IReadOnlyList<TileCoord> candidates = Set(map, footprint, plane, agentSize);
+        if (candidates.Count == 0) return false;                 // walled in on every side: nothing to path to
 
-        foreach (TileCoord candidate in Set(map, footprint, plane, agentSize))
-        {
-            if (candidate.Equals(from))
-            {
-                reachTile = candidate;
-                path = TilePath.Empty(from);
-                return true;                                    // already standing on one: nothing beats zero steps
-            }
-
-            // The per-candidate prune, and it removes only what the two tests below would have removed anyway.
-            // FindPath searches a (2r+1)^2 window centred on `from`, so a candidate further than maxRadius is
-            // never visited and never reports Reached. And a walk is eight-connected, so its step count is never
-            // below the Chebyshev distance to its goal: a candidate already at or past `best` cannot come in
-            // under it and would meet the tie rule below instead. Nothing that could have won is skipped, so the
-            // scan order the tie rule decides by is untouched and both heads still choose the same tile. In long
-            // for the overflow reason the admission check above states.
-            long cheb = Math.Max(Math.Abs((long)candidate.X - from.X), Math.Abs((long)candidate.Z - from.Z));
-            if (cheb > maxRadius || cheb >= best) continue;
-
-            TilePath p = TilePathfinder.FindPath(map, plane, from, candidate, agentSize, maxRadius, scratch);
-            if (!p.Reached || p.Tiles.Count >= best) continue;   // >= keeps the FIRST of a tie, so scan order decides
-            best = p.Tiles.Count;
-            reachTile = candidate;
-            path = p;
-            any = true;
-        }
-        return any;
+        // ONE search over every candidate at once. FindPathToAny takes the list in THIS order and answers with the
+        // shortest walk, ties falling to the lowest index, which is the scan-order tie rule stated as an argument
+        // rather than reimplemented here. A candidate outside the window is never discovered, which is the
+        // per-candidate window prune the loop used to do by hand, and an anchor no agent of this size could stand
+        // on is never discovered either, because CanStep refuses to enter a cell the whole body does not fit.
+        TilePath p = TilePathfinder.FindPathToAny(map, plane, from, candidates, agentSize, maxRadius, scratch,
+            out int index);
+        if (!p.Reached) return false;                            // the nearest-reachable fallback is not offered
+        reachTile = candidates[index];
+        path = p;
+        return true;
     }
 
     /// <summary>The direction from a reach tile into the footprint tile beside it, so an actor that arrives
@@ -361,6 +342,24 @@ public static class TileReach
         if (xOverlap && z0 == fz1) return TileDirection.S;
         if (xOverlap && z1 == fz0) return TileDirection.N;
         return TileDirection.W;
+    }
+
+    // The Chebyshev gap between `from` and the footprint, 0 when `from` stands on it, and the whole of the
+    // admission rule above. Its own member because the arithmetic is the only observable part of that rule at the
+    // coordinates it is written to survive: a rect whose far edge passes int.MaxValue cannot be enumerated by Set
+    // at all, so the call answers false either way and no end-to-end test can tell a wrapped edge from a sound one.
+    //
+    // In LONG throughout, for two independent reasons. The two coordinates can be far apart, so a footprint near
+    // int.MinValue against a `from` at a positive tile overflows the SUBTRACTION in int, and the wrong sign would
+    // ADMIT the call rather than refuse it. And the far edge is X + Width - 1 computed here rather than
+    // TileRect.X1 - 1 read off the rect, because X1 is an int sum that has already wrapped by the time it is cast:
+    // that read a footprint one tile away as about 2^32 away and refused it (#898), the same wrap the overlap
+    // helper below spells out.
+    internal static long FootprintDistance(TileRect footprint, TileCoord from)
+    {
+        long dx = Math.Max(Math.Max((long)footprint.X - from.X, (long)from.X - ((long)footprint.X + footprint.Width - 1)), 0L);
+        long dz = Math.Max(Math.Max((long)footprint.Z - from.Z, (long)from.Z - ((long)footprint.Z + footprint.Height - 1)), 0L);
+        return Math.Max(dx, dz);
     }
 
     // In long, both the agent's far edges and the rect's, because TileRect.X1 and Z1 are int sums that wrap near

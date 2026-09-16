@@ -14,8 +14,9 @@ public static class TileCollision
 
     /// <summary>Whether an agent anchored at (x, z) with an NxN footprint may STAND there: no footprint tile is Blocked
     /// (a region the map does not hold reads Blocked, so an unloaded tile refuses too) and no wall lies on an edge
-    /// between two tiles of the footprint, so a body never stands across a fence. For a one tile agent this is exactly
-    /// <see cref="IsBlocked"/> negated.</summary>
+    /// between two tiles of the footprint, so a body never stands across a fence. Each internal edge is read from
+    /// BOTH of its tiles, the way <see cref="CanStep"/> reads the edge it crosses, so a wall set on one side only
+    /// still refuses. For a one tile agent this is exactly <see cref="IsBlocked"/> negated.</summary>
     public static bool CanStand(TileCollisionMap map, int x, int z, int plane, int agentSize = 1)
     {
         ArgumentNullException.ThrowIfNull(map);
@@ -25,10 +26,14 @@ public static class TileCollision
             {
                 TileCollisionFlags f = map.Get(x + dx, z + dz, plane);
                 if ((f & TileCollisionFlags.Blocked) != 0) return false;
-                // The baker mirrors every wall onto both tiles of its edge, so the east and north edges of each tile
-                // cover every internal edge of the footprint exactly once.
+                // BOTH sides of every internal edge, the style CanStepCardinal already uses. The baker mirrors a wall
+                // onto both tiles of the edge it blocks, so for anything it bakes the east and north reads alone
+                // would answer the same. A map built any other way, a hand-built one or a future writer that sets one
+                // side, is then read the way a step reads it rather than half of it.
                 if (dx + 1 < agentSize && (f & TileCollisionFlags.WallE) != 0) return false;
                 if (dz + 1 < agentSize && (f & TileCollisionFlags.WallN) != 0) return false;
+                if (dx > 0 && (f & TileCollisionFlags.WallW) != 0) return false;
+                if (dz > 0 && (f & TileCollisionFlags.WallS) != 0) return false;
             }
         return true;
     }

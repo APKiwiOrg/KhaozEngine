@@ -5,7 +5,118 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 18.51.0
+## 19.0.0
+
+A major, because the tile simulator's size knob is gone. Every tile body is stepped, pathed, reached and drawn at
+its own `TileMoveState.FootprintSize`, the follow-ups the NxN footprint work deferred all land (draw priority,
+interest, the reach search, the attack context, the test gaps), a locked body draws aimed at its target's centre,
+and a pose stands on the terrain rather than on the plane floor. The two content programs staged as 18.51.0, the
+content catalog's phase 1 and item instances phases 1 to 3, ship in this same version because 18.51.0 was never
+tagged. Their notes follow the tile notes below, unchanged.
+
+**Breaking, and what a consumer does about it.**
+
+- `TileMoveOptions.AgentSize` and `TileMoveSimulator.AgentSize` are gone
+  ([#900](https://github.com/APKiwiOrg/KhaozEngine/issues/900)). Every tile body is stepped, pathed and reached at
+  its own state's `FootprintSize` and nothing raises that from the outside. The floor those two fed is removed,
+  `TileMoveSimulator.FootprintOf(state)` answers the state's own footprint and stays as the name the combat roll asks
+  the attacker's own simulator, and the constructor no longer validates a size it can no longer be given. A consumer
+  that set `AgentSize = 1` deletes the initializer, and one that set it higher gives each of those bodies its own
+  `FootprintSize`. The `agentSize` parameter on `TileReach` and `TilePathfinder` is a query parameter, a different
+  concept, and is unchanged.
+- `TileWorldServerConfig.OverlapMargin` must now cover `InterestRadius + (N - 1) * sqrt(2)` for the largest body N
+  the server spawns, because interest is measured from the footprint (below). The default margin is raised from 16
+  to 25, which admits every legal body at the default 15 tile radius, so a game on the defaults changes nothing. A
+  game that sets its own pair keeps the margin above that sum, or `TileWorldServer.SpawnActor` and
+  `TileActorHost.Add` refuse the body at the spawn with an exception naming both numbers.
+- A game `TileDrawPriority.SettledComparison` must be a consistent ordering once a body above one tile is in the
+  roster, because the widened path sorts the crowd by it where the old pairwise rule only took a maximum.
+
+**Footprint follow-ups.**
+
+- A settled body's draw stack now covers every tile of its footprint
+  ([#899](https://github.com/APKiwiOrg/KhaozEngine/issues/899)). `TileDrawPriority` judged a large body on its anchor
+  tile alone, so a one-tile body settled anywhere else inside a cow drew over it. A settled NxN body's stack is every
+  tile of its square under both policies, and the winner is decided by the same comparison two bodies on one tile
+  are decided by. The stack collapses whole: bodies are resolved best first and each takes every tile it covers or
+  none of them. A moving body keeps the answer it has today under each policy. Sizes ride two new `Rebuild`
+  overloads, one per existing door, taking `(netId, tile, stepProgress, footprintSize)` per body plus the local
+  body's own edge, and a live client reads each remote's `FootprintSize` off the same delayed sample its tile and
+  progress come from. Every overload without a size reads every body as one tile, so no established roster changes
+  answer, and a roster with nothing above one tile keeps the cheaper unordered pass. The roster overload's
+  step-progress contract now says what the rule does ([#865](https://github.com/APKiwiOrg/KhaozEngine/issues/865)):
+  a finite value is clamped into 0 through 1, so a negative one is the start of a step, and only a non-finite value
+  reads as 1.
+- Interest is measured from the nearest tile of an entity's footprint instead of from its anchor
+  ([#906](https://github.com/APKiwiOrg/KhaozEngine/issues/906)), so a large body enters a viewer's snapshot on the
+  tick its near edge crosses `InterestRadius` rather than up to N minus 1 tiles later. Cell ownership and region
+  handoff are untouched and still measure from the anchor. The serve inflates its grid query by the largest spawned
+  body's diagonal and post filters per viewer, both Euclidean, reading rects the plane filter's pass already
+  collects, so no extra walk of the cell world is added and a world of one-tile bodies is served exactly the set it
+  was served before. The new `TileWorldServer.LargestFootprintSize` reports the inflation and never decreases.
+- The tile reach search runs one breadth-first flood for every candidate anchor instead of one per candidate
+  ([#901](https://github.com/APKiwiOrg/KhaozEngine/issues/901)). `TilePathfinder.FindPathToAny(map, plane, start,
+  goals, agentSize, maxRadius, scratch, out int goalIndex)` is the new multi-goal entry point, sharing its
+  expansion, window bound and direction order with `FindPath` so the two cannot drift: the shortest walk wins,
+  goals tying on length fall to the lowest index in the list, and the search finishes the BFS level the first goal
+  is found on, which is what makes that tie total. It offers no nearest-reachable fallback, so an empty or
+  unreachable list answers a not-reached empty path and a `goalIndex` of -1. `TileReach.TryNearest` calls it once
+  and its signatures, chosen anchor, walk and scan-order tie rule are unchanged, pinned by an oracle test that keeps
+  the old per-candidate loop and compares the two over 240 seeded random maps. A 4x4 target nobody can reach now
+  costs one window rather than sixteen. Two hardening fixes ride along: the admission distance computes the
+  footprint's far edges as `(long)X + Width - 1` rather than reading the already wrapped `TileRect.X1`, which used to
+  measure a target one tile away as 2^32 away and refuse it
+  ([#898](https://github.com/APKiwiOrg/KhaozEngine/issues/898)), and `TileReach.Set`'s anchor dedupe is a set lookup
+  rather than a linear list scan, with the same output order element for element.
+- `TileAttackContext` gains `AttackerFootprint` and `TargetFootprint`
+  ([#907](https://github.com/APKiwiOrg/KhaozEngine/issues/907)), two `TileRect` members appended as trailing
+  defaulted positional parameters, so a context built by hand with the seven original arguments still compiles and
+  reads an empty rect for each. The server fills them at tick step 4b from the same two rects the reach check beside
+  the roll reads, which is what a ranged, area or size scaled rule needs to measure geometry without looking both
+  bodies up by net id.
+- The footprint test gaps are closed and two small rule corrections land with them
+  ([#920](https://github.com/APKiwiOrg/KhaozEngine/issues/920)). `TileCollision.CanStand` now reads `WallW` and
+  `WallS` of each footprint tile as well as `WallE` and `WallN`, the both-sides style `CanStepCardinal` already
+  used, so an edge written on one side only refuses the way a step refuses it, and every baked map answers exactly
+  as before since the baker mirrors each wall onto both tiles. The follow's #741 self clear is asked before the
+  target seam is consulted, so a head whose resolver cannot answer its own net id still predicts the lock clearing
+  with the route dropped rather than clearing the lock and walking on. `TileProtocol.EncodeGameMessage` and
+  `TryDecodeGameMessage` write and read the game message kind as two explicit little endian bytes instead of in the
+  host's order ([#891](https://github.com/APKiwiOrg/KhaozEngine/issues/891)), which changes no byte on any current
+  target.
+
+**Presentation.**
+
+- A tile body holding a lock is drawn pointing at its target's centre mass rather than at one of the eight
+  `TileDirection` steps ([#969](https://github.com/APKiwiOrg/KhaozEngine/issues/969)). `ITileTargets` gains
+  `TryGetAimPoint(long target, out Vector2 tilePlanar, out int plane)` as a default interface method answering the
+  footprint centre in the tile units `TilePresenter.PoseAt(Vector2, float, TileDirection)` takes, which a game
+  overrides to nominate an aim tile on a body whose centre is the wrong place to look at. `TilePresenter` gains the
+  continuous `static float Yaw(Vector2 from, Vector2 to)`, the same hand and north as `Yaw(TileDirection)` and
+  exactly equal to it on all eight steps, plus a `Pose(in TileMoveState, Vector2 aimTilePlanar, float extraTicks)`
+  overload for a body a game places by hand. `TileWorldClient.TryGetRemotePose` and `LocalPose` apply it to a body
+  that is not stepping and holds a `CombatTarget`, or an `InteractTarget` whose route has run out: a remote resolves
+  its target on the same delayed timeline its body is drawn from, the local body on the newest capture the reach
+  rules already read. A mid-step body, a body with no lock and a target that stopped resolving all keep the tile
+  facing, and a one-tile body beside a one-tile target draws exactly its cardinal to the bit, so a consumer
+  asserting `TilePresenter.Yaw(TileDirection)` against a pose for an ordinary fight stays true. Presentation only:
+  `TileMoveState.Facing`, the reach rules, the server's `Facing` write and the wire are untouched.
+- A `TilePresenter` pose stands on the world's authored terrain rather than on the plane floor
+  ([#970](https://github.com/APKiwiOrg/KhaozEngine/issues/970)), so a body on a slope has its feet on the ground
+  quad it occupies and a marker or a dropped item laid down through `PoseAt` sits on the surface.
+  `ITileGroundHeight` is the new seam, one `HeightAt(float tileX, float tileZ, int plane)` taking tile units and
+  answering world metres, and `TileDocumentGroundHeight` is the document-backed implementation over the same
+  bilinear lattice the terrain mesh and the props are built from. `TilePresenter(TileWorldDocument)` wires it, so a
+  head built from the world file gets terrain with no API change, and `Pose`, `PoseAt`, `LocalPose` and through
+  them `TileWorldClient.LocalPose` and `TryGetRemotePose` all carry it. The height is sampled at the same centred
+  planar point the position is built from, so a gliding body resamples every frame and follows a slope between
+  tile centres. The `(tileSize, planeHeight)` placeholder stays flat at the plane index times `PlaneHeight`,
+  `TilePresenter.Ground` reports which a head holds, and `TilePresenter(float tileSize, float planeHeight,
+  ITileGroundHeight? ground)` takes a source explicitly. A plane with no authored heights keeps the derived lift
+  `TileWorldDocument.HeightAt` already computes. `Yaw` is untouched and the aimed pose draws at the same height as
+  the plain one.
+
+**Content programs, staged as 18.51.0 and shipping here.**
 
 Two content programs land together: the content catalog's phase 1, five packages that author tunable content
 in a database and publish it as immutable hashed packs a server loads into arrays, and phases 1 to 3 of item

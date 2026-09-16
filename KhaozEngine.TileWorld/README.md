@@ -205,6 +205,17 @@ arrays being `(2r + 1)^2` entries each. `TilePath` carries `Tiles` (the steps AF
 to the goal, then by BFS distance, then by scan order, and a start on a `Blocked` tile behaves like any other.
 **Branch on `Reached`, never on `Tiles.Count`**: a partial walk and a reached one both carry steps.
 
+`TilePathfinder.FindPathToAny(map, plane, start, goals, agentSize, maxRadius, scratch, out int goalIndex)` walks
+to the NEAREST of a goal list in ONE search and names the winner through `goalIndex`. It answers what a `FindPath`
+per goal answers, for the cost of one: the shortest walk wins, goals that tie on length fall to the LOWEST index
+in the list, so the caller's own order is the tie rule, and each walk is the one that goal's own search would have
+built, because a cell's parent is written once at first discovery and the discovery order does not depend on which
+goal ends the search. It finishes the BFS level the first goal is found on, which is what makes that index tie
+total. Both entry points run ONE expansion, so the step rules, the window bound and the direction order cannot
+drift between them. The one difference from `FindPath` is that there is NO nearest-reachable fallback, since a
+goal set has no single tile to measure nearness to: an empty list, and a list the window cannot reach, both answer
+a not-reached empty path with a `goalIndex` of -1. `TileReach.TryNearest` is the caller it exists for.
+
 `FindPath` takes an optional `TilePathfinderScratch` as its last argument. Without one it allocates both window
 arrays per call, about 83 KB at radius 64. A scratch owns those arrays and the BFS queue across calls, so a
 caller that paths on a tick allocates only the result: `new TilePathfinderScratch(64)` pre-sizes it, a bigger

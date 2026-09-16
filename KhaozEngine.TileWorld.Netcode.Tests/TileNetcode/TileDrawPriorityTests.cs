@@ -392,6 +392,33 @@ public class TileDrawPriorityFadeTests
         Assert.Equal(31L, owner);                           // and the tile was never owned by anyone else
     }
 
+    // #865: the documented contract and the clamp disagreed. A FINITE progress is CLAMPED, so a negative one is
+    // the start of a step rather than a body at rest, and only a non-finite one reads as 1.
+    [Fact]
+    public void A_negative_finite_step_progress_reads_as_the_start_of_a_step()
+    {
+        var busy = new TileCoord(12, 10, 0);
+        var behind = new TileCoord(11, 10, 0);
+        var priority = new TileDrawPriority();
+
+        priority.Rebuild(4, Local, null, Steps((7, behind, 1f), (31, busy, 1f)), Frame);
+
+        // Judged on busy from here and beaten there. Read as 0 this is a step commit with the whole step left to
+        // cross, so the weight has not moved. Read as 1 it would already have spent a frame of the fixed window.
+        priority.Rebuild(4, Local, null, Steps((7, busy, -0.5f), (31, busy, 1f)), Frame);
+        Assert.Equal(1f, priority.Weight(7), 5);
+
+        priority.Rebuild(4, Local, null, Steps((7, busy, 0.5f), (31, busy, 1f)), Frame);
+        Assert.Equal(0.5f, priority.Weight(7), 4);          // half the step spent is half the crossing spent
+
+        // The other half of the contract, which always did hold: a value that is not a number is a body at rest,
+        // so there is no step left and the fixed window takes the crossing.
+        var resting = new TileDrawPriority();
+        resting.Rebuild(4, Local, null, Steps((7, behind, 1f), (31, busy, 1f)), Frame);
+        resting.Rebuild(4, Local, null, Steps((7, busy, float.NaN), (31, busy, 1f)), Frame);
+        Assert.Equal(1f - Frame / TileDrawPriority.DefaultFadeSeconds, resting.Weight(7), 4);
+    }
+
     // A body that loses while STANDING STILL has no step to spend the fade across, because it is not the one that
     // moved. The winner walked onto it, or teleported onto it, so the fixed window takes over.
     [Fact]

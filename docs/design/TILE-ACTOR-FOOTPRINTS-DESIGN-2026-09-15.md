@@ -99,6 +99,9 @@ stepped size is `Math.Max(state.FootprintSize, options.AgentSize)`, stated once 
 the attacker's own simulator, so the follow and the roll cannot disagree about the attacker's size. The TARGET
 side is always the state's own size on both heads. A follow-up issue removes `AgentSize` at the next major.
 
+Shipped in 19.0.0 as the removal: `TileMoveOptions.AgentSize` and `TileMoveSimulator.AgentSize` are gone, there is no
+floor, and `FootprintOf(state)` is the state's own footprint ([#900](https://github.com/APKiwiOrg/KhaozEngine/issues/900)).
+
 ## 5. Decision 2: how clients learn the size
 
 | Criterion | Field on the replicated move state | Separate replicated component | Client lookup from the game's kind |
@@ -229,6 +232,11 @@ anchor, and every step goes through `CanStep` with the size. The editor's `Query
 | Wander goal validity | `CanStand` over the whole footprint | An anchor-only check lets the pathfinder's nearest-reachable fallback park a 2x2 against the obstruction, which is the failure the current check exists to prevent. |
 | Interest radius | anchor, unchanged | Interest is a grid query on the entity's position, and that position is also what decides cell ownership and handoff. Measuring from the footprint would either move handoffs by half a body or inflate every viewer's query. The cost is that a large body enters a viewer's interest up to N - 1 tiles late on its north and east edges, at a 15 tile radius. A game with big bosses pads `InterestRadius`. |
 
+Shipped in 19.0.0 as the NEAREST footprint tile instead ([#906](https://github.com/APKiwiOrg/KhaozEngine/issues/906)):
+the serve inflates its grid query by the largest spawned body's diagonal and post filters it per viewer, ownership
+and handoff still measure from the anchor as the row says, and `OverlapMargin` now has to cover
+`InterestRadius + (N - 1) * sqrt(2)`, which is refused at the spawn door rather than out of the serve.
+
 ## 9. Presentation
 
 - **`TilePresenter.Pose`** centres on the footprint: anchor plus `N / 2` on each axis instead of plus one half.
@@ -242,6 +250,8 @@ anchor, and every step goes through `CanStep` with the size. The editor's `Query
 - **`TileDrawPriority` stays one body per ANCHOR tile.** A 1x1 body standing on a non-anchor tile of a cow
   overlaps it on screen. That is presentation, it does not affect rules, and a footprint-aware settled stack is its
   own small piece of work, deferred in section 12.
+  Shipped in 19.0.0 as a body AT REST covering its whole square under both policies, with the sizes on a roster
+  overload and read off the delayed sample for a live client (#899).
 
 ## 10. Players
 
@@ -285,13 +295,15 @@ Additive unless marked.
   a 2x2 authored object today, so this waits for a profile, beside
   [#669](https://github.com/APKiwiOrg/KhaozEngine/issues/669).
   [#901](https://github.com/APKiwiOrg/KhaozEngine/issues/901).
-- **Removing `TileMoveOptions.AgentSize`.** Section 4.2. Next major.
+  Shipped in 19.0.0 as `TilePathfinder.FindPathToAny`, which `TileReach.TryNearest` calls once.
+- **Removing `TileMoveOptions.AgentSize`.** Section 4.2. Next major. Shipped in 19.0.0.
   [#900](https://github.com/APKiwiOrg/KhaozEngine/issues/900).
 - **[#756](https://github.com/APKiwiOrg/KhaozEngine/issues/756), the in-phase chase.** A step clock problem, not a
   geometry one. A footprint does not change it and this work does not fix it.
 - **Interest measured from the footprint.** Section 8.1.
-  [#906](https://github.com/APKiwiOrg/KhaozEngine/issues/906).
-- **Sizes on `TileAttackContext`.** No rule reads them yet. Ranged combat is the round that will.
+  [#906](https://github.com/APKiwiOrg/KhaozEngine/issues/906). Shipped in 19.0.0, see the note under 8.1.
+- **Sizes on `TileAttackContext`.** No rule reads them yet. Ranged combat is the round that will. Shipped in 19.0.0
+  as `AttackerFootprint` and `TargetFootprint`, trailing and defaulted.
   [#907](https://github.com/APKiwiOrg/KhaozEngine/issues/907).
 
 ## 13. Choices, ruled by the owner (2026-09-15)

@@ -12,6 +12,10 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="KhaozEngine.TileWorld.Tests" />
+    <!-- The reach search is a KhaozEngine.TileWorld.Netcode entry point over THIS package's pathfinder, so the
+         test that pins how many cells one interaction click floods has to read TilePathfinderScratch's counters
+         from the netcode side. -->
+    <InternalsVisibleTo Include="KhaozEngine.TileWorld.Netcode.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.TileWorld.Editing" />
     <InternalsVisibleTo Include="KhaozEngine.TileWorld.Render3D" />
     <None Include="README.md" Pack="true" PackagePath="\" />

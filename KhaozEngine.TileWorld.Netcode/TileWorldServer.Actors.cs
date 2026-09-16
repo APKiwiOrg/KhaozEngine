@@ -165,7 +165,10 @@ public sealed partial class TileWorldServer
     /// <paramref name="at"/> (<see cref="TileCollision.CanStand"/>). A one-tile spawn on the default profile retains
     /// the legacy blocked-home rule. A larger footprint is checked on every profile.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="spec"/> asks for a max health of zero, or a
-    /// footprint size outside 1 through <see cref="TileMoveState.MaxFootprintSize"/>.</exception>
+    /// footprint size outside 1 through <see cref="TileMoveState.MaxFootprintSize"/>. Also thrown for a footprint
+    /// this config cannot serve: interest is measured from the nearest footprint tile, so a body wider than
+    /// <see cref="TileWorldServerConfig.OverlapMargin"/> leaves room for is refused here rather than throwing out
+    /// of the first serve. See <see cref="LargestFootprintSize"/>.</exception>
     public long SpawnActor(TileCoord at, in TileActorSpawn spec) => SpawnActorFrom(at, spec, null);
 
     // The same door with the SPAWNER the actor came from, so the host's index is written before OnActorSpawned
@@ -181,6 +184,9 @@ public sealed partial class TileWorldServer
         if (spec.FootprintSize < 1 || spec.FootprintSize > TileMoveState.MaxFootprintSize)
             throw new ArgumentOutOfRangeException(nameof(spec), spec.FootprintSize,
                 $"An actor's FootprintSize must be 1 through {TileMoveState.MaxFootprintSize}.");
+        // The second size refusal, and the one that is about the CONFIG rather than the body: a footprint wider than
+        // the overlap margin leaves room for would throw out of the serve instead. See TileWorldServer.Interest.cs.
+        ValidateFootprintFitsInterest(spec.FootprintSize, nameof(spec));
         TileMoveState state = TileMoveState.At(at, spec.Facing);
         // The cadence goes on the STATE rather than into a command, so an actor stands at its definition's mode from
         // the tick it exists and the actor pass has a mode to fall back to that nothing has to keep re-stating.
@@ -201,6 +207,8 @@ public sealed partial class TileWorldServer
             return 0L;
         }
 
+        // Past every refusal, so the serve only widens its query for a body that exists.
+        NoteFootprintSize(spec.FootprintSize);
         long netId = allocator.Next().Value;
         Entity e = host.SpawnOwned(at.X, at.Z, netId, out CellSim cell);
         cell.World.Set(e, state);

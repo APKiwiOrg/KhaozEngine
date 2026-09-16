@@ -100,7 +100,9 @@ in the types list below. The answer is a WEIGHT rather than a boolean, because a
 and the body glides in over the rest of it: a body that loses a tile spends what is left of its step fading out,
 so it walks visibly under the winner rather than vanishing a step before it gets there. The opt-in
 `SettledStacksOnly` policy instead leaves every moving body at full weight, gives moving bodies no tile claim,
-and cuts settled losers to zero through a caller-supplied comparison.
+and cuts settled losers to zero through a caller-supplied comparison. A body AT REST covers its whole footprint
+under either policy, so a one-tile body standing in a cow's rump is in the cow's stack and one of the two is
+hidden.
 
 ## The types
 
@@ -145,11 +147,11 @@ and cuts settled losers to zero through a caller-supplied comparison.
 - **`TileMoveMode`** - walk or run, a two-value selector rather than a speed.
 - **`TileStepTicks`** - ticks per step, per mode. Both heads must hold the same pair, or a step commits a tick
   apart and every step reads as a misprediction.
-- **`TileMoveOptions`** - the pathfinder knobs both heads must agree on: `AgentSize`, `MaxPathRadius` and
-  `MaxRouteSteps`, the longest route one click may produce, counted in the steps still to take from the tile the
-  player is committed to. `AgentSize` is only a FLOOR under each state's `FootprintSize` now: the simulator steps an
-  entity at the larger of the two, so the default of 1 leaves every state's own size in charge. Its removal at the
-  next major is [#900](https://github.com/APKiwiOrg/KhaozEngine/issues/900).
+- **`TileMoveOptions`** - the pathfinder knobs both heads must agree on: `MaxPathRadius` and `MaxRouteSteps`, the
+  longest route one click may produce, counted in the steps still to take from the tile the player is committed to.
+  There is no size knob. `AgentSize` was removed in 19.0.0
+  ([#900](https://github.com/APKiwiOrg/KhaozEngine/issues/900)), so the simulator steps, paths and reaches every
+  body at its own state's `FootprintSize` and nothing raises that from the outside.
 - **`TileIdentity`** - the cosmetic display name, replicated to everyone in interest. Never a rules input.
 - **`PendingTileCommand`** - the command drained for a player this tick. Registered on the `Migrate` channel
   ALONE, so it crosses a cell handoff and reaches no client and no persistence blob. The movement pass resets it
@@ -168,7 +170,7 @@ and cuts settled losers to zero through a caller-supplied comparison.
   route end's range, stands when it is already in reach, STEPS OUT of the target's footprint when its own body
   overlaps it (a body inside its target is not in reach, so holding it is a fight that can never start), and clears
   the lock when the target stops resolving or has no reachable anchor. Every one of those questions is asked of the
-  body at `FootprintOf(state)`, the state's `FootprintSize` floored at `AgentSize`, against the target's WHOLE
+  body at `FootprintOf(state)`, which is the state's own `FootprintSize`, against the target's WHOLE
   footprint, through the one `TileReach` predicate. That in-reach stand also writes `Facing` toward the target, on
   EVERY tick it answers in range rather than once as the attacker lands, so a combatant turns with a target that
   moves around it and the step-out does not leave it looking 180 degrees away from what it is swinging at. `Step`
@@ -205,13 +207,13 @@ and cuts settled losers to zero through a caller-supplied comparison.
   `4(M + N - 1)` of them against an MxM target on open ground and element for element the one-tile set at size 1.
   It asks reach only, so it can list an anchor no agent of that size could stand on. `TryNearest`'s existing
   `agentSize` now shapes those candidates as well as the walk, and pathing is what filters the unstandable ones
-  out. `TryNearest` refuses a footprint further than `maxRadius` + `agentSize` away without searching, since no
-  candidate of one is inside the pathfinder's window: the answer is the same false, and it is what stops a client
-  naming a far target it has never seen from buying a full window flood per candidate. Past that it prunes per
-  candidate, skipping one outside the window or already at or past the best length found so far, both of which
-  the loop would have discarded after paying for the search: a walk is eight-connected, so its step count is
-  never below the Chebyshev distance to its goal. The chosen tile and the tie rule are unchanged by either.
-  Its overload accepting `TilePathfinderScratch` reuses the same working memory across candidate searches.
+  out, because the search never enters a cell the whole body does not fit on. `TryNearest` refuses a footprint
+  further than `maxRadius` + `agentSize` away without searching, since no candidate of one is inside the
+  pathfinder's window: the answer is the same false, and it is what stops a client naming a far target it has
+  never seen from buying a window flood at all. Past that it runs ONE search over the whole candidate list
+  through `TilePathfinder.FindPathToAny`, never one per candidate. Same chosen tile, same walk and the same
+  scan-order tie rule, for one window instead of up to `4(M + N - 1)` of them against a target nobody can reach.
+  Its overload accepting `TilePathfinderScratch` hands that search its working memory.
   `agentSize` and `maxRadius` are validated at the top of `TryNearest` rather than left to the first search, so a
   bad argument throws whether the target is open, walled in, out of range or on another plane.
 - **`ITileTargets`** / **`TileDocumentTargets`** / **`TileEntityTargets`** / **`TileRemoteTargets`** - the seam
@@ -221,6 +223,12 @@ and cuts settled losers to zero through a caller-supplied comparison.
   the INVERSE too: `TryGetTargetAt(tile, out long id)` is the click-to-target search, the whole footprint rather
   than the anchor tile, lowest id first when two targets overlap so both heads resolve one click the same way.
   Compose it with `TileRaycast.Pick`, whose hit is a ground tile, and a click is resolved in two lines.
+  `TryGetAimPoint(target, out Vector2 tilePlanar, out int plane)` is the PRESENTATION half, a default interface
+  method every implementation inherits: the footprint centre, in the tile units `PoseAt(Vector2, float,
+  TileDirection)` takes, which is what a body holding a lock is drawn looking at. Override it on a body whose
+  centre is the wrong place to look at (the head of a long serpent, the door of a building) and every pose the
+  client draws follows it. It resolves and refuses exactly where `TryGetFootprint` does, so a stale lock points
+  nowhere new, and nothing in the rules reads it.
   `TileEntityTargets` is the server's ENTITY space, a per-tick SNAPSHOT over the live cells refreshed once before
   anything moves, which is what makes the actor pass and the movement pass order-independent in fact rather than
   in claim: every read is a keyed lookup into a map built before either pass began. `TileRemoteTargets` is the
@@ -229,8 +237,10 @@ and cuts settled losers to zero through a caller-supplied comparison.
   is on a client is that client's newest snapshot. Both entity resolvers answer an entity's WHOLE footprint, its
   `TileMoveState.Footprint`, never a one-tile rect on its anchor, because a client that resolved a large body as one
   tile would stop an approach inside it and be corrected every time. The local branch has one live consumer, an
-  `Attack` naming the player's own id: resolving it sends the client's follow down the self clear the server takes,
-  so a self attack clicked mid walk predicts the stop. A `Ghost` is EXCLUDED and therefore reads as gone, which is the answer
+  `Attack` naming the player's own id: it answers the same footprint the server's own resolver does, so the two heads
+  read one target rather than merely landing on the same answer. The self clear does not ride on it, because the
+  follow asks identity BEFORE it asks either seam, so a self attack clicked mid walk predicts the stop even on a head
+  whose resolver cannot answer that id. A `Ghost` is EXCLUDED and therefore reads as gone, which is the answer
   the follow acts on. A `Migrating` entity is HELD instead, for `MigratingGraceRefreshes` consecutive refreshes
   (four by default, one second at a 250 ms tick), answering with the frozen pre-handoff footprint it is not moving off:
   an in-process link finishes the whole handshake inside one `ProcessHandoffs` so the window is never used, and a
@@ -342,8 +352,13 @@ understand. Its registered traversal profile can give that algorithm a different
   its selected topology. Players continue to use the constructor map. It asks the one footprint predicate the follow
   asks, of the tiles both bodies ended the tick on: the target's whole footprint, and the attacker at its own
   simulator's `FootprintOf`, so the follow and the roll cannot disagree about the attacker's size.
-  `TileAttackContext` still carries tiles and no sizes, which
-  [#907](https://github.com/APKiwiOrg/KhaozEngine/issues/907) tracks for ranged combat. `CanAttack(attackerNetId, targetNetId)` is
+  `TileAttackContext` carries both BODIES as well as both tiles since 19.0.0
+  ([#907](https://github.com/APKiwiOrg/KhaozEngine/issues/907)): `AttackerFootprint` is the attacker's square through
+  that same `FootprintOf`, `TargetFootprint` is the target's own state's, both committed on the server timeline and
+  both the very rects the reach check above the roll read. They are TRAILING and DEFAULTED, so a context built by
+  hand with the seven original positional arguments still compiles and answers an empty rect for each. Melee reads
+  neither, since range was settled before the roll. A ranged, area or size-scaled rule measuring geometry itself is
+  what they are there for. `CanAttack(attackerNetId, targetNetId)` is
   the admission rule for acquiring a target. A false answer is rewritten to `Continue` before a player command or
   actor latch can create a lock, chase, swing, or roll. Its default permits every target for source compatibility.
   `Roll` is called once per eligible attacker per tick, in the engine's fixed order and BEFORE any of the tick's
@@ -428,7 +443,8 @@ always keep the constructor map.
 
   Actors are `Actors` (the `TileActorHost`, including its authored-spawner `SpawnAdmission` gate), `SpawnActor`,
   `DespawnActor`, `TryGetActorState`, `ActorCount`,
-  `ActorNetIds`, `OnActorSpawned` and `RefusedActorSpawnCount`. `OnActorSpawned` fires with the spawner link
+  `ActorNetIds`, `OnActorSpawned`, `RefusedActorSpawnCount` and `LargestFootprintSize` (the largest body spawned so
+  far, which is what the serve inflates its interest query by, see the interest section below). `OnActorSpawned` fires with the spawner link
   ALREADY in place, so a handler attaching a game's own component can read
   `Actors.TryGetSpawnerOf(netId, out var spawner)` and dispatch on `spawner.Definition`. An actor built straight
   through `SpawnActor` has no spawner and answers false. Combat is `CombatRules`, `OnCombatEvent`, `OnDied`,
@@ -499,6 +515,37 @@ always keep the constructor map.
   re-centring it. `PoseAt(TileRect footprint, int plane, TileDirection facing)` is the overlay form for a footprint:
   its centre with no glide, for a footprint marker or a nameplate anchor that is not a body, and exactly
   `PoseAt(tile)` for a one-tile rect.
+- **A POSE STANDS ON THE TERRAIN, not on the plane floor.** Once the planar centre is known the height comes from
+  `ITileGroundHeight`, one `HeightAt(float tileX, float tileZ, int plane)` taking TILE units on the lattice and
+  answering world METRES, sampled at the same centred point the position is built from. So a body on an authored
+  slope has its feet on the ground quad it stands on, and so does a marker or a dropped item laid down through
+  `PoseAt(tile)`. A gliding body resamples every frame at its interpolated planar position, which is what makes it
+  FOLLOW a slope between two tile centres instead of stepping at the tile edge. `new TilePresenter(document)`
+  wires `TileDocumentGroundHeight`, the document's own bilinear lattice and the same heights the terrain mesh and
+  the props are built from, so a head that builds its presenter from the world file needs no call of its own, and
+  that adapter is the single place tile units become world metres for a height read. The
+  `(tileSize, planeHeight)` placeholder has no source and stays flat at the plane index times `PlaneHeight`, the
+  only honest answer before a document is loaded, and `Ground` is null on exactly that one.
+  `new TilePresenter(tileSize, planeHeight, ground)` takes a source explicitly, for a test with a synthetic slope
+  or a head whose terrain is streamed. A plane with no authored heights keeps its derived lift, one `PlaneHeight`
+  per plane over the lattice below it, and a fractional plane index, which is what a body easing between planes
+  carries, reads between the two planes' own samples rather than popping. `Yaw` is untouched, and the aimed pose
+  draws at the same height as the plain one for the same state.
+- **A BODY HOLDING A LOCK IS DRAWN AIMING AT IT.** `TileMoveState.Facing` answers the cardinal side the two
+  footprints touch on, which is exact for reach and up to 18 degrees off as a drawn yaw the moment either body is
+  bigger than one tile: a player beside a 2x2 cow points at the column it touches, and so does the cow. So
+  `client.TryGetRemotePose` and `client.LocalPose` aim a body that is NOT stepping and holds a `CombatTarget`, or
+  an `InteractTarget` whose route has run out, at that target's `ITileTargets.TryGetAimPoint`. A remote resolves
+  its target on the same DELAYED timeline its body is drawn from, so an attacker never leads a target that has
+  already moved on the server, and the local body resolves on the newest capture, which is the read the reach
+  rules already make. A mid-step body keeps its step facing, a body with no lock keeps the tile facing, and a
+  target that stopped resolving falls back to it too. A one-tile body beside a one-tile target draws EXACTLY its
+  cardinal, to the bit, so a game asserting `TilePresenter.Yaw(TileDirection)` against a pose for an ordinary
+  fight stays true. `TilePresenter.Yaw(Vector2 from, Vector2 to)` is the formula on its own, the same hand and the
+  same north as `Yaw(TileDirection)`, and `presenter.Pose(state, aimTilePlanar, extraTicks)` is the whole thing
+  for a body a game places by hand. Presentation only: `Facing`, the reach rules, the server's `Facing` write and
+  the wire are untouched, and a game's own turn smoothing keeps working because it only smooths toward whatever
+  yaw the pose reports.
 - **`TileDrawPriority`** - ONE BODY PER TILE AT REST, rebuilt per frame. `Rebuild(client, dt)` reads a live
   client, `Rebuild(localNetId, localTile, localLeaving, others, dt)` takes a caller's own roster and each actor's
   step progress, and the static `Select` is the winner rule with both output buffers owned by the caller. The
@@ -526,7 +573,15 @@ always keep the constructor map.
   bodies. A positive comparison means its first net id wins. Zero falls back to the higher net id, so equal game
   ranks remain stable. The callback sees only net ids, leaving all game classifications in the head. A local
   presentation within two float values of its tile centre is settled, preventing equal-endpoint interpolation
-  rounding from dropping the local claim while preserving real step and correction motion.
+  rounding from dropping the local claim while preserving real step and correction motion. A body AT REST covers
+  its WHOLE footprint under either policy: `Rebuild(localNetId, localTile, localFootprintSize, localLeaving,
+  bodies, dt)` and its `bool localMoving` twin take `(netId, tile, stepProgress, footprintSize)` per body, and
+  `Rebuild(client, dt)` reads each remote's `FootprintSize` off the same delayed sample its tile comes from. The
+  stack collapses whole: bodies are resolved best first and each takes every tile it covers or none of them, so a
+  body that loses one tile of its square is hidden rather than drawing the part nobody else claimed, and
+  `TryGetDrawn` answers a large body on every tile it covers. A MOVING body keeps the answer it has today under
+  each policy. Every overload without a size reads every body as one tile. Step progress is CLAMPED when it is
+  finite, so a negative value is the start of a step and only a value that is not a number reads as 1.
 - **`TileClientMessageHandler`** - the delegate an opaque server message arrives on.
 
 **Persistence**
@@ -780,6 +835,31 @@ while an award commits, a scripted disengage), so the tick's broken-lock report 
 and no `ke:cannot-reach` follow, even when the write happens inside the tick from `OnCombatEvent`, which
 `ResolveCombat` raises one step ahead of the report. The report covers only locks the simulator itself broke, an
 unreachable or vanished target. A write that keeps the same target changes nothing the report reads.
+
+## Interest is measured from the nearest footprint tile
+
+A viewer holds an entity when the NEAREST tile of that entity's footprint is within `InterestRadius` of the
+viewer's own anchor tile, Euclidean, which is the metric the interest grid has always used. So a 2x2 enters a
+viewer's snapshot on the same tick a one-tile body on its near tile would, and an 8x8 seven tiles before its anchor
+arrives. Cell ownership and region handoff are untouched and still measure from the anchor. The viewer's own
+position is its anchor too, which costs nothing because a player is one tile.
+
+**Pad `OverlapMargin` for the largest body you author.** The serve asks the grid for
+`InterestRadius + (N - 1) * sqrt(2)`, where N is `TileWorldServer.LargestFootprintSize`, the largest
+`FootprintSize` the server has spawned: a body's anchor can sit its own diagonal behind the near tile that put it
+in range, and the home cell has to be holding that anchor as a ghost. At the default 15 tile radius that is 16.42
+for a 2x2 and 24.9 for an 8x8. The default `OverlapMargin` of 25 covers every legal body at the default radius, so
+only a game that narrows the band or widens the radius has to do this sum. A body the margin cannot cover is
+refused at `TileActorHost.Add` and at `SpawnActor`, with an `ArgumentOutOfRangeException` naming both numbers,
+rather than throwing out of the first serve and taking the tick down for every player.
+
+`LargestFootprintSize` never decreases. Despawning the world's only cow leaves the query as wide as the cow made
+it, which costs a slightly wider grid sweep and cannot cost correctness.
+
+A world of one-tile bodies pays NOTHING for any of this: the query radius is the configured one, the per-viewer
+filter never runs, and the served set is what it was before footprints existed, value for value. A world with a
+large body in it pays a wider grid sweep plus a predicate over each viewer's interest set, and no extra walk of the
+cell's world, because the footprints the filter reads are collected by the pass the plane filter already makes.
 
 ## Nearby player interest and verified names
 
@@ -1077,14 +1157,10 @@ unauthenticated peer an amplifier of two bytes in and about 7 KB out.
 - **No actions beyond the seam.** `TileActionKind` distinguishes authored-object and entity interactions so their
   overlapping ids reach `OnInteract` and `OnInteractEntity` respectively. The engine knows nothing about what an
   interaction does after the callback.
-- **A large actor is an NxN body everywhere the RULES look, and in two places they do not.** `TileDrawPriority`
-  still judges a body on its ANCHOR tile alone, so a one-tile body standing on another tile of a cow's footprint
-  overlaps it on screen. That is presentation only, and a footprint-aware stack is
-  [#899](https://github.com/APKiwiOrg/KhaozEngine/issues/899). Interest is measured from the anchor too, which is
-  also what decides cell ownership and handoff, so a large body enters a viewer's interest up to N - 1 tiles late
-  on its north and east edges. A game with big bosses pads `InterestRadius`, and measuring from the footprint is
-  [#906](https://github.com/APKiwiOrg/KhaozEngine/issues/906). Players stay one tile: `SetPlayerState` refuses a
-  `FootprintSize` above 1.
+- **A large actor is an NxN body everywhere the RULES look, and since 19.0.0 everywhere interest and the draw
+  rule look too.** Interest is measured from the nearest footprint tile (see the interest section above), and a
+  settled body's draw stack is every tile of its square, so a one-tile body standing in a cow's rump no longer
+  overlaps it on screen. Players stay one tile: `SetPlayerState` refuses a `FootprintSize` above 1.
 - **Actors do not block movement.** Players walk through monsters. Making an actor block would put a DYNAMIC entry
   in a collision map each head bakes for itself from files, so the two heads would disagree on every occupied tile
   and every chase would become a correction storm. The honest answer is a server-owned occupancy overlay the

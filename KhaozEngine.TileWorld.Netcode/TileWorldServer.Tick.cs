@@ -386,10 +386,15 @@ public sealed partial class TileWorldServer
 
     // Planes do not shard: a cell holds every plane of its region, so the plane filter happens here, on the
     // interest set, rather than in the topology. A viewer never receives an entity on another plane.
+    //
+    // The grid query is the INFLATED radius and the footprint filter is what narrows it back, so a large body is
+    // held from the tick its near edge crosses the configured radius rather than from the tick its anchor does. At
+    // one tile the radius is the configured one and the filter is a no-op. See TileWorldServer.Interest.cs.
     (World world, HashSet<long> interest) HomeInterestFor(int slot, long netId, long serveEpoch)
     {
-        (World world, HashSet<long> interest) = host.HomeInterest(slot, config.InterestRadius, serveEpoch);
+        (World world, HashSet<long> interest) = host.HomeInterest(slot, InterestQueryRadius, serveEpoch);
         FilterToPlane(world, interest, netId);
+        FilterToFootprintInterest(interest, netId);
         return (world, interest);
     }
 
@@ -431,6 +436,10 @@ public sealed partial class TileWorldServer
         collectPlanes ??= CollectPlane;
         offViewerPlane ??= IsOffViewerPlane;
         planeByNetId.Clear();
+        // The footprint filter's rects ride THIS pass rather than a second walk of the world, which is why the flag
+        // that gates them is read here. Nothing to collect while every body is one tile.
+        collectFootprints = LargestFootprintSize > 1;
+        if (collectFootprints) footprintByNetId.Clear();
         filterWorld = world;
         filterInterest = interest;
         world.ForEach(collectPlanes);
@@ -448,9 +457,23 @@ public sealed partial class TileWorldServer
     void CollectPlane(Entity e, ref NetId id)
     {
         if (!filterInterest!.Contains(id.Value)) return;
-        if (filterWorld!.TryGet(e, out TileMoveState s)) planeByNetId[id.Value] = s.Tile.Plane;
-        else if (filterWorld!.TryGet(e, out TileGroundItem item)) planeByNetId[id.Value] = item.Plane;
-        else if (filterWorld!.TryGet(e, out TileObjectState o)) planeByNetId[id.Value] = o.Plane;
+        if (filterWorld!.TryGet(e, out TileMoveState s))
+        {
+            planeByNetId[id.Value] = s.Tile.Plane;
+            // The only one of the three that can be bigger than a tile. A drop and an object state never move and
+            // are one tile each, so they measure from the tile in their own component.
+            if (collectFootprints) footprintByNetId[id.Value] = s.Footprint;
+        }
+        else if (filterWorld!.TryGet(e, out TileGroundItem item))
+        {
+            planeByNetId[id.Value] = item.Plane;
+            if (collectFootprints) footprintByNetId[id.Value] = new TileRect(item.X, item.Z, 1, 1);
+        }
+        else if (filterWorld!.TryGet(e, out TileObjectState o))
+        {
+            planeByNetId[id.Value] = o.Plane;
+            if (collectFootprints) footprintByNetId[id.Value] = new TileRect(o.X, o.Z, 1, 1);
+        }
     }
 
     bool IsOffViewerPlane(long netId) => planeByNetId.TryGetValue(netId, out int plane) && plane != filterPlane;

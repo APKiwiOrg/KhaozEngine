@@ -13,6 +13,12 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// <see cref="TileDrawPriorityPolicy.SettledStacksOnly"/> policy keeps every moving body wholly visible, collapses
 /// only bodies settled on the same tile, and lets the head compare those settled actors through
 /// <see cref="SettledComparison"/> without putting game classifications in the engine.</para>
+/// <para>A BODY AT REST COVERS ITS WHOLE FOOTPRINT, under both policies. A settled NxN body's stack is every tile
+/// of its square rather than its anchor alone, so a one-tile body standing in a cow's rump is in the cow's stack
+/// and the winner is decided exactly as it is for two bodies sharing one tile. The sizes ride the roster, on the
+/// two <c>Rebuild</c> overloads that take one, and a live client reads each remote's
+/// <see cref="TileMoveState.FootprintSize"/> off the same delayed sample its tile comes from. Every overload
+/// WITHOUT a size reads every body as one tile, which is the rule as it stood before footprints.</para>
 /// <para>WHY, and it is a presentation rule rather than a rules one. A tile game draws every body on the tile
 /// centre, so a stack of them is a smear of overlapping meshes that reads as one wrong-looking creature, and the
 /// body a player can least afford to lose in that smear is their own: standing under a bank crowd, an avatar the
@@ -70,7 +76,9 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// player aims from, and paying two tiles per remote to shave it would hide a second body in every crowd for the
 /// length of every step somebody takes.</para>
 /// <para>Per frame at 60 Hz and allocation free after the first rebuild: the buffers here are reused, the rule is
-/// one pass over the actors plus one over the winners, and there is no LINQ and no sort. The weights add one
+/// one pass over the actors plus one over the winners, and there is no LINQ and no sort. A roster that carries a
+/// body above one tile is the one case that orders the crowd, into two more reused buffers, and a roster of
+/// one-tile bodies never reaches it. The weights add one
 /// dictionary keyed by net id, pruned in the same rebuild an actor stops being listed in. Hold ONE of these on
 /// the head and call <see cref="Rebuild(TileWorldClient, float)"/> once a frame, after
 /// <see cref="TileWorldClient.AdvancePresentation"/> and before drawing, with the same frame <c>dt</c>. The draw
@@ -116,9 +124,9 @@ public sealed partial class TileDrawPriority
     const float StepEpsilon = 1e-6f;
 
     // The client's remotes, collected once per rebuild so the rule can read them as a span, with the step
-    // progress the fade is paced by. Grows to the biggest crowd this client has seen and stops, which is the
-    // whole of the per-frame allocation story.
-    readonly List<(long NetId, TileCoord Tile, float StepProgress)> actors = new();
+    // progress the fade is paced by and the footprint edge the stack covers. Grows to the biggest crowd this
+    // client has seen and stops, which is the whole of the per-frame allocation story.
+    readonly List<(long NetId, TileCoord Tile, float StepProgress, int FootprintSize)> actors = new();
     readonly Dictionary<TileCoord, long> winners = new();
     readonly HashSet<long> drawn = new();
     // One entry per body this rule has an opinion about, which is every actor the last rebuild was handed plus
@@ -231,7 +239,9 @@ public sealed partial class TileDrawPriority
     void Rebuild(TileWorldClient client, float dt, bool snap)
     {
         ArgumentNullException.ThrowIfNull(client);
-        client.CollectRemoteSteps(actors);
+        // Each remote's size comes off the DELAYED sample its tile and its progress come off, which is the
+        // timeline the drawn body rides, so the stack covers the tiles the picture covers.
+        client.CollectRemoteFootprintSteps(actors);
         // The predicted state is read ONCE, so the tile claimed and the tile being left cannot come from two
         // different frames of prediction.
         TileMoveState local = client.Prediction.PredictedState;
@@ -240,7 +250,7 @@ public sealed partial class TileDrawPriority
             RebuildSettled(client, local, CollectionsMarshal.AsSpan(actors));
             return;
         }
-        Rebuild(client.LocalNetId, local.Tile, local.IsStepping ? local.StepFrom : null,
+        Rebuild(client.LocalNetId, local.Tile, local.FootprintSize, local.IsStepping ? local.StepFrom : null,
             CollectionsMarshal.AsSpan(actors), dt, snap);
     }
 
@@ -289,7 +299,8 @@ public sealed partial class TileDrawPriority
     /// that tile it is: 0 as the step commits, 1 once the body has come to rest there, which is also the value a
     /// body that is not stepping at all carries. <see cref="TilePresenter.StepFraction"/> is that number for a
     /// state you hold, and <see cref="TileWorldClient.CollectRemoteSteps"/> is it for a live client's whole
-    /// crowd. A value outside 0 through 1, or one that is not a number, is read as 1.</param>
+    /// crowd. A FINITE value outside 0 through 1 is CLAMPED into it, so a negative one reads as 0, the start of a
+    /// step. Only a value that is not a number reads as 1, a body at rest.</param>
     /// <param name="dt">Seconds since the last rebuild, for the fades that have no step to ride.</param>
     public void Rebuild(long localNetId, TileCoord localTile, TileCoord? localLeaving,
         ReadOnlySpan<(long NetId, TileCoord Tile, float StepProgress)> others, float dt)
@@ -432,7 +443,7 @@ public sealed partial class TileDrawPriority
     {
         if (netId == localNetId) return 0;
         float target = drawn.Contains(netId) ? 1f : 0f;
-        float p = float.IsFinite(progress) ? Math.Clamp(progress, 0f, 1f) : 1f;
+        float p = StepAt(progress);
 
         ref Fade fade = ref CollectionsMarshal.GetValueRefOrAddDefault(fades, netId, out bool existed);
         int counted = !existed || fade.Stamp != stamp ? 1 : 0;
@@ -465,6 +476,11 @@ public sealed partial class TileDrawPriority
         fade.Stamp = stamp;
         return counted;
     }
+
+    // ONE reading of a caller's step progress, so the weights, the settled test and the footprint rule cannot
+    // drift apart on it. A FINITE value is clamped, so a negative one is the start of a step rather than a bad
+    // input, and only a non-finite one is read as a body at rest.
+    internal static float StepAt(float progress) => float.IsFinite(progress) ? Math.Clamp(progress, 0f, 1f) : 1f;
 
     // A slice of the crossing, paced by the STEP: covering the whole of what is left of the step covers the
     // whole of what is left of the crossing, so the weight arrives at its target exactly as the body comes to

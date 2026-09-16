@@ -207,6 +207,10 @@ Field values render by kind, the same way in every action:
 | `LocalizedTextKey` | the derived key string, read only |
 | absent | `null`, never a sentinel |
 
+An `OpaqueBytes` value is WRITTEN as hex of either case and always RENDERED as lower hex. It carries no
+whitespace, no separators and no odd length, and anything else is refused rather than reinterpreted, because
+a field an author cannot read is exactly the field a silent reinterpretation ruins.
+
 ## What an action's result maps to
 
 | `AdminActionResult` | Status | Body |

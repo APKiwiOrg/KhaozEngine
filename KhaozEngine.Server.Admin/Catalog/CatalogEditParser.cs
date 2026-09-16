@@ -528,29 +528,31 @@ internal static class CatalogEditParser
     }
 
     /// <summary>
-    /// A hex string as bytes, parsed a byte at a time so an odd length and a stray character are both a
-    /// refusal rather than a throw the dispatch would turn into a 500.
+    /// A hex string as bytes. An odd length and a stray character are both a refusal rather than a throw the
+    /// dispatch would turn into a 500.
+    /// <para>
+    /// The pair-at-a-time <c>byte.TryParse</c> this replaced allowed WHITESPACE, because
+    /// <see cref="NumberStyles.HexNumber"/> carries <c>AllowLeadingWhite</c> and <c>AllowTrailingWhite</c>.
+    /// So <c>" a 1"</c> parsed as the two bytes <c>0a01</c> and a corrupted field was stored as different
+    /// bytes under a 200, which is the worst answer available for a field an author cannot read.
+    /// </para>
+    /// <para>
+    /// Case is accepted and the rendering stays lower hex, which is what the refusal message means. That is
+    /// the behaviour the pair parse had too.
+    /// </para>
     /// </summary>
     static bool TryHex(string text, out byte[] bytes)
     {
-        bytes = [];
-        if (text.Length % 2 != 0)
+        try
         {
+            bytes = Convert.FromHexString(text);
+            return true;
+        }
+        catch (FormatException)
+        {
+            bytes = [];
             return false;
         }
-
-        var buffer = new byte[text.Length / 2];
-        for (int i = 0; i < buffer.Length; i++)
-        {
-            if (!byte.TryParse(
-                text.AsSpan(i * 2, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out buffer[i]))
-            {
-                return false;
-            }
-        }
-
-        bytes = buffer;
-        return true;
     }
 
     /// <summary>The row an edit targets, by id or by key, and null when neither reaches one.</summary>

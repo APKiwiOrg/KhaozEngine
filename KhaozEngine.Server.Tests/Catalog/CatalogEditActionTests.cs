@@ -425,6 +425,58 @@ public sealed class CatalogEditActionTests : IDisposable
         Assert.Equal(3, body.GetProperty("draft").GetProperty("editCount").GetInt32());
     }
 
+    /// <summary>
+    /// An opaque-bytes field that is not hex is refused, and WHITESPACE inside it is not hex.
+    /// <para>
+    /// The pair-at-a-time parse allowed leading and trailing whitespace inside each pair, so <c>" a 1"</c>
+    /// parsed as the two bytes <c>0a01</c> and a corrupted field was stored as different bytes under a 200.
+    /// A field an author cannot read is exactly the field a silent reinterpretation ruins.
+    /// </para>
+    /// </summary>
+    /// <param name="hex">The bad hex.</param>
+    [Theory]
+    [InlineData(" a 1")]
+    [InlineData("0a 1b")]
+    [InlineData("0a1")]
+    [InlineData("zz")]
+    [InlineData("0a\t1b")]
+    public async Task Edit_WithOpaqueBytesThatAreNotHex_IsRefused(string hex)
+    {
+        JsonElement body = await _harness.RefusedAsync("catalog-edit", $$"""
+        {
+          "edits": [
+            { "op": "add", "typeKey": "thing", "key": "stone_sword",
+              "fields": { "value": 4200, "stackable": false, "icon": {{JsonSerializer.Serialize(hex)}} } }
+          ]
+        }
+        """);
+
+        Assert.Equal(new[] { "KEC0004" }, CatalogActionHarness.Codes(body));
+        Assert.Contains("LOWER HEX", CatalogActionHarness.Messages(body), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// CASE is accepted on the way in and normalized on the way out. The rendering is lower hex and stays
+    /// lower hex, which is what the refusal message means, but an upper-case write is legible hex and was
+    /// always accepted, so refusing it would be a tightening this finding never asked for.
+    /// </summary>
+    [Fact]
+    public async Task Edit_WithUpperCaseOpaqueBytes_IsAcceptedAndReadsBackLower()
+    {
+        await _harness.OkAsync("catalog-edit", """
+        {
+          "edits": [
+            { "op": "add", "typeKey": "thing", "key": "stone_sword",
+              "fields": { "value": 4200, "stackable": false, "icon": "0A1B" } }
+          ]
+        }
+        """);
+
+        JsonElement draft = await _harness.OkAsync("catalog-draft", null);
+        JsonElement fields = draft.GetProperty("edits")[0].GetProperty("fields");
+        Assert.Equal("0a1b", fields.GetProperty("icon").GetString());
+    }
+
     /// <summary>Every request-shaped refusal is the OBJECT error payload rather than a bare string.</summary>
     [Theory]
     [InlineData("catalog-edit", null)]

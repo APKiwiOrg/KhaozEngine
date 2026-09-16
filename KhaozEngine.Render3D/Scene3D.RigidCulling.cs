@@ -12,6 +12,11 @@ namespace KhaozEngine.Render3D
         // Keep every caster, regardless of the shadow tier or camera. Explicit opt-outs have no depth-pass
         // consumer, so rejected geometry can avoid packing, upload and gaps in the visible model runs (#836).
         // Queue transforms and the frustum stay absolute. Only UploadInstancesRelative changes render space.
+        // ONLY !CastsShadows instances are tested here, and that is load-bearing rather than incidental: the depth
+        // pass needs offscreen casters, so anything that still casts has to survive this walk whatever the camera
+        // can see. A SHADOW-ONLY instance (#974) is a caster, so it is never early-rejected here, and it must not
+        // be: rejecting it would drop the shadow of geometry that is hidden precisely because it is between the
+        // camera and what it shades.
         internal ReadOnlySpan<bool> CullOptedOutInstances(in FrustumPlanes frustum)
         {
             _earlyCulledInstances = 0;
@@ -65,8 +70,11 @@ namespace KhaozEngine.Render3D
         /// Fill <see cref="_instanceVisible"/> for this frame's grouped instance buffer: true where the instance's
         /// world-space bounding sphere is (conservatively) inside <paramref name="frustum"/>. When
         /// <see cref="FrustumCulling"/> is off every slot is visible (parity path). Also updates
-        /// <see cref="_drawnInstances"/> / <see cref="_culledInstances"/>. Allocation-free on the hot path (the mask
-        /// grows, never per-frame allocated). The shadow depth pass does not consult this mask.
+        /// <see cref="_drawnInstances"/> / <see cref="_culledInstances"/> / <see cref="_shadowOnlyInstances"/>.
+        /// Allocation-free on the hot path (the mask grows, never per-frame allocated). The shadow depth pass does
+        /// not consult this mask, which is what lets a SHADOW-ONLY slot (issue #974) be false here and still record
+        /// depth: it is withheld from the colour pass on BOTH paths below, and counted in neither the drawn nor the
+        /// culled total, because it was never a candidate the camera could reject.
         /// </summary>
         void ComputeMainPassVisibility(in FrustumPlanes frustum)
         {
@@ -76,12 +84,14 @@ namespace KhaozEngine.Render3D
 
             _drawnInstances = 0;
             _culledInstances = _earlyCulledInstances;
+            _shadowOnlyInstances = 0;
             if (total == 0) return;
 
             if (!FrustumCulling)
             {
-                for (int i = 0; i < total; i++) _instanceVisible[i] = true;
-                _drawnInstances = total;
+                // Parity path: every slot the camera would have kept is visible, and a shadow-only slot is still
+                // withheld, so turning culling off proves the cull is pixel-neutral rather than revealing roofs.
+                for (int i = 0; i < total; i++) Record(i, ClassifyMainPassSlot(ShadowOnlyAt(i), insideFrustum: true));
                 return;
             }
 
@@ -110,11 +120,22 @@ namespace KhaozEngine.Render3D
                         Matrix4x4 world = _instanceData[slot].Model;
                         visible = IntersectsMainPass(mesh.Bounds, world, materialPassPlaced, frustum);
                     }
-                    _instanceVisible[slot] = visible;
-                    if (visible) _drawnInstances++; else _culledInstances++;
+                    Record(slot, ClassifyMainPassSlot(ShadowOnlyAt(slot), visible));
                 }
             }
         }
 
+        // The shadow-only flag for one uploaded slot. An absent or short list (a GroupInstances call that omitted
+        // it) reads as "nothing is shadow-only", which is the pre-policy shape and the safe direction to fail in.
+        bool ShadowOnlyAt(int slot) => slot < _instanceShadowOnly.Count && _instanceShadowOnly[slot];
+
+        // Write one slot's mask bit and charge it to exactly one counter.
+        void Record(int slot, MainPassSlot kind)
+        {
+            _instanceVisible[slot] = kind == MainPassSlot.Drawn;
+            if (kind == MainPassSlot.Drawn) _drawnInstances++;
+            else if (kind == MainPassSlot.Culled) _culledInstances++;
+            else _shadowOnlyInstances++;
+        }
     }
 }

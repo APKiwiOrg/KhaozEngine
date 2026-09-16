@@ -1659,7 +1659,7 @@ namespace KhaozEngine.Render3D
             // run per unique mesh. Reuses member buffers (cleared, not realloc) to stay per-frame alloc-free. Done
             // BEFORE the model pass so the (optional) shadow depth pass can reuse the same uploaded instance buffer.
             GroupInstances(_instances.Items, _instanceData, _runs, _meshRunIndex, _instanceCastKinds,
-                CullOptedOutInstances(camFrustum), _groupWriteCursors);
+                CullOptedOutInstances(camFrustum), _groupWriteCursors, _instanceShadowOnly);
             // Fold each mesh's alpha-cutout threshold into its instances' SpecParams.z (the model fragment discards
             // texels below it, so MASK foliage renders as its silhouette). A mesh with cutoff 0 (OPAQUE, the default)
             // is untouched, so the instance data - and the render - stays byte-identical to the pre-cutout path.

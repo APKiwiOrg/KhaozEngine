@@ -173,7 +173,14 @@ public sealed class CraftExecutor
 
         if (_operations.TryGet(step.Operation, out ICraftOperation? operation))
         {
-            return operation.Apply(ref copy, step.Parameters.Span);
+            // A RETURNED refusal is seated on the copy here. The loop stops on the return value either way,
+            // but the outcome and the encode are built from the COPY, so an operation that answered a
+            // refusal without recording it would otherwise report a craft that succeeded and hand back the
+            // half applied payload. Refuse keeps the first refusal, so an operation that did record its own
+            // keeps it.
+            return operation.Apply(ref copy, step.Parameters.Span) is CraftRefusal refusal
+                ? copy.Refuse(refusal)
+                : null;
         }
 
         UnregisteredOperationRefusals++;

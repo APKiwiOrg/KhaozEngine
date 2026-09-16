@@ -45,6 +45,9 @@ public interface ICraftOperation
     /// of the powers above are refused.</param>
     /// <param name="parameters">The step's authored parameters, in authored order, always
     /// <see cref="CraftPlanStep.ParameterCount"/> long with 0 for an unused slot.</param>
-    /// <returns>The refusal, or null when the operation applied.</returns>
+    /// <returns>The refusal, or null when the operation applied. A RETURNED refusal is recorded on the
+    /// working copy BY THE EXECUTOR, so an operation may answer one without calling
+    /// <see cref="CraftWorkingCopy.Refuse"/> first and the craft still refuses whole. Recording it yourself
+    /// is still the earlier answer, and the first refusal recorded is the one that stands.</returns>
     CraftRefusal? Apply(ref CraftWorkingCopy copy, ReadOnlySpan<int> parameters);
 }

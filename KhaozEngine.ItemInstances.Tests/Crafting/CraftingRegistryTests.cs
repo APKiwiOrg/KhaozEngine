@@ -37,6 +37,9 @@ public sealed class CraftingRegistryTests
     /// <summary>The currency whose one step draws a mod through the executor's own generator.</summary>
     const int DrawCurrency = 22;
 
+    /// <summary>The currency whose one step refuses without recording the refusal on the working copy.</summary>
+    const int SilentCurrency = 23;
+
     [Fact]
     public void Registration_runs_at_process_start_and_a_later_Register_THROWS()
     {
@@ -162,7 +165,7 @@ public sealed class CraftingRegistryTests
     }
 
     [Fact]
-    public void A_game_operation_that_writes_an_unregistered_kind_THROWS_at_encode()
+    public void A_game_operation_that_writes_an_unregistered_kind_is_REFUSED_at_the_write_door()
     {
         // Spec 10.5's first power, and the SHIPPED door is the working copy's one write rather than the
         // encode: the write is refused BY KIND, so the operation never builds a field the encoder would
@@ -178,6 +181,27 @@ public sealed class CraftingRegistryTests
             .Apply(Plan(world, GameCurrency), ref copy);
 
         Assert.Equal(new CraftRefusal(CraftRefusalKind.PropertyKindUnregistered, UnregisteredKind), outcome.Refusal);
+        Assert.False(copy.TryEncode(out byte[] crafted));
+        Assert.Empty(crafted);
+    }
+
+    [Fact]
+    public void An_operation_that_returns_a_refusal_it_never_RECORDED_still_stops_the_whole_craft()
+    {
+        // A game operation writes one scalar, then answers a refusal and never calls Refuse. The loop stops
+        // on the RETURN value and the outcome is built from the working COPY, so a refusal the copy never
+        // heard about reports a craft that succeeded and hands back the half applied payload.
+        var operations = new CraftingRegistry();
+        operations.Register(new SilentRefusalOperation(FirstGameOperation));
+
+        CraftWorld world = World(SilentRows);
+        CraftWorkingCopy copy = world.Open(Target());
+        CraftOutcome outcome = Executor(world, new ScriptedRandomSource([]), Frozen(operations))
+            .Apply(Plan(world, SilentCurrency), ref copy);
+
+        Assert.True(outcome.IsRefused);
+        Assert.Equal(new CraftRefusal(CraftRefusalKind.ValueOutOfRange, SilentSubject), outcome.Refusal);
+        Assert.True(copy.IsRefused);
         Assert.False(copy.TryEncode(out byte[] crafted));
         Assert.Empty(crafted);
     }
@@ -227,6 +251,14 @@ public sealed class CraftingRegistryTests
             Step(registry, 211, "rogue_bench_1", GameCurrency, sort: 1, operation: FirstGameOperation),
         ];
 
+    /// <summary>The same shape for the operation that refuses without recording it.</summary>
+    static IEnumerable<ContentRow> SilentRows(ContentTypeRegistry registry)
+        =>
+        [
+            Currency(registry, SilentCurrency, "silent_bench", maxSteps: 1),
+            Step(registry, 231, "silent_bench_1", SilentCurrency, sort: 1, operation: FirstGameOperation),
+        ];
+
     /// <summary>One currency that adds a random mod, which is the executor's own generator drawing.</summary>
     static IEnumerable<ContentRow> DrawRows(ContentTypeRegistry registry)
         =>
@@ -274,6 +306,26 @@ public sealed class CraftingRegistryTests
 
             entries[0] = entries[0] with { Position = random.NextRollPosition() };
             return copy.SetAffixes(InstancePropertyKind.Affixes, entries[..count]) ? null : copy.Refusal;
+        }
+    }
+
+    /// <summary>The subject the silent operation's refusal names, which is a number and nothing more.</summary>
+    const int SilentSubject = 7;
+
+    /// <summary>
+    /// An operation that writes one scalar and then RETURNS a refusal without recording it, which is the
+    /// shape an author reaches for when the operation's own precondition fails after a write.
+    /// </summary>
+    sealed class SilentRefusalOperation(int id) : ICraftOperation
+    {
+        /// <inheritdoc />
+        public int Id => id;
+
+        /// <inheritdoc />
+        public CraftRefusal? Apply(ref CraftWorkingCopy copy, ReadOnlySpan<int> parameters)
+        {
+            _ = copy.SetScalar(InstancePropertyKind.Quality, 11);
+            return new CraftRefusal(CraftRefusalKind.ValueOutOfRange, SilentSubject);
         }
     }
 

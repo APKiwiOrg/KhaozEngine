@@ -338,6 +338,18 @@ public sealed partial class TileWorldClient
             into.Add((pair.Key, pair.Value.State.Tile, StepProgress(pair.Value)));
     }
 
+    // CollectRemoteSteps plus the footprint edge TryGetRemoteFootprint answers, off the SAME delayed sample, so
+    // the tile, the progress and the size cannot come from three moments. Internal because the size is only an
+    // input to the draw rule in this package: a head with a roster of its own hands the size in itself, through
+    // the sized TileDrawPriority.Rebuild overloads, and a head that wants the rect asks TryGetRemoteFootprint.
+    internal void CollectRemoteFootprintSteps(
+        List<(long NetId, TileCoord Tile, float StepProgress, int FootprintSize)> into)
+    {
+        into.Clear();
+        foreach (KeyValuePair<long, RemoteSample> pair in remoteSamples)
+            into.Add((pair.Key, pair.Value.State.Tile, StepProgress(pair.Value), pair.Value.State.FootprintSize));
+    }
+
     // The presenter's own fraction, over the same sub-tick carry-forward TryGetRemotePose hands it, so a rule
     // reading this and the body drawn by that call are measuring one glide rather than two.
     float StepProgress(in RemoteSample sample) =>

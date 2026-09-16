@@ -46,12 +46,12 @@ public sealed partial class TileDrawPriority
     }
 
     void RebuildSettled(TileWorldClient client, in TileMoveState local,
-        ReadOnlySpan<(long NetId, TileCoord Tile, float StepProgress)> others)
+        ReadOnlySpan<(long NetId, TileCoord Tile, float StepProgress, int FootprintSize)> others)
     {
         TileMoveState rendered = client.Prediction.RenderedState;
         Vector2 position = rendered.HasRenderOverride ? rendered.RenderPosition : rendered.Position;
         bool localMoving = IsLocalPresentationMoving(local, position);
-        RebuildSettled(client.LocalNetId, local.Tile, localMoving, others);
+        RebuildSettled(client.LocalNetId, local.Tile, local.FootprintSize, localMoving, others);
     }
 
     // Two equal Vector2.Lerp endpoints can still miss their common value by one float ULP because the operation
@@ -90,12 +90,7 @@ public sealed partial class TileDrawPriority
     {
         Begin(winners, drawn);
         for (int i = 0; i < others.Length; i++)
-        {
-            float progress = float.IsFinite(others[i].StepProgress)
-                ? Math.Clamp(others[i].StepProgress, 0f, 1f)
-                : 1f;
-            OfferSettled(localNetId, others[i].NetId, others[i].Tile, progress < 1f);
-        }
+            OfferSettled(localNetId, others[i].NetId, others[i].Tile, StepAt(others[i].StepProgress) < 1f);
         FinishSettled(localNetId, localTile, localMoving);
         Advance(localNetId, others, dt: 0f, snap: true);
     }

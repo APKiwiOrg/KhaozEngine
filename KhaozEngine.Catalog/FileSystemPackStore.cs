@@ -238,10 +238,10 @@ public sealed class FileSystemPackStore : IPackStore, IPackStorePruning, IConten
             return null;
         }
 
-        string[] lines;
+        byte[] file;
         try
         {
-            lines = await File.ReadAllLinesAsync(path, cancellationToken).ConfigureAwait(false);
+            file = await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false);
         }
         catch (IOException)
         {
@@ -252,9 +252,9 @@ public sealed class FileSystemPackStore : IPackStore, IPackStorePruning, IConten
             return null;
         }
 
-        return lines.Length >= 2 && IsContentAddress(lines[0]) && IsContentAddress(lines[1])
-            ? new PackVersionPointer(lines[0], lines[1])
-            : null;
+        // The parse lives on the pointer itself, because the HTTP provider reads the same file off a
+        // versions/<n> GET and two copies of a format's reader is how the two drift.
+        return PackVersionPointer.TryRead(file);
     }
 
     /// <inheritdoc />

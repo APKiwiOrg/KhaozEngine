@@ -294,10 +294,31 @@ if (!roller.TryRoll(tableId, drops, out int written))
   prune and a misconfigured one cannot delete a production pack through the common interface.
 - `PackVersionPointer` and `PackDurability` - the two manifest hashes of one published version, which is the
   ONE object in a store not named by its own hash, and how hard a provider works to survive a power cut.
+  `PackVersionPointer.TryRead` is the pointer file's one parser, because both providers read the same two
+  lines, the local one off disk and the HTTP one off a `versions/<n>` GET.
 - `FileSystemPackStore` - the local provider: one file per hash under a two-level shard derived from the
   hash itself, written to a temporary name in the same directory and then moved. The version pointer lives
   outside the shard tree under `versions/`, because a shard name is derived from a hash and a version number
   is not one.
+- `HttpPackStore` - the read-only cloud provider, over ONE injected `HttpClient`, laying the SAME two-level
+  shard out under an HTTP base address as the file store does on disk, so one tree serves both and a
+  publisher uploads the directory as it stands. `PutAsync` and `ListAsync` throw `NotSupportedException` on
+  the CALL, which is what makes it obviously a fetch path rather than a half-working publish target, and
+  every answer that is not a 200 is null rather than a throw, a 404, a 5xx, a redirect and a connection that
+  died mid body alike. It verifies NOTHING: a store is a transport and the address check is the reader's.
+  `CreateClient` builds the client the container should be read through, following no redirect and setting
+  no credential, because a redirect off a content-addressed store is either a misconfiguration or a
+  redirection attack. No cloud SDK, deliberately: a blob SDK here would be a third-party dependency in every
+  game client's graph, and the write side belongs to the publisher's own server.
+- `CachingPackStore` - a LOCAL store in front of a REMOTE one. `GetAsync` asks local, on a miss asks remote,
+  VERIFIES, writes through to local and returns. `ExistsAsync` asks local then remote. `PutAsync`, `ListAsync`
+  and the pruning half are the CACHE's alone, so one client's eviction policy can never reach the origin.
+  The verification is the whole value of it and it is not optional: bytes that do not digest to the name they
+  were fetched under are discarded, never cached and never returned. It verifies on every READ from the cache
+  and not only on write, which is what makes a local file replaced with attacker bytes self-healing, and a
+  failed cache read is DELETED before the refetch, because a content-addressed `PutAsync` is a no-op when the
+  name already exists. Every discard is reported as `(hash, reason)` through the optional callback, which is
+  how a fetch loop says `hash-mismatch` without this type knowing what a fetch loop is.
 - `ContentPackReader` - the ONE reader, shared by the server and the client, which differ only in when they
   call it. `ReadAllAsync` is the server's eager boot path, `ReadRowAsync` is the client's lazy one and
   touches at most the chunk whose slots cover the id, and `ReadChunkAsync` never refetches a chunk it holds.

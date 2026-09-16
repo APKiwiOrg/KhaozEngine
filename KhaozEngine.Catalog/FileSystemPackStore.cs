@@ -29,10 +29,11 @@ namespace KhaozEngine.Catalog;
 /// <b>The version pointer lives OUTSIDE the shard tree</b>, under <c>versions/</c>, because a shard name is
 /// derived from a hash and a version number is not one. Writing a pointer is provider-specific rather than a
 /// fifth member on <see cref="IPackStore"/>, so a read-only provider still cannot be a half-working publish
-/// target.
+/// target. The READ half of the pointer is <see cref="IContentVersionPointerSource"/>, which this provider
+/// implements and a boot over a store that does not is handed separately.
 /// </para>
 /// </summary>
-public sealed class FileSystemPackStore : IPackStore, IPackStorePruning
+public sealed class FileSystemPackStore : IPackStore, IPackStorePruning, IContentVersionPointerSource
 {
     /// <summary>The extension every stored object carries, whatever kind it is.</summary>
     public const string FileExtension = ".kec";

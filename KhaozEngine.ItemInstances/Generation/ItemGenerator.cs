@@ -24,6 +24,14 @@ namespace KhaozEngine.ItemInstances;
 /// whose pool empties.
 /// </para>
 /// <para>
+/// <b>Every one of those draws goes through <see cref="BoundedDraw"/>, and that is not a formality.</b> A
+/// bound of one consumes NOTHING from the stream, by <see cref="IRandomSource.NextInt"/>'s own contract, so
+/// a discard written as <c>NextInt(0, 1)</c> is no discard at all and a real draw over a live weight of one
+/// costs the stream nothing either. Both take <see cref="IRandomSource.Skip"/> instead, which advances it by
+/// exactly one draw, so the position after an item is a function of the pick count and never of what the
+/// pool happened to hold.
+/// </para>
+/// <para>
 /// <b>Nothing here is a function of the candidate pool's SIZE.</b> Opening the pool is a handful of scalar
 /// reads per tag position, a pick is a walk of at most
 /// <see cref="ModCandidateTables.MaxGenerationTagPositions"/> tag positions plus a walk of the dead entries
@@ -35,13 +43,6 @@ namespace KhaozEngine.ItemInstances;
 /// </summary>
 public sealed partial class ItemGenerator
 {
-    /// <summary>
-    /// The bound a DISCARDED draw uses. Step 7's real draw is <c>NextInt(0, liveWeight)</c> and a weight
-    /// total of zero is not a legal argument, so a discard has to be a defined call rather than the same
-    /// call on an empty pool.
-    /// </summary>
-    const int DiscardBound = 1;
-
     /// <summary>
     /// The most excluded runs one tag table can hold. A placement seats one run per table and its group
     /// seats one more per member, so the bound is the affix count times the widest group plus itself, and

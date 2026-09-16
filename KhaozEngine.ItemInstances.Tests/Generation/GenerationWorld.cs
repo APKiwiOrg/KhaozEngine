@@ -164,6 +164,28 @@ internal static class GenerationWorld
     public static InstanceIdAllocator FreshAllocator() => new(new RecordingInstanceIdStore(), 0);
 
     /// <summary>
+    /// The same world with the mod weights cut to ONE prefix candidate at weight 1 and ONE suffix candidate
+    /// at weight 100, which is the smallest shape that makes a real draw's bound collapse. A magic roll on
+    /// the dagger then takes one pick, and whether that pick's weighted draw costs the stream anything at
+    /// all depends on which kind it landed on.
+    /// </summary>
+    public static ItemGenerator LopsidedGenerator(IRandomSource random)
+    {
+        ContentTypeRegistry registry = World();
+        List<ContentRow> rows = Rows(registry);
+        rows.RemoveAll(row => row.Type.Value == InstanceContentTypeIds.ModTierWeightTypeId);
+        rows.Add(ModTierWeight(registry, 1, "sharp_t1_metal", tierId: 1, tagId: MetalTag, weight: 1));
+        rows.Add(ModTierWeight(registry, 4, "keen_t1_metal", tierId: 4, tagId: MetalTag, weight: 100));
+
+        ContentSnapshot candidate = Snapshot(registry, [.. rows]);
+        return new ItemGenerator(
+            ModCandidateTables.Build(candidate),
+            candidate,
+            random,
+            FreshAllocator());
+    }
+
+    /// <summary>
     /// One item base, which the shared fixture cannot build because the facts need a durability and a socket
     /// cap on it. The field ORDER is <c>ItemContentType</c>'s schema, which
     /// <c>ItemGeneratorTests.The_engine_item_field_indexes_the_generator_reads_are_still_where_it_reads_them</c>
@@ -324,18 +346,30 @@ internal static class GenerationWorld
 
 /// <summary>
 /// Every call the generator makes on its source, in order, beside the answers a real source gave. A draw
-/// COUNT is the reproducibility contract of spec 9.3, so a fact about it has to see the CALLS rather than
-/// the stream position: <c>NextInt(0, 1)</c> is a defined call that consumes nothing from the wrapped
-/// generator, which is exactly why the discard has to be a call rather than nothing at all.
+/// COUNT is the reproducibility contract of spec 9.3, so a fact about it has to see the CALLS the generator
+/// made and not only the item that came out.
+/// <para>
+/// <b>A CALL count is not a stream position, which is the whole of finding HIGH 1.</b> <c>NextInt(0, 1)</c>
+/// is a defined call that consumes NOTHING from the wrapped generator, by
+/// <see cref="IRandomSource.NextInt"/>'s own contract, and so is any real draw whose bound collapses to one.
+/// So a source that only counts calls reads two rolls as identical while the stream underneath them sits in
+/// two different places. <see cref="IRandomSource.Skip"/> is the discard that always costs one draw, and
+/// <see cref="CountingSeededRandomSource"/> is what sees the draws rather than the calls.
+/// </para>
 /// </summary>
 internal sealed class RecordingRandomSource(IRandomSource inner) : IRandomSource
 {
     readonly List<string> _calls = [];
 
-    /// <summary>Every call, as <c>int:min:max</c> or <c>position</c>, in the order they were made.</summary>
+    /// <summary>Every call, as <c>int:min:max</c>, <c>skip</c> or <c>position</c>, in the order made.</summary>
     public IReadOnlyList<string> Calls => _calls;
 
-    /// <summary>The <c>maxExclusive</c> of every <see cref="NextInt"/>, which is the pool a draw saw.</summary>
+    /// <summary>
+    /// The <c>maxExclusive</c> of every <see cref="NextInt"/>, which is the pool a draw saw, with a
+    /// <see cref="Skip"/> entered as the 1 its bound collapsed to. A discard is a draw the generator makes,
+    /// so it holds a POSITION in this list, and a fact reading <c>Bounds[2]</c> reads the third draw either
+    /// way.
+    /// </summary>
     public List<int> Bounds { get; } = [];
 
     /// <inheritdoc />
@@ -365,6 +399,70 @@ internal sealed class RecordingRandomSource(IRandomSource inner) : IRandomSource
     {
         _calls.Add("bytes");
         inner.NextBytes(destination);
+    }
+
+    /// <inheritdoc />
+    public void Skip()
+    {
+        _calls.Add("skip");
+        Bounds.Add(1);
+        inner.Skip();
+    }
+}
+
+/// <summary>
+/// A seeded source that counts the draws that reach the stream, which is the only thing that can see
+/// finding HIGH 1: two rolls can make the same CALLS and leave the stream in two different places, because
+/// a bound of one consumes nothing.
+/// <para>
+/// <b>The bounded draw is plain modulo rather than the shipped source's rejection bound</b>, deliberately,
+/// because a count must not carry a one-in-four-billion tail and the uniformity of a test double's values is
+/// not what any fact here reads. What it DOES copy exactly is the two properties under test: a one-wide
+/// range consumes nothing, and a <see cref="Skip"/> consumes exactly one. Both of those are pinned on the
+/// SHIPPED source by <c>RandomSourceTests</c> in <c>KhaozEngine.Foundation.Tests</c>.
+/// </para>
+/// </summary>
+internal sealed class CountingSeededRandomSource(ulong seed) : IRandomSource
+{
+    readonly DeterministicRng _rng = new(seed);
+
+    /// <summary>How many draws have reached the wrapped stream, which IS its position.</summary>
+    public int UnderlyingDraws { get; private set; }
+
+    /// <inheritdoc />
+    public int NextInt(int minInclusive, int maxExclusive)
+    {
+        if (maxExclusive <= minInclusive)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxExclusive), maxExclusive, "maxExclusive must be greater than minInclusive.");
+        }
+
+        uint range = (uint)((long)maxExclusive - minInclusive);
+        return range == 1 ? minInclusive : (int)(minInclusive + (long)(Draw() % range));
+    }
+
+    /// <inheritdoc />
+    public ulong NextULong() => Draw();
+
+    /// <inheritdoc />
+    public ushort NextRollPosition() => (ushort)(Draw() >> 48);
+
+    /// <inheritdoc />
+    public void NextBytes(Span<byte> destination)
+    {
+        for (int index = 0; index < destination.Length; index++)
+        {
+            destination[index] = (byte)Draw();
+        }
+    }
+
+    /// <inheritdoc />
+    public void Skip() => _ = Draw();
+
+    ulong Draw()
+    {
+        UnderlyingDraws++;
+        return _rng.NextULong();
     }
 }
 

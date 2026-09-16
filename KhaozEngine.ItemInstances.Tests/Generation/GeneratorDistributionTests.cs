@@ -229,14 +229,14 @@ public class GeneratorDistributionTests
         Assert.True(dry.AffixCount < dry.RequestedAffixCount);
 
         // And the three picks that found nothing still DREW. A dry pick is the kind draw on an empty open
-        // total, then the two discards: NextInt(0, 1) rather than nothing, because step 7's real draw is
-        // NextInt(0, liveWeight) and a weight total of zero is not a legal argument.
+        // total, then the two discards, and all three are Skip rather than NextInt(0, 1): a one-wide range
+        // consumes NOTHING from the stream, so a discard written that way is no discard at all.
         int tail = 1 + (3 * 4);
         for (int pick = 4; pick < GrandAffixes; pick++)
         {
             int at = tail + ((pick - 4) * 3);
-            Assert.Equal("int:0:1", dries.Calls[at]);
-            Assert.Equal("int:0:1", dries.Calls[at + 1]);
+            Assert.Equal("skip", dries.Calls[at]);
+            Assert.Equal("skip", dries.Calls[at + 1]);
             Assert.Equal("position", dries.Calls[at + 2]);
         }
     }

@@ -22,12 +22,19 @@ automatically, so this is transparent to every other package.
 - `XorRng` - tiny xorshift32 value-type PRNG for allocation-free hot paths (particles, audio noise).
   Copy the struct to snapshot. Use `DeterministicRng` when you need resume or derived streams.
 - `IRandomSource` / `SeededRandomSource` / `CryptographicRandomSource` - the engine's one gameplay-randomness
-  seam, for a loot draw, a craft roll, a spawn choice or a decoder fuzzer. Four members
-  (`NextInt(minInclusive, maxExclusive)`, `NextULong`, `NextRollPosition` over 0 to 65535, `NextBytes`), no
+  seam, for a loot draw, a craft roll, a spawn choice or a decoder fuzzer. Five members
+  (`NextInt(minInclusive, maxExclusive)`, `NextULong`, `NextRollPosition` over 0 to 65535, `NextBytes`,
+  `Skip`), no
   float, and deliberately NO `Seed`, `State` or `CreateDerived`: a source whose seed is readable is a source
   a crafting system can leak, and a durable record carries the resolved outcome rather than a seed or a draw
   index. `NextInt` throws `ArgumentOutOfRangeException` on an empty range, which is a caller bug rather than
-  a draw, and a one-wide range answers without consuming a draw. `CryptographicRandomSource` draws from the
+  a draw, and a one-wide range answers without consuming a draw. `Skip` advances the stream by exactly one
+  draw, for a caller that must consume a draw it will not use: it is what a position-stable generator
+  discards with, because `NextInt(0, 1)` consumes nothing and so leaves the stream where a skipped call
+  would. It is a default interface method (`NextInt(0, 2)` discarded), so a foreign implementation gets the
+  advance for free. `SeededRandomSource` overrides it to take exactly one draw off the wrapped generator and
+  `CryptographicRandomSource` overrides it to do nothing, because a cryptographic stream has no position to
+  advance. `CryptographicRandomSource` draws from the
   OS through `System.Security.Cryptography.RandomNumberGenerator` and is what a hosted server runs.
   `SeededRandomSource(ulong seed)` wraps `DeterministicRng`, so a seeded replay and a test reuse the engine's
   one seeded stream definition, and the seed is not readable back off the instance. Both bound a draw by

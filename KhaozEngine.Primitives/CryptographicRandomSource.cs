@@ -51,6 +51,16 @@ public sealed class CryptographicRandomSource : IRandomSource
         RandomNumberGenerator.Fill(destination);
     }
 
+    /// <summary>
+    /// Does NOTHING, because a cryptographic stream has no position to advance. The member exists so a
+    /// caller that must consume a draw it will not use can stay position stable on a seeded source, and
+    /// there is no position here for that caller to stay stable against, so taking an OS draw and throwing
+    /// it away would be pure cost.
+    /// </summary>
+    public void Skip()
+    {
+    }
+
     // Lemire's rejection bound: reject the draws below 2^64 mod range, so the remaining draws divide evenly
     // and the modulo that follows carries no bias. For any range a content roll uses, the rejection
     // probability is under 2^-32, so this is one draw in practice.

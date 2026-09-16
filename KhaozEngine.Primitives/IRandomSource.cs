@@ -46,4 +46,21 @@ public interface IRandomSource
 
     /// <summary>Fills the whole destination span. An empty span is legal and draws nothing.</summary>
     void NextBytes(Span<byte> destination);
+
+    /// <summary>
+    /// Advances the stream by exactly one draw, for a caller that must consume a draw it will not use.
+    /// <para>
+    /// A generator that must stay POSITION STABLE cannot lean on <see cref="NextInt"/> for its discard: a
+    /// one-wide range consumes no draw at all, and so does a real draw whose bound happens to collapse to
+    /// one, so the stream position after an item would depend on what the pool held rather than on the
+    /// number of picks. This member is the discard that always costs the same.
+    /// </para>
+    /// <para>
+    /// The DEFAULT body is one <c>NextInt(0, 2)</c> with the result thrown away, so a foreign implementation
+    /// gets the advance for free. An implementation that knows its own stream overrides it: the seeded source
+    /// consumes exactly one underlying draw, and a cryptographic source does nothing at all because a
+    /// cryptographic stream has no position to advance.
+    /// </para>
+    /// </summary>
+    void Skip() => _ = NextInt(0, 2);
 }

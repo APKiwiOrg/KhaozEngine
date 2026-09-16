@@ -77,12 +77,12 @@ public sealed partial class ItemGenerator
 
         if (!known || liveWeight <= 0)
         {
-            _ = _random.NextInt(0, DiscardBound);
+            _random.Skip();
             _ = _random.NextRollPosition();
             return false;
         }
 
-        int entry = Resolve(kindPosition, _random.NextInt(0, liveWeight));                    // step 7
+        int entry = Resolve(kindPosition, BoundedDraw.Next(_random, liveWeight));             // step 7
         ushort position = _random.NextRollPosition();                                         // step 8
         int modId = ModCandidateTables.ModIdOf(entry);
         int ordinal = ModCandidateTables.TierOrdinalOf(entry);
@@ -269,7 +269,7 @@ public sealed partial class ItemGenerator
 
         ReadOnlySpan<int> cumulative = _content.RarityCumulative(signature);
         int total = cumulative.Length == 0 ? 0 : cumulative[^1];
-        int draw = _random.NextInt(0, Math.Max(total, DiscardBound));
+        int draw = BoundedDraw.Next(_random, total);
         return total == 0 ? -1 : LowerBound(cumulative, draw);
     }
 
@@ -281,7 +281,7 @@ public sealed partial class ItemGenerator
     {
         if (rarityIndex < 0)
         {
-            _ = _random.NextInt(0, DiscardBound);
+            _random.Skip();
             return 0;
         }
 
@@ -293,7 +293,7 @@ public sealed partial class ItemGenerator
                 $"Rarity rule {_content.RarityIdAt(rarityIndex)} asks for up to {maximum} affixes and kind 131's count is a BYTE, so at most {byte.MaxValue} fit. A publish refuses a rule past {RarityRuleContentType.MaxAffixCount}, so this rule reached a boot without one."));
         }
 
-        return _random.NextInt(minimum, maximum + 1);
+        return minimum + BoundedDraw.Next(_random, maximum - minimum + 1);
     }
 
     /// <summary>
@@ -324,7 +324,7 @@ public sealed partial class ItemGenerator
                 }
             }
 
-            int kindDraw = _random.NextInt(0, Math.Max(openTotal, DiscardBound));            // step 5
+            int kindDraw = BoundedDraw.Next(_random, openTotal);                             // step 5
             int chosen = ChooseKind(rarityIndex, openTotal, kindDraw, kindMask);
             int liveWeight = 0;
             for (int tag = 0; chosen >= 0 && tag < _tagCount; tag++)
@@ -336,15 +336,15 @@ public sealed partial class ItemGenerator
             {
                 // A pick whose live pool is EMPTY still draws twice and places nothing. Without these two
                 // discards one item consumes fewer draws than another of the same rarity on the same base,
-                // and a seeded session diverges at the first item whose pool empties. NextInt(0, 1) rather
-                // than nothing, because step 7's real draw is NextInt(0, liveWeight) and a weight total of
-                // zero is not a legal argument.
-                _ = _random.NextInt(0, DiscardBound);
+                // and a seeded session diverges at the first item whose pool empties. Skip rather than
+                // NextInt(0, 1), because a one-wide range consumes NOTHING and a discard that costs the
+                // stream nothing is the same as no discard at all.
+                _random.Skip();
                 _ = _random.NextRollPosition();
                 continue;
             }
 
-            int entry = Resolve(chosen, _random.NextInt(0, liveWeight));                     // step 7
+            int entry = Resolve(chosen, BoundedDraw.Next(_random, liveWeight));              // step 7
             ushort position = _random.NextRollPosition();                                    // step 8
             int modId = ModCandidateTables.ModIdOf(entry);
             if (placed < _affixes.Length)

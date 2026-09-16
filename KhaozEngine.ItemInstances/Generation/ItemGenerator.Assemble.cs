@@ -54,11 +54,11 @@ public sealed partial class ItemGenerator
             ReadOnlySpan<int> cumulative = _content.NameCumulative(signature, position);
             if (cumulative.Length == 0)
             {
-                _ = _random.NextInt(0, DiscardBound);
+                _random.Skip();
                 continue;
             }
 
-            int draw = _random.NextInt(0, cumulative[^1]);
+            int draw = BoundedDraw.Next(_random, cumulative[^1]);
             _nameWords[placed++] = _content.NameWords(signature, position)[LowerBound(cumulative, draw)];
         }
 

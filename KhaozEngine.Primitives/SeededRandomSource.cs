@@ -43,6 +43,13 @@ public sealed class SeededRandomSource : IRandomSource
     /// <inheritdoc />
     public ushort NextRollPosition() => (ushort)(_rng.NextULong() >> 48);
 
+    /// <summary>
+    /// Advances the stream by EXACTLY ONE draw of the wrapped generator. No range and no rejection loop,
+    /// because a discard that went through <see cref="NextInt"/> would cost a draw the caller cannot predict
+    /// and the whole point of this member is a discard whose cost is fixed.
+    /// </summary>
+    public void Skip() => _ = _rng.NextULong();
+
     /// <inheritdoc />
     public void NextBytes(Span<byte> destination)
     {

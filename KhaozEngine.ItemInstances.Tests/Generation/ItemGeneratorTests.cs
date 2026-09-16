@@ -54,6 +54,52 @@ public class ItemGeneratorTests
     }
 
     [Fact]
+    public void Two_rolls_of_one_rarity_on_one_base_leave_the_SEEDED_STREAM_in_the_same_place()
+    {
+        // The CALL count was never the contract: NextInt(0, 1) consumes nothing by IRandomSource's own
+        // rule, and neither does a REAL draw whose bound collapses to one. This world has one prefix
+        // candidate at weight 1 and one suffix at weight 100, so the pick that lands on the prefix draws
+        // over a bound of one and the pick that lands on the suffix draws over 100. Two rolls that make the
+        // same calls then leave the stream two draws apart, and the next item of a seeded session is a
+        // different item depending on which way an earlier one happened to fall.
+        var onThePrefix = new CountingSeededRandomSource(1);
+        var onTheSuffix = new CountingSeededRandomSource(5);
+
+        GenerationResult prefix = GenerationWorld.LopsidedGenerator(onThePrefix).Generate(Magic(GenerationWorld.Dagger));
+        GenerationResult suffix = GenerationWorld.LopsidedGenerator(onTheSuffix).Generate(Magic(GenerationWorld.Dagger));
+
+        // The two seeds landed on the two different kinds, which is what makes the comparison worth making.
+        int[] landed = [KindOfOnlyAffix(prefix), KindOfOnlyAffix(suffix)];
+        Assert.Contains(ModContentType.PrefixKind, landed);
+        Assert.Contains(ModContentType.SuffixKind, landed);
+
+        Assert.Equal(onTheSuffix.UnderlyingDraws, onThePrefix.UnderlyingDraws);
+    }
+
+    [Fact]
+    public void The_item_AFTER_a_roll_that_ran_dry_is_the_same_item_as_after_one_that_did_not()
+    {
+        // Spec 9.3's property, read where it actually bites. The wand's pool is empty at every pick and the
+        // greatsword's is not, so the two rolls cost the stream a different number of draws unless every
+        // discard advances it. The item after them is the one that shows it: same seed, same base, and the
+        // payloads have to be byte equal or a seeded session has diverged at the first item whose pool ran
+        // dry, which is exactly what the spec forbids.
+        ItemGenerator afterDry = GenerationWorld.Generator(new SeededRandomSource(11));
+        ItemGenerator afterFull = GenerationWorld.Generator(new SeededRandomSource(11));
+
+        GenerationResult dry = afterDry.Generate(Rare(GenerationWorld.Wand));
+        GenerationResult full = afterFull.Generate(Rare(GenerationWorld.Greatsword));
+        Assert.Empty(GenerationWorld.Affixes(dry.Payload));
+        Assert.NotEmpty(GenerationWorld.Affixes(full.Payload));
+
+        GenerationResult next = afterDry.Generate(Rare(GenerationWorld.Dagger));
+        GenerationResult twin = afterFull.Generate(Rare(GenerationWorld.Dagger));
+        Assert.True(
+            ItemInstancePayload.SequenceEqual(next.Payload.Span, twin.Payload.Span),
+            "The item after a dry roll is a different item from the one after a full roll, so the stream moved by a different amount.");
+    }
+
+    [Fact]
     public void A_pick_whose_live_pool_is_EMPTY_still_draws_twice_and_places_nothing()
     {
         // The wand's only tag carries no weight row anywhere, so every one of its four picks opens on an
@@ -67,10 +113,11 @@ public class ItemGeneratorTests
         Assert.Equal(4, result.RequestedAffixCount);
         Assert.Empty(GenerationWorld.Affixes(result.Payload));
 
-        // NextInt(0, 1) rather than nothing, because step 7's real draw is NextInt(0, liveWeight) and a
-        // weight total of zero is not a legal argument, so the discard has to be a DEFINED call.
+        // Skip rather than NextInt(0, 1), because a one-wide range consumes NOTHING from the stream and a
+        // discard that costs the stream nothing is the same as no discard at all. The count draw is a skip
+        // too, because rare's minimum equals its maximum, which is a REAL draw whose bound collapsed.
         Assert.Equal(
-            new[] { "int:4:5", "int:0:1", "int:0:1", "position", "int:0:1", "int:0:1", "position" },
+            new[] { "skip", "skip", "skip", "position", "skip", "skip", "position" },
             source.Calls.Take(7).ToArray());
     }
 

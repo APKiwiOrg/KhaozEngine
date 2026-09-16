@@ -182,11 +182,95 @@ public class RandomSourceTests
     }
 
     [Fact]
-    public void TheSeamExposesFourMembersAndNoFloat()
+    public void TheSeamExposesFiveMembersAndNoFloat()
     {
         MethodInfo[] methods = typeof(IRandomSource).GetMethods();
-        Assert.Equal(4, methods.Length);
+        Assert.Equal(5, methods.Length);
         Assert.All(methods, m => Assert.NotEqual(typeof(float), m.ReturnType));
         Assert.All(methods, m => Assert.NotEqual(typeof(double), m.ReturnType));
+    }
+
+    [Fact]
+    public void SkipAdvancesTheSeededStreamByExactlyOneDraw()
+    {
+        // The whole value of Skip is that its cost is FIXED. NextInt cannot be the discard, because a
+        // one-wide range consumes nothing, so a caller whose bound collapses would silently stay put.
+        var skipped = new SeededRandomSource(4_242);
+        var drawn = new SeededRandomSource(4_242);
+
+        skipped.Skip();
+        _ = drawn.NextULong();
+
+        ulong[] after = Enumerable.Range(0, 8).Select(_ => skipped.NextULong()).ToArray();
+        ulong[] reference = Enumerable.Range(0, 8).Select(_ => drawn.NextULong()).ToArray();
+        Assert.Equal(reference, after);
+
+        // The same read through the bounded door: the draw after a Skip is the SECOND draw of a fresh
+        // source on the same seed, which is the property a position-stable generator leans on.
+        var afterSkip = new SeededRandomSource(11);
+        var fresh = new SeededRandomSource(11);
+        afterSkip.Skip();
+        _ = fresh.NextInt(0, 1_000);
+        Assert.Equal(fresh.NextInt(0, 1_000), afterSkip.NextInt(0, 1_000));
+    }
+
+    [Fact]
+    public void SkipOnTheCryptographicSourceIsANoOpItDeclaresItself()
+    {
+        // A cryptographic stream has no position to advance, so the source overrides Skip rather than
+        // inheriting the interface default, which would burn an OS draw for nothing. The override is what
+        // this fact reads, because a no-op has no other observable.
+        var crypto = new CryptographicRandomSource();
+        for (int index = 0; index < 64; index++)
+        {
+            crypto.Skip();
+        }
+
+        Assert.InRange(crypto.NextInt(0, 10), 0, 9);
+
+        InterfaceMapping map = typeof(CryptographicRandomSource).GetInterfaceMap(typeof(IRandomSource));
+        int slot = Array.FindIndex(map.InterfaceMethods, method => method.Name == nameof(IRandomSource.Skip));
+        Assert.True(slot >= 0, "The seam no longer carries Skip.");
+        Assert.Equal(typeof(CryptographicRandomSource), map.TargetMethods[slot].DeclaringType);
+    }
+
+    [Fact]
+    public void AnImplementationThatOverridesNothingStillAdvancesThroughTheDefaultSkip()
+    {
+        // The default body is one NextInt(0, 2) discarded, so a foreign implementation gets the advance for
+        // free. A default that read as a one-wide range would consume nothing and quietly give every
+        // adopter the defect Skip exists to close.
+        var counted = new CountingSource();
+        IRandomSource seam = counted;
+
+        seam.Skip();
+        seam.Skip();
+
+        Assert.Equal(2, counted.Draws);
+        Assert.Equal(2, counted.WidestBound);
+    }
+
+    /// <summary>
+    /// An <see cref="IRandomSource"/> that overrides nothing it does not have to, so the interface's own
+    /// default <see cref="IRandomSource.Skip"/> is what runs.
+    /// </summary>
+    sealed class CountingSource : IRandomSource
+    {
+        public int Draws { get; private set; }
+
+        public int WidestBound { get; private set; }
+
+        public int NextInt(int minInclusive, int maxExclusive)
+        {
+            Draws++;
+            WidestBound = Math.Max(WidestBound, maxExclusive - minInclusive);
+            return minInclusive;
+        }
+
+        public ulong NextULong() => 0;
+
+        public ushort NextRollPosition() => 0;
+
+        public void NextBytes(Span<byte> destination) => destination.Clear();
     }
 }

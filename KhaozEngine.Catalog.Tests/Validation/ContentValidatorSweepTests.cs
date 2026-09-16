@@ -28,6 +28,9 @@ public class ContentValidatorSweepTests
     /// <summary>The first id of Scope B's reserved band, which phase 1 registers nothing in.</summary>
     const ushort InstancesTypeId = 256;
 
+    /// <summary>A code from the band's reserved range, standing in for one the item instances types issue.</summary>
+    const string BandCode = "KEC0142";
+
     [Fact]
     public void A_clean_candidate_is_valid_and_carries_only_the_informational_finding()
     {
@@ -235,10 +238,70 @@ public class ContentValidatorSweepTests
 
         ContentValidationReport report = Validate(candidate, registry);
 
-        // Pass 1 still sees the malformed key, and pass 6 has nothing of its own to say until Scope B ships.
+        // Pass 1 still sees the malformed key, and a band registration that declares no validator of its
+        // own adds nothing in pass 6.
         Assert.True(Has(report, "KEC0001"), Describe(report));
         Assert.DoesNotContain(report.Findings, finding => IsInstanceBand(finding.Code));
     }
+
+    [Fact]
+    public void An_instances_band_validator_runs_in_pass_6_and_its_own_code_arrives_unchanged()
+    {
+        ContentTypeRegistry registry = InstancesRegistry(new SpeakingValidator(BandCode, "the band said so"));
+        ContentSnapshot candidate = Snapshot(registry, InstancesRow(5));
+
+        ContentValidationReport report = Validate(candidate, registry);
+
+        // The band's own token, not KEC0040. Its types are engine code in the engine's own band, so an
+        // operator keys a runbook on the code the band issued rather than on the untrusted-validator code.
+        ContentFinding finding = Single(report, BandCode);
+        Assert.Equal(new ContentTypeId(InstancesTypeId), finding.Type);
+        Assert.Equal(5, finding.Id);
+        Assert.Equal("the band said so", finding.Message);
+        Assert.DoesNotContain(
+            report.Findings,
+            one => string.Equals(one.Code, ContentValidator.TypeValidatorCode, StringComparison.Ordinal));
+        Assert.False(report.IsValid, Describe(report));
+    }
+
+    [Fact]
+    public void A_throw_from_an_instances_band_validator_PROPAGATES_rather_than_becoming_KEC0040()
+    {
+        ContentTypeRegistry registry = InstancesRegistry(new ThrowingValidator("the band's validator fell over"));
+        ContentSnapshot candidate = Snapshot(registry, InstancesRow(5));
+
+        // A game's validator is untrusted and its throw is a finding. A band type is the engine's own code
+        // in the engine's own band, so a throw there is a bug and the sweep does not dress it as content.
+        var thrown = Assert.Throws<InvalidOperationException>(() => Validate(candidate, registry));
+        Assert.Equal("the band's validator fell over", thrown.Message);
+    }
+
+    /// <summary>A registry carrying ONE instances-band type with the validator handed in.</summary>
+    static ContentTypeRegistry InstancesRegistry(IContentValidator validator)
+    {
+        ContentFieldSchema schema = Schema(
+            new ContentFieldEntry("n", ContentFieldKind.Int, null, ContentVisibility.Client, false));
+        var registry = new ContentTypeRegistry();
+        registry.RegisterContentType(
+            ContentRegistrationBand.Instances,
+            InstancesTypeId,
+            "instances_thing",
+            new PlainCodec(new ContentTypeId(InstancesTypeId), schema),
+            validator,
+            schema,
+            ContentVisibility.Client,
+            ContentTypeRegistry.MinChunkSlots);
+        return registry;
+    }
+
+    /// <summary>One clean row of that type, so nothing but the band's own validator has anything to say.</summary>
+    static ContentRow InstancesRow(int id) => new(
+        new ContentTypeId(InstancesTypeId),
+        id,
+        new ContentKey("thing"),
+        0,
+        false,
+        [ContentFieldValue.OfNumber(ContentFieldKind.Int, 1)]);
 
     [Fact]
     public void A_null_argument_is_a_programming_error_and_is_the_one_thing_that_throws()

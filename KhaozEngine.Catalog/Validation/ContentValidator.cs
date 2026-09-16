@@ -129,32 +129,48 @@ public static class ContentValidator
     /// <summary>
     /// Pass 6, Scope B's band, which is INSIDE the sweep rather than in the per-type slot (spec 5.3). Its
     /// types are engine code in the engine's own 256 to 1023 band, so their checks are the engine's checks:
-    /// they emit <c>KEC0100</c> to <c>KEC0199</c> directly and a throw from one is a bug rather than
-    /// something to swallow.
+    /// a band registration's own <see cref="IContentValidator"/> runs HERE, its findings are added
+    /// UNCHANGED rather than folded into <c>KEC0040</c>, and a throw from one PROPAGATES rather than
+    /// becoming a finding, because a throw in the engine's own band is a bug and not untrusted input.
     /// <para>
-    /// Phase 1 registers no type in that band, so this is the hook and the skip. The band being empty is
-    /// every boot of a game that does not use instances, and the skip is what keeps its cost at nothing.
+    /// <b>The band cannot be named from here and that is the whole shape of this pass.</b>
+    /// <c>KhaozEngine.Catalog</c> cannot reference the package that registers the band without closing a
+    /// cycle, so the band arrives through the registration it already carries and the codes it emits,
+    /// <c>KEC0100</c> to <c>KEC0199</c>, are reserved so an operator can tell them apart from this
+    /// package's own.
+    /// </para>
+    /// <para>
+    /// A band type does NOT run again in <see cref="RunTypeValidators"/>. Pass 6 owns it, so its finding
+    /// reaches the report once and under its own token rather than twice under two.
+    /// </para>
+    /// <para>
+    /// Two skips keep the pass at nothing. A process that registers no band type has none to walk, which is
+    /// every boot of a game that does not use instances, and a band registration that declares no validator
+    /// is swept by passes 1 to 5 like any other type and adds nothing of its own.
     /// </para>
     /// </summary>
     static void RunInstanceBand(ContentValidationRun run)
     {
-        bool any = false;
         foreach (ContentTypeRegistration registration in run.Registry.ByTypeId)
         {
-            if (registration.Type.IsInstances)
+            if (!registration.Type.IsInstances)
             {
-                any = true;
-                break;
+                continue;
+            }
+
+            IContentValidator? validator = registration.Validator;
+            if (validator is null)
+            {
+                continue;
+            }
+
+            var own = new List<ContentFinding>();
+            validator.Validate(registration.Type, run.Candidate, own);
+            foreach (ContentFinding finding in own)
+            {
+                run.Findings.Add(finding);
             }
         }
-
-        if (!any)
-        {
-            return;
-        }
-
-        // Scope B ships its own checks here, against the rows of its own band's types. Until it does, a
-        // registered instances type is swept by passes 1 to 5 like any other and adds nothing of its own.
     }
 
     /// <summary>
@@ -164,6 +180,10 @@ public static class ContentValidator
     /// A validator is UNTRUSTED code, so a throw out of one becomes a single <c>KEC0040</c> carrying the
     /// exception message. One bad validator must not take a publish down with a stack trace where a finding
     /// was expected.
+    /// </para>
+    /// <para>
+    /// The item-instances band is SKIPPED here, because pass 6 already ran it as trusted engine code. That
+    /// is the one place the two loops differ, and it is what keeps a band finding under its own code.
     /// </para>
     /// <para>
     /// The finding comes back under <c>KEC0040</c> with the game's own message, prefixed by its type key, so
@@ -176,6 +196,14 @@ public static class ContentValidator
     {
         foreach (ContentTypeRegistration registration in run.Registry.ByTypeId)
         {
+            // A band type already ran, TRUSTED, in pass 6. Running it again here would report every
+            // KEC0100-band finding a second time under KEC0040, which says the opposite about where the
+            // finding came from.
+            if (registration.Type.IsInstances)
+            {
+                continue;
+            }
+
             IContentValidator? validator = registration.Validator;
             if (validator is null)
             {

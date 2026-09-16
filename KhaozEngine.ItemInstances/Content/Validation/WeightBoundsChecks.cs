@@ -1,0 +1,104 @@
+using System.Collections.Generic;
+using KhaozEngine.Catalog;
+using static KhaozEngine.ItemInstances.InstanceContentChecks;
+
+namespace KhaozEngine.ItemInstances;
+
+/// <summary>
+/// The two weight bounds the three weight types need, <c>KEC0112</c> and <c>KEC0113</c>, which close the
+/// Scope B half of <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/944">944</see>.
+/// <para>
+/// <b>A negative weight and a saturating sum are both SILENT without this.</b> A negative weight makes the
+/// cumulative array a weighted draw searches non-monotonic, and the load-time clamp to zero that rescues
+/// it changes the odds with nothing reported anywhere. A bucket summing past <see cref="int.MaxValue"/>
+/// saturates the same way, which changes every probability in it.
+/// </para>
+/// <para>
+/// <b>The sum is a <c>long</c> compared against the ceiling, never a checked add.</b> An overflow is a
+/// finding the sweep reports and runs past, not an exception that takes the publish down where a finding
+/// was expected.
+/// </para>
+/// <para>
+/// <b>The BUCKET is the rows sharing one tag, which is a SUPERSET of every bucket a draw actually builds.</b>
+/// A candidate table buckets by tag and kind and band, a rarity draw buckets by tag, and a name draw buckets
+/// by tag and position. Every one of those is a subset of the rows sharing a tag, so a per-tag sum inside
+/// the ceiling is inside it for each of them, and the check needs no knowledge of the runtime tables.
+/// </para>
+/// </summary>
+internal static class WeightBoundsChecks
+{
+    /// <summary>The tag field index, which is 1 on all three types, and the weight field index, which is 2.</summary>
+    const int TagId = 1;
+
+    /// <summary>The weight field index.</summary>
+    const int Weight = 2;
+
+    internal static void Run(IContentSnapshot candidate, ICollection<ContentFinding> findings)
+    {
+        CheckOne(
+            candidate,
+            findings,
+            InstanceContentTypeIds.ModTierWeightTypeId,
+            InstanceContentTypeIds.ModTierWeightTypeKey);
+        CheckOne(
+            candidate,
+            findings,
+            InstanceContentTypeIds.RarityWeightTypeId,
+            InstanceContentTypeIds.RarityWeightTypeKey);
+        CheckOne(
+            candidate,
+            findings,
+            InstanceContentTypeIds.RareNameWordWeightTypeId,
+            InstanceContentTypeIds.RareNameWordWeightTypeKey);
+    }
+
+    static void CheckOne(
+        IContentSnapshot candidate,
+        ICollection<ContentFinding> findings,
+        ushort typeId,
+        string typeKey)
+    {
+        var order = new List<long>();
+        var sums = new Dictionary<long, long>();
+
+        foreach (ContentRow row in LiveRows(candidate, typeId))
+        {
+            long weight = Number(row, Weight) ?? 0;
+            if (weight < 0)
+            {
+                findings.Add(new ContentFinding(
+                    row.Type,
+                    row.Id,
+                    InstanceContentFindings.WeightBelowZero,
+                    InstanceContentFindings.WeightNegative(typeKey, row.Id, weight)));
+            }
+
+            long tagId = Number(row, TagId) ?? 0;
+            if (!sums.TryGetValue(tagId, out long running))
+            {
+                order.Add(tagId);
+            }
+
+            // A negative weight is counted as the zero the load-time clamp turns it into, so one defect
+            // does not manufacture the other.
+            sums[tagId] = running + (weight > 0 ? weight : 0);
+        }
+
+        // The report walks the tags in first-seen row order rather than the dictionary's, so two sweeps of
+        // one candidate agree finding for finding.
+        foreach (long tagId in order)
+        {
+            long sum = sums[tagId];
+            if (sum <= int.MaxValue)
+            {
+                continue;
+            }
+
+            findings.Add(new ContentFinding(
+                Type(typeId),
+                0,
+                InstanceContentFindings.WeightBucketOverflow,
+                InstanceContentFindings.WeightOverflow(typeKey, tagId, sum)));
+        }
+    }
+}

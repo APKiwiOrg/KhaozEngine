@@ -46,6 +46,65 @@ Set any of them to `null` to leave Kestrel's own value. A non-positive value thr
 constructor rather than later inside Kestrel's start. None of this replaces the two real mitigations: keep the
 endpoint on loopback or behind a tunnel, and keep the token long and random.
 
+## Content catalog actions
+
+`CatalogAdminActions.Register(admin, store, registry)` registers the content authoring API as ordinary
+actions on this endpoint, so a game console reaches the whole catalog through `GET`/`POST
+/admin/actions/{name}` with no second transport, no second listener and no second token. Call it once at
+startup, beside your own registrations. Registering twice throws, which is the `ServerAdmin` duplicate-name
+rule.
+
+The helper lives here rather than in `KhaozEngine.Catalog.Authoring` because it needs `ServerAdmin` and the
+authoring store together. The edge the other way would put the whole netcode stack behind every opt-in SQL
+catalog provider, and this package already references `NetWorld`, already owns the dispatch, and is outside
+the `KhaozEngine.Server` umbrella, so nothing inherits the cost.
+
+```csharp
+var registry = new ContentTypeRegistry();
+// ... register your content types ...
+IContentAuthoringStore store = new SqliteContentAuthoringStore(path, registry);
+await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
+CatalogAdminActions.Register(admin, store, registry);
+```
+
+Every handler runs on the HTTP request thread and touches only the authoring store, never the simulation, so
+the threading contract holds by construction. The read actions:
+
+| Action | Verb | Request | Response |
+|---|---|---|---|
+| `catalog-schema` | GET | none | `{ generation, types[] }`, each type with its id, key, visibility, chunk slots and its whole field list |
+| `catalog-list` | POST | `{ typeKey, version, keyPrefix, includeRetired, skip, take }` | `{ version, total, skip, take, rows[] }` |
+| `catalog-get` | POST | `{ typeKey, id }` or `{ typeKey, key }`, plus `includeAudit` | `{ typeKey, id, key, row, history[], audit }` |
+| `catalog-draft` | GET | none | `{ draft, edits[] }`, and a null `draft` when none is open |
+| `catalog-versions` | GET | none | `{ activeVersion, pinnedVersion, versions[] }` |
+
+`version` 0 means the current live set and the response says which version it read at, so a console never has
+to assume which number 0 resolved to. `take` is capped at 500 server side and the response echoes the take it
+applied, which is what makes a console page rather than conclude the catalog holds what one page happened to
+carry. Every refusal is a 400 carrying a reason that names what was wrong, never a throw the dispatch turns
+into a 500.
+
+`catalog-get` returns the row plus its full version HISTORY, which is the temporal model's payoff: "when did
+this price change and what was it before" is answered from the row table rather than reconstructed from an
+audit. `includeAudit` adds the row's own audit entries, newest first and filtered to that row, and is off by
+default because the history is the answer to the usual question.
+
+A schema field carries `derived`, and that is what makes ONE generic editor possible: a derived field is not
+the console's to set, so the cell renders read only without the console having to know which kinds are
+derived. The one derived kind today is `LocalizedTextKey`, whose value is the key derived from the type key,
+the row key and the field name.
+
+Field values render by kind, the same way in every action:
+
+| Kind | JSON |
+|---|---|
+| `Int`, `ScaledInt`, `KeyReference` | a number, the STORED integer, so a scaled value is the value times the schema's `scale` |
+| `Bool` | `true` or `false` |
+| `TagList` | an array of tag ids in authored order, never sorted |
+| `OpaqueBytes` | lower hex, the same rendering the audit ledger uses |
+| `LocalizedTextKey` | the derived key string, read only |
+| absent | `null`, never a sentinel |
+
 ## What an action's result maps to
 
 | `AdminActionResult` | Status | Body |

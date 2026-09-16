@@ -9,6 +9,10 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="../KhaozEngine.NetWorld/KhaozEngine.NetWorld.csproj" />
     <ProjectReference Include="../KhaozEngine.WorldStore/KhaozEngine.WorldStore.csproj" />
+    <!-- The content authoring API is registered actions on this package's dispatch (catalog spec 10.1). The
+         helper needs ServerAdmin and the authoring store together, and this is the home that costs nothing:
+         the edge the other way would put the whole netcode stack behind every opt-in SQL catalog provider. -->
+    <ProjectReference Include="../KhaozEngine.Catalog.Authoring/KhaozEngine.Catalog.Authoring.csproj" />
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
   <ItemGroup>

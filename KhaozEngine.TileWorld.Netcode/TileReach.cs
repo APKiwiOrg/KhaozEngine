@@ -103,12 +103,17 @@ public static class TileReach
         IReadOnlyList<TileCoord> reach = Set(map, footprint, plane);
         if (agentSize == 1) return reach;
         var anchors = new List<TileCoord>();
+        // The LIST carries the order and the set answers only "seen this one", never enumerated, so no hash layout
+        // can reach the output: the anchors come out in exactly the order the loops emit them, first occurrence
+        // kept, which is the order the tie rule reads and both heads have to agree on. A set rather than
+        // List.Contains because the candidate count is quadratic in the sizes and the scan was quadratic in that.
+        var seen = new HashSet<TileCoord>();
         foreach (TileCoord p in reach)
             for (int dz = 0; dz < agentSize; dz++)
                 for (int dx = 0; dx < agentSize; dx++)
                 {
                     var a = new TileCoord(p.X - dx, p.Z - dz, plane);
-                    if (Overlaps(a, agentSize, footprint) || anchors.Contains(a)) continue;
+                    if (Overlaps(a, agentSize, footprint) || !seen.Add(a)) continue;
                     anchors.Add(a);
                 }
         return anchors;

@@ -93,6 +93,44 @@ public class TileFootprintReachTests
         Assert.Equal(expected, set);
     }
 
+    // Design section 6.1's candidate loop, transcribed from the spec rather than from the shipped code, so the
+    // order and the dedupe are pinned against what the document says instead of against themselves.
+    static List<TileCoord> SpecOrder(TileCollisionMap map, TileRect target, int n, out int emitted)
+    {
+        emitted = 0;
+        var listed = new List<TileCoord>();
+        foreach (TileCoord p in TileReach.Set(map, target, 0))          // the one tile set, in its existing order
+            for (int dz = 0; dz < n; dz++)                              // z ascending, then x ascending
+                for (int dx = 0; dx < n; dx++)
+                {
+                    var a = new TileCoord(p.X - dx, p.Z - dz, 0);
+                    emitted++;
+                    if (!new TileRect(a.X, a.Z, n, n).Intersect(target).IsEmpty) continue;   // rect(a, N) overlaps T
+                    if (listed.Contains(a)) continue;                                        // already listed
+                    listed.Add(a);
+                }
+        return listed;
+    }
+
+    // The dedupe is the point: above size 1 several reach tiles produce the same anchor, and only the FIRST
+    // occurrence is kept. A cheaper dedupe must not reorder, drop or admit anything, on open ground or behind walls.
+    [Theory, MemberData(nameof(Pairings))]
+    public void Set_lists_the_anchors_in_the_order_design_section_six_one_states(int n, int m)
+    {
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        doc.AddObject("wall", 19, 20, 0, 2);                            // east edge of (19,20)
+        doc.AddObject("tree", 21, 19, 0, 0);                            // Blocked, south of (21,20)
+        TileCollisionMap walled = TileMoveSimulatorTests.Bake(doc);
+        TileRect target = Target(m);
+
+        foreach (TileCollisionMap map in new[] { OpenMap(), walled })
+        {
+            List<TileCoord> expected = SpecOrder(map, target, n, out int produced);
+            Assert.Equal(expected, TileReach.Set(map, target, 0, n));
+            if (n > 1) Assert.True(produced > expected.Count, "the loop really produced a repeat to dedupe");
+        }
+    }
+
     // Set and Contains agree on a map where walls and a Blocked tile really deny reach. Walls deny a reach tile by its
     // edge, the tree denies the tile it stands on, and a wall further east only matters to a 3x3 target.
     [Theory, MemberData(nameof(Pairings))]

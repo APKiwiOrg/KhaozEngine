@@ -214,7 +214,8 @@ public readonly record struct ContainerOperation
     /// </summary>
     /// <exception cref="ArgumentException">The kind is <see cref="ContainerOperationKind.None"/> or unknown,
     /// a name is missing or empty, a slot is negative, a required count or definition id is not positive, a
-    /// client operation carries no id, or a craft carries no event body.</exception>
+    /// client operation carries no id, a craft carries no event body, or a craft that consumes no currency
+    /// carries a currency field anyway.</exception>
     public void Validate()
     {
         Field fields = FieldsOf(Kind);
@@ -242,6 +243,16 @@ public readonly record struct ContainerOperation
         Require(
             Kind == ContainerOperationKind.Craft || EventPayload.IsEmpty,
             "Only a craft carries an event body: every other kind writes its own canonical encoding.");
+
+        // A craft with no currency writes its currency fields into the canonical intent anyway and
+        // ApplyCraft reads none of them, so two callers' defaults gave one action two encodings and one
+        // resubmit resolved as a conflict. The intent is what an operation hashes under, so the fields a
+        // craft does not use are pinned rather than merely ignored.
+        Require(
+            Kind != ContainerOperationKind.Craft
+                || DefinitionId != 0
+                || (DestinationContainer is null && DestinationSlot == 0 && Count == 0),
+            "A craft consuming no currency names no currency container, slot or count: the unused fields are 0, so one action has one canonical encoding.");
     }
 
     /// <summary>Relocates a whole entry, or units of a plain stack, into an empty slot.</summary>
@@ -342,7 +353,9 @@ public readonly record struct ContainerOperation
     /// <param name="eventPayload">Spec 10.6's event body, which the crafting framework encodes.</param>
     /// <param name="currencyContainer">The currency's container, null for the target's own.</param>
     /// <param name="currencySlot">The currency's slot.</param>
-    /// <param name="currencyDefinitionId">The currency consumed, 0 for a craft that consumes none.</param>
+    /// <param name="currencyDefinitionId">The currency consumed, 0 for a craft that consumes none. When it
+    /// is 0 the other three are 0 too and <see cref="Validate"/> refuses anything else, because the canonical
+    /// intent writes them whether or not the craft reads them and one action has one encoding.</param>
     /// <param name="currencyCount">How many units of it, 0 when none is consumed.</param>
     public static ContainerOperation Craft(
         string container,

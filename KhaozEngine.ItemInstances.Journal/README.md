@@ -270,6 +270,11 @@ wrong one.
 owns the `item-crafted` body and the crafting framework encodes it, so this package carries those bytes rather
 than freezing a format under a durable event name before its first writer exists.
 
+**A craft that consumes NO currency carries no currency fields**, and `Validate` refuses one that does. The
+intent writes all four whether or not the craft reads them, and a craft with a currency definition id of 0
+reads none of them, so a currency slot left set by a caller's own defaults gave one action two encodings and
+one resubmit resolved as a conflict rather than as a replay.
+
 **The vocabulary names a container by NAME**, which is what its section names are filed under, and the craft
 intent of spec 10.6 names container IDs. The two have to be reconciled before a craft message crosses a wire
 ([#942](https://github.com/APKiwiOrg/KhaozEngine/issues/942)).

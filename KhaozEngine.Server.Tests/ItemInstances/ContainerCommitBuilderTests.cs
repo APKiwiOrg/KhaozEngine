@@ -455,6 +455,31 @@ public sealed class ContainerCommitBuilderTests
     }
 
     [Fact]
+    public void A_craft_that_consumes_no_currency_carries_no_currency_fields()
+    {
+        // The canonical intent is what an operation HASHES under, so two operations that do the same thing
+        // have to encode the same way. A craft with no currency writes its currency container, slot,
+        // definition id and count anyway, and ApplyCraft reads none of them once the definition id is 0, so
+        // the same craft under two callers' defaults hashed two ways and resolved as a conflict.
+        PagedItemContainer bank = Container();
+        SeatItem(bank, 4, Sword, Instance);
+        ContainerCommitBuilder batch = OpenBank(bank);
+
+        ContainerOperation free = ContainerOperation.Craft(Bank, 4, Instance, Payload(2), CraftEventBody(0));
+        Assert.True(batch.Apply(free));
+
+        Assert.Throws<ArgumentException>(() => (free with { DestinationContainer = Bag }).Validate());
+        Assert.Throws<ArgumentException>(() => (free with { DestinationSlot = 5 }).Validate());
+        Assert.Throws<ArgumentException>(() => (free with { Count = 1 }).Validate());
+
+        // The currency fields are the CURRENCY's, so they are legal the moment one is consumed.
+        ContainerOperation paid = ContainerOperation.Craft(
+            Bank, 4, Instance, Payload(3), CraftEventBody(1),
+            currencySlot: 5, currencyDefinitionId: Currency, currencyCount: 1);
+        paid.Validate();
+    }
+
+    [Fact]
     public void A_batch_is_opened_over_at_least_one_container_and_only_over_nameable_ones()
     {
         Assert.Throws<ArgumentException>(() => ContainerCommitBuilder.Open(

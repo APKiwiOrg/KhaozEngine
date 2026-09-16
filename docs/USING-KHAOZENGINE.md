@@ -10109,7 +10109,9 @@ foreach ((long netId, TileCoord _) in remotes)
   progress cannot come from two moments). A head with its own roster passes
   `(netId, tile, stepProgress)` per actor, where the progress is 0 as the step commits and 1 once the body is at
   rest on that tile, which is also what a body that is not stepping carries. `TilePresenter.StepFraction(state)`
-  is that number for a state you hold, and it is the same fraction `TilePresenter.Pose` glides on.
+  is that number for a state you hold, and it is the same fraction `TilePresenter.Pose` glides on. A FINITE value
+  outside 0 through 1 is CLAMPED into it, so a negative one reads as 0, the start of a step. Only a value that is
+  not a number reads as 1, a body at rest.
 - **The overloads without a `dt` cut instead of crossing**, which is this rule exactly as it behaved before
   weights existed, for a head that cannot fade a body at all.
 - **The key is the net id, and its only job is to be STABLE.** It is arbitrary rather than meaningful: ids are
@@ -10119,6 +10121,21 @@ foreach ((long netId, TileCoord _) in remotes)
   player, who arrived first) and the pick re-decides itself mid-step, so the body under the cursor swaps while
   nothing on screen appears to have changed.
 - **The plane is part of the tile.** The same x and z one storey up is a different tile and hides nothing.
+- **A body at rest covers its WHOLE footprint.** A settled NxN body's stack is every tile of its square rather
+  than its anchor alone, so a one-tile body standing in a cow's rump is in the cow's stack and one of the two is
+  hidden, under both policies. `TryGetDrawn` answers that body on every tile of its square, which is what a click
+  inside a large body should resolve to. The sizes ride the roster:
+  `Rebuild(localNetId, localTile, localFootprintSize, localLeaving, bodies, dt)` takes
+  `(netId, tile, stepProgress, footprintSize)` per body, and the settled-stack door is the same arguments with a
+  `bool localMoving`. `Rebuild(client, dt)` reads each remote's `FootprintSize` off the same delayed sample its
+  tile comes from, so a live client needs nothing on your side. Every overload WITHOUT a size reads every body as
+  one tile, which is this rule exactly as it stood before footprints.
+- **The stack collapses WHOLE.** Bodies are resolved best first and each takes every tile it covers or none of
+  them, so a body that loses one tile of its square is hidden rather than drawing the part nobody else claimed.
+  A MOVING body keeps the answer it has today, judged on the tile it is committed to, or claiming nothing at all
+  under the settled-stack policy, because the widening is about a body at rest covering ground. A
+  `SettledComparison` handed a roster with a body above one tile in it has to be a consistent ordering, because
+  the whole roster is resolved in that order rather than compared pairwise.
 - **Which tile each actor is judged on differs by head, on purpose.** The local player is judged on their
   PREDICTED tile, because that is the tile the local rules have committed them to. A remote is judged on its
   committed tile off the DELAYED render timeline (`TryGetRemoteTile`), which is the timeline the drawn bodies
@@ -10415,11 +10432,10 @@ crosses a region handoff and reaches both heads with no second lookup.
   the attacker's own simulator for that square. A head that set `AgentSize = 1` deletes the initializer, and one
   that set it higher gives each of those bodies its own `FootprintSize` instead.
 
-Two presentation and interest gaps remain. `TileDrawPriority` judges a body on its anchor tile only, so a one-tile
-body on another tile of a cow overlaps it on screen
-([#899](https://github.com/APKiwiOrg/KhaozEngine/issues/899)), and interest is measured from the anchor, so a large
-body enters view up to N - 1 tiles late on its north and east edges
-([#906](https://github.com/APKiwiOrg/KhaozEngine/issues/906)). A game with big bosses pads `InterestRadius`.
+One interest gap remains. Interest is measured from the anchor, so a large body enters view up to N - 1 tiles late
+on its north and east edges ([#906](https://github.com/APKiwiOrg/KhaozEngine/issues/906)). A game with big bosses
+pads `InterestRadius`. The draw rule is no longer in that list: a settled body's stack covers its whole square,
+which the draw priority section above describes.
 
 ### Combat
 

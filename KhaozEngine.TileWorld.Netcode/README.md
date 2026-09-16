@@ -100,7 +100,9 @@ in the types list below. The answer is a WEIGHT rather than a boolean, because a
 and the body glides in over the rest of it: a body that loses a tile spends what is left of its step fading out,
 so it walks visibly under the winner rather than vanishing a step before it gets there. The opt-in
 `SettledStacksOnly` policy instead leaves every moving body at full weight, gives moving bodies no tile claim,
-and cuts settled losers to zero through a caller-supplied comparison.
+and cuts settled losers to zero through a caller-supplied comparison. A body AT REST covers its whole footprint
+under either policy, so a one-tile body standing in a cow's rump is in the cow's stack and one of the two is
+hidden.
 
 ## The types
 
@@ -531,7 +533,15 @@ always keep the constructor map.
   bodies. A positive comparison means its first net id wins. Zero falls back to the higher net id, so equal game
   ranks remain stable. The callback sees only net ids, leaving all game classifications in the head. A local
   presentation within two float values of its tile centre is settled, preventing equal-endpoint interpolation
-  rounding from dropping the local claim while preserving real step and correction motion.
+  rounding from dropping the local claim while preserving real step and correction motion. A body AT REST covers
+  its WHOLE footprint under either policy: `Rebuild(localNetId, localTile, localFootprintSize, localLeaving,
+  bodies, dt)` and its `bool localMoving` twin take `(netId, tile, stepProgress, footprintSize)` per body, and
+  `Rebuild(client, dt)` reads each remote's `FootprintSize` off the same delayed sample its tile comes from. The
+  stack collapses whole: bodies are resolved best first and each takes every tile it covers or none of them, so a
+  body that loses one tile of its square is hidden rather than drawing the part nobody else claimed, and
+  `TryGetDrawn` answers a large body on every tile it covers. A MOVING body keeps the answer it has today under
+  each policy. Every overload without a size reads every body as one tile. Step progress is CLAMPED when it is
+  finite, so a negative value is the start of a step and only a value that is not a number reads as 1.
 - **`TileClientMessageHandler`** - the delegate an opaque server message arrives on.
 
 **Persistence**
@@ -1082,14 +1092,12 @@ unauthenticated peer an amplifier of two bytes in and about 7 KB out.
 - **No actions beyond the seam.** `TileActionKind` distinguishes authored-object and entity interactions so their
   overlapping ids reach `OnInteract` and `OnInteractEntity` respectively. The engine knows nothing about what an
   interaction does after the callback.
-- **A large actor is an NxN body everywhere the RULES look, and in two places they do not.** `TileDrawPriority`
-  still judges a body on its ANCHOR tile alone, so a one-tile body standing on another tile of a cow's footprint
-  overlaps it on screen. That is presentation only, and a footprint-aware stack is
-  [#899](https://github.com/APKiwiOrg/KhaozEngine/issues/899). Interest is measured from the anchor too, which is
-  also what decides cell ownership and handoff, so a large body enters a viewer's interest up to N - 1 tiles late
-  on its north and east edges. A game with big bosses pads `InterestRadius`, and measuring from the footprint is
-  [#906](https://github.com/APKiwiOrg/KhaozEngine/issues/906). Players stay one tile: `SetPlayerState` refuses a
-  `FootprintSize` above 1.
+- **A large actor is an NxN body everywhere the RULES look, and in one place they do not.** Interest is measured
+  from the anchor, which is also what decides cell ownership and handoff, so a large body enters a viewer's
+  interest up to N - 1 tiles late on its north and east edges. A game with big bosses pads `InterestRadius`, and
+  measuring from the footprint is [#906](https://github.com/APKiwiOrg/KhaozEngine/issues/906). The draw rule left
+  that list: a settled body's stack is every tile of its square, so a one-tile body standing in a cow's rump no
+  longer overlaps it on screen. Players stay one tile: `SetPlayerState` refuses a `FootprintSize` above 1.
 - **Actors do not block movement.** Players walk through monsters. Making an actor block would put a DYNAMIC entry
   in a collision map each head bakes for itself from files, so the two heads would disagree on every occupied tile
   and every chase would become a correction storm. The honest answer is a server-owned occupancy overlay the

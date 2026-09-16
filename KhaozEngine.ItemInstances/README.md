@@ -964,7 +964,13 @@ Two members exist for the CRAFT side rather than for a roll, because a second we
 distribution and there is exactly one of those. `TryDrawAffix` is steps 6 to 8 as one pick over an affix list
 that already exists, and `RedrawAffixes` is steps 4 to 9 over one restricted to a kind mask.
 `AffixCeiling(rarityId)` answers how many affixes one rarity rule permits, so a craft refuses at the ask
-rather than being dropped at the write.
+rather than being dropped at the write, and `PresentCeiling` answers how many the pack's WIDEST LIVE rule
+permits, which is the seat capacity. **An item can be past that ceiling with nothing wrong.** A rule a later
+version RETIRED still has items in the world carrying the affix count it permitted, and `AffixCeiling`
+answers 0 for a rarity no live rule names, so `PresentCeiling` is the door that catches them: a craft refuses
+`AffixListFull` before any draw, `TryDrawAffix` answers false and leaves its out affix default, and
+`RedrawAffixes` places nothing. The seat's own throw stays underneath as the guard beneath that door, and
+nothing public reaches it.
 
 **It is NOT reentrant and it is NOT thread safe. One instance per thread, or per executor.** Every working
 array is instance state that a roll overwrites and reads back inside one call. A second call that starts
@@ -996,6 +1002,14 @@ enforces:
   door, because every write asks the property registry first. The cap is checked at EVERY write rather than
   at the encode. Canonical order is the builder's. And there is no `InstanceIdAllocator` anywhere in the
   type, so a working copy provably cannot mint an instance id.
+- **A socket list's NESTED payloads are judged at that same write door**, in `CraftSocketRules` rather than
+  in the one primitive that seats them, so a game operation handing `SetSockets` its own list meets every
+  rule `Socket` meets. Each nested payload is decoded against the property registry rather than judged
+  structurally, which is what makes contracts 9.5's ONE LEVEL limit and the socket type's `max_nested_bytes`
+  budget properties of the COPY, and standing rule 2 runs over the nested affix lists through the two list
+  `CraftStandingRules.CheckAffixWrite` overload, so a legacy entry inside a socketed item cannot be moved
+  either. Only the bytes a write BRINGS are judged, so a socket whose nested payload is unchanged is not
+  re-judged against content that moved under it.
 - An unknown kind the decode preserved survives verbatim, its position in the ordering included.
 
 `CraftPrimitive` is the closed fourteen, and the numbers ARE the authored `currency_step.operation` values,
@@ -1015,7 +1029,12 @@ can localize and a test can assert on:
 - **`CraftGuardKind`, 1 to 15**, bounded the same way by `CurrencyGuardContentType.MinGuardKind` and
   `MaxGuardKind`. A precondition asked of the working copy. Guards are ANDed and there is no OR, no NOT and
   no nesting: a `CraftGuard` carries two INTEGERS and never another guard, so the shape itself is what makes
-  an expression tree impossible. A currency that needs an OR is two currency rows.
+  an expression tree impossible. A currency that needs an OR is two currency rows. `RarityIsAtMost` is the
+  one guard that walks content rather than reading a field: it follows the `upgrade_from` chain down from its
+  OWN rule over LIVE rarity rules only, so a rule a later version retired breaks the chain at that link, the
+  way every other reader of a rarity rule already gates on the live row. It takes its own NAME rather than
+  spec 10.3's "true when" cell, which reads the chain from the item's end and inverts it
+  ([#989](https://github.com/APKiwiOrg/KhaozEngine/issues/989)).
 - **`CraftSelectorKind`, 1 to 6.** Which entries primitives 2, 3 and 10 act on. `RandomOfKind` is the only
   one that draws, and it draws exactly ONCE, through the same bounded draw the generator uses, so a selection
   with one candidate costs the stream what a selection with nine costs and so does a selection with none.
@@ -1155,6 +1174,18 @@ is the right answer for a game that authors none. **The engine owns ids 0 to `En
 NONE of them in v1**, so the whole band stays free and no game id can collide with one nobody has written
 yet. It is consulted at RECOMPUTE time only: a cached value asks nothing, so a condition over a moving value
 is one the game must dirty the evaluator on through `Recompute`.
+
+**A cached value is keyed by the WHOLE context, so nothing dirties the evaluator to change context.** A read
+compares the stored condition mask, the tag count and every tag ELEMENT in order against the context it is
+handed, and refolds when any of the three differs, because spec 11.5's dirty events are all SOURCE events and
+a context is not one: keyed by stat id alone, a `[fire, spell]` line read under a spell context would be
+credited to the melee read of the same stat in the same tick. The compare is deliberately conservative, so
+two contexts holding the same tags in a different ORDER are two contexts here and the second refolds, an
+order insensitive compare being a sort or a set on a read path that allocates nothing. The stored context
+lives in an evaluator owned buffer sized when a source is added, `ContentStatEvaluator.MaxContextTags` wide
+per stat, and a context carrying more tags than that is folded UNCACHED every time and stores nothing,
+because a number that cannot be compared is a number that cannot be trusted. `CopyValuesTo` goes through the
+same rule, one stat at a time.
 
 `StatContext` is what the SITUATION contributes, and it is pure data: the tags in play and a mask a game
 condition may read. **Its tags are half of a scope match and never all of it.** A line applies when every tag

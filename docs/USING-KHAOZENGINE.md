@@ -6394,7 +6394,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="19.1.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="19.2.0" />
 ```
 
 ```csharp
@@ -12234,7 +12234,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="19.1.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="19.2.0" />
 ```
 
 ```csharp
@@ -12270,7 +12270,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="19.1.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="19.2.0" />
 ```
 
 ```csharp
@@ -12512,7 +12512,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="19.1.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="19.2.0" />
 ```
 
 ```csharp
@@ -14512,7 +14512,7 @@ bytes. Checks 12 and 13 are tolerated policy findings that leave the record vali
 alert. `KhaozEngine.ItemInstances/README.md` is the type-by-type reference, including the thirteen checks in
 full, the `KECQ` layout, the durable reason ordinals and the kind bands.
 
-### Content, a roll, a craft and a stat (the four things over the record)
+### Content, a roll, a craft and a stat (the four things over the record, 19.2.0)
 
 The sections above are the RECORD, the container and the wire, which is what an item IS and how it travels.
 This one is the four things that PRODUCE and CHANGE one. All four sit in the same package, none of them adds
@@ -14619,6 +14619,14 @@ if (copy.TryEncode(out byte[] crafted))
 }
 ```
 
+Two ceilings refuse at the ASK rather than being dropped at the write. `ItemGenerator.AffixCeiling(rarityId)`
+is what one rarity rule permits, and `ItemGenerator.PresentCeiling` is what the pack's widest LIVE rule
+permits, which is what catches an item rolled under a rule a later version retired: a craft that would add
+past it refuses `AffixListFull` before any draw rather than throwing out of a gameplay call. A game operation
+that seats a socket list of its own meets the nested payload rules too, because `SetSockets` judges the one
+level limit, the socket type's `max_nested_bytes` budget and a frozen legacy entry INSIDE a socketed item at
+the write door rather than inside the one primitive that used to.
+
 `outcome.Ran(i)` and `outcome.Skipped(i)` answer per step, as two `uint` masks rather than a list, and they
 are NOT complements: a refused craft stops where it stopped, so a step after the refusal is in neither, which
 is the difference between a step a guard skipped and one the craft never reached. A step guard that fails
@@ -14667,7 +14675,7 @@ for (int i = 0; i < sourceCount; i++)
 
 evaluator.SetBase(armour, characterArmour);
 
-// The read. Nothing allocates, and a clean stat answers from the cache without folding.
+// The read. Nothing allocates, and a clean stat read under the SAME context answers from the cache.
 Span<int> values = stackalloc int[2];
 evaluator.CopyValuesTo([armour, fireResistance], values, new StatContext(tagsInPlay, conditionMask));
 ```
@@ -14679,9 +14687,12 @@ in. There is no float anywhere, every divide is FLOOR division, and the result i
 the clamp to the `stat` row's own `min` and `max`.
 
 Adding a source is the path that allocates, and it runs on exactly five events: equip, unequip, socket,
-unsocket, and a craft that rewrote a worn item's payload. Everything else is a read. A cached value asks the
-condition registry nothing, so a condition over a MOVING value is one the game must dirty through
-`evaluator.Recompute(key)`.
+unsocket, and a craft that rewrote a worn item's payload. Everything else is a read. **A cached value is
+keyed by the WHOLE context**, the condition mask, the tag count and every tag element in order, so a read
+under a different context refolds by itself and a caller never dirties the evaluator to change context. A
+context carrying more than `ContentStatEvaluator.MaxContextTags` tags is folded uncached every time and
+stores nothing. What a caller still dirties is a SOURCE, through `evaluator.Recompute(key)`, which is also
+the only escape for a condition over a value that moves while the sources stand still.
 
 **`KhaozEngine.Stats` is untouched by all of this.** It stays the float kernel it always was, beside this
 rather than under it, and a game uses one or the other for a given stat rather than both.
@@ -15417,7 +15428,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="19.1.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="19.2.0" />
 </ItemGroup>
 ```
 

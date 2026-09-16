@@ -5,6 +5,288 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 19.2.0
+
+The eighteen affix content types, the item generator, the crafting framework and the integer stat evaluator.
+Phases 4 and 5 of the item instances program, which finish its engine side. Phases 1 to 3 shipped in 19.0.0
+as the record, the container and the wire, and this is everything that PRODUCES and CHANGES one. It is
+additive against 19.0.0's released surface, it all sits in `KhaozEngine.ItemInstances` beside the payload it
+reads, and every piece takes the content version and the randomness seam as ARGUMENTS rather than reaching
+for an ambient one. The engine still names no mod, no rarity, no currency and no tier anywhere.
+
+**Eighteen content types an author writes, ids 256 to 273.**
+
+- `InstanceContentTypes.Register(registry, modCandidateTables, craftPlans)` registers the whole Instances
+  band in one call beside `EngineContentTypes.Register`, and `InstanceContentTypeIds` holds every id and key
+  as a constant so nothing reads a number off a document. Seven of the eighteen are the types an author
+  thinks in and eleven are their CHILDREN, each carrying a key reference to its parent and a `sort` wherever
+  its order is meaningful: `mod` 256, `mod_group` 257, `rarity_rule` 258, `unique_template` 259,
+  `socket_type` 260, `crafting_currency` 261, `rare_name_word` 262, then `mod_tier` 263,
+  `mod_tier_weight` 264, `stat_line` 265, `rarity_weight` 266, `rarity_kind_limit` 267, `unique_line` 268,
+  `unique_socket` 269, `socket_tag_rule` 270, `currency_step` 271, `currency_guard` 272 and
+  `rare_name_word_weight` 273. Both index arguments are optional and they are the whole of the difference
+  between a server and a client, so a process that neither rolls nor crafts pays nothing.
+- **Three of the eighteen are `ServerOnly` as WHOLE TYPES**, the three weights, 264, 266 and 273. The client
+  chunk builder omits whole FIELDS, so a weight buried in a mixed visibility row had no way out, and a client
+  downloads no weight row at all rather than a row with a hole in it. That is also why a client builds no
+  candidate table: it falls out of the visibility rather than being a special case in code.
+- The chunk slot count and the row cap are per TYPE rather than the format's defaults, because the shapes
+  differ by two orders of magnitude, and the four widest types would not fit at the default cap of 1,024
+  against the format's 16 MiB chunk ceiling. `socket_type` registers under the key the engine already writes
+  for `base_socket.socket_type`, which is the one key here the engine owns, bound at registry freeze.
+- Every type states its own field NAMES and its own schema POSITIONS, as `<Field>Field` and `<Field>Index`
+  constants, so a positional reader reads a constant rather than counting a schema by hand. The engine's own
+  content types expose the names and not the positions, which is
+  [#968](https://github.com/APKiwiOrg/KhaozEngine/issues/968).
+
+**The `KEC0100` validation band, and how pass 6 reaches it.**
+
+- `KEC0100` to `KEC0199` is reserved for these types, and v1 issues eighteen codes, `KEC0100` to `KEC0117`.
+  Fourteen of them carry spec 8.9's twelve checks, with check 2 splitting into two codes because an inverted
+  item level range and an out of range tier ordinal are different mistakes, check 12 sharing check 3's code
+  because both are one tier ordinal not being where a stored payload says it is, and the two weight checks
+  8.9 does not list ([#944](https://github.com/APKiwiOrg/KhaozEngine/issues/944)'s Scope B half):
+  `KEC0112` for a negative weight, which makes a prefix array unsearchable, and `KEC0113` for a bucket
+  summing past `int.MaxValue`. Four more are additions this work found: `KEC0114` for a base whose authored
+  tag list is longer than `ModCandidateTables.MaxGenerationTagPositions`, `KEC0115` for two `unique_socket`
+  rows of one template taking the same `sort`, `KEC0116` for two `rarity_kind_limit` rows claiming one mod
+  kind for one rarity, and `KEC0117` for two rows of one weight type carrying the same (parent, tag) pair,
+  whose second row is SUPPRESSED rather than summed and so does not exist at any draw.
+  `InstanceContentFindings` holds every code as a constant with `All` as the pinned ascending list, and a
+  code is never renumbered and a withdrawn one never reissued.
+- `InstanceContentChecks.Run(candidate, previous, rules, findings)` is the band's whole public face. It is
+  PURE the way the catalog's own sweep is, it ACCUMULATES so one run reports every defect rather than the
+  earliest, and every check is vacuous over an empty row set. **The previous snapshot is an ARGUMENT rather
+  than a mode flag**: `KEC0103` and `KEC0111` are statements about a CHANGE, so they are SKIPPED when
+  `previous` is null, which is every boot and almost every test, and the catalog's own `KEC0000` is what
+  says a clean report came from a boot rather than from a publish. The remap rules arrive the same way,
+  because a publish judges a candidate against the rules as they will STAND.
+- **`IContentHistoryValidator` is a new seam in `KhaozEngine.Catalog`**, `Validate(candidate, previous,
+  rules, findings)`, and pass 6 dispatches on it. Pass 6 runs the registration's OWN validator when its band
+  is `Instances`, TRUSTED, with its `KEC01xx` codes passed through unchanged, which is how a band the
+  catalog cannot reference gets its checks run from inside the catalog's own sweep. The band hangs off ONE
+  registration, the lowest id in it, because every check is cross type and attaching it to all eighteen
+  would run the whole band eighteen times. `RunTypeValidators` now SKIPS Instances band types, which is the
+  one observable behaviour change on a released type and is covered under breaking changes below.
+  `KEC0103` and `KEC0111` were unreachable from a publish before that seam
+  ([#962](https://github.com/APKiwiOrg/KhaozEngine/issues/962)).
+
+**The candidate tables, built once and read as scalars.**
+
+- `ModCandidateTables` is built ONCE at boot and immutable for the life of the process. **The base count
+  contributes almost nothing to it, which is the whole trick**: a base never enters a table, only its
+  authored tag LIST does, so fifty thousand bases cost the signature intern and nothing else. Three levels,
+  all read as scalars at a roll. BANDS are the intervals between every distinct `item_level_min` and
+  `item_level_max + 1`, so a live tier set is constant inside one and `BandOf(itemLevel)` is a binary
+  search. A BUCKET is one flat pair of arrays per (tag, mod kind, band), the packed key
+  `(mod id << TierBits) | tier ordinal` and the CUMULATIVE weight through that entry, so ascending packed
+  order IS (mod id, tier ordinal) order and deducting a whole mod is one binary search and one subtraction.
+  The OVERLAP is what the first tag wins rule DISCARDS, PRECOMPUTED per (tag signature, kind, band, tag
+  position), so a roll subtracts two scalars instead of merging two lists.
+- `GenerationTagSignature` is the intern of authored tag lists and
+  `ModCandidateTables.MaxGenerationTagPositions` is 8, which is what bounds one. The suppression header count
+  is signatures times bands times kinds times tag POSITIONS, so an unbounded position count makes the build
+  unbounded, and the header block is sized by the positions a version's signatures ACTUALLY carry.
+- **The build REFUSES rather than clamps.** A tier ordinal past the packed ceiling, a bucket past
+  `MaxBucketEntries`, a union weight past `int.MaxValue` and a base past `MaxGenerationTagPositions` each
+  throw, failing the boot closed. Every one of them is something the band already refuses at publish, so a
+  throw means a version reached a boot without a publish sweep, and the alternative to throwing is a
+  silently different probability. Nothing is allocated, memoized or evicted at a roll, so there is no cache,
+  no hit rate and no pack that degrades to a merge per roll.
+- `ModCandidateTablesIndex` is the boot side half, an `IContentLoadIndex` registered against `mod` so the
+  tables are built at boot step 7b with no second pass wired anywhere. `Tables` is the candidates and
+  `Generation` is a `GenerationTables`, which carries them plus the content fold and the run ceiling, all
+  functions of the same snapshot, so a replay harness's second generator costs one object rather than a
+  second fold.
+
+**The generator: thirteen ordered steps and a reproducibility contract.**
+
+- `ItemGenerator(GenerationTables, IRandomSource, InstanceIdAllocator)` turns
+  `GenerationContext(BaseId, ItemLevel, ForcedRarityId, ForcedUniqueTemplateId, Quality)` into a canonical
+  payload. It does NOT decide which base drops, which is a loot table one package down. It takes its random
+  source in the CONSTRUCTOR and holds it, because a per call source keeps "does this roll" answerable at the
+  method and loses it at the TYPE. The thirteen steps, in the order the draws happen, ARE the contract: open
+  the band's tables with the overlap already deducted, seat a forced unique and stop, resolve the rarity
+  first tag wins, roll the affix count, pick the mod kind weighted by live candidate count, exclude the
+  placed mod's whole run of tiers and its group at `max_per_item`, pick the entry weighted over the pool with
+  the overlap and the exclusions subtracted, draw the roll position, sort ascending by mod id so kind 131 is
+  canonical, roll one rare name word per name position, seat the sockets in authored order with no draw,
+  encode, and take the instance id only when the payload is non-empty.
+- **The reproducibility contract is that every draw is a function of the affix COUNT and of nothing else.**
+  A candidate that is filtered out leaves the pool BEFORE the draw rather than being drawn and rejected, and
+  a pick whose live pool is EMPTY still consumes both of its draws and discards them, because without those
+  an item whose pool ran dry consumes fewer draws than one that did not and a seeded session diverges there.
+- **`IRandomSource.Skip` is a new default interface method on the `KhaozEngine.Primitives` seam**, added for
+  that contract. `NextInt`'s own contract says a one wide range consumes nothing, so a discard written as
+  `NextInt(0, 1)` is no discard at all and a real draw over a live weight of one costs the stream nothing
+  either. `Skip` advances the stream by exactly one draw whatever the bound is. The DEFAULT body is one
+  `NextInt(0, 2)` thrown away, so a foreign implementation gets the advance for free, `SeededRandomSource`
+  overrides it as exactly one underlying draw, and `CryptographicRandomSource` overrides it as a no-op
+  because a cryptographic stream has no position to advance. Every collapsible draw in the generator and in
+  the craft selector goes through it.
+- `GenerationResult` carries `AffixCount` and `RequestedAffixCount` separately, because an item whose pool
+  ran dry ends with fewer affixes than the count asked for, which is a legal outcome REPORTED rather than
+  retried and the signal that a pack's pool is thinner than its rarity rules assume. Step 12 writes kind 128
+  explicitly, state 0 and revealed mask 0, because an item carrying no `Identification` field is
+  indistinguishable from an identified one under the visibility function. The generator is NOT reentrant and
+  NOT thread safe, so one per thread or per executor: a nested call hands the outer roll the inner roll's
+  pool and produces a legal looking item nobody authored.
+- `RollPosition.Resolve(position, minimum, maximum)` is contracts 6.4's formula in the ONE place the engine
+  keeps it. A roll is stored as a `ushort` POSITION rather than as the rolled value, so a published range
+  change RESCALES an existing item instead of re-rolling it, and the generator, the stat line builder and a
+  tooltip all read one copy rather than three that disagree the first time one is touched.
+- `ItemGeneratedEvent` is spec 9.5's `item-generated` body in `KhaozEngine.ItemInstances.Journal`, a record
+  struct of `(BaseId, InstanceId, RarityId, ContentVersion, SourceKind, SourceId, Payload)` with `Write`,
+  `ToArray` and a `TryRead` that answers a closed reason set rather than throwing. Source kinds 1 to 4 are
+  drop, craft, admin grant and migration, with a game's own kinds at 5 and above.
+
+**Crafting: fourteen primitives a currency composes in data.**
+
+- `CraftWorkingCopy` is a craft in progress and it is where the shape lives rather than in a rule a reviewer
+  enforces. **A craft NEVER mutates in place**: `Open` decodes the target, every step applies into a builder
+  and `TryEncode` re-encodes canonically at the end, so a refusal at any step discards the builder and the
+  durable bytes are untouched. There is no partial craft and no rollback path to get wrong. It is a
+  `ref struct` because it is opened over the STORED SPAN, so a craft that touches one field of six copies
+  one field. The four powers a game operation must not have are properties of the TYPE: an unregistered kind
+  has no door, the cap is checked at EVERY write rather than at the encode, canonical order is the builder's,
+  and there is no `InstanceIdAllocator` anywhere in the type. A nested socket payload is judged at that same
+  door by `CraftSocketRules`, decoded against the property registry rather than structurally, which is what
+  makes contracts 9.5's one level limit and a socket type's `max_nested_bytes` budget properties of the COPY
+  rather than of the one primitive that used to enforce them.
+- `CraftPrimitive` is the closed fourteen and the numbers ARE the authored `currency_step.operation` values,
+  bounded on both sides of the row codec: `AddRandomMod`, `RemoveMod`, `RerollValues`, `RerollMods`,
+  `SetRarity`, `AddSocket`, `Socket`, `Unsocket`, `ApplyEnchant`, `RemoveEnchant`, `Repair`, `SetQuality`,
+  `Identify` and `SetFlag`. Each has exactly one static apply method on `CraftPrimitives`.
+- Three vocabularies are closed on purpose, because a closed set is what a counter buckets, a client
+  localizes and a test asserts on. **`CraftRefusalKind`, 1 to 21**: why a step said no, with no message and
+  no exception, because a refusal is an ordinary outcome of asking for something the item cannot have.
+  `CraftRefusal` pairs it with the one number it is about, the FIRST refusal wins and every later write is a
+  no-op. **`CraftGuardKind`, 1 to 15**: a precondition asked of the working copy, ANDed, with no OR, no NOT
+  and no nesting, because a `CraftGuard` carries two INTEGERS and never another guard. **`CraftSelectorKind`,
+  1 to 6**: which entries primitives 2, 3 and 10 act on, of which `RandomOfKind` is the only one that draws
+  and it draws exactly once through the same bounded draw the generator uses, so a selection over one
+  candidate costs the stream what a selection over nine costs.
+- **Three STANDING rules no currency can opt out of**, which is why they are not in any guard set. A
+  corrupted item cannot be modified at all, seated at the copy's ONE write door so it covers every primitive
+  and every game operation by construction. A legacy affix ENTRY is frozen, so no primitive rewrites its roll
+  position, its tier or its flags, which is what stops `RerollValues` drawing fresh positions against a
+  legacy tier's preserved range until the roll sits at 65,535 and turns the mechanism that FREEZES old rolls
+  into a farm for them. And a legacy mod ROW can never be added, which is `NotLegacy` stated where the write
+  is rather than only where the draw is.
+- `CraftGuardEvaluator` answers a set with `CraftGuardOutcome`, and `CraftGuardScope` is what decides what a
+  failure costs: a TARGET guard is a precondition on the craft, so failing one refuses everything and
+  consumes nothing, while a STEP guard is a condition on one step, so failing one SKIPS that step and the
+  craft continues. That is how a whetstone repairs an item already at quality 20 instead of refusing to
+  touch it, and the two are ONE authored type told apart by one empty `currency_step_id` reference.
+- `CraftPlanIndex` is the second `IContentLoadIndex`, registered against `crafting_currency`, so every
+  currency is resolved into an immutable `CraftPlan` at boot step 7b and never inside a tick. It FREEZES the
+  `CraftingRegistry` it was handed, because a plan resolved before a registration and one resolved after it
+  reach different operations for the same authored row. A plan is its target guard set plus its ordered
+  `CraftPlanStep`s, each carrying the row id a refusal names, the operation, its authored parameters and the
+  guards evaluated immediately before it, with a SELECTOR occupying two parameter slots.
+- `CraftExecutor(snapshot, GenerationTables, CraftingRegistry, IRandomSource)` runs it: the target guard set
+  once, then every step in authored order with its own guards immediately before it. It holds its source by
+  constructor for the reason the generator does, and the generator it drives for `AddRandomMod`,
+  `RerollMods` and `RandomOfKind` is built HERE over that SAME source, so a craft's draws all come off one
+  stream and a seeded session replays. That inner generator is built over an allocator that refuses every
+  request, which is the standing guard on a craft never minting an instance id. `ICraftOperation` is the
+  seam a game reaches its own exotic operations through, registered by id at 1,024 and above. **An operation
+  this process has no registration for refuses AT USE** with `OperationUnregistered` rather than failing the
+  boot, because a missing registration is a deploy mismatch rather than a missing content version, and
+  `CraftExecutor.UnregisteredOperationRefusals` is the counter a host watches for it. `CraftOutcome` answers
+  what ran and what was skipped as two `uint` masks rather than a list, allocating nothing, and the two are
+  NOT complements: a refused craft stops where it stopped, so the steps after the refusal are in neither.
+- `ItemCraftedEvent` is spec 10.6's `item-crafted` body, a record struct of `(CurrencyId, InstanceId,
+  ContentVersion, Before, After)` with the same `Write`, `ToArray` and closed reason `TryRead` shape as the
+  generated body. It carries the payload BEFORE and AFTER, because a craft is the one event whose input
+  cannot be reconstructed from its output. Its normalized intent names containers by NAME rather than by a
+  container id ([#942](https://github.com/APKiwiOrg/KhaozEngine/issues/942)), which is what
+  `ContainerSectionNames.Format` already files pages under, so no second durable identity was invented for
+  the same thing.
+
+**Stats: one integer fold, and no float anywhere.**
+
+- `ContentStatEvaluator(IContentSnapshot, IStatConditionRegistry?)` folds content driven stats with a per
+  stat inverted index, so a read walks only the lines that touch that stat. Nothing on the read path
+  allocates: `Value` and `CopyValuesTo` write into a caller span, and every working array is built when a
+  SOURCE is added, which happens on exactly five events (equip, unequip, socket, unsocket, and a craft that
+  rewrote a worn item's payload).
+- **No float anywhere.** Intermediates are `long`, every divide is FLOOR division written out rather than
+  left to `/`, and the result is checked into `int` before the clamp to the stat row's own `min` and `max`.
+  Truncation toward zero rounds a debuff differently from a buff of the same size, so `floordiv(-9000,
+  10000)` is -1 where `(-9000) / 10000` is 0 and a plain divide reports no penalty where there is a whole
+  unit of one. Flat is summed in the stat's scaled units, Increased is an ADDITIVE basis point pool summed
+  once and applied once, and More is a MULTIPLICATIVE basis point factor applying as its own step.
+- **The fold order is `(SourceKind, Ordinal, InstanceId, ModifierIndex)`, always, and the order IS the
+  displayed number.** Integer multiplication with rounding at each step is not associative, so `(a * x) * y`
+  and `(a * y) * x` can differ by one unit, which is why the key is fixed on `StatSourceKey` rather than left
+  to whichever order a player equipped in, and why `InstanceId` is in the key at all: the engine's own four
+  source kinds cannot tie on kind and ordinal and a game source can. Kinds 1 to 4 are the worn item, its
+  affixes, its enchantments and an item socketed into it, **kinds 5 and 6 are RESERVED** for passives and
+  for buffs and auras and are unassigned in v1, and a game's own kinds start at 7.
+- **A cached value is keyed by the WHOLE context**, its condition mask, its tag count and every tag element
+  in order, so a read under a different context refolds by itself and no caller dirties the evaluator to
+  change context. Keyed by stat id alone, a `[fire, spell]` line read under a spell context would be credited
+  to the melee read of the same stat in the same tick, and `Recompute` names a SOURCE so it was never an
+  escape for that. The stored context lives in an evaluator owned buffer sized when a source is added,
+  `ContentStatEvaluator.MaxContextTags` wide per stat, and a context carrying more tags than that is folded
+  UNCACHED every time and stores nothing. The read path still allocates zero bytes.
+- `InstanceStatLines` is the piece that turns an item into lines. It indexes one content version's `mod_tier`
+  and `stat_line` rows once at construction and `Build` walks a payload's kinds 131, 133 and 132 into caller
+  spans, allocating nothing, answering `InstanceStatLines.Refused` rather than throwing when it cannot
+  finish, because the bytes came from a stored page or a remote peer. ONE stored roll position drives EVERY
+  line on a tier, resolved through `RollPosition.Resolve`, so a two line tier moves together.
+  `InstanceStatSourceKind` fixes the ordinal packing kinds 2, 3 and 4 use and nowhere else,
+  `EntryOrdinal(wornSlot, entryIndex)` being `(wornSlot * 256) + entryIndex`, the stride being 256 because an
+  affix list's count is a BYTE on the wire, so no two entries of different slots can land on one ordinal.
+  Kind 1 is not produced here, because a worn item's base and implicit lines come from the item DEFINITION
+  and the payload carries no field for them.
+- **`KhaozEngine.Stats` is untouched by design.** It stays the float kernel it always was, beside this rather
+  than under it, and a game uses one or the other for a given stat rather than both. No dependency edge was
+  added in either direction.
+
+**Benchmark budgets: what moved, and what did not.**
+
+- The `--items` mode measured a SPIKE for three of its budgets until now. The spike is deleted and the
+  generation, table and stat budgets are re-pointed at the shipped types, re-baselined in one commit against
+  seed 915. Budget 5 (one generation) moved from 1.875 us p50 and 5.833 us p99 to **2.667 us and 7.416 us**,
+  and its allocation from 68.8 to 857.7 bytes, all of it `ItemInstancePayloadBuilder`'s
+  ([#972](https://github.com/APKiwiOrg/KhaozEngine/issues/972)). Budget 9 (the table build) moved from 266 ms
+  and 24.1 MiB resident to **395.8 ms and 14.0 MiB**, trading build time for a third less memory held for
+  good. Budget 6 (a stat read) is **435.3 ns at 0 bytes** over 143 lines, from 429.7 ns, with the
+  context keyed cache in place. All thirteen budgets MEET.
+- `Budget5DeadEntriesPerGeneration` is renamed `Budget5PoolSuppressedEntries` in the result, the runner, the
+  report line, the structural fence and the baseline, because the field never measured a walk: it sums the
+  entries a later tag position repeats, which is a property of the TABLES. The real off path walk count is
+  [#988](https://github.com/APKiwiOrg/KhaozEngine/issues/988).
+- The payload derived fields in budgets 3, 10, 12 and 13 moved with the spike's deletion, because the rolled
+  items changed, and so did the whole scale block: `budget3PageBytesGeneratedRares` 5,526 to 5,466,
+  `budget10ReferenceIdsVisited` 8,908 to 8,686, `budget12TotalResidentBytes` 108,044,288 to 116,127,968,
+  `budget13DatabaseBytes` 133,267,536 to 124,784,744, `scaleBytesPerInstance` 52.98 to 57.46 and its
+  siblings. The table shape moved with the row set rather than with the payload:
+  `contentTagBandEntries` 1,475,105 to 1,431,518 and `budget9SuppressedEntries` 1,880,255 to 1,277,249. The
+  full list is in commit `3ebd634b` and as a baseline note in `KhaozEngine.Benchmarks/README.md`, so the
+  next re-bake expects it rather than rediscovering it.
+- **Budgets 1, 2, 4, 7, 8 and 11 did not move, field for field**, and budget 13's counts are unchanged apart
+  from the database size above. Spec 16's measured column still quotes the spike's numbers and is
+  [#981](https://github.com/APKiwiOrg/KhaozEngine/issues/981).
+
+**What is still deferred.** Consumer adoption is per game and runs after this release (spec 18 and 19, none
+of it here), the per generation allocation is [#972](https://github.com/APKiwiOrg/KhaozEngine/issues/972),
+`Socket` and `Unsocket` cannot be reached from an authored step because a `currency_step` carries no second
+slot ([#990](https://github.com/APKiwiOrg/KhaozEngine/issues/990)), an enchant that rerolls needs a selector
+that can name an entry kind ([#994](https://github.com/APKiwiOrg/KhaozEngine/issues/994)), a craft kind mask
+cannot name a mod kind above 32 ([#983](https://github.com/APKiwiOrg/KhaozEngine/issues/983)), and
+`AddRandomMod`'s tier ceiling clamps the drawn ordinal rather than filtering the pool, which is a
+distribution question ([#984](https://github.com/APKiwiOrg/KhaozEngine/issues/984)).
+
+**Breaking changes: none against 19.0.0's released surface.** Every type above is new, `IRandomSource.Skip`
+is a DEFAULT interface method so no existing implementation changes, and every other changed signature is on
+a type this work introduced and never released. The one observable behaviour change on a released type is
+that `ContentValidator.RunTypeValidators` now SKIPS Instances band types, which pass 6 runs instead. Nothing
+could observe it before this version: the band is the first thing ever registered in that range, and without
+the skip a band finding would be reported twice, once raw from pass 6 and once wrapped as `KEC0040`.
+
 ## 19.1.0
 
 A hidden roof still casts. Shadow-only instances are the fourth caster policy: geometry a view hides from the eye

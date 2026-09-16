@@ -13989,6 +13989,13 @@ reading every chunk the manifest names through `ContentPackReader.ReadAllAsync` 
 touches at most the chunk whose slots cover the id. Either way verify comes before decode and a decode never
 throws: a bad byte comes back as a stable reason token on the result.
 
+Five packages carry it. `KhaozEngine.Catalog` is the read side above, plus the runtime, the loot roller, the
+server boot, the client fetch loop and the string catalog, and it is in the `Foundation` umbrella.
+`KhaozEngine.Catalog.Authoring` (the authoring seam, the publish pipeline, diff and bundle) and
+`KhaozEngine.Catalog.Netcode` (the content layer of the connect door) are in `Server`.
+`KhaozEngine.Catalog.Sqlite` and `KhaozEngine.Catalog.SqlServer` are the two durable authoring backends and
+are in no umbrella: add the one you want explicitly, the way you add a `WorldStore` backend.
+
 ```csharp
 var registry = new ContentTypeRegistry();
 EngineContentTypes.Register(registry);
@@ -14011,11 +14018,212 @@ ContentValidationReport report = ContentValidator.Validate(
 if (!report.IsValid) return Refuse(report);         // boot exits non-zero, publish writes nothing
 ```
 
+### Registering a game type
+
+The engine's six types occupy ids 1 to 255, `KhaozEngine.ItemInstances` owns 256 to 1023, and a game's own
+types are 1024 and above. A caller CLAIMS its band through `ContentRegistrationBand` and the registry refuses
+a type id outside the band it claimed, so a game type cannot land on an engine id by accident.
+
+```csharp
+registry.RegisterContentType(
+    ContentRegistrationBand.Game,                   // refused if typeId is below 1024
+    typeId: 1024,
+    typeKey: "recipe",
+    codec: new RecipeRowCodec(),
+    validator: new RecipeValidator(),               // or null for schema checks alone
+    schema: new ContentFieldSchema([
+        new ContentFieldEntry("output_item", ContentFieldKind.KeyReference, "item", ContentVisibility.Client, Required: true),
+        new ContentFieldEntry("craft_ticks", ContentFieldKind.Int, null, ContentVisibility.Client, Required: true),
+    ]),
+    defaultVisibility: ContentVisibility.Client,
+    chunkSlots: 1024,
+    loadIndex: new RecipeByOutputIndex());          // built eagerly at load, beside the engine's four
+```
+
+### Authoring: the store seam and the publisher
+
+Authoring is `KhaozEngine.Catalog.Authoring`, in the `Server` umbrella, and it is pure .NET with no SQL. One
+seam, `IContentAuthoringStore`, carries the twenty-nine members every backend implements: schema
+initialization, the version list and the operator pin, the one open draft, publish and rollback, row and audit
+reads, id allocation, families, and bulk import and export. There are three implementations, and a caller
+written against the seam runs on all three.
+
+```csharp
+// tests and tools: no database at all, same contract
+IContentAuthoringStore store = new InMemoryContentAuthoringStore(registry, packStore);
+
+// dev and single node
+IContentAuthoringStore store = new SqliteContentAuthoringStore(connectionString, registry, packStore);
+
+// production and shared authoring
+IContentAuthoringStore store = new SqlServerContentAuthoringStore(connectionString, registry, packStore);
+
+await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly, ct);
+```
+
+`AutoCreate` creates the schema when the database carries no catalog table and validates it after.
+`ValidateOnly` refuses an empty or mismatched database instead, which is what a production host sets so a typo
+in a connection string cannot silently create a second empty catalog and serve it. A mismatch is a
+`ContentAuthoringException` naming the object and the required migration.
+
+Edits go into the ONE open draft, whole or not at all, and ids are allocated at publish rather than at edit:
+
+```csharp
+ContentDraft draft = await store.ApplyEditsAsync(
+    [
+        ContentEdit.Add(itemType, new ContentKey("iron_sword"),
+            [new ContentFieldEdit("attack", ContentFieldValue.OfNumber(ContentFieldKind.Int, 12))]),
+        ContentEdit.Update(itemType, definitionId: 41, new ContentKey("bronze_sword"),
+            [new ContentFieldEdit("attack", ContentFieldValue.OfNumber(ContentFieldKind.Int, 7))]),
+    ],
+    actor: "admin-endpoint",                        // what the engine authenticated
+    operatorId: "oid:8f2c",                         // what the console forwarded, recorded beside it
+    note: "autumn pass",
+    ct);
+
+ContentPublishResult published = await store.PublishAsync(
+    new ContentPublishRequest("admin-endpoint", "oid:8f2c", "autumn pass", expectedBaseVersion: draft.BaseVersion),
+    ct);
+```
+
+`ExpectedBaseVersion` is required, not optional: two consoles cannot both publish the same draft, and the
+second one is refused with `base-version-moved` rather than producing a second version. The result carries the
+new number, both manifest hashes, and the chunk accounting, so an operator sees that an edit to one row
+rewrote one chunk and reused the rest. `ContentRollback` builds a reviewable draft that restores an earlier
+version's field values, `ContentDiff` is the field-level comparison, and `ContentBundle` is the lossless
+seeding document, imported into an EMPTY database only.
+
+### The server boot
+
+`ContentBoot.RunAsync` is the whole boot in one call, and it FAILS CLOSED. Each of its twelve refusals comes
+back as a result carrying exit code 3 and the operator's exact lines, and there is no fallback to code
+defaults anywhere on the path, because a silent fallback catalog serves content no version names.
+
+```csharp
+var holder = new ContentRuntimeHolder();
+ContentBootResult boot = await ContentBoot.RunAsync(
+    new ContentBootOptions
+    {
+        Registry = registry,                        // the boot FREEZES it at step 6
+        Store = new FileSystemPackStore(packRoot),
+        Holder = holder,
+        ServerBuild = buildOrdinal,                 // required: a default of 0 refuses every pack with a minimum
+        ConfiguredVersion = config.ContentVersion,  // config wins over the operator's pin, always
+        WorldKeys = world.ContentKeys,
+    },
+    ct);
+
+if (!boot.Success)
+{
+    boot.WriteStandardError(Console.Error);
+    return boot.ExitCode;                           // 3, and the host exits. The engine never calls Environment.Exit.
+}
+
+holder.TryGetCurrent(out ContentRuntime content);
+```
+
+`ContentRuntime` is arrays indexed by id: `TryGetRow`, `TryGetId`, `Rows`, `Body`, `Key`, `IsRetired` and the
+typed `TryGetItem`. Four indexes are built EAGERLY beside it, because each is walked inside gameplay and a
+lazy build inside a tick is the latency spike the design exists to refuse: key to id per type, `ContentTagIndex`,
+`ContentFamilyIndex` and the prefix-summed `ContentLootIndex`, plus whatever a type registered through
+`IContentLoadIndex`. A version change builds a whole new runtime beside the old one and `ContentRuntimeHolder`
+swaps it in, so a reader mid-frame keeps reading the version it started on.
+
+### Rolling loot
+
+```csharp
+var roller = new LootRoller(content, new SeededRandomSource(seed));   // never an ambient static
+Span<LootDraw> drops = stackalloc LootDraw[16];
+int written = roller.Roll(tableId, drops);
+```
+
+Integer prefix sums over the loot index, chances in basis points, nesting capped at `MaxNestedDepth`. A
+destination too small is filled and `TryRoll` says so rather than silently losing drops. What the CALLER still
+owns is the journal event a draw feeds: the roller answers `LootDraw`s and writes nothing anywhere.
+
+### The admin console API
+
+`CatalogAdminActions.Register` puts SIXTEEN actions on the existing `ServerAdmin` dispatch, so a console
+reaches the whole catalog through `GET` / `POST /admin/actions/{name}` with no new transport, no new listener
+and no new auth. It lives in `KhaozEngine.Server.Admin` so the opt-in SQL providers never gain a transitive
+edge to the netcode stack.
+
+```csharp
+CatalogAdminActions.Register(
+    admin, store, registry,
+    new CatalogAdminActionOptions { ConfiguredVersion = config.ContentVersion, ServerBuild = buildOrdinal });
+```
+
+The sixteen are `catalog-schema`, `catalog-list`, `catalog-get`, `catalog-edit`, `catalog-draft`,
+`catalog-discard`, `catalog-validate`, `catalog-diff`, `catalog-publish`, `catalog-versions`, `catalog-pin`,
+`catalog-rollback`, `catalog-import`, `catalog-export`, `catalog-sweep` and `catalog-verify`. None returns
+202: an edit completes inside the request against the database, so an operator gets the real answer rather
+than an optimistic one. A rejected edit answers one object error carrying a stable reason token and EVERY
+`KEC` finding rather than the first. Optimistic concurrency answers 409 naming both the expected and the
+actual base version, and a draft a publish holds frozen answers 409 naming the remedy. A mutating action
+reached by `GET` is refused 405 with `Allow: POST`. What the caller still owns is the console UI: the engine
+ships the actions and the payload shapes, not a screen.
+
+### The connect door, and the client's catch-up
+
+A server serves exactly ONE published content version. A client holding another is refused at the door rather
+than admitted read-only while it fetches, which is what keeps a session from ever running against two
+catalogs. `ContentIdentityGateAuthenticator` is one layer in the nest, and the order outermost first is
+protocol version, world, CONTENT, the game's token auth, the ban check.
+
+```csharp
+// server
+IConnectionAuthenticator door = new ContentIdentityGateAuthenticator(
+    // the CLIENT manifest hash, never the server one, which no client ever holds
+    new ContentVersionIdentity(content.VersionNumber, clientManifestHash),
+    inner: gameTokenAuth,
+    minimumClientBuild: minimumClientBuild);
+
+// client, on a refusal
+if (ContentRefusal.TryParseMismatch(refusedReason, out ContentVersionIdentity server, out _))
+{
+    var loop = new ContentFetchLoop(localCache, httpClient, packBaseAddress, registry,
+        new ContentFetchOptions { ClientBuild = buildOrdinal, Languages = ["en-US"], Progress = progress });
+    ContentFetchResult fetched = await loop.FetchAsync(server, ct);
+}
+```
+
+The refusal token carries both sides and NO URL, because a URL in a refusal token is a redirect an
+unauthenticated party controls: the client already knows its own pack origin. The fetch reads the missing
+hashes off the manifest the refusal named, pulls them through `CachingPackStore` (local cache in front,
+`HttpPackStore` behind, every body bounded by `HttpPackStore.MaxObjectBytes` and verified against its content
+address before it is kept), retries with capped jittered exponential backoff, and reports through
+`IProgress<ContentFetchProgress>`. Cancellation is its one throwing exit, and it leaves no partial file: a
+chunk is written to a temporary name and moved. What the caller still owns is the pack HOSTING and the build
+ordinals: the engine reads a build number, it does not mint one.
+
+### Content strings
+
+`ContentStringCatalog` reads the version's per-language `KECT` text and layers the game's SHIPPED catalog
+under it, so content strings and UI strings resolve through one call and a key the pack does not carry falls
+back rather than showing a placeholder.
+
+```csharp
+ContentTextIndex.TryDecode(textChunkBytes, out ContentTextIndex? english, out string? reason);
+
+var strings = new ContentStringCatalog(
+    [english!], defaultLanguageTag: "en-US",
+    shippedCatalog: (string key, out string value) => resourceCatalog.TryGet(key, out value));
+
+strings.SelectLanguage(CultureInfo.CurrentUICulture);
+string name = strings.Get("item.iron_sword.name");
+```
+
+It matches `IStringCatalog`'s member shape without the implements clause, because that interface lives in
+`KhaozEngine.App` and `KhaozEngine.Catalog` depends on `Primitives` alone. A game wires it in as the catalog
+`LocalizationManager` hands out.
+
 `KhaozEngine.Catalog/README.md` is the API reference, type by type, including the field schema, the row codec
-seam, the four pack formats, the `kec/` digests, the remap rules and the `KEC` finding codes. The reasoning is
+seam, the four pack formats, the `kec/` digests, the remap rules and the `KEC` finding codes.
+`KhaozEngine.Catalog.Authoring/README.md` is the same for the authoring half, and each SQL provider's README
+documents its own connection string, schema mode and migration name. The reasoning is
 `docs/design/CONTENT-CATALOG-DESIGN-2026-09-15.md`, written against the shared contracts in
-`docs/design/CONTENT-CONTRACTS-DESIGN-2026-09-14.md`. Authoring, publish, the SQL providers and the netcode
-handshake layer land in later milestones of the same program.
+`docs/design/CONTENT-CONTRACTS-DESIGN-2026-09-14.md`.
 
 ---
 

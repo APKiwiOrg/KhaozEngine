@@ -90,6 +90,11 @@ this doc cannot silently drift apart.
 | World pickups (walk-over collectibles) | `KhaozEngine.NetWorld` (`IWorldPickupHost`, the surface `WorldPickups` drives, implemented by BOTH `WorldServer` and `ShardedWorldServer` - `JoinedSlots` / `TryGetPlayerNetId` / `TryGetPlayerState` / `SpawnEntity` are their pre-existing API verbatim, plus `TryGetEntity` / `DespawnEntity`, the resolve-and-remove halves `SpawnEntity` had been missing, neither of which ever touches a player entity, and since 17.38.0 `TryGetCellCoord`, a default interface method answering false so a host with no cell grid is unaffected) | `WorldPickups` (+ `WorldPickupsConfig` carrying the `OnCollect` decision hook and `OnRemoved`, the replicated `PickupState` built-in at `MoveProtocol.PickupTypeId`) owns spawn, the owner tag, the time-to-live, the linear proximity scan and the despawn, marks every pickup `Transient` so none is ever persisted, and follows a `CellEvictor` (`WorldPickupsConfig.Evictor` / `TrackEvictions`, with `ForgetCell` / `ForgetWhere` for a host that unloads its own way) so an evicted cell takes its pickups' tracking with it | (no extra dep. The payload is an opaque game-defined `long` the engine never interprets, and the ownership RULE lives in the consumer's `OnCollect`) |
 | Instance id allocation | `KhaozEngine.ItemInstances` (`IInstanceIdStore`: `Read()` answering an `InstanceIdState`, and `Persist(in InstanceIdState)`. Taken as a CONSTRUCTOR argument by `InstanceIdAllocator`, never as an ambient static. Both members are SYNCHRONOUS on purpose: an async seam would push an await into every call site that wants an id, and a host whose store is async owns that bridge) | **host-side, and the engine ships NO provider at all**, which is the load-bearing part rather than an omission. A real store persists into the journal store, and any in-tree implementation would drag a Server package into Foundation, where this package lives so that a client can decode an item. What the engine DOES ship is the seam, the `(node << 48) | counter` packing mirrored from `NetIdAllocator` (a net id and an instance id are different spaces that must never share a counter), and the order that matters: the high-water mark is persisted BEFORE any id in its block is issued, because persisting after issuing leaves a window in which a crash hands the next boot an id it has already put on an item. The batch size is free and the order is the contract | (no extra dep) |
 | Quarantine counter | `KhaozEngine.ItemInstances` (`InstanceValidationTelemetry.Report`'s `counter` parameter, an `Action<int, string>?` invoked once per QUARANTINED record with the content type id and the reason code, which are the two dimensions the contracts name, under the metric name `QuarantinedRecordsCounter`) | **consumer-side**, and a DELEGATE rather than an interface because **the engine has no counter seam to plug into**: it has `ILogger` and it has `FrameStats`, and nothing that counts a dimensioned event, so a package-wide metrics abstraction invented on the way past is exactly what this row refuses. Null counts nothing, which is what a headless test wants. The sibling `logger` parameter is NOT a new seam: it is `KhaozEngine.Diagnostics.ILogger` obtained through `LogManager.GetLogger`, injected rather than ambient, and null emits no line | (no extra dep) |
+| Content pack store | `KhaozEngine.Catalog` (`IPackStore`: `ExistsAsync` / `GetAsync` / `PutAsync` / `ListAsync`, four members over a CONTENT-ADDRESSED store, with the delete path split out into `IPackStorePruning` so a read-only provider cannot be asked to prune and a misconfigured one cannot delete a production pack through the common interface. `IContentVersionPointerSource` is a separate read-only seam for `versions/<n>`, the one object in the store not named by its own hash, kept off `IPackStore` so a read-only provider cannot be a half-working publish target) | flavour 2 below: THREE providers, all in the seam package because none takes a dependency. `FileSystemPackStore` is the local one and the only one that also implements `IContentVersionPointerSource` and `IPackStorePruning`. `HttpPackStore` is read-only over `HttpClient`, and it is the ONE layer that can bound a body, which it does at `MaxObjectBytes`. `CachingPackStore` is the decorator a client runs: local in front, remote behind, every fetched body verified against its content address before it is kept and a refusal reported through its `onRefused` callback. A blob or object-store provider is a later sibling that declares its SDK there rather than here | (no extra dep, `System.Net.Http` is in box and only `HttpPackStore` touches it) |
+| Content authoring store | `KhaozEngine.Catalog.Authoring` (`IContentAuthoringStore`, TWENTY-NINE members and the one shape every backend implements: schema init and version, the store epoch, the active version and the operator pin, the one open draft with its edits, freeze and discard, the publish baseline, commit and publish, rollback, row page and history reads, audit reads and the operational audit append, id allocation plain and in-family, family listing and creation, bundle import and export, plus the `PackStore` the operational pair works on. Pinned member by member by a test, so a member added to one provider and not the others is red rather than latent. `IContentIdPersistence` is the smaller seam `ContentIdAllocator` sits on, and `IContentRowSideEncoder` is the publish's row-encoding seam) | `InMemoryContentAuthoringStore` ships in the seam package for tests and tools, and the two durable backends are OPT-IN siblings in no umbrella: `KhaozEngine.Catalog.Sqlite` (`SqliteContentAuthoringStore`, over `KhaozEngine.Sqlite`'s `SqliteStoreConnection` like every other SQLite store in the engine) and `KhaozEngine.Catalog.SqlServer` (`SqlServerContentAuthoringStore`, a fresh pooled connection per call, every write `Serializable`). The same conformance suite runs against all three, and the SQL Server leg is gated on `KE_CATALOG_SQLSERVER` because CI has no instance | Microsoft.Data.Sqlite / SqlClient, only in the two provider packages. The seam package itself takes NO third-party dependency and no SQL |
+| Content load index | `KhaozEngine.Catalog` (`IContentLoadIndex`, one member, `Build(IContentSnapshot)`, handed to `RegisterContentType` beside the codec) | **game-side**, and the engine ships none through this seam on purpose. The engine's own four derived indexes (key to id, `ContentTagIndex`, `ContentFamilyIndex`, `ContentLootIndex`) are built by `ContentDerivedIndexes` from the runtime's own constructor rather than registered through the seam, because a runtime must never exist with them missing. The seam is for a GAME's derived table, built eagerly at load beside them, because a lazy build inside a tick is the latency spike the design refuses | (no extra dep) |
+| Content validation | `KhaozEngine.Catalog` (`IContentValidator`, one member, `Validate(type, candidate, findings)`, ACCUMULATING into the caller's collection rather than throwing or returning at the first problem, because an operator fixing content wants every finding at once) | the engine's own `ContentValidator` runs the cross-cutting sweep and its `KEC` finding codes. A per-TYPE validator is registered beside the codec, so a game type's own rule is checked by the same pass and reported in the same report. Null is legal and means the schema checks alone | (no extra dep) |
+| Content strings under the game's own | `KhaozEngine.Catalog` (`ContentStringFallback`, a `delegate bool (string key, out string value)`, handed to `ContentStringCatalog`'s constructor) | **game-side**, and a DELEGATE rather than an interface because `IStringCatalog` lives in `KhaozEngine.App` and `KhaozEngine.Catalog` depends on `Primitives` alone. `ContentStringCatalog` matches `IStringCatalog`'s member shape without the implements clause for exactly that reason, so a game wires it in as the catalog `LocalizationManager` hands out and a key the pack does not carry falls through to the shipped resources | (no extra dep) |
 | Audio | `KhaozEngine.Audio` (`IMusicBackend`, `ISfxBackend`, `Null*` no-op defaults) | (in-package) `OpenAlMusicBackend` / `OpenAlSfxBackend` | Silk.NET.OpenAL (+ NLayer mp3 / NVorbis ogg decode, contained) |
 | Server-status fetch | `KhaozEngine.ServerStatus` (`IServerStatusSource`, `ServerStatusReport` wire contract, `ServerStatusClient`, `ServerStatusEvaluator`) | (in-package) `HttpServerStatusSource`, a fake source in tests | System.Net.Http (BCL `HttpClient`, contained in `HttpServerStatusSource`) |
 | Server heartbeat (liveness) | `KhaozEngine.ServerStatus` (`IServerHeartbeatSink`, `ServerHeartbeat`, `Null`/`InMemory` reference sinks, `ServerHeartbeatService`) | **game-side** (the one-table upsert against the status DB), no engine backend package | Microsoft.Data.SqlClient / any - in the game, never the engine |
@@ -586,26 +591,55 @@ render verbs ever moved to a separate tool.
 
 ## Content catalog package edges
 
-`KhaozEngine.Catalog` adds exactly two edges, both forward and both acyclic:
+The family is five packages, and every edge is forward and acyclic. `KhaozEngine.Catalog`, the read side, adds
+exactly two:
 
 ```
 KhaozEngine.Catalog -> KhaozEngine.Primitives   (the foundation leaf, and where the IRandomSource seam its random consumers take lives)
 KhaozEngine.Foundation -> KhaozEngine.Catalog   (umbrella ProjectReference, like every other Foundation package)
 ```
 
+The four packages above it add these, and nothing else:
+
+```
+KhaozEngine.Catalog.Authoring -> KhaozEngine.Catalog              (the registry, the codecs, the formats and IPackStore. NOTHING else, and no SQL)
+KhaozEngine.Catalog.Netcode   -> KhaozEngine.Catalog              (ContentVersionIdentity and the one content-address rule)
+KhaozEngine.Catalog.Netcode   -> KhaozEngine.Netcode              (HandshakeToken's layer codec and IConnectionAuthenticator)
+KhaozEngine.Catalog.Sqlite    -> KhaozEngine.Catalog.Authoring    (the seam it implements)
+KhaozEngine.Catalog.Sqlite    -> KhaozEngine.Sqlite               (SqliteStoreConnection, the shared open/gate/pool-clearing-dispose lifecycle)
+KhaozEngine.Catalog.Sqlite    -> Microsoft.Data.Sqlite            (the driver, declared HERE and nowhere below it)
+KhaozEngine.Catalog.SqlServer -> KhaozEngine.Catalog.Authoring    (the same seam)
+KhaozEngine.Catalog.SqlServer -> Microsoft.Data.SqlClient         (the driver, declared HERE and nowhere below it)
+KhaozEngine.Server            -> KhaozEngine.Catalog.Authoring    (umbrella ProjectReference)
+KhaozEngine.Server            -> KhaozEngine.Catalog.Netcode      (umbrella ProjectReference)
+KhaozEngine.Server.Admin      -> KhaozEngine.Catalog.Authoring    (CatalogAdminActions, the sixteen registered actions)
+```
+
+**Three of those placements are the load-bearing ones.** `Catalog.Authoring` and `Catalog.Netcode` are in the
+`Server` umbrella and not in `Foundation`, because neither may enter a client graph: the door layer needs
+`Netcode`, and the authoring seam is what every SQL provider hangs off. The two SQL providers are in NO
+umbrella, the same rule the `WorldStore` and `Commerce` pairs follow, so an umbrella consumer takes no database
+dependency for content it only reads. And `CatalogAdminActions` lives in `KhaozEngine.Server.Admin` rather than
+in `Catalog.Authoring`: the helper needs `ServerAdmin` and the authoring store together, and putting it in the
+authoring package would give every opt-in SQL provider a transitive edge to the whole netcode stack. The price
+is that a game registering the actions on a `ServerAdmin` with no HTTP endpoint cannot reach the helper, which
+is theoretical while there is one transport and the status codes are HTTP.
+
 **Taking no third-party dependency at all is the load-bearing part**, not a side effect of a young package. A
 game CLIENT needs the read side, and a client that reached it through a package carrying a database driver
 would ship one. `System.IO.Compression` and `System.Security.Cryptography` are in box, so the pack formats and
 the `kec/` digests declare nothing. The database sits the other side of a package boundary rather than a type
 boundary: authoring, publish and the two SQL providers are `KhaozEngine.Catalog.Authoring` and its `Sqlite` /
-`SqlServer` siblings, landing in later milestones, and `Catalog` never references any of them. That edge runs
-one way, `Catalog.Authoring -> Catalog`, which is what keeps the graph acyclic when those packages arrive.
+`SqlServer` siblings, and `Catalog` never references any of them. That edge runs one way,
+`Catalog.Authoring -> Catalog`, which is what keeps the graph acyclic. `ArchitectureTests.Catalog_CarriesNoPackage_AndNeverReachesItsAuthoringHalf`
+asserts both halves of that on the project graph, so neither is a claim.
 
-The seam the package owns on its own account is `IPackStore`, the content-addressed store: four members, with
-the delete path split out into `IPackStorePruning` so a read-only provider cannot be asked to prune and a
-misconfigured one cannot delete a production pack through the common interface. `FileSystemPackStore` is the
-in-package local provider, flavour 2 below, and a blob or object-store provider is a later sibling that
-declares its SDK there rather than here.
+The seams the family owns are in the table above: `IPackStore` (three providers now, not one),
+`IContentAuthoringStore`, `IContentLoadIndex`, `IContentValidator`, `IContentVersionPointerSource` and
+`ContentStringFallback`. Two more are read-only shapes the registry takes rather than backend seams, so they
+have no row: `IContentRowCodec` is how a type turns a row into bytes and back, registered beside the schema,
+and `IContentSnapshot` is the read face of one loaded version, which `ContentSnapshot` and `ContentRuntime`
+both implement and which is what `KhaozEngine.ItemInstances` reads content through.
 
 ## Item instance package edges, and the one deliberately not crossed
 

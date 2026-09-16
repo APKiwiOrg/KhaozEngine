@@ -57,7 +57,7 @@ public interface IContentVersionPointerSource
 public readonly record struct ContentWorldKeyReference(string Source, string TypeKey, string ContentKey);
 
 /// <summary>
-/// Everything <see cref="ContentBoot"/> needs, handed in rather than reached for, so a boot reads no ambient
+/// Everything the boot needs, handed in rather than reached for, so a boot reads no ambient
 /// static, no environment variable and no file of its own.
 /// </summary>
 public sealed class ContentBootOptions

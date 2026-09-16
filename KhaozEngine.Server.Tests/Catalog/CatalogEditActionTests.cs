@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -475,6 +477,59 @@ public sealed class CatalogEditActionTests : IDisposable
         JsonElement draft = await _harness.OkAsync("catalog-draft", null);
         JsonElement fields = draft.GetProperty("edits")[0].GetProperty("fields");
         Assert.Equal("0a1b", fields.GetProperty("icon").GetString());
+    }
+
+    /// <summary>One well-formed add entry, so a cap test builds a body out of real edits rather than filler.</summary>
+    /// <param name="ordinal">The ordinal, which becomes the row key.</param>
+    static string Add(int ordinal)
+        => FormattableString.Invariant(
+            $"{{ \"op\": \"add\", \"typeKey\": \"thing\", \"key\": \"row_{ordinal}\", \"fields\": {{ \"value\": 1, \"stackable\": false }} }}");
+
+    /// <summary>
+    /// The <c>edits</c> array has a CAP of its own, and an array over it is refused before any entry is read.
+    /// <para>
+    /// Every entry other than an add costs a store round trip to resolve its target, so an array with no cap
+    /// is an unbounded amount of database work bought with one authenticated request. The cap is generous
+    /// against any real save from a grid and small enough to bound that work.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Edit_WithMoreEditsThanTheCap_IsRefusedBeforeAnyEntryIsRead()
+    {
+        var entries = new List<string>(CatalogRequest.MaxEditsPerRequest + 1);
+        for (int i = 0; i <= CatalogRequest.MaxEditsPerRequest; i++)
+        {
+            entries.Add(Add(i));
+        }
+
+        JsonElement body = await _harness.RefusedAsync(
+            "catalog-edit", "{ \"edits\": [" + string.Join(",", entries) + "] }");
+
+        Assert.Equal(CatalogRequest.MalformedRequestReason, body.GetProperty("reason").GetString());
+        Assert.Contains(
+            CatalogRequest.MaxEditsPerRequest.ToString(CultureInfo.InvariantCulture),
+            body.GetProperty("error").GetString()!,
+            StringComparison.Ordinal);
+
+        // Refused before any entry was read, so the refusal names ONE thing rather than a thousand findings.
+        Assert.Equal(0, body.GetProperty("findingCount").GetInt32());
+        Assert.Null(await _harness.Store.GetOpenDraftAsync());
+    }
+
+    /// <summary>An array exactly AT the cap is accepted, so the cap is a bound rather than an off-by-one.</summary>
+    [Fact]
+    public async Task Edit_WithExactlyTheCapManyEdits_IsAccepted()
+    {
+        var entries = new List<string>(CatalogRequest.MaxEditsPerRequest);
+        for (int i = 0; i < CatalogRequest.MaxEditsPerRequest; i++)
+        {
+            entries.Add(Add(i));
+        }
+
+        JsonElement body = await _harness.OkAsync(
+            "catalog-edit", "{ \"edits\": [" + string.Join(",", entries) + "] }");
+
+        Assert.Equal(CatalogRequest.MaxEditsPerRequest, body.GetProperty("applied").GetInt32());
     }
 
     /// <summary>Every request-shaped refusal is the OBJECT error payload rather than a bare string.</summary>

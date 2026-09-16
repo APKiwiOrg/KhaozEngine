@@ -31,6 +31,18 @@ internal static class CatalogRequest
     /// <summary>The longest note the authoring store accepts.</summary>
     public const int MaxNoteLength = 1024;
 
+    /// <summary>
+    /// The most edits ONE <c>catalog-edit</c> request may carry, beyond which it is a 400 and no entry is
+    /// read.
+    /// <para>
+    /// Every entry other than an add costs a store round trip to resolve its target, so an uncapped array is
+    /// an unbounded amount of database work bought with one authenticated request. A thousand is far above
+    /// any real save from a grid, and an operator with more than that to change has a bundle import rather
+    /// than one enormous edit.
+    /// </para>
+    /// </summary>
+    public const int MaxEditsPerRequest = 1_000;
+
     /// <summary>The reason token a body that is absent, or a property of the wrong shape, is refused under.</summary>
     public const string MalformedRequestReason = "malformed-request";
 

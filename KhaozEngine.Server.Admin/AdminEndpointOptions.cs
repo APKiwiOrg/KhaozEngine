@@ -7,10 +7,11 @@ namespace KhaozEngine.Server.Admin;
 /// <summary>Consumer-supplied configuration for the admin endpoint. Off until you construct an
 /// <see cref="AdminHttpServer"/> with these. Binds to loopback by default (the console runs on the same host or
 /// reaches it through a tunnel).
-/// <para>The three limit knobs below bound what an UNAUTHENTICATED peer can hold, which matters because the TLS
-/// handshake completes before the bearer token is ever read. They ship with defaults tighter than Kestrel's own,
-/// sized for an admin endpoint (one operator and a script, not a public web app). Set any of them to null to leave
-/// Kestrel's default in place instead.</para></summary>
+/// <para>The first three limit knobs below bound what an UNAUTHENTICATED peer can hold, which matters because the
+/// TLS handshake completes before the bearer token is ever read. They ship with defaults tighter than Kestrel's own,
+/// sized for an admin endpoint (one operator and a script, not a public web app). The fourth,
+/// <see cref="MaxRequestBodySize"/>, is a POST-auth bound and is deliberately not tightened. Set any of them to null
+/// to leave Kestrel's default in place instead.</para></summary>
 public sealed class AdminEndpointOptions
 {
     /// <summary>
@@ -50,6 +51,24 @@ public sealed class AdminEndpointOptions
     /// over two minutes. Null leaves Kestrel's default. Must be positive when set.</summary>
     public TimeSpan? KeepAliveTimeout { get; init; } = TimeSpan.FromSeconds(30);
 
+    /// <summary>The largest request body this endpoint accepts, applied to
+    /// <see cref="KestrelServerLimits.MaxRequestBodySize"/>. It bounds the WHOLE admin surface rather than one
+    /// route, because that is the level Kestrel sets a body limit at and this host configures Kestrel once.
+    /// <para>
+    /// <b>It is the one knob here that is not tightened, and the reason is <c>catalog-import</c>.</b> The
+    /// largest legitimate body on this surface is a whole-catalog bundle, and a cap tuned to an edit would
+    /// refuse a seeding import at the worst possible moment. The default is Kestrel's own 30,000,000 bytes,
+    /// pinned here so the number is visible and settable rather than implicit. A deployment that does not
+    /// import lowers it, and null leaves Kestrel's default in place.
+    /// </para>
+    /// <para>
+    /// <b>It is also a POST-auth bound, unlike the three above.</b> The bearer middleware answers 401 without
+    /// reading the body, so an unauthenticated peer never spends this budget. It bounds what an authenticated
+    /// console can hand the JSON reader, not what a stranger can.
+    /// </para>
+    /// Must be positive when set.</summary>
+    public long? MaxRequestBodySize { get; init; } = 30_000_000;
+
     /// <summary>Throws if any limit is set to a value Kestrel would reject or that would disable the limit by
     /// accident. Called from <see cref="AdminHttpServer"/>'s constructor, so a bad value fails there rather than
     /// inside Kestrel's lazily-invoked configure callback at start.</summary>
@@ -65,6 +84,9 @@ public sealed class AdminEndpointOptions
         if (KeepAliveTimeout is TimeSpan keepAlive && keepAlive <= TimeSpan.Zero)
             throw new ArgumentOutOfRangeException(nameof(KeepAliveTimeout), keepAlive,
                 "must be positive, or null to leave Kestrel's default");
+        if (MaxRequestBodySize is long body && body <= 0)
+            throw new ArgumentOutOfRangeException(nameof(MaxRequestBodySize), body,
+                "must be positive, or null to leave Kestrel's default");
     }
 
     /// <summary>Writes whichever limits are set onto <paramref name="limits"/>, leaving the rest as Kestrel had
@@ -76,5 +98,6 @@ public sealed class AdminEndpointOptions
         if (MaxConcurrentConnections is int max) limits.MaxConcurrentConnections = max;
         if (RequestHeadersTimeout is TimeSpan headers) limits.RequestHeadersTimeout = headers;
         if (KeepAliveTimeout is TimeSpan keepAlive) limits.KeepAliveTimeout = keepAlive;
+        if (MaxRequestBodySize is long body) limits.MaxRequestBodySize = body;
     }
 }

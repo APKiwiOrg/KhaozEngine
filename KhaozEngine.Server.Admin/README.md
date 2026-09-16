@@ -46,6 +46,14 @@ Set any of them to `null` to leave Kestrel's own value. A non-positive value thr
 constructor rather than later inside Kestrel's start. None of this replaces the two real mitigations: keep the
 endpoint on loopback or behind a tunnel, and keep the token long and random.
 
+`MaxRequestBodySize` is a fourth knob on the same options and it is set the same way, onto
+`KestrelServerLimits`, so it bounds the WHOLE admin surface rather than one route. It is the one knob NOT
+tightened: the largest legitimate body here is a whole-catalog bundle for `catalog-import`, and a cap tuned to
+an edit would refuse a seeding import at the worst possible moment. The default is Kestrel's own 30,000,000
+bytes, pinned so the number is visible and settable rather than implicit, and a deployment that does not
+import lowers it. It is also a POST-auth bound, unlike the three above: the bearer middleware answers 401
+without reading the body, so an unauthenticated peer never spends it.
+
 ## Content catalog actions
 
 `CatalogAdminActions.Register(admin, store, registry)` registers the content authoring API as ordinary
@@ -109,6 +117,11 @@ The seven mutating actions:
 | `catalog-publish` | POST | `{ operator, note, expectedBaseVersion, minimumServerBuild, minimumClientBuild }` | `{ version, serverManifestHash, clientManifestHash, chunksWritten, chunksReused, bytesWritten, rulesAppended, elapsedMs }` |
 | `catalog-pin` | POST | `{ operator, version }`, or an explicit null version to clear the hold | `{ pinnedVersion, configPinnedVersion, warnings[] }` |
 | `catalog-rollback` | POST | `{ operator, toVersion, note }` | `{ draftCreated, editCount, blockedByRules[] }` |
+
+**The `edits` array is capped at 1,000 entries per request** and an array over it is a 400 that reads no entry.
+Every entry other than an add costs a store round trip to resolve its target, so an uncapped array is an
+unbounded amount of database work bought with one authenticated request. A thousand is far above any real save
+from a grid, and an operator with more than that to change has `catalog-import` rather than one enormous edit.
 
 An edit's `op` is `add`, `update`, `retire` or `fork`. A `fork` is an op VALUE rather than an action of its
 own, because it is an edit against the open draft like the other three and it is saved, validated, diffed and

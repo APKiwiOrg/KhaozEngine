@@ -79,6 +79,15 @@ internal static class CatalogEditParser
                 "'edits' is empty, so this request would apply nothing. An empty save is a console defect rather than an intent.");
         }
 
+        // Before the walk, because every entry other than an add costs a store round trip to resolve its
+        // target, and refusing after the work is done would be refusing the answer rather than the request.
+        // The refusal names ONE thing rather than a thousand findings, for the same reason.
+        if (array.GetArrayLength() > CatalogRequest.MaxEditsPerRequest)
+        {
+            return CatalogEditParse.Malformed(FormattableString.Invariant(
+                $"'edits' carries {array.GetArrayLength().ToString(CultureInfo.InvariantCulture)} entries and one request takes at most {CatalogRequest.MaxEditsPerRequest.ToString(CultureInfo.InvariantCulture)}. Every entry other than an add costs a store round trip, so the array is capped. An operator with more than that to change has a bundle import rather than one enormous edit."));
+        }
+
         var edits = new List<ContentEdit>(array.GetArrayLength());
         var findings = new List<CatalogFindingPayload>();
         int ordinal = 0;

@@ -37,6 +37,21 @@ public class AdminEndpointLimitsTests
         Assert.Equal(TimeSpan.FromSeconds(30), limits.KeepAliveTimeout);
     }
 
+    /// <summary>The body cap is the one knob deliberately NOT tightened, because the largest legitimate body on
+    /// this surface is a whole-catalog bundle import and a cap tuned to an edit would refuse a seeding import at
+    /// the worst possible moment. It is pinned to Kestrel's own number so it is visible and settable rather than
+    /// implicit, and it is written through to the limits like the other three.</summary>
+    [Fact]
+    public void The_body_cap_is_written_through_at_Kestrels_own_default()
+    {
+        var untouched = new KestrelServerLimits();
+        var limits = new KestrelServerLimits();
+        Options().ApplyLimits(limits);
+
+        Assert.Equal(30_000_000, limits.MaxRequestBodySize);
+        Assert.Equal(untouched.MaxRequestBodySize, limits.MaxRequestBodySize);
+    }
+
     [Fact]
     public void Configured_values_are_written_through()
     {
@@ -49,6 +64,7 @@ public class AdminEndpointLimitsTests
             MaxConcurrentConnections = 8,
             RequestHeadersTimeout = TimeSpan.FromSeconds(3),
             KeepAliveTimeout = TimeSpan.FromSeconds(5),
+            MaxRequestBodySize = 4096,
         };
 
         opts.ApplyLimits(limits);
@@ -56,6 +72,7 @@ public class AdminEndpointLimitsTests
         Assert.Equal(8, limits.MaxConcurrentConnections);
         Assert.Equal(TimeSpan.FromSeconds(3), limits.RequestHeadersTimeout);
         Assert.Equal(TimeSpan.FromSeconds(5), limits.KeepAliveTimeout);
+        Assert.Equal(4096, limits.MaxRequestBodySize);
     }
 
     /// <summary>Null is the documented opt-out, and it must leave what Kestrel had rather than writing a zero.</summary>
@@ -66,6 +83,7 @@ public class AdminEndpointLimitsTests
         long? kestrelMaxConnections = untouched.MaxConcurrentConnections;
         TimeSpan kestrelHeaders = untouched.RequestHeadersTimeout;
         TimeSpan kestrelKeepAlive = untouched.KeepAliveTimeout;
+        long? kestrelBody = untouched.MaxRequestBodySize;
 
         var limits = new KestrelServerLimits();
         new AdminEndpointOptions
@@ -76,11 +94,13 @@ public class AdminEndpointLimitsTests
             MaxConcurrentConnections = null,
             RequestHeadersTimeout = null,
             KeepAliveTimeout = null,
+            MaxRequestBodySize = null,
         }.ApplyLimits(limits);
 
         Assert.Equal(kestrelMaxConnections, limits.MaxConcurrentConnections);
         Assert.Equal(kestrelHeaders, limits.RequestHeadersTimeout);
         Assert.Equal(kestrelKeepAlive, limits.KeepAliveTimeout);
+        Assert.Equal(kestrelBody, limits.MaxRequestBodySize);
     }
 
     [Theory]
@@ -118,6 +138,15 @@ public class AdminEndpointLimitsTests
             KeepAliveTimeout = TimeSpan.FromSeconds(-1),
         };
         Assert.Throws<ArgumentOutOfRangeException>(() => keepAlive.Validate());
+
+        AdminEndpointOptions body = new()
+        {
+            Port = 0,
+            BearerToken = "secret",
+            Certificate = AdminTlsCertificate.CreateSelfSigned("localhost"),
+            MaxRequestBodySize = 0,
+        };
+        Assert.Throws<ArgumentOutOfRangeException>(() => body.Validate());
     }
 
     /// <summary>A bad limit fails at construction, not later inside Kestrel's lazily-invoked configure callback,

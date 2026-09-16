@@ -88,6 +88,28 @@ public class TileProtocolFrameTests
             TileProtocol.EncodeGameMessage(TileProtocol.ClientFrameGameMessage, 1, new byte[TileProtocol.MaxGameMessageBytes + 1]));
     }
 
+    // #891. The kind is the one field on this wire that used to be written in the HOST's order, so a big endian head
+    // would have read a little endian head's 0x1234 as 0x3412. Pinned as bytes rather than through a round trip,
+    // because a round trip agrees with itself in either order and that is exactly what hid this.
+    [Fact]
+    public void A_game_message_kind_is_two_little_endian_bytes_on_the_wire()
+    {
+        const ushort kind = 0x1234;
+        byte[] frame = TileProtocol.EncodeGameMessage(TileProtocol.ClientFrameGameMessage, kind, new byte[] { 9 });
+
+        Assert.Equal(TileProtocol.ClientFrameGameMessage, frame[0]);
+        Assert.Equal(0x34, frame[1]);                                // low byte first
+        Assert.Equal(0x12, frame[2]);
+
+        // The decoder reads the same order, asked of a frame built by hand so the two halves cannot agree on a
+        // wrong one. The payload byte proves the header ends where the kind says it does.
+        byte[] wire = { TileProtocol.ServerFrameGameMessage, 0x34, 0x12, 0, 9 };
+        Assert.True(TileProtocol.TryDecodeGameMessage(wire, TileProtocol.ServerFrameGameMessage, out ushort read,
+            out ReadOnlySpan<byte> payload));
+        Assert.Equal(kind, read);
+        Assert.Equal(new byte[] { 9 }, payload.ToArray());
+    }
+
     [Fact]
     public void A_game_message_over_the_payload_cap_is_refused_by_the_decoder_too()
     {

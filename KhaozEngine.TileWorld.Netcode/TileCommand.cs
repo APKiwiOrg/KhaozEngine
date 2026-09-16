@@ -92,8 +92,9 @@ public readonly record struct TileCommand(TileCommandKind Kind, TileCoord Goal, 
         new(TileCommandKind.InteractEntity, default, mode, netId);
 
     /// <summary>Lock onto <paramref name="netId"/> and chase it. Unlike <see cref="Interact"/> this routes nothing
-    /// up front: the FOLLOW inside the stepper re-paths every tick the target's committed tile moved, which is what
-    /// makes a chase a chase rather than a one-shot walk to where something used to be.</summary>
+    /// up front: the FOLLOW inside the stepper re-paths on any tick the route end is no longer in range of the
+    /// target's footprint, which is what makes a chase a chase rather than a one-shot walk to where something used
+    /// to be. A target that moves and stays in range of that same end costs no search.</summary>
     public static TileCommand Attack(long netId, TileMoveMode mode) =>
         new(TileCommandKind.Attack, default, mode, netId);
 }

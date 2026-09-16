@@ -237,8 +237,10 @@ hidden.
   is on a client is that client's newest snapshot. Both entity resolvers answer an entity's WHOLE footprint, its
   `TileMoveState.Footprint`, never a one-tile rect on its anchor, because a client that resolved a large body as one
   tile would stop an approach inside it and be corrected every time. The local branch has one live consumer, an
-  `Attack` naming the player's own id: resolving it sends the client's follow down the self clear the server takes,
-  so a self attack clicked mid walk predicts the stop. A `Ghost` is EXCLUDED and therefore reads as gone, which is the answer
+  `Attack` naming the player's own id: it answers the same footprint the server's own resolver does, so the two heads
+  read one target rather than merely landing on the same answer. The self clear does not ride on it, because the
+  follow asks identity BEFORE it asks either seam, so a self attack clicked mid walk predicts the stop even on a head
+  whose resolver cannot answer that id. A `Ghost` is EXCLUDED and therefore reads as gone, which is the answer
   the follow acts on. A `Migrating` entity is HELD instead, for `MigratingGraceRefreshes` consecutive refreshes
   (four by default, one second at a 250 ms tick), answering with the frozen pre-handoff footprint it is not moving off:
   an in-process link finishes the whole handshake inside one `ProcessHandoffs` so the window is never used, and a

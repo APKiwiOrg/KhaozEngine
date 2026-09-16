@@ -15,10 +15,10 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// <para>The LOCAL branch has exactly one live consumer today, and it is not an oversight. This client simulates
 /// only its own entity, so <c>target == LocalNetId</c> can arise in one way: an <see cref="TileCommandKind.Attack"/>
 /// naming the player's own net id. The server resolves that target and its follow CLEARS the lock with the route
-/// dropped, because a footprint that moves with the body is never in range (#741). Answering it here sends the
-/// client's follow down that same branch. Unresolved, the client would clear the lock through the "target stopped
-/// resolving" rule instead, which keeps the route, and a self attack clicked mid-walk would predict a walk the server
-/// stopped.</para>
+/// dropped, because a footprint that moves with the body is never in range (#741). Answering it here resolves the
+/// same footprint the server does, which is what keeps the two heads' reads identical rather than merely their
+/// answers. The self clear itself no longer rides on this branch: the follow asks identity BEFORE it asks the seam,
+/// so a client whose resolver could not answer its own id still predicts the clear with the route dropped.</para>
 /// <para>The two heads still resolve one target to slightly DIFFERENT tiles, and the residue is accepted. What is
 /// left after the honest read is the one-way latency no client can see, so a client predicting its approach to a
 /// moving monster can still path toward a tile the server has just left. That is not a new class of disagreement: it

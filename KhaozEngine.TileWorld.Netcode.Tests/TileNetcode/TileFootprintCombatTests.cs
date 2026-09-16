@@ -96,49 +96,78 @@ public class TileFootprintCombatTests
             $"moved and rolled {movedAndRolled}, moved and silent {movedAndSilent}");
     }
 
-    // Eight clear tiles between the two bodies. Every tick before the first swing ends out of range, and the tick the
-    // swing lands is the tick the chase commits the step that makes the squares touch.
+    // Eight clear tiles between the two bodies, walked from the WEST and then from the EAST. Every tick before the
+    // first swing ends out of range, and the tick the swing lands is the tick the chase commits the step that makes
+    // the squares touch.
+    //
+    // The east approach is what gives the TARGET's size a say in the answer. From the west the anchor the chase stops
+    // on is (20 - n, 20) whatever m is, since the target grows away from the attacker, so a chase or a roll that read
+    // the target as one tile would stop on the same tile and this test could not see it. From the east the anchor is
+    // (20 + m, 20), which moves with m.
     [Theory, MemberData(nameof(Pairings))]
     public void A_chase_closes_and_the_first_roll_lands(int n, int m)
     {
         TileCollisionMap map = OpenMap();
         var targetRect = new TileRect(TargetAnchor.X, TargetAnchor.Z, m, m);
-        var hub = new InMemoryTransportHub();
-        var rules = new FixedRules { Damage = 1 };
-        using TileWorldServer s = Server(TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(5, 5, 0), rules);
-        long target = s.SpawnActor(TargetAnchor, Spawn(m));
-        long attacker = s.SpawnActor(new TileCoord(TargetAnchor.X - n - 8, TargetAnchor.Z, 0), Spawn(n));
-        Lock(s, attacker, target);
 
-        int rolledAt = -1;
-        TileMoveState arrived = default;
-        for (int i = 0; i < 80 && rolledAt < 0; i++)
+        foreach (bool fromEast in new[] { false, true })
         {
-            s.Tick(Dt);
-            Assert.True(s.TryGetActorState(attacker, out TileMoveState after));
-            if (rules.Rolls.Count == 0)
-            {
-                Assert.False(TileReach.Contains(map, targetRect, 0, after.Tile, n),
-                    $"tick {i}: in range on {after.Tile} and nothing swung");
-                continue;
-            }
-            rolledAt = i;
-            arrived = after;
-        }
+            TileCoord start = fromEast
+                ? new TileCoord(TargetAnchor.X + m + 8, TargetAnchor.Z, 0)
+                : new TileCoord(TargetAnchor.X - n - 8, TargetAnchor.Z, 0);
+            TileCoord expected = fromEast
+                ? new TileCoord(TargetAnchor.X + m, TargetAnchor.Z, 0)
+                : new TileCoord(TargetAnchor.X - n, TargetAnchor.Z, 0);
+            var hub = new InMemoryTransportHub();
+            var rules = new FixedRules { Damage = 1 };
+            using TileWorldServer s = Server(TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(5, 5, 0),
+                rules);
+            long target = s.SpawnActor(TargetAnchor, Spawn(m));
+            long attacker = s.SpawnActor(start, Spawn(n));
+            Lock(s, attacker, target);
 
-        Assert.True(rolledAt > 0, "the chase never swung");
-        TileAttackContext roll = Assert.Single(rules.Rolls);
-        Assert.Equal(attacker, roll.AttackerNetId);
-        Assert.Equal(target, roll.TargetNetId);
-        Assert.Equal(arrived.Tile, roll.AttackerTile);
-        var attackerRect = new TileRect(arrived.Tile.X, arrived.Tile.Z, n, n);
-        Assert.True(Touches(attackerRect, targetRect), $"swung from {arrived.Tile}");
-        Assert.True(TileReach.Contains(map, targetRect, 0, arrived.Tile, n));
-        Assert.Equal(new TileCoord(TargetAnchor.X - n, TargetAnchor.Z, 0), arrived.Tile);
-        TileCombatEvent blow = Assert.Single(s.CombatEventsThisTick);
-        Assert.True(blow.Landed);
-        Assert.True(s.TryGetHealth(target, out TileHealth hp));
-        Assert.Equal(99, hp.Current);
+            int rolledAt = -1;
+            TileMoveState arrived = default;
+            for (int i = 0; i < 80 && rolledAt < 0; i++)
+            {
+                s.Tick(Dt);
+                Assert.True(s.TryGetActorState(attacker, out TileMoveState after));
+                if (rules.Rolls.Count == 0)
+                {
+                    Assert.False(TileReach.Contains(map, targetRect, 0, after.Tile, n),
+                        $"tick {i} from {start}: in range on {after.Tile} and nothing swung");
+                    continue;
+                }
+                rolledAt = i;
+                arrived = after;
+            }
+
+            Assert.True(rolledAt > 0, $"the chase from {start} never swung");
+            TileAttackContext roll = Assert.Single(rules.Rolls);
+            Assert.Equal(attacker, roll.AttackerNetId);
+            Assert.Equal(target, roll.TargetNetId);
+            Assert.Equal(arrived.Tile, roll.AttackerTile);
+            var attackerRect = new TileRect(arrived.Tile.X, arrived.Tile.Z, n, n);
+            Assert.True(Touches(attackerRect, targetRect), $"swung from {arrived.Tile}");
+            Assert.True(TileReach.Contains(map, targetRect, 0, arrived.Tile, n));
+            Assert.Equal(expected, arrived.Tile);
+            TileCombatEvent blow = Assert.Single(s.CombatEventsThisTick);
+            Assert.True(blow.Landed);
+            Assert.True(s.TryGetHealth(target, out TileHealth hp));
+            Assert.Equal(99, hp.Current);
+
+            // Where the chase SETTLES, which is the half the target's size decides and the first roll does not. The
+            // roll is judged against the target's own state, so it fires on the tile the attacker was passing
+            // through: a chase reading the target as one tile would swing from exactly here and then keep walking
+            // INTO the body, which only shows up once the route is spent.
+            for (int i = 0; i < 20; i++) s.Tick(Dt);
+            Assert.True(s.TryGetActorState(attacker, out TileMoveState settled));
+            Assert.True(s.TryGetActorState(target, out TileMoveState stayed));
+            Assert.Equal(TargetAnchor, stayed.Tile);
+            Assert.Equal(expected, settled.Tile);
+            Assert.True(settled.Route.IsIdle);
+            Assert.True(settled.Footprint.Intersect(targetRect).IsEmpty, $"settled on {settled.Tile}");
+        }
     }
 
     // The player starts on (20, 20), east of a 2x2 on (17, 20). Its in-range anchor is (19, 20), one step away, and a

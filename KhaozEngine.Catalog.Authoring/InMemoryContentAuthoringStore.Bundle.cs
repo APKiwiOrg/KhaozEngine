@@ -74,9 +74,12 @@ public sealed partial class InMemoryContentAuthoringStore
                 RestoreFamilies(bundle);
                 SeedMarks(bundle);
 
-                // The edits are built BEFORE the rules are restamped, because building them is the last thing
-                // that can refuse the bundle and restamping APPENDS. A refused import that had already
-                // appended would leave the rules behind for the next attempt to append onto again.
+                // The edits are built BEFORE the rules are restamped, because building them is the last
+                // thing that can refuse the bundle and the restamp is the one piece of staging that APPENDS
+                // to a list this store already holds rather than assigning one. The reset below clears that
+                // list either way, so this ordering is not what makes the refusal clean, it is what keeps
+                // the append off the refusal path at all: a store whose rules doubled per refused attempt is
+                // what the defect looked like from outside.
                 edits = Edits(bundle);
                 Restamp(bundle);
             }
@@ -107,6 +110,9 @@ public sealed partial class InMemoryContentAuthoringStore
         {
             // EVERY refusal, not only a ContentAuthoringException: the staging is written before the publish
             // and a store left holding half a bundle is the same store whichever exception got it there.
+            // The two durable providers wrap their own reset, because a database call can fail on its way to
+            // tidying up and would then replace the refusal the caller needs to read. This one is a lock and
+            // a run of Clear calls, so there is nothing for such a wrapper to catch.
             ResetToEmpty();
             throw;
         }

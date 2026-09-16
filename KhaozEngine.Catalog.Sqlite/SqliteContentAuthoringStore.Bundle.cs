@@ -421,22 +421,6 @@ public sealed partial class SqliteContentAuthoringStore
     /// append-only table.
     /// </para>
     /// </summary>
-    /// <summary>
-    /// The reset a refused import runs, with its OWN failure swallowed. The refusal the caller is about to
-    /// see is the actionable one, and replacing it with whatever went wrong while tidying up would lose the
-    /// reason the import was refused in the first place.
-    /// </summary>
-    async Task ResetAfterFailureAsync()
-    {
-        try
-        {
-            await ResetToEmptyAsync(CancellationToken.None).ConfigureAwait(false);
-        }
-        catch (Exception reset) when (reset is not OperationCanceledException)
-        {
-        }
-    }
-
     async Task ResetToEmptyAsync(CancellationToken cancellationToken)
     {
         using SqliteStoreLease lease = await _connection.EnterAsync(cancellationToken).ConfigureAwait(false);
@@ -460,6 +444,22 @@ public sealed partial class SqliteContentAuthoringStore
         }
 
         transaction.Commit();
+    }
+
+    /// <summary>
+    /// The reset a refused import runs, with its OWN failure swallowed. The refusal the caller is about to
+    /// see is the actionable one, and replacing it with whatever went wrong while tidying up would lose the
+    /// reason the import was refused in the first place.
+    /// </summary>
+    async Task ResetAfterFailureAsync()
+    {
+        try
+        {
+            await ResetToEmptyAsync(CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception reset) when (reset is not OperationCanceledException)
+        {
+        }
     }
 
     static void Raise(Dictionary<ushort, int> highest, ushort typeId, int candidate)

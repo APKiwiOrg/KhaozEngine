@@ -256,4 +256,9 @@ public sealed class SqlServerContentAuthoringStoreConformanceTests : ContentAuth
     [CatalogSqlServerFact]
     public override Task Fact25_ADraftEditArrivingWhileAPublishIsInFlightIsRefused()
         => base.Fact25_ADraftEditArrivingWhileAPublishIsInFlightIsRefused();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task Fact26_AStoreLevelChangeWhoseAuditWriteFailsIsNotMade()
+        => base.Fact26_AStoreLevelChangeWhoseAuditWriteFailsIsNotMade();
 }

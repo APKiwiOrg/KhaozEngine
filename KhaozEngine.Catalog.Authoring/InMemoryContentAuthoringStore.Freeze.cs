@@ -107,21 +107,23 @@ public sealed partial class InMemoryContentAuthoringStore
             baseVersion, draft.OpenedBy, draft.OpenedAtUtc, draft.Note, changes, frozenForBaseVersion);
 
     /// <summary>
-    /// Step 10's draft delete, scoped to the edits the plan FROZE. The caller already holds the gate.
+    /// The draft as it stands AFTER step 10, with the edits the plan froze taken out of it, or null when
+    /// none is left. It reads the draft and builds a new one, writing nothing, because the commit applies
+    /// every change it computed in one tail that cannot throw. The caller already holds the gate.
     /// <para>
-    /// The freeze is what makes that set the whole draft, so an edit surviving here means the marker did not
-    /// hold. It is kept rather than deleted: an edit published without review is a defect and an edit deleted
-    /// unpublished is a lost afternoon, and the draft carrying it forward is the only outcome that is
+    /// The freeze is what makes the frozen set the whole draft, so an edit surviving here means the marker
+    /// did not hold. It is kept rather than deleted: an edit published without review is a defect and an edit
+    /// deleted unpublished is a lost afternoon, and the draft carrying it forward is the only outcome that is
     /// neither. The survivor's base version moves to the version that just committed, because that is what
     /// its edits now sit on top of.
     /// </para>
     /// </summary>
     /// <param name="plan">The plan committing, whose frozen edits leave the draft.</param>
-    void DeleteFrozenEdits(ContentPublishPlan plan)
+    ContentDraft? DraftAfterCommit(ContentPublishPlan plan)
     {
         if (_draft is not ContentDraft open)
         {
-            return;
+            return null;
         }
 
         var published = new HashSet<ContentEditTarget>();
@@ -140,7 +142,7 @@ public sealed partial class InMemoryContentAuthoringStore
             }
         }
 
-        _draft = survivors.Count == 0
+        return survivors.Count == 0
             ? null
             : Reframe(open, plan.VersionNumber, new ContentChangeSet(survivors), null);
     }

@@ -357,6 +357,15 @@ It carries the constraints its provider siblings get from a `CHECK`, so a defect
 at the first SQL run: a high-water mark never moves backwards, an issued mark never passes a reserved one,
 and a family block is aligned to its own size.
 
+**A gate is not a transaction, so every write that has to be atomic BUILDS and then APPLIES.** A provider
+gets atomicity from one database transaction and this store has to construct it. `CommitPublishAsync` builds
+the version row, the new row set, the chunk rows, the staged audit entries and the draft that survives into
+locals, and then applies them in a tail of list writes and field assignments that cannot throw, so a failure
+part way leaves the store exactly where it was rather than carrying a version row with the pointer unmoved.
+The pin, the discard, the family create and the rollback render their audit entry before the change and
+append it after, through `InMemoryContentAuditLog.Stage` and `Commit`, for the same reason: a change with no
+audit row against it is indistinguishable from no change.
+
 It PUBLISHES when it is handed an `IPackStore`, which is the second constructor argument and is optional: a
 store built without one holds a draft and allocates ids and refuses to publish, because a publish writes files
 before it writes rows. With one it answers the whole seam, `LoadSnapshotAsync` included, and that member reads

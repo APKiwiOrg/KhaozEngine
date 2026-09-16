@@ -145,11 +145,11 @@ and cuts settled losers to zero through a caller-supplied comparison.
 - **`TileMoveMode`** - walk or run, a two-value selector rather than a speed.
 - **`TileStepTicks`** - ticks per step, per mode. Both heads must hold the same pair, or a step commits a tick
   apart and every step reads as a misprediction.
-- **`TileMoveOptions`** - the pathfinder knobs both heads must agree on: `AgentSize`, `MaxPathRadius` and
-  `MaxRouteSteps`, the longest route one click may produce, counted in the steps still to take from the tile the
-  player is committed to. `AgentSize` is only a FLOOR under each state's `FootprintSize` now: the simulator steps an
-  entity at the larger of the two, so the default of 1 leaves every state's own size in charge. Its removal at the
-  next major is [#900](https://github.com/APKiwiOrg/KhaozEngine/issues/900).
+- **`TileMoveOptions`** - the pathfinder knobs both heads must agree on: `MaxPathRadius` and `MaxRouteSteps`, the
+  longest route one click may produce, counted in the steps still to take from the tile the player is committed to.
+  There is no size knob. `AgentSize` was removed in 19.0.0
+  ([#900](https://github.com/APKiwiOrg/KhaozEngine/issues/900)), so the simulator steps, paths and reaches every
+  body at its own state's `FootprintSize` and nothing raises that from the outside.
 - **`TileIdentity`** - the cosmetic display name, replicated to everyone in interest. Never a rules input.
 - **`PendingTileCommand`** - the command drained for a player this tick. Registered on the `Migrate` channel
   ALONE, so it crosses a cell handoff and reaches no client and no persistence blob. The movement pass resets it
@@ -168,7 +168,7 @@ and cuts settled losers to zero through a caller-supplied comparison.
   route end's range, stands when it is already in reach, STEPS OUT of the target's footprint when its own body
   overlaps it (a body inside its target is not in reach, so holding it is a fight that can never start), and clears
   the lock when the target stops resolving or has no reachable anchor. Every one of those questions is asked of the
-  body at `FootprintOf(state)`, the state's `FootprintSize` floored at `AgentSize`, against the target's WHOLE
+  body at `FootprintOf(state)`, which is the state's own `FootprintSize`, against the target's WHOLE
   footprint, through the one `TileReach` predicate. That in-reach stand also writes `Facing` toward the target, on
   EVERY tick it answers in range rather than once as the attacker lands, so a combatant turns with a target that
   moves around it and the step-out does not leave it looking 180 degrees away from what it is swinging at. `Step`

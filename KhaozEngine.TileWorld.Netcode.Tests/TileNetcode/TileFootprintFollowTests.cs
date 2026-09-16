@@ -211,18 +211,38 @@ public class TileFootprintFollowTests
         Assert.Equal(0L, s.CombatTarget);
     }
 
+    // One wall line along the north edge of row z 15, right across the region, with a single tile left out at x 20.
+    // That gap is a doorway exactly one tile wide, which is the sharpest reading of the stepped size there is: the
+    // simulator carries no size of its own any more, so a 1x1 state walks through it and a 2x2 state cannot, and no
+    // option on the simulator can move either answer.
     [Fact]
-    public void AgentSize_is_a_floor_under_the_state_size()
+    public void A_state_is_stepped_at_exactly_its_own_footprint_size()
     {
-        TileCollisionMap map = TileMoveSimulatorTests.Bake(TileMoveSimulatorTests.FlatWorld());
-        var sim = new TileMoveSimulator(map, TileMoveSimulatorTests.Ticks, null, new TileMoveOptions { AgentSize = 2 });
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        for (int x = 0; x < TileRegion.Size; x++)
+            if (x != 20) doc.AddObject("wall", x, 15, 0, 1);      // north edge of (x,15), south edge of (x,16)
+        var sim = new TileMoveSimulator(TileMoveSimulatorTests.Bake(doc), TileMoveSimulatorTests.Ticks);
+        var goal = new TileCoord(20, 18, 0);
 
-        Assert.Equal(new TileRect(5, 6, 2, 2), sim.FootprintOf(At(5, 6, 1)));
+        Assert.Equal(new TileRect(5, 6, 1, 1), sim.FootprintOf(At(5, 6, 1)));
+        Assert.Equal(new TileRect(5, 6, 2, 2), sim.FootprintOf(At(5, 6, 2)));
         Assert.Equal(new TileRect(5, 6, 3, 3), sim.FootprintOf(At(5, 6, 3)));
 
-        var plain = new TileMoveSimulator(map, TileMoveSimulatorTests.Ticks);
-        Assert.Equal(new TileRect(5, 6, 1, 1), plain.FootprintOf(TileMoveState.At(new TileCoord(5, 6, 0),
-            TileDirection.N)));
+        TileMoveState Walk(int size)
+        {
+            TileMoveState s = sim.Step(At(20, 12, size), TileCommand.WalkTo(goal, TileMoveMode.Run), Dt);
+            if (size > 1) Assert.True(s.Route.IsIdle || !s.Route.End.Equals(goal), "the route ends short");
+            for (int i = 0; i < 60 && (!s.Route.IsIdle || s.IsStepping); i++)
+                s = sim.Step(s, TileCommand.Continue(TileMoveMode.Run), Dt);
+            Assert.True(s.Route.IsIdle);
+            Assert.False(s.IsStepping);
+            return s;
+        }
+
+        Assert.Equal(goal, Walk(1).Tile);
+        TileMoveState wide = Walk(2);
+        Assert.NotEqual(goal, wide.Tile);
+        Assert.True(wide.Tile.Z <= 14, $"a 2x2 body crossed the doorway and stands on {wide.Tile}");
     }
 
     // Two parallel wall lines, on the west and east edges of column x 20, from row 10 to the region's north edge. The

@@ -99,6 +99,9 @@ stepped size is `Math.Max(state.FootprintSize, options.AgentSize)`, stated once 
 the attacker's own simulator, so the follow and the roll cannot disagree about the attacker's size. The TARGET
 side is always the state's own size on both heads. A follow-up issue removes `AgentSize` at the next major.
 
+Shipped in 19.0.0 as the removal: `TileMoveOptions.AgentSize` and `TileMoveSimulator.AgentSize` are gone, there is no
+floor, and `FootprintOf(state)` is the state's own footprint ([#900](https://github.com/APKiwiOrg/KhaozEngine/issues/900)).
+
 ## 5. Decision 2: how clients learn the size
 
 | Criterion | Field on the replicated move state | Separate replicated component | Client lookup from the game's kind |
@@ -285,7 +288,7 @@ Additive unless marked.
   a 2x2 authored object today, so this waits for a profile, beside
   [#669](https://github.com/APKiwiOrg/KhaozEngine/issues/669).
   [#901](https://github.com/APKiwiOrg/KhaozEngine/issues/901).
-- **Removing `TileMoveOptions.AgentSize`.** Section 4.2. Next major.
+- **Removing `TileMoveOptions.AgentSize`.** Section 4.2. Next major. Shipped in 19.0.0.
   [#900](https://github.com/APKiwiOrg/KhaozEngine/issues/900).
 - **[#756](https://github.com/APKiwiOrg/KhaozEngine/issues/756), the in-phase chase.** A step clock problem, not a
   geometry one. A footprint does not change it and this work does not fix it.

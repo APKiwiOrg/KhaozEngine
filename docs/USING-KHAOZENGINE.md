@@ -10409,8 +10409,11 @@ crosses a region handoff and reaches both heads with no second lookup.
   `client.TryGetLatestRemoteFootprint` is off the newest snapshot, for a rule, and it is what `TileRemoteTargets`
   resolves a remote to, so a predicted approach to a cow stops on the same tile the server stops on.
 - **Players are one tile.** `TileWorldServer.SetPlayerState` refuses a state with a `FootprintSize` above 1.
-  `TileMoveOptions.AgentSize` still exists as a floor under every state's size and is removed at the next major,
-  [#900](https://github.com/APKiwiOrg/KhaozEngine/issues/900).
+- **There is no simulator-wide size.** `TileMoveOptions.AgentSize` and `TileMoveSimulator.AgentSize` were removed in
+  19.0.0 ([#900](https://github.com/APKiwiOrg/KhaozEngine/issues/900)). Every body is stepped, pathed and reached at
+  its own state's `FootprintSize`, and `TileMoveSimulator.FootprintOf(state)` stays as the name the combat roll asks
+  the attacker's own simulator for that square. A head that set `AgentSize = 1` deletes the initializer, and one
+  that set it higher gives each of those bodies its own `FootprintSize` instead.
 
 Two presentation and interest gaps remain. `TileDrawPriority` judges a body on its anchor tile only, so a one-tile
 body on another tile of a cow overlaps it on screen

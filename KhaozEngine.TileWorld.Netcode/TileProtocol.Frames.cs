@@ -1,4 +1,5 @@
 using System;
+using System.Buffers.Binary;
 using System.Text;
 using KhaozEngine.Netcode;
 
@@ -162,6 +163,9 @@ public static partial class TileProtocol
     /// <para>When the natural frame length would land exactly on the command frame's fixed size, one zero pad byte
     /// is appended and the padded flag set, so an envelope can never share a length with a command. See the type
     /// doc for why that matters when the tags already differ.</para>
+    /// <para>The kind is two bytes LITTLE ENDIAN, written and read explicitly rather than in the host's order, so a
+    /// big endian head reads the kind a little endian one wrote. Every other codec on this wire states its byte
+    /// order and this field was the one that did not (#891).</para>
     /// </summary>
     /// <exception cref="ArgumentException"><paramref name="frameTag"/> is not an envelope tag, or
     /// <paramref name="payload"/> is longer than <see cref="MaxGameMessageBytes"/>.</exception>
@@ -179,7 +183,7 @@ public static partial class TileProtocol
         bool pad = natural == CommandFrameSize;
         var b = new byte[natural + (pad ? 1 : 0)];
         b[0] = frameTag;
-        BitConverter.TryWriteBytes(b.AsSpan(1, 2), kind);
+        BinaryPrimitives.WriteUInt16LittleEndian(b.AsSpan(1, 2), kind);
         b[3] = pad ? GameMessageFlagPadded : (byte)0;
         payload.CopyTo(b.AsSpan(GameMessageHeader));
         return b;
@@ -213,7 +217,7 @@ public static partial class TileProtocol
         }
         if (end - GameMessageHeader > MaxGameMessageBytes) return false;
 
-        kind = BitConverter.ToUInt16(data.Slice(1, 2));
+        kind = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(1, 2));
         payload = data.Slice(GameMessageHeader, end - GameMessageHeader);
         return true;
     }

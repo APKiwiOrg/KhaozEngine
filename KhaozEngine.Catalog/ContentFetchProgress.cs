@@ -1,5 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Catalog;
 
@@ -95,8 +98,33 @@ public sealed record ContentFetchOptions
     /// </summary>
     public int Attempts { get; init; } = 3;
 
-    /// <summary>The backoff between attempts, multiplied by the attempt number. Zero runs them back to back.</summary>
-    public TimeSpan BackoffStep { get; init; } = TimeSpan.FromSeconds(2);
+    /// <summary>
+    /// The FIRST wait between attempts, doubling per attempt up to <see cref="BackoffCeiling"/> and then
+    /// multiplied by a uniform draw in [0, 1] (spec 13.4). Zero runs the attempts back to back, which is
+    /// what a test wants and what a client never sets.
+    /// </summary>
+    public TimeSpan BackoffBase { get; init; } = TimeSpan.FromSeconds(1);
+
+    /// <summary>The longest that doubling may reach, before the jitter draw is taken against it.</summary>
+    public TimeSpan BackoffCeiling { get; init; } = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// Where the backoff's jitter is drawn from. FULL jitter is the whole point of it: without a draw, a
+    /// world restart puts every client of a population on one retry schedule, and the backoff turns a
+    /// thundering herd into a synchronized one instead of spreading it.
+    /// <para>
+    /// The default is the OS source, which is the safe default rather than a convenience: the failure a
+    /// default source can cause here is a predictable retry schedule, and a seeded source is the thing a
+    /// test passes in deliberately.
+    /// </para>
+    /// </summary>
+    public IRandomSource Random { get; init; } = new CryptographicRandomSource();
+
+    /// <summary>
+    /// How the loop waits, which is <see cref="Task.Delay(TimeSpan, CancellationToken)"/> in a client and a
+    /// recorder in a test: a backoff test that actually slept would be a minute of suite time per assertion.
+    /// </summary>
+    public Func<TimeSpan, CancellationToken, Task> Delay { get; init; } = Task.Delay;
 
     /// <summary>
     /// The language tags to fetch text chunks for, or empty for every language the version ships. A client

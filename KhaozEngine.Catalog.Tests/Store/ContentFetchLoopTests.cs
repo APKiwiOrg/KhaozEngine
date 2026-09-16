@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.Catalog;
+using KhaozEngine.Primitives;
 using KhaozEngine.Tests.Catalog.Runtime;
 using Xunit;
 
@@ -27,7 +28,7 @@ public class ContentFetchLoopTests
     {
         ClientBuild = clientBuild,
         Attempts = attempts,
-        BackoffStep = TimeSpan.Zero,
+        BackoffBase = TimeSpan.Zero,
     };
 
     // Step 1 and step 2 of the loop: refused at the door with the server's version and hash, then the
@@ -497,7 +498,7 @@ public class ContentFetchLoopTests
         {
             ClientBuild = 12,
             Attempts = 3,
-            BackoffStep = TimeSpan.Zero,
+            BackoffBase = TimeSpan.Zero,
             Progress = new Progressed(reports.Add),
         };
         var loop = new ContentFetchLoop(local, remote, pack.Registry, options);
@@ -511,6 +512,55 @@ public class ContentFetchLoopTests
         Assert.All(reports, report => Assert.Equal(pack.EveryClientHash().Count - 1, report.ChunksRequired));
         Assert.Equal(pack.EveryClientHash().Count - 1, reports[^1].ChunksHeld);
         Assert.Equal(1.0, reports[^1].Fraction);
+    }
+
+    // Spec 13.4: exponential backoff on a failed set, from 1 s, capped at 60 s, with FULL jitter. The jitter
+    // is the point rather than a refinement: without a draw, every client of a restarted world retries on one
+    // schedule and the backoff turns a thundering herd into a synchronized one. The delay is a SEAM, so this
+    // asserts on eight waits without sleeping for any of them, and the source is seeded, so "never exactly at
+    // its window" is a fact about this run rather than a probability.
+    [Fact]
+    public async Task The_backoff_is_exponential_capped_at_a_minute_and_fully_jittered()
+    {
+        CatalogPack pack = CatalogPack.Build();
+        var remote = new FetchPackStore();
+        var local = new FetchPackStore();
+        remote.PlantPack(pack);
+        remote.Withhold(pack.ItemChunkOne.Hash);
+        var waits = new List<TimeSpan>();
+        var options = new ContentFetchOptions
+        {
+            ClientBuild = 12,
+            Attempts = 9,
+            Random = new SeededRandomSource(20260916),
+            Delay = (wait, _) =>
+            {
+                waits.Add(wait);
+                return Task.CompletedTask;
+            },
+        };
+        var loop = new ContentFetchLoop(local, remote, pack.Registry, options);
+
+        ContentFetchResult result = await loop.FetchAsync(
+            new ContentVersionIdentity(CatalogPack.VersionNumber, pack.ClientManifestHash));
+
+        Assert.False(result.Success);
+        Assert.Equal(9, result.Attempts);
+        Assert.Equal(8, waits.Count);
+
+        int atTheWindow = 0;
+        for (int n = 1; n <= waits.Count; n++)
+        {
+            TimeSpan window = TimeSpan.FromSeconds(Math.Min(60, Math.Pow(2, n - 1)));
+            Assert.InRange(waits[n - 1], TimeSpan.Zero, window);
+            if (waits[n - 1] == window)
+            {
+                atTheWindow++;
+            }
+        }
+
+        Assert.Equal(0, atTheWindow);
+        Assert.True(waits.Distinct().Count() > 1, "every wait was the same length");
     }
 
     /// <summary>A sink that forwards to a lambda, so the test does not depend on a progress implementation.</summary>

@@ -296,9 +296,9 @@ public sealed class ContentFetchLoop
             // Report progress and retry the missing set with backoff. The set is recomputed from the cache
             // on the next pass, so everything that arrived this time is simply no longer missing.
             Options.Progress?.Report(tally.Snapshot(attempt));
-            if (Options.BackoffStep > TimeSpan.Zero)
+            if (Options.BackoffBase > TimeSpan.Zero)
             {
-                await Task.Delay(Options.BackoffStep * attempt, cancellationToken).ConfigureAwait(false);
+                await Options.Delay(Backoff(attempt), cancellationToken).ConfigureAwait(false);
             }
         }
 
@@ -313,6 +313,31 @@ public sealed class ContentFetchLoop
             attempt,
             progress,
             failures);
+    }
+
+    /// <summary>
+    /// The wait before the next attempt over the missing set, spec 13.4: the base doubled once per attempt,
+    /// capped, and then multiplied by a uniform draw in [0, 1].
+    /// <para>
+    /// FULL jitter, and the draw is the part that matters. A world restart refuses its whole population at
+    /// once, so an exponential backoff with no draw moves that population together and arrives as one spike
+    /// at every step of the curve. The draw is taken over TICKS rather than over a fraction, because the
+    /// randomness seam hands out integers and a wait is an integer number of ticks anyway. Its modulo is
+    /// biased by one part in 2^64 over a range of ticks, which is a rounding error on a timer.
+    /// </para>
+    /// </summary>
+    TimeSpan Backoff(int attempt)
+    {
+        long ceiling = Math.Max(Options.BackoffCeiling.Ticks, 0);
+        long window = Math.Min(Math.Max(Options.BackoffBase.Ticks, 0), ceiling);
+        for (int doubled = 1; doubled < attempt && window < ceiling; doubled++)
+        {
+            window = window >= ceiling / 2 ? ceiling : window * 2;
+        }
+
+        return window <= 0
+            ? TimeSpan.Zero
+            : TimeSpan.FromTicks((long)(Options.Random.NextULong() % (ulong)(window + 1)));
     }
 
     /// <summary>

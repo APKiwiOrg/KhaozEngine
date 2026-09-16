@@ -380,8 +380,14 @@ else
   retry the missing set with backoff.
 - **Bounded concurrency FOUR**, because a home connection saturates at two or three streams and unbounded
   parallelism against a CDN buys nothing over a link that is the floor. `ContentFetchOptions.Concurrency`
-  moves it, `Attempts` and `BackoffStep` are step 6's retry, and `Languages` is which text chunks this
-  player wants, empty for every language the version ships.
+  moves it, `Attempts`, `BackoffBase` and `BackoffCeiling` are step 6's retry, and `Languages` is which
+  text chunks this player wants, empty for every language the version ships.
+- **The backoff between attempts is exponential with FULL jitter**, from `BackoffBase` (1 s), doubling per
+  attempt, capped at `BackoffCeiling` (60 s), and then multiplied by a uniform draw in [0, 1] taken from
+  `ContentFetchOptions.Random` (the OS source by default). The draw is the part that matters: a world
+  restart refuses its whole population at once, so an undrawn curve moves that population together and
+  arrives as one spike at every step of it. `BackoffBase` of zero runs the attempts back to back, and
+  `ContentFetchOptions.Delay` is the wait itself, `Task.Delay` in a client and a recorder in a test.
 - **Decode is LAZY and the loop stores BYTES.** No row is decoded and no decompressed body is kept: the one
   decompression a chunk pays is the verify's, inside the store pair, and its result is dropped. A client
   that later reads one item id through `ContentPackReader.ReadRowAsync` decompresses the one chunk whose

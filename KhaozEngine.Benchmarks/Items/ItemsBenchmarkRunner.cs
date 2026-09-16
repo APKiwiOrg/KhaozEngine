@@ -66,7 +66,7 @@ public static class ItemsBenchmarkRunner
 
         var random = new SeededRandomSource(unchecked((ulong)config.Seed));
         var allocator = new InstanceIdAllocator(new BenchmarkInstanceIdStore(), 0);
-        var generator = new ItemGenerator(tables, snapshot, random, allocator);
+        var generator = new ItemGenerator(GenerationTables.Build(tables, snapshot), random, allocator);
 
         CodecMeasurements codec = ItemsCodecMeasurements.Measure(generator, content, random, ContentVersion);
         int violations = ItemsWorkMeasurements.ValidateInvariants(

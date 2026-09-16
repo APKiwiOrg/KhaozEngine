@@ -413,8 +413,7 @@ public class ItemGeneratorTests
 
         ContentSnapshot candidate = Snapshot(registry, [.. rows]);
         var generator = new ItemGenerator(
-            ModCandidateTables.Build(candidate),
-            candidate,
+            GenerationTables.Build(ModCandidateTables.Build(candidate), candidate),
             new SeededRandomSource(11),
             GenerationWorld.FreshAllocator());
 
@@ -491,13 +490,41 @@ public class ItemGeneratorTests
     }
 
     [Fact]
+    public void A_SECOND_generator_over_one_table_set_costs_one_object_rather_than_a_second_fold()
+    {
+        // Spec 9.1's replay shape is a SECOND generator over the same immutable tables, costing "one object
+        // and no table build". The candidate tables were already shared. The content fold beside them and
+        // the run ceiling walked over every bucket entry were not, so the second generator paid for both
+        // again, which at the benchmark's content scale is tens of milliseconds a replay harness spends
+        // rebuilding what it already has.
+        ContentTypeRegistry registry = GenerationWorld.World();
+        var counting = new CountingSnapshot(GenerationWorld.Candidate(registry));
+        ModCandidateTables candidates = ModCandidateTables.Build(counting);
+        GenerationTables tables = GenerationTables.Build(candidates, counting);
+
+        int afterTheBuild = counting.RowsRead;
+        Assert.True(afterTheBuild > 0, "The table build read no rows at all, so the fact is reading nothing.");
+
+        var first = new ItemGenerator(tables, new SeededRandomSource(11), GenerationWorld.FreshAllocator());
+        var second = new ItemGenerator(tables, new SeededRandomSource(11), GenerationWorld.FreshAllocator());
+
+        // Neither construction touches content. Everything a roll reads was folded once, above.
+        Assert.Equal(afterTheBuild, counting.RowsRead);
+
+        // And the second generator is a replay of the first rather than a lookalike: one seed, one context,
+        // byte-equal payloads off two objects that share every table.
+        Assert.True(ItemInstancePayload.SequenceEqual(
+            first.Generate(Rare(GenerationWorld.Greatsword)).Payload.Span,
+            second.Generate(Rare(GenerationWorld.Greatsword)).Payload.Span));
+    }
+
+    [Fact]
     public void The_content_version_the_result_names_is_the_snapshots_own()
     {
         ContentTypeRegistry registry = GenerationWorld.World();
         ContentSnapshot candidate = GenerationWorld.Candidate(registry);
         var generator = new ItemGenerator(
-            ModCandidateTables.Build(candidate),
-            candidate,
+            GenerationTables.Build(ModCandidateTables.Build(candidate), candidate),
             new SeededRandomSource(11),
             GenerationWorld.FreshAllocator());
 

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using KhaozEngine.Catalog;
 using KhaozEngine.ItemInstances;
@@ -154,8 +155,7 @@ internal static class GenerationWorld
         ContentTypeRegistry registry = World();
         ContentSnapshot candidate = Candidate(registry);
         return new ItemGenerator(
-            ModCandidateTables.Build(candidate),
-            candidate,
+            GenerationTables.Build(ModCandidateTables.Build(candidate), candidate),
             random,
             allocator ?? FreshAllocator());
     }
@@ -179,8 +179,7 @@ internal static class GenerationWorld
 
         ContentSnapshot candidate = Snapshot(registry, [.. rows]);
         return new ItemGenerator(
-            ModCandidateTables.Build(candidate),
-            candidate,
+            GenerationTables.Build(ModCandidateTables.Build(candidate), candidate),
             random,
             FreshAllocator());
     }
@@ -506,4 +505,46 @@ internal sealed class ScriptedRandomSource(IReadOnlyList<int> draws, IReadOnlyLi
 
     /// <inheritdoc />
     public void NextBytes(Span<byte> destination) => destination.Clear();
+}
+
+/// <summary>
+/// A snapshot that COUNTS the rows handed out, so a fact can say that building a second generator over one
+/// table set reads no content at all rather than folding the same rows again. It forwards everything and
+/// answers nothing of its own.
+/// </summary>
+internal sealed class CountingSnapshot(IContentSnapshot inner) : IContentSnapshot
+{
+    /// <summary>How many rows every <see cref="Rows"/> call has handed back, summed.</summary>
+    public int RowsRead { get; private set; }
+
+    /// <inheritdoc />
+    public int VersionNumber => inner.VersionNumber;
+
+    /// <inheritdoc />
+    public ContentVersionIdentity Identity => inner.Identity;
+
+    /// <inheritdoc />
+    public IReadOnlyList<RemapRule> Rules => inner.Rules;
+
+    /// <inheritdoc />
+    public bool TryGetRow(ContentTypeId type, int id, [MaybeNullWhen(false)] out ContentRow row)
+    {
+        bool found = inner.TryGetRow(type, id, out row);
+        RowsRead += found ? 1 : 0;
+        return found;
+    }
+
+    /// <inheritdoc />
+    public bool TryGetId(ContentTypeId type, ContentKey key, out int id) => inner.TryGetId(type, key, out id);
+
+    /// <inheritdoc />
+    public IReadOnlyList<ContentRow> Rows(ContentTypeId type)
+    {
+        IReadOnlyList<ContentRow> rows = inner.Rows(type);
+        RowsRead += rows.Count;
+        return rows;
+    }
+
+    /// <inheritdoc />
+    public bool IsRetired(ContentTypeId type, int id) => inner.IsRetired(type, id);
 }

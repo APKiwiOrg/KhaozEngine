@@ -260,8 +260,7 @@ public class GeneratorDistributionTests
             nameWordPositions: 2));
         ContentSnapshot candidate = Content.InstanceContentTypeFixtures.Snapshot(registry, [.. rows]);
         return new ItemGenerator(
-            ModCandidateTables.Build(candidate),
-            candidate,
+            GenerationTables.Build(ModCandidateTables.Build(candidate), candidate),
             random,
             GenerationWorld.FreshAllocator());
     }

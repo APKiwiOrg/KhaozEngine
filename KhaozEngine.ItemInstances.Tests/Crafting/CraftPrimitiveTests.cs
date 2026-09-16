@@ -668,8 +668,7 @@ internal sealed record CraftWorld(ContentTypeRegistry Registry, ContentSnapshot 
     /// <summary>A generator over this world's tables, on the source the fact hands in.</summary>
     public ItemGenerator Generator(IRandomSource random)
         => new(
-            ModCandidateTables.Build(Snapshot),
-            Snapshot,
+            GenerationTables.Build(ModCandidateTables.Build(Snapshot), Snapshot),
             random,
             GenerationWorld.FreshAllocator());
 

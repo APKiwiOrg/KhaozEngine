@@ -13,7 +13,7 @@ namespace KhaozEngine.ItemInstances;
 /// verbatim. A per call source keeps "does this roll" answerable at the METHOD and loses it at the TYPE,
 /// which is the half the contract cares about: a caller anywhere in the fleet could hand a seeded source to
 /// the production generator with nothing in any signature to notice. A replay harness builds a SECOND
-/// generator over the same immutable <see cref="ModCandidateTables"/>, which costs one object and no table
+/// generator over the same immutable <see cref="GenerationTables"/>, which costs one object and no table
 /// build.
 /// </para>
 /// <para>
@@ -43,13 +43,6 @@ namespace KhaozEngine.ItemInstances;
 /// </summary>
 public sealed partial class ItemGenerator
 {
-    /// <summary>
-    /// The most excluded runs one tag table can hold. A placement seats one run per table and its group
-    /// seats one more per member, so the bound is the affix count times the widest group plus itself, and
-    /// the clamp is what keeps a pathological pack from sizing this in gigabytes.
-    /// </summary>
-    const int RunCeiling = 4_096;
-
     readonly ModCandidateTables _tables;
     readonly GenerationContentTables _content;
     readonly IRandomSource _random;
@@ -80,38 +73,36 @@ public sealed partial class ItemGenerator
 
     /// <summary>
     /// Builds a generator over one version's immutable tables. Every dependency arrives here rather than
-    /// through an ambient static or a default (contracts 14.4), and the two expensive ones, the candidate
-    /// tables and the content fold, are shared by every generator built over the same snapshot.
+    /// through an ambient static or a default (contracts 14.4), and NOTHING expensive happens here: the
+    /// candidate tables, the content fold and the run ceiling were all built once, per snapshot, by
+    /// <see cref="GenerationTables.Build"/>. What this costs is the scratch arrays and nothing else, which
+    /// is what makes a replay harness's second generator spec 9.1's "one object and no table build".
     /// </summary>
-    /// <param name="tables">The candidate tables, built once at boot and immutable afterwards.</param>
-    /// <param name="snapshot">The version those tables were built from, read here for the rarity rules, the
-    /// rarity and name weights, each base's durability and sockets, and the unique templates.</param>
+    /// <param name="tables">One version's tables, built once at boot and immutable afterwards.</param>
     /// <param name="random">The gameplay randomness seam. A type with no <see cref="IRandomSource"/> cannot
     /// roll, which is the property that makes this class's signature answer the question.</param>
     /// <param name="allocator">The durable instance id allocator, spec 3.6, asked ONLY when the payload is
     /// non-empty.</param>
     /// <exception cref="ArgumentNullException">Any argument is null.</exception>
     public ItemGenerator(
-        ModCandidateTables tables,
-        IContentSnapshot snapshot,
+        GenerationTables tables,
         IRandomSource random,
         InstanceIdAllocator allocator)
     {
         ArgumentNullException.ThrowIfNull(tables);
-        ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(random);
         ArgumentNullException.ThrowIfNull(allocator);
 
-        _tables = tables;
+        _tables = tables.Candidates;
         _random = random;
         _allocator = allocator;
-        _contentVersion = snapshot.VersionNumber;
-        _content = GenerationContentTables.Build(snapshot, tables);
+        _contentVersion = tables.ContentVersion;
+        _content = tables.Content;
 
-        _kindCount = Math.Max(tables.KindCount, 1);
-        _tagPositions = Math.Max(tables.TagPositionCount, 1);
+        _kindCount = Math.Max(_tables.KindCount, 1);
+        _tagPositions = Math.Max(_tables.TagPositionCount, 1);
         int slots = _kindCount * _tagPositions;
-        _maxRuns = RunsPerSlot(tables, _content);
+        _maxRuns = tables.RunsPerSlot;
 
         _slotBucket = new int[slots];
         _slotHeader = new int[slots];
@@ -277,31 +268,4 @@ public sealed partial class ItemGenerator
 
     /// <summary>The tag signature one base carries, which is what the whole roll is keyed by.</summary>
     int SignatureOf(int baseId) => _tables.Signatures.TryGetSignature(baseId, out int signature) ? signature : -1;
-
-    /// <summary>
-    /// How many excluded runs one tag table may need to hold. A placement seats one run and its group seats
-    /// one per member, so the affix count times the widest group bounds it, and the bucket length bounds it
-    /// again because runs are disjoint by mod id.
-    /// </summary>
-    static int RunsPerSlot(ModCandidateTables tables, GenerationContentTables content)
-    {
-        int widestGroup = 1;
-        int widestBucket = 1;
-        for (int bucket = 0; bucket < tables.BucketCount; bucket++)
-        {
-            widestBucket = Math.Max(widestBucket, tables.BucketLength(bucket));
-            ReadOnlySpan<int> packed = tables.BucketPacked(bucket);
-            for (int entry = 0; entry < packed.Length; entry++)
-            {
-                int group = tables.GroupOf(ModCandidateTables.ModIdOf(packed[entry]));
-                if (group != 0)
-                {
-                    widestGroup = Math.Max(widestGroup, tables.GroupMembers(group).Length);
-                }
-            }
-        }
-
-        long needed = (long)Math.Max(content.MaxAffixCount, 1) * (1 + widestGroup);
-        return (int)Math.Clamp(Math.Min(needed, widestBucket), 1, RunCeiling);
-    }
 }

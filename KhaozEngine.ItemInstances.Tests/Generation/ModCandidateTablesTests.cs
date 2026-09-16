@@ -505,16 +505,23 @@ public class ModCandidateTablesTests
         Assert.Equal(16L, index.Tables.TableEntries);
 
         // The three row sets spec 9.2 names, plus the bases the signature intern needs and the groups the
-        // group index needs, and no read of anything that is not a ROW. IContentSnapshot carries no index at
-        // all, which is what makes the rule a refusal rather than a comment.
+        // group index needs, plus everything ELSE a roll reads, because the index folds the whole of it
+        // ONCE per snapshot rather than once per generator. The list is short of the full set because this
+        // world authors no rarity rule, no rare name word and no unique, and each empty family short
+        // circuits its own children. Still no read of anything that is not a ROW: IContentSnapshot carries
+        // no index at all, which is what makes the rule a refusal rather than a comment.
         Assert.Equal(
             new ushort[]
             {
                 EngineContentTypes.ItemTypeId,
+                EngineContentTypes.BaseSocketTypeId,
                 InstanceContentTypeIds.ModTypeId,
                 InstanceContentTypeIds.ModGroupTypeId,
+                InstanceContentTypeIds.RarityRuleTypeId,
+                InstanceContentTypeIds.UniqueTemplateTypeId,
                 InstanceContentTypeIds.ModTierTypeId,
                 InstanceContentTypeIds.ModTierWeightTypeId,
+                InstanceContentTypeIds.RarityKindLimitTypeId,
             },
             recording.TypesRead());
     }

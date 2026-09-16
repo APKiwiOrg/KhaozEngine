@@ -150,12 +150,13 @@ public sealed class AuthoredPackGenerationTests
             ModCandidateTables tables = index.Tables;
             Assert.True(tables.TableEntries > 0);
             Assert.Equal(0, tables.ConsistencyFailures);
+            GenerationTables generation = index.Generation;
 
             // Roll, on two generators over the SAME immutable tables and the same seed, which is the replay
             // shape contracts 14.4 describes and is also how a twin is built.
             InstanceIdAllocator allocator = Allocator();
-            var left = new ItemGenerator(tables, runtime, new SeededRandomSource(915), allocator);
-            var right = new ItemGenerator(tables, runtime, new SeededRandomSource(915), allocator);
+            var left = new ItemGenerator(generation, new SeededRandomSource(915), allocator);
+            var right = new ItemGenerator(generation, new SeededRandomSource(915), allocator);
             var registryV1 = InstancePropertyRegistry.CreateV1();
             int withAffixes = 0;
             int withName = 0;

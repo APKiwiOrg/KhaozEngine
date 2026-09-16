@@ -8,9 +8,14 @@ namespace KhaozEngine.ItemInstances;
 /// registers against the <c>mod</c> type, so the candidate tables are built once at boot step 7b with no
 /// second pass wired anywhere.
 /// <para>
-/// It reads the other four types' ROWS through the snapshot it is handed, which the interface explicitly
+/// It reads the other types' ROWS through the snapshot it is handed, which the interface explicitly
 /// permits, and reads NO other index. It THROWS to fail the boot closed rather than handing back a partial
 /// table set, which the runtime turns into a <see cref="ContentLoadIndexException"/> naming the type.
+/// </para>
+/// <para>
+/// <b>It owns the WHOLE of what a roll reads</b>, not just the candidate tables: the content fold and the
+/// run ceiling are functions of the same snapshot and are built here, once, so a replay harness's second
+/// generator costs one object rather than a second fold.
 /// </para>
 /// <para>
 /// <b>A BOOT builds the tables, not a publish.</b> They are immutable for the life of the process, so there
@@ -25,14 +30,21 @@ namespace KhaozEngine.ItemInstances;
 /// </summary>
 public sealed class ModCandidateTablesIndex : IContentLoadIndex
 {
-    ModCandidateTables? _tables;
+    GenerationTables? _tables;
 
     /// <inheritdoc />
     public ContentTypeId Type => new(InstanceContentTypeIds.ModTypeId);
 
-    /// <summary>The built tables, immutable for the process.</summary>
+    /// <summary>The built candidate tables, immutable for the process.</summary>
     /// <exception cref="InvalidOperationException">The boot has not built them, or its build failed.</exception>
-    public ModCandidateTables Tables => _tables ?? throw new InvalidOperationException(
+    public ModCandidateTables Tables => Generation.Candidates;
+
+    /// <summary>
+    /// The candidate tables plus the content fold and the run ceiling beside them, built ONCE here so every
+    /// <see cref="ItemGenerator"/> over this version costs one object and no table build (spec 9.1).
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The boot has not built them, or its build failed.</exception>
+    public GenerationTables Generation => _tables ?? throw new InvalidOperationException(
         "The mod candidate tables were asked for before boot step 7b built them, or after a build that failed. They are built ONCE, at boot, and a failed build leaves nothing behind on purpose.");
 
     /// <inheritdoc />
@@ -51,6 +63,6 @@ public sealed class ModCandidateTablesIndex : IContentLoadIndex
                 "The mod candidate tables are built already. A process holds exactly one table set, built at boot, because a new content version becomes active at server restart rather than through a swap.");
         }
 
-        _tables = ModCandidateTables.Build(snapshot);
+        _tables = GenerationTables.Build(ModCandidateTables.Build(snapshot), snapshot);
     }
 }

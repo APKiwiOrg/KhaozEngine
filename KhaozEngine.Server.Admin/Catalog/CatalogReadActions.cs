@@ -88,12 +88,12 @@ internal sealed class CatalogReadActions(IContentAuthoringStore store, ContentTy
             return Refuse(CatalogAdminActions.ListAction + " needs a JSON body naming 'typeKey'.");
         }
 
-        if (!TryType(body, out ContentTypeRegistration? type, out string? refusal)
-            || !TryVersion(body, out int version, out refusal)
-            || !TryCount(body, "skip", 0, out int skip, out refusal)
-            || !TryCount(body, "take", CatalogAdminActions.DefaultPageSize, out int take, out refusal)
-            || !TryOptionalString(body, "keyPrefix", out string? keyPrefix, out refusal)
-            || !TryFlag(body, "includeRetired", out bool includeRetired, out refusal))
+        if (!CatalogRequest.TryType(registry, body, out ContentTypeRegistration? type, out string? refusal)
+            || !CatalogRequest.TryVersion(body, "version", out int version, out refusal)
+            || !CatalogRequest.TryCount(body, "skip", 0, out int skip, out refusal)
+            || !CatalogRequest.TryCount(body, "take", CatalogAdminActions.DefaultPageSize, out int take, out refusal)
+            || !CatalogRequest.TryOptionalString(body, "keyPrefix", out string? keyPrefix, out refusal)
+            || !CatalogRequest.TryFlag(body, "includeRetired", out bool includeRetired, out refusal))
         {
             return Refuse(refusal);
         }
@@ -131,10 +131,10 @@ internal sealed class CatalogReadActions(IContentAuthoringStore store, ContentTy
             return Refuse(CatalogAdminActions.GetAction + " needs a JSON body naming 'typeKey' and an 'id' or a 'key'.");
         }
 
-        if (!TryType(body, out ContentTypeRegistration? type, out string? refusal)
-            || !TryCount(body, "id", 0, out int id, out refusal)
-            || !TryOptionalString(body, "key", out string? key, out refusal)
-            || !TryFlag(body, "includeAudit", out bool includeAudit, out refusal))
+        if (!CatalogRequest.TryType(registry, body, out ContentTypeRegistration? type, out string? refusal)
+            || !CatalogRequest.TryCount(body, "id", 0, out int id, out refusal)
+            || !CatalogRequest.TryOptionalString(body, "key", out string? key, out refusal)
+            || !CatalogRequest.TryFlag(body, "includeAudit", out bool includeAudit, out refusal))
         {
             return Refuse(refusal);
         }
@@ -146,7 +146,8 @@ internal sealed class CatalogReadActions(IContentAuthoringStore store, ContentTy
 
         if (id < 1)
         {
-            ContentRow? found = await FindByKeyAsync(type, key!, cancellationToken).ConfigureAwait(false);
+            ContentRow? found = await CatalogRequest
+                .FindByKeyAsync(store, type, key!, cancellationToken).ConfigureAwait(false);
             if (found is null)
             {
                 return Refuse(FormattableString.Invariant(
@@ -225,16 +226,7 @@ internal sealed class CatalogReadActions(IContentAuthoringStore store, ContentTy
                 edit.FamilyId));
         }
 
-        return AdminActionResult.Ok(new CatalogDraftPayload(
-            new CatalogDraftHeader(
-                draft.BaseVersion,
-                draft.EditCount,
-                draft.OpenedBy,
-                draft.OpenedAtUtc,
-                draft.Note,
-                draft.IsFrozen,
-                draft.FrozenForBaseVersion),
-            edits));
+        return AdminActionResult.Ok(new CatalogDraftPayload(CatalogDraftHeader.Of(draft), edits));
     }
 
     /// <summary>The active version, the operator's hold and every version record, newest first.</summary>
@@ -263,39 +255,6 @@ internal sealed class CatalogReadActions(IContentAuthoringStore store, ContentTy
         }
 
         return AdminActionResult.Ok(new CatalogVersionsPayload(active, pinned, versions));
-    }
-
-    /// <summary>
-    /// The row one key names, found through the seam's own prefix filter. The prefix can match siblings (a
-    /// key is a prefix of every longer key), so the walk pages until it finds the EXACT key or runs out.
-    /// </summary>
-    async Task<ContentRow?> FindByKeyAsync(
-        ContentTypeRegistration type,
-        string key,
-        CancellationToken cancellationToken)
-    {
-        var wanted = new ContentKey(key);
-        int skip = 0;
-        while (true)
-        {
-            ContentRowPage page = await store
-                .ListRowsAsync(type.Type, 0, key, true, skip, CatalogAdminActions.MaxPageSize, cancellationToken)
-                .ConfigureAwait(false);
-
-            foreach (ContentRow row in page.Rows)
-            {
-                if (row.Key.Equals(wanted))
-                {
-                    return row;
-                }
-            }
-
-            skip += page.Rows.Count;
-            if (page.Rows.Count == 0 || skip >= page.Total)
-            {
-                return null;
-            }
-        }
     }
 
     /// <summary>One row's audit entries, newest first, FILTERED to that row.</summary>
@@ -352,104 +311,4 @@ internal sealed class CatalogReadActions(IContentAuthoringStore store, ContentTy
 
     static AdminActionResult Refuse(string? reason)
         => AdminActionResult.BadRequest(reason ?? "the request was refused.");
-
-    /// <summary>The registered type a request names, or a refusal naming the key that did not resolve.</summary>
-    bool TryType(JsonElement body, out ContentTypeRegistration type, out string? refusal)
-    {
-        type = null!;
-        if (!TryOptionalString(body, "typeKey", out string? typeKey, out refusal))
-        {
-            return false;
-        }
-
-        if (typeKey is null)
-        {
-            refusal = "'typeKey' names the content type to read, and this request carries none.";
-            return false;
-        }
-
-        if (!registry.TryGetByKey(typeKey, out ContentTypeRegistration? found))
-        {
-            refusal = FormattableString.Invariant($"No content type is registered under the type key '{typeKey}'.");
-            return false;
-        }
-
-        type = found;
-        return true;
-    }
-
-    static bool TryVersion(JsonElement body, out int version, out string? refusal)
-    {
-        if (!TryCount(body, "version", 0, out version, out refusal))
-        {
-            return false;
-        }
-
-        // 0 is the caller asking for the current live set, so only a negative number is wrong.
-        return true;
-    }
-
-    /// <summary>A non-negative integer property, its default when absent, or a refusal naming it.</summary>
-    static bool TryCount(JsonElement body, string name, int fallback, out int value, out string? refusal)
-    {
-        refusal = null;
-        value = fallback;
-        if (!body.TryGetProperty(name, out JsonElement property) || property.ValueKind == JsonValueKind.Null)
-        {
-            return true;
-        }
-
-        if (property.ValueKind != JsonValueKind.Number || !property.TryGetInt32(out value))
-        {
-            value = fallback;
-            refusal = FormattableString.Invariant($"'{name}' is a whole number, and this request carries something else.");
-            return false;
-        }
-
-        if (value < 0)
-        {
-            refusal = FormattableString.Invariant($"'{name}' may not be negative.");
-            return false;
-        }
-
-        return true;
-    }
-
-    static bool TryOptionalString(JsonElement body, string name, out string? value, out string? refusal)
-    {
-        refusal = null;
-        value = null;
-        if (!body.TryGetProperty(name, out JsonElement property) || property.ValueKind == JsonValueKind.Null)
-        {
-            return true;
-        }
-
-        if (property.ValueKind != JsonValueKind.String)
-        {
-            refusal = FormattableString.Invariant($"'{name}' is a string, and this request carries something else.");
-            return false;
-        }
-
-        value = property.GetString();
-        return true;
-    }
-
-    static bool TryFlag(JsonElement body, string name, out bool value, out string? refusal)
-    {
-        refusal = null;
-        value = false;
-        if (!body.TryGetProperty(name, out JsonElement property) || property.ValueKind == JsonValueKind.Null)
-        {
-            return true;
-        }
-
-        if (property.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
-        {
-            refusal = FormattableString.Invariant($"'{name}' is true or false, and this request carries something else.");
-            return false;
-        }
-
-        value = property.GetBoolean();
-        return true;
-    }
 }

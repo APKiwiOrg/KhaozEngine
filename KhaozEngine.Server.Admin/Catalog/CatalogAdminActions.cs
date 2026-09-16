@@ -6,10 +6,35 @@ using KhaozEngine.NetWorld;
 namespace KhaozEngine.Server.Admin.Catalog;
 
 /// <summary>
+/// What the catalog actions need to know about the SERVER they are registered on, none of which the
+/// authoring store can answer.
+/// <para>
+/// Both properties exist for <c>catalog-pin</c>. Which version a server boots has one order of precedence,
+/// config first, and an action that could not see the config pin would answer a bare 200 to a call with no
+/// effect on the next restart.
+/// </para>
+/// </summary>
+public sealed record CatalogAdminActionOptions
+{
+    /// <summary>
+    /// The version this server's OWN CONFIG pins, or null when it pins none. Config wins over the
+    /// operator's hold, always, and a pin written against a server carrying one says so in its answer.
+    /// </summary>
+    public int? ConfiguredVersion { get; init; }
+
+    /// <summary>
+    /// The running server's build ordinal, or 0 when the host does not declare one. A pin naming a version
+    /// whose minimum server build exceeds it is ACCEPTED with a warning, because the operator may be pinning
+    /// ahead of an upgrade on purpose and the boot check is the real gate.
+    /// </summary>
+    public int ServerBuild { get; init; }
+}
+
+/// <summary>
 /// The content authoring API as REGISTERED ACTIONS on the existing admin surface (spec 10.1). There is no new
 /// transport, no new listener, no new auth and no new package: a game calls
-/// <see cref="Register(ServerAdmin, IContentAuthoringStore, ContentTypeRegistry)"/> once beside its own
-/// registrations and its console reaches the whole catalog through
+/// <see cref="Register(ServerAdmin, IContentAuthoringStore, ContentTypeRegistry, CatalogAdminActionOptions)"/>
+/// once beside its own registrations and its console reaches the whole catalog through
 /// <c>GET</c> / <c>POST /admin/actions/{name}</c>.
 /// <para>
 /// <b>It lives in this package rather than in the authoring one, deliberately.</b> The helper needs
@@ -26,6 +51,11 @@ namespace KhaozEngine.Server.Admin.Catalog;
 /// simulation, which is what keeps the threading contract of <see cref="ServerAdmin.RegisterAction(string, System.Func{System.Text.Json.JsonElement?, System.Threading.CancellationToken, System.Threading.Tasks.Task{AdminActionResult}})"/>
 /// satisfied by construction.
 /// </para>
+/// <para>
+/// <b>None of them returns 202.</b> A content edit completes INSIDE the request against the database, so an
+/// operator gets the real answer rather than an optimistic one, which is the direct answer to a console
+/// reporting success on a row the server then rejects at boot.
+/// </para>
 /// </summary>
 public static class CatalogAdminActions
 {
@@ -38,11 +68,39 @@ public static class CatalogAdminActions
     /// <summary>One row plus its full version history.</summary>
     public const string GetAction = "catalog-get";
 
+    /// <summary>A batch of edits against the open draft, applied whole or not at all.</summary>
+    public const string EditAction = "catalog-edit";
+
     /// <summary>The open draft with its edits expanded.</summary>
     public const string DraftAction = "catalog-draft";
 
+    /// <summary>The open draft deleted, leaving one audit row carrying the edit count.</summary>
+    public const string DiscardAction = "catalog-discard";
+
+    /// <summary>The full sweep over the draft-applied candidate, allocating nothing and writing nothing.</summary>
+    public const string ValidateAction = "catalog-validate";
+
+    /// <summary>The field-level diff, plus the chunk summary that says what publishing would cost.</summary>
+    public const string DiffAction = "catalog-diff";
+
+    /// <summary>The draft published as a new immutable version, under required optimistic concurrency.</summary>
+    public const string PublishAction = "catalog-publish";
+
     /// <summary>The active version, the operator's hold and every version record.</summary>
     public const string VersionsAction = "catalog-versions";
+
+    /// <summary>The operator's version hold, written or cleared.</summary>
+    public const string PinAction = "catalog-pin";
+
+    /// <summary>A draft that would restore an earlier version's field values.</summary>
+    public const string RollbackAction = "catalog-rollback";
+
+    /// <summary>
+    /// What the engine AUTHENTICATED, recorded on every audit row this surface writes. The bearer token is
+    /// ONE token and is not an identity, so the operator identity a console forwards is recorded BESIDE it
+    /// rather than instead of it.
+    /// </summary>
+    public const string Actor = "admin-endpoint";
 
     /// <summary>
     /// The SERVER-side page cap. A console that asks for more is given this many and told so through the
@@ -55,20 +113,29 @@ public static class CatalogAdminActions
     public const int DefaultPageSize = 100;
 
     /// <summary>
-    /// Registers the catalog actions on <paramref name="admin"/>. Call it ONCE, at startup, before the
-    /// endpoint starts.
+    /// Registers the read and mutating catalog actions on <paramref name="admin"/>. Call it ONCE, at startup, before
+    /// the endpoint starts.
     /// </summary>
     /// <param name="admin">The admin surface the actions are registered on.</param>
     /// <param name="store">The authoring store every action reads and writes through.</param>
     /// <param name="registry">The content type registry. Per instance, never ambient.</param>
-    /// <exception cref="ArgumentNullException">An argument is null.</exception>
+    /// <param name="options">What the actions need to know about the server, or null for a host that pins no version in config.</param>
+    /// <exception cref="ArgumentNullException">A required argument is null.</exception>
     /// <exception cref="ArgumentException">An action name is already registered, which a second call is.</exception>
-    public static void Register(ServerAdmin admin, IContentAuthoringStore store, ContentTypeRegistry registry)
+    public static void Register(
+        ServerAdmin admin,
+        IContentAuthoringStore store,
+        ContentTypeRegistry registry,
+        CatalogAdminActionOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(admin);
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(registry);
 
+        CatalogAdminActionOptions resolved = options ?? new CatalogAdminActionOptions();
         new CatalogReadActions(store, registry).Register(admin);
+        new CatalogEditActions(store, registry).Register(admin);
+        new CatalogPublishActions(store, registry).Register(admin);
+        new CatalogVersionActions(store, registry, resolved).Register(admin);
     }
 }

@@ -89,6 +89,49 @@ this price change and what was it before" is answered from the row table rather 
 audit. `includeAudit` adds the row's own audit entries, newest first and filtered to that row, and is off by
 default because the history is the answer to the usual question.
 
+The seven mutating actions:
+
+| Action | Verb | Request | Response |
+|---|---|---|---|
+| `catalog-edit` | POST | `{ operator, note, edits[] }` | `{ draft, applied }` |
+| `catalog-discard` | POST | `{ operator }` | `{ discarded, editCount }` |
+| `catalog-validate` | POST | none | `{ valid, findingCount, findings[], baseVersion, candidateVersion }` |
+| `catalog-diff` | POST | `{ from, to }`, where `to` 0 is the draft-applied candidate | `{ from, to, provisionalIds, changes[], chunkSummary[] }` |
+| `catalog-publish` | POST | `{ operator, note, expectedBaseVersion, minimumServerBuild, minimumClientBuild }` | `{ version, serverManifestHash, clientManifestHash, chunksWritten, chunksReused, bytesWritten, rulesAppended, elapsedMs }` |
+| `catalog-pin` | POST | `{ operator, version }`, or an explicit null version to clear the hold | `{ pinnedVersion, configPinnedVersion, warnings[] }` |
+| `catalog-rollback` | POST | `{ operator, toVersion, note }` | `{ draftCreated, editCount, blockedByRules[] }` |
+
+An edit's `op` is `add`, `update`, `retire` or `fork`. A `fork` is an op VALUE rather than an action of its
+own, because it is an edit against the open draft like the other three and it is saved, validated, diffed and
+published through the same path. Every edit in one request applies in ONE transaction or none of them does,
+so a batch save from a grid is atomic, and the edits are checked against the schema AT THE BOUNDARY with the
+response carrying EVERY finding rather than the first.
+
+**No edit ever carries a localized text key.** The key is derived from the type key, the row key and the
+field name, so a payload naming a marker field is refused with `KEC0004` and the message names the derived
+key. A retire names `placeholder` or `replacement`, and a replacement whose `replacementKey` resolves to no
+live row is `KEC0017`. A fork names a `forkKey` that is free and a `flagField` the schema declares as `Bool`,
+and fails any of those with `KEC0041`.
+
+**`expectedBaseVersion` on a publish is REQUIRED optimistic concurrency.** Two consoles cannot both publish
+the same draft: the second one's expectation is stale and it gets a 409 naming BOTH numbers. There is
+deliberately no validation override flag anywhere in these actions, because a publish that bypassed the
+validator would make boot the only real gate while boot fails closed. The repair path for a validator bug is
+an engine patch: export the failing candidate and replay it in a unit test.
+
+`catalog-validate` builds the candidate and runs the full sweep without allocating an id and without writing
+anything, so a green validate followed by a red publish can only mean the draft changed in between. Ids on
+rows the draft ADDS are provisional there and in a diff against the candidate, which `provisionalIds` says:
+the allocator issues the real ones at publish.
+
+`catalog-pin` writes the operator's hold, and a version pinned in the SERVER'S OWN CONFIG wins over it,
+always. A pin against such a server is a 200 carrying `configPinnedVersion` and a warning naming it, because
+the write happened and takes effect the moment the config pin is removed, while a bare 200 for a call with no
+effect on the next restart is the failure that answer exists to prevent. A pin naming a version whose
+`minimumServerBuild` exceeds the running build is accepted with a warning, because an operator may be pinning
+ahead of an upgrade on purpose and boot is the real gate. Pass a `CatalogAdminActionOptions` to `Register` to
+tell the action about both numbers.
+
 A schema field carries `derived`, and that is what makes ONE generic editor possible: a derived field is not
 the console's to set, so the cell renders read only without the console having to know which kinds are
 derived. The one derived kind today is `LocalizedTextKey`, whose value is the key derived from the type key,
@@ -121,6 +164,12 @@ against it is unaffected by the object overload beside it. The two object arms a
 sentence cannot carry the answer: a finding list from a validator that accumulates every finding, or the pair of
 version numbers an optimistic caller needs after losing a race. A 409 without them was a 500 with no body, which
 reads as a server fault rather than as a race the caller resolves by re-reading and retrying.
+
+Every catalog refusal carries an OBJECT body rather than a bare string, so one console parser reads all of
+them. A 400 is `{ error, reason, findingCount, findings[] }`, with `findings` empty when the refusal is about
+the REQUEST rather than about the content. A 409 carries `error`, `reason` and whatever the race needs: a
+stale publish adds `expectedBaseVersion` and `actualBaseVersion`, a draft a publish is holding adds a
+`remedy`, and a blocked rollback adds `code`, `blockedByRules[]` and a `remedy`.
 
 An unknown action name is a 404 from the action lookup. The 501 arms belong to the four built-in routes
 (`/accounts`, `/bans`, `/ban`, `/unban`), each gated on a `ServerAdmin` capability flag, so no registered action

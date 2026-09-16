@@ -167,7 +167,24 @@ public sealed record CatalogDraftHeader(
     DateTimeOffset OpenedAtUtc,
     string Note,
     bool Frozen,
-    int? FrozenForBaseVersion);
+    int? FrozenForBaseVersion)
+{
+    /// <summary>One draft's header, which every action that touches the draft answers with the same shape of.</summary>
+    /// <param name="draft">The open draft.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="draft"/> is null.</exception>
+    public static CatalogDraftHeader Of(ContentDraft draft)
+    {
+        ArgumentNullException.ThrowIfNull(draft);
+        return new CatalogDraftHeader(
+            draft.BaseVersion,
+            draft.EditCount,
+            draft.OpenedBy,
+            draft.OpenedAtUtc,
+            draft.Note,
+            draft.IsFrozen,
+            draft.FrozenForBaseVersion);
+    }
+}
 
 /// <summary>
 /// One pending edit, expanded. An ADD carries id 0, because ids are allocated at publish and reporting one

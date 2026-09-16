@@ -219,6 +219,11 @@ public sealed class SqlServerContentAuthoringStoreConformanceTests : ContentAuth
 
     /// <inheritdoc />
     [CatalogSqlServerFact]
+    public override Task AStoreLevelAuditRow_NamesNoRowAndCarriesItsOwnNumber()
+        => base.AStoreLevelAuditRow_NamesNoRowAndCarriesItsOwnNumber();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
     public override Task Fact18_AnImportIntoAnEmptyDatabaseKeepsTheSourceIds()
         => base.Fact18_AnImportIntoAnEmptyDatabaseKeepsTheSourceIds();
 

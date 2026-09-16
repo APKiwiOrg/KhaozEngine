@@ -3,7 +3,7 @@ using System;
 namespace KhaozEngine.Catalog.Authoring;
 
 /// <summary>
-/// The <c>action</c> vocabulary a <see cref="ContentAuditEntry"/> carries (spec 4.6). Seven names, fixed, so
+/// The <c>action</c> vocabulary a <see cref="ContentAuditEntry"/> carries (spec 4.6). Eight names, fixed, so
 /// a counter, an operator runbook and a provider's <c>CHECK</c> can all key on the same token.
 /// </summary>
 public static class ContentAuditActions
@@ -28,6 +28,13 @@ public static class ContentAuditActions
 
     /// <summary>A family created with its first reserved block.</summary>
     public const string FamilyCreate = "family-create";
+
+    /// <summary>
+    /// A pack sweep that DELETED something, carrying the count. A sweep that deleted nothing writes no row,
+    /// because an audit an operator has to page through to find the deletions is worse than one that only
+    /// holds them, and a no-op sweep is what a monitoring script runs on a timer.
+    /// </summary>
+    public const string Sweep = "sweep";
 }
 
 /// <summary>

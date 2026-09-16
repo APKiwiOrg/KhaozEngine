@@ -332,6 +332,38 @@ public interface IContentAuthoringStore
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Appends ONE store-level audit row, for an operation that changes the store without changing a row.
+    /// <para>
+    /// Every other audit row on this seam is written INSIDE the transaction of the change it describes, which
+    /// is what makes an edit with no audit row impossible. This one cannot be, because the change it records
+    /// is a set of file deletions in the pack and no store transaction spans those. So it is an append after
+    /// the fact, and the honest reading of a row written this way is "this happened", not "this happened
+    /// atomically with its audit".
+    /// </para>
+    /// <para>
+    /// It carries no type, no definition id and no key, because a store-level operation names no row. The
+    /// number the operation reports goes in <paramref name="fieldName"/> and <paramref name="value"/>, which
+    /// is how a reader gets a count out of the ledger without a second table.
+    /// </para>
+    /// </summary>
+    /// <param name="action">One of <see cref="ContentAuditActions"/>.</param>
+    /// <param name="actor">What the engine authenticated, 1 to 128 characters.</param>
+    /// <param name="operatorId">What the console forwarded, empty when it forwarded none.</param>
+    /// <param name="fieldName">The name of the number the operation reports, empty when it reports none.</param>
+    /// <param name="value">That number rendered invariantly, or null when there is none.</param>
+    /// <param name="note">The operator's note, empty when none.</param>
+    /// <param name="cancellationToken">Cancels the call.</param>
+    /// <exception cref="ArgumentNullException">A required argument is null.</exception>
+    Task AppendOperationalAuditAsync(
+        string action,
+        string actor,
+        string operatorId,
+        string fieldName,
+        string? value,
+        string note,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Issues a contiguous range of definition ids for one type, RESERVING durably before issuing, and
     /// returns the FIRST id of the range. The range is <c>[first, first + count - 1]</c>.
     /// </summary>

@@ -217,6 +217,51 @@ public sealed class CatalogBundleActionTests : IDisposable
         Assert.True(verified.GetProperty("healthy").GetBoolean());
     }
 
+    /// <summary>
+    /// A sweep that DELETED something writes an audit row naming the actor, the operator and the count.
+    /// <para>
+    /// Spec 10.10 records every mutating request's operator beside the actor, and the sweep read the
+    /// operator only to validate it: the identity went into a discard and the deletion left no trace at all.
+    /// A pack object deleted by nobody, at no time, is the audit gap that matters most here, because the
+    /// deletion is the one operation on this surface that cannot be undone by republishing.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Sweep_RecordsTheOperatorAndTheDeletedCount()
+    {
+        await _harness.PublishThingsAsync("stone_sword");
+        string orphan = new('b', 64);
+        string path = _harness.Pack.PathFor(orphan);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        await File.WriteAllBytesAsync(path, [9, 9, 9, 9]);
+
+        await _harness.OkAsync("catalog-sweep", """{ "operator": "oid:8f2c" }""");
+
+        ContentAuditEntry swept = (await _harness.Store.ListAuditAsync(default, 0, 0, 100))
+            .Single(entry => entry.Action == ContentAuditActions.Sweep);
+        Assert.Equal(CatalogAdminActions.Actor, swept.Actor);
+        Assert.Equal("oid:8f2c", swept.Operator);
+        Assert.Equal("1", swept.AfterValue);
+    }
+
+    /// <summary>
+    /// A sweep that deleted NOTHING writes no row. An audit an operator has to page through to find the
+    /// deletions is worse than one that only holds them, and a no-op sweep is what a monitoring script runs
+    /// on a timer.
+    /// </summary>
+    [Fact]
+    public async Task Sweep_ThatDeletedNothing_WritesNoAuditRow()
+    {
+        await _harness.PublishThingsAsync("stone_sword");
+
+        JsonElement body = await _harness.OkAsync("catalog-sweep", """{ "operator": "oid:8f2c" }""");
+
+        Assert.Equal(0, body.GetProperty("deleted").GetInt32());
+        Assert.DoesNotContain(
+            await _harness.Store.ListAuditAsync(default, 0, 0, 100),
+            entry => entry.Action == ContentAuditActions.Sweep);
+    }
+
     /// <summary>A store with no pack target refuses both operational actions rather than throwing.</summary>
     [Theory]
     [InlineData("catalog-sweep")]

@@ -74,6 +74,30 @@ public sealed partial class SqliteContentAuthoringStore
         return entries;
     }
 
+    /// <inheritdoc />
+    public async Task AppendOperationalAuditAsync(
+        string action,
+        string actor,
+        string operatorId,
+        string fieldName,
+        string? value,
+        string note,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        ArgumentNullException.ThrowIfNull(actor);
+        ArgumentNullException.ThrowIfNull(operatorId);
+        ArgumentNullException.ThrowIfNull(fieldName);
+        ArgumentNullException.ThrowIfNull(note);
+
+        using SqliteStoreLease lease = await _connection.EnterAsync(cancellationToken).ConfigureAwait(false);
+        using SqliteTransaction transaction = _connection.BeginTransaction();
+        await AppendAuditAsync(
+            transaction, action, actor, operatorId, default, 0, default, fieldName, null, value, 0, note,
+            cancellationToken).ConfigureAwait(false);
+        transaction.Commit();
+    }
+
     /// <summary>One audit row, stamped from this store's own clock. The caller owns the transaction.</summary>
     async Task AppendAuditAsync(
         SqliteTransaction transaction,

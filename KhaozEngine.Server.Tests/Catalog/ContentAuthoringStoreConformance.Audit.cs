@@ -85,4 +85,33 @@ public abstract partial class ContentAuthoringStoreConformance
         Assert.Equal(2, (await DraftAsync(store)).EditCount);
         Assert.True(auditBefore < (await store.ListAuditAsync(default, 0, 0, 500)).Count);
     }
+
+    /// <summary>
+    /// A STORE-LEVEL audit row names no row, and every backend writes it the same way. It exists for an
+    /// operation that changes the store without changing a definition, and a pack sweep is the first one: the
+    /// deletions it makes are the only change on this seam no republish undoes, and before this they left no
+    /// trace of who made them.
+    /// </summary>
+    [Fact]
+    public virtual async Task AStoreLevelAuditRow_NamesNoRowAndCarriesItsOwnNumber()
+    {
+        IContentAuthoringStore store = await OpenAsync();
+
+        await store.AppendOperationalAuditAsync(
+            ContentAuditActions.Sweep, CatalogFixtures.Actor, CatalogFixtures.Operator, "deleted", "3", "kept 7");
+
+        ContentAuditEntry swept = Assert.Single(
+            await store.ListAuditAsync(default, 0, 0, 500),
+            entry => string.Equals(entry.Action, ContentAuditActions.Sweep, StringComparison.Ordinal));
+
+        Assert.Equal(CatalogFixtures.Actor, swept.Actor);
+        Assert.Equal(CatalogFixtures.Operator, swept.Operator);
+        Assert.Equal("deleted", swept.FieldName);
+        Assert.Null(swept.BeforeValue);
+        Assert.Equal("3", swept.AfterValue);
+        Assert.Equal("kept 7", swept.Note);
+        Assert.Equal(0, swept.DefinitionId);
+        Assert.Equal(0, swept.VersionNumber);
+        Assert.Equal(default, swept.Type);
+    }
 }

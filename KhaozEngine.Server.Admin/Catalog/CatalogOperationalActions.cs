@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -30,6 +31,9 @@ internal sealed class CatalogOperationalActions(IContentAuthoringStore store, Co
     /// <summary>The side name a rule chunk and a text chunk are reported under, since both manifests name them.</summary>
     public const string SharedSide = "shared";
 
+    /// <summary>The audit field name a sweep's deleted count is recorded under.</summary>
+    public const string DeletedField = "deleted";
+
     /// <summary>Registers the two names on the admin surface.</summary>
     /// <param name="admin">The surface to register on.</param>
     public void Register(ServerAdmin admin)
@@ -45,9 +49,10 @@ internal sealed class CatalogOperationalActions(IContentAuthoringStore store, Co
     /// </summary>
     async Task<AdminActionResult> SweepAsync(JsonElement? payload, CancellationToken cancellationToken)
     {
+        string operatorId = string.Empty;
         if (payload is JsonElement body
             && body.ValueKind == JsonValueKind.Object
-            && !CatalogRequest.TryOperator(body, out _, out string? refusal))
+            && !CatalogRequest.TryOperator(body, out operatorId, out string? refusal))
         {
             return CatalogRefusal.Malformed(refusal!);
         }
@@ -67,6 +72,22 @@ internal sealed class CatalogOperationalActions(IContentAuthoringStore store, Co
 
         ContentPackSweepResult result = await ContentPackSweep
             .RunAsync(pack, versions, cancellationToken).ConfigureAwait(false);
+
+        // Spec 10.10: every mutating request's operator is recorded beside the actor. A sweep that DELETED
+        // something is the one operation on this surface no republish undoes, so the row goes in after the
+        // deletions rather than not at all. A sweep that deleted nothing writes none, because an audit an
+        // operator has to page through to find the deletions is worse than one that only holds them.
+        if (result.Deleted > 0)
+        {
+            await store.AppendOperationalAuditAsync(
+                ContentAuditActions.Sweep,
+                CatalogAdminActions.Actor,
+                operatorId,
+                DeletedField,
+                result.Deleted.ToString(CultureInfo.InvariantCulture),
+                FormattableString.Invariant($"kept {result.Kept.ToString(CultureInfo.InvariantCulture)}"),
+                cancellationToken).ConfigureAwait(false);
+        }
 
         return AdminActionResult.Ok(new CatalogSweepPayload(
             result.Ran, result.Kept, result.Deleted, result.SkipReason));

@@ -371,6 +371,29 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
     }
 
     /// <inheritdoc />
+    public Task AppendOperationalAuditAsync(
+        string action,
+        string actor,
+        string operatorId,
+        string fieldName,
+        string? value,
+        string note,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        ArgumentNullException.ThrowIfNull(actor);
+        ArgumentNullException.ThrowIfNull(operatorId);
+        ArgumentNullException.ThrowIfNull(fieldName);
+        ArgumentNullException.ThrowIfNull(note);
+
+        lock (_gate)
+        {
+            _audit.Append(action, actor, operatorId, default, 0, default, fieldName, null, value, 0, note);
+            return Task.CompletedTask;
+        }
+    }
+
+    /// <inheritdoc />
     public Task<int> AllocateAsync(
         ContentTypeId type,
         int count,

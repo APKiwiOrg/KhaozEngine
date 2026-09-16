@@ -402,6 +402,13 @@ AUTHENTICATED, which is a bearer token's holder rather than an identity. The ope
 ASSERTED and the engine does not verify it. The operator field is documented as taking a STABLE identity: a
 console passing a display name gets an audit trail that breaks when someone changes their name.
 
+`AppendOperationalAuditAsync` is the one append on the seam that is NOT inside the transaction of the change
+it describes, and it exists for a store-level operation: one that changes the store without changing any row.
+A pack sweep is the first, because the deletions it makes live in the pack rather than in a table and no store
+transaction spans them. A row written that way carries no type, no definition id and no key, and the number
+the operation reports goes in its field name and value. Read it as "this happened", not as "this happened
+atomically with its audit".
+
 `ContentVersionRecord` is one published version's row, carrying both manifest hashes, the consumer-supplied
 minimum builds, the format generation, the publisher and the note. A published version is immutable from the
 moment its transaction commits, so there is no sealed flag. Holding a version back from a restart is the

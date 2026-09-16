@@ -197,6 +197,12 @@ audit trail the day someone renames themselves. A request with NO `operator` is 
 empty one, because refusing it would break a scripted maintenance call that has no human behind it, and one
 over 128 characters is a 400.
 
+`catalog-sweep` records a `sweep` audit row when it DELETED something, carrying the actor, the operator and
+the deleted count, with the kept count in the note. It writes none when it deleted nothing, because an audit
+an operator has to page through to find the deletions is worse than one that only holds them. The row goes in
+after the deletions rather than inside a transaction with them, because the deletions are files in the pack
+and no store transaction spans those.
+
 A schema field carries `derived`, and that is what makes ONE generic editor possible: a derived field is not
 the console's to set, so the cell renders read only without the console having to know which kinds are
 derived. The one derived kind today is `LocalizedTextKey`, whose value is the key derived from the type key,

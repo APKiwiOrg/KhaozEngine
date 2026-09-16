@@ -80,6 +80,28 @@ public sealed partial class SqlServerContentAuthoringStore
             cancellationToken);
     }
 
+    /// <inheritdoc />
+    public Task AppendOperationalAuditAsync(
+        string action,
+        string actor,
+        string operatorId,
+        string fieldName,
+        string? value,
+        string note,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        ArgumentNullException.ThrowIfNull(actor);
+        ArgumentNullException.ThrowIfNull(operatorId);
+        ArgumentNullException.ThrowIfNull(fieldName);
+        ArgumentNullException.ThrowIfNull(note);
+
+        return WriteAsync(
+            (scope, token) => AppendAuditAsync(
+                scope, action, actor, operatorId, default, 0, default, fieldName, null, value, 0, note, token),
+            cancellationToken);
+    }
+
     /// <summary>One audit row, stamped from this store's own clock. The caller owns the transaction.</summary>
     async Task AppendAuditAsync(
         SqlServerCatalogScope scope,

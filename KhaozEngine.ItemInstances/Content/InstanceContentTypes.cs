@@ -28,6 +28,11 @@ namespace KhaozEngine.ItemInstances;
 /// hands one in and gets the generator's tables built at boot step 7b. A client hands in nothing, which is
 /// the whole of the difference: the weight type it downloads no row of would build empty tables anyway.
 /// </para>
+/// <para>
+/// <b>The craft plan index is OPTIONAL in the same shape and hangs off <c>crafting_currency</c>.</b> A host
+/// that crafts hands one in and gets every currency resolved into a <see cref="CraftPlan"/> at the same
+/// boot step. A process that never crafts hands in nothing and pays nothing.
+/// </para>
 /// </summary>
 public static class InstanceContentTypes
 {
@@ -39,12 +44,19 @@ public static class InstanceContentTypes
     /// The generator's load index, attached to the <c>mod</c> registration so a boot builds it, or null for
     /// a process that never rolls an item.
     /// </param>
+    /// <param name="craftPlans">
+    /// The crafting load index, attached to the <c>crafting_currency</c> registration so a boot resolves
+    /// every currency into a plan, or null for a process that never crafts.
+    /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="registry"/> is null.</exception>
     /// <exception cref="ContentRegistrationException">
     /// The registry is frozen, or one of the eighteen ids or keys is already taken, which a second call to
     /// this helper on the same registry is.
     /// </exception>
-    public static void Register(ContentTypeRegistry registry, ModCandidateTablesIndex? modCandidateTables = null)
+    public static void Register(
+        ContentTypeRegistry registry,
+        ModCandidateTablesIndex? modCandidateTables = null,
+        CraftPlanIndex? craftPlans = null)
     {
         ArgumentNullException.ThrowIfNull(registry);
 
@@ -109,7 +121,8 @@ public static class InstanceContentTypes
             CraftingCurrencyContentType.DefaultVisibility,
             CraftingCurrencyContentType.DefaultChunkSlots,
             CraftingCurrencyContentType.MaxRowBytes,
-            static (type, schema) => new CraftingCurrencyContentType.Codec(type, schema));
+            static (type, schema) => new CraftingCurrencyContentType.Codec(type, schema),
+            loadIndex: craftPlans);
 
         RegisterOne(
             registry,

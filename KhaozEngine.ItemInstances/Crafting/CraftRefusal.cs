@@ -113,6 +113,28 @@ public enum CraftRefusalKind : byte
     /// instead, because that is a different rule.
     /// </summary>
     LegacyEntryFrozen = 19,
+
+    /// <summary>
+    /// The step named a game operation this process has no registration for. The subject is the operation
+    /// number. Spec 10.5's deliberate softening of contracts 10.5's fail-closed rule, and open question 8:
+    /// the rule is about a missing CONTENT VERSION rather than about a code registration, so a server that
+    /// shipped without an operation is a deploy mismatch, loud at the first use, where fail-closed at boot
+    /// would take every player down for one unusable currency row.
+    /// </summary>
+    OperationUnregistered = 20,
+
+    /// <summary>
+    /// The step named one of the two primitives that move an item between TWO slots, and a plan carries no
+    /// second slot. The subject is the operation number.
+    /// <para>
+    /// <c>Socket</c> and <c>Unsocket</c> take the moved item itself, and a <c>currency_step</c> row carries
+    /// four integers and nothing else, so no authored currency can name the item to move. Spec 10.2's
+    /// "source slot" is a container position, which is a thing the CALLER holds rather than anything the
+    /// content knows. A currency that needs one is a game operation, which is handed the same working copy
+    /// and can be constructed with whatever the game's own container seam is.
+    /// </para>
+    /// </summary>
+    StepNeedsSecondSlot = 21,
 }
 
 /// <summary>

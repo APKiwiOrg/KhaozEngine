@@ -26,9 +26,10 @@ public sealed partial class InMemoryContentAuthoringStore
     /// <inheritdoc />
     /// <remarks>
     /// The families, the id marks and the restamped rules are written BEFORE the publish, because the edits
-    /// and the baseline both need them. Any refusal after that point resets this store to the empty state it
-    /// was required to be in, so a caller that catches one is holding a store it may import into again. Files
-    /// a failed attempt already wrote to the pack store are ordinary orphans and the next sweep takes them.
+    /// and the baseline both need them, so the STAGING is inside the try along with everything after it. Any
+    /// refusal resets this store to the empty state it was required to be in, so a caller that catches one is
+    /// holding a store it may import into again. Files a failed attempt already wrote to the pack store are
+    /// ordinary orphans and the next sweep takes them.
     /// </remarks>
     public async Task<ContentPublishResult> ImportBundleAsync(
         ContentBundle bundle,
@@ -42,33 +43,44 @@ public sealed partial class InMemoryContentAuthoringStore
         ArgumentNullException.ThrowIfNull(operatorId);
         ArgumentNullException.ThrowIfNull(note);
 
-        IReadOnlyList<ContentEdit> edits;
-        lock (_gate)
-        {
-            if (_versions.Count > 0)
-            {
-                throw new ContentAuthoringException(
-                    FormattableString.Invariant(
-                        $"This store already stands at version {_activeVersion}, and a bundle is imported into an EMPTY store only. A deployed catalog's values change through an edit and a publish and through nothing else."),
-                    default,
-                    0,
-                    ContentAuthoringException.CatalogNotEmptyReason);
-            }
-
-            if (PackStore is null)
-            {
-                throw NoPackStore(nameof(ImportBundleAsync));
-            }
-
-            RequireTypesAgree(bundle);
-            RestoreFamilies(bundle);
-            SeedMarks(bundle);
-            Restamp(bundle);
-            edits = Edits(bundle);
-        }
-
+        // The reset below is destructive by design, so it may not run until this import has actually written
+        // something. The two refusals above the staging (a store that already published, a store with no pack
+        // target) read and write nothing, and a reset for one of THOSE would empty the live catalog the
+        // refusal exists to protect.
+        bool staged = false;
         try
         {
+            IReadOnlyList<ContentEdit> edits;
+            lock (_gate)
+            {
+                if (_versions.Count > 0)
+                {
+                    throw new ContentAuthoringException(
+                        FormattableString.Invariant(
+                            $"This store already stands at version {_activeVersion}, and a bundle is imported into an EMPTY store only. A deployed catalog's values change through an edit and a publish and through nothing else."),
+                        default,
+                        0,
+                        ContentAuthoringException.CatalogNotEmptyReason);
+                }
+
+                if (PackStore is null)
+                {
+                    throw NoPackStore(nameof(ImportBundleAsync));
+                }
+
+                RequireTypesAgree(bundle);
+
+                staged = true;
+                RestoreFamilies(bundle);
+                SeedMarks(bundle);
+
+                // The edits are built BEFORE the rules are restamped, because building them is the last thing
+                // that can refuse the bundle and restamping APPENDS. A refused import that had already
+                // appended would leave the rules behind for the next attempt to append onto again.
+                edits = Edits(bundle);
+                Restamp(bundle);
+            }
+
             await ApplyEditsAsync(edits, actor, operatorId, note, cancellationToken).ConfigureAwait(false);
             ContentPublishResult published = await PublishAsync(
                 new ContentPublishRequest(actor, operatorId, note, 0), cancellationToken).ConfigureAwait(false);
@@ -91,8 +103,10 @@ public sealed partial class InMemoryContentAuthoringStore
 
             return published;
         }
-        catch (ContentAuthoringException)
+        catch (Exception failure) when (staged && failure is not OperationCanceledException)
         {
+            // EVERY refusal, not only a ContentAuthoringException: the staging is written before the publish
+            // and a store left holding half a bundle is the same store whichever exception got it there.
             ResetToEmpty();
             throw;
         }

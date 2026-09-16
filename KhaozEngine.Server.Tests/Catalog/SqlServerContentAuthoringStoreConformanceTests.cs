@@ -236,4 +236,9 @@ public sealed class SqlServerContentAuthoringStoreConformanceTests : ContentAuth
     [CatalogSqlServerFact]
     public override Task Fact23_APlainAllocationNeverLandsInsideAFamilyBlock()
         => base.Fact23_APlainAllocationNeverLandsInsideAFamilyBlock();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task Fact24_AnImportRefusedWhileItStagesLeavesNothingStaged()
+        => base.Fact24_AnImportRefusedWhileItStagesLeavesNothingStaged();
 }

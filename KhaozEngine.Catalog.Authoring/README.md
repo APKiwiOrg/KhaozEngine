@@ -381,8 +381,11 @@ An import runs through the ORDINARY publish and there is no second mechanism. It
 their blocks verbatim, restamps the bundle's rules as the new line's, turns every row into an `Add` edit and
 publishes the draft as version 1. `ContentEdit.Import` is the only factory that may name a definition id, and
 it is also the only one that may say a row is ALREADY retired, because a bundle carries its retired rows and
-already carries the rule that retired them. A refusal at any point resets the store to the empty state it was
-required to start from, so nothing is left half seeded.
+already carries the rule that retired them. A refusal at any point AFTER the staging began resets the store to
+the empty state it was required to start from, so nothing is left half seeded, and that covers the staging
+itself: a row naming a family the bundle does not declare is refused while the edits are being built, with the
+families and the id marks already written. A refusal BEFORE the staging (a store that already published, a
+store with no pack target) resets nothing, because it wrote nothing and the store it is protecting is live.
 
 ## Rules this package will not bend
 

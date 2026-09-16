@@ -15,7 +15,7 @@ internal readonly record struct GenerationMeasurement(
     double AllocatedBytesPerGeneration,
     double MeanPoolSize,
     double MeanAffixCount,
-    double DeadEntriesPerGeneration);
+    double PoolSuppressedEntries);
 
 internal readonly record struct StatMeasurement(
     double Nanoseconds,
@@ -77,19 +77,27 @@ internal static class ItemsWorkMeasurements
             (double)allocated / count,
             (double)shape.LiveTotal / count,
             (double)affixTotal / count,
-            (double)shape.DeadTotal / count);
+            (double)shape.SuppressedTotal / count);
     }
 
     /// <summary>
-    /// The cost SHAPE behind the timing: how many live candidates each roll's pool held and how many dead
-    /// entries its tag positions carry behind them. Both are read off the immutable tables over the same
-    /// (base, item level) sequence the timed loop walked, AFTER the timing and never inside it, because the
-    /// shipped generator carries no counters and a counter added for a benchmark would be measured by it.
+    /// The cost SHAPE behind the timing: how many live candidates each roll's pool held and how many of its
+    /// entries the OVERLAP suppressed. Both are read off the immutable tables over the same (base, item
+    /// level) sequence the timed loop walked, AFTER the timing and never inside it, because the shipped
+    /// generator carries no counters and a counter added for a benchmark would be measured by it.
+    /// <para>
+    /// <b>The suppressed count is not the dead entries a roll WALKS.</b> It is a property of the tables: the
+    /// entries a later tag position repeats, summed over every kind and every tag position of the pool. What
+    /// a roll walks is that list intersected with the draws that land behind it, plus the runs its own
+    /// placements excluded, and measuring that needs a counter on a path that must not have one. The field
+    /// is named for what it measures, and the real off-path walk count is
+    /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/988">988</see>.
+    /// </para>
     /// </summary>
     static PoolShape MeasurePool(ModCandidateTables tables, int[] hotBases, int levelSpan, int count)
     {
         long live = 0;
-        long dead = 0;
+        long suppressed = 0;
         for (int index = 0; index < count; index++)
         {
             if (!tables.Signatures.TryGetSignature(hotBases[index % hotBases.Length], out int signature)) continue;
@@ -99,15 +107,15 @@ internal static class ItemsWorkMeasurements
             {
                 live += tables.LiveCount(signature, kind, band);
                 for (int position = 0; position < tags.Length; position++)
-                    dead += tables.SuppressedCountAt(tables.HeaderOf(signature, kind, band, position));
+                    suppressed += tables.SuppressedCountAt(tables.HeaderOf(signature, kind, band, position));
             }
         }
 
-        return new PoolShape(live, dead);
+        return new PoolShape(live, suppressed);
     }
 
-    /// <summary>One loop's summed pool size and summed dead entries, which the means are taken from.</summary>
-    readonly record struct PoolShape(long LiveTotal, long DeadTotal);
+    /// <summary>One loop's summed pool size and summed suppressed entries, which the means come from.</summary>
+    readonly record struct PoolShape(long LiveTotal, long SuppressedTotal);
 
     /// <summary>
     /// The same loop over the WHOLE base catalog at every item level, which is the coldest shape the

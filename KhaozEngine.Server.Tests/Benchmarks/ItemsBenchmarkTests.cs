@@ -70,7 +70,7 @@ public sealed class ItemsBenchmarkTests
         nameof(ItemsBenchmarkResult.Budget5ColdP99Microseconds),
         nameof(ItemsBenchmarkResult.Budget5MeanPoolSize),
         nameof(ItemsBenchmarkResult.Budget5MeanAffixCount),
-        nameof(ItemsBenchmarkResult.Budget5DeadEntriesPerGeneration),
+        nameof(ItemsBenchmarkResult.Budget5PoolSuppressedEntries),
         nameof(ItemsBenchmarkResult.Budget5WarmP50Microseconds),
         nameof(ItemsBenchmarkResult.Budget5WarmP99Microseconds),
         nameof(ItemsBenchmarkResult.Budget5WarmAllocatedBytesPerGeneration),

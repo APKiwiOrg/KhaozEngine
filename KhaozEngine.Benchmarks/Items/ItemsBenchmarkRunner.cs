@@ -140,7 +140,7 @@ public static class ItemsBenchmarkRunner
             Budget5ColdP99Microseconds = cold.P99Microseconds,
             Budget5MeanPoolSize = generation.MeanPoolSize,
             Budget5MeanAffixCount = generation.MeanAffixCount,
-            Budget5DeadEntriesPerGeneration = generation.DeadEntriesPerGeneration,
+            Budget5PoolSuppressedEntries = generation.PoolSuppressedEntries,
             Budget5InvariantViolations = violations,
             Budget5WarmP50Microseconds = warm.P50Microseconds,
             Budget5WarmP99Microseconds = warm.P99Microseconds,

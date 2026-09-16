@@ -56,7 +56,7 @@ public sealed record ItemsBenchmarkResult
     public double Budget5ColdP99Microseconds { get; init; }
     public double Budget5MeanPoolSize { get; init; }
     public double Budget5MeanAffixCount { get; init; }
-    public double Budget5DeadEntriesPerGeneration { get; init; }
+    public double Budget5PoolSuppressedEntries { get; init; }
     public int Budget5InvariantViolations { get; init; }
     public double Budget5WarmP50Microseconds { get; init; }
     public double Budget5WarmP99Microseconds { get; init; }

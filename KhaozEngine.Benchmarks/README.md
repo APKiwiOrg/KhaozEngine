@@ -306,6 +306,20 @@ dotnet run --project KhaozEngine.Benchmarks -c Release -- --items --database /tm
 `--players` drives budgets 12 and 13, `--generations` budget 5, and `--crafts` budget 4. `--seed` picks
 the content set and every draw in it. Always `-c Release`.
 
+**Baseline note: what the spike's deletion moved.** Replacing the spike's own generator with the shipped
+one re-baselined seed 915, and the fields it moved are wider than budgets 5 and 9. Every one below is
+PAYLOAD DERIVED: those phases encode pages from ROLLED items, so replacing the roll replaced their input.
+Budget 3's `budget3PageBytesGeneratedRares` and `budget3GeneratedEntryMeanBytes`. Budget 10's
+`budget10ReferenceIdsVisited` and `budget10LoadWithRewritesAllocatedBytes`. Budget 12's
+`budget12PageBytesSum`, `budget12PageResidentBytes`, `budget12AdmittedResidentBytes`,
+`budget12TotalResidentBytes` and `budget12TotalMemoryDeltaBytes`. Budget 13's `budget13DatabaseBytes`. The
+whole scale block, `scalePageBytesSum`, `scaleResidentBytes`, `scaleTotalMemoryDeltaBytes` and
+`scaleBytesPerInstance`, which went from 52.983 to 57.457 bytes an instance. The table shape moved
+`contentTagBandEntries` and `budget9SuppressedEntries` with it, because one `(tier, tag)` pair is one
+weight row rather than two. Timings moved too and a control run of the pre-change code moved the same
+timings on its own, so those are not evidence of anything. A later re-bake should expect this list rather
+than rediscover it.
+
 The run prints one row per budget with its target, its measurement and a MEETS or MISS verdict, then a
 block of detail lines, then one stable JSON result. `--output` writes that JSON to an absolute path,
 atomically. The checked-in baseline is `Baselines/items-sqlite-v1-seed915.json`.
@@ -320,10 +334,14 @@ Four things about the measurements that a reader would otherwise have to reverse
 - **Budgets 12 and the scale test cycle a pool of 10,000 distinct generated rares** rather than
   generating three million. A page blob copies the payload bytes into itself and every slot still takes
   a fresh instance id, so the page bytes are the same either way and the run is minutes shorter.
-- **Budget 5's pool size and dead entry count are read off the TABLES, after the timing.** The shipped
-  generator carries no counters, and a counter added for a benchmark would be measured by it, so the pass
-  walks the same base and item level sequence the timed loop did and asks `ModCandidateTables` for the live
-  count and the suppressed count of each roll's own signature and band. The allocation figure beside them is
+- **Budget 5's pool size and suppressed entry count are read off the TABLES, after the timing.** The
+  shipped generator carries no counters, and a counter added for a benchmark would be measured by it, so the
+  pass walks the same base and item level sequence the timed loop did and asks `ModCandidateTables` for the
+  live count and the suppressed count of each roll's own signature and band. `budget5PoolSuppressedEntries`
+  is named for what it measures: the entries a later tag position repeats, summed over every kind and tag
+  position of the pool. It is NOT the dead entries a roll walks, which is a merge of that list with the runs
+  a placement excluded, taken only as far as the draw, and which has no instrument yet
+  ([#988](https://github.com/APKiwiOrg/KhaozEngine/issues/988)). The allocation figure beside them is
   what a generation costs today, which is more than the payload alone:
   [#972](https://github.com/APKiwiOrg/KhaozEngine/issues/972) is the per field allocation in
   `ItemInstancePayloadBuilder` behind it, and budget 5's target is a time rather than a byte count.

@@ -42,6 +42,7 @@ internal static class ModFamilyChecks
     internal static void Run(
         IContentSnapshot candidate,
         IContentSnapshot? previous,
+        IReadOnlyList<RemapRule> rules,
         ICollection<ContentFinding> findings)
     {
         CheckModGroups(candidate, findings);
@@ -52,7 +53,7 @@ internal static class ModFamilyChecks
 
         if (previous is not null)
         {
-            CheckTierHistory(candidate, previous, findings);
+            CheckTierHistory(candidate, previous, rules, findings);
         }
     }
 
@@ -248,10 +249,11 @@ internal static class ModFamilyChecks
     static void CheckTierHistory(
         IContentSnapshot candidate,
         IContentSnapshot previous,
+        IReadOnlyList<RemapRule> rules,
         ICollection<ContentFinding> findings)
     {
         var covered = new HashSet<int>();
-        foreach (RemapRule rule in candidate.Rules)
+        foreach (RemapRule rule in rules)
         {
             if (rule.Type.Value == InstanceContentTypeIds.ModTierTypeId)
             {

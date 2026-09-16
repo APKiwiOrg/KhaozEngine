@@ -133,6 +133,16 @@ public static class ContentValidator
     /// UNCHANGED rather than folded into <c>KEC0040</c>, and a throw from one PROPAGATES rather than
     /// becoming a finding, because a throw in the engine's own band is a bug and not untrusted input.
     /// <para>
+    /// <b>The band is handed the run's OWN <c>previous</c> and rule set, through
+    /// <see cref="IContentHistoryValidator"/>.</b> A band validator that implements it is reached through
+    /// that overload and a band validator that does not is reached through the plain one, which is the
+    /// whole of the difference. Without the overload the band saw the null a boot sees even on a publish
+    /// that held a previous version, so every change-shaped check of the band was dead code and nothing in
+    /// the report said so (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/962">962</see>). That
+    /// is the one thing this pass does that <see cref="RunTypeValidators"/> deliberately does not: a game
+    /// validator is untrusted and never sees the previous version.
+    /// </para>
+    /// <para>
     /// <b>The band cannot be named from here and that is the whole shape of this pass.</b>
     /// <c>KhaozEngine.Catalog</c> cannot reference the package that registers the band without closing a
     /// cycle, so the band arrives through the registration it already carries and the codes it emits,
@@ -165,7 +175,15 @@ public static class ContentValidator
             }
 
             var own = new List<ContentFinding>();
-            validator.Validate(registration.Type, run.Candidate, own);
+            if (validator is IContentHistoryValidator history)
+            {
+                history.Validate(run.Candidate, run.Previous, run.Rules, own);
+            }
+            else
+            {
+                validator.Validate(registration.Type, run.Candidate, own);
+            }
+
             foreach (ContentFinding finding in own)
             {
                 run.Findings.Add(finding);

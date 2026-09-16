@@ -276,6 +276,45 @@ public class ContentValidatorSweepTests
         Assert.Equal("the band's validator fell over", thrown.Message);
     }
 
+    [Fact]
+    public void A_band_validator_that_asks_for_HISTORY_is_handed_the_runs_own_previous_and_rules()
+    {
+        var recording = new RecordingHistoryValidator(new ContentTypeId(InstancesTypeId), BandCode, "the band said so");
+        ContentTypeRegistry registry = InstancesRegistry(recording);
+        ContentSnapshot candidate = Snapshot(registry, InstancesRow(5));
+        ContentSnapshot previous = Snapshot(registry, InstancesRow(5));
+        RemapRule[] rules =
+        [
+            new RemapRule(1, 1, new ContentTypeId(InstancesTypeId), RemapRuleKind.ReplacedBy, 4, 5, default),
+        ];
+
+        ContentValidationReport report = Validate(candidate, registry, previous, rules);
+
+        // The SAME instances, not a copy and not a null. A publish is the one caller that holds a previous
+        // version, so a band whose checks compare against it has to receive the one the run was given.
+        Assert.Equal(1, recording.HistoryCalls);
+        Assert.Equal(0, recording.PlainCalls);
+        Assert.Same(previous, recording.Previous);
+        Assert.Same(rules, recording.Rules);
+        _ = Single(report, BandCode);
+    }
+
+    [Fact]
+    public void A_band_validator_on_the_PLAIN_seam_is_still_run_by_pass_6()
+    {
+        ContentTypeRegistry registry = InstancesRegistry(new SpeakingValidator(BandCode, "the band said so"));
+        ContentSnapshot candidate = Snapshot(registry, InstancesRow(5));
+        ContentSnapshot previous = Snapshot(registry, InstancesRow(5));
+
+        ContentValidationReport report = Validate(candidate, registry, previous);
+
+        // The history overload is ADDITIVE. A band registration that declares the plain seam is reached
+        // through it, with the previous version it cannot ask for simply absent.
+        ContentFinding finding = Single(report, BandCode);
+        Assert.Equal(new ContentTypeId(InstancesTypeId), finding.Type);
+        Assert.Equal(5, finding.Id);
+    }
+
     /// <summary>A registry carrying ONE instances-band type with the validator handed in.</summary>
     static ContentTypeRegistry InstancesRegistry(IContentValidator validator)
     {

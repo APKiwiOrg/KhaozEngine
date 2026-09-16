@@ -396,3 +396,57 @@ internal sealed class ThrowingValidator(string message) : IContentValidator
     public void Validate(ContentTypeId type, IContentSnapshot candidate, ICollection<ContentFinding> findings)
         => throw new InvalidOperationException(message);
 }
+
+/// <summary>
+/// A band validator that RECORDS what the overload handed it, which is how a fact says the run's own
+/// previous snapshot and rule set reached the band rather than a null and an empty list.
+/// <para>
+/// It is per instance and holds nothing static, so two facts using one never see each other's call.
+/// </para>
+/// </summary>
+internal sealed class RecordingHistoryValidator(ContentTypeId type, string code, string message)
+    : IContentHistoryValidator
+{
+    /// <summary>How many times the PLAIN seam was reached, which pass 6 should never do for this type.</summary>
+    public int PlainCalls { get; private set; }
+
+    /// <summary>How many times the history overload was reached.</summary>
+    public int HistoryCalls { get; private set; }
+
+    /// <summary>The previous snapshot the overload was handed, or null when it was handed one.</summary>
+    public IContentSnapshot? Previous { get; private set; }
+
+    /// <summary>The rule set the overload was handed.</summary>
+    public IReadOnlyList<RemapRule>? Rules { get; private set; }
+
+    public void Validate(ContentTypeId declared, IContentSnapshot candidate, ICollection<ContentFinding> findings)
+    {
+        ArgumentNullException.ThrowIfNull(candidate);
+        ArgumentNullException.ThrowIfNull(findings);
+        PlainCalls++;
+        Speak(candidate, findings);
+    }
+
+    public void Validate(
+        IContentSnapshot candidate,
+        IContentSnapshot? previous,
+        IReadOnlyList<RemapRule> rules,
+        ICollection<ContentFinding> findings)
+    {
+        ArgumentNullException.ThrowIfNull(candidate);
+        ArgumentNullException.ThrowIfNull(rules);
+        ArgumentNullException.ThrowIfNull(findings);
+        HistoryCalls++;
+        Previous = previous;
+        Rules = rules;
+        Speak(candidate, findings);
+    }
+
+    void Speak(IContentSnapshot candidate, ICollection<ContentFinding> findings)
+    {
+        foreach (ContentRow row in candidate.Rows(type))
+        {
+            findings.Add(new ContentFinding(type, row.Id, code, message));
+        }
+    }
+}

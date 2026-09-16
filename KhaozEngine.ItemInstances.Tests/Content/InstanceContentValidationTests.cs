@@ -199,17 +199,50 @@ public class InstanceContentValidationTests
         ContentFinding finding = Only(uncovered, InstanceContentFindings.TierOrdinalMoved);
         Assert.Equal(2, finding.Id);
 
-        // A rule naming the removed row is the remap the check asks for, so the same pair is clean.
-        var builder = new ContentSnapshotBuilder(registry);
-        foreach (ContentRow row in rows)
-        {
-            builder.AddRow(row);
-        }
+        // A rule naming the removed row is the remap the check asks for, so the same pair is clean. The
+        // rules are the SET the sweep was handed rather than the ones the candidate happens to carry.
+        RemapRule[] covering =
+        [
+            new RemapRule(1, 1, new ContentTypeId(InstanceContentTypeIds.ModTierTypeId), RemapRuleKind.Retired, 2, 0, [RemapRule.RetirePolicyPlaceholder]),
+        ];
+        NoneOf(Band(Snapshot(registry, rows), previous, covering), InstanceContentFindings.TierOrdinalMoved);
+    }
 
-        ContentSnapshot covered = builder
-            .WithRules([new RemapRule(1, 1, new ContentTypeId(InstanceContentTypeIds.ModTierTypeId), RemapRuleKind.Retired, 2, 0, [RemapRule.RetirePolicyPlaceholder])])
-            .Build();
-        NoneOf(Band(covered, previous), InstanceContentFindings.TierOrdinalMoved);
+    [Fact]
+    public void A_tier_reorder_is_KEC0103_through_the_one_validator_with_a_previous()
+    {
+        ContentTypeRegistry registry = Registry();
+        ContentSnapshot previous = Snapshot(
+            registry,
+            Mod(registry, 1, "sharp"),
+            ModTier(registry, 1, "sharp_t1", modId: 1, ordinal: 1),
+            ModTier(registry, 2, "sharp_t2", modId: 1, ordinal: 2));
+        ContentSnapshot candidate = Snapshot(
+            registry,
+            Mod(registry, 1, "sharp"),
+            ModTier(registry, 1, "sharp_t1", modId: 1, ordinal: 2),
+            ModTier(registry, 2, "sharp_t2", modId: 1, ordinal: 1));
+
+        // The one validator, with the previous version a publish holds, which is the only caller that has
+        // one. Pass 6 hands it on, so the publish-only half of the band is reachable from a real publish.
+        ContentValidationReport report = ContentValidator.Validate(candidate, previous, [], registry);
+
+        Assert.Equal(2, CountOf(report, InstanceContentFindings.TierOrdinalMoved));
+        Assert.False(report.IsValid, DescribeReport(report));
+    }
+
+    [Fact]
+    public void A_rarity_rule_id_that_moved_is_KEC0111_through_the_one_validator_with_a_previous()
+    {
+        ContentTypeRegistry registry = Registry();
+        ContentSnapshot previous = Snapshot(registry, RarityRule(registry, 5, "rare"));
+        ContentSnapshot candidate = Snapshot(registry, RarityRule(registry, 6, "rare"));
+
+        ContentValidationReport report = ContentValidator.Validate(candidate, previous, [], registry);
+
+        ContentFinding finding = Single(report, InstanceContentFindings.RarityRuleIdMoved);
+        Assert.Equal(InstanceContentTypeIds.RarityRuleTypeId, finding.Type.Value);
+        Assert.Equal(6, finding.Id);
     }
 
     [Fact]
@@ -479,11 +512,18 @@ public class InstanceContentValidationTests
         List<ContentFinding> atPublish = Band(candidate, previous);
         Assert.NotEmpty(atPublish);
 
-        // KEC0000 is what says a clean report from a boot is not a clean report from a publish, and it
-        // already names this band's tier-ordinal check by hand.
-        ContentValidationReport report = ContentValidator.Validate(candidate, previous: null, [], registry);
-        ContentFinding informational = Single(report, ContentValidator.InformationalCode);
-        Assert.Contains("tier-ordinal", informational.Message, StringComparison.Ordinal);
+        // Through the WHOLE sweep, both halves. A boot carries the informational code and neither
+        // publish-only finding, and a publish carries both of them and no informational code, which is what
+        // makes KEC0000 a statement about the run rather than a label nobody can act on.
+        ContentValidationReport atBootReport = ContentValidator.Validate(candidate, previous: null, [], registry);
+        _ = Single(atBootReport, ContentValidator.InformationalCode);
+        Assert.Equal(0, CountOf(atBootReport, InstanceContentFindings.TierOrdinalMoved));
+        Assert.Equal(0, CountOf(atBootReport, InstanceContentFindings.RarityRuleIdMoved));
+
+        ContentValidationReport atPublishReport = ContentValidator.Validate(candidate, previous, [], registry);
+        Assert.Equal(1, CountOf(atPublishReport, InstanceContentFindings.TierOrdinalMoved));
+        Assert.Equal(1, CountOf(atPublishReport, InstanceContentFindings.RarityRuleIdMoved));
+        Assert.Equal(0, CountOf(atPublishReport, ContentValidator.InformationalCode));
     }
 
     [Fact]
@@ -556,6 +596,20 @@ public class InstanceContentValidationTests
                 "KEC0114",
             },
             InstanceContentFindings.All);
+    }
+
+    static int CountOf(ContentValidationReport report, string code)
+    {
+        int count = 0;
+        foreach (ContentFinding finding in report.Findings)
+        {
+            if (string.Equals(finding.Code, code, StringComparison.Ordinal))
+            {
+                count++;
+            }
+        }
+
+        return count;
     }
 
     static string[] Codes(ContentValidationReport report)

@@ -20,9 +20,10 @@ namespace KhaozEngine.ItemInstances;
 /// implementation honest across boot, publish and a test.
 /// </para>
 /// <para>
-/// <b>The catalog's <c>IContentValidator</c> seam carries no previous snapshot</b>, so a sweep reached
-/// through pass 6 runs with a null previous and the three publish-only checks stay quiet there. A publish
-/// path that holds the previous version calls this method directly and gets all fourteen codes.
+/// <b>The RULE SET arrives the same way</b>, which is what lets pass 6 hand over exactly what the run was
+/// given. It is never read off the candidate: a publish sweeps a
+/// candidate against the rules as they will STAND, appended rules included, and reading
+/// <c>candidate.Rules</c> would judge a removal against a different set than the one the sweep was handed.
 /// </para>
 /// </summary>
 public static class InstanceContentChecks
@@ -30,17 +31,22 @@ public static class InstanceContentChecks
     /// <summary>Runs every check of the band, adding one finding per defect.</summary>
     /// <param name="candidate">The complete candidate, which a publish builds and a boot decodes.</param>
     /// <param name="previous">The previous published snapshot, or null at boot and in most tests.</param>
+    /// <param name="rules">The full ordered remap rule set the sweep was handed, contracts 8.1.</param>
     /// <param name="findings">The accumulating list, which this method only ever adds to.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="candidate"/> or <paramref name="findings"/> is null.</exception>
+    /// <exception cref="ArgumentNullException">
+    /// <paramref name="candidate"/>, <paramref name="rules"/> or <paramref name="findings"/> is null.
+    /// </exception>
     public static void Run(
         IContentSnapshot candidate,
         IContentSnapshot? previous,
+        IReadOnlyList<RemapRule> rules,
         ICollection<ContentFinding> findings)
     {
         ArgumentNullException.ThrowIfNull(candidate);
+        ArgumentNullException.ThrowIfNull(rules);
         ArgumentNullException.ThrowIfNull(findings);
 
-        ModFamilyChecks.Run(candidate, previous, findings);
+        ModFamilyChecks.Run(candidate, previous, rules, findings);
         RarityAndUniqueChecks.Run(candidate, previous, findings);
         CurrencyAndSocketChecks.Run(candidate, findings);
         RareNameCoverageCheck.Run(candidate, findings);
@@ -135,14 +141,26 @@ public static class InstanceContentChecks
 /// process builds.
 /// </para>
 /// </summary>
-public sealed class InstanceContentValidator : IContentValidator
+public sealed class InstanceContentValidator : IContentHistoryValidator
 {
     /// <inheritdoc />
     /// <remarks>
-    /// The seam carries no previous snapshot, so the three publish-only checks do not run here and
-    /// <c>KEC0000</c> is what says so. A publish that holds the previous version calls
-    /// <see cref="InstanceContentChecks.Run"/> directly.
+    /// The plain seam carries no previous snapshot and no rule set, so the three publish-only checks do not
+    /// run through it and <c>KEC0000</c> is what says so. Pass 6 reaches the OTHER overload, because this
+    /// type implements <see cref="IContentHistoryValidator"/>, so a publish does get all of them.
     /// </remarks>
     public void Validate(ContentTypeId type, IContentSnapshot candidate, ICollection<ContentFinding> findings)
-        => InstanceContentChecks.Run(candidate, previous: null, findings);
+        => InstanceContentChecks.Run(candidate, previous: null, rules: [], findings);
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// The overload pass 6 reaches, carrying the run's own previous snapshot and rule set. A boot hands a
+    /// null previous here just as it does to the other one, so the skip stays a property of the argument.
+    /// </remarks>
+    public void Validate(
+        IContentSnapshot candidate,
+        IContentSnapshot? previous,
+        IReadOnlyList<RemapRule> rules,
+        ICollection<ContentFinding> findings)
+        => InstanceContentChecks.Run(candidate, previous, rules, findings);
 }

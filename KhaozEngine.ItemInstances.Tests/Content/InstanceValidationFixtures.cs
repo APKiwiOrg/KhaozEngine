@@ -30,11 +30,17 @@ internal static class InstanceValidationFixtures
         return registry;
     }
 
-    /// <summary>The band's own sweep over one candidate, with no Scope A finding in the way.</summary>
-    public static List<ContentFinding> Band(IContentSnapshot candidate, IContentSnapshot? previous = null)
+    /// <summary>
+    /// The band's own sweep over one candidate, with no Scope A finding in the way. The rule set is an
+    /// argument here exactly as it is on the sweep, so a fact about a removal names the rules it means.
+    /// </summary>
+    public static List<ContentFinding> Band(
+        IContentSnapshot candidate,
+        IContentSnapshot? previous = null,
+        IReadOnlyList<RemapRule>? rules = null)
     {
         var findings = new List<ContentFinding>();
-        InstanceContentChecks.Run(candidate, previous, findings);
+        InstanceContentChecks.Run(candidate, previous, rules ?? [], findings);
         return findings;
     }
 

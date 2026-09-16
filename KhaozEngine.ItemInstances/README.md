@@ -862,11 +862,11 @@ Three levels, and a roll reads all three as scalars:
 - **The OVERLAP** is what spec 8.3's first-tag-wins rule DISCARDS, precomputed per (tag signature, kind,
   band, tag position), so a roll subtracts two scalars instead of merging two lists.
 
-`GenerationTagSignature` is the intern of authored tag lists, and `MaxGenerationTagPositions` is 8. The
-suppression header count is signatures times bands times kinds times tag POSITIONS, so an unbounded position
-count would make the build unbounded, and a publish refuses a longer list with `KEC0114`. The header block is
-sized by the positions the version's signatures ACTUALLY carry, so a pack whose widest base lists three tags
-pays for three.
+`GenerationTagSignature` is the intern of authored tag lists, and
+`ModCandidateTables.MaxGenerationTagPositions` is 8, which is what bounds one. The suppression header count is
+signatures times bands times kinds times tag POSITIONS, so an unbounded position count would make the build
+unbounded, and a publish refuses a longer list with `KEC0114`. The header block is sized by the positions the
+version's signatures ACTUALLY carry, so a pack whose widest base lists three tags pays for three.
 
 **Nothing is allocated, memoized or evicted at a roll.** There is no cache, so there is no hit rate, no
 eviction policy and no pathological pack that degrades to a merge per roll. A roll reads the two to eight

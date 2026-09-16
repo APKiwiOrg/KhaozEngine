@@ -1,4 +1,6 @@
 using System;
+using KhaozEngine.ItemInstances;
+using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Benchmarks.Items;
 
@@ -27,7 +29,7 @@ internal static class ItemsCodecMeasurements
     internal const double TileTickSeconds = 0.25;
 
     internal static CodecMeasurements Measure(
-        SpikeItemGenerator generator,
+        ItemGenerator generator,
         SyntheticContent content,
         IRandomSource random,
         int contentVersion)
@@ -75,7 +77,7 @@ internal static class ItemsCodecMeasurements
     }
 
     internal static (byte[] Page, double EntryMeanBytes) BuildGeneratedPage(
-        SpikeItemGenerator generator,
+        ItemGenerator generator,
         SyntheticContent content,
         IRandomSource random,
         int pageIndex,
@@ -86,8 +88,9 @@ internal static class ItemsCodecMeasurements
         long entryBytes = 0;
         for (int slot = 0; slot < entries.Length; slot++)
         {
-            int baseIndex = random.NextInt(0, content.BaseCount);
-            GenerationResult generated = generator.Generate(new GenerationContext(baseIndex, random.NextInt(1, 101), 0, 0));
+            int baseId = content.BaseIdOf(random.NextInt(0, content.BaseCount));
+            GenerationResult generated = generator.Generate(
+                new GenerationContext(baseId, random.NextInt(1, 101), 0, 0, 0));
             entries[slot] = new PageSlotInput(
                 firstSlot + slot,
                 0,

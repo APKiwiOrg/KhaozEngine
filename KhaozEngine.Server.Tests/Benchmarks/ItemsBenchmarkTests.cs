@@ -23,15 +23,23 @@ namespace KhaozEngine.Tests.Benchmarks;
 /// microsecond figure goes red on a busy runner and teaches everyone to rerun it.
 /// </para>
 /// <para>
+/// <b>Budgets 5 and 9 measure the SHIPPED generator and its tables.</b> The mode publishes its synthetic
+/// rows through <c>ContentSnapshotBuilder</c>, times <c>ModCandidateTables.Build</c> over them and rolls
+/// every item through <c>ItemGenerator</c>, so a regression in either one moves a number here. That is what
+/// the budget 5 and budget 9 fields below are fenced for, and it is why
+/// <c>Budget9ConsistencyFailures</c> is asserted at exactly zero: it is the table build's own self check
+/// rather than a timing.
+/// </para>
+/// <para>
 /// <b>The ONE number here that is a design property rather than a timing is budget 4's commit count.</b>
 /// Twenty crafts in one held action are ONE commit. That is the property the whole of spec 6 exists for, and
-/// what this fact pins is the SPIKE's own number: <c>KhaozEngine.Benchmarks</c> references neither
-/// <c>KhaozEngine.ItemInstances</c> nor <c>KhaozEngine.ItemInstances.Journal</c>, so the <c>--items</c> mode
-/// coalesces through its own runner and a regression in <c>ContainerCommitBuilder</c> cannot make this red.
+/// what this fact pins is the SPIKE's own number: the <c>--items</c> mode coalesces through its own runner
+/// and a regression in <c>ContainerCommitBuilder</c> cannot make this red.
 /// <c>Twenty_crafts_in_one_held_action_are_ONE_commit</c> in <c>ContainerCommitBuilderTests</c> is the fact
-/// that guards the SHIPPED builder. Rewiring the mode onto the shipped types is
-/// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/951">#951</see>, and it wants doing before the
-/// next budget re-bake, so spec 16's measured column describes what ships.
+/// that guards the SHIPPED builder. Rewiring the commit, codec and visibility halves onto the shipped types
+/// is <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/951">#951</see>, still open, and it wants
+/// doing before the next re-bake of budgets 1, 2, 3, 4, 8 and 11, so spec 16's measured column describes
+/// what ships for those too.
 /// </para>
 /// <para>
 /// Nothing here writes process-global state, so no test needs a collection attribute.
@@ -57,8 +65,19 @@ public sealed class ItemsBenchmarkTests
         nameof(ItemsBenchmarkResult.Budget5P50Microseconds),
         nameof(ItemsBenchmarkResult.Budget5P99Microseconds),
         nameof(ItemsBenchmarkResult.Budget5MeanMicroseconds),
+        nameof(ItemsBenchmarkResult.Budget5AllocatedBytesPerGeneration),
         nameof(ItemsBenchmarkResult.Budget5ColdP50Microseconds),
+        nameof(ItemsBenchmarkResult.Budget5ColdP99Microseconds),
+        nameof(ItemsBenchmarkResult.Budget5MeanPoolSize),
         nameof(ItemsBenchmarkResult.Budget5MeanAffixCount),
+        nameof(ItemsBenchmarkResult.Budget5DeadEntriesPerGeneration),
+        nameof(ItemsBenchmarkResult.Budget5WarmP50Microseconds),
+        nameof(ItemsBenchmarkResult.Budget5WarmP99Microseconds),
+        nameof(ItemsBenchmarkResult.Budget5WarmAllocatedBytesPerGeneration),
+        nameof(ItemsBenchmarkResult.Budget5DenseP50Microseconds),
+        nameof(ItemsBenchmarkResult.Budget5DenseP99Microseconds),
+        nameof(ItemsBenchmarkResult.Budget5DenseMeanMicroseconds),
+        nameof(ItemsBenchmarkResult.Budget5DenseMeanAffixCount),
         nameof(ItemsBenchmarkResult.Budget6Nanoseconds),
         nameof(ItemsBenchmarkResult.Budget6LineCount),
         nameof(ItemsBenchmarkResult.Budget6WornItems),
@@ -69,6 +88,7 @@ public sealed class ItemsBenchmarkTests
         nameof(ItemsBenchmarkResult.Budget8MaximumChangedSlotsInOneFrame),
         nameof(ItemsBenchmarkResult.Budget9TableBuildMilliseconds),
         nameof(ItemsBenchmarkResult.Budget9TableSelfReportedBytes),
+        nameof(ItemsBenchmarkResult.Budget9SuppressedEntries),
         nameof(ItemsBenchmarkResult.Budget10LoadMilliseconds),
         nameof(ItemsBenchmarkResult.Budget10RuleCount),
         nameof(ItemsBenchmarkResult.Budget10ReferenceIdsVisited),
@@ -146,6 +166,48 @@ public sealed class ItemsBenchmarkTests
         Assert.Equal(full.BaseCount, quick.BaseCount);
         Assert.Equal(full.BankPagesPerPlayer, quick.BankPagesPerPlayer);
         Assert.Equal(full.Crafts, quick.Crafts);
+    }
+
+    [Fact]
+    public void Every_budget_5_and_budget_9_field_is_fenced_rather_than_only_written()
+    {
+        // These two budgets are the ones the shipped generator and the shipped candidate tables move, so
+        // every field of theirs is either non-zero in a clean run, which is MeasuredBudgets above, or is
+        // named here with the reason it may legitimately sit at zero or below it. A field in neither list
+        // is a number nothing would notice going missing.
+        string[] countersAndReadings =
+        {
+            // Two counters a clean run leaves at exactly zero on purpose, asserted at zero by the quick run.
+            nameof(ItemsBenchmarkResult.Budget5InvariantViolations),
+            nameof(ItemsBenchmarkResult.Budget9ConsistencyFailures),
+
+            // Two memory readings taken either side of the build, so a collection landing inside one makes
+            // the answer legitimately zero or negative. The self-reported byte count beside them is the
+            // deterministic one and it IS fenced.
+            nameof(ItemsBenchmarkResult.Budget9TableResidentBytes),
+            nameof(ItemsBenchmarkResult.Budget9TableTotalMemoryDeltaBytes),
+        };
+
+        var unfenced = new List<string>();
+        int fields = 0;
+        foreach (PropertyInfo property in typeof(ItemsBenchmarkResult).GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        {
+            if (!property.Name.StartsWith("Budget5", StringComparison.Ordinal)
+                && !property.Name.StartsWith("Budget9", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            fields++;
+            if (!MeasuredBudgets.Contains(property.Name, StringComparer.Ordinal)
+                && !countersAndReadings.Contains(property.Name, StringComparer.Ordinal))
+            {
+                unfenced.Add(property.Name);
+            }
+        }
+
+        Assert.Equal(Array.Empty<string>(), unfenced.ToArray());
+        Assert.True(fields >= 20, $"The sweep found only {fields} budget 5 and budget 9 fields, so it read nothing.");
     }
 
     [Fact]
@@ -247,6 +309,11 @@ public sealed class ItemsBenchmarkTests
             Assert.Equal(config.ScaleInstances, result.ScaleInstances);
             Assert.Equal(config.BankPagesPerPlayer, result.Budget12PagesPerPlayer);
             Assert.Equal(config.ModCount, result.ContentModCount);
+
+            // The two counters the shipped generator and the shipped table build own. Budget 5's is the
+            // properties a roll must hold (no mod twice, no group twice, no legacy mod, no tier outside its
+            // gate, the per kind caps) and budget 9's is the table build's own live count and live weight
+            // self check, so neither is a timing and both are exactly zero or something is wrong.
             Assert.Equal(0, result.Budget5InvariantViolations);
             Assert.Equal(0, result.Budget9ConsistencyFailures);
             Assert.Equal(0, result.Budget13FailureCount);

@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.ItemInstances;
 using KhaozEngine.WorldStore.Journal;
 
 namespace KhaozEngine.Benchmarks.Items;
@@ -31,7 +32,7 @@ internal static class ItemsMemoryMeasurements
     /// section dictionary per stream and clones every byte array on the way in.
     /// </summary>
     internal static ResidentMeasurement MeasureResident(
-        RarePool pool,
+        GeneratedRares pool,
         InstanceIdAllocator allocator,
         int players,
         int pagesPerPlayer,
@@ -103,7 +104,7 @@ internal static class ItemsMemoryMeasurements
     /// is payload bytes plus slot entries inside page blobs rather than an object per item.
     /// </summary>
     internal static ScaleMeasurement MeasureScale(
-        RarePool pool,
+        GeneratedRares pool,
         InstanceIdAllocator allocator,
         int instances,
         int contentVersion)
@@ -135,7 +136,7 @@ internal static class ItemsMemoryMeasurements
     }
 
     private static byte[] BuildPage(
-        RarePool pool,
+        GeneratedRares pool,
         InstanceIdAllocator allocator,
         PageSlotInput[] entries,
         int pageIndex,

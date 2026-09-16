@@ -6,6 +6,9 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using KhaozEngine.Catalog;
+using KhaozEngine.ItemInstances;
+using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Benchmarks.Items;
 
@@ -13,6 +16,14 @@ namespace KhaozEngine.Benchmarks.Items;
 /// The <c>--items</c> mode: one measurement per performance budget of the item-instances spec's
 /// section 16, plus the scale test its test plan names, against synthetic content at the owner's scale
 /// and the REAL journal for anything that commits.
+/// <para>
+/// <b>Generation and the candidate tables are the SHIPPED ones.</b> The synthetic set is published through
+/// <see cref="ContentSnapshotBuilder"/> into real rows, budget 9 times
+/// <see cref="ModCandidateTables.Build(IContentSnapshot)"/> over them, and every roll in the run goes
+/// through <see cref="ItemGenerator"/>, so budgets 5 and 9 describe what the engine ships rather than what
+/// a spike proved could exist. The byte-format phases beside them still measure the mode's own clean
+/// implementations of the two design documents, which is what they were always for.
+/// </para>
 /// </summary>
 public static class ItemsBenchmarkRunner
 {
@@ -36,21 +47,26 @@ public static class ItemsBenchmarkRunner
         SyntheticContent content = SyntheticContent.Build(config.Seed, config.ModCount, config.BaseCount);
         output.WriteLine(string.Create(culture, $"content: {content.ModCount} mods, {content.BaseCount} bases, {content.TagCount} tags, {content.RarityCount} rarities, {content.NameWordCount} rare name words, {content.DistinctTagSignatures} distinct tag signatures"));
 
+        var rowTimer = Stopwatch.StartNew();
+        ContentTypeRegistry registry = SyntheticContentRows.Registry();
+        ContentSnapshot snapshot = SyntheticContentRows.Snapshot(registry, content, ContentVersion);
+        rowTimer.Stop();
+        output.WriteLine(string.Create(culture, $"content rows: {RowCount(snapshot):N0} rows over {snapshot.Types.Count} types, published into version {snapshot.VersionNumber} in {rowTimer.Elapsed.TotalMilliseconds:F1} ms"));
+
         long tableTotalMemoryBefore = ResidentMemory.ReadTotalMemory();
         long tableMemoryBefore = ResidentMemory.Read();
         var tableTimer = Stopwatch.StartNew();
-        ModCandidateTables tables = ModCandidateTables.Build(content);
+        ModCandidateTables tables = ModCandidateTables.Build(snapshot);
         tableTimer.Stop();
         long tableMemoryAfter = ResidentMemory.Read();
         long tableTotalMemoryAfter = ResidentMemory.ReadTotalMemory();
         long tableResident = Math.Max(0, tableMemoryAfter - tableMemoryBefore);
-        output.WriteLine(string.Create(culture, $"generator tables: {content.TagCount} tags x {ModCandidateTables.KindCount} kinds x {tables.BandCount} bands, {tables.TableEntries:N0} entries, {tables.SuppressedEntries:N0} suppressed, built in {tableTimer.Elapsed.TotalMilliseconds:F1} ms"));
+        output.WriteLine(string.Create(culture, $"generator tables: {tables.TagCount} tags x {tables.KindCount} kinds x {tables.BandCount} bands, {tables.TableEntries:N0} entries, {tables.SuppressedEntries:N0} suppressed, built in {tableTimer.Elapsed.TotalMilliseconds:F1} ms"));
         output.WriteLine();
 
-        var names = new RareNameTables(content);
         var random = new SeededRandomSource(unchecked((ulong)config.Seed));
-        var allocator = new InstanceIdAllocator(0, 1_000_000_000);
-        var generator = new SpikeItemGenerator(content, tables, names, random, allocator) { ContentVersion = ContentVersion };
+        var allocator = new InstanceIdAllocator(new BenchmarkInstanceIdStore(), 0);
+        var generator = new ItemGenerator(tables, snapshot, random, allocator);
 
         CodecMeasurements codec = ItemsCodecMeasurements.Measure(generator, content, random, ContentVersion);
         int violations = ItemsWorkMeasurements.ValidateInvariants(
@@ -76,7 +92,7 @@ public static class ItemsBenchmarkRunner
         CraftBatchMeasurement craft = await ItemsJournalMeasurements.MeasureCraftBatchAsync(
             scope, config.Crafts, config.Seed, ContentVersion, cancellationToken).ConfigureAwait(false);
 
-        RarePool pool = RarePool.Build(generator, content, random, 10_000);
+        GeneratedRares pool = GeneratedRares.Build(generator, content, random, 10_000);
         ResidentMeasurement resident = ItemsMemoryMeasurements.MeasureResident(
             pool, allocator, config.Players, config.BankPagesPerPlayer, ContentVersion);
         ScaleMeasurement scale = ItemsMemoryMeasurements.MeasureScale(
@@ -196,7 +212,15 @@ public static class ItemsBenchmarkRunner
         return result;
     }
 
-    private static byte[][] BuildBank(SpikeItemGenerator generator, SyntheticContent content, IRandomSource random, int pages)
+    /// <summary>Every row the published snapshot carries, which is what the table build reads.</summary>
+    private static long RowCount(ContentSnapshot snapshot)
+    {
+        long rows = 0;
+        foreach (ContentTypeId type in snapshot.Types) rows += snapshot.Rows(type).Count;
+        return rows;
+    }
+
+    private static byte[][] BuildBank(ItemGenerator generator, SyntheticContent content, IRandomSource random, int pages)
     {
         var bank = new byte[pages][];
         for (int page = 0; page < pages; page++)

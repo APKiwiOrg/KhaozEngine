@@ -23,5 +23,8 @@
     <ProjectReference Include="../KhaozEngine.Catalog/KhaozEngine.Catalog.csproj" />
     <ProjectReference Include="../KhaozEngine.Catalog.Authoring/KhaozEngine.Catalog.Authoring.csproj" />
     <ProjectReference Include="../KhaozEngine.Catalog.Sqlite/KhaozEngine.Catalog.Sqlite.csproj" />
+    <!-- The item-instances mode measures the SHIPPED generator: its rows go through ContentSnapshotBuilder,
+         budget 9 times ModCandidateTables.Build over them and every roll goes through ItemGenerator. -->
+    <ProjectReference Include="../KhaozEngine.ItemInstances/KhaozEngine.ItemInstances.csproj" />
   </ItemGroup>
 </Project>

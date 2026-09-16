@@ -1,6 +1,10 @@
 using System;
 using System.Diagnostics;
 using KhaozEngine.Benchmarks.Journal;
+using KhaozEngine.Catalog;
+using KhaozEngine.ItemInstances;
+using KhaozEngine.Primitives;
+using ShippedPayloadField = KhaozEngine.ItemInstances.PayloadField;
 
 namespace KhaozEngine.Benchmarks.Items;
 
@@ -31,7 +35,7 @@ internal static class ItemsWorkMeasurements
     internal const int AffixesPerItem = 6;
 
     internal static GenerationMeasurement MeasureGeneration(
-        SpikeItemGenerator generator,
+        ItemGenerator generator,
         ModCandidateTables tables,
         SyntheticContent content,
         IRandomSource random,
@@ -42,48 +46,75 @@ internal static class ItemsWorkMeasurements
         int forcedRarityId = 0)
     {
         var hotBases = new int[Math.Max(hotBaseCount, 1)];
-        for (int index = 0; index < hotBases.Length; index++) hotBases[index] = random.NextInt(0, content.BaseCount);
+        for (int index = 0; index < hotBases.Length; index++)
+            hotBases[index] = content.BaseIdOf(random.NextInt(0, content.BaseCount));
 
         for (int warmup = 0; warmup < 20_000; warmup++)
-            _ = generator.Generate(new GenerationContext(hotBases[warmup % hotBases.Length], 40 + (warmup % levelSpan), forcedRarityId, 0));
+            _ = generator.Generate(new GenerationContext(hotBases[warmup % hotBases.Length], 40 + (warmup % levelSpan), forcedRarityId, 0, 0));
 
         var samples = new JournalLatencySamples(seed);
-        long deadBefore = generator.DeadEntriesWalked;
-        long poolTotal = 0;
         long affixTotal = 0;
         double ticksToMicroseconds = 1_000_000.0 / Stopwatch.Frequency;
         long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
         long started = Stopwatch.GetTimestamp();
         for (int index = 0; index < count; index++)
         {
-            int baseIndex = hotBases[index % hotBases.Length];
+            int baseId = hotBases[index % hotBases.Length];
             int itemLevel = 40 + (index % levelSpan);
             long before = Stopwatch.GetTimestamp();
-            GenerationResult result = generator.Generate(new GenerationContext(baseIndex, itemLevel, forcedRarityId, 0));
+            GenerationResult result = generator.Generate(new GenerationContext(baseId, itemLevel, forcedRarityId, 0, 0));
             samples.Add((Stopwatch.GetTimestamp() - before) * ticksToMicroseconds);
-            poolTotal += generator.LastPoolSize;
             affixTotal += result.AffixCount;
         }
 
         long elapsed = Stopwatch.GetTimestamp() - started;
         long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
-        long dead = generator.DeadEntriesWalked - deadBefore;
+        PoolShape shape = MeasurePool(tables, hotBases, levelSpan, count);
         return new GenerationMeasurement(
             samples.Percentile(0.50),
             samples.Percentile(0.99),
             elapsed * ticksToMicroseconds / count,
             (double)allocated / count,
-            (double)poolTotal / count,
+            (double)shape.LiveTotal / count,
             (double)affixTotal / count,
-            (double)dead / count);
+            (double)shape.DeadTotal / count);
     }
+
+    /// <summary>
+    /// The cost SHAPE behind the timing: how many live candidates each roll's pool held and how many dead
+    /// entries its tag positions carry behind them. Both are read off the immutable tables over the same
+    /// (base, item level) sequence the timed loop walked, AFTER the timing and never inside it, because the
+    /// shipped generator carries no counters and a counter added for a benchmark would be measured by it.
+    /// </summary>
+    static PoolShape MeasurePool(ModCandidateTables tables, int[] hotBases, int levelSpan, int count)
+    {
+        long live = 0;
+        long dead = 0;
+        for (int index = 0; index < count; index++)
+        {
+            if (!tables.Signatures.TryGetSignature(hotBases[index % hotBases.Length], out int signature)) continue;
+            int band = tables.BandOf(40 + (index % levelSpan));
+            ReadOnlySpan<int> tags = tables.Signatures.TagsOf(signature);
+            for (int kind = 0; kind < tables.KindCount; kind++)
+            {
+                live += tables.LiveCount(signature, kind, band);
+                for (int position = 0; position < tags.Length; position++)
+                    dead += tables.SuppressedCountAt(tables.HeaderOf(signature, kind, band, position));
+            }
+        }
+
+        return new PoolShape(live, dead);
+    }
+
+    /// <summary>One loop's summed pool size and summed dead entries, which the means are taken from.</summary>
+    readonly record struct PoolShape(long LiveTotal, long DeadTotal);
 
     /// <summary>
     /// The same loop over the WHOLE base catalog at every item level, which is the coldest shape the
     /// tables can be asked for: every roll lands on a different (tag signature, band) pair.
     /// </summary>
     internal static GenerationMeasurement MeasureColdGeneration(
-        SpikeItemGenerator generator,
+        ItemGenerator generator,
         SyntheticContent content,
         IRandomSource random,
         int count,
@@ -91,19 +122,21 @@ internal static class ItemsWorkMeasurements
     {
         var samples = new JournalLatencySamples(seed + 1);
         double ticksToMicroseconds = 1_000_000.0 / Stopwatch.Frequency;
-        long deadBefore = generator.DeadEntriesWalked;
         long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
         long started = Stopwatch.GetTimestamp();
         for (int index = 0; index < count; index++)
         {
+            // The two draws sit OUTSIDE the sample window, so a cold roll's number is the roll rather than
+            // the roll plus two bounded draws off the source it shares with every other phase.
+            int baseId = content.BaseIdOf(random.NextInt(0, content.BaseCount));
+            int itemLevel = random.NextInt(1, 101);
             long before = Stopwatch.GetTimestamp();
-            _ = generator.Generate(new GenerationContext(random.NextInt(0, content.BaseCount), random.NextInt(1, 101), 0, 0));
+            _ = generator.Generate(new GenerationContext(baseId, itemLevel, 0, 0, 0));
             samples.Add((Stopwatch.GetTimestamp() - before) * ticksToMicroseconds);
         }
 
         long elapsed = Stopwatch.GetTimestamp() - started;
         long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
-        long dead = generator.DeadEntriesWalked - deadBefore;
         return new GenerationMeasurement(
             samples.Percentile(0.50),
             samples.Percentile(0.99),
@@ -111,7 +144,7 @@ internal static class ItemsWorkMeasurements
             (double)allocated / count,
             0,
             0,
-            (double)dead / count);
+            0);
     }
 
     /// <summary>
@@ -121,7 +154,7 @@ internal static class ItemsWorkMeasurements
     /// off the timed path and every count it returns must be zero.
     /// </summary>
     internal static int ValidateInvariants(
-        SpikeItemGenerator generator,
+        ItemGenerator generator,
         ModCandidateTables tables,
         SyntheticContent content,
         IRandomSource random,
@@ -130,14 +163,20 @@ internal static class ItemsWorkMeasurements
         int violations = 0;
         Span<int> mods = stackalloc int[16];
         Span<int> groups = stackalloc int[16];
-        Span<PayloadField> fields = stackalloc PayloadField[InstancePayload.MaximumFields];
+        var fields = new ShippedPayloadField[ItemInstancePayload.MaxFields];
         for (int index = 0; index < count; index++)
         {
             int baseIndex = random.NextInt(0, content.BaseCount);
             int itemLevel = random.NextInt(1, 101);
-            GenerationResult result = generator.Generate(new GenerationContext(baseIndex, itemLevel, 0, 0));
+            GenerationResult result = generator.Generate(
+                new GenerationContext(content.BaseIdOf(baseIndex), itemLevel, 0, 0, 0));
             int band = tables.BandOf(itemLevel);
-            if (!InstancePayload.TryDecode(result.Payload, fields, out int fieldCount, out _))
+            ReadOnlySpan<byte> payload = result.Payload.Span;
+
+            // An empty payload is a plain stack rather than a failure: a base whose tags carry no rarity
+            // weight at all rolls nothing and takes no instance id (spec 3.6).
+            if (payload.Length == 0) continue;
+            if (!ItemInstancePayload.TryDecode(payload, fields, out int fieldCount, out _))
             {
                 violations++;
                 continue;
@@ -149,16 +188,16 @@ internal static class ItemsWorkMeasurements
             int suffixes = 0;
             for (int field = 0; field < fieldCount; field++)
             {
-                if (fields[field].Kind != InstanceKinds.Affixes) continue;
-                ReadOnlySpan<byte> body = result.Payload.AsSpan(fields[field].BodyStart, fields[field].BodyLength);
+                if (fields[field].Kind != InstancePropertyKind.Affixes) continue;
+                ReadOnlySpan<byte> body = payload.Slice(fields[field].BodyStart, fields[field].BodyLength);
                 int affixes = body[0];
                 int offset = 1;
                 for (int affix = 0; affix < affixes; affix++)
                 {
-                    if (!Varint.TryRead(body, ref offset, Varint.MaximumBytes32, out ulong modId, out _)) break;
+                    if (!ContentVarint.TryRead(body, ref offset, out uint modId, out _)) break;
                     int tier = body[offset];
                     offset += 3;
-                    _ = Varint.TryRead(body, ref offset, Varint.MaximumBytes32, out _, out _);
+                    if (!ContentVarint.TryRead(body, ref offset, out _, out _)) break;
                     int modIndex = (int)modId - 1;
                     if (content.ModLegacy[modIndex]) violations++;
                     int tierSlot = (modIndex * SyntheticContent.TiersPerMod) + tier - 1;
@@ -181,12 +220,14 @@ internal static class ItemsWorkMeasurements
             }
 
             int rarityIndex = result.RarityId - 1;
+            if (rarityIndex < 0) continue;
             if (prefixes > content.RarityMaxPrefixes[rarityIndex]) violations++;
             if (suffixes > content.RarityMaxSuffixes[rarityIndex]) violations++;
             if (result.AffixCount > content.RarityMaxAffixes[rarityIndex]) violations++;
+            if (result.AffixCount > result.RequestedAffixCount) violations++;
         }
 
-        return violations + (int)Math.Min(generator.ExclusionOverflows, int.MaxValue);
+        return violations;
     }
 
     /// <summary>

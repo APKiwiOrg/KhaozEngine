@@ -262,20 +262,29 @@ proves the DURABILITY: a thrown exception unwinds the stack and lets every conne
 
 ## Item instances (`--items`)
 
-The stage 5 proof spike for `docs/design/ITEM-INSTANCES-DESIGN-2026-09-15.md`. It measures every one of
-the thirteen performance budgets in that document's section 16, plus the "several million instances in
-memory" scale test its test plan names, against synthetic content at the owner's scale: 2,000 mods with
-eight tiers and five tag weights each, 50,000 bases over 300 authored tag signatures, 20 rarities and
-200 rare name words, all built from one seed through `DeterministicRng`.
+The measurement mode for `docs/design/ITEM-INSTANCES-DESIGN-2026-09-15.md`, which started as that
+document's stage 5 proof spike. It measures every one of the thirteen performance budgets in section 16,
+plus the "several million instances in memory" scale test its test plan names, against synthetic content at
+the owner's scale: 2,000 mods with eight tiers and five tag weights each, 50,000 bases over 300 authored tag
+signatures, 20 rarities and 200 rare name words, all built from one seed through `DeterministicRng`.
 
-`Items/` is a throwaway but clean implementation of the byte formats and algorithms the two design
-documents define, and nothing else. It is not a package and nothing outside the benchmark references it.
-It carries the canonical TLV payload of the contracts document's section 9, container codec version 2
-and its 100 slot pages, the thirteen step generator draw with its tag-band tables and memoized merge,
-the integer stat fold with floor division, the page fragmenter and delta, and the remap rule pass.
-Anything that commits goes through the REAL journal: `SqliteMutationJournalStore` under
-`MutationJournalExecutor`, at `JournalLimits.Maximum`, because a 6.9 KB page has to sit against the
-engine's own projection section cap rather than a benchmark-shaped one.
+**Budgets 5 and 9 measure the SHIPPED generator.** `SyntheticContentRows` publishes the synthetic set
+through `ContentSnapshotBuilder` into about 207,000 real rows of fourteen types, the instance band's `mod`,
+`mod_group`, `mod_tier`, `mod_tier_weight`, `stat_line`, `rarity_rule`, `rarity_weight`, `socket_type`,
+`rare_name_word` and `rare_name_word_weight` beside the engine's own `tag`, `stat`, `item` and
+`base_socket`. Budget 9 times `ModCandidateTables.Build` over that snapshot and every roll in the run goes
+through `ItemGenerator`, so a regression in either one moves a number the mode reports. Two shapes the flat
+arrays allowed and a row set cannot: one `(tier, tag)` pair is one weight row rather than two, and a weight
+of zero is no row at all.
+
+The rest of `Items/` is a throwaway but clean implementation of the byte formats the two design documents
+define, and nothing else. It is not a package and nothing outside the benchmark references it. It carries
+the canonical TLV payload of the contracts document's section 9, container codec version 2 and its 100 slot
+pages, the integer stat fold with floor division, the page fragmenter and delta, and the remap rule pass.
+Rewiring budgets 1, 2, 3, 4, 8 and 11 onto the shipped commit builder, codec and visibility function is
+[#951](https://github.com/APKiwiOrg/KhaozEngine/issues/951). Anything that commits goes through the REAL
+journal: `SqliteMutationJournalStore` under `MutationJournalExecutor`, at `JournalLimits.Maximum`, because a
+6.9 KB page has to sit against the engine's own projection section cap rather than a benchmark-shaped one.
 
 ```bash
 # the full matrix, about two minutes in Release, and how the checked-in baseline was produced
@@ -309,6 +318,13 @@ Four things about the measurements that a reader would otherwise have to reverse
 - **Budgets 12 and the scale test cycle a pool of 10,000 distinct generated rares** rather than
   generating three million. A page blob copies the payload bytes into itself and every slot still takes
   a fresh instance id, so the page bytes are the same either way and the run is minutes shorter.
+- **Budget 5's pool size and dead entry count are read off the TABLES, after the timing.** The shipped
+  generator carries no counters, and a counter added for a benchmark would be measured by it, so the pass
+  walks the same base and item level sequence the timed loop did and asks `ModCandidateTables` for the live
+  count and the suppressed count of each roll's own signature and band. The allocation figure beside them is
+  what a generation costs today, which is more than the payload alone:
+  [#972](https://github.com/APKiwiOrg/KhaozEngine/issues/972) is the per field allocation in
+  `ItemInstancePayloadBuilder` behind it, and budget 5's target is a time rather than a byte count.
 - **Budget 13 drops a refused submission rather than retrying it**, which is what section 16 says a
   consumer must do on `Backpressure`. The executor runs at the engine default stream queue depth of 8.
   Latency is measured from `Submit` to the completion being dequeued, so it includes queueing behind

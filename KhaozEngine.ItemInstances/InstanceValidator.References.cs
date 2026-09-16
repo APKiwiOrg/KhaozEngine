@@ -11,8 +11,9 @@ namespace KhaozEngine.ItemInstances;
 /// <para>
 /// An earlier draft of spec 12.2 wrote check 7 as a closed enumeration and it already omitted kind 7's
 /// material ids and a socket's contained definition id, and it would have omitted every game kind at or
-/// above 1,024 forever. What ships instead is one walk over the shapes, in the same recursive order the
-/// remap pass will take, so a kind cannot be remapped-but-not-validated or validated-but-not-remapped.
+/// above 1,024 forever. What ships instead is one walk over the shapes, in the same recursive order
+/// <see cref="InstanceRemapPass"/> takes, so a kind cannot be remapped-but-not-validated or
+/// validated-but-not-remapped.
 /// </para>
 /// </summary>
 public static partial class InstanceValidator
@@ -213,11 +214,11 @@ public static partial class InstanceValidator
     /// Reads one run of slots into <paramref name="values"/>. The bytes already decoded against these same
     /// shapes, so every refusal here is defensive: it answers <c>field-malformed</c> rather than throwing.
     /// <para>
-    /// <b>This walk and <c>ItemInstancePayload.ReadSlots</c> are a PAIR.</b> They read the same four
-    /// <see cref="InstanceSlotKind"/> members off the same shapes and differ only in what they do with what
-    /// they find: the decoder's discards the values and recurses structurally, and this one KEEPS them,
-    /// because resolving a reference needs them, and recurses through the reference walk instead. A fifth
-    /// slot kind is added to BOTH or to neither.
+    /// <b>This walk, <c>ItemInstancePayload.ReadSlots</c> and <c>InstanceRemapPass.ReadRun</c> are a SET of
+    /// three.</b> They read the same four <see cref="InstanceSlotKind"/> members off the same shapes and
+    /// differ only in what they do with what they find: the decoder's discards the values and recurses
+    /// structurally, this one KEEPS them, because resolving a reference needs them, and the pass's keeps
+    /// them and writes them back. A fifth slot kind is added to ALL THREE or to none.
     /// </para>
     /// </summary>
     static bool ReadRun(

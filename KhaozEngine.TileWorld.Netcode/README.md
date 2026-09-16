@@ -567,6 +567,44 @@ The intended pickup shape, all game code: click routes a walk to the drop's tile
 own TAKE message naming the net id, your handler re-proves tile proximity per request, moves the
 stack into your own storage, and despawns.
 
+### An item INSTANCE on a drop, when a stack is not just an id and a count
+
+A game whose items are individuals rather than quantities drops one through the six-argument overload,
+`SpawnGroundItem(at, itemId, count, ttlTicks, instanceId, payload)`, and the four-argument call above
+delegates to it with no instance, so nothing that already compiles changes. The identity and the bytes
+ride a SIBLING component, `TileGroundItemInstance` (`InstanceId`, `Payload`), seated only when
+`instanceId` is non-zero: a drop with no instance carries no component and pays nothing on the wire.
+`TryGetGroundItemInstance(netId, out instance)` is the server read a claim goes through, beside
+`TryGetGroundItem`, and clients read it off `client.World` for the entity `client.View.Entities` holds
+under the drop's net id. There is no collector beside `CollectGroundItems` for the instance half yet
+([#926](https://github.com/APKiwiOrg/KhaozEngine/issues/926)).
+
+Both halves are opaque, exactly as `TileGroundItem`'s `ItemId` is opaque. The engine never decodes a
+payload, has no way to, and never mints an instance id of its own: the same id and the same bytes come
+out of a claim as went into the drop, whoever is claiming, so a drop-and-claim cycle cannot launder an
+item into a fresh one. What the engine owns is still existence.
+
+Three rules, all of them the codec's:
+
+- **`TileProtocol.MaxInstancePayloadBytes` is 512**, mirroring `ItemSlot.MaxPayloadBytes` in
+  `KhaozEngine.Items` (a mirror because this package carries no dependency on the item packages, held
+  equal by a test in `KhaozEngine.Server.Tests`). The spawn throws above it, and so does the encoder.
+- **A payload with instance id 0 throws.** Zero means the drop has no instance, no component is seated,
+  and the bytes would go nowhere. It is a caller bug of the same shape as a drop of nothing.
+- **The reader is total.** A declared length past the component's own framed payload, or above the cap,
+  arrives as an instance with an EMPTY payload rather than as a dropped session. It is the one component
+  reader in this package that answers instead of throwing, because the engine assigns these bytes no
+  meaning and so has nothing to rebuild wrongly out of a short read.
+
+It is a sibling component rather than five more fields on `TileGroundItem` because that component's
+codec writes twenty bytes with no declared length, so a client built against it consumes twenty bytes
+and then reads the next component's type id. A new field would make every already-shipped client
+misparse the rest of the entity. A new extension id is length prefixed, so a client that never
+registered it skips it and keeps reading, which is what makes this additive on a live wire. It is also
+not registered `OwnerOnly`: that channel scopes a component to the client whose own net id equals the
+ENTITY's, and a drop's net id is never a viewer's, so it would hide the instance from everybody
+including the player who dropped it.
+
 ## Object states, an authored object that has left its authored form
 
 A world document's objects are static: a `TileObject` is an id, an archetype, a tile, a plane, a rotation and
@@ -930,6 +968,87 @@ A notice frame declares its own length, and the decoder refuses one whose declar
 WHOLE datagram, pad byte included. A lying length is the shape a probe takes and no legitimate sender produces one,
 so the strictness is deliberate, but it constrains transport choice: a transport that pads every datagram out to a
 fixed size cannot carry these notices, because the padding it adds is length the frame never declared.
+
+## A payload too large for one game message
+
+`TileFragmentedMessage` splits any `ReadOnlySpan<byte>` into chunks that each fit inside one game message, and
+`TileFragmentReassembler` puts them back. Both are ITEM AGNOSTIC and know nothing about what they carry: the game
+picks the kind, the stream id and the decoder, exactly as it does for an ordinary envelope.
+
+```
+[StreamId: byte]        // which logical stream, the GAME assigns these
+[Sequence: uint16 LE]   // increments per transmission of that stream, wraps
+[ChunkIndex: byte]
+[ChunkCount: byte]      // 1 to 255
+[Bytes: the rest]
+```
+
+A chunk is a game message PAYLOAD, not a frame, so the caller wraps each one with
+`TileProtocol.EncodeGameMessage` under its own kind and sends it `ReliableOrdered`.
+`TileFragmentedMessage.MaxChunkPayloadBytes` is `MaxGameMessageBytes` less the four byte envelope less the five
+byte header, so a chunk carries 1015 bytes and 255 of them carry about 258 KB. Every chunk but the last carries a
+FULL load, which is what lets a reader tell a truncated chunk from a legitimately short final one.
+
+`Fragment` THROWS above `MaxPayloadBytes`, on the same grounds as the game message cap throw: a payload that long
+is a local caller bug. Everything on the reading side is total and never throws, because those bytes came from a
+remote peer.
+
+```csharp
+foreach (byte[] chunk in TileFragmentedMessage.Fragment(streamId: 1, sequence: page.Version, encodedPage))
+    server.SendGameMessageTo(slot, kind: GameKinds.PageChunk, chunk);
+
+// On the client, one reassembler per connection.
+if (reassembler.TryComplete(payload, out ReadOnlyMemory<byte> assembled, out string? reason))
+    ApplyPage(assembled.Span);      // decode HERE, and quarantine what will not decode
+else if (reason != null)
+    Telemetry.Count(reason);        // refused, and the token says why
+```
+
+**One reassembler per connection slot.** The type holds the partial assemblies of ONE peer and no connection
+table of its own, so a server keeps an array or a map of them beside its session table and forwards each peer's
+chunks to that peer's instance. `Slot` is carried as identity and `DropConnection(slot)` refuses a slot that is
+not its own, so a mis-wired forward cannot wipe the wrong peer's assemblies.
+
+Four rules, and none of them is a timer, because a timer on a reliable ordered channel measures nothing:
+
+- A chunk whose `Sequence` differs from the assembly in progress for its stream discards that assembly and starts
+  a new one. That is what a server restarting a page mid transmission looks like, and it is not an error.
+- At most `MaxPartialAssemblies` partial assemblies are held at once, which is four. A fifth evicts the one
+  fed longest ago and increments `EvictedAssemblies`. A restart is not an eviction and is not counted as one.
+- The last chunk hands the assembled bytes BACK through `TryComplete`. Nothing here decodes them, so a payload
+  that will not decode is the caller's quarantine rather than a throw from the wire. A final chunk cut in its body
+  is the case that reaches the caller, because the header declares no total length.
+- A partial assembly still open when the connection drops goes with an explicit `DropConnection(slot)` the server
+  calls from its own disconnect path.
+
+It does not REORDER, deliberately. The channel is `ReliableOrdered`, so a chunk cannot arrive out of order or be
+lost without the connection failing, and a chunk that is not the next one expected is refused rather than
+buffered. `TryComplete` returns false two ways and the `reason` out tells them apart: null means the chunk was
+accepted and more are expected, non null means it was refused. The two refusal tokens are `ke:fragment-malformed`
+(a chunk this format never produces) and `ke:fragment-out-of-sequence` (a well formed chunk that is not the one
+expected next, which also discards the assembly it contradicts). Both carry the `ke:` prefix for the same reason
+`TileServerReason` does, so a game counting its own tokens alongside them can never collide.
+
+Memory is bounded by what the peer actually SENT: a buffer grows with the bytes that arrive rather than with the
+chunk count a header claims, so a lying `ChunkCount` buys nothing.
+
+**A whole page is the FLOOR, not the steady state.** A game syncing item container pages over this fragmenter
+sends a one frame DELTA for the ordinary case and falls back to a full page send only when the delta will not
+fit. The split is by OWNERSHIP of the bytes: `ContainerPageDelta` builds the delta and
+`ContainerPageSyncRequest` is the two byte resync a client answers with, both in `KhaozEngine.ItemInstances`,
+because the entry body they carry is the container codec's, and this package fragments whatever bytes it is
+handed and gains no items dependency at all. `ContainerPageDelta.TryBuild` answers -1 when the next change
+would not fit one frame, and -1 is the caller's cue to `Fragment` the whole encoded page instead. Never a
+second delta frame: two deltas for one page would have to be applied in order by a client that may have
+missed the first, which is the reassembly problem this type already solves once.
+
+Two facts a server composing the two owes its own code. `TileProtocol.MaxGameMessageBytes` is COPIED into
+`ContainerPageDelta.MaxGameMessageBytes`, because that package is `Foundation` and this one is `Server`, and
+`PageSyncFrameBoundTests` in `KhaozEngine.TileWorld.Netcode.Tests` is the one place that sees both constants
+and holds them equal. And the resync request is RATE LIMITED at one page per client per tick, which is a
+documented server rule rather than engine code on either side: the engine caps the frame and the game owns
+the message kinds and the tick, so a server that serves every request it receives has handed an
+unauthenticated peer an amplifier of two bytes in and about 7 KB out.
 
 ## Known limits in this release
 

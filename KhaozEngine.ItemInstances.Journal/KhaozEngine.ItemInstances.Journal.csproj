@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>KhaozEngine.ItemInstances.Journal</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>The journal side of the item instance record (in Server): the paged container's section naming and its load path, over KhaozEngine.ItemInstances and KhaozEngine.WorldStore. ContainerSectionNames is the one place a page section name is made and taken apart, and ContainerLoad.Load turns a stream's stored sections into decoded pages, findings and a dirty set in one pass, with no store read and no ambient state. It exists for a LAYERING reason rather than a size one: composing a JournalCommit needs WorldStore, which is a Server package, and putting that inside ItemInstances would drag it into Foundation and therefore into every client build. Putting it inside WorldStore would give the journal an opinion about items, which the journal design ruled out.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.ItemInstances/KhaozEngine.ItemInstances.csproj" />
+    <ProjectReference Include="../KhaozEngine.WorldStore/KhaozEngine.WorldStore.csproj" />
+  </ItemGroup>
+
+</Project>

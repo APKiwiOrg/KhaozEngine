@@ -154,9 +154,20 @@ public static partial class ItemContainerPageCodec
                 return false;
             }
 
-            if (!PayloadWithinBounds(page.Length, payloadLength, (flags & EntryFlagQuarantined) != 0))
+            bool quarantined = (flags & EntryFlagQuarantined) != 0;
+            if (!PayloadWithinBounds(page.Length, payloadLength, quarantined))
             {
                 reason = InstancePayloadReason.PayloadTooLong;
+                return false;
+            }
+
+            // The quarantined bound only caps from ABOVE. Spec 4.4 says a quarantined entry's payload IS
+            // the wrapper and spec 12.4 pairs the two, so the flag over zero bytes is a shape no spec
+            // defines: it preserves nothing, nothing can rescue it, and a reader that accepted it would
+            // have to decide between seating it live, which clears the flag, and dropping the entry.
+            if (quarantined && payloadLength == 0)
+            {
+                reason = ItemContainerPageReason.EntryMalformed;
                 return false;
             }
 

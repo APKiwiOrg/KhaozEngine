@@ -22,8 +22,8 @@ namespace KhaozEngine.ItemInstances;
 /// </para>
 /// <para>
 /// <b>Checks 6 and 7 are DERIVED from the property registry</b> rather than from a list here, walking the
-/// same <see cref="InstanceReferenceTarget"/> descriptors the remap pass will walk, in the same recursive
-/// order, over the same nested payloads. A kind cannot be remapped-but-not-validated or
+/// same <see cref="InstanceReferenceTarget"/> descriptors <see cref="InstanceRemapPass"/> walks, in the same
+/// recursive order, over the same nested payloads. A kind cannot be remapped-but-not-validated or
 /// validated-but-not-remapped, and a game kind at or above 1,024 gets drift detection by declaring its
 /// shape and nothing else. Check 8 stays hand written, because a tier ordinal is not a content id: it is a
 /// key INTO the row check 7 already resolved.

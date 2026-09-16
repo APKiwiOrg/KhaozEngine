@@ -10614,6 +10614,49 @@ placement throws like `SpawnActor`'s, the server's clock despawns expired drops 
 (`OnGroundItemExpired`), and drops are `Transient`: a cell capture never persists them. `TicksFor` in
 the snippet is illustrative, compute your TTL from your own tick seconds.
 
+#### An item INSTANCE on a drop (`TileGroundItemInstance`, 18.51.0)
+
+A game whose items are individuals rather than quantities drops one through the six-argument overload, and
+the four-argument call above delegates to it with no instance, so nothing that already compiles changes. The
+identity and the bytes ride a SIBLING component seated only when the instance id is non-zero, so the drop a
+kill usually leaves behind carries no component and costs nothing on the wire.
+
+```csharp
+// Server, dropping an owned item. `held` is the ItemSlot leaving the player's container. The payload is
+// the PUBLIC view rather than the stored bytes: a ground item has no owner viewer at all, so an
+// owner-only kind (6 BoundTo, 4 charges, 5 durability) is stripped before the component is written and a
+// passer-by cannot read who a dropped item is bound to.
+byte[] view = new byte[held.Payload.Length];
+int viewBytes = ItemInstanceVisibility.PublicView(
+    properties, held.Payload.Span, PropertyVisibility.Everyone,
+    identified: true, revealedMask: 0UL, view);
+
+long drop = server.SpawnGroundItem(
+    deathTile,
+    itemId: held.Stack.ItemId,
+    count: held.Stack.Count,
+    ttlTicks: 200,
+    instanceId: held.Stack.InstanceId,
+    payload: view.AsSpan(0, viewBytes));
+
+// Server, in the game's TAKE handler: read BOTH halves, then despawn, then move.
+if (server.TryGetGroundItem(netId, out TileGroundItem item)
+    && server.TryGetGroundItemInstance(netId, out TileGroundItemInstance instance)
+    && server.DespawnGroundItem(netId))
+    inventory.Seat(item.ItemId, item.Count, instance.InstanceId, instance.Payload);
+```
+
+Both halves are opaque. The engine never decodes the payload, has no way to, and never mints an instance id
+of its own, so the same id and the same bytes come out of a claim as went into the drop, whoever is claiming,
+and a drop-and-claim cycle cannot launder an item into a fresh one. Three refusals are the codec's:
+`TileProtocol.MaxInstancePayloadBytes` is 512 and both the spawn and the encoder throw above it, a payload
+with instance id 0 throws because the bytes would go nowhere, and the READER is total, so a declared length
+past the component's own framed payload arrives as an instance with an empty payload rather than as a dropped
+session. `TryGetGroundItemInstance` answers false for every drop spawned through the four-argument overload,
+and clients read the component off `client.World` for the entity `client.View.Entities` holds under the
+drop's net id, because there is no collector beside `CollectGroundItems` for it yet
+(https://github.com/APKiwiOrg/KhaozEngine/issues/926).
+
 ### Object states, and drawing them (a chopped tree, 18.14.0)
 
 A world document's objects are static, so before 18.14.0 a server could not tell a client that a placed
@@ -14131,15 +14174,212 @@ bytes. Checks 12 and 13 are tolerated policy findings that leave the record vali
 alert. `KhaozEngine.ItemInstances/README.md` is the type-by-type reference, including the thirteen checks in
 full, the `KECQ` layout, the durable reason ordinals and the kind bands.
 
-**What is NOT here yet.** Phase 1 settles every byte format, every id space, every ordering rule and the
-stacking test, which are the expensive things to change once data exists, and it deliberately ships no
-breadth. Paging (`PagedItemContainer`, `ItemContainerPage`), the registry-derived remap pass that produces
-the `Remapped` outcome, the journal commit path (`ContainerCommitBuilder`) and the wire (the fragmenter, the
-ground component, the page delta, the owner remainder and a real `PublicView`, which is a stub here that
-returns the whole payload) are all
-`docs/superpowers/plans/2026-09-15-item-instances-phase2-3.md`. The affix content types and the item
-generator are spec 20 phase 4, and the crafting framework and the content stat evaluator are phase 5, both in
-`docs/design/ITEM-INSTANCES-DESIGN-2026-09-15.md`.
+### A container held as pages, and loading one back (18.51.0)
+
+`ItemContainer` conflates two numbers, and `PagedItemContainer` splits them. SLOT SPACE is the page geometry,
+fixed at construction at `PageCount * ContainerPageSlots`, an ADDRESS space that never shrinks. CAPACITY is a
+separate mutable integer, the occupied-slot gate a grant may not push past, consulted by `Add` and by nothing
+else. Every page declares the FULL geometry, so a 30 slot bag is ONE page whose capacity is 30, slot 743 is
+page 7 slot 43 for every container in the fleet, and growing that bag to 40 slots is a capacity edit rather
+than a re-paging of stored bytes.
+
+The page is what a journal commit rewrites one of. `ItemContainerPage` holds its decoded slots, its content
+version stamp and its dirty flag, and exactly TWO things dirty it: an operation that CHANGED a slot and a
+remap that changed an id. Reading never does, seating a decoded page never does, and a write that leaves the
+slot holding what it already held never does.
+
+`ContainerLoad.Load` in `KhaozEngine.ItemInstances.Journal` is the read half. It is a `Server` package
+because composing a `JournalCommit` needs `KhaozEngine.WorldStore`, so a client build keeps the record and
+none of this.
+
+```csharp
+using KhaozEngine.ItemInstances;
+using KhaozEngine.ItemInstances.Journal;   // the Server half: section names, the load path, the commit builder
+
+var bankPages = new PagedItemContainer(
+    pageCount: 10,
+    capacity: 1000,
+    stackable: Stackable,
+    payloadCanonical: ItemInstancePayload.IsCanonical,
+    quarantineWellFormed: QuarantineWrapper.Verify);
+
+int entered = bankPages.Add(potionId, 40);   // the gate is asked BEFORE the address space is searched
+bankPages.Capacity = 800;                    // LEGAL below occupancy: nothing is trimmed, new slots are refused
+
+// Built ONCE per container. It is where the remap rule set pays its quadratic idempotence check, once
+// for the whole container rather than once per page, and a set the publish validator should have
+// refused is rejected here before a single page is decoded.
+var context = new ContainerLoadContext(
+    streamKey: persistenceKey,
+    container: "bank",
+    properties: properties,
+    types: types,
+    rules: rules,
+    stackable: Stackable,
+    logger: logs.GetLogger(InstanceValidationTelemetry.LogCategory),
+    counter: (contentTypeId, reason) => metrics.Increment(
+        InstanceValidationTelemetry.QuarantinedRecordsCounter, contentTypeId, reason));
+
+// ONE pass over the whole projection read: decode, check each page against the SECTION it arrived in,
+// apply every remap rule newer than the page stamp, unwrap and re-offer every quarantined entry at the
+// WRAPPER's own stamp, then validate the live entries. No store read and no ambient static inside it.
+ContainerLoadResult loaded = ContainerLoad.Load(read.Sections, content, context);
+
+foreach (ContainerLoadFinding finding in loaded.Findings)
+{
+    // The section name an operator greps for, the slot (or ContainerLoadFinding.NoSlot for a whole
+    // page), a reason token and the version the record stands at.
+    Report(finding.Kind, finding.SectionName, finding.Slot, finding.Reason, finding.StampedVersion);
+}
+
+IReadOnlyList<ItemContainerPage> owed = loaded.Dirty;   // rides the NEXT commit and never causes one
+```
+
+Rules run BEFORE the validator, which is what gives a drift finding its meaning: an `unknown-definition` or
+`unknown-content-reference` finding means no rule covered it. `InstanceRemapPass.Apply` is the pass itself, in
+`KhaozEngine.ItemInstances`, derived from the property registry rather than from a list of kinds, so a game
+kind at or above 1,024 is remapped by declaring its field shape and its reference targets and nothing else. It
+re-encodes rather than patching bytes, because a replacement id can change a varint's width, and it never
+writes the page: the rewrite is lazy and joins whatever commit comes next, which is safe because the rule set
+is required to be idempotent and `VettedRemapRules.Vet` refuses one that is not.
+
+### A tick of operations as one commit (18.51.0)
+
+`ContainerCommitBuilder` applies N logical operations to an in-memory working copy and emits ONE
+`JournalCommit`: one operation identity, one event per operation in order, one projection write per page the
+containers report dirty, and one result. **The audit trail is not collapsed, only the projection is**, so
+twenty crafts in one held action are twenty `item-crafted` events and one page write.
+
+```csharp
+var batch = ContainerCommitBuilder.Open(
+    streamKey: persistenceKey,
+    actionKind: ItemInstanceEvents.CraftActionKind,
+    scope: session.Scope,
+    containers: new Dictionary<string, PagedItemContainer> { ["bank"] = bankPages },
+    tick: server.TickCount);
+
+ContainerOperation take = ContainerOperation
+    .Take("bank", slot: 4, count: 1, instanceId: heldInstanceId)
+    .FromClient(clientOperationId);
+
+if (!batch.Apply(take))
+{
+    // The window closed, nothing was applied, and this operation belongs to the NEXT batch. Which of
+    // the five closers fired is batch.Window.CloseReason, and the FIRST one recorded wins.
+    NextBatchFor(take, batch.Window.CloseReason);
+}
+
+JournalCommit commit = batch.Close(Guid.NewGuid);
+JournalSubmission submission = executor.Submit(commit);
+// ... and ONLY once it has landed. A commit that failed terminally leaves the pages owing the next
+// commit a rewrite on purpose, which is the state a consumer's resync agrees with.
+batch.MarkCommitted();
+```
+
+The window is ONE SERVER TICK and closes on the first of five things: the tick moved (`TickBoundary`), an
+operation named a container this batch was not opened over (`SecondStream`), an operation moves value between
+accounts (`PresentAtCommit`), a client originated operation arrived (`ClientOperation`, because
+`ResolveOperationAsync` is keyed on one id), or a journal limit would be exceeded (`LimitReached`). Those five
+are reasons an operation was REFUSED. `Close` records `Closed`, its own reason, so a batch you closed and took
+a commit from does not read afterwards as one the clock took away from you.
+
+Whose identity it is decides what the normalized intent holds. A SERVER minted batch hashes the canonical
+ordered operation list. A CLIENT headed batch hashes the client operation's own encoding ALONE, under the
+client's own id, and the server work riding behind it contributes no intent bytes. That is what makes a
+resubmit after a reconnect, which omits server work the client never saw, hash identically and resolve
+replayed rather than conflicting, and a conflict there would tell a player a committed withdraw had failed.
+
+### What one viewer may see, and the one frame delta (18.51.0)
+
+`ItemInstanceVisibility` is the ONE function answering whether a viewer may see a field, and both the
+replication filter and the tooltip builder go through it. A tooltip that computed its own answer is how a
+client eventually renders something the server never sent.
+
+```csharp
+// The public view of one item, into the caller's span. A view is never longer than what it filters, so a
+// destination as long as the payload always suffices, and a short one answers -1 with nothing written.
+ItemContainerPage page = bankPages.PageForSlot(12);
+ItemSlot held = bankPages.SlotAt(12);
+byte[] view = new byte[held.Payload.Length];
+int viewBytes = ItemInstanceVisibility.PublicView(
+    properties, held.Payload.Span, PropertyVisibility.Everyone,
+    identified: true, revealedMask: 0UL, view);
+
+// The one frame page delta, PER VIEWER because there is one door and it projects: a caller cannot build
+// one that skipped the filter. Changes are strictly ascending by slot, and each carries the item's FULL
+// payload, because the bytes handed in are the stored ones rather than a view somebody already filtered.
+var changes = new[]
+{
+    ContainerPageChange.Emptied(slot: 4),
+    ContainerPageChange.Occupied(movedEntry, identified: true, revealedMask: 0UL),   // a PageSlotInput
+};
+
+byte[] frame = new byte[ContainerPageDelta.MaxBytes];
+int written = ContainerPageDelta.TryBuild(
+    frame,
+    properties,
+    PropertyVisibility.OwnerOnly,          // the owner of the container. Everyone for a trade or an inspect
+    containerId: BankContainerId,          // a byte, the GAME's number for it, opaque to the engine
+    pageIndex: (byte)page.PageIndex,
+    firstSlot: page.FirstSlot,
+    slotCount: page.SlotCount,
+    changes);
+
+if (written < 0)
+{
+    // It would not fit ONE frame, or a change carries a QUARANTINED entry, whose wrapper never projects.
+    // Send the WHOLE page through the fragmenter, never a second delta: two deltas for one page would have
+    // to be applied in order by a client that may have missed the first.
+    var entries = new PageSlotInput[page.EntryCount];
+    int count = page.CopyEntriesTo(entries);
+    byte[] encodedPage = ItemContainerPageCodec.Encode(
+        page.PageIndex, page.FirstSlot, page.SlotCount, page.ContentVersion, entries.AsSpan(0, count));
+
+    foreach (byte[] chunk in TileFragmentedMessage.Fragment(streamId, sequence, encodedPage))
+        server.SendGameMessageTo(slot, kind: GameKinds.PageChunk, chunk);
+}
+else
+{
+    server.SendGameMessageTo(slot, kind: GameKinds.PageDelta, frame.AsSpan(0, written));
+}
+```
+
+Both projections descend into a SOCKET. Kind 132 is visible to everyone, so a filter that kept or dropped
+whole top-level fields shipped the gem inside a socket exactly as stored, and that gem's own owner-only
+fields reached every viewer. A field whose registered shape nests is rebuilt around the projection of each
+nested payload instead, which covers a game kind that declares a nesting slot too.
+
+`OwnerRemainder` beside `PublicView` is its exact COMPLEMENT at `Everyone`, which is what a targeted
+owner-only message carries. The complement runs one level down as well: a socket's frame is public, so the
+remainder carries a copy of it only to position the owner-only fields of the gem inside, and a socket
+holding none of them leaves no frame behind. The bytes are the engine's, beside the projection they complement, and the
+message KIND stays the game's, because `TileProtocol` reserves the `ushort` kind space to the game and the
+engine only caps the frame. Two things fail CLOSED and both are deliberate: a viewer level of `ServerOnly`
+sees nothing, and an UNREGISTERED kind is visible to nobody, because a kind this process cannot classify may
+well be `ServerOnly` in the build that wrote it. That is about a PROJECTION only, and an unknown kind is
+still kept verbatim in storage.
+
+`ContainerPageSyncRequest` is the other half and the ONE new client-to-server message: two bytes,
+`[ContainerId][PageIndex]`, with no field a payload could ride in. A client REFUSES a delta for a page it has
+not fully received and sends this instead, and on the last chunk of a fragmented page the assembled bytes go
+through the SAME decoder the server encoded with. **Rate limit it at one page per client per tick**, which is
+a server rule rather than engine code, because a server that serves every request it receives has handed an
+unauthenticated peer an amplifier of two bytes in and about 7 KB out.
+
+**What is NOT here yet.** What is settled is every byte format, every id space, every ordering rule, the
+stacking test, the paging shape and the projection every replicated byte passes through, which are the
+expensive things to change once data exists. What is absent is breadth, which is content: the affix content
+types and the item generator are spec 20 phase 4, and the crafting framework and the content stat evaluator
+are phase 5, both in `docs/design/ITEM-INSTANCES-DESIGN-2026-09-15.md`. `ContainerOperationKind.Craft`
+already carries the operation and its page write, and the event BODY is the crafting framework's to encode.
+
+Four named gaps sit on surfaces that DO exist. The page delta ships an encoder and no reader, while the
+fragmenter ships both halves (https://github.com/APKiwiOrg/KhaozEngine/issues/933). A full page send carries
+the STORED bytes rather than a per-viewer projection, so it and the delta disagree about what a non-owner
+sees (https://github.com/APKiwiOrg/KhaozEngine/issues/932). A lowered `max_stack` is not enforced on the
+merge path, which saturates at `int.MaxValue` and is reported after the fact by validator check 12
+(https://github.com/APKiwiOrg/KhaozEngine/issues/924). And a container operation's events are written with
+nothing able to read one back (https://github.com/APKiwiOrg/KhaozEngine/issues/941).
 
 ---
 

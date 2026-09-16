@@ -124,6 +124,13 @@ public sealed class ContentFetchLoop
     /// <param name="version">The version the door named, number and manifest hash.</param>
     /// <param name="cancellationToken">Cancels the fetch.</param>
     /// <exception cref="ArgumentException"><paramref name="version"/> carries no manifest hash.</exception>
+    /// <exception cref="OperationCanceledException">
+    /// The token was cancelled. It is the ONE throwing exit here, on a surface whose every other failure is
+    /// an outcome and a reason token, because a cancellation is the CALLER's own decision rather than
+    /// something the fetch found out. Nothing is left half done by it: a chunk is written to a temporary
+    /// name and moved, so the cache holds exactly the chunks that completed and no partial file, and
+    /// calling again recomputes the missing set against what survived.
+    /// </exception>
     public async Task<ContentFetchResult> FetchAsync(
         ContentVersionIdentity version,
         CancellationToken cancellationToken = default)

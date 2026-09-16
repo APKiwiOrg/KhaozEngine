@@ -406,6 +406,10 @@ else
   before the digest could be compared has no digest to compare. The manifest is refetched once too, and a
   second mismatch STOPS the client, because it cannot tell a bad CDN from a bad configuration and guessing
   is worse than stopping.
+- **Cancelling the token THROWS**, the one throwing exit on a surface whose every other failure is an
+  outcome and a reason token, because a cancellation is the caller's own decision rather than something the
+  fetch found out. It leaves nothing half done: the cache holds exactly the chunks that completed, a chunk
+  interrupted mid write leaves no partial file behind, and the next call picks up from what survived.
 - **There is no resume state beyond the cache.** An interrupted fetch leaves verified chunks in the cache
   and the next call recomputes `missing` against it, so a server whose version moved mid fetch needs no
   special casing: the client finishes, is refused again with the new hash, and downloads the manifest plus

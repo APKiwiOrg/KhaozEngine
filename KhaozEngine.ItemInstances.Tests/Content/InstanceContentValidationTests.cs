@@ -575,6 +575,50 @@ public class InstanceContentValidationTests
     }
 
     [Fact]
+    public void A_duplicate_parent_and_tag_pair_on_any_of_the_three_weight_types_is_KEC0117()
+    {
+        ContentTypeRegistry registry = Registry();
+        ContentSnapshot candidate = Snapshot(
+            registry,
+            Tag(registry, 5, "metal"),
+            Mod(registry, 1, "sharp"),
+            ModTier(registry, 1, "sharp_t1", modId: 1, ordinal: 1),
+            ModTierWeight(registry, 1, "sharp_t1_metal", tierId: 1, tagId: 5, weight: 100),
+            ModTierWeight(registry, 2, "sharp_t1_metal_again", tierId: 1, tagId: 5, weight: 900),
+            RarityRule(registry, 1, "rare"),
+            RarityWeight(registry, 1, "rare_metal", rarityId: 1, tagId: 5, weight: 500),
+            RarityWeight(registry, 2, "rare_metal_again", rarityId: 1, tagId: 5, weight: 700),
+            RareNameWord(registry, 1, "gloom"),
+            RareNameWordWeight(registry, 1, "gloom_metal", wordId: 1, tagId: 5, weight: 400),
+            RareNameWordWeight(registry, 2, "gloom_metal_again", wordId: 1, tagId: 5, weight: 600));
+
+        List<ContentFinding> findings = Band(candidate);
+
+        // The SECOND row of a pair is neither summed into the first nor an alternative to it: the table
+        // build records it as a repeat the overlap suppresses and the fold keeps the first row, so 900 of
+        // authored weight simply does not exist. That is silent in both halves, which is why it is a
+        // publish finding, and the finding names the SECOND row because the first is the one that survives.
+        var types = new List<ushort>();
+        var ids = new List<int>();
+        foreach (ContentFinding finding in findings)
+        {
+            Assert.Equal(InstanceContentFindings.WeightRowRepeated, finding.Code);
+            types.Add(finding.Type.Value);
+            ids.Add(finding.Id);
+        }
+
+        Assert.Equal(
+            new ushort[]
+            {
+                InstanceContentTypeIds.ModTierWeightTypeId,
+                InstanceContentTypeIds.RarityWeightTypeId,
+                InstanceContentTypeIds.RareNameWordWeightTypeId,
+            },
+            types);
+        Assert.Equal(new[] { 2, 2, 2 }, ids);
+    }
+
+    [Fact]
     public void The_three_publish_only_checks_are_SKIPPED_when_previous_is_null_and_named_by_KEC0000()
     {
         ContentTypeRegistry registry = Registry();
@@ -677,7 +721,7 @@ public class InstanceContentValidationTests
             {
                 "KEC0100", "KEC0101", "KEC0102", "KEC0103", "KEC0104", "KEC0105", "KEC0106",
                 "KEC0107", "KEC0108", "KEC0109", "KEC0110", "KEC0111", "KEC0112", "KEC0113",
-                "KEC0114", "KEC0115", "KEC0116",
+                "KEC0114", "KEC0115", "KEC0116", "KEC0117",
             },
             InstanceContentFindings.All);
     }

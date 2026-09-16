@@ -134,6 +134,19 @@ public static class InstanceContentFindings
     public const string RarityKindClaimed = "KEC0116";
 
     /// <summary>
+    /// Two rows of one weight type carrying the same (parent, tag) pair: two <c>mod_tier_weight</c> rows on
+    /// one tier and one tag, two <c>rarity_weight</c> rows on one rarity rule and one tag, or two
+    /// <c>rare_name_word_weight</c> rows on one word and one tag.
+    /// <para>
+    /// The second row is neither summed into the first nor an alternative to it. The candidate tables record
+    /// it as a key already spent and suppress it, and the per signature weight folds keep the FIRST row, so
+    /// the whole of the second row's weight silently does not exist. An author reading two rows and one
+    /// combined weight is reading something no draw will ever see.
+    /// </para>
+    /// </summary>
+    public const string WeightRowRepeated = "KEC0117";
+
+    /// <summary>
     /// Every code this band emits, ascending, pinned rather than generated. It is an
     /// <see cref="ImmutableArray{T}"/> rather than an array, because a public static array hands every
     /// caller a writable copy of the one list a counter and a runbook key on.
@@ -157,6 +170,7 @@ public static class InstanceContentFindings
         GenerationTagPositions,
         UniqueSocketSort,
         RarityKindClaimed,
+        WeightRowRepeated,
     ];
 
     internal static string ParentMissing(string childType, int childId, string field, string parentType, long parentId)
@@ -278,4 +292,8 @@ public static class InstanceContentFindings
     internal static string WeightOverflow(string typeKey, long tagId, long sum)
         => FormattableString.Invariant(
             $"The '{typeKey}' rows keyed by tag {tagId} sum to {sum}, past the int ceiling of {int.MaxValue}. The cumulative total saturates at load, which silently changes every probability in that bucket.");
+
+    internal static string WeightRepeat(string typeKey, int rowId, long parentId, long tagId, int firstRowId)
+        => FormattableString.Invariant(
+            $"Row {rowId} of type '{typeKey}' repeats the (parent {parentId}, tag {tagId}) pair row {firstRowId} already carries. The second row is suppressed rather than summed, so its whole weight does not exist at any draw.");
 }

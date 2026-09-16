@@ -186,6 +186,80 @@ public class ModCandidateTablesTests
     }
 
     [Fact]
+    public void Two_weight_rows_of_one_tier_and_one_tag_are_ONE_candidate_at_the_FIRST_rows_weight()
+    {
+        ContentTypeRegistry registry = Registry();
+        ContentSnapshot candidate = Snapshot(
+            registry,
+            Tag(registry, 5, "metal"),
+            Item(registry, 40, "greatsword", [5]),
+            Mod(registry, 1, "sharp"),
+            ModTier(registry, 1, "sharp_t1", modId: 1, ordinal: 1),
+            ModTier(registry, 2, "sharp_t2", modId: 1, ordinal: 2),
+            ModTierWeight(registry, 1, "sharp_t1_metal", tierId: 1, tagId: 5, weight: 100),
+            ModTierWeight(registry, 2, "sharp_t1_metal_again", tierId: 1, tagId: 5, weight: 900),
+            ModTierWeight(registry, 3, "sharp_t2_metal", tierId: 2, tagId: 5, weight: 200));
+
+        ModCandidateTables tables = ModCandidateTables.Build(candidate);
+        int prefix = KindPosition(tables, ModContentType.PrefixKind);
+        int greatsword = SignatureOf(tables, 40);
+
+        // Three ROWS make three entries, because the build never merges by key, and the two that share a
+        // key sit adjacent because the bucket is ascending by packed key. The overlap then treats the
+        // second as a repeat of a key already spent, exactly as it treats a later TAG repeating an earlier
+        // tag's entry, and 900 of authored weight is suppressed rather than summed.
+        Assert.Equal(3, tables.BucketLength(tables.BucketOf(5, prefix, 0)));
+        Assert.Equal(1_200, tables.BucketTotal(tables.BucketOf(5, prefix, 0)));
+        Assert.Equal(2L, tables.LiveCount(greatsword, prefix, 0));
+        Assert.Equal(300L, tables.LiveWeight(greatsword, prefix, 0));
+
+        int header = tables.HeaderOf(greatsword, prefix, 0, 0);
+        Assert.Equal(1, tables.SuppressedCountAt(header));
+        Assert.Equal(900, tables.SuppressedWeightAt(header));
+        Assert.Equal(new ushort[] { 1 }, tables.SuppressedIndexesAt(header).ToArray());
+
+        // The build is self consistent about it, which is what makes this a behaviour to pin rather than a
+        // defect to fix HERE: the tables agree with themselves and the publish is what refuses the rows.
+        // KEC0117 is that refusal.
+        Assert.Equal(0, tables.ConsistencyFailures);
+    }
+
+    [Fact]
+    public void A_base_listing_ONE_TAG_TWICE_keeps_both_positions_with_the_repeat_suppressed()
+    {
+        ContentTypeRegistry registry = Registry();
+        ContentSnapshot candidate = Snapshot(
+            registry,
+            Tag(registry, 5, "metal"),
+            Item(registry, 40, "greatsword", [5, 5]),
+            Item(registry, 41, "dagger", [5]),
+            Mod(registry, 1, "sharp"),
+            ModTier(registry, 1, "sharp_t1", modId: 1, ordinal: 1),
+            ModTier(registry, 2, "sharp_t2", modId: 1, ordinal: 2),
+            ModTierWeight(registry, 1, "sharp_t1_metal", tierId: 1, tagId: 5, weight: 100),
+            ModTierWeight(registry, 2, "sharp_t2_metal", tierId: 2, tagId: 5, weight: 200));
+
+        ModCandidateTables tables = ModCandidateTables.Build(candidate);
+        int prefix = KindPosition(tables, ModContentType.PrefixKind);
+        int twice = SignatureOf(tables, 40);
+        int once = SignatureOf(tables, 41);
+
+        // A repeated tag is an authoring mistake nothing refuses, and what matters is that it costs the
+        // roll NOTHING: the second position's entries are all keys the first already spent, so the whole
+        // position is suppressed and the base rolls exactly as the base that listed the tag once does.
+        Assert.Equal(tables.LiveWeight(once, prefix, 0), tables.LiveWeight(twice, prefix, 0));
+        Assert.Equal(tables.LiveCount(once, prefix, 0), tables.LiveCount(twice, prefix, 0));
+        Assert.Equal(300L, tables.LiveWeight(twice, prefix, 0));
+        Assert.Equal(2L, tables.LiveCount(twice, prefix, 0));
+
+        // The second position is where the whole bucket went, rather than the first losing anything.
+        Assert.Equal(0, tables.SuppressedCountAt(tables.HeaderOf(twice, prefix, 0, 0)));
+        Assert.Equal(2, tables.SuppressedCountAt(tables.HeaderOf(twice, prefix, 0, 1)));
+        Assert.Equal(300, tables.SuppressedWeightAt(tables.HeaderOf(twice, prefix, 0, 1)));
+        Assert.Equal(0, tables.ConsistencyFailures);
+    }
+
+    [Fact]
     public void The_suppression_scalars_reproduce_the_merged_count_and_weight_on_every_key()
     {
         ModCandidateTables tables = BuildWorld();

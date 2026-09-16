@@ -75,6 +75,10 @@ its own localized string, never display text, so `ContentRefusal.TryParseMismatc
 `TryParseClientTooOld` are the client's half and the strings themselves never move.
 
 - A client presenting no layer, or one that does not parse, is refused with EMPTY client fields.
+- **Both halves check both hashes.** `Mismatch` refuses to write a token whose server or client hash is not
+  a content address, and `TryParseMismatch` answers false for one, empty included. A refusal is the whole
+  input to the fetch loop, so a server hash that is not a content address is a path fragment reaching a
+  client's fetch and an empty one is a fetch with nothing to name.
 - A client that STATES a build below the version's `MinimumClientBuild` is told to update instead, ahead of
   the identity check, because a mismatch it cannot clear by refetching is the wrong thing to show a player.
   A client that states no build is judged on its content identity alone: the client half of the build check

@@ -66,8 +66,9 @@ public static partial class CraftPrimitives
     }
 
     /// <summary>
-    /// Primitive 7. Moves an item INTO a socket, keeping its instance id. The three refusals are the socket
-    /// type's, in the order spec 8.7 fixes: the tag rules, then the nested budget, then the one level limit.
+    /// Primitive 7. Moves an item INTO a socket, keeping its instance id. The three refusals come in the
+    /// order spec 8.7 fixes: the tag rules here, then the nested budget and the one level limit at the
+    /// working copy's socket write door, which is where a game operation meets them too.
     /// </summary>
     /// <param name="copy">The craft in progress.</param>
     /// <param name="socketIndex">Which socket, in authored order.</param>
@@ -111,16 +112,9 @@ public static partial class CraftPrimitives
             return rejected;
         }
 
-        if (Fits(in copy, socketTypeId, containedPayload) is CraftRefusal oversized)
-        {
-            return oversized;
-        }
-
-        if (Nests(in copy, containedPayload) is CraftRefusal nested)
-        {
-            return nested;
-        }
-
+        // The nested budget and the one level limit are the WRITE DOOR's, in that order, because a game
+        // operation seats its own socket list and would otherwise get neither. This primitive keeps only the
+        // tag rules, which are about the item being moved rather than about its bytes.
         sockets[socketIndex] = sockets[socketIndex] with
         {
             ContainedDefinitionId = containedDefinitionId,
@@ -232,54 +226,5 @@ public static partial class CraftPrimitives
         return accepted
             ? null
             : copy.Refuse(new CraftRefusal(CraftRefusalKind.SocketTagRejected, socketTypeId));
-    }
-
-    /// <summary>
-    /// The socket type's own nested budget. A <c>max_nested_bytes</c> of 0 MEANS the whole payload budget
-    /// and never no nesting at all, which is what turns spec 3.5's per socket arithmetic into a publish time
-    /// fact and a refusal at the moment of socketing rather than a throw at the moment of encoding.
-    /// </summary>
-    static CraftRefusal? Fits(in CraftWorkingCopy copy, int socketTypeId, scoped ReadOnlySpan<byte> containedPayload)
-    {
-        int budget = ItemInstancePayload.MaxInstancePayloadBytes;
-        if (socketTypeId > 0
-            && copy.Snapshot.TryGetRow(new ContentTypeId(InstanceContentTypeIds.SocketTypeTypeId), socketTypeId, out ContentRow? type))
-        {
-            long authored = InstanceContentChecks.Number(type, SocketTypeContentType.MaxNestedBytesIndex) ?? 0;
-            if (authored != SocketTypeContentType.FullPayloadBudget)
-            {
-                budget = (int)Math.Clamp(authored, 0, ItemInstancePayload.MaxInstancePayloadBytes);
-            }
-        }
-
-        return containedPayload.Length <= budget
-            ? null
-            : copy.Refuse(new CraftRefusal(CraftRefusalKind.NestedPayloadTooLong, budget));
-    }
-
-    /// <summary>
-    /// The one level limit of contracts 9.5, asked of the payload about to go IN. It is derived from the
-    /// registered shape rather than from kind 132, so a game kind that nests gets the same limit, and it is
-    /// structural rather than a convention because recursion is the one way a 45 byte payload becomes a
-    /// denial of service.
-    /// </summary>
-    static CraftRefusal? Nests(in CraftWorkingCopy copy, scoped ReadOnlySpan<byte> containedPayload)
-    {
-        Span<PayloadField> fields = stackalloc PayloadField[ItemInstancePayload.MaxFields];
-        if (!ItemInstancePayload.TryDecode(copy.Registry, containedPayload, fields, out int count, out _))
-        {
-            return copy.Refuse(new CraftRefusal(CraftRefusalKind.PayloadMalformed, 0));
-        }
-
-        for (int index = 0; index < count; index++)
-        {
-            if (copy.Registry.TryGet(fields[index].Kind, out InstancePropertyRegistration? registration)
-                && registration.Shape.Nests)
-            {
-                return copy.Refuse(new CraftRefusal(CraftRefusalKind.NestedPayloadNests, fields[index].Kind));
-            }
-        }
-
-        return null;
     }
 }

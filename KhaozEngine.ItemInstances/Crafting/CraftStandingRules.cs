@@ -30,9 +30,15 @@ namespace KhaozEngine.ItemInstances;
 /// outright and for a game operation writing its own list.
 /// </para>
 /// <para>
-/// Rules 2 and 3 share one door, <see cref="CheckAffixWrite"/>, because they are two readings of the same
-/// comparison: what the incoming list says about an entry the item already has, and what it says about one
-/// it does not.
+/// Rules 2 and 3 share one door, <see cref="CheckAffixWrite(ref CraftWorkingCopy, ushort, ReadOnlySpan{InstanceAffix})"/>,
+/// because they are two readings of the same comparison: what the incoming list says about an entry the item
+/// already has, and what it says about one it does not.
+/// </para>
+/// <para>
+/// <b>Rule 2 reaches INSIDE a socket.</b> A socketed item's nested payload carries its own kind 131 and kind
+/// 133 lists, and a game operation rebuilding that payload is writing those entries as surely as a primitive
+/// writing the outer ones. The socket write door runs the same comparison over both lists against the nested
+/// payload the slot already held, which is why the overload taking two lists exists.
 /// </para>
 /// </summary>
 public static class CraftStandingRules
@@ -101,6 +107,24 @@ public static class CraftStandingRules
     {
         Span<InstanceAffix> current = stackalloc InstanceAffix[CraftWorkingCopy.MaxAffixes];
         int held = copy.ReadAffixes(kind, current);
+        return CheckAffixWrite(ref copy, incoming, current[..held]);
+    }
+
+    /// <summary>
+    /// The same comparison against a list the caller read for itself, which is what a NESTED payload needs:
+    /// the entries inside a socket belong to the contained item rather than to the one being crafted, so
+    /// there is no kind on this copy to read them off.
+    /// </summary>
+    /// <param name="copy">The craft in progress, which is what records the refusal and what answers whether
+    /// a mod row is legacy at this content version.</param>
+    /// <param name="incoming">The list the craft wants to write.</param>
+    /// <param name="held">The list currently stored in the same place.</param>
+    /// <returns>The refusal, or null when the write is allowed.</returns>
+    public static CraftRefusal? CheckAffixWrite(
+        ref CraftWorkingCopy copy,
+        scoped ReadOnlySpan<InstanceAffix> incoming,
+        scoped ReadOnlySpan<InstanceAffix> held)
+    {
         foreach (InstanceAffix entry in incoming)
         {
             if (!IsFrozen(in copy, entry.ModId))
@@ -109,9 +133,9 @@ public static class CraftStandingRules
             }
 
             int seat = -1;
-            for (int index = 0; index < held; index++)
+            for (int index = 0; index < held.Length; index++)
             {
-                if (current[index].ModId == entry.ModId)
+                if (held[index].ModId == entry.ModId)
                 {
                     seat = index;
                     break;
@@ -123,7 +147,7 @@ public static class CraftStandingRules
                 return copy.Refuse(CraftGuardEvaluator.Failure(CraftGuardKind.NotLegacy));
             }
 
-            if (current[seat] != entry)
+            if (held[seat] != entry)
             {
                 return copy.Refuse(new CraftRefusal(CraftRefusalKind.LegacyEntryFrozen, entry.ModId));
             }

@@ -468,6 +468,14 @@ public ref struct CraftWorkingCopy
     /// <summary>
     /// Writes kind 132 in AUTHORED order, which is never sorted. An empty list removes the field, for the
     /// same reason an empty affix list does.
+    /// <para>
+    /// <b>This is the door every nested payload passes through</b>, including the one a game operation built
+    /// itself: <see cref="CraftSocketRules"/> reads each incoming nested payload with the REGISTRY bound
+    /// decoder, holds it to contracts 9.5's one level limit and to the socket type's own
+    /// <c>max_nested_bytes</c>, and runs standing rule 2 over the entries inside it. The structural
+    /// <c>IsCanonical</c> that used to stand here never recursed and never read a body, so all three were
+    /// enforced by <c>CraftPrimitives.Socket</c> alone.
+    /// </para>
     /// </summary>
     /// <param name="sockets">The sockets, in the order the item carries them.</param>
     /// <returns>Whether the craft is still fine.</returns>
@@ -482,12 +490,16 @@ public ref struct CraftWorkingCopy
         {
             if (socket.SocketTypeId < 0 || socket.ContainedDefinitionId < 0
                 || (socket.ContainedDefinitionId == 0
-                    && (socket.ContainedInstanceId != 0 || !socket.Nested.IsEmpty))
-                || (!socket.Nested.IsEmpty && !ItemInstancePayload.IsCanonical(socket.Nested)))
+                    && (socket.ContainedInstanceId != 0 || !socket.Nested.IsEmpty)))
             {
                 _ = Refuse(new CraftRefusal(CraftRefusalKind.ValueOutOfRange, socket.ContainedDefinitionId));
                 return false;
             }
+        }
+
+        if (CraftSocketRules.CheckNested(ref this, sockets) is not null)
+        {
+            return false;
         }
 
         if (sockets.Length == 0)

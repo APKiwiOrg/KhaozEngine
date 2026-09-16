@@ -20,8 +20,12 @@ namespace KhaozEngine.Catalog;
 /// </para>
 /// <para>
 /// <b>A partial download never becomes a partial catalog.</b> There is no member here that hands back a
-/// snapshot, a runtime or a reader, and the client does not reconnect until every chunk in the manifest
-/// verifies. That is what makes the door comparison a hash equality rather than a negotiation.
+/// snapshot, a runtime or a reader, and the client does not reconnect until it HOLDS every chunk the
+/// manifest names. Every chunk this fetch DOWNLOADED verified on the way in, and a chunk the cache already
+/// held is verified on first USE through the same store pair, which is where a cached chunk gone bad on
+/// disk is caught, evicted and refetched (spec 8.8 row 4, spec 11 row 7). Step 4 asks the cache whether it
+/// has the hash and nothing more, on purpose: rereading the whole cache on every cold start would pay the
+/// decompression of every chunk to catch a fault the first read catches anyway.
 /// </para>
 /// <para>
 /// <b>The base address comes from CONFIGURATION, never from the refusal.</b> A URL in a refusal token is a

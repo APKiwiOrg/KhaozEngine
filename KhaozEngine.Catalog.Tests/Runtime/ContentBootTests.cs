@@ -141,6 +141,20 @@ public class ContentBootTests
         Assert.Equal(6, result.Step);
         Assert.Equal("content: chunk " + hash + " chunk-fetch-failed.", host.Line);
         Assert.False(pack.Holder.IsLoaded);
+
+        // The other half of the row: the object is there and is not the one the manifest named. Verify comes
+        // before decode always, because the content address is the entire integrity chain and a reader that
+        // decoded first would already have acted on bytes nothing signed.
+        using BootPack swapped = await BootPack.CreateAsync();
+        swapped.WriteUnverified(swapped.Chunks[0].Hash, swapped.Chunks[1].StoredFile.Span);
+
+        var mismatched = new BootHost();
+        ContentBootResult second = await mismatched.RunAsync(swapped.Options());
+
+        Assert.Equal(3, mismatched.ExitCode);
+        Assert.Equal(ContentBootRefusal.ChunkUnreadable, second.Refusal);
+        Assert.Equal(6, second.Step);
+        Assert.Equal("content: chunk " + swapped.Chunks[0].Hash + " hash-mismatch.", mismatched.Line);
     }
 
     [Fact]

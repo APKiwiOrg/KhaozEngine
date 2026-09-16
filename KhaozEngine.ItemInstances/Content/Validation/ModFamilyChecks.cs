@@ -230,6 +230,15 @@ internal static class ModFamilyChecks
     /// the same refusal from two sides. A tier row whose pair of mod id and ordinal MOVED is a reorder, and
     /// a pair that was live before and is not live now needs a remap rule to land on, because a stored
     /// affix entry can still name it.
+    /// <para>
+    /// <b>The removal half is the WEAKER form and spec 8.9 check 12 says so.</b> The rule it accepts is one
+    /// keyed on the <c>mod_tier</c> ROW ID, and no read path resolves one: kind 131's entry carries the mod
+    /// id and the tier ordinal, <c>InstanceRemapPass</c> resolves its one entry reference target against the
+    /// <c>mod</c> type, and the ordinal beside it is never rewritten. So a rule satisfying this check is a
+    /// publish-time RECORD that the removal was considered, not a promise that a stored entry will be
+    /// repointed. Strengthening it would mean naming the pair the payload actually carries, which is a
+    /// rule shape the set has no kind for.
+    /// </para>
     /// </summary>
     static void CheckTierHistory(
         IContentSnapshot candidate,

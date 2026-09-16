@@ -127,7 +127,7 @@ public class UniqueFamilyTests
     }
 
     [Fact]
-    public void The_client_encode_check_omits_that_one_field_and_keeps_the_rest_of_the_row()
+    public void The_absence_convention_on_that_ServerOnly_field_keeps_every_other_byte_of_the_row()
     {
         // No field-omitting client encoder ships yet, which is why KEC0014 is the validator's named quiet
         // hook. What this pins is the SHAPE that encoder has to produce: the ServerOnly field's slot writes

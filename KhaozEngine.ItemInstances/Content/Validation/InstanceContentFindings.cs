@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Immutable;
 
 namespace KhaozEngine.ItemInstances;
 
@@ -48,9 +49,11 @@ public static class InstanceContentFindings
     public const string TierOrdinal = "KEC0102";
 
     /// <summary>
-    /// PUBLISH ONLY. A tier ordinal moved since the previous published version, or one that was live then is
-    /// gone now with no remap rule covering it. Both are a stored affix entry repointed at a range it was
-    /// never rolled in.
+    /// PUBLISH ONLY. A tier ordinal moved since the previous published version, which is a stored affix
+    /// entry repointed at a range it was never rolled in, or one that was live then is gone now with no
+    /// remap rule naming its <c>mod_tier</c> row. The second half is spec 8.9 check 12's own weaker form
+    /// and is a publish-time RECORD rather than a guarantee, because no read path resolves a rule keyed on
+    /// a <c>mod_tier</c> row id.
     /// </summary>
     public const string TierOrdinalMoved = "KEC0103";
 
@@ -130,8 +133,12 @@ public static class InstanceContentFindings
     /// </summary>
     public const string RarityKindClaimed = "KEC0116";
 
-    /// <summary>Every code this band emits, ascending, pinned rather than generated.</summary>
-    public static readonly string[] All =
+    /// <summary>
+    /// Every code this band emits, ascending, pinned rather than generated. It is an
+    /// <see cref="ImmutableArray{T}"/> rather than an array, because a public static array hands every
+    /// caller a writable copy of the one list a counter and a runbook key on.
+    /// </summary>
+    public static readonly ImmutableArray<string> All =
     [
         ParentUnresolved,
         TierItemLevelRange,
@@ -186,7 +193,7 @@ public static class InstanceContentFindings
 
     internal static string OrdinalRemoved(int tierId, long modId, long ordinal, int previousVersion)
         => FormattableString.Invariant(
-            $"Tier {tierId}, mod {modId} ordinal {ordinal}, was live at version {previousVersion} and is not live now, and no remap rule in the set names it. A stored affix entry can still carry that pair, so the removal needs a rule to land on.");
+            $"Tier {tierId}, mod {modId} ordinal {ordinal}, was live at version {previousVersion} and is not live now, and no remap rule in the set names mod_tier row {tierId}. A stored affix entry can still carry that pair. The rule this asks for is a RECORD that the removal was considered rather than a rewrite anything performs: kind 131 stores the mod id and the ordinal, and the remap pass resolves the mod id alone, against rules on the 'mod' type. Spec 8.9 check 12 calls this the weaker form itself.");
 
     internal static string StatLineCombine(int lineId, long combine)
         => FormattableString.Invariant(

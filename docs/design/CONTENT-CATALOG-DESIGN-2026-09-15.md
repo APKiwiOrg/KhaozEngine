@@ -1843,9 +1843,24 @@ The `catalog_chunk` row set carries both hashes (section 4.4) and section 6.6 co
 ### 6.8 Step 8, build both manifests
 
 Two manifests per version, the SERVER manifest over every chunk and the CLIENT manifest over the
-client-visible chunks only (contracts 7.3, 11.3). Each is built by reading the version's `catalog_chunk` rows
-and taking one side: the server manifest takes `visibility = 1` where it exists and `visibility = 0`
-otherwise, the client manifest takes `visibility = 0` and names nothing for a type that has no such row.
+client-visible chunks only (contracts 7.3, 11.3). The TYPE LIST of each is the registry's at publish time:
+every registered type is named, carrying no chunks at all when the version holds none for it, and the client
+manifest omits a `ServerOnly` TYPE outright. Each named type's CHUNKS are then read off the version's
+`catalog_chunk` rows, taking one side: the server manifest takes `visibility = 1` where it exists and
+`visibility = 0` otherwise, the client manifest takes `visibility = 0` and names no chunk for a type that has
+no such row.
+
+**The type list is the REGISTRY's rather than the chunk list's, and the paragraph above says so as a
+CORRECTION.** It read as though a type holding no chunk row were simply absent from the manifest, which
+section 9.6's step 6 row refuses in as many words: a REGISTERED type missing from the manifest fails the boot.
+Building the list out of the chunks therefore made every publisher-produced pack unbootable the moment a build
+registered a type the version authored no rows for, which is the ordinary case rather than the corner, because
+the six engine types are always registered and almost no game authors rows for all six. `base_socket` alone
+was enough. Naming the empty type is what makes that refusal mean "this pack predates the registration"
+instead of "this type had no rows", and it is why the manifest hash covers the REGISTRATION SET and moves when
+a build adds a type. 9.6 is the load-bearing half and was already right, so 6.8 moves to it.
+`ContentManifestBuilder` walks `ContentTypeRegistry.ByTypeId` for the type list and the chunk rows for the
+chunks ([#937](https://github.com/APKiwiOrg/KhaozEngine/issues/937)).
 
 Each gets its own hash under its own sub-domain, `kec/manifest/server/` and `kec/manifest/client/`, so a head
 gating on one can never accidentally agree with a head gating on the other. That last property is

@@ -5,9 +5,15 @@ using static KhaozEngine.ItemInstances.InstanceContentChecks;
 namespace KhaozEngine.ItemInstances;
 
 /// <summary>
-/// Spec 8.9 check 9, <c>KEC0109</c>, the expensive one: for every rarity that rolls a name and every base
-/// tag that rarity is reachable at, every position it rolls has at least one word of non-zero weight. That
-/// is the check that stops a publish producing an item whose name cannot be rolled.
+/// Spec 8.9 check 9, <c>KEC0109</c>, in its two clauses. First, every <c>rare_name_word</c> sits at a
+/// position the payload can hold. Second, the expensive one: for every rarity that rolls a name and every
+/// base tag that rarity is reachable at, every position it rolls has at least one word of non-zero weight.
+/// That second one is the check that stops a publish producing an item whose name cannot be rolled.
+/// <para>
+/// <b>The first clause is the one the codec cannot cover.</b> The row codec bounds the field on both sides
+/// too, and a publish validates BEFORE it encodes, so an authored 0 would sweep clean and then throw at
+/// pack time with no finding naming the row.
+/// </para>
 /// <para>
 /// <b>It is a cross product and it is written as ONE pass plus one sweep.</b> The pass builds the set of
 /// pairs of tag and position that any word of non-zero weight covers, and the sweep asks the rarities
@@ -37,7 +43,7 @@ internal static class RareNameCoverageCheck
 
     internal static void Run(IContentSnapshot candidate, ICollection<ContentFinding> findings)
     {
-        Dictionary<int, long> wordPosition = CheckWordWeightParents(candidate, findings);
+        Dictionary<int, long> wordPosition = CheckWordsAndWeightParents(candidate, findings);
 
         List<ContentRow> rarities = LiveRows(candidate, InstanceContentTypeIds.RarityRuleTypeId);
         if (rarities.Count == 0)
@@ -90,10 +96,10 @@ internal static class RareNameCoverageCheck
     }
 
     /// <summary>
-    /// <c>KEC0100</c> on each word weight's word, and the word to position map the coverage pass needs, so
-    /// the word rows are walked once.
+    /// <c>KEC0100</c> on each word weight's word, <c>KEC0109</c>'s first clause on each word's own position,
+    /// and the word to position map the coverage pass needs, so the word rows are walked once.
     /// </summary>
-    static Dictionary<int, long> CheckWordWeightParents(
+    static Dictionary<int, long> CheckWordsAndWeightParents(
         IContentSnapshot candidate,
         ICollection<ContentFinding> findings)
     {
@@ -114,7 +120,20 @@ internal static class RareNameCoverageCheck
         var positions = new Dictionary<int, long>(words.Count);
         foreach (ContentRow word in words)
         {
-            positions[word.Id] = Number(word, WordPosition) ?? 0;
+            long position = Number(word, WordPosition) ?? 0;
+            positions[word.Id] = position;
+            if (position is < RareNameWordContentType.MinPosition or > RareNameWordContentType.MaxPosition)
+            {
+                findings.Add(new ContentFinding(
+                    word.Type,
+                    word.Id,
+                    InstanceContentFindings.RareNameCoverage,
+                    InstanceContentFindings.RareNameWordPosition(
+                        word.Id,
+                        position,
+                        RareNameWordContentType.MinPosition,
+                        RareNameWordContentType.MaxPosition)));
+            }
         }
 
         return positions;

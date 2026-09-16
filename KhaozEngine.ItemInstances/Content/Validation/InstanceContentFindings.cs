@@ -79,8 +79,10 @@ public static class InstanceContentFindings
     public const string SocketTagOverlap = "KEC0108";
 
     /// <summary>
-    /// A rarity that rolls a name has a position no word of non-zero weight can fill, for a tag that rarity
-    /// is reachable at. This is the publish that would produce an item whose name cannot be rolled.
+    /// A <c>rare_name_word</c> whose <c>position</c> is outside 1 to 255, or a rarity that rolls a name and
+    /// has a position no word of non-zero weight can fill, for a tag that rarity is reachable at. Spec 8.9
+    /// check 9, both of its clauses. The second is the publish that would produce an item whose name cannot
+    /// be rolled.
     /// </summary>
     public const string RareNameCoverage = "KEC0109";
 
@@ -229,6 +231,10 @@ public static class InstanceContentFindings
     internal static string SocketOverlap(int socketTypeId, long tagId, int acceptRowId, int rejectRowId)
         => FormattableString.Invariant(
             $"Socket type {socketTypeId} both accepts tag {tagId} (row {acceptRowId}) and rejects it (row {rejectRowId}). Reject wins over accept, so the accept row is dead and the pair is an author disagreeing with themselves.");
+
+    internal static string RareNameWordPosition(int wordId, long position, int min, int max)
+        => FormattableString.Invariant(
+            $"Rare name word {wordId} sits at position {position}, outside {min} to {max}. A publish validates before it encodes anything, so a position the row codec cannot write is a finding here or a throw at pack time with nothing naming the row.");
 
     internal static string RareNameUncovered(int rarityId, int position, long tagId)
         => FormattableString.Invariant(

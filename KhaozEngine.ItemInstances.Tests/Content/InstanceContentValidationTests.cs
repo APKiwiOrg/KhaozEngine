@@ -438,6 +438,32 @@ public class InstanceContentValidationTests
     }
 
     [Fact]
+    public void A_rare_name_word_position_outside_1_to_255_is_KEC0109()
+    {
+        ContentTypeRegistry registry = Registry();
+
+        // The codec bounds this field too, and the publish validates BEFORE it encodes anything, so without
+        // the check an authored 0 sweeps clean and then throws at pack time with no finding naming the row.
+        List<ContentFinding> below = Band(Snapshot(registry, RareNameWord(registry, 1, "gloom", position: 0)));
+        ContentFinding finding = Only(below, InstanceContentFindings.RareNameCoverage);
+        Assert.Equal(InstanceContentTypeIds.RareNameWordTypeId, finding.Type.Value);
+        Assert.Equal(1, finding.Id);
+        Assert.Contains("position 0", finding.Message, StringComparison.Ordinal);
+
+        List<ContentFinding> above = Band(
+            Snapshot(registry, RareNameWord(registry, 1, "gloom", position: RareNameWordContentType.MaxPosition + 1)));
+        Assert.Equal(1, Only(above, InstanceContentFindings.RareNameCoverage).Id);
+
+        // Both ends of the range publish clean, because the bound is inclusive on both.
+        NoneOf(
+            Band(Snapshot(
+                registry,
+                RareNameWord(registry, 1, "gloom", position: RareNameWordContentType.MinPosition),
+                RareNameWord(registry, 2, "blade", position: RareNameWordContentType.MaxPosition))),
+            InstanceContentFindings.RareNameCoverage);
+    }
+
+    [Fact]
     public void A_rarity_that_names_no_words_at_all_is_covered_vacuously()
     {
         ContentTypeRegistry registry = Registry();

@@ -241,7 +241,9 @@ build inside a tick is a latency spike.
 - `ContentLootIndex` and `ContentLootEntry` - per `loot_table`, the resolved entries with the weights PREFIX
   SUMMED, so a weighted draw is one `NextInt(0, total)` and one binary search over an `int[]` with no
   allocation and no per-roll summation. Entries come back in `sort` then id order, a negative weight is clamped
-  and the running total saturates, both so the prefix array stays monotonic and searchable. The sums run over
+  and the running total saturates, both so the prefix array stays monotonic and searchable, and both the only
+  defence a weight has: no validator check reads one
+  (https://github.com/APKiwiOrg/KhaozEngine/issues/944). The sums run over
   the NON-GUARANTEED entries only: a guaranteed entry rolls its own chance instead of competing, so it has zero
   width and a pick steps straight over it, which keeps one array and one search. `TotalWeight` is therefore the
   weighted pool's total rather than the sum of every authored weight. A `required_tags` entry resolves at load

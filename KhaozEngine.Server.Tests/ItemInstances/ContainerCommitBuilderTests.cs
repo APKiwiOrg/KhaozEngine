@@ -317,6 +317,30 @@ public sealed class ContainerCommitBuilderTests
     }
 
     [Fact]
+    public void A_caller_closing_the_batch_is_its_own_reason_rather_than_a_tick_boundary()
+    {
+        // Close recorded TickBoundary, so a batch the caller closed on its own tick read afterwards as one
+        // the clock took away from it. The five closers of spec 6.4 are the reasons an operation was
+        // REFUSED, and a caller acts on them, so a sixth reason is what a caller-initiated close says.
+        PagedItemContainer bank = Container();
+        SeatStack(bank, 3, Potion, 20);
+        ContainerCommitBuilder batch = OpenBank(bank, tick: 4);
+        Assert.True(batch.Apply(ContainerOperation.Take(Bank, 3, 1), tick: 4));
+
+        _ = batch.Close(Mint(ServerId));
+
+        Assert.Equal(ContainerBatchCloseReason.Closed, batch.Window.CloseReason);
+        Assert.False(batch.Window.IsOpen);
+
+        // The tick that would have closed it is still the tick that closes an unclosed one, so the five
+        // spec closers still mean what they say.
+        ContainerCommitBuilder next = OpenBank(bank, tick: 4);
+        Assert.True(next.Apply(ContainerOperation.Take(Bank, 3, 1), tick: 4));
+        Assert.False(next.Apply(ContainerOperation.Take(Bank, 3, 1), tick: 5));
+        Assert.Equal(ContainerBatchCloseReason.TickBoundary, next.Window.CloseReason);
+    }
+
+    [Fact]
     public void A_Close_that_throws_leaves_the_batch_where_it_was_rather_than_half_closed()
     {
         // Close flagged the batch closed and closed the WINDOW before it built anything, so a throw out of
@@ -365,7 +389,7 @@ public sealed class ContainerCommitBuilderTests
 
         JournalCommit commit = batch.Close(Mint(ServerId));
 
-        Assert.Equal(ContainerBatchCloseReason.TickBoundary, batch.Window.CloseReason);
+        Assert.Equal(ContainerBatchCloseReason.Closed, batch.Window.CloseReason);
         Assert.Equal(20, commit.StreamMutations[0].Events.Count);
         Assert.All(commit.StreamMutations[0].Events, value => Assert.Equal(ItemInstanceEvents.Crafted, value.EventType));
         Assert.Single(commit.ProjectionWrites);

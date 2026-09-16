@@ -216,6 +216,10 @@ answer, `Open` while it is still taking operations:
 | `ClientOperation` | a client originated operation. It heads its own batch, because `ResolveOperationAsync` is keyed on ONE id |
 | `LimitReached` | 128 events, 64 projection writes, the 64 KiB intent or the 8 MiB commit, all read from `JournalLimits` |
 
+`Closed` is the sixth member and the one that is NOT a closer: it is what `Close` records, so a batch the
+caller closed and took a commit from does not read afterwards as one the clock took away from it. The five
+above are reasons an operation was REFUSED, and a caller acts on them to decide where that operation goes.
+
 A refused `Apply` changes NOTHING: the working copy is untouched, no event is written, and the caller opens the
 next batch for that operation. An operation the working copy cannot PERFORM is a different thing and throws,
 because a game refuses an illegal action before the journal ever sees it.

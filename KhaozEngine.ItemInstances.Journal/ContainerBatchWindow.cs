@@ -3,7 +3,17 @@ using KhaozEngine.WorldStore.Journal;
 
 namespace KhaozEngine.ItemInstances.Journal;
 
-/// <summary>Why a batch stopped taking operations, spec 6.4's five closers plus the open state.</summary>
+/// <summary>
+/// Why a batch stopped taking operations: spec 6.4's five closers, the open state, and the caller's own
+/// close.
+/// <para>
+/// The five are reasons an operation was REFUSED, which is what a caller reads to decide where that
+/// operation goes next. <see cref="Closed"/> is not one of those: nothing was refused, the batch was
+/// committed. It has its own member because <see cref="ContainerCommitBuilder.Close"/> recorded
+/// <see cref="TickBoundary"/>, so a batch the caller closed on its own tick read afterwards as one the clock
+/// had taken away from it.
+/// </para>
+/// </summary>
 public enum ContainerBatchCloseReason
 {
     /// <summary>Still taking operations.</summary>
@@ -28,6 +38,10 @@ public enum ContainerBatchCloseReason
     /// <summary>A journal limit would be exceeded: 128 events, 64 projection writes, the 64 KiB normalized
     /// intent or the 8 MiB aggregate commit.</summary>
     LimitReached = 5,
+
+    /// <summary>The caller closed it and took its commit. Nothing was refused, so this is the one member that
+    /// is not one of spec 6.4's five closers.</summary>
+    Closed = 6,
 }
 
 /// <summary>

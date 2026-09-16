@@ -281,7 +281,7 @@ public sealed partial class ContainerCommitBuilder
         // out of the writes holding a batch that could never be closed again, with its pages still dirty and
         // no fault flag, so the caller held something that had committed nothing and could do nothing.
         _closed = true;
-        Window.Close(ContainerBatchCloseReason.TickBoundary);
+        Window.Close(ContainerBatchCloseReason.Closed);
         return commit;
     }
 

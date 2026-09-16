@@ -14279,7 +14279,9 @@ batch.MarkCommitted();
 The window is ONE SERVER TICK and closes on the first of five things: the tick moved (`TickBoundary`), an
 operation named a container this batch was not opened over (`SecondStream`), an operation moves value between
 accounts (`PresentAtCommit`), a client originated operation arrived (`ClientOperation`, because
-`ResolveOperationAsync` is keyed on one id), or a journal limit would be exceeded (`LimitReached`).
+`ResolveOperationAsync` is keyed on one id), or a journal limit would be exceeded (`LimitReached`). Those five
+are reasons an operation was REFUSED. `Close` records `Closed`, its own reason, so a batch you closed and took
+a commit from does not read afterwards as one the clock took away from you.
 
 Whose identity it is decides what the normalized intent holds. A SERVER minted batch hashes the canonical
 ordered operation list. A CLIENT headed batch hashes the client operation's own encoding ALONE, under the

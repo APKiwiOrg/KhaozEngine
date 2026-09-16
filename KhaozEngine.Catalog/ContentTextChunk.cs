@@ -42,6 +42,13 @@ public sealed class ContentTextChunk
     public ReadOnlySpan<byte> Body => _body;
 
     /// <summary>
+    /// The body ARRAY, for the one reader that keeps it rather than reading through it:
+    /// <see cref="ContentTextIndex"/> indexes this array in place, because spec 7.6's resident form is the
+    /// body itself plus one index and a copy would be the whole language twice.
+    /// </summary>
+    internal byte[] BodyArray => _body;
+
+    /// <summary>
     /// The chunk's content address, taken over the canonical header and the body IN PLACE, with no
     /// intermediate copy of the canonical bytes. That matters here: a language chunk is megabytes, so
     /// materialising the canonical form to verify it would double the resident cost of a verification.

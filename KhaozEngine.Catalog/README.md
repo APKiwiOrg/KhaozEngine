@@ -395,6 +395,55 @@ else
   through and is what a lazy row read should go through afterwards, because it verifies on every READ: a
   cached chunk that went bad on disk is detected on first use, evicted and refetched.
 
+## Content strings
+
+`ContentStringCatalog` is the layered catalog of contracts 12.4 and spec 7.6, over `ContentTextIndex`, one
+decoded language each.
+
+```csharp
+ContentTextIndex english = ContentTextIndex.TryDecode(file, out var index, out string? reason)
+    ? index : throw new InvalidOperationException(reason);
+var strings = new ContentStringCatalog([english, french], "en-US", shipped.TryGet);
+
+strings.SelectLanguage(CultureInfo.CurrentUICulture);
+string name = strings.Get(ContentTextKey.Derive("item", row.Key.Utf8, "name"));
+```
+
+- **Content is asked FIRST, then the game's catalog, then the key itself** as a visible non-fatal
+  placeholder. Content first, because content is the thing that ships without a client release, so a content
+  string must be able to override a stale shipped one. Nothing on this path throws: a missing string is a
+  visible defect rather than a dead frame loop.
+- **It does NOT implement `IStringCatalog` and takes no reference on `KhaozEngine.App`.** That interface
+  lives in `App`, a peer `Foundation` package rather than a dependency of this one, and a reference on it
+  would widen every game client's graph for one interface. The member shape is the same (`Get`, `Format`,
+  `TryGet`), and the layer BELOW is a `ContentStringFallback` delegate whose signature is
+  `IStringCatalog.TryGet`'s, so a game passes that method group straight in and writes a three-line adapter
+  the other way. The type's own doc comment carries that adapter.
+- **The language is EXPLICIT and no ambient culture is read here.** `SelectLanguage(tag)` and
+  `SelectLanguage(CultureInfo)` pick it, the culture overload walking the parent chain so a client on
+  `en-GB` resolves against a pack that ships `en`, and a culture the content has no translation for leaves
+  the selection alone. The game's adapter is where `CultureInfo.CurrentUICulture` is read, which keeps two
+  screens or two tests in one process from moving each other's language.
+- **A miss in the selected language falls to the DEFAULT language before the game's catalog**, because a
+  translation lands string by string and a half-translated language should show the authored string rather
+  than a key.
+- **`Format` routes through `SafeFormat`**, so a malformed translator-authored template falls back to the
+  UNFORMATTED template rather than taking the frame loop down. A template is content arriving as data rather
+  than a caller bug. It formats with the SELECTED language's culture, because the string came out of that
+  language's chunk.
+- **A decoded language is the chunk BODY itself plus one index, and no decoded entry at all.**
+  `ContentTextIndex` keeps the decompressed body and builds one open-addressed `int[]` of entry offsets over
+  it, hashed on the entry's UTF-8 key through the same `ContentKey` hash the runtime's id table uses. There
+  is no `Dictionary<string, string>` and nothing exists as UTF-16 until something asks for it, which is what
+  keeps a 50,000 item language at about 9.6 MB against the 44.2 MB a string dictionary measured.
+  `TryGetUtf8` is the path that never materialises anything at all.
+- **The resolved-string cache is bounded by CONSTRUCTION**, a direct-mapped table of
+  `ContentStringCatalog.CacheEntries` (512) keyed on the entry offset, so it cannot grow into the thing the
+  budget exists to prevent. A repeat `Get` returns the same instance and allocates nothing. A miss is one
+  UTF-8 decode over a slice the catalog already holds.
+- **Two indexes carrying the same tag are SHARDS of that language**, which is how spec 7.6 holds a language
+  past the chunk ceiling, and a lookup finds a key in whichever shard carries it.
+
 ## Validation
 
 `ContentValidator.Validate(candidate, previous, rules, registry)` is the ONE validator, shared by publish,

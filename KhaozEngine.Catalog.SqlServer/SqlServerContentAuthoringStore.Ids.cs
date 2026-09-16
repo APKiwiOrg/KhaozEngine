@@ -96,14 +96,14 @@ public sealed partial class SqlServerContentAuthoringStore
                     VALUES (@type, @key, @size, 0, @created);
                     SELECT CAST(SCOPE_IDENTITY() AS bigint);
                     """);
-                Bind(insert, "@type", (int)type.Value);
-                Bind(insert, "@key", familyKey);
-                Bind(insert, "@size", blockSize);
+                BindInt(insert, "@type", (int)type.Value);
+                BindText(insert, "@key", familyKey);
+                BindInt(insert, "@size", blockSize);
 
                 // The version the family will FIRST APPEAR IN, which is the active version plus one and never
                 // the active version: creating a family is an immediate action while the active version is
                 // still 0 on a database that has published nothing.
-                Bind(insert, "@created", active + 1);
+                BindInt(insert, "@created", active + 1);
                 object? raw = await insert.ExecuteScalarAsync(token).ConfigureAwait(false);
                 return raw is long identity
                     ? identity
@@ -230,15 +230,15 @@ public sealed partial class SqlServerContentAuthoringStore
                     """
                     INSERT INTO dbo.catalog_family_block(
                         family_id, block_ordinal, base_id, block_size, next_free_id, reserved_in_version)
-                    VALUES (@family, @ordinal, @base, @size, @next, @version);
+                    VALUES (@family, @blockOrdinal, @base, @size, @next, @version);
                     """))
                 {
-                    Bind(insert, "@family", familyId);
-                    Bind(insert, "@ordinal", block.BlockOrdinal);
-                    Bind(insert, "@base", block.BaseId);
-                    Bind(insert, "@size", block.BlockSize);
-                    Bind(insert, "@next", block.NextFreeId);
-                    Bind(insert, "@version", block.ReservedInVersion);
+                    BindBigInt(insert, "@family", familyId);
+                    BindInt(insert, "@blockOrdinal", block.BlockOrdinal);
+                    BindInt(insert, "@base", block.BaseId);
+                    BindInt(insert, "@size", block.BlockSize);
+                    BindInt(insert, "@next", block.NextFreeId);
+                    BindInt(insert, "@version", block.ReservedInVersion);
                     await insert.ExecuteNonQueryAsync(token).ConfigureAwait(false);
                 }
 
@@ -278,11 +278,11 @@ public sealed partial class SqlServerContentAuthoringStore
                     scope,
                     """
                     UPDATE dbo.catalog_family_block SET next_free_id = @next
-                    WHERE family_id = @family AND block_ordinal = @ordinal;
+                    WHERE family_id = @family AND block_ordinal = @blockOrdinal;
                     """);
-                Bind(update, "@next", nextFreeId);
-                Bind(update, "@family", familyId);
-                Bind(update, "@ordinal", blockOrdinal);
+                BindInt(update, "@next", nextFreeId);
+                BindBigInt(update, "@family", familyId);
+                BindInt(update, "@blockOrdinal", blockOrdinal);
                 await update.ExecuteNonQueryAsync(token).ConfigureAwait(false);
             },
             cancellationToken);
@@ -331,8 +331,8 @@ public sealed partial class SqlServerContentAuthoringStore
             ORDER BY b.family_id, b.block_ordinal;
             """))
         {
-            Bind(read, "@type", (int)type.Value);
-            Bind(read, "@family", familyId);
+            BindInt(read, "@type", (int)type.Value);
+            BindBigInt(read, "@family", familyId);
             await using SqlDataReader reader = await read.ExecuteReaderAsync(cancellationToken)
                 .ConfigureAwait(false);
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
@@ -363,8 +363,8 @@ public sealed partial class SqlServerContentAuthoringStore
               AND (@family IS NULL OR family_id = @family)
             ORDER BY family_id;
             """);
-        Bind(command, "@type", (int)type.Value);
-        Bind(command, "@family", familyId);
+        BindInt(command, "@type", (int)type.Value);
+        BindBigInt(command, "@family", familyId);
 
         var families = new List<ContentFamily>();
         await using SqlDataReader rows = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
@@ -392,8 +392,8 @@ public sealed partial class SqlServerContentAuthoringStore
     {
         await using SqlCommand command = Command(
             scope, "SELECT 1 FROM dbo.catalog_family WHERE type_id = @type AND family_key = @key;");
-        Bind(command, "@type", (int)type.Value);
-        Bind(command, "@key", familyKey);
+        BindInt(command, "@type", (int)type.Value);
+        BindText(command, "@key", familyKey);
         return await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) is not null;
     }
 
@@ -408,7 +408,7 @@ public sealed partial class SqlServerContentAuthoringStore
             {
                 await using SqlCommand command = Command(
                     scope, "DELETE FROM dbo.catalog_family WHERE family_id = @family;");
-                Bind(command, "@family", familyId);
+                BindBigInt(command, "@family", familyId);
                 await command.ExecuteNonQueryAsync(token).ConfigureAwait(false);
             },
             cancellationToken);
@@ -422,7 +422,7 @@ public sealed partial class SqlServerContentAuthoringStore
         await using SqlCommand command = Command(
             scope,
             "SELECT reserved_through, issued_through FROM dbo.catalog_id_high_water WHERE type_id = @type;");
-        Bind(command, "@type", (int)type.Value);
+        BindInt(command, "@type", (int)type.Value);
         await using SqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken)
             .ConfigureAwait(false);
         return await reader.ReadAsync(cancellationToken).ConfigureAwait(false)
@@ -447,9 +447,9 @@ public sealed partial class SqlServerContentAuthoringStore
             WHEN NOT MATCHED THEN INSERT (type_id, reserved_through, issued_through)
                 VALUES (@type, @reserved, @issued);
             """);
-        Bind(command, "@type", (int)type.Value);
-        Bind(command, "@reserved", mark.ReservedThrough);
-        Bind(command, "@issued", mark.IssuedThrough);
+        BindInt(command, "@type", (int)type.Value);
+        BindInt(command, "@reserved", mark.ReservedThrough);
+        BindInt(command, "@issued", mark.IssuedThrough);
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 

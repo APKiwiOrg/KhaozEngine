@@ -188,8 +188,8 @@ public sealed partial class SqlServerContentAuthoringStore : IContentAuthoringSt
                     WHERE metadata_key = 1;
                     """))
                 {
-                    Bind(write, "@pinned", version);
-                    Bind(write, "@now", _clock());
+                    BindInt(write, "@pinned", version);
+                    BindTime(write, "@now", _clock());
                     await write.ExecuteNonQueryAsync(token).ConfigureAwait(false);
                 }
 
@@ -246,7 +246,7 @@ public sealed partial class SqlServerContentAuthoringStore : IContentAuthoringSt
             WHERE @version IS NULL OR version_number = @version
             ORDER BY version_number DESC;
             """);
-        Bind(command, "@version", versionNumber);
+        BindInt(command, "@version", versionNumber);
 
         var versions = new List<ContentVersionRecord>();
         await using SqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
@@ -303,12 +303,12 @@ public sealed partial class SqlServerContentAuthoringStore : IContentAuthoringSt
                     type_id, type_key, chunk_slots, default_visibility, max_definition_id, first_seen_version)
                     VALUES (@type, @key, @slots, @visibility, @ceiling, @firstSeen);
                 """);
-            Bind(upsert, "@type", (int)registration.Type.Value);
-            Bind(upsert, "@key", registration.TypeKey);
-            Bind(upsert, "@slots", registration.ChunkSlots);
-            Bind(upsert, "@visibility", (int)registration.DefaultVisibility);
-            Bind(upsert, "@ceiling", registration.MaxDefinitionId);
-            Bind(upsert, "@firstSeen", active);
+            BindInt(upsert, "@type", (int)registration.Type.Value);
+            BindText(upsert, "@key", registration.TypeKey);
+            BindInt(upsert, "@slots", registration.ChunkSlots);
+            BindInt(upsert, "@visibility", (int)registration.DefaultVisibility);
+            BindInt(upsert, "@ceiling", registration.MaxDefinitionId);
+            BindInt(upsert, "@firstSeen", active);
             await upsert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
@@ -326,8 +326,8 @@ public sealed partial class SqlServerContentAuthoringStore : IContentAuthoringSt
             SELECT type_id, type_key FROM dbo.catalog_type
             WHERE type_id = @type OR type_key = @key;
             """);
-        Bind(command, "@type", (int)registration.Type.Value);
-        Bind(command, "@key", registration.TypeKey);
+        BindInt(command, "@type", (int)registration.Type.Value);
+        BindText(command, "@key", registration.TypeKey);
 
         await using SqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
@@ -356,7 +356,7 @@ public sealed partial class SqlServerContentAuthoringStore : IContentAuthoringSt
     {
         await using SqlCommand command = Command(
             scope, "SELECT 1 FROM dbo.catalog_version WHERE version_number = @version;");
-        Bind(command, "@version", versionNumber);
+        BindInt(command, "@version", versionNumber);
         return await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) is not null;
     }
 
@@ -383,13 +383,6 @@ public sealed partial class SqlServerContentAuthoringStore : IContentAuthoringSt
         command.Transaction = scope.Transaction;
         return command;
     }
-
-    /// <summary>
-    /// Binds one parameter, mapping a null to <see cref="DBNull"/> so a nullable column takes NULL rather
-    /// than the provider throwing on a null value.
-    /// </summary>
-    static void Bind(SqlCommand command, string name, object? value)
-        => command.Parameters.AddWithValue(name, value ?? DBNull.Value);
 
     static ContentAuthoringException NoMetadata()
         => new(

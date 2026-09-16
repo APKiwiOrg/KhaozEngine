@@ -44,7 +44,7 @@ public sealed partial class SqlServerContentAuthoringStore
                 await using SqlCommand command = Command(
                     scope,
                     "UPDATE dbo.catalog_draft SET frozen_for_base_version = @base WHERE draft_key = 1;");
-                Bind(command, "@base", baseVersion);
+                BindInt(command, "@base", baseVersion);
                 if (await command.ExecuteNonQueryAsync(token).ConfigureAwait(false) == 0)
                 {
                     throw new ContentAuthoringException(
@@ -153,9 +153,9 @@ public sealed partial class SqlServerContentAuthoringStore
                 DELETE FROM dbo.catalog_draft_edit
                 WHERE type_id = @type AND definition_id = @id AND content_key = @key;
                 """);
-            Bind(command, "@type", (int)target.Type.Value);
-            Bind(command, "@id", target.DefinitionId);
-            Bind(command, "@key", target.Key.ToString());
+            BindInt(command, "@type", (int)target.Type.Value);
+            BindInt(command, "@id", target.DefinitionId);
+            BindText(command, "@key", target.Key.ToString());
             await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
@@ -174,7 +174,7 @@ public sealed partial class SqlServerContentAuthoringStore
             UPDATE dbo.catalog_draft SET base_version = @version, frozen_for_base_version = NULL
             WHERE draft_key = 1;
             """);
-        Bind(rebase, "@version", plan.VersionNumber);
+        BindInt(rebase, "@version", plan.VersionNumber);
         await rebase.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 }

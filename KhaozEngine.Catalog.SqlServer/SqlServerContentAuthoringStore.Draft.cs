@@ -274,10 +274,10 @@ public sealed partial class SqlServerContentAuthoringStore
             WHEN NOT MATCHED THEN INSERT (draft_key, base_version, opened_by, opened_at_utc, note)
                 VALUES (1, @base, @actor, @at, @note);
             """);
-        Bind(command, "@base", active);
-        Bind(command, "@actor", actor);
-        Bind(command, "@at", _clock());
-        Bind(command, "@note", note);
+        BindInt(command, "@base", active);
+        BindText(command, "@actor", actor);
+        BindTime(command, "@at", _clock());
+        BindText(command, "@note", note);
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -318,13 +318,13 @@ public sealed partial class SqlServerContentAuthoringStore
                 """))
             {
                 BindEdit(update, edit, actor);
-                Bind(update, "@ordinal", ordinal);
+                BindBigInt(update, "@ordinal", ordinal);
                 await update.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
             }
 
             await using SqlCommand clear = Command(
                 scope, "DELETE FROM dbo.catalog_draft_edit_field WHERE edit_ordinal = @ordinal;");
-            Bind(clear, "@ordinal", ordinal);
+            BindBigInt(clear, "@ordinal", ordinal);
             await clear.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
         else
@@ -340,10 +340,10 @@ public sealed partial class SqlServerContentAuthoringStore
                 SELECT CAST(SCOPE_IDENTITY() AS bigint);
                 """);
             BindEdit(insert, edit, actor);
-            Bind(insert, "@type", (int)edit.Type.Value);
-            Bind(insert, "@id", edit.DefinitionId);
-            Bind(insert, "@key", edit.Key.ToString());
-            Bind(insert, "@operation", (int)edit.Operation);
+            BindInt(insert, "@type", (int)edit.Type.Value);
+            BindInt(insert, "@id", edit.DefinitionId);
+            BindText(insert, "@key", edit.Key.ToString());
+            BindInt(insert, "@operation", (int)edit.Operation);
             object? raw = await insert.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
             ordinal = raw is long identity
                 ? identity
@@ -364,16 +364,16 @@ public sealed partial class SqlServerContentAuthoringStore
                     edit_ordinal, field_name, field_kind, int_value, text_value, blob_value)
                 VALUES (@ordinal, @name, @kind, @int, NULL, @blob);
                 """);
-            Bind(command, "@ordinal", ordinal);
-            Bind(command, "@name", field.Name);
-            Bind(command, "@kind", (int)field.Value.Kind);
-            Bind(
+            BindBigInt(command, "@ordinal", ordinal);
+            BindText(command, "@name", field.Name);
+            BindInt(command, "@kind", (int)field.Value.Kind);
+            BindBigInt(
                 command,
                 "@int",
                 ContentFieldValue.StoresNumber(field.Value.Kind) && !field.Value.IsAbsent
                     ? field.Value.Number
                     : null);
-            Bind(
+            BindBlob(
                 command,
                 "@blob",
                 ContentFieldValue.StoresBytes(field.Value.Kind) && !field.Value.IsAbsent
@@ -394,9 +394,9 @@ public sealed partial class SqlServerContentAuthoringStore
             SELECT edit_ordinal, operation FROM dbo.catalog_draft_edit
             WHERE type_id = @type AND definition_id = @id AND content_key = @key;
             """);
-        Bind(command, "@type", (int)edit.Type.Value);
-        Bind(command, "@id", edit.DefinitionId);
-        Bind(command, "@key", edit.Key.ToString());
+        BindInt(command, "@type", (int)edit.Type.Value);
+        BindInt(command, "@id", edit.DefinitionId);
+        BindText(command, "@key", edit.Key.ToString());
 
         await using SqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
         return await reader.ReadAsync(cancellationToken).ConfigureAwait(false)
@@ -406,14 +406,14 @@ public sealed partial class SqlServerContentAuthoringStore
 
     void BindEdit(SqlCommand command, ContentEdit edit, string actor)
     {
-        Bind(command, "@policy", (int)edit.RetirePolicy);
-        Bind(command, "@replacement", edit.ReplacementId);
-        Bind(command, "@forkKey", edit.ForkKey.IsEmpty ? null : edit.ForkKey.ToString());
-        Bind(command, "@forkFlag", edit.ForkFlagField);
-        Bind(command, "@family", edit.FamilyId);
-        Bind(command, "@importedRetired", edit.ImportedAsRetired ? 1 : 0);
-        Bind(command, "@actor", actor);
-        Bind(command, "@at", _clock());
+        BindInt(command, "@policy", (int)edit.RetirePolicy);
+        BindInt(command, "@replacement", edit.ReplacementId);
+        BindText(command, "@forkKey", edit.ForkKey.IsEmpty ? null : edit.ForkKey.ToString());
+        BindText(command, "@forkFlag", edit.ForkFlagField);
+        BindBigInt(command, "@family", edit.FamilyId);
+        BindInt(command, "@importedRetired", edit.ImportedAsRetired ? 1 : 0);
+        BindText(command, "@actor", actor);
+        BindTime(command, "@at", _clock());
     }
 
     /// <summary>

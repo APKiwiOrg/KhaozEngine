@@ -326,6 +326,12 @@ for any version IS a listing failure. It is skipped again when the store impleme
 `ContentPackSweepResult` carries the reason either way, because deleting nothing and deleting everything are
 one keystroke apart and an operator reading a publish response deserves to know which happened.
 
+`ContentPublishCommit.SweepAsync` is the step as the publish runs it, and it is public so a test can drive
+step 11 on its own. An OPERATOR reaches `ContentPackSweep` through the admin surface instead, because a
+recovery sweep has no prepared `ContentPublisher` to build a commit around, and because the operator's sweep
+is no longer the same operation: it refuses while a publish holds the draft frozen, and it records an audit
+row naming who ran it.
+
 ## Rollback
 
 `RollbackToAsync(targetVersion)` BUILDS A DRAFT rather than publishing one, so an operator reviews the diff

@@ -229,8 +229,17 @@ public sealed class ContentPublishCommit
     }
 
     /// <summary>
-    /// Step 11 over every version the store knows. It is public because an operator may run the sweep on its
-    /// own, which is the recovery path for orphans a previous failed attempt left behind.
+    /// Step 11 over every version the store knows. Its production caller is <see cref="PublishAsync"/>, one
+    /// line after the transaction, and it is public so a TEST can drive step 11 on its own against a commit
+    /// it built.
+    /// <para>
+    /// <b>The operator's sweep is <c>catalog-sweep</c> and it does not come through here.</b> An operator
+    /// running the recovery path has no prepared <see cref="ContentPublisher"/>, which this type's
+    /// constructor requires, so the admin action reaches <see cref="ContentPackSweep"/> directly. The two are
+    /// no longer the same operation either: the operator's refuses while a publish holds the draft frozen,
+    /// and records an audit row naming who ran it, neither of which applies to the step inside a publish
+    /// that already holds the freeze and is already audited by its own commit.
+    /// </para>
     /// </summary>
     /// <param name="cancellationToken">Cancels the sweep.</param>
     public async Task<ContentPackSweepResult> SweepAsync(CancellationToken cancellationToken = default)

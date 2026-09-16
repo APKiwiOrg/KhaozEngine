@@ -29,6 +29,15 @@ public readonly record struct TilePose(Vector3 Position, float Yaw);
 /// ground quad and the props do. Drawn on the CORNER instead, an avatar stands half a tile diagonally off every
 /// prop it walks up to and off the middle of the ground it occupies, which is what a consumer then re-centres in
 /// a shim of its own.</para>
+/// <para>A POSE STANDS ON THE TERRAIN, not on the plane floor. Once the planar centre is known, the height comes
+/// from <see cref="Ground"/>, sampled at that same centred point, so a body on an authored slope has its feet on
+/// the ground quad it is standing on and so does a marker or a dropped item laid down through
+/// <see cref="PoseAt(TileCoord, TileDirection)"/>. A gliding body resamples every frame at its interpolated planar
+/// position, which is what makes it FOLLOW a slope between two tile centres instead of stepping at the tile edge.
+/// <see cref="TilePresenter(TileWorldDocument)"/> wires the document's own bilinear lattice, the same one the
+/// terrain mesh and the props are built from. A presenter with no ground source draws at the plane index times
+/// <see cref="PlaneHeight"/>, which is the flat placeholder and the only honest answer before a document is
+/// loaded.</para>
 /// <para>THE BODY GLIDES THE WHOLE STEP, LINEARLY. <see cref="Pose(in TileMoveState, float)"/> runs from <see cref="TileMoveState.StepFrom"/>
 /// into <see cref="TileMoveState.Tile"/> by <see cref="TileMoveState.StepTicks"/> over
 /// <see cref="TileMoveState.StepTotal"/>, at a constant speed, arriving exactly as the next step commits. That is
@@ -44,32 +53,56 @@ public readonly record struct TilePose(Vector3 Position, float Yaw);
 /// </summary>
 public sealed class TilePresenter
 {
-    /// <summary>Builds a presenter for a world's tile size and plane height.</summary>
+    /// <summary>Builds a FLAT presenter for a world's tile size and plane height, with no terrain under it. The
+    /// placeholder shape: every pose draws at its plane index times <paramref name="planeHeight"/>, which is the
+    /// only honest answer before a document is loaded. Use <see cref="TilePresenter(TileWorldDocument)"/> the
+    /// moment there is a world file.</summary>
     /// <param name="tileSize">Metres per tile. Must be positive.</param>
     /// <param name="planeHeight">Metres between two planes. Zero is legal, and draws every plane flat.</param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="tileSize"/> is zero or negative, which would
     /// collapse the whole world onto the origin.</exception>
     public TilePresenter(float tileSize, float planeHeight)
+        : this(tileSize, planeHeight, null) { }
+
+    /// <summary>Builds a presenter over an explicit ground-height source, for a test with a synthetic slope and for
+    /// a head whose terrain is not a <see cref="TileWorldDocument"/> (a streamed source, a generated one).</summary>
+    /// <param name="tileSize">Metres per tile. Must be positive.</param>
+    /// <param name="planeHeight">Metres between two planes, which is still what a pose falls back to when
+    /// <paramref name="ground"/> is null and what <see cref="TileMoveState.Vertical"/> is read against.</param>
+    /// <param name="ground">The terrain under a pose, or null to draw every plane flat.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="tileSize"/> is zero or negative, which would
+    /// collapse the whole world onto the origin.</exception>
+    public TilePresenter(float tileSize, float planeHeight, ITileGroundHeight? ground)
     {
         if (tileSize <= 0f)
             throw new ArgumentOutOfRangeException(nameof(tileSize), tileSize, "A tile is at least some metres wide.");
         TileSize = tileSize;
         PlaneHeight = planeHeight;
+        Ground = ground;
     }
 
     /// <summary>Builds a presenter from a loaded document, which is where the real numbers live. A head builds one
-    /// of these the moment it has the world file, and replaces the placeholder the client started with.</summary>
+    /// of these the moment it has the world file, and replaces the placeholder the client started with. It wires
+    /// <see cref="TileDocumentGroundHeight"/>, so the bodies this draws stand on the SAME lattice the terrain mesh
+    /// and the props are built from, with nothing for the head to call.</summary>
     /// <param name="document">The loaded world.</param>
     /// <exception cref="ArgumentNullException"><paramref name="document"/> is null.</exception>
     public TilePresenter(TileWorldDocument document)
-        : this((document ?? throw new ArgumentNullException(nameof(document))).TileSize, document.PlaneHeight) { }
+        : this((document ?? throw new ArgumentNullException(nameof(document))).TileSize, document.PlaneHeight,
+            new TileDocumentGroundHeight(document)) { }
 
     /// <summary>Metres per tile.</summary>
     public float TileSize { get; }
 
-    /// <summary>Metres between two planes. A plane INDEX times this is the height the pose draws at, which is why
+    /// <summary>Metres between two planes. What a pose falls back to when there is no <see cref="Ground"/>, and the
+    /// lift a plane with no authored heights carries over the one below it, which is why
     /// <see cref="TileMoveState.Vertical"/> can stay document-free.</summary>
     public float PlaneHeight { get; }
+
+    /// <summary>The terrain under a pose, or null on a FLAT presenter, which is what the
+    /// <see cref="TilePresenter(float, float)"/> placeholder builds and what a head holds until it swaps in one
+    /// built from the document. Read it to tell the two apart.</summary>
+    public ITileGroundHeight? Ground { get; }
 
     /// <summary>
     /// Where a state's BODY draws: the linear glide from <see cref="TileMoveState.StepFrom"/> INTO
@@ -115,7 +148,7 @@ public sealed class TilePresenter
     public TilePose Pose(in TileMoveState state, Vector2 aimTilePlanar, float extraTicks = 0f)
     {
         Vector2 centre = BodyCentre(state, extraTicks);
-        return new TilePose(Centre(centre.X, state.Tile.Plane * PlaneHeight, centre.Y),
+        return new TilePose(Centre(centre.X, state.Tile.Plane, centre.Y),
             centre == aimTilePlanar ? Yaw(state.Facing) : Yaw(centre, aimTilePlanar));
     }
 
@@ -200,13 +233,14 @@ public sealed class TilePresenter
     /// overload for those. This one takes a CONTINUOUS point, because a body between two tiles is not on the
     /// lattice.</para>
     /// </summary>
-    /// <param name="tilePlanar">Where the point is, in tile units on the lattice (x, z).</param>
+    /// <param name="tilePlanar">Where the point is, in tile units on the lattice (x, z). The half tile onto the
+    /// tile centre is added here, and the ground is sampled at that centred point.</param>
     /// <param name="planeIndex">Which plane, as an INDEX rather than a height. Fractional is legal and is what a
-    /// prediction layer's eased vertical hands in.</param>
+    /// prediction layer's eased vertical hands in, and it reads between the two planes' own ground samples.</param>
     /// <param name="facing">The direction to face.</param>
     /// <returns>The world position and yaw to draw at.</returns>
     public TilePose PoseAt(Vector2 tilePlanar, float planeIndex, TileDirection facing) =>
-        new(Centre(tilePlanar.X, planeIndex * PlaneHeight, tilePlanar.Y), Yaw(facing));
+        new(Centre(tilePlanar.X, planeIndex, tilePlanar.Y), Yaw(facing));
 
     /// <summary>
     /// A whole TILE's centre, which is the RULES' answer about where a player is and the one an overlay draws on.
@@ -235,12 +269,37 @@ public sealed class TilePresenter
         PoseAt(new Vector2(footprint.X + (footprint.Width - 1) * 0.5f, footprint.Z + (footprint.Height - 1) * 0.5f),
             plane, facing);
 
-    // A tile point as a world position on the tile CENTRE, which is the one place the half tile is added. In TILE
-    // units, before TileWorldSpace, so the z half tile is negated with the coordinate it belongs to rather than
-    // being added to a world metre and landing on the wrong side of the tile. A glided position goes through the
-    // same offset as a lattice one, so a body converges onto the centre it is drawn toward.
-    Vector3 Centre(float tileX, float heightMetres, float tileZ) =>
-        TileWorldSpace.ToWorld(tileX + 0.5f, heightMetres, tileZ + 0.5f, TileSize);
+    // A tile point as a world position on the tile CENTRE, which is the one place the half tile is added AND the
+    // one place the ground is sampled. In TILE units, before TileWorldSpace, so the z half tile is negated with the
+    // coordinate it belongs to rather than being added to a world metre and landing on the wrong side of the tile.
+    // A glided position goes through the same offset as a lattice one, so a body converges onto the centre it is
+    // drawn toward.
+    //
+    // The height is read at the CENTRED point, in one expression with the position built from it, so a pose samples
+    // the ground under exactly where it draws by construction rather than by two call sites agreeing. Sampling the
+    // anchor corner instead would put a body on a slope half a tile diagonally off its own feet.
+    Vector3 Centre(float tileX, float planeIndex, float tileZ)
+    {
+        float centreX = tileX + 0.5f, centreZ = tileZ + 0.5f;
+        return TileWorldSpace.ToWorld(centreX, Height(centreX, centreZ, planeIndex), centreZ, TileSize);
+    }
+
+    // The ground at an already-centred planar point, in metres. Flat when there is no source, which is the
+    // placeholder presenter and the only honest answer before a document is loaded.
+    //
+    // A FRACTIONAL plane index is a body easing between two planes (LocalPose reads TileMoveState.RenderVertical,
+    // which the prediction layer eases), and it reads BETWEEN the two planes' own samples. The flat answer is
+    // linear in the plane index, so the terrain answer is too, and a body climbing a stair draws continuously
+    // instead of popping at the plane boundary. A whole plane index costs one sample, which is every pose an
+    // overlay and a remote body ever ask for.
+    float Height(float centreX, float centreZ, float planeIndex)
+    {
+        if (Ground is null) return planeIndex * PlaneHeight;
+        int below = (int)MathF.Floor(planeIndex);
+        float fraction = planeIndex - below;
+        float lower = Ground.HeightAt(centreX, centreZ, below);
+        return fraction <= 0f ? lower : lower + (Ground.HeightAt(centreX, centreZ, below + 1) - lower) * fraction;
+    }
 
     /// <summary>
     /// The yaw a facing draws at, in the ENGINE's model-yaw convention: the value a head hands straight to

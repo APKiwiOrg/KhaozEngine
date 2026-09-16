@@ -40,6 +40,40 @@ public class TileFootprintCollisionTests
         Assert.True(TileCollision.CanStand(map, 11, 10, 0, 2));    // the wall is on this footprint's west boundary
     }
 
+    // The baker mirrors every wall onto both tiles of the edge it blocks, so an edge written on ONE side is a map no
+    // writer in this package produces and has to be built by hand. CanStand reads both sides, the way
+    // CanStepCardinal already reads the edge it crosses, so a half-written edge refuses from whichever tile carries
+    // it rather than from the two the mirror happens to cover.
+    [Fact]
+    public void A_wall_written_on_one_side_of_an_internal_edge_refuses_standing()
+    {
+        foreach ((int x, int z, TileCollisionFlags flag) in new[]
+        {
+            (10, 10, TileCollisionFlags.WallE),                      // east side of the footprint's west tile
+            (11, 10, TileCollisionFlags.WallW),                      // the mirror alone, which the east read misses
+            (10, 10, TileCollisionFlags.WallN),
+            (10, 11, TileCollisionFlags.WallS),                      // the mirror alone again, on the other axis
+        })
+        {
+            TileCollisionMap map = HandBuilt();
+            Assert.True(TileCollision.CanStand(map, 10, 10, 0, 2), "the hand-built map starts open");
+
+            map.Or(x, z, 0, flag);
+
+            Assert.False(TileCollision.CanStand(map, 10, 10, 0, 2), $"{flag} on ({x}, {z}) let a 2x2 straddle it");
+            Assert.True(TileCollision.CanStand(map, 10, 10, 0, 1), "a one tile body has no internal edge to read");
+        }
+    }
+
+    // One region of zeroed storage, which reads open everywhere inside it and blocked outside, with nothing baked
+    // onto it. The only way to get an edge whose two tiles disagree.
+    static TileCollisionMap HandBuilt()
+    {
+        var map = new TileCollisionMap(1);
+        map.EnsureRegion(new RegionCoord(0, 0));
+        return map;
+    }
+
     [Fact]
     public void A_two_by_two_cannot_walk_along_a_fence_line_it_straddles()
     {

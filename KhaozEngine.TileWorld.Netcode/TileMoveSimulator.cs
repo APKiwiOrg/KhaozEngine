@@ -360,10 +360,12 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
     // THE CHASE, one tick of it, and it lives in the stepper for the reason TileMoveState.CombatTarget's doc gives:
     // anywhere else is a second movement authority a client cannot predict.
     //
-    // Rule 5 is what keeps the pathfinding budget honest, and the memo it needs is already on the state. The route's
-    // END is an in-range anchor of wherever the target stood when this last re-pathed, so "the target's committed
-    // tile changed" is exactly "the route end is no longer in range of the target", and a stationary target
-    // therefore costs ZERO FindPath calls per tick. Nothing new is stored for it.
+    // Rule 5 is what keeps the pathfinding budget honest, and the memo it needs is already on the state. The trigger
+    // is "the route end is no longer in range of the TARGET'S FOOTPRINT", never "the target's committed tile moved":
+    // the route END is an in-range anchor of wherever the target stood when this last re-pathed, so a target that
+    // slides within that anchor's range costs ZERO FindPath calls however far its anchor travels, and one that
+    // leaves it re-paths even if its anchor did not move at all (a body that GREW or shrank). Nothing new is stored
+    // for it, which is the whole reason the memo is the route rather than a remembered tile.
     //
     // The step in flight is never abandoned here either. Dropping the ROUTE is not abandoning a STEP: a step was
     // committed when it started and its tile is not in the route any more.
@@ -371,6 +373,24 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
     {
         TileMoveState s = state;
         if (s.CombatTarget == 0) return s;
+
+        // 4, ASKED FIRST because it is the one rule here that needs nothing resolved. A lock on ITSELF can never be
+        //    in range: its footprint moves with the body, so no tile it could step to is off it. It clears, which is
+        //    the answer rule 5 gives any target with no reach tile, and the server says CannotReach (#741). Holding
+        //    it, which R1 did, left the body permanently in combat with no roll ever possible.
+        //
+        //    Ahead of rule 2 so the answer does not depend on the SEAM resolving the local id. Both heads resolve it
+        //    today, the server through its entity space and the client through TileRemoteTargets, so neither changes
+        //    its answer. What goes away is the client's coupling to that: an id the seam could not resolve used to
+        //    fall into rule 2, which clears the lock and KEEPS the route, so a self attack clicked mid walk would
+        //    have predicted a walk the server had stopped. Identity is knowable without the seam, so it is asked
+        //    without it.
+        if (self != 0 && s.CombatTarget == self)
+        {
+            s.CombatTarget = 0;
+            s.Route = TileRoute.None;
+            return s;
+        }
 
         // 2. A target that no longer resolves is dead, despawned or out of this head's view. This is the free half
         //    of death handling: the seam's contract already says an id stops resolving the moment the thing it
@@ -392,17 +412,6 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
 
         int size = SizeOf(s);
 
-        // 4. A lock on ITSELF can never be in range: its footprint moves with the body, so no tile it could step to
-        //    is off it. It clears, which is the answer rule 5 gives any target with no reach tile, and the server says
-        //    CannotReach (#741). Holding it, which R1 did, left the body permanently in combat with no roll ever
-        //    possible.
-        if (self != 0 && s.CombatTarget == self)
-        {
-            s.CombatTarget = 0;
-            s.Route = TileRoute.None;
-            return s;
-        }
-
         // In range is ONE predicate everywhere a range question is asked: no overlap with the target's footprint, and
         // some tile of this body in the target's one-tile reach set. A body overlapping the target is not in range and
         // falls through to rule 5, whose search routes it out, which is the OSRS answer for a monster under you
@@ -418,7 +427,8 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
             return s;
         }
 
-        // 5. Re-path only when the target moved out from under the route we already have.
+        // 5. Re-path only when the route end is no longer in range of the target's footprint, which is the target
+        //    moving out from under the route we already have.
         if (!s.Route.IsIdle && TileReach.Contains(Map, footprint, plane, s.Route.End, size)) return s;
 
         if (!TileReach.TryNearest(Map, footprint, plane, s.Tile, size, MaxPathRadius, out _, out TilePath path,

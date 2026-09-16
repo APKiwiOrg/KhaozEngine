@@ -343,6 +343,32 @@ public sealed class CraftPrimitiveTests
     }
 
     [Fact]
+    public void RerollValues_after_ApplyEnchant_leaves_the_ENCHANT_where_it_was()
+    {
+        // ApplyEnchant's doc used to tell an author to compose it with RerollValues when the enchant is
+        // meant to roll. RerollValues is hardcoded to kind 131, so the composition pins the enchant at the
+        // bottom forever and rerolls the item's first AFFIX instead. This is that v1 behaviour, stated.
+        CraftWorld world = World();
+        byte[] stored = world.Payload(60, RareRarity, [Affix(1), Affix(2)]);
+        var random = new ScriptedRandomSource([], [4_321]);
+
+        CraftWorkingCopy copy = world.Open(stored);
+        Assert.Null(CraftPrimitives.ApplyEnchant(ref copy, 3, 1));
+        Assert.Null(CraftPrimitives.RerollValues(ref copy, random, [0]));
+        Assert.True(copy.TryEncode(out byte[] crafted));
+
+        // The enchant is exactly where ApplyEnchant seated it.
+        InstanceAffix enchant = Assert.Single(Enchantments(crafted));
+        Assert.Equal(3, enchant.ModId);
+        Assert.Equal(RollPosition.Bottom, enchant.Position);
+
+        // And the reroll landed on the first AFFIX, which is the entry the selector actually named.
+        List<InstanceAffix> affixes = Affixes(crafted);
+        Assert.Equal([1, 2], affixes.Select(static affix => affix.ModId));
+        Assert.Equal([4_321, RollPosition.Bottom], affixes.Select(static affix => (int)affix.Position));
+    }
+
+    [Fact]
     public void RemoveMod_and_RemoveEnchant_take_their_entries_from_the_SORTED_list()
     {
         CraftWorld world = World();

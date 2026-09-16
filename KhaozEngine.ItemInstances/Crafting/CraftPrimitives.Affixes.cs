@@ -303,8 +303,17 @@ public static partial class CraftPrimitives
     /// <summary>
     /// Primitive 9. Writes one entry into kind 133, at <see cref="RollPosition.Bottom"/>, because the step
     /// draws NOTHING and a position has to be something. That is the same reading spec 9.4 step 2 takes for
-    /// a unique's lines, and it is why an author composes <c>ApplyEnchant</c> with <c>RerollValues</c> when
-    /// the enchant is meant to roll.
+    /// a unique's lines.
+    /// <para>
+    /// <b>An enchant's position STAYS at the bottom, and no v1 primitive moves it.</b>
+    /// <see cref="RerollValues"/> is the only primitive that draws a fresh position and it names kind 131,
+    /// so composing the two rerolls the item's first AFFIX and leaves the enchant exactly where this step
+    /// put it. <c>CraftPrimitiveTests.RerollValues_after_ApplyEnchant_leaves_the_ENCHANT_where_it_was</c>
+    /// pins both halves of that. A selector that could name an ENTRY KIND is the shape a rolling enchant
+    /// needs and it changes what an authored step looks like, so it is the owner's call
+    /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/994">#994</see>) rather than a parameter
+    /// added here.
+    /// </para>
     /// </summary>
     /// <param name="copy">The craft in progress.</param>
     /// <param name="modId">The mod row the entry names.</param>

@@ -116,6 +116,13 @@ key. A retire names `placeholder` or `replacement`, and a replacement whose `rep
 live row is `KEC0017`. A fork names a `forkKey` that is free and a `flagField` the schema declares as `Bool`,
 and fails any of those with `KEC0041`.
 
+**A key an edit INTRODUCES is shape-checked here, with `KEC0001`.** An add's `key` and a fork's `forkKey` are
+the only two keys an edit invents, and neither exists as a row for the publish sweep to walk, so the boundary
+is the only place either can be caught before it enters the draft. A draft that accepted a malformed key was
+wedged: every later `catalog-validate` reported the defect, every later `catalog-publish` refused, and the
+only removal on the authoring seam is `catalog-discard`, which takes every other pending edit with it. The
+rule is `ContentKeyShape` in `KhaozEngine.Catalog.Authoring`, shared with the fork precondition.
+
 **`expectedBaseVersion` on a publish is REQUIRED optimistic concurrency.** Two consoles cannot both publish
 the same draft: the second one's expectation is stale and it gets a 409 naming BOTH numbers. There is
 deliberately no validation override flag anywhere in these actions, because a publish that bypassed the

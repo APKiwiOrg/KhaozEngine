@@ -333,6 +333,98 @@ public sealed class CatalogEditActionTests : IDisposable
         Assert.Equal(0, body.GetProperty("editCount").GetInt32());
     }
 
+    /// <summary>
+    /// A malformed KEY is refused at the boundary with <c>KEC0001</c> and NOTHING enters the draft.
+    /// <para>
+    /// The key rule is the one schema rule an edit could previously slip past, because an add's key and a
+    /// fork's key are both new and neither exists as a row for the sweep to walk. A draft that accepted one
+    /// was wedged: <c>catalog-validate</c> reported <c>KEC0001</c> forever, <c>catalog-publish</c> was a 400
+    /// forever, and the only removal on the seam is a discard, which destroys every other pending edit in
+    /// the same draft. The boundary is where the rule has to run.
+    /// </para>
+    /// </summary>
+    /// <param name="key">The malformed key.</param>
+    [Theory]
+    [InlineData("Bad Key!")]
+    [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
+    [InlineData("_leading")]
+    [InlineData("double__underscore")]
+    public async Task Edit_AddingAMalformedKey_IsRefusedAndNothingEntersTheDraft(string key)
+    {
+        JsonElement body = await _harness.RefusedAsync("catalog-edit", $$"""
+        {
+          "edits": [
+            { "op": "add", "typeKey": "thing", "key": {{JsonSerializer.Serialize(key)}},
+              "fields": { "value": 4200, "stackable": false } }
+          ]
+        }
+        """);
+
+        Assert.Equal(new[] { "KEC0001" }, CatalogActionHarness.Codes(body));
+        Assert.Contains(key, CatalogActionHarness.Messages(body), StringComparison.Ordinal);
+
+        // No draft was opened at all, which is the strongest form of "nothing entered it".
+        JsonElement draft = await _harness.OkAsync("catalog-draft", null);
+        Assert.Equal(JsonValueKind.Null, draft.GetProperty("draft").ValueKind);
+        Assert.Empty(draft.GetProperty("edits").EnumerateArray());
+    }
+
+    /// <summary>
+    /// A fork's COPY key runs the same rule, and it is the second key an edit introduces. The copy is the
+    /// row an author never sees until publish, so a malformed one wedges a draft the same way and is caught
+    /// the same way.
+    /// </summary>
+    [Fact]
+    public async Task Edit_ForkingToAMalformedKey_IsRefusedAndNothingEntersTheDraft()
+    {
+        await _harness.PublishThingsAsync("fire_mod");
+        int mod = await _harness.IdOfAsync("fire_mod");
+
+        JsonElement body = await _harness.RefusedAsync("catalog-edit", $$"""
+        {
+          "edits": [
+            { "op": "fork", "typeKey": "thing", "id": {{mod}},
+              "forkKey": "Fire Mod Legacy", "flagField": "legacy" }
+          ]
+        }
+        """);
+
+        Assert.Equal(new[] { "KEC0001" }, CatalogActionHarness.Codes(body));
+        Assert.Contains("Fire Mod Legacy", CatalogActionHarness.Messages(body), StringComparison.Ordinal);
+
+        JsonElement draft = await _harness.OkAsync("catalog-draft", null);
+        Assert.Equal(JsonValueKind.Null, draft.GetProperty("draft").ValueKind);
+        Assert.Empty(draft.GetProperty("edits").EnumerateArray());
+    }
+
+    /// <summary>
+    /// The rule is a SHAPE check and not a tightening: a well-formed key at the length cap, carrying digits
+    /// and single underscores, is still accepted for both an add and a fork.
+    /// </summary>
+    [Fact]
+    public async Task Edit_WithWellFormedKeys_IsStillAccepted()
+    {
+        await _harness.PublishThingsAsync("fire_mod");
+        int mod = await _harness.IdOfAsync("fire_mod");
+        string atTheCap = new('a', 64);
+
+        JsonElement body = await _harness.OkAsync("catalog-edit", $$"""
+        {
+          "edits": [
+            { "op": "add", "typeKey": "thing", "key": "steel_sword_2",
+              "fields": { "value": 12000, "stackable": false } },
+            { "op": "add", "typeKey": "thing", "key": "{{atTheCap}}",
+              "fields": { "value": 100, "stackable": false } },
+            { "op": "fork", "typeKey": "thing", "id": {{mod}},
+              "forkKey": "fire_mod_legacy", "flagField": "legacy" }
+          ]
+        }
+        """);
+
+        Assert.Equal(3, body.GetProperty("applied").GetInt32());
+        Assert.Equal(3, body.GetProperty("draft").GetProperty("editCount").GetInt32());
+    }
+
     /// <summary>Every request-shaped refusal is the OBJECT error payload rather than a bare string.</summary>
     [Theory]
     [InlineData("catalog-edit", null)]

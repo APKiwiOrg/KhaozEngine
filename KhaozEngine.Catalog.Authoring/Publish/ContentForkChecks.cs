@@ -24,9 +24,6 @@ static class ContentForkChecks
     /// <summary>The code every precondition failure carries, whichever of the four it is.</summary>
     public const string Code = "KEC0041";
 
-    /// <summary>The longest legal content key, contracts 5.3.</summary>
-    const int MaxKeyLength = 64;
-
     /// <summary>
     /// The ordinal a key the BASE VERSION already carries is recorded under. It is below every edit ordinal,
     /// so a fork can never be the edit that introduced a key a published row holds.
@@ -100,7 +97,7 @@ static class ContentForkChecks
         }
 
         string forkKey = edit.ForkKey.ToString();
-        string? defect = KeyDefect(forkKey);
+        string? defect = ContentKeyShape.Defect(forkKey);
         if (defect is not null)
         {
             findings.Add(new ContentFinding(
@@ -108,7 +105,7 @@ static class ContentForkChecks
                 edit.DefinitionId,
                 Code,
                 FormattableString.Invariant(
-                    $"Edit {ordinal} forks row {edit.DefinitionId} of type '{registration.TypeKey}' under key '{forkKey}', which is {defect}. A key is 1 to {MaxKeyLength} characters of a-z, 0-9 and underscore, with no leading digit, no leading or trailing underscore and no double underscore.")));
+                    $"Edit {ordinal} forks row {edit.DefinitionId} of type '{registration.TypeKey}' under key '{forkKey}', which is {defect}. {ContentKeyShape.Rule}")));
         }
         else if (taken.TryGetValue((edit.Type.Value, forkKey), out int introducedBy) && introducedBy != ordinal)
         {
@@ -205,42 +202,8 @@ static class ContentForkChecks
         return null;
     }
 
-    /// <summary>
-    /// The key shape of contracts 5.3, checked HERE because the copy's key never reaches the candidate a
-    /// <c>KEC0001</c> sweep would see: a fork whose key is malformed is refused before the row it would go on
-    /// exists. The rule is the sweep's and the two are the same sentence in the spec.
-    /// </summary>
-    static string? KeyDefect(string key)
-    {
-        if (key.Length == 0)
-        {
-            return "empty";
-        }
-
-        if (key.Length > MaxKeyLength)
-        {
-            return FormattableString.Invariant($"{key.Length} characters long");
-        }
-
-        for (int i = 0; i < key.Length; i++)
-        {
-            char character = key[i];
-            if (character is not ((>= 'a' and <= 'z') or (>= '0' and <= '9') or '_'))
-            {
-                return FormattableString.Invariant($"outside the character set at position {i}");
-            }
-
-            if (character == '_' && i > 0 && key[i - 1] == '_')
-            {
-                return FormattableString.Invariant($"a double underscore at position {i}");
-            }
-        }
-
-        if (key[0] is >= '0' and <= '9')
-        {
-            return "a leading digit";
-        }
-
-        return key[0] == '_' ? "a leading underscore" : key[^1] == '_' ? "a trailing underscore" : null;
-    }
+    // The key shape rule itself lives in ContentKeyShape, because it has three callers at three layers now:
+    // the validator's KEC0001 sweep, this fork precondition (whose copy key never reaches that sweep, since
+    // the row it would go on does not exist until publish) and the admin boundary, which refuses an add's key
+    // before the edit enters the draft.
 }

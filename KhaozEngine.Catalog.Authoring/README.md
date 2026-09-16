@@ -77,6 +77,20 @@ The flag field is the CALLER's and the engine does not name it. The engine check
 on the type's schema and is `Bool`, which keeps `Fork` a generic operation over the row model rather than a
 feature of whichever package motivated it.
 
+### The key shape rule
+
+`ContentKeyShape` is the key rule of contracts 5.3 as one public predicate: `Defect(key)` answers the first
+defect as a phrase or null, `Rule` is the whole rule as one sentence for a message to append, and
+`MaxKeyLength` is the cap. It is public because the rule has callers at three layers and they are not one
+call site. The validator's `KEC0001` sweep walks the rows a candidate already holds. A fork's copy key never
+reaches that sweep, because the row it would go on does not exist until publish. And an admin surface has to
+refuse an add's key BEFORE the edit enters the draft, since a draft carrying a malformed key is wedged: every
+later validate reports it, every later publish refuses, and the only removal on this seam is a discard, which
+takes every other pending edit with it.
+
+The rule is deliberately not `ContentKey`'s own. A bad key has to reach the sweep intact, so that a bulk
+import reports every one of them in a single pass rather than throwing on the first.
+
 ## The change set
 
 `ContentChangeSet` is the ordered, deduplicated edit list that is the durable form of a draft. It holds ONE

@@ -28,6 +28,13 @@ internal static class CatalogEditParser
     /// <summary>A row carries a field the type's schema does not declare, or one it may not author.</summary>
     public const string UnknownFieldCode = "KEC0004";
 
+    /// <summary>
+    /// A key an edit INTRODUCES is malformed, which is the sweep's own code reported at the boundary. An add's
+    /// key and a fork's copy key are the only two keys an edit invents, and neither exists as a row for the
+    /// sweep to walk, so the boundary is the only place either can be caught before it enters the draft.
+    /// </summary>
+    public const string KeyShapeCode = "KEC0001";
+
     /// <summary>A replacement-policy retire names a key that resolves to no row.</summary>
     public const string ReplacementCode = "KEC0017";
 
@@ -157,6 +164,19 @@ internal static class CatalogEditParser
         if (target is null && string.IsNullOrEmpty(key))
         {
             findings.Add(Finding(UnknownFieldCode, type.TypeKey, 0, At(ordinal, "names no 'key'.")));
+            return null;
+        }
+
+        // An ADD introduces its own key, so the shape rule runs HERE. Every other op takes its key from the
+        // row the store already holds, which was checked when that row was published. A draft that accepted a
+        // malformed key was wedged: the sweep reported it forever, the publish refused forever, and the only
+        // removal on the seam is a discard, which takes every other pending edit in the draft with it.
+        if (target is null && ContentKeyShape.Defect(key!) is string defect)
+        {
+            findings.Add(Finding(KeyShapeCode, type.TypeKey, 0, At(
+                ordinal,
+                FormattableString.Invariant(
+                    $"names key '{key}', which is {defect}. {ContentKeyShape.Rule}"))));
             return null;
         }
 
@@ -317,6 +337,18 @@ internal static class CatalogEditParser
             findings.Add(Finding(ForkCode, type.TypeKey, target.Id, At(
                 ordinal,
                 "names no 'forkKey'. A key is immutable once published and the engine will not invent one for the copy.")));
+            return null;
+        }
+
+        // The COPY's key is the second key an edit invents, so it runs the same rule, before the store is
+        // asked whether anything holds it. The publish-side fork precondition checks this too, and by then the
+        // edit is already in the draft, which is exactly the state an operator cannot get out of piecemeal.
+        if (ContentKeyShape.Defect(forkKey) is string defect)
+        {
+            findings.Add(Finding(KeyShapeCode, type.TypeKey, target.Id, At(
+                ordinal,
+                FormattableString.Invariant(
+                    $"names fork key '{forkKey}', which is {defect}. {ContentKeyShape.Rule}"))));
             return null;
         }
 

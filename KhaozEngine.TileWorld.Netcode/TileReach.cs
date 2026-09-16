@@ -255,16 +255,10 @@ public static class TileReach
         //
         // That cost is what a client naming a target it has never seen was buying. Net ids are handed out from a
         // counter, so a hostile Attack or Interact guesses a small integer rather than needing to have seen
-        // anything, and at the player simulator's radius of 64 each guess was up to eight floods of about 83 KB.
+        // anything, and at the player simulator's radius of 64 each guess was a flood of about 83 KB.
         // Refusing here rather than at the door is what gives both seams one rule and both heads one definition of
         // it, since the client predicts through this same member.
-        //
-        // In LONG, because the two coordinates are independent and can be far apart: a footprint near int.MinValue
-        // against a `from` at a positive tile overflows the subtraction in int, and the wrong sign would ADMIT the
-        // call rather than refuse it.
-        long dx = Math.Max(Math.Max((long)footprint.X - from.X, (long)from.X - ((long)footprint.X1 - 1)), 0L);
-        long dz = Math.Max(Math.Max((long)footprint.Z - from.Z, (long)from.Z - ((long)footprint.Z1 - 1)), 0L);
-        if (Math.Max(dx, dz) > (long)maxRadius + agentSize) return false;
+        if (FootprintDistance(footprint, from) > (long)maxRadius + agentSize) return false;
 
         IReadOnlyList<TileCoord> candidates = Set(map, footprint, plane, agentSize);
         if (candidates.Count == 0) return false;                 // walled in on every side: nothing to path to
@@ -343,6 +337,24 @@ public static class TileReach
         if (xOverlap && z0 == fz1) return TileDirection.S;
         if (xOverlap && z1 == fz0) return TileDirection.N;
         return TileDirection.W;
+    }
+
+    // The Chebyshev gap between `from` and the footprint, 0 when `from` stands on it, and the whole of the
+    // admission rule above. Its own member because the arithmetic is the only observable part of that rule at the
+    // coordinates it is written to survive: a rect whose far edge passes int.MaxValue cannot be enumerated by Set
+    // at all, so the call answers false either way and no end-to-end test can tell a wrapped edge from a sound one.
+    //
+    // In LONG throughout, for two independent reasons. The two coordinates can be far apart, so a footprint near
+    // int.MinValue against a `from` at a positive tile overflows the SUBTRACTION in int, and the wrong sign would
+    // ADMIT the call rather than refuse it. And the far edge is X + Width - 1 computed here rather than
+    // TileRect.X1 - 1 read off the rect, because X1 is an int sum that has already wrapped by the time it is cast:
+    // that read a footprint one tile away as about 2^32 away and refused it (#898), the same wrap the overlap
+    // helper below spells out.
+    internal static long FootprintDistance(TileRect footprint, TileCoord from)
+    {
+        long dx = Math.Max(Math.Max((long)footprint.X - from.X, (long)from.X - ((long)footprint.X + footprint.Width - 1)), 0L);
+        long dz = Math.Max(Math.Max((long)footprint.Z - from.Z, (long)from.Z - ((long)footprint.Z + footprint.Height - 1)), 0L);
+        return Math.Max(dx, dz);
     }
 
     // In long, both the agent's far edges and the rect's, because TileRect.X1 and Z1 are int sums that wrap near

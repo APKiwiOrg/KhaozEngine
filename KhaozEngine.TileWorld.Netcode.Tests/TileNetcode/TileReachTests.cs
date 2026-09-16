@@ -173,6 +173,35 @@ public class TileReachTests
             out _, out _));
     }
 
+    // The admission arithmetic at coordinates where the rect's own far edge wraps. TileRect.X1 is X + Width in
+    // INT, so a footprint whose last column is int.MaxValue reports a far edge of int.MinValue, and reading that
+    // measured a target one tile away as about 2^32 away and refused it (#898). Asserted on the helper rather than
+    // through TryNearest because Set iterates x from X to X1, which a wrapped X1 makes an empty loop: the call
+    // answers false either way, so the arithmetic is observable only here.
+    [Fact]
+    public void The_admission_distance_reads_the_far_edge_in_long_rather_than_a_wrapped_int()
+    {
+        const int width = 4;
+        int x = int.MaxValue - width + 1;                       // covers x through int.MaxValue
+        var footprint = new TileRect(x, 10, width, 2);
+        Assert.True(footprint.X1 < 0, "the rect's own far edge really has wrapped");
+
+        Assert.Equal(0L, TileReach.FootprintDistance(footprint, new TileCoord(int.MaxValue, 10, 0)));   // on it
+        Assert.Equal(0L, TileReach.FootprintDistance(footprint, new TileCoord(x, 11, 0)));
+        Assert.Equal(1L, TileReach.FootprintDistance(footprint, new TileCoord(x - 1, 10, 0)));          // adjacent
+        Assert.Equal(2L, TileReach.FootprintDistance(footprint, new TileCoord(x - 2, 10, 0)));
+        Assert.Equal(3L, TileReach.FootprintDistance(footprint, new TileCoord(x, 14, 0)));              // z 10..11
+        Assert.Equal(1000L, TileReach.FootprintDistance(footprint, new TileCoord(x - 1000, 10, 0)));    // really far
+
+        // And the same helper away from the wrap, where it IS the admission bound TryNearest answers on: 6 tiles
+        // out is refused at radius 4 for a one tile agent and admitted for a three tile one.
+        TileCollisionMap map = Bake(TileMoveSimulatorTests.FlatWorld());
+        var near = new TileRect(17, 20, 1, 1);
+        Assert.Equal(6L, TileReach.FootprintDistance(near, new TileCoord(11, 20, 0)));
+        Assert.False(TileReach.TryNearest(map, near, 0, new TileCoord(11, 20, 0), 1, 4, out _, out _));
+        Assert.True(TileReach.TryNearest(map, near, 0, new TileCoord(11, 20, 0), 3, 4, out _, out _));
+    }
+
     // The range throw is documented unconditionally, so it has to happen on a call the searches never reach.
     // A fully walled target returns false at the empty reach set, and a `from` on another plane returns false
     // sooner still, so before the top-of-body validation both of those swallowed a caller bug that the same

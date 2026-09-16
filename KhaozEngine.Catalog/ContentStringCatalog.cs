@@ -51,6 +51,15 @@ public delegate bool ContentStringFallback(string key, out string value);
 /// in one process cannot move each other's language, and a test never has to write a process-wide culture
 /// to exercise a language fallback.
 /// </para>
+/// <para>
+/// <b>ONE INSTANCE IS SINGLE THREADED</b>, and that is the contract rather than an implementation detail:
+/// <see cref="SelectLanguage(CultureInfo)"/> writes the selected language and a lookup writes the resolved
+/// string cache, so two threads sharing an instance are two threads writing it. A process that wants a
+/// catalog per thread, per screen or per player builds one per thread, per screen or per player, which the
+/// explicit <see cref="CurrentLanguage"/> is what makes cheap. The cache still publishes a slot's VALUE
+/// before the tag that claims it, so the failure mode of breaking the contract is a redundant decode
+/// rather than another key's string.
+/// </para>
 /// </summary>
 public sealed class ContentStringCatalog
 {
@@ -355,9 +364,12 @@ public sealed class ContentStringCatalog
                 return true;
             }
 
+            // The VALUE is published before the tag that claims it. The tag is what a reader matches on, so
+            // writing it first leaves a window in which the slot claims this key and still holds the last
+            // one's string, and a reader that lands in it gets a wrong answer rather than a miss.
             value = Encoding.UTF8.GetString(indexes[shard].ValueAt(entryOffset));
-            cacheTags[slot] = tag;
             cacheValues[slot] = value;
+            cacheTags[slot] = tag;
             return true;
         }
 

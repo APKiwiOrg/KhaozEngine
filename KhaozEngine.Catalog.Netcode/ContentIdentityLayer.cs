@@ -148,8 +148,28 @@ public static class ContentIdentityLayer
     /// </summary>
     internal static bool IsContentAddress(string? hash) => FileSystemPackStore.IsContentAddress(hash);
 
-    static bool TryParseOrdinal(string value, out int number) =>
-        int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out number);
+    /// <summary>
+    /// The tree's one reading of a wire ordinal: PLAIN decimal digits, nothing else, which is what both this
+    /// layer and <see cref="ContentRefusal"/> mean by a version number or a build ordinal.
+    /// <para>
+    /// The digit sweep is not redundant with the parse. <see cref="NumberStyles.None"/> still reads a
+    /// trailing NUL as the end of the string, so a 47 with a NUL after it parses as 47, and a value that is
+    /// not what it was written as travels on as though it were.
+    /// </para>
+    /// </summary>
+    internal static bool TryParseOrdinal(string value, out int number)
+    {
+        number = 0;
+        for (int i = 0; i < value.Length; i++)
+        {
+            if (value[i] is < '0' or > '9')
+            {
+                return false;
+            }
+        }
+
+        return int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out number);
+    }
 
     static void RequireContentAddress(string? hash, string parameterName)
     {

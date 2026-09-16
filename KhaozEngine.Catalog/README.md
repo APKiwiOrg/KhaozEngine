@@ -317,6 +317,13 @@ if (!roller.TryRoll(tableId, drops, out int written))
   no credential, because a redirect off a content-addressed store is either a misconfiguration or a
   redirection attack. No cloud SDK, deliberately: a blob SDK here would be a third-party dependency in every
   game client's graph, and the write side belongs to the publisher's own server.
+- **`HttpPackStore.MaxObjectBytes` is the one size bound that applies BEFORE a byte is buffered.** Every
+  other length check in the format is inside `ContentPackReader.TryVerify`, which `CachingPackStore` reaches
+  only once the whole body is in hand, so the store is the single layer that can refuse a body for being
+  too big at all. A declared `Content-Length` above the ceiling answers null without reading, and a response
+  that declares nothing is read through a bounded copy that stops one byte past it, so a chunked origin is
+  bounded too. The ceiling is `ContentPackFormat.MaxChunkUncompressedBytes` plus the largest fixed header a
+  pack file carries, because no legal stored body is larger than the uncompressed bytes it decompresses to.
 - `CachingPackStore` - a LOCAL store in front of a REMOTE one. `GetAsync` asks local, on a miss asks remote,
   VERIFIES, writes through to local and returns. `ExistsAsync` asks local then remote. `PutAsync`, `ListAsync`
   and the pruning half are the CACHE's alone, so one client's eviction policy can never reach the origin.
@@ -373,8 +380,14 @@ else
   retry the missing set with backoff.
 - **Bounded concurrency FOUR**, because a home connection saturates at two or three streams and unbounded
   parallelism against a CDN buys nothing over a link that is the floor. `ContentFetchOptions.Concurrency`
-  moves it, `Attempts` and `BackoffStep` are step 6's retry, and `Languages` is which text chunks this
-  player wants, empty for every language the version ships.
+  moves it, `Attempts`, `BackoffBase` and `BackoffCeiling` are step 6's retry, and `Languages` is which
+  text chunks this player wants, empty for every language the version ships.
+- **The backoff between attempts is exponential with FULL jitter**, from `BackoffBase` (1 s), doubling per
+  attempt, capped at `BackoffCeiling` (60 s), and then multiplied by a uniform draw in [0, 1] taken from
+  `ContentFetchOptions.Random` (the OS source by default). The draw is the part that matters: a world
+  restart refuses its whole population at once, so an undrawn curve moves that population together and
+  arrives as one spike at every step of it. `BackoffBase` of zero runs the attempts back to back, and
+  `ContentFetchOptions.Delay` is the wait itself, `Task.Delay` in a client and a recorder in a test.
 - **Decode is LAZY and the loop stores BYTES.** No row is decoded and no decompressed body is kept: the one
   decompression a chunk pays is the verify's, inside the store pair, and its result is dropped. A client
   that later reads one item id through `ContentPackReader.ReadRowAsync` decompresses the one chunk whose
@@ -393,14 +406,20 @@ else
   before the digest could be compared has no digest to compare. The manifest is refetched once too, and a
   second mismatch STOPS the client, because it cannot tell a bad CDN from a bad configuration and guessing
   is worse than stopping.
+- **Cancelling the token THROWS**, the one throwing exit on a surface whose every other failure is an
+  outcome and a reason token, because a cancellation is the caller's own decision rather than something the
+  fetch found out. It leaves nothing half done: the cache holds exactly the chunks that completed, a chunk
+  interrupted mid write leaves no partial file behind, and the next call picks up from what survived.
 - **There is no resume state beyond the cache.** An interrupted fetch leaves verified chunks in the cache
   and the next call recomputes `missing` against it, so a server whose version moved mid fetch needs no
   special casing: the client finishes, is refused again with the new hash, and downloads the manifest plus
   the chunks that differ.
 - `ContentFetchProgress` is the report while it runs, against ONE required set for the whole call, so a
-  client draws one bar rather than one per attempt. `loop.Store` is the verifying pair the fetch went
-  through and is what a lazy row read should go through afterwards, because it verifies on every READ: a
-  cached chunk that went bad on disk is detected on first use, evicted and refetched.
+  client draws one bar rather than one per attempt. **Reports arrive on worker threads**, from whichever
+  fetch just finished an object, so a sink that touches a UI is a `Progress<T>` constructed on the UI
+  thread. `loop.Store` is the verifying pair the fetch went through and is what a lazy row read should go
+  through afterwards, because it verifies on every READ: a cached chunk that went bad on disk is detected
+  on first use, evicted and refetched.
 
 ## Content strings
 
@@ -448,6 +467,9 @@ string name = strings.Get(ContentTextKey.Derive("item", row.Key.Utf8, "name"));
   `ContentStringCatalog.CacheEntries` (512) keyed on the entry offset, so it cannot grow into the thing the
   budget exists to prevent. A repeat `Get` returns the same instance and allocates nothing. A miss is one
   UTF-8 decode over a slice the catalog already holds.
+- **One instance is SINGLE THREADED.** Selecting a language writes the instance and a lookup writes its
+  cache, so two threads sharing one catalog are two threads writing it. Build one per thread, per screen or
+  per player, which the explicit `CurrentLanguage` is what makes cheap.
 - **Two indexes carrying the same tag are SHARDS of that language**, which is how spec 7.6 holds a language
   past the chunk ceiling, and a lookup finds a key in whichever shard carries it.
 

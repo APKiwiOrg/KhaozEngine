@@ -36,7 +36,7 @@ public class ContentFetchFromRefusalTests
         {
             ClientBuild = 1,
             Attempts = 1,
-            BackoffStep = TimeSpan.Zero,
+            BackoffBase = TimeSpan.Zero,
         });
 
         ContentFetchResult result = await loop.FetchAsync(server);

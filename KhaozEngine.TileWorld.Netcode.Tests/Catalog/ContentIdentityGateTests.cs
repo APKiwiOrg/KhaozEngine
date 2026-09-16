@@ -146,6 +146,56 @@ public class ContentIdentityGateTests
         Assert.Equal(2, tooOld.Count(c => c == ':'));
     }
 
+    // The PARSER is the client's half of the same strictness, and it was checking the version fields only.
+    // A refusal is the whole input to the fetch loop, so a server hash that is not a content address is a
+    // path fragment reaching a client's fetch, and an EMPTY one is an ArgumentException out of
+    // ContentFetchLoop.FetchAsync on the exact flow the Catalog README documents. Neither is a refusal a
+    // client may act on, so neither parses.
+    [Theory]
+    [InlineData("ke:content-mismatch:1|../../../etc/passwd||")]
+    [InlineData("ke:content-mismatch:1|||")]
+    [InlineData("ke:content-mismatch:1|" + ServerHash + "1||")]
+    [InlineData("ke:content-mismatch:1|" + ClientHash + "|2|")]
+    [InlineData("ke:content-mismatch:1|" + ClientHash + "|2|not-a-hash")]
+    [InlineData("ke:content-mismatch:1\0|" + ServerHash + "||")]
+    public void A_mismatch_whose_hashes_are_not_content_addresses_parses_false(string reason)
+    {
+        Assert.False(ContentRefusal.TryParseMismatch(reason, out ContentVersionIdentity server, out ContentVersionIdentity? client));
+        Assert.Equal(default, server);
+        Assert.Null(client);
+    }
+
+    [Fact]
+    public void A_mismatch_carrying_two_content_addresses_parses_both_sides()
+    {
+        Assert.True(ContentRefusal.TryParseMismatch(
+            "ke:content-mismatch:47|" + ServerHash + "|44|" + ClientHash,
+            out ContentVersionIdentity server,
+            out ContentVersionIdentity? client));
+        Assert.Equal(Server, server);
+        Assert.Equal(new ContentVersionIdentity(44, ClientHash), client);
+
+        Assert.True(ContentRefusal.TryParseMismatch(
+            "ke:content-mismatch:47|" + ServerHash + "||",
+            out server,
+            out client));
+        Assert.Equal(Server, server);
+        Assert.Null(client);
+    }
+
+    // The producing side refuses the same thing, so a server cannot emit a token its own client parser
+    // would then read as no refusal at all.
+    [Fact]
+    public void A_mismatch_over_a_hash_that_is_not_a_content_address_refuses_to_be_written()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            ContentRefusal.Mismatch(new ContentVersionIdentity(1, "not-a-hash"), null));
+        Assert.Throws<ArgumentException>(() =>
+            ContentRefusal.Mismatch(Server, new ContentVersionIdentity(2, "not-a-hash")));
+        Assert.Throws<ArgumentException>(() =>
+            ContentRefusal.Mismatch(Server, new ContentVersionIdentity(2, string.Empty)));
+    }
+
     [Fact]
     public void A_layer_whose_hash_is_not_a_content_address_is_read_as_no_statement_at_all()
     {
@@ -203,6 +253,11 @@ public class ContentIdentityGateTests
     [InlineData("47|" + ServerHash + "|")]
     [InlineData("47|" + ServerHash + "|x")]
     [InlineData("47|" + ServerHash + "|1|2")]
+    // A trailing NUL, which int.TryParse under NumberStyles.None reads as the end of the string. The doc
+    // says plain decimal digits and the gate echoes the parsed number, so nothing follows from it today,
+    // and a number that is not what it was written as is not a statement this door should accept.
+    [InlineData("47\0|" + ServerHash)]
+    [InlineData("47|" + ServerHash + "|4118\0")]
     public void A_layer_value_that_is_not_a_number_and_a_content_address_parses_false(string value)
     {
         Assert.False(ContentIdentityLayer.TryParse(value, out ContentVersionIdentity identity, out int? build));

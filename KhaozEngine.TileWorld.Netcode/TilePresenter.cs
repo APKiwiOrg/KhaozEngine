@@ -11,7 +11,7 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// model transform on a +z-forward mesh: tile SOUTH is 0, east +pi/2, north pi and west -pi/2. That is the engine's
 /// one model-yaw convention, the same <c>CharacterFacing.YawOf</c> produces and the same hand
 /// <c>TileObjectProps.YawRadians</c> places tile objects with, so an avatar and the object it stands next to face
-/// the same way. See <see cref="TilePresenter.Yaw"/>.</param>
+/// the same way. See <see cref="TilePresenter.Yaw(TileDirection)"/>.</param>
 public readonly record struct TilePose(Vector3 Position, float Yaw);
 
 /// <summary>
@@ -29,7 +29,7 @@ public readonly record struct TilePose(Vector3 Position, float Yaw);
 /// ground quad and the props do. Drawn on the CORNER instead, an avatar stands half a tile diagonally off every
 /// prop it walks up to and off the middle of the ground it occupies, which is what a consumer then re-centres in
 /// a shim of its own.</para>
-/// <para>THE BODY GLIDES THE WHOLE STEP, LINEARLY. <see cref="Pose"/> runs from <see cref="TileMoveState.StepFrom"/>
+/// <para>THE BODY GLIDES THE WHOLE STEP, LINEARLY. <see cref="Pose(in TileMoveState, float)"/> runs from <see cref="TileMoveState.StepFrom"/>
 /// into <see cref="TileMoveState.Tile"/> by <see cref="TileMoveState.StepTicks"/> over
 /// <see cref="TileMoveState.StepTotal"/>, at a constant speed, arriving exactly as the next step commits. That is
 /// the OSRS model, and it is the ruled answer rather than a first draft of one: see
@@ -93,7 +93,36 @@ public sealed class TilePresenter
     /// <param name="state">The state to draw.</param>
     /// <param name="extraTicks">Ticks elapsed since the state was sampled. Negative is treated as zero.</param>
     /// <returns>The world position and yaw to draw at.</returns>
-    public TilePose Pose(in TileMoveState state, float extraTicks = 0f)
+    public TilePose Pose(in TileMoveState state, float extraTicks = 0f) =>
+        PoseAt(BodyCentre(state, extraTicks), state.Tile.Plane, state.Facing);
+
+    /// <summary>
+    /// The same body, drawn in the same place, LOOKING at <paramref name="aimTilePlanar"/> instead of along
+    /// <see cref="TileMoveState.Facing"/>. The continuous aim in its hand-placed form, for a game drawing a body of
+    /// its own rather than one of the client's: <see cref="TileWorldClient.TryGetRemotePose"/> and
+    /// <see cref="TileWorldClient.LocalPose"/> already apply it to the bodies they draw.
+    /// <para>The yaw is taken from where the body IS DRAWN, so an aimed body turns with its own glide, and for a
+    /// body at rest that point is its footprint centre. An aim point ON the body's own centre has no direction to
+    /// report, so the tile facing is kept rather than snapping the body south.</para>
+    /// <para><see cref="TileMoveState.Facing"/> is untouched. It is what the reach rules, the follow and the wire
+    /// all read, and this is a drawn yaw over it.</para>
+    /// </summary>
+    /// <param name="state">The state to draw.</param>
+    /// <param name="aimTilePlanar">Where to look, in tile units on the lattice (x, z), which is what
+    /// <see cref="ITileTargets.TryGetAimPoint"/> answers.</param>
+    /// <param name="extraTicks">Ticks elapsed since the state was sampled. Negative is treated as zero.</param>
+    /// <returns>The world position and the aimed yaw to draw at.</returns>
+    public TilePose Pose(in TileMoveState state, Vector2 aimTilePlanar, float extraTicks = 0f)
+    {
+        Vector2 centre = BodyCentre(state, extraTicks);
+        return new TilePose(Centre(centre.X, state.Tile.Plane * PlaneHeight, centre.Y),
+            centre == aimTilePlanar ? Yaw(state.Facing) : Yaw(centre, aimTilePlanar));
+    }
+
+    // Where the body's CENTRE is, in tile units: the glide from StepFrom into Tile, plus the offset that centres a
+    // large body on its footprint. Shared by both Pose overloads so an aimed body and a facing one are drawn at the
+    // same point by construction rather than by two copies of the same arithmetic.
+    Vector2 BodyCentre(in TileMoveState state, float extraTicks)
     {
         float tileX = state.Tile.X, tileZ = state.Tile.Z;
         if (state.IsStepping && state.StepTotal > 0)
@@ -107,13 +136,13 @@ public sealed class TilePresenter
         // A footprint's centre is half its edge in from the anchor corner. PoseAt already adds the half tile a one-tile
         // body wants, so a large body adds the rest, and the offset is constant through a glide because the size is.
         float extra = (state.FootprintSize - 1) * 0.5f;
-        return PoseAt(new Vector2(tileX + extra, tileZ + extra), state.Tile.Plane, state.Facing);
+        return new Vector2(tileX + extra, tileZ + extra);
     }
 
     /// <summary>
     /// How far through its current step a state is, 0 at the moment the step commits and 1 as the body lands,
-    /// carried forward by <paramref name="extraTicks"/> exactly as <see cref="Pose"/> carries the glide. This IS
-    /// the fraction <see cref="Pose"/> interpolates on, exposed so a presentation rule that has to run in lockstep
+    /// carried forward by <paramref name="extraTicks"/> exactly as <see cref="Pose(in TileMoveState, float)"/> carries the glide. This IS
+    /// the fraction <see cref="Pose(in TileMoveState, float)"/> interpolates on, exposed so a presentation rule that has to run in lockstep
     /// with the body (a fade, a squash, a footfall) measures the same number the body is drawn at rather than a
     /// second estimate of it.
     /// <para>ONE when there is no step in flight, because a body at rest is all the way into the tile it is
@@ -136,7 +165,7 @@ public sealed class TilePresenter
     /// that override is the whole point of the prediction layer: it is a continuous position over a discrete
     /// lattice, and rounding it back to a tile here would throw away every frame of smoothing the layer just
     /// computed.
-    /// <para>The zero-correction local motion bound has one term beyond <see cref="Pose"/>. At the instant a new step commits,
+    /// <para>The zero-correction local motion bound has one term beyond <see cref="Pose(in TileMoveState, float)"/>. At the instant a new step commits,
     /// <c>RenderedState</c> still starts from the previous predicted position, so the body may trail
     /// <c>PredictedState.Tile</c> by one grid step plus one local command tick of travel. With a step cadence of N
     /// ticks the bound is <c>1 + 1/N</c> grid steps. The default walk and run cadences therefore bound at 1.25 and
@@ -147,7 +176,7 @@ public sealed class TilePresenter
     /// <para><see cref="TileWorldClient.LocalPose"/> is this call with the client's own prediction and presenter
     /// already in hand, and is what a head normally uses. This overload is for a head holding a
     /// <see cref="ClientPrediction{TState,TCommand}"/> of its own.</para>
-    /// <para>No footprint offset, unlike <see cref="Pose"/>: this draws the LOCAL PLAYER, and a player is always one
+    /// <para>No footprint offset, unlike <see cref="Pose(in TileMoveState, float)"/>: this draws the LOCAL PLAYER, and a player is always one
     /// tile (<see cref="TileWorldServer.SetPlayerState"/> refuses a larger footprint), so the tile centre is the
     /// footprint centre.</para>
     /// </summary>
@@ -196,7 +225,7 @@ public sealed class TilePresenter
 
     /// <summary>A footprint's CENTRE, which is where an overlay that belongs to a large body (a footprint marker, a
     /// nameplate anchor, a hitsplat) draws. The rules' answer, like <see cref="PoseAt(TileCoord, TileDirection)"/>, so
-    /// never a body: a body glides and goes through <see cref="Pose"/>.</summary>
+    /// never a body: a body glides and goes through <see cref="Pose(in TileMoveState, float)"/>.</summary>
     /// <param name="footprint">The tiles covered, anchored on the south-west tile. A one-tile rect draws exactly
     /// where <see cref="PoseAt(TileCoord, TileDirection)"/> draws its tile.</param>
     /// <param name="plane">The plane index the footprint stands on.</param>
@@ -233,4 +262,24 @@ public sealed class TilePresenter
         (int dx, int dz) = TileDirections.Delta(facing);
         return MathF.Atan2(dx, -dz);
     }
+
+    /// <summary>
+    /// The CONTINUOUS yaw, the same convention and the same north as <see cref="Yaw(TileDirection)"/>: the way a
+    /// body standing at <paramref name="fromTilePlanar"/> looks to see <paramref name="toTilePlanar"/>. Both points
+    /// are in tile units on the lattice (x, z), which is what <see cref="PoseAt(Vector2, float, TileDirection)"/>
+    /// takes and what <see cref="ITileTargets.TryGetAimPoint"/> answers.
+    /// <para>It agrees with the direction overload on all eight steps, exactly:
+    /// <c>Yaw(d) == Yaw(origin, origin + Delta(d))</c>, whole-tile deltas being the same pair of floats both calls
+    /// hand atan2. So a one-tile body beside a one-tile target draws precisely the cardinal the reach rules face it
+    /// along, and only a footprint bigger than one tile moves the drawn yaw off it. The two can never disagree
+    /// about which way north is, because the delta is taken in the same world space through the same z negation.</para>
+    /// <para>Two coincident points have no direction to report and answer 0, which is tile south.
+    /// <see cref="Pose(in TileMoveState, Vector2, float)"/> keeps the tile facing in that case rather than passing
+    /// the zero on.</para>
+    /// </summary>
+    /// <param name="fromTilePlanar">Where the looker stands, in tile units.</param>
+    /// <param name="toTilePlanar">What it looks at, in tile units.</param>
+    /// <returns>Rotation about +Y in radians, in the range (-pi, pi].</returns>
+    public static float Yaw(Vector2 fromTilePlanar, Vector2 toTilePlanar) =>
+        MathF.Atan2(toTilePlanar.X - fromTilePlanar.X, fromTilePlanar.Y - toTilePlanar.Y);
 }

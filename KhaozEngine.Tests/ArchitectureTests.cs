@@ -351,8 +351,8 @@ public partial class ArchitectureTests
             new[]
             {
                 "Foundation", "Netcode", "Netcode.Abstractions", "Netcode.LiteNetLib", "Simulation",
-                "Replication", "WorldStore", "ItemInstances.Journal", "Sharding", "NetWorld",
-                "TileWorld.Netcode", "Physics", "CodeHealth.Analyzers",
+                "Replication", "WorldStore", "ItemInstances.Journal", "Catalog.Authoring", "Catalog.Netcode",
+                "Sharding", "NetWorld", "TileWorld.Netcode", "Physics", "CodeHealth.Analyzers",
             }
         },
     };

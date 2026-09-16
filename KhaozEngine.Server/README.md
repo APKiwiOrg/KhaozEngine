@@ -26,6 +26,15 @@ Pulls in:
   `JournalCommit` with one identity, one event per operation and one projection write per dirty page).
   It is a `Server` package because composing a `JournalCommit` needs `KhaozEngine.WorldStore`, and the
   record itself stays in `Foundation`.
+- `KhaozEngine.Catalog.Authoring` - the authoring half of the content catalog: the
+  `IContentAuthoringStore` provider seam, the one open draft and its `Add`/`Update`/`Retire`/`Fork`
+  edits, the field-level audit, families and their aligned id blocks, the reserve-then-issue
+  `ContentIdAllocator`, `ContentPublisher` and its commit, sweep and rollback, `ContentDiff` and the
+  `ContentBundle` seeding document. Pure .NET with no SQL, so the umbrella gains no database
+  dependency. `KhaozEngine.Catalog` itself is the read side and arrives through `Foundation`.
+- `KhaozEngine.Catalog.Netcode` - the content layer of the connect door: `ContentIdentityLayer`,
+  `ContentIdentityGateAuthenticator` and the two `ContentRefusal` tokens, so a client on another
+  published content version is refused at the door rather than admitted read-only.
 - `KhaozEngine.Sharding` - the cell-grid world topology (`ShardHost`, ghosting, handoff).
 - `KhaozEngine.NetWorld` - the authoritative movement server + client glue + `WorldPersistence`.
 - `KhaozEngine.TileWorld.Netcode` - the tile movement stack (`TileWorldServer` / `TileWorldClient`,
@@ -44,8 +53,10 @@ Deliberately NOT included (add these explicitly if you need them):
 - `KhaozEngine.WorldStore.Sqlite` / `KhaozEngine.WorldStore.SqlServer` - the durable `IWorldStore` and
   `IMutationJournalStore` backends. Bundling them would drag Microsoft.Data.Sqlite and Microsoft.Data.SqlClient
   into every consumer, including hosts which use one backend or none.
+- `KhaozEngine.Catalog.Sqlite` / `KhaozEngine.Catalog.SqlServer` - the durable
+  `IContentAuthoringStore` backends, opt-in for the same reason the `WorldStore` pair is.
 - `KhaozEngine.Server.Admin` - the HTTPS admin endpoint, the only package that references
-  ASP.NET Core.
+  ASP.NET Core. It is also where the sixteen registered content-catalog admin actions live.
 - `KhaozEngine.Physics.Bepu` - the BepuPhysics backend behind the `IPhysicsWorld` seam.
 
 A contracts-only project that just needs the wire types should reference

@@ -92,11 +92,27 @@ public sealed class CatalogBundleActionTests : IDisposable
         Assert.Equal(1, (await _harness.Store.ListRowsAsync(CatalogActionHarness.Thing, 0, null, true, 0, 50)).Total);
     }
 
-    /// <summary>A bundle this build cannot read is a 400 naming what was wrong, never a half-built store.</summary>
+    /// <summary>
+    /// A bundle this build cannot read is a 400 naming what was wrong, never a half-built store.
+    /// <para>
+    /// The last three rows are the NUMBER cases, and they are the ones that used to be a 500. A JSON number
+    /// is a decimal literal of any magnitude, so a member the reader wants as an integer can be fractional
+    /// (<c>1.5</c>), outside <see cref="int"/> (an id of 9,999,999,999) or outside <see cref="long"/>
+    /// (<c>1e308</c>). None of those is a shape the reader can accept and all three are an author's typo, so
+    /// each is a refusal carrying the member name rather than an exception escaping the parser.
+    /// </para>
+    /// </summary>
     [Theory]
     [InlineData(null)]
     [InlineData("""{ "bundle": 7 }""")]
     [InlineData("""{ "bundle": { "formatVersion": 99 } }""")]
+    [InlineData("""{ "bundle": { "formatVersion": 1.5 } }""")]
+    [InlineData("""{ "bundle": { "formatVersion": 1e308 } }""")]
+    [InlineData("""
+    { "bundle": { "formatVersion": 1, "storeEpoch": "epoch", "sourceVersion": 1, "types": [],
+      "rows": [ { "typeId": 1024, "id": 9999999999, "key": "stone_sword", "retired": false, "fields": [] } ],
+      "families": [], "rules": [] } }
+    """)]
     public async Task Import_OfAnUnreadableBundle_IsRefused(string? body)
     {
         JsonElement refusal = await _harness.RefusedAsync("catalog-import", body);

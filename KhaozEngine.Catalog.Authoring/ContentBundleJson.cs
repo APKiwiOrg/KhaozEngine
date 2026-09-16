@@ -71,7 +71,7 @@ public static class ContentBundleJson
     /// </summary>
     /// <param name="json">The document.</param>
     /// <exception cref="ArgumentNullException"><paramref name="json"/> is null.</exception>
-    /// <exception cref="ContentAuthoringException">The document is not JSON, carries a format version this build does not know, or is missing a member.</exception>
+    /// <exception cref="ContentAuthoringException">The document is not JSON, carries a format version this build does not know, is missing a member, or carries a member whose value is not the shape that member takes (a number that is not the integer it wants, hex that is not hex).</exception>
     public static ContentBundle Read(string json)
     {
         ArgumentNullException.ThrowIfNull(json);
@@ -444,15 +444,36 @@ public static class ContentBundleJson
 
     static int Int(JsonElement parent, string name) => (int)Long(parent, name);
 
+    // A JSON number is a decimal literal of ANY magnitude, so Number-kinded is not yet integer-valued: 1.5,
+    // an id of 9,999,999,999 against an int, and 1e308 against a long are all Number and none of them
+    // converts. Try rather than Get, because a Get on a miss is a FormatException, which is neither this
+    // reader's declared surface nor something a caller can tell apart from a fault. An author's typo is a
+    // refusal naming the member, the same as every other shape defect in this file.
     static int? OptionalInt(JsonElement parent, string name)
-        => parent.TryGetProperty(name, out JsonElement element) && element.ValueKind == JsonValueKind.Number
-            ? element.GetInt32()
-            : null;
+    {
+        if (!parent.TryGetProperty(name, out JsonElement element) || element.ValueKind != JsonValueKind.Number)
+        {
+            return null;
+        }
+
+        return element.TryGetInt32(out int value)
+            ? value
+            : throw Refuse(FormattableString.Invariant(
+                $"A bundle member '{name}' is a 32-bit integer, and this one is not."));
+    }
 
     static long Long(JsonElement parent, string name)
-        => parent.TryGetProperty(name, out JsonElement element) && element.ValueKind == JsonValueKind.Number
-            ? element.GetInt64()
-            : throw Refuse(FormattableString.Invariant($"A bundle member '{name}' is a number, and this one is not."));
+    {
+        if (!parent.TryGetProperty(name, out JsonElement element) || element.ValueKind != JsonValueKind.Number)
+        {
+            throw Refuse(FormattableString.Invariant($"A bundle member '{name}' is a number, and this one is not."));
+        }
+
+        return element.TryGetInt64(out long value)
+            ? value
+            : throw Refuse(FormattableString.Invariant(
+                $"A bundle member '{name}' is a 64-bit integer, and this one is not."));
+    }
 
     static bool Bool(JsonElement parent, string name)
         => parent.TryGetProperty(name, out JsonElement element)

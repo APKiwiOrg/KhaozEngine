@@ -71,6 +71,14 @@ internal sealed class CatalogBundleActions(IContentAuthoringStore store, Content
         {
             return CatalogRefusal.From(failure, registry);
         }
+        catch (Exception failure) when (failure is not OperationCanceledException)
+        {
+            // The backstop, and it is here rather than in the dispatcher because only this action knows the
+            // thing being parsed is an operator's document. Read's contract is that an unreadable bundle is a
+            // ContentAuthoringException, and a gap in that contract reached the dispatcher as a bare 500,
+            // which reads as a server fault rather than as the typo it is. A parser gap is still a refusal.
+            return CatalogRefusal.Malformed("The bundle could not be read: " + failure.Message);
+        }
 
         try
         {

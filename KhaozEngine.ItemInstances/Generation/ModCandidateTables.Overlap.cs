@@ -13,10 +13,20 @@ namespace KhaozEngine.ItemInstances;
 /// memoized merge is 11 us per roll at 86 percent of rolls, and this is 5.2 MB and zero.
 /// </para>
 /// <para>
-/// <b>The merged count and weight this pass computes on the way are CHECKED against the same numbers the
+/// <b>The merged count and weight this pass computes on the way are checked against the same numbers the
 /// suppression scalars imply</b>, because the lists ARE the merge and a wrong list is a plausible wrong
-/// weight rather than a crash. Nothing downstream could catch it, so a disagreement is counted into
-/// <see cref="ConsistencyFailures"/> and the measured count over a whole key space is zero.
+/// weight rather than a crash. A disagreement is counted into <see cref="ConsistencyFailures"/>, and the
+/// measured count over a whole key space is zero.
+/// </para>
+/// <para>
+/// <b>That self check is a SMOKE ALARM rather than proof, and it is important not to read it as proof.</b>
+/// Both sides of the comparison come out of this one pass: the merge counts what it kept, and the scalars
+/// are the bucket totals less what the same walk recorded as suppressed. A list that is wrong in a way the
+/// walk is CONSISTENTLY wrong about, a cursor advanced twice or a position skipped, moves both sides
+/// together and reports zero. What it does catch is a divergence between the merge and the recording of it,
+/// which is the mistake an edit to one and not the other makes. The INDEPENDENT check is
+/// <c>ModCandidateTablesTests.ReferenceMerge</c>, a second merge written in the test file rather than shared
+/// with this code, run over every (signature, kind, band) key.
 /// </para>
 /// </summary>
 public sealed partial class ModCandidateTables
@@ -202,6 +212,17 @@ public sealed partial class ModCandidateTables
         if (liveCount != mergedCount || liveWeight != mergedWeight)
         {
             ConsistencyFailures++;
+        }
+
+        // The UNION over a signature's tag positions is the bound a roll's mod draw is taken over, and
+        // NextInt takes an int. KEC0113 bounds one TAG's rows, which is a subset of the union rather than
+        // the union, so a base whose tags each sit under the ceiling can still sum past it. A saturating or
+        // wrapping bound there is a silently wrong distribution on every roll of that base, so the build
+        // refuses it and the boot fails closed.
+        if (liveWeight > int.MaxValue)
+        {
+            throw new InvalidOperationException(FormattableString.Invariant(
+                $"The live pool for tag signature {signature}, mod kind {_kinds[kindPosition]} and band {band} sums to {liveWeight} over its {buckets.Length} tag positions, past the int ceiling of {int.MaxValue}. A roll draws over that union with one bounded draw, so a wider one cannot be drawn at all."));
         }
     }
 

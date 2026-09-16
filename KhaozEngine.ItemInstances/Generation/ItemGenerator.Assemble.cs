@@ -39,6 +39,13 @@ public sealed partial class ItemGenerator
     /// Step 10: one draw per name POSITION over that position's words, weighted against the base's tags
     /// through their <c>rare_name_word_weight</c> rows. A position whose pool is empty still draws and
     /// discards, for the same reason an empty affix pool does.
+    /// <para>
+    /// <b>A skipped position SHIFTS every later word down one place in kind 134</b>, and nothing in the
+    /// payload says so, so the item ends up named by a misaligned word list rather than by a short one.
+    /// That is why the hole is closed at the FOLD: <see cref="GenerationContentTables"/> refuses a version
+    /// whose reachable rarity has an uncoverable position, mirroring <c>KEC0109</c>'s second clause, and a
+    /// published version cannot reach this loop with an empty pool at all.
+    /// </para>
     /// </summary>
     int RollRareName(int signature, int rarityIndex)
     {

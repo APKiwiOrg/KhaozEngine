@@ -163,6 +163,14 @@ public sealed partial class ModCandidateTables
     /// A (tag signature, kind, band) whose live count or live weight disagrees with the merge the build ran
     /// to produce its overlap lists. It MUST be zero: the suppression lists ARE that merge, precomputed, so
     /// a wrong list is a wrong WEIGHT rather than a crash and nothing downstream could catch it.
+    /// <para>
+    /// <b>A zero here is not proof the lists are right.</b> Both sides of the comparison are derived from
+    /// the SAME pass, so a walk that is consistently wrong moves both together and reports zero. It catches
+    /// a divergence between the merge and the recording of it, which is what an edit to one and not the
+    /// other produces, and nothing more. The independent check is
+    /// <c>ModCandidateTablesTests.ReferenceMerge</c>, a second merge written in the test file rather than
+    /// shared with this code.
+    /// </para>
     /// </summary>
     public int ConsistencyFailures { get; private set; }
 

@@ -24,9 +24,14 @@ namespace KhaozEngine.ItemInstances;
 public sealed class GenerationTables
 {
     /// <summary>
-    /// The most excluded runs one tag table may ever hold, whatever the pack says. A placement seats one run
-    /// per table and its group seats one more per member, so a pathological pack could size the scratch in
-    /// gigabytes without it.
+    /// The most excluded runs one tag table may ever hold, whatever the pack says. Each run list costs
+    /// three ints per run per (kind, tag position) slot in every generator, so a pathological pack could
+    /// size the scratch in gigabytes without it.
+    /// <para>
+    /// <b>It is a REFUSAL rather than a clamp.</b> Clamping the worst case down to it and letting the seat
+    /// drop what does not fit is the fail-open shape: a run that is not seated is a mod that stays LIVE, so
+    /// an item can carry two mods of a group capped at one and nothing anywhere reports it.
+    /// </para>
     /// </summary>
     internal const int RunCeiling = 4_096;
 
@@ -62,10 +67,16 @@ public sealed class GenerationTables
     }
 
     /// <summary>
-    /// How many excluded runs one tag table may need to hold. A placement seats one run and its group seats
-    /// one per member, so the affix count times the widest group bounds it, and the bucket length bounds it
-    /// again because runs are disjoint by mod id.
+    /// How many excluded runs one tag table may need to hold, as the TRUE worst case rather than a number
+    /// that happens to fit. A placement seats one run for its own mod and one more for every member of its
+    /// group, so the affix count times one plus the widest group bounds it, and the widest bucket bounds it
+    /// again because runs are disjoint by mod id and a run holds at least one entry.
+    /// <para>
+    /// A worst case past <see cref="RunCeiling"/> is REFUSED here rather than clamped, because a clamp puts
+    /// the failure at the seat, where the only thing left to do is drop a run and leave a mod live.
+    /// </para>
     /// </summary>
+    /// <exception cref="InvalidOperationException">The worst case is past the ceiling.</exception>
     static int MeasureRunsPerSlot(ModCandidateTables tables, GenerationContentTables content)
     {
         int widestGroup = 1;
@@ -84,7 +95,14 @@ public sealed class GenerationTables
             }
         }
 
-        long needed = (long)Math.Max(content.MaxAffixCount, 1) * (1 + widestGroup);
-        return (int)Math.Clamp(Math.Min(needed, widestBucket), 1, RunCeiling);
+        long affixes = Math.Max(content.MaxAffixCount, 1);
+        long needed = Math.Min((affixes * widestGroup) + affixes, widestBucket);
+        if (needed > RunCeiling)
+        {
+            throw new InvalidOperationException(FormattableString.Invariant(
+                $"A roll on this version could seat up to {needed} excluded runs in one tag table, over the ceiling of {RunCeiling}: {affixes} affixes times a widest mod group of {widestGroup} members, plus one run each, inside a widest bucket of {widestBucket} entries. Each run costs three ints per slot in every generator, and clamping the scratch down instead would leave a mod LIVE the moment the list filled."));
+        }
+
+        return (int)Math.Max(needed, 1);
     }
 }

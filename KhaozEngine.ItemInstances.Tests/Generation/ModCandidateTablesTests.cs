@@ -361,6 +361,39 @@ public class ModCandidateTablesTests
     }
 
     [Fact]
+    public void A_signatures_UNION_weight_past_int_MaxValue_THROWS_at_build_because_a_draw_is_bounded_by_an_int()
+    {
+        ContentTypeRegistry registry = Registry();
+
+        // KEC0113 bounds the rows sharing one TAG, and this is the union over a base's tag positions, which
+        // is a superset of any one of them. Two tags each holding 1.5 billion sit comfortably under the
+        // per-tag ceiling and sum to 3 billion, which is what a roll would have to draw over.
+        const int half = 1_500_000_000;
+        ContentRow[] Rows(int weight) =>
+        [
+            Tag(registry, 5, "metal"),
+            Tag(registry, 6, "blade"),
+            Item(registry, 40, "greatsword", [5, 6]),
+            Mod(registry, 1, "sharp"),
+            Mod(registry, 2, "keen"),
+            ModTier(registry, 1, "sharp_t1", modId: 1, ordinal: 1),
+            ModTier(registry, 2, "keen_t1", modId: 2, ordinal: 1),
+            ModTierWeight(registry, 1, "sharp_t1_metal", tierId: 1, tagId: 5, weight: weight),
+            ModTierWeight(registry, 2, "keen_t1_blade", tierId: 2, tagId: 6, weight: weight),
+        ];
+
+        // A union just under the ceiling builds, so the refusal is the CEILING rather than a pair of big
+        // numbers. The two mods differ, so nothing here is suppressed and both weights are live.
+        ModCandidateTables under = ModCandidateTables.Build(Snapshot(registry, Rows(1_000_000_000)));
+        Assert.Equal(2_000_000_000L, under.LiveWeight(SignatureOf(under, 40), KindPosition(under, ModContentType.PrefixKind), 0));
+
+        InvalidOperationException failure = Assert.Throws<InvalidOperationException>(
+            () => ModCandidateTables.Build(Snapshot(registry, Rows(half))));
+        Assert.Contains("3000000000", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("2147483647", failure.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void A_tier_ordinal_above_15_THROWS_at_build_because_the_packed_key_carries_four_bits()
     {
         ContentTypeRegistry registry = Registry();

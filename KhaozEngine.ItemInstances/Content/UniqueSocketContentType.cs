@@ -79,9 +79,13 @@ public static class UniqueSocketContentType
     /// validator's <c>KEC0115</c>.
     /// <para>
     /// <b>CONTIGUITY is not checked and is not a rule spec 8.6 states.</b> The table there says the sort is
-    /// the socket's index in kind 132 in authored order and says nothing about gaps, and nothing seeds kind
-    /// 132 from these rows yet, so a gap has no reader to confuse.
-    /// Deciding it is
+    /// the socket's index in kind 132 in authored order and says nothing about gaps.
+    /// <c>ItemGenerator.GenerateUnique</c> DOES seed kind 132 from these rows now, and what it seeds is
+    /// <c>GenerationContentTables.GroupChildren</c>'s reading of the sort: the rows are ordered by
+    /// <c>(sort, id)</c> and then COMPACTED into a dense list, so the sort decides the ORDER and never the
+    /// index. A gap closes, and a socket authored at sort 5 with nothing before it seats at index 0. So a
+    /// gap has no reader to confuse today, and the open question is whether an author meant the sort to be
+    /// the index, which is
     /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/966">966</see>.
     /// </para>
     /// </summary>

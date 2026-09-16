@@ -107,6 +107,7 @@ sealed class GenerationContentTables
             _rarityCumulative);
 
         (_nameStart, _nameCount, _nameWordIds, _nameCumulative) = BuildNameTables(snapshot, tables);
+        RefuseUncoveredNamePositions();
         (_baseIds, _baseDurability, _baseSocketStart, _baseSocketCount, _baseSocketTypes) = BuildBases(snapshot);
         (_uniqueIds, _uniqueBaseIds, _uniqueLineStart, _uniqueLineCount, _uniqueLineMods, _uniqueLineTiers,
             _uniqueSocketStart, _uniqueSocketCount, _uniqueSocketTypes) = BuildUniques(snapshot);
@@ -216,6 +217,48 @@ sealed class GenerationContentTables
     /// <summary>One unique template's socket types, in <c>sort</c> order.</summary>
     public ReadOnlySpan<int> UniqueSocketsAt(int index)
         => _uniqueSocketTypes.AsSpan(_uniqueSocketStart[index], _uniqueSocketCount[index]);
+
+    /// <summary>
+    /// Refuses a version on which step 10 would SKIP a name position, mirroring <c>KEC0109</c>'s second
+    /// clause at the fold rather than at the publish.
+    /// <para>
+    /// The rule enforced here: for every rarity rule that rolls N name positions and every tag SIGNATURE
+    /// that rarity is reachable at, every position 1 to N must carry at least one word of non-zero folded
+    /// weight. It is the weaker half of the publish check, which asks the same of every reachable TAG
+    /// rather than of the signature the tags fold into, so a version that satisfies KEC0109 satisfies this
+    /// and a version that reaches a boot without a publish is caught here.
+    /// </para>
+    /// <para>
+    /// <b>The failure it exists to stop is silent and is not a missing name.</b> Step 10 writes the words it
+    /// rolled in order, so a skipped position does not leave a hole: every later word SHIFTS DOWN one
+    /// position in kind 134, and the item is named by a word list nothing in the payload says is misaligned.
+    /// </para>
+    /// </summary>
+    /// <exception cref="InvalidOperationException">A reachable rarity has a position no word can fill.</exception>
+    void RefuseUncoveredNamePositions()
+    {
+        for (int signature = 0; signature < SignatureCount; signature++)
+        {
+            ReadOnlySpan<int> rarities = RarityCumulative(signature);
+            for (int index = 0; index < rarities.Length; index++)
+            {
+                int share = rarities[index] - (index == 0 ? 0 : rarities[index - 1]);
+                if (share <= 0)
+                {
+                    continue;
+                }
+
+                for (int position = 1; position <= _rarityNamePositions[index]; position++)
+                {
+                    if (NameCumulative(signature, position).IsEmpty)
+                    {
+                        throw new InvalidOperationException(FormattableString.Invariant(
+                            $"{InstanceContentFindings.RareNameCoverage}: rarity rule {_rarityIds[index]} rolls {_rarityNamePositions[index]} name positions and is reachable at tag signature {signature}, which carries no rare_name_word of non-zero weight at position {position}. Step 10 would skip that position and shift every later word DOWN one place in kind 134, so the item would be named by a word list nothing says is misaligned."));
+                    }
+                }
+            }
+        }
+    }
 
     static int Clamp(long value) => value <= 0 ? 0 : value >= int.MaxValue ? int.MaxValue : (int)value;
 

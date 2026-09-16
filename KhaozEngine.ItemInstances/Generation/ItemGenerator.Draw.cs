@@ -68,7 +68,10 @@ public sealed partial class ItemGenerator
         OpenPool(SignatureOf(baseId), _tables.BandOf(itemLevel));                             // step 1
         SeatPresent(present);                                                                 // step 6
 
-        int liveWeight = 0;
+        // A LONG, because this is the UNION over the base's tag positions and the tables type answers a
+        // long for the same sum. The build refuses a union past int.MaxValue, so the cast at the draw is
+        // safe, and a per-position int accumulator here would have wrapped silently instead.
+        long liveWeight = 0;
         bool known = _tables.TryGetKindPosition(modKind, out int kindPosition);
         for (int tag = 0; known && tag < _tagCount; tag++)
         {
@@ -82,7 +85,7 @@ public sealed partial class ItemGenerator
             return false;
         }
 
-        int entry = Resolve(kindPosition, BoundedDraw.Next(_random, liveWeight));             // step 7
+        int entry = Resolve(kindPosition, BoundedDraw.Next(_random, (int)liveWeight));        // step 7
         ushort position = _random.NextRollPosition();                                         // step 8
         int modId = ModCandidateTables.ModIdOf(entry);
         int ordinal = ModCandidateTables.TierOrdinalOf(entry);
@@ -326,7 +329,10 @@ public sealed partial class ItemGenerator
 
             int kindDraw = BoundedDraw.Next(_random, openTotal);                             // step 5
             int chosen = ChooseKind(rarityIndex, openTotal, kindDraw, kindMask);
-            int liveWeight = 0;
+
+            // A LONG for the same reason TryDrawAffix's is: this is the UNION over the base's tag positions,
+            // which the build refuses past int.MaxValue and which an int accumulator would have wrapped.
+            long liveWeight = 0;
             for (int tag = 0; chosen >= 0 && tag < _tagCount; tag++)
             {
                 liveWeight += _slotLiveWeight[(chosen * _tagPositions) + tag];
@@ -344,7 +350,7 @@ public sealed partial class ItemGenerator
                 continue;
             }
 
-            int entry = Resolve(chosen, BoundedDraw.Next(_random, liveWeight));              // step 7
+            int entry = Resolve(chosen, BoundedDraw.Next(_random, (int)liveWeight));         // step 7
             ushort position = _random.NextRollPosition();                                    // step 8
             int modId = ModCandidateTables.ModIdOf(entry);
             if (placed < _affixes.Length)
@@ -506,7 +512,15 @@ public sealed partial class ItemGenerator
     /// Records one excluded run in its table's sorted run list and subtracts what it takes out of the live
     /// weight and the live count. A run already seated is left alone, which is what makes a mod excluded
     /// twice, once on its own and once through its group, cost nothing the second time.
+    /// <para>
+    /// <b>A full list THROWS rather than dropping the run.</b> A run that is not seated is a mod that stays
+    /// LIVE, so the next pick can draw a mod the rule already excluded and an item can leave with two mods
+    /// of a group capped at one, silently and forever. The list is sized from the true worst case by
+    /// <see cref="GenerationTables"/>, so this is unreachable on a caller that stays inside the rarity
+    /// rule's own affix count, and it is the loud answer for one that does not.
+    /// </para>
     /// </summary>
+    /// <exception cref="InvalidOperationException">The slot's run list is full.</exception>
     void SeatRun(int slot, int kindPosition, int first, int last)
     {
         int runCursor = slot * _maxRuns;
@@ -528,7 +542,8 @@ public sealed partial class ItemGenerator
 
         if (runs == _maxRuns)
         {
-            return;
+            throw new InvalidOperationException(FormattableString.Invariant(
+                $"This roll asked to exclude a {runs + 1}st run from one tag table, over the ceiling of {_maxRuns} the tables sized from the widest rarity rule's affix count and the widest mod group. Dropping the run instead would leave the mod LIVE, so an item could carry two mods of a group capped at one."));
         }
 
         ReadOnlySpan<int> cumulative = _tables.BucketCumulative(_slotBucket[slot]);

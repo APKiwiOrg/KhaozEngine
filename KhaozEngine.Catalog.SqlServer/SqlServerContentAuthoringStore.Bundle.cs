@@ -304,12 +304,12 @@ public sealed partial class SqlServerContentAuthoringStore
                     VALUES (@family, @type, @key, @size, @retired, @created);
                     """))
                 {
-                    Bind(insert, "@family", family.FamilyId);
-                    Bind(insert, "@type", (int)family.Type.Value);
-                    Bind(insert, "@key", family.FamilyKey);
-                    Bind(insert, "@size", family.BlockSize);
-                    Bind(insert, "@retired", family.IsRetired ? 1 : 0);
-                    Bind(insert, "@created", family.CreatedInVersion);
+                    BindBigInt(insert, "@family", family.FamilyId);
+                    BindInt(insert, "@type", (int)family.Type.Value);
+                    BindText(insert, "@key", family.FamilyKey);
+                    BindInt(insert, "@size", family.BlockSize);
+                    BindInt(insert, "@retired", family.IsRetired ? 1 : 0);
+                    BindInt(insert, "@created", family.CreatedInVersion);
                     await insert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
                 }
 
@@ -321,14 +321,14 @@ public sealed partial class SqlServerContentAuthoringStore
                         """
                         INSERT INTO dbo.catalog_family_block(
                             family_id, block_ordinal, base_id, block_size, next_free_id, reserved_in_version)
-                        VALUES (@family, @ordinal, @base, @size, @next, @version);
+                        VALUES (@family, @blockOrdinal, @base, @size, @next, @version);
                         """);
-                    Bind(insert, "@family", family.FamilyId);
-                    Bind(insert, "@ordinal", block.BlockOrdinal);
-                    Bind(insert, "@base", block.BaseId);
-                    Bind(insert, "@size", block.BlockSize);
-                    Bind(insert, "@next", block.NextFreeId);
-                    Bind(insert, "@version", block.ReservedInVersion);
+                    BindBigInt(insert, "@family", family.FamilyId);
+                    BindInt(insert, "@blockOrdinal", block.BlockOrdinal);
+                    BindInt(insert, "@base", block.BaseId);
+                    BindInt(insert, "@size", block.BlockSize);
+                    BindInt(insert, "@next", block.NextFreeId);
+                    BindInt(insert, "@version", block.ReservedInVersion);
                     await insert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
                 }
             }

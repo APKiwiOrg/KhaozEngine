@@ -13,6 +13,8 @@ public class TileWorldServerTickTests
 {
     const float Dt = 0.25f;
 
+    // The margin is left at the engine default on purpose: this suite authors bodies up to 8x8, and the default has
+    // to admit every legal body at the default radius (15 + 7 * sqrt(2) is 24.9), which running on it proves.
     internal static TileWorldServerConfig Config(TileCoord spawn) => new()
     {
         TickSeconds = Dt,

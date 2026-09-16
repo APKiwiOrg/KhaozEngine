@@ -43,6 +43,13 @@ Validation compares NAMES against `sys.tables`, `sys.indexes`, `sys.check_constr
 and `sys.default_constraints`, so an unnamed constraint (SQL Server would generate a per-database name for it)
 could not be verified at all.
 
+**Every parameter carries its column's SQL type.** A write binds through the binder named for the column
+(`BindInt`, `BindBigInt`, `BindText`, `BindLargeText`, `BindBlob`, `BindTime`) rather than letting SqlClient
+read a type off the value, because a null value has no type to read and SqlClient falls back to `nvarchar` for
+it. SQL Server refuses nvarchar into `varbinary(max)` outright, so an absent field payload could not be written
+at all, and the conversions it does allow are implicit and silent. `SqlServerCatalogParameterTypeTests` cross
+checks every binding in the provider against the embedded DDL, with no instance needed.
+
 `ContentAuthoringSchemaMode.AutoCreate` creates the schema when the database carries no catalog table and then
 validates it, under an exclusive application lock inside one transaction, so two hosts starting at once do not
 race. `ContentAuthoringSchemaMode.ValidateOnly` refuses an empty or mismatched database rather than creating

@@ -110,6 +110,17 @@ public class TileFootprintWireTests
         int clamped = Decode(payload).FootprintSize;
         Assert.Equal(8, clamped);
         Assert.Equal(TileMoveState.MaxFootprintSize, clamped);
+
+        // Nine, the FIRST value past the cap, which is the one a bound written a size too high lets through. Zero and
+        // 200 are both far enough outside that almost any bound catches them.
+        payload[42] = TileMoveState.MaxFootprintSize + 1;
+        Assert.Equal(TileMoveState.MaxFootprintSize, Decode(payload).FootprintSize);
+
+        // And the largest value that is NOT clamped, so the pair brackets the boundary from both sides.
+        payload[42] = TileMoveState.MaxFootprintSize;
+        Assert.Equal(TileMoveState.MaxFootprintSize, Decode(payload).FootprintSize);
+        payload[42] = 1;
+        Assert.Equal(1, Decode(payload).FootprintSize);
     }
 
     [Fact]

@@ -343,6 +343,7 @@ between you and the booth denies reach, a diagonal never counts, a candidate nob
 and a 2x2 object has up to eight reach tiles minus the denied ones. `TryNearest` scores them by the LENGTH of the
 path that actually reaches each one, one `FindPath` per candidate because the pathfinder does not expose its
 distance field, and breaks a tie by the same scan order, so both heads choose the same tile.
+Shipped in 19.0.0 as ONE `TilePathfinder.FindPathToAny` over the whole candidate list, same tile and same tie.
 
 This was written INWARD in an earlier draft (`CanStep` from the candidate into the footprint tile) and inward is
 wrong twice over, because a step never inspects the BLOCKED flag of the tile it leaves. Starting on the candidate

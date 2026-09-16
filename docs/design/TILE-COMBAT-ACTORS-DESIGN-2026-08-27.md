@@ -349,6 +349,7 @@ not make them worse per entity.
 ([#669](https://github.com/APKiwiOrg/KhaozEngine/issues/669)). `TileReach.TryNearest` runs one of those PER
 CANDIDATE, up to eight (`TileReach.cs:112-115`, `:140-154`). An actor that re-paths every tick at the player's
 radius would churn most of a megabyte per second on its own.
+Shipped in 19.0.0 as ONE `TilePathfinder.FindPathToAny` per call, so the per-candidate multiplier is gone.
 
 Two knobs answer it, both in the design rather than in a later optimisation:
 

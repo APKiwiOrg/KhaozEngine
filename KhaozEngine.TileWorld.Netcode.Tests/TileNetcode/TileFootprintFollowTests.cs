@@ -111,15 +111,26 @@ public class TileFootprintFollowTests
         HoldsFor(sim, s, 12);
     }
 
+    // The step out is ONE route and not a walk re-decided every tick: the search runs on the click, and rule 5's memo
+    // carries it the rest of the way. Counted on the route's own step list rather than on Route.End, because a
+    // re-path that picked the same anchor again would build a new list behind an unchanged end.
     [Theory, MemberData(nameof(Pairings))]
-    public void An_overlapping_attacker_steps_out_then_stands(int n, int m)
+    public void An_overlapping_attacker_steps_out_then_stands_in_one_route(int n, int m)
     {
         (TileMoveSimulator sim, FakeFootprints targets) = Sim();
         TileRect rect = Target(m);
         targets.Rects[TargetId] = rect;
 
-        TileMoveState s = Chase(sim, At(rect.X, rect.Z, n), rect, out _);
+        TileMoveState s = sim.Step(At(rect.X, rect.Z, n), TileCommand.Attack(TargetId, TileMoveMode.Run), Dt);
+        var routes = new List<IReadOnlyList<TileCoord>>();
+        for (int i = 0; i < 60 && !Standing(sim, s, rect); i++)
+        {
+            if (!s.Route.IsIdle && (routes.Count == 0 || !ReferenceEquals(routes[^1], s.Route.Tiles)))
+                routes.Add(s.Route.Tiles);
+            s = sim.Step(s, TileCommand.Continue(TileMoveMode.Run), Dt);
+        }
 
+        Assert.True(routes.Count <= 1, $"the step out was re-pathed {routes.Count} times");
         Assert.Equal(n, s.FootprintSize);
         Assert.True(s.Footprint.Intersect(rect).IsEmpty);
         Assert.True(Standing(sim, s, rect));
@@ -158,6 +169,77 @@ public class TileFootprintFollowTests
         Assert.True(s.Route.IsIdle);
         Assert.Equal(tile, s.Tile);
         Assert.False(s.IsStepping);
+        Assert.Equal(TargetId, s.CombatTarget);
+        // Still in range of where the target went, and TURNED to it: a body that answered the old rect would keep
+        // the old facing, and one that re-pathed would have a route.
+        Assert.True(InRange(sim, s, moved));
+        Assert.Equal(TileReach.FacingToward(sim.Map, moved, 0, s.Tile, n), s.Facing);
+        HoldsFor(sim, s, 6);
+    }
+
+    // Rule 5's memo is the route ITSELF, so a target that slides while the route end is still in range of its
+    // footprint costs no search at all. Asserted on the route's step list, which a re-path replaces even when it
+    // picks the same anchor again, rather than on Route.End, which it would not move. A 2x2 walking on a 2x2 is the
+    // geometry that has a slide at all: the end anchor covers two rows, so the target can step north and still touch
+    // it, which a one tile pairing cannot do.
+    [Fact]
+    public void A_target_that_slides_inside_the_route_ends_range_keeps_the_very_same_route()
+    {
+        (TileMoveSimulator sim, FakeFootprints targets) = Sim();
+        TileRect rect = Target(2);
+        targets.Rects[TargetId] = rect;
+
+        TileMoveState s = sim.Step(At(10, 21, 2), TileCommand.Attack(TargetId, TileMoveMode.Run), Dt);
+        Assert.False(s.Route.IsIdle);
+        IReadOnlyList<TileCoord> issued = s.Route.Tiles;
+        TileCoord end = s.Route.End;
+
+        var slid = new TileRect(rect.X, rect.Z + 1, 2, 2);
+        targets.Rects[TargetId] = slid;
+        Assert.True(TileReach.Contains(sim.Map, slid, 0, end, 2), "the slide keeps the route end in range");
+
+        for (int i = 0; i < 20 && !s.Route.IsIdle; i++)
+        {
+            s = sim.Step(s, TileCommand.Continue(TileMoveMode.Run), Dt);
+            if (!s.Route.IsIdle) Assert.Same(issued, s.Route.Tiles);
+            Assert.Equal(end, s.Route.IsIdle ? end : s.Route.End);
+        }
+
+        for (int i = 0; i < 20 && !Standing(sim, s, slid); i++) s = sim.Step(s, TileCommand.Continue(TileMoveMode.Run), Dt);
+        Assert.Equal(end, s.Tile);
+        Assert.True(Standing(sim, s, slid));
+        Assert.Equal(TargetId, s.CombatTarget);
+    }
+
+    // Spec section 15, the other half: the target LEAVES the route end's range, so the follow re-paths, and the body
+    // finishes on an anchor in range of where the target went. The same 2x2 geometry as the sibling above, so the
+    // only difference between the two is how far the target slid.
+    [Fact]
+    public void A_target_that_leaves_the_route_ends_range_makes_the_follower_re_path()
+    {
+        (TileMoveSimulator sim, FakeFootprints targets) = Sim();
+        TileRect rect = Target(2);
+        targets.Rects[TargetId] = rect;
+
+        TileMoveState s = sim.Step(At(10, 21, 2), TileCommand.Attack(TargetId, TileMoveMode.Run), Dt);
+        Assert.False(s.Route.IsIdle);
+        IReadOnlyList<TileCoord> issued = s.Route.Tiles;
+        TileCoord end = s.Route.End;
+
+        var left = new TileRect(rect.X, rect.Z + 3, 2, 2);
+        targets.Rects[TargetId] = left;
+        Assert.False(TileReach.Contains(sim.Map, left, 0, end, 2), "the target really left the route end's range");
+
+        s = sim.Step(s, TileCommand.Continue(TileMoveMode.Run), Dt);
+
+        Assert.False(s.Route.IsIdle);
+        Assert.NotSame(issued, s.Route.Tiles);
+        Assert.NotEqual(end, s.Route.End);
+        Assert.True(TileReach.Contains(sim.Map, left, 0, s.Route.End, 2), "the new route ends in range of the target");
+
+        for (int i = 0; i < 40 && !Standing(sim, s, left); i++) s = sim.Step(s, TileCommand.Continue(TileMoveMode.Run), Dt);
+        Assert.True(Standing(sim, s, left));
+        Assert.NotEqual(end, s.Tile);
         Assert.Equal(TargetId, s.CombatTarget);
     }
 
@@ -211,18 +293,66 @@ public class TileFootprintFollowTests
         Assert.Equal(0L, s.CombatTarget);
     }
 
-    [Fact]
-    public void AgentSize_is_a_floor_under_the_state_size()
+    // #920. The self clear is asked BEFORE the target seam is, so it does not depend on the seam resolving the local
+    // id. Nothing is put in Rects here, which is the client shape the coupling mattered for: through rule 2 ("the
+    // target stopped resolving") the lock clears but the ROUTE survives, so the walk carries on and the head that
+    // could not resolve its own id predicts a walk the server stopped.
+    [Theory, InlineData(1), InlineData(2)]
+    public void A_self_lock_clears_with_the_route_dropped_even_when_the_seam_cannot_resolve_the_id(int size)
     {
-        TileCollisionMap map = TileMoveSimulatorTests.Bake(TileMoveSimulatorTests.FlatWorld());
-        var sim = new TileMoveSimulator(map, TileMoveSimulatorTests.Ticks, null, new TileMoveOptions { AgentSize = 2 });
+        (TileMoveSimulator sim, FakeFootprints targets) = Sim();
+        TileMoveState s = sim.Step(At(10, 10, size), TileCommand.WalkTo(new TileCoord(10, 30, 0), TileMoveMode.Walk),
+            Dt, self: 7L);
+        for (int i = 0; i < 5; i++) s = sim.Step(s, TileCommand.Continue(TileMoveMode.Walk), Dt, self: 7L);
+        Assert.False(s.Route.IsIdle);
+        TileCoord committed = s.Tile;
 
-        Assert.Equal(new TileRect(5, 6, 2, 2), sim.FootprintOf(At(5, 6, 1)));
+        Assert.False(targets.Rects.ContainsKey(7L), "the seam cannot resolve the local id");
+        s = sim.Step(s, TileCommand.Attack(7L, TileMoveMode.Walk), Dt, self: 7L);
+
+        Assert.Equal(0L, s.CombatTarget);
+        Assert.True(s.Route.IsIdle);
+        Assert.Equal(committed, s.Tile);
+
+        for (int i = 0; i < 12; i++) s = sim.Step(s, TileCommand.Continue(TileMoveMode.Walk), Dt, self: 7L);
+        Assert.Equal(committed, s.Tile);
+        Assert.False(s.IsStepping);
+        Assert.True(s.Route.IsIdle);
+        Assert.Equal(0L, s.CombatTarget);
+    }
+
+    // One wall line along the north edge of row z 15, right across the region, with a single tile left out at x 20.
+    // That gap is a doorway exactly one tile wide, which is the sharpest reading of the stepped size there is: the
+    // simulator carries no size of its own any more, so a 1x1 state walks through it and a 2x2 state cannot, and no
+    // option on the simulator can move either answer.
+    [Fact]
+    public void A_state_is_stepped_at_exactly_its_own_footprint_size()
+    {
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        for (int x = 0; x < TileRegion.Size; x++)
+            if (x != 20) doc.AddObject("wall", x, 15, 0, 1);      // north edge of (x,15), south edge of (x,16)
+        var sim = new TileMoveSimulator(TileMoveSimulatorTests.Bake(doc), TileMoveSimulatorTests.Ticks);
+        var goal = new TileCoord(20, 18, 0);
+
+        Assert.Equal(new TileRect(5, 6, 1, 1), sim.FootprintOf(At(5, 6, 1)));
+        Assert.Equal(new TileRect(5, 6, 2, 2), sim.FootprintOf(At(5, 6, 2)));
         Assert.Equal(new TileRect(5, 6, 3, 3), sim.FootprintOf(At(5, 6, 3)));
 
-        var plain = new TileMoveSimulator(map, TileMoveSimulatorTests.Ticks);
-        Assert.Equal(new TileRect(5, 6, 1, 1), plain.FootprintOf(TileMoveState.At(new TileCoord(5, 6, 0),
-            TileDirection.N)));
+        TileMoveState Walk(int size)
+        {
+            TileMoveState s = sim.Step(At(20, 12, size), TileCommand.WalkTo(goal, TileMoveMode.Run), Dt);
+            if (size > 1) Assert.True(s.Route.IsIdle || !s.Route.End.Equals(goal), "the route ends short");
+            for (int i = 0; i < 60 && (!s.Route.IsIdle || s.IsStepping); i++)
+                s = sim.Step(s, TileCommand.Continue(TileMoveMode.Run), Dt);
+            Assert.True(s.Route.IsIdle);
+            Assert.False(s.IsStepping);
+            return s;
+        }
+
+        Assert.Equal(goal, Walk(1).Tile);
+        TileMoveState wide = Walk(2);
+        Assert.NotEqual(goal, wide.Tile);
+        Assert.True(wide.Tile.Z <= 14, $"a 2x2 body crossed the doorway and stands on {wide.Tile}");
     }
 
     // Two parallel wall lines, on the west and east edges of column x 20, from row 10 to the region's north edge. The
@@ -238,19 +368,31 @@ public class TileFootprintFollowTests
         }
         var sim = new TileMoveSimulator(TileMoveSimulatorTests.Bake(doc), TileMoveSimulatorTests.Ticks);
         var goal = new TileCoord(20, 16, 0);
+        // The walled run itself: column 20 from the first walled row to the region's north edge. A 2x2 standing on
+        // any of it straddles one of the two wall lines, so the strong statement is that its footprint never covers a
+        // tile of this rect on any tick, not merely that it stopped somewhere other than the goal.
+        var corridor = new TileRect(20, 10, 1, TileRegion.Size - 10);
 
         TileMoveState Walk(int size)
         {
             TileMoveState s = sim.Step(At(20, 4, size), TileCommand.WalkTo(goal, TileMoveMode.Run), Dt);
             if (size > 1) Assert.True(s.Route.IsIdle || !s.Route.End.Equals(goal), "the route ends short");
             for (int i = 0; i < 60 && (!s.Route.IsIdle || s.IsStepping); i++)
+            {
                 s = sim.Step(s, TileCommand.Continue(TileMoveMode.Run), Dt);
+                if (size > 1)
+                    Assert.True(s.Footprint.Intersect(corridor).IsEmpty, $"the 2x2 stood in the corridor on {s.Tile}");
+            }
             Assert.True(s.Route.IsIdle);
             Assert.False(s.IsStepping);
             return s;
         }
 
         Assert.Equal(goal, Walk(1).Tile);
-        Assert.NotEqual(goal, Walk(2).Tile);
+
+        TileMoveState large = Walk(2);
+        Assert.NotEqual(goal, large.Tile);
+        Assert.True(large.Footprint.Intersect(corridor).IsEmpty, $"the 2x2 finished in the corridor on {large.Tile}");
+        Assert.True(TileCollision.CanStand(sim.Map, large.Tile.X, large.Tile.Z, 0, 2));
     }
 }

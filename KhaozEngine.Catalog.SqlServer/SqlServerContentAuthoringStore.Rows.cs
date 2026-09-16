@@ -111,13 +111,13 @@ public sealed partial class SqlServerContentAuthoringStore
             FROM dbo.catalog_row
             WHERE (@type = 0 OR type_id = @type)
               AND (@id IS NULL OR definition_id = @id)
-              AND (@at IS NULL OR (valid_from_version <= @at
-                   AND (replaced_in_version IS NULL OR replaced_in_version > @at)))
+              AND (@live IS NULL OR (valid_from_version <= @live
+                   AND (replaced_in_version IS NULL OR replaced_in_version > @live)))
             ORDER BY type_id, definition_id, valid_from_version;
             """);
-        Bind(command, "@type", (int)type.Value);
-        Bind(command, "@id", definitionId);
-        Bind(command, "@at", liveAtVersion);
+        BindInt(command, "@type", (int)type.Value);
+        BindInt(command, "@id", definitionId);
+        BindInt(command, "@live", liveAtVersion);
 
         var revisions = new List<ContentRowRevision>();
         await using SqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
@@ -175,12 +175,12 @@ public sealed partial class SqlServerContentAuthoringStore
                 AND r.valid_from_version = f.valid_from_version
             WHERE (@type = 0 OR r.type_id = @type)
               AND (@id IS NULL OR r.definition_id = @id)
-              AND (@at IS NULL OR (r.valid_from_version <= @at
-                   AND (r.replaced_in_version IS NULL OR r.replaced_in_version > @at)));
+              AND (@live IS NULL OR (r.valid_from_version <= @live
+                   AND (r.replaced_in_version IS NULL OR r.replaced_in_version > @live)));
             """);
-        Bind(command, "@type", (int)type.Value);
-        Bind(command, "@id", definitionId);
-        Bind(command, "@at", liveAtVersion);
+        BindInt(command, "@type", (int)type.Value);
+        BindInt(command, "@id", definitionId);
+        BindInt(command, "@live", liveAtVersion);
 
         var byRow = new Dictionary<RowKey, Dictionary<string, ContentFieldValue>>();
         await using SqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
@@ -215,13 +215,13 @@ public sealed partial class SqlServerContentAuthoringStore
             VALUES (@type, @id, @from, NULL, @key, @parent, @family, @retired);
             """))
         {
-            Bind(command, "@type", (int)row.Type.Value);
-            Bind(command, "@id", row.Id);
-            Bind(command, "@from", insert.ValidFromVersion);
-            Bind(command, "@key", row.Key.ToString());
-            Bind(command, "@parent", row.ParentId);
-            Bind(command, "@family", insert.FamilyId);
-            Bind(command, "@retired", row.IsRetired ? 1 : 0);
+            BindInt(command, "@type", (int)row.Type.Value);
+            BindInt(command, "@id", row.Id);
+            BindInt(command, "@from", insert.ValidFromVersion);
+            BindText(command, "@key", row.Key.ToString());
+            BindInt(command, "@parent", row.ParentId);
+            BindBigInt(command, "@family", insert.FamilyId);
+            BindInt(command, "@retired", row.IsRetired ? 1 : 0);
             await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
@@ -243,13 +243,13 @@ public sealed partial class SqlServerContentAuthoringStore
                     int_value, text_value, blob_value)
                 VALUES (@type, @id, @from, @name, @kind, @int, NULL, @blob);
                 """);
-            Bind(command, "@type", (int)row.Type.Value);
-            Bind(command, "@id", row.Id);
-            Bind(command, "@from", insert.ValidFromVersion);
-            Bind(command, "@name", entry.Name);
-            Bind(command, "@kind", (int)value.Kind);
-            Bind(command, "@int", ContentFieldValue.StoresNumber(value.Kind) ? value.Number : null);
-            Bind(command, "@blob", ContentFieldValue.StoresBytes(value.Kind) ? value.Bytes.ToArray() : null);
+            BindInt(command, "@type", (int)row.Type.Value);
+            BindInt(command, "@id", row.Id);
+            BindInt(command, "@from", insert.ValidFromVersion);
+            BindText(command, "@name", entry.Name);
+            BindInt(command, "@kind", (int)value.Kind);
+            BindBigInt(command, "@int", ContentFieldValue.StoresNumber(value.Kind) ? value.Number : null);
+            BindBlob(command, "@blob", ContentFieldValue.StoresBytes(value.Kind) ? value.Bytes.ToArray() : null);
             await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
     }
@@ -267,10 +267,10 @@ public sealed partial class SqlServerContentAuthoringStore
             WHERE type_id = @type AND definition_id = @id AND valid_from_version = @from
               AND replaced_in_version IS NULL;
             """);
-        Bind(command, "@replaced", close.ReplacedInVersion);
-        Bind(command, "@type", (int)close.Type.Value);
-        Bind(command, "@id", close.DefinitionId);
-        Bind(command, "@from", close.ValidFromVersion);
+        BindInt(command, "@replaced", close.ReplacedInVersion);
+        BindInt(command, "@type", (int)close.Type.Value);
+        BindInt(command, "@id", close.DefinitionId);
+        BindInt(command, "@from", close.ValidFromVersion);
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 

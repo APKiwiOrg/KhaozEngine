@@ -6380,7 +6380,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.51.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="19.0.0" />
 ```
 
 ```csharp
@@ -7749,6 +7749,16 @@ The tile server's `TileMovementSystem` supplies its own scratch per cell, with o
 created window for each actor traversal profile the cell encounters. Walk, interact, follow and blocked-route
 searches reuse those buffers. Every shared `TileMoveSimulator` remains stateless, and standalone callers can still
 pass their own scratch explicitly.
+
+**A caller with several acceptable destinations asks `FindPathToAny` once, not `FindPath` per destination.**
+`TilePathfinder.FindPathToAny(map, plane, start, goals, agentSize, maxRadius, scratch, out int goalIndex)` floods
+the window ONCE for a whole goal list and reports which goal it walked to. The answer is the one a search per goal
+gives: the shortest walk wins, a tie falls to the lowest index in the list, and the walk is that goal's own walk,
+because the pathfinder is a plain breadth-first search whose discovery order does not depend on which goal ends
+it. Both entry points share one expansion, so a multi-goal walk and a single-goal one can never disagree about a
+step. There is no nearest-reachable fallback here, unlike `FindPath`, because a goal set has no single tile to be
+near: an unreachable set answers a not-reached empty path and a `goalIndex` of -1. `TileReach.TryNearest` is built
+on it, so an interaction click against a walled-in target costs one window rather than one per reach tile.
 
 **A caller that paths on a tick hands `FindPath` a `TilePathfinderScratch`.** The default call allocates the two
 `(2r + 1)^2` window arrays every search, about 83 KB at radius 64, which is nothing for an editor click and is
@@ -9525,7 +9535,7 @@ var terrain = new TerrainCollision(field);
 var config = new ShardedWorldServerConfig
 {
     CellSize = 60f,          // align to the terrain / streaming chunk grid (one chunk per cell here)
-    OverlapMargin = 24f,     // border ghost band; MUST be >= InterestRadius
+    OverlapMargin = 25f,     // border ghost band, at least InterestRadius + (N - 1) * sqrt(2) for your largest body N
     InterestRadius = 24f,
 };
 var server = new ShardedWorldServer(transport, config, terrain.GroundHeight, MoveTuning.Default);
@@ -9749,6 +9759,9 @@ leaves another free to reach, and a body inside its target is never in range. `S
 agentSize)` lists the in-range ANCHORS in the one-tile set's own order, and at size 1 it is that set element for
 element, so every one-tile tie break stays. `TryNearest(map, footprint, plane, from, agentSize, maxRadius, ...)`
 walks to the nearest of those anchors, so the tile it answers is one `Contains` at the same size answers true for.
+It runs ONE search over the whole anchor list through `TilePathfinder.FindPathToAny`, so a click on a 4x4 target
+nobody can reach costs one window rather than sixteen, and the tile it picks and the scan-order tie rule are the
+ones a search per anchor gave.
 The same predicate is the follow's range test, the entity interaction's arrival and the combat roll, so a large
 body and a small one agree on reach whichever of them is attacking.
 
@@ -9761,6 +9774,7 @@ var config = new TileWorldServerConfig
     StepTicks   = new TileStepTicks(walk: 4, run: 2),      // ticks per step, per mode
     Spawn       = new TileCoord(64, 64, Plane: 0),
     InterestRadius = 15f,                                  // tiles a player sees other players
+    OverlapMargin  = 26f,                                  // >= InterestRadius + (largest body - 1) * sqrt(2)
     MaxGoalRadius  = 64,                                   // farthest a single click may name
     CanRun      = slot => energy.Has(slot),                // null allows everyone. See the run gate below
     IsBanned    = bans.IsBanned,
@@ -9901,7 +9915,8 @@ which is the forward compatibility the wire wants and also the trap. The compone
 the owner route and the display name all keep working, and nothing anywhere says a thing.
 
 `Presenter` starts as a placeholder and is REPLACED once the document is loaded
-(`client.Presenter = new TilePresenter(document)`), so it carries the world's real tile size and plane height.
+(`client.Presenter = new TilePresenter(document)`), so it carries the world's real tile size and plane height and
+puts every pose on the world's authored ground rather than on the plane floor the placeholder draws at.
 It is a pure map from a tile point to a world position and carries no tuning of its own, so replacing it cannot
 change how anything MOVES. `TilePose.Yaw` is the engine's model-yaw convention, the value
 `Matrix4x4.CreateRotationY` wants for a +z-forward mesh, the same one `CharacterFacing.YawOf` and
@@ -10109,7 +10124,9 @@ foreach ((long netId, TileCoord _) in remotes)
   progress cannot come from two moments). A head with its own roster passes
   `(netId, tile, stepProgress)` per actor, where the progress is 0 as the step commits and 1 once the body is at
   rest on that tile, which is also what a body that is not stepping carries. `TilePresenter.StepFraction(state)`
-  is that number for a state you hold, and it is the same fraction `TilePresenter.Pose` glides on.
+  is that number for a state you hold, and it is the same fraction `TilePresenter.Pose` glides on. A FINITE value
+  outside 0 through 1 is CLAMPED into it, so a negative one reads as 0, the start of a step. Only a value that is
+  not a number reads as 1, a body at rest.
 - **The overloads without a `dt` cut instead of crossing**, which is this rule exactly as it behaved before
   weights existed, for a head that cannot fade a body at all.
 - **The key is the net id, and its only job is to be STABLE.** It is arbitrary rather than meaningful: ids are
@@ -10119,6 +10136,21 @@ foreach ((long netId, TileCoord _) in remotes)
   player, who arrived first) and the pick re-decides itself mid-step, so the body under the cursor swaps while
   nothing on screen appears to have changed.
 - **The plane is part of the tile.** The same x and z one storey up is a different tile and hides nothing.
+- **A body at rest covers its WHOLE footprint.** A settled NxN body's stack is every tile of its square rather
+  than its anchor alone, so a one-tile body standing in a cow's rump is in the cow's stack and one of the two is
+  hidden, under both policies. `TryGetDrawn` answers that body on every tile of its square, which is what a click
+  inside a large body should resolve to. The sizes ride the roster:
+  `Rebuild(localNetId, localTile, localFootprintSize, localLeaving, bodies, dt)` takes
+  `(netId, tile, stepProgress, footprintSize)` per body, and the settled-stack door is the same arguments with a
+  `bool localMoving`. `Rebuild(client, dt)` reads each remote's `FootprintSize` off the same delayed sample its
+  tile comes from, so a live client needs nothing on your side. Every overload WITHOUT a size reads every body as
+  one tile, which is this rule exactly as it stood before footprints.
+- **The stack collapses WHOLE.** Bodies are resolved best first and each takes every tile it covers or none of
+  them, so a body that loses one tile of its square is hidden rather than drawing the part nobody else claimed.
+  A MOVING body keeps the answer it has today, judged on the tile it is committed to, or claiming nothing at all
+  under the settled-stack policy, because the widening is about a body at rest covering ground. A
+  `SettledComparison` handed a roster with a body above one tile in it has to be a consistent ordering, because
+  the whole roster is resolved in that order rather than compared pairwise.
 - **Which tile each actor is judged on differs by head, on purpose.** The local player is judged on their
   PREDICTED tile, because that is the tile the local rules have committed them to. A remote is judged on its
   committed tile off the DELAYED render timeline (`TryGetRemoteTile`), which is the timeline the drawn bodies
@@ -10167,6 +10199,62 @@ footprint, anchor plus half its edge on each axis, and `TryGetRemotePose` alread
 directly and do not re-centre it. `presenter.PoseAt(footprint, plane, facing)` is the overlay form for a
 `TileRect`, the centre of a footprint marker or a nameplate anchor with no glide, and for a one-tile rect it is
 exactly `PoseAt(tile)`.
+
+**A pose stands on the TERRAIN, not on the plane floor.** Once the planar centre is known, the height is sampled
+at that same centred point, so a body on an authored slope has its feet on the ground quad it is standing on, and
+so does a marker or a dropped item laid down through `presenter.PoseAt(tile)`. A gliding body resamples every
+frame at its interpolated planar position, which is what makes it FOLLOW a slope between two tile centres instead
+of stepping at the tile edge. Nothing to wire: `new TilePresenter(document)` reads the document's own bilinear
+height lattice, the same one the terrain mesh, the props and the lights are placed with.
+
+```csharp
+client.Presenter = new TilePresenter(document);   // terrain under every pose, no further call
+TilePose me = client.LocalPose;                   // Position.Y is the ground under the body, not the plane floor
+```
+
+- **The placeholder presenter stays FLAT**, at the plane index times `PlaneHeight`, which is the only honest
+  answer before a world file is loaded. That is what `TileWorldClient` installs in its constructor, and
+  `presenter.Ground` is null on exactly that one, so a head can tell the two apart.
+- **Supply your own source** with `new TilePresenter(tileSize, planeHeight, ground)`, where `ground` is an
+  `ITileGroundHeight`: one `HeightAt(float tileX, float tileZ, int plane)` taking TILE units on the lattice and
+  answering world METRES. That is the hook for a streamed or generated terrain, and it is what a test with a
+  synthetic slope hands in. `TileDocumentGroundHeight` is the engine's document-backed one, and it is the single
+  place tile units become world metres for a height read.
+- **A plane with no authored heights keeps its derived lift**, one `PlaneHeight` per plane over the lattice
+  below it, because that is what `TileWorldDocument.HeightAt` already answers. A fractional plane index, which is
+  what a body easing between planes carries, reads between the two planes' own samples rather than popping.
+- **`Yaw` is untouched**, and the aimed pose below draws at the same height as the plain one for the same state.
+
+**A body holding a lock is drawn AIMING at it.** `TileMoveState.Facing` is the cardinal side the two footprints
+touch on. That is exactly right for reach and wrong as a drawn yaw the moment either body is bigger than one tile:
+a player beside a 2x2 cow points at the column of it they are touching, up to 18 degrees off its middle, and the cow
+points back the same way. So `client.LocalPose` and `client.TryGetRemotePose` aim a body that is NOT stepping and
+holds a `CombatTarget`, or an `InteractTarget` whose route has run out, at that target's centre. Nothing to wire: it
+is the pose you already draw.
+
+```csharp
+// Unchanged on your side. The yaw now points at the cow rather than at the tile of it you are touching.
+TilePose me = client.LocalPose;
+Draw(playerMesh, me.Position, me.Yaw);
+```
+
+- **A one-tile body beside a one-tile target is bit-identical to before.** The target's aim point is its own tile,
+  so the yaw IS `TilePresenter.Yaw(facing)`, exactly, with no tolerance needed. A footprint bigger than one tile
+  moves it, and so does a locked body that is not adjacent to its target for a tick (a refused step), which is aimed
+  rather than drawn along its facing.
+- **A mid-step body keeps its step facing**, and so does a body with no lock, and a body whose target stopped
+  resolving. The aim is for a body at rest, which is what a fight is between swings.
+- **Nominate an aim tile** by overriding `ITileTargets.TryGetAimPoint(target, out Vector2 tilePlanar, out int
+  plane)` on your own resolver. It is a default interface method answering the footprint centre, so an existing
+  resolver needs no change, and the override is what a long serpent, a building door or a mounted rider wants.
+- **A remote resolves its target on the DELAYED timeline** its body is drawn from, and the local body on the newest
+  capture, which is the read the reach rules already make. That is what stops an attacker leading a target that has
+  already moved on the server.
+- **Presentation only.** `Facing`, the reach rules, the server's `Facing` write and the wire are all untouched, so
+  a turn-smoothing rule of your own keeps working: it only smooths toward whatever yaw the pose reports.
+- **Placing a body by hand** uses the same formula through `presenter.Pose(state, aimTilePlanar, extraTicks)`, and
+  `TilePresenter.Yaw(Vector2 from, Vector2 to)` is the yaw on its own, in the same hand and the same north as
+  `TilePresenter.Yaw(TileDirection)`.
 
 **Run rides the tick stream, not the click.** `RunMode` is carried on EVERY command, `TileCommand.Continue`
 included, and the simulator applies it at the START of the next step. Holding run halfway through a walking step
@@ -10409,14 +10497,28 @@ crosses a region handoff and reaches both heads with no second lookup.
   `client.TryGetLatestRemoteFootprint` is off the newest snapshot, for a rule, and it is what `TileRemoteTargets`
   resolves a remote to, so a predicted approach to a cow stops on the same tile the server stops on.
 - **Players are one tile.** `TileWorldServer.SetPlayerState` refuses a state with a `FootprintSize` above 1.
-  `TileMoveOptions.AgentSize` still exists as a floor under every state's size and is removed at the next major,
-  [#900](https://github.com/APKiwiOrg/KhaozEngine/issues/900).
+- **There is no simulator-wide size.** `TileMoveOptions.AgentSize` and `TileMoveSimulator.AgentSize` were removed in
+  19.0.0 ([#900](https://github.com/APKiwiOrg/KhaozEngine/issues/900)). Every body is stepped, pathed and reached at
+  its own state's `FootprintSize`, and `TileMoveSimulator.FootprintOf(state)` stays as the name the combat roll asks
+  the attacker's own simulator for that square. A head that set `AgentSize = 1` deletes the initializer, and one
+  that set it higher gives each of those bodies its own `FootprintSize` instead.
+- **Interest is measured from the nearest footprint tile.** A viewer holds a body when the nearest tile of its
+  footprint is within `TileWorldServerConfig.InterestRadius` of the viewer's own anchor tile, Euclidean, the metric
+  the interest grid has always used. A 2x2 enters a snapshot on the same tick a one-tile body on its near tile
+  would, and an 8x8 seven tiles before its anchor arrives. Cell ownership and region handoff still measure from the
+  anchor, unchanged.
+  **Pad `OverlapMargin` for it.** The serve queries the grid at `InterestRadius + (N - 1) * sqrt(2)`, where N is
+  `TileWorldServer.LargestFootprintSize`, the largest body the server has spawned, because an anchor can sit its
+  own diagonal behind the near tile that put it in range and the home cell has to hold that anchor as a ghost. At
+  the default 15 tile radius that is 16.42 for a 2x2 and 24.9 for an 8x8. The default `OverlapMargin` of 25 covers
+  every legal body at the default radius, so only a game that narrows the band or widens the radius has to do this
+  sum, and one that does MUST keep the margin above it. `TileActorHost.Add` and `TileWorldServer.SpawnActor` refuse a
+  body the margin cannot cover, naming both numbers, rather than throwing out of the first serve. A world of
+  one-tile bodies is served exactly the set it was served before footprints existed and pays nothing for any of
+  this.
 
-Two presentation and interest gaps remain. `TileDrawPriority` judges a body on its anchor tile only, so a one-tile
-body on another tile of a cow overlaps it on screen
-([#899](https://github.com/APKiwiOrg/KhaozEngine/issues/899)), and interest is measured from the anchor, so a large
-body enters view up to N - 1 tiles late on its north and east edges
-([#906](https://github.com/APKiwiOrg/KhaozEngine/issues/906)). A game with big bosses pads `InterestRadius`.
+Neither the interest gap nor the presentation gap remains. Interest is measured from the footprint as above, and a
+settled body's draw stack covers its whole square, which the draw priority section above describes.
 
 ### Combat
 
@@ -10454,7 +10556,11 @@ if (server.SkippedHealthlessCombatantCount > 0) log.Warn("a combatant has no Til
 ```
 
 The rules seam is where the game plugs into the hit pipeline. The engine owns whether a swing is DUE (the
-cooldown) and whether it is LEGAL (adjacency). This owns what it DOES.
+cooldown) and whether it is LEGAL (adjacency). This owns what it DOES. `TileAttackContext` hands it both net ids,
+both committed tiles, both committed FOOTPRINTS (`AttackerFootprint` and `TargetFootprint`, added in 19.0.0,
+[#907](https://github.com/APKiwiOrg/KhaozEngine/issues/907)), both healths and the tick. The two footprints are
+trailing and defaulted, so a context a test builds by hand with the seven original positional arguments still
+compiles and reads an empty rect for each.
 
 ```csharp
 sealed class MeleeRules : ITileCombatRules
@@ -10465,6 +10571,8 @@ sealed class MeleeRules : ITileCombatRules
     {
         // Both tiles are the COMMITTED tiles after this tick's movement, and both healths are as the roll phase
         // found them, BEFORE any of this tick's damage lands, so no roll can see another roll's result.
+        // context.AttackerFootprint and context.TargetFootprint are the two bodies as squares on those tiles, for a
+        // rule that measures geometry itself. Melee needs neither: range was decided before this was called.
         if (rng.Next(100) < 40) return TileAttackOutcome.Miss();
         return TileAttackOutcome.Hit((ushort)rng.Next(1, 9), kind: 0);   // kind is the game's splat colour
     }
@@ -10614,7 +10722,7 @@ placement throws like `SpawnActor`'s, the server's clock despawns expired drops 
 (`OnGroundItemExpired`), and drops are `Transient`: a cell capture never persists them. `TicksFor` in
 the snippet is illustrative, compute your TTL from your own tick seconds.
 
-#### An item INSTANCE on a drop (`TileGroundItemInstance`, 18.51.0)
+#### An item INSTANCE on a drop (`TileGroundItemInstance`, 19.0.0)
 
 A game whose items are individuals rather than quantities drops one through the six-argument overload, and
 the four-argument call above delegates to it with no instance, so nothing that already compiles changes. The
@@ -12104,7 +12212,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.51.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="19.0.0" />
 ```
 
 ```csharp
@@ -12140,7 +12248,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.51.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="19.0.0" />
 ```
 
 ```csharp
@@ -12382,7 +12490,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.51.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="19.0.0" />
 ```
 
 ```csharp
@@ -14382,7 +14490,7 @@ bytes. Checks 12 and 13 are tolerated policy findings that leave the record vali
 alert. `KhaozEngine.ItemInstances/README.md` is the type-by-type reference, including the thirteen checks in
 full, the `KECQ` layout, the durable reason ordinals and the kind bands.
 
-### A container held as pages, and loading one back (18.51.0)
+### A container held as pages, and loading one back (19.0.0)
 
 `ItemContainer` conflates two numbers, and `PagedItemContainer` splits them. SLOT SPACE is the page geometry,
 fixed at construction at `PageCount * ContainerPageSlots`, an ADDRESS space that never shrinks. CAPACITY is a
@@ -14451,7 +14559,7 @@ re-encodes rather than patching bytes, because a replacement id can change a var
 writes the page: the rewrite is lazy and joins whatever commit comes next, which is safe because the rule set
 is required to be idempotent and `VettedRemapRules.Vet` refuses one that is not.
 
-### A tick of operations as one commit (18.51.0)
+### A tick of operations as one commit (19.0.0)
 
 `ContainerCommitBuilder` applies N logical operations to an in-memory working copy and emits ONE
 `JournalCommit`: one operation identity, one event per operation in order, one projection write per page the
@@ -14497,7 +14605,7 @@ client's own id, and the server work riding behind it contributes no intent byte
 resubmit after a reconnect, which omits server work the client never saw, hash identically and resolve
 replayed rather than conflicting, and a conflict there would tell a player a committed withdraw had failed.
 
-### What one viewer may see, and the one frame delta (18.51.0)
+### What one viewer may see, and the one frame delta (19.0.0)
 
 `ItemInstanceVisibility` is the ONE function answering whether a viewer may see a field, and both the
 replication filter and the tooltip builder go through it. A tooltip that computed its own answer is how a
@@ -15110,7 +15218,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="18.51.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="19.0.0" />
 </ItemGroup>
 ```
 

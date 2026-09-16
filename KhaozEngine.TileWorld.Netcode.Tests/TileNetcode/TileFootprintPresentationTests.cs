@@ -69,9 +69,14 @@ public class TileFootprintPresentationTests
         Assert.Equal(presenter.PoseAt(new TileCoord(4, 7, 2)), one);
     }
 
-    // Both remote footprint reads over a real session, pinned against their tile twins so the rect is anchored on
-    // the tile each timeline already answers. A one-tile remote is its own one-by-one rect on both, and the client's
+    // Both remote footprint reads over a real session, pinned against their tile twins so the rect is anchored on the
+    // tile each timeline already answers. A one-tile remote is its own one-by-one rect on both, and the client's
     // target resolver answers the NEWEST read, never the delayed one.
+    //
+    // The remote WALKS for the second half, which is what makes the two reads separable at all: a still body reads
+    // the same on both timelines, so a test of a still body passes with the two stores swapped and proves nothing
+    // about which read a rule is getting. The delayed read is the render timeline the drawn bodies ride, behind by
+    // the interpolation delay, and the newest read is the last snapshot applied.
     [Fact]
     public void Both_remote_footprint_reads_answer_a_one_tile_remote_on_their_own_timelines()
     {
@@ -80,21 +85,31 @@ public class TileFootprintPresentationTests
         long actor = h.Server.SpawnActor(new TileCoord(26, 20, 0), new TileActorSpawn(100, 4, TileDirection.S));
         h.Frames(20);
 
+        Assert.True(h.Client.TryGetRemoteFootprint(actor, out TileRect still, out _));
+        Assert.Equal(new TileRect(26, 20, 1, 1), still);
+
+        h.Server.Actors.Command(actor, TileCommand.WalkTo(new TileCoord(26, 40, 0), TileMoveMode.Run));
+        h.Frames(20);
+
         Assert.True(h.Client.TryGetRemoteFootprint(actor, out TileRect delayed, out int delayedPlane));
         Assert.True(h.Client.TryGetRemoteTile(actor, out TileCoord delayedTile));
-        Assert.Equal(new TileRect(26, 20, 1, 1), delayed);
         Assert.Equal(new TileRect(delayedTile.X, delayedTile.Z, 1, 1), delayed);
         Assert.Equal(delayedTile.Plane, delayedPlane);
 
         Assert.True(h.Client.TryGetLatestRemoteFootprint(actor, out TileRect latest, out int latestPlane));
         Assert.True(h.Client.TryGetLatestRemoteTile(actor, out TileCoord latestTile));
-        Assert.Equal(new TileRect(26, 20, 1, 1), latest);
         Assert.Equal(new TileRect(latestTile.X, latestTile.Z, 1, 1), latest);
         Assert.Equal(latestTile.Plane, latestPlane);
+
+        // The walk is north, so the newest read is ahead of the delayed one and the two rects differ. Without this
+        // the rest of the test holds with the two stores exchanged.
+        Assert.NotEqual(delayed, latest);
+        Assert.True(latestTile.Z > delayedTile.Z, $"delayed {delayedTile}, newest {latestTile}");
 
         Assert.True(new TileRemoteTargets(h.Client).TryGetFootprint(actor, out TileRect resolved, out int plane));
         Assert.Equal(latest, resolved);
         Assert.Equal(latestPlane, plane);
+        Assert.NotEqual(delayed, resolved);
     }
 
     // A client predicting an approach to a 2x2 at (26, 20) matches the server tick for tick. From the WEST the

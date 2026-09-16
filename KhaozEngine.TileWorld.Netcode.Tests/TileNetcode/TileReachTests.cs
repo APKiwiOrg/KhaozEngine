@@ -173,6 +173,35 @@ public class TileReachTests
             out _, out _));
     }
 
+    // The admission arithmetic at coordinates where the rect's own far edge wraps. TileRect.X1 is X + Width in
+    // INT, so a footprint whose last column is int.MaxValue reports a far edge of int.MinValue, and reading that
+    // measured a target one tile away as about 2^32 away and refused it (#898). Asserted on the helper rather than
+    // through TryNearest because Set iterates x from X to X1, which a wrapped X1 makes an empty loop: the call
+    // answers false either way, so the arithmetic is observable only here.
+    [Fact]
+    public void The_admission_distance_reads_the_far_edge_in_long_rather_than_a_wrapped_int()
+    {
+        const int width = 4;
+        int x = int.MaxValue - width + 1;                       // covers x through int.MaxValue
+        var footprint = new TileRect(x, 10, width, 2);
+        Assert.True(footprint.X1 < 0, "the rect's own far edge really has wrapped");
+
+        Assert.Equal(0L, TileReach.FootprintDistance(footprint, new TileCoord(int.MaxValue, 10, 0)));   // on it
+        Assert.Equal(0L, TileReach.FootprintDistance(footprint, new TileCoord(x, 11, 0)));
+        Assert.Equal(1L, TileReach.FootprintDistance(footprint, new TileCoord(x - 1, 10, 0)));          // adjacent
+        Assert.Equal(2L, TileReach.FootprintDistance(footprint, new TileCoord(x - 2, 10, 0)));
+        Assert.Equal(3L, TileReach.FootprintDistance(footprint, new TileCoord(x, 14, 0)));              // z 10..11
+        Assert.Equal(1000L, TileReach.FootprintDistance(footprint, new TileCoord(x - 1000, 10, 0)));    // really far
+
+        // And the same helper away from the wrap, where it IS the admission bound TryNearest answers on: 6 tiles
+        // out is refused at radius 4 for a one tile agent and admitted for a three tile one.
+        TileCollisionMap map = Bake(TileMoveSimulatorTests.FlatWorld());
+        var near = new TileRect(17, 20, 1, 1);
+        Assert.Equal(6L, TileReach.FootprintDistance(near, new TileCoord(11, 20, 0)));
+        Assert.False(TileReach.TryNearest(map, near, 0, new TileCoord(11, 20, 0), 1, 4, out _, out _));
+        Assert.True(TileReach.TryNearest(map, near, 0, new TileCoord(11, 20, 0), 3, 4, out _, out _));
+    }
+
     // The range throw is documented unconditionally, so it has to happen on a call the searches never reach.
     // A fully walled target returns false at the empty reach set, and a `from` on another plane returns false
     // sooner still, so before the top-of-body validation both of those swallowed a caller bug that the same
@@ -268,15 +297,14 @@ public class TileReachAllocationTests
     }
 
     /// <summary>
-    /// The per-candidate prune, measured. A reach set holds up to eight candidates and the first successful
-    /// search bounds every later one: no eight-connected walk is shorter than the Chebyshev distance to its
-    /// goal, so a candidate already at or past the best length cannot win and its search is skipped. Here the
-    /// walker stands due west, the west tile answers in four steps, and the other three candidates are five and
-    /// six away, so one search runs instead of four. At radius 64 each skipped search is a 129x129 int plus byte
-    /// scratch, about 83 KB, which is what this counts.
+    /// ONE window per call, measured. A reach set holds up to eight candidates for a one tile target, and they all
+    /// go into a single multi-goal flood, so the whole interaction costs one window however many candidates there
+    /// are. At radius 64 a window is a 129x129 int plus byte scratch, about 83 KB, which is what this counts.
+    /// The walker stands due west and the west tile answers in four steps, which is the answer the per-candidate
+    /// loop this replaced gave for the same map.
     /// </summary>
     [Fact]
-    public void A_candidate_that_cannot_beat_the_best_so_far_pays_no_search()
+    public void A_reach_search_costs_one_window_however_many_candidates_it_has()
     {
         TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
         doc.AddObject("bank_booth", 10, 10, 0, 0);
@@ -284,7 +312,7 @@ public class TileReachAllocationTests
         var footprint = new TileRect(10, 10, 1, 1);
         var from = new TileCoord(5, 10, 0);
 
-        // Warm the JIT, and pin that the pruned call still answers exactly what the unpruned one did.
+        // Warm the JIT, and pin that the one search answers exactly what the search per candidate did.
         for (int i = 0; i < 8; i++)
         {
             Assert.True(TileReach.TryNearest(map, footprint, 0, from, 1, 64, out TileCoord tile, out TilePath path));
@@ -293,7 +321,7 @@ public class TileReachAllocationTests
         }
 
         // Best of several passes, for the reason the sibling above states: the per thread counter is only
-        // accurate to one allocation context. Four searches cannot hide under the minimum of a one-search bound.
+        // accurate to one allocation context. A second window cannot hide under the minimum of a one-window bound.
         const int passes = 5;
         long allocated = long.MaxValue;
         for (int pass = 0; pass < passes; pass++)

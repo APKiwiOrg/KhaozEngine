@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 using KhaozEngine.Ecs;
 using KhaozEngine.Netcode;
 using KhaozEngine.Replication;
@@ -83,8 +84,13 @@ public sealed partial class TileWorldClient : IDisposable
         this.config = config;
         queued = TileCommand.Continue(RunMode);
         // TileRemoteTargets reads Prediction and LocalNetId LAZILY, so handing it `this` from inside the constructor
-        // is safe: nothing calls the resolver before construction returns.
-        Simulator = new TileMoveSimulator(map, config.StepTicks, targets, config.Move, new TileRemoteTargets(this));
+        // is safe: nothing calls the resolver before construction returns. Both aim resolvers are lazy in the same
+        // way, and the entity one is the very instance the simulator steps against, so the local body looks at the
+        // point the rules resolved rather than at a second read of the same id.
+        objectTargets = targets;
+        entityTargets = new TileRemoteTargets(this);
+        delayedTargets = new DelayedRemoteTargets(this);
+        Simulator = new TileMoveSimulator(map, config.StepTicks, targets, config.Move, entityTargets);
         Prediction = new ClientPrediction<TileMoveState, TileCommand>(new SelfBoundStepper(this),
             config.Prediction ?? new PredictionSettings(config.TickSeconds, MaxPendingCommands: 64,
                 HardSnapDistance: DefaultHardSnapTiles, CorrectionRate: 8f, CorrectionDeadZone: 0.01f,
@@ -150,8 +156,29 @@ public sealed partial class TileWorldClient : IDisposable
     /// offset decays off it, which is the whole reason a misprediction does not pop. Both axes are the prediction
     /// layer's own, so a teleport, a hard snap and an ordinary sub-tile correction are all handled there, once,
     /// rather than being re-decided here.</para>
+    /// <para>A BODY HOLDING A LOCK IS AIMED. Standing still with a <see cref="TileMoveState.CombatTarget"/>, or with
+    /// an <see cref="TileMoveState.InteractTarget"/> it has finished walking to, the yaw points at that target's
+    /// <see cref="ITileTargets.TryGetAimPoint"/> rather than along <see cref="TileMoveState.Facing"/>, which for a
+    /// target bigger than one tile is the difference between looking at a cow and looking at the column of it you
+    /// are touching. A one-tile body BESIDE a one-tile target is unchanged to the bit: the aim point is the target's
+    /// tile, so the yaw IS the cardinal. The same body holding a lock on a target it is not adjacent to (a step the
+    /// simulator refused, for one tick) is aimed at that target instead of drawn along its facing. The target is
+    /// resolved through the same newest-snapshot read the reach rules make. A mid-step body,
+    /// a body with no lock, and a target that stopped resolving all keep the tile facing.</para>
+    /// <para>The aimed yaw is taken from the body's FOOTPRINT CENTRE rather than from the smoothed position drawn
+    /// above it, so a decaying reconciliation offset slides the body without wobbling the way it looks.</para>
     /// </summary>
-    public TilePose LocalPose => Presenter.LocalPose(Prediction);
+    public TilePose LocalPose
+    {
+        get
+        {
+            TileMoveState rendered = Prediction.RenderedState;
+            TilePose drawn = Presenter.LocalPose(Prediction);
+            return TryResolveAim(rendered, delayed: false, out Vector2 aim)
+                ? new TilePose(drawn.Position, Presenter.Pose(rendered, aim).Yaw)
+                : drawn;
+        }
+    }
 
     /// <summary>
     /// The run toggle this client is holding, which rides on EVERY command rather than on the click that started a

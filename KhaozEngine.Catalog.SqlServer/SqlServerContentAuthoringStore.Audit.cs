@@ -50,10 +50,10 @@ public sealed partial class SqlServerContentAuthoringStore
                     ORDER BY audit_id DESC
                     OFFSET @skip ROWS FETCH NEXT @take ROWS ONLY;
                     """);
-                Bind(command, "@type", (int)type.Value);
-                Bind(command, "@id", definitionId);
-                Bind(command, "@skip", skip);
-                Bind(command, "@take", Math.Min(take, MaxPageSize));
+                BindInt(command, "@type", (int)type.Value);
+                BindInt(command, "@id", definitionId);
+                BindInt(command, "@skip", skip);
+                BindInt(command, "@take", Math.Min(take, MaxPageSize));
 
                 var entries = new List<ContentAuditEntry>();
                 await using SqlDataReader reader = await command.ExecuteReaderAsync(token).ConfigureAwait(false);
@@ -126,18 +126,18 @@ public sealed partial class SqlServerContentAuthoringStore
                 before_value, after_value, version_number, note)
             VALUES (@at, @actor, @operator, @action, @type, @id, @key, @field, @before, @after, @version, @note);
             """);
-        Bind(command, "@at", _clock());
-        Bind(command, "@actor", actor);
-        Bind(command, "@operator", operatorId);
-        Bind(command, "@action", action);
-        Bind(command, "@type", (int)type.Value);
-        Bind(command, "@id", definitionId);
-        Bind(command, "@key", key.ToString());
-        Bind(command, "@field", fieldName);
-        Bind(command, "@before", before);
-        Bind(command, "@after", after);
-        Bind(command, "@version", versionNumber);
-        Bind(command, "@note", note);
+        BindTime(command, "@at", _clock());
+        BindText(command, "@actor", actor);
+        BindText(command, "@operator", operatorId);
+        BindText(command, "@action", action);
+        BindInt(command, "@type", (int)type.Value);
+        BindInt(command, "@id", definitionId);
+        BindText(command, "@key", key.ToString());
+        BindText(command, "@field", fieldName);
+        BindLargeText(command, "@before", before);
+        BindLargeText(command, "@after", after);
+        BindInt(command, "@version", versionNumber);
+        BindText(command, "@note", note);
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 

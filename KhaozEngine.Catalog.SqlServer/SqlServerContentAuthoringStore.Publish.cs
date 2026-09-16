@@ -136,8 +136,8 @@ public sealed partial class SqlServerContentAuthoringStore
                     WHERE metadata_key = 1;
                     """))
                 {
-                    Bind(pointer, "@version", plan.VersionNumber);
-                    Bind(pointer, "@now", _clock());
+                    BindInt(pointer, "@version", plan.VersionNumber);
+                    BindTime(pointer, "@now", _clock());
                     await pointer.ExecuteNonQueryAsync(token).ConfigureAwait(false);
                 }
 
@@ -319,7 +319,7 @@ public sealed partial class SqlServerContentAuthoringStore
             WHERE version_number = @version
             ORDER BY type_id, chunk_index, visibility;
             """);
-        Bind(command, "@version", versionNumber);
+        BindInt(command, "@version", versionNumber);
 
         var chunks = new List<ContentChunkRecord>();
         await using SqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
@@ -353,16 +353,16 @@ public sealed partial class SqlServerContentAuthoringStore
                 minimum_client_build, format_generation, base_version, published_by, note, published_at_utc)
             VALUES (@version, @server, @client, @minServer, @minClient, @generation, @base, @by, @note, @at);
             """);
-        Bind(command, "@version", record.VersionNumber);
-        Bind(command, "@server", record.ServerManifestHash);
-        Bind(command, "@client", record.ClientManifestHash);
-        Bind(command, "@minServer", record.MinimumServerBuild);
-        Bind(command, "@minClient", record.MinimumClientBuild);
-        Bind(command, "@generation", record.FormatGeneration);
-        Bind(command, "@base", record.BaseVersion);
-        Bind(command, "@by", record.PublishedBy);
-        Bind(command, "@note", record.Note);
-        Bind(command, "@at", record.PublishedAtUtc);
+        BindInt(command, "@version", record.VersionNumber);
+        BindText(command, "@server", record.ServerManifestHash);
+        BindText(command, "@client", record.ClientManifestHash);
+        BindInt(command, "@minServer", record.MinimumServerBuild);
+        BindInt(command, "@minClient", record.MinimumClientBuild);
+        BindInt(command, "@generation", record.FormatGeneration);
+        BindInt(command, "@base", record.BaseVersion);
+        BindText(command, "@by", record.PublishedBy);
+        BindText(command, "@note", record.Note);
+        BindTime(command, "@at", record.PublishedAtUtc);
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -377,13 +377,13 @@ public sealed partial class SqlServerContentAuthoringStore
             INSERT INTO dbo.catalog_remap_rule([sequence], introduced_in, type_id, kind, from_id, to_id, payload)
             VALUES (@sequence, @introduced, @type, @kind, @from, @to, @payload);
             """);
-        Bind(command, "@sequence", rule.Sequence);
-        Bind(command, "@introduced", rule.IntroducedIn);
-        Bind(command, "@type", (int)rule.Type.Value);
-        Bind(command, "@kind", (int)rule.Kind);
-        Bind(command, "@from", rule.FromId);
-        Bind(command, "@to", rule.ToId);
-        Bind(command, "@payload", rule.Payload.ToArray());
+        BindInt(command, "@sequence", rule.Sequence);
+        BindInt(command, "@introduced", rule.IntroducedIn);
+        BindInt(command, "@type", (int)rule.Type.Value);
+        BindInt(command, "@kind", (int)rule.Kind);
+        BindInt(command, "@from", rule.FromId);
+        BindInt(command, "@to", rule.ToId);
+        BindBlob(command, "@payload", rule.Payload.ToArray());
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -401,14 +401,14 @@ public sealed partial class SqlServerContentAuthoringStore
                 stored_bytes, visibility)
             VALUES (@version, @type, @index, @hash, @rows, @uncompressed, @stored, @visibility);
             """);
-        Bind(command, "@version", versionNumber);
-        Bind(command, "@type", (int)chunk.Type.Value);
-        Bind(command, "@index", chunk.ChunkIndex);
-        Bind(command, "@hash", chunk.Hash);
-        Bind(command, "@rows", chunk.RowCount);
-        Bind(command, "@uncompressed", chunk.UncompressedBytes);
-        Bind(command, "@stored", chunk.StoredBytes);
-        Bind(command, "@visibility", (int)chunk.Side);
+        BindInt(command, "@version", versionNumber);
+        BindInt(command, "@type", (int)chunk.Type.Value);
+        BindInt(command, "@index", chunk.ChunkIndex);
+        BindText(command, "@hash", chunk.Hash);
+        BindInt(command, "@rows", chunk.RowCount);
+        BindInt(command, "@uncompressed", chunk.UncompressedBytes);
+        BindInt(command, "@stored", chunk.StoredBytes);
+        BindInt(command, "@visibility", (int)chunk.Side);
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 

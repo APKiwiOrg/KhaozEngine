@@ -24,8 +24,14 @@ namespace KhaozEngine.Tests.Benchmarks;
 /// </para>
 /// <para>
 /// <b>The ONE number here that is a design property rather than a timing is budget 4's commit count.</b>
-/// Twenty crafts in one held action are ONE commit. That is the property the whole of spec 6 exists for, so a
-/// regression has to be red rather than slow.
+/// Twenty crafts in one held action are ONE commit. That is the property the whole of spec 6 exists for, and
+/// what this fact pins is the SPIKE's own number: <c>KhaozEngine.Benchmarks</c> references neither
+/// <c>KhaozEngine.ItemInstances</c> nor <c>KhaozEngine.ItemInstances.Journal</c>, so the <c>--items</c> mode
+/// coalesces through its own runner and a regression in <c>ContainerCommitBuilder</c> cannot make this red.
+/// <c>Twenty_crafts_in_one_held_action_are_ONE_commit</c> in <c>ContainerCommitBuilderTests</c> is the fact
+/// that guards the SHIPPED builder. Rewiring the mode onto the shipped types is
+/// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/951">#951</see>, and it wants doing before the
+/// next budget re-bake, so spec 16's measured column describes what ships.
 /// </para>
 /// <para>
 /// Nothing here writes process-global state, so no test needs a collection attribute.

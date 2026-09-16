@@ -576,7 +576,8 @@ ride a SIBLING component, `TileGroundItemInstance` (`InstanceId`, `Payload`), se
 `instanceId` is non-zero: a drop with no instance carries no component and pays nothing on the wire.
 `TryGetGroundItemInstance(netId, out instance)` is the server read a claim goes through, beside
 `TryGetGroundItem`, and clients read it off `client.World` for the entity `client.View.Entities` holds
-under the drop's net id.
+under the drop's net id. There is no collector beside `CollectGroundItems` for the instance half yet
+([#926](https://github.com/APKiwiOrg/KhaozEngine/issues/926)).
 
 Both halves are opaque, exactly as `TileGroundItem`'s `ItemId` is opaque. The engine never decodes a
 payload, has no way to, and never mints an instance id of its own: the same id and the same bytes come
@@ -1012,8 +1013,8 @@ Four rules, and none of them is a timer, because a timer on a reliable ordered c
 
 - A chunk whose `Sequence` differs from the assembly in progress for its stream discards that assembly and starts
   a new one. That is what a server restarting a page mid transmission looks like, and it is not an error.
-- At most four partial assemblies are held at once. A fifth evicts the one fed longest ago and increments
-  `EvictedAssemblies`. A restart is not an eviction and is not counted as one.
+- At most `MaxPartialAssemblies` partial assemblies are held at once, which is four. A fifth evicts the one
+  fed longest ago and increments `EvictedAssemblies`. A restart is not an eviction and is not counted as one.
 - The last chunk hands the assembled bytes BACK through `TryComplete`. Nothing here decodes them, so a payload
   that will not decode is the caller's quarantine rather than a throw from the wire. A final chunk cut in its body
   is the case that reaches the caller, because the header declares no total length.
@@ -1033,9 +1034,21 @@ chunk count a header claims, so a lying `ChunkCount` buys nothing.
 
 **A whole page is the FLOOR, not the steady state.** A game syncing item container pages over this fragmenter
 sends a one frame DELTA for the ordinary case and falls back to a full page send only when the delta will not
-fit. That delta, its budget arithmetic and the two byte resync request a client answers with are
-`ContainerPageDelta` and `ContainerPageSyncRequest` in `KhaozEngine.ItemInstances`, because the entry body they
-carry is the container codec's and this package gains no items dependency.
+fit. The split is by OWNERSHIP of the bytes: `ContainerPageDelta` builds the delta and
+`ContainerPageSyncRequest` is the two byte resync a client answers with, both in `KhaozEngine.ItemInstances`,
+because the entry body they carry is the container codec's, and this package fragments whatever bytes it is
+handed and gains no items dependency at all. `ContainerPageDelta.TryBuild` answers -1 when the next change
+would not fit one frame, and -1 is the caller's cue to `Fragment` the whole encoded page instead. Never a
+second delta frame: two deltas for one page would have to be applied in order by a client that may have
+missed the first, which is the reassembly problem this type already solves once.
+
+Two facts a server composing the two owes its own code. `TileProtocol.MaxGameMessageBytes` is COPIED into
+`ContainerPageDelta.MaxGameMessageBytes`, because that package is `Foundation` and this one is `Server`, and
+`PageSyncFrameBoundTests` in `KhaozEngine.TileWorld.Netcode.Tests` is the one place that sees both constants
+and holds them equal. And the resync request is RATE LIMITED at one page per client per tick, which is a
+documented server rule rather than engine code on either side: the engine caps the frame and the game owns
+the message kinds and the tick, so a server that serves every request it receives has handed an
+unauthenticated peer an amplifier of two bytes in and about 7 KB out.
 
 ## Known limits in this release
 

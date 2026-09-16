@@ -656,6 +656,63 @@ predicate gets a refusal instead of an unchecked write. The check runs on every 
 The consequence a reader should expect: `KhaozEngine.Items` still declares zero project references and ships
 as a leaf, and a consumer that wants plain stacks and nothing else never pulls the instance decoder in.
 
+## The item instance JOURNAL edges, and the tile netcode edge that was not added
+
+`KhaozEngine.ItemInstances.Journal` adds three edges, every one forward and acyclic:
+
+```
+KhaozEngine.ItemInstances.Journal -> KhaozEngine.ItemInstances   (the page, the paged container, the codec and the remap pass)
+KhaozEngine.ItemInstances.Journal -> KhaozEngine.WorldStore      (JournalProjectionSection in, JournalCommit out)
+KhaozEngine.Server                -> KhaozEngine.ItemInstances.Journal (umbrella ProjectReference, like every other Server package)
+```
+
+**It is a third small package for a LAYERING reason rather than a size one**, and both halves of that reason
+are load bearing. Composing a `JournalCommit` needs `KhaozEngine.WorldStore`, which is a `Server` package, so
+the same code inside `KhaozEngine.ItemInstances` would drag `WorldStore` into `Foundation` and therefore into
+every client build, when the whole point of putting the record in `Foundation` is that a client decodes an
+item with no database and no journal type in its graph. Putting it inside `KhaozEngine.WorldStore` instead
+would give the journal an opinion about items, which the journal design ruled out and which the code still
+honours: a grep for `ItemStack`, `ItemContainer` or `KhaozEngine.Items` across `WorldStore`, both providers
+and both journal design docs returns zero hits.
+
+**The interesting entry here is again an edge that was NOT added: `KhaozEngine.TileWorld.Netcode` gained a
+component and a fragmenter and NO items dependency.** A drop's instance is `TileGroundItemInstance`, an
+opaque `long` and opaque bytes, seated beside `TileGroundItem` only when there is an instance. The tile
+netcode never decodes either and has no way to, which is what lets a game bring its own item model to the
+same server. `TileFragmentedMessage` and `TileFragmentReassembler` are item agnostic for the same reason: they
+move bytes, and what a stream carries, what kind the game gives the frames and what decodes the reassembled
+bytes are all the caller's. The split of the page sync follows from that and is by OWNERSHIP of the bytes.
+`ContainerPageDelta` and `ContainerPageSyncRequest` live in `KhaozEngine.ItemInstances`, because only the
+page codec may write the entry body they carry, and the envelope and the fragmenter live in
+`KhaozEngine.TileWorld.Netcode`, because only it owns the frame. The SERVER composes the two.
+
+### Three copied constants, and which of them a test can hold equal
+
+Each of these is a number two packages both have to state, because the edge that would let one read the
+other does not exist and must not. Two are covered by a test and the third cannot be.
+
+| Constant | Copied from | Held equal by |
+|---|---|---|
+| `ContainerPageDelta.MaxGameMessageBytes` (and `GameMessageEnvelopeBytes`) | `TileProtocol.MaxGameMessageBytes` and its `GameMessageHeader`, in a `Server` package the `Foundation` delta cannot reference | `PageSyncFrameBoundTests` in `KhaozEngine.TileWorld.Netcode.Tests` |
+| `TileProtocol.MaxInstancePayloadBytes` | `ItemSlot.MaxPayloadBytes` and `ItemInstancePayload.MaxInstancePayloadBytes`, in item packages the tile netcode must not reference | `InstancePayloadCapParityTests` in `KhaozEngine.Server.Tests` |
+| `ItemContainerPageCodec.MaxPageBytes` | `JournalLimits.EngineMaximumProjectionSectionBytes`, a `Server` package the `Foundation` codec cannot reference | NOTHING, and nothing can. Moving one means moving the other by hand ([#910](https://github.com/APKiwiOrg/KhaozEngine/issues/910) item 4) |
+
+The two that ARE covered are covered by a TEST PROJECT composing what the packages may not, which is the only
+place the two sides of each copy meet. `KhaozEngine.TileWorld.Netcode.Tests` references
+`KhaozEngine.ItemInstances` for `PageSyncFrameBoundTests` and for nothing else, with the reason written in the
+csproj beside the reference so a later reader does not read it as the over-broad reference AGENTS.md warns
+about: push CI selects test projects by the reference graph, so an unexplained extra reference degrades that
+selection silently. `KhaozEngine.Server.Tests` already referenced `KhaozEngine.TileWorld.Netcode` and
+`KhaozEngine.ItemInstances`, and is the only project that sees both, which is why the payload cap parity test
+lives there rather than in a new project. The same project holds `ItemInstances.Journal`, because the load
+path's facts need a real `JournalProjectionSection` and the page codec in one place.
+
+The third has no such home. `KhaozEngine.ItemInstances` is `Foundation` and `KhaozEngine.WorldStore` is
+`Server`, so a test project seeing both would have to be a server test project asserting on a `Foundation`
+constant, which is possible, but the drift it would catch is a number nothing realistic approaches: a hundred
+entries at the maximum non-quarantined entry size is 53,209 bytes against a 2 MiB cap. The const's own doc
+names the declaring file, line and symbol instead, which is the cheapest thing that keeps the copy findable.
+
 ## Surface-source seam: INavSurfaceProvider (a deliberate non-edge)
 
 The step-aware overworld bake (`NavGridBaker.BakeOverworldSteps`) needs a per-cell walkable surface

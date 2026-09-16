@@ -6,9 +6,19 @@ other half of that split: the canonical property payload an individual item carr
 id, and the registry that says what every property kind means to a walker that does not know what any kind
 means.
 
+It reads in three layers, and the sections below are in that order. The RECORD is the payload, the property
+registry, the refusal sets, the `KECQ` quarantine wrapper and the instance id allocator. The CONTAINER is
+container codec version 2, the paged container and its capacity gate, the merge rule and the registry-derived
+remap pass that brings a stored page forward. The WIRE is the visibility projection every replicated byte
+passes through, the one frame page delta built on it and the two byte resync request a client answers with.
+The validator, the player-facing strings and the one telemetry call sit under all three.
+
 It sits on `KhaozEngine.Items`, `KhaozEngine.Catalog` (the content ids a payload references, and the one
 varint definition in the tree) and `KhaozEngine.Primitives`. It takes no third-party dependency, so a game
-CLIENT decodes an item with no database and no journal type anywhere in its graph.
+CLIENT decodes an item with no database and no journal type anywhere in its graph. The journal SIDE of a
+paged container, its section names, its load path and the batched commit builder, is
+`KhaozEngine.ItemInstances.Journal`, which is a `Server` package because composing a `JournalCommit` needs
+`KhaozEngine.WorldStore`.
 
 ## The rules every type here obeys
 
@@ -375,10 +385,13 @@ page is written.
 `PagedItemContainer` is a container held as pages, which is the shape a journal commit can rewrite one page
 of instead of rewriting the whole thing. It splits the two concepts `ItemContainer` conflates.
 
-- **Slot space** is the page geometry, fixed at construction and `PageCount * ContainerPageSlots`. It is an
-  ADDRESS space and it never shrinks.
-- **Capacity** is a separate mutable integer, the number of OCCUPIED slots a grant may leave behind. It is a
-  gate consulted by `Add` and by nothing else.
+- **`SlotSpace`** is the page geometry, fixed at construction and `PageCount * ContainerPageSlots`. It is an
+  ADDRESS space and it never shrinks. `ItemContainerPage.MaxPageIndex` is the largest page a stored header can
+  name, which is what bounds `PageCount`.
+- **`Capacity`** is a separate mutable integer, the number of OCCUPIED slots a grant may leave behind. It is a
+  gate consulted by `Add` and by nothing else, and `IsAtCapacity` is the question it asks. `Occupancy` counts
+  what it gates and `FreeSlots` counts the address space, so a container at capacity usually has free slots
+  and refuses to open one anyway.
 
 The four capacity rules, which are one consumer's bag model restated as engine behaviour:
 
@@ -504,6 +517,7 @@ that could not be APPLIED is tellable from a rule nobody wrote. Bringing a quara
 path's unwrap step, in `KhaozEngine.ItemInstances.Journal`, because the page stamp governs a page's live
 entries and a wrapper carries its own. A game kind with its own sorted list still cannot ask for the re-sort
 ([#930](https://github.com/APKiwiOrg/KhaozEngine/issues/930)).
+
 ## The page delta and the resync request
 
 `ContainerPageDelta` is the one frame message that says which slots of one page changed and what they hold
@@ -540,13 +554,15 @@ problem the fragmenter already solves once.
 - `WriteEntryBody` and `EntryBodySize` on `ItemContainerPageCodec` are what write the body, so the delta and
   the page cannot come to write an entry differently.
 
-**The bodies are PER VIEWER, and there is one door.** `TryBuild` takes the viewer's level and each change
-takes the item's identification state, and every payload goes through `ItemInstanceVisibility.PublicView`
-before it is written. A caller cannot build a delta that skipped the filter, which is the point: an
-owner-only field reaches the owner and nobody else. The same change to the same rare is 73 bytes to the
-owner and 69 to everyone else, and the four bytes are the durability field. A payload that does not project
-carries NO bytes, which is the same fail-closed direction an unregistered kind takes, and which is what a
-quarantine wrapper hits by construction.
+**The bodies are PER VIEWER, and there is one door.** A change is a `ContainerPageChange`, either
+`ContainerPageChange.Emptied(slot)` or `ContainerPageChange.Occupied(entry, identified, revealedMask)`
+carrying the item's FULL payload, because the bytes handed in are the stored ones rather than a view somebody
+else already filtered. `TryBuild` takes the viewer's level and every payload goes through
+`ItemInstanceVisibility.PublicView` before it is written. A caller cannot build a delta that skipped the
+filter, which is the point: an owner-only field reaches the owner and nobody else. The same change to the
+same rare is 73 bytes to the owner and 69 to everyone else, and the four bytes are the durability field. A
+payload that does not project carries NO bytes, which is the same fail-closed direction an unregistered kind
+takes, and which is what a quarantine wrapper hits by construction.
 
 `ContainerPageSyncRequest` is the other half and the ONE new client-to-server message: two bytes,
 `[ContainerId][PageIndex]`, carrying nothing about an item's properties. It is what the client sends when it
@@ -677,19 +693,25 @@ container and counts every record once. The load tokens ride the same histogram 
 operator reading one line wants the whole picture, and an abandoned entry is counted under its own token as
 well as under whatever the validator then says about it: the two answer different questions.
 
-## What phase 1 does not ship, and where it lands
+## What this release does not ship
 
 This package is a strong base rather than a partial catalog. What is settled in it is every byte format,
-every id space, every ordering rule and the stacking test, which are the expensive things to change once
-data exists. What is absent is breadth, which is content.
+every id space, every ordering rule, the stacking test, the paging shape and the projection every replicated
+byte passes through, which are the expensive things to change once data exists. What is absent is breadth,
+which is content, plus four named gaps on surfaces that already exist.
 
 | Not here | Where it lands |
 |---|---|
-| the container section naming (`<container>/p<NN>`) and the load path | `KhaozEngine.ItemInstances.Journal`, which is a `Server` package because composing a `JournalCommit` needs `KhaozEngine.WorldStore` |
-| the journal commit path (`ContainerCommitBuilder`) | `docs/superpowers/plans/2026-09-15-item-instances-phase2-3.md` |
-| the wire: the fragmenter and the ground component, which are the netcode package's | the same plan |
 | the affix content types and the item generator | spec 20 phase 4, gated on the authoring registry and publish path being real |
-| the crafting framework and the content stat evaluator | spec 20 phase 5 |
+| the crafting framework and the content stat evaluator | spec 20 phase 5. `ContainerOperationKind.Craft` is the operation and the page write, and the event BODY is the crafting framework's to encode |
+| a READER for the page delta, which ships the encoder alone while the fragmenter ships both halves | [#933](https://github.com/APKiwiOrg/KhaozEngine/issues/933) |
+| a per-viewer projection on the FULL PAGE send, which carries the stored bytes and therefore disagrees with the delta about what a non-owner sees | [#932](https://github.com/APKiwiOrg/KhaozEngine/issues/932) |
+| the lowered `max_stack` cap on the merge path, which saturates at `int.MaxValue` here and is reported after the fact by validator check 12 | [#924](https://github.com/APKiwiOrg/KhaozEngine/issues/924) |
+| enforcement of spec 3.3's per-kind value widths, so the revealed mask is a full `ulong` at every door here | [#917](https://github.com/APKiwiOrg/KhaozEngine/issues/917) |
+
+The journal side of a paged container, the `<container>/p<NN>` section naming, the load path and the batched
+commit builder, is `KhaozEngine.ItemInstances.Journal`, a `Server` package. The fragmenter a full page send
+falls back to, and the sibling ground component a drop carries, are `KhaozEngine.TileWorld.Netcode`.
 
 The reasoning behind every decision above is `docs/design/ITEM-INSTANCES-DESIGN-2026-09-15.md`, written
 against the shared contracts in `docs/design/CONTENT-CONTRACTS-DESIGN-2026-09-14.md`.

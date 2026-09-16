@@ -20,9 +20,12 @@ Pulls in:
   `IMutationJournalStore`, both in-memory reference stores, immutable journal values, checked recovery, and the
   bounded `MutationJournalExecutor`.
 - `KhaozEngine.ItemInstances.Journal` - the paged container's projection section naming
-  (`ContainerSectionNames`, `<container>/p<NN>`) and its load path (`ContainerLoad.Load`: decode, remap,
-  unwrap, validate, in one pass with no store read). It is a `Server` package because composing a
-  `JournalCommit` needs `KhaozEngine.WorldStore`, and the record itself stays in `Foundation`.
+  (`ContainerSectionNames`, `<container>/p<NN>`), its load path (`ContainerLoad.Load`: decode, remap,
+  unwrap, validate, in one pass with no store read) and its batched commit builder
+  (`ContainerCommitBuilder`: one tick's operations against an in-memory working copy, emitted as ONE
+  `JournalCommit` with one identity, one event per operation and one projection write per dirty page).
+  It is a `Server` package because composing a `JournalCommit` needs `KhaozEngine.WorldStore`, and the
+  record itself stays in `Foundation`.
 - `KhaozEngine.Sharding` - the cell-grid world topology (`ShardHost`, ghosting, handoff).
 - `KhaozEngine.NetWorld` - the authoritative movement server + client glue + `WorldPersistence`.
 - `KhaozEngine.TileWorld.Netcode` - the tile movement stack (`TileWorldServer` / `TileWorldClient`,

@@ -1,9 +1,12 @@
 # KhaozEngine.ItemInstances.Journal
 
 The journal side of the per-item instance record: how a paged container is NAMED in a stream's projection
-sections, and how it is LOADED back out of them.
+sections, how it is LOADED back out of them, and how a tick's worth of operations against it becomes ONE
+commit.
 
-In the `Server` umbrella, over `KhaozEngine.ItemInstances` and `KhaozEngine.WorldStore`.
+In the `Server` umbrella, over `KhaozEngine.ItemInstances` and `KhaozEngine.WorldStore`. The container
+itself, the page codec, the remap pass and the visibility projection are `KhaozEngine.ItemInstances`, one
+package down in `Foundation`, and nothing here re-states any of them.
 
 ## Why this is a package of its own
 
@@ -85,7 +88,18 @@ should have refused.
 A `ContainerLoadFinding` is one of five kinds. `PageQuarantined` is a page that failed as a unit.
 `EntryQuarantined` is an entry that carries a `KECQ` wrapper and still does. `EntryRescued` is an entry that
 came back. `RemapAbandoned` is a rule that named an entry and could not be applied to it. `EntryUnwrappable`
-is a record the validator quarantined that the page cannot hold the wrapper for.
+is a record the validator quarantined that the page cannot hold the wrapper for. Each one carries the section
+name an operator greps for, the page index taken from that NAME rather than from the header, the absolute
+slot (or `ContainerLoadFinding.NoSlot` on a whole-page finding), a reason token and the version the record
+stands at.
+
+`ContainerLoadReason` is the load path's own two tokens, beside the page tokens of `ItemContainerPageReason`
+and the quarantine tokens of `InstanceQuarantineReason`. `page-section-mismatch` is a page whose header names
+a different page than the section it arrived in, which only the section NAME can answer. `remap-abandoned` is
+a rule that named an entry and could not be applied, counted under its own token IN ADDITION to whatever the
+validator then says about that entry, because "a rule could not be applied" and "an id does not resolve" are
+different questions. Neither token has a durable ordinal and neither ever will: a `KECQ` reason byte comes
+from the wrap table, and nothing on this path wraps anything under either of these.
 
 ## The unwrap step, and why it is a step
 
@@ -143,9 +157,18 @@ refused for exactly that reason.
 **`Close` does not clear the dirty flags and `MarkCommitted` does.** A batch whose commit fails terminally
 leaves its pages owing the next commit a rewrite, which is the state the consumer's resync agrees with.
 
+`ContainerCommitOptions` carries the journal facts that are not operations, each with a right answer a caller
+usually takes: `ExpectedVersion` (the ADMITTED head rather than the committed one whenever something is
+already queued), the `item-container` projection schema at the page codec's own version, the
+`item-container.result` result schema, the `JournalLimits` the batch is bounded by, and
+`QueueBehindAdmitted`, which is on by default so a click lands behind a held craft rather than being refused.
+
 ### The window and its five closers
 
-The batch window is ONE SERVER TICK, and it closes on the FIRST of the five, first-wins:
+`ContainerBatchWindow` is ONE SERVER TICK, and it closes on the FIRST of the five, first-wins. It DECIDES and
+it does not count: every total it checks arrives as an argument from the builder that owns it, so there is no
+second copy of a number that could drift from the commit being built. `ContainerBatchCloseReason` is the
+answer, `Open` while it is still taking operations:
 
 | Closer | What it is |
 |---|---|
@@ -177,6 +200,12 @@ share one.**
 
 ### The operation vocabulary
 
+`ContainerOperationKind` is the six kinds and a `None` that is refused, each with a durable varint that is
+never renumbered and never reordered, because the number is written into a normalized intent and into an
+event payload. `ContainerOperationOrigin` is who caused one: `Server`, which has no id of its own to lose and
+may ride any batch, or `Client`, which carries the operation id it will resubmit after a reconnect and
+therefore heads its own batch.
+
 Every kind names the slots it touches, so the pages a batch will write are known before it is applied. That is
 what lets the window close on the projection write cap with no mutation to undo, and it is what makes a replay
 land where the original did rather than wherever a free-slot search would put it today.
@@ -203,15 +232,24 @@ wrong one.
 owns the `item-crafted` body and the crafting framework encodes it, so this package carries those bytes rather
 than freezing a format under a durable event name before its first writer exists.
 
+**The vocabulary names a container by NAME**, which is what its section names are filed under, and the craft
+intent of spec 10.6 names container IDs. The two have to be reconciled before a craft message crosses a wire
+([#942](https://github.com/APKiwiOrg/KhaozEngine/issues/942)).
+
 ## Event names
 
 `ItemInstanceEvents` carries the durable strings an item operation writes into the journal: the `item-craft`
-action kind, the `item-generated` and `item-crafted` event types, and the five a container operation writes
-(`item-moved`, `stack-split`, `stack-merged`, `item-granted`, `item-taken`). A durable string is never renamed
-and never switched on, which is why they are constants rather than an enum, and `EventTypeOf` switches on the
-operation KIND rather than on a stored string: the number is this build's and the string is the durable one.
+action kind (`CraftActionKind`), the `item-generated` and `item-crafted` event types, and the five a
+container operation writes (`item-moved`, `stack-split`, `stack-merged`, `item-granted`, `item-taken`).
+`All` is the seven event types in spec order. A durable string is never renamed and never switched on, which
+is why they are constants rather than an enum, and `EventTypeOf` switches on the operation KIND rather than
+on a stored string: the number is this build's and the string is the durable one.
 The payload codecs for `item-generated` and `item-crafted` arrive with the generator and the crafting framework
 that emit them.
+
+**These events are written and nothing here reads one back.** The commit builder encodes an event body per
+operation and the package ships no decoder for one, so a correction replay or an audit tool has bytes it
+cannot take apart yet ([#941](https://github.com/APKiwiOrg/KhaozEngine/issues/941)).
 
 ## Design
 

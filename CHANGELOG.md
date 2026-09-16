@@ -7,10 +7,14 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 18.51.0
 
-The item instances program lands whole: the instance record and its canonical payload, container codec
-version 2, paged containers, a load path that runs the registry-derived remap pass before the validator, one
-journal commit per tick, and the wire, with the fragmenter, the sibling ground component, the per-viewer
-projection and the one-frame page delta.
+Two content programs land together: the content catalog's phase 1, five packages that author tunable content
+in a database and publish it as immutable hashed packs a server loads into arrays, and phases 1 to 3 of item
+instances, the per-item record those packs give meaning to. The catalog ships the authoring seam and its three
+providers, the eleven-step publish, the runtime and its four eager indexes, the fail-closed boot, the sixteen
+console actions, the connect door's content layer and the client fetch loop it drives. Item instances ship the
+instance record and its canonical payload, container codec version 2, paged containers, a load path that runs
+the registry-derived remap pass before the validator, one journal commit per tick, and the wire, with the
+fragmenter, the sibling ground component, the per-viewer projection and the one-frame page delta.
 
 - `KhaozEngine.ItemInstances` is a new package, in the `Foundation` umbrella, over `KhaozEngine.Items`,
   `KhaozEngine.Catalog`, `KhaozEngine.Primitives` and `KhaozEngine.Diagnostics` (an `ILogger` argument for one
@@ -340,11 +344,137 @@ projection and the one-frame page delta.
   ([#924](https://github.com/APKiwiOrg/KhaozEngine/issues/924)), and enforcement of spec 3.3's per-kind value
   widths, so the revealed mask is a full `ulong` at every door
   ([#917](https://github.com/APKiwiOrg/KhaozEngine/issues/917)).
+- The content catalog ships PHASE 1 whole, five packages that author tunable content in a database and publish
+  it as immutable content-addressed packs a server loads into arrays indexed by id. `KhaozEngine.Catalog` is
+  the read half and went out in 18.50.0, and the four packages above it land here. `KhaozEngine.Catalog.Authoring`
+  and `KhaozEngine.Catalog.Netcode` are new and both are carried by the `Server` umbrella, because neither may
+  enter a client graph. `KhaozEngine.Catalog.Sqlite` and `KhaozEngine.Catalog.SqlServer` are the two durable
+  authoring backends and are in NO umbrella, the same opt-in rule the `WorldStore` and `Commerce` pairs follow,
+  so nothing that only READS content takes a database dependency.
+- `IContentAuthoringStore` is the provider seam, twenty-nine members pinned by a test so a member added to one
+  backend and not the others is red rather than latent: schema init, the version list and the operator pin, the
+  ONE open draft over `Add` / `Update` / `Retire` / `Fork`, the field-level audit carrying both the
+  authenticated actor and the console-asserted operator, publish and rollback, row and audit reads, families
+  and their aligned id blocks, reserve-then-issue id allocation, and bundle import and export. Three
+  implementations ship: `InMemoryContentAuthoringStore` for tests and tools,
+  `SqliteContentAuthoringStore` over `KhaozEngine.Sqlite`'s shared connection lifecycle, and
+  `SqlServerContentAuthoringStore` with a fresh pooled connection per call and every write `Serializable`, so
+  two consoles publishing at once are a refusal rather than a race. All three carry the same fourteen tables
+  and a VERSIONED schema that either auto-creates or validates and names the migration `catalog-v1-initial` on
+  a mismatch.
+- `ContentPublisher` is the eleven-step publish, and the invariant it is built around is one sentence: a crash
+  at any point leaves either the old version or the new one and never a torn one. Step 1 FREEZES the draft
+  durably, so an edit or a discard arriving mid publish is refused with `publish-in-progress` rather than
+  landing in a change set the publish has already read. Steps 2 to 8 write nothing durable: they build the
+  candidate, allocate ids, encode BOTH SIDES from the one registry (the full server rows and the
+  client-visible projection), reuse an unchanged chunk by its content address rather than rewriting it, and
+  assemble the two manifests. Step 9 writes files nothing references yet, step 10 is ONE transaction that
+  re-reads the base version and refuses a plan whose base moved with `base-version-moved`, and step 11 is
+  `ContentPackSweep`, whose keep set is the union over every known version of its pointer, its two manifest
+  hashes and every hash named INSIDE either manifest, and which reports what it kept and deleted or names why
+  it skipped. Around it sit `ContentRollback` (a reviewable draft that restores an earlier version's field
+  values, refusing flat when a row live at the target has been retired since), `ContentDiff` and
+  `ContentBundle`, the lossless seeding and export document that imports into an EMPTY database only.
+- `ContentRuntime` is the loaded version: arrays behind `ContentTypeTable`, `TryGetRow` / `TryGetId` / `Rows` /
+  `Body` / `Key` / `IsRetired` and the typed `TryGetItem`, built once and immutable after. FOUR indexes are
+  derived EAGERLY beside it, key to id per type, `ContentTagIndex`, `ContentFamilyIndex` and the prefix-summed
+  `ContentLootIndex`, plus whatever a type registered through `IContentLoadIndex`, because each is walked
+  inside gameplay and a lazy build inside a tick is the latency spike the design exists to refuse. A version
+  change builds a whole new runtime beside the old one and `ContentRuntimeHolder` swaps it in, so a reader
+  mid-frame keeps reading the version it started on. `LootRoller` draws over the prefix sums in integers, with
+  chances in basis points, nesting capped at `MaxNestedDepth` and zero allocation, answering `LootDraw`s into
+  the caller's span and writing nothing anywhere. `ContentBoot.RunAsync` is the whole server boot in one call
+  and it FAILS CLOSED: each of the TWELVE refusals comes back as a `ContentBootResult` carrying exit code 3 and
+  the operator's exact lines, and there is no fallback to code defaults anywhere on the path, because a silent
+  fallback catalog serves content no version names and an outage is at least noticed. The boot never exits the
+  process: the host writes the lines and returns the code.
+- `CatalogAdminActions.Register` puts SIXTEEN actions on the existing `ServerAdmin` dispatch, with no new
+  transport, no new listener and no new auth: `catalog-schema`, `-list`, `-get`, `-edit`, `-draft`,
+  `-discard`, `-validate`, `-diff`, `-publish`, `-versions`, `-pin`, `-rollback`, `-import`, `-export`,
+  `-sweep` and `-verify`. None of them returns 202, because an edit completes INSIDE the request against the
+  database, so an operator gets the real answer rather than an optimistic one. A rejected edit answers one
+  object error carrying a stable reason token and EVERY `KEC` finding rather than the first. Optimistic
+  concurrency answers `AdminActionStatus.Conflict` and HTTP 409 naming both the expected and the actual base
+  version, and a draft a publish holds frozen answers 409 naming the remedy. A mutating action reached by
+  `GET` is refused 405 with `Allow: POST`. They live in `KhaozEngine.Server.Admin` rather than in
+  `Catalog.Authoring`, deliberately: the helper needs `ServerAdmin` and the authoring store together, and the
+  edge the other way would put the whole netcode stack behind every opt-in SQL provider.
+- The connect door gains its CONTENT layer. A server serves exactly one published version, and a client
+  holding another is refused at the door rather than admitted read-only while it fetches.
+  `ContentIdentityLayer` wraps and unwraps the layer value, the decimal version number and the 64 character
+  lower hex CLIENT manifest hash joined by a pipe with an optional third field for the client's build ordinal,
+  parsed STRICTLY so nothing a client sent can be echoed into a token a client splits on colons.
+  `ContentIdentityGateAuthenticator` is `WorldIdentityGateAuthenticator`'s shape over it, and the nest order
+  outermost first is protocol version, world, CONTENT, the game's token auth, the ban check. `ContentRefusal`
+  is the two stable tokens and their parsers,
+  `ke:content-mismatch:<serverVersion>|<serverHash>|<clientVersion>|<clientHash>` and
+  `ke:content-client-too-old:<minimumClientBuild>`, the first carrying everything the fetch loop needs and NO
+  URL, because a URL in a refusal token is a redirect an unauthenticated party controls.
+- The client's catch-up ships with it. `HttpPackStore` is the read-only origin provider and the ONE layer that
+  can bound a body, which it does at `MaxObjectBytes` before it buffers a byte. `CachingPackStore` is the
+  decorator a client runs, local cache in front and origin behind, verifying every fetched body against its
+  content address before it is kept and reporting a refusal through its callback. `ContentFetchLoop` drives
+  them from the refusal: read the manifest the token named, refuse early when the client build is below the
+  version's minimum, compute the missing hashes, fetch at bounded concurrency, and retry with EXPONENTIAL
+  backoff that is capped and jittered. Progress arrives through `IProgress<ContentFetchProgress>`, cancellation
+  is its one throwing exit and leaves no partial file, and every other failure is an outcome plus a stable
+  reason token. `ContentStringCatalog` reads the version's per-language `KECT` text and layers the game's
+  SHIPPED catalog under it through a `ContentStringFallback` delegate, matching `IStringCatalog`'s member shape
+  without the implements clause because that interface lives in `KhaozEngine.App` and `KhaozEngine.Catalog`
+  depends on `Primitives` alone.
+- Every budget of the design's section 14 was re-measured at this tip and all twelve MEET. At 50,000
+  definitions: P1 pack 2.96 MB server and 2.66 MB client stored, P3 server load 278 ms and 12.3 MB of managed
+  heap, P4 client cold start 1.14 s over a shaped 20 Mbit link with 144 ms of local work, P5 publish after one
+  item edit 85.6 ms, P6 download after that edit 34.9 KB, P7 lookup by id 1.70 ns at zero allocation, P9
+  weighted loot draw 32.2 ns at zero allocation, P10 text decode 15.5 ms and 9.2 MB resident, and P11 composed
+  boot 256 ms to the listener with 397 ms from process start and 21.5 MB of heap. At 1,000,000: P2 pack 58.9 MB
+  server and 52.9 MB client, P4b cold start 22.1 s against a stated 90 s, and P8 validator sweep 622 ms over
+  1,833,833 rows. The `--catalog` benchmark still measures the phase 0 prototype's own copy of the formats
+  rather than the shipped packages, which is deliberate for phase 1 and is
+  [#953](https://github.com/APKiwiOrg/KhaozEngine/issues/953).
+- **The SQL Server conformance and crash-safety facts are WRITTEN and have not run against an instance.** They
+  are gated on `KE_CATALOG_SQLSERVER` and skip everywhere without it, CI included, so what actually gates a
+  push is the same suite's in-memory and SQLite legs. Point the variable at a throwaway database before
+  trusting a change to `KhaozEngine.Catalog.SqlServer`. The crash safety the SQLite leg does exercise is real:
+  the `--catalog-crash-probe` benchmark mode kills a CHILD process at each of nine publish steps and reopens
+  the store to check it, out of process rather than by throwing from a hook.
+- What phase 1 LEAVES OPEN is tracked and none of it blocks adoption. On the format and the spec:
+  [#908](https://github.com/APKiwiOrg/KhaozEngine/issues/908),
+  [#909](https://github.com/APKiwiOrg/KhaozEngine/issues/909),
+  [#911](https://github.com/APKiwiOrg/KhaozEngine/issues/911),
+  [#912](https://github.com/APKiwiOrg/KhaozEngine/issues/912),
+  [#918](https://github.com/APKiwiOrg/KhaozEngine/issues/918),
+  [#921](https://github.com/APKiwiOrg/KhaozEngine/issues/921) and
+  [#934](https://github.com/APKiwiOrg/KhaozEngine/issues/934), of which #934 is the sharpest: a pack carries no
+  family declarations, so the read side's family index is empty for a version loaded from one. On the authoring
+  seam and its providers: [#904](https://github.com/APKiwiOrg/KhaozEngine/issues/904),
+  [#914](https://github.com/APKiwiOrg/KhaozEngine/issues/914),
+  [#919](https://github.com/APKiwiOrg/KhaozEngine/issues/919),
+  [#938](https://github.com/APKiwiOrg/KhaozEngine/issues/938),
+  [#939](https://github.com/APKiwiOrg/KhaozEngine/issues/939),
+  [#940](https://github.com/APKiwiOrg/KhaozEngine/issues/940),
+  [#945](https://github.com/APKiwiOrg/KhaozEngine/issues/945) and
+  [#956](https://github.com/APKiwiOrg/KhaozEngine/issues/956), of which #939 is the one an operator can hit: a
+  publish killed before its commit leaves a freeze marker that is not stale, so the draft refuses edits until
+  the next baseline read clears it. On the validator and the runtime:
+  [#902](https://github.com/APKiwiOrg/KhaozEngine/issues/902),
+  [#944](https://github.com/APKiwiOrg/KhaozEngine/issues/944) and
+  [#950](https://github.com/APKiwiOrg/KhaozEngine/issues/950). On the admin actions:
+  [#946](https://github.com/APKiwiOrg/KhaozEngine/issues/946),
+  [#952](https://github.com/APKiwiOrg/KhaozEngine/issues/952) and
+  [#955](https://github.com/APKiwiOrg/KhaozEngine/issues/955). On the door and the client stores:
+  [#947](https://github.com/APKiwiOrg/KhaozEngine/issues/947),
+  [#948](https://github.com/APKiwiOrg/KhaozEngine/issues/948),
+  [#954](https://github.com/APKiwiOrg/KhaozEngine/issues/954) and
+  [#957](https://github.com/APKiwiOrg/KhaozEngine/issues/957). Plus the benchmark re-point, #953 above.
 - This is phases 1 to 3 of the item instances program
-  ([#884](https://github.com/APKiwiOrg/KhaozEngine/issues/884)), which stays open for phases 4 and 5. 18.50.0
-  was RELEASED with the content catalog's milestone 1.1 in it, so the catalog's later milestones
-  ([#882](https://github.com/APKiwiOrg/KhaozEngine/issues/882)) ride 18.51.0 from here. The design is
-  `docs/design/ITEM-INSTANCES-DESIGN-2026-09-15.md`, written against the shared contracts in
+  ([#884](https://github.com/APKiwiOrg/KhaozEngine/issues/884)), which stays open for phases 4 and 5, and the
+  WHOLE of the content catalog's phase 1 ([#882](https://github.com/APKiwiOrg/KhaozEngine/issues/882)), whose
+  milestone 1.1 went out in 18.50.0 and whose 1.2 to 1.5 ride this version. #882 stays open for the owner to
+  close, and the follow-on it names is Grimhollow's adoption, a separate plan in that repo
+  (https://github.com/APKiwiOrg/Grimhollow/issues/208). The designs are
+  `docs/design/ITEM-INSTANCES-DESIGN-2026-09-15.md` and
+  `docs/design/CONTENT-CATALOG-DESIGN-2026-09-15.md`, both written against the shared contracts in
   `docs/design/CONTENT-CONTRACTS-DESIGN-2026-09-14.md`.
 
 ## 18.50.0

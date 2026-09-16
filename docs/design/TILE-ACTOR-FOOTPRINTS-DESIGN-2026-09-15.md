@@ -294,7 +294,8 @@ Additive unless marked.
   geometry one. A footprint does not change it and this work does not fix it.
 - **Interest measured from the footprint.** Section 8.1.
   [#906](https://github.com/APKiwiOrg/KhaozEngine/issues/906).
-- **Sizes on `TileAttackContext`.** No rule reads them yet. Ranged combat is the round that will.
+- **Sizes on `TileAttackContext`.** No rule reads them yet. Ranged combat is the round that will. Shipped in 19.0.0
+  as `AttackerFootprint` and `TargetFootprint`, trailing and defaulted.
   [#907](https://github.com/APKiwiOrg/KhaozEngine/issues/907).
 
 ## 13. Choices, ruled by the owner (2026-09-15)

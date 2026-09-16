@@ -257,11 +257,16 @@ public sealed partial class TileWorldServer
             // the attacker's movement used. The target's size is its own state's, which is what the follow resolved
             // too.
             if (!TryGetMoverSimulator(attacker, out TileMoveSimulator mover)) continue;
-            if (!TileReach.Contains(mover.Map, targetState.Footprint, targetState.Tile.Plane, attackerState.Tile,
-                    mover.FootprintOf(attackerState).Width)) continue;
+            TileRect attackerFootprint = mover.FootprintOf(attackerState);
+            TileRect targetFootprint = targetState.Footprint;
+            if (!TileReach.Contains(mover.Map, targetFootprint, targetState.Tile.Plane, attackerState.Tile,
+                    attackerFootprint.Width)) continue;
 
+            // The SAME two rects the reach check just read, handed on rather than resolved a second time, so a rule
+            // that measures geometry itself cannot disagree with the check that admitted the swing.
             TileAttackOutcome outcome = CombatRules.Roll(new TileAttackContext(
-                attacker, attackerState.Tile, attackerHealth, target, targetState.Tile, targetHealth, TickCount));
+                attacker, attackerState.Tile, attackerHealth, target, targetState.Tile, targetHealth, TickCount,
+                attackerFootprint, targetFootprint));
             rolled.Add((attacker, target, outcome));
         }
 

@@ -2,8 +2,10 @@ namespace KhaozEngine.TileWorld.Netcode;
 
 /// <summary>
 /// What one swing is rolled against: both parties' net ids, both COMMITTED tiles as they stand after this tick's
-/// movement, both healths, and the tick. Everything the engine knows about a hit, which is deliberately everything
-/// about the LATTICE and nothing about the NUMBERS.
+/// movement, both BODIES as squares on those tiles, both healths, and the tick. Everything the engine knows about a
+/// hit, which is deliberately everything about the LATTICE and nothing about the NUMBERS.
+/// <para>The two footprints are TRAILING and DEFAULTED, so a context built by hand with the seven original
+/// positional arguments still compiles and answers an empty rect for both. Only the server fills them.</para>
 /// </summary>
 /// <param name="AttackerNetId">Who is swinging.</param>
 /// <param name="AttackerTile">The tile it is committed to after this tick's movement.</param>
@@ -12,6 +14,15 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// <param name="TargetTile">The tile it is committed to after this tick's movement.</param>
 /// <param name="TargetHealth">Its health as the roll phase found it, before any of this tick's damage lands.</param>
 /// <param name="Tick">The server tick being resolved.</param>
+/// <param name="AttackerFootprint">The square the attacker's body covers, anchored on <paramref name="AttackerTile"/>
+/// as its south-west corner. A COMMITTED footprint on the server timeline, filled at tick step 4b from the attacker's
+/// own simulator (<c>TileMoveSimulator.FootprintOf</c>, in <c>TileWorldServer.Combat.cs</c> beside the
+/// <c>TileReach.Contains</c> guard that admitted this swing, so a rule measuring geometry reads exactly what the
+/// legality check read). Melee needs none of it, since range was decided before the roll. A ranged or area rule
+/// measuring edge to edge does. Default (an empty rect) on a context built by hand.</param>
+/// <param name="TargetFootprint">The square the target's body covers, anchored on <paramref name="TargetTile"/>, read
+/// off the target's own move state at the same point in tick step 4b. Committed and defaulted on the same terms as
+/// <paramref name="AttackerFootprint"/>.</param>
 public readonly record struct TileAttackContext(
     long AttackerNetId,
     TileCoord AttackerTile,
@@ -19,7 +30,9 @@ public readonly record struct TileAttackContext(
     long TargetNetId,
     TileCoord TargetTile,
     TileHealth TargetHealth,
-    long Tick);
+    long Tick,
+    TileRect AttackerFootprint = default,
+    TileRect TargetFootprint = default);
 
 /// <summary>
 /// What the game decided one swing did. <c>Kind</c> is the game's own vocabulary and the engine NEVER inspects it:

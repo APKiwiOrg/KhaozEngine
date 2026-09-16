@@ -10457,7 +10457,11 @@ if (server.SkippedHealthlessCombatantCount > 0) log.Warn("a combatant has no Til
 ```
 
 The rules seam is where the game plugs into the hit pipeline. The engine owns whether a swing is DUE (the
-cooldown) and whether it is LEGAL (adjacency). This owns what it DOES.
+cooldown) and whether it is LEGAL (adjacency). This owns what it DOES. `TileAttackContext` hands it both net ids,
+both committed tiles, both committed FOOTPRINTS (`AttackerFootprint` and `TargetFootprint`, added in 19.0.0,
+[#907](https://github.com/APKiwiOrg/KhaozEngine/issues/907)), both healths and the tick. The two footprints are
+trailing and defaulted, so a context a test builds by hand with the seven original positional arguments still
+compiles and reads an empty rect for each.
 
 ```csharp
 sealed class MeleeRules : ITileCombatRules
@@ -10468,6 +10472,8 @@ sealed class MeleeRules : ITileCombatRules
     {
         // Both tiles are the COMMITTED tiles after this tick's movement, and both healths are as the roll phase
         // found them, BEFORE any of this tick's damage lands, so no roll can see another roll's result.
+        // context.AttackerFootprint and context.TargetFootprint are the two bodies as squares on those tiles, for a
+        // rule that measures geometry itself. Melee needs neither: range was decided before this was called.
         if (rng.Next(100) < 40) return TileAttackOutcome.Miss();
         return TileAttackOutcome.Hit((ushort)rng.Next(1, 9), kind: 0);   // kind is the game's splat colour
     }

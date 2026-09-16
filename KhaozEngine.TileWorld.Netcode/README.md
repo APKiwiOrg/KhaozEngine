@@ -342,8 +342,13 @@ understand. Its registered traversal profile can give that algorithm a different
   its selected topology. Players continue to use the constructor map. It asks the one footprint predicate the follow
   asks, of the tiles both bodies ended the tick on: the target's whole footprint, and the attacker at its own
   simulator's `FootprintOf`, so the follow and the roll cannot disagree about the attacker's size.
-  `TileAttackContext` still carries tiles and no sizes, which
-  [#907](https://github.com/APKiwiOrg/KhaozEngine/issues/907) tracks for ranged combat. `CanAttack(attackerNetId, targetNetId)` is
+  `TileAttackContext` carries both BODIES as well as both tiles since 19.0.0
+  ([#907](https://github.com/APKiwiOrg/KhaozEngine/issues/907)): `AttackerFootprint` is the attacker's square through
+  that same `FootprintOf`, `TargetFootprint` is the target's own state's, both committed on the server timeline and
+  both the very rects the reach check above the roll read. They are TRAILING and DEFAULTED, so a context built by
+  hand with the seven original positional arguments still compiles and answers an empty rect for each. Melee reads
+  neither, since range was settled before the roll. A ranged, area or size-scaled rule measuring geometry itself is
+  what they are there for. `CanAttack(attackerNetId, targetNetId)` is
   the admission rule for acquiring a target. A false answer is rewritten to `Continue` before a player command or
   actor latch can create a lock, chase, swing, or roll. Its default permits every target for source compatibility.
   `Roll` is called once per eligible attacker per tick, in the engine's fixed order and BEFORE any of the tick's

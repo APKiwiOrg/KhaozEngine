@@ -134,7 +134,14 @@ namespace KhaozEngine.Render3D
 
         /// <summary>How one queued instance participates in the depth pass: opted out, plainly, or dissolving. Pure
         /// (no scene state), so the classification is unit-testable and stays the single definition both
-        /// <see cref="GroupInstances"/> and the tests read.</summary>
+        /// <see cref="GroupInstances"/> and the tests read.
+        /// <para>
+        /// A SHADOW-ONLY instance (issue #974) is classified here exactly as the visible draw it would otherwise
+        /// have been, and can never come out <see cref="ShadowCastKind.None"/>: the whole point of it is to cast,
+        /// and <see cref="SceneInstances.Instance"/>'s constructor refuses the shadow-only plus opt-out pair, so
+        /// <see cref="SceneInstances.Instance.CastsShadows"/> is true on every one of them. Shadow-only is a
+        /// COLOUR-pass question and is answered by the main-pass mask instead (see Scene3D.ShadowOnly.cs).
+        /// </para></summary>
         internal static ShadowCastKind ClassifyCaster(in SceneInstances.Instance instance)
             => !instance.CastsShadows ? ShadowCastKind.None
              : !instance.Dissolving ? ShadowCastKind.Opaque

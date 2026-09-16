@@ -26,18 +26,23 @@ namespace KhaozEngine.Render3D
         /// <paramref name="retained"/> optionally omits rejected queued slots from the packed stream. Mesh order
         /// still follows the complete queue, so removing a hidden first instance never reorders visible meshes.
         /// <paramref name="writeCursorScratch"/> reuses per-mesh cursors even when more than 64 meshes are queued.
+        /// <paramref name="shadowOnly"/> (optional) receives each SLOT's shadow-only flag (issue #974), index-aligned
+        /// to <paramref name="instanceData"/> the same way <paramref name="castKinds"/> is and for the same reason:
+        /// this is the one place that still knows which queued instance a slot came from. Omit it and no flags are
+        /// produced, which the main-pass mask reads as "nothing is shadow-only" (the pre-policy shape).
         /// </summary>
         internal static void GroupInstances(IReadOnlyList<SceneInstances.Instance> items,
             List<ModelRenderer.InstanceData> instanceData, List<MeshRun> runs,
             Dictionary<(int Index, int Generation), int>? meshRunIndex = null,
             List<ShadowCastKind>? castKinds = null, ReadOnlySpan<bool> retained = default,
-            List<uint>? writeCursorScratch = null)
+            List<uint>? writeCursorScratch = null, List<bool>? shadowOnly = null)
         {
             if (!retained.IsEmpty && retained.Length != items.Count)
                 throw new ArgumentException("Retention must cover every queued instance.", nameof(retained));
             instanceData.Clear();
             runs.Clear();
             castKinds?.Clear();
+            shadowOnly?.Clear();
             if (items.Count == 0) return;
 
             meshRunIndex ??= new Dictionary<(int, int), int>();
@@ -88,6 +93,7 @@ namespace KhaozEngine.Render3D
                 int total = (int)cursor;
                 for (int i = 0; i < total; i++) instanceData.Add(default);
                 if (castKinds != null) for (int i = 0; i < total; i++) castKinds.Add(ShadowCastKind.Opaque);
+                if (shadowOnly != null) for (int i = 0; i < total; i++) shadowOnly.Add(false);
                 for (int i = 0; i < items.Count; i++)
                 {
                     if (!retained.IsEmpty && !retained[i]) continue;
@@ -96,6 +102,7 @@ namespace KhaozEngine.Render3D
                     uint dst = writeCursor[slot]++;
                     bool dissolving = inst.Dissolving;
                     if (castKinds != null) castKinds[(int)dst] = ClassifyCaster(inst);
+                    if (shadowOnly != null) shadowOnly[(int)dst] = inst.ShadowOnly;
                     instanceData[(int)dst] = new ModelRenderer.InstanceData
                     {
                         Model = inst.World,

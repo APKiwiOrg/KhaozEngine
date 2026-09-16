@@ -396,6 +396,11 @@ catalog archetype up front, so a region load is placements alone.
   them and the camera goes, and the building next door keeps its roof. `IsRoofHidden(footprint, plane)` is the
   roof predicate. `IsObserverInterior(tile)` exposes the same read-only, plane-aware set for ambience, minimaps,
   path rules and lighting without depending on `RoofMode`. `InteriorTileCount` reports the size of the set.
+- **A hidden roof still CASTS.** Whatever `RoofMode` takes off the screen is queued through
+  `ITileWorldScene.DrawShadowOnlyProps` instead of dropped, so it writes depth for the key light and draws no
+  colour and the room under it stays shaded. `LastShadowOnlyProps` counts those, apart from `LastDrawnProps`,
+  which stays the visible total. Both passes cull on the same focus and `PropDrawRadius`, and a hidden roof still
+  draws no silhouette and no target outline.
 - **`RoofMode`** picks between `RoofVisibility.Interior` (the default above), `AlwaysVisible` (nothing is ever
   hidden, the map-authoring view) and `AlwaysHidden` (every roof on every plane goes, the OSRS "roofs off"
   setting, and the pre-18.10.0 indoor behaviour applied unconditionally). Wire it to the player's setting.

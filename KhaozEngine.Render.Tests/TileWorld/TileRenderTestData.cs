@@ -415,6 +415,12 @@ public sealed partial class RecordingTileWorldScene : ITileWorldScene
     /// <summary>The prop draws of the frames since the last <see cref="ClearFrame"/>, in submission order.</summary>
     public List<TilePropDrawRecord> PropDraws { get; } = new();
 
+    /// <summary>The SHADOW-ONLY prop draws of the frames since the last <see cref="ClearFrame"/>, in submission
+    /// order (issue #974): the placements a view withheld from the colour pass and still queued as casters. Same
+    /// record shape and the same snapshot-copy discipline as <see cref="PropDraws"/>, and deliberately a separate
+    /// list, so a test names which pass a placement reached rather than only that it reached one.</summary>
+    public List<TilePropDrawRecord> ShadowOnlyPropDraws { get; } = new();
+
     /// <summary>How many handles are live right now, uploaded and not yet freed.</summary>
     public int AliveMeshCount => _alive.Count;
 
@@ -431,6 +437,7 @@ public sealed partial class RecordingTileWorldScene : ITileWorldScene
     {
         Drawn.Clear();
         PropDraws.Clear();
+        ShadowOnlyPropDraws.Clear();
         FoliageDraws.Clear();
     }
 
@@ -543,7 +550,21 @@ public sealed partial class RecordingTileWorldScene : ITileWorldScene
     /// cull the real prop path applies, and records the call.</summary>
     public int DrawProps(IReadOnlyList<PropPlacement> placements,
                          IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> parts,
-                         Vector3 focus, float drawRadius)
+                         Vector3 focus, float drawRadius) =>
+        RecordPropCall(placements, parts, focus, drawRadius, PropDraws);
+
+    /// <summary>The shadow-only half of <see cref="DrawProps"/>: the same cull, the same record, its own list.</summary>
+    public int DrawShadowOnlyProps(IReadOnlyList<PropPlacement> placements,
+                                   IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> parts,
+                                   Vector3 focus, float drawRadius) =>
+        RecordPropCall(placements, parts, focus, drawRadius, ShadowOnlyPropDraws);
+
+    // Both prop paths cull the same way and record the same shape, so they share one body: the only difference is
+    // which list the record lands in. The snapshot COPY is the load-bearing part, because the view hands over one
+    // scratch list per pass and refills it for the next region-plane of the same frame.
+    static int RecordPropCall(IReadOnlyList<PropPlacement> placements,
+                              IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> parts,
+                              Vector3 focus, float drawRadius, List<TilePropDrawRecord> into)
     {
         ArgumentNullException.ThrowIfNull(placements);
         ArgumentNullException.ThrowIfNull(parts);
@@ -559,7 +580,7 @@ public sealed partial class RecordingTileWorldScene : ITileWorldScene
         }
         var snapshot = new PropPlacement[placements.Count];
         for (int i = 0; i < placements.Count; i++) snapshot[i] = placements[i];
-        PropDraws.Add(new TilePropDrawRecord(snapshot, focus, drawRadius, drawn));
+        into.Add(new TilePropDrawRecord(snapshot, focus, drawRadius, drawn));
         return drawn;
     }
 

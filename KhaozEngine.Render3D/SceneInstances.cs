@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Primitives;
@@ -53,6 +54,13 @@ namespace KhaozEngine.Render3D
             => _items.Add(new Instance(mesh, world, tint, material, dissolveThreshold, dissolveEdgeWidth, dissolveEdge,
                 castsShadows, invertShadowDissolve, dissolveComplement));
 
+        /// <summary>Queue one SHADOW-ONLY instance (issue #974): it writes depth into the key light's cascade
+        /// atlas and never draws in the colour pass, so the world keeps the shadow of geometry a view hides from
+        /// the eye. The queued instance still casts, so it is never an opt-out, and the opposite pair (shadow-only
+        /// with <c>castsShadows</c> false) is a contradiction the <see cref="Instance"/> constructor refuses.</summary>
+        public void AddShadowOnly(MeshHandle mesh, Matrix4x4 world)
+            => _items.Add(new Instance(mesh, world, Color.White, Material.None, shadowOnly: true));
+
         public readonly struct Instance
         {
             public MeshHandle Mesh { get; }
@@ -81,15 +89,32 @@ namespace KhaozEngine.Render3D
             /// <summary>Complementary rigid-dissolve phase. Zero uses the ordinary keep decision. One inverts it in
             /// both color and shadow so two instances at the same threshold own every noise sample exactly once.</summary>
             public float DissolveComplement { get; }
+            /// <summary>Whether this instance is drawn into the SHADOW depth pass ALONE (issue #974): it records
+            /// depth for the cascade atlas and is masked out of the colour pass, so it throws a shadow and is never
+            /// seen. The fourth caster policy, for geometry a view hides from the eye while the world still contains
+            /// it (a tile world's roof over the building the observer stands in). CPU-side only, exactly like
+            /// <see cref="CastsShadows"/>: it never reaches the GPU instance stream, so the uploaded bytes are
+            /// identical either way. Shadow-only with <see cref="CastsShadows"/> false is a contradiction (an
+            /// instance that draws nowhere at all) and the constructor refuses the pair.</summary>
+            public bool ShadowOnly { get; }
             public Instance(MeshHandle mesh, Matrix4x4 world, Color tint) : this(mesh, world, tint, Material.None) { }
             public Instance(MeshHandle mesh, Matrix4x4 world, Color tint, Material material,
                 float dissolveThreshold = 0f, float dissolveEdgeWidth = 0f, Vector4 dissolveEdge = default,
-                bool castsShadows = true, bool invertShadowDissolve = false, float dissolveComplement = 0f)
+                bool castsShadows = true, bool invertShadowDissolve = false, float dissolveComplement = 0f,
+                bool shadowOnly = false)
             {
+                // Shadow-only says "colour pass no, depth pass yes" and the opt-out says "depth pass no", so the
+                // pair asks for an instance that is drawn in neither: a queue entry that costs a slot and produces
+                // nothing. Refused at the queue rather than dropped silently later, where it would read as a
+                // missing shadow nobody could account for.
+                if (shadowOnly && !castsShadows)
+                    throw new ArgumentException(
+                        "A shadow-only instance must cast shadows: shadowOnly with castsShadows false draws in neither pass.",
+                        nameof(shadowOnly));
                 Mesh = mesh; World = world; Tint = tint; Material = material;
                 DissolveThreshold = dissolveThreshold; DissolveEdgeWidth = dissolveEdgeWidth; DissolveEdge = dissolveEdge;
                 CastsShadows = castsShadows; InvertShadowDissolve = invertShadowDissolve;
-                DissolveComplement = dissolveComplement;
+                DissolveComplement = dissolveComplement; ShadowOnly = shadowOnly;
             }
 
             /// <summary>True when this draw carries a dissolve (routes through the gated ModelFrag term).</summary>

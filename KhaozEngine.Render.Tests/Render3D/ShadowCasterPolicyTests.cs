@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Primitives;
@@ -8,7 +9,8 @@ using Xunit;
 namespace KhaozEngine.Tests.Render3D
 {
     /// <summary>
-    /// Headless coverage of the shadow-caster policy (issue #287, plus the per-mesh terrain rule of issue #280):
+    /// Headless coverage of the shadow-caster policy (issue #287, the per-mesh terrain rule of issue #280, and the
+    /// shadow-only policy of issue #974):
     /// the per-mesh cast test (<see cref="Scene3D.MeshCastsShadows"/>), the per-instance classification
     /// (<see cref="Scene3D.ClassifyCaster"/>), how <see cref="Scene3D.GroupInstances"/> carries it onto the uploaded
     /// slots, and the span builder (<see cref="Scene3D.AppendCasterSpans"/>) that turns it into the depth pass's
@@ -17,9 +19,11 @@ namespace KhaozEngine.Tests.Render3D
     /// </summary>
     public sealed class ShadowCasterPolicyTests
     {
-        static SceneInstances.Instance Inst(int mesh, float tx, float dissolve = 0f, bool castsShadows = true)
+        static SceneInstances.Instance Inst(int mesh, float tx, float dissolve = 0f, bool castsShadows = true,
+            bool shadowOnly = false)
             => new(new MeshHandle(mesh), Matrix4x4.CreateTranslation(tx, 0, 0), Color.White, Material.None,
-                dissolve, 0f, default, castsShadows);
+                dissolve, 0f, default, castsShadows, invertShadowDissolve: false, dissolveComplement: 0f,
+                shadowOnly: shadowOnly);
 
         // Spans of one run of `kinds`, placed at absolute slot `start`. The classification list is indexed by ABSOLUTE
         // slot (it is parallel to the whole uploaded instance array), so the run's kinds are padded into place.
@@ -179,6 +183,124 @@ namespace KhaozEngine.Tests.Render3D
             var spans = new List<Scene3D.ShadowCasterSpan>();
             Scene3D.AppendCasterSpans(7, 1, 0, 0, new List<ShadowCastKind> { ShadowCastKind.Opaque }, spans);
             Assert.Empty(spans);
+        }
+
+        [Fact]
+        public void A_shadow_only_instance_casts_exactly_as_the_visible_draw_it_replaces()
+        {
+            // Issue #974. Shadow-only is a COLOUR-pass question, so it must not disturb the depth classification at
+            // all: the instance binds the same pipeline it would have bound while visible.
+            Assert.Equal(ShadowCastKind.Opaque, Scene3D.ClassifyCaster(Inst(0, 0f, shadowOnly: true)));
+            Assert.Equal(ShadowCastKind.Dissolving,
+                Scene3D.ClassifyCaster(Inst(0, 0f, dissolve: 0.4f, shadowOnly: true)));
+            // And it can never come out None, because a shadow-only non-caster draws in neither pass and the
+            // constructor refuses that pair outright (below).
+            Assert.NotEqual(ShadowCastKind.None, Scene3D.ClassifyCaster(Inst(0, 0f, shadowOnly: true)));
+        }
+
+        [Fact]
+        public void Shadow_only_plus_the_caster_opt_out_is_refused_at_the_queue()
+        {
+            // The contradiction: no colour pass and no depth pass is an instance that costs a slot and draws
+            // nothing anywhere. Refused where it is queued rather than dropped silently deeper in the frame.
+            ArgumentException ex = Assert.Throws<ArgumentException>(() => Inst(0, 0f, castsShadows: false, shadowOnly: true));
+            Assert.Equal("shadowOnly", ex.ParamName);
+            // Either flag alone is fine.
+            Assert.False(Inst(0, 0f, castsShadows: false).ShadowOnly);
+            Assert.True(Inst(0, 0f, shadowOnly: true).CastsShadows);
+        }
+
+        [Fact]
+        public void AddShadowOnly_queues_a_casting_invisible_instance()
+        {
+            var instances = new SceneInstances();
+            instances.Begin();
+            instances.AddShadowOnly(new MeshHandle(3), Matrix4x4.CreateTranslation(1f, 2f, 3f));
+
+            SceneInstances.Instance queued = Assert.Single(instances.Items);
+            Assert.True(queued.ShadowOnly);
+            Assert.True(queued.CastsShadows);
+            Assert.False(queued.Dissolving);
+            Assert.Equal(new MeshHandle(3), queued.Mesh);
+            Assert.Equal(Matrix4x4.CreateTranslation(1f, 2f, 3f), queued.World);
+        }
+
+        [Fact]
+        public void Grouping_carries_the_shadow_only_flag_onto_each_uploaded_slot()
+        {
+            // Same interleave as the cast-kind test: the flag has to follow each instance to its SCATTERED slot,
+            // because the main-pass mask is indexed by uploaded slot rather than by submission order.
+            var items = new List<SceneInstances.Instance>
+            {
+                Inst(5, 10f),                          // slot 0 (mesh 5 run)
+                Inst(2, 20f, shadowOnly: true),        // slot 2 (mesh 2 run)
+                Inst(5, 11f, shadowOnly: true),        // slot 1
+                Inst(2, 21f),                          // slot 3
+            };
+            var data = new List<ModelRenderer.InstanceData>();
+            var runs = new List<Scene3D.MeshRun>();
+            var kinds = new List<ShadowCastKind>();
+            var shadowOnly = new List<bool>();
+
+            Scene3D.GroupInstances(items, data, runs, null, kinds, shadowOnly: shadowOnly);
+
+            Assert.Equal(new[] { false, true, true, false }, shadowOnly);
+            // Every one of them still casts, so the depth pass sees one span per run exactly as before.
+            Assert.All(kinds, kind => Assert.Equal(ShadowCastKind.Opaque, kind));
+            Assert.Equal(11f, data[1].Model.M41);
+            Assert.Equal(20f, data[2].Model.M41);
+        }
+
+        [Fact]
+        public void Grouping_keeps_the_shadow_only_flags_aligned_when_retention_drops_an_earlier_instance()
+        {
+            // A rejected opt-out ahead of the shadow-only instance SHIFTS its slot down. An index-aligned list has
+            // to shift with it, or the mask would hide the wrong prop and show the roof.
+            var items = new List<SceneInstances.Instance>
+            {
+                Inst(4, 0f, castsShadows: false),      // dropped by retention
+                Inst(4, 1f, shadowOnly: true),         // slot 0 after the drop
+                Inst(4, 2f),                           // slot 1
+            };
+            var data = new List<ModelRenderer.InstanceData>();
+            var runs = new List<Scene3D.MeshRun>();
+            var kinds = new List<ShadowCastKind>();
+            var shadowOnly = new List<bool>();
+
+            Scene3D.GroupInstances(items, data, runs, null, kinds, new[] { false, true, true },
+                shadowOnly: shadowOnly);
+
+            Assert.Equal(2, data.Count);
+            Assert.Equal(new[] { true, false }, shadowOnly);
+            Assert.Equal(1f, data[0].Model.M41);
+            Assert.Equal(2f, data[1].Model.M41);
+        }
+
+        [Fact]
+        public void Grouping_clears_the_shadow_only_list_between_frames()
+        {
+            var shadowOnly = new List<bool> { true, true, true };
+            var data = new List<ModelRenderer.InstanceData>();
+            var runs = new List<Scene3D.MeshRun>();
+            Scene3D.GroupInstances(new List<SceneInstances.Instance> { Inst(0, 0f) }, data, runs,
+                shadowOnly: shadowOnly);
+            Assert.Equal(new[] { false }, shadowOnly);
+
+            // An empty frame empties it too: a stale flag would blank a slot the next frame genuinely draws.
+            Scene3D.GroupInstances(new List<SceneInstances.Instance>(), data, runs, shadowOnly: shadowOnly);
+            Assert.Empty(shadowOnly);
+        }
+
+        [Fact]
+        public void A_shadow_only_slot_is_neither_drawn_nor_culled()
+        {
+            // The main-pass rule ComputeMainPassVisibility applies per slot, on the culling path and on the
+            // culling-off parity path alike. Shadow-only WINS over the frustum result either way, and it is
+            // charged to its own counter so a hidden roof never reads as a culling win.
+            Assert.Equal(MainPassSlot.Drawn, Scene3D.ClassifyMainPassSlot(shadowOnly: false, insideFrustum: true));
+            Assert.Equal(MainPassSlot.Culled, Scene3D.ClassifyMainPassSlot(shadowOnly: false, insideFrustum: false));
+            Assert.Equal(MainPassSlot.ShadowOnly, Scene3D.ClassifyMainPassSlot(shadowOnly: true, insideFrustum: true));
+            Assert.Equal(MainPassSlot.ShadowOnly, Scene3D.ClassifyMainPassSlot(shadowOnly: true, insideFrustum: false));
         }
 
         [Fact]

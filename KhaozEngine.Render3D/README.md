@@ -217,8 +217,11 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   through a dissolve-aware depth pipeline instead, so its SHADOW erodes with the same world-space noise mask that
   erodes the mesh: a prop fading out at its draw radius no longer casts a fully solid shadow under an almost-invisible
   caster, and across an HLOD crossfade the props' shadow thins out as the merged mesh's thins in rather than both
-  casting at full strength. Both are inert at their defaults (no dissolve, casting on), and a frame with neither is
-  byte-identical to before. `Scene3D.TerrainCastsShadows` (default `false`) is the third, scene-wide policy: leave it
+  casting at full strength. `DrawShadowOnly(handle, transform)` is the opposite of the opt-out: the instance
+  records depth for the key light and never draws in the COLOUR pass, so a view can hide geometry from the eye and
+  keep the shadow the world still throws (a tile world's hidden roof), counted by `ShadowOnlyInstances` and by
+  neither `DrawnInstances` nor `CulledInstances`. All three are inert at their defaults (no dissolve, casting on,
+  not shadow-only), and a frame with none of them is byte-identical to before. `Scene3D.TerrainCastsShadows` (default `false`) is the third, scene-wide policy: leave it
   off and splat terrain stays receive-only as it always was, set it and terrain chunks join the caster list through
   the same per-cascade cull, which is what a SCULPTED world with real hills wants (a 49 m mountain otherwise throws
   no shadow while the trees standing on it do). A degenerate camera makes

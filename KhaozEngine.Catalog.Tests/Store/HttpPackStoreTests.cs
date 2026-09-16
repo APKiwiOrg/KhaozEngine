@@ -187,6 +187,95 @@ public class HttpPackStoreTests
     }
 
     /// <summary>
+    /// The transfer ceiling of spec 7.6 and 8.4, which is the ONE bound that applies before a byte is
+    /// buffered. Every other length check in the format runs inside <c>ContentPackReader.TryVerify</c>,
+    /// which the caching store calls only once the whole body is already in hand, so a store that buffers
+    /// first has no bound at all: a hostile origin declaring 256 MiB gets 256 MiB allocated, times the
+    /// bounded concurrency of four.
+    /// <para>
+    /// Joins <c>AllocSensitive</c> because the declared-oversize case reads
+    /// <see cref="GC.GetTotalAllocatedBytes(bool)"/>, which is process wide.
+    /// </para>
+    /// </summary>
+    [Collection("AllocSensitive")]
+    public class Ceiling
+    {
+        // The reproduction, spec 8.4 and 13.4. The first request in a process warms several megabytes of
+        // client machinery, so a control fetch runs first and the measurement is of the SECOND request: an
+        // origin that declares 256 MiB and serves 64 MiB of it used to cost about 316 MB of buffer growth,
+        // answering null at the end of it, and four of those run at once.
+        [Fact]
+        public async Task A_declared_oversize_body_answers_null_without_allocating_it()
+        {
+            using var origin = await PackHttpHost.StartAsync();
+            string control = new('e', 64);
+            string oversize = new('a', 64);
+            origin.ServePlan(control, declaredLength: 4096, actualBytes: 4096);
+            origin.ServePlan(oversize, declaredLength: 256L * 1024 * 1024, actualBytes: 64L * 1024 * 1024);
+            using HttpClient client = origin.Client();
+            var store = new HttpPackStore(client, origin.BaseAddress);
+            Assert.NotNull(await store.GetAsync(control));
+
+            long before = GC.GetTotalAllocatedBytes(precise: true);
+            ReadOnlyMemory<byte>? bytes = await store.GetAsync(oversize);
+            long allocated = GC.GetTotalAllocatedBytes(precise: true) - before;
+
+            Assert.Null(bytes);
+            Assert.True(
+                allocated < 4L * 1024 * 1024,
+                FormattableString.Invariant($"A refused 256 MiB body allocated {allocated} bytes."));
+        }
+
+        // A chunked response declares no length at all, so the header check cannot be the only bound: the
+        // read itself stops at the ceiling and answers the same null.
+        [Fact]
+        public async Task A_chunked_oversize_body_answers_null()
+        {
+            using var origin = await PackHttpHost.StartAsync();
+            string hash = new('b', 64);
+            origin.ServePlan(hash, declaredLength: -1, actualBytes: HttpPackStore.MaxObjectBytes + 4096L);
+            using HttpClient client = origin.Client();
+            var store = new HttpPackStore(client, origin.BaseAddress);
+
+            Assert.Null(await store.GetAsync(hash));
+        }
+
+        // The ceiling is a ceiling and not a budget: the largest object the format can legally produce still
+        // fetches whole, which is what keeps the bound from becoming a refusal of real content.
+        [Fact]
+        public async Task A_body_exactly_at_the_ceiling_still_fetches()
+        {
+            using var origin = await PackHttpHost.StartAsync();
+            string hash = new('c', 64);
+            origin.ServePlan(hash, HttpPackStore.MaxObjectBytes, HttpPackStore.MaxObjectBytes);
+            using HttpClient client = origin.Client();
+            var store = new HttpPackStore(client, origin.BaseAddress);
+
+            ReadOnlyMemory<byte>? bytes = await store.GetAsync(hash);
+
+            Assert.NotNull(bytes);
+            Assert.Equal(HttpPackStore.MaxObjectBytes, bytes.Value.Length);
+        }
+
+        // The ceiling is the format's own, not a number this store invented: the largest uncompressed chunk
+        // plus the largest fixed header any pack file carries. A stored body is never larger than the
+        // uncompressed bytes it decompresses to, because every codec keeps the canonical file when Brotli
+        // does not shrink it.
+        [Fact]
+        public void The_ceiling_is_the_chunk_ceiling_plus_the_largest_fixed_header()
+        {
+            Assert.Equal(
+                ContentPackFormat.MaxChunkUncompressedBytes + ContentManifestCodec.FixedHeaderBytes,
+                HttpPackStore.MaxObjectBytes);
+            Assert.True(ContentManifestCodec.FixedHeaderBytes >= ContentPackFormat.ChunkHeaderBytes);
+            Assert.True(ContentManifestCodec.FixedHeaderBytes >= ContentPackFormat.RuleHeaderBytes);
+            Assert.True(
+                ContentManifestCodec.FixedHeaderBytes
+                >= ContentPackFormat.TextHeaderFixedBytes + ContentTextChunkCodec.MaxLanguageTagBytes);
+        }
+    }
+
+    /// <summary>
     /// A local HTTP endpoint over a <see cref="FileSystemPackStore"/> root, which is the CDN's stand-in and
     /// nothing more: content-addressed GETs, no range support, no caching headers. It is started and stopped
     /// INSIDE the test that uses it, so nothing outlives the assertion.
@@ -196,6 +285,7 @@ public class HttpPackStoreTests
         readonly HttpListener _listener = new();
         readonly ConcurrentQueue<string> _requests = new();
         readonly Dictionary<string, byte[]> _overrides = new(StringComparer.Ordinal);
+        readonly Dictionary<string, BodyPlan> _plans = new(StringComparer.Ordinal);
         readonly TemporaryRoot _root = new();
         Task? _loop;
         long _bytesServed;
@@ -248,6 +338,21 @@ public class HttpPackStoreTests
 
         /// <summary>Answers every request with a 302 to <paramref name="path"/>, spec 13.4's case.</summary>
         public void RedirectEverythingTo(string path) => _redirectTo = path;
+
+        /// <summary>
+        /// Serves a body of zeros under that hash by PLAN rather than from an array, so a test can name a
+        /// size no test process should ever hold. <paramref name="declaredLength"/> is what the response
+        /// declares, negative for a chunked response that declares nothing, and
+        /// <paramref name="actualBytes"/> is what the socket actually carries.
+        /// </summary>
+        public void ServePlan(string hash, long declaredLength, long actualBytes)
+        {
+            string path = "/" + hash[..2] + "/" + hash.Substring(2, 2) + "/" + hash + ".kec";
+            lock (_plans)
+            {
+                _plans[path] = new BodyPlan(declaredLength, actualBytes);
+            }
+        }
 
         public void Dispose()
         {
@@ -320,6 +425,12 @@ public class HttpPackStoreTests
                 return;
             }
 
+            if (Plan(path) is BodyPlan plan && context.Request.HttpMethod != "HEAD")
+            {
+                await ServePlanAsync(context, plan).ConfigureAwait(false);
+                return;
+            }
+
             byte[]? bytes = Read(path);
             if (bytes is null)
             {
@@ -347,6 +458,63 @@ public class HttpPackStoreTests
             context.Response.Close();
         }
 
+        /// <summary>
+        /// Writes the plan's zeros in blocks. A client that stops reading at its own ceiling breaks the
+        /// write, which is the fact under test rather than a failure of the endpoint.
+        /// </summary>
+        async Task ServePlanAsync(HttpListenerContext context, BodyPlan plan)
+        {
+            if (plan.DeclaredLength < 0)
+            {
+                context.Response.SendChunked = true;
+            }
+            else
+            {
+                context.Response.ContentLength64 = plan.DeclaredLength;
+            }
+
+            byte[] block = new byte[64 * 1024];
+            long written = 0;
+            try
+            {
+                while (written < plan.ActualBytes)
+                {
+                    int take = (int)Math.Min(block.Length, plan.ActualBytes - written);
+                    await context.Response.OutputStream.WriteAsync(block.AsMemory(0, take)).ConfigureAwait(false);
+                    // Flushed, so the headers reach the client before an abort can take the connection with
+                    // them. A declared length nobody ever reads would test nothing.
+                    await context.Response.OutputStream.FlushAsync().ConfigureAwait(false);
+                    written += take;
+                }
+            }
+            catch (HttpListenerException)
+            {
+                return;
+            }
+            catch (IOException)
+            {
+                return;
+            }
+
+            Interlocked.Add(ref _bytesServed, written);
+            if (plan.DeclaredLength >= 0 && written < plan.DeclaredLength)
+            {
+                // Fewer bytes than declared, so the connection dies rather than completing a short response.
+                context.Response.Abort();
+                return;
+            }
+
+            context.Response.Close();
+        }
+
+        BodyPlan? Plan(string path)
+        {
+            lock (_plans)
+            {
+                return _plans.TryGetValue(path, out BodyPlan plan) ? plan : null;
+            }
+        }
+
         byte[]? Read(string path)
         {
             lock (_overrides)
@@ -361,5 +529,10 @@ public class HttpPackStoreTests
             string file = Path.Combine(Store.Root, relative);
             return File.Exists(file) ? File.ReadAllBytes(file) : null;
         }
+
+        /// <summary>A body described by its two lengths, so a huge one costs the test no array.</summary>
+        /// <param name="DeclaredLength">What the response declares, negative for chunked.</param>
+        /// <param name="ActualBytes">What the socket carries.</param>
+        readonly record struct BodyPlan(long DeclaredLength, long ActualBytes);
     }
 }

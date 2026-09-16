@@ -34,6 +34,26 @@ namespace KhaozEngine.Catalog;
 /// </summary>
 public sealed class HttpPackStore : IPackStore, IContentVersionPointerSource
 {
+    /// <summary>
+    /// The most bytes one stored object may be, and the point a fetch stops reading (spec 8.4, 13.4). It is
+    /// <see cref="ContentPackFormat.MaxChunkUncompressedBytes"/> plus
+    /// <see cref="ContentManifestCodec.FixedHeaderBytes"/>, the largest fixed header any pack file carries,
+    /// because a stored body is never larger than the uncompressed bytes it decompresses to: every codec
+    /// keeps the canonical file when Brotli does not shrink it, and the uncompressed ceiling is the one the
+    /// decoders already enforce from the header alone.
+    /// <para>
+    /// A store is the ONLY layer that can apply it. Every other length check in the format runs inside
+    /// <see cref="ContentPackReader.TryVerify"/>, which <see cref="CachingPackStore"/> calls once the whole
+    /// body is already buffered, so an origin that declares 256 MiB gets 256 MiB allocated before one of
+    /// those checks can see a byte of it, across the bounded concurrency of four.
+    /// </para>
+    /// </summary>
+    public const int MaxObjectBytes =
+        ContentPackFormat.MaxChunkUncompressedBytes + ContentManifestCodec.FixedHeaderBytes;
+
+    /// <summary>Where a body that declared no length starts, before it grows toward the ceiling.</summary>
+    const int UndeclaredStartBytes = 64 * 1024;
+
     readonly HttpClient client;
 
     /// <summary>Points the store at a container.</summary>
@@ -203,8 +223,16 @@ public sealed class HttpPackStore : IPackStore, IContentVersionPointerSource
                 return null;
             }
 
-            byte[] bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
-            return new ReadOnlyMemory<byte>(bytes);
+            long? declared = response.Content.Headers.ContentLength;
+            if (declared > MaxObjectBytes)
+            {
+                // A REFUSAL rather than a throw, and taken from the header alone: the caller's next move is
+                // the same as for a 404, and nothing is read, so a hostile declaration costs one round trip.
+                return null;
+            }
+
+            using Stream body = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+            return await ReadBoundedAsync(body, declared, cancellationToken).ConfigureAwait(false);
         }
         catch (HttpRequestException)
         {
@@ -219,6 +247,56 @@ public sealed class HttpPackStore : IPackStore, IContentVersionPointerSource
         catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Reads the body under <see cref="MaxObjectBytes"/>. A DECLARED length allocates exactly that (spec
+    /// 8.4), and a chunked response, which declares nothing, grows to the ceiling and then answers null for
+    /// the first byte past it: an origin that omits the header must not be the one origin with no bound.
+    /// </summary>
+    static async Task<ReadOnlyMemory<byte>?> ReadBoundedAsync(
+        Stream body,
+        long? declaredLength,
+        CancellationToken cancellationToken)
+    {
+        if (declaredLength is long length)
+        {
+            byte[] exact = new byte[length];
+            await body.ReadExactlyAsync(exact, cancellationToken).ConfigureAwait(false);
+            return new ReadOnlyMemory<byte>(exact);
+        }
+
+        byte[] buffer = new byte[UndeclaredStartBytes];
+        int filled = 0;
+        while (true)
+        {
+            if (filled == buffer.Length)
+            {
+                if (filled >= MaxObjectBytes)
+                {
+                    // One byte past the ceiling settles it, and the null is written as a statement rather
+                    // than as a conditional branch: a null in a conditional beside a ReadOnlyMemory binds to
+                    // the implicit operator from an array and hands back an EMPTY body instead.
+                    byte[] probe = new byte[1];
+                    if (await body.ReadAsync(probe, cancellationToken).ConfigureAwait(false) != 0)
+                    {
+                        return null;
+                    }
+
+                    return new ReadOnlyMemory<byte>(buffer, 0, filled);
+                }
+
+                Array.Resize(ref buffer, (int)Math.Min((long)buffer.Length * 2, MaxObjectBytes));
+            }
+
+            int read = await body.ReadAsync(buffer.AsMemory(filled), cancellationToken).ConfigureAwait(false);
+            if (read == 0)
+            {
+                return new ReadOnlyMemory<byte>(buffer, 0, filled);
+            }
+
+            filled += read;
         }
     }
 }

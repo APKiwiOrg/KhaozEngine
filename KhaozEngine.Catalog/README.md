@@ -317,6 +317,13 @@ if (!roller.TryRoll(tableId, drops, out int written))
   no credential, because a redirect off a content-addressed store is either a misconfiguration or a
   redirection attack. No cloud SDK, deliberately: a blob SDK here would be a third-party dependency in every
   game client's graph, and the write side belongs to the publisher's own server.
+- **`HttpPackStore.MaxObjectBytes` is the one size bound that applies BEFORE a byte is buffered.** Every
+  other length check in the format is inside `ContentPackReader.TryVerify`, which `CachingPackStore` reaches
+  only once the whole body is in hand, so the store is the single layer that can refuse a body for being
+  too big at all. A declared `Content-Length` above the ceiling answers null without reading, and a response
+  that declares nothing is read through a bounded copy that stops one byte past it, so a chunked origin is
+  bounded too. The ceiling is `ContentPackFormat.MaxChunkUncompressedBytes` plus the largest fixed header a
+  pack file carries, because no legal stored body is larger than the uncompressed bytes it decompresses to.
 - `CachingPackStore` - a LOCAL store in front of a REMOTE one. `GetAsync` asks local, on a miss asks remote,
   VERIFIES, writes through to local and returns. `ExistsAsync` asks local then remote. `PutAsync`, `ListAsync`
   and the pruning half are the CACHE's alone, so one client's eviction policy can never reach the origin.

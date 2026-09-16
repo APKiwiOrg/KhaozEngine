@@ -10409,8 +10409,11 @@ crosses a region handoff and reaches both heads with no second lookup.
   `client.TryGetLatestRemoteFootprint` is off the newest snapshot, for a rule, and it is what `TileRemoteTargets`
   resolves a remote to, so a predicted approach to a cow stops on the same tile the server stops on.
 - **Players are one tile.** `TileWorldServer.SetPlayerState` refuses a state with a `FootprintSize` above 1.
-  `TileMoveOptions.AgentSize` still exists as a floor under every state's size and is removed at the next major,
-  [#900](https://github.com/APKiwiOrg/KhaozEngine/issues/900).
+- **There is no simulator-wide size.** `TileMoveOptions.AgentSize` and `TileMoveSimulator.AgentSize` were removed in
+  19.0.0 ([#900](https://github.com/APKiwiOrg/KhaozEngine/issues/900)). Every body is stepped, pathed and reached at
+  its own state's `FootprintSize`, and `TileMoveSimulator.FootprintOf(state)` stays as the name the combat roll asks
+  the attacker's own simulator for that square. A head that set `AgentSize = 1` deletes the initializer, and one
+  that set it higher gives each of those bodies its own `FootprintSize` instead.
 
 Two presentation and interest gaps remain. `TileDrawPriority` judges a body on its anchor tile only, so a one-tile
 body on another tile of a cow overlaps it on screen
@@ -10454,7 +10457,11 @@ if (server.SkippedHealthlessCombatantCount > 0) log.Warn("a combatant has no Til
 ```
 
 The rules seam is where the game plugs into the hit pipeline. The engine owns whether a swing is DUE (the
-cooldown) and whether it is LEGAL (adjacency). This owns what it DOES.
+cooldown) and whether it is LEGAL (adjacency). This owns what it DOES. `TileAttackContext` hands it both net ids,
+both committed tiles, both committed FOOTPRINTS (`AttackerFootprint` and `TargetFootprint`, added in 19.0.0,
+[#907](https://github.com/APKiwiOrg/KhaozEngine/issues/907)), both healths and the tick. The two footprints are
+trailing and defaulted, so a context a test builds by hand with the seven original positional arguments still
+compiles and reads an empty rect for each.
 
 ```csharp
 sealed class MeleeRules : ITileCombatRules
@@ -10465,6 +10472,8 @@ sealed class MeleeRules : ITileCombatRules
     {
         // Both tiles are the COMMITTED tiles after this tick's movement, and both healths are as the roll phase
         // found them, BEFORE any of this tick's damage lands, so no roll can see another roll's result.
+        // context.AttackerFootprint and context.TargetFootprint are the two bodies as squares on those tiles, for a
+        // rule that measures geometry itself. Melee needs neither: range was decided before this was called.
         if (rng.Next(100) < 40) return TileAttackOutcome.Miss();
         return TileAttackOutcome.Hit((ushort)rng.Next(1, 9), kind: 0);   // kind is the game's splat colour
     }

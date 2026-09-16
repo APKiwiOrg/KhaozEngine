@@ -240,6 +240,51 @@ public class TileFootprintCombatTests
         }
     }
 
+    // The two footprints the roll is handed are the two the reach check above it read: the attacker's through its own
+    // simulator's FootprintOf, the target's off its own state (TileWorldServer.Combat.cs, the TileReach.Contains call
+    // right before the Roll). Both orders of the asymmetry, since a rule reading them measures from one and against
+    // the other.
+    [Theory, InlineData(1, 2), InlineData(2, 1)]
+    public void The_roll_is_handed_both_committed_footprints(int n, int m)
+    {
+        var hub = new InMemoryTransportHub();
+        var rules = new FixedRules { Damage = 0 };
+        using TileWorldServer s = Server(TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(5, 5, 0),
+            rules);
+        long target = s.SpawnActor(TargetAnchor, Spawn(m));
+        // Touching the target's west edge, which is an in-range anchor for either size, so the swing fires from the
+        // tile the spawn put the body on and no step moves it first.
+        var attackerAt = new TileCoord(TargetAnchor.X - n, TargetAnchor.Z, 0);
+        long attacker = s.SpawnActor(attackerAt, Spawn(n));
+        Lock(s, attacker, target);
+
+        s.Tick(Dt);
+
+        TileAttackContext roll = Assert.Single(rules.Rolls);
+        Assert.Equal(attackerAt, roll.AttackerTile);
+        Assert.Equal(TargetAnchor, roll.TargetTile);
+        Assert.Equal(new TileRect(attackerAt.X, attackerAt.Z, n, n), roll.AttackerFootprint);
+        Assert.Equal(new TileRect(TargetAnchor.X, TargetAnchor.Z, m, m), roll.TargetFootprint);
+        // Each footprint is anchored on the tile beside it, which is the pairing a rule measuring edge to edge reads.
+        Assert.Equal(roll.AttackerTile.X, roll.AttackerFootprint.X);
+        Assert.Equal(roll.AttackerTile.Z, roll.AttackerFootprint.Z);
+        Assert.Equal(roll.TargetTile.X, roll.TargetFootprint.X);
+        Assert.Equal(roll.TargetTile.Z, roll.TargetFootprint.Z);
+        Assert.True(Touches(roll.AttackerFootprint, roll.TargetFootprint));
+    }
+
+    // The two footprints are TRAILING and DEFAULTED, so a context a game builds by hand with the seven original
+    // positional arguments still compiles and says it carries no geometry.
+    [Fact]
+    public void A_hand_built_context_keeps_the_seven_argument_positional_shape()
+    {
+        var context = new TileAttackContext(1L, new TileCoord(2, 3, 0), new TileHealth { Current = 4, Max = 5 }, 6L,
+            new TileCoord(7, 8, 0), new TileHealth { Current = 9, Max = 10 }, 11L);
+
+        Assert.True(context.AttackerFootprint.IsEmpty);
+        Assert.True(context.TargetFootprint.IsEmpty);
+    }
+
     // Approached from the east, where the nearest one-tile reach tile of the body's anchor, (27, 20), is inside the
     // body. The arrival is judged where the server raises it, off the player's own state at that moment.
     [Fact]

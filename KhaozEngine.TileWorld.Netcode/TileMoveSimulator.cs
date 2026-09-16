@@ -70,15 +70,14 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
     /// and net ids overlap exactly, so one resolver could not tell which space a target named. Appended last rather
     /// than placed beside <paramref name="targets"/> so an existing positional call keeps meaning what it said.</param>
     /// <exception cref="ArgumentNullException"><paramref name="map"/> is null.</exception>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="options"/> asks for an agent smaller than
-    /// one tile, for a path radius outside the range <see cref="TilePathfinder.FindPath"/> accepts, or for a route
-    /// cap outside 1..<see cref="TileProtocol.MaxRouteSteps"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="options"/> asks for a path radius outside the
+    /// range <see cref="TilePathfinder.FindPath"/> accepts, or for a route cap outside
+    /// 1..<see cref="TileProtocol.MaxRouteSteps"/>.</exception>
     public TileMoveSimulator(TileCollisionMap map, TileStepTicks stepTicks, ITileTargets? targets = null,
         TileMoveOptions? options = null, ITileTargets? combatTargets = null)
     {
         ArgumentNullException.ThrowIfNull(map);
         TileMoveOptions o = options ?? new TileMoveOptions();
-        if (o.AgentSize < 1) throw new ArgumentOutOfRangeException(nameof(options), "AgentSize must be >= 1.");
         // Checked HERE rather than on the first click. TilePathfinder.FindPath throws for a radius outside its own
         // range, and that throw would otherwise land inside a server tick, on the first move by the first player.
         if (o.MaxPathRadius < 1 || o.MaxPathRadius > TilePathfinder.MaxSearchRadius)
@@ -95,7 +94,6 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
         StepTicks = stepTicks.Walk == 0 || stepTicks.Run == 0 ? TileStepTicks.Default : stepTicks;
         this.targets = targets;
         this.combatTargets = combatTargets;
-        AgentSize = o.AgentSize;
         MaxPathRadius = o.MaxPathRadius;
         MaxRouteSteps = o.MaxRouteSteps;
     }
@@ -107,29 +105,20 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
     /// <summary>Ticks per step, per mode.</summary>
     public TileStepTicks StepTicks { get; }
 
-    /// <summary>The floor under each state's footprint size, in tiles. See <see cref="TileMoveOptions.AgentSize"/>
-    /// and <see cref="FootprintOf"/>.</summary>
-    public int AgentSize { get; }
-
     /// <summary>Half width of the pathfinder's search window.</summary>
     public int MaxPathRadius { get; }
 
     /// <summary>Longest route one click may produce, in steps. See <see cref="TileMoveOptions.MaxRouteSteps"/>.</summary>
     public int MaxRouteSteps { get; }
 
-    /// <summary>The tiles a state covers as THIS simulator steps it: its own
-    /// <see cref="TileMoveState.FootprintSize"/>, floored at <see cref="AgentSize"/>. The one definition of an
-    /// attacker's size, which the server's combat roll asks of the attacker's own simulator so the follow and the roll
-    /// cannot disagree.</summary>
+    /// <summary>The tiles a state covers as THIS simulator steps it, which is its own
+    /// <see cref="TileMoveState.FootprintSize"/> and nothing else: there is no simulator-wide size any more, so every
+    /// body is stepped, pathed and reached at the size its state carries. Kept as a member rather than folded into
+    /// <see cref="TileMoveState.Footprint"/> because it is the one definition of an ATTACKER's size, which the
+    /// server's combat roll asks of the attacker's own simulator so the follow and the roll cannot disagree.</summary>
     /// <param name="state">The state whose anchor and size are read.</param>
-    /// <returns>The square of the stepped size anchored on the state's tile, its south-west corner.</returns>
-    public TileRect FootprintOf(in TileMoveState state)
-    {
-        int n = SizeOf(state);
-        return new TileRect(state.Tile.X, state.Tile.Z, n, n);
-    }
-
-    int SizeOf(in TileMoveState state) => Math.Max(state.FootprintSize, AgentSize);
+    /// <returns>The square of the state's size anchored on its tile, the south-west corner.</returns>
+    public TileRect FootprintOf(in TileMoveState state) => state.Footprint;
 
     /// <summary>
     /// Whether <c>Step</c> would APPLY this command rather than drop it whole. THE definition of acceptance,
@@ -279,7 +268,7 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
         TileMoveState s = state;
         if (!Accepts(s, TileCommand.WalkTo(goal, mode))) return s;
         s.Mode = mode;
-        s.Route = RouteFor(TilePathfinder.FindPath(Map, s.Tile.Plane, s.Tile, goal, SizeOf(s), MaxPathRadius,
+        s.Route = RouteFor(TilePathfinder.FindPath(Map, s.Tile.Plane, s.Tile, goal, s.FootprintSize, MaxPathRadius,
             scratch));
         return s;
     }
@@ -320,7 +309,7 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
         // tick, since the follow runs inside the Advance below.
         s.CombatTarget = 0;
 
-        int size = SizeOf(s);
+        int size = s.FootprintSize;
         if (!resolved || !TileReach.TryNearest(Map, footprint, plane, s.Tile, size, MaxPathRadius,
                 out TileCoord reachTile, out TilePath path, scratch))
         {
@@ -390,7 +379,7 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
             return s;
         }
 
-        int size = SizeOf(s);
+        int size = s.FootprintSize;
 
         // 4. A lock on ITSELF can never be in range: its footprint moves with the body, so no tile it could step to
         //    is off it. It clears, which is the answer rule 5 gives any target with no reach tile, and the server says
@@ -478,7 +467,7 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
         TileMoveState s = state;
         TileCoord next = s.Route.Next;
         TileDirection dir = TileRoute.Direction(s.Tile, next);
-        if (!TileCollision.CanStep(Map, s.Tile.X, s.Tile.Z, s.Tile.Plane, dir, SizeOf(s)))
+        if (!TileCollision.CanStep(Map, s.Tile.X, s.Tile.Z, s.Tile.Plane, dir, s.FootprintSize))
             return Repath(s, scratch);
 
         s.StepFrom = s.Tile;
@@ -526,7 +515,7 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
             s.InteractDomain = TileInteractionDomain.AuthoredObject;
             return s;
         }
-        int size = SizeOf(s);
+        int size = s.FootprintSize;
         if (!TileReach.Contains(Map, footprint, plane, s.Tile, size))
         {
             // The walk ended off the reach set, which is what a route truncated at MaxRouteSteps leaves behind.
@@ -561,7 +550,7 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
         TileCoord end = s.Route.End;
         s.StepTicks = 0;
         s.StepTotal = StepTicks.For(s.Mode);
-        TilePath path = TilePathfinder.FindPath(Map, s.Tile.Plane, s.Tile, end, SizeOf(s), MaxPathRadius, scratch);
+        TilePath path = TilePathfinder.FindPath(Map, s.Tile.Plane, s.Tile, end, s.FootprintSize, MaxPathRadius, scratch);
         s.Route = RouteFor(path);
         if (s.Route.IsIdle)
         {

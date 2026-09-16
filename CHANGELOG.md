@@ -432,12 +432,18 @@ fragmenter, the sibling ground component, the per-viewer projection and the one-
   1,833,833 rows. The `--catalog` benchmark still measures the phase 0 prototype's own copy of the formats
   rather than the shipped packages, which is deliberate for phase 1 and is
   [#953](https://github.com/APKiwiOrg/KhaozEngine/issues/953).
-- **The SQL Server conformance and crash-safety facts are WRITTEN and have not run against an instance.** They
-  are gated on `KE_CATALOG_SQLSERVER` and skip everywhere without it, CI included, so what actually gates a
-  push is the same suite's in-memory and SQLite legs. Point the variable at a throwaway database before
-  trusting a change to `KhaozEngine.Catalog.SqlServer`. The crash safety the SQLite leg does exercise is real:
-  the `--catalog-crash-probe` benchmark mode kills a CHILD process at each of nine publish steps and reopens
-  the store to check it, out of process rather than by throwing from a hook.
+- **The SQL Server conformance and crash-safety facts RAN against Azure SQL on 2026-09-16 and all 43 pass.**
+  They are gated on `KE_CATALOG_SQLSERVER` and skip everywhere without it, CI included, so what gates a push
+  is the same suite's in-memory and SQLite legs, and a change to `KhaozEngine.Catalog.SqlServer` is trusted
+  only after the leg is pointed at a throwaway `-catalog-test-` database. The first live run found two
+  provider defects that never reached a tagged version and are fixed in this entry: `CatalogSchemaV1.sql`
+  named one check constraint twice (SQL Server scopes constraint names to the schema, SQLite does not care),
+  and every parameter went through `AddWithValue`, which types a null as `nvarchar` and is refused on a
+  `varbinary(max)` column. Every binding now names its column's SQL type through the `Parameters` partial,
+  and two instance-free tests (`SqlServerCatalogDdlNamingTests`, `SqlServerCatalogParameterTypeTests`) keep
+  both from coming back. The crash safety the SQLite leg exercises is real: the `--catalog-crash-probe`
+  benchmark mode kills a CHILD process at each of nine publish steps and reopens the store to check it, out
+  of process rather than by throwing from a hook.
 - What phase 1 LEAVES OPEN is tracked and none of it blocks adoption. On the format and the spec:
   [#908](https://github.com/APKiwiOrg/KhaozEngine/issues/908),
   [#909](https://github.com/APKiwiOrg/KhaozEngine/issues/909),

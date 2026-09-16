@@ -582,19 +582,24 @@ public class ItemGeneratorTests
     }
 
     [Fact]
-    public void A_run_list_that_fills_THROWS_rather_than_leaving_the_mod_LIVE()
+    public void A_run_list_that_would_fill_is_REFUSED_at_the_door_rather_than_leaving_the_mod_LIVE()
     {
-        // The run list is sized from the widest rarity rule's affix count and the widest mod group, so a
-        // redraw that KEEPS more affixes than any rarity permits can ask for more exclusions than the slot
-        // holds. Dropping the excess is the fail-open shape and is what this used to do: an unseated run is
-        // a mod still in the pool, so the next pick can draw a mod the rule already excluded and the item
-        // leaves with two mods of a group capped at one, silently.
+        // The run list is sized from the widest LIVE rarity rule's affix count and the widest mod group, so
+        // a redraw that KEEPS more affixes than any rarity permits would ask for more exclusions than the
+        // slot holds. Dropping the excess is the fail-open shape: an unseated run is a mod still in the
+        // pool, so the next pick can draw a mod the rule already excluded and the item leaves with two mods
+        // of a group capped at one, silently. SeatRun throws rather than doing that, and the throw came out
+        // of a gameplay call where every other failure is a CraftRefusal, so the capacity is a DOOR now and
+        // the throw stays beneath it as the guard nothing reaches through the public surface.
         ItemGenerator generator = OneAffixWorld(new SeededRandomSource(11));
         var destination = new InstanceAffix[byte.MaxValue];
         InstanceAffix[] keep = [new(1, 1, 0), new(3, 1, 0), new(5, 1, 0)];
+        Assert.Equal(1, generator.PresentCeiling);
 
-        InvalidOperationException failure = Assert.Throws<InvalidOperationException>(
-            () => generator.RedrawAffixes(
+        // Nothing is placed and nothing is lost: the kept list comes straight back.
+        Assert.Equal(
+            keep.Length,
+            generator.RedrawAffixes(
                 GenerationWorld.Dagger,
                 60,
                 GenerationWorld.MagicRarity,
@@ -602,10 +607,19 @@ public class ItemGeneratorTests
                 picks: 1,
                 keep,
                 destination));
+        Assert.Equal(keep, destination[..keep.Length]);
 
-        Assert.Contains("LIVE", failure.Message, StringComparison.Ordinal);
+        // And the single pick answers the same condition as false, with nothing written out.
+        Assert.False(generator.TryDrawAffix(
+            GenerationWorld.Dagger,
+            60,
+            ModContentType.PrefixKind,
+            0,
+            keep,
+            out InstanceAffix drawn));
+        Assert.Equal(default, drawn);
 
-        // The same redraw inside the ceiling still answers, so what the throw refuses is the OVERFLOW
+        // The same redraw inside the ceiling still answers, so what the door refuses is the OVERFLOW
         // rather than a redraw that keeps anything at all.
         Assert.Equal(
             2,
@@ -617,6 +631,45 @@ public class ItemGeneratorTests
                 picks: 1,
                 keep.AsSpan(0, 1),
                 destination));
+    }
+
+    [Fact]
+    public void TryDrawAffix_answers_a_DEFAULT_affix_on_every_false_path()
+    {
+        // A tier ceiling below the drawn mod's lowest live tier collapses the ordinal to 0, which is a
+        // false answer with a mod id and a rolled position already in hand. Writing those out anyway hands
+        // a caller that reads the out parameter without checking a mod at tier 0, which is not an affix.
+        ItemGenerator generator = HighTierOnlyWorld(new SeededRandomSource(11));
+        Assert.False(generator.TryDrawAffix(
+            GenerationWorld.Dagger,
+            60,
+            ModContentType.SuffixKind,
+            1,
+            [],
+            out InstanceAffix collapsed));
+        Assert.Equal(default, collapsed);
+
+        // The empty pool path answers the same way, which is the shape the ceiling path now matches.
+        Assert.False(generator.TryDrawAffix(
+            GenerationWorld.Wand,
+            60,
+            ModContentType.SuffixKind,
+            0,
+            [],
+            out InstanceAffix dry));
+        Assert.Equal(default, dry);
+
+        // The same draw with NO ceiling places the mod, so what refused above is the ceiling rather than
+        // the pool.
+        Assert.True(generator.TryDrawAffix(
+            GenerationWorld.Dagger,
+            60,
+            ModContentType.SuffixKind,
+            0,
+            [],
+            out InstanceAffix placed));
+        Assert.Equal(HighTierMod, placed.ModId);
+        Assert.Equal(5, placed.Tier);
     }
 
     [Fact]
@@ -674,6 +727,29 @@ public class ItemGeneratorTests
     /// run list is sized at one affix times one group member plus one, which is two, while the dagger's
     /// prefix table still holds three distinct mods a craft can exclude.
     /// </summary>
+    /// <summary>The mod whose ONLY live tier sits above any ceiling a fact hands in.</summary>
+    const int HighTierMod = 33;
+
+    /// <summary>
+    /// The authored world with the two ordinary suffix candidates unweighted and one suffix mod whose only
+    /// tier is ordinal 5, so a ceiling of 1 leaves the draw with nothing to write.
+    /// </summary>
+    static ItemGenerator HighTierOnlyWorld(IRandomSource random)
+    {
+        ContentTypeRegistry registry = GenerationWorld.World();
+        List<ContentRow> rows = GenerationWorld.Rows(registry);
+        rows.RemoveAll(row => row.Type.Value == InstanceContentTypeIds.ModTierWeightTypeId && row.Id is 4 or 6);
+        rows.Add(Mod(registry, HighTierMod, "high", kind: ModContentType.SuffixKind));
+        rows.Add(ModTier(registry, HighTierMod, "high_t5", modId: HighTierMod, ordinal: 5));
+        rows.Add(ModTierWeight(registry, HighTierMod, "high_t5_metal", tierId: HighTierMod, tagId: GenerationWorld.MetalTag, weight: 40));
+
+        ContentSnapshot candidate = Snapshot(registry, [.. rows]);
+        return new ItemGenerator(
+            GenerationTables.Build(ModCandidateTables.Build(candidate), candidate),
+            random,
+            GenerationWorld.FreshAllocator());
+    }
+
     static ItemGenerator OneAffixWorld(IRandomSource random)
     {
         ContentTypeRegistry registry = GenerationWorld.World();

@@ -75,6 +75,15 @@ public static partial class CraftPrimitives
             return copy.Refuse(new CraftRefusal(CraftRefusalKind.AffixListFull, InstancePropertyKind.Affixes));
         }
 
+        // And the generator's own SEAT ceiling, which is the widest LIVE rule in the pack. An item rolled
+        // under a rule a later version RETIRED has no live rule to read above, so AffixCeiling answers 0
+        // and the check above is skipped, and the draw would then overflow step 6's exclusion list and
+        // throw out of a gameplay call where every other failure is a refusal.
+        if (count + 1 > generator.PresentCeiling)
+        {
+            return copy.Refuse(new CraftRefusal(CraftRefusalKind.AffixListFull, InstancePropertyKind.Affixes));
+        }
+
         if (!generator.TryDrawAffix(
             copy.DefinitionId,
             (int)itemLevel,
@@ -209,6 +218,12 @@ public static partial class CraftPrimitives
             {
                 keep[kept++] = affixes[index];
             }
+        }
+
+        // The generator's seat ceiling over the KEPT list, for the reason AddRandomMod names.
+        if (kept + 1 > generator.PresentCeiling)
+        {
+            return copy.Refuse(new CraftRefusal(CraftRefusalKind.AffixListFull, InstancePropertyKind.Affixes));
         }
 
         _ = copy.TryGetByte(InstancePropertyKind.Rarity, out byte rarityId);

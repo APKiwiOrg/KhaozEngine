@@ -28,6 +28,24 @@ public sealed partial class ItemGenerator
     public const int MaxMaskedModKind = 32;
 
     /// <summary>
+    /// The most affixes an item may ALREADY carry and still be drawn on, which is the widest live rarity
+    /// rule's <c>max_affixes</c> and never less than one.
+    /// <para>
+    /// It is the seat capacity rather than a content rule. Step 6 takes every present affix out of the pool
+    /// with its whole run of tiers and its group, and the run lists that records into are sized from the
+    /// widest live rule by <see cref="GenerationTables"/>, so a present list past this number has nowhere
+    /// to be recorded. Dropping a run instead would leave a mod LIVE, which is the one thing the seat may
+    /// not do, so the draw answers false and a craft refuses before it.
+    /// </para>
+    /// <para>
+    /// <b>An item can be past it without anything being wrong.</b> A rule a later version RETIRED still has
+    /// items in the world carrying the affix count it permitted, and <see cref="AffixCeiling"/> answers 0
+    /// for a rarity with no live rule, so this is the ceiling that catches them.
+    /// </para>
+    /// </summary>
+    public int PresentCeiling => Math.Max(_content.MaxAffixCount, 1);
+
+    /// <summary>
     /// How many affixes one rarity rule permits on one item, or 0 for a rarity this version carries no live
     /// rule for and for a rarity id of 0.
     /// <para>
@@ -72,9 +90,11 @@ public sealed partial class ItemGenerator
     /// <param name="modKind">The mod kind to pick. The kind is a PARAMETER here, so step 5 draws nothing.</param>
     /// <param name="tierCeiling">The highest tier ordinal to write, or 0 for no ceiling.</param>
     /// <param name="present">The affixes already on the item, excluded before the draw (step 6).</param>
-    /// <param name="affix">The pick, when the answer is true.</param>
+    /// <param name="affix">The pick, when the answer is true, and <c>default</c> on every false path.</param>
     /// <exception cref="ArgumentOutOfRangeException">The item level or the base is one the generator refuses
     /// at its own door, in the same class as every other value a caller hands in by code.</exception>
+    /// <remarks>A <paramref name="present"/> list longer than <see cref="PresentCeiling"/> answers false
+    /// without drawing, because step 6 has nowhere to record the exclusions.</remarks>
     public bool TryDrawAffix(
         int baseId,
         int itemLevel,
@@ -86,6 +106,14 @@ public sealed partial class ItemGenerator
         affix = default;
         var context = new GenerationContext(baseId, itemLevel, 0, 0, 0);
         _ = RefuseAtTheDoor(in context);
+        if (present.Length > PresentCeiling)
+        {
+            // Step 6 could not record the exclusions, and a run that is not recorded is a mod that stays
+            // LIVE. It answers false without touching the stream, because this is a state of the ITEM
+            // rather than an empty pool, and the craft that reached here refuses ahead of the draw.
+            return false;
+        }
+
         OpenPool(SignatureOf(baseId), _tables.BandOf(itemLevel));                             // step 1
         SeatPresent(present);                                                                 // step 6
 
@@ -115,8 +143,16 @@ public sealed partial class ItemGenerator
             ordinal = CeilingTier(kindPosition, modId, tierCeiling);
         }
 
+        if (ordinal <= 0)
+        {
+            // The ceiling collapsed the mod's ordinal to nothing, so there is no pick. The out parameter
+            // stays default on EVERY false path, so a caller that reads it without checking reads a zero
+            // rather than a mod id with a tier of 0.
+            return false;
+        }
+
         affix = new InstanceAffix(modId, (byte)ordinal, position);
-        return ordinal > 0;
+        return true;
     }
 
     /// <summary>
@@ -137,6 +173,8 @@ public sealed partial class ItemGenerator
     /// the most kind 131's byte count can hold. The order is NOT sorted here: the encoder sorts ascending
     /// by mod id whatever order it is handed, which is step 9 and the one place it lives.</param>
     /// <returns>How many affixes were written.</returns>
+    /// <remarks>A <paramref name="keep"/> list longer than <see cref="PresentCeiling"/> places NOTHING and
+    /// answers the kept count, for the reason <see cref="TryDrawAffix"/> answers false.</remarks>
     /// <exception cref="ArgumentException"><paramref name="destination"/> is shorter than 255.</exception>
     /// <exception cref="ArgumentOutOfRangeException">The item level or the base is one the generator refuses
     /// at its own door.</exception>
@@ -159,6 +197,20 @@ public sealed partial class ItemGenerator
 
         var context = new GenerationContext(baseId, itemLevel, 0, 0, 0);
         _ = RefuseAtTheDoor(in context);
+        if (keep.Length > PresentCeiling)
+        {
+            // The same seat door as TryDrawAffix, answered in the shape a method returning a count has:
+            // nothing is placed and the kept list comes straight back, so no draw is made and no affix is
+            // lost. A craft refuses ahead of this.
+            int kept = 0;
+            for (int index = 0; index < keep.Length && kept < destination.Length; index++)
+            {
+                destination[kept++] = keep[index];
+            }
+
+            return kept;
+        }
+
         OpenPool(SignatureOf(baseId), _tables.BandOf(itemLevel));                             // step 1
         SeatPresent(keep);                                                                    // step 6
 
@@ -537,8 +589,9 @@ public sealed partial class ItemGenerator
     /// <b>A full list THROWS rather than dropping the run.</b> A run that is not seated is a mod that stays
     /// LIVE, so the next pick can draw a mod the rule already excluded and an item can leave with two mods
     /// of a group capped at one, silently and forever. The list is sized from the true worst case by
-    /// <see cref="GenerationTables"/>, so this is unreachable on a caller that stays inside the rarity
-    /// rule's own affix count, and it is the loud answer for one that does not.
+    /// <see cref="GenerationTables"/>, and <see cref="PresentCeiling"/> is the DOOR that refuses a present
+    /// list past it, so nothing reaches this through the public surface any more. It stays as the guard
+    /// that says what the door is for.
     /// </para>
     /// </summary>
     /// <exception cref="InvalidOperationException">The slot's run list is full.</exception>

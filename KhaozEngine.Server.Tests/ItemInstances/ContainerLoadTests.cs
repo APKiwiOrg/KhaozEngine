@@ -287,6 +287,31 @@ public class ContainerLoadTests
         Assert.Equal(2, vetted.ActiveStamp);
     }
 
+    [Fact]
+    public void A_stored_page_flagging_an_entry_quarantined_over_no_bytes_never_loads_it_live()
+    {
+        // The shape no spec defines: spec 4.4 says a quarantined entry's payload IS the wrapper and spec
+        // 12.4 pairs the flag with one, so the flag over zero bytes preserves nothing. Loading it as a live
+        // non-quarantined stack CLEARED the flag and handed a player an item the store never vouched for,
+        // with no finding anywhere. The decoder is the door it meets first, so the page fails as a unit,
+        // and the seat door behind it never seats a quarantined entry live whatever it is handed.
+        ContentTypeRegistry types = Types();
+        ContentSnapshot snapshot = Snapshot(types);
+
+        byte[] page = ItemContainerPageCodec.Encode(
+            0, 0, PageSlots, ActiveVersion, [Slot(0, Sword, instanceId: Instance)]);
+        Assert.Equal((byte)0, page[9]);
+        page[9] = (byte)ItemContainerPageCodec.EntryFlagQuarantined;
+
+        ContainerLoadResult result = ContainerLoad.Load(
+            [Section(0, page)], snapshot, Context(types, Properties()));
+
+        Assert.Empty(result.Pages);
+        ContainerLoadFinding finding = Assert.Single(result.OfKind(ContainerLoadFindingKind.PageQuarantined));
+        Assert.Equal(ItemContainerPageReason.EntryMalformed, finding.Reason);
+        Assert.Equal(1, result.QuarantinedRecords);
+    }
+
     /// <summary>One page's sweep, by hand, which is the baseline the one-pass fact is measured against.</summary>
     static void Sweep(JournalProjectionSection section, ContentTypeRegistry types, IContentSnapshot snapshot)
     {

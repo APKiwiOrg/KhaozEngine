@@ -301,6 +301,27 @@ public class ItemContainerPageCodecTests
         Assert.Equal(ItemContainerPageReason.EntryMalformed, reason);
     }
 
+    [Fact]
+    public void A_quarantined_entry_over_no_payload_is_refused_at_both_doors()
+    {
+        // Spec 4.4 says a quarantined entry's payload IS the wrapper and spec 12.4 pairs the flag with one,
+        // so the flag set over zero bytes is a shape no spec defines: it preserves nothing, nothing can
+        // rescue it, and the container refuses to seat it. The encoder throws because a caller built it,
+        // and the decoder refuses because a stored page is bytes.
+        Assert.Throws<ArgumentException>(() => ItemContainerPageCodec.Encode(
+            0, 0, PageSlots, 1, [Entry(0, 5, 1, 9, payload: null, flags: ItemContainerPageCodec.EntryFlagQuarantined)]));
+
+        // The same entry with the flag clear encodes, and setting the flag byte on the stored page is what
+        // a corrupted or hand-built page looks like.
+        byte[] page = ItemContainerPageCodec.Encode(0, 0, PageSlots, 1, [Entry(0, 5, 1, 9)]);
+        Assert.Equal((byte)0, page[9]);
+        page[9] = (byte)ItemContainerPageCodec.EntryFlagQuarantined;
+
+        Span<PageEntry> decoded = stackalloc PageEntry[PageSlots];
+        Assert.False(ItemContainerPageCodec.TryDecode(page, PageSlots, decoded, out _, out _, out string? reason));
+        Assert.Equal(ItemContainerPageReason.EntryMalformed, reason);
+    }
+
     static byte[] Golden(string name)
         => File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Pages", "Goldens", name));
 

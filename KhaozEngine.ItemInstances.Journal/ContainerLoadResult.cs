@@ -23,6 +23,12 @@ public enum ContainerLoadFindingKind : byte
     /// The entry carries a <c>KECQ</c> wrapper and still does: either it arrived wrapped and no rule rescued
     /// it, or this load wrapped it. The reason and the stamped version are the WRAPPER's, which is what a
     /// later rule reaches it from.
+    /// <para>
+    /// It is also what an entry flagged quarantined over NO payload answers. There is no wrapper behind the
+    /// flag to carry a reason or a stamp, so the reason is <c>field-malformed</c> and the stamp is the
+    /// page's, and the entry is left out of the page: nothing can rescue bytes that were never kept, and
+    /// seating it live would clear the flag.
+    /// </para>
     /// </summary>
     EntryQuarantined = 1,
 

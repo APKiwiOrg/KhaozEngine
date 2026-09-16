@@ -258,6 +258,15 @@ public static partial class ItemContainerPageCodec
                 throw new ArgumentException(
                     $"slot {entry.Slot} carries {entry.Payload.Length} payload bytes over the " +
                     $"{ItemSlot.MaxPayloadBytes} byte cap and is not quarantined", nameof(entries));
+
+            // The quarantined bound only caps from ABOVE, so the flag over NO payload used to encode. Spec
+            // 4.4 says a quarantined entry's payload IS the wrapper and spec 12.4 pairs the two, so the
+            // flag over zero bytes preserves nothing, nothing can rescue it, and ItemContainer refuses to
+            // seat it. A caller built it, so it throws.
+            if (entry.Quarantined && entry.Payload.IsEmpty)
+                throw new ArgumentException(
+                    $"slot {entry.Slot} is flagged quarantined over no payload, and a quarantined entry's " +
+                    "payload IS the wrapper (spec 4.4)", nameof(entries));
         }
     }
 }

@@ -133,9 +133,11 @@ public static partial class ContainerLoad
     /// bytes the store already holds.
     /// <para>
     /// It is also where an entry the page cannot hold is answered, because <c>ItemContainer.SetSlotAt</c>
-    /// THROWS for a caller bug rather than refusing for a stored byte, and these bytes are stored. Three
-    /// shapes are answered rather than thrown: a payload that is not canonical is wrapped under the reason
-    /// the decoder gave, a quarantined payload that is not a well formed wrapper is wrapped verbatim under
+    /// THROWS for a caller bug rather than refusing for a stored byte, and these bytes are stored. Four
+    /// shapes are answered rather than thrown: an entry flagged quarantined over NO payload is left out of
+    /// the page under its own finding, because there is nothing there to preserve and seating it live would
+    /// clear the flag, a payload that is not canonical is wrapped under the reason the decoder gave, a
+    /// quarantined payload that is not a well formed wrapper is wrapped verbatim under
     /// <c>field-malformed</c>, and a payload on a slot with no instance id fails the PAGE, because a wrapper
     /// is itself a payload and spec 4.7 invariant 3 refuses that shape whatever the flag says.
     /// </para>
@@ -157,6 +159,24 @@ public static partial class ContainerLoad
             PageEntry entry = load.Entries[index];
             var stack = new ItemStack(entry.DefinitionId, entry.Count, entry.InstanceId);
             ReadOnlySpan<byte> payload = bytes.Slice(entry.PayloadStart, entry.PayloadLength);
+
+            // The quarantined flag is tested FIRST, ahead of the empty payload case, because a flag over no
+            // bytes fell through it and seated a LIVE non-quarantined stack, clearing the flag and handing
+            // a player an item the store never vouched for with no finding anywhere. The decoder refuses
+            // that shape now, so this is the second door rather than the first, and it exists for the same
+            // reason the remap walk re-checks the nesting depth the decoder already checked.
+            if (entry.Quarantined && payload.IsEmpty)
+            {
+                load.Add(new ContainerLoadFinding(
+                    ContainerLoadFindingKind.EntryQuarantined,
+                    section.SectionName,
+                    pageIndex,
+                    entry.Slot,
+                    InstancePayloadReason.FieldMalformed,
+                    header.ContentVersion));
+                continue;
+            }
+
             if (payload.IsEmpty)
             {
                 page.Seat(entry.Slot, new ItemSlot(stack, ReadOnlyMemory<byte>.Empty, Quarantined: false));

@@ -14325,8 +14325,9 @@ int written = ContainerPageDelta.TryBuild(
 
 if (written < 0)
 {
-    // It would not fit ONE frame. Send the WHOLE page through the fragmenter, never a second delta: two
-    // deltas for one page would have to be applied in order by a client that may have missed the first.
+    // It would not fit ONE frame, or a change carries a QUARANTINED entry, whose wrapper never projects.
+    // Send the WHOLE page through the fragmenter, never a second delta: two deltas for one page would have
+    // to be applied in order by a client that may have missed the first.
     var entries = new PageSlotInput[page.EntryCount];
     int count = page.CopyEntriesTo(entries);
     byte[] encodedPage = ItemContainerPageCodec.Encode(

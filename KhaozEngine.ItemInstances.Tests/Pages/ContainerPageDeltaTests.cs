@@ -207,13 +207,16 @@ public class ContainerPageDeltaTests
     }
 
     [Fact]
-    public void A_payload_that_does_not_project_carries_nothing()
+    public void A_quarantined_entry_abandons_the_whole_delta()
     {
         // A quarantine wrapper is not a canonical payload and never decodes, which is the whole reason it
-        // exists. Spec 7.5 does not say what the delta does with one, so the encoder fails CLOSED in the
-        // same direction ItemInstanceVisibility already does for an unregistered kind: a payload this
-        // process cannot project carries no bytes, the flag still says quarantined, and the client renders
-        // khaoz.item.quarantined off the flag rather than off bytes nothing validated.
+        // exists, so the projection has nothing to hand back. Writing the entry anyway produced a shape no
+        // spec defines: the quarantined flag set over a payload of zero bytes, which spec 4.4 contradicts
+        // (a quarantined entry's payload IS the wrapper) and which the container refuses to seat. Sending
+        // the wrapper's own bytes is not the other option either, because they are unprojected by
+        // construction and would hand a non-owner the owner-only fields of the item inside
+        // (https://github.com/APKiwiOrg/KhaozEngine/issues/932). So the delta abandons, and the caller
+        // sends the whole page through the fragmenter, which is rule 4 of spec 7.5 already.
         byte[] wrapper = QuarantineWrapper.Wrap(InstanceQuarantineReason.UnknownDefinition, 100, Rare);
         var quarantined = ContainerPageChange.Occupied(
             new PageSlotInput(4, ItemContainerPageCodec.EntryFlagQuarantined, PoeDefinitionId, 1, 7, wrapper),
@@ -221,10 +224,30 @@ public class ContainerPageDeltaTests
             revealedMask: ulong.MaxValue);
 
         Span<byte> buffer = stackalloc byte[ContainerPageDelta.MaxBytes];
-        int written = Build(buffer, [quarantined]);
+        Assert.Equal(-1, Build(buffer, [quarantined]));
 
-        int expectedBody = ItemContainerPageCodec.EntryBodySize(
-            ItemContainerPageCodec.EntryFlagQuarantined, PoeDefinitionId, 1, 7, payloadLength: 0);
+        // One quarantined entry anywhere in the set abandons the set, rather than the delta shipping every
+        // OTHER change and quietly losing this one.
+        Assert.Equal(-1, Build(buffer, [RareAt(1), quarantined, RareAt(9)]));
+    }
+
+    [Fact]
+    public void A_payload_that_does_not_project_carries_nothing()
+    {
+        // The fail-closed direction for bytes that are not a wrapper and still do not decode: two fields
+        // out of order here, which rule 9.3.1 refuses. A payload this process cannot project carries no
+        // bytes, the same direction ItemInstanceVisibility takes for an unregistered kind, and the entry
+        // crosses as a live entry with an empty payload, which is a shape spec 4.4 does define.
+        byte[] notCanonical = [0x05, 0x02, 0x5A, 0x64, 0x02, 0x01, 0x44];
+        var broken = ContainerPageChange.Occupied(
+            new PageSlotInput(4, 0, PoeDefinitionId, 1, 7, notCanonical),
+            identified: true,
+            revealedMask: ulong.MaxValue);
+
+        Span<byte> buffer = stackalloc byte[ContainerPageDelta.MaxBytes];
+        int written = Build(buffer, [broken]);
+
+        int expectedBody = ItemContainerPageCodec.EntryBodySize(0, PoeDefinitionId, 1, 7, payloadLength: 0);
         Assert.Equal(ContainerPageDelta.HeaderBytes + 1 + 1 + expectedBody, written);
         Assert.Equal((byte)0, buffer[written - 1]);
     }

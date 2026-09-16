@@ -63,10 +63,18 @@ public readonly record struct ContainerPageChange(PageSlotInput Entry, bool Iden
 /// skipped the filter: every payload goes through
 /// <see cref="ItemInstanceVisibility.PublicView"/> at the viewer's level for that item, and an owner-only
 /// field reaches the owner and nobody else (spec 7.4). A payload this process cannot project carries NO
-/// bytes, which is the same fail-closed direction an unregistered kind takes, and which is what a quarantine
-/// wrapper hits by construction: it is not a canonical payload and never decodes, the entry's quarantined
-/// flag still crosses, and the client renders <c>khaoz.item.quarantined</c> off the flag rather than off
-/// bytes nothing validated.
+/// bytes, which is the same fail-closed direction an unregistered kind takes.
+/// </para>
+/// <para>
+/// <b>A QUARANTINED entry abandons the delta</b> rather than riding it. A quarantine wrapper is not a
+/// canonical payload and never decodes, so the projection has nothing to hand back, and writing the entry
+/// anyway produced a shape no spec defines: the quarantined flag over a payload of zero bytes, which spec
+/// 4.4 contradicts (a quarantined entry's payload IS the wrapper), which spec 12.4 pairs with a wrapper, and
+/// which <c>ItemContainer</c> refuses to seat. Sending the wrapper's own bytes is not the other option
+/// either: they are unprojected by construction, so a non-owner would receive the owner-only fields of the
+/// item inside (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/932">#932</see>). Abandoning is
+/// rule 4 of this same message, already written for the case where the next change does not fit, and the
+/// caller sends the whole page through the fragmenter.
 /// </para>
 /// <para>
 /// <b>What the CLIENT does with one, which this message leans on.</b> A client REFUSES a delta for a page it
@@ -158,10 +166,10 @@ public static class ContainerPageDelta
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentOutOfRangeException.ThrowIfNegative(firstSlot);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(slotCount);
-        int longestPayload = VetChanges(firstSlot, slotCount, changes);
+        int longestPayload = VetChanges(firstSlot, slotCount, changes, out bool quarantined);
 
         int budget = Math.Min(destination.Length, MaxBytes);
-        if (changes.Length > MaxChanges || budget < HeaderBytes)
+        if (quarantined || changes.Length > MaxChanges || budget < HeaderBytes)
         {
             return -1;
         }
@@ -220,8 +228,9 @@ public static class ContainerPageDelta
 
     /// <summary>
     /// The bytes of one item this viewer may see. Empty when the payload is empty, which is every plain
-    /// stack, and empty when the payload does not project, which is what a quarantine wrapper does by
-    /// construction: it is not a canonical payload, so there is nothing to filter and nothing is sent.
+    /// stack, and empty when the payload does not project, which is the same fail-closed direction an
+    /// unregistered kind takes. A quarantine wrapper never reaches here: the whole delta is abandoned
+    /// before anything is written.
     /// </summary>
     static ReadOnlySpan<byte> Project(
         InstancePropertyRegistry registry,
@@ -241,13 +250,20 @@ public static class ContainerPageDelta
     }
 
     /// <summary>Vets the change set and answers the longest payload in it, which sizes the one scratch
-    /// buffer the projection needs.</summary>
-    static int VetChanges(int firstSlot, int slotCount, ReadOnlySpan<ContainerPageChange> changes)
+    /// buffer the projection needs, plus whether any change carries a quarantined entry, which abandons the
+    /// delta before a byte is written.</summary>
+    static int VetChanges(
+        int firstSlot,
+        int slotCount,
+        ReadOnlySpan<ContainerPageChange> changes,
+        out bool quarantined)
     {
         int longestPayload = 0;
         int previousSlot = -1;
+        quarantined = false;
         foreach (ContainerPageChange change in changes)
         {
+            quarantined |= change.Entry.Quarantined;
             if (change.Slot <= previousSlot)
                 throw new ArgumentException(
                     $"delta changes must be strictly ascending by slot, and slot {change.Slot} follows {previousSlot}",

@@ -375,6 +375,11 @@ page stamp 0, which is older than every published version. Anything else is a `u
 - The two payload bounds contradict on purpose. A NON-quarantined payload is capped at
   `ItemSlot.MaxPayloadBytes`, and a quarantined one is bounded by `MaxPageBytes` instead, because a wrapper
   may by construction be larger than the cap the thing it preserves broke.
+- The quarantined bound caps from above only, so the flag over NO payload is refused separately, at both
+  doors: `Encode` throws and `TryDecode` answers `page-entry-malformed`. Spec 4.4 says a quarantined entry's
+  payload IS the wrapper and spec 12.4 pairs the two, so the flag over zero bytes preserves nothing, nothing
+  can rescue it, and `ItemContainer` refuses to seat it. A reader that accepted it would have to choose
+  between seating it live, which clears the flag, and dropping the entry.
 - `MaxPageBytes` is 2 MiB, the journal's projection section cap, because a page is written as one section.
   The number is COPIED rather than referenced, because the package that declares it is a Server package.
   Nothing realistic approaches it: a hundred entries at the maximum non-quarantined entry size is 53,209
@@ -575,7 +580,14 @@ else already filtered. `TryBuild` takes the viewer's level and every payload goe
 filter, which is the point: an owner-only field reaches the owner and nobody else. The same change to the
 same rare is 73 bytes to the owner and 69 to everyone else, and the four bytes are the durability field. A
 payload that does not project carries NO bytes, which is the same fail-closed direction an unregistered kind
-takes, and which is what a quarantine wrapper hits by construction.
+takes.
+
+**A QUARANTINED entry abandons the delta.** A wrapper never decodes, so the projection has nothing to hand
+back, and writing the entry anyway produced the quarantined flag over a payload of zero bytes, which is a
+shape no spec defines and which the page codec refuses at both doors. Sending the wrapper's own bytes is not
+the other option: they are unprojected by construction, so a non-owner would receive the owner-only fields of
+the item inside. `TryBuild` answers `-1` and the caller sends the whole page through the fragmenter, which is
+the same rule an oversized change set already takes.
 
 `ContainerPageSyncRequest` is the other half and the ONE new client-to-server message: two bytes,
 `[ContainerId][PageIndex]`, carrying nothing about an item's properties. It is what the client sends when it

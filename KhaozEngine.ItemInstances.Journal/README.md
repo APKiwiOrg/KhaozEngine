@@ -86,8 +86,11 @@ should have refused.
 | `QuarantinedRecords` | how many records are out of play |
 
 A `ContainerLoadFinding` is one of five kinds. `PageQuarantined` is a page that failed as a unit.
-`EntryQuarantined` is an entry that carries a `KECQ` wrapper and still does. `EntryRescued` is an entry that
-came back. `RemapAbandoned` is a rule that named an entry and could not be applied to it. `EntryUnwrappable`
+`EntryQuarantined` is an entry that carries a `KECQ` wrapper and still does, and it is also what an entry
+flagged quarantined over NO payload answers: there is no wrapper behind the flag to carry a reason or a
+stamp, so the reason is `field-malformed`, and the entry is left out of the page rather than seated live,
+which would clear the flag. The page codec refuses that shape at both of its own doors, so the seat door is
+the second one it would meet. `EntryRescued` is an entry that came back. `RemapAbandoned` is a rule that named an entry and could not be applied to it. `EntryUnwrappable`
 is a record the validator quarantined that the page cannot hold the wrapper for. Each one carries the section
 name an operator greps for, the page index taken from that NAME rather than from the header, the absolute
 slot (or `ContainerLoadFinding.NoSlot` on a whole-page finding), a reason token and the version the record

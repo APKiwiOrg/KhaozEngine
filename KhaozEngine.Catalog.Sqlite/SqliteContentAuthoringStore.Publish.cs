@@ -18,10 +18,18 @@ namespace KhaozEngine.Catalog.Sqlite;
 /// pointer LAST. A reader that sees the new active version is guaranteed to see everything of it.
 /// </para>
 /// <para>
-/// <b>The number is CONFIRMED rather than trusted.</b> This store leases its connection per call, so nothing
-/// holds a lock across steps 1 to 10 and another publish really can land underneath a prepared plan. The
-/// plan digested its version number into both manifest hashes at step 8, so a plan whose base moved carries
+/// <b>The number is CONFIRMED rather than trusted.</b> This store leases its connection per call, so no LOCK
+/// is held across steps 1 to 10 and another publish really can land underneath a prepared plan. The plan
+/// digested its version number into both manifest hashes at step 8, so a plan whose base moved carries
 /// hashes that name a different number and the transaction refuses it.
+/// </para>
+/// <para>
+/// <b>What DOES span steps 1 to 10 is the draft freeze</b>, and it is a durable marker precisely because no
+/// lock can: <c>catalog_draft.frozen_for_base_version</c>, written by step 1, read by every draft write, and
+/// cleared on every exit path of the publish. It answers the second half of spec 6.2, which the version
+/// confirmation above does not: the confirmation catches a base that MOVED, and the marker is what stops the
+/// draft itself from changing under a plan that already read it. See
+/// <c>SqliteContentAuthoringStore.Freeze.cs</c>.
 /// </para>
 /// </summary>
 public sealed partial class SqliteContentAuthoringStore
@@ -35,6 +43,7 @@ public sealed partial class SqliteContentAuthoringStore
         CancellationToken cancellationToken = default)
     {
         using SqliteStoreLease lease = await _connection.EnterAsync(cancellationToken).ConfigureAwait(false);
+        await ClearStaleFreezeAsync(cancellationToken).ConfigureAwait(false);
         return await ReadBaselineAsync(null, cancellationToken).ConfigureAwait(false);
     }
 
@@ -73,7 +82,7 @@ public sealed partial class SqliteContentAuthoringStore
         }
 
         IReadOnlyList<RemapRule> held = await ReadRulesAsync(transaction, cancellationToken).ConfigureAwait(false);
-        RequireRulePrefix(held, plan);
+        ContentRulePrefix.Require(held, plan);
 
         ContentPublishBaseline before = await ReadBaselineAsync(transaction, cancellationToken)
             .ConfigureAwait(false);
@@ -121,8 +130,9 @@ public sealed partial class SqliteContentAuthoringStore
         // 6. Every audit row, field level, against the version the rows are leaving.
         await AppendPublishAuditAsync(before, plan, request, transaction, cancellationToken).ConfigureAwait(false);
 
-        // 7. The draft and its edits.
-        await DeleteDraftAsync(transaction, cancellationToken).ConfigureAwait(false);
+        // 7. The draft, scoped to the edits this plan FROZE. The freeze is what makes that the whole draft,
+        // so anything else here survives rather than being deleted unpublished.
+        await DeleteFrozenEditsAsync(plan, transaction, cancellationToken).ConfigureAwait(false);
 
         // 8. The active pointer, LAST. It moves for the NEXT boot: a running server keeps serving the version
         // it loaded.
@@ -464,39 +474,6 @@ public sealed partial class SqliteContentAuthoringStore
             }
         }
     }
-
-    /// <summary>
-    /// Every rule this store already holds must be the plan's own prefix, identity for identity. A rule list
-    /// is append only, so a plan built over a different history would renumber rules already published, and
-    /// the rule chunk hash in both manifests would then name a set nothing can rebuild.
-    /// </summary>
-    static void RequireRulePrefix(IReadOnlyList<RemapRule> held, ContentPublishPlan plan)
-    {
-        if (plan.Rules.Count < held.Count)
-        {
-            throw Moved(FormattableString.Invariant(
-                $"The plan carries {plan.Rules.Count} remap rule(s) and this store already holds {held.Count}. A rule list is append only, so a plan can never carry fewer than the version it is published onto."));
-        }
-
-        for (int i = 0; i < held.Count; i++)
-        {
-            if (Same(held[i], plan.Rules[i]))
-            {
-                continue;
-            }
-
-            throw Moved(FormattableString.Invariant(
-                $"Remap rule {i + 1} of the plan is not the one this store already holds at that sequence, so the plan was built over a different rule history."));
-        }
-    }
-
-    static bool Same(RemapRule held, RemapRule planned)
-        => held.Sequence == planned.Sequence
-            && held.IntroducedIn == planned.IntroducedIn
-            && held.Type == planned.Type
-            && held.Kind == planned.Kind
-            && held.FromId == planned.FromId
-            && held.ToId == planned.ToId;
 
     /// <summary>The commit half, built once over the pack target this store was handed.</summary>
     ContentPublishCommit RequireCommit()

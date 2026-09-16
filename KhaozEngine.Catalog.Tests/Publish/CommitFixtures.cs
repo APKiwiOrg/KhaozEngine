@@ -138,3 +138,45 @@ internal sealed class PointerlessPackStore(IPackStore inner) : IPackStore
     public IAsyncEnumerable<string> ListAsync(int versionNumber, CancellationToken cancellationToken = default)
         => inner.ListAsync(versionNumber, cancellationToken);
 }
+
+/// <summary>
+/// A clock that can be made to THROW after a given number of further reads, which is how the in-memory
+/// store's commit is driven off a cliff part way through.
+/// <para>
+/// The clock is the one seam every audit write goes through and the one the version row is stamped from, so
+/// arming it for one read through and a failure on the next lands the failure on the audit render: the LAST
+/// thing the commit does that can fail, and the one the torn state of
+/// https://github.com/APKiwiOrg/KhaozEngine/issues/927 was reached past.
+/// </para>
+/// </summary>
+internal sealed class ArmableClock
+{
+    int _allowed = -1;
+
+    /// <summary>How many times the clock has been read since it was last armed.</summary>
+    public int Reads { get; private set; }
+
+    /// <summary>Lets <paramref name="reads"/> more reads through and throws on the one after.</summary>
+    /// <param name="reads">Reads to allow before the failure.</param>
+    public void FailAfter(int reads)
+    {
+        _allowed = reads;
+        Reads = 0;
+    }
+
+    /// <summary>Disarms, so every read from here answers normally.</summary>
+    public void Disarm() => _allowed = -1;
+
+    /// <summary>The clock the store is built over.</summary>
+    public DateTimeOffset Read()
+    {
+        Reads++;
+        if (_allowed >= 0 && Reads > _allowed)
+        {
+            throw new InvalidOperationException(
+                "The clock is armed to fail, which stands in for the audit render failing mid commit.");
+        }
+
+        return DateTimeOffset.UtcNow;
+    }
+}

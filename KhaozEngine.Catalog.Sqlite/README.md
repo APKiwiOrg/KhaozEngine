@@ -67,6 +67,14 @@ Because the store leases its connection per call rather than holding a lock acro
 transaction RE-READS the highest published version and refuses a plan whose base moved underneath it, with
 reason `base-version-moved`. Two consoles cannot both publish the same draft.
 
+What the re-read does NOT cover is the draft changing under a plan that already read it, so step 1 marks it
+frozen in `catalog_draft.frozen_for_base_version` and `ApplyEditsAsync` and `DiscardDraftAsync` refuse while
+the marker stands, with reason `publish-in-progress`. It is a durable column rather than the row lock spec
+6.2 describes for the same reason the version is re-read: no lock this provider can take spans steps 1 to 10,
+because step 9 writes the whole pack outside any lease. The publish clears the marker on every exit path, and
+a marker naming a version the database has moved past is a dead publish's leftover that the next baseline
+read clears. The draft delete at step 10 is scoped to the edits step 1 froze.
+
 ## Ids
 
 `catalog_id_high_water` carries `reserved_through` and `issued_through` per type. A range is reserved durably

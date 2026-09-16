@@ -170,6 +170,30 @@ previous snapshot. `ContentPublishBaseline.After(plan)` is the baseline the next
 both publish the same draft: the second one's expectation is stale and it is refused with both numbers named,
 carrying the `base-version-moved` reason.
 
+### The draft is frozen for the whole publish
+
+Step 1 marks the open draft FROZEN for the base version it is publishing, through
+`IContentAuthoringStore.FreezeDraftAsync`, and every write to the draft is refused while the marker stands:
+`ApplyEditsAsync` and `DiscardDraftAsync` both throw with the `publish-in-progress` reason.
+`ContentDraft.FrozenForBaseVersion` and `ContentDraft.IsFrozen` are how a console reads it. Without it a
+second actor's edit lands in a change set the pipeline has already read, version N publishes without it, and
+step 10 deletes the draft it was sitting in: an edit an operator saved that no version carries and no draft
+still holds.
+
+**The marker is durable rather than a held lock, and that is forced rather than chosen.** A publish spans
+steps 1 to 10, step 9 writes the whole pack, and no provider holds a row lock across that: SQLite leases its
+one connection per call, and SQL Server's Serializable transaction covers step 10 alone.
+
+`ContentPublishCommit.PublishAsync` clears the marker in a `finally`, so a success, a refusal, a throw and a
+cancellation all release the draft. Two things recover a marker nothing cleared, which is what a killed
+process leaves. A marker naming a version the store has moved past is STALE, and
+`ReadPublishBaselineAsync` clears it, which is the read every publish starts with. A marker naming the
+version the store still stands at belongs to a publish that died before its commit, and the next publish's
+step 1 overwrites it, because a publish is exactly what an operator does to recover.
+
+Driving `ContentPublisher.PrepareAsync` on its own therefore leaves a frozen draft behind, deliberately: half
+a publish is the state the marker describes. Call `ClearDraftFreezeAsync` when standing in for the commit.
+
 ### Ids come from the edit, not from the caller
 
 There is ONE allocation path with two sources, and which one runs is a property of the edit. An `Add` with
@@ -260,6 +284,11 @@ including the carried-forward ones, insert every audit row, delete the draft, th
 LAST. A reader that sees the new active version sees every row, rule, chunk and audit entry of it, because
 they committed together.
 
+The draft delete is scoped to `ContentPublishPlan.FrozenEdits`, the change set step 1 read. The freeze is
+what makes that the whole draft, so scoping it can only matter when the marker failed to hold, and that is
+the point: an edit the publish never carried survives into the next draft rather than being deleted
+unpublished.
+
 **It CONFIRMS the version number rather than trusting it.** The plan digested its number into both manifest
 hashes at step 8, so the transaction re-reads the highest published number and refuses with the
 `base-version-moved` reason when the plan's is not the next one. A provider that leases a connection per call
@@ -328,6 +357,15 @@ It carries the constraints its provider siblings get from a `CHECK`, so a defect
 at the first SQL run: a high-water mark never moves backwards, an issued mark never passes a reserved one,
 and a family block is aligned to its own size.
 
+**A gate is not a transaction, so every write that has to be atomic BUILDS and then APPLIES.** A provider
+gets atomicity from one database transaction and this store has to construct it. `CommitPublishAsync` builds
+the version row, the new row set, the chunk rows, the staged audit entries and the draft that survives into
+locals, and then applies them in a tail of list writes and field assignments that cannot throw, so a failure
+part way leaves the store exactly where it was rather than carrying a version row with the pointer unmoved.
+The pin, the discard, the family create and the rollback render their audit entry before the change and
+append it after, through `InMemoryContentAuditLog.Stage` and `Commit`, for the same reason: a change with no
+audit row against it is indistinguishable from no change.
+
 It PUBLISHES when it is handed an `IPackStore`, which is the second constructor argument and is optional: a
 store built without one holds a draft and allocates ids and refuses to publish, because a publish writes files
 before it writes rows. With one it answers the whole seam, `LoadSnapshotAsync` included, and that member reads
@@ -381,15 +419,20 @@ An import runs through the ORDINARY publish and there is no second mechanism. It
 their blocks verbatim, restamps the bundle's rules as the new line's, turns every row into an `Add` edit and
 publishes the draft as version 1. `ContentEdit.Import` is the only factory that may name a definition id, and
 it is also the only one that may say a row is ALREADY retired, because a bundle carries its retired rows and
-already carries the rule that retired them. A refusal at any point resets the store to the empty state it was
-required to start from, so nothing is left half seeded.
+already carries the rule that retired them. A refusal at any point AFTER the staging began resets the store to
+the empty state it was required to start from, so nothing is left half seeded, and that covers the staging
+itself: a row naming a family the bundle does not declare is refused while the edits are being built, with the
+families and the id marks already written. A refusal BEFORE the staging (a store that already published, a
+store with no pack target) resets nothing, because it wrote nothing and the store it is protecting is live.
 
 ## Rules this package will not bend
 
 - **Reserve before issue.** A range is reserved durably BEFORE any id in it is issued. The worst a crash can
   do is skip a block of ids that were never issued, and it can never reissue one.
 - **A published version is immutable and remap rules are append only.** There is no update path and no
-  delete path for a rule in this seam or in any provider.
+  delete path for a rule in this seam or in any provider. `ContentRulePrefix.Require` is that rule as a
+  check every store runs inside its commit: the rules the store holds must be the plan's own prefix, WHOLE,
+  the payload a retire writes its policy and destination in included.
 - **Ids are never reused.** A definition that leaves play is retired, and the row stays in the pack forever
   so a stored stack still decodes.
 - **Keys are ordinal and immutable once published.** Both SQL backends pin their key columns to a binary

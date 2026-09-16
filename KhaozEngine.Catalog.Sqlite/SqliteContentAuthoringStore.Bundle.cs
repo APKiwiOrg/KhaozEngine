@@ -33,10 +33,10 @@ public sealed partial class SqliteContentAuthoringStore
     /// <inheritdoc />
     /// <remarks>
     /// The families and the id marks are written BEFORE the publish, because the edits and the baseline both
-    /// need them. Any refusal after that point takes that staging back, so a caller that catches one is
-    /// holding a store it may import into again. It takes back the staging and NOTHING else, because the
-    /// publish commits whole or not at all. Files a failed attempt already wrote to the pack store are
-    /// ordinary orphans and the next sweep takes them.
+    /// need them, so the STAGING is inside the try along with everything after it. Any refusal takes that
+    /// staging back, so a caller that catches one is holding a store it may import into again. It takes back
+    /// the staging and NOTHING else, because the publish commits whole or not at all. Files a failed attempt
+    /// already wrote to the pack store are ordinary orphans and the next sweep takes them.
     /// </remarks>
     public async Task<ContentPublishResult> ImportBundleAsync(
         ContentBundle bundle,
@@ -50,42 +50,48 @@ public sealed partial class SqliteContentAuthoringStore
         ArgumentNullException.ThrowIfNull(operatorId);
         ArgumentNullException.ThrowIfNull(note);
 
-        IReadOnlyList<ContentEdit> edits;
-        using (SqliteStoreLease lease = await _connection.EnterAsync(cancellationToken).ConfigureAwait(false))
-        {
-            int active = (int)await ReadLongAsync(
-                "SELECT active_version FROM catalog_metadata WHERE metadata_key = 1;", null, cancellationToken)
-                .ConfigureAwait(false);
-            long published = await ReadLongAsync(
-                "SELECT COUNT(*) FROM catalog_version;", null, cancellationToken).ConfigureAwait(false);
-            if (published > 0)
-            {
-                throw new ContentAuthoringException(
-                    FormattableString.Invariant(
-                        $"This store already stands at version {active}, and a bundle is imported into an EMPTY store only. A deployed catalog's values change through an edit and a publish and through nothing else."),
-                    default,
-                    0,
-                    ContentAuthoringException.CatalogNotEmptyReason);
-            }
-
-            if (PackStore is null)
-            {
-                throw NoPackStore(nameof(ImportBundleAsync));
-            }
-
-            RequireTypesAgree(bundle);
-
-            using SqliteTransaction transaction = _connection.BeginTransaction();
-            await RestoreFamiliesAsync(bundle, transaction, cancellationToken).ConfigureAwait(false);
-            await SeedMarksAsync(bundle, transaction, cancellationToken).ConfigureAwait(false);
-            transaction.Commit();
-
-            _importRules = Restamp(bundle);
-            edits = await EditsAsync(bundle, cancellationToken).ConfigureAwait(false);
-        }
-
+        // The reset below is destructive by design, so it may not run until this import has actually written
+        // something. The two refusals above the staging (a database that already published, a store with no
+        // pack target) read and write nothing, and a reset for one of THOSE would empty the live catalog the
+        // refusal exists to protect.
+        bool staged = false;
         try
         {
+            IReadOnlyList<ContentEdit> edits;
+            using (SqliteStoreLease staging = await _connection.EnterAsync(cancellationToken).ConfigureAwait(false))
+            {
+                int active = (int)await ReadLongAsync(
+                    "SELECT active_version FROM catalog_metadata WHERE metadata_key = 1;", null, cancellationToken)
+                    .ConfigureAwait(false);
+                long already = await ReadLongAsync(
+                    "SELECT COUNT(*) FROM catalog_version;", null, cancellationToken).ConfigureAwait(false);
+                if (already > 0)
+                {
+                    throw new ContentAuthoringException(
+                        FormattableString.Invariant(
+                            $"This store already stands at version {active}, and a bundle is imported into an EMPTY store only. A deployed catalog's values change through an edit and a publish and through nothing else."),
+                        default,
+                        0,
+                        ContentAuthoringException.CatalogNotEmptyReason);
+                }
+
+                if (PackStore is null)
+                {
+                    throw NoPackStore(nameof(ImportBundleAsync));
+                }
+
+                RequireTypesAgree(bundle);
+
+                staged = true;
+                using SqliteTransaction stage = _connection.BeginTransaction();
+                await RestoreFamiliesAsync(bundle, stage, cancellationToken).ConfigureAwait(false);
+                await SeedMarksAsync(bundle, stage, cancellationToken).ConfigureAwait(false);
+                stage.Commit();
+
+                _importRules = Restamp(bundle);
+                edits = await EditsAsync(bundle, cancellationToken).ConfigureAwait(false);
+            }
+
             await ApplyEditsAsync(edits, actor, operatorId, note, cancellationToken).ConfigureAwait(false);
             ContentPublishResult published = await PublishAsync(
                 new ContentPublishRequest(actor, operatorId, note, 0), cancellationToken).ConfigureAwait(false);
@@ -109,9 +115,13 @@ public sealed partial class SqliteContentAuthoringStore
             transaction.Commit();
             return published;
         }
-        catch (ContentAuthoringException)
+        catch (Exception failure) when (staged && failure is not OperationCanceledException)
         {
-            await ResetToEmptyAsync(cancellationToken).ConfigureAwait(false);
+            // EVERY refusal, not only a ContentAuthoringException: the families and the marks are committed
+            // before the publish, so a raw provider error inside the staging leaves exactly the half-seeded
+            // database this reset exists to undo. CancellationToken.None because the caller's token may be
+            // the reason we are here, and a reset that cancelled would leave the staging standing.
+            await ResetAfterFailureAsync().ConfigureAwait(false);
             throw;
         }
         finally
@@ -434,6 +444,22 @@ public sealed partial class SqliteContentAuthoringStore
         }
 
         transaction.Commit();
+    }
+
+    /// <summary>
+    /// The reset a refused import runs, with its OWN failure swallowed. The refusal the caller is about to
+    /// see is the actionable one, and replacing it with whatever went wrong while tidying up would lose the
+    /// reason the import was refused in the first place.
+    /// </summary>
+    async Task ResetAfterFailureAsync()
+    {
+        try
+        {
+            await ResetToEmptyAsync(CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception reset) when (reset is not OperationCanceledException)
+        {
+        }
     }
 
     static void Raise(Dictionary<ushort, int> highest, ushort typeId, int candidate)

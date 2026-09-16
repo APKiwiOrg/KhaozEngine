@@ -134,9 +134,13 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
                     ContentAuthoringException.UnknownTypeReason);
             }
 
+            // STAGE, then move the pin, then COMMIT. Everything that can fail is in the staging, so a pin
+            // with no audit row against it is not a state this store can be left in. A provider gets the
+            // same property from its one transaction.
             string? before = InMemoryContentAuditLog.Render(_pinnedVersion);
-            _pinnedVersion = version;
-            _audit.Append(
+            var staged = new List<ContentAuditEntry>(1);
+            _audit.Stage(
+                staged,
                 ContentAuditActions.Pin,
                 actor,
                 operatorId,
@@ -148,6 +152,9 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
                 InMemoryContentAuditLog.Render(version),
                 0,
                 string.Empty);
+
+            _pinnedVersion = version;
+            _audit.Commit(staged);
             return Task.CompletedTask;
         }
     }
@@ -199,6 +206,10 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
 
         lock (_gate)
         {
+            // Spec 6.2's refusal, FIRST: a draft a publish is holding takes no edit at all, so the schema
+            // sweep below never runs against a change set the caller is not allowed to touch.
+            RequireNotFrozen(nameof(ApplyEditsAsync));
+
             // Every edit is checked against the schema BEFORE any of them is applied, and the change set is
             // built on a COPY, so one refusal leaves the open draft exactly as it was. A batch save from a
             // grid lands whole or not at all.
@@ -248,9 +259,12 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
 
         lock (_gate)
         {
+            RequireNotFrozen(nameof(DiscardDraftAsync));
+
             int discarded = _draft?.EditCount ?? 0;
-            _draft = null;
-            _audit.Append(
+            var staged = new List<ContentAuditEntry>(1);
+            _audit.Stage(
+                staged,
                 ContentAuditActions.DraftDiscard,
                 actor,
                 operatorId,
@@ -262,6 +276,9 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
                 null,
                 0,
                 string.Empty);
+
+            _draft = null;
+            _audit.Commit(staged);
             return Task.CompletedTask;
         }
     }
@@ -431,8 +448,15 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
 
         lock (_gate)
         {
+            // Staged then committed like the other three, though there is nothing left to mutate between the
+            // two here: the family row and its first block are each their own commit in EVERY backend, so the
+            // furthest this can move the render is ahead of the ledger append. Making the family and its
+            // audit row atomic is a provider-wide change rather than a reference-store one, and a reference
+            // that was atomic where no provider is would be the wrong thing to hold them to.
             ContentFamily created = _families[familyId].ToFamily();
-            _audit.Append(
+            var staged = new List<ContentAuditEntry>(1);
+            _audit.Stage(
+                staged,
                 ContentAuditActions.FamilyCreate,
                 actor,
                 operatorId,
@@ -444,6 +468,8 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
                 InMemoryContentAuditLog.Render(created.Blocks[0].BaseId),
                 0,
                 string.Empty);
+
+            _audit.Commit(staged);
             return created;
         }
     }

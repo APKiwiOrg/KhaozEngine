@@ -26,6 +26,13 @@ public sealed record ContentPackWrite(int ObjectsWritten, long BytesWritten);
 /// <b>Step 11 runs only after a SUCCESSFUL commit</b>, and it is skipped whenever the store listing fails,
 /// which is what stops a bad publish from turning into a lost pack.
 /// </para>
+/// <para>
+/// <b>This type owns the END of step 1's freeze.</b> The pipeline marks the draft frozen and only a caller
+/// that runs all the way through step 11 knows when the publish is over, so the release is a <c>finally</c>
+/// here rather than anything the pipeline can do for itself. A <see cref="ContentPublisher.PrepareAsync"/>
+/// driven on its own therefore leaves a frozen draft behind, deliberately: half a publish is exactly the
+/// state the marker describes, and the next baseline read or the next publish clears it.
+/// </para>
 /// </summary>
 public sealed class ContentPublishCommit
 {
@@ -74,6 +81,12 @@ public sealed class ContentPublishCommit
 
     /// <summary>
     /// The whole publish: steps 1 to 8 through the pipeline, then 9, 10 and 11 here.
+    /// <para>
+    /// <b>An exception thrown AFTER step 10 means the version may already be live.</b> The commit is the only
+    /// commit point, and step 11's sweep runs past it, so a throw from the sweep leaves a published version
+    /// behind a failed call. A caller reads the active version, or republishes: the same draft against a base
+    /// that has moved is refused, which makes the retry idempotent rather than a second version.
+    /// </para>
     /// </summary>
     /// <param name="request">The publish request, carrying the required expected base version.</param>
     /// <param name="cancellationToken">Cancels the publish.</param>
@@ -86,37 +99,65 @@ public sealed class ContentPublishCommit
         ArgumentNullException.ThrowIfNull(request);
 
         long started = Stopwatch.GetTimestamp();
-        ContentPublishBaseline baseline = await _store
-            .ReadPublishBaselineAsync(cancellationToken).ConfigureAwait(false);
-        ContentPublishPlan plan = await _publisher
-            .PrepareAsync(request, baseline, cancellationToken).ConfigureAwait(false);
-        if (!plan.IsValid)
+        try
         {
-            throw Invalid(plan);
+            ContentPublishBaseline baseline = await _store
+                .ReadPublishBaselineAsync(cancellationToken).ConfigureAwait(false);
+            ContentPublishPlan plan = await _publisher
+                .PrepareAsync(request, baseline, cancellationToken).ConfigureAwait(false);
+            if (!plan.IsValid)
+            {
+                throw Invalid(plan);
+            }
+
+            // STEP 9. Every file first, at names nothing references yet.
+            ContentPackWrite write = await WriteAsync(plan, cancellationToken).ConfigureAwait(false);
+
+            // STEP 10. The one transaction, which is the only commit point there is.
+            Step(ContentPublishStep.BeforeCommit);
+            ContentVersionRecord record = await _store
+                .CommitPublishAsync(plan, request, cancellationToken).ConfigureAwait(false);
+            Step(ContentPublishStep.AfterCommit);
+
+            // STEP 11. Only now, and only because the commit succeeded.
+            LastSweep = await SweepAsync(cancellationToken).ConfigureAwait(false);
+
+            return new ContentPublishResult(
+                record.VersionNumber,
+                record.ServerManifestHash,
+                record.ClientManifestHash,
+                record.FormatGeneration,
+                plan.ChunksWritten,
+                plan.ChunksReused,
+                write.BytesWritten,
+                plan.AppendedRules.Count,
+                (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds);
         }
+        finally
+        {
+            // The freeze of step 1 ends HERE, on every exit path there is. A commit that ran already took the
+            // draft with it and this is a no-op, and any other ending is one where a draft is still sitting
+            // there frozen for a publish that is over. CancellationToken.None because a cancelled publish is
+            // the case that most needs its draft handed back.
+            await ClearTheFreezeAsync().ConfigureAwait(false);
+        }
+    }
 
-        // STEP 9. Every file first, at names nothing references yet.
-        ContentPackWrite write = await WriteAsync(plan, cancellationToken).ConfigureAwait(false);
-
-        // STEP 10. The one transaction, which is the only commit point there is.
-        Step(ContentPublishStep.BeforeCommit);
-        ContentVersionRecord record = await _store
-            .CommitPublishAsync(plan, request, cancellationToken).ConfigureAwait(false);
-        Step(ContentPublishStep.AfterCommit);
-
-        // STEP 11. Only now, and only because the commit succeeded.
-        LastSweep = await SweepAsync(cancellationToken).ConfigureAwait(false);
-
-        return new ContentPublishResult(
-            record.VersionNumber,
-            record.ServerManifestHash,
-            record.ClientManifestHash,
-            record.FormatGeneration,
-            plan.ChunksWritten,
-            plan.ChunksReused,
-            write.BytesWritten,
-            plan.AppendedRules.Count,
-            (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+    /// <summary>
+    /// Releases the draft step 1 froze, with its OWN failure swallowed. Whatever ended the publish is what
+    /// the caller needs to read, and replacing it with a failure from the release would lose it. A release
+    /// that did not happen is recoverable on its own: the marker names a base version, and the next baseline
+    /// read clears one the store no longer stands at.
+    /// </summary>
+    async Task ClearTheFreezeAsync()
+    {
+        try
+        {
+            await _store.ClearDraftFreezeAsync(CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception release) when (release is not OperationCanceledException)
+        {
+        }
     }
 
     /// <summary>

@@ -70,6 +70,7 @@ public sealed partial class InMemoryContentAuthoringStore
     {
         lock (_gate)
         {
+            ClearStaleFreeze();
             return Task.FromResult(ReadBaseline());
         }
     }
@@ -79,6 +80,14 @@ public sealed partial class InMemoryContentAuthoringStore
     /// The order inside the gate is spec 6.10's, and the last two statements are the ones that matter: the
     /// draft goes, and then the active pointer moves. Everything before them is invisible to a reader,
     /// because nothing reads a version row that no pointer names.
+    /// <para>
+    /// <b>It BUILDS every change into locals and then applies them in a tail that cannot throw</b>, because a
+    /// gate is not a transaction. Both providers get atomicity from one database transaction, and a version
+    /// row appended, rows closed and reopened, and rules extended with the pointer NOT moved is exactly the
+    /// torn state the whole of section 6 is built around not having. Everything that can fail is above the
+    /// tail: the clock the version row is stamped from, the diff the audit is rendered out of, and the draft
+    /// the survivors are rebuilt into. The tail is list and dictionary writes and four field assignments.
+    /// </para>
     /// </remarks>
     public Task<ContentVersionRecord> CommitPublishAsync(
         ContentPublishPlan plan,
@@ -113,11 +122,14 @@ public sealed partial class InMemoryContentAuthoringStore
 
             // The same statement about the rule list: a plan appends on top of the rules it was built over,
             // so this store's rules have to be that plan's own prefix or the sequences would collide.
-            RequireRulePrefix(plan);
+            ContentRulePrefix.Require(_rules, plan);
 
             ContentPublishBaseline before = ReadBaseline();
 
-            // 2. The version row.
+            // BUILD. Nothing below this point until the tail touches a field of this store, so every one of
+            // these may throw and leave the store standing exactly where it was.
+
+            // 2. The version row, stamped from the clock, which is one of the two things here that can fail.
             var record = new ContentVersionRecord(
                 plan.VersionNumber,
                 plan.ServerManifestHash,
@@ -129,28 +141,39 @@ public sealed partial class InMemoryContentAuthoringStore
                 request.Actor,
                 request.Note,
                 _clock());
+
+            // 3. Every temporal row change, onto a COPY: the closes first, so no insert is mistaken for the
+            // revision it replaces while the walk is half done.
+            var rows = new List<ContentRowRevision>(_rows);
+            Close(rows, plan.Closes);
+            Insert(rows, plan.Inserts);
+
+            // 5. Every chunk row, ONE PER SIDE, the carried-forward ones included, so the version answers
+            // "which chunks do I have, on which side" without recursing back through history.
+            var published = new PublishedVersion(Reused(plan.Chunks), plan.Languages);
+
+            // 6. Every audit row, field level, against the version the rows are leaving. The diff is the
+            // other thing here that can fail.
+            var staged = new List<ContentAuditEntry>();
+            StagePublishAudit(staged, before, plan, request);
+
+            // 7. The draft, scoped to the edits this plan FROZE. The freeze is what makes that the whole
+            // draft, so anything else here survives rather than being deleted unpublished.
+            ContentDraft? draft = DraftAfterCommit(plan);
+
+            // APPLY. List and dictionary writes and four assignments, and the rule append at 4, which is a
+            // walk of a list this store owns. Nothing here can refuse.
             _versions.Add(record);
-
-            // 3. Every temporal row change: the closes first, so no insert is mistaken for the revision it
-            // replaces while the walk is half done.
-            Close(plan.Closes);
-            Insert(plan.Inserts);
-
-            // 4. Every remap rule, appended at the sequence above the highest.
+            _rows.Clear();
+            _rows.AddRange(rows);
             for (int i = _rules.Count; i < plan.Rules.Count; i++)
             {
                 _rules.Add(plan.Rules[i]);
             }
 
-            // 5. Every chunk row, ONE PER SIDE, the carried-forward ones included, so the version answers
-            // "which chunks do I have, on which side" without recursing back through history.
-            _published[plan.VersionNumber] = new PublishedVersion(Reused(plan.Chunks), plan.Languages);
-
-            // 6. Every audit row, field level, against the version the rows are leaving.
-            AppendPublishAudit(before, plan, request);
-
-            // 7. The draft and its edits.
-            _draft = null;
+            _published[plan.VersionNumber] = published;
+            _audit.Commit(staged);
+            _draft = draft;
 
             // 8. The active pointer, LAST. It moves for the NEXT boot: a running server keeps serving the
             // version it loaded.
@@ -240,12 +263,14 @@ public sealed partial class InMemoryContentAuthoringStore
             throw ContentRollback.Refusal(plan);
         }
 
-        ContentDraft draft = await ApplyEditsAsync(plan.Edits, actor, operatorId, note, cancellationToken)
-            .ConfigureAwait(false);
-
+        // STAGED before the edits land, so a rollback whose own audit row cannot be rendered leaves no draft
+        // behind. The edits carry their own staged entries through ApplyEditsAsync, and this one is committed
+        // after them so the ledger reads in the order the actions happened.
+        var staged = new List<ContentAuditEntry>(1);
         lock (_gate)
         {
-            _audit.Append(
+            _audit.Stage(
+                staged,
                 ContentAuditActions.Rollback,
                 actor,
                 operatorId,
@@ -257,6 +282,14 @@ public sealed partial class InMemoryContentAuthoringStore
                 InMemoryContentAuditLog.Render(targetVersion),
                 0,
                 note);
+        }
+
+        ContentDraft draft = await ApplyEditsAsync(plan.Edits, actor, operatorId, note, cancellationToken)
+            .ConfigureAwait(false);
+
+        lock (_gate)
+        {
+            _audit.Commit(staged);
         }
 
         return draft;
@@ -325,47 +358,17 @@ public sealed partial class InMemoryContentAuthoringStore
         return highest;
     }
 
-    /// <summary>
-    /// Every rule this store already holds must be the plan's own prefix, identity for identity. A rule list
-    /// is append only, so a plan built over a different history would renumber rules this store has already
-    /// published, and the rule chunk hash in both its manifests would then name a set nothing can rebuild.
-    /// </summary>
-    void RequireRulePrefix(ContentPublishPlan plan)
-    {
-        if (plan.Rules.Count < _rules.Count)
-        {
-            throw Moved(FormattableString.Invariant(
-                $"The plan carries {plan.Rules.Count} remap rule(s) and this store already holds {_rules.Count}. A rule list is append only, so a plan can never carry fewer than the version it is published onto."));
-        }
-
-        for (int i = 0; i < _rules.Count; i++)
-        {
-            if (Same(_rules[i], plan.Rules[i]))
-            {
-                continue;
-            }
-
-            throw Moved(FormattableString.Invariant(
-                $"Remap rule {i + 1} of the plan is not the one this store already holds at that sequence, so the plan was built over a different rule history."));
-        }
-    }
-
-    static bool Same(RemapRule held, RemapRule planned)
-        => held.Sequence == planned.Sequence
-            && held.IntroducedIn == planned.IntroducedIn
-            && held.Type == planned.Type
-            && held.Kind == planned.Kind
-            && held.FromId == planned.FromId
-            && held.ToId == planned.ToId;
-
-    void Close(IReadOnlyList<ContentRowClose> closes)
+    /// <summary>Applies a plan's closes to a row list, which is the commit's own COPY and never the store's.</summary>
+    /// <param name="rows">The row list being built.</param>
+    /// <param name="closes">The revisions this version closes.</param>
+    static void Close(List<ContentRowRevision> rows, IReadOnlyList<ContentRowClose> closes)
     {
         for (int c = 0; c < closes.Count; c++)
         {
             ContentRowClose close = closes[c];
-            for (int i = 0; i < _rows.Count; i++)
+            for (int i = 0; i < rows.Count; i++)
             {
-                ContentRowRevision revision = _rows[i];
+                ContentRowRevision revision = rows[i];
                 if (revision.Row.Type != close.Type
                     || revision.Row.Id != close.DefinitionId
                     || revision.ValidFromVersion != close.ValidFromVersion
@@ -374,18 +377,21 @@ public sealed partial class InMemoryContentAuthoringStore
                     continue;
                 }
 
-                _rows[i] = revision with { ReplacedInVersion = close.ReplacedInVersion };
+                rows[i] = revision with { ReplacedInVersion = close.ReplacedInVersion };
                 break;
             }
         }
     }
 
-    void Insert(IReadOnlyList<ContentRowInsert> inserts)
+    /// <summary>Appends a plan's inserts to the commit's own row copy.</summary>
+    /// <param name="rows">The row list being built.</param>
+    /// <param name="inserts">The revisions this version inserts.</param>
+    static void Insert(List<ContentRowRevision> rows, IReadOnlyList<ContentRowInsert> inserts)
     {
         for (int i = 0; i < inserts.Count; i++)
         {
             ContentRowInsert insert = inserts[i];
-            _rows.Add(new ContentRowRevision(insert.Row, insert.ValidFromVersion, null, insert.FamilyId));
+            rows.Add(new ContentRowRevision(insert.Row, insert.ValidFromVersion, null, insert.FamilyId));
         }
     }
 
@@ -408,8 +414,17 @@ public sealed partial class InMemoryContentAuthoringStore
     /// <summary>
     /// The publish audit, one row per CHANGED FIELD, which is spec 4.6's unit. A change that moved no field
     /// value, a retire, writes one row-level entry naming the operation instead, so it still leaves a trace.
+    /// <para>
+    /// It STAGES rather than appending, so the diff and the clock reads happen while the commit can still be
+    /// abandoned whole. <see cref="InMemoryContentAuditLog.Commit"/> in the commit's tail is what lands them.
+    /// </para>
     /// </summary>
-    void AppendPublishAudit(
+    /// <param name="staged">The staging list every entry is rendered into.</param>
+    /// <param name="before">The baseline the rows are leaving.</param>
+    /// <param name="plan">The plan being committed.</param>
+    /// <param name="request">The publish request, whose actor, operator and note every entry carries.</param>
+    void StagePublishAudit(
+        List<ContentAuditEntry> staged,
         ContentPublishBaseline before,
         ContentPublishPlan plan,
         ContentPublishRequest request)
@@ -422,7 +437,8 @@ public sealed partial class InMemoryContentAuthoringStore
             ContentDiffEntry entry = diff.Changes[i];
             if (entry.Fields.Count == 0)
             {
-                _audit.Append(
+                _audit.Stage(
+                    staged,
                     ContentAuditActions.Publish,
                     request.Actor,
                     request.Operator,
@@ -440,7 +456,8 @@ public sealed partial class InMemoryContentAuthoringStore
             for (int f = 0; f < entry.Fields.Count; f++)
             {
                 ContentDiffField field = entry.Fields[f];
-                _audit.Append(
+                _audit.Stage(
+                    staged,
                     ContentAuditActions.Publish,
                     request.Actor,
                     request.Operator,

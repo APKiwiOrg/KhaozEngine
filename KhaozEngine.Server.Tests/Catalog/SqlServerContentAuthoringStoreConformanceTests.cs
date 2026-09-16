@@ -109,6 +109,16 @@ public sealed class SqlServerContentAuthoringStoreConformanceTests : ContentAuth
     }
 
     /// <inheritdoc />
+    protected override KhaozEngine.Catalog.IPackStore PackOf(IContentAuthoringStore store)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        return store is SqlServerContentAuthoringStore { PackStore: KhaozEngine.Catalog.IPackStore pack }
+            ? pack
+            : throw new InvalidOperationException(
+                "This subclass opens every store over a pack directory of its own, so one without a pack target did not come from here.");
+    }
+
+    /// <inheritdoc />
     public void Dispose() => _database?.Dispose();
 
     /// <summary>
@@ -236,4 +246,19 @@ public sealed class SqlServerContentAuthoringStoreConformanceTests : ContentAuth
     [CatalogSqlServerFact]
     public override Task Fact23_APlainAllocationNeverLandsInsideAFamilyBlock()
         => base.Fact23_APlainAllocationNeverLandsInsideAFamilyBlock();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task Fact24_AnImportRefusedWhileItStagesLeavesNothingStaged()
+        => base.Fact24_AnImportRefusedWhileItStagesLeavesNothingStaged();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task Fact25_ADraftEditArrivingWhileAPublishIsInFlightIsRefused()
+        => base.Fact25_ADraftEditArrivingWhileAPublishIsInFlightIsRefused();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task Fact26_AStoreLevelChangeWhoseAuditWriteFailsIsNotMade()
+        => base.Fact26_AStoreLevelChangeWhoseAuditWriteFailsIsNotMade();
 }

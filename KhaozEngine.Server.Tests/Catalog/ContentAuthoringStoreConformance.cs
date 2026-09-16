@@ -78,6 +78,54 @@ public abstract partial class ContentAuthoringStoreConformance
     /// <param name="versionNumber">The version whose row the look asks about.</param>
     protected abstract Task<CatalogPointerLook?> LookAsync(IContentAuthoringStore store, int versionNumber);
 
+    /// <summary>
+    /// The pack target a store was opened over. Each subclass makes its own, so only it can hand one back,
+    /// and <see cref="CommitWithHook"/> needs one to build a publish half of its own.
+    /// </summary>
+    /// <param name="store">The store.</param>
+    protected abstract IPackStore PackOf(IContentAuthoringStore store);
+
+    /// <summary>
+    /// The publish half over one store WITH a step hook, which is how a fact reaches INSIDE a publish. The
+    /// stores' own <c>PublishAsync</c> builds its pipeline with no hook, deliberately, so a fact about what a
+    /// second actor sees mid publish has to build its own.
+    /// </summary>
+    /// <param name="store">The store to publish to.</param>
+    /// <param name="onStep">The hook, called at every step the pipeline reaches.</param>
+    protected ContentPublishCommit CommitWithHook(
+        IContentAuthoringStore store,
+        Action<ContentPublishStep> onStep)
+        => new(store, PackOf(store), new ContentPublisher(store, Ids(store), Registry, onStep));
+
+    /// <summary>
+    /// Runs one store call from INSIDE a step hook and hands back the refusal it raised, or null when it did
+    /// not raise one.
+    /// <para>
+    /// It goes through <see cref="Task.Run(Func{Task})"/> and blocks, which is deliberate on both counts. The
+    /// hook is synchronous, so the call has to be waited for where it stands, and waiting on the hook's own
+    /// thread under the test host's synchronization context is how that deadlocks. The pool thread has none,
+    /// and no store here holds its gate or its connection lease at a step boundary, so the second caller gets
+    /// in exactly as a second console would.
+    /// </para>
+    /// </summary>
+    /// <param name="call">The store call a second actor is making.</param>
+    protected static ContentAuthoringException? Refusal(Func<Task> call)
+    {
+        ArgumentNullException.ThrowIfNull(call);
+        return Task.Run(async () =>
+        {
+            try
+            {
+                await call().ConfigureAwait(false);
+                return null;
+            }
+            catch (ContentAuthoringException refused)
+            {
+                return refused;
+            }
+        }).GetAwaiter().GetResult();
+    }
+
     /// <summary>A store with its schema created, which is where every fact but 1 and 2 starts.</summary>
     protected async Task<IContentAuthoringStore> OpenAsync()
     {

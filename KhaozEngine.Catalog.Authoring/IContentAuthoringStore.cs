@@ -140,7 +140,7 @@ public interface IContentAuthoringStore
     /// <param name="operatorId">The identity the console forwarded, empty when it forwarded none.</param>
     /// <param name="note">The operator's note, at most 1,024 characters.</param>
     /// <param name="cancellationToken">Cancels the call.</param>
-    /// <exception cref="ContentAuthoringException">An edit names a field the schema does not declare, or a target the draft already holds under a different operation.</exception>
+    /// <exception cref="ContentAuthoringException">An edit names a field the schema does not declare, or a target the draft already holds under a different operation, or a publish holds the draft frozen.</exception>
     Task<ContentDraft> ApplyEditsAsync(
         IReadOnlyList<ContentEdit> edits,
         string actor,
@@ -155,7 +155,38 @@ public interface IContentAuthoringStore
     /// <param name="actor">What the engine authenticated.</param>
     /// <param name="operatorId">The identity the console forwarded.</param>
     /// <param name="cancellationToken">Cancels the call.</param>
+    /// <exception cref="ContentAuthoringException">A publish holds the draft frozen.</exception>
     Task DiscardDraftAsync(string actor, string operatorId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Step 1 of spec 6.2: marks the open draft FROZEN for the publish standing on
+    /// <paramref name="baseVersion"/>. While the marker stands, <see cref="ApplyEditsAsync"/> and
+    /// <see cref="DiscardDraftAsync"/> are refused with
+    /// <see cref="ContentAuthoringException.PublishInProgressReason"/>, so the change set step 1 read is the
+    /// one step 10 deletes.
+    /// <para>
+    /// <b>The marker is DURABLE rather than a held lock, and that is forced rather than chosen.</b> Steps 1
+    /// to 10 span step 9's pack writes, and no provider here holds a row lock across those: SQLite leases its
+    /// one connection per call and SQL Server's Serializable transaction covers step 10 alone. A marker
+    /// written under the store's own transaction is the only thing that can span all ten steps.
+    /// </para>
+    /// <para>
+    /// It OVERWRITES whatever marker was there. A marker left by a publish that died is not a reason to
+    /// refuse the next one, since the publish is exactly what an operator does to recover.
+    /// </para>
+    /// </summary>
+    /// <param name="baseVersion">The version the publish is standing on, which is the active version at step 1.</param>
+    /// <param name="cancellationToken">Cancels the call.</param>
+    /// <exception cref="ContentAuthoringException">No draft is open, so there is nothing to freeze.</exception>
+    Task FreezeDraftAsync(int baseVersion, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Clears the freeze marker, whatever it holds, and leaves the draft and its edits alone. A publish runs
+    /// this on EVERY exit path, so a refusal or a throw releases the draft the same way a success does. It is
+    /// a no-op when no draft is open or none is frozen.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels the call.</param>
+    Task ClearDraftFreezeAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// The BASE version as the publish pipeline needs it, read under whatever lock the implementation holds
@@ -166,6 +197,12 @@ public interface IContentAuthoringStore
     /// candidate is built against and the version the transaction commits against must be one read. A
     /// publisher that assembled its own baseline out of the seam's other members would be reading each half
     /// at a different moment, which is exactly the race the commit's own confirmation closes.
+    /// </para>
+    /// <para>
+    /// <b>It also clears a STALE freeze marker</b>, meaning one naming a base version the store no longer
+    /// stands at. Only a publish that died between its commit and its own cleanup can leave one, and the
+    /// draft it names would otherwise refuse every edit forever. This is the read every publish starts with,
+    /// so the recovery costs nothing and happens where the two numbers are both in hand.
     /// </para>
     /// </summary>
     /// <param name="cancellationToken">Cancels the call.</param>
@@ -202,6 +239,12 @@ public interface IContentAuthoringStore
     /// <summary>
     /// Publishes the open draft as a new immutable version: validate, allocate, encode, write the pack, then
     /// ONE transaction that moves the active pointer together with every row, rule, chunk and audit entry.
+    /// <para>
+    /// <b>An exception thrown AFTER that transaction means the version may already be live.</b> The sweep of
+    /// step 11 runs past the only commit point there is, so a throw from it leaves a published version behind
+    /// a failed call. A caller reads the active version, or republishes: the same draft against a base that
+    /// has moved is refused, which makes the retry idempotent rather than a second version.
+    /// </para>
     /// </summary>
     /// <param name="request">The publish request, carrying the required expected base version.</param>
     /// <param name="cancellationToken">Cancels the call.</param>

@@ -354,6 +354,13 @@ public sealed class ContentEdit
 /// <summary>
 /// The ONE open draft (spec 3.7): a change set against the last published version rather than a copy of it,
 /// with the stamps that say who opened it and when. There is exactly one per database.
+/// <para>
+/// <b>It carries the FREEZE marker of spec 6.2.</b> Step 1 of a publish marks the draft frozen for the base
+/// version it is publishing, and while that marker stands every write to the draft is refused with
+/// <see cref="ContentAuthoringException.PublishInProgressReason"/>, so the change set the pipeline read at
+/// step 1 is the one step 10 deletes. The marker is DURABLE rather than a held lock, because steps 1 to 10
+/// span the pack writes and no provider here holds a row lock across those.
+/// </para>
 /// </summary>
 public sealed class ContentDraft
 {
@@ -363,6 +370,7 @@ public sealed class ContentDraft
     /// <param name="openedAtUtc">When it was opened.</param>
     /// <param name="note">The operator's note, at most 1,024 characters, empty when none.</param>
     /// <param name="changes">The ordered, deduplicated edit list.</param>
+    /// <param name="frozenForBaseVersion">The base version a publish in flight froze this draft for, or null when it is not frozen.</param>
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="baseVersion"/> is negative.</exception>
     public ContentDraft(
@@ -370,18 +378,25 @@ public sealed class ContentDraft
         string openedBy,
         DateTimeOffset openedAtUtc,
         string note,
-        ContentChangeSet changes)
+        ContentChangeSet changes,
+        int? frozenForBaseVersion = null)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(baseVersion);
         ArgumentNullException.ThrowIfNull(openedBy);
         ArgumentNullException.ThrowIfNull(note);
         ArgumentNullException.ThrowIfNull(changes);
 
+        if (frozenForBaseVersion is int frozen)
+        {
+            ArgumentOutOfRangeException.ThrowIfNegative(frozen, nameof(frozenForBaseVersion));
+        }
+
         BaseVersion = baseVersion;
         OpenedBy = openedBy;
         OpenedAtUtc = openedAtUtc;
         Note = note;
         Changes = changes;
+        FrozenForBaseVersion = frozenForBaseVersion;
     }
 
     /// <summary>The published version these edits are against. 0 means the database has published none.</summary>
@@ -401,4 +416,14 @@ public sealed class ContentDraft
 
     /// <summary>How many edits are pending, which is what a console's pending-changes panel shows.</summary>
     public int EditCount => Changes.Count;
+
+    /// <summary>
+    /// The base version a publish in flight froze this draft for, or null when nothing has it frozen. A
+    /// marker naming anything other than the version the store currently stands at belongs to a publish that
+    /// died, and the next baseline read clears it.
+    /// </summary>
+    public int? FrozenForBaseVersion { get; }
+
+    /// <summary>True while a publish holds this draft, which is when every write to it is refused.</summary>
+    public bool IsFrozen => FrozenForBaseVersion is not null;
 }

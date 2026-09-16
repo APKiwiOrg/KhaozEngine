@@ -254,6 +254,10 @@ public sealed class PublishPipelineTests
         await PublishFixtures.ApplyAsync(store, ContentEdit.Add(type, new ContentKey("one"), PublishFixtures.Fields(1)));
         ContentPublishPlan first = PublishFixtures.AssertValid(
             await publisher.PrepareAsync(PublishFixtures.Request(0, 40, 41), ContentPublishBaseline.Empty));
+
+        // Step 1 froze the draft and no commit ran to release it, so the discard standing in for one has to
+        // do both halves.
+        await store.ClearDraftFreezeAsync();
         await store.DiscardDraftAsync(PublishFixtures.Actor, "oid:tests");
 
         Assert.Equal(40, first.MinimumServerBuild);

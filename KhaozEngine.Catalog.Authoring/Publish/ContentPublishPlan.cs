@@ -337,8 +337,10 @@ public sealed class ContentPublishPlan
         string serverManifestHash,
         string clientManifestHash,
         int minimumServerBuild,
-        int minimumClientBuild)
+        int minimumClientBuild,
+        IReadOnlyList<ContentEdit> frozenEdits)
     {
+        FrozenEdits = frozenEdits;
         VersionNumber = versionNumber;
         BaseVersion = baseVersion;
         Candidate = candidate;
@@ -385,6 +387,18 @@ public sealed class ContentPublishPlan
 
     /// <summary>The version the draft was based on, 0 on an empty database.</summary>
     public int BaseVersion { get; }
+
+    /// <summary>
+    /// The draft edits step 1 FROZE, in change-set order, which is exactly what step 10 deletes from the
+    /// draft and nothing more.
+    /// <para>
+    /// The freeze marker is what makes that set stable, so scoping the delete to it can only matter when the
+    /// marker failed to hold. That is the point: a commit that deleted the draft wholesale would take an edit
+    /// it never published down with it, and an edit silently lost is worse than an edit that survives into
+    /// the next draft.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<ContentEdit> FrozenEdits { get; }
 
     /// <summary>The complete candidate, at <see cref="VersionNumber"/>, which step 4 swept.</summary>
     public ContentSnapshot Candidate { get; }

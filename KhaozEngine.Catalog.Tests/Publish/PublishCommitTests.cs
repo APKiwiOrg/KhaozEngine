@@ -223,6 +223,69 @@ public class PublishCommitTests
     }
 
     [Fact]
+    public async Task TheCommitRefusesAPlanWhoseHeldRuleDiffersOnlyInItsPayload()
+    {
+        using var root = new TemporaryRoot();
+        ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing);
+        var pack = new FileSystemPackStore(root.Path);
+        InMemoryContentAuthoringStore store = PublishFixtures.Store(registry, pack);
+        ContentPublisher publisher = PublishFixtures.Publisher(store, registry);
+
+        await PublishFixtures.ApplyAsync(
+            store,
+            ContentEdit.Add(Thing, new ContentKey("sword"), PublishFixtures.Fields(1)));
+        await store.PublishAsync(PublishFixtures.Request(0));
+
+        // A fork appends the one rule kind whose payload is free-form, so the doctored rule below is still
+        // well formed and still validates: the ONLY thing wrong with it is that it is not the rule the store
+        // already published at that sequence.
+        await PublishFixtures.ApplyAsync(
+            store,
+            ContentEdit.Fork(
+                Thing,
+                1,
+                new ContentKey("sword"),
+                new ContentKey("sword_legacy"),
+                PublishFixtures.LegacyField,
+                []));
+        await store.PublishAsync(PublishFixtures.Request(1));
+
+        await PublishFixtures.ApplyAsync(
+            store,
+            ContentEdit.Add(Thing, new ContentKey("shield"), PublishFixtures.Fields(2)));
+        ContentPublishBaseline held = await store.ReadPublishBaselineAsync();
+        RemapRule published = Assert.Single(held.Rules);
+        var doctored = new ContentPublishBaseline(
+            held.VersionNumber,
+            held.Rows,
+            [
+                new RemapRule(
+                    published.Sequence,
+                    published.IntroducedIn,
+                    published.Type,
+                    published.Kind,
+                    published.FromId,
+                    published.ToId,
+                    [0x01]),
+            ],
+            held.Chunks,
+            held.Languages,
+            held.MinimumServerBuild,
+            held.MinimumClientBuild);
+        ContentPublishPlan plan = PublishFixtures.AssertValid(
+            await publisher.PrepareAsync(PublishFixtures.Request(2), doctored));
+
+        // A payload carries a retire's policy and its destination, so a prefix check that ignored it would
+        // let a plan rewrite what a published rule MEANS while keeping its identity columns.
+        ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
+            () => store.CommitPublishAsync(plan, PublishFixtures.Request(2)));
+
+        Assert.Equal(ContentAuthoringException.BaseVersionMovedReason, refused.Reason);
+        Assert.Equal(2, await store.GetActiveVersionAsync());
+        Assert.Equal(2, (await store.ListVersionsAsync()).Count);
+    }
+
+    [Fact]
     public async Task TheCommitRefusesAPlanTheValidatorDidNotPass()
     {
         using var root = new TemporaryRoot();
@@ -470,5 +533,85 @@ public class PublishCommitTests
         Assert.Equal(1, second.ChunksWritten);
         Assert.Equal(1, second.ChunksReused);
         Assert.Equal(0, second.RulesAppended);
+    }
+
+    /// <summary>
+    /// The commit applies NOTHING when a step part way through throws. The in-memory store is the reference
+    /// the publish, draft, diff and bundle suites are all written against, and a gate is not a transaction:
+    /// it used to mutate as it walked spec 6.10's eight steps, so a throw at step 6 left the version row
+    /// appended, the rows closed and reopened, the rules extended and the pointer NOT moved, which is the
+    /// torn state the whole of section 6 is built around not having
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/927).
+    /// <para>
+    /// <b>The failure is placed at the audit render deliberately.</b> It is the last thing in the commit that
+    /// can fail and the furthest from the start, so a commit that survives it intact has nothing before it
+    /// that mutates either. The clock is armed to let ONE read through, which is the version row's stamp, and
+    /// to refuse the next, which is the first audit entry.
+    /// </para>
+    /// <para>
+    /// The providers get this from the one database transaction they already run, so this is a reference-store
+    /// test rather than a conformance fact: no fault a backend-neutral seam can arm lands in the same place on
+    /// all three.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task TheCommitAppliesNothingWhenAStepPartWayThroughThrows()
+    {
+        using var root = new TemporaryRoot();
+        ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing);
+        var pack = new FileSystemPackStore(root.Path);
+        var clock = new ArmableClock();
+        var store = new InMemoryContentAuthoringStore(registry, pack, clock.Read);
+
+        await PublishFixtures.ApplyAsync(
+            store,
+            ContentEdit.Add(Thing, new ContentKey("one"), PublishFixtures.Fields(11)));
+        await store.PublishAsync(PublishFixtures.Request(0));
+
+        await PublishFixtures.ApplyAsync(
+            store,
+            ContentEdit.Update(Thing, 1, new ContentKey("one"), PublishFixtures.Fields(99)));
+        int auditBefore = (await store.ListAuditAsync(default, 0, 0, 500)).Count;
+
+        ContentPublishCommit commit = PublishFixtures.Commit(
+            store,
+            pack,
+            registry,
+            step =>
+            {
+                if (step == ContentPublishStep.BeforeCommit)
+                {
+                    clock.FailAfter(1);
+                }
+            });
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => commit.PublishAsync(PublishFixtures.Request(1)));
+        clock.Disarm();
+
+        // Every one of the eight steps, unmade. The pointer is the one that would move last and the others
+        // are the ones a torn commit would have left behind it.
+        Assert.Equal(1, await store.GetActiveVersionAsync());
+        Assert.Single(await store.ListVersionsAsync());
+        Assert.Null(await store.GetVersionAsync(2));
+        Assert.Equal(auditBefore, (await store.ListAuditAsync(default, 0, 0, 500)).Count);
+        Assert.Empty(store.Rules);
+
+        ContentRowPage rows = await store.ListRowsAsync(Thing, 0, null, true, 0, 100);
+        ContentRow held = Assert.Single(rows.Rows);
+        Assert.Equal(11, held.Fields[0].Number);
+
+        // The draft is still there, unfrozen, so the retry is an ordinary republish rather than a recovery.
+        ContentDraft? draft = await store.GetOpenDraftAsync();
+        Assert.NotNull(draft);
+        Assert.Equal(1, draft.EditCount);
+        Assert.False(draft.IsFrozen);
+
+        ContentPublishResult retried = await store.PublishAsync(PublishFixtures.Request(1));
+        Assert.Equal(2, retried.VersionNumber);
+        Assert.Equal(
+            99,
+            (await store.ListRowsAsync(Thing, 0, null, true, 0, 100)).Rows[0].Fields[0].Number);
+        Assert.Null(await store.GetOpenDraftAsync());
     }
 }

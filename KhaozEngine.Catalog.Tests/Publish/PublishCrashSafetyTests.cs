@@ -196,6 +196,75 @@ public class PublishCrashSafetyTests
         await harness.AssertEveryReferencedFileServesAsync();
     }
 
+    /// <summary>
+    /// Spec 6.11's third pinned state, and spec 6.2's recovery half: no kill leaves a freeze marker that can
+    /// wedge the draft. Step 1 marks the draft frozen for the whole publish and every draft write is refused
+    /// while the marker stands, so a marker nothing ever clears is a console that can never edit again.
+    /// <para>
+    /// The three cases are the three ways a publish can end without releasing what it took. An in-process
+    /// throw runs the <c>finally</c>, which is the first. A process DEATH does not, so the other two plant
+    /// the marker the way a dead publish would have left it, before and after its commit, and assert that
+    /// each one recovers on its own: a marker naming the version the store still stands at is overwritten by
+    /// the next publish, and one naming a version it has moved past is stale and the baseline read clears it.
+    /// </para>
+    /// </summary>
+    /// <param name="kind">Which store to run against.</param>
+    [Theory]
+    [InlineData(CrashStore.InMemory)]
+    [InlineData(CrashStore.Sqlite)]
+    public async Task NoKillLeavesAFreezeMarkerThatWedgesTheDraft(CrashStore kind)
+    {
+        using CrashSafetyHarness harness = await CrashSafetyHarness.StartAsync(kind);
+        var type = new ContentTypeId(PublishFixtures.ThingTypeId);
+        await harness.ApplyAsync(CrashSafetyHarness.Reprice());
+
+        // 1. An in-process kill between step 8 and step 10. The publish half releases the freeze on its way
+        // out, so the draft is editable again the moment the call returns.
+        ContentPublishCommit killed = harness.Commit(step =>
+        {
+            if (step == ContentPublishStep.BeforeCommit)
+            {
+                throw new CrashProbeKill(step);
+            }
+        });
+        await Assert.ThrowsAsync<CrashProbeKill>(() => killed.PublishAsync(CrashSafetyHarness.Request(1)));
+        Assert.False(await FrozenAsync(harness), "The kill left the draft frozen and no finally released it.");
+
+        // 2. The marker a process DEATH before the commit leaves, which no finally ran for. It names the
+        // version the store still stands at, so it is not stale, and what clears it is the next publish:
+        // step 1 overwrites it and the publish releases it at the end.
+        await harness.Store.FreezeDraftAsync(1);
+        Assert.True(await FrozenAsync(harness));
+
+        ContentPublishResult retried = await harness.Commit().PublishAsync(CrashSafetyHarness.Request(1));
+        Assert.Equal(2, retried.VersionNumber);
+        Assert.Null(await harness.Store.GetOpenDraftAsync());
+        Assert.Equal(99, (await harness.RowsAsync()).Rows[0].Fields[0].Number);
+
+        // 3. The marker a process death AFTER the commit leaves. It names a version the store has moved past,
+        // which is the stale case, and the baseline read clears it rather than refusing every edit forever.
+        await harness.ApplyAsync(
+            ContentEdit.Update(type, 2, new ContentKey("two"), PublishFixtures.Fields(77)));
+        await harness.Store.FreezeDraftAsync(1);
+        Assert.True(await FrozenAsync(harness));
+
+        await harness.Store.ReadPublishBaselineAsync();
+
+        Assert.False(await FrozenAsync(harness), "A marker naming a version the store has moved past is stale.");
+        ContentDraft editable = await harness.ApplyAsync(
+            ContentEdit.Update(type, 1, new ContentKey("one"), PublishFixtures.Fields(55)));
+        Assert.Equal(2, editable.EditCount);
+    }
+
+    /// <summary>Whether the open draft carries a freeze marker, failing loudly when there is no draft.</summary>
+    /// <param name="harness">The harness whose store is asked.</param>
+    static async Task<bool> FrozenAsync(CrashSafetyHarness harness)
+    {
+        ContentDraft? draft = await harness.Store.GetOpenDraftAsync().ConfigureAwait(false);
+        Assert.NotNull(draft);
+        return draft.IsFrozen;
+    }
+
     /// <summary>The publish the kill is measured against: the same draft, the same store, nothing thrown.</summary>
     /// <param name="kind">Which store to run against.</param>
     static async Task<ControlPublish> ControlAsync(CrashStore kind)

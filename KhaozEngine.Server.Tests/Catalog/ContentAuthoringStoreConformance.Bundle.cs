@@ -8,8 +8,8 @@ using Xunit;
 namespace KhaozEngine.Tests.Catalog;
 
 /// <summary>
-/// Facts 18, 19 and 20, the BUNDLE half: the seeding format is also the lossless export format, and it lands
-/// into an empty database or not at all.
+/// Facts 18, 19, 20 and 24, the BUNDLE half: the seeding format is also the lossless export format, it lands
+/// into an empty database or not at all, and a refusal takes its own staging with it.
 /// </summary>
 public abstract partial class ContentAuthoringStoreConformance
 {
@@ -131,4 +131,97 @@ public abstract partial class ContentAuthoringStoreConformance
         Assert.Equal(RemapRuleKind.Retired, rule.Kind);
         Assert.Equal(1, rule.IntroducedIn);
     }
+
+    /// <summary>
+    /// FACT 24. An import refused while it STAGES leaves nothing staged. The families, the id marks and the
+    /// restamped rules are written before the publish because the edits and the baseline both need them, so
+    /// the window between them and the publish is the one place an import can leave a database it was
+    /// required to find empty carrying half a bundle.
+    /// <para>
+    /// The refusal is a row naming a family the bundle does not declare, which is raised while the edits are
+    /// being built: INSIDE the staging block rather than after it, which is the difference that matters. A
+    /// refusal after the staging was already covered, and it is the one the earlier facts drive.
+    /// </para>
+    /// <para>
+    /// The rule list is read through the BASELINE deliberately. A provider holds the restamped rules in
+    /// memory until the publish commits them, because a rule stamped at version 1 cannot be written before
+    /// version 1 exists, and a refused import that leaves them cached poisons the next ordinary publish with
+    /// rules for a version nothing ever published.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public virtual async Task Fact24_AnImportRefusedWhileItStagesLeavesNothingStaged()
+    {
+        IContentAuthoringStore store = await ResetToEmptyAsync();
+
+        ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
+            () => store.ImportBundleAsync(
+                SeedBundle("no_such_family"), CatalogFixtures.Actor, CatalogFixtures.Operator, "seed"));
+        Assert.Equal(ContentAuthoringException.UnknownFamilyReason, refused.Reason);
+
+        Assert.Empty(await store.ListFamiliesAsync(default));
+        Assert.Empty(await RulesAsync(store));
+        Assert.Null(await store.GetOpenDraftAsync());
+        ContentIdHighWater mark = await Ids(store).ReadHighWaterAsync(Thing);
+        Assert.Equal(0, mark.ReservedThrough);
+        Assert.Equal(0, mark.IssuedThrough);
+
+        // The corrected bundle into the SAME store. A family row the refusal left behind would collide on
+        // its own primary key here, and a rule list it left behind would come back doubled.
+        ContentPublishResult imported = await store.ImportBundleAsync(
+            SeedBundle(FamilyKey), CatalogFixtures.Actor, CatalogFixtures.Operator, "seed");
+
+        Assert.Equal(1, imported.VersionNumber);
+        Assert.Single(await store.ListFamiliesAsync(default));
+        Assert.Single(await RulesAsync(store));
+        Assert.Equal(new[] { 40, 41 }, Ids(await RowsAsync(store, includeRetired: true)));
+
+        // And an ordinary publish on top of it still works, which is what a store carrying a stale cached
+        // rule list could not do.
+        ContentPublishResult published = await PublishAsync(
+            store, ContentEdit.Update(Thing, 40, new ContentKey("forty"), CatalogFixtures.Fields(99)));
+        Assert.Equal(2, published.VersionNumber);
+        Assert.Single(await RulesAsync(store));
+    }
+
+    /// <summary>The family key fact 24's bundle declares, and the one its rows are supposed to name.</summary>
+    const string FamilyKey = "seeded";
+
+    /// <summary>
+    /// Fact 24's bundle: one family with an aligned block covering both rows, one live row and one retired
+    /// row with the rule that retired it, and the retired row naming <paramref name="familyKey"/>.
+    /// </summary>
+    /// <param name="familyKey">The family the second row names, which is the bundle's declared one or not.</param>
+    static ContentBundle SeedBundle(string familyKey)
+        => new(
+            ContentBundle.CurrentFormatVersion,
+            "hand-authored",
+            0,
+            [],
+            [
+                new ContentBundleRow(
+                    Thing, 40, new ContentKey("forty"), false, FamilyKey, CatalogFixtures.Fields(40)),
+                new ContentBundleRow(
+                    Thing, 41, new ContentKey("forty_one"), true, familyKey, CatalogFixtures.Fields(41)),
+            ],
+            [
+                new ContentFamily(
+                    1,
+                    Thing,
+                    FamilyKey,
+                    16,
+                    false,
+                    1,
+                    [new ContentFamilyBlock(1, 0, 32, 16, 42, 1)]),
+            ],
+            [
+                new RemapRule(
+                    1,
+                    1,
+                    Thing,
+                    RemapRuleKind.Retired,
+                    41,
+                    0,
+                    [RemapRule.RetirePolicyPlaceholder]),
+            ]);
 }

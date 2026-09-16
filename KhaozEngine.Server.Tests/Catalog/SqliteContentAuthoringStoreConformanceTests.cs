@@ -103,6 +103,16 @@ public sealed class SqliteContentAuthoringStoreConformanceTests : ContentAuthori
     }
 
     /// <inheritdoc />
+    protected override IPackStore PackOf(IContentAuthoringStore store)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        return store is SqliteContentAuthoringStore { PackStore: IPackStore pack }
+            ? pack
+            : throw new InvalidOperationException(
+                "This subclass opens every store over a pack directory of its own, so one without a pack target did not come from here.");
+    }
+
+    /// <inheritdoc />
     public void Dispose()
     {
         foreach (SqliteContentAuthoringStore store in _stores)

@@ -257,6 +257,37 @@ public class ForkTests
     }
 
     [Fact]
+    public async Task TwoForksUnderOneKeyInOneDraftAreRefusedByKec0041()
+    {
+        ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing);
+        InMemoryContentAuthoringStore store = PublishFixtures.Store(registry);
+        ContentPublisher publisher = PublishFixtures.Publisher(store, registry);
+
+        ContentPublishPlan first = PublishFixtures.AssertValid(await PublishFixtures.PublishAsync(
+            store,
+            publisher,
+            ContentPublishBaseline.Empty,
+            ContentEdit.Add(Thing, new ContentKey(SourceKey), PublishFixtures.Fields(10)),
+            ContentEdit.Add(Thing, new ContentKey("shield"), PublishFixtures.Fields(11))));
+
+        ContentPublishPlan plan = await PublishFixtures.PublishAsync(
+            store,
+            publisher,
+            ContentPublishBaseline.After(first),
+            ContentEdit.Fork(
+                Thing, 1, new ContentKey(SourceKey), new ContentKey(LegacyKey), PublishFixtures.LegacyField, []),
+            ContentEdit.Fork(
+                Thing, 2, new ContentKey("shield"), new ContentKey(LegacyKey), PublishFixtures.LegacyField, []));
+
+        // A key a SECOND fork introduces is taken exactly as one an add introduces is. The refusal has to be
+        // the precondition rather than a duplicate-key finding on a candidate that should never have been
+        // built, so the plan stops before step 2 and carries no chunks.
+        Assert.False(plan.IsValid);
+        Assert.True(PublishFixtures.Has(plan, ForkCode), PublishFixtures.Findings(plan));
+        Assert.Empty(plan.Chunks);
+    }
+
+    [Fact]
     public async Task EveryBadForkInOneDraftIsReportedTogetherRatherThanTheFirst()
     {
         ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing);

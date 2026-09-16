@@ -250,7 +250,7 @@ and handoff still measure from the anchor as the row says, and `OverlapMargin` n
 - **`TileDrawPriority` stays one body per ANCHOR tile.** A 1x1 body standing on a non-anchor tile of a cow
   overlaps it on screen. That is presentation, it does not affect rules, and a footprint-aware settled stack is its
   own small piece of work, deferred in section 12.
-  Shipped in 18.51.0 as a body AT REST covering its whole square under both policies, with the sizes on a roster
+  Shipped in 19.0.0 as a body AT REST covering its whole square under both policies, with the sizes on a roster
   overload and read off the delayed sample for a live client (#899).
 
 ## 10. Players

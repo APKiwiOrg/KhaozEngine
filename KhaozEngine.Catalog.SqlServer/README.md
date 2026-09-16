@@ -109,5 +109,12 @@ family membership survives the import.
 `sys` catalog views plus the ordinary read and write rights on the fourteen tables, which is what a production
 application login should have.
 
+## Testing this backend
+
+The engine's provider conformance suite and its publish crash-safety facts run against this backend only when
+the environment variable `KE_CATALOG_SQLSERVER` holds a reachable connection string. CI has no SQL Server, so
+every one of them SKIPS there and the same suite's SQLite run is what gates a push. Point the variable at a
+throwaway database before trusting a change to this package.
+
 For a dev, test or single-node deployment use `KhaozEngine.Catalog.Sqlite` against the same
 `IContentAuthoringStore` contract.

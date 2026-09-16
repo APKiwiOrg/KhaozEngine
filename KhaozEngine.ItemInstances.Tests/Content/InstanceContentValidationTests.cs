@@ -9,8 +9,9 @@ using static KhaozEngine.Tests.ItemInstances.Content.InstanceValidationFixtures;
 namespace KhaozEngine.Tests.ItemInstances.Content;
 
 /// <summary>
-/// The twelve checks of spec 8.9 and the two weight bounds of
-/// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/944">944</see>, one fact per code, plus the
+/// The twelve checks of spec 8.9, the two weight bounds of
+/// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/944">944</see> and the two candidate table
+/// ceilings, one fact per code, plus the
 /// three facts about the band as a whole: the publish-only skip, a clean authored set, and the EMPTY set
 /// that proves these are shapes rather than one game's content.
 /// <para>
@@ -103,6 +104,58 @@ public class InstanceContentValidationTests
                 ModTier(registry, 1, "sharp_t1", modId: 1, ordinal: 4),
                 ModTier(registry, 2, "keen_t1", modId: 2, ordinal: 4)));
         NoneOf(twoMods, InstanceContentFindings.TierOrdinal);
+    }
+
+    [Fact]
+    public void A_mod_tier_ordinal_above_15_is_KEC0102_because_the_candidate_table_packs_four_bits()
+    {
+        ContentTypeRegistry registry = Registry();
+
+        // Fifteen is the ceiling the packed key can hold and it publishes clean. Sixteen would alias onto
+        // another tier of the same mod inside the candidate table, so the ceiling is loud at publish rather
+        // than silent in a table.
+        NoneOf(
+            Band(Snapshot(
+                registry,
+                Mod(registry, 1, "sharp"),
+                ModTier(registry, 1, "sharp_t15", modId: 1, ordinal: ModCandidateTables.MaxTierOrdinal))),
+            InstanceContentFindings.TierOrdinal);
+
+        List<ContentFinding> findings = Band(Snapshot(
+            registry,
+            Mod(registry, 1, "sharp"),
+            ModTier(registry, 1, "sharp_t16", modId: 1, ordinal: ModCandidateTables.MaxTierOrdinal + 1)));
+
+        ContentFinding finding = Only(findings, InstanceContentFindings.TierOrdinal);
+        Assert.Equal(InstanceContentTypeIds.ModTierTypeId, finding.Type.Value);
+        Assert.Equal(1, finding.Id);
+        Assert.Contains("16", finding.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void An_item_base_whose_authored_tag_list_passes_the_generation_ceiling_is_KEC0114()
+    {
+        ContentTypeRegistry registry = Registry();
+        var rows = new List<ContentRow>();
+        var tags = new List<int>();
+        for (int tag = 1; tag <= ModCandidateTables.MaxGenerationTagPositions + 1; tag++)
+        {
+            tags.Add(tag);
+            rows.Add(Tag(registry, tag, FormattableString.Invariant($"tag{tag}")));
+        }
+
+        // At the ceiling it publishes, because the candidate tables hold one overlap header per tag POSITION
+        // for every signature, band and kind, and the ceiling is what bounds that product.
+        rows.Add(Item(registry, 40, "greatsword", tags.GetRange(0, ModCandidateTables.MaxGenerationTagPositions)));
+        NoneOf(Band(Snapshot(registry, rows.ToArray())), InstanceContentFindings.GenerationTagPositions);
+
+        rows[^1] = Item(registry, 40, "greatsword", tags);
+        ContentFinding finding = Only(
+            Band(Snapshot(registry, rows.ToArray())),
+            InstanceContentFindings.GenerationTagPositions);
+        Assert.Equal(EngineContentTypes.ItemTypeId, finding.Type.Value);
+        Assert.Equal(40, finding.Id);
+        Assert.Contains("9 authored tags", finding.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -500,6 +553,7 @@ public class InstanceContentValidationTests
             {
                 "KEC0100", "KEC0101", "KEC0102", "KEC0103", "KEC0104", "KEC0105", "KEC0106",
                 "KEC0107", "KEC0108", "KEC0109", "KEC0110", "KEC0111", "KEC0112", "KEC0113",
+                "KEC0114",
             },
             InstanceContentFindings.All);
     }

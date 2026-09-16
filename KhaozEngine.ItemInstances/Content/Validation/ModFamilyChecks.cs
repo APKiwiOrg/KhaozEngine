@@ -9,6 +9,14 @@ namespace KhaozEngine.ItemInstances;
 /// <c>stat_line</c>, the tier's item level gate and ordinal, the stat line's shape, the mod group's count,
 /// and the publish-only refusal of a tier ordinal that moved or vanished.
 /// <para>
+/// <b>The two CANDIDATE TABLE ceilings are here too</b>, because both are refusals the generator's tables
+/// impose on the mod family's own rows rather than rules of spec 8.9. A tier ordinal past
+/// <see cref="ModCandidateTables.MaxTierOrdinal"/> would alias onto another tier of the same mod, and a
+/// base's authored tag list past <see cref="ModCandidateTables.MaxGenerationTagPositions"/> multiplies the
+/// overlap header space. Both are loud at PUBLISH rather than silent in a table, and
+/// <see cref="ModCandidateTables.Build"/> refuses either one that reached a boot without a publish.
+/// </para>
+/// <para>
 /// The field indices below are the positions each type's <c>CreateSchema</c> declares, which is what the
 /// positional row walk already means by a field. They are named rather than inlined so a schema change
 /// lands in one place per type.
@@ -38,6 +46,7 @@ internal static class ModFamilyChecks
     {
         CheckModGroups(candidate, findings);
         CheckTiers(candidate, findings);
+        CheckBaseTagPositions(candidate, findings);
         CheckTierWeightParents(candidate, findings);
         CheckStatLines(candidate, findings);
 
@@ -109,6 +118,17 @@ internal static class ModFamilyChecks
                 continue;
             }
 
+            if (ordinal > ModCandidateTables.MaxTierOrdinal)
+            {
+                findings.Add(new ContentFinding(
+                    row.Type,
+                    row.Id,
+                    InstanceContentFindings.TierOrdinal,
+                    InstanceContentFindings.OrdinalOverPackedCeiling(
+                        row.Id, ordinal, ModCandidateTables.MaxTierOrdinal)));
+                continue;
+            }
+
             long modId = Number(row, ModTierModId) ?? 0;
             if (taken.TryGetValue((modId, ordinal), out int firstId))
             {
@@ -121,6 +141,31 @@ internal static class ModFamilyChecks
             }
 
             taken.Add((modId, ordinal), row.Id);
+        }
+    }
+
+    /// <summary>
+    /// <c>KEC0114</c> on an item base whose authored tag list is longer than the generation ceiling. The row
+    /// is a Scope A type read through the candidate snapshot like any other, because the ceiling is the
+    /// candidate TABLES' and the base is where the list is authored.
+    /// </summary>
+    static void CheckBaseTagPositions(IContentSnapshot candidate, ICollection<ContentFinding> findings)
+    {
+        var tags = new List<int>();
+        foreach (ContentRow row in LiveRows(candidate, EngineContentTypes.ItemTypeId))
+        {
+            GenerationTagSignature.ReadTags(row, tags);
+            if (tags.Count <= ModCandidateTables.MaxGenerationTagPositions)
+            {
+                continue;
+            }
+
+            findings.Add(new ContentFinding(
+                row.Type,
+                row.Id,
+                InstanceContentFindings.GenerationTagPositions,
+                InstanceContentFindings.GenerationTagsOverCeiling(
+                    row.Id, tags.Count, ModCandidateTables.MaxGenerationTagPositions)));
         }
     }
 

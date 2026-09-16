@@ -18,12 +18,15 @@ namespace KhaozEngine.Tests.ItemInstances.Content;
 /// </summary>
 internal static class InstanceValidationFixtures
 {
-    /// <summary>A fresh registry carrying the six engine types and all eighteen of the band.</summary>
-    public static ContentTypeRegistry Registry()
+    /// <summary>
+    /// A fresh registry carrying the six engine types and all eighteen of the band, with the candidate
+    /// table load index attached to <c>mod</c> when a fact is about the boot that builds it.
+    /// </summary>
+    public static ContentTypeRegistry Registry(ModCandidateTablesIndex? modCandidateTables = null)
     {
         var registry = new ContentTypeRegistry();
         EngineContentTypes.Register(registry);
-        InstanceContentTypes.Register(registry);
+        InstanceContentTypes.Register(registry, modCandidateTables);
         return registry;
     }
 
@@ -96,8 +99,11 @@ internal static class InstanceValidationFixtures
             ContentFieldValue.Absent(ContentFieldKind.TagList),
             Marker());
 
-    /// <summary>One item base, which a unique template and a currency cost point at.</summary>
-    public static ContentRow Item(ContentTypeRegistry registry, int id, string key)
+    /// <summary>
+    /// One item base, which a unique template and a currency cost point at. Its authored TAG LIST is what
+    /// the generation tag signature is interned from, so a fact about the candidate tables hands one in.
+    /// </summary>
+    public static ContentRow Item(ContentTypeRegistry registry, int id, string key, IReadOnlyList<int>? tags = null)
         => Make(
             registry,
             EngineContentTypes.ItemTypeKey,
@@ -105,7 +111,7 @@ internal static class InstanceValidationFixtures
             key,
             Marker(),
             Marker(),
-            ContentFieldValue.Absent(ContentFieldKind.TagList),
+            tags is null ? ContentFieldValue.Absent(ContentFieldKind.TagList) : ContentRowCodecBase.TagListValue(tags),
             Flag(false),
             Int(1),
             Flag(true),

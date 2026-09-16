@@ -23,6 +23,11 @@ namespace KhaozEngine.ItemInstances;
 /// <see cref="InstanceContentValidator"/> carries no state and reads nothing ambient, so the single
 /// instance built here is safe to share across every registry a process builds.
 /// </para>
+/// <para>
+/// <b>The candidate table load index is OPTIONAL and hangs off the <c>mod</c> registration.</b> A server
+/// hands one in and gets the generator's tables built at boot step 7b. A client hands in nothing, which is
+/// the whole of the difference: the weight type it downloads no row of would build empty tables anyway.
+/// </para>
 /// </summary>
 public static class InstanceContentTypes
 {
@@ -30,12 +35,16 @@ public static class InstanceContentTypes
     /// Registers all eighteen instance content types, once, at process start and before any pack loads.
     /// </summary>
     /// <param name="registry">The registry the eighteen declarations land in.</param>
+    /// <param name="modCandidateTables">
+    /// The generator's load index, attached to the <c>mod</c> registration so a boot builds it, or null for
+    /// a process that never rolls an item.
+    /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="registry"/> is null.</exception>
     /// <exception cref="ContentRegistrationException">
     /// The registry is frozen, or one of the eighteen ids or keys is already taken, which a second call to
     /// this helper on the same registry is.
     /// </exception>
-    public static void Register(ContentTypeRegistry registry)
+    public static void Register(ContentTypeRegistry registry, ModCandidateTablesIndex? modCandidateTables = null)
     {
         ArgumentNullException.ThrowIfNull(registry);
 
@@ -48,7 +57,8 @@ public static class InstanceContentTypes
             ModContentType.DefaultChunkSlots,
             ModContentType.MaxRowBytes,
             static (type, schema) => new ModContentType.Codec(type, schema),
-            validator: new InstanceContentValidator());
+            validator: new InstanceContentValidator(),
+            loadIndex: modCandidateTables);
 
         RegisterOne(
             registry,
@@ -232,7 +242,8 @@ public static class InstanceContentTypes
         int maxRowBytes,
         Func<ContentTypeId, ContentFieldSchema, IContentRowCodec> codec,
         IContentValidator? validator = null,
-        int? maxDefinitionId = null)
+        int? maxDefinitionId = null,
+        IContentLoadIndex? loadIndex = null)
         => registry.RegisterContentType(
             ContentRegistrationBand.Instances,
             typeId,
@@ -243,5 +254,6 @@ public static class InstanceContentTypes
             visibility,
             chunkSlots,
             maxRowBytes,
-            maxDefinitionId);
+            maxDefinitionId,
+            loadIndex);
 }

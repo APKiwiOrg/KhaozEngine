@@ -3,7 +3,7 @@ using System;
 namespace KhaozEngine.ItemInstances;
 
 /// <summary>
-/// The fourteen finding codes of the <c>KEC0100</c> band and the messages that carry them. The band is
+/// The fifteen finding codes of the <c>KEC0100</c> band and the messages that carry them. The band is
 /// RESERVED for the item instances types, 100 to 199, so an affix rule and a catalog structure rule are
 /// told apart by an operator reading a code rather than by reading a message.
 /// <para>
@@ -12,9 +12,10 @@ namespace KhaozEngine.ItemInstances;
 /// treated. That is why <see cref="All"/> is a pinned list rather than a generated range.
 /// </para>
 /// <para>
-/// <b>Twelve of the fourteen are spec 8.9's twelve checks and two are the weight bounds of
-/// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/944">944</see>.</b> The mapping is not one
-/// code per check in two places, and both exceptions are deliberate. Check 2 SPLITS, because an item level
+/// <b>Twelve of the fifteen are spec 8.9's twelve checks, two are the weight bounds of
+/// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/944">944</see>, and one is the generation tag
+/// position ceiling the candidate tables impose.</b> The mapping is not one code per check in two places,
+/// and both exceptions are deliberate. Check 2 SPLITS, because an item level
 /// range an author inverted and a tier ordinal outside the payload's byte are different mistakes with
 /// different fixes. Checks 3 and 12 SHARE <see cref="TierOrdinalMoved"/>, because both are the same
 /// refusal seen from two sides: a tier ordinal that a stored payload already names is not where it was.
@@ -98,6 +99,14 @@ public static class InstanceContentFindings
     /// </summary>
     public const string WeightBucketOverflow = "KEC0113";
 
+    /// <summary>
+    /// An <c>item</c> base whose authored tag list is longer than
+    /// <see cref="ModCandidateTables.MaxGenerationTagPositions"/>. The candidate tables size their
+    /// suppression headers by signatures times bands times kinds times tag POSITIONS, so an unbounded
+    /// position count makes the table build unbounded.
+    /// </summary>
+    public const string GenerationTagPositions = "KEC0114";
+
     /// <summary>Every code this band emits, ascending, pinned rather than generated.</summary>
     public static readonly string[] All =
     [
@@ -115,6 +124,7 @@ public static class InstanceContentFindings
         RarityRuleIdMoved,
         WeightBelowZero,
         WeightBucketOverflow,
+        GenerationTagPositions,
     ];
 
     internal static string ParentMissing(string childType, int childId, string field, string parentType, long parentId)
@@ -132,6 +142,14 @@ public static class InstanceContentFindings
     internal static string OrdinalOutOfRange(int tierId, long ordinal, int min, int max)
         => FormattableString.Invariant(
             $"Tier {tierId} carries ordinal {ordinal}, outside {min} to {max}. The ordinal is a byte in every stored affix entry, so a number the payload cannot hold is a tier no item could ever name.");
+
+    internal static string OrdinalOverPackedCeiling(int tierId, long ordinal, int ceiling)
+        => FormattableString.Invariant(
+            $"Tier {tierId} carries ordinal {ordinal}, over the candidate table's ceiling of {ceiling}. The table packs the ordinal into the low bits beside the mod id, so an ordinal above the ceiling would spawn as a different tier of the same mod instead of refusing to publish.");
+
+    internal static string GenerationTagsOverCeiling(int itemId, int tags, int ceiling)
+        => FormattableString.Invariant(
+            $"Item base {itemId} carries {tags} authored tags, over the generation ceiling of {ceiling}. The candidate tables hold one overlap header per tag POSITION for every signature, band and mod kind, so a longer list multiplies the table build rather than costing one row.");
 
     internal static string OrdinalDuplicated(int tierId, long ordinal, long modId, int firstTierId)
         => FormattableString.Invariant(

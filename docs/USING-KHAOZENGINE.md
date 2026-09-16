@@ -3327,8 +3327,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     - Other knobs (all on `ShadowSettings`, runtime-mutable): `ShadowNearDistance` (default `16`, the near cascade's view-depth
       reach from the camera - smaller packs texels onto the near action, at the cost of handing off to a coarser
       cascade sooner). `ShadowStrength` (0..1 shadow darkness, default `0.85`).
-    - **Caster policy: opting out, and fading casters** (issue #287). Two per-instance behaviours sit on top of the
-      pass, both inert by default, so a scene that uses neither renders byte-identically to before.
+    - **Caster policy: opting out, fading casters, and shadow-only casters** (issues #287 and #974). Three
+      per-instance behaviours sit on top of the pass, all inert by default, so a scene that uses none renders
+      byte-identically to before.
       - `scene.Draw(handle, transform, tint, material, castsShadows: false)` (and the `castsShadows` argument on the
         dissolve overload) keeps THAT instance out of the depth pass. It still draws and still RECEIVES shadows: this
         is a shadow policy, not a cull. Reach for it on dense decorative geometry - ground cover, understory - where
@@ -3344,10 +3345,23 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
         the hard cull radius, and across an HLOD crossfade band the individual props and the merged mesh both cast at
         full strength (roughly double shadow density). Nothing to opt into - a positive dissolve is the opt-in - and
         a caster at dissolve 0 still takes the plain pipeline.
-      - Both are decided per instance on the CPU, at the same point instances are grouped for upload, so neither adds
-        a GPU upload and an all-plain frame issues the same depth draws in the same order as before. The dissolve
-        variant does add a depth-pass pipeline switch per contiguous fading span, which is why it is bound only for
-        the spans that carry a dissolve.
+      - `scene.DrawShadowOnly(handle, transform)` (issue #974) is the opposite of the opt-out: the instance writes
+        depth into the cascade atlas and never draws in the COLOUR pass, so it throws a shadow and is never seen.
+        Reach for it where a view hides geometry from the eye while the world still contains it. The first consumer
+        is a tile world's hidden roof (see the roof rule further down), which used to be filtered out before it
+        reached the scene at all, so the depth pass never saw it and the sun landed on the interior floor. It is a
+        colour-pass question rather than a depth-pass one, so the instance classifies into exactly the depth
+        pipeline it would have used while visible and nothing about the caster walk, the per-cascade cull or the
+        caster signature changes. Shadow-only instances are counted by `Scene3D.ShadowOnlyInstances`, never by
+        `DrawnInstances` or `CulledInstances`, because they were never main-pass candidates the camera could
+        reject, and they are not frustum-rejected before packing, because an offscreen caster still throws an
+        onscreen shadow. Shadow-only with `castsShadows: false` is a contradiction (an instance drawn in neither
+        pass) and throws. `PropRenderer.DrawShadowOnlyProps` is the multi-part prop emit for it, with the
+        multi-part `DrawProps` cull and transform and no fade band, LOD, blobs or tint.
+      - All three are decided per instance on the CPU, at the same point instances are grouped for upload, so none
+        adds a GPU upload and an all-plain frame issues the same depth draws in the same order as before. The
+        dissolve variant does add a depth-pass pipeline switch per contiguous fading span, which is why it is bound
+        only for the spans that carry a dissolve.
     - **Terrain casting: `scene.TerrainCastsShadows`** (default `false`, issue #280). Splat-terrain chunks are
       receive-only by default, which is the rule the pass shipped with: terrain self-shadowing is negligible on flat
       MMO ground with no overhangs, so only models, tile ground and characters write into the atlas. At that default
@@ -7862,6 +7876,14 @@ view.RoofMode = RoofVisibility.Interior;        // the default: only the buildin
 view.RoofMode = RoofVisibility.AlwaysHidden;    // the "roofs off" player setting, every roof on every plane
 view.RoofMode = RoofVisibility.AlwaysVisible;   // nothing is ever hidden, the map-authoring view
 ```
+
+**A hidden roof still CASTS** (issue #974). Hidden means withheld from the eye, not removed from the world: the
+roofs the rule takes off are queued through `ITileWorldScene.DrawShadowOnlyProps` instead of dropped, so they
+record depth for the key light and draw no colour, and the room under them stays shaded. Before this they never
+reached the scene at all and the sun landed on the interior floor of the building the player was standing in.
+`LastShadowOnlyProps` counts them, apart from `LastDrawnProps`, which stays the VISIBLE total. The same focus
+and `PropDrawRadius` cull both passes, so a roof too far away to draw is too far away to cast either, and
+silhouettes and target outlines are unchanged: a hidden roof still draws no hull.
 
 The fill is bounded at `TileWorldView.MaxInteriorTiles` (4096). A world that flags a whole region indoors by
 mistake would otherwise walk tens of thousands of tiles on the frame the observer steps into it, so the walk

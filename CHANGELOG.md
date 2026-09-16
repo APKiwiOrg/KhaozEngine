@@ -482,6 +482,37 @@ fragmenter, the sibling ground component, the per-viewer projection and the one-
   `docs/design/ITEM-INSTANCES-DESIGN-2026-09-15.md` and
   `docs/design/CONTENT-CATALOG-DESIGN-2026-09-15.md`, both written against the shared contracts in
   `docs/design/CONTENT-CONTRACTS-DESIGN-2026-09-14.md`.
+- **A hidden roof still casts, through a new SHADOW-ONLY instance policy**
+  ([#974](https://github.com/APKiwiOrg/KhaozEngine/issues/974)). `Scene3D.DrawShadowOnly(mesh, world)` queues an
+  instance that writes depth into the key light's cascade atlas and never draws in the colour pass, for geometry
+  a view hides from the eye while the world still contains it. It is the fourth caster policy, after the
+  per-instance opt-out, the dissolving caster and the inverted dissolve, and the first that is a COLOUR-pass
+  question: the instance classifies into the same depth pipeline it would have used while visible, so
+  `ShadowCastKind` gains no value and the caster walk, the per-cascade cull and the caster signature are
+  untouched. `SceneInstances.Instance` carries a `ShadowOnly` flag, queued through `SceneInstances.AddShadowOnly`,
+  CPU-side only like `CastsShadows`, so the uploaded instance bytes are identical and a frame that queues none of
+  them renders as before. Shadow-only with `castsShadows` false is a contradiction (an instance drawn in neither
+  pass) and the constructor throws for the pair.
+- `Scene3D.ShadowOnlyInstances` is a new per-frame stat beside `DrawnInstances` and `CulledInstances`, counting
+  the shadow-only slots of the last rendered frame. A shadow-only slot is charged to it and to neither of the
+  other two, because it was never a main-pass candidate the camera could reject, and it is withheld from the
+  colour pass on the frustum-culling path and the culling-off parity path alike. It is never early-rejected
+  before packing either, since the depth pass needs offscreen casters.
+- `PropRenderer.DrawShadowOnlyProps(scene, placements, parts, focus, drawRadius)` is the multi-part prop emit for
+  it: the same horizontal cull and the same placement transform as the multi-part `DrawProps`, with no fade band,
+  no LOD swap, no ground blobs and no tint, because none of them can change a shadow that is the only thing being
+  drawn. Returns the number of placements queued.
+- `ITileWorldScene.DrawShadowOnlyProps` is a new DEFAULT interface member returning 0, so a scene seam written
+  before this keeps compiling and simply casts nothing. It carries `DrawProps`'s read-during-the-call contract, so
+  a caller may hand over a scratch list it refills. `Scene3DTileWorldScene` implements it through the prop
+  renderer.
+- `TileWorldView.Draw` now queues the roofs `RoofVisibility` withholds through that seam instead of dropping them:
+  under `Interior` the roofs over the building the observer stands in, under `AlwaysHidden` every roof on the
+  plane, under `AlwaysVisible` none. Before this the filtered placements never reached the scene, so the depth
+  pass never saw them and the sun landed on the interior floor of the building the player was standing in.
+  `TileWorldView.LastShadowOnlyProps` is a new stat beside `LastDrawnProps`, which stays the VISIBLE total. The
+  outdoor fast path is unchanged and still hands the region's own roof list straight through with nothing copied
+  and no shadow-only draw. Silhouettes and target outlines are unchanged: a hidden roof still draws no hull.
 
 ## 18.50.0
 

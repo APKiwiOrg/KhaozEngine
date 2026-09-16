@@ -192,14 +192,27 @@ kind's registered visibility and a kind this process cannot classify may well be
 that wrote it. That is about a projection only: an unknown kind is still kept verbatim in storage and still
 survives a decode and rebuild untouched.
 
-**Both projections are a forward pass over the RETAINED RUNS of the input.** Fields are already ascending
-and each is length prefixed, so a filtered payload is a sequence of copies over contiguous ranges with no
-decode into values, no re-sort and no allocation beyond the destination span. The levels are deliberately
-not monotonic in the kind id (kinds 4, 5 and 6 are owner-only while 7 and 8 are public), so the run walk is
-the only correct shape, and that is the measurement behind declining to couple kind ids to visibility. The
-output is canonical and decodes, because what is left is still a subsequence of an ascending,
-duplicate-free, minimally encoded list. A destination as long as the payload always suffices, and a
-destination that is too short answers `-1` with nothing written rather than a truncated view.
+**Both projections are a forward pass over the RETAINED RUNS of the input, except at a field that carries a
+nested payload.** Fields are already ascending and each is length prefixed, so a filtered payload is a
+sequence of copies over contiguous ranges with no decode into values and no re-sort. The levels are
+deliberately not monotonic in the kind id (kinds 4, 5 and 6 are owner-only while 7 and 8 are public), so the
+run walk is the only correct shape, and that is the measurement behind declining to couple kind ids to
+visibility. The output is canonical and decodes, because what is left is still a subsequence of an
+ascending, duplicate-free, minimally encoded list. A destination as long as the payload always suffices, and
+a destination that is too short answers `-1` with nothing written rather than a truncated view.
+
+**A field whose registered shape nests is REBUILT rather than copied, because its own visibility says
+nothing about what is inside it.** Kind 132 is `Everyone`, so a projection that kept or dropped whole
+top-level fields shipped the gem in a socket exactly as stored, and a socketed gem's durability and bound-to
+reached every viewer including a passer-by reading a ground stack. Each socket entry's nested payload is
+projected through the same function at the same viewer level, and the entry's length varint, the entry run
+and the field's own length are recomputed innermost first. One level is the whole of it, because contracts
+9.5 allows no second, and the walk is derived from the registered shape rather than from kind 132, so a game
+kind that declares a nesting slot is projected at both levels too. The remainder does the complement one
+level down: a socket's frame is public, so it carries a copy of that frame only to position the owner-only
+fields inside, and a socket holding none of them leaves no frame behind. Nothing allocates beyond the
+destination span either way, and the walk runs twice, once to total what the viewer may see and once to
+write it, so a rebuilt field's length varint is known before a byte is written.
 
 The revealed mask is a `ulong` on every member here. Kind 128's mask is a varint and the shape walk reads a
 varint at the full 64 bits, so taking a `uint` would force a narrowing at some call site. Bits above

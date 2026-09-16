@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.Catalog;
 
 namespace KhaozEngine.ItemInstances;
 
@@ -124,13 +125,25 @@ public static class ItemInstanceVisibility
     /// The payload one viewer may see, written into <paramref name="destination"/>. Returns the bytes
     /// written, or <c>-1</c>.
     /// <para>
-    /// It is a FORWARD PASS over the retained runs of the input and nothing more. Fields are already
-    /// ascending and each is length prefixed, so a filtered payload is a sequence of copies over contiguous
-    /// ranges with no decode into values, no re-sort and no allocation beyond the destination. Spec 3.3
+    /// It is a FORWARD PASS over the retained runs of the input, except at a field that CARRIES a nested
+    /// payload. Fields are already ascending and each is length prefixed, so a filtered payload is a
+    /// sequence of copies over contiguous ranges with no decode into values and no re-sort. Spec 3.3
     /// declines contracts 11.2's optional coupling of kind ids to visibility for exactly this reason: the
     /// coupling would buy one copy instead of two or three, forever, in exchange for constraining every
     /// future kind assignment. The levels are deliberately NOT monotonic in the kind id (kinds 4, 5 and 6
     /// are owner-only while 7 and 8 are public), so the run walk is the only correct shape.
+    /// </para>
+    /// <para>
+    /// <b>A field whose registered shape nests is REBUILT rather than copied.</b> Kind 132 is
+    /// <see cref="PropertyVisibility.Everyone"/>, so copying it whole shipped the gem inside it exactly as
+    /// stored, and a socketed gem's kind 5 and kind 6 reached every viewer including a passer-by reading a
+    /// ground stack. Contracts 11.2 is an if and only if over the kind's own visibility and it does not stop
+    /// at the first level, so each nested payload is projected through this same function at the same viewer
+    /// level, and the socket entry's length varint, the entry run and the field's own length are recomputed
+    /// innermost first. One level is the whole of it, because contracts 9.5 allows no second. Nothing
+    /// allocates beyond the destination either way: the rebuild's working buffer is a
+    /// <c>stackalloc</c> capped at the payload cap, and the walk runs twice, once to total what the viewer
+    /// may see and once to write it, so a rebuilt field's length is known before a byte is written.
     /// </para>
     /// <para>
     /// The output is CANONICAL and decodes, because what is left is still a subsequence of an ascending,
@@ -174,6 +187,14 @@ public static class ItemInstanceVisibility
     /// withholds from the owner too.
     /// </para>
     /// <para>
+    /// <b>The complement runs one level down too.</b> A socket's FRAME is public, so the remainder carries a
+    /// copy of it only to position the owner-only fields of the gem inside, and a socket holding none of
+    /// them leaves no frame behind at all, which is what keeps a ground stack's remainder empty. A field the
+    /// public view drops whole is the other case: it owes the owner everything in it rather than a
+    /// difference, so its nested payloads are projected at <see cref="PropertyVisibility.OwnerOnly"/>
+    /// without complementing.
+    /// </para>
+    /// <para>
     /// <b>Spec 7.6 lists the owner remainder as a server-to-client message and names no package to build
     /// its bytes</b>, and spec 7.4 only says it rides a targeted game message. This is that choice made:
     /// the BYTES are the engine's, beside the projection they complement, and the MESSAGE KIND stays the
@@ -206,8 +227,9 @@ public static class ItemInstanceVisibility
 
     /// <summary>
     /// The one projection both public members are, which is why neither can drift from the other. It walks
-    /// the decoded field positions twice: once to keep what the viewer may see and total it, and once to
-    /// copy the contiguous runs that survived.
+    /// the payload twice: once to total what the viewer may see, and once to write it. The two passes are
+    /// what make a rebuilt field's own length varint knowable before anything is written, and they are why
+    /// a destination that is too short answers <c>-1</c> with nothing written at all.
     /// </summary>
     static int Project(
         InstancePropertyRegistry registry,
@@ -220,83 +242,338 @@ public static class ItemInstanceVisibility
     {
         ArgumentNullException.ThrowIfNull(registry);
 
+        var lens = new Lens(level, identified, revealedMask, complement, Depth: 0);
+        int needed = Walk(registry, payload, lens, default, measure: true);
+        if (needed < 0 || destination.Length < needed)
+        {
+            return -1;
+        }
+
+        return Walk(registry, payload, lens, destination, measure: false);
+    }
+
+    /// <summary>
+    /// One projection of one payload, answering the bytes written, or the bytes it WOULD write when
+    /// <paramref name="measure"/> is set, or <c>-1</c>.
+    /// <para>
+    /// A field the viewer keeps whole is copied as part of a contiguous run, which is what the fields being
+    /// ascending and length prefixed buys. A field that CARRIES a nested payload is rebuilt instead, because
+    /// its own visibility says nothing about what is inside it.
+    /// </para>
+    /// </summary>
+    static int Walk(
+        InstancePropertyRegistry registry,
+        ReadOnlySpan<byte> payload,
+        in Lens lens,
+        Span<byte> destination,
+        bool measure)
+    {
         Span<PayloadField> fields = stackalloc PayloadField[ItemInstancePayload.MaxFields];
         if (!ItemInstancePayload.TryDecode(registry, payload, fields, out int count, out _))
         {
             return -1;
         }
 
-        // Compact the kept fields over the front of the same span, so each kind is looked up ONCE and the
-        // run walk below reads only what survived.
-        int kept = 0;
-        int needed = 0;
-        for (int index = 0; index < count; index++)
-        {
-            PayloadField field = fields[index];
-            if (!Keep(registry, field.Kind, level, identified, revealedMask, complement))
-            {
-                continue;
-            }
-
-            fields[kept++] = field;
-            needed += field.FieldLength;
-        }
-
-        if (destination.Length < needed)
-        {
-            return -1;
-        }
+        // Where a rebuilt field's body is built before its length is known. A projected body is never
+        // longer than the body it projects, so the cap is the whole of what it can need.
+        Span<byte> rebuilt = stackalloc byte[ItemInstancePayload.MaxInstancePayloadBytes];
 
         int written = 0;
         int runStart = -1;
         int runEnd = -1;
-        for (int index = 0; index < kept; index++)
+        for (int index = 0; index < count; index++)
         {
             PayloadField field = fields[index];
+            KeptField kept = Classify(
+                registry,
+                field.Kind,
+                lens,
+                out InstancePropertyRegistration? registration,
+                out Lens inner);
 
-            // Fields are contiguous in the payload, so two kept fields are one run exactly when nothing
-            // was dropped between them.
-            if (runStart >= 0 && field.FieldStart != runEnd)
+            if (kept == KeptField.Dropped)
             {
-                written += Flush(payload, destination, written, ref runStart, ref runEnd);
+                continue;
             }
 
-            if (runStart < 0)
+            if (kept == KeptField.Copied)
             {
-                runStart = field.FieldStart;
+                // Fields are contiguous in the payload, so two copied fields are one run exactly when
+                // nothing was dropped or rebuilt between them.
+                if (runStart >= 0 && field.FieldStart != runEnd)
+                {
+                    written += Flush(payload, destination, written, measure, ref runStart, ref runEnd);
+                }
+
+                if (runStart < 0)
+                {
+                    runStart = field.FieldStart;
+                }
+
+                runEnd = field.BodyStart + field.BodyLength;
+                continue;
             }
 
-            runEnd = field.BodyStart + field.BodyLength;
+            int body = Rebuild(
+                registry,
+                registration!.Shape,
+                payload.Slice(field.BodyStart, field.BodyLength),
+                inner,
+                rebuilt,
+                out int nestedBytes);
+
+            if (body < 0)
+            {
+                return -1;
+            }
+
+            // The remainder carries a PUBLIC field's frame only to position the owner-only bytes inside
+            // it, so a socket holding none of them leaves no frame behind and a ground stack's remainder
+            // stays empty.
+            if (lens.Complement && inner.Complement && nestedBytes == 0)
+            {
+                continue;
+            }
+
+            written += Flush(payload, destination, written, measure, ref runStart, ref runEnd);
+            if (!measure)
+            {
+                int at = written;
+                at += ContentVarint.Write(destination[at..], field.Kind);
+                at += ContentVarint.Write(destination[at..], (uint)body);
+                rebuilt[..body].CopyTo(destination[at..]);
+            }
+
+            written += ContentVarint.Size(field.Kind) + ContentVarint.Size((uint)body) + body;
         }
 
-        return written + Flush(payload, destination, written, ref runStart, ref runEnd);
+        return written + Flush(payload, destination, written, measure, ref runStart, ref runEnd);
     }
 
     /// <summary>
-    /// Whether one field belongs in this projection, which is one
+    /// What one projection does with one field, which is one
     /// <see cref="CanSee(InstancePropertyRegistration, PropertyVisibility, bool, ulong)"/> and, for the
     /// remainder, two. Writing the complement as the two calls rather than as a shortcut on the registered
     /// level is what makes "there is one function" literally true here.
+    /// <para>
+    /// <paramref name="inner"/> is the lens the field's NESTED payloads are projected through. For the
+    /// public view it is this same viewer one level down. For the remainder it is the complement inside a
+    /// field the public view already carries, and the plain view inside a field the public view drops,
+    /// because a dropped field owes the owner everything in it rather than a difference.
+    /// </para>
     /// </summary>
-    static bool Keep(
+    static KeptField Classify(
         InstancePropertyRegistry registry,
         ushort kind,
-        PropertyVisibility level,
-        bool identified,
-        ulong revealedMask,
-        bool complement)
+        in Lens lens,
+        out InstancePropertyRegistration? registration,
+        out Lens inner)
     {
-        if (!registry.TryGet(kind, out InstancePropertyRegistration? registration))
+        inner = lens;
+        if (!registry.TryGet(kind, out registration)
+            || !CanSee(registration, lens.Level, lens.Identified, lens.RevealedMask))
+        {
+            return KeptField.Dropped;
+        }
+
+        // The one level limit of contracts 9.5, derived from the shape rather than from kind 132, so a game
+        // kind that declares a nesting slot is projected at both levels too.
+        bool nests = lens.Depth == 0 && registration.Shape.Nests;
+        inner = lens with { Depth = lens.Depth + 1 };
+
+        if (!lens.Complement)
+        {
+            return nests ? KeptField.Rebuilt : KeptField.Copied;
+        }
+
+        if (!CanSee(registration, PropertyVisibility.Everyone, lens.Identified, lens.RevealedMask))
+        {
+            inner = inner with { Complement = false };
+            return nests ? KeptField.Rebuilt : KeptField.Copied;
+        }
+
+        return nests ? KeptField.Rebuilt : KeptField.Dropped;
+    }
+
+    /// <summary>
+    /// Rebuilds one field's body against its registered shape, projecting each nested payload it carries.
+    /// Answers the bytes written into <paramref name="destination"/>, or <c>-1</c>.
+    /// <para>
+    /// <b>Innermost first, as the remap pass is.</b> A nested payload's projected bytes are final before the
+    /// varint declaring their length is written, and that length is final before the field length above it.
+    /// Nothing here patches a byte in place.
+    /// </para>
+    /// </summary>
+    /// <param name="registry">The property kinds this process knows.</param>
+    /// <param name="shape">The field's registered shape, which is what says where its nested payloads sit.</param>
+    /// <param name="body">The field's bytes, without its kind and length prefix.</param>
+    /// <param name="inner">The lens the nested payloads are projected through.</param>
+    /// <param name="destination">Where the rebuilt body goes.</param>
+    /// <param name="nestedBytes">How many bytes the nested payloads contributed, which is what says whether
+    /// a remainder's copy of a public field's frame is carrying anything at all.</param>
+    static int Rebuild(
+        InstancePropertyRegistry registry,
+        InstanceFieldShape shape,
+        ReadOnlySpan<byte> body,
+        in Lens inner,
+        Span<byte> destination,
+        out int nestedBytes)
+    {
+        nestedBytes = 0;
+        int offset = 0;
+        int written = 0;
+        if (!RebuildRun(registry, shape.Header.Span, body, ref offset, inner, destination, ref written, ref nestedBytes))
+        {
+            return -1;
+        }
+
+        if (shape.Count != InstanceCountWidth.None)
+        {
+            // The repeat count does not change, so its own bytes are copied rather than re-encoded and the
+            // width the shape declares cannot be narrowed by accident.
+            int countStart = offset;
+            if (!ReadCount(shape.Count, body, ref offset, out uint count)
+                || !Copy(body[countStart..offset], destination, ref written))
+            {
+                return -1;
+            }
+
+            ReadOnlySpan<InstanceSlotKind> entry = shape.Entry.Span;
+            for (uint repeat = 0; repeat < count; repeat++)
+            {
+                if (!RebuildRun(registry, entry, body, ref offset, inner, destination, ref written, ref nestedBytes))
+                {
+                    return -1;
+                }
+            }
+        }
+
+        // Bytes left over after the shape is spent are a field that does not match its own shape, which the
+        // decode already refused. Answering -1 is the defensive half.
+        return offset == body.Length ? written : -1;
+    }
+
+    /// <summary>
+    /// Copies one run of slots, projecting a nested payload as it meets one. Every other slot's bytes go
+    /// across verbatim, because a projection changes what a payload CARRIES and never what a value says.
+    /// </summary>
+    static bool RebuildRun(
+        InstancePropertyRegistry registry,
+        ReadOnlySpan<InstanceSlotKind> slots,
+        ReadOnlySpan<byte> body,
+        ref int offset,
+        in Lens inner,
+        Span<byte> destination,
+        ref int written,
+        ref int nestedBytes)
+    {
+        foreach (InstanceSlotKind slot in slots)
+        {
+            int start = offset;
+            switch (slot)
+            {
+                case InstanceSlotKind.Varint:
+                    if (!ContentVarint.TryReadUInt64(body, ref offset, out _, out _))
+                    {
+                        return false;
+                    }
+
+                    break;
+
+                case InstanceSlotKind.Byte:
+                    if (offset >= body.Length)
+                    {
+                        return false;
+                    }
+
+                    offset++;
+                    break;
+
+                case InstanceSlotKind.Fixed2:
+                    if (body.Length - offset < 2)
+                    {
+                        return false;
+                    }
+
+                    offset += 2;
+                    break;
+
+                case InstanceSlotKind.NestedPayload:
+                    if (!ContentVarint.TryRead(body, ref offset, out uint length, out _)
+                        || length > (uint)(body.Length - offset))
+                    {
+                        return false;
+                    }
+
+                    ReadOnlySpan<byte> nested = body.Slice(offset, (int)length);
+                    offset += (int)length;
+
+                    int projected = Walk(registry, nested, inner, default, measure: true);
+                    if (projected < 0
+                        || destination.Length - written < ContentVarint.Size((uint)projected) + projected)
+                    {
+                        return false;
+                    }
+
+                    written += ContentVarint.Write(destination[written..], (uint)projected);
+                    if (Walk(registry, nested, inner, destination[written..], measure: false) != projected)
+                    {
+                        return false;
+                    }
+
+                    written += projected;
+                    nestedBytes += projected;
+                    continue;
+
+                default:
+                    return false;
+            }
+
+            if (!Copy(body[start..offset], destination, ref written))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>Copies one slot's bytes across unchanged, answering false when they do not fit.</summary>
+    static bool Copy(ReadOnlySpan<byte> slot, Span<byte> destination, ref int written)
+    {
+        if (destination.Length - written < slot.Length)
         {
             return false;
         }
 
-        if (!CanSee(registration, level, identified, revealedMask))
-        {
-            return false;
-        }
+        slot.CopyTo(destination[written..]);
+        written += slot.Length;
+        return true;
+    }
 
-        return !complement || !CanSee(registration, PropertyVisibility.Everyone, identified, revealedMask);
+    /// <summary>Reads a field's repeat count at the width its shape declares, which is a BYTE for an affix
+    /// list and a VARINT for a socket list.</summary>
+    static bool ReadCount(InstanceCountWidth width, ReadOnlySpan<byte> body, ref int offset, out uint count)
+    {
+        switch (width)
+        {
+            case InstanceCountWidth.Byte:
+                if (offset >= body.Length)
+                {
+                    count = 0;
+                    return false;
+                }
+
+                count = body[offset++];
+                return true;
+
+            case InstanceCountWidth.Varint:
+                return ContentVarint.TryRead(body, ref offset, out count, out _);
+
+            default:
+                count = 0;
+                return false;
+        }
     }
 
     /// <summary>Copies one retained run and resets it, answering how many bytes it moved.</summary>
@@ -304,6 +581,7 @@ public static class ItemInstanceVisibility
         ReadOnlySpan<byte> payload,
         Span<byte> destination,
         int written,
+        bool measure,
         ref int runStart,
         ref int runEnd)
     {
@@ -313,9 +591,43 @@ public static class ItemInstanceVisibility
         }
 
         int length = runEnd - runStart;
-        payload.Slice(runStart, length).CopyTo(destination[written..]);
+        if (!measure)
+        {
+            payload.Slice(runStart, length).CopyTo(destination[written..]);
+        }
+
         runStart = -1;
         runEnd = -1;
         return length;
     }
+
+    /// <summary>What a projection does with one field.</summary>
+    enum KeptField : byte
+    {
+        /// <summary>The viewer sees nothing of it.</summary>
+        Dropped = 0,
+
+        /// <summary>Its bytes go across verbatim, as part of a contiguous run.</summary>
+        Copied = 1,
+
+        /// <summary>It carries a nested payload, so it is rebuilt around the projection of each one.</summary>
+        Rebuilt = 2,
+    }
+
+    /// <summary>
+    /// The viewer, the half and the depth one walk reads through, so the four travel together rather than
+    /// as four parameters that a nested call could pass in the wrong order.
+    /// </summary>
+    /// <param name="Level">The viewer's clearance for this item.</param>
+    /// <param name="Identified">Whether the item is identified.</param>
+    /// <param name="RevealedMask">Kind 128's revealed mask.</param>
+    /// <param name="Complement">Whether this is the owner remainder rather than the view itself.</param>
+    /// <param name="Depth">0 for the payload itself, 1 for a payload inside a nesting slot. Contracts 9.5
+    /// allows no third level, and the decoder has already refused one.</param>
+    readonly record struct Lens(
+        PropertyVisibility Level,
+        bool Identified,
+        ulong RevealedMask,
+        bool Complement,
+        int Depth);
 }

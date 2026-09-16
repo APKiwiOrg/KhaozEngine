@@ -14341,8 +14341,15 @@ else
 }
 ```
 
+Both projections descend into a SOCKET. Kind 132 is visible to everyone, so a filter that kept or dropped
+whole top-level fields shipped the gem inside a socket exactly as stored, and that gem's own owner-only
+fields reached every viewer. A field whose registered shape nests is rebuilt around the projection of each
+nested payload instead, which covers a game kind that declares a nesting slot too.
+
 `OwnerRemainder` beside `PublicView` is its exact COMPLEMENT at `Everyone`, which is what a targeted
-owner-only message carries. The bytes are the engine's, beside the projection they complement, and the
+owner-only message carries. The complement runs one level down as well: a socket's frame is public, so the
+remainder carries a copy of it only to position the owner-only fields of the gem inside, and a socket
+holding none of them leaves no frame behind. The bytes are the engine's, beside the projection they complement, and the
 message KIND stays the game's, because `TileProtocol` reserves the `ushort` kind space to the game and the
 engine only caps the frame. Two things fail CLOSED and both are deliberate: a viewer level of `ServerOnly`
 sees nothing, and an UNREGISTERED kind is visible to nobody, because a kind this process cannot classify may

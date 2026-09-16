@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.Catalog;
 using KhaozEngine.ItemInstances;
 
 namespace KhaozEngine.Tests.ItemInstances.Visibility;
@@ -75,7 +76,7 @@ static class VisibilityFixtures
             .AddScalar(InstancePropertyKind.UniqueTemplate, 77)
             .AddByte(InstancePropertyKind.Rarity, 3)
             .AddAffixes(InstancePropertyKind.Affixes, new[] { new InstanceAffix(91, 1, 13107) })
-            .AddSockets(new[] { new InstanceSocket(7, 833, 4201, NestedPayload) })
+            .AddSockets(new[] { new InstanceSocket(7, 833, 4201, SocketedGem) })
             .AddAffixes(InstancePropertyKind.Enchantments, new[] { new InstanceAffix(260, 2, 65535) })
             .AddRareName(7, new[] { 17, 34 })
             .AddScalar(ServerSecret, 5)
@@ -117,9 +118,63 @@ static class VisibilityFixtures
         return kinds;
     }
 
-    /// <summary>The socket's contained item, which is the one level of nesting the format allows.</summary>
-    static byte[] NestedPayload { get; } =
-        new ItemInstancePayloadBuilder().AddScalar(InstancePropertyKind.ItemLevel, 55).ToArray();
+    /// <summary>
+    /// The socket's contained item, which is the one level of nesting the format allows. It carries two
+    /// OWNER-ONLY kinds beside its public one, because kind 132 is <c>Everyone</c> and a projection that
+    /// kept or dropped whole top-level fields shipped whatever a kept field held inside it.
+    /// </summary>
+    internal static byte[] SocketedGem { get; } =
+        new ItemInstancePayloadBuilder()
+            .AddScalar(InstancePropertyKind.ItemLevel, 55)
+            .AddScalars(InstancePropertyKind.Durability, 90, 100)
+            .AddScalar(InstancePropertyKind.BoundTo, 990_001)
+            .ToArray();
+
+    /// <summary>
+    /// The nested payload of a projection's ONE socket entry, which is where a projection that only kept
+    /// or dropped whole top-level fields leaks. It walks kind 132's body directly rather than through a
+    /// helper the projection also uses, so a fact reading it cannot be satisfied by the same mistake.
+    /// </summary>
+    internal static byte[] SocketNested(InstancePropertyRegistry registry, ReadOnlySpan<byte> view)
+    {
+        Span<PayloadField> fields = stackalloc PayloadField[ItemInstancePayload.MaxFields];
+        if (!ItemInstancePayload.TryDecode(registry, view, fields, out int count, out _))
+        {
+            return Array.Empty<byte>();
+        }
+
+        for (int index = 0; index < count; index++)
+        {
+            if (fields[index].Kind != InstancePropertyKind.Sockets)
+            {
+                continue;
+            }
+
+            ReadOnlySpan<byte> body = view.Slice(fields[index].BodyStart, fields[index].BodyLength);
+            int offset = 0;
+
+            // The entry count, then the socket type, the contained definition and the contained instance
+            // id, then the length prefixed payload of the item in the socket.
+            if (!ContentVarint.TryRead(body, ref offset, out uint entries, out _) || entries == 0)
+            {
+                return Array.Empty<byte>();
+            }
+
+            for (int slot = 0; slot < 3; slot++)
+            {
+                if (!ContentVarint.TryReadUInt64(body, ref offset, out _, out _))
+                {
+                    return Array.Empty<byte>();
+                }
+            }
+
+            return ContentVarint.TryRead(body, ref offset, out uint nested, out _)
+                ? body.Slice(offset, (int)nested).ToArray()
+                : Array.Empty<byte>();
+        }
+
+        return Array.Empty<byte>();
+    }
 
     static void Scalar(
         InstancePropertyRegistry registry,

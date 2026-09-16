@@ -270,6 +270,78 @@ public class ItemInstanceVisibilityTests
     }
 
     [Fact]
+    public void A_socketed_gems_owner_only_fields_do_not_reach_a_public_viewer()
+    {
+        // Kind 132 is Everyone and its entry ends in a nested payload, so a projection that kept or
+        // dropped whole top-level fields kept the socket VERBATIM and shipped the gem's kind 5 and kind 6
+        // inside it, to every viewer including a passer-by reading a ground stack. Contracts 11.2 is an if
+        // and only if over the kind's own visibility and it does not stop at the first level.
+        InstancePropertyRegistry registry = VisibilityFixtures.Registry();
+        byte[] payload = VisibilityFixtures.EveryKind(identified: true, revealedMask: 0);
+
+        var view = new byte[payload.Length];
+        int written = ItemInstanceVisibility.PublicView(
+            registry, payload, PropertyVisibility.Everyone, identified: true, revealedMask: 0, view);
+
+        ReadOnlySpan<byte> kept = view.AsSpan(0, written);
+        Assert.True(VisibilityFixtures.Carries(registry, kept, InstancePropertyKind.Sockets));
+
+        byte[] nested = VisibilityFixtures.SocketNested(registry, kept);
+        Assert.True(VisibilityFixtures.Carries(registry, nested, InstancePropertyKind.ItemLevel));
+        Assert.False(VisibilityFixtures.Carries(registry, nested, InstancePropertyKind.Durability));
+        Assert.False(VisibilityFixtures.Carries(registry, nested, InstancePropertyKind.BoundTo));
+
+        // The same claim over the bytes, at any depth, which is what the leak looked like: the gem's whole
+        // durability field and its whole bound-to field, verbatim, inside a field the viewer may see.
+        Assert.Equal(-1, kept.IndexOf(new byte[] { 0x05, 0x02, 0x5A, 0x64 }));
+        Assert.Equal(-1, kept.IndexOf(new byte[] { 0x06, 0x03, 0xB1, 0xB6, 0x3C }));
+
+        // A rebuilt field is still a field, so the view still decodes and is still canonical.
+        Assert.Null(ItemInstancePayload.Validate(registry, kept));
+    }
+
+    [Fact]
+    public void OwnerRemainder_carries_a_socketed_gems_owner_only_fields()
+    {
+        // The mirror of the fact above, and the reason the two are fixed together: while the public view
+        // leaked the gem's owner-only bytes, a remainder that dropped kind 132 whole was self-consistent
+        // with it. The owner sees the gem's durability through the remainder or not at all.
+        InstancePropertyRegistry registry = VisibilityFixtures.Registry();
+        byte[] payload = VisibilityFixtures.EveryKind(identified: true, revealedMask: 0);
+
+        var remainder = new byte[payload.Length];
+        int written = ItemInstanceVisibility.OwnerRemainder(
+            registry, payload, identified: true, revealedMask: 0, remainder);
+
+        ReadOnlySpan<byte> kept = remainder.AsSpan(0, written);
+        Assert.Null(ItemInstancePayload.Validate(registry, kept));
+
+        byte[] nested = VisibilityFixtures.SocketNested(registry, kept);
+        Assert.True(VisibilityFixtures.Carries(registry, nested, InstancePropertyKind.Durability));
+        Assert.True(VisibilityFixtures.Carries(registry, nested, InstancePropertyKind.BoundTo));
+
+        // And nothing the public view already carried, one level down as at the top.
+        Assert.False(VisibilityFixtures.Carries(registry, nested, InstancePropertyKind.ItemLevel));
+    }
+
+    [Fact]
+    public void A_socket_holding_nothing_owner_only_is_absent_from_the_remainder_entirely()
+    {
+        // The remainder carries a socket's FRAME only to position the owner-only bytes inside it, so a
+        // socket with none leaves no frame behind. That is what keeps a ground stack's remainder empty.
+        InstancePropertyRegistry registry = InstancePropertyRegistry.CreateV1();
+        byte[] golden = Golden("spec-3-8-poe-greatsword.bin");
+
+        var remainder = new byte[golden.Length];
+        int written = ItemInstanceVisibility.OwnerRemainder(
+            registry, golden, identified: true, revealedMask: 0, remainder);
+
+        ReadOnlySpan<byte> kept = remainder.AsSpan(0, written);
+        Assert.True(VisibilityFixtures.Carries(registry, kept, InstancePropertyKind.Durability));
+        Assert.False(VisibilityFixtures.Carries(registry, kept, InstancePropertyKind.Sockets));
+    }
+
+    [Fact]
     public void PublicView_output_is_still_canonical_and_still_decodes()
     {
         InstancePropertyRegistry registry = VisibilityFixtures.Registry();
@@ -399,19 +471,45 @@ public class ItemInstanceVisibilityTests
         int ownerBytes = ItemInstanceVisibility.OwnerRemainder(
             registry, payload, identified: true, revealedMask: 0, remainder);
 
-        // The one field neither carries is the ServerOnly one, which never leaves the server at all.
-        int serverOnly = ServerOnlyFieldBytes(registry, payload);
-        Assert.Equal(payload.Length, publicBytes + ownerBytes + serverOnly);
+        ReadOnlySpan<byte> publicView = view.AsSpan(0, publicBytes);
+        ReadOnlySpan<byte> ownerView = remainder.AsSpan(0, ownerBytes);
 
         // The two are disjoint and their union is what the owner sees, which is what makes them a
         // complement rather than two overlapping views that happen to add up.
         foreach (ushort kind in VisibilityFixtures.RegisteredKinds())
         {
-            bool inPublic = VisibilityFixtures.Carries(registry, view.AsSpan(0, publicBytes), kind);
-            bool inRemainder = VisibilityFixtures.Carries(registry, remainder.AsSpan(0, ownerBytes), kind);
+            bool inPublic = VisibilityFixtures.Carries(registry, publicView, kind);
+            bool inRemainder = VisibilityFixtures.Carries(registry, ownerView, kind);
+
+            // Kind 132 is the ONE kind both carry, and it is not an overlap: a socket's FRAME is public
+            // and the gem sitting in it holds owner-only fields, so the split runs one level down. The
+            // remainder's copy of the frame is what positions those fields, and it is the only byte cost
+            // of fixing the leak.
+            if (kind == InstancePropertyKind.Sockets)
+            {
+                Assert.True(inPublic && inRemainder);
+                continue;
+            }
+
             Assert.False(inPublic && inRemainder);
             Assert.Equal(
                 ItemInstanceVisibility.CanSee(registry, kind, PropertyVisibility.OwnerOnly, identified: true, 0),
+                inPublic || inRemainder);
+        }
+
+        // The same rule over the socketed gem's own fields, which is where the leak and its mirror both
+        // lived. A gem field reaches the owner exactly when the gem carries it and the owner may see it,
+        // and it arrives through exactly one of the two projections.
+        byte[] publicNested = VisibilityFixtures.SocketNested(registry, publicView);
+        byte[] ownerNested = VisibilityFixtures.SocketNested(registry, ownerView);
+        foreach (ushort kind in VisibilityFixtures.RegisteredKinds())
+        {
+            bool inPublic = VisibilityFixtures.Carries(registry, publicNested, kind);
+            bool inRemainder = VisibilityFixtures.Carries(registry, ownerNested, kind);
+            Assert.False(inPublic && inRemainder);
+            Assert.Equal(
+                VisibilityFixtures.Carries(registry, VisibilityFixtures.SocketedGem, kind)
+                && ItemInstanceVisibility.CanSee(registry, kind, PropertyVisibility.OwnerOnly, identified: true, 0),
                 inPublic || inRemainder);
         }
     }
@@ -537,25 +635,6 @@ public class ItemInstanceVisibilityTests
         Span<byte> view = stackalloc byte[payload.Length];
         return ItemInstanceVisibility.PublicView(
             registry, payload, PropertyVisibility.Everyone, identified: true, revealedMask: 0, view);
-    }
-
-    /// <summary>How many bytes of a payload belong to kinds no projection ever carries.</summary>
-    static int ServerOnlyFieldBytes(InstancePropertyRegistry registry, ReadOnlySpan<byte> payload)
-    {
-        Span<PayloadField> fields = stackalloc PayloadField[ItemInstancePayload.MaxFields];
-        Assert.True(ItemInstancePayload.TryDecode(registry, payload, fields, out int count, out _));
-
-        int bytes = 0;
-        for (int index = 0; index < count; index++)
-        {
-            if (registry.TryGet(fields[index].Kind, out InstancePropertyRegistration? registration)
-                && registration.Visibility == PropertyVisibility.ServerOnly)
-            {
-                bytes += fields[index].FieldLength;
-            }
-        }
-
-        return bytes;
     }
 
     static byte[] Golden(string name)

@@ -531,8 +531,34 @@ admin.RegisterAction("set-time", payload =>
 A handler runs on the caller's thread (an HTTP request thread for `KhaozEngine.Server.Admin`), so it must never
 touch simulation state directly: enqueue mutations to the host thread and return published snapshots for reads,
 exactly like `IAdminControllable` above. `AdminActionResult` is `Ok(payload = null)` for a query (serialized as
-JSON when a payload is given), `Accepted()` for an enqueued mutation, or `BadRequest(error)` to reject the
-request.
+JSON when a payload is given), `Accepted()` for an enqueued mutation, `BadRequest(error)` to reject the
+request with a message, `BadRequest(payload)` to reject it with a whole document, or `Conflict(payload)` when
+the state the request named has moved.
+
+**A rejection carries either a message or a document, never both.** The string `BadRequest` is the one every
+existing caller uses and its body shape is fixed, so the object overload sits beside it rather than replacing
+it: `Error` carries the message and `Payload` is null, or `Payload` carries the document and `Error` is null.
+The document overloads exist for the two answers one sentence cannot carry. A validator accumulates every
+finding rather than stopping at the first, so its rejection is a finding LIST, and an optimistic caller whose
+expected version has been taken needs to be told both numbers rather than told no. Both object factories
+refuse a null payload, because an empty body is exactly the answer they exist to stop returning.
+
+```csharp
+admin.RegisterAction("catalog-publish", payload =>
+{
+    int expected = payload?.GetProperty("expectedBaseVersion").GetInt32() ?? 0;
+    if (expected != store.ActiveVersion)
+    {
+        return AdminActionResult.Conflict(new
+        {
+            error = "base version moved",
+            expectedBaseVersion = expected,
+            actualBaseVersion = store.ActiveVersion,
+        });
+    }
+    ...
+});
+```
 
 For the opt-in Kestrel HTTPS endpoint that exposes `ServerAdmin` (including registered actions, under
 `GET /actions`, `GET /actions/{name}`, `POST /actions/{name}`) as a REST API, see

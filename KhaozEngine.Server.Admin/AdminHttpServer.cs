@@ -166,7 +166,16 @@ public sealed class AdminHttpServer : IAsyncDisposable
         {
             AdminActionStatus.Ok => result.Payload is null ? Results.Ok() : Results.Json(result.Payload),
             AdminActionStatus.Accepted => Results.Accepted(),
-            AdminActionStatus.BadRequest => Results.BadRequest(new { error = result.Error }),
+            // A rejection carries EITHER a message or a document. The string one keeps its exact body, { "error": ... },
+            // because every existing caller builds one; the document one is returned whole, which is what a finding
+            // list needs (a validator accumulates every finding, and one sentence can only carry the first).
+            AdminActionStatus.BadRequest => result.Payload is null
+                ? Results.BadRequest(new { error = result.Error })
+                : Results.Json(result.Payload, statusCode: StatusCodes.Status400BadRequest),
+            // The state the request named has moved, and the payload says what was found instead. Without this arm an
+            // optimistic caller's answer was a 500 with no body, which reads as a server fault rather than as a race
+            // the caller is meant to resolve by re-reading and retrying.
+            AdminActionStatus.Conflict => Results.Json(result.Payload, statusCode: StatusCodes.Status409Conflict),
             _ => Results.StatusCode(StatusCodes.Status500InternalServerError),
         };
     }

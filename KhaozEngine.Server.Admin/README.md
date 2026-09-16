@@ -46,6 +46,27 @@ Set any of them to `null` to leave Kestrel's own value. A non-positive value thr
 constructor rather than later inside Kestrel's start. None of this replaces the two real mitigations: keep the
 endpoint on loopback or behind a tunnel, and keep the token long and random.
 
+## What an action's result maps to
+
+| `AdminActionResult` | Status | Body |
+|---|---|---|
+| `Ok()` | 200 | none |
+| `Ok(payload)` | 200 | the payload as JSON |
+| `Accepted()` | 202 | none |
+| `BadRequest(error)` | 400 | `{ "error": "<message>" }` |
+| `BadRequest(payload)` | 400 | the payload as JSON |
+| `Conflict(payload)` | 409 | the payload as JSON |
+
+The string `BadRequest` keeps its exact body, one `error` property and nothing else, so every caller written
+against it is unaffected by the object overload beside it. The two object arms are what a handler uses when one
+sentence cannot carry the answer: a finding list from a validator that accumulates every finding, or the pair of
+version numbers an optimistic caller needs after losing a race. A 409 without them was a 500 with no body, which
+reads as a server fault rather than as a race the caller resolves by re-reading and retrying.
+
+An unknown action name is a 404 from the action lookup. The 501 arms belong to the four built-in routes
+(`/accounts`, `/bans`, `/ban`, `/unban`), each gated on a `ServerAdmin` capability flag, so no registered action
+ever returns one.
+
 Routes (under `/admin`, all require `Authorization: Bearer <token>`): `GET /online`, `POST /teleport`, `POST /kick`,
 `POST /broadcast`, `GET /accounts?prefix=`, `GET /bans`, `POST /ban`, `POST /unban`, `GET /actions` (lists registered
 action names), `GET /actions/{name}` (dispatches with a null payload), `POST /actions/{name}` (dispatches with an

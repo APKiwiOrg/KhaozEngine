@@ -267,17 +267,22 @@ public sealed class ItemsBenchmarkTests
         foreach (PropertyInfo property in typeof(ItemsBenchmarkResult).GetProperties(BindingFlags.Public | BindingFlags.Instance))
         {
             object? value = property.GetValue(result);
+
+            // A GetTotalMemory delta is a DIFFERENCE either side of a measurement, so a collection landing
+            // inside one makes it legitimately negative. It goes red on whichever run the GC chose, which is
+            // the flakiness this whole file exists to avoid, so the sign rule does not apply to it.
+            bool signed = property.Name.Contains("TotalMemoryDelta", StringComparison.Ordinal);
             switch (value)
             {
                 case double number:
                     Assert.True(double.IsFinite(number), $"{property.Name} is {number}.");
-                    Assert.True(number >= 0, $"{property.Name} is {number}.");
+                    Assert.True(signed || number >= 0, $"{property.Name} is {number}.");
                     break;
                 case int number:
-                    Assert.True(number >= 0, $"{property.Name} is {number}.");
+                    Assert.True(signed || number >= 0, $"{property.Name} is {number}.");
                     break;
                 case long number:
-                    Assert.True(number >= 0, $"{property.Name} is {number}.");
+                    Assert.True(signed || number >= 0, $"{property.Name} is {number}.");
                     break;
                 case string text:
                     Assert.False(string.IsNullOrEmpty(text), $"{property.Name} is empty.");

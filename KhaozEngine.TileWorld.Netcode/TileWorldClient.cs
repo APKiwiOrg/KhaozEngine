@@ -160,8 +160,10 @@ public sealed partial class TileWorldClient : IDisposable
     /// an <see cref="TileMoveState.InteractTarget"/> it has finished walking to, the yaw points at that target's
     /// <see cref="ITileTargets.TryGetAimPoint"/> rather than along <see cref="TileMoveState.Facing"/>, which for a
     /// target bigger than one tile is the difference between looking at a cow and looking at the column of it you
-    /// are touching. A one-tile target is unchanged to the bit: its aim point is its tile, so the yaw IS the
-    /// cardinal. The target is resolved through the same newest-snapshot read the reach rules make. A mid-step body,
+    /// are touching. A one-tile body BESIDE a one-tile target is unchanged to the bit: the aim point is the target's
+    /// tile, so the yaw IS the cardinal. The same body holding a lock on a target it is not adjacent to (a step the
+    /// simulator refused, for one tick) is aimed at that target instead of drawn along its facing. The target is
+    /// resolved through the same newest-snapshot read the reach rules make. A mid-step body,
     /// a body with no lock, and a target that stopped resolving all keep the tile facing.</para>
     /// <para>The aimed yaw is taken from the body's FOOTPRINT CENTRE rather than from the smoothed position drawn
     /// above it, so a decaying reconciliation offset slides the body without wobbling the way it looks.</para>

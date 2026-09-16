@@ -10238,8 +10238,10 @@ TilePose me = client.LocalPose;
 Draw(playerMesh, me.Position, me.Yaw);
 ```
 
-- **A one-tile fight is bit-identical to before.** A one-tile target's aim point is its own tile, so the yaw IS
-  `TilePresenter.Yaw(facing)`, exactly, with no tolerance needed. Only a footprint bigger than one tile moves it.
+- **A one-tile body beside a one-tile target is bit-identical to before.** The target's aim point is its own tile,
+  so the yaw IS `TilePresenter.Yaw(facing)`, exactly, with no tolerance needed. A footprint bigger than one tile
+  moves it, and so does a locked body that is not adjacent to its target for a tick (a refused step), which is aimed
+  rather than drawn along its facing.
 - **A mid-step body keeps its step facing**, and so does a body with no lock, and a body whose target stopped
   resolving. The aim is for a body at rest, which is what a fight is between swings.
 - **Nominate an aim tile** by overriding `ITileTargets.TryGetAimPoint(target, out Vector2 tilePlanar, out int

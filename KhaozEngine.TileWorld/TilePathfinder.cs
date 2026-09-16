@@ -42,7 +42,7 @@ public static class TilePathfinder
     /// <summary>The default half width of the search window, in tiles.</summary>
     public const int DefaultMaxRadius = 64;
 
-    /// <summary>The largest half width <see cref="FindPath"/> accepts. The window's scratch arrays are
+    /// <summary>The largest half width <see cref="FindPath"/> and <see cref="FindPathToAny"/> accept. The window's scratch arrays are
     /// <c>(2r + 1)^2</c> entries EACH, so this cap is already about 335 MB of allocation on one call. A radius
     /// above it is far likelier to be a unit mix-up than a search anyone meant to run.</summary>
     public const int MaxSearchRadius = 4096;
@@ -289,7 +289,8 @@ public static class TilePathfinder
     }
 }
 
-/// <summary>Reusable working memory for <see cref="TilePathfinder.FindPath"/>: the two <c>(2r + 1)^2</c> window
+/// <summary>Reusable working memory for <see cref="TilePathfinder.FindPath"/> and
+/// <see cref="TilePathfinder.FindPathToAny"/>: the two <c>(2r + 1)^2</c> window
 /// arrays and the BFS queue, kept across calls so a caller that paths on a tick stops allocating about 83 KB per
 /// search at the default radius. Hand the same instance to every call on one thread.
 /// <para>NOT thread safe, and deliberately so: it is one mutable buffer set. A server gives each worker its own,

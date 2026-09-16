@@ -535,7 +535,8 @@ always keep the constructor map.
   stack collapses whole: bodies are resolved best first and each takes every tile it covers or none of them, so a
   body that loses one tile of its square is hidden rather than drawing the part nobody else claimed, and
   `TryGetDrawn` answers a large body on every tile it covers. A MOVING body keeps the answer it has today under
-  each policy. Every overload without a size reads every body as one tile.
+  each policy. Every overload without a size reads every body as one tile. Step progress is CLAMPED when it is
+  finite, so a negative value is the start of a step and only a value that is not a number reads as 1.
 - **`TileClientMessageHandler`** - the delegate an opaque server message arrives on.
 
 **Persistence**

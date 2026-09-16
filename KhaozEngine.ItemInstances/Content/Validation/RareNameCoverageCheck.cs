@@ -29,18 +29,6 @@ namespace KhaozEngine.ItemInstances;
 /// </summary>
 internal static class RareNameCoverageCheck
 {
-    const int RarityNameWordPositions = 5;
-
-    const int RarityWeightRarityRuleId = 0;
-    const int RarityWeightTagId = 1;
-    const int RarityWeightWeight = 2;
-
-    const int WordPosition = 1;
-
-    const int WordWeightWordId = 0;
-    const int WordWeightTagId = 1;
-    const int WordWeightWeight = 2;
-
     internal static void Run(IContentSnapshot candidate, ICollection<ContentFinding> findings)
     {
         Dictionary<int, long> wordPosition = CheckWordsAndWeightParents(candidate, findings);
@@ -54,22 +42,22 @@ internal static class RareNameCoverageCheck
         var covered = new HashSet<(long Tag, long Position)>();
         foreach (ContentRow weight in LiveRows(candidate, InstanceContentTypeIds.RareNameWordWeightTypeId))
         {
-            long share = Number(weight, WordWeightWeight) ?? 0;
-            long wordId = Number(weight, WordWeightWordId) ?? 0;
+            long share = Number(weight, RareNameWordWeightContentType.WeightIndex) ?? 0;
+            long wordId = Number(weight, RareNameWordWeightContentType.RareNameWordIdIndex) ?? 0;
             if (share <= 0 || wordId is <= 0 or > int.MaxValue
                 || !wordPosition.TryGetValue((int)wordId, out long position))
             {
                 continue;
             }
 
-            _ = covered.Add((Number(weight, WordWeightTagId) ?? 0, position));
+            _ = covered.Add((Number(weight, RareNameWordWeightContentType.TagIdIndex) ?? 0, position));
         }
 
         Dictionary<int, List<long>> reachableTags = ReachableTags(candidate);
 
         foreach (ContentRow rarity in rarities)
         {
-            long positions = Number(rarity, RarityNameWordPositions) ?? 0;
+            long positions = Number(rarity, RarityRuleContentType.NameWordPositionsIndex) ?? 0;
             if (positions <= 0 || !reachableTags.TryGetValue(rarity.Id, out List<long>? tags))
             {
                 continue;
@@ -110,7 +98,7 @@ internal static class RareNameCoverageCheck
                 findings,
                 row,
                 InstanceContentTypeIds.RareNameWordWeightTypeKey,
-                WordWeightWordId,
+                RareNameWordWeightContentType.RareNameWordIdIndex,
                 RareNameWordWeightContentType.RareNameWordIdField,
                 InstanceContentTypeIds.RareNameWordTypeId,
                 InstanceContentTypeIds.RareNameWordTypeKey);
@@ -120,7 +108,7 @@ internal static class RareNameCoverageCheck
         var positions = new Dictionary<int, long>(words.Count);
         foreach (ContentRow word in words)
         {
-            long position = Number(word, WordPosition) ?? 0;
+            long position = Number(word, RareNameWordContentType.PositionIndex) ?? 0;
             positions[word.Id] = position;
             if (position is < RareNameWordContentType.MinPosition or > RareNameWordContentType.MaxPosition)
             {
@@ -148,8 +136,8 @@ internal static class RareNameCoverageCheck
         var reachable = new Dictionary<int, List<long>>();
         foreach (ContentRow row in LiveRows(candidate, InstanceContentTypeIds.RarityWeightTypeId))
         {
-            long weight = Number(row, RarityWeightWeight) ?? 0;
-            long rarityId = Number(row, RarityWeightRarityRuleId) ?? 0;
+            long weight = Number(row, RarityWeightContentType.WeightIndex) ?? 0;
+            long rarityId = Number(row, RarityWeightContentType.RarityRuleIdIndex) ?? 0;
             if (weight <= 0 || rarityId is <= 0 or > int.MaxValue)
             {
                 continue;
@@ -161,7 +149,7 @@ internal static class RareNameCoverageCheck
                 reachable.Add((int)rarityId, tags);
             }
 
-            long tagId = Number(row, RarityWeightTagId) ?? 0;
+            long tagId = Number(row, RarityWeightContentType.TagIdIndex) ?? 0;
             if (!tags.Contains(tagId))
             {
                 tags.Add(tagId);

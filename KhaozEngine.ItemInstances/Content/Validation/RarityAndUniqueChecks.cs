@@ -16,32 +16,13 @@ namespace KhaozEngine.ItemInstances;
 /// one question.
 /// </para>
 /// <para>
-/// The field indices below are the positions each type's <c>CreateSchema</c> declares.
+/// <b>Every field index here is the TYPE's own constant</b>, never a number repeated in this file, because
+/// a private copy of one silently points this sweep at a neighbouring value of the same kind the moment a
+/// field is inserted into a schema.
 /// </para>
 /// </summary>
 internal static class RarityAndUniqueChecks
 {
-    const int RarityMinAffixes = 1;
-    const int RarityMaxAffixes = 2;
-    const int RarityMaxPrefixes = 3;
-    const int RarityMaxSuffixes = 4;
-    const int RarityUpgradeFrom = 6;
-
-    const int RarityWeightRarityRuleId = 0;
-    const int RarityKindLimitRarityRuleId = 0;
-    const int RarityKindLimitModKind = 1;
-
-    const int UniqueLineTemplateId = 0;
-    const int UniqueLineModId = 2;
-    const int UniqueLineTierOrdinal = 3;
-
-    const int UniqueSocketTemplateId = 0;
-    const int UniqueSocketSort = 1;
-
-    const int ModTierModId = 0;
-    const int ModTierOrdinal = 1;
-    const int ModTierWeightModTierId = 0;
-
     internal static void Run(
         IContentSnapshot candidate,
         IContentSnapshot? previous,
@@ -71,7 +52,7 @@ internal static class RarityAndUniqueChecks
                 findings,
                 row,
                 InstanceContentTypeIds.RarityWeightTypeKey,
-                RarityWeightRarityRuleId,
+                RarityWeightContentType.RarityRuleIdIndex,
                 RarityWeightContentType.RarityRuleIdField,
                 InstanceContentTypeIds.RarityRuleTypeId,
                 InstanceContentTypeIds.RarityRuleTypeKey);
@@ -85,13 +66,13 @@ internal static class RarityAndUniqueChecks
                 findings,
                 row,
                 InstanceContentTypeIds.RarityKindLimitTypeKey,
-                RarityKindLimitRarityRuleId,
+                RarityKindLimitContentType.RarityRuleIdIndex,
                 RarityKindLimitContentType.RarityRuleIdField,
                 InstanceContentTypeIds.RarityRuleTypeId,
                 InstanceContentTypeIds.RarityRuleTypeKey);
 
-            long rarityId = Number(row, RarityKindLimitRarityRuleId) ?? 0;
-            long modKind = Number(row, RarityKindLimitModKind) ?? 0;
+            long rarityId = Number(row, RarityKindLimitContentType.RarityRuleIdIndex) ?? 0;
+            long modKind = Number(row, RarityKindLimitContentType.ModKindIndex) ?? 0;
             if (claimed.TryGetValue((rarityId, modKind), out int firstId))
             {
                 findings.Add(new ContentFinding(
@@ -118,10 +99,10 @@ internal static class RarityAndUniqueChecks
 
         foreach (ContentRow row in rows)
         {
-            upgradeFrom[row.Id] = Number(row, RarityUpgradeFrom) ?? 0;
+            upgradeFrom[row.Id] = Number(row, RarityRuleContentType.UpgradeFromIndex) ?? 0;
 
-            long min = Number(row, RarityMinAffixes) ?? 0;
-            long max = Number(row, RarityMaxAffixes) ?? 0;
+            long min = Number(row, RarityRuleContentType.MinAffixesIndex) ?? 0;
+            long max = Number(row, RarityRuleContentType.MaxAffixesIndex) ?? 0;
             if (min > max)
             {
                 findings.Add(new ContentFinding(
@@ -131,8 +112,8 @@ internal static class RarityAndUniqueChecks
                     InstanceContentFindings.RarityAffixCounts(row.Id, min, max)));
             }
 
-            long prefixes = Number(row, RarityMaxPrefixes) ?? 0;
-            long suffixes = Number(row, RarityMaxSuffixes) ?? 0;
+            long prefixes = Number(row, RarityRuleContentType.MaxPrefixesIndex) ?? 0;
+            long suffixes = Number(row, RarityRuleContentType.MaxSuffixesIndex) ?? 0;
             if (prefixes + suffixes < max)
             {
                 findings.Add(new ContentFinding(
@@ -238,13 +219,13 @@ internal static class RarityAndUniqueChecks
                 findings,
                 row,
                 InstanceContentTypeIds.UniqueSocketTypeKey,
-                UniqueSocketTemplateId,
+                UniqueSocketContentType.UniqueTemplateIdIndex,
                 UniqueSocketContentType.UniqueTemplateIdField,
                 InstanceContentTypeIds.UniqueTemplateTypeId,
                 InstanceContentTypeIds.UniqueTemplateTypeKey);
 
-            long templateId = Number(row, UniqueSocketTemplateId) ?? 0;
-            long sort = Number(row, UniqueSocketSort) ?? 0;
+            long templateId = Number(row, UniqueSocketContentType.UniqueTemplateIdIndex) ?? 0;
+            long sort = Number(row, UniqueSocketContentType.SortIndex) ?? 0;
             if (socketIndexTaken.TryGetValue((templateId, sort), out int firstId))
             {
                 findings.Add(new ContentFinding(
@@ -268,8 +249,8 @@ internal static class RarityAndUniqueChecks
         var modOfTier = new Dictionary<int, long>();
         foreach (ContentRow tier in LiveRows(candidate, InstanceContentTypeIds.ModTierTypeId))
         {
-            long modId = Number(tier, ModTierModId) ?? 0;
-            long ordinal = Number(tier, ModTierOrdinal) ?? 0;
+            long modId = Number(tier, ModTierContentType.ModIdIndex) ?? 0;
+            long ordinal = Number(tier, ModTierContentType.OrdinalIndex) ?? 0;
             modOfTier[tier.Id] = modId;
             _ = tierOf.TryAdd((modId, ordinal), tier.Id);
         }
@@ -277,7 +258,7 @@ internal static class RarityAndUniqueChecks
         var weightedMod = new Dictionary<long, int>();
         foreach (ContentRow weight in LiveRows(candidate, InstanceContentTypeIds.ModTierWeightTypeId))
         {
-            long tierId = Number(weight, ModTierWeightModTierId) ?? 0;
+            long tierId = Number(weight, ModTierWeightContentType.ModTierIdIndex) ?? 0;
             if (tierId is > 0 and <= int.MaxValue && modOfTier.TryGetValue((int)tierId, out long modId))
             {
                 _ = weightedMod.TryAdd(modId, weight.Id);
@@ -291,12 +272,12 @@ internal static class RarityAndUniqueChecks
                 findings,
                 line,
                 InstanceContentTypeIds.UniqueLineTypeKey,
-                UniqueLineTemplateId,
+                UniqueLineContentType.UniqueTemplateIdIndex,
                 UniqueLineContentType.UniqueTemplateIdField,
                 InstanceContentTypeIds.UniqueTemplateTypeId,
                 InstanceContentTypeIds.UniqueTemplateTypeKey);
 
-            long lineMod = Number(line, UniqueLineModId) ?? 0;
+            long lineMod = Number(line, UniqueLineContentType.ModIdIndex) ?? 0;
             if (!IsLive(candidate, InstanceContentTypeIds.ModTypeId, lineMod))
             {
                 findings.Add(new ContentFinding(
@@ -307,7 +288,7 @@ internal static class RarityAndUniqueChecks
                 continue;
             }
 
-            long ordinal = Number(line, UniqueLineTierOrdinal) ?? 0;
+            long ordinal = Number(line, UniqueLineContentType.TierOrdinalIndex) ?? 0;
             if (!tierOf.ContainsKey((lineMod, ordinal)))
             {
                 findings.Add(new ContentFinding(

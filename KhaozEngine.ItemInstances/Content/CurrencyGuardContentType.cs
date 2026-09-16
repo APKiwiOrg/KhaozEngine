@@ -50,20 +50,38 @@ public static class CurrencyGuardContentType
     /// <summary>The currency this guard belongs to.</summary>
     public const string CraftingCurrencyIdField = "crafting_currency_id";
 
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int CraftingCurrencyIdIndex = 0;
+
     /// <summary>The step this guard runs before, or absent for a guard on the target.</summary>
     public const string CurrencyStepIdField = "currency_step_id";
+
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int CurrencyStepIdIndex = 1;
 
     /// <summary>The evaluation order within this guard's own set.</summary>
     public const string SortField = "sort";
 
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int SortIndex = 2;
+
     /// <summary>One of spec 10.3's fifteen guard kinds.</summary>
     public const string GuardKindField = "guard_kind";
+
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int GuardKindIndex = 3;
 
     /// <summary>The guard's first parameter, 0 when unused.</summary>
     public const string ParameterAField = "parameter_a";
 
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int ParameterAIndex = 4;
+
     /// <summary>The guard's second parameter, 0 when unused.</summary>
     public const string ParameterBField = "parameter_b";
+
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int ParameterBIndex = 5;
 
     /// <summary>The ordered field list, spec 10.4's third table exactly.</summary>
     public static ContentFieldSchema CreateSchema() => new(

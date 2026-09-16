@@ -45,11 +45,20 @@ public static class RarityKindLimitContentType
     /// <summary>The rarity this limit belongs to.</summary>
     public const string RarityRuleIdField = "rarity_rule_id";
 
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int RarityRuleIdIndex = 0;
+
     /// <summary>The mod kind the limit counts, above prefix and suffix.</summary>
     public const string ModKindField = "mod_kind";
 
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int ModKindIndex = 1;
+
     /// <summary>How many affixes of that kind the rarity permits.</summary>
     public const string MaxCountField = "max_count";
+
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int MaxCountIndex = 2;
 
     /// <summary>The ordered field list, spec 8.5's second table exactly.</summary>
     public static ContentFieldSchema CreateSchema() => new(

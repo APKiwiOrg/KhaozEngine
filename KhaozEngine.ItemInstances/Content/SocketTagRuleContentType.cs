@@ -47,14 +47,26 @@ public static class SocketTagRuleContentType
     /// <summary>The socket type this rule belongs to.</summary>
     public const string SocketTypeIdField = "socket_type_id";
 
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int SocketTypeIdIndex = 0;
+
     /// <summary>The evaluation order within this row's own rule kind.</summary>
     public const string SortField = "sort";
+
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int SortIndex = 1;
 
     /// <summary>The tag the rule is about.</summary>
     public const string TagIdField = "tag_id";
 
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int TagIdIndex = 2;
+
     /// <summary>Whether the rule accepts or rejects, one of the two rule kinds.</summary>
     public const string RuleField = "rule";
+
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int RuleIndex = 3;
 
     /// <summary>The ordered field list, spec 8.7's second table exactly.</summary>
     public static ContentFieldSchema CreateSchema() => new(

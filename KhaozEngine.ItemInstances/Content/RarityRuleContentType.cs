@@ -80,23 +80,44 @@ public static class RarityRuleContentType
     /// </summary>
     public const string DisplayFormatField = "display_format";
 
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int DisplayFormatIndex = 0;
+
     /// <summary>The fewest affixes the rarity rolls, across every kind.</summary>
     public const string MinAffixesField = "min_affixes";
+
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int MinAffixesIndex = 1;
 
     /// <summary>The most affixes the rarity rolls, across every kind.</summary>
     public const string MaxAffixesField = "max_affixes";
 
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int MaxAffixesIndex = 2;
+
     /// <summary>The most affixes of <c>mod</c> kind 1 the rarity permits.</summary>
     public const string MaxPrefixesField = "max_prefixes";
+
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int MaxPrefixesIndex = 3;
 
     /// <summary>The most affixes of <c>mod</c> kind 2 the rarity permits.</summary>
     public const string MaxSuffixesField = "max_suffixes";
 
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int MaxSuffixesIndex = 4;
+
     /// <summary>How many name words the rarity rolls, or 0 to keep the base name.</summary>
     public const string NameWordPositionsField = "name_word_positions";
 
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int NameWordPositionsIndex = 5;
+
     /// <summary>The single rarity this one upgrades from, or absent when it is a root of the forest.</summary>
     public const string UpgradeFromField = "upgrade_from";
+
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int UpgradeFromIndex = 6;
 
     /// <summary>The ordered field list, spec 8.5's first table exactly.</summary>
     public static ContentFieldSchema CreateSchema() => new(

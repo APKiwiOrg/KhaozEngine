@@ -17,28 +17,13 @@ namespace KhaozEngine.ItemInstances;
 /// <see cref="ModCandidateTables.Build"/> refuses either one that reached a boot without a publish.
 /// </para>
 /// <para>
-/// The field indices below are the positions each type's <c>CreateSchema</c> declares, which is what the
-/// positional row walk already means by a field. They are named rather than inlined so a schema change
-/// lands in one place per type.
+/// <b>Every field index here is the TYPE's own constant</b>, never a number repeated in this file. A
+/// positional row walk reads a field by its index, so a private copy of one silently points this sweep at a
+/// neighbouring value of the same kind the moment a field is inserted into a schema.
 /// </para>
 /// </summary>
 internal static class ModFamilyChecks
 {
-    const int ModGroupMaxPerItem = 0;
-
-    const int ModTierModId = 0;
-    const int ModTierOrdinal = 1;
-    const int ModTierItemLevelMin = 2;
-    const int ModTierItemLevelMax = 3;
-
-    const int ModTierWeightModTierId = 0;
-
-    const int StatLineModTierId = 0;
-    const int StatLineStatId = 2;
-    const int StatLineCombine = 3;
-    const int StatLineMin = 4;
-    const int StatLineMax = 5;
-
     internal static void Run(
         IContentSnapshot candidate,
         IContentSnapshot? previous,
@@ -62,7 +47,7 @@ internal static class ModFamilyChecks
     {
         foreach (ContentRow row in LiveRows(candidate, InstanceContentTypeIds.ModGroupTypeId))
         {
-            long maxPerItem = Number(row, ModGroupMaxPerItem) ?? 0;
+            long maxPerItem = Number(row, ModGroupContentType.MaxPerItemIndex) ?? 0;
             if (maxPerItem >= 1)
             {
                 continue;
@@ -91,13 +76,13 @@ internal static class ModFamilyChecks
                 findings,
                 row,
                 InstanceContentTypeIds.ModTierTypeKey,
-                ModTierModId,
+                ModTierContentType.ModIdIndex,
                 ModTierContentType.ModIdField,
                 InstanceContentTypeIds.ModTypeId,
                 InstanceContentTypeIds.ModTypeKey);
 
-            long min = Number(row, ModTierItemLevelMin) ?? 0;
-            long max = Number(row, ModTierItemLevelMax) ?? 0;
+            long min = Number(row, ModTierContentType.ItemLevelMinIndex) ?? 0;
+            long max = Number(row, ModTierContentType.ItemLevelMaxIndex) ?? 0;
             if (min > max)
             {
                 findings.Add(new ContentFinding(
@@ -107,7 +92,7 @@ internal static class ModFamilyChecks
                     InstanceContentFindings.TierLevelsInverted(row.Id, min, max)));
             }
 
-            long ordinal = Number(row, ModTierOrdinal) ?? 0;
+            long ordinal = Number(row, ModTierContentType.OrdinalIndex) ?? 0;
             if (ordinal is < ModTierContentType.MinOrdinal or > ModTierContentType.MaxOrdinal)
             {
                 findings.Add(new ContentFinding(
@@ -130,7 +115,7 @@ internal static class ModFamilyChecks
                 continue;
             }
 
-            long modId = Number(row, ModTierModId) ?? 0;
+            long modId = Number(row, ModTierContentType.ModIdIndex) ?? 0;
             if (taken.TryGetValue((modId, ordinal), out int firstId))
             {
                 findings.Add(new ContentFinding(
@@ -180,7 +165,7 @@ internal static class ModFamilyChecks
                 findings,
                 row,
                 InstanceContentTypeIds.ModTierWeightTypeKey,
-                ModTierWeightModTierId,
+                ModTierWeightContentType.ModTierIdIndex,
                 ModTierWeightContentType.ModTierIdField,
                 InstanceContentTypeIds.ModTierTypeId,
                 InstanceContentTypeIds.ModTierTypeKey);
@@ -200,12 +185,12 @@ internal static class ModFamilyChecks
                 findings,
                 row,
                 InstanceContentTypeIds.StatLineTypeKey,
-                StatLineModTierId,
+                StatLineContentType.ModTierIdIndex,
                 StatLineContentType.ModTierIdField,
                 InstanceContentTypeIds.ModTierTypeId,
                 InstanceContentTypeIds.ModTierTypeKey);
 
-            long statId = Number(row, StatLineStatId) ?? 0;
+            long statId = Number(row, StatLineContentType.StatIdIndex) ?? 0;
             if (!IsLive(candidate, EngineContentTypes.StatTypeId, statId))
             {
                 findings.Add(new ContentFinding(
@@ -215,7 +200,7 @@ internal static class ModFamilyChecks
                     InstanceContentFindings.StatLineStat(row.Id, statId)));
             }
 
-            long combine = Number(row, StatLineCombine) ?? 0;
+            long combine = Number(row, StatLineContentType.CombineIndex) ?? 0;
             if (combine is not (StatLineContentType.CombineFlat
                 or StatLineContentType.CombineIncreased
                 or StatLineContentType.CombineMore))
@@ -227,8 +212,8 @@ internal static class ModFamilyChecks
                     InstanceContentFindings.StatLineCombine(row.Id, combine)));
             }
 
-            long min = Number(row, StatLineMin) ?? 0;
-            long max = Number(row, StatLineMax) ?? 0;
+            long min = Number(row, StatLineContentType.MinIndex) ?? 0;
+            long max = Number(row, StatLineContentType.MaxIndex) ?? 0;
             if (min > max)
             {
                 findings.Add(new ContentFinding(
@@ -263,8 +248,8 @@ internal static class ModFamilyChecks
 
         foreach (ContentRow before in LiveRows(previous, InstanceContentTypeIds.ModTierTypeId))
         {
-            long previousMod = Number(before, ModTierModId) ?? 0;
-            long previousOrdinal = Number(before, ModTierOrdinal) ?? 0;
+            long previousMod = Number(before, ModTierContentType.ModIdIndex) ?? 0;
+            long previousOrdinal = Number(before, ModTierContentType.OrdinalIndex) ?? 0;
 
             if (!candidate.TryGetRow(Type(InstanceContentTypeIds.ModTierTypeId), before.Id, out ContentRow? now)
                 || now.IsRetired)
@@ -282,8 +267,8 @@ internal static class ModFamilyChecks
                 continue;
             }
 
-            long modId = Number(now, ModTierModId) ?? 0;
-            long ordinal = Number(now, ModTierOrdinal) ?? 0;
+            long modId = Number(now, ModTierContentType.ModIdIndex) ?? 0;
+            long ordinal = Number(now, ModTierContentType.OrdinalIndex) ?? 0;
             if (modId == previousMod && ordinal == previousOrdinal)
             {
                 continue;

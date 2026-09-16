@@ -40,11 +40,20 @@ public static class UniqueSocketContentType
     /// <summary>The unique template this socket belongs to.</summary>
     public const string UniqueTemplateIdField = "unique_template_id";
 
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int UniqueTemplateIdIndex = 0;
+
     /// <summary>The socket's index in kind 132, authored order.</summary>
     public const string SortField = "sort";
 
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int SortIndex = 1;
+
     /// <summary>The socket type restricting what the socket accepts, or absent for no restriction.</summary>
     public const string SocketTypeIdField = "socket_type_id";
+
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int SocketTypeIdIndex = 2;
 
     /// <summary>The ordered field list, spec 8.6's third table exactly.</summary>
     public static ContentFieldSchema CreateSchema() => new(

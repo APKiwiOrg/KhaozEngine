@@ -44,17 +44,29 @@ public static class UniqueTemplateContentType
     /// <summary>The item base the unique is built on.</summary>
     public const string BaseIdField = "base_id";
 
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int BaseIdIndex = 0;
+
     /// <summary>
     /// The name that REPLACES the base name, a marker whose derived key is
     /// <c>unique_template.&lt;content key&gt;.name</c>.
     /// </summary>
     public const string NameField = "name";
 
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int NameIndex = 1;
+
     /// <summary>The inclusive item level floor the unique is reachable at.</summary>
     public const string ItemLevelMinField = "item_level_min";
 
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int ItemLevelMinIndex = 2;
+
     /// <summary>The unique's share of the weighted draw, which a client never downloads.</summary>
     public const string WeightField = "weight";
+
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int WeightIndex = 3;
 
     /// <summary>The ordered field list, spec 8.6's first table exactly.</summary>
     public static ContentFieldSchema CreateSchema() => new(

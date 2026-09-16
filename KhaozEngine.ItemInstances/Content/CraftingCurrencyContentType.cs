@@ -50,17 +50,32 @@ public static class CraftingCurrencyContentType
     /// <summary>The currency's displayed name, derived as <c>crafting_currency.&lt;key&gt;.name</c>.</summary>
     public const string NameField = "name";
 
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int NameIndex = 0;
+
     /// <summary>The currency's displayed description, derived the same way.</summary>
     public const string DescriptionField = "description";
+
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int DescriptionIndex = 1;
 
     /// <summary>The item base spent to run the currency, or absent for a free operation.</summary>
     public const string ConsumesDefinitionIdField = "consumes_definition_id";
 
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int ConsumesDefinitionIdIndex = 2;
+
     /// <summary>How many of that item one run spends.</summary>
     public const string ConsumesCountField = "consumes_count";
 
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int ConsumesCountIndex = 3;
+
     /// <summary>The declared ceiling on this currency's step count, at most <see cref="MaxSteps"/>.</summary>
     public const string MaxStepsField = "max_steps";
+
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int MaxStepsIndex = 4;
 
     /// <summary>The ordered field list, spec 10.4's first table exactly.</summary>
     public static ContentFieldSchema CreateSchema() => new(

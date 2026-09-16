@@ -54,14 +54,26 @@ public static class ModContentType
     /// <summary>Prefix, suffix, or a game kind above them.</summary>
     public const string KindField = "kind";
 
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int KindIndex = 0;
+
     /// <summary>The exclusivity group this mod belongs to, or absent when it belongs to none.</summary>
     public const string GroupIdField = "group_id";
+
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int GroupIdIndex = 1;
 
     /// <summary>Whether the mod is kept for stored items only and never rolls again.</summary>
     public const string LegacyField = "legacy";
 
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int LegacyIndex = 2;
+
     /// <summary>The derived display line, <c>mod.&lt;content key&gt;.line</c>, carrying no bytes.</summary>
     public const string LineField = "line";
+
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int LineIndex = 3;
 
     /// <summary>The ordered field list, spec 8.2's table exactly.</summary>
     public static ContentFieldSchema CreateSchema() => new(

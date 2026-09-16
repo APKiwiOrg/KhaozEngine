@@ -8,28 +8,14 @@ namespace KhaozEngine.ItemInstances;
 /// The BUILD half of the candidate tables: three row sets in, the bands, the buckets and the group index
 /// out. It is a scan of indexed rows rather than a decode of a blob per mod, which is what keeps a build of
 /// the owner's 2,000 mods inside budget 9's 500 ms.
+/// <para>
+/// <b>Every field index here is the TYPE's own constant</b>, never a number repeated in this file, because
+/// a private copy of one silently points this scan at a neighbouring value of the same kind the moment a
+/// field is inserted into a schema.
+/// </para>
 /// </summary>
 public sealed partial class ModCandidateTables
 {
-    /// <summary>The <c>mod</c> schema positions, named so a schema change lands in one place.</summary>
-    const int ModKindField = 0;
-    const int ModGroupIdField = 1;
-    const int ModLegacyField = 2;
-
-    /// <summary>The <c>mod_tier</c> schema positions.</summary>
-    const int TierModIdField = 0;
-    const int TierOrdinalField = 1;
-    const int TierItemLevelMinField = 2;
-    const int TierItemLevelMaxField = 3;
-
-    /// <summary>The <c>mod_tier_weight</c> schema positions.</summary>
-    const int WeightTierIdField = 0;
-    const int WeightTagIdField = 1;
-    const int WeightValueField = 2;
-
-    /// <summary>The <c>mod_group</c> schema position.</summary>
-    const int GroupMaxPerItemField = 0;
-
     /// <summary>
     /// Builds the whole table set from one loaded version. The input is three row sets for the tables
     /// themselves (<c>mod</c> for its kind, group and legacy flag, <c>mod_tier</c> for its ordinal and its
@@ -87,9 +73,9 @@ public sealed partial class ModCandidateTables
             // A kind is an int key for a bucket column and the engine fixes only two of its meanings, so
             // there is no ceiling to enforce and nothing is dropped for carrying a kind above 2. That is the
             // whole point of indexing a bucket by the kind's POSITION.
-            int kind = Clamp(InstanceContentChecks.Number(row, ModKindField) ?? 0);
-            bool isLegacy = (InstanceContentChecks.Number(row, ModLegacyField) ?? 0) != 0;
-            int group = isLegacy ? 0 : Clamp(InstanceContentChecks.Number(row, ModGroupIdField) ?? 0);
+            int kind = Clamp(InstanceContentChecks.Number(row, ModContentType.KindIndex) ?? 0);
+            bool isLegacy = (InstanceContentChecks.Number(row, ModContentType.LegacyIndex) ?? 0) != 0;
+            int group = isLegacy ? 0 : Clamp(InstanceContentChecks.Number(row, ModContentType.GroupIdIndex) ?? 0);
 
             ids.Add(row.Id);
             kinds.Add(kind);
@@ -121,7 +107,7 @@ public sealed partial class ModCandidateTables
             }
 
             ids.Add(row.Id);
-            counts.Add(Clamp(InstanceContentChecks.Number(row, GroupMaxPerItemField) ?? 0));
+            counts.Add(Clamp(InstanceContentChecks.Number(row, ModGroupContentType.MaxPerItemIndex) ?? 0));
         }
 
         return new GroupRows(ids.ToArray(), counts.ToArray());
@@ -147,8 +133,8 @@ public sealed partial class ModCandidateTables
                 continue;
             }
 
-            long tierId = InstanceContentChecks.Number(row, WeightTierIdField) ?? 0;
-            long tagId = InstanceContentChecks.Number(row, WeightTagIdField) ?? 0;
+            long tierId = InstanceContentChecks.Number(row, ModTierWeightContentType.ModTierIdIndex) ?? 0;
+            long tagId = InstanceContentChecks.Number(row, ModTierWeightContentType.TagIdIndex) ?? 0;
             if (tierId is < 1 or > int.MaxValue || tagId is < 1 or > int.MaxValue)
             {
                 continue;
@@ -156,7 +142,7 @@ public sealed partial class ModCandidateTables
 
             // A weight at or below zero never spawns, which is the same answer the load-time clamp of a
             // negative one gives, so neither reaches a table and neither needs a rule at the draw.
-            long weight = InstanceContentChecks.Number(row, WeightValueField) ?? 0;
+            long weight = InstanceContentChecks.Number(row, ModTierWeightContentType.WeightIndex) ?? 0;
             if (weight <= 0)
             {
                 continue;
@@ -222,15 +208,15 @@ public sealed partial class ModCandidateTables
                 continue;
             }
 
-            long ordinal = InstanceContentChecks.Number(row, TierOrdinalField) ?? 0;
+            long ordinal = InstanceContentChecks.Number(row, ModTierContentType.OrdinalIndex) ?? 0;
             if (ordinal > MaxTierOrdinal)
             {
                 throw new InvalidOperationException(FormattableString.Invariant(
                     $"{InstanceContentFindings.TierOrdinal}: mod tier {row.Id} carries ordinal {ordinal}, over the packed key's ceiling of {MaxTierOrdinal}. The candidate table packs a tier ordinal into {TierBits} bits beside the mod id, so an ordinal above the ceiling would alias onto another tier of the same mod."));
             }
 
-            long low = InstanceContentChecks.Number(row, TierItemLevelMinField) ?? 0;
-            long high = InstanceContentChecks.Number(row, TierItemLevelMaxField) ?? 0;
+            long low = InstanceContentChecks.Number(row, ModTierContentType.ItemLevelMinIndex) ?? 0;
+            long high = InstanceContentChecks.Number(row, ModTierContentType.ItemLevelMaxIndex) ?? 0;
             if (low > high || low < ModTierContentType.MinItemLevel || high > ModTierContentType.MaxItemLevel)
             {
                 // An empty gate, or one outside the legal item level range, is live at no item level at all,
@@ -248,7 +234,7 @@ public sealed partial class ModCandidateTables
                 continue;
             }
 
-            long modId = InstanceContentChecks.Number(row, TierModIdField) ?? 0;
+            long modId = InstanceContentChecks.Number(row, ModTierContentType.ModIdIndex) ?? 0;
             int modSlot = modId is < 1 or > int.MaxValue
                 ? -1
                 : GenerationTagSignature.IndexOf(mods.Ids, (int)modId);

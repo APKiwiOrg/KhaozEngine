@@ -39,11 +39,20 @@ public static class RareNameWordWeightContentType
     /// <summary>The word this weight belongs to.</summary>
     public const string RareNameWordIdField = "rare_name_word_id";
 
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int RareNameWordIdIndex = 0;
+
     /// <summary>The tag the weight is keyed by.</summary>
     public const string TagIdField = "tag_id";
 
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int TagIdIndex = 1;
+
     /// <summary>The word's share of the weighted draw for a base carrying that tag.</summary>
     public const string WeightField = "weight";
+
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int WeightIndex = 2;
 
     /// <summary>The ordered field list, spec 8.8's second table exactly.</summary>
     public static ContentFieldSchema CreateSchema() => new(

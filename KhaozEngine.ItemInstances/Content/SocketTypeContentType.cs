@@ -56,8 +56,14 @@ public static class SocketTypeContentType
     /// </summary>
     public const string DisplayFormatField = "display_format";
 
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int DisplayFormatIndex = 0;
+
     /// <summary>The per socket nested payload budget, or <see cref="FullPayloadBudget"/> for the cap.</summary>
     public const string MaxNestedBytesField = "max_nested_bytes";
+
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int MaxNestedBytesIndex = 1;
 
     /// <summary>The ordered field list, spec 8.7's first table exactly.</summary>
     public static ContentFieldSchema CreateSchema() => new(

@@ -32,6 +32,9 @@ public static class ModGroupContentType
     /// <summary>How many mods of this group one item may carry at once, at least 1.</summary>
     public const string MaxPerItemField = "max_per_item";
 
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int MaxPerItemIndex = 0;
+
     /// <summary>The ordered field list, spec 8.2's prose exactly.</summary>
     public static ContentFieldSchema CreateSchema() => new(
     [

@@ -49,8 +49,14 @@ public static class RareNameWordContentType
     /// <summary>The word itself, derived as <c>rare_name_word.&lt;content key&gt;.text</c>, carrying no bytes.</summary>
     public const string TextField = "text";
 
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int TextIndex = 0;
+
     /// <summary>Which slot in the name the word may fill.</summary>
     public const string PositionField = "position";
+
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int PositionIndex = 1;
 
     /// <summary>The ordered field list, spec 8.8's first table exactly.</summary>
     public static ContentFieldSchema CreateSchema() => new(

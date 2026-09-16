@@ -70,26 +70,50 @@ public static class StatLineContentType
     /// <summary>The tier this line belongs to.</summary>
     public const string ModTierIdField = "mod_tier_id";
 
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int ModTierIdIndex = 0;
+
     /// <summary>The authored order, which is what makes "the tier's second line" a stable phrase.</summary>
     public const string SortField = "sort";
+
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int SortIndex = 1;
 
     /// <summary>The stat this line grants.</summary>
     public const string StatIdField = "stat_id";
 
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int StatIdIndex = 2;
+
     /// <summary>How the line folds, one of the three combine kinds.</summary>
     public const string CombineField = "combine";
+
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int CombineIndex = 3;
 
     /// <summary>The inclusive range floor, in the units <see cref="CombineField"/> decides.</summary>
     public const string MinField = "min";
 
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int MinIndex = 4;
+
     /// <summary>The inclusive range ceiling, in the units <see cref="CombineField"/> decides.</summary>
     public const string MaxField = "max";
+
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int MaxIndex = 5;
 
     /// <summary>The tags the line applies to, in authored order. Empty means the stat itself.</summary>
     public const string TagScopeField = "tag_scope";
 
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int TagScopeIndex = 6;
+
     /// <summary>The condition the line is gated on, or absent for unconditional.</summary>
     public const string ConditionIdField = "condition_id";
+
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int ConditionIdIndex = 7;
 
     /// <summary>The ordered field list, spec 8.4's table exactly.</summary>
     public static ContentFieldSchema CreateSchema() => new(

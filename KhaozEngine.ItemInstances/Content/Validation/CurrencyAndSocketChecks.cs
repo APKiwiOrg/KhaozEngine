@@ -10,23 +10,13 @@ namespace KhaozEngine.ItemInstances;
 /// steps, the currency's step set against its declared ceiling, and the socket type whose accept and reject
 /// tags disagree.
 /// <para>
-/// The field indices below are the positions each type's <c>CreateSchema</c> declares.
+/// <b>Every field index here is the TYPE's own constant</b>, never a number repeated in this file, because
+/// a private copy of one silently points this sweep at a neighbouring value of the same kind the moment a
+/// field is inserted into a schema.
 /// </para>
 /// </summary>
 internal static class CurrencyAndSocketChecks
 {
-    const int CurrencyMaxSteps = 4;
-
-    const int StepCurrencyId = 0;
-    const int StepSort = 1;
-
-    const int GuardCurrencyId = 0;
-    const int GuardStepId = 1;
-
-    const int SocketTagRuleSocketTypeId = 0;
-    const int SocketTagRuleTagId = 2;
-    const int SocketTagRuleRule = 3;
-
     internal static void Run(IContentSnapshot candidate, ICollection<ContentFinding> findings)
     {
         Dictionary<int, long> currencyOfStep = CheckSteps(candidate, findings);
@@ -53,16 +43,16 @@ internal static class CurrencyAndSocketChecks
                 findings,
                 row,
                 InstanceContentTypeIds.CurrencyStepTypeKey,
-                StepCurrencyId,
+                CurrencyStepContentType.CraftingCurrencyIdIndex,
                 CurrencyStepContentType.CraftingCurrencyIdField,
                 InstanceContentTypeIds.CraftingCurrencyTypeId,
                 InstanceContentTypeIds.CraftingCurrencyTypeKey);
 
-            long currencyId = Number(row, StepCurrencyId) ?? 0;
+            long currencyId = Number(row, CurrencyStepContentType.CraftingCurrencyIdIndex) ?? 0;
             currencyOfStep[row.Id] = currencyId;
             countPerCurrency[currencyId] = countPerCurrency.TryGetValue(currencyId, out int seen) ? seen + 1 : 1;
 
-            long sort = Number(row, StepSort) ?? 0;
+            long sort = Number(row, CurrencyStepContentType.SortIndex) ?? 0;
             if (sortsTaken.TryGetValue((currencyId, sort), out int firstId))
             {
                 findings.Add(new ContentFinding(
@@ -78,7 +68,7 @@ internal static class CurrencyAndSocketChecks
 
         foreach (ContentRow currency in LiveRows(candidate, InstanceContentTypeIds.CraftingCurrencyTypeId))
         {
-            long maxSteps = Number(currency, CurrencyMaxSteps) ?? 0;
+            long maxSteps = Number(currency, CraftingCurrencyContentType.MaxStepsIndex) ?? 0;
             if (maxSteps > CraftingCurrencyContentType.MaxSteps)
             {
                 findings.Add(new ContentFinding(
@@ -120,18 +110,18 @@ internal static class CurrencyAndSocketChecks
                 findings,
                 row,
                 InstanceContentTypeIds.CurrencyGuardTypeKey,
-                GuardCurrencyId,
+                CurrencyGuardContentType.CraftingCurrencyIdIndex,
                 CurrencyGuardContentType.CraftingCurrencyIdField,
                 InstanceContentTypeIds.CraftingCurrencyTypeId,
                 InstanceContentTypeIds.CraftingCurrencyTypeKey);
 
-            long? stepId = Number(row, GuardStepId);
+            long? stepId = Number(row, CurrencyGuardContentType.CurrencyStepIdIndex);
             if (stepId is not long named || named == 0)
             {
                 continue;
             }
 
-            long guardCurrency = Number(row, GuardCurrencyId) ?? 0;
+            long guardCurrency = Number(row, CurrencyGuardContentType.CraftingCurrencyIdIndex) ?? 0;
             if (!IsLive(candidate, InstanceContentTypeIds.CurrencyStepTypeId, named)
                 || !currencyOfStep.TryGetValue((int)named, out long stepCurrency))
             {
@@ -178,13 +168,13 @@ internal static class CurrencyAndSocketChecks
                 findings,
                 row,
                 InstanceContentTypeIds.SocketTagRuleTypeKey,
-                SocketTagRuleSocketTypeId,
+                SocketTagRuleContentType.SocketTypeIdIndex,
                 SocketTagRuleContentType.SocketTypeIdField,
                 InstanceContentTypeIds.SocketTypeTypeId,
                 InstanceContentTypeIds.SocketTypeTypeKey);
 
             if (Key(row) is { } key
-                && (Number(row, SocketTagRuleRule) ?? 0) == SocketTagRuleContentType.RuleReject)
+                && (Number(row, SocketTagRuleContentType.RuleIndex) ?? 0) == SocketTagRuleContentType.RuleReject)
             {
                 _ = rejected.TryAdd(key, row.Id);
             }
@@ -196,7 +186,7 @@ internal static class CurrencyAndSocketChecks
         foreach (ContentRow row in rules)
         {
             if (Key(row) is not { } key
-                || (Number(row, SocketTagRuleRule) ?? 0) != SocketTagRuleContentType.RuleAccept
+                || (Number(row, SocketTagRuleContentType.RuleIndex) ?? 0) != SocketTagRuleContentType.RuleAccept
                 || !rejected.TryGetValue(key, out int rejectRowId)
                 || !reported.Add(key))
             {
@@ -214,9 +204,9 @@ internal static class CurrencyAndSocketChecks
     /// <summary>One tag rule's socket type and tag pair, or null when the socket type is not an id at all.</summary>
     static (int SocketType, long Tag)? Key(ContentRow row)
     {
-        long socketTypeId = Number(row, SocketTagRuleSocketTypeId) ?? 0;
+        long socketTypeId = Number(row, SocketTagRuleContentType.SocketTypeIdIndex) ?? 0;
         return socketTypeId is <= 0 or > int.MaxValue
             ? null
-            : ((int)socketTypeId, Number(row, SocketTagRuleTagId) ?? 0);
+            : ((int)socketTypeId, Number(row, SocketTagRuleContentType.TagIdIndex) ?? 0);
     }
 }

@@ -59,14 +59,26 @@ public static class ModTierContentType
     /// <summary>The mod this tier belongs to.</summary>
     public const string ModIdField = "mod_id";
 
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int ModIdIndex = 0;
+
     /// <summary>The tier's ordinal, unique within the mod and IMMUTABLE once published.</summary>
     public const string OrdinalField = "ordinal";
+
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int OrdinalIndex = 1;
 
     /// <summary>The inclusive item level floor this tier is reachable at.</summary>
     public const string ItemLevelMinField = "item_level_min";
 
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int ItemLevelMinIndex = 2;
+
     /// <summary>The inclusive item level ceiling this tier is reachable at.</summary>
     public const string ItemLevelMaxField = "item_level_max";
+
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int ItemLevelMaxIndex = 3;
 
     /// <summary>The ordered field list, spec 8.3's first table exactly.</summary>
     public static ContentFieldSchema CreateSchema() => new(

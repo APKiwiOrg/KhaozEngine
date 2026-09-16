@@ -53,14 +53,26 @@ public static class UniqueLineContentType
     /// <summary>The unique template this line belongs to.</summary>
     public const string UniqueTemplateIdField = "unique_template_id";
 
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int UniqueTemplateIdIndex = 0;
+
     /// <summary>The authored order, which is what makes "the unique's second line" a stable phrase.</summary>
     public const string SortField = "sort";
+
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int SortIndex = 1;
 
     /// <summary>The ordinary mod row this line IS.</summary>
     public const string ModIdField = "mod_id";
 
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int ModIdIndex = 2;
+
     /// <summary>Which of that mod's tiers the line grants, by the mod's own authored ordinal.</summary>
     public const string TierOrdinalField = "tier_ordinal";
+
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int TierOrdinalIndex = 3;
 
     /// <summary>The ordered field list, spec 8.6's second table exactly.</summary>
     public static ContentFieldSchema CreateSchema() => new(

@@ -19,6 +19,11 @@ namespace KhaozEngine.ItemInstances;
 /// was expected.
 /// </para>
 /// <para>
+/// <b>The two field indices arrive as ARGUMENTS</b>, one pair per type, from each type's own constants.
+/// All three happen to put the tag at 1 and the weight at 2 today, and a private copy of that number here
+/// would silently read a neighbouring value of the same kind the day one of them gains a field.
+/// </para>
+/// <para>
 /// <b>The BUCKET is the rows sharing one tag, which is a SUPERSET of every bucket a draw actually builds.</b>
 /// A candidate table buckets by tag and kind and band, a rarity draw buckets by tag, and a name draw buckets
 /// by tag and position. Every one of those is a subset of the rows sharing a tag, so a per-tag sum inside
@@ -27,43 +32,45 @@ namespace KhaozEngine.ItemInstances;
 /// </summary>
 internal static class WeightBoundsChecks
 {
-    /// <summary>The tag field index, which is 1 on all three types, and the weight field index, which is 2.</summary>
-    const int TagId = 1;
-
-    /// <summary>The weight field index.</summary>
-    const int Weight = 2;
-
     internal static void Run(IContentSnapshot candidate, ICollection<ContentFinding> findings)
     {
         CheckOne(
             candidate,
             findings,
             InstanceContentTypeIds.ModTierWeightTypeId,
-            InstanceContentTypeIds.ModTierWeightTypeKey);
+            InstanceContentTypeIds.ModTierWeightTypeKey,
+            ModTierWeightContentType.TagIdIndex,
+            ModTierWeightContentType.WeightIndex);
         CheckOne(
             candidate,
             findings,
             InstanceContentTypeIds.RarityWeightTypeId,
-            InstanceContentTypeIds.RarityWeightTypeKey);
+            InstanceContentTypeIds.RarityWeightTypeKey,
+            RarityWeightContentType.TagIdIndex,
+            RarityWeightContentType.WeightIndex);
         CheckOne(
             candidate,
             findings,
             InstanceContentTypeIds.RareNameWordWeightTypeId,
-            InstanceContentTypeIds.RareNameWordWeightTypeKey);
+            InstanceContentTypeIds.RareNameWordWeightTypeKey,
+            RareNameWordWeightContentType.TagIdIndex,
+            RareNameWordWeightContentType.WeightIndex);
     }
 
     static void CheckOne(
         IContentSnapshot candidate,
         ICollection<ContentFinding> findings,
         ushort typeId,
-        string typeKey)
+        string typeKey,
+        int tagIndex,
+        int weightIndex)
     {
         var order = new List<long>();
         var sums = new Dictionary<long, long>();
 
         foreach (ContentRow row in LiveRows(candidate, typeId))
         {
-            long weight = Number(row, Weight) ?? 0;
+            long weight = Number(row, weightIndex) ?? 0;
             if (weight < 0)
             {
                 findings.Add(new ContentFinding(
@@ -73,7 +80,7 @@ internal static class WeightBoundsChecks
                     InstanceContentFindings.WeightNegative(typeKey, row.Id, weight)));
             }
 
-            long tagId = Number(row, TagId) ?? 0;
+            long tagId = Number(row, tagIndex) ?? 0;
             if (!sums.TryGetValue(tagId, out long running))
             {
                 order.Add(tagId);

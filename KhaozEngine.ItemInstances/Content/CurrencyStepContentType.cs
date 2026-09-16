@@ -57,23 +57,44 @@ public static class CurrencyStepContentType
     /// <summary>The currency this step belongs to.</summary>
     public const string CraftingCurrencyIdField = "crafting_currency_id";
 
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int CraftingCurrencyIdIndex = 0;
+
     /// <summary>The step's position, unique within the currency.</summary>
     public const string SortField = "sort";
+
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int SortIndex = 1;
 
     /// <summary>A primitive of spec 10.2, or a game operation of spec 10.5.</summary>
     public const string OperationField = "operation";
 
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int OperationIndex = 2;
+
     /// <summary>The operation's first parameter, 0 when unused.</summary>
     public const string ParameterAField = "parameter_a";
+
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int ParameterAIndex = 3;
 
     /// <summary>The operation's second parameter, 0 when unused.</summary>
     public const string ParameterBField = "parameter_b";
 
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int ParameterBIndex = 4;
+
     /// <summary>The operation's third parameter, 0 when unused.</summary>
     public const string ParameterCField = "parameter_c";
 
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int ParameterCIndex = 5;
+
     /// <summary>The operation's fourth parameter, 0 when unused.</summary>
     public const string ParameterDField = "parameter_d";
+
+    /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
+    public const int ParameterDIndex = 6;
 
     /// <summary>True for an operation number naming one of the fourteen primitives.</summary>
     public static bool IsPrimitive(long operation)

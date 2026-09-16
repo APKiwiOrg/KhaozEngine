@@ -80,9 +80,10 @@ public static class TileWorldHash
     /// collision map, so two heads over one world directory with independently updated catalogs agreed on the world
     /// digest and then disagreed on every wall. <see cref="OfWorldAndCatalogs"/> is the composed digest a netcode
     /// gate should use.</para>
-    /// <para>EVERY authored field is in, cosmetic ones included, rather than only the fields the collision baker
-    /// reads. The engine does not know which fields a given game treats as decoration, a mesh reference points at
-    /// content the client has to ship anyway, and a digest that blessed art drift would be silently wrong for the
+    /// <para>EVERY authored field is in, cosmetic ones included (walk surfaces too, written only for an archetype
+    /// that carries one, so a catalog without any digests exactly as it did before the field existed), rather than
+    /// only the fields the collision baker reads. The engine does not know which fields a given game treats as
+    /// decoration, a mesh reference points at content the client has to ship anyway, and a digest that blessed art drift would be silently wrong for the
     /// first game that dispatched on a tag.</para>
     /// </summary>
     /// <param name="catalogs">The loaded catalogs.</param>
@@ -118,6 +119,7 @@ public static class TileWorldHash
             // reading them sees. Sorting them here would call two different files one archetype.
             sb.Append(Inv(a.Tags?.Count ?? 0)).Append(' ');
             for (int i = 0; i < (a.Tags?.Count ?? 0); i++) Text(sb, a.Tags![i]);
+            WalkSurfaces(sb, a.WalkSurfaces);
             sb.Append('\n');
         }
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(sb.ToString())));
@@ -174,6 +176,25 @@ public static class TileWorldHash
     // worse than no identity at all. Same reason the region file names are written invariant.
     static string Inv(int value) => value.ToString(CultureInfo.InvariantCulture);
     static string Float(float value) => value.ToString("R", CultureInfo.InvariantCulture);
+
+    // Walk surfaces ride the archetype line without a scheme bump. An archetype with none writes NOTHING here, so a
+    // catalog digested before the field existed keeps its identity, and one with any writes a 'w' section after the
+    // count-prefixed tags, where nothing else can stand, so the two shapes cannot digest the same bytes. Authored
+    // order is kept, and a null extent is distinguished from any number.
+    static void WalkSurfaces(StringBuilder sb, List<TileWalkSurface>? surfaces)
+    {
+        if (surfaces is not { Count: > 0 }) return;
+        sb.Append("w ").Append(Inv(surfaces.Count)).Append(' ');
+        foreach (TileWalkSurface? s in surfaces)
+        {
+            if (s is null) { sb.Append("- "); continue; }
+            sb.Append(Float(s.Height)).Append(' ');
+            sb.Append(OptionalFloat(s.MinX)).Append(' ').Append(OptionalFloat(s.MaxX)).Append(' ');
+            sb.Append(OptionalFloat(s.MinZ)).Append(' ').Append(OptionalFloat(s.MaxZ)).Append(' ');
+        }
+    }
+
+    static string OptionalFloat(float? value) => value is { } v ? Float(v) : "-";
 
     // A LENGTH-PREFIXED string, because catalog text is authored and a delimiter that appears inside a name would
     // otherwise let two different catalogs digest the same bytes. Null and empty are distinguished, so an archetype

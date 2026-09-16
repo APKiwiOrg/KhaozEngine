@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Runtime.ExceptionServices;
@@ -134,6 +135,40 @@ public class TileWorldHashTests
         catalogs.Archetype("tree")!.LodMeshRef = "kit/lod/tree.glb";
 
         Assert.NotEqual(h, TileWorldHash.OfCatalogs(catalogs));
+    }
+
+    // Walk surfaces joined the digest without a scheme bump, on purpose: an archetype that carries none writes
+    // nothing for them, so every catalog digested before the field existed keeps the identity a deployed head
+    // already compares. The literal is the greybox digest from before walk surfaces landed.
+    [Fact]
+    public void Catalog_hash_of_a_catalog_without_walk_surfaces_did_not_move_when_the_field_landed()
+    {
+        Assert.Equal("541ac51315c6371abed5392d64e7e5cdf50adca9edb42cf42b7723c389eb4cbb",
+            TileWorldHash.OfCatalogs(TileWorldCatalogs.Greybox()));
+    }
+
+    [Fact]
+    public void Catalog_hash_moves_with_every_walk_surface_value()
+    {
+        TileWorldCatalogs catalogs = TileWorldCatalogs.Greybox();
+        TileObjectArchetype bench = catalogs.Archetype("bench")!;
+        var seen = new HashSet<string> { TileWorldHash.OfCatalogs(catalogs) };
+
+        var deck = new TileWalkSurface { Height = 0.5f };
+        bench.WalkSurfaces = new List<TileWalkSurface> { deck };
+        Assert.True(seen.Add(TileWorldHash.OfCatalogs(catalogs)), "adding a surface");
+        deck.Height = 0.75f;
+        Assert.True(seen.Add(TileWorldHash.OfCatalogs(catalogs)), "height");
+        deck.MinX = -1f;
+        Assert.True(seen.Add(TileWorldHash.OfCatalogs(catalogs)), "minX");
+        deck.MaxX = 1f;
+        Assert.True(seen.Add(TileWorldHash.OfCatalogs(catalogs)), "maxX");
+        deck.MinZ = -1f;
+        Assert.True(seen.Add(TileWorldHash.OfCatalogs(catalogs)), "minZ");
+        deck.MaxZ = 1f;
+        Assert.True(seen.Add(TileWorldHash.OfCatalogs(catalogs)), "maxZ");
+        bench.WalkSurfaces.Add(new TileWalkSurface { Height = 0.75f, MinX = -1f, MaxX = 1f, MinZ = -1f, MaxZ = 1f });
+        Assert.True(seen.Add(TileWorldHash.OfCatalogs(catalogs)), "a second surface");
     }
 
     // Load order is a caller's business, the digest is not. Two catalogs holding the same content merged from parts

@@ -287,6 +287,51 @@ that `ContentValidator.RunTypeValidators` now SKIPS Instances band types, which 
 could observe it before this version: the band is the first thing ever registered in that range, and without
 the skip a band finding would be reported twice, once raw from pass 6 and once wrapped as `KEC0040`.
 
+**Walkable object surfaces: a pose and a surface pick stand on a bridge deck, not on the bed under it
+([#1001](https://github.com/APKiwiOrg/KhaozEngine/issues/1001)).** Since 19.0.0 `TilePresenter(document)` stood
+poses on the terrain lattice alone and `TileWorldView.PickSurface` tested terrain and water planes alone, so a prop
+whose top is walked on was invisible to both. Grimhollow's river bridge is anchored on a bed carved 80 cm below its
+deck, and bodies sank through the planks while a click on the deck resolved on the bed
+([Grimhollow#249](https://github.com/APKiwiOrg/Grimhollow/issues/249)).
+
+- `TileObjectArchetype.WalkSurfaces` (`List<TileWalkSurface>?`, catalog JSON `walkSurfaces`) is the new authored
+  field. `TileWalkSurface` is `{ float Height, float? MinX, float? MaxX, float? MinZ, float? MaxZ }`: a horizontal
+  rectangle in the MESH's local metres, before rotation and yaw offset, at `Height` above the mesh base, which is
+  the anchor. A null extent is the footprint edge on that side, resolved against the document's tile size at query
+  time, and an extent may overhang the footprint the way a bridge landing reaches onto the bank. The catalog schema
+  carries it with `height` required and no other key. `TileWorldCatalogs` refuses a non-finite height or extent,
+  and a min not below its max when both are given, naming the source and the archetype, in the same `AddArchetype`
+  gate `Load`, `LoadJson`, `Merge` and `Greybox` all pass through. An empty list loads as null.
+- `TileObjectPlacement` in `KhaozEngine.TileWorld` now owns the object transform: `DegreesPerRotation`,
+  `YawRadians(archetype, rotation)`, `AnchorPosition(doc, archetype, o)`, and the new
+  `LocalToWorld(doc, archetype, o)`, which is `CreateRotationY(yaw) * CreateTranslation(anchor)` at scale 1, the
+  matrix a prop draw builds. The rule moved out of `KhaozEngine.TileWorld.Render3D` so the netcode package, which
+  does not reference the renderer, places a deck through the transform the prop is drawn with. `TileObjectProps`
+  keeps `DegreesPerRotation`, `YawRadians` and `AnchorPosition` as forwarders, bit for bit the numbers they
+  answered before.
+- `TileWalkSurfaces.TryHeightAt(doc, catalogs, worldX, worldZ, plane, out height)` answers the highest surface
+  covering a planar point in world metres, edges inclusive, as anchor height plus `Height`, and allocates nothing.
+  It does not consult the terrain. `TileWalkSurfaces.Raycast(doc, catalogs, plane, origin, direction, maxDistance,
+  include?)` answers the nearest `TileHit` on a surface top: only a descending ray lands, the direction need not be
+  normalised, the distance is world metres, and the tile is the floor of the hit point. Both read through on every
+  call. Quarter turns resolve on exact axes, so a point on a deck edge stays on it under every rotation. The search
+  window is a radius built from the farthest rect corner of every surfaced archetype plus the largest footprint
+  side, so it holds under any yaw offset, and a catalog with no surfaced archetype answers before touching a
+  region.
+- `TileDocumentGroundHeight(document, catalogs)` answers the higher of the lattice and `TryHeightAt`, so a surface
+  buried under the terrain loses to it, and `TilePresenter(document, catalogs)` wires it. The one-argument
+  constructors of both are unchanged and still read the terrain alone, which their docs now say.
+- `TileWorldView.PickSurface` tests the walk surfaces of objects anchored in Gameplay regions as a third
+  candidate, the residency rule `PickObjects` uses. Nearest wins, and a walk surface wins an exact distance tie
+  with terrain or water, because the prop draws on top. The archetype is the authored one, as in the model pick.
+- `TileWorldHash.OfCatalogs` digests walk surfaces, since it digests every authored field. An archetype without
+  any writes nothing for them, so a catalog with no walk surfaces keeps the digest it had before, and no scheme
+  bump was needed. A test pins the greybox digest to its pre-field value.
+
+**Breaking changes: none.** Every member above is additive, the moved placement answers the same numbers through
+its old names, and the one-argument presenter and ground height behave as they did. A game adopts by authoring
+`walkSurfaces` on the archetype and building its presenter with `new TilePresenter(document, catalogs)`.
+
 ## 19.1.0
 
 A hidden roof still casts. Shadow-only instances are the fourth caster policy: geometry a view hides from the eye

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -76,6 +77,9 @@ public sealed class TileObjectArchetype
     public float YawOffsetDegrees { get; set; }
     /// <summary>Free-form authoring tags, null when none.</summary>
     public List<string>? Tags { get; set; }
+    /// <summary>The flat tops a body can stand on, in the mesh's local metres, null when the archetype has none.
+    /// See <see cref="TileWalkSurface"/> and <see cref="TileWalkSurfaces"/>. An empty list loads as null.</summary>
+    public List<TileWalkSurface>? WalkSurfaces { get; set; }
 }
 
 /// <summary>Footprint helpers. Rotation swaps X and Z on odd quarter turns, the anchor stays the SW tile.</summary>
@@ -104,6 +108,10 @@ public sealed class TileWorldCatalogs
     public IReadOnlyDictionary<ushort, GroundMaterial> Materials => _materials;
     /// <summary>Every object archetype, by id.</summary>
     public IReadOnlyDictionary<string, TileObjectArchetype> Archetypes => _archetypes;
+
+    // The concrete value collection, whose struct enumerator allocates nothing. Walking Archetypes.Values through
+    // the interface boxes one per walk, and the walk-surface query runs per drawn body per frame.
+    internal Dictionary<string, TileObjectArchetype>.ValueCollection ArchetypeValues => _archetypes.Values;
 
     /// <summary>The material with this id, or null when the catalogs do not define it.</summary>
     public GroundMaterial? Material(ushort id) => _materials.TryGetValue(id, out GroundMaterial? m) ? m : null;
@@ -218,8 +226,45 @@ public sealed class TileWorldCatalogs
         if (_archetypes.ContainsKey(a.Id))
             throw new TileWorldException($"{source}: archetype '{a.Id}' is already defined in {_archetypeSources[a.Id]}");
         if (string.IsNullOrWhiteSpace(a.LodMeshRef)) a.LodMeshRef = null;
+        if (a.WalkSurfaces is { Count: 0 }) a.WalkSurfaces = null;
+        ValidateWalkSurfaces(a, source);
         _archetypes.Add(a.Id, a);
         _archetypeSources[a.Id] = source;
+    }
+
+    // The schema cannot say either of these. JSON has no NaN literal, but a merged catalog carries archetypes a
+    // caller can have edited in memory since their own load, and Merge re-adds them through here. A rect whose
+    // min is not below its max covers nothing and is always an authoring mistake, so it fails the load naming
+    // the archetype rather than silently dropping a deck. A pair with a null side is not checked, because the
+    // footprint edge it resolves to depends on a tile size the catalog does not know.
+    static void ValidateWalkSurfaces(TileObjectArchetype a, string source)
+    {
+        if (a.WalkSurfaces is not { } surfaces) return;
+        for (int i = 0; i < surfaces.Count; i++)
+        {
+            string at = $"{source}: archetype '{a.Id}' walk surface {i}";
+            if (surfaces[i] is not { } s) throw new TileWorldException($"{at} is null");
+            RequireFinite(at, "height", s.Height);
+            RequireFinite(at, "minX", s.MinX);
+            RequireFinite(at, "maxX", s.MaxX);
+            RequireFinite(at, "minZ", s.MinZ);
+            RequireFinite(at, "maxZ", s.MaxZ);
+            RequireOrdered(at, "minX", s.MinX, "maxX", s.MaxX);
+            RequireOrdered(at, "minZ", s.MinZ, "maxZ", s.MaxZ);
+        }
+    }
+
+    static void RequireFinite(string at, string field, float? value)
+    {
+        if (value is { } v && !float.IsFinite(v))
+            throw new TileWorldException($"{at}: {field} {v.ToString(CultureInfo.InvariantCulture)} is not a finite number");
+    }
+
+    static void RequireOrdered(string at, string minField, float? min, string maxField, float? max)
+    {
+        if (min is { } lo && max is { } hi && !(lo < hi))
+            throw new TileWorldException(
+                $"{at}: {minField} {lo.ToString(CultureInfo.InvariantCulture)} is not below {maxField} {hi.ToString(CultureInfo.InvariantCulture)}");
     }
 
     /// <summary>The engine's minimal test/greybox catalogs: six materials and twelve archetypes covering every

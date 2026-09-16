@@ -8094,7 +8094,11 @@ TileHit? hit = view.PickSurface(plane, rayOrigin, rayDirection, maxDistance: 200
 rectangles drawn there. Unloaded and `NoDraw` terrain are not targets. It returns whichever is nearer as a
 `TileHit`, so an oblique river click names the tile under the visible water crossing instead of a farther tile on
 the lowered bed. Direction does not need normalising and distances are world metres. The maximum is inclusive.
-Authored terrain wins an exact depth tie where it occludes water. The picker does not call `Flush`, so an announced
+Authored terrain wins an exact depth tie where it occludes water. Walk surfaces are the third candidate: an object
+in a Gameplay region whose archetype carries `walkSurfaces` answers a ray that lands on its top, so a click on a
+bridge deck names the tile under the planks rather than the carved bed. A walk surface wins an exact tie with
+terrain or water, because the prop draws on top. `TileWalkSurfaces.Raycast(document, catalogs, plane, origin,
+direction, maxDistance)` is the same query without a view. The picker does not call `Flush`, so an announced
 edit keeps picking the plane still on screen until that region-plane mesh is rebuilt. Changing the water look
 invalidates the cache too, exactly as it does for the draw path.
 
@@ -10237,6 +10241,17 @@ TilePose me = client.LocalPose;                   // Position.Y is the ground un
 - **The placeholder presenter stays FLAT**, at the plane index times `PlaneHeight`, which is the only honest
   answer before a world file is loaded. That is what `TileWorldClient` installs in its constructor, and
   `presenter.Ground` is null on exactly that one, so a head can tell the two apart.
+- **Stand bodies on bridge decks** with `new TilePresenter(document, catalogs)`. The one-argument form reads the
+  terrain alone, so a body on a prop whose top is walked on (a bridge, a dock, a pier) sinks to the ground the prop
+  is anchored on. Author the top on the archetype as `walkSurfaces` (a rectangle in the mesh's local metres at a
+  height above its base, see the `KhaozEngine.TileWorld` README), and the two-argument presenter answers the higher
+  of the terrain and the highest covering surface through `TileDocumentGroundHeight(document, catalogs)`. A marker
+  draped over the same `ITileGroundHeight` lands on the planks too.
+
+  ```csharp
+  client.Presenter = new TilePresenter(document, catalogs);   // terrain, raised onto any walk surface
+  ```
+
 - **Supply your own source** with `new TilePresenter(tileSize, planeHeight, ground)`, where `ground` is an
   `ITileGroundHeight`: one `HeightAt(float tileX, float tileZ, int plane)` taking TILE units on the lattice and
   answering world METRES. That is the hook for a streamed or generated terrain, and it is what a test with a

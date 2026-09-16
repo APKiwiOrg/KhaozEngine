@@ -523,7 +523,14 @@ always keep the constructor map.
   FOLLOW a slope between two tile centres instead of stepping at the tile edge. `new TilePresenter(document)`
   wires `TileDocumentGroundHeight`, the document's own bilinear lattice and the same heights the terrain mesh and
   the props are built from, so a head that builds its presenter from the world file needs no call of its own, and
-  that adapter is the single place tile units become world metres for a height read. The
+  that adapter is the single place tile units become world metres for a height read. That one-argument form reads
+  the TERRAIN alone and consults no object, so a body on a bridge deck stands on the carved bed under it.
+  `new TilePresenter(document, catalogs)` wires `new TileDocumentGroundHeight(document, catalogs)` instead, which
+  answers the higher of the lattice height and `TileWalkSurfaces.TryHeightAt`, the highest
+  `TileObjectArchetype.WalkSurfaces` top covering the point. A walk surface buried under the terrain loses to it,
+  the plane is clamped for the surfaces exactly as it is for the lattice, and both the document and the catalogs are
+  held and read through, so an edit is visible to the next pose. Build it with the same catalogs the props are drawn
+  from, so the deck a body stands on is the deck on screen. The
   `(tileSize, planeHeight)` placeholder has no source and stays flat at the plane index times `PlaneHeight`, the
   only honest answer before a document is loaded, and `Ground` is null on exactly that one.
   `new TilePresenter(tileSize, planeHeight, ground)` takes a source explicitly, for a test with a synthetic slope

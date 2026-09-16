@@ -146,10 +146,15 @@ for the depth read to darken against. Collision, pathing, the raycast and the to
 It compares drawable authored terrain in regions the view has loaded with the exact cached `WaterPlane` rectangles
 the view draws there, then returns the nearer one as the existing `TileHit`. Unloaded and `NoDraw` terrain are not
 targets. This makes an oblique click on a river name the tile under the visible water crossing rather than the
-farther tile where the ray reaches the carved bed. Direction does not need normalising, distance is in world metres,
-the maximum is inclusive, and authored terrain wins an exact depth tie where it hides the plane. The call does not
-flush pending edits. A cached surface moves only after its region-plane mesh is rebuilt or its water look changes,
-the same invalidation rules used by the draw path.
+farther tile where the ray reaches the carved bed. A third candidate is the walk surfaces
+(`TileObjectArchetype.WalkSurfaces`) of objects anchored in Gameplay regions, the same residency rule `PickObjects`
+applies, through `TileWalkSurfaces.Raycast`, so a ray aimed at a bridge deck names the tile under the point on the
+planks rather than the bed below them. Those read the document live and use the authored archetype, not an override.
+Direction does not need normalising, distance is in world metres, the maximum is inclusive, and the nearest candidate
+wins. Authored terrain wins an exact depth tie with water where it hides the plane, and a walk surface wins an exact
+tie with either, because the prop carrying it draws on top. The call does not flush pending edits. A cached water
+surface moves only after its region-plane mesh is rebuilt or its water look changes, the same invalidation rules
+used by the draw path.
 
 `TileWaterPlanes.Collect(doc, catalogs, region, plane, look?)` returns every `WaterPlane` one region-plane
 contributes, in a deterministic order.
@@ -197,7 +202,9 @@ centre of the ROTATED footprint at the document's ground height there, so a mesh
 footprint with its base at y 0. `YawRadians` is NEGATIVE per quarter turn
 (`-(rotation * 90 + YawOffsetDegrees)` in radians). That sign is what makes `Matrix4x4.CreateRotationY` turn
 CLOCKWISE seen from above with north up, the tile-world rotation convention (0 west, 1 north, 2 east, 3 south),
-and the archetype's yaw offset folds in under the same sign.
+and the archetype's yaw offset folds in under the same sign. Both forward to `TileObjectPlacement` in
+`KhaozEngine.TileWorld`, which owns the rule so a GPU-free head (the tile netcode presenter standing a body on a
+walk surface) reads the same transform the prop is drawn with.
 
 `ITileMeshResolver.Resolve(archetype)` is where a game hands over its own meshes, keyed off the archetype's mesh
 reference. Returning null means "no mesh for this archetype", which the view answers with a placeholder box and

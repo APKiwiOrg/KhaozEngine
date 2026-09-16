@@ -37,7 +37,22 @@
           "isRoof": { "type": "boolean" },
           "interactive": { "type": "boolean" },
           "yawOffsetDegrees": { "type": "number" },
-          "tags": { "type": "array", "items": { "type": "string" } }
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "walkSurfaces": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["height"],
+              "properties": {
+                "height": { "type": "number" },
+                "minX": { "type": "number" },
+                "maxX": { "type": "number" },
+                "minZ": { "type": "number" },
+                "maxZ": { "type": "number" }
+              },
+              "additionalProperties": false
+            }
+          }
         },
         "additionalProperties": false
       }

@@ -31,15 +31,21 @@ public sealed partial class TileWorldView
         return kept;
     }
 
-    /// <summary>The nearest visible ground or water surface on one plane, or null when the ray misses.
+    /// <summary>The nearest visible ground, water or walkable object top on one plane, or null when the ray misses.
     /// <para>The ground candidate is the authored terrain from <see cref="TileRaycast"/>, limited to drawable
     /// tiles in regions this view holds at <see cref="TileRegionResidencyState.Gameplay"/> residency. Water
     /// candidates are the exact cached <see cref="WaterPlane"/> rectangles this view draws for those Gameplay
     /// regions. Like the draw path, picking reuses that cache until the
     /// affected mesh is rebuilt or its water look changes, matching the surface the next draw will submit.</para>
+    /// <para>The third candidate is the <see cref="TileObjectArchetype.WalkSurfaces"/> of objects anchored in those
+    /// same Gameplay regions, the rule <see cref="PickObjects"/> uses, through <see cref="TileWalkSurfaces.Raycast"/>.
+    /// So a ray aimed at a bridge deck names the tile under the point on the planks rather than the carved bed below
+    /// them. The surface reads the document live, like the model pick, and the archetype is the authored one rather
+    /// than an override.</para>
     /// <para><paramref name="direction"/> need not be normalised. The reported distance and
-    /// <paramref name="maxDistance"/> are in world metres. Authored terrain wins an exact distance tie, because
-    /// it depth-occludes a water plane at the same point.</para></summary>
+    /// <paramref name="maxDistance"/> are in world metres. Nearest wins. Authored terrain wins an exact distance
+    /// tie with water, because it depth-occludes a water plane at the same point, and a walk surface wins an exact
+    /// tie with either, because the prop carrying it draws on top.</para></summary>
     /// <param name="plane">The document plane to pick.</param>
     /// <param name="origin">Ray origin in world metres.</param>
     /// <param name="direction">Ray direction, not necessarily normalised.</param>
@@ -72,11 +78,20 @@ public sealed partial class TileWorldView
             }
         }
 
-        return water is { } nearestWater
+        TileHit? nearest = water is { } nearestWater
             && (terrain is null || nearestWater.Distance < terrain.Value.Distance)
             ? nearestWater
             : terrain;
+        TileHit? surface = TileWalkSurfaces.Raycast(_doc, _catalogs, plane, origin, ray, maxDistance,
+            _walkSurfacePickFilter);
+        return surface is { } deck && (nearest is null || deck.Distance <= nearest.Value.Distance)
+            ? deck
+            : nearest;
     }
+
+    bool IsGameplayObject(TileObject o) =>
+        _loaded.TryGetValue(RegionCoord.Of(o.X, o.Z), out RegionHandles? handles)
+        && handles.Residency == TileRegionResidencyState.Gameplay;
 
     bool IsRenderedTerrain(int x, int z, int plane) =>
         _loaded.TryGetValue(RegionCoord.Of(x, z), out RegionHandles? handles)

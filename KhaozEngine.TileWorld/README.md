@@ -122,7 +122,7 @@ Malformed or duplicate content throws a `TileWorldException` naming the source f
 `TileWorldSchema.GetCatalogJson()` returns the embedded catalog schema. `GroundMaterial` is
 `{ Id, Name, Color, Texture, Kind, TilesPerMetre }` (`Ground` or `Water`, id 0 reserved for void) and
 `TileObjectArchetype` is
-`{ Id, Name, MeshRef, LodMeshRef, SizeX, SizeZ, CollisionKind, IsRoof, Interactive, YawOffsetDegrees, Tags }`, with
+`{ Id, Name, MeshRef, LodMeshRef, SizeX, SizeZ, CollisionKind, IsRoof, Interactive, YawOffsetDegrees, Tags, WalkSurfaces }`, with
 `TileCollisionKind` one of `None`, `Solid`, `Wall`, `WallCorner`, `Diagonal`. `TileFootprint.Rotated` and
 `TileFootprint.Of` give the rotated footprint size and the world rect an instance covers.
 
@@ -142,6 +142,32 @@ pathing continue to use the archetype footprint and `CollisionKind`.
 This is one authored render tier only. It does not change the object's footprint, stable ID, collision, pathing,
 world-region bytes or server representation. Catalog hash scheme 2 includes `lodMeshRef`, so client and server
 catalog gates detect a different LOD reference even though gameplay authority still comes from the full object.
+
+`WalkSurfaces` is the optional `walkSurfaces` catalog field: the flat tops a body can stand on, for a bridge deck,
+a dock or a pier whose prop is anchored on ground well below its top. Each `TileWalkSurface` is
+`{ Height, MinX, MaxX, MinZ, MaxZ }`, a horizontal rectangle in the MESH's local metres (the frame its vertices are
+authored in, before the instance rotation and the yaw offset) at `Height` metres above the mesh base, which is the
+anchor. A null extent is the footprint edge on that side (`SizeX * tileSize / 2` on x, `SizeZ * tileSize / 2` on z,
+unrotated), and an extent may reach past the footprint, the way a bridge landing overhangs the bank.
+
+```json
+{
+  "id": "bridge",
+  "name": "Bridge",
+  "meshRef": "models/bridge.glb",
+  "sizeX": 3,
+  "sizeZ": 3,
+  "walkSurfaces": [ { "height": 0.825, "minX": -2.5, "maxX": 2.5 } ]
+}
+```
+
+The schema requires `height` and refuses any other key. The loader refuses a non-finite height or extent, and a min
+that is not below its max when both are given, naming the source and the archetype. `Merge` re-runs that check on
+every archetype it adds, so an in-memory edit cannot carry a NaN through it. A pair with one null side is not
+judged at load, because its resolved edge depends on a tile size the catalog does not know, and a rectangle that
+comes out inverted simply covers nothing. An empty list loads as null. Walk surfaces change no footprint, no
+collision and no pathing. `OfCatalogs` digests them, writing nothing for an archetype without any, so a catalog
+with no walk surfaces keeps the digest it had before the field existed.
 
 `TilesPerMetre` is the optional `tilesPerMetre` catalog field, the texture repeats per metre the textured ground
 path gives that material, null to take the renderer default of 0.5. `MaterialSource(id)` returns the catalog
@@ -227,6 +253,30 @@ first `TileHit(X, Z, Plane, Point, Distance)`, or null. The direction need not b
 the document throws as soon as the walk touches a tile, and world units are tiles times `TileWorldDocument.TileSize`
 with z running the OTHER WAY from tile z, so the conversion goes through `TileWorldSpace` rather than a bare
 divide. `HeightAt` reads its world position the same way.
+
+`TileObjectPlacement` is the ONE object transform, shared by the prop renderer, the model pick and the walk-surface
+queries. `AnchorPosition(doc, archetype, o)` is the centre of the rotated footprint at the document's ground height
+there, so a mesh is authored centred on its own footprint with its base at y 0. `YawRadians(archetype, rotation)`
+is `-(rotation * DegreesPerRotation + YawOffsetDegrees)` in radians, NEGATIVE so `Matrix4x4.CreateRotationY` turns
+clockwise seen from above with north up. `LocalToWorld(doc, archetype, o)` is the model matrix a prop draw builds,
+`CreateRotationY(yaw) * CreateTranslation(anchor)` at scale 1. `TileObjectProps.AnchorPosition`, `YawRadians` and
+`DegreesPerRotation` in `KhaozEngine.TileWorld.Render3D` forward here unchanged.
+
+`TileWalkSurfaces` answers the walk surfaces two ways. `TryHeightAt(doc, catalogs, worldX, worldZ, plane, out
+height)` takes world metres, as `HeightAt` does, and reports the HIGHEST surface covering the point on that plane,
+edges inclusive, as the anchor height plus `Height`. It allocates nothing and does not consult the terrain, so a
+surface buried under the ground is still reported and the caller takes the higher of the two.
+`Raycast(doc, catalogs, plane, origin, direction, maxDistance, include?)` returns the nearest `TileHit` on a surface
+TOP. Only a descending ray can land on one, the direction need not be normalised, the distance is world metres,
+the maximum is inclusive, and the tile is the floor of the hit point in tile coordinates. `include` is consulted per
+candidate object, which is how a view limits the pick to what it draws. Both read the document and the catalogs
+through on every call, so an edit shows up on the next frame, and both place each surface through
+`TileObjectPlacement`, with quarter turns taken on exact axes so a point exactly on a deck edge stays on it under
+every rotation. The search covers every anchor that could reach the point, a radius built from the farthest rect
+corner over the archetypes that carry a surface plus the largest footprint side, so it holds under any yaw offset.
+A catalog without a surfaced archetype answers before touching a region. Only loaded regions are searched, an
+object whose archetype the catalogs do not define is skipped, and a surface covers every body on its plane under
+it, so anything meant to pass beneath a deck belongs on another plane.
 
 `TileTriangulation` is the ONE tile triangulation, shared with the ground mesher in
 `KhaozEngine.TileWorld.Render3D` so a click lands on the triangle that is drawn, and the raycast hits a SHAPED

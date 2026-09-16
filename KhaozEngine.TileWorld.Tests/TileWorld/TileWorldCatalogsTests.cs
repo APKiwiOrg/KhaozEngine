@@ -125,6 +125,123 @@ public class TileWorldCatalogsTests
     }
 
     [Fact]
+    public void WalkSurfaces_load_and_round_trip_with_null_extents()
+    {
+        const string json = """
+            { "archetypes": [ { "id": "bridge", "name": "Bridge", "meshRef": "kit/bridge.glb", "sizeX": 3, "sizeZ": 3,
+                                "walkSurfaces": [ { "height": 0.825, "minX": -2.5, "maxX": 2.5 },
+                                                  { "height": -0.25, "minZ": -1, "maxZ": 0.5 } ] },
+                              { "id": "rock", "name": "Rock", "meshRef": "kit/rock.glb" } ] }
+            """;
+        TileWorldCatalogs loaded = TileWorldCatalogs.LoadJson(json, "bridges.json");
+        TileObjectArchetype bridge = loaded.Archetype("bridge")!;
+
+        AssertDeck(bridge);
+        Assert.Null(loaded.Archetype("rock")!.WalkSurfaces);
+
+        string written = JsonSerializer.Serialize(new { archetypes = new[] { bridge } }, CatalogWriteOptions());
+        Assert.DoesNotContain("minZ\":null", written);
+        AssertDeck(TileWorldCatalogs.LoadJson(written, "round-trip.json").Archetype("bridge")!);
+
+        static void AssertDeck(TileObjectArchetype a)
+        {
+            Assert.Equal(2, a.WalkSurfaces!.Count);
+            TileWalkSurface deck = a.WalkSurfaces[0];
+            Assert.Equal((0.825f, -2.5f, 2.5f), (deck.Height, deck.MinX!.Value, deck.MaxX!.Value));
+            Assert.Null(deck.MinZ);
+            Assert.Null(deck.MaxZ);
+            TileWalkSurface sunk = a.WalkSurfaces[1];
+            Assert.Equal((-0.25f, -1f, 0.5f), (sunk.Height, sunk.MinZ!.Value, sunk.MaxZ!.Value));
+            Assert.Null(sunk.MinX);
+            Assert.Null(sunk.MaxX);
+        }
+    }
+
+    [Fact]
+    public void An_empty_walkSurfaces_list_loads_as_none()
+    {
+        TileWorldCatalogs c = TileWorldCatalogs.LoadJson(
+            """{ "archetypes": [ { "id": "a", "name": "A", "meshRef": "m", "walkSurfaces": [] } ] }""", "empty.json");
+
+        Assert.Null(c.Archetype("a")!.WalkSurfaces);
+    }
+
+    [Theory]
+    [InlineData("""{ "minX": 1 }""")]
+    [InlineData("""{ "height": 1, "top": 2 }""")]
+    [InlineData("""{ "height": "high" }""")]
+    [InlineData("""{ "height": 1, "minX": null }""")]
+    public void Schema_rejects_a_malformed_walk_surface(string surface)
+    {
+        var ex = Assert.Throws<TileWorldException>(() => TileWorldCatalogs.LoadJson(
+            $$"""{ "archetypes": [ { "id": "deck", "name": "Deck", "meshRef": "m", "walkSurfaces": [ {{surface}} ] } ] }""",
+            "bad-surface.json"));
+        Assert.Contains("does not match the schema", ex.Message);
+        Assert.Contains("bad-surface.json", ex.Message);
+    }
+
+    [Theory]
+    [InlineData("\"minX\": 2, \"maxX\": -2", "minX")]
+    [InlineData("\"minX\": 1, \"maxX\": 1", "minX")]
+    [InlineData("\"minZ\": 0.5, \"maxZ\": 0.25", "minZ")]
+    public void A_walk_surface_whose_min_is_not_below_its_max_refuses_to_load(string extents, string field)
+    {
+        var ex = Assert.Throws<TileWorldException>(() => TileWorldCatalogs.LoadJson(
+            $$"""{ "archetypes": [ { "id": "deck", "name": "Deck", "meshRef": "m", "walkSurfaces": [ { "height": 0 }, { "height": 1, {{extents}} } ] } ] }""",
+            "inverted.json"));
+        Assert.Contains("inverted.json", ex.Message);
+        Assert.Contains("'deck'", ex.Message);
+        Assert.Contains("walk surface 1", ex.Message);
+        Assert.Contains(field, ex.Message);
+    }
+
+    [Fact]
+    public void A_one_sided_extent_is_not_judged_at_load()
+    {
+        // The other side resolves against a tile size the catalog does not know, so this rect is only inverted in a
+        // world whose tiles are narrower than ten metres, and that is the query's business rather than the loader's.
+        TileWorldCatalogs c = TileWorldCatalogs.LoadJson(
+            """{ "archetypes": [ { "id": "deck", "name": "Deck", "meshRef": "m", "walkSurfaces": [ { "height": 1, "minX": 5 } ] } ] }""",
+            "one-sided.json");
+
+        Assert.Equal(5f, c.Archetype("deck")!.WalkSurfaces![0].MinX);
+    }
+
+    [Theory]
+    [InlineData("height")]
+    [InlineData("minX")]
+    [InlineData("maxZ")]
+    public void A_non_finite_walk_surface_value_refuses_to_merge(string field)
+    {
+        // JSON cannot carry a NaN, but a loaded catalog is mutable and Merge re-adds every archetype through the same
+        // gate, so an in-memory edit cannot smuggle one past it.
+        TileWorldCatalogs part = TileWorldCatalogs.LoadJson(
+            """{ "archetypes": [ { "id": "deck", "name": "Deck", "meshRef": "m", "walkSurfaces": [ { "height": 1 } ] } ] }""",
+            "deck.json");
+        TileWalkSurface surface = part.Archetype("deck")!.WalkSurfaces![0];
+        switch (field)
+        {
+            case "height": surface.Height = float.NaN; break;
+            case "minX": surface.MinX = float.PositiveInfinity; break;
+            default: surface.MaxZ = float.NegativeInfinity; break;
+        }
+
+        var ex = Assert.Throws<TileWorldException>(() => TileWorldCatalogs.Merge(part));
+        Assert.Contains("'deck'", ex.Message);
+        Assert.Contains(field, ex.Message);
+        Assert.Contains("not a finite number", ex.Message);
+    }
+
+    [Fact]
+    public void A_walk_surface_height_past_the_float_range_refuses_to_load()
+    {
+        var ex = Assert.Throws<TileWorldException>(() => TileWorldCatalogs.LoadJson(
+            """{ "archetypes": [ { "id": "deck", "name": "Deck", "meshRef": "m", "walkSurfaces": [ { "height": 1e39 } ] } ] }""",
+            "overflow.json"));
+        Assert.Contains("overflow.json", ex.Message);
+    }
+
+    [Fact]
     public void Catalog_hash_applies_the_existing_cosmetic_mesh_policy_to_the_lod_mesh()
     {
         TileWorldCatalogs baseline = TileWorldCatalogs.LoadJson("""

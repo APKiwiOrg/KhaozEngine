@@ -117,6 +117,7 @@ public sealed partial class TileWorldView : IDisposable
     readonly TileWorldCatalogs _catalogs;
     readonly TileWorldViewOptions _options;
     readonly Func<int, int, int, bool> _terrainPickFilter;
+    readonly Func<TileObject, bool> _walkSurfacePickFilter;
     readonly Dictionary<string, IReadOnlyList<MeshHandle>> _propMeshes = new(StringComparer.Ordinal);
     readonly TileWorldPropClusters _propClusters;
     readonly Dictionary<RegionCoord, RegionHandles> _loaded = new();
@@ -166,6 +167,7 @@ public sealed partial class TileWorldView : IDisposable
             TileWorldPropClusters.Validate(catalogs, _options.PropLayers);
         _planes = Math.Max(0, doc.PlaneCount);
         _terrainPickFilter = IsRenderedTerrain;
+        _walkSurfacePickFilter = IsGameplayObject;
         _groundBuilds = new TileWorldBuildQueue<TileGroundBuildInput, GltfMesh?>(
             BuildGroundCpu, ApplyGroundBuild, buildQueueOptions, dispatcher);
 

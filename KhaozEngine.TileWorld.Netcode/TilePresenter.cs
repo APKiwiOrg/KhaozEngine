@@ -35,7 +35,8 @@ public readonly record struct TilePose(Vector3 Position, float Yaw);
 /// <see cref="PoseAt(TileCoord, TileDirection)"/>. A gliding body resamples every frame at its interpolated planar
 /// position, which is what makes it FOLLOW a slope between two tile centres instead of stepping at the tile edge.
 /// <see cref="TilePresenter(TileWorldDocument)"/> wires the document's own bilinear lattice, the same one the
-/// terrain mesh and the props are built from. A presenter with no ground source draws at the plane index times
+/// terrain mesh and the props are built from, and <see cref="TilePresenter(TileWorldDocument, TileWorldCatalogs)"/>
+/// raises that onto a walkable object top such as a bridge deck. A presenter with no ground source draws at the plane index times
 /// <see cref="PlaneHeight"/>, which is the flat placeholder and the only honest answer before a document is
 /// loaded.</para>
 /// <para>THE BODY GLIDES THE WHOLE STEP, LINEARLY. <see cref="Pose(in TileMoveState, float)"/> runs from <see cref="TileMoveState.StepFrom"/>
@@ -83,13 +84,27 @@ public sealed class TilePresenter
 
     /// <summary>Builds a presenter from a loaded document, which is where the real numbers live. A head builds one
     /// of these the moment it has the world file, and replaces the placeholder the client started with. It wires
-    /// <see cref="TileDocumentGroundHeight"/>, so the bodies this draws stand on the SAME lattice the terrain mesh
-    /// and the props are built from, with nothing for the head to call.</summary>
+    /// the terrain-only <see cref="TileDocumentGroundHeight(TileWorldDocument)"/>, so the bodies this draws stand on
+    /// the SAME lattice the terrain mesh and the props are built from, with nothing for the head to call. No object
+    /// is consulted, so a body on a bridge deck stands on the ground under it: a world whose archetypes carry walk
+    /// surfaces wants <see cref="TilePresenter(TileWorldDocument, TileWorldCatalogs)"/>.</summary>
     /// <param name="document">The loaded world.</param>
     /// <exception cref="ArgumentNullException"><paramref name="document"/> is null.</exception>
     public TilePresenter(TileWorldDocument document)
         : this((document ?? throw new ArgumentNullException(nameof(document))).TileSize, document.PlaneHeight,
             new TileDocumentGroundHeight(document)) { }
+
+    /// <summary>Builds a presenter from a loaded document AND the catalogs its objects reference, so a pose stands
+    /// on the higher of the terrain and any walkable object top covering it (a bridge deck, a dock, a pier). It
+    /// wires <see cref="TileDocumentGroundHeight(TileWorldDocument, TileWorldCatalogs)"/>, which reads the
+    /// <see cref="TileObjectArchetype.WalkSurfaces"/> through the same placement the props are drawn with.</summary>
+    /// <param name="document">The loaded world.</param>
+    /// <param name="catalogs">The archetypes the world's objects reference.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="document"/> or <paramref name="catalogs"/> is
+    /// null.</exception>
+    public TilePresenter(TileWorldDocument document, TileWorldCatalogs catalogs)
+        : this((document ?? throw new ArgumentNullException(nameof(document))).TileSize, document.PlaneHeight,
+            new TileDocumentGroundHeight(document, catalogs)) { }
 
     /// <summary>Metres per tile.</summary>
     public float TileSize { get; }

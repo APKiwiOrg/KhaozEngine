@@ -37,6 +37,10 @@ public sealed partial class TileWorldDocument
     /// <summary>Every region currently in memory, keyed by coordinate.</summary>
     public IReadOnlyDictionary<RegionCoord, TileRegion> Regions => _regions;
 
+    // The concrete value collection, whose struct enumerator allocates nothing, for a query that walks every loaded
+    // region from a per-frame path. Regions.Values through the interface boxes an enumerator per walk.
+    internal Dictionary<RegionCoord, TileRegion>.ValueCollection LoadedRegions => _regions.Values;
+
     /// <summary>Regions the manifest knows about that are not materialised in memory (a lazily opened world),
     /// with their stored hashes, so a save carries them through untouched.</summary>
     internal Dictionary<RegionCoord, string> UnloadedRegionHashes { get; } = new();

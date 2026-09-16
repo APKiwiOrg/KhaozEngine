@@ -62,6 +62,21 @@ internal sealed class CatalogOperationalActions(IContentAuthoringStore store, Co
             return NoPackStore(CatalogAdminActions.SweepAction);
         }
 
+        // A publish in flight is the one state a sweep must not run in, and the FROZEN draft is how the store
+        // says so. The keep set below is built from the COMMITTED versions, while a publish writes every
+        // chunk and both manifests to the pack BEFORE its commit (step 9), so a sweep inside that window sees
+        // the bytes the publish just wrote as orphans and deletes them. The publish then commits a version
+        // whose pack is already missing, which nothing afterwards can tell from a corrupt write. catalog-edit
+        // and catalog-discard refuse on the same marker.
+        ContentDraft? open = await store.GetOpenDraftAsync(cancellationToken).ConfigureAwait(false);
+        if (open is { IsFrozen: true })
+        {
+            return AdminActionResult.Conflict(new CatalogConflictPayload(
+                "catalog-sweep is refused: a publish holds the draft frozen, and its chunks are in the pack before its version row is. A sweep now would delete the objects that publish is about to commit a version for.",
+                ContentAuthoringException.PublishInProgressReason,
+                CatalogRefusal.PublishInProgressRemedy));
+        }
+
         IReadOnlyList<ContentVersionRecord> records = await store
             .ListVersionsAsync(cancellationToken).ConfigureAwait(false);
         var versions = new List<int>(records.Count);

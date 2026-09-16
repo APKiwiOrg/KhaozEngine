@@ -262,6 +262,41 @@ public sealed class CatalogBundleActionTests : IDisposable
             entry => entry.Action == ContentAuditActions.Sweep);
     }
 
+    /// <summary>
+    /// A sweep while a publish holds the draft frozen is a 409 and deletes NOTHING.
+    /// <para>
+    /// The keep set is built from the COMMITTED versions, and a publish writes every chunk and both manifests
+    /// to the pack before its commit (step 9). A sweep inside that window therefore sees the bytes the
+    /// publish just wrote as orphans and deletes them, and the publish then commits a version whose pack is
+    /// already missing. The freeze marker is the signal the store carries for exactly this window, and
+    /// <c>catalog-edit</c> and <c>catalog-discard</c> already refuse on it.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Sweep_WhileAPublishHoldsTheDraftFrozen_IsAConflictAndDeletesNothing()
+    {
+        int published = await _harness.PublishThingsAsync("stone_sword");
+        await _harness.OkAsync("catalog-edit", """
+        { "edits": [ { "op": "add", "typeKey": "thing", "key": "iron_sword",
+                       "fields": { "value": 12000, "stackable": false } } ] }
+        """);
+        await _harness.Store.FreezeDraftAsync(published);
+
+        // Stands in for a chunk the publish in flight has already written and not yet committed: no version
+        // references it, so the keep set does not cover it and a sweep that ran would delete it.
+        string pending = new('c', 64);
+        string path = _harness.Pack.PathFor(pending);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        await File.WriteAllBytesAsync(path, [7, 7, 7, 7]);
+
+        JsonElement body = await _harness.ConflictAsync("catalog-sweep", """{ "operator": "oid:8f2c" }""");
+
+        Assert.Equal(
+            ContentAuthoringException.PublishInProgressReason, body.GetProperty("reason").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(body.GetProperty("remedy").GetString()));
+        Assert.True(File.Exists(path));
+    }
+
     /// <summary>A store with no pack target refuses both operational actions rather than throwing.</summary>
     [Theory]
     [InlineData("catalog-sweep")]

@@ -184,6 +184,12 @@ publish turns into a lost pack. `catalog-verify` walks a version's two manifests
 name and rehashes it. **It is read only and it never repairs**, because a repair means deciding which copy is
 right and only a republish can know that.
 
+**A sweep while a publish holds the draft FROZEN is a 409 and deletes nothing.** The keep set is built from
+the committed versions, and a publish writes every chunk and both manifests to the pack before its commit, so
+a sweep inside that window would see the bytes the publish just wrote as orphans and delete them, leaving the
+publish to commit a version whose pack is already missing. The frozen draft is the signal the store carries
+for exactly that window, and `catalog-edit` and `catalog-discard` refuse on the same marker.
+
 ## Operator identity
 
 **The bearer token is ONE token and it is not an identity.** There is no per-operator layer at this endpoint,

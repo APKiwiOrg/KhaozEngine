@@ -337,6 +337,64 @@ if (!roller.TryRoll(tableId, drops, out int written))
   name that is not a content address at all. It is the one pack failure here that throws, because a bad PUT
   is the publisher's own programming error on the publisher's own machine and not bytes from a peer.
 
+## The client fetch loop
+
+`ContentFetchLoop` is spec 8.7, from the connect door's refusal to every chunk verified. It is the client
+half: the server reads a whole pack at boot through `ContentPackReader.ReadAllAsync` and never runs this.
+
+```csharp
+var loop = new ContentFetchLoop(cache, HttpPackStore.CreateClient(config.PackBaseAddress),
+    config.PackBaseAddress, registry, new ContentFetchOptions { ClientBuild = ThisBuild });
+
+ContentFetchResult result = await loop.FetchAsync(server);        // server came from ContentRefusal
+if (result.Success)
+    Reconnect();                                                  // and not one step before
+else
+    ShowNotice(result.Outcome, result.Reason, result.Progress);
+```
+
+- **The base address comes from CONFIGURATION, never from the refusal.** A URL in a refusal token is a
+  redirect an unauthenticated party controls (spec 13.4), so the loop takes its store pair or its base
+  address as a CONSTRUCTOR argument, and takes the version as a parsed `ContentVersionIdentity` rather than
+  as a token. Nothing on this type turns a string into an address, and `KhaozEngine.Catalog` cannot see the
+  refusal token at all: parsing it is `ContentRefusal`'s, in `KhaozEngine.Catalog.Netcode`.
+- **Six steps.** Read the manifest the refusal named, through the verifying pair so it is cached only if it
+  digested to that name. Refuse a pack from a newer format generation or a version whose
+  `MinimumClientBuild` is above this build, both of which mean the player has to update rather than wait.
+  Compute `missing` as every hash the manifest names that the LOCAL cache lacks. Fetch that set at bounded
+  concurrency, verifying, retrying once. Reconnect when every one arrived, otherwise report progress and
+  retry the missing set with backoff.
+- **Bounded concurrency FOUR**, because a home connection saturates at two or three streams and unbounded
+  parallelism against a CDN buys nothing over a link that is the floor. `ContentFetchOptions.Concurrency`
+  moves it, `Attempts` and `BackoffStep` are step 6's retry, and `Languages` is which text chunks this
+  player wants, empty for every language the version ships.
+- **Decode is LAZY and the loop stores BYTES.** No row is decoded and no decompressed body is kept: the one
+  decompression a chunk pays is the verify's, inside the store pair, and its result is dropped. A client
+  that later reads one item id through `ContentPackReader.ReadRowAsync` decompresses the one chunk whose
+  slots cover it and leaves every other chunk compressed in the cache, which is what makes the cold start a
+  download budget rather than a decode budget.
+- **A partial download never becomes a partial catalog.** `Success` is `Complete` and nothing else, and
+  there is deliberately no member on the loop or the result that hands back a snapshot, a runtime or a
+  reader. That is what makes the door comparison a hash equality rather than a negotiation.
+- **The reason is the verify's own token, never one this loop invented over the top of it.** A short body
+  (`chunk-stored-length`), a wrong body (`hash-mismatch`), a body that never arrived (`chunk-fetch-failed`)
+  and a chunk the publisher wrote badly (the decoder's token, `text-entry-order` and its kind) are four
+  different lines for an operator. `ContentFetchOutcome` is the coarse half a client switches on, and
+  `ContentFetchFailure` carries the address and the token for every object the fetch gave up on.
+- **A chunk is retried ONCE against the same source whatever the refusal was**, because the loop cannot
+  tell a transfer that mangled bytes from a publisher that wrote them mangled: a decoder that refused
+  before the digest could be compared has no digest to compare. The manifest is refetched once too, and a
+  second mismatch STOPS the client, because it cannot tell a bad CDN from a bad configuration and guessing
+  is worse than stopping.
+- **There is no resume state beyond the cache.** An interrupted fetch leaves verified chunks in the cache
+  and the next call recomputes `missing` against it, so a server whose version moved mid fetch needs no
+  special casing: the client finishes, is refused again with the new hash, and downloads the manifest plus
+  the chunks that differ.
+- `ContentFetchProgress` is the report while it runs, against ONE required set for the whole call, so a
+  client draws one bar rather than one per attempt. `loop.Store` is the verifying pair the fetch went
+  through and is what a lazy row read should go through afterwards, because it verifies on every READ: a
+  cached chunk that went bad on disk is detected on first use, evicted and refetched.
+
 ## Validation
 
 `ContentValidator.Validate(candidate, previous, rules, registry)` is the ONE validator, shared by publish,

@@ -246,11 +246,15 @@ sentence cannot carry the answer: a finding list from a validator that accumulat
 version numbers an optimistic caller needs after losing a race. A 409 without them was a 500 with no body, which
 reads as a server fault rather than as a race the caller resolves by re-reading and retrying.
 
-Every catalog refusal carries an OBJECT body rather than a bare string, so one console parser reads all of
-them. A 400 is `{ error, reason, findingCount, findings[] }`, with `findings` empty when the refusal is about
-the REQUEST rather than about the content. A 409 carries `error`, `reason` and whatever the race needs: a
-stale publish adds `expectedBaseVersion` and `actualBaseVersion`, a draft a publish is holding adds a
-`remedy`, and a blocked rollback adds `code`, `blockedByRules[]` and a `remedy`.
+Every refusal from the ELEVEN mutating catalog actions carries an OBJECT body rather than a bare string, so
+one console parser reads all of them. A 400 is `{ error, reason, findingCount, findings[] }`, with `findings`
+empty when the refusal is about the REQUEST rather than about the content. A 409 carries `error`, `reason` and
+whatever the race needs: a stale publish adds `expectedBaseVersion` and `actualBaseVersion`, a draft a publish
+is holding adds a `remedy`, and a blocked rollback adds `code`, `blockedByRules[]` and a `remedy`.
+
+**The FIVE reads answer `{ error }` instead**, which is spec 10.2 and not an oversight: a read refuses for one
+reason at a time, an unknown type key or a page argument out of range, and there is no finding list to carry.
+A console that parses both shapes reads `error` from either.
 
 An unknown action name is a 404 from the action lookup. The 501 arms belong to the four built-in routes
 (`/accounts`, `/bans`, `/ban`, `/unban`), each gated on a `ServerAdmin` capability flag, so no registered action

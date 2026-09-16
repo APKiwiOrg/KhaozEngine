@@ -439,6 +439,11 @@ public sealed class CatalogReadActionTests : IDisposable
         Assert.Equal(AdminActionStatus.BadRequest, result.Status);
         Assert.NotNull(result.Error);
         Assert.Contains(mentions, result.Error!, StringComparison.Ordinal);
+
+        // The BARE STRING, which is what spec 10.2 assigns the reads and is the shape the endpoint turns into
+        // { error }. The ELEVEN mutating actions carry the object body instead, and the two are pinned here so
+        // the split stays a decision rather than something a later refusal drifts across.
+        Assert.Null(result.Payload);
     }
 
     /// <summary>

@@ -467,6 +467,9 @@ string name = strings.Get(ContentTextKey.Derive("item", row.Key.Utf8, "name"));
   `ContentStringCatalog.CacheEntries` (512) keyed on the entry offset, so it cannot grow into the thing the
   budget exists to prevent. A repeat `Get` returns the same instance and allocates nothing. A miss is one
   UTF-8 decode over a slice the catalog already holds.
+- **One instance is SINGLE THREADED.** Selecting a language writes the instance and a lookup writes its
+  cache, so two threads sharing one catalog are two threads writing it. Build one per thread, per screen or
+  per player, which the explicit `CurrentLanguage` is what makes cheap.
 - **Two indexes carrying the same tag are SHARDS of that language**, which is how spec 7.6 holds a language
   past the chunk ceiling, and a lookup finds a key in whichever shard carries it.
 

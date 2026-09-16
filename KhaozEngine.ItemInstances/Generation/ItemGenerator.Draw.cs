@@ -13,6 +13,204 @@ namespace KhaozEngine.ItemInstances;
 public sealed partial class ItemGenerator
 {
     /// <summary>
+    /// The kind mask naming EVERY mod kind, which an ordinary roll uses and which a craft parameter of 0
+    /// resolves to. It short circuits <see cref="InMask"/>, so a kind above
+    /// <see cref="MaxMaskedModKind"/>, which a mask cannot name at all, is still rolled by the generator's
+    /// own path and only a CRAFT pays that ceiling.
+    /// </summary>
+    public const uint AllModKinds = uint.MaxValue;
+
+    /// <summary>
+    /// The highest mod kind a mask can name, because the mask is one authored <c>currency_step</c>
+    /// parameter and a parameter is 32 bits. Spec 8.2 runs a mod kind to 255, so the two numbers disagree
+    /// and the smaller one is a CRAFT AUTHORING ceiling rather than a silent alias onto another kind.
+    /// </summary>
+    public const int MaxMaskedModKind = 32;
+
+    /// <summary>
+    /// Spec 9.4 steps 6 to 8 as ONE pick over an affix list that ALREADY EXISTS, which is what the
+    /// <c>AddRandomMod</c> craft primitive is. It lives HERE rather than in the crafting framework because
+    /// a second weighted pick is a second distribution, and spec 9.2's whole argument is that there is
+    /// exactly one of those.
+    /// <para>
+    /// The draw COUNT is one weighted draw plus one roll position, always, exactly as a generation pick is:
+    /// a pick whose live pool is empty still consumes both and answers false, so a seeded session does not
+    /// diverge at the first craft whose pool ran dry.
+    /// </para>
+    /// <para>
+    /// <b>The tier ceiling is applied to the RESULT, not to the pool.</b> Re-weighting the pool for a
+    /// ceiling would be a second distribution and filtering after the draw would be the rejection loop
+    /// contracts 13.4 forbids, so the drawn mod keeps its mod and its position and its ordinal comes down
+    /// to the highest LIVE tier of that same mod at or below the ceiling. A mod with no such tier answers
+    /// false, and the consequence worth stating is that a ceiling piles the mass of the excluded tiers onto
+    /// the ceiling tier rather than spreading it over the rest of the pool.
+    /// </para>
+    /// </summary>
+    /// <param name="baseId">The item row the target is made from, which carries the tags the draw is keyed by.</param>
+    /// <param name="itemLevel">The target's OWN item level from kind 2, which selects the band.</param>
+    /// <param name="modKind">The mod kind to pick. The kind is a PARAMETER here, so step 5 draws nothing.</param>
+    /// <param name="tierCeiling">The highest tier ordinal to write, or 0 for no ceiling.</param>
+    /// <param name="present">The affixes already on the item, excluded before the draw (step 6).</param>
+    /// <param name="affix">The pick, when the answer is true.</param>
+    /// <exception cref="ArgumentOutOfRangeException">The item level or the base is one the generator refuses
+    /// at its own door, in the same class as every other value a caller hands in by code.</exception>
+    public bool TryDrawAffix(
+        int baseId,
+        int itemLevel,
+        int modKind,
+        int tierCeiling,
+        ReadOnlySpan<InstanceAffix> present,
+        out InstanceAffix affix)
+    {
+        affix = default;
+        var context = new GenerationContext(baseId, itemLevel, 0, 0, 0);
+        _ = RefuseAtTheDoor(in context);
+        OpenPool(SignatureOf(baseId), _tables.BandOf(itemLevel));                             // step 1
+        SeatPresent(present);                                                                 // step 6
+
+        int liveWeight = 0;
+        bool known = _tables.TryGetKindPosition(modKind, out int kindPosition);
+        for (int tag = 0; known && tag < _tagCount; tag++)
+        {
+            liveWeight += _slotLiveWeight[(kindPosition * _tagPositions) + tag];
+        }
+
+        if (!known || liveWeight <= 0)
+        {
+            _ = _random.NextInt(0, DiscardBound);
+            _ = _random.NextRollPosition();
+            return false;
+        }
+
+        int entry = Resolve(kindPosition, _random.NextInt(0, liveWeight));                    // step 7
+        ushort position = _random.NextRollPosition();                                         // step 8
+        int modId = ModCandidateTables.ModIdOf(entry);
+        int ordinal = ModCandidateTables.TierOrdinalOf(entry);
+        if (tierCeiling > 0 && ordinal > tierCeiling)
+        {
+            ordinal = CeilingTier(kindPosition, modId, tierCeiling);
+        }
+
+        affix = new InstanceAffix(modId, (byte)ordinal, position);
+        return ordinal > 0;
+    }
+
+    /// <summary>
+    /// Spec 9.4 steps 4 to 9 over an affix list that already exists, restricted to a KIND MASK, which is
+    /// what the <c>RerollMods</c> and <c>SetRarity</c> craft primitives are. The kept affixes are excluded
+    /// before the draw and COUNT against the rarity rule's per kind caps, so a reroll of the prefixes
+    /// cannot walk past a cap the suffixes already filled.
+    /// </summary>
+    /// <param name="baseId">The item row the target is made from.</param>
+    /// <param name="itemLevel">The target's own item level from kind 2.</param>
+    /// <param name="rarityId">The target's rarity rule from kind 130, or 0 for an item with no rarity.</param>
+    /// <param name="modKindMask">Bit <c>kind - 1</c> per mod kind, or 0 for <see cref="AllModKinds"/>.</param>
+    /// <param name="picks">How many picks to make, or -1 to roll the count through step 4 and take off what
+    /// <paramref name="keep"/> already holds. Step 4 is ONE draw and it is skipped entirely when a caller
+    /// names the count, which is what makes a fill's draw count a function of the step list.</param>
+    /// <param name="keep">The affixes the craft is keeping, which are excluded and counted.</param>
+    /// <param name="destination">Where the kept and drawn affixes are written, at least 255 long, which is
+    /// the most kind 131's byte count can hold. The order is NOT sorted here: the encoder sorts ascending
+    /// by mod id whatever order it is handed, which is step 9 and the one place it lives.</param>
+    /// <returns>How many affixes were written.</returns>
+    /// <exception cref="ArgumentException"><paramref name="destination"/> is shorter than 255.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">The item level or the base is one the generator refuses
+    /// at its own door.</exception>
+    public int RedrawAffixes(
+        int baseId,
+        int itemLevel,
+        int rarityId,
+        uint modKindMask,
+        int picks,
+        ReadOnlySpan<InstanceAffix> keep,
+        Span<InstanceAffix> destination)
+    {
+        if (destination.Length < byte.MaxValue)
+        {
+            throw new ArgumentException(
+                FormattableString.Invariant(
+                    $"A redraw writes up to {byte.MaxValue} affixes, because kind 131's count is a byte, and the span holds {destination.Length}."),
+                nameof(destination));
+        }
+
+        var context = new GenerationContext(baseId, itemLevel, 0, 0, 0);
+        _ = RefuseAtTheDoor(in context);
+        OpenPool(SignatureOf(baseId), _tables.BandOf(itemLevel));                             // step 1
+        SeatPresent(keep);                                                                    // step 6
+
+        int rarityIndex = _content.IndexOfRarity(rarityId);
+        int requested = picks < 0 ? RollAffixCount(rarityIndex) - keep.Length : picks;        // step 4
+        int placed = DrawAffixes(                                                             // steps 5 to 8
+            rarityIndex,
+            Math.Max(requested, 0),
+            modKindMask == 0 ? AllModKinds : modKindMask);
+
+        int total = 0;
+        for (int index = 0; index < keep.Length && total < destination.Length; index++)
+        {
+            destination[total++] = keep[index];
+        }
+
+        for (int index = 0; index < placed && total < destination.Length; index++)
+        {
+            destination[total++] = _affixes[index];
+        }
+
+        return total;
+    }
+
+    /// <summary>
+    /// Step 6 pre-seeded from the affixes the item already carries: every one leaves the pool with its
+    /// whole run of tiers and its group, and counts against its kind's cap.
+    /// </summary>
+    void SeatPresent(ReadOnlySpan<InstanceAffix> present)
+    {
+        foreach (InstanceAffix affix in present)
+        {
+            if (_tables.TryGetKindPosition(_tables.KindOf(affix.ModId), out int position))
+            {
+                _kindPlaced[position]++;
+            }
+
+            Exclude(affix.ModId);
+            ExcludeGroup(affix.ModId);
+        }
+    }
+
+    /// <summary>
+    /// The highest LIVE tier ordinal of one mod at or below a ceiling, across the base's own tag tables, or
+    /// 0 when the mod has none in this band. A mod's tiers are contiguous in a bucket, because the bucket is
+    /// sorted by the packed key, so the answer is one binary search per tag position and no walk.
+    /// </summary>
+    int CeilingTier(int kindPosition, int modId, int ceiling)
+    {
+        int best = 0;
+        int target = ModCandidateTables.Pack(modId, Math.Min(ceiling, ModCandidateTables.MaxTierOrdinal)) + 1;
+        for (int tag = 0; tag < _tagCount; tag++)
+        {
+            int slot = (kindPosition * _tagPositions) + tag;
+            if (_slotLength[slot] == 0)
+            {
+                continue;
+            }
+
+            ReadOnlySpan<int> packed = _tables.BucketPacked(_slotBucket[slot]);
+            int at = LowerBoundKey(packed, target) - 1;
+            if (at >= 0 && ModCandidateTables.ModIdOf(packed[at]) == modId)
+            {
+                best = Math.Max(best, ModCandidateTables.TierOrdinalOf(packed[at]));
+            }
+        }
+
+        return best;
+    }
+
+    /// <summary>Whether one mod kind is in a mask, which every bit set answers without looking.</summary>
+    static bool InMask(uint kindMask, int kind)
+        => kindMask == AllModKinds
+            || (kind >= 1 && kind <= MaxMaskedModKind && (kindMask & (1u << (kind - 1))) != 0);
+
+    /// <summary>
     /// Step 1: the base's tag tables for this band, one per (kind, tag position), with the precomputed
     /// overlap already deducted. Nothing is merged and nothing is copied, so a roll starts at a fixed cost
     /// in the base's TAG COUNT rather than one in the size of its candidate pool.
@@ -104,7 +302,15 @@ public sealed partial class ItemGenerator
     /// permitting three prefixes and three suffixes does not produce six prefixes because prefixes happen
     /// to outnumber suffixes in the pool.
     /// </summary>
-    int DrawAffixes(int rarityIndex, int requested)
+    int DrawAffixes(int rarityIndex, int requested) => DrawAffixes(rarityIndex, requested, AllModKinds);
+
+    /// <summary>
+    /// The same steps restricted to a KIND MASK, which is what the <c>RerollMods</c> craft primitive needs
+    /// and what the ordinary roll gets with every bit set. <see cref="AllModKinds"/> short circuits the mask
+    /// test, so a roll through <see cref="DrawAffixes(int, int)"/> makes exactly the calls it always made,
+    /// in the order it always made them, whatever kinds the version carries.
+    /// </summary>
+    int DrawAffixes(int rarityIndex, int requested, uint kindMask)
     {
         int placed = 0;
         for (int pick = 0; pick < requested; pick++)
@@ -112,14 +318,14 @@ public sealed partial class ItemGenerator
             int openTotal = 0;
             for (int kind = 0; kind < _kindCount; kind++)
             {
-                if (IsOpen(rarityIndex, kind))
+                if (IsOpen(rarityIndex, kind, kindMask))
                 {
                     openTotal += _liveCount[kind];
                 }
             }
 
             int kindDraw = _random.NextInt(0, Math.Max(openTotal, DiscardBound));            // step 5
-            int chosen = ChooseKind(rarityIndex, openTotal, kindDraw);
+            int chosen = ChooseKind(rarityIndex, openTotal, kindDraw, kindMask);
             int liveWeight = 0;
             for (int tag = 0; chosen >= 0 && tag < _tagCount; tag++)
             {
@@ -157,14 +363,15 @@ public sealed partial class ItemGenerator
         return placed;
     }
 
-    /// <summary>Whether one kind is still under its cap and still has a live candidate.</summary>
-    bool IsOpen(int rarityIndex, int kindPosition)
+    /// <summary>Whether one kind is still under its cap, still has a live candidate and is in the mask.</summary>
+    bool IsOpen(int rarityIndex, int kindPosition, uint kindMask)
         => _liveCount[kindPosition] > 0
             && rarityIndex >= 0
-            && _kindPlaced[kindPosition] < _content.KindCapAt(rarityIndex, kindPosition);
+            && _kindPlaced[kindPosition] < _content.KindCapAt(rarityIndex, kindPosition)
+            && InMask(kindMask, _tables.KindAt(kindPosition));
 
     /// <summary>The kind the count-weighted draw landed on, or -1 when nothing is open.</summary>
-    int ChooseKind(int rarityIndex, int openTotal, int draw)
+    int ChooseKind(int rarityIndex, int openTotal, int draw, uint kindMask)
     {
         if (openTotal <= 0)
         {
@@ -174,7 +381,7 @@ public sealed partial class ItemGenerator
         int running = 0;
         for (int kind = 0; kind < _kindCount; kind++)
         {
-            if (!IsOpen(rarityIndex, kind))
+            if (!IsOpen(rarityIndex, kind, kindMask))
             {
                 continue;
             }

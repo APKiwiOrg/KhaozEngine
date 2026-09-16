@@ -231,26 +231,32 @@ internal static class ItemsWorkMeasurements
     }
 
     /// <summary>
-    /// Budget 6: ONE stat folded over every line eleven worn items put on it. The budget's own
-    /// derivation is eleven worn items times up to thirteen lines each, about 140 lines, so the lines
-    /// all land on the measured stat rather than spreading across the catalog: a stat touched by four
-    /// of them would answer a much easier question than the one the budget asked. The headline is the
-    /// RECOMPUTE, which is what a read of a dirty stat costs, and the cached read is beside it because
-    /// 11.5 says a read recomputes only when a source changed.
+    /// Budget 6: ONE stat folded over every line eleven worn items put on it, through the SHIPPED
+    /// <see cref="ContentStatEvaluator"/>. The budget's own derivation is eleven worn items times up to
+    /// thirteen lines each, about 140 lines, so the lines all land on the measured stat rather than
+    /// spreading across the catalog: a stat touched by four of them would answer a much easier question
+    /// than the one the budget asked. The headline is a read of a DIRTY stat, which is the fold plus the
+    /// dirty mark that preceded it, and the cached read is beside it because 11.5 says a read recomputes
+    /// only when a source changed.
+    /// <para>
+    /// The stat metadata is the snapshot's: <c>scale</c>, <c>min</c> and <c>max</c> come off the
+    /// <c>stat</c> rows <see cref="SyntheticContentRows"/> published, so there is no constructor default
+    /// left for a spike to have guessed differently from the engine.
+    /// </para>
     /// </summary>
-    internal static StatMeasurement MeasureStatEvaluation(SyntheticContent content, IRandomSource random)
+    internal static StatMeasurement MeasureStatEvaluation(IContentSnapshot snapshot, IRandomSource random)
     {
         const int hottest = 1;
         const int baseLinesPerItem = 3;
         const int affixLinesPerItem = 10;
-        var evaluator = new ContentStatEvaluator(content.StatCount);
+        var evaluator = new ContentStatEvaluator(snapshot);
         var lines = new StatModifierLine[16];
         var tags = new[] { 1, 2, 3 };
         for (int worn = 0; worn < WornItems; worn++)
         {
             for (int line = 0; line < baseLinesPerItem; line++)
                 lines[line] = new StatModifierLine(hottest, StatCombineKind.Flat, random.NextInt(1, 200), 0, 0, 0);
-            evaluator.AddSource(new StatSourceKey(1, worn, 0), lines.AsSpan(0, baseLinesPerItem), tags);
+            evaluator.AddSource(new StatSourceKey(StatSourceKey.WornItemKind, worn, 0), lines.AsSpan(0, baseLinesPerItem), tags);
 
             for (int line = 0; line < affixLinesPerItem; line++)
             {
@@ -264,29 +270,35 @@ internal static class ItemsWorkMeasurements
                 lines[line] = new StatModifierLine(hottest, combine, value, 0, random.NextInt(0, 2), 0);
             }
 
-            evaluator.AddSource(new StatSourceKey(2, worn, 1_000 + worn), lines.AsSpan(0, affixLinesPerItem), tags);
+            evaluator.AddSource(new StatSourceKey(StatSourceKey.AffixKind, worn, 1_000 + worn), lines.AsSpan(0, affixLinesPerItem), tags);
         }
 
         evaluator.SetBase(hottest, 1_000);
-        evaluator.SetStatTags(hottest, new[] { 1 });
 
+        // The craft of spec 11.5's five events, standing in for all of them: rewriting one worn item's
+        // affixes is what dirties the stat before each measured read.
+        var dirtied = new StatSourceKey(StatSourceKey.AffixKind, WornItems - 1, 1_000 + WornItems - 1);
         var contextTags = new[] { 1, 2, 3 };
         var context = new StatContext(contextTags, 0);
         for (int warmup = 0; warmup < 200_000; warmup++)
         {
-            evaluator.MarkDirty();
-            _ = evaluator.Recompute(hottest, in context);
+            evaluator.Recompute(in dirtied);
+            _ = evaluator.Value(hottest, in context);
         }
 
         const int iterations = 2_000_000;
         long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
         long started = Stopwatch.GetTimestamp();
         int sink = 0;
-        for (int index = 0; index < iterations; index++) sink += evaluator.Recompute(hottest, in context);
+        for (int index = 0; index < iterations; index++)
+        {
+            evaluator.Recompute(in dirtied);
+            sink += evaluator.Value(hottest, in context);
+        }
+
         long elapsed = Stopwatch.GetTimestamp() - started;
         long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
 
-        evaluator.MarkDirty();
         _ = evaluator.Value(hottest, in context);
         long cachedStarted = Stopwatch.GetTimestamp();
         for (int index = 0; index < iterations; index++) sink += evaluator.Value(hottest, in context);

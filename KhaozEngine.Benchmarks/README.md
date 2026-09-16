@@ -275,12 +275,14 @@ through `ContentSnapshotBuilder` into about 207,000 real rows of fourteen types,
 `base_socket`. Budget 9 times `ModCandidateTables.Build` over that snapshot and every roll in the run goes
 through `ItemGenerator`, so a regression in either one moves a number the mode reports. Two shapes the flat
 arrays allowed and a row set cannot: one `(tier, tag)` pair is one weight row rather than two, and a weight
-of zero is no row at all.
+of zero is no row at all. **Budget 6 measures the shipped `ContentStatEvaluator`** over that same snapshot,
+so the clamp and the scale it folds against are the published `stat` rows' rather than a constructor default
+a spike chose.
 
 The rest of `Items/` is a throwaway but clean implementation of the byte formats the two design documents
 define, and nothing else. It is not a package and nothing outside the benchmark references it. It carries
 the canonical TLV payload of the contracts document's section 9, container codec version 2 and its 100 slot
-pages, the integer stat fold with floor division, the page fragmenter and delta, and the remap rule pass.
+pages, the page fragmenter and delta, and the remap rule pass.
 Rewiring budgets 1, 2, 3, 4, 8 and 11 onto the shipped commit builder, codec and visibility function is
 [#951](https://github.com/APKiwiOrg/KhaozEngine/issues/951). Anything that commits goes through the REAL
 journal: `SqliteMutationJournalStore` under `MutationJournalExecutor`, at `JournalLimits.Maximum`, because a

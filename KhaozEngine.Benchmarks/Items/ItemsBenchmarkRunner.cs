@@ -80,7 +80,7 @@ public static class ItemsBenchmarkRunner
             config.Seed + 3, content.RarityCount);
         GenerationMeasurement cold = ItemsWorkMeasurements.MeasureColdGeneration(
             generator, content, random, Math.Min(config.Generations / 10, 100_000), config.Seed);
-        StatMeasurement stat = ItemsWorkMeasurements.MeasureStatEvaluation(content, random);
+        StatMeasurement stat = ItemsWorkMeasurements.MeasureStatEvaluation(snapshot, random);
 
         byte[][] bankPages = BuildBank(generator, content, random, config.BankPagesPerPlayer);
         var noOpRules = BuildRules(content, 200, hits: 0, config.Seed);

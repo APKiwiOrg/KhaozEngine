@@ -76,7 +76,7 @@ CREATE TABLE dbo.catalog_family_block (
     CONSTRAINT fk_catalog_family_block_family FOREIGN KEY (family_id) REFERENCES dbo.catalog_family(family_id),
     CONSTRAINT ck_catalog_family_block_ordinal CHECK (block_ordinal >= 0),
     CONSTRAINT ck_catalog_family_block_base CHECK (base_id >= 1),
-    CONSTRAINT ck_catalog_family_block_size CHECK (block_size BETWEEN 16 AND 65536),
+    CONSTRAINT ck_catalog_family_block_block_size CHECK (block_size BETWEEN 16 AND 65536),
     CONSTRAINT ck_catalog_family_block_next CHECK (next_free_id >= base_id),
     CONSTRAINT ck_catalog_family_block_version CHECK (reserved_in_version >= 1),
     CONSTRAINT ck_catalog_family_block_alignment CHECK (base_id % block_size = 0),

@@ -116,8 +116,7 @@ public class RowCodecRoundTripTests
             registration,
             "goblin_drops",
             Number(ContentFieldKind.Int, 2),
-            ContentRowCodecBase.TagListValue([9]),
-            Number(ContentFieldKind.Bool, 1)),
+            ContentRowCodecBase.TagListValue([9])),
         "loot_entry" => Row(
             registration,
             "goblin_drops_coin",
@@ -126,6 +125,7 @@ public class RowCodecRoundTripTests
             Number(ContentFieldKind.KeyReference, 5),
             Number(ContentFieldKind.Int, 50),
             Number(ContentFieldKind.Int, 2500),
+            Number(ContentFieldKind.Bool, 1),
             Number(ContentFieldKind.Int, 1),
             Number(ContentFieldKind.Int, 6),
             Number(ContentFieldKind.Int, 10),
@@ -237,8 +237,7 @@ public class RowCodecRoundTripTests
             registration,
             "ordered",
             Number(ContentFieldKind.Int, 1),
-            ContentRowCodecBase.TagListValue([9, 2, 7]),
-            Number(ContentFieldKind.Bool, 0));
+            ContentRowCodecBase.TagListValue([9, 2, 7]));
 
         byte[] encoded = Encode(registration, row);
         ContentRow decoded = Decode(registration, encoded);
@@ -319,8 +318,10 @@ public class RowCodecRoundTripTests
     [Fact]
     public void ABoolByteAboveOneIsRefusedBecauseTheFormatIsCanonical()
     {
-        ContentTypeRegistration registration = Type("loot_table");
-        byte[] body = [0x02, 0x6F, 0x6B, 0x01, 0x00, 0x02];
+        // item, whose fourth field is the first Bool in the schema: key "ok", the two derived markers writing
+        // nothing, an empty tag list, then a stackable byte of 2.
+        ContentTypeRegistration registration = Type("item");
+        byte[] body = [0x02, 0x6F, 0x6B, 0x00, 0x02];
 
         Assert.False(registration.Codec.TryDecode(body, out _, out string? reason));
         Assert.Equal("field-malformed", reason);

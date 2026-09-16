@@ -578,7 +578,6 @@ server uses (contracts 13.4), and it cannot do that without the scale and the cl
 |---|---|---|---|---|
 | `roll_count` | int | | `ServerOnly` | yes |
 | `tags` | tag list | `tag` | `ServerOnly` | no |
-| `guaranteed` | bool | | `ServerOnly` | yes |
 
 | `loot_entry` field | Value kind | Reference target | Visibility | Required |
 |---|---|---|---|---|
@@ -587,6 +586,7 @@ server uses (contracts 13.4), and it cannot do that without the scale and the cl
 | `nested_table` | key reference | `loot_table` | `ServerOnly` | no |
 | `weight` | int | | `ServerOnly` | yes |
 | `chance_bp` | int | | `ServerOnly` | yes |
+| `guaranteed` | bool | | `ServerOnly` | yes |
 | `min_count` | int | | `ServerOnly` | yes |
 | `max_count` | int | | `ServerOnly` | yes |
 | `sort` | int | | `ServerOnly` | yes |
@@ -595,6 +595,16 @@ server uses (contracts 13.4), and it cannot do that without the scale and the cl
 Both types are `ServerOnly` at the TYPE level, so the whole family is omitted from every client manifest
 (contracts 11.3). A drop table is exactly the content a client must not have, and the owner put drop tables in
 the same versioned content as items and called it important (#882 comment 2).
+
+**`guaranteed` is a field of `loot_entry`, and the schema table above says so as a CORRECTION.** It was
+written on `loot_table` while every line of prose in this section read it per entry, and the prose is the half
+that describes a table anyone would author: the goblin drops its bread on its own chance AND its coin purse
+out of a weighted draw, which is two roll shapes composed in ONE table. On the table the flag could not
+express that, and it would make `roll_count` meaningless on any table that set it, because a table whose
+entries are all guaranteed has no non-guaranteed entry left for a weighted pick to land on. `LootRoller`
+settles it, `LootEntryContentType` carries the field, and the loot candidate arrays of 9.4 prefix-sum the
+NON-GUARANTEED entries only, so a guaranteed entry widens the running total by nothing and one binary search
+still answers a pick.
 
 Two roll shapes are covered by one schema, and they compose, which is what Grimhollow's goblin already needs:
 a `guaranteed` entry rolls its own `chance_bp` independently (Grimhollow's bread, one kill in four,

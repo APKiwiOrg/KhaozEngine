@@ -9,6 +9,10 @@ namespace KhaozEngine.Catalog;
 /// <param name="EntryId">The entry's own definition id, which fixes ties and names the row in a log.</param>
 /// <param name="ItemId">The item this entry draws, or 0 when it is a nested or a tag draw.</param>
 /// <param name="NestedTableId">The table this entry recurses into, or 0.</param>
+/// <param name="Guaranteed">
+/// Whether the entry rolls its own chance before the weighted draw instead of competing in it. A guaranteed
+/// entry contributes NO weight, so <see cref="PrefixWeight"/> does not move across one.
+/// </param>
 /// <param name="PrefixWeight">
 /// The RUNNING weight total through this entry, so a weighted draw is one <c>NextInt(0, total)</c> and one
 /// binary search rather than a summation per roll.
@@ -21,6 +25,7 @@ public readonly record struct ContentLootEntry(
     int EntryId,
     int ItemId,
     int NestedTableId,
+    bool Guaranteed,
     int PrefixWeight,
     int ChanceBasisPoints,
     int MinCount,
@@ -38,7 +43,16 @@ public readonly record struct ContentLootEntry(
 /// </para>
 /// <para>
 /// Entries come back ordered by <c>sort</c> then by entry id, which is the order spec 3.5 fixes for the
-/// guaranteed pass and a deterministic one for the weighted pass. A weight below zero is CLAMPED to zero
+/// guaranteed pass and a deterministic one for the weighted pass.
+/// </para>
+/// <para>
+/// <b>The prefix sums run over the NON-GUARANTEED entries only.</b> <c>guaranteed</c> is a field of
+/// <c>loot_entry</c> (see <see cref="LootEntryContentType.GuaranteedField"/>), a guaranteed entry rolls its own
+/// chance rather than competing in the draw, and so it contributes zero to the running total. The array stays
+/// one array and the draw stays one binary search: a zero-width entry can never be the answer, because a
+/// search for the first running total ABOVE the roll steps straight over it. <see cref="TotalWeight"/> is
+/// therefore the weighted pool's total and the exclusive bound of a pick, not the sum of every authored
+/// weight. A weight below zero is CLAMPED to zero
 /// rather than refused, because a negative weight would make the prefix array non-monotonic and unsearchable,
 /// and refusing it here would be a load failure where the validator already has a finding. The running total
 /// saturates at <see cref="int.MaxValue"/> for the same reason.
@@ -53,12 +67,11 @@ public readonly record struct ContentLootEntry(
 public sealed class ContentLootIndex
 {
     /// <summary>The index of a version carrying no loot table.</summary>
-    public static readonly ContentLootIndex Empty = new(0, [], [], [], [], [], [], [], [], []);
+    public static readonly ContentLootIndex Empty = new(0, [], [], [], [], [], [], [], []);
 
     readonly int[] _start;
     readonly int[] _count;
     readonly int[] _rollCount;
-    readonly bool[] _guaranteed;
     readonly ContentLootEntry[] _entries;
 
     /// <summary>
@@ -77,7 +90,6 @@ public sealed class ContentLootIndex
         int[] start,
         int[] count,
         int[] rollCount,
-        bool[] guaranteed,
         ContentLootEntry[] entries,
         int[] prefixWeights,
         int[] candidateStart,
@@ -88,7 +100,6 @@ public sealed class ContentLootIndex
         _start = start;
         _count = count;
         _rollCount = rollCount;
-        _guaranteed = guaranteed;
         _entries = entries;
         _prefixWeights = prefixWeights;
         _candidateStart = candidateStart;
@@ -105,10 +116,10 @@ public sealed class ContentLootIndex
     /// <summary>How many weighted picks a roll over this table draws.</summary>
     public int RollCount(int tableId) => Covers(tableId) ? _rollCount[tableId] : 0;
 
-    /// <summary>Whether this table's entries roll their own chance independently, spec 3.5.</summary>
-    public bool IsGuaranteed(int tableId) => Covers(tableId) && _guaranteed[tableId];
-
-    /// <summary>The table's total weight, which is the last prefix and the exclusive bound of a draw.</summary>
+    /// <summary>
+    /// The table's weighted pool total, which is the last prefix and the exclusive bound of a pick. Guaranteed
+    /// entries are not in it, so a table of nothing but guaranteed entries answers 0 and takes no pick.
+    /// </summary>
     public int TotalWeight(int tableId)
     {
         ReadOnlySpan<int> weights = PrefixWeights(tableId);
@@ -145,8 +156,7 @@ public sealed class ContentLootIndex
     /// <summary>The managed bytes this index holds, for the memory line of spec 9.2.</summary>
     public long ApproximateBytes()
         => ((long)(_start.Length + _count.Length + _rollCount.Length) * 4)
-            + _guaranteed.LongLength
-            + ((long)_entries.Length * 32)
+            + ((long)_entries.Length * 36)
             + ((long)(_prefixWeights.Length + _candidateStart.Length + _candidateCount.Length) * 4)
             + ((long)_candidates.Length * 4);
 

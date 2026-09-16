@@ -67,7 +67,8 @@ var key = new ContentKey(rowBlob, start, length);       // no string materialise
 ## The registry and the schema
 
 - `ContentTypeRegistry` - the registry of contracts 4.2, per INSTANCE and never a static: registration runs
-  once at process start, `Freeze()` closes it at the first pack load, and a later registration throws. Lookup
+  once at process start, `Freeze()` closes it at the first pack load (`ContentBoot` calls it at step 6), and
+  a later registration throws. Lookup
   is by `ContentTypeId` or by type key, ordinally, and `ByTypeId` is sorted ascending always, so no ordinal
   anywhere depends on the order a host registered in.
 - `ContentTypeRegistration` - what one registration was handed, held immutably: the band, the id, the key, the
@@ -90,8 +91,8 @@ var key = new ContentKey(rowBlob, start, length);       // no string materialise
   `00` byte in every case) and a derived marker writes nothing at all. A type subclasses it only to add a
   constraint the generic walk cannot express, checked on both sides so an encoder cannot write a row its own
   decoder refuses.
-- `IContentLoadIndex` - a derived table one type builds ONCE at boot, after the engine's own indexes, in type
-  id order, before the validator. It may read another type's rows and may not read another index, and it
+- `IContentLoadIndex` - a derived table one type builds ONCE at boot step 7b, after the engine's own
+  indexes, in type id order, before the validator. It may read another type's rows and may not read another index, and it
   throws to fail the boot closed rather than returning a partial index. `ContentRuntime.BuildLoadIndexes`
   runs them and `ContentRuntime.TryGetLoadIndex` hands one back typed.
 - `ContentLoadIndexException` - a registered load index failed, or one was asked for before the step that
@@ -117,9 +118,12 @@ stable ids and keys, plus the two type keys the engine writes down and a GAME re
 - `StatContentType` - `stat`, id 3, contracts 13.1's table. A fixed power-of-ten `scale` with the stored
   integer scaled by it, so there is no float stat and no float modifier anywhere.
 - `LootTableContentType` - `loot_table`, id 4, `ServerOnly` at the type level, so the whole family is omitted
-  from every client manifest.
+  from every client manifest. Two fields: `roll_count` and `tags`.
 - `LootEntryContentType` - `loot_entry`, id 5, one weighted row of one table, with a larger chunk and a row
-  cap of its own because entries outnumber tables.
+  cap of its own because entries outnumber tables. **`guaranteed` is a field of this type and not of the
+  table**, settled by `LootRoller` below: the composition spec 3.5 is written around is a table that drops one
+  thing on its own chance AND another out of a weighted draw, which a table-level flag cannot express and which
+  would make `roll_count` meaningless on the table that set it.
 - `BaseSocketContentType` - `base_socket`, id 6, one socket an item base is authored WITH, in authored order,
   which `item.socket_max` caps rather than describes.
 
@@ -205,10 +209,10 @@ process, and it implements the same `IContentSnapshot` seam over arrays indexed 
   `TryGetId` over raw UTF-8 and the seven seam members all answer out of those arrays. The hand-off from the
   snapshot SHARES its per-type body blob rather than copying it, so the two hold one copy of the catalog
   between them. `FromSnapshot` is boot step 7 and derives the four indexes below with it. `BuildLoadIndexes`
-  is step 7b and runs whatever the registered types declared, which the boot sequences separately because it
-  falls between the engine's four and the validator.
-- `ContentRuntimeHolder` - the ONE field the active runtime lives in, published with a `Volatile.Write` and
-  read with a `Volatile.Read`, and no lock anywhere. A reader takes the reference once at the top of an
+  is step 7b and runs whatever the registered types declared, which `ContentBoot` sequences separately
+  because it falls between the engine's four and the validator.
+- `ContentRuntimeHolder` - the ONE field the active runtime lives in, published at boot step 9 with a
+  `Volatile.Write` and read with a `Volatile.Read`, and no lock anywhere. A reader takes the reference once at the top of an
   operation and uses that instance throughout, so a swap cannot hand it a half-old half-new answer, which
   works because a runtime and everything reachable from it is immutable after construction. v1 never swaps
   at runtime, since a new version applies at server restart: the pair exists for a test fixture and for a
@@ -237,9 +241,50 @@ build inside a tick is a latency spike.
 - `ContentLootIndex` and `ContentLootEntry` - per `loot_table`, the resolved entries with the weights PREFIX
   SUMMED, so a weighted draw is one `NextInt(0, total)` and one binary search over an `int[]` with no
   allocation and no per-roll summation. Entries come back in `sort` then id order, a negative weight is clamped
-  and the running total saturates, both so the prefix array stays monotonic and searchable. A `required_tags`
-  entry resolves at load into a candidate array of the live items carrying every listed tag, retired rows
-  excluded.
+  and the running total saturates, both so the prefix array stays monotonic and searchable. The sums run over
+  the NON-GUARANTEED entries only: a guaranteed entry rolls its own chance instead of competing, so it has zero
+  width and a pick steps straight over it, which keeps one array and one search. `TotalWeight` is therefore the
+  weighted pool's total rather than the sum of every authored weight. A `required_tags` entry resolves at load
+  into a candidate array of the live items carrying every listed tag, retired rows excluded.
+
+## The loot roll
+
+`LootRoller(runtime, random)` is the ONE implementation of spec 3.5's composition rule, and it exists because
+the rule is the engine's: the spec defined the two types, said how guaranteed entries, weighted picks, nested
+tables and tag draws compose, and shipped no code performing it, so every consumer would have written it again
+and the first table using both `guaranteed` and `roll_count` would have had two answers.
+
+```csharp
+Span<LootDraw> drops = stackalloc LootDraw[16];
+var roller = new LootRoller(runtime, random);                 // IRandomSource, by constructor, no default
+
+if (!roller.TryRoll(tableId, drops, out int written))
+    // the table had more lines than the span: size up and roll again
+```
+
+- **The draw order is the contract.** Every `guaranteed` entry in `sort` order first, each rolling its own
+  `chance_bp` independently, then `roll_count` weighted picks over the non-guaranteed entries, each one
+  `NextInt(0, total)` plus a binary search over the prefix-summed array. A `nested_table` entry recurses at the
+  point it is drawn and a `required_tags` entry draws uniformly from its precomputed candidates.
+- **A weighted pick does not roll `chance_bp`.** Winning the draw was its chance, and its share of the pool is
+  what that chance IS. `chance_bp` is read for a guaranteed entry and nowhere else. A chance at or above 10,000
+  is a certainty and consumes no draw, one at or below zero drops nothing and consumes no draw, so a table of
+  certainties never advances the stream.
+- **`LootDraw` is `(ItemId, Count, TableId)` and nothing else.** `TableId` names the table the LINE came from,
+  which after a nested draw is the nested table, and it is the one thing a caller cannot reconstruct. A game's
+  own drop event passes it back through.
+- **A destination too small is FILLED**, `Roll` returns the span's length and `TryRoll` reports the overflow, so
+  a caller sizes up rather than silently losing drops. The roll stops at the first line that does not fit, so
+  nothing is drawn for lines nobody gets and the same seeded source rolled into a bigger span gives the whole
+  table.
+- **`MaxNestedDepth` is 16**, a hard cap below `KEC0024`'s acyclicity guarantee. A published pack cannot reach
+  it, and a roll runs over bytes a pack store handed the process, so a hand-edited pack must not be able to run
+  a server out of stack. A nested entry at the cap draws nothing and the rest of the table still rolls.
+- **It creates nothing**: no instance, no ground stack, no inventory write, no event, no journal. It reads
+  content and a random source and returns numbers, which is what lets a generator take its output as an input
+  without the two depending on each other. That is asserted by absence of API, not by a comment.
+- **Zero allocation**, which is budget P9 together with under 100 ns for one weighted draw over a 200 entry
+  table: it writes into the caller's span, walks the load-time arrays and recurses on the stack.
 
 ## Pack store and reader
 
@@ -303,4 +348,68 @@ foreach (ContentFinding finding in report.Findings)
 
 if (!report.IsValid)
     return Refuse(report);                              // publish writes nothing, boot exits non-zero
+```
+
+## The boot
+
+`ContentBoot.RunAsync(options)` is spec 9.5's order, run once at server start, and spec 9.6's twelve
+refusals. **It fails closed and it never exits the process**: every refusal comes back as a
+`ContentBootResult` carrying exit code 3 and the operator's exact lines, and the HOST writes them and exits.
+That is what makes the whole exit table testable in process, and it is why the engine never decides the
+shutdown order of a process it knows nothing about. There is no fallback to code defaults anywhere on this
+path, because a silent fallback catalog serves content no version names and an outage is at least noticed.
+
+The order, and who owns each step. Step 1, registering every content type, is the CALLER's, and so are step
+10, loading the world document, and steps 12 and 13, the connect door and accepting connections. Content
+loads before the world and both load before the door opens.
+
+1. **Step 2, the version, from exactly one place.** A version pinned in the SERVER'S OWN CONFIG wins always,
+   otherwise the authoring database's pinned version when it is not null, otherwise its active version. A
+   server with a config pin and a pack store reads no authoring database at boot at all, which is the
+   deployment this design recommends: the authoring database is a TOOLING dependency.
+2. **Step 3, the manifest**, through the `versions/<n>` pointer, verified against the name it was fetched
+   under AND against the version the boot resolved. A manifest whose embedded number differs means the
+   pointer and the pack disagree, and the server would otherwise announce one number at the door while
+   serving another version's chunks.
+3. **Steps 4 and 5**, a pack generation this build cannot read and a server build the pack will not be
+   served by.
+4. **Step 6, both type lists, before a single chunk is fetched**, then `Freeze()` on the registry. A
+   manifest naming a type this build does not register has no codec for its rows, and a registered type
+   absent from the version is the same failure from the other side.
+5. **Steps 7 and 7b**, the runtime and its four engine indexes, then every registered `IContentLoadIndex` in
+   type id order.
+6. **Step 8**, the one validator with `previous` null. **Step 9**, one `Volatile.Write` into the holder.
+   **Step 11**, every world-to-content key resolved by KEY against the loaded version.
+
+- `ContentBootOptions` - everything the boot needs, handed in rather than reached for, so it reads no
+  ambient static, no environment variable and no file of its own: the registry, the store, the holder, this
+  build's server build number, the optional config pin, the optional `IContentVersionDirectory` and
+  `IContentVersionPointerSource`, and the world's content keys.
+- `IContentVersionDirectory` - the authoring database's pinned and active version reads, which is the only
+  thing the boot wants from one. `IContentVersionPointerSource` - the READ half of the version pointer,
+  which `FileSystemPackStore` implements and a store that does not is handed separately.
+- `ContentWorldKeyReference` - one place a world document names content, as `(source, type key, content
+  key)`. The world document never carries a content ID, because ids are allocated by the authoring store and
+  a world file naming id 17 breaks the moment a content database is rebuilt from a bundle.
+- `ContentBootResult` and `ContentBootRefusal` - the published runtime, or which of the twelve rows stopped
+  the boot, the step it stopped at, and the stderr lines. `ExitCode` is 3 for every refusal, deliberately
+  distinct from the 2 a consumer already returns for a bad config, so a supervisor script tells a content
+  failure from a config failure without parsing text.
+
+```csharp
+ContentBootResult result = await ContentBoot.RunAsync(new ContentBootOptions
+{
+    Registry = registry,                                // step 1 is the caller's, and the boot freezes it
+    Store = store,
+    Holder = holder,
+    ServerBuild = ThisBuild,
+    ConfiguredVersion = config.ContentVersion,          // wins always, and null falls to the directory
+    WorldKeys = world.ContentKeys(),                    // step 10 is the caller's too
+});
+
+if (!result.Success)
+{
+    result.WriteStandardError(Console.Error);
+    return result.ExitCode;                             // 3, and the HOST is what exits
+}
 ```

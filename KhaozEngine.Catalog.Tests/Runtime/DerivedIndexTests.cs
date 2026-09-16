@@ -180,7 +180,10 @@ public class DerivedIndexTests
         Assert.Equal(2, loot.TableCount);
         Assert.Equal(3, loot.EntryCount(CatalogLootFixtures.GoblinTable));
         Assert.Equal(2, loot.RollCount(CatalogLootFixtures.GoblinTable));
-        Assert.False(loot.IsGuaranteed(CatalogLootFixtures.GoblinTable));
+        foreach (ContentLootEntry entry in loot.Entries(CatalogLootFixtures.GoblinTable).ToArray())
+        {
+            Assert.False(entry.Guaranteed);
+        }
 
         // Weights 10, 30 and 60 in sort order become the running totals 10, 40 and 100, so a draw is
         // NextInt(0, 100) plus one binary search with no summation.
@@ -285,16 +288,23 @@ public class DerivedIndexTests
         Assert.Empty(runtime.Indexes.Loot.Entries(1).ToArray());
         Assert.Empty(runtime.Indexes.Loot.Candidates(1, 0).ToArray());
         Assert.Equal(0, runtime.Indexes.Loot.TotalWeight(1));
-        Assert.False(runtime.Indexes.Loot.IsGuaranteed(1));
+        Assert.Equal(0, runtime.Indexes.Loot.RollCount(1));
     }
 
     [Fact]
-    public void A_guaranteed_table_says_so_and_carries_its_roll_count()
+    public void A_guaranteed_entry_says_so_and_stays_out_of_its_table_s_weighted_pool()
     {
         ContentRuntime runtime = CatalogLootFixtures.Runtime(out _);
+        ContentLootIndex loot = runtime.Indexes.Loot;
 
-        Assert.True(runtime.Indexes.Loot.IsGuaranteed(CatalogLootFixtures.RareTable));
-        Assert.Equal(1, runtime.Indexes.Loot.RollCount(CatalogLootFixtures.RareTable));
+        // guaranteed is a loot_entry field, settled with LootRoller: one table composes a guaranteed entry and
+        // a weighted one, which a table-level flag could not express.
+        Assert.True(loot.Entries(CatalogLootFixtures.RareTable)[0].Guaranteed);
+        Assert.Equal(1, loot.RollCount(CatalogLootFixtures.RareTable));
+
+        // It contributes no weight, so the rare table's pool is empty and no pick can land on it.
+        Assert.Equal([0], loot.PrefixWeights(CatalogLootFixtures.RareTable).ToArray());
+        Assert.Equal(0, loot.TotalWeight(CatalogLootFixtures.RareTable));
     }
 
     /// <summary>The draw a prefix-summed array is for: one binary search, no summation, no allocation.</summary>

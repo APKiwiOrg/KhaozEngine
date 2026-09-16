@@ -179,10 +179,11 @@ public class EngineContentTypeTests
     {
         ContentFieldSchema schema = Type(Registered(), "loot_table").Schema;
 
-        Assert.Equal(3, schema.Fields.Count);
+        // guaranteed is NOT here: it is a loot_entry field, so one table can compose a guaranteed entry with a
+        // weighted one. LootRoller settles it and LootTableContentType records why.
+        Assert.Equal(2, schema.Fields.Count);
         AssertField(schema, 0, "roll_count", ContentFieldKind.Int, null, ContentVisibility.ServerOnly, true);
         AssertField(schema, 1, "tags", ContentFieldKind.TagList, "tag", ContentVisibility.ServerOnly, false);
-        AssertField(schema, 2, "guaranteed", ContentFieldKind.Bool, null, ContentVisibility.ServerOnly, true);
     }
 
     [Fact]
@@ -190,16 +191,17 @@ public class EngineContentTypeTests
     {
         ContentFieldSchema schema = Type(Registered(), "loot_entry").Schema;
 
-        Assert.Equal(9, schema.Fields.Count);
+        Assert.Equal(10, schema.Fields.Count);
         AssertField(schema, 0, "table", ContentFieldKind.KeyReference, "loot_table", ContentVisibility.ServerOnly, true);
         AssertField(schema, 1, "item", ContentFieldKind.KeyReference, "item", ContentVisibility.ServerOnly, false);
         AssertField(schema, 2, "nested_table", ContentFieldKind.KeyReference, "loot_table", ContentVisibility.ServerOnly, false);
         AssertField(schema, 3, "weight", ContentFieldKind.Int, null, ContentVisibility.ServerOnly, true);
         AssertField(schema, 4, "chance_bp", ContentFieldKind.Int, null, ContentVisibility.ServerOnly, true);
-        AssertField(schema, 5, "min_count", ContentFieldKind.Int, null, ContentVisibility.ServerOnly, true);
-        AssertField(schema, 6, "max_count", ContentFieldKind.Int, null, ContentVisibility.ServerOnly, true);
-        AssertField(schema, 7, "sort", ContentFieldKind.Int, null, ContentVisibility.ServerOnly, true);
-        AssertField(schema, 8, "required_tags", ContentFieldKind.TagList, "tag", ContentVisibility.ServerOnly, false);
+        AssertField(schema, 5, "guaranteed", ContentFieldKind.Bool, null, ContentVisibility.ServerOnly, true);
+        AssertField(schema, 6, "min_count", ContentFieldKind.Int, null, ContentVisibility.ServerOnly, true);
+        AssertField(schema, 7, "max_count", ContentFieldKind.Int, null, ContentVisibility.ServerOnly, true);
+        AssertField(schema, 8, "sort", ContentFieldKind.Int, null, ContentVisibility.ServerOnly, true);
+        AssertField(schema, 9, "required_tags", ContentFieldKind.TagList, "tag", ContentVisibility.ServerOnly, false);
     }
 
     [Fact]

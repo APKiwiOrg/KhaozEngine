@@ -1,37 +1,41 @@
 using System.Collections.Generic;
 using KhaozEngine.Catalog;
+using KhaozEngine.Tests.Catalog.Runtime;
 
-namespace KhaozEngine.Tests.Catalog.Runtime;
+namespace KhaozEngine.Tests.Catalog.Loot;
 
 /// <summary>
-/// A version carrying loot on top of <see cref="CatalogRuntimeFixtures"/>'s tags and items: two tables, one
-/// whose three entries all compete in the weighted draw and one whose only entry is guaranteed, entries
-/// covering all three ways spec 3.5 lets an entry name its draw, and one orphan entry naming a table the
-/// version does not carry.
+/// The tables the roller is pinned against, small enough that every draw of a seeded roll can be worked out
+/// by hand from the source's own sequence.
+/// <para>
+/// The chest table composes all four shapes spec 3.5 lets a table carry: a guaranteed entry rolling its own
+/// chance, a guaranteed entry recursing into another table, a weighted item entry and a weighted tag filter.
+/// Its items come from <see cref="CatalogRuntimeFixtures"/>, so the sword tag resolves to items 1 and 2 with
+/// the retired 35 excluded.
+/// </para>
 /// </summary>
-internal static class CatalogLootFixtures
+internal static class LootRollerFixtures
 {
-    /// <summary>The weighted table, whose three entries are an item, a nested table and a tag filter.</summary>
-    public const int GoblinTable = 101;
+    /// <summary>The table every exact-drop test rolls, whose four entries cover all four shapes.</summary>
+    public const int ChestTable = 301;
 
-    /// <summary>The table the goblin table recurses into, whose one entry is guaranteed.</summary>
-    public const int RareTable = 102;
+    /// <summary>The table the chest's second entry recurses into.</summary>
+    public const int RareTable = 302;
 
-    /// <summary>A table id no row carries, which the orphan entry names.</summary>
-    public const int MissingTable = 103;
+    /// <summary>A table whose guaranteed entry has a weight and never competes for it.</summary>
+    public const int PoolTable = 303;
 
-    /// <summary>The default weights of the goblin table's three entries, in sort order.</summary>
-    public static IReadOnlyList<int> DefaultWeights => [10, 30, 60];
+    /// <summary>The first half of the cycle a hostile pack could carry, which KEC0024 refuses at publish.</summary>
+    public const int CycleTable = 311;
 
-    /// <summary>The loaded runtime over the loot fixture.</summary>
-    public static ContentRuntime Runtime(out ContentTypeRegistry registry)
-        => RuntimeWithWeights(DefaultWeights, out registry);
+    /// <summary>The second half of that cycle, which names the first back.</summary>
+    public const int CycleTableBack = 312;
 
-    /// <summary>The same version with the goblin table's three weights replaced, in sort order.</summary>
-    public static ContentRuntime RuntimeWithWeights(IReadOnlyList<int> weights, out ContentTypeRegistry registry)
+    /// <summary>The loaded runtime the roller reads.</summary>
+    public static ContentRuntime Runtime()
     {
-        registry = CatalogSnapshotFixtures.Registry();
-        var builder = new ContentSnapshotBuilder(registry).WithIdentity(7, new string('f', 64));
+        ContentTypeRegistry registry = CatalogSnapshotFixtures.Registry();
+        var builder = new ContentSnapshotBuilder(registry).WithIdentity(7, new string('a', 64));
 
         CatalogRuntimeFixtures.AddTag(builder, registry, CatalogRuntimeFixtures.SwordTag, "sword");
         CatalogRuntimeFixtures.AddTag(builder, registry, CatalogRuntimeFixtures.MetalTag, "metal");
@@ -42,33 +46,37 @@ internal static class CatalogLootFixtures
         CatalogRuntimeFixtures.AddItem(
             builder, registry, 35, "item_35", [CatalogRuntimeFixtures.SwordTag], isRetired: true);
 
-        AddTable(builder, registry, GoblinTable, "goblin", rollCount: 2);
+        AddTable(builder, registry, ChestTable, "chest", rollCount: 2);
         AddTable(builder, registry, RareTable, "rare", rollCount: 1);
+        AddTable(builder, registry, PoolTable, "pool", rollCount: 3);
+        AddTable(builder, registry, CycleTable, "cycle", rollCount: 0);
+        AddTable(builder, registry, CycleTableBack, "cycle_back", rollCount: 0);
 
-        // Entry 201 sorts AFTER 202, so the index's order is the authored sort rather than the id order.
-        AddEntry(builder, registry, 201, GoblinTable, nestedTable: RareTable, weight: weights[1], sort: 1);
-        AddEntry(builder, registry, 202, GoblinTable, item: 2, weight: weights[0], sort: 0, chance: 5_000, min: 1, max: 3);
+        // The chest, in sort order: a guaranteed item on a half chance, a guaranteed recursion that is
+        // certain, then the two entries the weighted picks choose between.
+        AddEntry(builder, registry, 401, ChestTable, sort: 0, guaranteed: true, item: 2, chance: 5_000, min: 1, max: 3);
+        AddEntry(builder, registry, 402, ChestTable, sort: 1, guaranteed: true, nestedTable: RareTable);
+        AddEntry(builder, registry, 403, ChestTable, sort: 2, weight: 30, item: 1, min: 2, max: 2);
         AddEntry(
             builder,
             registry,
-            203,
-            GoblinTable,
-            weight: weights[2],
-            sort: 2,
+            404,
+            ChestTable,
+            sort: 3,
+            weight: 70,
             requiredTags: [CatalogRuntimeFixtures.SwordTag]);
-        AddEntry(
-            builder,
-            registry,
-            204,
-            RareTable,
-            weight: 1,
-            sort: 0,
-            guaranteed: true,
-            requiredTags: [CatalogRuntimeFixtures.SwordTag, CatalogRuntimeFixtures.MetalTag]);
 
-        // The orphan: an entry naming a table this version does not carry, which is a finding rather than a
-        // load failure.
-        AddEntry(builder, registry, 205, MissingTable, item: 2, weight: 5, sort: 0);
+        AddEntry(builder, registry, 405, RareTable, sort: 0, weight: 5, item: 8);
+
+        // The pool: a guaranteed entry carrying a weight it can never win with, and one weighted entry.
+        AddEntry(builder, registry, 406, PoolTable, sort: 0, guaranteed: true, weight: 1_000, item: 2, chance: 0);
+        AddEntry(builder, registry, 407, PoolTable, sort: 1, weight: 1, item: 8);
+
+        // The cycle: each table drops one certain item and then recurses into the other, forever.
+        AddEntry(builder, registry, 408, CycleTable, sort: 0, guaranteed: true, item: 1);
+        AddEntry(builder, registry, 409, CycleTable, sort: 1, guaranteed: true, nestedTable: CycleTableBack);
+        AddEntry(builder, registry, 410, CycleTableBack, sort: 0, guaranteed: true, item: 8);
+        AddEntry(builder, registry, 411, CycleTableBack, sort: 1, guaranteed: true, nestedTable: CycleTable);
 
         return ContentRuntime.FromSnapshot(builder.Build(), registry);
     }
@@ -99,8 +107,8 @@ internal static class CatalogLootFixtures
         ContentTypeRegistry registry,
         int id,
         int table,
-        int weight,
         int sort,
+        int weight = 0,
         int item = 0,
         int nestedTable = 0,
         int chance = 10_000,

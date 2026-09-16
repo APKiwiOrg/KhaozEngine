@@ -6380,7 +6380,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="18.51.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="19.0.0" />
 ```
 
 ```csharp
@@ -10720,7 +10720,7 @@ placement throws like `SpawnActor`'s, the server's clock despawns expired drops 
 (`OnGroundItemExpired`), and drops are `Transient`: a cell capture never persists them. `TicksFor` in
 the snippet is illustrative, compute your TTL from your own tick seconds.
 
-#### An item INSTANCE on a drop (`TileGroundItemInstance`, 18.51.0)
+#### An item INSTANCE on a drop (`TileGroundItemInstance`, 19.0.0)
 
 A game whose items are individuals rather than quantities drops one through the six-argument overload, and
 the four-argument call above delegates to it with no instance, so nothing that already compiles changes. The
@@ -12210,7 +12210,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="18.51.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="19.0.0" />
 ```
 
 ```csharp
@@ -12246,7 +12246,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="18.51.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="19.0.0" />
 ```
 
 ```csharp
@@ -12488,7 +12488,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="18.51.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="19.0.0" />
 ```
 
 ```csharp
@@ -14488,7 +14488,7 @@ bytes. Checks 12 and 13 are tolerated policy findings that leave the record vali
 alert. `KhaozEngine.ItemInstances/README.md` is the type-by-type reference, including the thirteen checks in
 full, the `KECQ` layout, the durable reason ordinals and the kind bands.
 
-### A container held as pages, and loading one back (18.51.0)
+### A container held as pages, and loading one back (19.0.0)
 
 `ItemContainer` conflates two numbers, and `PagedItemContainer` splits them. SLOT SPACE is the page geometry,
 fixed at construction at `PageCount * ContainerPageSlots`, an ADDRESS space that never shrinks. CAPACITY is a
@@ -14557,7 +14557,7 @@ re-encodes rather than patching bytes, because a replacement id can change a var
 writes the page: the rewrite is lazy and joins whatever commit comes next, which is safe because the rule set
 is required to be idempotent and `VettedRemapRules.Vet` refuses one that is not.
 
-### A tick of operations as one commit (18.51.0)
+### A tick of operations as one commit (19.0.0)
 
 `ContainerCommitBuilder` applies N logical operations to an in-memory working copy and emits ONE
 `JournalCommit`: one operation identity, one event per operation in order, one projection write per page the
@@ -14603,7 +14603,7 @@ client's own id, and the server work riding behind it contributes no intent byte
 resubmit after a reconnect, which omits server work the client never saw, hash identically and resolve
 replayed rather than conflicting, and a conflict there would tell a player a committed withdraw had failed.
 
-### What one viewer may see, and the one frame delta (18.51.0)
+### What one viewer may see, and the one frame delta (19.0.0)
 
 `ItemInstanceVisibility` is the ONE function answering whether a viewer may see a field, and both the
 replication filter and the tooltip builder go through it. A tooltip that computed its own answer is how a
@@ -15216,7 +15216,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="18.51.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="19.0.0" />
 </ItemGroup>
 ```
 

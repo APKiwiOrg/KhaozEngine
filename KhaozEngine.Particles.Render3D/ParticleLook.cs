@@ -86,7 +86,8 @@ namespace KhaozEngine.Particles
         public float TrailWidthScale;
 
         /// <summary>Light-link radius in world units. &gt; 0 (together with a positive <see cref="LightIntensity"/>)
-        /// links the brightest live particles as budgeted point lights via <see cref="Scene3D.AddLight"/>.</summary>
+        /// links the brightest live particles as budgeted point lights via
+        /// <see cref="Scene3D.AddLight(System.Numerics.Vector3,KhaozEngine.Primitives.Color,float,float)"/>.</summary>
         public float LightRadius;
 
         /// <summary>Light-link base intensity. The per-particle intensity is scaled by the particle's alpha, so a

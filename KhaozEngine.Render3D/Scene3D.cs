@@ -380,7 +380,7 @@ namespace KhaozEngine.Render3D
             _transitions.Reset();
         }
 
-        /// <summary>Maximum dynamic point lights consumed in one frame. <see cref="AddLight"/> accepts any number,
+        /// <summary>Maximum dynamic point lights consumed in one frame. <see cref="AddLight(Vector3,Color,float,float)"/> accepts any number,
         /// but only the first <see cref="MaxPointLights"/> queued are uploaded (extras are dropped); the host is
         /// expected to pick the N nearest per frame so a dense bullet-hell stays within budget.</summary>
         public const int MaxPointLights = ModelRenderer.MaxPointLights;
@@ -915,17 +915,10 @@ namespace KhaozEngine.Render3D
         /// the historical key+fill+ambient render, bit-identical.
         /// </remarks>
         public void AddLight(Vector3 worldPos, Color color, float radius, float intensity)
-        {
-            Vector4 c = color;
-            _lights.Add(new ModelRenderer.PointLightData
-            {
-                PosRadius = new Vector4(worldPos, radius),
-                ColorIntensity = new Vector4(c.X, c.Y, c.Z, intensity),
-            });
-        }
+            => AddLight(worldPos, color, radius, intensity, LightShadow.None);
 
         /// <summary>Count of point lights queued this frame (before the renderer's <see cref="MaxPointLights"/>
-        /// clamp). Internal: lets tests assert <see cref="Begin"/> clears the queue and <see cref="AddLight"/>
+        /// clamp). Internal: lets tests assert <see cref="Begin"/> clears the queue and <see cref="AddLight(Vector3,Color,float,float)"/>
         /// enqueues.</summary>
         internal int LightCount => _lights.Count;
 

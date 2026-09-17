@@ -7,7 +7,8 @@ using Xunit;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// GPU coverage of the dynamic point-light path (<see cref="Scene3D.AddLight"/>). Renders the SAME box with
+    /// GPU coverage of the dynamic point-light path
+    /// (<see cref="Scene3D.AddLight(System.Numerics.Vector3,KhaozEngine.Primitives.Color,float,float)"/>). Renders the SAME box with
     /// the global key/fill/ambient lights dimmed to near-black, so any illumination is attributable to the point
     /// lights, and reads the result back. Backend-agnostic (asserts relative brightening, not absolute pixel
     /// values, so it needs no per-backend committed golden). Also asserts colour tinting, the host budget clamp

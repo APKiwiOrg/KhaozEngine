@@ -2374,7 +2374,7 @@ namespace KhaozEngine.Render3D
             foreach (var t in _textures) t?.Dispose();
             _textures.Clear();
             DisposeSplatMaterials();
-            DisposeTileGroundMaterials();
+            DisposeTileGroundMaterials(); DisposePointShadows();
         }
 
         /// <summary>A GPU-resident skinned mesh: its vertex/index buffers, index count, optional material set, the

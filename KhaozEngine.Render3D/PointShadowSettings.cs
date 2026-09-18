@@ -57,12 +57,20 @@ public sealed class PointShadowSettings
     /// them costs six faces every frame, so this is the hard ceiling on the per-frame pass.</summary>
     public int MaxDynamicLightsPerFrame = 4;
 
+    /// <summary>Largest bias a menu value resolves to, for both knobs. The atlas stores distance over radius, so
+    /// this is a quarter of the light's whole reach: past it a receiver is lit by a caster a quarter of the
+    /// radius in front of it and the shadow has stopped being a shadow.</summary>
+    public const float MaxBias = 0.25f;
+
     /// <summary>Constant depth bias added to the stored distance before the compare, in radius-normalized units
-    /// (the atlas stores distance over radius). Lifts a receiver off its own stored distance.</summary>
+    /// (the atlas stores distance over radius). Lifts a receiver off its own stored distance. Clamped into
+    /// 0..<see cref="MaxBias"/> by <see cref="ResolvedBias"/>, which is what the uniform must be fed.</summary>
     public float Bias = 0.01f;
 
     /// <summary>Slope-scaled bias, in the same radius-normalized units, added as
-    /// <c>SlopeBias * (1 - ndl)</c>. Largest where the light grazes the surface, which is where acne is worst.</summary>
+    /// <c>SlopeBias * (1 - ndl)</c> off the unbanded grazing angle. Largest where the light grazes the surface,
+    /// which is where acne is worst. Clamped into 0..<see cref="MaxBias"/> by <see cref="ResolvedSlopeBias"/>,
+    /// which is what the uniform must be fed.</summary>
     public float SlopeBias = 0.02f;
 
     /// <summary>The face resolution actually used, clamped into
@@ -72,6 +80,20 @@ public sealed class PointShadowSettings
     /// <summary>The light budget actually used, clamped into <see cref="MinLights"/>..<see cref="MaxLights"/>.
     /// Also the atlas row count.</summary>
     public int ResolvedMaxLights => Math.Clamp(MaxShadowedLights, MinLights, MaxLights);
+
+    /// <summary>The constant bias actually used, clamped into 0..<see cref="MaxBias"/>. THE FLOOR IS THE POINT: a
+    /// negative bias does not make shadows tighter, it subtracts from the stored distance and turns the compare
+    /// the other way, so every receiver reads as occluded by itself and the light leaks through what it lights.
+    /// NaN resolves to zero, because <see cref="Math.Clamp(float, float, float)"/> is undefined on it and a NaN
+    /// bias poisons the whole compare.</summary>
+    public float ResolvedBias => ResolveBias(Bias);
+
+    /// <summary>The slope-scaled bias actually used, clamped into 0..<see cref="MaxBias"/> on the same rule as
+    /// <see cref="ResolvedBias"/>.</summary>
+    public float ResolvedSlopeBias => ResolveBias(SlopeBias);
+
+    static float ResolveBias(float value) =>
+        float.IsNaN(value) ? 0f : Math.Clamp(value, 0f, MaxBias);
 
     /// <summary>What the atlas would cost in GPU memory at the resolved layout: six face columns by
     /// <see cref="ResolvedMaxLights"/> rows of <see cref="ResolvedFaceResolution"/> square, at 4 bytes a texel of

@@ -69,8 +69,11 @@ internal sealed partial class ModelRenderer
     /// light in the order they were queued, with -1 for a light that carries no map (past the budget, not
     /// requested, or requested but never yet rendered). Lights past <paramref name="slots"/> read -1 too, so a
     /// short span is the ordinary case rather than an error. <paramref name="bias"/> and
-    /// <paramref name="slopeBias"/> are in radius-normalized units, matching what the pass stores.
-    /// <paramref name="faceResolution"/> and <paramref name="rows"/> are the live atlas layout.</summary>
+    /// <paramref name="slopeBias"/> are in radius-normalized units, matching what the pass stores, and they are
+    /// <see cref="PointShadowSettings.ResolvedBias"/> and <see cref="PointShadowSettings.ResolvedSlopeBias"/>
+    /// rather than the raw fields: a negative bias inverts the receiver's compare into a light leak, so the
+    /// clamped values are the ones that may reach this uniform. <paramref name="faceResolution"/> and
+    /// <paramref name="rows"/> are the live atlas layout.</summary>
     public void SetPointShadowUniforms(ReadOnlySpan<int> slots, float bias, float slopeBias,
         int faceResolution, int rows)
     {

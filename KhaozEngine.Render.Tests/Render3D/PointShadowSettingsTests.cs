@@ -55,6 +55,43 @@ public sealed class PointShadowSettingsTests
         Assert.Equal(expected, new PointShadowSettings { MaxShadowedLights = requested }.ResolvedMaxLights);
     }
 
+    // A NEGATIVE bias is the case worth the clamp. It is subtracted from the stored distance, which turns the
+    // receiver's compare around: every surface reads as occluded by itself and the light leaks through what it
+    // was lighting. NaN is undefined for Math.Clamp and poisons the compare outright, so it resolves to zero.
+    [Theory]
+    [InlineData(-0.5f, 0f)]
+    [InlineData(-0.0001f, 0f)]
+    [InlineData(0f, 0f)]
+    [InlineData(0.01f, 0.01f)]
+    [InlineData(PointShadowSettings.MaxBias, PointShadowSettings.MaxBias)]
+    [InlineData(1f, PointShadowSettings.MaxBias)]
+    [InlineData(float.PositiveInfinity, PointShadowSettings.MaxBias)]
+    [InlineData(float.NegativeInfinity, 0f)]
+    [InlineData(float.NaN, 0f)]
+    public void ResolvedBias_Clamps(float requested, float expected)
+    {
+        Assert.Equal(expected, new PointShadowSettings { Bias = requested }.ResolvedBias);
+    }
+
+    [Theory]
+    [InlineData(-0.5f, 0f)]
+    [InlineData(0.02f, 0.02f)]
+    [InlineData(1f, PointShadowSettings.MaxBias)]
+    [InlineData(float.NaN, 0f)]
+    public void ResolvedSlopeBias_Clamps(float requested, float expected)
+    {
+        Assert.Equal(expected, new PointShadowSettings { SlopeBias = requested }.ResolvedSlopeBias);
+    }
+
+    [Fact]
+    public void ResolvedBiases_PassTheDefaultsThrough()
+    {
+        var s = new PointShadowSettings();
+
+        Assert.Equal(s.Bias, s.ResolvedBias);
+        Assert.Equal(s.SlopeBias, s.ResolvedSlopeBias);
+    }
+
     [Fact]
     public void MaxLights_IsTheUboPointLightArraySize()
     {

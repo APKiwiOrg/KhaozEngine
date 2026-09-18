@@ -105,7 +105,9 @@ namespace KhaozEngine.Render3D.Rendering
         //
         // It used to go up as five writes (header, both light arrays, shadow tail, render origin). They tile the
         // block exactly - 0..176, 176..432, 432..688, 688..992, 992..1008 - so one write of the same bytes at the
-        // same base is byte-identical, and every backend records four fewer commands per destination.
+        // same base is byte-identical, and every backend records four fewer commands per destination. The
+        // point-shadow tail (1008..1280) was appended AFTER that consolidation and has never been a write of its
+        // own, which is the reason it went on the end rather than beside the light arrays it indexes with.
         //
         // On D3D11 it is not a micro-optimization, it is the difference between two code paths. Veldrid's
         // D3D11CommandList.UpdateBufferCore sent a PARTIAL write to a non-Dynamic UniformBuffer down the staging
@@ -120,8 +122,10 @@ namespace KhaozEngine.Render3D.Rendering
         readonly byte[] _frameImage = new byte[UboBytes];
         bool _frameImageDirty = true;
 
-        // Repack the image from the cached header, light arrays, shadow tail and render origin. The offsets here are
-        // the same constants the five writes used, so the bytes are the same bytes.
+        // Repack the image from the cached header, light arrays, shadow tail, render origin and point-shadow tail.
+        // The first five offsets are the same constants the five writes used, so those bytes are the same bytes.
+        // PointShadowParams is MaxPointLights vec4s, which is LightArrayBytes by the same definition the two light
+        // arrays use, so PointShadowAtlas lands one array past the tail's base.
         void PackFrameImage()
         {
             Span<byte> img = _frameImage;
@@ -130,6 +134,8 @@ namespace KhaozEngine.Render3D.Rendering
             MemoryMarshal.AsBytes<Vector4>(_lightColorIntensity).CopyTo(img.Slice((int)(HeaderBytes + LightArrayBytes)));
             MemoryMarshal.Write(img.Slice((int)ShadowTailOffset), in _shadow);
             MemoryMarshal.Write(img.Slice((int)RenderOriginOffset), in _renderOrigin);
+            MemoryMarshal.AsBytes<Vector4>(_pointShadowParams).CopyTo(img.Slice((int)PointShadowTailOffset));
+            MemoryMarshal.Write(img.Slice((int)(PointShadowTailOffset + LightArrayBytes)), in _pointShadowAtlas);
             _frameImageDirty = false;
         }
 

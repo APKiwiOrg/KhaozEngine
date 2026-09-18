@@ -26,7 +26,7 @@ namespace KhaozEngine.Render3D.Rendering
         // std140 UBO layout: a 176-byte header (the FrameUbo struct) followed by two vec4[MaxPointLights]
         // arrays (point light pos/radius, then colour/intensity) = 176 + 2*256 = 688, then the cascaded shadow tail
         // (MaxCascades light-clip matrices + params) = mat4[4] (256) + 3*vec4 (48) = 304, so 688 + 304 = 992, then
-        // the render-origin vec4 = 1008 bytes.
+        // the render-origin vec4 = 1008, then the point-light shadow tail (vec4[16] + vec4) = 1280 bytes.
         // (internal so UboLayoutTests can assert these against Marshal.SizeOf/OffsetOf and the GLSL block.)
         internal const uint HeaderBytes = 176;
         internal const uint LightArrayBytes = MaxPointLights * 16;    // vec4 stride is 16 in std140
@@ -49,7 +49,10 @@ namespace KhaozEngine.Render3D.Rendering
         // have their own buffer (#604), which is why nothing follows it here.
         internal const uint RenderOriginBytes = 16;                                            // one vec4, w unused
         internal const uint RenderOriginOffset = ShadowTailOffset + ShadowTailBytes;           // 992
-        internal const uint UboBytes = RenderOriginOffset + RenderOriginBytes;                 // 1008
+        // The point-light shadow tail (vec4 PointShadowParams[16] + vec4 PointShadowAtlas) rides at the very end,
+        // AFTER the render origin, so every offset above it is exactly what it was: see
+        // ModelRenderer.PointShadowUniforms.cs.
+        internal const uint UboBytes = PointShadowTailOffset + PointShadowTailBytes;           // 1280
 
         // ---- GPU skinning (opt-in) PER-DRAW block geometry. The skinned pipeline's set 0 binding 1 is a
         // dynamic-offset UBO laid out as { mat4 Model; mat4 P } (see ShaderSources.SkinnedModelVert): the two header
@@ -104,6 +107,9 @@ namespace KhaozEngine.Render3D.Rendering
         {
             public Vector4 PosRadius;
             public Vector4 ColorIntensity;
+            // The caller's omnidirectional shadow REQUEST. Read by the point shadow pass when it picks which
+            // lights get a slot, never by BuildLightArrays: nothing here reaches the GPU through this struct.
+            public LightShadow Shadow;
         }
 
         // Reused per-frame upload scratch (cleared/refilled, never realloc) for the two UBO light arrays.
@@ -231,7 +237,8 @@ namespace KhaozEngine.Render3D.Rendering
                 new GpuResourceLayoutElement("RoughnessMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("Sampler", GpuResourceKind.Sampler, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("ShadowMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
-                new GpuResourceLayoutElement("ShadowSamp", GpuResourceKind.Sampler, GpuShaderStages.Fragment)));
+                new GpuResourceLayoutElement("ShadowSamp", GpuResourceKind.Sampler, GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("PointShadowMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment)));
 
             // Use the device's built-in linear sampler (wrap-addressed) - the SAME one Render2D samples its
             // textures (incl. a 1x1 white) through, which verifies correctly on D3D11/WARP. A custom
@@ -254,6 +261,8 @@ namespace KhaozEngine.Render3D.Rendering
             _defaultRough = factory.CreateTexture(GpuTextureDescription.Texture2D(
                 1, 1, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled));
             gd.UpdateTexture(_defaultRough, DefaultMaps.ZeroRoughnessTexel(), 0, 0, 1, 1);
+
+            CreatePointShadowDefault(factory);   // bound at PointShadowMap until a real atlas exists
 
             _defaultSet = CreateShadowSamplingSet(_layout, _shadowMap.ShadowTexture,
                 _ubo, _white, _flatNormal, _defaultRough, _sampler);
@@ -278,7 +287,8 @@ namespace KhaozEngine.Render3D.Rendering
                 new GpuResourceLayoutElement("RoughnessMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("Sampler", GpuResourceKind.Sampler, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("ShadowMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
-                new GpuResourceLayoutElement("ShadowSamp", GpuResourceKind.Sampler, GpuShaderStages.Fragment)));
+                new GpuResourceLayoutElement("ShadowSamp", GpuResourceKind.Sampler, GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("PointShadowMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment)));
             _skinnedShaders = factory.CreateShadersFromSpirv(ShaderSources.SkinnedModelVert, ShaderSources.SkinnedModelFrag);
             _skinnedDissolveShaders = factory.CreateShadersFromSpirv(ShaderSources.SkinnedModelVert, ShaderSources.SkinnedModelDissolveFrag);
             _skinnedDefaultFragSet = CreateShadowSamplingSet(_skinnedFragLayout, _shadowMap.ShadowTexture,
@@ -748,6 +758,7 @@ namespace KhaozEngine.Render3D.Rendering
             _shadowMap.Dispose();
             _pipeline.Dispose(); _defaultSet.Dispose(); _layout.Dispose();
             _white.Dispose(); _flatNormal.Dispose(); _defaultRough.Dispose(); // _sampler is the device built-in (non-owning); do not dispose it.
+            _pointShadowDefault.Dispose();   // the point atlas itself is the scene's, never this renderer's
             _shaders.Dispose();
             _dissolvePipeline.Dispose(); _dissolveShaders.Dispose();
             DisposeSplatResources();

@@ -114,6 +114,30 @@ namespace KhaozEngine.Render3D
         public int RigidSpanCount(int cascade)
             => (uint)cascade < (uint)ShadowSettings.MaxCascades ? _rigidSpanCounts[cascade] : 0;
 
+        /// <summary>How many point lights carried an omnidirectional shadow map this frame, after the budget in
+        /// <see cref="PointShadowSettings.MaxShadowedLights"/> cut the requests down. Below the number of lights
+        /// that ASKED whenever the budget bound. 0 when no light asked, when point shadows are off, and before
+        /// the point shadow pass exists at all.</summary>
+        public int PointShadowedLights { get; init; }
+
+        /// <summary>How many CACHED (<see cref="LightShadowMode.Static"/>) maps were re-rendered this frame, at
+        /// or below <see cref="PointShadowSettings.MaxStaticRebuildsPerFrame"/>. A still scene reports 0 here
+        /// every frame after the first, which is the whole point of the cache.</summary>
+        public int PointStaticRebuilds { get; init; }
+
+        /// <summary>How many <see cref="LightShadowMode.Dynamic"/> maps were rendered this frame, at or below
+        /// <see cref="PointShadowSettings.MaxDynamicLightsPerFrame"/>. Every one of them is six faces.</summary>
+        public int PointDynamicRenders { get; init; }
+
+        /// <summary>Every caster draw call the point shadow pass issued this frame, across every face of every
+        /// light it rendered. The point pass's counterpart to <see cref="TotalDrawCalls"/>.</summary>
+        public int PointFaceDrawCalls { get; init; }
+
+        /// <summary>How many atlas rows the slot cache is holding, including rows kept for lights that were not
+        /// requested this frame and have not been evicted yet. At or below
+        /// <see cref="PointShadowSettings.MaxShadowedLights"/>.</summary>
+        public int PointSlotsInUse { get; init; }
+
         /// <summary>The sum of <see cref="RigidSpanCount"/> over this frame's active cascades. 0 on a skipped
         /// frame.</summary>
         public int TotalRigidSpanCount

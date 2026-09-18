@@ -34,14 +34,14 @@ Distortion.layout.msl 05b68f7ce05d0690bc1f3b9b24e3c832e496ed55400e668ad82753cb9c
 Distortion.vertex.hlsl ca5258601739acc9cf9031b2d259c2faee16ff270f7171c4c6a087b0202e1b8d 2654
 Distortion.vertex.msl 37480c40257ccdb28c788edeb5b1e1210d2874eb2bb060ca8cc146c2c508349a 1910
 Distortion.vertex.spirv 81dfe048003ca990d7b77b6bbaddda90e1a4d71c595b4b02cf3171703b6c49e8 3088
-Foliage.fragment.hlsl f0e721174ea5c9b876bc60c04d70f71f3081cc72bf357598a9faa571ba4d5d30 15627
-Foliage.fragment.msl e23cc28aeb459337a7a34b2ac6f09335175dce427821c10e780f70f2303c0901 14796
-Foliage.fragment.spirv e41a45d239da9a757dc84e9e0d3123c923354fb28183d8f715d6a212b34c92c9 16004
-Foliage.layout.hlsl 9f14caaef43ca90281c4daebdd56e5e0cfa171bf96e15e379e54165a59814d21 18 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]|set1[<unnamed>:UniformBuffer:V]
-Foliage.layout.msl 9f14caaef43ca90281c4daebdd56e5e0cfa171bf96e15e379e54165a59814d21 18 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]|set1[<unnamed>:UniformBuffer:V]
-Foliage.vertex.hlsl d9cf3047ed31f66986adcee6c17ebbb39502840edc812710569ddb768e821357 6428
-Foliage.vertex.msl 0aaa2e6a77199f9360a20559bf15bc49808908d61626112455ded5756aefa0ff 5206
-Foliage.vertex.spirv 3cc0f6217f9b6be9878bbec58c338cc343fb6935bfd84ff9512e034b9fa92660 8408
+Foliage.fragment.hlsl 2853f2e9571359ff4d2d5e14b9ae40f694ef01851a32feaed14b82b3eaff073a 19525
+Foliage.fragment.msl f8d46f71e5a1febd9904eb07c3403a2b2db3ed4beb83a0d184ca3359473846cd 18650
+Foliage.fragment.spirv adcf601082159e8989d5cf3c8bea7a454f12c93be5510d8804138c79fa164d65 19136
+Foliage.layout.hlsl 8b85c102cbd0766ce9cc9d1428a43bad7b827a77b08d5dea6f3fc7b4dd5108c3 19 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F]|set1[<unnamed>:UniformBuffer:V]
+Foliage.layout.msl 8b85c102cbd0766ce9cc9d1428a43bad7b827a77b08d5dea6f3fc7b4dd5108c3 19 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F]|set1[<unnamed>:UniformBuffer:V]
+Foliage.vertex.hlsl 2bfb2e456be6fd0832ece6c52ae7a55a236be7180b180e5f17ff03521bc24992 6510
+Foliage.vertex.msl 519cc1f9bf7aafde932fe2cbf528f88650ce935b54ac47559c2771f183e32a2e 5244
+Foliage.vertex.spirv a47e7de613f934cc88b7abc5f3e00c4a24ed91ae1d9881c0d0a356a986a77ae0 8488
 GroundDecal.fragment.hlsl d8f530b2273d190194c673891568208fbed2ef655046b2d453f178b915cf3e0a 31871
 GroundDecal.fragment.msl 73f29f574cabb38483acac295416f5f7cefe400cc1252d7957232f5aa7e535ef 31726
 GroundDecal.fragment.spirv 6520c514f2ebce390582b35e22640a9dd046352b4bdf320f286d7b12a1904367 32140
@@ -58,22 +58,22 @@ Line.layout.msl f6a4d15684de5a4470255d544a561628b8472a422a02361ad5a2f05c1983c742
 Line.vertex.hlsl 25fb9c1173e6473998642605645d1ac2018b0844e785783e3f08e8886f251110 706
 Line.vertex.msl 1cb9c579141d944f68ce82521282ca208e74eea86969de186d6e1feef561b823 495
 Line.vertex.spirv 3339a888e66ba17d6f808215c655595d30ad63ecdcbbacb69f6b3a0ca1678ca7 984
-Model.fragment.hlsl f0e721174ea5c9b876bc60c04d70f71f3081cc72bf357598a9faa571ba4d5d30 15627
-Model.fragment.msl e23cc28aeb459337a7a34b2ac6f09335175dce427821c10e780f70f2303c0901 14796
-Model.fragment.spirv e41a45d239da9a757dc84e9e0d3123c923354fb28183d8f715d6a212b34c92c9 16004
-Model.layout.hlsl b15cbcc4d91281d0b770d6fe78fbeefaf69384d59d649a620316e5b759f61cdb 22 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float1,<unnamed>:Float2,<unnamed>:Float1]|set0[<unnamed>:UniformBuffer:VF,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]
-Model.layout.msl b15cbcc4d91281d0b770d6fe78fbeefaf69384d59d649a620316e5b759f61cdb 22 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float1,<unnamed>:Float2,<unnamed>:Float1]|set0[<unnamed>:UniformBuffer:VF,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]
-Model.vertex.hlsl e29162bca2127b85b6e6af5cf63e0c895d222390023c11d589139d35955f4df0 3354
-Model.vertex.msl 3119ed23a308807946e908190114df8e118de881384897b61a0161703a3cfd8e 1973
-Model.vertex.spirv c7f457ebd979e68e41b0f3c713756f8a0da0311a21cd55e4b117d6d1bf047fe4 3188
-ModelDissolve.fragment.hlsl 81646ec9e5cd2fffb7412171c03a2124f0d5a442825626de8b455d12a6ef2dd5 14813
-ModelDissolve.fragment.msl b4505f47e746de9201dd6d399de2de9a512fb594992f0997d9453055d40e3d68 14052
-ModelDissolve.fragment.spirv fd540f812ffcf39d5a6be2f612c2c51f1cdcb765ab9d3c044291dedeced374bd 15272
-ModelDissolve.layout.hlsl b15cbcc4d91281d0b770d6fe78fbeefaf69384d59d649a620316e5b759f61cdb 22 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float1,<unnamed>:Float2,<unnamed>:Float1]|set0[<unnamed>:UniformBuffer:VF,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]
-ModelDissolve.layout.msl b15cbcc4d91281d0b770d6fe78fbeefaf69384d59d649a620316e5b759f61cdb 22 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float1,<unnamed>:Float2,<unnamed>:Float1]|set0[<unnamed>:UniformBuffer:VF,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]
-ModelDissolve.vertex.hlsl e29162bca2127b85b6e6af5cf63e0c895d222390023c11d589139d35955f4df0 3354
-ModelDissolve.vertex.msl 3119ed23a308807946e908190114df8e118de881384897b61a0161703a3cfd8e 1973
-ModelDissolve.vertex.spirv c7f457ebd979e68e41b0f3c713756f8a0da0311a21cd55e4b117d6d1bf047fe4 3188
+Model.fragment.hlsl 2853f2e9571359ff4d2d5e14b9ae40f694ef01851a32feaed14b82b3eaff073a 19525
+Model.fragment.msl f8d46f71e5a1febd9904eb07c3403a2b2db3ed4beb83a0d184ca3359473846cd 18650
+Model.fragment.spirv adcf601082159e8989d5cf3c8bea7a454f12c93be5510d8804138c79fa164d65 19136
+Model.layout.hlsl 0effe7b696319ae44e26f8b59335185069024a89dcdfc4bb59e61c4b0137688e 23 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float1,<unnamed>:Float2,<unnamed>:Float1]|set0[<unnamed>:UniformBuffer:VF,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F]
+Model.layout.msl 0effe7b696319ae44e26f8b59335185069024a89dcdfc4bb59e61c4b0137688e 23 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float1,<unnamed>:Float2,<unnamed>:Float1]|set0[<unnamed>:UniformBuffer:VF,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F]
+Model.vertex.hlsl 9fe6894294264f79b615d43296411b41e1d537a9daff1438698b4f96f1765103 3434
+Model.vertex.msl e2797da9f07f3935ff13e5336c217e03b07e1f270799f0e479c38f74d75d98f3 2011
+Model.vertex.spirv c25976ae7e83d4fcb79f5afbdf1bfc5bd89deb2aa55cf2875c7ca216d54988b5 3268
+ModelDissolve.fragment.hlsl 228f81c9bc437dd1a6e4aa3fa4e885e56410222b722ab46f5cc51c67e8632657 18705
+ModelDissolve.fragment.msl 28dd5af1b0adcf89bc3edb89e356e87cf6d12238a258cd2c3e5553d3d5602568 17891
+ModelDissolve.fragment.spirv 3a47d6e4eab7071c791aad8bd4d5e3a3b9170e90e1e60c3753fb6c49f069328d 18404
+ModelDissolve.layout.hlsl 0effe7b696319ae44e26f8b59335185069024a89dcdfc4bb59e61c4b0137688e 23 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float1,<unnamed>:Float2,<unnamed>:Float1]|set0[<unnamed>:UniformBuffer:VF,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F]
+ModelDissolve.layout.msl 0effe7b696319ae44e26f8b59335185069024a89dcdfc4bb59e61c4b0137688e 23 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float1,<unnamed>:Float2,<unnamed>:Float1]|set0[<unnamed>:UniformBuffer:VF,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F]
+ModelDissolve.vertex.hlsl 9fe6894294264f79b615d43296411b41e1d537a9daff1438698b4f96f1765103 3434
+ModelDissolve.vertex.msl e2797da9f07f3935ff13e5336c217e03b07e1f270799f0e479c38f74d75d98f3 2011
+ModelDissolve.vertex.spirv c25976ae7e83d4fcb79f5afbdf1bfc5bd89deb2aa55cf2875c7ca216d54988b5 3268
 OceanFftColumnPass128.compute.hlsl 76efda72362466ed58ba7ecd497d6fbcb0fa786a0d4558b64ac1af6d5cbc9eda 5337
 OceanFftColumnPass128.compute.msl 3c5b9541956bbd905e9870241df2a4017ed088f22564cb11c9da01414b2fe97c 6329
 OceanFftColumnPass128.compute.spirv c3a788b4a26a5bc4b839174997f2e8ca2bd7d3c22c1e52ddd487b645a49b6f58 7084
@@ -258,22 +258,22 @@ ShadowDepthDissolveInverted.layout.msl 6357cc6bce377d1bd8df18f2cf29a9cbbd70d3c73
 ShadowDepthDissolveInverted.vertex.hlsl 8e5270e9b47893a4fb6570b365a00b71a7c2c22554956f49507c70a4ed09b4ed 2358
 ShadowDepthDissolveInverted.vertex.msl 3d5b6277b8b5a4ed7b397e5af12a3f5e03b4759662be0777a9c825a9df7e8638 1514
 ShadowDepthDissolveInverted.vertex.spirv 96ece02899368712ba6f23149ab2d5786312845834cd64ac23ff3c8bcb52748b 2756
-SkinnedModel.fragment.hlsl 0649b051d047acea0611aa8b01563ece0b8a0918a1933b5ce42192e5b6bfa7a0 13292
-SkinnedModel.fragment.msl b186b8a352e196acdaeb61de6fd6a0588a05cad0662c5af925f828acfc432dbe 12562
-SkinnedModel.fragment.spirv dc57937381602dec3aceb0d61cb169c6132ae6b25689ac4413b3792e45b6f38e 13472
-SkinnedModel.layout.hlsl 91ec6790241572dec674a0a60b42bfe51a80ebe9267c8e404899fc7d7e9d8ec5 16 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF,<unnamed>:UniformBuffer:V]|set1[<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]|set2[<unnamed>:UniformBuffer:V]
-SkinnedModel.layout.msl 91ec6790241572dec674a0a60b42bfe51a80ebe9267c8e404899fc7d7e9d8ec5 16 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF,<unnamed>:UniformBuffer:V]|set1[<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]|set2[<unnamed>:UniformBuffer:V]
-SkinnedModel.vertex.hlsl eeff3fe1e9de26866b7f2e957d44d73c42994d45e88ba5637dddda9b83070a58 4299
-SkinnedModel.vertex.msl 2ae0b36e7ee8fdcbc95ac3e75693ce873eeaa449c2624e5691e05c98eb1e21f8 3242
-SkinnedModel.vertex.spirv 9ce224b36c387bad496795739b6dc92de7238ad252b5c67944283ab703bb25dd 5832
-SkinnedModelDissolve.fragment.hlsl 81646ec9e5cd2fffb7412171c03a2124f0d5a442825626de8b455d12a6ef2dd5 14813
-SkinnedModelDissolve.fragment.msl b4505f47e746de9201dd6d399de2de9a512fb594992f0997d9453055d40e3d68 14052
-SkinnedModelDissolve.fragment.spirv 15f55deccb75a5b960447c1e1394ebf538f490b5c81c1dedaf60f073bb05ae93 15272
-SkinnedModelDissolve.layout.hlsl 91ec6790241572dec674a0a60b42bfe51a80ebe9267c8e404899fc7d7e9d8ec5 16 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF,<unnamed>:UniformBuffer:V]|set1[<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]|set2[<unnamed>:UniformBuffer:V]
-SkinnedModelDissolve.layout.msl 91ec6790241572dec674a0a60b42bfe51a80ebe9267c8e404899fc7d7e9d8ec5 16 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF,<unnamed>:UniformBuffer:V]|set1[<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]|set2[<unnamed>:UniformBuffer:V]
-SkinnedModelDissolve.vertex.hlsl eeff3fe1e9de26866b7f2e957d44d73c42994d45e88ba5637dddda9b83070a58 4299
-SkinnedModelDissolve.vertex.msl 2ae0b36e7ee8fdcbc95ac3e75693ce873eeaa449c2624e5691e05c98eb1e21f8 3242
-SkinnedModelDissolve.vertex.spirv 9ce224b36c387bad496795739b6dc92de7238ad252b5c67944283ab703bb25dd 5832
+SkinnedModel.fragment.hlsl efe41bb45593bc280283c98380972cc9accb411b9d7f24fc5e8d47a4a90f7156 17133
+SkinnedModel.fragment.msl cb6ef3450509cefcd55386f2eb48a1f984d2234c1fe21dcb5e7fa2d4be5bfca9 16362
+SkinnedModel.fragment.spirv aab7ae802c144049fe7c1bd611b09b675a4da8f88e0f44ee6cad551c509f92aa 16620
+SkinnedModel.layout.hlsl 42130e176a96a36f80b9fcc1eac569e9840a2b8ed7cec28dae0957f2b5e46551 17 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF,<unnamed>:UniformBuffer:V]|set1[<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F]|set2[<unnamed>:UniformBuffer:V]
+SkinnedModel.layout.msl 42130e176a96a36f80b9fcc1eac569e9840a2b8ed7cec28dae0957f2b5e46551 17 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF,<unnamed>:UniformBuffer:V]|set1[<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F]|set2[<unnamed>:UniformBuffer:V]
+SkinnedModel.vertex.hlsl 382300b7e6582e884042885f9e8c54a06f6dadeb22f35e381a7f88b7e3087cc1 4381
+SkinnedModel.vertex.msl 4ec266d20f9855ed6223830831b5025dbbebcec4a8098437277489fce7bfa2f3 3280
+SkinnedModel.vertex.spirv b0a3e7779145ae0fd2c24ee2cd17a4e4e975085065677c8c05fc80dadca2aa01 5912
+SkinnedModelDissolve.fragment.hlsl 228f81c9bc437dd1a6e4aa3fa4e885e56410222b722ab46f5cc51c67e8632657 18705
+SkinnedModelDissolve.fragment.msl 28dd5af1b0adcf89bc3edb89e356e87cf6d12238a258cd2c3e5553d3d5602568 17891
+SkinnedModelDissolve.fragment.spirv 1d26d866216ca423791a8dddfe7ac7129c18f822573cccdc1d03767607477f61 18404
+SkinnedModelDissolve.layout.hlsl 42130e176a96a36f80b9fcc1eac569e9840a2b8ed7cec28dae0957f2b5e46551 17 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF,<unnamed>:UniformBuffer:V]|set1[<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F]|set2[<unnamed>:UniformBuffer:V]
+SkinnedModelDissolve.layout.msl 42130e176a96a36f80b9fcc1eac569e9840a2b8ed7cec28dae0957f2b5e46551 17 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF,<unnamed>:UniformBuffer:V]|set1[<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F]|set2[<unnamed>:UniformBuffer:V]
+SkinnedModelDissolve.vertex.hlsl 382300b7e6582e884042885f9e8c54a06f6dadeb22f35e381a7f88b7e3087cc1 4381
+SkinnedModelDissolve.vertex.msl 4ec266d20f9855ed6223830831b5025dbbebcec4a8098437277489fce7bfa2f3 3280
+SkinnedModelDissolve.vertex.spirv b0a3e7779145ae0fd2c24ee2cd17a4e4e975085065677c8c05fc80dadca2aa01 5912
 SkinnedShadowDepth.fragment.hlsl fe25680158d32541b71f9b25acd31950e87083e6b0ec1827ca8f90071c42ae8e 419
 SkinnedShadowDepth.fragment.msl 1c08c344e56821da4b766bce31185c34fb66bbd295d90e9772f8b83af9373675 336
 SkinnedShadowDepth.fragment.spirv 475068619bbc72bb527dfc6846b3340f7b95fdb130ab0dd827f60fb8a24b79c7 400
@@ -290,14 +290,14 @@ Sky.layout.msl 1b5785191158b63346b254efec47babd1a2da88b3b32db89b767a362ee9d782d 
 Sky.vertex.hlsl f00a67b684d1571a1be5b93c36fea2090a987e03c10383c1105e3926cc202189 578
 Sky.vertex.msl ffb54cdefc5e03b1c0ec1e6adf8dcb14e9a57212a893cb756193ca5c6578bfb1 376
 Sky.vertex.spirv 114915494661fee562b61ff0c53c208aaff496da7a665ab56956556b68d6cd24 836
-Splat.fragment.hlsl 151bf54531fa9b3d2011f6ac2e8350b0cbb0a347d2401b19c32b44342ecdcf59 15652
-Splat.fragment.msl 78cfc81cc58731ffa2e5f56f9099663dd18ac36bd908d91e501ac2c07d032587 16294
-Splat.fragment.spirv 25fe48c0a760016980ce19e59ee1392a16cce9c18d0d4e7e0043aed25597295f 17260
-Splat.layout.hlsl 7de742a9e342dc8d0c09d7d0d6dd877be00785af340c10e34cda37c1dc35d845 19 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF]|set1[<unnamed>:UniformBuffer:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]
-Splat.layout.msl 7de742a9e342dc8d0c09d7d0d6dd877be00785af340c10e34cda37c1dc35d845 19 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF]|set1[<unnamed>:UniformBuffer:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]
-Splat.vertex.hlsl 7124ca5856ca317c2812bac11b0e98982c522d9005b960727d5d68eb4e7d56eb 2836
-Splat.vertex.msl 3e00c5e74f7e5dea6c5949fa47598afd42af0882a642036a44336cd49386e8d6 1688
-Splat.vertex.spirv 07e6b2f3f192ddbcc15c1b832299eb44eabcd71262f57e41d85cef3eabee017f 2872
+Splat.fragment.hlsl 0e78a77cc9b062f730448eb442acb62dabde2c4dabe93fccc9e894b2c96ee02e 19535
+Splat.fragment.msl bbcc2cc71c146d333c29177168e864b209645c14c53f21048dbea41b34962671 20147
+Splat.fragment.spirv d9a362876b891c08ac3bfc0e4bd291d38af3f4476d0150f2691590250ae9360e 20408
+Splat.layout.hlsl 3f578474a8b3e304fd0630a7dadffd784f6cfa3da79bfcb59bde8c569383c37d 20 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF]|set1[<unnamed>:UniformBuffer:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F]
+Splat.layout.msl 3f578474a8b3e304fd0630a7dadffd784f6cfa3da79bfcb59bde8c569383c37d 20 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF]|set1[<unnamed>:UniformBuffer:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F]
+Splat.vertex.hlsl 7e678c8a06f4e0ffa8a5d08c0a80725a102d1297b6a02d04e3de8dadd9e124a9 2916
+Splat.vertex.msl ea7f0da3d0b67b2f8b80f26aacf15a5a75a61373cd5941223b6cbfeb0536e395 1726
+Splat.vertex.spirv a17b516decc1d2f47cc4be682a27ea50e7dbf2da0a33d9ebdbdec41aad0c24eb 2952
 Sprite2D.fragment.hlsl fa693e06573dc9abef6983493d9d5efe63e755eef719635cd9d518d60fb9ff54 1339
 Sprite2D.fragment.msl 3ab8742ff93f37e2f9cc7057b193523c0463eb914687c6ddd03c78a24af55b11 1151
 Sprite2D.fragment.spirv 7447b1821f9b36781aec7d9f8b96b5e8cd5f9c92a93b2e35e9c0969a96dcb79c 1956
@@ -322,14 +322,14 @@ TexturedBillboard.layout.msl 27c5ccb35805ac5698d159ab80a7fe806b478578d17d665bfe6
 TexturedBillboard.vertex.hlsl acb16ab69a8a48151cb515a7a3c900bf08161230e7f449ea4cd28513d3bc1f62 870
 TexturedBillboard.vertex.msl f0f47840e9087c810ffe79b0d6c4dfa3ab4797c92cfb21ba7899d414d916ed58 586
 TexturedBillboard.vertex.spirv 7e900ad9525bfe965aa0f7589eccdd3873dea627b444b9fe0601dd9c43c14d31 1132
-TileGround.fragment.hlsl a3c4e54d35676b0b9f420e4eae3c61ea29b5fd71f04d23f0177053af99e2773c 13698
-TileGround.fragment.msl ef8596729c0a8f11bd106dd5ac23b8a77fc2e5583a32aea693dab03887c9dcd2 14132
-TileGround.fragment.spirv bc64ce7e92dc090df490dd97a5bcd59526f170d30bd1b1789b616797a2db1da0 14576
-TileGround.layout.hlsl a119627d133d812c8929448ca06a49e5e7e289874ac7b9f655118031aa881d9c 17 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF]|set1[<unnamed>:UniformBuffer:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]
-TileGround.layout.msl a119627d133d812c8929448ca06a49e5e7e289874ac7b9f655118031aa881d9c 17 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF]|set1[<unnamed>:UniformBuffer:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]
-TileGround.vertex.hlsl 15a2f8fef1f0297e01ac323feabaf6931bd363db97edb37044cac8cf8af7ab7b 2636
-TileGround.vertex.msl 232b18cd24f7a1645114563a7aa88770c55fc309654beda6335bb2b64d9aa3b8 1583
-TileGround.vertex.spirv 573575b0937894cbb5dbeddd036d7b13c0fbfc56660b5e67d7e18fcd98118f67 2788
+TileGround.fragment.hlsl a5cd2f02a8824cbe9746b0b19190c978f8514f74503ec0c8060edbe9e13955ac 17628
+TileGround.fragment.msl e5f739325950b5ee7a0a8eed828d6ed46c729ba6057e95b9bd3f8ccd77e98c9d 18007
+TileGround.fragment.spirv 1cc454a815747563b0c67ff4e0710a99c1060838bce0d755a26e55efa2145605 17724
+TileGround.layout.hlsl fe424c2635e60932b95c193a06d2594437d346e3476d3624a678aebb7b7f0d20 18 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF]|set1[<unnamed>:UniformBuffer:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F]
+TileGround.layout.msl fe424c2635e60932b95c193a06d2594437d346e3476d3624a678aebb7b7f0d20 18 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF]|set1[<unnamed>:UniformBuffer:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F]
+TileGround.vertex.hlsl 7eee78b27051a480ece8c6a6a2c154f1b7db20db0c324bf9bf9ef0135937c0b3 2721
+TileGround.vertex.msl de8251287f38feb011d5c78b4e579613efcd11b3597743b5107737f62496d04f 1623
+TileGround.vertex.spirv 6c3b3ce8e7999035746d87ffe672f409bf6e585c2666b9fe3335e7c701319c2e 2868
 Trail.fragment.hlsl 57c27b9b2858a782bb5208600a3c7f5a1ac129d8b9f1701f4c66e6a061aba7b2 767
 Trail.fragment.msl a62a525b7976e1ed889a5a28a9971ffc3f975ac35846877dfb20a15c36308eef 570
 Trail.fragment.spirv 786a43a56ecef69f056a9f901c36184a2927f1f74df92cc56a54b9669ec417dc 1024

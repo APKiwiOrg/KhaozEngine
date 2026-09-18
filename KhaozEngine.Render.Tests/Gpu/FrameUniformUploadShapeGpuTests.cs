@@ -5,6 +5,7 @@ using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 using KhaozEngine.Render2D.Internal;
 using KhaozEngine.Render3D;
+using KhaozEngine.Render3D.Rendering;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
@@ -29,7 +30,7 @@ namespace KhaozEngine.Tests.Gpu
     /// <para>
     /// Asserted by destination SIZE rather than by a handle, because the buffers are private to the renderers. The
     /// two sizes are structural constants of the UBO layout: the model frame block is
-    /// <c>ModelRenderer.UboBytes</c> = 1008 bytes and the shadow cascade buffer is
+    /// <c>ModelRenderer.UboBytes</c> and the shadow cascade buffer is
     /// <c>MaxCascades * 256</c> = 1024. The uniqueness assertion below is what keeps that indirection honest: if
     /// some other buffer ever lands on one of these sizes the test fails loudly instead of quietly asserting the
     /// wrong thing.
@@ -39,8 +40,10 @@ namespace KhaozEngine.Tests.Gpu
     {
         const int W = 128, H = 96;
 
-        // ModelRenderer.UboBytes: 176 header + 2 * 256 point-light arrays + 304 shadow tail + 16 render origin.
-        const uint FrameUboBytes = 1008;
+        // ModelRenderer.UboBytes: 176 header + 2 * 256 point-light arrays + 304 shadow tail + 16 render origin +
+        // 272 point-shadow tail. Read off the constant rather than spelled out, so growing the block again is one
+        // edit rather than a silent "no destination of that size was written this frame".
+        const uint FrameUboBytes = ModelRenderer.UboBytes;
         // ShadowMapRenderer: MaxCascades (4) 256-byte dynamic slots.
         const uint ShadowCascadeUboBytes = 4 * 256;
         // One GPU-skinned draw starts each growable UBO at its minimum eight slots. Both PER-DRAW slot sizes round

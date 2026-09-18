@@ -30,10 +30,25 @@ namespace KhaozEngine.Render3D
                 ShadowMapDetail.High => 3072,
                 _ => 2048,
             };
+            // The point-light atlas rides the same three profiles. Low turns it off outright (its cost is a
+            // whole second shadow pass, which is the first thing a low-end profile should stop paying), Default
+            // keeps PointShadowSettings' own defaults, and High doubles the face and the light budget.
+            var points = new PointShadowSettings();
+            switch (detail)
+            {
+                case ShadowMapDetail.Low:
+                    points.Enabled = false;
+                    break;
+                case ShadowMapDetail.High:
+                    points.FaceResolution = 512;
+                    points.MaxShadowedLights = 16;
+                    break;
+            }
             return new ShadowSettings
             {
                 Mode = ShadowMode.ShadowMap,
                 ShadowMapResolution = resolution,
+                PointShadows = points,
             };
         }
     }

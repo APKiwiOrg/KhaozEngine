@@ -49,7 +49,11 @@ namespace KhaozEngine.Tests.Gpu
         public void Submit(IGpuCommandList cl) { }
         public void Submit(IGpuCommandList cl, IGpuFence fence)
             => throw new NotSupportedException("FakeGpuDevice reports SupportsCompletionFences = false.");
-        public void WaitForIdle() { }
+        /// <summary>How many times <see cref="WaitForIdle"/> was called. A full GPU stall is the most expensive
+        /// thing a resource transaction does, so a test asserting that a retry was skipped asserts on this.</summary>
+        internal int WaitForIdleCalls { get; private set; }
+
+        public void WaitForIdle() => WaitForIdleCalls++;
 
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, ReadOnlySpan<T> data) where T : unmanaged { }
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, T[] data) where T : unmanaged { }

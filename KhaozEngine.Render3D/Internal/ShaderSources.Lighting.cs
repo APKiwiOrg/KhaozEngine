@@ -130,7 +130,63 @@ float sampleKeyShadow(texture2D shadowAtlas, sampler shadowSamp, vec3 worldPos, 
     return mix(1.0, lit, strength);
 }
 
-void computeLighting(vec3 N, vec3 worldPos, float specStrength, float specExp, float keyShadow, out vec3 diffuse, out vec3 specColor) {
+// ---- Point-light shadows (issue #1002) ----------------------------------------------------------------
+// The atlas is six FACE columns by one row per shadowed light, each cell holding LINEAR distance from the light
+// over that light's radius, cleared to 1.0. So the receiver needs no matrices at all: pick the face from the
+// light-to-fragment direction, read the cell, and compare against its own normalized distance. No backend depth
+// convention enters this, which is exactly why the pass stores distance rather than projected depth.
+
+// THE CUBE-MAP FACE CONVENTION, mirrored VERBATIM from PointShadowMath.FaceAndUv (design doc decision 3). Faces
+// 0..5 are +X, -X, +Y, -Y, +Z, -Z. d is the direction FROM the light TO the fragment.
+void pointShadowFace(vec3 d, out float face, out vec2 uv) {
+    vec3 a = abs(d);
+    float ma; float sc; float tc;
+    if (a.x >= a.y && a.x >= a.z) {
+        ma = a.x; face = d.x > 0.0 ? 0.0 : 1.0;
+        sc = d.x > 0.0 ? -d.z : d.z; tc = -d.y;
+    } else if (a.y >= a.z) {
+        ma = a.y; face = d.y > 0.0 ? 2.0 : 3.0;
+        sc = d.x; tc = d.y > 0.0 ? d.z : -d.z;
+    } else {
+        ma = a.z; face = d.z > 0.0 ? 4.0 : 5.0;
+        sc = d.z > 0.0 ? d.x : -d.x; tc = -d.y;
+    }
+    uv = (vec2(sc, tc) / max(ma, 1e-6)) * 0.5 + 0.5;
+}
+
+// One point light's shadow term: 1 = fully lit, 0 = fully occluded. toL is the fragment-to-light vector (so the
+// face select negates it), dist its length, radius the light's, ndl the already-computed N.L, and params is that
+// light's PointShadowParams entry - (slot, bias, slopeBias, 0). The caller has already checked slot >= 0.
+// COMPARE FIRST, FILTER AFTER, exactly as the cascade PCF does: four taps at half-texel offsets each fetch one
+// stored distance, compare it, and only the 0/1 results are averaged. Every tap is CLAMPED inside its own cell so
+// it can never bleed into the neighbouring face column or the next light's row.
+// ndlRaw is the UNBANDED dot(N, L): the slope bias is an acne remedy and has to read the real grazing angle, not
+// the cel-quantised one the diffuse term uses.
+float samplePointShadow(texture2D atlas, sampler samp, vec3 toL, float dist, float radius, float ndlRaw, vec4 params) {
+    float face; vec2 uv;
+    pointShadowFace(-toL, face, uv);
+    vec2 texel = PointShadowAtlas.xy;                      // one ATLAS texel, in atlas UV
+    vec2 cellSize = vec2(1.0 / PointShadowAtlas.w, 1.0 / max(PointShadowAtlas.z, 1.0));
+    vec2 cellMin = vec2(face, params.x) * cellSize;
+    vec2 base = cellMin + uv * cellSize;
+    vec2 lo = cellMin + texel * 0.5;
+    vec2 hi = cellMin + cellSize - texel * 0.5;
+    float d = dist / max(radius, 1e-6);
+    float bias = params.y + params.z * (1.0 - ndlRaw);
+    float lit = 0.0;
+    for (int oy = 0; oy < 2; oy++) {
+        for (int ox = 0; ox < 2; ox++) {
+            vec2 tap = clamp(base + (vec2(float(ox), float(oy)) - 0.5) * texel, lo, hi);
+            float stored = texture(sampler2D(atlas, samp), tap).r;
+            lit += step(d, stored + bias);                 // receiver nearer than the stored caster => lit
+        }
+    }
+    return lit * 0.25;
+}
+
+// pointAtlas/pointSamp are parameters for the same reason sampleKeyShadow's are: their set/binding differ per
+// fragment and GLSL cannot reference a fragment's own bindings from a shared function.
+void computeLighting(texture2D pointAtlas, sampler pointSamp, vec3 N, vec3 worldPos, float specStrength, float specExp, float keyShadow, out vec3 diffuse, out vec3 specColor) {
     float ndlKey  = max(dot(N, -normalize(LightDir.xyz)), 0.0);
     float ndlFill = max(dot(N, -normalize(FillDir.xyz)), 0.0);
     float bands = Params.x;
@@ -153,10 +209,19 @@ void computeLighting(vec3 N, vec3 worldPos, float specStrength, float specExp, f
         float dist = length(toL);
         vec3 L = (dist > 1e-4) ? toL / dist : vec3(0.0);
         float ndl = max(dot(N, L), 0.0);
+        // The UNBANDED grazing angle, kept for the slope bias alone. Cel banding quantises ndl below, and a bias
+        // computed off a stepped angle steps with it, so the acne it exists to hide comes back in bands. Read
+        // only inside the gated branch, so the unshadowed path is the arithmetic it always was.
+        float ndlRaw = ndl;
         if (bands >= 1.0) ndl = floor(ndl*bands+0.5)/bands;
         // Smooth falloff: 1 at the light, easing to exactly 0 at its radius; scaled by intensity.
         float f = clamp(1.0 - (dist*dist)/max(radius*radius, 1e-6), 0.0, 1.0);
         float att = f * f * PointColorIntensity[i].w;
+        // A slot below zero is every light that carries no shadow map, which is every light in a scene that never
+        // asked for one: the branch is not taken, nothing is sampled, and the accumulation below is the pre-shadow
+        // arithmetic byte for byte.
+        if (PointShadowParams[i].x >= 0.0)
+            att *= samplePointShadow(pointAtlas, pointSamp, toL, dist, radius, ndlRaw, PointShadowParams[i]);
         vec3 lc = PointColorIntensity[i].rgb;
         diffuse += lc * (ndl * att);
         vec3 Hp = normalize(L + V);

@@ -133,8 +133,8 @@ namespace KhaozEngine.Tests.Gpu
         /// </para>
         /// <para>
         /// AND THE FRAME REALLY BINDS IMAGES, which is the half that made the assertion mean something. Its
-        /// material set is the shipped <c>Model</c> layout, so each of the five meshes carries FOUR sampled
-        /// textures and the twenty draws ask the tracker to place eighty bound images between them. Zero is
+        /// material set is the shipped <c>Model</c> layout, so each of the five meshes carries FIVE sampled
+        /// textures and the twenty draws ask the tracker to place a hundred bound images between them. Zero is
         /// therefore a finding about the resting-layout ruling (a plain sampled texture rests in
         /// <c>SHADER_READ_ONLY_OPTIMAL</c>, which is where a sampled bind wants it) rather than a statement about
         /// a frame that bound none. It also pins the pass boundary: a draw that owes no transition does not end
@@ -163,7 +163,8 @@ namespace KhaozEngine.Tests.Gpu
 
             VulkanResourceSet material = harness.Set("Model");
 
-            Assert.Equal(4, material.Images.Length);
+            // Albedo, NormalMap, RoughnessMap, ShadowMap and, since point-light shadows, PointShadowMap.
+            Assert.Equal(5, material.Images.Length);
             foreach (VulkanBoundImage image in material.Images)
             {
                 Assert.False(image.Storage);

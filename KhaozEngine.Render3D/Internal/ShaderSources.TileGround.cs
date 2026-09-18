@@ -54,6 +54,8 @@ layout(set=0, binding=0) uniform U {
     vec4 ShadowParams2;    // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets; // per-cascade normal-offset world size (texelWorld_i * ShadowNormalOffset): x=c0..w=c3
     vec4 RenderOrigin;     // camera-relative rendering: add to a render-frame position for the ABSOLUTE world one
+    vec4 PointShadowParams[16];  // per point light: x = atlas row or -1 for none, y = bias, z = slope bias, w unused
+    vec4 PointShadowAtlas;       // xy = one atlas texel in UV, z = rows (lights), w = face columns (6)
 };
 layout(location=0) in vec3 Position;
 layout(location=1) in vec3 Normal;
@@ -125,6 +127,8 @@ layout(set=0, binding=0) uniform U {
     vec4 ShadowParams2;    // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets; // per-cascade normal-offset world size (texelWorld_i * ShadowNormalOffset): x=c0..w=c3
     vec4 RenderOrigin;     // camera-relative rendering: add to a render-frame position for the ABSOLUTE world one
+    vec4 PointShadowParams[16];  // per point light: x = atlas row or -1 for none, y = bias, z = slope bias, w unused
+    vec4 PointShadowAtlas;       // xy = one atlas texel in UV, z = rows (lights), w = face columns (6)
 };
 // The material's own uniforms, written ONCE at load and never re-uploaded. Declared here and NOT in
 // TileGroundVert, because the vertex stage reads none of them (TileGroundMaterialConfig.BuildParams is the C#
@@ -137,6 +141,7 @@ layout(set=1, binding=1) uniform texture2DArray AlbedoArray;  // one layer per c
 layout(set=1, binding=2) uniform sampler Samp;
 layout(set=1, binding=3) uniform texture2D ShadowMap;    // key-light depth map (R32F), sampled LAST
 layout(set=1, binding=4) uniform sampler ShadowSamp;     // clamp/linear sampler for the shadow-map PCF taps
+layout(set=1, binding=5) uniform texture2D PointShadowMap;  // point-light distance atlas (R32F), sampled through ShadowSamp
 // Declare the interpolants gap-free from location 0, in the order TileGroundVert emits them. This fragment reads
 // ALL of them, so there is no hole for FXC/WARP to miscompile (see the TileGroundVert note).
 layout(location=0) in vec3 vWorldPos;
@@ -214,7 +219,7 @@ void main() {
     float ndlKeyForShadow = max(dot(Ngeo, -normalize(LightDir.xyz)), 0.0);
     float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, vWorldPos, Ngeo, ndlKeyForShadow);
     vec3 diffuse; vec3 specColor;
-    computeLighting(Ngeo, vWorldPos, specStrength, TILEGROUND_SPEC_EXP, keyShadow, diffuse, specColor);
+    computeLighting(PointShadowMap, ShadowSamp, Ngeo, vWorldPos, specStrength, TILEGROUND_SPEC_EXP, keyShadow, diffuse, specColor);
     vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor + vEmissive.rgb;
     oColor = vec4(lit, 1.0);
     oNormal = vec4(Ngeo * 0.5 + 0.5, 1.0); // GEOMETRIC normal for the edge pass

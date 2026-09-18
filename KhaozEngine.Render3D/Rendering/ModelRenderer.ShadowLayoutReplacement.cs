@@ -23,10 +23,10 @@ internal sealed partial class ModelRenderer
         {
             _gd.WaitForIdle();
             graph = _shadowMap.BuildReplacement(resolution, cascadeCount);
-            AddReplacement(_defaultSet, graph.ShadowTexture, replacements, replacementBindings);
-            AddReplacement(_skinnedDefaultFragSet, graph.ShadowTexture, replacements, replacementBindings);
+            AddReplacement(_defaultSet, graph.ShadowTexture, _pointShadowTexture, replacements, replacementBindings);
+            AddReplacement(_skinnedDefaultFragSet, graph.ShadowTexture, _pointShadowTexture, replacements, replacementBindings);
             foreach (IGpuResourceSet set in liveMaterialSets)
-                AddReplacement(set, graph.ShadowTexture, replacements, replacementBindings);
+                AddReplacement(set, graph.ShadowTexture, _pointShadowTexture, replacements, replacementBindings);
         }
         catch
         {
@@ -35,14 +35,26 @@ internal sealed partial class ModelRenderer
             return false;
         }
 
+        ShadowMapRenderer.ShadowLayoutReplacement oldGraph = _shadowMap.CommitReplacement(graph);
+        settings.CommitAtlasReplacement(graph.Resolution, graph.CascadeCount);
+        invalidateShadowDepth();
+        CommitShadowSamplingSets(replacements, replacementBindings, commitMaterialSets);
+        oldGraph.Dispose();
+        return true;
+    }
+
+    // Swap every rebuilt set in, re-key the rebuild descriptions onto the new sets, and free the old ones. Shared
+    // with BindPointShadowAtlas (ModelRenderer.PointShadowUniforms.cs), because a set carrying the cascade atlas carries
+    // the point atlas beside it and both swaps are the same transaction shape.
+    void CommitShadowSamplingSets(Dictionary<IGpuResourceSet, IGpuResourceSet> replacements,
+        Dictionary<IGpuResourceSet, ShadowSamplingBinding> replacementBindings,
+        Action<Func<IGpuResourceSet, IGpuResourceSet>> commitMaterialSets)
+    {
         IGpuResourceSet oldDefaultSet = _defaultSet;
         IGpuResourceSet oldSkinnedDefaultFragSet = _skinnedDefaultFragSet;
         commitMaterialSets(old => replacements[old]);
         _defaultSet = replacements[oldDefaultSet];
         _skinnedDefaultFragSet = replacements[oldSkinnedDefaultFragSet];
-        ShadowMapRenderer.ShadowLayoutReplacement oldGraph = _shadowMap.CommitReplacement(graph);
-        settings.CommitAtlasReplacement(graph.Resolution, graph.CascadeCount);
-        invalidateShadowDepth();
 
         foreach ((IGpuResourceSet oldSet, IGpuResourceSet newSet) in replacements)
         {
@@ -50,18 +62,16 @@ internal sealed partial class ModelRenderer
             _shadowSamplingBindings.Add(newSet, replacementBindings[newSet]);
             oldSet.Dispose();
         }
-        oldGraph.Dispose();
-        return true;
     }
 
-    void AddReplacement(IGpuResourceSet oldSet, IGpuTexture shadowTexture,
+    void AddReplacement(IGpuResourceSet oldSet, IGpuTexture shadowTexture, IGpuTexture pointShadowTexture,
         Dictionary<IGpuResourceSet, IGpuResourceSet> replacements,
         Dictionary<IGpuResourceSet, ShadowSamplingBinding> replacementBindings)
     {
         if (replacements.ContainsKey(oldSet)) return;
         if (!_shadowSamplingBindings.TryGetValue(oldSet, out ShadowSamplingBinding? binding))
             throw new InvalidOperationException("a live shadow-sampling set has no rebuild description.");
-        IGpuResourceSet replacement = BuildShadowSamplingSet(binding, shadowTexture);
+        IGpuResourceSet replacement = BuildShadowSamplingSet(binding, shadowTexture, pointShadowTexture);
         replacements.Add(oldSet, replacement);
         replacementBindings.Add(replacement, binding);
     }
@@ -70,7 +80,7 @@ internal sealed partial class ModelRenderer
         params IGpuBindableResource[] materialResources)
     {
         var binding = new ShadowSamplingBinding(layout, materialResources);
-        IGpuResourceSet set = BuildShadowSamplingSet(binding, shadowTexture);
+        IGpuResourceSet set = BuildShadowSamplingSet(binding, shadowTexture, _pointShadowTexture);
         _shadowSamplingBindings.Add(set, binding);
         return set;
     }
@@ -80,12 +90,16 @@ internal sealed partial class ModelRenderer
         CreateShadowSamplingSet(_splatMaterialLayout, _shadowMap.ShadowTexture,
             paramsUbo, albedoArray, normalArray, sampler ?? _terrainSampler);
 
-    IGpuResourceSet BuildShadowSamplingSet(ShadowSamplingBinding binding, IGpuTexture shadowTexture)
+    // The three trailing elements EVERY receiver family's layout ends in, in declaration order: the cascade
+    // atlas, the sampler both atlases are read through, and the point-light atlas (or its 1x1 default).
+    IGpuResourceSet BuildShadowSamplingSet(ShadowSamplingBinding binding, IGpuTexture shadowTexture,
+        IGpuTexture pointShadowTexture)
     {
-        var resources = new IGpuBindableResource[binding.MaterialResources.Length + 2];
+        var resources = new IGpuBindableResource[binding.MaterialResources.Length + 3];
         binding.MaterialResources.CopyTo(resources, 0);
-        resources[^2] = shadowTexture;
-        resources[^1] = _shadowMap.ShadowSampler;
+        resources[^3] = shadowTexture;
+        resources[^2] = _shadowMap.ShadowSampler;
+        resources[^1] = pointShadowTexture;
         return _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(binding.Layout, resources));
     }
 

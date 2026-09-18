@@ -51,7 +51,8 @@ namespace KhaozEngine.Render3D.Rendering
                 new GpuResourceLayoutElement("NormalArray", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("Sampler", GpuResourceKind.Sampler, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("ShadowMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
-                new GpuResourceLayoutElement("ShadowSamp", GpuResourceKind.Sampler, GpuShaderStages.Fragment)));
+                new GpuResourceLayoutElement("ShadowSamp", GpuResourceKind.Sampler, GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("PointShadowMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment)));
 
             _splatShaders = factory.CreateShadersFromSpirv(ShaderSources.SplatVert, ShaderSources.SplatFrag);
         }
@@ -101,7 +102,7 @@ namespace KhaozEngine.Render3D.Rendering
         public IGpuResourceSet CreateSplatMaterialSet(IGpuBuffer paramsUbo, IGpuTexture albedoArray, IGpuTexture normalArray, IGpuSampler sampler) =>
             _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(
                 _splatMaterialLayout, paramsUbo, albedoArray, normalArray, sampler,
-                _shadowMap.ShadowTexture, _shadowMap.ShadowSampler));
+                _shadowMap.ShadowTexture, _shadowMap.ShadowSampler, _pointShadowTexture));
 
         /// <summary>Bind the splat-terrain pipeline for the splat pass (call once before its draw loop). The frame
         /// block it reads is the shared one <see cref="SetFrameUniforms"/> already uploaded this frame, so unlike the

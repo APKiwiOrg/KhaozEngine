@@ -40,6 +40,8 @@ layout(set=0, binding=0) uniform U {
     vec4 ShadowParams2;    // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets; // per-cascade normal-offset world size (texelWorld_i * ShadowNormalOffset): x=c0..w=c3
     vec4 RenderOrigin;     // camera-relative rendering: add to a render-frame position for the ABSOLUTE world one
+    vec4 PointShadowParams[16];  // per point light: x = atlas row or -1 for none, y = bias, z = slope bias, w unused
+    vec4 PointShadowAtlas;       // xy = one atlas texel in UV, z = rows (lights), w = face columns (6)
 };
 layout(location=0) in vec3 Position;
 layout(location=1) in vec3 Normal;
@@ -101,6 +103,8 @@ layout(set=0, binding=0) uniform U {
     vec4 ShadowParams2;    // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets; // per-cascade normal-offset world size (texelWorld_i * ShadowNormalOffset): x=c0..w=c3
     vec4 RenderOrigin;     // camera-relative rendering: add to a render-frame position for the ABSOLUTE world one
+    vec4 PointShadowParams[16];  // per point light: x = atlas row or -1 for none, y = bias, z = slope bias, w unused
+    vec4 PointShadowAtlas;       // xy = one atlas texel in UV, z = rows (lights), w = face columns (6)
 };
 layout(set=0, binding=1) uniform texture2D Albedo;       // 1x1 white default keeps untextured meshes unchanged
 layout(set=0, binding=2) uniform texture2D NormalMap;    // 1x1 flat default: texel (0.5,0.5,1.0) decodes to tangent-space (0,0,1); sampled up front, applied only when a tangent exists
@@ -108,6 +112,7 @@ layout(set=0, binding=3) uniform texture2D RoughnessMap; // 1x1 zero default => 
 layout(set=0, binding=4) uniform sampler Samp;           // shared sampler for all three textures (EdgeFrag-style)
 layout(set=0, binding=5) uniform texture2D ShadowMap;    // key-light depth map (R32F); sampled LAST, after the material maps (Metal first-sample-order rule); 1x1 default when shadows off
 layout(set=0, binding=6) uniform sampler ShadowSamp;     // clamp/linear sampler for the shadow-map PCF taps
+layout(set=0, binding=7) uniform texture2D PointShadowMap;  // point-light distance atlas (R32F), read through ShadowSamp; 1x1 default when no light carries one
 layout(location=0) in vec3 vNormalW;
 layout(location=1) in vec4 vColor;
 layout(location=2) in vec3 vWorldPos;
@@ -176,7 +181,7 @@ void main() {
     float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, vWorldPos, Ngeo, ndlKeyForShadow);
     // Key+fill+cel+point-light accumulation is the shared block (ShaderSources.LightingCommonGlsl), spliced in above.
     vec3 diffuse; vec3 specColor;
-    computeLighting(N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
+    computeLighting(PointShadowMap, ShadowSamp, N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
     vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor;
     // Per-instance rigid dissolve (issue #253), gated with an if (NOT a multiply) so a draw carrying no dissolve is
     // byte-identical to the pre-dissolve path: the else branch is exactly `lit + vEmissive.rgb`, the old expression.
@@ -224,6 +229,8 @@ layout(set=0, binding=0) uniform U {
     vec4 ShadowParams2;        // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets;  // per-cascade normal-offset world size (x=c0..w=c3)
     vec4 RenderOrigin;     // camera-relative rendering: add to a render-frame position for the ABSOLUTE world one
+    vec4 PointShadowParams[16];  // per point light: x = atlas row or -1 for none, y = bias, z = slope bias, w unused
+    vec4 PointShadowAtlas;       // xy = one atlas texel in UV, z = rows (lights), w = face columns (6)
 };
 layout(set=0, binding=1) uniform texture2D Albedo;
 layout(set=0, binding=2) uniform texture2D NormalMap;
@@ -231,6 +238,7 @@ layout(set=0, binding=3) uniform texture2D RoughnessMap;
 layout(set=0, binding=4) uniform sampler Samp;
 layout(set=0, binding=5) uniform texture2D ShadowMap;
 layout(set=0, binding=6) uniform sampler ShadowSamp;
+layout(set=0, binding=7) uniform texture2D PointShadowMap;
 layout(location=0) in vec3 vNormalW;
 layout(location=1) in vec4 vColor;
 layout(location=2) in vec3 vWorldPos;
@@ -278,7 +286,7 @@ void main() {
     float ndlKeyForShadow = max(dot(N, -normalize(LightDir.xyz)), 0.0);
     float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, vWorldPos, Ngeo, ndlKeyForShadow);
     vec3 diffuse; vec3 specColor;
-    computeLighting(N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
+    computeLighting(PointShadowMap, ShadowSamp, N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
     vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor;   // no base emissive: vEmissive is the edge colour here
     // Emissive edge: a bright band just above the discard threshold. step(threshold) suppresses any edge at
     // threshold 0 (a fully-solid avatar routed through this pipeline still reads clean).
@@ -326,6 +334,8 @@ layout(set=0, binding=0) uniform U {
     vec4 ShadowParams2;        // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets;  // per-cascade normal-offset world size (x=c0..w=c3)
     vec4 RenderOrigin;     // camera-relative rendering: add to a render-frame position for the ABSOLUTE world one
+    vec4 PointShadowParams[16];  // per point light: x = atlas row or -1 for none, y = bias, z = slope bias, w unused
+    vec4 PointShadowAtlas;       // xy = one atlas texel in UV, z = rows (lights), w = face columns (6)
 };
 // This draw's own block, selected by the per-draw dynamic offset. Declared here and NOT in either skinned
 // fragment, because no fragment stage reads any of it (the per-draw constants reach it as interpolants).
@@ -420,6 +430,8 @@ layout(set=0, binding=0) uniform U {
     vec4 ShadowParams2;        // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets;  // per-cascade normal-offset world size (x=c0..w=c3)
     vec4 RenderOrigin;     // camera-relative rendering: add to a render-frame position for the ABSOLUTE world one
+    vec4 PointShadowParams[16];  // per point light: x = atlas row or -1 for none, y = bias, z = slope bias, w unused
+    vec4 PointShadowAtlas;       // xy = one atlas texel in UV, z = rows (lights), w = face columns (6)
 };
 layout(set=1, binding=0) uniform texture2D Albedo;
 layout(set=1, binding=1) uniform texture2D NormalMap;
@@ -427,6 +439,7 @@ layout(set=1, binding=2) uniform texture2D RoughnessMap;
 layout(set=1, binding=3) uniform sampler Samp;
 layout(set=1, binding=4) uniform texture2D ShadowMap;
 layout(set=1, binding=5) uniform sampler ShadowSamp;
+layout(set=1, binding=6) uniform texture2D PointShadowMap;
 layout(location=0) in vec3 vNormalW;
 layout(location=1) in vec4 vColor;
 layout(location=2) in vec3 vWorldPos;
@@ -461,7 +474,7 @@ void main() {
     float ndlKeyForShadow = max(dot(N, -normalize(LightDir.xyz)), 0.0);
     float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, vWorldPos, Ngeo, ndlKeyForShadow);
     vec3 diffuse; vec3 specColor;
-    computeLighting(N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
+    computeLighting(PointShadowMap, ShadowSamp, N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
     vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor + vEmissive.rgb;
     oColor = vec4(lit, 1.0);
     oNormal = vec4(Ngeo * 0.5 + 0.5, 1.0 - clamp(vDynamic, 0.0, 1.0)); // a: dynamic-geometry decal mask (issue #235)
@@ -488,6 +501,8 @@ layout(set=0, binding=0) uniform U {
     vec4 ShadowParams2;        // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets;  // per-cascade normal-offset world size (x=c0..w=c3)
     vec4 RenderOrigin;     // camera-relative rendering: add to a render-frame position for the ABSOLUTE world one
+    vec4 PointShadowParams[16];  // per point light: x = atlas row or -1 for none, y = bias, z = slope bias, w unused
+    vec4 PointShadowAtlas;       // xy = one atlas texel in UV, z = rows (lights), w = face columns (6)
 };
 layout(set=1, binding=0) uniform texture2D Albedo;
 layout(set=1, binding=1) uniform texture2D NormalMap;
@@ -495,6 +510,7 @@ layout(set=1, binding=2) uniform texture2D RoughnessMap;
 layout(set=1, binding=3) uniform sampler Samp;
 layout(set=1, binding=4) uniform texture2D ShadowMap;
 layout(set=1, binding=5) uniform sampler ShadowSamp;
+layout(set=1, binding=6) uniform texture2D PointShadowMap;
 layout(location=0) in vec3 vNormalW;
 layout(location=1) in vec4 vColor;
 layout(location=2) in vec3 vWorldPos;
@@ -542,7 +558,7 @@ void main() {
     float ndlKeyForShadow = max(dot(N, -normalize(LightDir.xyz)), 0.0);
     float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, vWorldPos, Ngeo, ndlKeyForShadow);
     vec3 diffuse; vec3 specColor;
-    computeLighting(N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
+    computeLighting(PointShadowMap, ShadowSamp, N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
     vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor;
     float edge = (1.0 - smoothstep(threshold, threshold + edgeW, mask)) * step(0.001, threshold);
     lit += vEmissive.rgb * edge;

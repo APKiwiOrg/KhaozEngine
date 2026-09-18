@@ -44,7 +44,7 @@ namespace KhaozEngine.Tests.Render3D
             // upload land at the wrong offsets.
             Assert.Equal(
                 ModelRenderer.HeaderBytes + 2 * ModelRenderer.LightArrayBytes + ModelRenderer.ShadowTailBytes
-                    + ModelRenderer.RenderOriginBytes,
+                    + ModelRenderer.RenderOriginBytes + ModelRenderer.PointShadowTailBytes,
                 ModelRenderer.UboBytes);
             Assert.Equal(ModelRenderer.ShadowTailOffset + ModelRenderer.ShadowTailBytes,
                 ModelRenderer.RenderOriginOffset);
@@ -74,13 +74,15 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void UboBytes_Is1008_TheDocumentedCombinedSize()
+        public void UboBytes_Is1280_TheDocumentedCombinedSize()
         {
-            // 176 + 2*256 + 304 + 16 = 1008. The value the comments/docs quote, a sanity anchor on the derived
-            // arithmetic (header + both point-light arrays + the cascaded shadow tail = mat4[4] + 3*vec4 + the
-            // camera-relative render origin).
+            // 176 + 2*256 + 304 + 16 + 272 = 1280. The value the comments/docs quote, a sanity anchor on the
+            // derived arithmetic (header + both point-light arrays + the cascaded shadow tail = mat4[4] + 3*vec4 +
+            // the camera-relative render origin + the point-light shadow tail = vec4[16] + vec4). The point tail
+            // went LAST so every offset above it is unchanged, which PointShadowUboLayoutTests pins.
             Assert.Equal(992u, ModelRenderer.RenderOriginOffset);
-            Assert.Equal(1008u, ModelRenderer.UboBytes);
+            Assert.Equal(1008u, ModelRenderer.PointShadowTailOffset);
+            Assert.Equal(1280u, ModelRenderer.UboBytes);
         }
 
         [Fact]

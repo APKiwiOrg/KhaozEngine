@@ -221,6 +221,66 @@ public sealed class PointShadowSlotsTests
         Assert.Equal(a, slots.Acquire(A, LightShadowMode.Static, frame: 2));
     }
 
+    /// <summary>
+    /// ONE ARRIVAL COSTS ONE ROW, NOT EIGHT. Eight rows hold eight lights, one of them stops being queued and a
+    /// newcomer takes its place. The scene offers rows nearest first, so the newcomer asks BEFORE the seven
+    /// incumbents standing behind it in that list, and a one-pass acquire would give it row 0, which then puts
+    /// row 0's owner on row 1, row 1's owner on row 2, and so on down the line: eight lights, seven of them
+    /// still standing exactly where they were, and four of them suddenly sampling nothing.
+    /// <para>
+    /// The frame path is two phases for this reason, and the first of them is <see cref="PointShadowSlots.TryTouch"/>
+    /// over every request that already owns a row. This test drives those two phases in the newcomer-first order
+    /// that broke it.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void ANewcomerTakesTheVacatedRowRatherThanCascadingThroughTheIncumbents()
+    {
+        const long X = 99;
+        var slots = new PointShadowSlots(8);
+        for (int light = 0; light < 8; light++)
+        {
+            int row = slots.Acquire(light, LightShadowMode.Static, frame: 1);
+            Assert.Equal(light, row);
+            slots.MarkClean(row, frame: 1);
+        }
+
+        // Frame 2: light 3 has stopped being queued and X has arrived nearest, so X asks first.
+        Assert.Equal(-1, slots.TryTouch(X, LightShadowMode.Static, frame: 2));
+        for (int light = 0; light < 8; light++)
+        {
+            if (light == 3) continue;
+            Assert.Equal(light, slots.TryTouch(light, LightShadowMode.Static, frame: 2));
+        }
+        int taken = slots.Acquire(X, LightShadowMode.Static, frame: 2);
+
+        Assert.Equal(3, taken);
+        Assert.Equal(X, slots.KeyOf(taken));
+        Assert.True(slots.IsDirty(taken));
+        Assert.False(slots.EverRendered(taken));
+        // Every incumbent kept its row, its key and its map, so the frame re-renders exactly one row.
+        foreach (int light in new[] { 0, 1, 2, 4, 5, 6, 7 })
+        {
+            Assert.Equal(light, slots.KeyOf(light));
+            Assert.False(slots.IsDirty(light));
+            Assert.True(slots.EverRendered(light));
+        }
+    }
+
+    [Fact]
+    public void TryTouchNeitherTakesAFreeRowNorEvictsAnOccupiedOne()
+    {
+        PointShadowSlots slots = TwoRows();
+        slots.Acquire(A, LightShadowMode.Static, frame: 1);
+
+        // A key nobody holds gets nothing, however much room there is: taking a row is Acquire's job alone.
+        Assert.Equal(-1, slots.TryTouch(B, LightShadowMode.Static, frame: 2));
+        Assert.Equal(1, slots.InUse);
+        // And a mode mismatch is a different row, exactly as it is for Acquire.
+        Assert.Equal(-1, slots.TryTouch(A, LightShadowMode.Dynamic, frame: 2));
+        Assert.Equal(-1, slots.TryTouch(A, LightShadowMode.None, frame: 2));
+    }
+
     [Fact]
     public void AnEmptyCacheAnswersEveryQuestionWithoutThrowing()
     {
@@ -231,6 +291,7 @@ public sealed class PointShadowSlotsTests
         Assert.Equal(0, slots.Capacity);
         Assert.Equal(0, slots.InUse);
         Assert.Equal(-1, slots.Acquire(A, LightShadowMode.Static, frame: 1));
+        Assert.Equal(-1, slots.TryTouch(A, LightShadowMode.Static, frame: 1));
         Assert.False(slots.IsDirty(0));
         Assert.False(slots.EverRendered(-3));
         Assert.Equal(0L, slots.KeyOf(9));

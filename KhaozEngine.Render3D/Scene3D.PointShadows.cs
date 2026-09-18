@@ -144,24 +144,45 @@ namespace KhaozEngine.Render3D
             return true;
         }
 
-        /// <summary>Give every request a row, and decide which of the static ones changed underneath. A static
-        /// light's signature is compared here rather than in the cache because it is a question about the SCENE
-        /// (which casters stand inside this light) rather than about the cache's bookkeeping.</summary>
+        /// <summary>
+        /// Give every request a row, and decide which of the static ones changed underneath. A static light's
+        /// signature is compared here rather than in the cache because it is a question about the SCENE (which
+        /// casters stand inside this light) rather than about the cache's bookkeeping.
+        /// <para>
+        /// IN TWO PHASES, AND THE ORDER IS THE WHOLE POINT. Every request that already owns a row is re-seated
+        /// first, then the rest are offered rows. The requests are sorted nearest first, so a one-pass acquire
+        /// would let a newcomer at the head of the list evict an incumbent standing further back in the same list,
+        /// which then evicts the next one, and so on: one arrival in a town with more lanterns than rows costs as
+        /// many valid maps as there are lights behind it, every time the player walks. Re-seating first makes
+        /// every incumbent's row "requested this frame", and a row requested this frame is never a victim.
+        /// </para>
+        /// </summary>
         void AcquirePointShadowSlots(PointShadowSlots cache, int frame)
         {
             for (int i = 0; i < _pointRequests.Count; i++)
             {
                 PointShadowRequest request = _pointRequests[i];
-                request.Slot = cache.Acquire(request.Key, request.Mode, frame);
-                if (request.Slot >= 0 && request.Mode == LightShadowMode.Static)
-                {
-                    long signature = PointCasterSignature(request.Position, request.Radius);
-                    // A changed signature can only ADD dirt. A freshly acquired row is already dirty, so a stale
-                    // signature left behind by the row's previous owner cannot accidentally report it clean.
-                    if (_pointCasterSignatures[request.Slot] != signature) cache.MarkDirty(request.Slot);
-                    _pointCasterSignatures[request.Slot] = signature;
-                }
+                request.Slot = cache.TryTouch(request.Key, request.Mode, frame);
                 _pointRequests[i] = request;
+            }
+
+            for (int i = 0; i < _pointRequests.Count; i++)
+            {
+                PointShadowRequest request = _pointRequests[i];
+                if (request.Slot >= 0) continue;
+                request.Slot = cache.Acquire(request.Key, request.Mode, frame);
+                _pointRequests[i] = request;
+            }
+
+            for (int i = 0; i < _pointRequests.Count; i++)
+            {
+                PointShadowRequest request = _pointRequests[i];
+                if (request.Slot < 0 || request.Mode != LightShadowMode.Static) continue;
+                long signature = PointCasterSignature(request.Position, request.Radius);
+                // A changed signature can only ADD dirt. A freshly acquired row is already dirty, so a stale
+                // signature left behind by the row's previous owner cannot accidentally report it clean.
+                if (_pointCasterSignatures[request.Slot] != signature) cache.MarkDirty(request.Slot);
+                _pointCasterSignatures[request.Slot] = signature;
             }
         }
 

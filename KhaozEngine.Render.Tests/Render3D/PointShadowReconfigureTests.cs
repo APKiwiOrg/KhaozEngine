@@ -209,6 +209,56 @@ public sealed class PointShadowReconfigureTests
         Assert.Equal(1, rig.Scene.PointShadowedLights);
     }
 
+    /// <summary>
+    /// A LIGHT ARRIVING COSTS ONE REBUILD, WHOEVER ASKS FIRST. The requests are offered rows nearest first, so a
+    /// newcomer standing closest to the eye asks before every incumbent behind it, and a cache that handed it a
+    /// row on that first ask would evict a light that was about to re-ask. Each displaced incumbent then evicts
+    /// the next, and a walk through a town with more lanterns than rows re-renders half the atlas every time the
+    /// nearest light changes.
+    /// <para>
+    /// The rebuild budget is opened to the whole atlas here on purpose: with the shipped budget of two the
+    /// cascade would be capped at two rebuilds and read as ordinary work. The assertion is ONE.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void AnArrivingLightTakesTheVacatedRowAndRebuildsNothingElse()
+    {
+        using var rig = new ReconfigureRig();
+        rig.Settings.PointShadows.MaxStaticRebuildsPerFrame = 8;
+        Vector3 eye = rig.Scene.Camera.Eye;
+        const long Newcomer = 99;
+
+        // Eight lights on one line away from the eye, nearest first, so their queue order is their rank order.
+        void Incumbents(Scene3D scene, int skip)
+        {
+            scene.Draw(rig.Mesh, Matrix4x4.Identity);
+            for (int light = 0; light < 8; light++)
+            {
+                if (light == skip) continue;
+                scene.AddLight(eye + new Vector3(0f, 0f, 10f + light), Color.White, 4f, 1f,
+                    LightShadow.Static(light));
+            }
+        }
+
+        rig.RenderFrame(s => Incumbents(s, -1));   // asks for the atlas
+        rig.RenderFrame(s => Incumbents(s, -1));   // and fills every row of it
+        Assert.Equal(8, rig.Scene.LastShadowPassDiagnostics.PointStaticRebuilds);
+        rig.RenderFrame(s => Incumbents(s, -1));
+        Assert.Equal(0, rig.Scene.LastShadowPassDiagnostics.PointStaticRebuilds);
+        Assert.Equal(8, rig.Scene.PointShadowedLights);
+
+        // Light 3 stops being queued and the newcomer stands NEAREST, so it is the first request offered a row.
+        rig.RenderFrame(s =>
+        {
+            s.AddLight(eye + new Vector3(0f, 0f, 5f), Color.White, 4f, 1f, LightShadow.Static(Newcomer));
+            Incumbents(s, skip: 3);
+        });
+
+        Assert.Equal(1, rig.Scene.LastShadowPassDiagnostics.PointStaticRebuilds);
+        Assert.Equal(8, rig.Scene.PointShadowedLights);
+        Assert.Equal(8, rig.Scene.LastShadowPassDiagnostics.PointSlotsInUse);
+    }
+
     [Fact]
     public void ARequestAfterDisposalThrows()
     {
@@ -259,11 +309,21 @@ public sealed class PointShadowReconfigureTests
         internal Scene3D Scene { get; }
         internal int TextureCount => Factory.Textures.Count;
 
-        internal void RenderFrame(LightShadow shadow)
+        /// <summary>The box the one-light frames draw, for a case that wants to place its own copies of it.</summary>
+        internal MeshHandle Mesh => _mesh;
+
+        internal void RenderFrame(LightShadow shadow) => RenderFrame(scene =>
+        {
+            scene.Draw(_mesh, Matrix4x4.Identity);
+            scene.AddLight(LightAt, Color.White, 10f, 1f, shadow);
+        });
+
+        /// <summary>Render one whole frame of whatever <paramref name="describe"/> queues, for the cases that need
+        /// more than the one light and one box the overload above draws.</summary>
+        internal void RenderFrame(Action<Scene3D> describe)
         {
             Scene.Begin();
-            Scene.Draw(_mesh, Matrix4x4.Identity);
-            Scene.AddLight(LightAt, Color.White, 10f, 1f, shadow);
+            describe(Scene);
             Scene.PrepareFrame();
             using IGpuCommandList commands = Factory.CreateCommandList();
             commands.Begin();

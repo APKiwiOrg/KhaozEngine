@@ -58,13 +58,40 @@ namespace KhaozEngine.Render3D.Rendering
         }
 
         /// <summary>
+        /// RE-SEAT an owner without ever evicting anybody: if (<paramref name="key"/>,
+        /// <paramref name="mode"/>) already holds a row, stamp it as requested on <paramref name="frame"/> and
+        /// return it, keeping its map. Otherwise return -1 and change nothing.
+        /// <para>
+        /// This is PHASE ONE of a frame's acquire, and the frame path has to run it over every request before it
+        /// offers a row to anybody, because eviction ranks on the last requested frame and a caller that acquired
+        /// a newcomer FIRST would evict an incumbent that was about to ask. That eviction then cascades: the
+        /// displaced incumbent acquires, evicts the next row, and one arrival costs as many valid maps as there
+        /// are lights behind it. Re-seating every owner first makes every one of those rows "requested this
+        /// frame", which <see cref="Acquire"/> already refuses to evict.
+        /// </para>
+        /// </summary>
+        public int TryTouch(long key, LightShadowMode mode, int frame)
+        {
+            if (mode == LightShadowMode.None) return -1;
+            for (int i = 0; i < _entries.Length; i++)
+            {
+                ref Entry e = ref _entries[i];
+                if (!e.Occupied || e.Key != key || e.Mode != mode) continue;
+                e.LastRequestedFrame = frame;
+                if (mode == LightShadowMode.Dynamic) e.Dirty = true;
+                return i;
+            }
+            return -1;
+        }
+
+        /// <summary>
         /// Claim the row for (<paramref name="key"/>, <paramref name="mode"/>) on <paramref name="frame"/>,
         /// returning its index or -1 when every row already belongs to a light requested on this same frame.
         /// <para>
-        /// An existing owner keeps its row and its map. A free row is taken and comes back DIRTY with nothing
-        /// rendered into it. When neither exists, the least recently requested row NOT requested this frame is
-        /// evicted, and its new owner is likewise dirty with nothing rendered, because whatever is on that row
-        /// belongs to the light that just lost it.
+        /// An existing owner keeps its row and its map (this is <see cref="TryTouch"/>). A free row is taken and
+        /// comes back DIRTY with nothing rendered into it. When neither exists, the least recently requested row
+        /// NOT requested this frame is evicted, and its new owner is likewise dirty with nothing rendered, because
+        /// whatever is on that row belongs to the light that just lost it.
         /// </para>
         /// <para>
         /// A <see cref="LightShadowMode.Dynamic"/> row is marked dirty on every acquire, which is the whole
@@ -75,6 +102,8 @@ namespace KhaozEngine.Render3D.Rendering
         public int Acquire(long key, LightShadowMode mode, int frame)
         {
             if (mode == LightShadowMode.None) return -1;
+            int owned = TryTouch(key, mode, frame);
+            if (owned >= 0) return owned;
 
             int free = -1;
             int evict = -1;
@@ -85,12 +114,6 @@ namespace KhaozEngine.Render3D.Rendering
                 {
                     if (free < 0) free = i;
                     continue;
-                }
-                if (e.Key == key && e.Mode == mode)
-                {
-                    e.LastRequestedFrame = frame;
-                    if (mode == LightShadowMode.Dynamic) e.Dirty = true;
-                    return i;
                 }
                 if (e.LastRequestedFrame == frame) continue;   // in use by this very frame: not evictable
                 if (evict < 0 || e.LastRequestedFrame < _entries[evict].LastRequestedFrame) evict = i;

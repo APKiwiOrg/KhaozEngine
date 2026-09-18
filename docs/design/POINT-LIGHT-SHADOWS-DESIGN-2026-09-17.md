@@ -73,7 +73,7 @@ fanning through the doorway. In Ruinborne a fireball lights the far side of a pi
 
 ## What the build taught
 
-Ten things the implementation settled or corrected, kept here because the decision is not readable off the
+Eleven things the implementation settled or corrected, kept here because the decision is not readable off the
 shipped code.
 
 1. **The pass stores the NEAREST surface with no face culling, so the whole acne budget sits on the bias
@@ -153,6 +153,15 @@ shipped code.
     chose. 384 by 12 is 95,551,488 bytes, about 91 MiB, and is still half again the face resolution and half
     again the light budget of Default's 256 by 8 at 28,311,552 bytes (27 MiB). `PointShadowSettings.AtlasBytes`
     is the arithmetic and a test pins all three profiles against it.
+11. **A reshape binds the replacement BEFORE it retires the old atlas.** The boundary brought the new atlas up
+    over the live one and only then rebound the receivers, which made the design's "keep the previous layout on
+    a failure" promise true for an allocation refusal and false for a bind refusal: the bind fails because a
+    resource set cannot be allocated, the fallback is another set allocation under that same pressure, and with
+    the previous atlas already freed there was nothing to put back, so every receiver set and the renderer's own
+    handle were left naming a disposed texture for the next cascade reconfigure to copy into a fresh generation
+    of sets. The order is the cascade replacement's now: build the pair, bind the receivers to it, and commit
+    (which retires the old one) only on a confirmed rebind. A refused bind disposes the new pair and the scene
+    carries on shadowing at the layout it had, which is what an allocation refusal already did.
 
 ## Proof
 

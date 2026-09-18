@@ -65,6 +65,16 @@ namespace KhaozEngine.Render3D.Rendering
         // still reads 1.0. Every clear after that is per row and goes through the scissored quad (decision 7).
         bool _cleared;
 
+        /// <summary>
+        /// Build the pass: four shader sets, one layout, four pipelines and the first light's slot ring.
+        /// <para>
+        /// EVERY ONE OF THOSE CAN BE REFUSED BY A BACKEND, and a refusal halfway through must not leave the
+        /// earlier ones behind: the caller's contract is that a failed reconfigure keeps its PREVIOUS atlas
+        /// drawing, so anything this constructor had already built is freed here before the throw carries on.
+        /// Same shape as <c>ShadowMapRenderer.BuildReplacement</c>, which disposes its own partial graph and
+        /// rethrows for <c>ModelRenderer.ReplaceShadowLayout</c> to answer false on.
+        /// </para>
+        /// </summary>
         public PointShadowRenderer(IGpuDevice gd, PointShadowAtlas atlas)
         {
             ArgumentNullException.ThrowIfNull(gd);
@@ -72,30 +82,51 @@ namespace KhaozEngine.Render3D.Rendering
             _gd = gd;
             _atlas = atlas;
             IGpuResourceFactory f = gd.Factory;
+            var built = new List<IDisposable>();
+            try
+            {
+                _shaders = Built(built, f.CreateShadersFromSpirv(
+                    ShaderSources.PointShadowRigidVert, ShaderSources.PointShadowRigidFrag));
+                _dissolveShaders = Built(built, f.CreateShadersFromSpirv(
+                    ShaderSources.PointShadowRigidDissolveVert, ShaderSources.PointShadowRigidDissolveFrag));
+                _dissolveInvertedShaders = Built(built, f.CreateShadersFromSpirv(
+                    ShaderSources.PointShadowRigidDissolveVert, ShaderSources.PointShadowRigidDissolveInvertedFrag));
+                _clearShaders = Built(built, f.CreateShadersFromSpirv(
+                    ShaderSources.PointShadowClearVert, ShaderSources.PointShadowClearFrag));
 
-            _shaders = f.CreateShadersFromSpirv(ShaderSources.PointShadowRigidVert, ShaderSources.PointShadowRigidFrag);
-            _dissolveShaders = f.CreateShadersFromSpirv(
-                ShaderSources.PointShadowRigidDissolveVert, ShaderSources.PointShadowRigidDissolveFrag);
-            _dissolveInvertedShaders = f.CreateShadersFromSpirv(
-                ShaderSources.PointShadowRigidDissolveVert, ShaderSources.PointShadowRigidDissolveInvertedFrag);
-            _clearShaders = f.CreateShadersFromSpirv(ShaderSources.PointShadowClearVert, ShaderSources.PointShadowClearFrag);
+                // One layout for all four pipelines. Both stages read it: the vertex takes the matrix and the
+                // fragment takes the light position and radius it divides the distance by.
+                _layout = Built(built, f.CreateResourceLayout(new GpuResourceLayoutDescription(
+                    new GpuResourceLayoutElement("U", GpuResourceKind.UniformBuffer,
+                        GpuShaderStages.Vertex | GpuShaderStages.Fragment, dynamic: true))));
 
-            // One layout for all four pipelines. Both stages read it: the vertex takes the matrix and the fragment
-            // takes the light position and radius it divides the distance by.
-            _layout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
-                new GpuResourceLayoutElement("U", GpuResourceKind.UniformBuffer,
-                    GpuShaderStages.Vertex | GpuShaderStages.Fragment, dynamic: true)));
+                GpuOutputDescription outputs = atlas.Framebuffer.Outputs;
+                _pipeline = Built(built, BuildCasterPipeline(f, outputs, _shaders, dissolve: false));
+                _dissolvePipeline = Built(built, BuildCasterPipeline(f, outputs, _dissolveShaders, dissolve: true));
+                _dissolveInvertedPipeline = Built(built,
+                    BuildCasterPipeline(f, outputs, _dissolveInvertedShaders, dissolve: true));
+                _clearPipeline = Built(built, BuildClearPipeline(f, outputs));
 
-            GpuOutputDescription outputs = atlas.Framebuffer.Outputs;
-            _pipeline = BuildCasterPipeline(f, outputs, _shaders, dissolve: false);
-            _dissolvePipeline = BuildCasterPipeline(f, outputs, _dissolveShaders, dissolve: true);
-            _dissolveInvertedPipeline = BuildCasterPipeline(f, outputs, _dissolveInvertedShaders, dissolve: true);
-            _clearPipeline = BuildClearPipeline(f, outputs);
+                // One light's worth of slots up front, so the window set exists before the first pack and ClearRow
+                // can bind it at offset 0 whether or not anything has been packed yet.
+                (_faceUbo, _set, _faceSlots) = AllocateSlots(PointShadowMath.FaceCount);
+                Built(built, _faceUbo);
+                Built(built, _set);
+                _faceImage = new byte[checked((int)(_faceSlots * FaceSlotBytes))];
+            }
+            catch
+            {
+                for (int i = built.Count - 1; i >= 0; i--) built[i].Dispose();
+                throw;
+            }
+        }
 
-            // One light's worth of slots up front, so the window set exists before the first pack and ClearRow can
-            // bind it at offset 0 whether or not anything has been packed yet.
-            (_faceUbo, _set, _faceSlots) = AllocateSlots(PointShadowMath.FaceCount);
-            _faceImage = new byte[checked((int)(_faceSlots * FaceSlotBytes))];
+        // Remember one freshly created resource so a refusal later in the constructor can free it. Newest first on
+        // the way out, which is the order the ordinary Dispose below frees them in.
+        static T Built<T>(List<IDisposable> built, T resource) where T : IDisposable
+        {
+            built.Add(resource);
+            return resource;
         }
 
         /// <summary>The atlas this pass writes into.</summary>
@@ -108,10 +139,14 @@ namespace KhaozEngine.Render3D.Rendering
         {
             uint wanted = (uint)Math.Max(1, slotsThisFrame) * PointShadowMath.FaceCount;
             if (_faceSlots >= wanted) return;
+            uint grown = Math.Max(wanted, _faceSlots * 2);
+            // Allocate FIRST and retire the outgoing pair only once the replacement exists, so a refused
+            // allocation leaves this frame drawing through the ring it already had rather than through one the
+            // retire list has taken ownership of.
+            (IGpuBuffer buffer, IGpuResourceSet set, uint slots) = AllocateSlots(grown);
             _retired.Add(_faceUbo);
             _retired.Add(_set);
-            uint grown = Math.Max(wanted, _faceSlots * 2);
-            (_faceUbo, _set, _faceSlots) = AllocateSlots(grown);
+            (_faceUbo, _set, _faceSlots) = (buffer, set, slots);
             var image = new byte[checked((int)(_faceSlots * FaceSlotBytes))];
             _faceImage.AsSpan().CopyTo(image);
             _faceImage = image;
@@ -211,13 +246,23 @@ namespace KhaozEngine.Render3D.Rendering
             cl.SetFullScissorRects();
         }
 
+        // The buffer is created before the window set that reads it, so a refused set would strand the buffer.
+        // Freeing it here is what lets a caller retry the same growth, exactly as the outline renderer's does.
         (IGpuBuffer Buffer, IGpuResourceSet Set, uint Slots) AllocateSlots(uint slots)
         {
             IGpuResourceFactory f = _gd.Factory;
             IGpuBuffer buffer = f.CreateBuffer(new GpuBufferDescription(slots * FaceSlotBytes, GpuBufferUsage.UniformBuffer));
-            IGpuResourceSet set = f.CreateResourceSet(new GpuResourceSetDescription(
-                _layout, new GpuBufferRange(buffer, 0, FaceSlotBytes)));
-            return (buffer, set, slots);
+            try
+            {
+                IGpuResourceSet set = f.CreateResourceSet(new GpuResourceSetDescription(
+                    _layout, new GpuBufferRange(buffer, 0, FaceSlotBytes)));
+                return (buffer, set, slots);
+            }
+            catch
+            {
+                buffer.Dispose();
+                throw;
+            }
         }
 
         // The caster pipelines. The vertex stream is the model pass's, slot 0 per-vertex and slot 1 per-instance,

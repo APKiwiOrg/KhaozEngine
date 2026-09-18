@@ -67,7 +67,20 @@ namespace KhaozEngine.Render3D
             if (_pointShadowAtlas is { } live && live.MatchesLayout(faceResolution, rows)) return true;
             PointShadowAtlas? replacement = PointShadowAtlas.TryCreate(_gd, faceResolution, rows);
             if (replacement is null) return false;
-            var renderer = new PointShadowRenderer(_gd, replacement);
+            PointShadowRenderer renderer;
+            try
+            {
+                renderer = new PointShadowRenderer(_gd, replacement);
+            }
+            catch
+            {
+                // The atlas allocation is not the only thing a device can refuse: the pass behind it is four
+                // shader sets and four pipelines. This method answers false rather than throwing, so a refusal
+                // here frees the atlas that was built for a pass that does not exist and leaves the previous
+                // atlas and renderer live, the way a refused cascade layout does.
+                replacement.Dispose();
+                return false;
+            }
             // An outgoing atlas may still be under a queued frame's reads, so drain before freeing it. A first
             // allocation has nothing to free and pays no stall.
             if (_pointShadowAtlas is not null) _gd.WaitForIdle();

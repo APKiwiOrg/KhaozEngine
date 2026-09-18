@@ -45,9 +45,11 @@ internal sealed partial class ModelRenderer
 
     // The texture whose rebind transaction threw, LATCHED. A failed rebuild leaves _pointShadowTexture where it
     // was, so without this a caller asking for the same atlas every frame re-enters the whole transaction, and its
-    // _gd.WaitForIdle stall, once a frame forever. Cleared by a rebind that succeeds and by any request naming a
-    // different texture, so dropping the failed atlas and handing over a fresh one (or null, which is the 1x1
-    // default) gets a real attempt. Asking again for the exact texture that failed does not.
+    // _gd.WaitForIdle stall, once a frame forever. Cleared by a rebind that succeeds, by any request naming a
+    // different texture, and by ForgetPointShadowBindFailure when the caller frees the texture it names, so
+    // dropping the failed atlas and handing over a fresh one (or null, which is the 1x1 default) gets a real
+    // attempt. Asking again for the exact texture that failed does not. It is never the reason a DISPOSED handle
+    // stays reachable: a texture nobody can ask for again is a latch with nothing left to refuse.
     IGpuTexture? _pointShadowBindFailure;
 
     /// <summary>The texture every receiver set currently names at its <c>PointShadowMap</c> slot, which is the
@@ -119,7 +121,8 @@ internal sealed partial class ModelRenderer
     /// <para>
     /// A failure is LATCHED against the texture that caused it, so a caller that asks for the same atlas on every
     /// frame pays the transaction (and the <c>WaitForIdle</c> inside it) once rather than once a frame forever.
-    /// Any other texture, including the 1x1 default a null asks for, clears the latch and is attempted for real.
+    /// Any other texture, including the 1x1 default a null asks for, clears the latch and is attempted for real,
+    /// and a caller freeing the texture it names says so through <see cref="ForgetPointShadowBindFailure"/>.
     /// </para>
     /// </remarks>
     internal PointShadowBindResult BindPointShadowAtlas(IGpuTexture? atlasOrNull,
@@ -151,6 +154,15 @@ internal sealed partial class ModelRenderer
         _pointShadowBindFailure = null;
         CommitShadowSamplingSets(replacements, replacementBindings, commitMaterialSets);
         return PointShadowBindResult.Rebound;
+    }
+
+    /// <summary>Drop the bind-failure latch if it names <paramref name="discarded"/>, which the caller is about to
+    /// free. The latch exists to refuse a REPEAT of the same request cheaply, and a freed texture cannot be
+    /// requested again, so keeping it would buy nothing and would hold a disposed handle reachable for the rest of
+    /// the session. Any other texture leaves the latch exactly where it is.</summary>
+    internal void ForgetPointShadowBindFailure(IGpuTexture discarded)
+    {
+        if (ReferenceEquals(_pointShadowBindFailure, discarded)) _pointShadowBindFailure = null;
     }
 
     // Six faces to a row, the cube-map convention the pass and the receiver both bake in. Named here because the

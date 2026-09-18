@@ -144,7 +144,10 @@ namespace KhaozEngine.Render3D
             {
                 // Nothing may sample an atlas the receivers are not bound to, so the one just built goes back
                 // whole and the live one keeps its place: still allocated, still bound, still drawing the rows
-                // the slot cache is holding.
+                // the slot cache is holding. The renderer's failure latch is dropped with the texture it names,
+                // because a freed atlas cannot be asked for again and the latch that stops THIS layout being
+                // retried is the scene's own, below.
+                _model.ForgetPointShadowBindFailure(replacement.Atlas.Texture);
                 replacement.Dispose();
                 FailPointShadowLayout(wanted, "the receiver sets could not be rebuilt against the atlas");
                 return;

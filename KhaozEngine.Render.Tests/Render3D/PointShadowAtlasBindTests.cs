@@ -113,6 +113,33 @@ public sealed class PointShadowAtlasBindTests
         Assert.Equal(PointShadowBindResult.Rebound, rig.Bind(rig.SecondAtlas));
     }
 
+    /// <summary>
+    /// THE LATCH MUST NOT OUTLIVE THE TEXTURE IT NAMES. A caller whose rebind was refused frees the atlas it was
+    /// refused for, and the latch is a reference: left standing it holds a disposed handle reachable for the whole
+    /// session, for a request that can never be made again because the object behind it is gone. Forgetting it is
+    /// the caller saying so, and it is keyed, so it cannot clear a latch standing for a different texture.
+    /// </summary>
+    [Fact]
+    public void ForgettingADiscardedTextureDropsItsLatchAndLeavesAnyOtherStanding()
+    {
+        using var rig = new BindRig();
+        rig.FailTheSecondSetCreate();
+        Assert.Equal(PointShadowBindResult.Failed, rig.Bind(rig.Atlas));
+
+        // A texture the latch does not name changes nothing about it.
+        rig.Forget(rig.SecondAtlas);
+        int waits = rig.Device.WaitForIdleCalls;
+        Assert.Equal(PointShadowBindResult.Failed, rig.Bind(rig.Atlas));
+        Assert.Equal(waits, rig.Device.WaitForIdleCalls);
+
+        rig.StopFailing();
+        rig.Forget(rig.Atlas);
+
+        // Nothing is being held against this handle any more, so the transaction is entered for real.
+        Assert.Equal(PointShadowBindResult.Rebound, rig.Bind(rig.Atlas));
+        Assert.Equal(waits + 1, rig.Device.WaitForIdleCalls);
+    }
+
     /// <summary>A renderer over the fake device with one live material set beside its two default ones, plus the
     /// two spare atlas handles the latch tests need. Device-free on purpose: none of this reads a texel.</summary>
     sealed class BindRig : IDisposable
@@ -142,6 +169,9 @@ public sealed class PointShadowAtlasBindTests
 
         internal PointShadowBindResult Bind(IGpuTexture? atlas) =>
             _model.BindPointShadowAtlas(atlas, _liveSets, Commit);
+
+        /// <summary>What a caller says as it frees an atlas whose bind was refused.</summary>
+        internal void Forget(IGpuTexture atlas) => _model.ForgetPointShadowBindFailure(atlas);
 
         // The second allocation of the next transaction throws, so one replacement is built and then abandoned.
         internal void FailTheSecondSetCreate() => Factory.ThrowOnResourceSetCreate = Factory.ResourceSets.Count + 2;

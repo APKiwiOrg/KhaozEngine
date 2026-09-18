@@ -31,8 +31,9 @@ public readonly struct PointShadowResolution : IEquatable<PointShadowResolution>
         _reason = reason;
     }
 
-    /// <summary>Whether an atlas is live, so a light that asks can actually be given a row. False both when the
-    /// settings turned point shadows off and when nothing has asked for one yet (the allocation is lazy).</summary>
+    /// <summary>Whether an atlas is live, so a light that asks can actually be given a row. False when the
+    /// settings turned point shadows off, when nothing has asked for one yet, and on the first frame that asks:
+    /// the allocation happens at the FRAME BOUNDARY after that frame rather than inside it.</summary>
     public bool Enabled { get; }
 
     /// <summary>Pixels per axis of one cube face in the LIVE atlas, or 0 when there is none.</summary>

@@ -3097,8 +3097,9 @@ scene.Draw(crate, transform, Color.White, Material.None, dissolve: fadeTimer, ed
   a hash of the light's position is the wrong one, because it changes when anything else in the scene changes
   and the cache then rebuilds a map that did not need rebuilding. Two lights sharing one key are ONE cache
   entry, which is a caller bug the engine cannot detect. `LightShadow.Dynamic` carries no key of its own and is
-  redrawn every frame it is drawn at all, so reach for it only when the light actually moves and prefer
-  `Static(key)` for anything that does not.
+  redrawn every frame it is drawn at all. It keeps NOTHING across a frame, so a dynamic light whose map was not
+  redrawn on a given frame renders unshadowed for that frame. Reach for it only when the light actually moves and
+  prefer `Static(key)` for anything that does not.
 - 3D beams: `scene.DrawBeam(a, b, width, color, BeamStyle?)` queues a camera-facing, additive,
   depth-interleaved glowing beam between two world points (lasers, thrusters, tethers): a bright core in a soft
   halo. It draws INTO the model pass with the depth test on (no write), like the textured billboard, so geometry
@@ -3488,15 +3489,15 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
         none, which is the whole point of the cache. `MaxDynamicLightsPerFrame` (default `4`) caps the
         every-frame maps, and each one of those is six faces every frame, so it is the hard ceiling on the
         pass's steady cost.
-      - **A `Dynamic` light has no identity of its own, so its budget is harder than the static one.** It
-        carries no key, so the engine keys its row by the light's PLACE IN THE QUEUE, which holds only for as
-        long as you queue your lights in a stable order. That is affordable because a dynamic row is redrawn on
-        every frame it is drawn at all, so a shuffled queue costs a rebuild rather than a wrong picture. What it
-        does not survive is the budget. The dynamic lights taken each frame are the nearest to the eye, so a
-        light past `MaxDynamicLightsPerFrame` is not redrawn that frame: one whose row has never been drawn into
-        renders UNSHADOWED (it is handed no slot at all, rather than sampling whatever the allocation left in
-        that row), and one drawn on an earlier frame goes on sampling that older map until it is redrawn, which
-        on a light that moves is a shadow in the wrong place. The guidance that follows: keep the number of
+      - **A `Dynamic` light has NO IDENTITY ACROSS FRAMES, so its budget is harder than the static one.** It
+        carries no key, so the engine keys its row by the light's PLACE IN THE QUEUE, and that place belongs to a
+        different light as soon as one of them expires and the rest shift down. So a dynamic row carries nothing
+        across a frame either: it lives for the one frame it was drawn on and is released before the next frame
+        hands rows out. A shuffled queue therefore costs a rebuild rather than a wrong picture. What it does not
+        survive is the budget. The dynamic lights redrawn each frame are the nearest to the eye up to
+        `MaxDynamicLightsPerFrame`, and a dynamic light whose map was NOT redrawn on a given frame renders
+        UNSHADOWED for that frame: it is handed no slot at all, rather than sampling whatever the allocation left
+        in a row or a map drawn for another light. The guidance that follows: keep the number of
         dynamic lights alight AT ONCE at or under the budget, raise `MaxDynamicLightsPerFrame` if the scene
         genuinely needs more (and pay six faces a frame for each), and use `LightShadow.Static(key)` for
         anything that does not move.

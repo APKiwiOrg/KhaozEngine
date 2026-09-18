@@ -361,8 +361,12 @@ shadow map: cached behind a key for a placed light, rebuilt every frame for one 
 - **Two per-frame budgets and one ceiling.** `MaxStaticRebuildsPerFrame` (default `2`) caps how many cached maps
   one frame may rebuild and `MaxDynamicLightsPerFrame` (default `4`) how many per-frame maps it may render, so a
   frame in which several changed at once costs a bounded amount. The dynamic maps rendered are the nearest to
-  the eye, and a dynamic light past that budget whose row has never been drawn into is handed no slot and renders
-  UNSHADOWED rather than sampling an undrawn row. `MaxShadowedLights` (default `8`, clamped into
+  the eye. A `LightShadow.Dynamic` light has NO identity across frames (it carries no key, so it is keyed by its
+  place in the light queue), its row lives for one frame and is released at the start of the next, and a dynamic
+  light whose map was not redrawn on a given frame renders UNSHADOWED for that frame rather than sampling a row
+  drawn for another light. Keep the lights alight at once at or under the budget, raise
+  `MaxDynamicLightsPerFrame` when the scene genuinely needs more, and prefer `LightShadow.Static(key)` for
+  anything that does not move. `MaxShadowedLights` (default `8`, clamped into
   `MinLights`..`MaxLights`, which is the fixed point-light array size of 16) is how many lights may carry a map at
   all, and it is also the atlas row count. Requests past it fall back to unshadowed, NEAREST TO THE EYE FIRST,
   and a light that stays inside the budget keeps its cached map while the ones around it come and go.

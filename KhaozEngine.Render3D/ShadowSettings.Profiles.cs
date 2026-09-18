@@ -36,7 +36,7 @@ namespace KhaozEngine.Render3D
             //
             // HIGH IS 384 BY 12 RATHER THAN 512 BY 16 BECAUSE OF WHAT THAT COSTS. The atlas is nine bytes a texel
             // (R32Float colour plus D32FloatS8UInt depth), so 512 by 16 is 216 MiB of resident video memory, which
-            // is not a defensible thing for a quality preset to help itself to. 384 by 12 is about 96 MiB and is
+            // is not a defensible thing for a quality preset to help itself to. 384 by 12 is about 91 MiB and is
             // still half again the face resolution and half again the light budget of Default's 256 by 8 (27 MiB).
             // PointShadowSettings.AtlasBytes is the arithmetic, and a test pins all three profiles against it.
             var points = new PointShadowSettings();

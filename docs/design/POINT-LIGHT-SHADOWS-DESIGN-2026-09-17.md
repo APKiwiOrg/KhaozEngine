@@ -120,25 +120,33 @@ shipped code.
    asks only RECORDS that it asked, and the reconfigure at the next boundary does every allocation, reshape,
    rebind and release, which is the path the cascade atlas already had tests and three backends behind. The
    visible cost is one unshadowed frame per new request.
-8. **Slot acquisition resolves an existing owner before it will consider an eviction, and a row already
-   requested on this frame is never a victim.** Acquisition runs nearest to the eye first, and under a plain
-   least-recently-requested eviction that order let a newcomer cascade evictions through lights that were about
-   to be re-requested, so a frame of lights took each other's rows and rebuilt every one of them. The scan
-   answers in that order instead: a row whose key AND mode match comes back untouched with its map, a free row
-   is next, and only then is the least recently requested row taken, skipping every row this frame has already
-   named. With the request list already cut to the row count, those two rules are the guarantee that matters: no
-   light in a frame can take a row away from another light in the same frame.
-9. **A dynamic light has no identity of its own, so a row is owned by the (key, MODE) pair.** Decision 4 gives
-   a dynamic light no key, and the scene keys its row by the light's place in the light queue. That number lands
-   inside a static caller's key space by construction, so keying on the number alone handed queue index 3 the map
-   belonging to static key 3. The pair is the fix, and the queue-position key is then affordable for the reason
-   the mode exists: a dynamic row is marked dirty on every acquire and redrawn on every frame it is drawn at
-   all, so a shuffled queue costs a rebuild rather than a wrong picture. What the keying does NOT survive is the
-   per-frame budget, and that is the honest limit on the mode: a dynamic light past
-   `MaxDynamicLightsPerFrame` is not redrawn that frame, so one whose row has never been drawn into is handed no
-   slot and renders unshadowed (an undrawn row holds whatever the allocation left in it), and one drawn on an
-   earlier frame goes on sampling that older map. The budget is therefore a consumer-facing number rather than
-   an internal one, and the guidance in USING says to keep the lights alight at once at or under it.
+8. **Slot acquisition is TWO PHASES, and a row requested on this frame is never a victim.** Acquisition runs
+   nearest to the eye first, and under a plain one-pass least-recently-requested eviction that order let a
+   newcomer at the head of the list evict an incumbent standing further back in the same list, which then
+   acquired and evicted the next one, so one arrival cascaded through every light behind it: measured as 4
+   rebuilds on a frame where 1 was needed. `AcquirePointShadowSlots` answers in two passes instead. Phase one
+   runs `PointShadowSlots.TryTouch` over EVERY request, which re-seats a request that already owns a row (key
+   AND mode matching) on this frame and returns it untouched with its map, and evicts nobody. Phase two calls
+   `Acquire` for the rest, which takes a free row first and only then the least recently requested row, skipping
+   every row this frame has already named. Phase one is what makes every incumbent's row "requested this frame",
+   so phase two cannot reach it. With the request list already cut to the row count, those two rules are the
+   guarantee that matters: no light in a frame can take a row away from another light in the same frame.
+9. **A dynamic light has no identity of its own, so a row is owned by the (key, MODE) pair AND carries nothing
+   across a frame.** Decision 4 gives a dynamic light no key, and the scene keys its row by the light's place in
+   the light queue. That number lands inside a static caller's key space by construction, so keying on the number
+   alone handed queue index 3 the map belonging to static key 3. The pair fixes that half. The other half is that
+   the queue position is not stable either: one dynamic light expiring shifts the rest down, and a row kept across
+   the frame boundary was then matched by its new namesake, reported as rendered, and sampled as a shadow cast
+   from the old light's position, which is an index shift handing one dynamic light another light's map. So
+   `PointShadowSlots.ReleaseDynamicRows` frees every dynamic row at the START of each frame's acquire, before
+   phase one, and `PublishPointShadowUniforms` holds a dynamic request to the stricter test of its row having been
+   rendered THIS frame rather than ever. The two halves agree by construction, and the queue-position key is then
+   affordable for the reason the mode exists: a dynamic row is marked dirty on every acquire and redrawn on every
+   frame it is drawn at all, so a shuffled queue costs a rebuild rather than a wrong picture. What the mode does
+   NOT survive is the per-frame budget, and that is the honest limit on it: the dynamic lights redrawn each frame
+   are the nearest to the eye up to `MaxDynamicLightsPerFrame`, and one whose map was not redrawn on a given frame
+   is handed no slot and renders unshadowed for that frame. The budget is therefore a consumer-facing number
+   rather than an internal one, and the guidance in USING says to keep the lights alight at once at or under it.
 10. **The High profile is 384 by 12, not 512 by 16.** The atlas is nine bytes a texel (4 of `R32Float` colour
     plus 5 of `D32FloatS8UInt` depth), so 512 by 16 is 226,492,416 bytes, 216 MiB of resident video memory,
     which is not a defensible thing for a quality preset to help itself to on hardware the operator never

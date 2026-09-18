@@ -7,14 +7,15 @@ namespace KhaozEngine.Render3D;
 /// The point-light shadow budget: whether omnidirectional maps are built at all, how big each cube face is, how
 /// many lights can carry one at once, and how much rebuilding one frame is allowed to do.
 /// <para>
-/// The atlas is ONE R32Float texture of six face columns by <see cref="ResolvedMaxLights"/> rows, allocated
-/// LAZILY on the first frame that carries a request, so a game that never asks for a point shadow pays no memory
-/// for these numbers. <see cref="AtlasBytes"/> is what it would cost if it did.
+/// The atlas is ONE R32Float texture of six face columns by <see cref="ResolvedMaxLights"/> rows, allocated at the
+/// FRAME BOUNDARY after the first frame that carries a request, so that first request renders one frame unshadowed
+/// and carries its map from the next, and a game that never asks for a point shadow allocates nothing and pays no
+/// memory for these numbers. <see cref="AtlasBytes"/> is what it would cost if it did.
 /// </para>
 /// <para>
 /// Rides <see cref="ShadowSettings.PointShadows"/>, and the three <see cref="ShadowSettings.ForDetail"/> profiles
 /// seed it: Low turns it off, Default is the values below (256 by 8, about 27 MiB), High is 384 by 12 (about
-/// 96 MiB). <see cref="AtlasBytes"/> is why High is not larger than that.
+/// 91 MiB). <see cref="AtlasBytes"/> is why High is not larger than that.
 /// </para>
 /// </summary>
 public sealed class PointShadowSettings
@@ -126,7 +127,7 @@ public sealed class PointShadowSettings
 public sealed partial class ShadowSettings
 {
     /// <summary>The point-light shadow budget. Its own object rather than more fields here, because it is a
-    /// separate feature with a separate atlas and a separate lazy allocation: the key light's settings above
-    /// decide the cascaded directional map and nothing in this one touches it.</summary>
+    /// separate feature with a separate atlas brought up at its own frame boundary: the key light's settings
+    /// above decide the cascaded directional map and nothing in this one touches it.</summary>
     public PointShadowSettings PointShadows = new();
 }

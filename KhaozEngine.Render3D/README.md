@@ -289,9 +289,12 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   unshadowed and the frame after it carries the map. Knobs on `ShadowSettings.PointShadows` (a `PointShadowSettings`):
   `Enabled`, `FaceResolution` (default `256`, `64..1024` via `ResolvedFaceResolution`), `MaxShadowedLights` (default
   `8`, `1..16` via `ResolvedMaxLights`, and requests past it fall back to unshadowed nearest-eye-first),
-  `MaxStaticRebuildsPerFrame` (default `2`), `MaxDynamicLightsPerFrame` (default `4`, nearest-eye-first, and a light
-  past it is not redrawn that frame), and the radius-normalized `Bias`/`SlopeBias` (defaults `0.01`/`0.02`, clamped
+  `MaxStaticRebuildsPerFrame` (default `2`), `MaxDynamicLightsPerFrame` (default `4`, nearest-eye-first), and the
+  radius-normalized `Bias`/`SlopeBias` (defaults `0.01`/`0.02`, clamped
   `0..MaxBias` via `ResolvedBias`/`ResolvedSlopeBias`).
+  A `Dynamic` light has no identity across frames and its row lives for one frame, so a dynamic light whose map was
+  not redrawn on a given frame renders UNSHADOWED for that frame rather than sampling an older one. Stay at or
+  under the budget, raise it, or prefer `LightShadow.Static(key)` for anything that does not move.
   `AtlasBytes` reports the cost once allocated (27 MiB at the defaults). `ShadowSettings.ForDetail` seeds it on the
   same three profiles (`Low` off, `High` 384 by 12 at about 91 MiB), `Scene3D.RequestShadowMapDetail` carries it on a
   live scene and `Scene3D.RequestPointShadowSettings` requests a custom one, both at the next frame boundary and both

@@ -1,0 +1,304 @@
+using System;
+using System.Numerics;
+using KhaozEngine.Gpu;
+using KhaozEngine.Primitives;
+using KhaozEngine.Render3D;
+using KhaozEngine.Tests.Gpu;
+using Xunit;
+
+namespace KhaozEngine.Tests.Render3D;
+
+/// <summary>
+/// WHEN the point-shadow atlas is allocated, reshaped and released, device-free. Every one of those is frame
+/// BOUNDARY work, so the observable here is a one-frame delay: the frame that first asks for a map renders
+/// without one and the next frame carries it.
+/// <para>
+/// That delay is the whole point rather than a wart. An allocation is two textures, a framebuffer, four pipelines
+/// and a rebuild of every material set in the scene, and the rebuild carries a <c>WaitForIdle</c>. Doing it with
+/// the frame's command list open stalls the device mid-recording and swaps the sets the model pass is about to
+/// bind. The cascade atlas has taken exactly this route since it grew a live reconfigure, and these tests are
+/// that file's tests one feature over.
+/// </para>
+/// </summary>
+public sealed class PointShadowReconfigureTests
+{
+    [Fact]
+    public void TheFirstRequestRendersUnshadowedAndTheFrameAfterItCarriesTheAtlas()
+    {
+        using var rig = new ReconfigureRig();
+
+        // Nothing has asked, so nothing is allocated. This is the state a game that never uses point shadows
+        // stays in for its whole life.
+        Assert.Null(rig.Scene.PointShadowTexture);
+        Assert.False(rig.Scene.ResolvedPointShadows.Enabled);
+
+        rig.RenderFrame(LightShadow.Static(1));
+
+        // The frame recorded what it wanted and rendered without it. No atlas, no light carrying a map.
+        Assert.Null(rig.Scene.PointShadowTexture);
+        Assert.False(rig.Scene.ResolvedPointShadows.Enabled);
+        Assert.Equal(0, rig.Scene.PointShadowedLights);
+        Assert.Equal(0, rig.Scene.LastShadowPassDiagnostics.PointStaticRebuilds);
+
+        rig.RenderFrame(LightShadow.Static(1));
+
+        Assert.NotNull(rig.Scene.PointShadowTexture);
+        Assert.Equal(new PointShadowResolution(true, 256, 8, false, null), rig.Scene.ResolvedPointShadows);
+        Assert.Equal(1, rig.Scene.PointShadowedLights);
+        Assert.Equal(1, rig.Scene.LastShadowPassDiagnostics.PointStaticRebuilds);
+    }
+
+    [Fact]
+    public void AFrameThatAsksForNothingAllocatesNothingHoweverManyOfThemThereAre()
+    {
+        using var rig = new ReconfigureRig();
+
+        for (int i = 0; i < 4; i++) rig.RenderFrame(LightShadow.None);
+
+        Assert.Null(rig.Scene.PointShadowTexture);
+        Assert.False(rig.Scene.ResolvedPointShadows.Enabled);
+        Assert.False(rig.Scene.ResolvedPointShadows.Degraded);
+        Assert.Equal("", rig.Scene.ResolvedPointShadows.Reason);
+    }
+
+    [Fact]
+    public void MutatingTheSettingsInPlaceIsPickedUpAtTheNextBoundary()
+    {
+        using var rig = new ReconfigureRig();
+        rig.RenderTwoFrames(LightShadow.Static(1));
+        IGpuTexture? first = rig.Scene.PointShadowTexture;
+
+        rig.Settings.PointShadows.FaceResolution = 128;
+        rig.RenderFrame(LightShadow.Static(1));
+
+        // The field is the documented way to tune this, so it has to reach the atlas without a request call.
+        Assert.Equal(new PointShadowResolution(true, 128, 8, false, null), rig.Scene.ResolvedPointShadows);
+        Assert.NotSame(first, rig.Scene.PointShadowTexture);
+        // A new texture means the old rows went with it, so the light re-renders rather than sampling a row that
+        // no longer exists.
+        Assert.Equal(1, rig.Scene.LastShadowPassDiagnostics.PointStaticRebuilds);
+        Assert.Equal(1, rig.Scene.PointShadowedLights);
+    }
+
+    [Fact]
+    public void ARequestedBudgetIsClonedAndAppliedAtTheNextBoundaryAndNotBefore()
+    {
+        using var rig = new ReconfigureRig();
+        rig.RenderTwoFrames(LightShadow.Static(1));
+        var requested = new PointShadowSettings { FaceResolution = 128, MaxShadowedLights = 4 };
+
+        rig.Scene.RequestPointShadowSettings(requested);
+
+        Assert.Equal(new PointShadowResolution(true, 256, 8, false, null), rig.Scene.ResolvedPointShadows);
+
+        // Mutating the caller's object after the call must not reach the scene, which is what the clone buys.
+        requested.FaceResolution = 1024;
+        rig.RenderFrame(LightShadow.Static(1));
+
+        Assert.Equal(new PointShadowResolution(true, 128, 4, false, null), rig.Scene.ResolvedPointShadows);
+        Assert.NotSame(requested, rig.Settings.PointShadows);
+    }
+
+    [Fact]
+    public void DisablingReleasesTheAtlasAndEnablingBringsItBack()
+    {
+        using var rig = new ReconfigureRig();
+        rig.RenderTwoFrames(LightShadow.Static(1));
+        Assert.NotNull(rig.Scene.PointShadowTexture);
+
+        rig.Scene.RequestPointShadowSettings(new PointShadowSettings { Enabled = false });
+        rig.RenderFrame(LightShadow.Static(1));
+
+        Assert.Null(rig.Scene.PointShadowTexture);
+        Assert.Equal(new PointShadowResolution(false, 0, 0, false, null), rig.Scene.ResolvedPointShadows);
+        Assert.Equal(0, rig.Scene.PointShadowedLights);
+
+        // And back on: one frame to ask, one to have it, exactly as the first time.
+        rig.Scene.RequestPointShadowSettings(new PointShadowSettings());
+        rig.RenderFrame(LightShadow.Static(1));
+        Assert.Null(rig.Scene.PointShadowTexture);
+        rig.RenderFrame(LightShadow.Static(1));
+        Assert.NotNull(rig.Scene.PointShadowTexture);
+        Assert.Equal(1, rig.Scene.PointShadowedLights);
+    }
+
+    /// <summary>
+    /// A game's quality menu calls <see cref="Scene3D.RequestShadowMapDetail"/> and nothing else, so the point
+    /// atlas has to ride it. Without this the point half of a shadow setting would need a restart, which is the
+    /// same bug the cascade half already had and fixed.
+    /// </summary>
+    [Fact]
+    public void RequestShadowMapDetailCarriesThePointProfile()
+    {
+        using var rig = new ReconfigureRig();
+        rig.RenderTwoFrames(LightShadow.Static(1));
+
+        rig.Scene.RequestShadowMapDetail(ShadowMapDetail.High);
+        rig.RenderFrame(LightShadow.Static(1));
+
+        Assert.Equal(new PointShadowResolution(true, 384, 12, false, null), rig.Scene.ResolvedPointShadows);
+        Assert.Equal(1, rig.Scene.PointShadowedLights);
+        Assert.Equal(1, rig.Scene.LastShadowPassDiagnostics.PointStaticRebuilds);
+
+        rig.Scene.RequestShadowMapDetail(ShadowMapDetail.Low);
+        rig.RenderFrame(LightShadow.Static(1));
+
+        Assert.Null(rig.Scene.PointShadowTexture);
+        Assert.False(rig.Scene.ResolvedPointShadows.Enabled);
+        Assert.Equal(0, rig.Scene.PointShadowedLights);
+
+        rig.Scene.RequestShadowMapDetail(ShadowMapDetail.Default);
+        rig.RenderFrame(LightShadow.Static(1));
+        rig.RenderFrame(LightShadow.Static(1));
+        Assert.Equal(new PointShadowResolution(true, 256, 8, false, null), rig.Scene.ResolvedPointShadows);
+    }
+
+    /// <summary>
+    /// THE REFUSAL IS ANSWERED ONCE. A device that cannot allocate the wanted layout is not going to start being
+    /// able to, so retrying every boundary costs two textures, four pipelines and the whole transaction a frame
+    /// forever, for the same answer and with nothing on screen saying so. The previous layout carries on
+    /// rendering, the resolution says it is degraded and why, and the log says it once.
+    /// </summary>
+    [Fact]
+    public void ARefusedLayoutKeepsThePreviousOneAndIsNotRetried()
+    {
+        using var rig = new ReconfigureRig();
+        rig.RenderTwoFrames(LightShadow.Static(1));
+        IGpuTexture? live = rig.Scene.PointShadowTexture;
+
+        rig.FailTheNextResourceSetCreate();
+        rig.Scene.RequestPointShadowSettings(new PointShadowSettings { FaceResolution = 512 });
+        rig.RenderFrame(LightShadow.Static(1));
+
+        PointShadowResolution refused = rig.Scene.ResolvedPointShadows;
+        Assert.True(refused.Degraded);
+        Assert.Contains("512", refused.Reason, StringComparison.Ordinal);
+        Assert.Contains("256", refused.Reason, StringComparison.Ordinal);
+        // The scene kept what it had, so the light it was already shadowing is still shadowed.
+        Assert.Same(live, rig.Scene.PointShadowTexture);
+        Assert.True(refused.Enabled);
+        Assert.Equal(256, refused.FaceResolution);
+        Assert.Equal(1, rig.Scene.PointShadowedLights);
+        Assert.Single(rig.Logger.Errors);
+
+        int textures = rig.TextureCount;
+        rig.RenderFrame(LightShadow.Static(1));
+        rig.RenderFrame(LightShadow.Static(1));
+
+        Assert.Equal(textures, rig.TextureCount);
+        Assert.Equal(refused, rig.Scene.ResolvedPointShadows);
+        Assert.Single(rig.Logger.Errors);
+        Assert.Equal(1, rig.Scene.PointShadowedLights);
+    }
+
+    [Fact]
+    public void ADifferentLayoutAfterARefusalIsAttemptedForReal()
+    {
+        using var rig = new ReconfigureRig();
+        rig.RenderTwoFrames(LightShadow.Static(1));
+        rig.FailTheNextResourceSetCreate();
+        rig.Scene.RequestPointShadowSettings(new PointShadowSettings { FaceResolution = 512 });
+        rig.RenderFrame(LightShadow.Static(1));
+        Assert.True(rig.Scene.ResolvedPointShadows.Degraded);
+
+        rig.StopFailing();
+        rig.Scene.RequestPointShadowSettings(new PointShadowSettings { FaceResolution = 128 });
+        rig.RenderFrame(LightShadow.Static(1));
+
+        Assert.Equal(new PointShadowResolution(true, 128, 8, false, null), rig.Scene.ResolvedPointShadows);
+        Assert.Equal(1, rig.Scene.PointShadowedLights);
+    }
+
+    [Fact]
+    public void ARequestAfterDisposalThrows()
+    {
+        using var rig = new ReconfigureRig();
+        rig.DisposeScene();
+
+        Assert.Throws<ObjectDisposedException>(() =>
+            rig.Scene.RequestPointShadowSettings(new PointShadowSettings()));
+    }
+
+    [Fact]
+    public void ANullRequestThrows()
+    {
+        using var rig = new ReconfigureRig();
+
+        Assert.Throws<ArgumentNullException>(() => rig.Scene.RequestPointShadowSettings(null!));
+    }
+
+    /// <summary>A scene over the fake device that can render whole frames, with one triangle in it and one point
+    /// light over it. Device-free: nothing here reads a texel, it all reads which resources exist.</summary>
+    sealed class ReconfigureRig : IDisposable
+    {
+        static readonly Vector3 LightAt = new(0f, 2f, 0f);
+        readonly IGpuTexture _targetTexture;
+        readonly IGpuFramebuffer _target;
+        readonly MeshHandle _mesh;
+        bool _sceneDisposed;
+
+        internal ReconfigureRig()
+        {
+            Device = new FakeGpuDevice();
+            Factory = (FakeGpuResourceFactory)Device.Factory;
+            _targetTexture = Factory.CreateTexture(GpuTextureDescription.Texture2D(
+                16, 16, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
+            _target = Factory.CreateFramebuffer(null, _targetTexture);
+            // The key light's own atlas is not what any of this measures, and leaving it off keeps a detail
+            // request's cascade half from allocating beside the point half.
+            Settings = new ShadowSettings { Mode = ShadowMode.Off };
+            Logger = new RecordingLogger();
+            Scene = new Scene3D(Device, _target.Outputs, Settings, Logger);
+            _mesh = Scene.LoadMesh(MeshPrimitives.Box(1f));
+        }
+
+        internal FakeGpuDevice Device { get; }
+        internal FakeGpuResourceFactory Factory { get; }
+        internal ShadowSettings Settings { get; }
+        internal RecordingLogger Logger { get; }
+        internal Scene3D Scene { get; }
+        internal int TextureCount => Factory.Textures.Count;
+
+        internal void RenderFrame(LightShadow shadow)
+        {
+            Scene.Begin();
+            Scene.Draw(_mesh, Matrix4x4.Identity);
+            Scene.AddLight(LightAt, Color.White, 10f, 1f, shadow);
+            Scene.PrepareFrame();
+            using IGpuCommandList commands = Factory.CreateCommandList();
+            commands.Begin();
+            Scene.RenderInternal(commands, 16, 16, _target);
+            commands.End();
+        }
+
+        /// <summary>The two frames it takes to go from a first request to a live atlas: one to ask, one to have
+        /// it. Every case that starts from "already shadowing" opens with this.</summary>
+        internal void RenderTwoFrames(LightShadow shadow)
+        {
+            RenderFrame(shadow);
+            RenderFrame(shadow);
+        }
+
+        // Sticky until something creates a set successfully, which is what a device that cannot serve this layout
+        // behaves like. The pass's slot ring is the last thing its constructor builds, so the refusal lands after
+        // the atlas textures and all four pipelines exist.
+        internal void FailTheNextResourceSetCreate() => Factory.ThrowOnResourceSetCreate = Factory.ResourceSets.Count + 1;
+
+        internal void StopFailing() => Factory.ThrowOnResourceSetCreate = 0;
+
+        internal void DisposeScene()
+        {
+            if (_sceneDisposed) return;
+            Scene.Dispose();
+            _sceneDisposed = true;
+        }
+
+        public void Dispose()
+        {
+            DisposeScene();
+            _target.Dispose();
+            _targetTexture.Dispose();
+            Device.Dispose();
+        }
+    }
+}

@@ -193,6 +193,34 @@ public sealed class PointShadowSlotsTests
         Assert.True(slots.EverRendered(a));
     }
 
+    /// <summary>
+    /// A NEW ATLAS TEXTURE IS NOT A STALE ROW, IT IS AN EMPTY ONE. Reshaping the atlas frees the texture every
+    /// row lived in, so a row left reading <see cref="PointShadowSlots.EverRendered"/> would hand its light a slot
+    /// pointing into freshly allocated memory and the receiver would sample it. Dirty alone does not say that by
+    /// design, which is exactly why the reconfigure path needs this second verb.
+    /// </summary>
+    [Fact]
+    public void InvalidateEveryRowKeepsTheOwnersAndForgetsTheContents()
+    {
+        PointShadowSlots slots = TwoRows();
+        int a = slots.Acquire(A, LightShadowMode.Static, frame: 1);
+        int b = slots.Acquire(B, LightShadowMode.Static, frame: 1);
+        slots.MarkClean(a, frame: 1);
+        slots.MarkClean(b, frame: 1);
+
+        slots.InvalidateEveryRow();
+
+        Assert.True(slots.IsDirty(a));
+        Assert.True(slots.IsDirty(b));
+        Assert.False(slots.EverRendered(a));
+        Assert.False(slots.EverRendered(b));
+        // The owners are untouched, so the same lights keep the same rows and nothing is evicted by a reshape.
+        Assert.Equal(A, slots.KeyOf(a));
+        Assert.Equal(B, slots.KeyOf(b));
+        Assert.Equal(2, slots.InUse);
+        Assert.Equal(a, slots.Acquire(A, LightShadowMode.Static, frame: 2));
+    }
+
     [Fact]
     public void AnEmptyCacheAnswersEveryQuestionWithoutThrowing()
     {

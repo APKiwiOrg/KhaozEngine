@@ -137,6 +137,27 @@ namespace KhaozEngine.Render3D.Rendering
             _entries[slot].Dirty = true;
         }
 
+        /// <summary>
+        /// Forget every row's CONTENTS while keeping its owner: each occupied row becomes dirty and, more to the
+        /// point, never-rendered, so its light is handed -1 until the pass has drawn into it again.
+        /// <para>
+        /// This is what a new atlas texture means. A layout change frees the texture the rows lived in, so a row
+        /// left reading <see cref="EverRendered"/> would hand its light a slot pointing into freshly allocated
+        /// memory and the receiver would sample whatever was in it, for as many frames as the rebuild budget takes
+        /// to reach that row. Dirty alone does not say that, by design: a dirty row with content is the ordinary
+        /// deferred rebuild and is worth sampling.
+        /// </para>
+        /// </summary>
+        public void InvalidateEveryRow()
+        {
+            for (int i = 0; i < _entries.Length; i++)
+            {
+                if (!_entries[i].Occupied) continue;
+                _entries[i].Dirty = true;
+                _entries[i].Rendered = false;
+            }
+        }
+
         /// <summary>Record that <paramref name="slot"/> was rendered on <paramref name="frame"/>: it is clean, it
         /// has content, and it is now the freshest row rather than the stalest.</summary>
         public void MarkClean(int slot, int frame)

@@ -97,7 +97,10 @@ public sealed class PointShadowGpuTests(PointShadowScene fixture) : IClassFixtur
     [GpuFact]
     public void AStaticMapIsNotRebuiltWhileNothingUnderItMoves()
     {
-        IReadOnlyList<PointShadowScene.Shot> shots = fixture.Many(2, (s, _) =>
+        // Three frames after the warm-up. The warm-up only brought the atlas up (it allocates nothing itself and
+        // rendered nothing into it), so the row is still drawn exactly once and then reused for as long as the
+        // scene stands still.
+        IReadOnlyList<PointShadowScene.Shot> shots = fixture.Many(3, (s, _) =>
         {
             s.DrawFloor();
             s.DrawWall();
@@ -106,11 +109,14 @@ public sealed class PointShadowGpuTests(PointShadowScene fixture) : IClassFixtur
 
         Assert.Equal(1, shots[0].Diagnostics.PointStaticRebuilds);
         Assert.Equal(0, shots[1].Diagnostics.PointStaticRebuilds);
+        Assert.Equal(0, shots[2].Diagnostics.PointStaticRebuilds);
         Assert.Equal(0, shots[1].Diagnostics.PointFaceDrawCalls);
-        // The cached row is still sampled on the second frame, so the picture is the same bytes rather than an
+        Assert.Equal(0, shots[2].Diagnostics.PointFaceDrawCalls);
+        // The cached row is still sampled on the later frames, so the picture is the same bytes rather than an
         // unshadowed one.
         Assert.Equal(shots[0].Rgba, shots[1].Rgba);
-        Assert.Equal(1, shots[1].ShadowedLights);
+        Assert.Equal(shots[0].Rgba, shots[2].Rgba);
+        Assert.Equal(1, shots[2].ShadowedLights);
     }
 
     [GpuFact]
@@ -270,6 +276,60 @@ public sealed class PointShadowGpuTests(PointShadowScene fixture) : IClassFixtur
     }
 
     /// <summary>
+    /// A BIGGER PROFILE RESHAPES THE ATLAS AND THE SHADOW SURVIVES IT. The reshape frees the texture every cached
+    /// row lived in, so the row has to be drawn again into the new one before its light may sample it. A light
+    /// still reading its old slot would sample freshly allocated memory, and a cache that forgot the light
+    /// outright would leave the floor unshadowed: the assertion is that neither happened.
+    /// </summary>
+    [GpuFact]
+    public void AHigherBudgetReshapesTheAtlasAndTheShadowIsStillThere()
+    {
+        PointShadowScene.Shot shot = fixture.One(s =>
+        {
+            s.DrawFloor();
+            s.DrawWall();
+            s.AddLight(Light, Color.White, Radius, PointShadowScene.Intensity, LightShadow.Static(110));
+        }, ShadowSettings.ForDetail(ShadowMapDetail.High).PointShadows);
+
+        Assert.Equal(new PointShadowResolution(true, 384, 12, false, null), fixture.Resolved);
+        Assert.Equal(1, shot.ShadowedLights);
+        Assert.True(shot.Red(Shadowed) <= shot.Red(Open) - 20,
+            $"the wall must still be casting after the reshape: {shot.Red(Shadowed)} against {shot.Red(Open)}");
+    }
+
+    /// <summary>
+    /// THE LOW PROFILE GIVES THE MEMORY BACK AND THE PICTURE GOES BACK TO WHAT IT WAS. Turning point shadows off
+    /// is not a darker or a softer picture, it is the SAME BYTES as a scene that never asked, because the
+    /// receiver's slot table reads -1 and the sample, the texture read and the multiply are all skipped.
+    /// </summary>
+    [GpuFact]
+    public void TheLowProfileReleasesTheAtlasAndRendersLikeNoRequestAtAll()
+    {
+        void Scene(PointShadowScene.Frame s, LightShadow shadow)
+        {
+            s.DrawFloor();
+            s.DrawWall();
+            s.AddLight(Light, Color.White, Radius, PointShadowScene.Intensity, shadow);
+        }
+
+        PointShadowScene.Shot shadowed = fixture.One(s => Scene(s, LightShadow.Static(111)));
+        Assert.Equal(1, shadowed.ShadowedLights);
+
+        PointShadowScene.Shot off = fixture.One(s => Scene(s, LightShadow.Static(111)),
+            ShadowSettings.ForDetail(ShadowMapDetail.Low).PointShadows);
+        bool released = !fixture.HasAtlas;
+        PointShadowResolution resolved = fixture.Resolved;
+        byte[] never = fixture.One(s => Scene(s, LightShadow.None)).Rgba;
+
+        Assert.True(released, "the disabled profile must give the atlas back rather than keep it resident");
+        Assert.False(resolved.Enabled);
+        Assert.Equal(0, off.ShadowedLights);
+        Assert.Equal(never, off.Rgba);
+        // The control: the two captures being equal would say nothing if the shadowed one matched them too.
+        Assert.NotEqual(never, shadowed.Rgba);
+    }
+
+    /// <summary>
     /// THE ACNE PROOF. The pass stores the nearest surface with no face culling, so a flat floor stores its own
     /// distance and then compares against it, and the whole defence against self-shadowing is the two bias
     /// defaults. A floor with nothing on it must therefore render the same shadowed as unshadowed, all the way
@@ -415,39 +475,87 @@ public sealed class PointShadowScene : IDisposable
                 new Color(1f, 1f, 1f, 1f));
     }
 
-    /// <summary>Render ONE frame of <paramref name="describe"/> and read it back.</summary>
-    public Shot One(Action<Frame> describe)
+    /// <summary>Render ONE frame of <paramref name="describe"/> and read it back, under
+    /// <paramref name="budget"/> (the shipped defaults when null).</summary>
+    public Shot One(Action<Frame> describe, PointShadowSettings? budget = null)
     {
         ArgumentNullException.ThrowIfNull(describe);
-        return Many(1, (f, _) => describe(f))[0];
+        return Many(1, (f, _) => describe(f), budget)[0];
     }
 
-    /// <summary>Render <paramref name="frames"/> consecutive frames of the same scene through ONE
-    /// <see cref="Scene3D"/> and read every one of them back, which is how the cache cases watch a row go from
-    /// rebuilt to reused. <paramref name="describe"/> receives the frame index.</summary>
-    public IReadOnlyList<Shot> Many(int frames, Action<Frame, int> describe)
+    /// <summary>What the point-shadow atlas is live at, for the cases that change the budget.</summary>
+    public PointShadowResolution Resolved
+    {
+        get
+        {
+            Device();
+            return _scene!.ResolvedPointShadows;
+        }
+    }
+
+    /// <summary>Whether an atlas is allocated at all, which is what the released case asserts.</summary>
+    public bool HasAtlas
+    {
+        get
+        {
+            Device();
+            return _scene!.PointShadowTexture is not null;
+        }
+    }
+
+    /// <summary>
+    /// Render <paramref name="frames"/> consecutive frames of the same scene through ONE <see cref="Scene3D"/>
+    /// and read every one of them back, which is how the cache cases watch a row go from rebuilt to reused.
+    /// <paramref name="describe"/> receives the frame index.
+    /// <para>
+    /// EVERY CAPTURE STARTS COLD AND BURNS TWO FRAMES GETTING THERE, because allocating, reshaping and releasing
+    /// the atlas is frame-BOUNDARY work. The first throwaway frame turns point shadows off, which gives the atlas
+    /// back, so the scene the whole class shares cannot hand one case the layout and the cached rows another case
+    /// left behind. The second is the WARM-UP: it asks for <paramref name="budget"/> with no atlas standing, so
+    /// it renders unshadowed and the boundary after it brings the atlas up. What the cases then see is frame 1 of
+    /// a fresh atlas, every time and in any order, which is what makes a rebuild counter mean something.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<Shot> Many(int frames, Action<Frame, int> describe, PointShadowSettings? budget = null)
     {
         ArgumentNullException.ThrowIfNull(describe);
         IGpuDevice gd = Device();
         Scene3D scene = _scene!;
-        // A fresh settings object per capture, so a case that lowered the budget cannot reach the next case.
-        scene.Post.Quality.Shadows.PointShadows = new PointShadowSettings();
         var frame = new Frame(scene, _floor, _box);
 
+        scene.RequestPointShadowSettings(new PointShadowSettings { Enabled = false });
+        RenderFrame();                                                  // gives the atlas back
+        scene.RequestPointShadowSettings(budget ?? new PointShadowSettings());
+        Capture(0);                                                     // the warm-up, which allocates it again
+
         var shots = new List<Shot>(frames);
-        for (int i = 0; i < frames; i++)
+        for (int i = 0; i < frames; i++) shots.Add(Capture(i));
+        return shots;
+
+        Shot Capture(int index)
         {
             scene.Begin();
-            describe(frame, i);
+            describe(frame, index);
             scene.PrepareFrame();
             using (GpuRecording.Open(gd, _commands!, "PointShadowScene.Capture"))
                 scene.RenderInternal(_commands!, Width, Height, _framebuffer!);
             gd.Submit(_commands!);
             gd.WaitForIdle();
-            shots.Add(new Shot(GpuReadback.ToRgba(gd, _target!, Width, Height),
-                scene.LastShadowPassDiagnostics, scene.PointShadowedLights, scene.Camera));
+            return new Shot(GpuReadback.ToRgba(gd, _target!, Width, Height),
+                scene.LastShadowPassDiagnostics, scene.PointShadowedLights, scene.Camera);
         }
-        return shots;
+
+        // An empty frame, which is all it takes to reach a boundary. Nothing is drawn and nothing is read back:
+        // its whole job is to let the release land.
+        void RenderFrame()
+        {
+            scene.Begin();
+            scene.PrepareFrame();
+            using (GpuRecording.Open(gd, _commands!, "PointShadowScene.Release"))
+                scene.RenderInternal(_commands!, Width, Height, _framebuffer!);
+            gd.Submit(_commands!);
+            gd.WaitForIdle();
+        }
     }
 
     /// <summary>Whether a world point projects inside the picture, which is how the off-camera case states that

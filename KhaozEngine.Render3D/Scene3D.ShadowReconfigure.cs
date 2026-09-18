@@ -10,7 +10,12 @@ public sealed partial class Scene3D
     readonly ILogger _shadowReconfigureLogger;
 
     /// <summary>Request one of the standard shadow-map layouts. The latest request is applied when the next
-    /// <see cref="Begin"/> call starts a scene frame.</summary>
+    /// <see cref="Begin"/> call starts a scene frame.
+    /// <para>
+    /// It carries the profile's POINT-shadow budget too (<see cref="ShadowSettings.PointShadows"/>), because this
+    /// is the one call a game's quality menu makes and a shadow setting that needed a restart to reach half the
+    /// shadows would be the same bug twice. Low releases the point atlas, High reshapes it.
+    /// </para></summary>
     public void RequestShadowMapDetail(ShadowMapDetail detail)
     {
         ThrowIfShadowReconfigureDisposed();
@@ -19,6 +24,7 @@ public sealed partial class Scene3D
 
         ShadowSettings requested = ShadowSettings.ForDetail(detail);
         RequestShadowMapLayout(requested.ShadowMapResolution, requested.ShadowCascadeCount);
+        RequestPointShadowSettings(requested.PointShadows);
     }
 
     /// <summary>Request a shadow-map resolution and cascade count. The latest valid request is applied when the
@@ -51,6 +57,7 @@ public sealed partial class Scene3D
     void DisposeShadowReconfiguration()
     {
         _pendingShadowLayout = null;
+        _pendingPointShadowSettings = null;   // the point atlas rides the same boundary, so it drops here too
         _shadowReconfigureDisposed = true;
     }
 

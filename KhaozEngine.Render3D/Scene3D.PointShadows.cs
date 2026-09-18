@@ -18,8 +18,14 @@ namespace KhaozEngine.Render3D
     /// <para>
     /// LAZY BY CONSTRUCTION (design decision 6). A frame in which point shadows are off, or in which no queued
     /// light asks for one, clears the receiver tail and returns having allocated nothing at all, so a game that
-    /// never asks pays neither the atlas nor the pipelines. The atlas comes into existence on the first frame that
-    /// carries a request and stays.
+    /// never asks pays neither the atlas nor the pipelines.
+    /// </para>
+    /// <para>
+    /// AND IT ALLOCATES NOTHING ITSELF. The first frame to carry a request records the layout it wanted and
+    /// renders unshadowed, <c>Scene3D.PointShadowReconfigure.cs</c> brings that atlas up at the next frame
+    /// boundary, and the frame after it carries the map. Everything about creating, reshaping, rebinding and
+    /// releasing the atlas lives there, because all of it stalls the device and rebuilds the material sets the
+    /// model pass is about to bind.
     /// </para>
     /// </summary>
     public sealed partial class Scene3D
@@ -72,16 +78,21 @@ namespace KhaozEngine.Render3D
                 return;
             }
 
-            if (!EnsurePointShadowAtlas(settings.ResolvedFaceResolution, settings.ResolvedMaxLights))
+            // A REQUEST IS WHAT MAKES THE ATLAS WANTED, and that is all this frame does about allocation. Nothing
+            // is created here: the allocation, the receiver rebind and the stall they carry are frame-boundary
+            // work (ApplyPendingPointShadowLayout), so the FIRST frame to ask renders unshadowed and the next one
+            // carries the map. A refused layout is latched there too, so a device that cannot have it is asked
+            // once rather than once a frame.
+            _pointShadowLayoutPending = true;
+            if (_pointShadowAtlas is null || _pointSlotCache is not { } cache)
             {
-                // The device refused the atlas or the pass behind it. Degrade to unshadowed for this frame rather
-                // than dropping the lights: EnsurePointShadowAtlas kept whatever was already live, so a later
-                // frame at a smaller layout can still succeed.
                 _model.ClearPointShadowUniforms();
                 return;
             }
 
-            PointShadowSlots cache = EnsurePointShadowSlotCache(PointShadowRows);
+            // Whatever the settings now say, this frame renders into the atlas that EXISTS. A layout the boundary
+            // has not brought up yet (or refused outright) leaves the previous one live, and a frame that
+            // second-guessed it here would throw away a working map over a number nothing has acted on.
             AcquirePointShadowSlots(cache, frame);
             ChoosePointShadowRebuilds(cache, settings);
             int draws = RenderChosenPointShadowRows(cl, cache, frame);
@@ -131,17 +142,6 @@ namespace KhaozEngine.Render3D
             int budget = settings.ResolvedMaxLights;
             if (_pointRequests.Count > budget) _pointRequests.RemoveRange(budget, _pointRequests.Count - budget);
             return true;
-        }
-
-        /// <summary>The slot cache matching the live atlas, rebuilt when the row count changed. A changed row count
-        /// means a different atlas, so every cached row's contents are gone with it and keeping the old cache would
-        /// report rows as rendered that no longer exist.</summary>
-        PointShadowSlots EnsurePointShadowSlotCache(int rows)
-        {
-            if (_pointSlotCache is { } live && live.Capacity == rows) return live;
-            _pointSlotCache = new PointShadowSlots(rows);
-            _pointCasterSignatures = new long[rows];
-            return _pointSlotCache;
         }
 
         /// <summary>Give every request a row, and decide which of the static ones changed underneath. A static
@@ -221,9 +221,13 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>
-        /// Write the receiver's slot table and bind the atlas. A light gets -1 (sample nothing) unless its row has
-        /// actually been drawn into: a row acquired this frame but deferred by the rebuild budget holds whatever
-        /// the allocation left in it, and a receiver sampling that would read noise rather than a shadow.
+        /// Write the receiver's slot table. A light gets -1 (sample nothing) unless its row has actually been
+        /// drawn into: a row acquired this frame but deferred by the rebuild budget holds whatever the allocation
+        /// left in it, and a receiver sampling that would read noise rather than a shadow.
+        /// <para>
+        /// It does not BIND anything. The atlas standing here is one the frame boundary already put on every
+        /// receiver set, which is why this frame was allowed to render into it at all.
+        /// </para>
         /// </summary>
         void PublishPointShadowUniforms(PointShadowSlots cache, PointShadowSettings settings)
         {
@@ -236,18 +240,6 @@ namespace KhaozEngine.Render3D
             }
             _model.SetPointShadowUniforms(_pointSlotUniform, settings.ResolvedBias, settings.ResolvedSlopeBias,
                 PointShadowFaceResolution, PointShadowRows);
-
-            // Unchanged is the ordinary answer: the atlas is allocated once and stays bound, so this costs a
-            // reference compare per frame. It is never unbound when the requests stop, because nothing samples it
-            // while every slot reads -1 and a rebind is a full material-set transaction.
-            var liveSets = new List<IGpuResourceSet>();
-            CollectLiveMaterialSets(liveSets);
-            if (_model.BindPointShadowAtlas(PointShadowTexture, liveSets, CommitMaterialSets)
-                == PointShadowBindResult.Failed)
-            {
-                _model.ClearPointShadowUniforms();
-                PointShadowedLights = 0;
-            }
         }
 
         /// <summary>Fold this frame's point-shadow counters into the shadow diagnostics snapshot. The key light's

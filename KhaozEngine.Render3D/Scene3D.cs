@@ -850,6 +850,7 @@ namespace KhaozEngine.Render3D
         public void Begin()
         {
             ApplyPendingShadowLayout();
+            ApplyPendingPointShadowLayout();
             _retired.BeginFrame();   // frees mid-life mesh buffers whose retirement fence has signaled (no stall)
             LatchRenderOrigin();
             _instances.Begin();

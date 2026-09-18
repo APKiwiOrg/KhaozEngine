@@ -284,16 +284,19 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   is byte-identical), `LightShadow.Static(key)` for a CACHED map re-rendered only when the light moves, its radius
   changes or the rigid casters inside its radius change, and `LightShadow.Dynamic` for one rebuilt every frame. The
   atlas is one R32Float texture of six face columns by `MaxShadowedLights` rows storing LINEAR distance over radius,
-  so the receiver picks a cube face analytically and needs no matrices, and it is allocated LAZILY on the first frame
-  that carries a request. Knobs on `ShadowSettings.PointShadows` (a `PointShadowSettings`): `Enabled`,
-  `FaceResolution` (default `256`, `64..1024` via `ResolvedFaceResolution`), `MaxShadowedLights` (default `8`,
-  `1..16` via `ResolvedMaxLights`, and requests past it fall back to unshadowed nearest-eye-first),
-  `MaxStaticRebuildsPerFrame` (default `2`), `MaxDynamicLightsPerFrame` (default `4`), and the radius-normalized
-  `Bias`/`SlopeBias` (defaults `0.01`/`0.02`, clamped `0..MaxBias` via `ResolvedBias`/`ResolvedSlopeBias`).
+  so the receiver picks a cube face analytically and needs no matrices. Nothing is allocated until a frame has carried
+  a request, and the allocation and every rebind happen at the FRAME BOUNDARY, so the first frame to ask renders
+  unshadowed and the frame after it carries the map. Knobs on `ShadowSettings.PointShadows` (a `PointShadowSettings`):
+  `Enabled`, `FaceResolution` (default `256`, `64..1024` via `ResolvedFaceResolution`), `MaxShadowedLights` (default
+  `8`, `1..16` via `ResolvedMaxLights`, and requests past it fall back to unshadowed nearest-eye-first),
+  `MaxStaticRebuildsPerFrame` (default `2`), `MaxDynamicLightsPerFrame` (default `4`, nearest-eye-first, and a light
+  past it is not redrawn that frame), and the radius-normalized `Bias`/`SlopeBias` (defaults `0.01`/`0.02`, clamped
+  `0..MaxBias` via `ResolvedBias`/`ResolvedSlopeBias`).
   `AtlasBytes` reports the cost once allocated (27 MiB at the defaults). `ShadowSettings.ForDetail` seeds it on the
-  same three profiles (`Low` off, `High` 512 by 16), `Scene3D.RequestShadowMapDetail` carries it on a live scene and
-  `Scene3D.RequestPointShadowSettings` requests a custom one, both at the next frame boundary and both keeping the
-  previous atlas when allocation fails, with `Scene3D.ResolvedPointShadows` reporting what is in force and why.
+  same three profiles (`Low` off, `High` 384 by 12 at about 91 MiB), `Scene3D.RequestShadowMapDetail` carries it on a
+  live scene and `Scene3D.RequestPointShadowSettings` requests a custom one, both at the next frame boundary and both
+  keeping the previous atlas when allocation fails, with `Scene3D.ResolvedPointShadows` reporting what is in force and
+  why.
   Rigid casters only in this round (`DrawShadowOnly` instances included, skinned casters a follow-up). Read
   `Scene3D.PointShadowedLights`, or `PointShadowedLights`/`PointStaticRebuilds`/`PointDynamicRenders`/
   `PointFaceDrawCalls`/`PointSlotsInUse` on `ShadowPassDiagnostics`.

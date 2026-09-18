@@ -47,10 +47,12 @@ fanning through the doorway. In Ruinborne a fireball lights the far side of a pi
    to unshadowed, nearest to the eye first.
 5. **Rigid casters only in this round, shadow-only instances included.** Skinned casters in dynamic maps
    are a follow-up with their own issue. A static map that included a body would be wrong a frame later.
-6. **Lazy allocation.** The atlas exists from the first frame that carries a request, so a game that never
-   asks pays no memory. `ShadowSettings.PointShadows` rides the Low, Default and High profiles (off, 8 lights
-   at 256, 16 lights at 512) and reconfigures at the frame boundary the way the cascade atlas does, keeping
-   the previous layout on an allocation failure.
+6. **Nothing is allocated until something asks, and all of it happens at the FRAME BOUNDARY.** A game that
+   never requests a point shadow allocates nothing at all. Once a frame has carried a request, the atlas comes
+   up at the next frame boundary rather than inside that frame, beside the cascade atlas's own pending layout,
+   so the first frame to ask renders unshadowed and the one after it carries the map (see what the build taught,
+   item 7). `ShadowSettings.PointShadows` rides the Low, Default and High profiles (off, 8 lights at 256, 12
+   lights at 384) and keeps the previous layout on an allocation failure.
 7. **Per-row clears by a depth-always quad under scissor**, never by `ClearColorTarget`, because whether a
    clear honours the scissor differs per backend and the quad does not.
 8. **Culling is a sphere test per instance against the light sphere.** An instance that touches the light
@@ -71,7 +73,7 @@ fanning through the doorway. In Ruinborne a fireball lights the far side of a pi
 
 ## What the build taught
 
-Six things the implementation settled or corrected, kept here because the decision is not readable off the
+Ten things the implementation settled or corrected, kept here because the decision is not readable off the
 shipped code.
 
 1. **The pass stores the NEAREST surface with no face culling, so the whole acne budget sits on the bias
@@ -110,6 +112,39 @@ shipped code.
    it drifts independently: the rebuild that took the pass's four programs also refreshed 35 rows across six
    older programs whose committed corpus values had fallen out of step with the hash tables. Both halves of this
    work re-baked, so the merged tree took one final re-bake after every shader change was in.
+7. **Allocation and rebinding moved OUT of the frame and onto the frame boundary.** The first shape allocated
+   the atlas inside the frame that first asked for one, which meant a GPU idle wait and a rebuild of every
+   material set in the scene with a command list open, swapping the sets the model pass was about to bind out
+   from under it. That is not how the proven cascade path works, and it is not something this machine can test:
+   the two backends that would have shown the stall are the two the dev machine cannot run. So the frame that
+   asks only RECORDS that it asked, and the reconfigure at the next boundary does every allocation, reshape,
+   rebind and release, which is the path the cascade atlas already had tests and three backends behind. The
+   visible cost is one unshadowed frame per new request.
+8. **Slot acquisition resolves an existing owner before it will consider an eviction, and a row already
+   requested on this frame is never a victim.** Acquisition runs nearest to the eye first, and under a plain
+   least-recently-requested eviction that order let a newcomer cascade evictions through lights that were about
+   to be re-requested, so a frame of lights took each other's rows and rebuilt every one of them. The scan
+   answers in that order instead: a row whose key AND mode match comes back untouched with its map, a free row
+   is next, and only then is the least recently requested row taken, skipping every row this frame has already
+   named. With the request list already cut to the row count, those two rules are the guarantee that matters: no
+   light in a frame can take a row away from another light in the same frame.
+9. **A dynamic light has no identity of its own, so a row is owned by the (key, MODE) pair.** Decision 4 gives
+   a dynamic light no key, and the scene keys its row by the light's place in the light queue. That number lands
+   inside a static caller's key space by construction, so keying on the number alone handed queue index 3 the map
+   belonging to static key 3. The pair is the fix, and the queue-position key is then affordable for the reason
+   the mode exists: a dynamic row is marked dirty on every acquire and redrawn on every frame it is drawn at
+   all, so a shuffled queue costs a rebuild rather than a wrong picture. What the keying does NOT survive is the
+   per-frame budget, and that is the honest limit on the mode: a dynamic light past
+   `MaxDynamicLightsPerFrame` is not redrawn that frame, so one whose row has never been drawn into is handed no
+   slot and renders unshadowed (an undrawn row holds whatever the allocation left in it), and one drawn on an
+   earlier frame goes on sampling that older map. The budget is therefore a consumer-facing number rather than
+   an internal one, and the guidance in USING says to keep the lights alight at once at or under it.
+10. **The High profile is 384 by 12, not 512 by 16.** The atlas is nine bytes a texel (4 of `R32Float` colour
+    plus 5 of `D32FloatS8UInt` depth), so 512 by 16 is 226,492,416 bytes, 216 MiB of resident video memory,
+    which is not a defensible thing for a quality preset to help itself to on hardware the operator never
+    chose. 384 by 12 is 95,551,488 bytes, about 91 MiB, and is still half again the face resolution and half
+    again the light budget of Default's 256 by 8 at 28,311,552 bytes (27 MiB). `PointShadowSettings.AtlasBytes`
+    is the arithmetic and a test pins all three profiles against it.
 
 ## Proof
 

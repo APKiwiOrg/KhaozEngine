@@ -360,21 +360,30 @@ shadow map: cached behind a key for a placed light, rebuilt every frame for one 
   because a cache would be stale the frame after it was taken.
 - **Two per-frame budgets and one ceiling.** `MaxStaticRebuildsPerFrame` (default `2`) caps how many cached maps
   one frame may rebuild and `MaxDynamicLightsPerFrame` (default `4`) how many per-frame maps it may render, so a
-  frame in which several changed at once costs a bounded amount. `MaxShadowedLights` (default `8`, clamped into
-  `MinLights`..`MaxLights`, which is the fixed point-light array size of 16) is how many lights may carry a map
-  at all, and it is also the atlas row count. Requests past it fall back to unshadowed, NEAREST TO THE EYE
-  FIRST.
-- **`ShadowSettings.PointShadows` is the whole settings object, and the atlas is LAZY.** It is allocated on the
-  first frame that carries a request, so a game that never asks pays nothing. `ShadowSettings.ForDetail` seeds
-  it on the same three profiles the cascade atlas rides: `Low` sets `Enabled = false`, `Default` is the values
-  above, and `High` is `FaceResolution = 512` with `MaxShadowedLights = 16`. `PointShadowSettings.AtlasBytes`
-  reports what the resolved layout costs once allocated, at 4 bytes of `R32Float` colour plus 5 of
-  `D32FloatS8UInt` depth per texel: 27 MiB at `Default` and 216 MiB at `High`.
-- **`Scene3D.RequestPointShadowSettings(PointShadowSettings)` applies at the next frame boundary**, the way
-  `RequestShadowMapLayout` does, and keeps the previous atlas rendering if the replacement cannot be allocated.
-  `Scene3D.ResolvedPointShadows` reports the settings actually in force and a reason when they were degraded.
-  `Scene3D.RequestShadowMapDetail(detail)` now carries that detail's point shadow profile too, so a live
-  graphics menu moves both atlases together instead of the point one waiting for a restart.
+  frame in which several changed at once costs a bounded amount. The dynamic maps rendered are the nearest to
+  the eye, and a dynamic light past that budget whose row has never been drawn into is handed no slot and renders
+  UNSHADOWED rather than sampling an undrawn row. `MaxShadowedLights` (default `8`, clamped into
+  `MinLights`..`MaxLights`, which is the fixed point-light array size of 16) is how many lights may carry a map at
+  all, and it is also the atlas row count. Requests past it fall back to unshadowed, NEAREST TO THE EYE FIRST,
+  and a light that stays inside the budget keeps its cached map while the ones around it come and go.
+- **`ShadowSettings.PointShadows` is the whole settings object, and the atlas comes up at a FRAME BOUNDARY.**
+  Nothing is allocated until a frame has actually carried a request, so a game that never asks pays nothing, and
+  the allocation itself happens at the next frame boundary beside the cascade atlas's own pending layout. So the
+  first frame to ask renders unshadowed and the frame after it carries the map. `ShadowSettings.ForDetail` seeds
+  the settings on the same three profiles the cascade atlas rides: `Low` sets `Enabled = false`, `Default` is the
+  values above (`256` by `8`), and `High` is `FaceResolution = 384` with `MaxShadowedLights = 12`.
+  `PointShadowSettings.AtlasBytes` reports what the resolved layout costs once allocated, at 4 bytes of
+  `R32Float` colour plus 5 of `D32FloatS8UInt` depth per texel: `28,311,552` bytes (27 MiB) at `Default` and
+  `95,551,488` bytes (about 91 MiB) at `High`.
+- **`Scene3D.RequestPointShadowSettings(PointShadowSettings)` is the supported live path**, the way
+  `RequestShadowMapLayout` is for the cascade atlas, and it applies at the next frame boundary. The settings are
+  cloned, so the caller keeps its own object. Mutating the public `ShadowSettings.PointShadows` fields in place
+  is picked up at that same boundary, and disabling releases the atlas there.
+  `Scene3D.RequestShadowMapDetail(detail)` now carries that detail's point profile too, so a game with one shadow
+  quality setting needs no second call and the point atlas no longer waits for a restart.
+  `Scene3D.ResolvedPointShadows` is a `PointShadowResolution` reporting the LIVE layout rather than the requested
+  one: an allocation the device refuses leaves the previous atlas shadowing, raises `Degraded` with a `Reason`,
+  and is not retried every frame, while a different request is attempted.
 - **Rigid casters only this round, shadow-only instances included.** An instance drawn through
   `DrawShadowOnly` writes into a point map exactly as it writes into the cascade atlas, and an instance that
   opted out with `castsShadows: false` writes into neither. Skinned casters are a follow-up: a cached map that

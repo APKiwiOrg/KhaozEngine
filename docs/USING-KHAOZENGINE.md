@@ -3096,7 +3096,9 @@ scene.Draw(crate, transform, Color.White, Material.None, dissolve: fadeTimer, ed
   right answer (a tile-world object id, an entity id, a prefab instance id). A loop index, an array position or
   a hash of the light's position is the wrong one, because it changes when anything else in the scene changes
   and the cache then rebuilds a map that did not need rebuilding. Two lights sharing one key are ONE cache
-  entry, which is a caller bug the engine cannot detect.
+  entry, which is a caller bug the engine cannot detect. `LightShadow.Dynamic` carries no key of its own and is
+  redrawn every frame it is drawn at all, so reach for it only when the light actually moves and prefer
+  `Static(key)` for anything that does not.
 - 3D beams: `scene.DrawBeam(a, b, width, color, BeamStyle?)` queues a camera-facing, additive,
   depth-interleaved glowing beam between two world points (lasers, thrusters, tethers): a bright core in a soft
   halo. It draws INTO the model pass with the depth test on (no write), like the textured billboard, so geometry
@@ -3478,25 +3480,59 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
         clamped into `MinFaceResolution`..`MaxFaceResolution` (`64`..`1024`) by `ResolvedFaceResolution`.
         `MaxShadowedLights` (default `8`) is how many lights may carry a map at once and is also the atlas row
         count, clamped into `MinLights`..`MaxLights` (`1`..`16`, the fixed point-light array size) by
-        `ResolvedMaxLights`. Requests past it fall back to unshadowed, nearest to the eye first.
+        `ResolvedMaxLights`. Requests past it fall back to unshadowed, nearest to the eye first. So when more
+        placed lights ask than there are rows the nearest ones win, and a light that stays inside the budget
+        keeps its cached map while the ones around it come and go.
       - **Two per-frame budgets.** `MaxStaticRebuildsPerFrame` (default `2`) caps how many CACHED maps one frame
         may re-render, which bounds the frame in which several of them changed at once. A still scene rebuilds
         none, which is the whole point of the cache. `MaxDynamicLightsPerFrame` (default `4`) caps the
         every-frame maps, and each one of those is six faces every frame, so it is the hard ceiling on the
         pass's steady cost.
-      - **The atlas is LAZY, and `AtlasBytes` is what it costs once it exists.** Nothing is allocated until the
-        first frame that carries a request, so a game that never asks for a point shadow pays no memory for any
-        of these numbers. `PointShadowSettings.AtlasBytes` reports the resolved layout at 4 bytes of `R32Float`
-        colour plus 5 of `D32FloatS8UInt` depth per texel: 27 MiB at the defaults, 216 MiB at 512 by 16. Read it
-        into a settings screen the way `ShadowMapResolution`'s cascade cost is read.
+      - **A `Dynamic` light has no identity of its own, so its budget is harder than the static one.** It
+        carries no key, so the engine keys its row by the light's PLACE IN THE QUEUE, which holds only for as
+        long as you queue your lights in a stable order. That is affordable because a dynamic row is redrawn on
+        every frame it is drawn at all, so a shuffled queue costs a rebuild rather than a wrong picture. What it
+        does not survive is the budget. The dynamic lights taken each frame are the nearest to the eye, so a
+        light past `MaxDynamicLightsPerFrame` is not redrawn that frame: one whose row has never been drawn into
+        renders UNSHADOWED (it is handed no slot at all, rather than sampling whatever the allocation left in
+        that row), and one drawn on an earlier frame goes on sampling that older map until it is redrawn, which
+        on a light that moves is a shadow in the wrong place. The guidance that follows: keep the number of
+        dynamic lights alight AT ONCE at or under the budget, raise `MaxDynamicLightsPerFrame` if the scene
+        genuinely needs more (and pay six faces a frame for each), and use `LightShadow.Static(key)` for
+        anything that does not move.
+      - **`AtlasBytes` is what the atlas costs once it exists, and it is allocated at a FRAME BOUNDARY.** Nothing
+        is allocated until a frame has actually carried a request, so a game that never asks for a point shadow
+        pays no memory for any of these numbers. The allocation and every rebind then happen at the next frame
+        boundary rather than inside the frame that asked, beside the cascade atlas's own pending layout, so the
+        first frame carrying a request renders unshadowed and the frame after it carries the map. That is one
+        frame, once. `PointShadowSettings.AtlasBytes` reports the resolved layout at 4 bytes of `R32Float` colour
+        plus 5 of `D32FloatS8UInt` depth per texel: `28,311,552` bytes (27 MiB) at the defaults and `95,551,488`
+        bytes (about 91 MiB) at `384` by `12`. Read it into a settings screen the way `ShadowMapResolution`'s
+        cascade cost is read.
       - **The three detail profiles carry it.** `ShadowSettings.ForDetail(ShadowMapDetail.Low)` sets
         `Enabled = false` (a whole second shadow pass is the first thing a low-end profile should stop paying),
-        `Default` keeps the values above, and `High` is `FaceResolution = 512` with `MaxShadowedLights = 16`.
-        On a live scene, `scene.RequestShadowMapDetail(detail)` applies the point profile along with the cascade
-        layout, and `scene.RequestPointShadowSettings(settings)` requests a custom one. Both land at the next
-        frame boundary, and a replacement the device refuses leaves the previous atlas rendering, with
-        `scene.ResolvedPointShadows` reporting the settings actually in force and a reason when they were
-        degraded. `scene.PointShadowedLights` is how many lights carried a map last frame, and
+        `Default` keeps the values above (`256` by `8`), and `High` is `FaceResolution = 384` with
+        `MaxShadowedLights = 12`. On a live scene, `scene.RequestShadowMapDetail(detail)` applies the point
+        profile along with the cascade layout, so a game with ONE shadow quality setting needs no second call.
+        `scene.RequestPointShadowSettings(settings)` is the supported path for a custom budget: it clones what it
+        is handed, so the caller may keep and reuse its own object. Mutating the public
+        `ShadowSettings.PointShadows` fields in place is picked up at the same boundary through the same path,
+        and turning `Enabled` off releases the atlas there.
+      - **`scene.ResolvedPointShadows` is what the frame is actually rendering, not what was asked for.** It is a
+        `PointShadowResolution`: `Enabled` (an atlas is live and a light that asks can be given a row, so it is
+        false both when the settings turned point shadows off and when nothing has asked for one yet),
+        `FaceResolution` and `MaxShadowedLights` (the LIVE layout, both `0` when there is no atlas), `Degraded`
+        (the last requested layout could not be brought up, so the three values above are something other than
+        what was asked for) and `Reason` (a diagnostics and log string naming the layout refused and what failed,
+        empty when nothing was). Read this into a settings screen rather than the settings object, or the screen
+        reports a quality level the frame is not rendering at. Two failure shapes, and they differ: when an
+        ALLOCATION is refused the previous atlas is untouched and keeps shadowing at the layout it had, the
+        refused layout is latched so it is not retried every frame (a different request clears the latch and is
+        attempted), and `Degraded` stands with its `Reason` until then. When the receiver REBIND fails during a
+        reshape there is no previous atlas to fall back on, because bringing the new one up freed it, so the
+        receivers go back to the 1x1 default and the scene runs unshadowed with `Degraded` and a `Reason` saying
+        so. Neither case throws and neither leaves the scene sampling a dead texture.
+      - **The counters.** `scene.PointShadowedLights` is how many lights carried a map last frame, and
         `LastShadowPassDiagnostics` carries `PointShadowedLights`, `PointStaticRebuilds`, `PointDynamicRenders`,
         `PointFaceDrawCalls` and `PointSlotsInUse` beside the cascade pass's own counters.
       - **Rigid casters only in this round.** Models, tile ground and splat terrain write into a point map on

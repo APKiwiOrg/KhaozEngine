@@ -157,6 +157,36 @@ public sealed class PointShadowPassGpuTests(PointShadowPassScene fixture) : ICla
             4, PointShadowPassScene.Slot, atlas.Rows, new Vector2(0.5f, 0.5f)));
         Assert.True(MathF.Abs(lit - Expected) <= 0.05f, $"the +Z cell holds {lit}, expected {Expected}");
     }
+
+    /// <summary>
+    /// TWO LIGHTS, ONE PASS, and each row holds its own light's cube. This is what pins the PACKED INDEX: the six
+    /// faces of the second light are packed at ring slots 6 to 11, and a pack that ignored the index would write
+    /// them over the first light's and draw both rows through the second light's matrices. The two lights stand
+    /// twenty metres apart with a radius of ten, so each one's cube is outside the other's sphere and a row
+    /// holding the other's cube cannot be explained by the geometry.
+    /// </summary>
+    [GpuFact]
+    public void TwoLightsInOnePassEachFillTheirOwnRow()
+    {
+        Vector3 near = PointShadowPassScene.LightPos;
+        Vector3 far = near + new Vector3(0f, 20f, 0f);
+        PointShadowPassScene.Atlas atlas = fixture.RenderTwoLights(
+            (0, near, near + Vector3.UnitX * CubeDistance),
+            (1, far, far + Vector3.UnitZ * CubeDistance),
+            Radius);
+
+        var centre = new Vector2(0.5f, 0.5f);
+        float ownX = atlas.At(PointShadowMath.AtlasUv(0, 0, atlas.Rows, centre));
+        float ownZ = atlas.At(PointShadowMath.AtlasUv(4, 1, atlas.Rows, centre));
+        Assert.True(MathF.Abs(ownX - Expected) <= 0.05f,
+            $"row 0's +X cell holds {ownX}, expected about {Expected}");
+        Assert.True(MathF.Abs(ownZ - Expected) <= 0.05f,
+            $"row 1's +Z cell holds {ownZ}, expected about {Expected}");
+
+        // And neither row carries the other's cube, which a shared or overwritten ring slot would put there.
+        Assert.Equal(1f, atlas.At(PointShadowMath.AtlasUv(4, 0, atlas.Rows, centre)), 3);
+        Assert.Equal(1f, atlas.At(PointShadowMath.AtlasUv(0, 1, atlas.Rows, centre)), 3);
+    }
 }
 
 /// <summary>
@@ -232,6 +262,44 @@ public sealed class PointShadowPassScene : IDisposable
         _preview!.Capture(s => s.Draw(_cube, Matrix4x4.CreateTranslation(cubeCentre), Color.White));
         Assert.True(scene.EnsurePointShadowAtlas(FaceResolution, Rows));
         int draws = scene.DebugRenderPointShadowSlot(Slot, lightPos, radius);
+        float[] texels = scene.DebugReadPointShadowAtlas(out int w, out int h);
+        return new Atlas(texels, w, h, Rows, draws);
+    }
+
+    /// <summary>Queue one unit cube per light, render an ordinary frame, then pack and render BOTH lights into
+    /// their own atlas rows through one pass, driving the four-step frame surface exactly as the integration half
+    /// will: one begin, one pack per light, one upload outside the pass, one pass. Each light is
+    /// <c>(row, position, radius)</c> and the cubes are queued in the same order.</summary>
+    public Atlas RenderTwoLights(
+        (int Slot, Vector3 LightPos, Vector3 CubeCentre) first,
+        (int Slot, Vector3 LightPos, Vector3 CubeCentre) second, float radius)
+    {
+        Scene3D scene = Scene;
+        scene.Post.Quality.Shadows.Mode = ShadowMode.Off;
+        scene.Camera.Frame(first.LightPos, first.LightPos + new Vector3(8f, 6f, 8f));
+        _preview!.Capture(s =>
+        {
+            s.Draw(_cube, Matrix4x4.CreateTranslation(first.CubeCentre), Color.White);
+            s.Draw(_cube, Matrix4x4.CreateTranslation(second.CubeCentre), Color.White);
+        });
+        Assert.True(scene.EnsurePointShadowAtlas(FaceResolution, Rows));
+
+        IGpuDevice gd = _gpu!.GpuDevice;
+        int draws;
+        using (IGpuCommandList cl = gd.Factory.CreateCommandList())
+        {
+            using (GpuRecording.Open(gd, cl, "PointShadowPassScene.RenderTwoLights"))
+            {
+                scene.BeginPointShadowFrame(2);
+                scene.PackPointShadowSlot(0, first.Slot, first.LightPos, radius);
+                scene.PackPointShadowSlot(1, second.Slot, second.LightPos, radius);
+                scene.UploadPointShadowFaces(cl);
+                draws = scene.RenderPointShadowSlots(cl);
+            }
+            gd.Submit(cl);
+            gd.WaitForIdle();
+        }
+
         float[] texels = scene.DebugReadPointShadowAtlas(out int w, out int h);
         return new Atlas(texels, w, h, Rows, draws);
     }

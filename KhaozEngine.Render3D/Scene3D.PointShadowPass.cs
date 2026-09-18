@@ -43,6 +43,10 @@ namespace KhaozEngine.Render3D
         readonly List<ShadowCastKind> _pointCasterKinds = new();
         readonly List<ShadowCasterSpan> _pointCasterSpans = new();
 
+        // The lights packed into this frame's slot ring, in the order they were packed. Cleared by
+        // BeginPointShadowFrame and walked by RenderPointShadowSlots.
+        readonly List<PackedPointShadowSlot> _packedPointSlots = new();
+
         /// <summary>The point-shadow atlas texture, or null when no atlas has been allocated. The receivers bind
         /// this (or their 1x1 default in its place).</summary>
         internal IGpuTexture? PointShadowTexture => _pointShadowAtlas?.Texture;
@@ -91,44 +95,83 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>
-        /// Render one light's whole atlas row: clear it, then draw every rigid caster whose world sphere touches
-        /// the light sphere into each of the six face cells. <paramref name="lightPosAbsolute"/> is in the same
-        /// absolute space the consumer queued its geometry in, and <paramref name="radius"/> is the light's reach,
-        /// which is also the face far plane. Returns how many caster DRAW CALLS the six faces issued, which is what
-        /// the integration half reports as its face draw count.
+        /// Open a frame's point-shadow work: forget the last frame's packed lights and make sure the slot ring
+        /// holds <paramref name="slotCount"/> lights' worth of faces. Call ONCE per frame, before the first
+        /// <see cref="PackPointShadowSlot"/>, because growing the ring mid-pack would strand what was already
+        /// written into it.
+        /// </summary>
+        internal void BeginPointShadowFrame(int slotCount)
+        {
+            _packedPointSlots.Clear();
+            _pointShadows?.EnsureFaceCapacity(slotCount);
+        }
+
+        /// <summary>
+        /// Pack one light's six faces into slots <c>packedSlotIndex * 6 + face</c> of the ring, and remember the
+        /// atlas <paramref name="slot"/> (the ROW it renders into), its position and its radius for the draw.
+        /// <paramref name="lightPosAbsolute"/> is in the same absolute space the consumer queued its geometry in,
+        /// and <paramref name="radius"/> is the light's reach, which is also the face far plane.
         /// <para>
-        /// Records into <paramref name="cl"/> and does not submit. Requires this frame's instances to be grouped and
-        /// uploaded already (the pass reuses that buffer), which is exactly where the key light's depth pass sits
-        /// too.
+        /// The packed index and the atlas row are two different numbers on purpose: the ring is packed densely for
+        /// THIS frame's lights, while the row is the light's place in the atlas, which the slot cache owns.
         /// </para>
         /// </summary>
-        internal int RenderPointShadowSlot(IGpuCommandList cl, int slot, Vector3 lightPosAbsolute, float radius)
+        internal void PackPointShadowSlot(int packedSlotIndex, int slot, Vector3 lightPosAbsolute, float radius)
         {
-            ArgumentNullException.ThrowIfNull(cl);
-            if (_pointShadows is not { } renderer || _pointShadowAtlas is not { } atlas) return 0;
-
-            BuildPointCasterSpans(lightPosAbsolute, radius);
+            if (_pointShadows is not { } renderer || _pointShadowAtlas is not { } atlas) return;
 
             Vector3 lightRender = ToRender(lightPosAbsolute);
             // The dissolve noise cell is floored at a few atlas texels for the cascade pass's reason: below that a
             // dither stops resolving. A face texel is widest at the far plane, where it spans 2 * radius / res, so
             // the cascade helper answers this pass correctly with the light radius in the cascade radius's place.
             float noiseScale = ShadowDissolveNoise.ScaleForCascade(radius, atlas.FaceResolution);
-            renderer.EnsureFaceCapacity(1);
             for (int face = 0; face < PointShadowMath.FaceCount; face++)
             {
                 Matrix4x4 vp = GpuClip.Correct(
                     PointShadowMath.FaceViewProjection(face, slot, atlas.Rows, lightRender, radius),
                     _gd.Capabilities);
-                renderer.PackFace(face, vp, lightRender, radius, noiseScale, _frameOrigin);
+                renderer.PackFace(packedSlotIndex * PointShadowMath.FaceCount + face, vp, lightRender, radius,
+                    noiseScale, _frameOrigin);
             }
-            renderer.UploadFaces(cl);   // outside the pass, like the cascade pass's own upload
+            _packedPointSlots.Add(new PackedPointShadowSlot(packedSlotIndex, slot, lightPosAbsolute, radius));
+        }
 
-            renderer.BeginPass(cl);
-            renderer.ClearRow(cl, slot);
+        /// <summary>Upload every light packed this frame in ONE whole-buffer write. Must run OUTSIDE the pass, so
+        /// between the last <see cref="PackPointShadowSlot"/> and <see cref="RenderPointShadowSlots"/>, which is
+        /// where the cascade pass's own upload sits.</summary>
+        internal void UploadPointShadowFaces(IGpuCommandList cl)
+        {
+            ArgumentNullException.ThrowIfNull(cl);
+            _pointShadows?.UploadFaces(cl);
+        }
+
+        /// <summary>
+        /// Render every packed light in ONE pass: for each, clear its atlas row and draw every rigid caster whose
+        /// world sphere touches that light's sphere into each of its six face cells. Returns how many caster DRAW
+        /// CALLS were issued in total, which is what the integration half reports as its face draw count.
+        /// <para>
+        /// Records into <paramref name="cl"/> and does not submit. Requires this frame's instances to be grouped
+        /// and uploaded already (the pass reuses that buffer), which is exactly where the key light's depth pass
+        /// sits too, and requires <see cref="UploadPointShadowFaces"/> to have run.
+        /// </para>
+        /// </summary>
+        internal int RenderPointShadowSlots(IGpuCommandList cl)
+        {
+            ArgumentNullException.ThrowIfNull(cl);
+            if (_pointShadows is not { } renderer || _packedPointSlots.Count == 0) return 0;
+
             int draws = 0;
             IGpuBuffer? instances = _model.InstanceBuffer;
-            if (instances is not null)
+            renderer.BeginPass(cl);
+            foreach (PackedPointShadowSlot packed in _packedPointSlots)
+            {
+                renderer.ClearRow(cl, packed.Slot);
+                if (instances is null) continue;
+
+                // The caster set is per LIGHT (it is a sphere cull against that light), so it is rebuilt here
+                // rather than once for the pass. This is CPU work with nothing recorded, so it costs the pass
+                // nothing to do it between draws.
+                BuildPointCasterSpans(packed.LightPosAbsolute, packed.Radius);
                 for (int face = 0; face < PointShadowMath.FaceCount; face++)
                 {
                     ShadowCastKind bound = ShadowCastKind.None;
@@ -138,7 +181,8 @@ namespace KhaozEngine.Render3D
                         if (m is not { } mesh) continue;   // unloaded between the span build and here: skip its slice
                         if (span.Kind != bound)
                         {
-                            renderer.BeginFace(cl, face, face, slot, span.Kind);
+                            renderer.BeginFace(cl, packed.PackedIndex * PointShadowMath.FaceCount + face, face,
+                                packed.Slot, span.Kind);
                             bound = span.Kind;
                         }
                         renderer.DrawCasterRun(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat,
@@ -146,13 +190,19 @@ namespace KhaozEngine.Render3D
                         draws++;
                     }
                 }
+            }
             renderer.EndPass(cl);
             return draws;
         }
 
+        /// <summary>One light packed into this frame's ring: where its six faces sit in the ring, which atlas row
+        /// it renders into, and the light itself, which the draw re-culls its casters against.</summary>
+        readonly record struct PackedPointShadowSlot(
+            int PackedIndex, int Slot, Vector3 LightPosAbsolute, float Radius);
+
         /// <summary>
         /// Build <see cref="_pointCasterSpans"/>: this light's caster draw list, in the exact order
-        /// <see cref="RenderPointShadowSlot"/> draws it. Same rules as the cascade walk (a stale handle, a
+        /// <see cref="RenderPointShadowSlots"/> draws it. Same rules as the cascade walk (a stale handle, a
         /// receive-only splat mesh and anything the consumer opted out of casting all drop out), plus the light
         /// sphere test.
         /// </summary>
@@ -189,10 +239,14 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>
-        /// Diagnostic: render one light's row on a command list of this method's own, then fence. For a test or a
+        /// Diagnostic: render ONE light's row on a command list of this method's own, then fence. For a test or a
         /// tool that wants the pass without the frame around it. The queued instances must already be grouped and
         /// uploaded, which one ordinary rendered frame leaves behind. Returns the caster draw count, as
-        /// <see cref="RenderPointShadowSlot"/> does.
+        /// <see cref="RenderPointShadowSlots"/> does.
+        /// <para>
+        /// A WRAPPER over the four-step frame surface rather than a path of its own, so what a test drives is what
+        /// the integration half will drive: one begin, one pack, one upload outside the pass, one pass.
+        /// </para>
         /// </summary>
         internal int DebugRenderPointShadowSlot(int slot, Vector3 lightPosAbsolute, float radius)
         {
@@ -201,7 +255,12 @@ namespace KhaozEngine.Render3D
             using (IGpuCommandList cl = _gd.Factory.CreateCommandList())
             {
                 using (GpuRecording.Open(_gd, cl, "Scene3D.DebugRenderPointShadowSlot"))
-                    draws = RenderPointShadowSlot(cl, slot, lightPosAbsolute, radius);
+                {
+                    BeginPointShadowFrame(1);
+                    PackPointShadowSlot(0, slot, lightPosAbsolute, radius);
+                    UploadPointShadowFaces(cl);
+                    draws = RenderPointShadowSlots(cl);
+                }
                 _gd.Submit(cl);
                 _gd.WaitForIdle();
             }

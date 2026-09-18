@@ -307,8 +307,14 @@ namespace KhaozEngine.Render3D
         /// <para>
         /// It walks the instances in exactly the order <c>BuildPointCasterSpans</c> does and applies exactly the
         /// same three rejections, so a signature can only miss a change that the pass would also not have drawn.
-        /// The millimetre quantisation is what stops a light parented to a jittering transform from rebuilding its
-        /// map every frame for a change nothing can see.
+        /// </para>
+        /// <para>
+        /// ONLY THE LIGHT IS QUANTISED, and that is the whole of what the millimetre rounding buys: a light
+        /// parented to a jittering transform does not rebuild its own map for a move nothing can see. A CASTER is
+        /// compared by the raw bits of its matrix, so a caster that jitters re-renders every light it stands
+        /// inside, every frame. That is accepted rather than overlooked: the cost is bounded by
+        /// <see cref="PointShadowSettings.MaxStaticRebuildsPerFrame"/> and the oldest-first order, so a jittering
+        /// caster spends the static budget and delays the other lights rather than multiplying the work.
         /// </para>
         /// </summary>
         long PointCasterSignature(Vector3 lightPosAbsolute, float radius)

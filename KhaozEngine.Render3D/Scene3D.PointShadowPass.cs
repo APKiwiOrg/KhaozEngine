@@ -302,7 +302,23 @@ namespace KhaozEngine.Render3D
             return outF;
         }
 
-        /// <summary>Release the atlas and its pass. Called from <see cref="Dispose"/> and by
+        /// <summary>
+        /// The tail of <see cref="Dispose"/>: the tile-ground materials, then this pass's atlas. There is no
+        /// ordering between the two, they are unrelated resources freed at the same moment.
+        /// <para>
+        /// They share one call because <c>Scene3D.cs</c> is at its file-size baseline and cannot grow a line, and
+        /// two statements on one line there is the worse answer. It sits in this file because this is the partial
+        /// that added the second release.
+        /// </para>
+        /// </summary>
+        void DisposeTileGroundAndPointShadowResources()
+        {
+            DisposeTileGroundMaterials();
+            DisposePointShadows();
+        }
+
+        /// <summary>Release the atlas and its pass. Called from
+        /// <see cref="DisposeTileGroundAndPointShadowResources"/> and by
         /// <see cref="EnsurePointShadowAtlas"/> when a layout is replaced.</summary>
         void DisposePointShadows()
         {

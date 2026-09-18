@@ -111,6 +111,29 @@ namespace KhaozEngine.Tests.Gpu
             }
         }
 
+        /// <summary>How many LIVE sets name a texture that has since been freed. A resource set is immutable, so
+        /// a texture swapped out from under one leaves the old handle in it for ever, and the only observable is
+        /// the pairing: the set is still bound by its holder and the handle in it is gone. Zero is the only
+        /// healthy answer, and a count no test can read is how a use-after-free ships.</summary>
+        internal int LiveSetsNamingAFreedTexture
+        {
+            get
+            {
+                int n = 0;
+                foreach (FakeResourceSet set in ResourceSets)
+                {
+                    if (set.Disposed) continue;
+                    foreach (IGpuBindableResource resource in set.Resources)
+                    {
+                        if (resource is not FakeTexture { Disposed: true }) continue;
+                        n++;
+                        break;
+                    }
+                }
+                return n;
+            }
+        }
+
         public IGpuBuffer CreateBuffer(in GpuBufferDescription d)
         {
             var b = new FakeBuffer(d.SizeInBytes);
@@ -145,7 +168,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             if (ThrowOnResourceSetCreate == ResourceSets.Count + 1)
                 throw new InvalidOperationException("planned resource-set creation failure");
-            var set = new FakeResourceSet();
+            var set = new FakeResourceSet(d.Resources);
             ResourceSets.Add(set);
             return set;
         }
@@ -246,6 +269,14 @@ namespace KhaozEngine.Tests.Gpu
 
     internal sealed class FakeResourceSet : IGpuResourceSet
     {
+        // Default empty for the tests that hand a set straight to a backend and never ask what is in it.
+        internal FakeResourceSet(IGpuBindableResource[]? resources = null) =>
+            Resources = resources ?? Array.Empty<IGpuBindableResource>();
+
+        /// <summary>What was bound into this set, in binding order. Kept because a set outlives the handles in
+        /// it: see <see cref="FakeGpuResourceFactory.LiveSetsNamingAFreedTexture"/>.</summary>
+        internal IGpuBindableResource[] Resources { get; }
+
         /// <summary>Whether the owner freed this binding. Paired with
         /// <see cref="FakeGpuResourceFactory.ResourceSets"/> to pin the frame a retired set is destroyed on.</summary>
         internal bool Disposed { get; private set; }

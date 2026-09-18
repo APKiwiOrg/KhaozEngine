@@ -120,11 +120,19 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>Bring up <paramref name="wanted"/> and put every receiver on it. Either the whole thing lands
-        /// or nothing does.</summary>
+        /// or nothing does.
+        /// <para>
+        /// THE ORDER IS THE SAFETY PROPERTY, and it is the cascade replacement's order
+        /// (<c>ModelRenderer.ShadowLayoutReplacement.cs</c>): build the new pair, bind the receivers to it, and
+        /// only then retire the old one. So both ways this can fail leave the previous atlas allocated, bound and
+        /// shadowing, which is what the design promises. Retiring first made that promise true for an allocation
+        /// refusal only: a bind that then failed had nothing left to fall back to, and every receiver set (and the
+        /// renderer's own handle, which the next cascade reconfigure copies into fresh sets) was naming a freed
+        /// texture.
+        /// </para></summary>
         void AttemptPointShadowLayout(PointShadowLayout wanted)
         {
-            bool hadAtlas = _pointShadowAtlas is not null;
-            if (!EnsurePointShadowAtlas(wanted.FaceResolution, wanted.Rows))
+            if (BuildPointShadowReplacement(wanted.FaceResolution, wanted.Rows) is not { } replacement)
             {
                 // The previous atlas is untouched by a refusal, so a scene that was already shadowing carries on
                 // shadowing at the layout it had.
@@ -132,19 +140,17 @@ namespace KhaozEngine.Render3D
                 return;
             }
 
-            if (BindPointShadowAtlasToReceivers(PointShadowTexture) == PointShadowBindResult.Failed)
+            if (BindPointShadowAtlasToReceivers(replacement.Atlas.Texture) == PointShadowBindResult.Failed)
             {
-                // Nothing may sample an atlas the receivers are not bound to, so the one just built goes back.
-                // A first allocation leaves the 1x1 default bound, which is the ordinary unshadowed path. A
-                // RESHAPE cannot keep its previous atlas here, because bringing the new one up freed it, so the
-                // receivers are put back on the default explicitly rather than left holding a dead texture.
-                DisposePointShadows();
-                if (hadAtlas) BindPointShadowAtlasToReceivers(null);
-                DropPointShadowSlotCache();
+                // Nothing may sample an atlas the receivers are not bound to, so the one just built goes back
+                // whole and the live one keeps its place: still allocated, still bound, still drawing the rows
+                // the slot cache is holding.
+                replacement.Dispose();
                 FailPointShadowLayout(wanted, "the receiver sets could not be rebuilt against the atlas");
                 return;
             }
 
+            CommitPointShadowReplacement(replacement);
             AdoptPointShadowSlotCache(wanted.Rows);
             _resolvedPointShadows = new PointShadowResolution(true, wanted.FaceResolution, wanted.Rows, false, null);
         }

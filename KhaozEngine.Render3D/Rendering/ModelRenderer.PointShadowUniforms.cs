@@ -50,6 +50,12 @@ internal sealed partial class ModelRenderer
     // default) gets a real attempt. Asking again for the exact texture that failed does not.
     IGpuTexture? _pointShadowBindFailure;
 
+    /// <summary>The texture every receiver set currently names at its <c>PointShadowMap</c> slot, which is the
+    /// live atlas or the 1x1 default. A diagnostic, and the one a test asserts on after a refused rebind: the
+    /// scene's own handle and this one disagreeing is the whole defect, so asserting the scene's alone would
+    /// have missed it.</summary>
+    internal IGpuTexture BoundPointShadowTexture => _pointShadowTexture;
+
     static Vector4[] NoPointShadowSlots()
     {
         var slots = new Vector4[MaxPointLights];

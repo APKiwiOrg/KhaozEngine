@@ -51,6 +51,12 @@ namespace KhaozEngine.Render3D
         /// this (or their 1x1 default in its place).</summary>
         internal IGpuTexture? PointShadowTexture => _pointShadowAtlas?.Texture;
 
+        /// <summary>What the RECEIVERS are bound to, which is <see cref="PointShadowTexture"/> once a bind has
+        /// landed and the 1x1 default before the first one. The two are separate questions and a reshape is where
+        /// they can part company, so a test that only asked the first would not see a receiver left on a freed
+        /// atlas.</summary>
+        internal IGpuTexture BoundPointShadowTexture => _model.BoundPointShadowTexture;
+
         /// <summary>One cell's size per axis in the live atlas, or 0 when there is none.</summary>
         internal int PointShadowFaceResolution => _pointShadowAtlas?.FaceResolution ?? 0;
 
@@ -62,6 +68,12 @@ namespace KhaozEngine.Render3D
         /// on the spot. Returns false when the device refused the allocation, in which case the PREVIOUS atlas is
         /// left intact and drawable, mirroring how a refused cascade layout leaves the live one alone.
         /// <para>
+        /// Build and commit in one step, for a caller that binds NOTHING against the result: a tool, a diagnostic
+        /// or a GPU test reading the atlas directly. The reconfigure path takes the two halves apart
+        /// (<see cref="BuildPointShadowReplacement"/> then <see cref="CommitPointShadowReplacement"/>) because it
+        /// has receivers to rebind in between, and binding has to happen while the previous atlas is still live.
+        /// </para>
+        /// <para>
         /// Lazy by construction (design decision 6): a scene that never asks for a point shadow never calls this
         /// and pays no memory at all. The integration half decides when to call it in a real frame.
         /// </para>
@@ -69,29 +81,44 @@ namespace KhaozEngine.Render3D
         internal bool EnsurePointShadowAtlas(int faceResolution, int rows)
         {
             if (_pointShadowAtlas is { } live && live.MatchesLayout(faceResolution, rows)) return true;
-            PointShadowAtlas? replacement = PointShadowAtlas.TryCreate(_gd, faceResolution, rows);
-            if (replacement is null) return false;
-            PointShadowRenderer renderer;
+            if (BuildPointShadowReplacement(faceResolution, rows) is not { } replacement) return false;
+            CommitPointShadowReplacement(replacement);
+            return true;
+        }
+
+        /// <summary>Allocate an atlas of this layout and the pass behind it, WITHOUT touching the live pair.
+        /// Answers null when the device refused either half, having freed whatever the attempt had already built.
+        /// The caller either commits the result or disposes it, and until it does one of those the scene is
+        /// rendering exactly what it was rendering before.</summary>
+        internal PointShadowReplacement? BuildPointShadowReplacement(int faceResolution, int rows)
+        {
+            PointShadowAtlas? atlas = PointShadowAtlas.TryCreate(_gd, faceResolution, rows);
+            if (atlas is null) return null;
             try
             {
-                renderer = new PointShadowRenderer(_gd, replacement);
+                return new PointShadowReplacement(atlas, new PointShadowRenderer(_gd, atlas));
             }
             catch
             {
                 // The atlas allocation is not the only thing a device can refuse: the pass behind it is four
-                // shader sets and four pipelines. This method answers false rather than throwing, so a refusal
+                // shader sets and four pipelines. This method answers null rather than throwing, so a refusal
                 // here frees the atlas that was built for a pass that does not exist and leaves the previous
                 // atlas and renderer live, the way a refused cascade layout does.
-                replacement.Dispose();
-                return false;
+                atlas.Dispose();
+                return null;
             }
+        }
+
+        /// <summary>Make <paramref name="replacement"/> the live pair and retire the old one. Call it only once
+        /// every receiver is bound to the new texture, because this is the moment the old one stops existing.</summary>
+        internal void CommitPointShadowReplacement(PointShadowReplacement replacement)
+        {
             // An outgoing atlas may still be under a queued frame's reads, so drain before freeing it. A first
             // allocation has nothing to free and pays no stall.
             if (_pointShadowAtlas is not null) _gd.WaitForIdle();
             DisposePointShadows();
-            _pointShadowAtlas = replacement;
-            _pointShadows = renderer;
-            return true;
+            _pointShadowAtlas = replacement.Atlas;
+            _pointShadows = replacement.Renderer;
         }
 
         /// <summary>
@@ -317,13 +344,37 @@ namespace KhaozEngine.Render3D
 
         /// <summary>Release the atlas and its pass. Called from
         /// <see cref="DisposeTileGroundAndPointShadowResources"/> and by
-        /// <see cref="EnsurePointShadowAtlas"/> when a layout is replaced.</summary>
+        /// <see cref="CommitPointShadowReplacement"/> when a layout is replaced.</summary>
         void DisposePointShadows()
         {
             _pointShadows?.Dispose();
             _pointShadowAtlas?.Dispose();
             _pointShadows = null;
             _pointShadowAtlas = null;
+        }
+
+        /// <summary>An allocated atlas and the pass built for it, not yet live. It exists so that a reshape can
+        /// bring the new layout up and bind every receiver to it while the OLD atlas is still allocated and still
+        /// bound, which is what lets a refused bind leave the scene shadowing at the layout it had. Building on
+        /// top of the live pair instead left a failed bind with a disposed texture in every receiver set and
+        /// nothing to put back.</summary>
+        internal sealed class PointShadowReplacement
+        {
+            internal PointShadowReplacement(PointShadowAtlas atlas, PointShadowRenderer renderer)
+            {
+                Atlas = atlas;
+                Renderer = renderer;
+            }
+
+            internal PointShadowAtlas Atlas { get; }
+            internal PointShadowRenderer Renderer { get; }
+
+            /// <summary>Give the whole attempt back, for a caller that decided not to commit it.</summary>
+            internal void Dispose()
+            {
+                Renderer.Dispose();
+                Atlas.Dispose();
+            }
         }
     }
 }

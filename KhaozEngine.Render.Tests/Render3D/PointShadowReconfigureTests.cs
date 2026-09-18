@@ -191,6 +191,114 @@ public sealed class PointShadowReconfigureTests
         Assert.Equal(1, rig.Scene.PointShadowedLights);
     }
 
+    /// <summary>
+    /// A RESHAPE WHOSE REBIND FAILS KEEPS THE PREVIOUS ATLAS, ALLOCATED AND BOUND. The two halves of a reshape
+    /// can each be refused, and an allocation refusal was always safe because it never touched the live pair. A
+    /// rebind refusal was not: the live pair had already been freed to make room for the new one, so the failure
+    /// landed with every receiver set naming a texture that no longer existed and no fallback that could be built
+    /// under the same pressure that caused the failure. The order now matches the cascade replacement's, which
+    /// builds, binds and only then retires, so this case is the allocation case again.
+    /// </summary>
+    [Fact]
+    public void AReshapeWhoseRebindFailsKeepsThePreviousAtlasBoundAndShadowing()
+    {
+        using var rig = new ReconfigureRig();
+        rig.RenderTwoFrames(LightShadow.Static(1));
+        var live = (FakeTexture)rig.Scene.PointShadowTexture!;
+        int texturesBefore = rig.TextureCount;
+
+        rig.FailTheRebindAfterTheAllocation();
+        rig.Settings.PointShadows.FaceResolution = 384;
+        rig.RenderFrame(LightShadow.Static(1));
+
+        // The receivers never moved, and what they name is still allocated.
+        Assert.Same(live, rig.Scene.BoundPointShadowTexture);
+        Assert.Same(live, rig.Scene.PointShadowTexture);
+        Assert.False(live.Disposed);
+        Assert.Equal(0, rig.Factory.LiveSetsNamingAFreedTexture);
+
+        // The attempt's own atlas pair went back whole, because nothing in the scene ever pointed at it.
+        Assert.Equal(texturesBefore + 2, rig.TextureCount);
+        for (int i = texturesBefore; i < rig.TextureCount; i++) Assert.True(rig.Factory.Textures[i].Disposed);
+
+        PointShadowResolution refused = rig.Scene.ResolvedPointShadows;
+        Assert.True(refused.Enabled);
+        Assert.Equal(256, refused.FaceResolution);
+        Assert.Equal(8, refused.MaxShadowedLights);
+        Assert.True(refused.Degraded);
+        Assert.NotEqual("", refused.Reason);
+        Assert.Contains("384", refused.Reason, StringComparison.Ordinal);
+        Assert.Contains("256", refused.Reason, StringComparison.Ordinal);
+        Assert.Single(rig.Logger.Errors);
+
+        // And the light it was already shadowing is still shadowed, on this frame and on the next.
+        Assert.Equal(1, rig.Scene.PointShadowedLights);
+        rig.RenderFrame(LightShadow.Static(1));
+        Assert.Equal(1, rig.Scene.PointShadowedLights);
+    }
+
+    /// <summary>A refused REBIND latches exactly as a refused allocation does, for the same reason: the whole
+    /// transaction costs two textures, four pipelines and a stall, and a device that could not serve it is not
+    /// going to start. A different layout is a different question and is attempted for real.</summary>
+    [Fact]
+    public void ARefusedRebindIsNotRetriedAndADifferentLayoutStillIs()
+    {
+        using var rig = new ReconfigureRig();
+        rig.RenderTwoFrames(LightShadow.Static(1));
+        rig.FailTheRebindAfterTheAllocation();
+        rig.Settings.PointShadows.FaceResolution = 384;
+        rig.RenderFrame(LightShadow.Static(1));
+        Assert.True(rig.Scene.ResolvedPointShadows.Degraded);
+
+        PointShadowResolution refused = rig.Scene.ResolvedPointShadows;
+        int textures = rig.TextureCount;
+        rig.RenderFrame(LightShadow.Static(1));
+        rig.RenderFrame(LightShadow.Static(1));
+
+        // Not one texture allocated on either frame, which is the whole attempt not being made again.
+        Assert.Equal(textures, rig.TextureCount);
+        Assert.Equal(refused, rig.Scene.ResolvedPointShadows);
+        Assert.Single(rig.Logger.Errors);
+
+        rig.StopFailing();
+        rig.Settings.PointShadows.FaceResolution = 128;
+        rig.RenderFrame(LightShadow.Static(1));
+
+        Assert.Equal(new PointShadowResolution(true, 128, 8, false, null), rig.Scene.ResolvedPointShadows);
+        Assert.Same(rig.Scene.PointShadowTexture, rig.Scene.BoundPointShadowTexture);
+        Assert.Equal(0, rig.Factory.LiveSetsNamingAFreedTexture);
+        Assert.Equal(1, rig.Scene.PointShadowedLights);
+    }
+
+    /// <summary>
+    /// A CASCADE RECONFIGURE AFTER A REFUSED REBIND COPIES NOTHING DEAD FORWARD. The cascade replacement rebuilds
+    /// every receiver set from the renderer's own point-atlas handle, so that handle naming a freed texture does
+    /// not stay one generation of sets deep: the next unrelated quality change spreads it into a whole fresh
+    /// generation, and those sets are the ones the frame binds.
+    /// </summary>
+    [Fact]
+    public void ACascadeReconfigureAfterARefusedRebindBindsNothingThatWasFreed()
+    {
+        using var rig = new ReconfigureRig();
+        rig.RenderTwoFrames(LightShadow.Static(1));
+        var live = (FakeTexture)rig.Scene.PointShadowTexture!;
+        rig.FailTheRebindAfterTheAllocation();
+        rig.Settings.PointShadows.FaceResolution = 384;
+        rig.RenderFrame(LightShadow.Static(1));
+        Assert.True(rig.Scene.ResolvedPointShadows.Degraded);
+
+        rig.StopFailing();
+        rig.Scene.RequestShadowMapLayout(1024, rig.Settings.ShadowCascadeCount);
+        rig.RenderFrame(LightShadow.Static(1));
+
+        // One error in the log, the point refusal, so the cascade half went through rather than failing too.
+        Assert.Single(rig.Logger.Errors);
+        Assert.Equal(0, rig.Factory.LiveSetsNamingAFreedTexture);
+        Assert.Same(live, rig.Scene.BoundPointShadowTexture);
+        Assert.False(live.Disposed);
+        Assert.Equal(1, rig.Scene.PointShadowedLights);
+    }
+
     [Fact]
     public void ADifferentLayoutAfterARefusalIsAttemptedForReal()
     {
@@ -478,6 +586,13 @@ public sealed class PointShadowReconfigureTests
         // behaves like. The pass's slot ring is the last thing its constructor builds, so the refusal lands after
         // the atlas textures and all four pipelines exist.
         internal void FailTheNextResourceSetCreate() => Factory.ThrowOnResourceSetCreate = Factory.ResourceSets.Count + 1;
+
+        /// <summary>Let the next allocation through and refuse the REBIND behind it. The pass's slot ring is the
+        /// one set an allocation builds, so the second create of a reshape is the first receiver set, and the
+        /// refusal is sticky from there: the fallback rebind a failure used to attempt would have been refused
+        /// too, which is the pressure this reproduces.</summary>
+        internal void FailTheRebindAfterTheAllocation() =>
+            Factory.ThrowOnResourceSetCreate = Factory.ResourceSets.Count + 2;
 
         internal void StopFailing() => Factory.ThrowOnResourceSetCreate = 0;
 

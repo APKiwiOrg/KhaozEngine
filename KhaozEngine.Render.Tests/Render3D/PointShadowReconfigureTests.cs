@@ -344,6 +344,56 @@ public sealed class PointShadowReconfigureTests
         Assert.Equal(2, rig.Scene.PointShadowedLights);
     }
 
+    /// <summary>
+    /// A LIGHT THAT IS DIRTY EVERY FRAME MUST NOT STARVE THE OTHERS. One static light has a rigid caster inside it
+    /// whose matrix changes every frame, which makes its signature change every frame, and the rebuild budget is
+    /// ONE. Ranking the dirty rows in request order would hand that one light the whole budget for ever, and the
+    /// other two would sit on rows nothing had drawn into, publishing no slot and lighting nothing, for the whole
+    /// life of the scene.
+    /// <para>
+    /// The ranking is stalest first with a never-drawn row sorting ahead of every drawn one, so the always-dirty
+    /// light takes its turn and then goes to the back. Three lights and a budget of one means three frames.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void AnAlwaysDirtyStaticLightDoesNotStarveTheOthersOfTheRebuildBudget()
+    {
+        using var rig = new ReconfigureRig();
+        rig.Settings.PointShadows.MaxStaticRebuildsPerFrame = 1;
+        Vector3 eye = rig.Scene.Camera.Eye;
+        Vector3 jittering = eye + new Vector3(0f, 0f, 10f);
+
+        void Lights(Scene3D scene, int frame)
+        {
+            // The caster stands inside the nearest light and nowhere near the other two, and it moves a hair every
+            // frame, which is a changed matrix and so a changed signature.
+            scene.Draw(rig.Mesh, Matrix4x4.CreateTranslation(jittering + new Vector3(frame * 0.001f, 0f, 0f)));
+            scene.AddLight(jittering, Color.White, 6f, 1f, LightShadow.Static(1));
+            scene.AddLight(eye + new Vector3(0f, 0f, 30f), Color.White, 6f, 1f, LightShadow.Static(2));
+            scene.AddLight(eye + new Vector3(0f, 0f, 50f), Color.White, 6f, 1f, LightShadow.Static(3));
+        }
+
+        int frame = 0;
+        rig.RenderFrame(s => Lights(s, frame++));   // asks for the atlas, renders unshadowed
+        var shadowed = new int[4];
+        for (int i = 0; i < 4; i++)
+        {
+            rig.RenderFrame(s => Lights(s, frame++));
+            shadowed[i] = rig.Scene.PointShadowedLights;
+            Assert.Equal(1, rig.Scene.LastShadowPassDiagnostics.PointStaticRebuilds);
+        }
+
+        // One light a frame, in a bounded three, and then the always-dirty one takes its turn again without
+        // costing anybody theirs.
+        Assert.Equal(new[] { 1, 2, 3, 3 }, shadowed);
+
+        // Still one rebuild a frame after that, which is the jittering caster keeping its own light dirty: a zero
+        // here would say the caster had stopped moving and the case had stopped testing anything.
+        rig.RenderFrame(s => Lights(s, frame++));
+        Assert.Equal(1, rig.Scene.LastShadowPassDiagnostics.PointStaticRebuilds);
+        Assert.Equal(3, rig.Scene.PointShadowedLights);
+    }
+
     [Fact]
     public void ARequestAfterDisposalThrows()
     {

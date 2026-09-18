@@ -382,7 +382,9 @@ shadow map: cached behind a key for a placed light, rebuilt every frame for one 
 - **`Scene3D.RequestPointShadowSettings(PointShadowSettings)` is the supported live path**, the way
   `RequestShadowMapLayout` is for the cascade atlas, and it applies at the next frame boundary. The settings are
   cloned, so the caller keeps its own object. Mutating the public `ShadowSettings.PointShadows` fields in place
-  is picked up at that same boundary, and disabling releases the atlas there.
+  is read at that same boundary, and disabling releases the atlas there. The two do not merge and a request
+  wins: the boundary assigns the clone over the live settings object, so an in-place edit made in the same frame
+  goes with the object it was made on.
   `Scene3D.RequestShadowMapDetail(detail)` now carries that detail's point profile too, so a game with one shadow
   quality setting needs no second call and the point atlas no longer waits for a restart.
   `Scene3D.ResolvedPointShadows` is a `PointShadowResolution` reporting the LIVE layout rather than the requested

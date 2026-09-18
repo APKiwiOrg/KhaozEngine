@@ -56,10 +56,14 @@ namespace KhaozEngine.Render3D
         /// object it passed, and the clone is adopted at the next <see cref="Begin"/> along with any atlas
         /// reallocation it implies. Disabling releases the atlas entirely at that boundary.
         /// <para>
-        /// Mutating <see cref="ShadowSettings.PointShadows"/> in place keeps working and is picked up at the same
-        /// boundary through the same path. This overload exists for the case the cascade atlas has the same
-        /// overload for: handing a whole profile over at once, without the caller having to know which fields a
-        /// profile touches.
+        /// Mutating <see cref="ShadowSettings.PointShadows"/> in place keeps working and is read at the same
+        /// boundary. The two do not MERGE, and a request wins: the boundary assigns the clone over the live
+        /// settings object, so an in-place edit made in the same frame goes with the object it was made on,
+        /// whether it was made before the request or after it. Use one or the other within a frame.
+        /// </para>
+        /// <para>
+        /// This overload exists for the case the cascade atlas has the same overload for: handing a whole profile
+        /// over at once, without the caller having to know which fields a profile touches.
         /// </para>
         /// </summary>
         /// <param name="settings">The budget to adopt. Not retained.</param>
@@ -79,6 +83,10 @@ namespace KhaozEngine.Render3D
         {
             if (_pendingPointShadowSettings is { } requested)
             {
+                // The clone REPLACES the live settings object, so a request made in a frame takes any in-place
+                // edit made to that object in the same frame with it. That is the documented rule rather than an
+                // accident: merging two descriptions of the same budget would need a per-field dirty flag on a
+                // plain settings object, and the caller already knows which of the two it meant.
                 Post.Quality.Shadows.PointShadows = requested;
                 _pendingPointShadowSettings = null;
             }

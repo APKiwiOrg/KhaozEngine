@@ -3517,8 +3517,10 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
         profile along with the cascade layout, so a game with ONE shadow quality setting needs no second call.
         `scene.RequestPointShadowSettings(settings)` is the supported path for a custom budget: it clones what it
         is handed, so the caller may keep and reuse its own object. Mutating the public
-        `ShadowSettings.PointShadows` fields in place is picked up at the same boundary through the same path,
-        and turning `Enabled` off releases the atlas there.
+        `ShadowSettings.PointShadows` fields in place is read at the same boundary, and turning `Enabled` off
+        releases the atlas there. The two do not merge and a request wins: the boundary assigns the clone over
+        the live settings object, so an in-place edit made in the same frame goes with the object it was made on,
+        whichever order the two happened in. Use one or the other within a frame.
       - **`scene.ResolvedPointShadows` is what the frame is actually rendering, not what was asked for.** It is a
         `PointShadowResolution`: `Enabled` (an atlas is live and a light that asks can be given a row, so it is
         false both when the settings turned point shadows off and when nothing has asked for one yet),

@@ -85,6 +85,12 @@ internal sealed partial class ModelRenderer
         return set;
     }
 
+    /// <summary>Build a splat-terrain material resource set (set 1): the material's params UBO + the two 5-layer
+    /// texture arrays (albedo, tangent-space normal) + a terrain (wrap/anisotropic) sampler + the two shadow
+    /// atlases. Shared across every chunk using this material and owned by Scene3D, NOT per mesh.
+    /// <paramref name="sampler"/> is the shared default one unless the material overrides its
+    /// <see cref="TerrainSamplerConfig"/>, in which case the caller owns the one it passes. Tracked, which is the
+    /// only way a splat set may be built: see the note in ModelRenderer.Splat.cs.</summary>
     internal IGpuResourceSet CreateTrackedSplatMaterialSet(IGpuBuffer paramsUbo, IGpuTexture albedoArray,
         IGpuTexture normalArray, IGpuSampler? sampler = null) =>
         CreateShadowSamplingSet(_splatMaterialLayout, _shadowMap.ShadowTexture,

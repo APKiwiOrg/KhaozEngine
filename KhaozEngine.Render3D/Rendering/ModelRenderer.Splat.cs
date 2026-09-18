@@ -91,18 +91,11 @@ namespace KhaozEngine.Render3D.Rendering
             return ubo;
         }
 
-        /// <summary>Build a splat-terrain material resource set (set 1): the material's params UBO + the two 5-layer
-        /// texture arrays (albedo, tangent-space normal) + the shared terrain (wrap/anisotropic) sampler + the shadow
-        /// map. Shared across every chunk using this material and owned by Scene3D, NOT per mesh.</summary>
-        public IGpuResourceSet CreateSplatMaterialSet(IGpuBuffer paramsUbo, IGpuTexture albedoArray, IGpuTexture normalArray) =>
-            CreateSplatMaterialSet(paramsUbo, albedoArray, normalArray, _terrainSampler);
-
-        /// <summary>As above, but binds an explicit <paramref name="sampler"/> instead of the shared default one
-        /// (used by a material that overrides its <see cref="TerrainSamplerConfig"/>). The caller owns that sampler.</summary>
-        public IGpuResourceSet CreateSplatMaterialSet(IGpuBuffer paramsUbo, IGpuTexture albedoArray, IGpuTexture normalArray, IGpuSampler sampler) =>
-            _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(
-                _splatMaterialLayout, paramsUbo, albedoArray, normalArray, sampler,
-                _shadowMap.ShadowTexture, _shadowMap.ShadowSampler, _pointShadowTexture));
+        // A splat material set is built by CreateTrackedSplatMaterialSet
+        // (ModelRenderer.ShadowLayoutReplacement.cs) and by nothing else. There is deliberately no untracked
+        // builder beside it: a set carrying the two atlases has to be in _shadowSamplingBindings or the next
+        // layout replacement throws on it, which would break both ReplaceShadowLayout and BindPointShadowAtlas
+        // permanently rather than for one frame.
 
         /// <summary>Bind the splat-terrain pipeline for the splat pass (call once before its draw loop). The frame
         /// block it reads is the shared one <see cref="SetFrameUniforms"/> already uploaded this frame, so unlike the

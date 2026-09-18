@@ -1,6 +1,6 @@
 # Point light shadows
 
-Status: in flight, riding the staged 19.2.0. Issue #1002. Owner decision 2026-09-17.
+Status: ships in 19.2.0. Issue #1002. Owner decision 2026-09-17.
 
 ## The problem
 
@@ -47,10 +47,12 @@ fanning through the doorway. In Ruinborne a fireball lights the far side of a pi
    to unshadowed, nearest to the eye first.
 5. **Rigid casters only in this round, shadow-only instances included.** Skinned casters in dynamic maps
    are a follow-up with their own issue. A static map that included a body would be wrong a frame later.
-6. **Lazy allocation.** The atlas exists from the first frame that carries a request, so a game that never
-   asks pays no memory. `ShadowSettings.PointShadows` rides the Low, Default and High profiles (off, 8 lights
-   at 256, 16 lights at 512) and reconfigures at the frame boundary the way the cascade atlas does, keeping
-   the previous layout on an allocation failure.
+6. **Nothing is allocated until something asks, and all of it happens at the FRAME BOUNDARY.** A game that
+   never requests a point shadow allocates nothing at all. Once a frame has carried a request, the atlas comes
+   up at the next frame boundary rather than inside that frame, beside the cascade atlas's own pending layout,
+   so the first frame to ask renders unshadowed and the one after it carries the map (see what the build taught,
+   item 7). `ShadowSettings.PointShadows` rides the Low, Default and High profiles (off, 8 lights at 256, 12
+   lights at 384) and keeps the previous layout on an allocation failure.
 7. **Per-row clears by a depth-always quad under scissor**, never by `ClearColorTarget`, because whether a
    clear honours the scissor differs per backend and the quad does not.
 8. **Culling is a sphere test per instance against the light sphere.** An instance that touches the light
@@ -68,6 +70,81 @@ fanning through the doorway. In Ruinborne a fireball lights the far side of a pi
 - Compare: `lit = step(d, stored + bias + slopeBias * (1 - ndl))`, averaged over a 2x2 tap pattern at half
   texel offsets clamped inside the cell. `att *= lit`. A slot below zero skips the whole thing, which is the
   byte-identical path.
+
+## What the build taught
+
+Ten things the implementation settled or corrected, kept here because the decision is not readable off the
+shipped code.
+
+1. **The pass stores the NEAREST surface with no face culling, so the whole acne budget sits on the bias
+   defaults.** Decision 2 stores linear distance and nothing about it says which side of a caster is stored.
+   Rasterizing with `GpuFaceCull.None` means a thin wall's near face wins and a receiver behind it compares
+   against a distance that is genuinely closer than its own. That is the correct answer for open geometry, which
+   a front-face or back-face cull would either leak through or double-count, but it removes the usual dodge of
+   pushing acne onto the caster's back faces. So `Bias` and `SlopeBias` are the only defence and they are
+   defaults rather than knobs a consumer is expected to reach for, which is why they are clamped rather than
+   trusted and why a floor of zero is enforced.
+2. **The face uniforms are packed for every dirty light and uploaded ONCE, outside the pass.** The first shape
+   packed a light's faces and uploaded the ring from inside the pass, so a frame with N shadowed lights would
+   have done N whole-buffer updates with the atlas framebuffer bound. The frame is four steps instead: size the
+   ring, pack each dirty light's six faces at its own packed index, upload the whole ring before the pass opens,
+   then open the pass once and clear and draw every packed row inside it. The caster cull stays per light and is
+   rebuilt per row inside the pass, because it records nothing.
+3. **A failed atlas rebind is its own answer and it is LATCHED.** A rebind that returned the same false for "the
+   binding already stands" and "the rebuild threw" left a host with no way to tell the ordinary per-frame case
+   from a permanent failure, and a failure leaves the renderer still wanting the atlas it failed on, so a caller
+   asking every frame re-entered the whole transaction and its GPU idle wait once a frame forever. The result is
+   three-way, and a failure latches against the texture that caused it: the same atlas asked for again is
+   refused without touching the device, and any other texture (including the 1x1 default a null asks for) clears
+   the latch and is attempted for real.
+4. **The untracked splat material set builder was DELETED rather than guarded.** It built a set carrying both
+   shadow atlases directly, bypassing the tracked path, so the result never entered the shadow sampling
+   bindings, and such a set reaching the live material sets would make every later layout change fail
+   permanently rather than for one frame. Neither overload had a caller, since the one splat material site
+   already used the tracked builder, so the fix was removal plus a note in its place saying why there is no
+   untracked variant. A guard would have left the trap in the API for the next caller to find.
+5. **The foliage VERTEX stage shares the frame block and had to grow with it.** The frame block is shared
+   between the stages of one program, and the foliage vertex stage is paired with the model fragment, so it
+   declares the point shadow tail even though it reads none of it. The layout tests now find that stage by
+   SCANNING for the block rather than by a list, so the next stage in this position is not missed the same way.
+6. **There are FOUR pinned tables, not three.** The three cross-compile hash tables (Metal MSL, Vulkan SPIR-V,
+   D3D11 HLSL) are the ones everyone remembers. The shader corpus is a fourth artefact pinned the same way, and
+   it drifts independently: the rebuild that took the pass's four programs also refreshed 35 rows across six
+   older programs whose committed corpus values had fallen out of step with the hash tables. Both halves of this
+   work re-baked, so the merged tree took one final re-bake after every shader change was in.
+7. **Allocation and rebinding moved OUT of the frame and onto the frame boundary.** The first shape allocated
+   the atlas inside the frame that first asked for one, which meant a GPU idle wait and a rebuild of every
+   material set in the scene with a command list open, swapping the sets the model pass was about to bind out
+   from under it. That is not how the proven cascade path works, and it is not something this machine can test:
+   the two backends that would have shown the stall are the two the dev machine cannot run. So the frame that
+   asks only RECORDS that it asked, and the reconfigure at the next boundary does every allocation, reshape,
+   rebind and release, which is the path the cascade atlas already had tests and three backends behind. The
+   visible cost is one unshadowed frame per new request.
+8. **Slot acquisition resolves an existing owner before it will consider an eviction, and a row already
+   requested on this frame is never a victim.** Acquisition runs nearest to the eye first, and under a plain
+   least-recently-requested eviction that order let a newcomer cascade evictions through lights that were about
+   to be re-requested, so a frame of lights took each other's rows and rebuilt every one of them. The scan
+   answers in that order instead: a row whose key AND mode match comes back untouched with its map, a free row
+   is next, and only then is the least recently requested row taken, skipping every row this frame has already
+   named. With the request list already cut to the row count, those two rules are the guarantee that matters: no
+   light in a frame can take a row away from another light in the same frame.
+9. **A dynamic light has no identity of its own, so a row is owned by the (key, MODE) pair.** Decision 4 gives
+   a dynamic light no key, and the scene keys its row by the light's place in the light queue. That number lands
+   inside a static caller's key space by construction, so keying on the number alone handed queue index 3 the map
+   belonging to static key 3. The pair is the fix, and the queue-position key is then affordable for the reason
+   the mode exists: a dynamic row is marked dirty on every acquire and redrawn on every frame it is drawn at
+   all, so a shuffled queue costs a rebuild rather than a wrong picture. What the keying does NOT survive is the
+   per-frame budget, and that is the honest limit on the mode: a dynamic light past
+   `MaxDynamicLightsPerFrame` is not redrawn that frame, so one whose row has never been drawn into is handed no
+   slot and renders unshadowed (an undrawn row holds whatever the allocation left in it), and one drawn on an
+   earlier frame goes on sampling that older map. The budget is therefore a consumer-facing number rather than
+   an internal one, and the guidance in USING says to keep the lights alight at once at or under it.
+10. **The High profile is 384 by 12, not 512 by 16.** The atlas is nine bytes a texel (4 of `R32Float` colour
+    plus 5 of `D32FloatS8UInt` depth), so 512 by 16 is 226,492,416 bytes, 216 MiB of resident video memory,
+    which is not a defensible thing for a quality preset to help itself to on hardware the operator never
+    chose. 384 by 12 is 95,551,488 bytes, about 91 MiB, and is still half again the face resolution and half
+    again the light budget of Default's 256 by 8 at 28,311,552 bytes (27 MiB). `PointShadowSettings.AtlasBytes`
+    is the arithmetic and a test pins all three profiles against it.
 
 ## Proof
 

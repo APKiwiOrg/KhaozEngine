@@ -278,6 +278,28 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   - Validate a menu choice with `Shadows.ResolveFor(caps)` and read `.Effective`/`.Degraded`/`.Reason` (same
   `ResolveFor`-clamps-a-request pattern as AA, never throws). With `Off` the blob queue is ignored and the shadow tail
   sits at strength 0 (never tapped), so existing scenes are byte-stable.
+  - POINT lights get their own omnidirectional maps out of a second pass, so a lantern stops at a wall instead of
+  pooling through it. `Scene3D.AddLight(pos, color, radius, intensity, LightShadow)` carries the request:
+  `LightShadow.None` (the default, and what the four-argument overload forwards, so a scene queuing none of the others
+  is byte-identical), `LightShadow.Static(key)` for a CACHED map re-rendered only when the light moves, its radius
+  changes or the rigid casters inside its radius change, and `LightShadow.Dynamic` for one rebuilt every frame. The
+  atlas is one R32Float texture of six face columns by `MaxShadowedLights` rows storing LINEAR distance over radius,
+  so the receiver picks a cube face analytically and needs no matrices. Nothing is allocated until a frame has carried
+  a request, and the allocation and every rebind happen at the FRAME BOUNDARY, so the first frame to ask renders
+  unshadowed and the frame after it carries the map. Knobs on `ShadowSettings.PointShadows` (a `PointShadowSettings`):
+  `Enabled`, `FaceResolution` (default `256`, `64..1024` via `ResolvedFaceResolution`), `MaxShadowedLights` (default
+  `8`, `1..16` via `ResolvedMaxLights`, and requests past it fall back to unshadowed nearest-eye-first),
+  `MaxStaticRebuildsPerFrame` (default `2`), `MaxDynamicLightsPerFrame` (default `4`, nearest-eye-first, and a light
+  past it is not redrawn that frame), and the radius-normalized `Bias`/`SlopeBias` (defaults `0.01`/`0.02`, clamped
+  `0..MaxBias` via `ResolvedBias`/`ResolvedSlopeBias`).
+  `AtlasBytes` reports the cost once allocated (27 MiB at the defaults). `ShadowSettings.ForDetail` seeds it on the
+  same three profiles (`Low` off, `High` 384 by 12 at about 91 MiB), `Scene3D.RequestShadowMapDetail` carries it on a
+  live scene and `Scene3D.RequestPointShadowSettings` requests a custom one, both at the next frame boundary and both
+  keeping the previous atlas when allocation fails, with `Scene3D.ResolvedPointShadows` reporting what is in force and
+  why.
+  Rigid casters only in this round (`DrawShadowOnly` instances included, skinned casters a follow-up). Read
+  `Scene3D.PointShadowedLights`, or `PointShadowedLights`/`PointStaticRebuilds`/`PointDynamicRenders`/
+  `PointFaceDrawCalls`/`PointSlotsInUse` on `ShadowPassDiagnostics`.
 - Frustum culling: `Scene3D.FrustumCulling` (on by default) skips any queued mesh instance whose world-space
   bounding sphere is entirely outside the camera frustum, so off-screen terrain chunks and props cost nothing to
   draw. Pixel-neutral by construction (only provably-offscreen geometry is dropped), so existing renders stay

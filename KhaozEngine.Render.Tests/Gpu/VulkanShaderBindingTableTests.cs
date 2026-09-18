@@ -67,6 +67,14 @@ namespace KhaozEngine.Tests.Gpu
                 ["ShadowDepthDissolveInverted"] = "ShadowMapRenderer depth",
                 ["SkinnedShadowDepth"] = "ShadowMapRenderer skinned depth",
 
+                // The point-light pass's four, all built into the one single-set pipeline shape: the dissolve
+                // fragments and the clear quad read the SAME uniform block the caster does rather than adding a
+                // resource of their own, exactly as the cascade variants do.
+                ["PointShadowRigid"] = "PointShadowRenderer",
+                ["PointShadowRigidDissolve"] = "PointShadowRenderer",
+                ["PointShadowRigidDissolveInverted"] = "PointShadowRenderer",
+                ["PointShadowClear"] = "PointShadowRenderer",
+
                 ["Beam"] = "BeamRenderer",
                 // The Line pair has three call sites and two of them go through OverlayRenderer, whose layout is
                 // the same single uniform block. Its primary one is named here, as in the catalog.
@@ -185,7 +193,7 @@ namespace KhaozEngine.Tests.Gpu
                 .Select(p => p.Pipeline)
                 .ToHashSet(StringComparer.Ordinal);
 
-            Assert.Equal(36, catalog.Length);
+            Assert.Equal(40, catalog.Length);
             Assert.Equal(catalog.Length, ProgramPipelines.Count);
 
             foreach (string program in catalog)

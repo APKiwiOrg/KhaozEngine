@@ -54,7 +54,7 @@ namespace KhaozEngine.Tests.Gpu
             }
 
             // Includes the retained foliage parameter layout.
-            Assert.Equal(38, shapes.Count);
+            Assert.Equal(39, shapes.Count);
 
             for (int segment = 0; segment < harness.Rings.FramesInFlight; segment++)
             {

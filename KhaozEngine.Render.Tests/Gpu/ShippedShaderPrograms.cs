@@ -24,7 +24,7 @@ namespace KhaozEngine.Tests.Gpu
     /// a program from this list.
     ///
     /// <para>
-    /// DEDUPLICATED BY SOURCE PAIR, not by call site. The catalog contains 36 graphics pairs and eight compute
+    /// DEDUPLICATED BY SOURCE PAIR, not by call site. The catalog contains 40 graphics pairs and eight compute
     /// kernels. The <c>Line</c> pair is created three times (<c>DepthLineRenderer</c>, and <c>LineRenderer</c> plus
     /// <c>FillRenderer</c> through <c>OverlayRenderer</c>), and identical sources cross-compile to identical
     /// HLSL, so three rows would be three copies of one fact. Where a pair has several call sites the name is its
@@ -48,7 +48,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>The cascade resolutions <c>OceanFftProducer</c> can compile a kernel for.</summary>
         public static readonly int[] OceanResolutions = { 32, 64, 128, 256 };
 
-        /// <summary>Every distinct shipped vertex and fragment pair, 36 of them.</summary>
+        /// <summary>Every distinct shipped vertex and fragment pair, 40 of them.</summary>
         public static IEnumerable<ShippedGraphicsProgram> GraphicsPrograms()
         {
             // Render2D.
@@ -77,6 +77,19 @@ namespace KhaozEngine.Tests.Gpu
                 ShaderSources.ShadowDepthDissolveVert, ShaderSources.ShadowDepthDissolveInvertedFrag);
             yield return new("SkinnedShadowDepth",
                 ShaderSources.SkinnedShadowDepthVert, ShaderSources.ShadowDepthFrag);
+
+            // Render3D point-light shadow atlas, the same three caster variants one geometry over plus the
+            // per-row clear quad. The casters carry the same input sink the cascade ones do, for the same
+            // FXC/WARP reason. The clear pair declares no vertex input at all (it is a fullscreen triangle off
+            // gl_VertexIndex), which is why the vertex-layout sweep skips it and the hash tables do not.
+            yield return new("PointShadowRigid",
+                ShaderSources.PointShadowRigidVert, ShaderSources.PointShadowRigidFrag);
+            yield return new("PointShadowRigidDissolve",
+                ShaderSources.PointShadowRigidDissolveVert, ShaderSources.PointShadowRigidDissolveFrag);
+            yield return new("PointShadowRigidDissolveInverted",
+                ShaderSources.PointShadowRigidDissolveVert, ShaderSources.PointShadowRigidDissolveInvertedFrag);
+            yield return new("PointShadowClear",
+                ShaderSources.PointShadowClearVert, ShaderSources.PointShadowClearFrag);
 
             // Render3D effects and overlays.
             yield return new("Beam", ShaderSources.BeamVert, ShaderSources.BeamFrag);

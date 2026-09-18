@@ -125,6 +125,11 @@ namespace KhaozEngine.Tests.Gpu
                 ["Pixel.tone"] = L(T("Src"), S("Samp"), U("Tone", F)),
                 ["Pixel.apply"] = L(T("Src"), T("OffsetTex"), S("Samp"), U("Apply", F)),
 
+                // Render3D/Rendering/PointShadowRenderer.cs:85. ONE layout behind all four of that pass's
+                // pipelines, and the only shadow layout both stages read: the vertex takes the face matrix and the
+                // fragment takes the light position and radius it divides the stored distance by.
+                ["PointShadow"] = L(U("U", VF, dynamic: true)),
+
                 // Render3D/Rendering/ShadowMapRenderer.cs:125 and :141
                 ["Shadow"] = L(U("U", V, dynamic: true)),
                 ["Shadow.skinned"] = L(U("VBlock", V, dynamic: true)),
@@ -196,6 +201,10 @@ namespace KhaozEngine.Tests.Gpu
             ("PixelPostProcess composite", ["Pixel.composite"]),
             ("PixelPostProcess tone", ["Pixel.tone"]),
             ("PixelPostProcess apply", ["Pixel.apply"]),
+            // All FOUR point-shadow pipelines (the three caster variants and the row clear) are one row, the way
+            // the cascade pass's three depth variants are: they differ in blend, depth state and shaders, and a
+            // pipeline is in this table for its LAYOUT ARRAY, which is the same single set for all of them.
+            ("PointShadowRenderer", ["PointShadow"]),
             ("ShadowMapRenderer depth", ["Shadow"]),
             ("ShadowMapRenderer skinned depth", ["Shadow.skinned", "SkinnedBonePalette"]),
             ("SkyRenderer", ["Sky"]),
@@ -217,8 +226,8 @@ namespace KhaozEngine.Tests.Gpu
         {
             // Foliage adds one layout and one pipeline beside the existing shared model material layout.
             // Both counts are stated so an emptied table cannot pass by agreeing with itself.
-            Assert.Equal(38, ShippedLayouts.Count);
-            Assert.Equal(35, ShippedPipelines.Count);
+            Assert.Equal(39, ShippedLayouts.Count);
+            Assert.Equal(36, ShippedPipelines.Count);
 
             foreach ((string pipeline, string[] slots) in ShippedPipelines)
             {

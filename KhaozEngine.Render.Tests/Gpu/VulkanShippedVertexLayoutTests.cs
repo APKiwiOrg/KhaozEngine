@@ -39,6 +39,9 @@ namespace KhaozEngine.Tests.Gpu
             using IGpuCommandList commands = factory.CreateCommandList();
             model.UploadFoliageUniforms(commands, [default]);
             CaptureClipmapPipeline(device, framebuffer.Outputs, commands);
+            // The point-shadow pass is allocated lazily, so a scene that is never asked for one builds none of its
+            // four pipelines and the three caster programs would read here as uncaptured.
+            Assert.True(scene.EnsurePointShadowAtlas(PointShadowAtlas.MinFaceResolution, 1));
 
             ShippedGraphicsProgram[] expectedPrograms = ShippedShaderPrograms.GraphicsPrograms()
                 .Where(program => Parse(program.VertexGlsl).Count > 0)

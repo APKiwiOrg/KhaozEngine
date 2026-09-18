@@ -228,9 +228,7 @@ namespace KhaozEngine.Render3D
                     int slot = (int)(run.Start + s);
                     if (slot >= _pointCasterKinds.Count) break;
                     if (_pointCasterKinds[slot] == ShadowCastKind.None) continue;
-                    mesh.Bounds.WorldSphere(_instanceData[slot].Model, out Vector3 centre, out float r);
-                    float reach = r + radius;
-                    if ((centre - lightPosAbsolute).LengthSquared() > reach * reach)
+                    if (!InstanceTouchesLight(mesh.Bounds, _instanceData[slot].Model, lightPosAbsolute, radius))
                         _pointCasterKinds[slot] = ShadowCastKind.None;
                 }
                 AppendCasterSpans(run.Mesh.Index, run.Mesh.Generation, run.Start, run.Count,

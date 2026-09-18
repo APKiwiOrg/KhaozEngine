@@ -1822,6 +1822,11 @@ namespace KhaozEngine.Render3D
             else
                 _model.ClearShadowUniforms();
 
+            // Point-light shadow maps (Scene3D.PointShadows.cs): after the key light's pass, because it reuses the
+            // same uploaded instances, and before the model pass, which binds the material sets a first atlas
+            // allocation rebuilds and uploads the receiver tail written here.
+            PreparePointShadows(cl, ActiveCamera.Eye);
+
             timingStart = EnableTiming ? Stopwatch.GetTimestamp() : 0;
             _model.BeginModelPass(cl, _res, Post);
             _model.SetFrameUniforms(cl, vp, eye, Post, CollectionsMarshal.AsSpan(_lights), _frameOrigin);

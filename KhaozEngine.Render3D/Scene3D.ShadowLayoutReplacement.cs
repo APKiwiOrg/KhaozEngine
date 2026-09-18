@@ -15,17 +15,7 @@ public sealed partial class Scene3D
             return ShadowLayoutReplacementResult.Unchanged;
 
         var liveSets = new List<IGpuResourceSet>();
-        foreach (Mesh? mesh in _meshes)
-            if (mesh is { MaterialSet: { } set }) liveSets.Add(set);
-        foreach (SkinnedMeshEntry? mesh in _skinnedMeshes)
-        {
-            if (mesh?.MaterialSet is { } materialSet) liveSets.Add(materialSet);
-            if (mesh?.SkinnedMaterialSet is { } skinnedMaterialSet) liveSets.Add(skinnedMaterialSet);
-        }
-        foreach (SplatMaterialEntry? material in _splatMaterials)
-            if (material is not null) liveSets.Add(material.Set);
-        foreach (TileGroundMaterialEntry? material in _tileGroundMaterials)
-            if (material is not null) liveSets.Add(material.Set);
+        CollectLiveMaterialSets(liveSets);
 
         bool replaced = _model.ReplaceShadowLayout(
             resolution,
@@ -35,6 +25,25 @@ public sealed partial class Scene3D
             CommitMaterialSets,
             () => _shadowPassRendered = false);
         return replaced ? ShadowLayoutReplacementResult.Replaced : ShadowLayoutReplacementResult.Failed;
+    }
+
+    /// <summary>Every live resource set that carries a shadow binding, which is what a texture swap has to rebuild
+    /// and hand back. One definition, because the cascade atlas replacement and the point-shadow atlas bind change
+    /// the same sets for the same reason, and a set missing from one of the two lists would keep binding a freed
+    /// texture.</summary>
+    void CollectLiveMaterialSets(List<IGpuResourceSet> into)
+    {
+        foreach (Mesh? mesh in _meshes)
+            if (mesh is { MaterialSet: { } set }) into.Add(set);
+        foreach (SkinnedMeshEntry? mesh in _skinnedMeshes)
+        {
+            if (mesh?.MaterialSet is { } materialSet) into.Add(materialSet);
+            if (mesh?.SkinnedMaterialSet is { } skinnedMaterialSet) into.Add(skinnedMaterialSet);
+        }
+        foreach (SplatMaterialEntry? material in _splatMaterials)
+            if (material is not null) into.Add(material.Set);
+        foreach (TileGroundMaterialEntry? material in _tileGroundMaterials)
+            if (material is not null) into.Add(material.Set);
     }
 
     void CommitMaterialSets(Func<IGpuResourceSet, IGpuResourceSet> replacementFor)

@@ -123,9 +123,9 @@ namespace KhaozEngine.Tests.Gpu
         [GpuFact]
         public void AHigherBudgetProfileChangesNothingWhileNoLightAsksForOne()
         {
-            // The High profile is 16 lights at 512, which is a different atlas shape and therefore different
-            // PointShadowAtlas uniforms once Task 3 fills them. With no request queued nothing allocates and
-            // nothing samples, so the picture is the Default profile's picture.
+            // A bigger budget than any profile ships is a different atlas shape and therefore different
+            // PointShadowAtlas uniforms once a light asks. With no request queued nothing allocates and nothing
+            // samples, so the picture is the Default profile's picture.
             byte[] standard = Capture(LightShadow.None, useFiveArgOverload: false);
             byte[] high = Capture(LightShadow.None, scene =>
             {

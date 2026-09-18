@@ -13,7 +13,8 @@ namespace KhaozEngine.Render3D;
 /// </para>
 /// <para>
 /// Rides <see cref="ShadowSettings.PointShadows"/>, and the three <see cref="ShadowSettings.ForDetail"/> profiles
-/// seed it: Low turns it off, Default is the values below, High doubles the face and the light budget.
+/// seed it: Low turns it off, Default is the values below (256 by 8, about 27 MiB), High is 384 by 12 (about
+/// 96 MiB). <see cref="AtlasBytes"/> is why High is not larger than that.
 /// </para>
 /// </summary>
 public sealed class PointShadowSettings

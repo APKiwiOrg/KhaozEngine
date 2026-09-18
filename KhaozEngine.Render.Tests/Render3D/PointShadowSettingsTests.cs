@@ -140,8 +140,27 @@ public sealed class PointShadowSettingsTests
         PointShadowSettings p = ShadowSettings.ForDetail(ShadowMapDetail.High).PointShadows;
 
         Assert.True(p.Enabled);
-        Assert.Equal(512, p.FaceResolution);
-        Assert.Equal(16, p.MaxShadowedLights);
+        Assert.Equal(384, p.FaceResolution);
+        Assert.Equal(12, p.MaxShadowedLights);
+    }
+
+    /// <summary>
+    /// WHAT EACH PROFILE COSTS IN VIDEO MEMORY, pinned so the next person to move one of these numbers reads the
+    /// price in the same commit. The atlas is nine bytes a texel, so the face resolution is squared and the light
+    /// budget is linear: raising High from 384 by 12 to 512 by 16 would take it from 96 MB to 226 MB, which is
+    /// what these three numbers exist to make visible.
+    /// <para>
+    /// Low is off, so it allocates nothing at all. Its figure is what the atlas WOULD cost if a game turned the
+    /// feature back on without touching the rest of the profile, which is why the number is Default's.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void ForDetail_AtlasBytes_AreTheMemoryEachProfileCosts()
+    {
+        Assert.Equal(28_311_552L, ShadowSettings.ForDetail(ShadowMapDetail.Default).PointShadows.AtlasBytes);
+        Assert.Equal(95_551_488L, ShadowSettings.ForDetail(ShadowMapDetail.High).PointShadows.AtlasBytes);
+        Assert.Equal(28_311_552L, ShadowSettings.ForDetail(ShadowMapDetail.Low).PointShadows.AtlasBytes);
+        Assert.False(ShadowSettings.ForDetail(ShadowMapDetail.Low).PointShadows.Enabled);
     }
 
     [Fact]

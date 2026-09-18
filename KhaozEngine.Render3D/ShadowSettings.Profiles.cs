@@ -32,7 +32,13 @@ namespace KhaozEngine.Render3D
             };
             // The point-light atlas rides the same three profiles. Low turns it off outright (its cost is a
             // whole second shadow pass, which is the first thing a low-end profile should stop paying), Default
-            // keeps PointShadowSettings' own defaults, and High doubles the face and the light budget.
+            // keeps PointShadowSettings' own defaults, and High raises both the face and the light budget.
+            //
+            // HIGH IS 384 BY 12 RATHER THAN 512 BY 16 BECAUSE OF WHAT THAT COSTS. The atlas is nine bytes a texel
+            // (R32Float colour plus D32FloatS8UInt depth), so 512 by 16 is 216 MiB of resident video memory, which
+            // is not a defensible thing for a quality preset to help itself to. 384 by 12 is about 96 MiB and is
+            // still half again the face resolution and half again the light budget of Default's 256 by 8 (27 MiB).
+            // PointShadowSettings.AtlasBytes is the arithmetic, and a test pins all three profiles against it.
             var points = new PointShadowSettings();
             switch (detail)
             {
@@ -40,8 +46,8 @@ namespace KhaozEngine.Render3D
                     points.Enabled = false;
                     break;
                 case ShadowMapDetail.High:
-                    points.FaceResolution = 512;
-                    points.MaxShadowedLights = 16;
+                    points.FaceResolution = 384;
+                    points.MaxShadowedLights = 12;
                     break;
             }
             return new ShadowSettings

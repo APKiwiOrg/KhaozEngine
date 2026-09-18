@@ -332,6 +332,72 @@ deck, and bodies sank through the planks while a click on the deck resolved on t
 its old names, and the one-argument presenter and ground height behave as they did. A game adopts by authoring
 `walkSurfaces` on the archetype and building its presenter with `new TilePresenter(document, catalogs)`.
 
+**Point lights cast shadows: a wall lantern stops at the wall instead of pooling through it
+([#1002](https://github.com/APKiwiOrg/KhaozEngine/issues/1002)).** Every point light `Scene3D.AddLight` queued
+added its term everywhere inside its radius, whatever stood between, so a door lantern lit the inside faces of
+the walls beside it and a fireball lit the far side of a pillar. A point light can now carry an omnidirectional
+shadow map: cached behind a key for a placed light, rebuilt every frame for one that moves.
+
+- **`Scene3D.AddLight(worldPos, color, radius, intensity, LightShadow shadow)` is the new overload and the whole
+  API.** `LightShadow` is a readonly record struct carrying a `LightShadowMode` and a key, and the mode has
+  three values. `LightShadow.None` is the struct's default value and is what the
+  four-argument overload forwards, `LightShadow.Static(key)` takes a CACHED map behind the caller's own stable
+  key, and `LightShadow.Dynamic` takes one rebuilt every frame. A request is a REQUEST rather than an
+  instruction: a light past the frame's budget is drawn unshadowed rather than dropped.
+- **A scene that queues no `LightShadow` renders BYTE-IDENTICALLY to before.** The receiver gates on the light's
+  own slot being at or above zero, and with no slots handed in that is the branch every point light already
+  took. Turning `PointShadows.Enabled` off on a scene that does request maps lands on the same path.
+- **One `R32Float` atlas of six face columns by N light rows, storing LINEAR distance over radius.** The pass
+  writes `length(worldPos - lightPos) / radius` into a cell, cleared to 1. So the receiver needs NO matrices and
+  no cube map: it picks the face from the light-to-fragment vector by the cube-map standard, reads the cell for
+  (face, slot), and compares the fragment's own normalized distance against the stored one over four taps
+  clamped inside the cell. Backend depth conventions never enter the compare. `PointShadowSettings.Bias`
+  (default `0.01`) and `SlopeBias` (default `0.02`) are in those same radius-normalized units, both clamped into
+  `0`..`PointShadowSettings.MaxBias` (`0.25`).
+- **A cached map is re-rendered only when something under it changed**: the light moved, its radius changed, or
+  the rigid caster signature inside its radius changed. A still scene rebuilds none of them, which is what a
+  placed lantern, a lamp post or a forge is for. A `Dynamic` map is six faces every frame and carries no key,
+  because a cache would be stale the frame after it was taken.
+- **Two per-frame budgets and one ceiling.** `MaxStaticRebuildsPerFrame` (default `2`) caps how many cached maps
+  one frame may rebuild and `MaxDynamicLightsPerFrame` (default `4`) how many per-frame maps it may render, so a
+  frame in which several changed at once costs a bounded amount. `MaxShadowedLights` (default `8`, clamped into
+  `MinLights`..`MaxLights`, which is the fixed point-light array size of 16) is how many lights may carry a map
+  at all, and it is also the atlas row count. Requests past it fall back to unshadowed, NEAREST TO THE EYE
+  FIRST.
+- **`ShadowSettings.PointShadows` is the whole settings object, and the atlas is LAZY.** It is allocated on the
+  first frame that carries a request, so a game that never asks pays nothing. `ShadowSettings.ForDetail` seeds
+  it on the same three profiles the cascade atlas rides: `Low` sets `Enabled = false`, `Default` is the values
+  above, and `High` is `FaceResolution = 512` with `MaxShadowedLights = 16`. `PointShadowSettings.AtlasBytes`
+  reports what the resolved layout costs once allocated, at 4 bytes of `R32Float` colour plus 5 of
+  `D32FloatS8UInt` depth per texel: 27 MiB at `Default` and 216 MiB at `High`.
+- **`Scene3D.RequestPointShadowSettings(PointShadowSettings)` applies at the next frame boundary**, the way
+  `RequestShadowMapLayout` does, and keeps the previous atlas rendering if the replacement cannot be allocated.
+  `Scene3D.ResolvedPointShadows` reports the settings actually in force and a reason when they were degraded.
+  `Scene3D.RequestShadowMapDetail(detail)` now carries that detail's point shadow profile too, so a live
+  graphics menu moves both atlases together instead of the point one waiting for a restart.
+- **Rigid casters only this round, shadow-only instances included.** An instance drawn through
+  `DrawShadowOnly` writes into a point map exactly as it writes into the cascade atlas, and an instance that
+  opted out with `castsShadows: false` writes into neither. Skinned casters are a follow-up: a cached map that
+  included a body would be wrong a frame later, and putting them in dynamic maps alone is its own decision.
+  Culling is one sphere test per instance against the light sphere, and an instance that touches the light draws
+  into all six faces.
+- **Five diagnostics on `ShadowPassDiagnostics`**, beside the cascade pass's own: `PointShadowedLights` (how
+  many lights carried a map after the budget cut the requests down), `PointStaticRebuilds`,
+  `PointDynamicRenders`, `PointFaceDrawCalls` (every caster draw the pass issued across every face of every
+  light) and `PointSlotsInUse` (rows the slot cache is holding, including rows kept for a light not requested
+  this frame). `Scene3D.PointShadowedLights` is the same count read straight off the scene.
+- **Two things an engine contributor must know.** The shared frame uniform block GREW: the point shadow tail
+  (`vec4 PointShadowParams[16]` index-aligned with the two point-light arrays, plus one `vec4 PointShadowAtlas`)
+  went on the END, after the render origin, so every offset that existed before it is where it was and
+  `ModelRenderer.UboBytes` moves from 1008 to 1280. And `PointShadowMap` is a new binding directly after
+  `ShadowSamp` in EVERY receiver family that binds `ShadowMap` (model, skinned, foliage, terrain, tile ground),
+  read through the existing `ShadowSamp`, with a 1x1 white `R32Float` bound there until a real atlas exists. The
+  foliage VERTEX stage declares the tail as well: it reads none of it, but it shares one block with the model
+  fragment.
+- Four pinned tables were re-baked: the Metal MSL, Vulkan SPIR-V and D3D11 HLSL cross-compile hashes, and the
+  shader corpus. The pass's four programs joined the shipped program roster at the same time, so they are
+  cross-compiled, checked against the pipeline layout and pinned like every other program.
+
 ## 19.1.0
 
 A hidden roof still casts. Shadow-only instances are the fourth caster policy: geometry a view hides from the eye

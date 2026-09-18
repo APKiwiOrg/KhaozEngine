@@ -3073,6 +3073,30 @@ scene.Draw(crate, transform, Color.White, Material.None, dissolve: fadeTimer, ed
   like the draw queue. Only the first `Scene3D.MaxPointLights` (16) queued in a frame are uploaded - the host
   picks the N nearest to the action so a dense scene stays within the GPU budget. Zero lights renders
   byte-identical to the key+fill path. Presentation only: never feed a light back into simulation/collision.
+
+  `scene.AddLight(worldPos, color, radius, intensity, LightShadow)` is the five-argument overload, and the extra
+  argument asks for an omnidirectional shadow map so the light stops at walls instead of pooling through them.
+  `LightShadow.None` is the default and is exactly the four-argument call. `LightShadow.Static(key)` takes a
+  CACHED map for a light whose surroundings do not move, re-rendered only when the light moves, its radius
+  changes, or the rigid casters inside its radius change. `LightShadow.Dynamic` takes one rebuilt every frame,
+  for a light that moves. See **Point light shadows** under the shadows section below for the budgets, the
+  memory and the settings.
+
+  ```csharp
+  // A placed light: keyed on the object id the world already has for this lantern, so the cached map
+  // survives across frames and across the light leaving and re-entering the queue.
+  scene.AddLight(lantern.WorldPos, LanternWarm, radius: 7f, intensity: 2.2f,
+                 LightShadow.Static(lantern.ObjectId));
+
+  // An effect light: it moves every frame, so a cache would be stale the frame after it was taken.
+  scene.AddLight(fireball.WorldPos, FireOrange, radius: 6f, intensity: 3f, LightShadow.Dynamic);
+  ```
+
+  A good `key` is STABLE across frames and UNIQUE per light. The world's own id for the placed object is the
+  right answer (a tile-world object id, an entity id, a prefab instance id). A loop index, an array position or
+  a hash of the light's position is the wrong one, because it changes when anything else in the scene changes
+  and the cache then rebuilds a map that did not need rebuilding. Two lights sharing one key are ONE cache
+  entry, which is a caller bug the engine cannot detect.
 - 3D beams: `scene.DrawBeam(a, b, width, color, BeamStyle?)` queues a camera-facing, additive,
   depth-interleaved glowing beam between two world points (lasers, thrusters, tethers): a bright core in a soft
   halo. It draws INTO the model pass with the depth test on (no write), like the textured billboard, so geometry
@@ -3443,6 +3467,58 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       re-records via `CasterDataChanged` and cannot leave a ghost. Raise `ShadowLightHoldCasterHeight` for a scene
       with casters taller than 12 m (the hold then releases sooner), and raise `ShadowLightHoldTexels` above 1 only
       with the result in front of you, since it is a visible step at the re-fit boundary that it is trading away.
+    - **Point light shadows** (issue #1002). Everything above is the KEY light. A point light queued through
+      `scene.AddLight(..., LightShadow)` carries its own omnidirectional map out of a second pass with its own
+      atlas, its own settings and its own budgets, and the two features never touch. The modes and a keying
+      example are under **Dynamic point lights** above. A scene that queues no `LightShadow` renders
+      byte-identically to before, so there is nothing to opt out of.
+      - **The settings live on `ShadowSettings.PointShadows` (a `PointShadowSettings`).** `Enabled` (default
+        `true`) is the master switch, and `false` renders every point light unshadowed whatever each one asked
+        for and releases the atlas. `FaceResolution` (default `256`) is pixels per axis of ONE cube face,
+        clamped into `MinFaceResolution`..`MaxFaceResolution` (`64`..`1024`) by `ResolvedFaceResolution`.
+        `MaxShadowedLights` (default `8`) is how many lights may carry a map at once and is also the atlas row
+        count, clamped into `MinLights`..`MaxLights` (`1`..`16`, the fixed point-light array size) by
+        `ResolvedMaxLights`. Requests past it fall back to unshadowed, nearest to the eye first.
+      - **Two per-frame budgets.** `MaxStaticRebuildsPerFrame` (default `2`) caps how many CACHED maps one frame
+        may re-render, which bounds the frame in which several of them changed at once. A still scene rebuilds
+        none, which is the whole point of the cache. `MaxDynamicLightsPerFrame` (default `4`) caps the
+        every-frame maps, and each one of those is six faces every frame, so it is the hard ceiling on the
+        pass's steady cost.
+      - **The atlas is LAZY, and `AtlasBytes` is what it costs once it exists.** Nothing is allocated until the
+        first frame that carries a request, so a game that never asks for a point shadow pays no memory for any
+        of these numbers. `PointShadowSettings.AtlasBytes` reports the resolved layout at 4 bytes of `R32Float`
+        colour plus 5 of `D32FloatS8UInt` depth per texel: 27 MiB at the defaults, 216 MiB at 512 by 16. Read it
+        into a settings screen the way `ShadowMapResolution`'s cascade cost is read.
+      - **The three detail profiles carry it.** `ShadowSettings.ForDetail(ShadowMapDetail.Low)` sets
+        `Enabled = false` (a whole second shadow pass is the first thing a low-end profile should stop paying),
+        `Default` keeps the values above, and `High` is `FaceResolution = 512` with `MaxShadowedLights = 16`.
+        On a live scene, `scene.RequestShadowMapDetail(detail)` applies the point profile along with the cascade
+        layout, and `scene.RequestPointShadowSettings(settings)` requests a custom one. Both land at the next
+        frame boundary, and a replacement the device refuses leaves the previous atlas rendering, with
+        `scene.ResolvedPointShadows` reporting the settings actually in force and a reason when they were
+        degraded. `scene.PointShadowedLights` is how many lights carried a map last frame, and
+        `LastShadowPassDiagnostics` carries `PointShadowedLights`, `PointStaticRebuilds`, `PointDynamicRenders`,
+        `PointFaceDrawCalls` and `PointSlotsInUse` beside the cascade pass's own counters.
+      - **Rigid casters only in this round.** Models, tile ground and splat terrain write into a point map on
+        the same rules they write into the cascade atlas, `DrawShadowOnly` instances included and
+        `castsShadows: false` instances excluded. A SKINNED caster writes into neither point map yet, so a
+        character standing between a shadowed light and a wall throws no shadow from that light. It is a
+        follow-up rather than an oversight: a cached map that had baked a body into it would be wrong the
+        following frame.
+      - **The bias knobs, and when to touch them.** `Bias` (default `0.01`) and `SlopeBias` (default `0.02`) are
+        in RADIUS-NORMALIZED units, because the atlas stores distance over radius rather than projected depth,
+        and both clamp into `0`..`MaxBias` (`0.25`) through `ResolvedBias` and `ResolvedSlopeBias`. The floor is
+        the point: a negative bias turns the compare the other way and every receiver reads as occluded by
+        itself. `SlopeBias` is applied as `SlopeBias * (1 - ndl)`, so it is largest where the light grazes the
+        surface, which is where acne is worst. Leave both alone unless you see something. Raise `SlopeBias`
+        first for acne on surfaces the light grazes, then `Bias` for acne facing the light, and lower whichever
+        you raised if a shadow detaches from the foot of its caster. Raising `FaceResolution` is the other
+        answer to acne and costs memory rather than contact.
+      - **Cull your own lights anyway.** The engine uploads only the first `Scene3D.MaxPointLights` (16) lights
+        queued in a frame, and the shadow budget then selects from within that 16. So a scene that queues fifty
+        lights and leaves the choice to the engine gets whichever sixteen it happened to queue first, shadowed
+        or not. Keep doing what the unshadowed light budget already asked for: pick the nearest few to the
+        camera or the action each frame, and queue those.
 - Edge outline: `Post.Outline` (off by default, opt-in per consumer) draws a depth/normal toon outline. `OutlineColor`,
   `OutlineDepthThreshold` (depth-discontinuity sensitivity), and `OutlineNormalThreshold` (interior-crease
   sensitivity from the geometric normal) tune it. The outline is perspective-correct: under a

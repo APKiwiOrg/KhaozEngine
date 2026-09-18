@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Rendering;
 
@@ -318,6 +319,10 @@ namespace KhaozEngine.Render3D
             MixPointSignature(ref hash, Quantise(lightPosAbsolute.Z));
             MixPointSignature(ref hash, Quantise(radius));
 
+            // Read by reference: an InstanceData is 128 bytes and this runs once per instance per static request
+            // per frame, so copying one out of the list to reach two of its fields is the one thing here worth
+            // avoiding.
+            Span<ModelRenderer.InstanceData> instances = CollectionsMarshal.AsSpan(_instanceData);
             foreach (MeshRun run in _runs)
             {
                 if (!_slots.IsValid(run.Mesh.Index, run.Mesh.Generation)) continue;
@@ -327,12 +332,12 @@ namespace KhaozEngine.Render3D
                 for (uint s = 0; s < run.Count; s++)
                 {
                     int slot = (int)(run.Start + s);
-                    if (slot >= _instanceData.Count) break;
+                    if (slot >= instances.Length) break;
                     ShadowCastKind kind = slot < _instanceCastKinds.Count
                         ? _instanceCastKinds[slot]
                         : ShadowCastKind.Opaque;
                     if (kind == ShadowCastKind.None) continue;
-                    ModelRenderer.InstanceData data = _instanceData[slot];
+                    ref ModelRenderer.InstanceData data = ref instances[slot];
                     if (!InstanceTouchesLight(mesh.Bounds, data.Model, lightPosAbsolute, radius)) continue;
 
                     MixPointSignature(ref hash, (ulong)(uint)run.Mesh.Index);

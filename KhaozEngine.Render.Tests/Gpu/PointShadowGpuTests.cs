@@ -276,6 +276,49 @@ public sealed class PointShadowGpuTests(PointShadowScene fixture) : IClassFixtur
     }
 
     /// <summary>
+    /// TWO DYNAMIC LIGHTS IN ONE FRAME ARE TWO ROWS, each holding its own light's map. A dynamic light carries no
+    /// key of its own, so the scene keys it by its place in the light queue, and nothing else pins that two of
+    /// them are keyed apart: one shared key would give the second light the first one's row, and it would cast
+    /// the first light's shadow from the second light's position.
+    /// <para>
+    /// Each light stands over its own wall five metres from the other, and each is a channel of its own, so the
+    /// red probes measure the red light with the blue one contributing nothing to that number. A single shared
+    /// row shows up as one of the two shadows landing in the wrong place.
+    /// </para>
+    /// </summary>
+    [GpuFact]
+    public void TwoDynamicLightsInOneFrameEachShadowFromTheirOwnPosition()
+    {
+        Vector3 redLight = new(0f, 2f, -4f), blueLight = new(0f, 2f, 4f);
+        Vector3 redDark = new(5f, 0f, -4f), redLit = new(-5f, 0f, -4f);
+        Vector3 blueDark = new(5f, 0f, 4f), blueLit = new(-5f, 0f, 4f);
+
+        PointShadowScene.Shot shot = fixture.One(s =>
+        {
+            s.DrawFloor();
+            s.DrawWall(zOffset: -4f);
+            s.DrawWall(zOffset: 4f);
+            s.AddLight(redLight, new Color(1f, 0f, 0f, 1f), Radius, PointShadowScene.Intensity,
+                LightShadow.Dynamic);
+            s.AddLight(blueLight, new Color(0f, 0f, 1f, 1f), Radius, PointShadowScene.Intensity,
+                LightShadow.Dynamic);
+        });
+
+        foreach (Vector3 probe in new[] { redDark, redLit, blueDark, blueLit })
+            Assert.True(fixture.OnScreen(probe), $"the probe at {probe} is off the picture");
+        Assert.Equal(2, shot.ShadowedLights);
+        Assert.Equal(2, shot.Diagnostics.PointDynamicRenders);
+        Assert.Equal(2, shot.Diagnostics.PointSlotsInUse);
+        Assert.True(shot.Red(redDark) <= shot.Red(redLit) - 20,
+            $"the first dynamic light must be shadowed by its own wall: {shot.Red(redDark)} against "
+            + $"{shot.Red(redLit)}");
+        Assert.True(shot.Blue(blueDark) <= shot.Blue(blueLit) - 20,
+            $"the second dynamic light must be shadowed by ITS own wall, from its own position: "
+            + $"{shot.Blue(blueDark)} against {shot.Blue(blueLit)}. Two dynamic lights sharing one atlas row "
+            + "is what this reads like.");
+    }
+
+    /// <summary>
     /// A BIGGER PROFILE RESHAPES THE ATLAS AND THE SHADOW SURVIVES IT. The reshape frees the texture every cached
     /// row lived in, so the row has to be drawn again into the new one before its light may sample it. A light
     /// still reading its old slot would sample freshly allocated memory, and a cache that forgot the light

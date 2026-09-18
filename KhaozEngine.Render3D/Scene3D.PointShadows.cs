@@ -142,7 +142,15 @@ namespace KhaozEngine.Render3D
                 int byDistance = a.DistanceSq.CompareTo(b.DistanceSq);
                 return byDistance != 0 ? byDistance : a.LightIndex.CompareTo(b.LightIndex);
             });
-            int budget = settings.ResolvedMaxLights;
+            // The budget is the SMALLER of what the settings ask for and what the live atlas actually has. A raised
+            // row count is not live until the boundary has reshaped the atlas, so between the request and the
+            // reshape (and forever, if the device refused that layout) the settings promise rows that do not
+            // exist, and a light past the live count would spend a whole acquire asking for one. With no cache at
+            // all the setting stands on its own, because that is the frame whose request is what makes the atlas
+            // wanted in the first place.
+            int budget = _pointSlotCache is { } cache
+                ? Math.Min(settings.ResolvedMaxLights, cache.Capacity)
+                : settings.ResolvedMaxLights;
             if (_pointRequests.Count > budget) _pointRequests.RemoveRange(budget, _pointRequests.Count - budget);
             return true;
         }

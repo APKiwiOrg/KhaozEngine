@@ -63,7 +63,9 @@ namespace KhaozEngine.Render3D
         /// </summary>
         /// <param name="cl">This frame's open command list. The pass is recorded into it, not submitted.</param>
         /// <param name="eyeAbsolute">The camera in absolute space, which the budget ranks requests by.</param>
-        void PreparePointShadows(IGpuCommandList cl, Vector3 eyeAbsolute)
+        /// <remarks>Internal rather than private only so the allocation test can measure this one method on a
+        /// steady-state frame. Nothing outside <c>RenderInternal</c> calls it in a real frame.</remarks>
+        internal void PreparePointShadows(IGpuCommandList cl, Vector3 eyeAbsolute)
         {
             PointShadowedLights = 0;
             int frame = ++_pointShadowFrame;

@@ -300,6 +300,50 @@ public sealed class PointShadowReconfigureTests
         Assert.Equal(0, rig.Scene.LastShadowPassDiagnostics.PointStaticRebuilds);
     }
 
+    /// <summary>
+    /// A NEW TEXTURE OF THE SAME SHAPE IS STILL A NEW TEXTURE. Changing only the face size keeps the row count,
+    /// so the slot cache survives the reshape with its owners intact, and nothing about the OWNERS says the rows
+    /// they point at were freed with the texture under them. An R32F allocation reads as zero, which the compare
+    /// takes as fully occluded, so a static light left reading its old row goes black rather than merely stale.
+    /// <para>
+    /// The rebuild budget is one and two lights are shadowed, so only one of them can be re-drawn on the frame the
+    /// reshape lands. The other must report NO slot until its turn comes: a count of two here is a light sampling
+    /// a texture nothing has drawn into.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void AReshapedAtlasOfTheSameRowCountLeavesEveryRowUndrawn()
+    {
+        using var rig = new ReconfigureRig();
+        rig.Settings.PointShadows.MaxStaticRebuildsPerFrame = 1;
+        Vector3 eye = rig.Scene.Camera.Eye;
+
+        void Pair(Scene3D scene)
+        {
+            scene.Draw(rig.Mesh, Matrix4x4.Identity);
+            scene.AddLight(eye + new Vector3(0f, 0f, 10f), Color.White, 4f, 1f, LightShadow.Static(1));
+            scene.AddLight(eye + new Vector3(0f, 0f, 20f), Color.White, 4f, 1f, LightShadow.Static(2));
+        }
+
+        for (int i = 0; i < 4; i++) rig.RenderFrame(Pair);
+        Assert.Equal(new PointShadowResolution(true, 256, 8, false, null), rig.Scene.ResolvedPointShadows);
+        Assert.Equal(2, rig.Scene.PointShadowedLights);
+        Assert.Equal(0, rig.Scene.LastShadowPassDiagnostics.PointStaticRebuilds);
+
+        // The same eight rows at a bigger face, which is a whole new texture and a whole new set of empty rows.
+        rig.Settings.PointShadows.FaceResolution = 384;
+        rig.RenderFrame(Pair);
+
+        Assert.Equal(new PointShadowResolution(true, 384, 8, false, null), rig.Scene.ResolvedPointShadows);
+        Assert.Equal(1, rig.Scene.LastShadowPassDiagnostics.PointStaticRebuilds);
+        Assert.Equal(1, rig.Scene.PointShadowedLights);
+
+        rig.RenderFrame(Pair);
+
+        Assert.Equal(1, rig.Scene.LastShadowPassDiagnostics.PointStaticRebuilds);
+        Assert.Equal(2, rig.Scene.PointShadowedLights);
+    }
+
     [Fact]
     public void ARequestAfterDisposalThrows()
     {

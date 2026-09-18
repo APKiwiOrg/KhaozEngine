@@ -394,6 +394,34 @@ public sealed class PointShadowGpuTests(PointShadowScene fixture) : IClassFixtur
     }
 
     /// <summary>
+    /// A BIGGER FACE AT THE SAME ROW COUNT IS STILL A NEW TEXTURE. The row count is what the slot cache is sized
+    /// to, so this reshape keeps every owner and only the pixels under them go away. A row left reading as drawn
+    /// would have its light sample freshly allocated R32F, which reads as zero, which the compare takes as fully
+    /// occluded: the light goes BLACK rather than stale. So the row has to come back undrawn, be re-rendered, and
+    /// light the floor exactly as it did before.
+    /// </summary>
+    [GpuFact]
+    public void AFaceResolutionChangeAtTheSameRowCountRedrawsTheRowRatherThanSamplingIt()
+    {
+        IReadOnlyList<PointShadowScene.Shot> shots = fixture.Many(3, (s, frame) =>
+        {
+            if (frame == 1) s.Settings.FaceResolution = 384;   // adopted at the next frame boundary
+            s.DrawFloor();
+            s.DrawWall();
+            s.AddLight(Light, Color.White, Radius, PointShadowScene.Intensity, LightShadow.Static(112));
+        });
+
+        Assert.Equal(new PointShadowResolution(true, 384, 8, false, null), fixture.Resolved);
+        Assert.Equal(1, shots[2].Diagnostics.PointStaticRebuilds);
+        Assert.Equal(1, shots[2].ShadowedLights);
+        Assert.True(shots[2].Red(Open) > 60,
+            $"the open floor reads {shots[2].Red(Open)} after the reshape, which is a light sampling a texture "
+            + "nothing has drawn into rather than a shadow");
+        Assert.True(shots[2].Red(Shadowed) <= shots[2].Red(Open) - 20,
+            $"the wall must still cast after the reshape: {shots[2].Red(Shadowed)} against {shots[2].Red(Open)}");
+    }
+
+    /// <summary>
     /// THE LOW PROFILE GIVES THE MEMORY BACK AND THE PICTURE GOES BACK TO WHAT IT WAS. Turning point shadows off
     /// is not a darker or a softer picture, it is the SAME BYTES as a scene that never asked, because the
     /// receiver's slot table reads -1 and the sample, the texture read and the multiply are all skipped.

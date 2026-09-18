@@ -259,6 +259,47 @@ public sealed class PointShadowReconfigureTests
         Assert.Equal(8, rig.Scene.LastShadowPassDiagnostics.PointSlotsInUse);
     }
 
+    /// <summary>
+    /// A DYNAMIC LIGHT PAST THE BUDGET SAMPLES NOTHING, BECAUSE ITS ROW IS NOT ITS OWN. A dynamic light carries no
+    /// key, so the scene keys it by its place in the light queue, and that number belongs to somebody else the
+    /// moment one of them expires and the rest shift down. Eight of them with a dynamic budget of four: the four
+    /// nearest are drawn, the other four are not, and a row kept from an earlier frame would let one of those four
+    /// match a row another light drew and cast that light's shadow from its own position, indefinitely.
+    /// <para>
+    /// The lights MOVE between the two frames, which is the whole reason they are dynamic, so the four nearest are
+    /// a different four and the inherited keys land on lights the budget cannot reach.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void ADynamicLightPastTheBudgetPublishesNoSlotAfterTheQueueShifts()
+    {
+        using var rig = new ReconfigureRig();
+        Vector3 eye = rig.Scene.Camera.Eye;
+        Assert.Equal(4, rig.Settings.PointShadows.MaxDynamicLightsPerFrame);
+
+        void Queue(Scene3D scene, Func<int, float> distance, int count)
+        {
+            scene.Draw(rig.Mesh, Matrix4x4.Identity);
+            for (int i = 0; i < count; i++)
+                scene.AddLight(eye + new Vector3(0f, 0f, distance(i)), Color.White, 4f, 1f, LightShadow.Dynamic);
+        }
+
+        // Eight dynamics, nearest first, so the four the budget draws are queue indices 0 to 3.
+        rig.RenderFrame(s => Queue(s, i => 10f + i, 8));
+        rig.RenderFrame(s => Queue(s, i => 10f + i, 8));
+
+        Assert.Equal(4, rig.Scene.LastShadowPassDiagnostics.PointDynamicRenders);
+        Assert.Equal(4, rig.Scene.PointShadowedLights);
+
+        // One expires and the rest shift down a place, having moved: the four nearest are now queue indices 3 to
+        // 6, so keys 0, 1 and 2 are held by lights the budget will not draw and whose rows another light filled.
+        rig.RenderFrame(s => Queue(s, i => i < 3 ? 40f + i : 10f + i, 7));
+
+        Assert.Equal(4, rig.Scene.LastShadowPassDiagnostics.PointDynamicRenders);
+        Assert.Equal(4, rig.Scene.PointShadowedLights);
+        Assert.Equal(0, rig.Scene.LastShadowPassDiagnostics.PointStaticRebuilds);
+    }
+
     [Fact]
     public void ARequestAfterDisposalThrows()
     {

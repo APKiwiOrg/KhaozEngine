@@ -319,6 +319,59 @@ public sealed class PointShadowGpuTests(PointShadowScene fixture) : IClassFixtur
     }
 
     /// <summary>
+    /// A DYNAMIC LIGHT NEVER INHERITS ANOTHER LIGHT'S MAP. A dynamic light carries no key, so the scene keys it by
+    /// its place in the light queue, and that place belongs to somebody else as soon as the queue changes. With a
+    /// dynamic budget of one, the near light draws its row and the far one is not drawn at all. Queue them the
+    /// other way round on the next frame and the far light now holds the near light's key: a row kept across the
+    /// frame boundary would hand it a map baked around the OTHER light, and it would cast that light's wall as a
+    /// shadow of its own, from a position four metres away, for as long as it stayed past the budget.
+    /// <para>
+    /// Each light owns a channel, so the blue numbers are the far light alone. Its two probes are symmetric about
+    /// it with nothing between them and it, so they must read the same: the inherited map darkens one of them.
+    /// </para>
+    /// </summary>
+    [GpuFact]
+    public void ADynamicLightPastTheBudgetIsUnshadowedRatherThanShadowedFromAnotherLightsRow()
+    {
+        Vector3 near = new(0f, 2f, 4f), far = new(0f, 2f, -4f);
+        Vector3 nearDark = new(5f, 0f, 4f), nearLit = new(-5f, 0f, 4f);
+        Vector3 farDark = new(5f, 0f, -4f), farLit = new(-5f, 0f, -4f);
+        Assert.True((near - fixture.Eye).Length() < (far - fixture.Eye).Length(),
+            "this case needs the red light to rank first, so the budget draws it and not the blue one");
+
+        IReadOnlyList<PointShadowScene.Shot> shots = fixture.Many(3, (s, frame) =>
+        {
+            s.DrawFloor();
+            s.DrawWall(zOffset: 4f);                      // the NEAR light's wall, and the only one until frame 2
+            if (frame == 2) s.DrawWall(zOffset: -4f);     // the far light's own, once it is the one being drawn
+            // Frame 0 queues the near light first, frame 1 queues the far one first. The near light is nearer
+            // either way, so the budget still draws it, and the far light inherits the key it just vacated.
+            if (frame == 1) s.AddLight(far, new Color(0f, 0f, 1f, 1f), Radius, PointShadowScene.Intensity,
+                LightShadow.Dynamic);
+            if (frame != 2) s.AddLight(near, new Color(1f, 0f, 0f, 1f), Radius, PointShadowScene.Intensity,
+                LightShadow.Dynamic);
+            if (frame != 1) s.AddLight(far, new Color(0f, 0f, 1f, 1f), Radius, PointShadowScene.Intensity,
+                LightShadow.Dynamic);
+        }, new PointShadowSettings { MaxDynamicLightsPerFrame = 1 });
+
+        // Frame 1: one light drawn, one light shadowed, and the far light lit evenly on both sides of itself.
+        Assert.Equal(1, shots[1].Diagnostics.PointDynamicRenders);
+        Assert.Equal(1, shots[1].ShadowedLights);
+        Assert.True(shots[1].Red(nearDark) <= shots[1].Red(nearLit) - 20,
+            $"the drawn light must still shadow: {shots[1].Red(nearDark)} against {shots[1].Red(nearLit)}");
+        Assert.True(Math.Abs(shots[1].Blue(farDark) - shots[1].Blue(farLit)) <= 8,
+            $"the light past the budget must be UNSHADOWED: {shots[1].Blue(farDark)} against "
+            + $"{shots[1].Blue(farLit)}. A row kept from the frame before hands it the other light's map.");
+
+        // Frame 2: the near light is gone, so the far one is inside the budget and shadows from its OWN position.
+        Assert.Equal(1, shots[2].Diagnostics.PointDynamicRenders);
+        Assert.Equal(1, shots[2].ShadowedLights);
+        Assert.True(shots[2].Blue(farDark) <= shots[2].Blue(farLit) - 20,
+            $"drawn at last, it must shadow from where it stands: {shots[2].Blue(farDark)} against "
+            + $"{shots[2].Blue(farLit)}");
+    }
+
+    /// <summary>
     /// A BIGGER PROFILE RESHAPES THE ATLAS AND THE SHADOW SURVIVES IT. The reshape frees the texture every cached
     /// row lived in, so the row has to be drawn again into the new one before its light may sample it. A light
     /// still reading its old slot would sample freshly allocated memory, and a cache that forgot the light
@@ -533,6 +586,17 @@ public sealed class PointShadowScene : IDisposable
         {
             Device();
             return _scene!.ResolvedPointShadows;
+        }
+    }
+
+    /// <summary>Where the camera stands, so a case that depends on which of two lights the budget ranks first can
+    /// say so as a precondition rather than assume it.</summary>
+    public Vector3 Eye
+    {
+        get
+        {
+            Device();
+            return _scene!.Camera.Eye;
         }
     }
 

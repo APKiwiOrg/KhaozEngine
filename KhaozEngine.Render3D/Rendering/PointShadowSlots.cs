@@ -192,6 +192,24 @@ namespace KhaozEngine.Render3D.Rendering
             e.LastRenderedFrame = frame;
         }
 
+        /// <summary>
+        /// Free every <see cref="LightShadowMode.Dynamic"/> row outright. Called at the START of a frame's
+        /// acquire, before phase one, so a dynamic row never survives the frame it was drawn on.
+        /// <para>
+        /// A DYNAMIC LIGHT HAS NO IDENTITY ACROSS FRAMES. It carries no key of its own, so the scene keys it by
+        /// its place in the light queue, and that number belongs to a different light the moment one dynamic light
+        /// expires and the rest shift down. A row kept across the frame boundary would be matched by its new
+        /// namesake, reported as rendered, and sampled as a shadow cast from the old light's position, for as long
+        /// as that light stayed past the per-frame dynamic budget. So the row goes back every frame and a dynamic
+        /// light either renders this frame or samples nothing.
+        /// </para>
+        /// </summary>
+        public void ReleaseDynamicRows()
+        {
+            for (int i = 0; i < _entries.Length; i++)
+                if (_entries[i].Occupied && _entries[i].Mode == LightShadowMode.Dynamic) _entries[i] = default;
+        }
+
         /// <summary>Free every row whose light was not requested on <paramref name="frame"/>. Called once a frame,
         /// so a light that stops being queued gives its row back to the next one that asks instead of being
         /// evicted later under pressure.</summary>

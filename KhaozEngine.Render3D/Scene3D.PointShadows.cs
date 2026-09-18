@@ -96,7 +96,7 @@ namespace KhaozEngine.Render3D
             AcquirePointShadowSlots(cache, frame);
             ChoosePointShadowRebuilds(cache, settings);
             int draws = RenderChosenPointShadowRows(cl, cache, frame);
-            PublishPointShadowUniforms(cache, settings);
+            PublishPointShadowUniforms(cache, settings, frame);
             cache.ReleaseUnrequested(frame);
             RecordPointShadowDiagnostics(cache, draws);
         }
@@ -159,6 +159,12 @@ namespace KhaozEngine.Render3D
         /// </summary>
         void AcquirePointShadowSlots(PointShadowSlots cache, int frame)
         {
+            // A dynamic light has no identity across frames, so its row carries nothing across one either. Handing
+            // the rows back BEFORE phase one is what stops a light that inherited an expired light's queue index
+            // from re-seating itself onto that light's map, and it puts the row back in front of the static lights
+            // for the frames the dynamic budget cannot reach it.
+            cache.ReleaseDynamicRows();
+
             for (int i = 0; i < _pointRequests.Count; i++)
             {
                 PointShadowRequest request = _pointRequests[i];
@@ -246,16 +252,27 @@ namespace KhaozEngine.Render3D
         /// drawn into: a row acquired this frame but deferred by the rebuild budget holds whatever the allocation
         /// left in it, and a receiver sampling that would read noise rather than a shadow.
         /// <para>
+        /// A DYNAMIC LIGHT IS HELD TO A STRICTER TEST: its row must have been drawn THIS frame. It has no identity
+        /// across frames (it is keyed by its place in the light queue), so a row rendered on an earlier frame is
+        /// not evidence that it was rendered for THIS light, and a dynamic light past the per-frame dynamic budget
+        /// renders unshadowed rather than casting somebody else's shadow. Its row is released at the start of the
+        /// acquire for the same reason, so the two halves agree by construction.
+        /// </para>
+        /// <para>
         /// It does not BIND anything. The atlas standing here is one the frame boundary already put on every
         /// receiver set, which is why this frame was allowed to render into it at all.
         /// </para>
         /// </summary>
-        void PublishPointShadowUniforms(PointShadowSlots cache, PointShadowSettings settings)
+        void PublishPointShadowUniforms(PointShadowSlots cache, PointShadowSettings settings, int frame)
         {
             Array.Fill(_pointSlotUniform, -1);
             foreach (PointShadowRequest r in _pointRequests)
             {
-                if (r.Slot < 0 || !cache.EverRendered(r.Slot)) continue;
+                if (r.Slot < 0) continue;
+                bool sampleable = r.Mode == LightShadowMode.Dynamic
+                    ? cache.LastRenderedFrame(r.Slot) == frame
+                    : cache.EverRendered(r.Slot);
+                if (!sampleable) continue;
                 _pointSlotUniform[r.LightIndex] = r.Slot;   // the UPLOADED light order, not the request order
                 PointShadowedLights++;
             }

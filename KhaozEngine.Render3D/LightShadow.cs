@@ -14,8 +14,17 @@ public enum LightShadowMode : byte
     /// lantern, a lamp post, a forge) whose surroundings almost never move.</summary>
     Static = 1,
 
-    /// <summary>A map rebuilt EVERY frame. For an effect light (a fireball, a muzzle flash, a thrown torch) that
-    /// moves or lives a moment, where a cache would be stale the frame after it was taken.</summary>
+    /// <summary>
+    /// A map rebuilt EVERY frame. For an effect light (a fireball, a muzzle flash, a thrown torch) that moves or
+    /// lives a moment, where a cache would be stale the frame after it was taken.
+    /// <para>
+    /// It keeps NOTHING across a frame. A dynamic light carries no key, so the scene identifies it by its place in
+    /// the light queue, and that place belongs to a different light as soon as one of them expires. So a dynamic
+    /// light past <see cref="PointShadowSettings.MaxDynamicLightsPerFrame"/> on a given frame renders unshadowed
+    /// for that frame rather than sampling the row it had before. Queue the ones that matter first, or raise the
+    /// budget.
+    /// </para>
+    /// </summary>
     Dynamic = 2,
 }
 

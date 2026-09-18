@@ -160,7 +160,9 @@ void pointShadowFace(vec3 d, out float face, out vec2 uv) {
 // COMPARE FIRST, FILTER AFTER, exactly as the cascade PCF does: four taps at half-texel offsets each fetch one
 // stored distance, compare it, and only the 0/1 results are averaged. Every tap is CLAMPED inside its own cell so
 // it can never bleed into the neighbouring face column or the next light's row.
-float samplePointShadow(texture2D atlas, sampler samp, vec3 toL, float dist, float radius, float ndl, vec4 params) {
+// ndlRaw is the UNBANDED dot(N, L): the slope bias is an acne remedy and has to read the real grazing angle, not
+// the cel-quantised one the diffuse term uses.
+float samplePointShadow(texture2D atlas, sampler samp, vec3 toL, float dist, float radius, float ndlRaw, vec4 params) {
     float face; vec2 uv;
     pointShadowFace(-toL, face, uv);
     vec2 texel = PointShadowAtlas.xy;                      // one ATLAS texel, in atlas UV
@@ -170,7 +172,7 @@ float samplePointShadow(texture2D atlas, sampler samp, vec3 toL, float dist, flo
     vec2 lo = cellMin + texel * 0.5;
     vec2 hi = cellMin + cellSize - texel * 0.5;
     float d = dist / max(radius, 1e-6);
-    float bias = params.y + params.z * (1.0 - ndl);
+    float bias = params.y + params.z * (1.0 - ndlRaw);
     float lit = 0.0;
     for (int oy = 0; oy < 2; oy++) {
         for (int ox = 0; ox < 2; ox++) {
@@ -207,6 +209,10 @@ void computeLighting(texture2D pointAtlas, sampler pointSamp, vec3 N, vec3 world
         float dist = length(toL);
         vec3 L = (dist > 1e-4) ? toL / dist : vec3(0.0);
         float ndl = max(dot(N, L), 0.0);
+        // The UNBANDED grazing angle, kept for the slope bias alone. Cel banding quantises ndl below, and a bias
+        // computed off a stepped angle steps with it, so the acne it exists to hide comes back in bands. Read
+        // only inside the gated branch, so the unshadowed path is the arithmetic it always was.
+        float ndlRaw = ndl;
         if (bands >= 1.0) ndl = floor(ndl*bands+0.5)/bands;
         // Smooth falloff: 1 at the light, easing to exactly 0 at its radius; scaled by intensity.
         float f = clamp(1.0 - (dist*dist)/max(radius*radius, 1e-6), 0.0, 1.0);
@@ -215,7 +221,7 @@ void computeLighting(texture2D pointAtlas, sampler pointSamp, vec3 N, vec3 world
         // asked for one: the branch is not taken, nothing is sampled, and the accumulation below is the pre-shadow
         // arithmetic byte for byte.
         if (PointShadowParams[i].x >= 0.0)
-            att *= samplePointShadow(pointAtlas, pointSamp, toL, dist, radius, ndl, PointShadowParams[i]);
+            att *= samplePointShadow(pointAtlas, pointSamp, toL, dist, radius, ndlRaw, PointShadowParams[i]);
         vec3 lc = PointColorIntensity[i].rgb;
         diffuse += lc * (ndl * att);
         vec3 Hp = normalize(L + V);

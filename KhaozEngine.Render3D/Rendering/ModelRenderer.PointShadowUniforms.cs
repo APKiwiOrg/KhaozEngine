@@ -43,6 +43,13 @@ internal sealed partial class ModelRenderer
     IGpuTexture _pointShadowDefault = null!;
     IGpuTexture _pointShadowTexture = null!;
 
+    // The texture whose rebind transaction threw, LATCHED. A failed rebuild leaves _pointShadowTexture where it
+    // was, so without this a caller asking for the same atlas every frame re-enters the whole transaction, and its
+    // _gd.WaitForIdle stall, once a frame forever. Cleared by a rebind that succeeds and by any request naming a
+    // different texture, so dropping the failed atlas and handing over a fresh one (or null, which is the 1x1
+    // default) gets a real attempt. Asking again for the exact texture that failed does not.
+    IGpuTexture? _pointShadowBindFailure;
+
     static Vector4[] NoPointShadowSlots()
     {
         var slots = new Vector4[MaxPointLights];
@@ -89,22 +96,30 @@ internal sealed partial class ModelRenderer
 
     /// <summary>
     /// Bind <paramref name="atlasOrNull"/> (or the 1x1 default when null) at the <c>PointShadowMap</c> slot of
-    /// every receiver family, rebuilding each shadow-sampling resource set against it. Returns <c>false</c> when
-    /// the binding already stood, which is the ordinary per-frame case, and also when a set could not be
-    /// allocated, in which case nothing moved and the previous atlas stays bound.
+    /// every receiver family, rebuilding each shadow-sampling resource set against it.
+    /// <see cref="PointShadowBindResult.Unchanged"/> is the ordinary per-frame answer, because the binding
+    /// already stands. <see cref="PointShadowBindResult.Failed"/> means a set could not be allocated, nothing
+    /// moved and the previous atlas stays bound, and it is a SEPARATE answer from Unchanged on purpose: the two
+    /// used to be one <c>false</c>, which made a permanent failure indistinguishable from the quiet case.
     /// </summary>
     /// <remarks>
     /// It takes the live material sets and their commit callback for the same reason
     /// <see cref="ReplaceShadowLayout"/> does: a resource set is immutable, so changing one bound texture means
     /// building a replacement for every set that carries it and handing the new ones back to whoever holds the
     /// old. The atlas is allocated lazily, so this fires at most once per allocation rather than per frame.
+    /// <para>
+    /// A failure is LATCHED against the texture that caused it, so a caller that asks for the same atlas on every
+    /// frame pays the transaction (and the <c>WaitForIdle</c> inside it) once rather than once a frame forever.
+    /// Any other texture, including the 1x1 default a null asks for, clears the latch and is attempted for real.
+    /// </para>
     /// </remarks>
-    internal bool BindPointShadowAtlas(IGpuTexture? atlasOrNull,
+    internal PointShadowBindResult BindPointShadowAtlas(IGpuTexture? atlasOrNull,
         IReadOnlyList<IGpuResourceSet> liveMaterialSets,
         Action<Func<IGpuResourceSet, IGpuResourceSet>> commitMaterialSets)
     {
         IGpuTexture wanted = atlasOrNull ?? _pointShadowDefault;
-        if (ReferenceEquals(wanted, _pointShadowTexture)) return false;
+        if (ReferenceEquals(wanted, _pointShadowTexture)) return PointShadowBindResult.Unchanged;
+        if (ReferenceEquals(wanted, _pointShadowBindFailure)) return PointShadowBindResult.Failed;
 
         var replacements = new Dictionary<IGpuResourceSet, IGpuResourceSet>(ReferenceEqualityComparer.Instance);
         var replacementBindings = new Dictionary<IGpuResourceSet, ShadowSamplingBinding>(ReferenceEqualityComparer.Instance);
@@ -119,15 +134,34 @@ internal sealed partial class ModelRenderer
         catch
         {
             foreach (IGpuResourceSet set in replacements.Values) set.Dispose();
-            return false;
+            _pointShadowBindFailure = wanted;
+            return PointShadowBindResult.Failed;
         }
 
         _pointShadowTexture = wanted;
+        _pointShadowBindFailure = null;
         CommitShadowSamplingSets(replacements, replacementBindings, commitMaterialSets);
-        return true;
+        return PointShadowBindResult.Rebound;
     }
 
     // Six faces to a row, the cube-map convention the pass and the receiver both bake in. Named here because the
     // receiver reads it out of PointShadowAtlas.w rather than compiling it in.
     const int PointShadowFaceCount = 6;
+}
+
+/// <summary>What <see cref="ModelRenderer.BindPointShadowAtlas"/> did, in the same three-way shape
+/// <c>ShadowLayoutReplacementResult</c> carries for the cascade atlas. The caller needs Failed apart from
+/// Unchanged because only one of them is worth reporting, and only one of them is a reason to stop asking.</summary>
+internal enum PointShadowBindResult
+{
+    /// <summary>The wanted atlas was already bound. Nothing was allocated and nothing stalled.</summary>
+    Unchanged,
+
+    /// <summary>Every receiver set was rebuilt against the wanted atlas and the old ones were freed.</summary>
+    Rebound,
+
+    /// <summary>A set could not be allocated, so nothing moved and the previous atlas stays bound. Latched
+    /// against the texture that failed, so asking for the same one again answers this without re-entering the
+    /// transaction.</summary>
+    Failed,
 }

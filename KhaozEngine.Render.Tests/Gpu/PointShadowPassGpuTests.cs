@@ -21,7 +21,7 @@ namespace KhaozEngine.Tests.Gpu;
 /// them), and the other five faces plus the untouched row are 1.0 throughout.
 /// </para>
 /// <para>
-/// Nine captures through one fixture scene, so the class follows the <c>OceanFocusScene</c> rule and shares one
+/// Fifteen captures through one fixture scene, so the class follows the <c>OceanFocusScene</c> rule and shares one
 /// <see cref="Scene3D"/> rather than paying pipeline creation nine times.
 /// </para>
 /// </summary>
@@ -40,6 +40,15 @@ public sealed class PointShadowPassGpuTests(PointShadowPassScene fixture) : ICla
     static readonly Vector3[] Axes =
     {
         Vector3.UnitX, -Vector3.UnitX, Vector3.UnitY, -Vector3.UnitY, Vector3.UnitZ, -Vector3.UnitZ,
+    };
+
+    // The two unit vectors perpendicular to a face's own axis, so a cube can be put off-centre in both of that
+    // face's in-face coordinates at once.
+    static (Vector3 A, Vector3 B) Perpendiculars(int face) => face switch
+    {
+        0 or 1 => (Vector3.UnitY, Vector3.UnitZ),
+        2 or 3 => (Vector3.UnitX, Vector3.UnitZ),
+        _ => (Vector3.UnitX, Vector3.UnitY),
     };
 
     [GpuTheory]
@@ -62,8 +71,9 @@ public sealed class PointShadowPassGpuTests(PointShadowPassScene fixture) : ICla
         Assert.True(MathF.Abs(centre - Expected) <= 0.05f,
             $"face {face}'s cell centre holds {centre}, expected about {Expected}");
 
-        // The cube reaches about 11 degrees off the axis, so the cell's own corners are clear. This is what
-        // catches a face that landed in the right column but mirrored or offset inside it.
+        // The cube reaches about 11 degrees off the axis, so the cell's own corners are clear. That is a
+        // containment check and NOT a mirror check: a cube on the axis lands at (0.5, 0.5), which every mirror
+        // of this face maps to itself. The off-axis case below is what sees a mirror.
         foreach ((float u, float v) in new[] { (0.02f, 0.02f), (0.98f, 0.02f), (0.02f, 0.98f), (0.98f, 0.98f) })
             Assert.Equal(1f, atlas.At(
                 PointShadowMath.AtlasUv(face, PointShadowPassScene.Slot, atlas.Rows, new Vector2(u, v))), 3);
@@ -76,6 +86,49 @@ public sealed class PointShadowPassGpuTests(PointShadowPassScene fixture) : ICla
                 other, PointShadowPassScene.Slot, atlas.Rows, new Vector2(0.5f, 0.5f))), 3);
         }
         Assert.Equal(1f, atlas.MinInRow(0), 3);
+    }
+
+    /// <summary>
+    /// THE MIRROR CASE, which the on-axis cases above cannot be: a cube OFF the axis, one metre along one in-face
+    /// perpendicular and half a metre along the other, so its uv is away from the face centre in both coordinates
+    /// and every mirror of the face moves it. The atlas must hold the near distance at the uv
+    /// <see cref="PointShadowMath.FaceAndUv"/> names and the untouched clear at the mirrored uv, which is what
+    /// says the baked matrix and the receiver's table agree on the SIGN of each in-face axis rather than only on
+    /// the column.
+    /// </summary>
+    [GpuTheory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(5)]
+    public void AnOffAxisCubeLandsAtTheUvTheTableNamesAndNotAtItsMirror(int face)
+    {
+        Vector3 light = PointShadowPassScene.LightPos;
+        (Vector3 a, Vector3 b) = Perpendiculars(face);
+        Vector3 dir = Axes[face] * CubeDistance + a * 1f + b * 0.5f;
+        PointShadowPassScene.Atlas atlas = fixture.RenderCube(light + dir, light, Radius);
+
+        PointShadowMath.FaceAndUv(dir, out int table, out Vector2 uv);
+        Assert.Equal(face, table);
+        Assert.True(MathF.Abs(uv.X - 0.5f) > 0.05f && MathF.Abs(uv.Y - 0.5f) > 0.05f,
+            $"face {face}'s off-axis cube lands at {uv}, which is too near the centre to see a mirror");
+
+        // The ray through the cube's centre enters through the cube's near face on the major axis, so the stored
+        // distance is that entry point's, over the radius.
+        float major = MathF.Max(MathF.Abs(dir.X), MathF.Max(MathF.Abs(dir.Y), MathF.Abs(dir.Z)));
+        float expected = dir.Length() * (major - 0.5f) / major / Radius;
+        float hit = atlas.At(PointShadowMath.AtlasUv(face, PointShadowPassScene.Slot, atlas.Rows, uv));
+        Assert.True(MathF.Abs(hit - expected) <= 0.05f,
+            $"face {face} holds {hit} at the uv the table names, expected about {expected}");
+
+        Vector2 mirrored = new(1f - uv.X, 1f - uv.Y);
+        float atMirror = atlas.At(PointShadowMath.AtlasUv(
+            face, PointShadowPassScene.Slot, atlas.Rows, mirrored));
+        Assert.True(MathF.Abs(atMirror - 1f) <= 1e-3f,
+            $"face {face} holds {atMirror} at the MIRRORED uv {mirrored}, where nothing was drawn. The face is "
+            + "mirrored between the baked matrix and the table the receiver samples with.");
     }
 
     [GpuFact]

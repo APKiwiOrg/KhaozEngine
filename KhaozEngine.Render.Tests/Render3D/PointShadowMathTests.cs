@@ -131,19 +131,35 @@ namespace KhaozEngine.Tests.Render3D
         {
             var light = new Vector3(-6f, 3f, 11f);
             Matrix4x4 m = PointShadowMath.FaceViewProjection(face, slot, rows, light, 12f);
+            (Vector3 a, Vector3 b) = Perpendiculars(face);
 
-            // A direction well inside the face, not on any axis, so the case is about the whole mapping rather
-            // than about the centre.
-            Vector3 dir = Vector3.Normalize(Axes[face] * 2f + Perpendicular(face) * 0.7f);
-            Vector3 world = light + dir * 4f;
+            // BOTH in-face axes, at both signs and at two magnitudes. Leaning off the centre along ONE of them is
+            // what let a mirrored basis in the OTHER pass: a flipped BasisX on the Z faces moves u and nothing
+            // else, so a case that only ever moved v could not see it.
+            foreach ((float da, float db) in new[] { (0.7f, 0.35f), (-0.7f, 0.35f), (0.7f, -0.35f), (-0.7f, -0.35f) })
+            {
+                Vector3 dir = Vector3.Normalize(Axes[face] * 2f + a * da + b * db);
+                Vector3 world = light + dir * 4f;
 
-            PointShadowMath.FaceAndUv(dir, out int table, out Vector2 faceUv);
-            Assert.Equal(face, table);
-            Vector2 want = PointShadowMath.AtlasUv(face, slot, rows, faceUv);
+                PointShadowMath.FaceAndUv(dir, out int table, out Vector2 faceUv);
+                Assert.Equal(face, table);
 
-            Assert.True(AtlasUvOf(m, world, out Vector2 got, out _));
-            Assert.Equal(want.X, got.X, 4);
-            Assert.Equal(want.Y, got.Y, 4);
+                // Against the DESIGN DOC's table, transcribed in TableUv rather than read back off the thing
+                // under test, so the sign of each in-face axis is asserted rather than assumed.
+                Vector2 want = TableUv(face, dir);
+                Near(want.X, faceUv.X, $"face {face} u at ({da}, {db})");
+                Near(want.Y, faceUv.Y, $"face {face} v at ({da}, {db})");
+
+                // And both coordinates really did leave the centre, so a case cannot be satisfied by a uv that
+                // happens to sit on the mirror line.
+                Assert.True(MathF.Abs(want.X - 0.5f) > 0.05f && MathF.Abs(want.Y - 0.5f) > 0.05f,
+                    $"face {face} at ({da}, {db}) lands at {want}, which is too near the centre to see a mirror");
+
+                Vector2 atlas = PointShadowMath.AtlasUv(face, slot, rows, want);
+                Assert.True(AtlasUvOf(m, world, out Vector2 got, out _));
+                Near(atlas.X, got.X, $"face {face} atlas u at ({da}, {db})");
+                Near(atlas.Y, got.Y, $"face {face} atlas v at ({da}, {db})");
+            }
         }
 
         [Fact]
@@ -192,9 +208,39 @@ namespace KhaozEngine.Tests.Render3D
                 }
         }
 
-        // A unit vector perpendicular to the face axis, so a test direction leans off the centre without
-        // leaving the face.
-        static Vector3 Perpendicular(int face) => face is 2 or 3 ? Vector3.UnitX : Vector3.UnitY;
+        // Compared on a tolerance rather than through xUnit's decimal-place rounding, because these cases land on
+        // values like 0.06875 where two results agreeing to seven places round to different fourth places.
+        static void Near(float want, float got, string what) =>
+            Assert.True(MathF.Abs(want - got) <= 1e-4f, $"{what}: expected {want}, got {got}");
+
+        // The two unit vectors perpendicular to the face axis, so a test direction can lean off the centre in
+        // BOTH in-face axes at once without leaving the face.
+        static (Vector3 A, Vector3 B) Perpendiculars(int face) => face switch
+        {
+            0 or 1 => (Vector3.UnitY, Vector3.UnitZ),
+            2 or 3 => (Vector3.UnitX, Vector3.UnitZ),
+            _ => (Vector3.UnitX, Vector3.UnitY),
+        };
+
+        /// <summary>The design doc's decision 3 table, written out here so the cases above compare
+        /// <see cref="PointShadowMath.FaceAndUv"/> against the DOCUMENT rather than against itself: +X
+        /// <c>(-d.z, -d.y)</c>, -X <c>(d.z, -d.y)</c>, +Y <c>(d.x, d.z)</c>, -Y <c>(d.x, -d.z)</c>, +Z
+        /// <c>(d.x, -d.y)</c>, -Z <c>(-d.x, -d.y)</c>, then <c>u = (sc / ma + 1) / 2</c> and
+        /// <c>v = (tc / ma + 1) / 2</c>.</summary>
+        static Vector2 TableUv(int face, Vector3 d)
+        {
+            float ma = MathF.Max(MathF.Abs(d.X), MathF.Max(MathF.Abs(d.Y), MathF.Abs(d.Z)));
+            (float sc, float tc) = face switch
+            {
+                0 => (-d.Z, -d.Y),
+                1 => (d.Z, -d.Y),
+                2 => (d.X, d.Z),
+                3 => (d.X, -d.Z),
+                4 => (d.X, -d.Y),
+                _ => (-d.X, -d.Y),
+            };
+            return new Vector2((sc / ma + 1f) * 0.5f, (tc / ma + 1f) * 0.5f);
+        }
 
         // The four 45 degree corner directions of one face, at distance 3 along the face axis.
         static Vector3[] FaceCorners(int face)

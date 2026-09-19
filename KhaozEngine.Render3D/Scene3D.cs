@@ -404,7 +404,7 @@ namespace KhaozEngine.Render3D
             _res = new RenderResources(gd, Post.RenderWidth, Post.RenderHeight, Post.Hdr.Enabled);
             ShadowSettings shadow0 = Post.Quality.Shadows;
             _model = new ModelRenderer(gd, _res.ModelFB.Outputs,
-                shadow0.ShadowMapResolution, shadow0.ResolvedCascadeCount);
+                shadow0.ShadowMapResolution, shadow0.ResolvedCascadeCount, _retired);
             shadow0.CommitAtlas();
             _post = new PixelPostProcess(gd, _res.PingAFB.Outputs, targetOutput);
             _post.BindTargets(_res);
@@ -424,15 +424,15 @@ namespace KhaozEngine.Render3D
             _trails = new TrailRenderer(gd, _res.ModelFB.Outputs);
             // Ground decals render into the lit color attachment + read-only scene depth (ColorDepthFB) before the
             // post chain, so they pass that framebuffer's output description (color format + depth format).
-            _decalRenderer = new Rendering.GroundDecalRenderer(gd, _res.ColorDepthFB.Outputs);
+            _decalRenderer = new Rendering.GroundDecalRenderer(gd, _res.ColorDepthFB.Outputs, _retired);
             // Modern particle sprites render into the same ColorDepthFB (lit colour + read-only scene depth)
             // after the water pass, sampling the resolved scene depth for the soft fade. Default empty (no
             // DrawParticle call queued == the pass never runs, existing scenes byte-stable).
-            _particleRenderer = new Rendering.ParticleRenderer(gd, _res.ColorDepthFB.Outputs);
+            _particleRenderer = new Rendering.ParticleRenderer(gd, _res.ColorDepthFB.Outputs, _retired);
             // Screen-space distortion writes into its own lazily allocated half/quarter-res offset field (a fixed
             // R16G16Float output, never multisampled, so it needs no SetOutputs), re-sampled by the post apply pass.
             // Default empty (no DrawDistortion call queued == nothing allocated, no apply pass, existing scenes byte-stable).
-            _distortionRenderer = new Rendering.DistortionRenderer(gd);
+            _distortionRenderer = new Rendering.DistortionRenderer(gd, _retired);
             // The procedural sky renders into the same ColorDepthFB (lit colour + read-only scene depth) as the
             // decals, as a far-plane background pass behind the geometry. Default off (Post.Sky.Enabled == false).
             _sky = new Rendering.SkyRenderer(gd, _res.ColorDepthFB.Outputs);
@@ -442,11 +442,11 @@ namespace KhaozEngine.Render3D
             _starfield = new Rendering.StarfieldRenderer(gd, _res.ColorDepthFB.Outputs);
             // Animated water draws into the same ColorDepthFB, AFTER the sky + decals (see RenderInternal). Default
             // off (no DrawWater request queued == the pass never runs, existing scenes byte-stable).
-            _water = new Rendering.WaterRenderer(gd, _res.ColorDepthFB.Outputs);
+            _water = new Rendering.WaterRenderer(gd, _res.ColorDepthFB.Outputs, _retired);
             // Depth-tested debug wire volumes draw into the same ColorDepthFB (lit colour + read-only scene depth)
             // after the water pass, before the post chain, so scene geometry occludes their buried parts.
             _depthLines = new Rendering.DepthLineRenderer(gd, _res.ColorDepthFB.Outputs);
-            _overlayMeshes = new Rendering.OverlayMeshRenderer(gd, _res.ModelFB.Outputs);
+            _overlayMeshes = new Rendering.OverlayMeshRenderer(gd, _res.ModelFB.Outputs, _retired);
             _silhouettes = new Rendering.SilhouetteRenderer(gd, _res.ModelFB.Outputs);
             _targetOutlines = new Rendering.TargetOutlineRenderer(gd, targetOutput);
         }
@@ -1882,9 +1882,9 @@ namespace KhaozEngine.Render3D
                 {
                     // DEPTH ONLY, deliberately. This pass runs early, before the textured billboards / beams / trails /
                     // overlay meshes have written the MRT normal, so resolving the normal here would publish an
-                    // incomplete one. Safe because a blob-shadow decal is engine-built (Shadows.TryBuildDecal) and
-                    // never sets VoidFallback, so it never samples NormalTex. The MAIN decal pass, which sits after
-                    // every normal writer, takes ResolveDepthNormal instead.
+                    // incomplete one. Safe because FramePass.BlobShadow disables the main-pass receiver gate and
+                    // never samples NormalTex. The MAIN decal pass, which sits after every normal writer, takes
+                    // ResolveDepthNormal instead.
                     _res.ResolveDepth(cl);
                     // Batched decal pass: one instanced draw per blend run, so count the runs it issued (not a flat 1).
                     // Blob-shadow decals are legacy Solid fills (no pattern/energy/feather), so time+quality are inert here.

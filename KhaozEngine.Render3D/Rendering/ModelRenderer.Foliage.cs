@@ -113,8 +113,8 @@ internal sealed partial class ModelRenderer
         EnsureFoliagePipeline();
         if (_foliageUbo is null || _foliageSlots < uniforms.Length)
         {
-            if (_foliageSet is not null) _retired.Add(_foliageSet);
-            if (_foliageUbo is not null) _retired.Add(_foliageUbo);
+            if (_foliageSet is not null) _retired.Retire(_foliageSet);
+            if (_foliageUbo is not null) _retired.Retire(_foliageUbo);
             _foliageSlots = Math.Max((uint)uniforms.Length, _foliageSlots == 0 ? 4u : _foliageSlots * 2);
             _foliageImage = new byte[checked((int)(_foliageSlots * FoliageUniforms.SlotBytes))];
             _foliageUbo = _gd.Factory.CreateBuffer(new GpuBufferDescription((uint)_foliageImage.Length, GpuBufferUsage.UniformBuffer));

@@ -84,7 +84,7 @@ namespace KhaozEngine.Render3D.Rendering
         // for a whole uniform-buffer write from offset 0, so every cascade/caster slot is packed here before one
         // upload records the entire buffer.
         byte[] _skinnedImage = Array.Empty<byte>();
-        readonly List<IDisposable> _retiredSkinned = new();   // grown-out light-matrix UBOs/sets (a prior frame may still read them)
+        readonly GpuRetireQueue _retired;
 
         ShadowLayoutReplacement _graph = null!;
 
@@ -106,9 +106,11 @@ namespace KhaozEngine.Render3D.Rendering
         // bonePalette is the frame's shared GPU-skinned bone palettes, created and disposed by ModelRenderer. This
         // pass binds the same layout and the same set the model pass does, so a caster's palette is uploaded once
         // and read by the main pass and every cascade (#407).
-        public ShadowMapRenderer(IGpuDevice gd, int resolution, int cascadeCount, SkinnedBonePalette bonePalette)
+        public ShadowMapRenderer(IGpuDevice gd, int resolution, int cascadeCount, SkinnedBonePalette bonePalette,
+            GpuRetireQueue retired)
         {
             _gd = gd;
+            _retired = retired;
             _bonePalette = bonePalette;
             var f = gd.Factory;
 
@@ -424,8 +426,8 @@ namespace KhaozEngine.Render3D.Rendering
         public void EnsureSkinnedShadowCapacity(uint slotCount)
         {
             if (_skinnedUbo != null && _skinnedSlots >= slotCount) return;
-            if (_skinnedUbo != null) _retiredSkinned.Add(_skinnedUbo);
-            if (_skinnedSet != null) _retiredSkinned.Add(_skinnedSet);
+            if (_skinnedUbo != null) _retired.Retire(_skinnedUbo);
+            if (_skinnedSet != null) _retired.Retire(_skinnedSet);
             _skinnedSlots = Math.Max(slotCount, _skinnedSlots == 0 ? 8u : _skinnedSlots * 2);
             var image = new byte[checked((int)(_skinnedSlots * SkinnedDepthSlotBytes))];
             _skinnedImage.AsSpan().CopyTo(image);
@@ -493,8 +495,6 @@ namespace KhaozEngine.Render3D.Rendering
             _skinnedLayout.Dispose();
             _skinnedUbo?.Dispose();
             _skinnedSet?.Dispose();
-            foreach (var r in _retiredSkinned) r.Dispose();
-            _retiredSkinned.Clear();
         }
 
         internal sealed class ShadowLayoutReplacement : IDisposable

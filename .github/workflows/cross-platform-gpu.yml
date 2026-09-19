@@ -382,6 +382,10 @@ on:
         description: 'Run with the GPU shader disk caches OFF on every leg (the #614 cache-vs-adapter split)'
         type: boolean
         default: false
+      renderTestFilter:
+        description: 'Optional Render.Tests filter for diagnosis. Empty retains the standard full release gate.'
+        type: string
+        default: ''
 
 # Least privilege: this workflow only checks out, builds, tests, and uploads run artifacts. No step
 # writes back to the repo or publishes a package, so contents: read covers everything it does.
@@ -1135,7 +1139,8 @@ jobs:
           # itself checked against, which is what owning a family means. The refusal itself is unchanged and
           # still guards the rule for the next backend that shares rather than owns.
           KE_UPDATE_GOLDENS: ${{ (github.event_name == 'workflow_dispatch' && inputs.bake) && '1' || '' }}
-          KE_TEST_FILTER: ${{ (matrix.fullSuite == 'always' || (matrix.fullSuite == 'scheduled' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'))) && 'Category!=LiveSocket' || 'FullyQualifiedName~Golden|FullyQualifiedName~FoliageGpuTests' }}
+          KE_RENDER_TEST_FILTER: ${{ github.event_name == 'workflow_dispatch' && inputs.renderTestFilter || '' }}
+          KE_TEST_FILTER: ${{ (github.event_name == 'workflow_dispatch' && inputs.renderTestFilter) || ((matrix.fullSuite == 'always' || (matrix.fullSuite == 'scheduled' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'))) && 'Category!=LiveSocket' || 'FullyQualifiedName~Golden|FullyQualifiedName~FoliageGpuTests') }}
           # BOTH Vulkan legs' full-suite runs: serialize xUnit collections, one live device at a time
           # (~22 min serialized vs minutes parallel, header). Empty for every other leg and for
           # golden-only runs (months of parallel green history). It is named rather than matched on a prefix
@@ -1156,7 +1161,11 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p TestResults
-          dotnet test -c Release --no-build --filter "$KE_TEST_FILTER" --blame --results-directory TestResults $KE_TEST_LOGGER_ARGS $KE_TEST_EXTRA_ARGS 2>&1 | tee TestResults/suite-output.log
+          test_target=()
+          if [ -n "$KE_RENDER_TEST_FILTER" ]; then
+            test_target=(KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj)
+          fi
+          dotnet test "${test_target[@]}" -c Release --no-build --filter "$KE_TEST_FILTER" --blame --results-directory TestResults $KE_TEST_LOGGER_ARGS $KE_TEST_EXTRA_ARGS 2>&1 | tee TestResults/suite-output.log
         shell: bash
 
       # WHAT THE BOOT'S GPU ACTUALLY WAS (#614), on the macOS leg. That issue's whole difficulty is that a red

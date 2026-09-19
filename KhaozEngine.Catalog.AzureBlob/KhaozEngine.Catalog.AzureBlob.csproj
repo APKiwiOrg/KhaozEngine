@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Catalog.AzureBlob</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>khaozengine;catalog;content;packstore;azure;blob;storage</PackageTags>
+    <Description>Azure Blob Storage IPackStore backend for the content catalog over Azure.Storage.Blobs: AzureBlobPackStore writes and reads HASH OBJECTS in a container, under the same two-level shard key HttpPackStore already fetches by, so a server fills its clients' public content origin and a client needs no change. Conditional upload (If-None-Match) makes a put idempotent with no read-then-write race, every object is stored immutable (application/octet-stream, public, max-age=31536000, immutable), and the size ceiling is applied from the declared length before a body is buffered. It implements NEITHER pointer interface, so it can never be a publish or rebuild target and a full server pack cannot reach a public container by mistake. The Azure SDK sits behind one internal seam and the caller supplies a ready BlobContainerClient, so the host owns the credential and this package takes no Azure.Identity dependency. Opt-in: in NO umbrella, and a game client never links it.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Azure.Storage.Blobs" />
+    <ProjectReference Include="../KhaozEngine.Catalog/KhaozEngine.Catalog.csproj" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The container seam and its adapter are internal: the Azure SDK is named in exactly one file plus the
+         public constructor, and the tests drive the store through an in-memory double of that seam. -->
+    <InternalsVisibleTo Include="KhaozEngine.Catalog.AzureBlob.Tests" />
+  </ItemGroup>
+
+</Project>

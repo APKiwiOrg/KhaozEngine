@@ -104,18 +104,9 @@ public sealed class HttpPackStore : IPackStore, IContentVersionPointerSource
     /// <summary>The address one hash is served at, which is derived from the hash and never looked up.</summary>
     /// <exception cref="ArgumentException"><paramref name="hash"/> is not a content address.</exception>
     public Uri UriFor(string hash)
-    {
-        if (!FileSystemPackStore.IsContentAddress(hash))
-        {
-            throw new ArgumentException(
-                FormattableString.Invariant($"'{hash}' is not a content address, which is 64 lower hex characters."),
-                nameof(hash));
-        }
-
-        return new Uri(
-            BaseAddress,
-            hash[..2] + "/" + hash.Substring(2, 2) + "/" + hash + FileSystemPackStore.FileExtension);
-    }
+        // The layout rule lives once, on the local provider, because one publisher's tree is this
+        // provider's input and a second copy of the rule is a copy that could drift.
+        => new(BaseAddress, FileSystemPackStore.RelativeKeyFor(hash));
 
     /// <summary>The address one version's pointer is served at, outside the shard tree.</summary>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="versionNumber"/> is not positive.</exception>

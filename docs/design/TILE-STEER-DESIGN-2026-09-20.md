@@ -91,7 +91,8 @@ On a tick whose command is `Steer`:
    - the direction itself when it is open
    - for a diagonal that is blocked, the open one of its two axis steps, testing the Z axis step before the X
      axis step so both heads agree when both are open
-   - otherwise nothing, and the body stands
+   - otherwise nothing, and the body stands. It still turns to face the held direction, so a key pressed
+     into a wall reads as an answer rather than as a dropped input
 4. A resolved step is committed through the same method a routed step uses. `Start` is split so that the tile
    flip, `StepFrom`, `Facing`, the progress reset and `StepTotal = StepTicks.For(s.Mode)` live in one shared
    commit body with two callers: the route door and the steer door. No route is allocated for a steered step.

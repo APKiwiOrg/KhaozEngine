@@ -1448,6 +1448,77 @@ var mana = new ProgressBar(new Rect(hudX, hudY, 12, 120), manaFrac)
 { FillDirection = FillDirection.BottomToTop };                   // vertical, grows upward
 ```
 
+### Non-modal titled windows (`PanelFrame` / `PanelFrameMetrics` / `WindowDrag`, 19.6.0)
+
+`PopupPanel` is a MODAL dialog: it paints a scrim and reserves the whole scrim rect on the `Pointer`. Use
+`PanelFrame` instead whenever the world underneath must stay visible and live - a side panel, a bank window, an
+inventory stone. It is pure statics plus three draws, not a retained widget, so a game keeps its own window
+class and calls into the frame for geometry and chrome.
+
+The bands STACK. `Inner` is the whole panel less the frame on all four sides. `StripRect` is an optional tab
+band at the top of it, `TitleRect` the row under that, `CloseRect` a square right-aligned in the title row,
+`ContentRect` everything between the title row and the footer, and `FooterRect` the bottom band. Each is
+derived from the one above it with no gap and no overlap, and an absent band (no strip, no footer) collapses to
+zero height rather than leaving a hole. Every one is a pure static callable with no instance, so a headless
+test hit-tests the same rects the draw uses. `TitleTextOrigin` centres a measured title in its row.
+
+Sizes come from a caller-supplied `PanelFrameMetrics` (frame thickness, bevel, title height, close size, text
+pad), not from `GuiTheme` and not from constants baked into the widget, because a size is a per-widget decision
+while a palette is global. `PanelFrameMetrics.Default` is the shipped shape (6 / 2 / 26 / 20 / 8) and every
+entry point takes it as an optional trailing argument, so a caller that wants today's look writes no numbers
+and one that wants a hairline frame writes `PanelFrameMetrics.Default with { FrameThickness = 2f }`.
+
+Colours come from `GuiTheme`. Four were added for this: `BorderShadow` (the dark hairline where a bevelled band
+meets the surface it frames), `TitleFill`, and `TabFill` / `TabActiveFill` for a flat tab strip. They are
+properties over nullable backing fields, so a theme that never sets them DERIVES them from the palette it did
+set (`Border` darkened, `Surface`, `SurfaceHover`, `ActiveFill`) rather than reading as transparent black. An
+existing theme needs no edit and no construction site changes meaning.
+
+The frame reserves NOTHING on the `Pointer`. Which taps a window swallows is the window's call, so a caller
+that wants the world ignored under its panel calls `Pointer.BlockRegion` with its OWN bounds, and a caller that
+wants a click-through stripe leaves it alone. Blocking inside the frame would make every consumer modal over
+its own rect, which is the thing `PopupPanel` already does.
+
+`WindowDrag` is the title-bar drag. It stores an OFFSET from wherever the window's own layout put it, so a
+window keeps its placement rule (centred, docked, anchored) across a resize instead of being stranded at an
+absolute position. `Update(pointer, grip)` latches the grab ONCE on the press frame, through
+`Pointer.IsPressOriginFresh`, and holds it until the button goes up wherever the cursor wanders. Re-reading the
+press origin every frame is the defect this exists to avoid: the grip travels with the window while the press
+origin stays where the button went down, so a window dragged further than its title row is tall moves the grip
+out from under its own press and drops the grab part way. A held drag calls `Pointer.ConsumeGesture`, so a
+release over the world is not a world click. `Place(natural, viewport)` clamps the window inside the viewport
+and writes the clamp BACK, so a drag off the edge banks no distance the window did not travel and the next drag
+back moves it at once. `Release()` lets go without forgetting the position, for a window closing under a held
+button. `Reset()` forgets it.
+
+Player-facing text is `LocalizedText`, both the title and the optional right-aligned readout. Build a readout
+with numbers in it through `LocalizedText.Of(id, args)` so it re-resolves on a locale switch.
+
+```csharp
+// Layout: where this window wants to be, then where the player has dragged it to.
+Rect natural = Layout.Resolve(viewport.DesignBounds, Anchor.Center, 320f, 240f, 0f, 0f);
+Rect bounds = _drag.Place(natural, new Vector2(viewport.DesignWidth, viewport.DesignHeight));
+
+// Input: the grip is the title row less the close square, so the cross is never also a grab.
+Rect title = PanelFrame.TitleRect(bounds, stripHeight: 0f);
+Rect close = PanelFrame.CloseRect(bounds, stripHeight: 0f);
+var grip = new Rect(title.X, title.Y, close.X - title.X, title.Height);
+_drag.Update(pointer, grip);
+if (pointer.IsTapIn(close)) Close();
+pointer.BlockRegion(bounds);   // this window's call, not the frame's
+
+// Draw: no scrim, so the world stays visible and live behind it.
+PanelFrame.DrawFrame(batch, white, bounds);
+PanelFrame.DrawTitle(batch, font, white, bounds, stripHeight: 0f, title: Strings.BankTitle,
+    readout: LocalizedText.Of(Strings.BankUsed, used, capacity), showClose: true,
+    closeHovered: close.Contains(pointer.Position));
+DrawRows(batch, PanelFrame.ContentRect(bounds, stripHeight: 0f));
+```
+
+What stays in the GAME: the palette values it assigns to `GuiTheme`, the metric numbers if the default shape is
+wrong for it, which taps it swallows through `BlockRegion`, each window's natural-bounds rule, the grip rect,
+and whatever fills the strip, content and footer bands.
+
 ---
 
 ## Retained chat (`ChatHistory` / `ChatBox`, 18.21.0)

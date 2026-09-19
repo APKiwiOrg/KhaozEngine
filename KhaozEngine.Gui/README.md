@@ -677,6 +677,55 @@ chat.Draw(batch, white);
     null fonts. Code that deliberately passes a null literal to test one overload must cast it to `SpriteFont`
     or `ITextMeasurer`, because those source-compatible overloads otherwise make the literal ambiguous.
     Menu-cancel input is ignored while `InputState.WindowFocused` is false.
+  - `PanelFrame` + `PanelFrameMetrics` + `WindowDrag` - a NON-MODAL titled window frame, as pure statics rather
+    than a retained widget. Reach for it instead of `PopupPanel` whenever the world underneath must stay visible
+    and live: a side panel, a bank window, an inventory stone. `PopupPanel` is modal, and reserves the whole
+    scrim rect on the pointer.
+    `Inner`, `StripRect`, `TitleRect`, `CloseRect`, `ContentRect` and `FooterRect` are the bands, each derived
+    from the one above it with no gap and no overlap, and an absent band (no tab strip, no footer) collapses to
+    zero height rather than leaving a hole. `TitleTextOrigin` centres a measured title in its row.
+    `DrawFrame` / `DrawTitle` / `DrawClose` walk exactly those functions, so the rect a click-through guard
+    tests and the rect the player sees cannot drift. The title and the optional right-aligned readout are
+    `LocalizedText` (build a readout with numbers in it through `LocalizedText.Of(id, args)`).
+    Sizes travel in a caller-supplied `PanelFrameMetrics` (frame thickness, bevel, title height, close size,
+    text pad) rather than in `GuiTheme` or in baked constants, because a size is a per-widget decision while a
+    palette is global. `PanelFrameMetrics.Default` is the shipped shape (6 / 2 / 26 / 20 / 8). Colours come from
+    `GuiTheme`: the four this needs (`BorderShadow`, `TitleFill`, `TabFill`, `TabActiveFill`) derive from the
+    palette already set, so an existing theme needs no edit.
+    It reserves NOTHING on the `Pointer`. Which taps a window swallows is the window's call: a caller that wants
+    the world ignored under its panel calls `Pointer.BlockRegion` with its OWN bounds, and one that wants a
+    click-through stripe leaves it alone. Blocking here would make every consumer modal over its own rect.
+    `WindowDrag` is the title-bar drag. It stores an OFFSET from wherever the window's own layout put it, so a
+    window keeps its placement rule across a resize. `Update(pointer, grip)` latches the grab once on the press
+    frame (`Pointer.IsPressOriginFresh`) and holds it until the button goes up, wherever the cursor wanders,
+    because re-reading the press origin every frame drops the grab as soon as the grip travels further than the
+    title row is tall. A held drag calls `Pointer.ConsumeGesture`, so a release over the world is not a world
+    click. `Place(natural, viewport)` clamps the window inside the viewport and writes the clamp BACK, so
+    dragging off the edge banks no distance the window did not travel. `Release()` lets go without forgetting
+    the position (for a close under a held button), `Reset()` forgets it.
+    The game keeps: the palette values, the metric numbers, which taps it swallows, each window's natural-bounds
+    rule, and the grip rect (normally `TitleRect` less `CloseRect`, so a press on the cross only ever closes).
+
+    ```csharp
+    // Layout: where this window wants to be, then where the player has dragged it to.
+    Rect natural = Layout.Resolve(viewport.DesignBounds, Anchor.Center, 320f, 240f, 0f, 0f);
+    Rect bounds = _drag.Place(natural, new Vector2(viewport.DesignWidth, viewport.DesignHeight));
+
+    // Input: the grip is the title row less the close square, so the cross is never also a grab.
+    Rect title = PanelFrame.TitleRect(bounds, stripHeight: 0f);
+    Rect close = PanelFrame.CloseRect(bounds, stripHeight: 0f);
+    var grip = new Rect(title.X, title.Y, close.X - title.X, title.Height);
+    _drag.Update(pointer, grip);
+    if (pointer.IsTapIn(close)) Close();
+    pointer.BlockRegion(bounds);   // this window's call, not the frame's
+
+    // Draw: no scrim, so the world stays visible behind it.
+    PanelFrame.DrawFrame(batch, white, bounds);
+    PanelFrame.DrawTitle(batch, font, white, bounds, stripHeight: 0f, title: BankStrings.Title,
+        readout: LocalizedText.Of(BankStrings.Used, used, capacity), showClose: true,
+        closeHovered: close.Contains(pointer.Position));
+    DrawRows(batch, PanelFrame.ContentRect(bounds, stripHeight: 0f));
+    ```
   - `PopupPanel` - modal dialog: scrim + title + `PopupRow` content + dismiss/primary footer. `Update` reserves
     the whole `ScrimRect` (the full viewport the scrim dims) through `Pointer.BlockRegion`, not just the panel,
     so a click on the dimmed area cannot reach the UI underneath. That only matters when the popup is driven

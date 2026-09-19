@@ -315,41 +315,41 @@ public class QuadrupedGaitTests
     public void TheHoovesStayPlantedUnderARollingBreathingTorsoAndTurnWithTheTrunk()
     {
         var pose = new BodyPose(new Vector3(3f, 0f, -4f), 0.4f);
-        Span<Matrix4x4> still = stackalloc Matrix4x4[TestBodies.QuadrupedPieceCount];
-        TestBodies.Quadruped(Rig, pose, WalkPose.Rest, QuadrupedPose.Rest, still);
-        Span<Matrix4x4> swayed = stackalloc Matrix4x4[TestBodies.QuadrupedPieceCount];
-        TestBodies.Quadruped(Rig, pose, WalkPose.Rest with { TorsoRise = 0.02f },
+        Span<Matrix4x4> still = stackalloc Matrix4x4[QuadrupedSkeleton.PieceCount];
+        QuadrupedSkeleton.Compose(Rig, pose, WalkPose.Rest, QuadrupedPose.Rest, still);
+        Span<Matrix4x4> swayed = stackalloc Matrix4x4[QuadrupedSkeleton.PieceCount];
+        QuadrupedSkeleton.Compose(Rig, pose, WalkPose.Rest with { TorsoRise = 0.02f },
             QuadrupedPose.Rest with { Roll = 0.03f }, swayed);
         for (int leg = 0; leg < 4; leg++)
         {
-            Assert.Equal(still[TestBodies.UpperForeLeft + leg], swayed[TestBodies.UpperForeLeft + leg]);
-            Assert.Equal(still[TestBodies.LowerForeLeft + leg], swayed[TestBodies.LowerForeLeft + leg]);
+            Assert.Equal(still[QuadrupedSkeleton.UpperForeLeft + leg], swayed[QuadrupedSkeleton.UpperForeLeft + leg]);
+            Assert.Equal(still[QuadrupedSkeleton.LowerForeLeft + leg], swayed[QuadrupedSkeleton.LowerForeLeft + leg]);
         }
-        Assert.NotEqual(still[TestBodies.Trunk], swayed[TestBodies.Trunk]);
+        Assert.NotEqual(still[QuadrupedSkeleton.Trunk], swayed[QuadrupedSkeleton.Trunk]);
         // The body rose by the breath and rolled: its origin is up by the rise (and a hair more, because
         // the roll is about the spine above it), and its x axis tilted.
-        Assert.Equal(still[TestBodies.Trunk].Translation.Y + 0.02f, swayed[TestBodies.Trunk].Translation.Y, 3);
+        Assert.Equal(still[QuadrupedSkeleton.Trunk].Translation.Y + 0.02f, swayed[QuadrupedSkeleton.Trunk].Translation.Y, 3);
 
-        Span<Matrix4x4> yawed = stackalloc Matrix4x4[TestBodies.QuadrupedPieceCount];
-        TestBodies.Quadruped(Rig, pose, WalkPose.Rest, QuadrupedPose.Rest with { TrunkYaw = 0.05f }, yawed);
+        Span<Matrix4x4> yawed = stackalloc Matrix4x4[QuadrupedSkeleton.PieceCount];
+        QuadrupedSkeleton.Compose(Rig, pose, WalkPose.Rest, QuadrupedPose.Rest with { TrunkYaw = 0.05f }, yawed);
         // Every leg turned with the trunk, and every hoof stayed on the floor while it did.
         for (int leg = 0; leg < 4; leg++)
         {
-            Assert.NotEqual(still[TestBodies.UpperForeLeft + leg], yawed[TestBodies.UpperForeLeft + leg]);
+            Assert.NotEqual(still[QuadrupedSkeleton.UpperForeLeft + leg], yawed[QuadrupedSkeleton.UpperForeLeft + leg]);
             bool fore = leg < 2;
             float soleDrop = fore ? Rig.ForeSoleFromHinge : Rig.HindSoleFromHinge;
             Vector3 sole = Vector3.Transform(
-                new Vector3(0f, -soleDrop, 0f), yawed[TestBodies.LowerForeLeft + leg]);
+                new Vector3(0f, -soleDrop, 0f), yawed[QuadrupedSkeleton.LowerForeLeft + leg]);
             Assert.Equal(pose.Position.Y + TestBodies.AuthoredFloor, sole.Y, 3);
         }
 
         // A positive trunk yaw puts the tail end (behind the centre) to the animal's LEFT, +x in the body's
         // frame at yaw zero, and the muzzle end to its right.
         var square = new BodyPose(Vector3.Zero, 0f);
-        Span<Matrix4x4> turned = stackalloc Matrix4x4[TestBodies.QuadrupedPieceCount];
-        TestBodies.Quadruped(Rig, square, WalkPose.Rest, QuadrupedPose.Rest with { TrunkYaw = 0.1f }, turned);
-        Vector3 tail = Vector3.Transform(new Vector3(0f, 1f, -1.1f), turned[TestBodies.Trunk]);
-        Vector3 withers = Vector3.Transform(new Vector3(0f, 1.4f, 0.6f), turned[TestBodies.Trunk]);
+        Span<Matrix4x4> turned = stackalloc Matrix4x4[QuadrupedSkeleton.PieceCount];
+        QuadrupedSkeleton.Compose(Rig, square, WalkPose.Rest, QuadrupedPose.Rest with { TrunkYaw = 0.1f }, turned);
+        Vector3 tail = Vector3.Transform(new Vector3(0f, 1f, -1.1f), turned[QuadrupedSkeleton.Trunk]);
+        Vector3 withers = Vector3.Transform(new Vector3(0f, 1.4f, 0.6f), turned[QuadrupedSkeleton.Trunk]);
         Assert.True(tail.X > 0.02f, "the tail did not swing left");
         Assert.True(withers.X < -0.02f, "the shoulders did not swing right");
     }

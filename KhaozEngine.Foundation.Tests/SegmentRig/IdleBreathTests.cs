@@ -99,17 +99,17 @@ public class IdleBreathTests
     public void TheSolesStayOnTheGroundThroughAWholeBreathAndTheCrownStillRises()
     {
         var pose = new BodyPose(Vector3.Zero, 0f);
-        Span<Matrix4x4> rest = stackalloc Matrix4x4[TestBodies.HumanoidPieceCount];
-        Span<Matrix4x4> at = stackalloc Matrix4x4[TestBodies.HumanoidPieceCount];
+        Span<Matrix4x4> rest = stackalloc Matrix4x4[HumanoidSkeleton.PieceCount];
+        Span<Matrix4x4> at = stackalloc Matrix4x4[HumanoidSkeleton.PieceCount];
         foreach (BodyRig rig in new[] { BodyRig.Human, TestBodies.Small })
         {
             // The datum is the body at its IDLE, not at WalkPose.Rest: the legs hold a rest stance, so the
             // transform they are meant to hold through the cycle is the stance's rather than the bare pose's.
             // The stance is a constant, so any phase gives the same one.
-            TestBodies.Humanoid(rig, pose,
+            HumanoidSkeleton.Compose(rig, pose,
                 IdleBreath.Compose(WalkPose.Rest, IdleBreath.PoseAt(0f, Seed, rig), 1f), rest);
-            Vector3 leftAtRest = TestBodies.Sole(rig, rest, TestBodies.ShinLeft);
-            Vector3 rightAtRest = TestBodies.Sole(rig, rest, TestBodies.ShinRight);
+            Vector3 leftAtRest = TestBodies.Sole(rig, rest, HumanoidSkeleton.ShinLeft);
+            Vector3 rightAtRest = TestBodies.Sole(rig, rest, HumanoidSkeleton.ShinRight);
             // The idle really does stand ON the floor, or every assertion below is against the wrong datum:
             // the pieces are authored with the sole exactly on y 0 and the stance's own bob keeps it there.
             Assert.Equal(0f, leftAtRest.Y, 4);
@@ -121,12 +121,12 @@ public class IdleBreathTests
                 float seconds = IdleBreath.PeriodSeconds * i / 64f;
                 WalkPose breath = IdleBreath.Compose(
                     WalkPose.Rest, IdleBreath.PoseAt(seconds, Seed, rig), 1f);
-                TestBodies.Humanoid(rig, pose, breath, at);
+                HumanoidSkeleton.Compose(rig, pose, breath, at);
 
-                foreach (int shin in new[] { TestBodies.ShinLeft, TestBodies.ShinRight })
+                foreach (int shin in new[] { HumanoidSkeleton.ShinLeft, HumanoidSkeleton.ShinRight })
                 {
                     Vector3 sole = TestBodies.Sole(rig, at, shin);
-                    Vector3 datum = shin == TestBodies.ShinLeft ? leftAtRest : rightAtRest;
+                    Vector3 datum = shin == HumanoidSkeleton.ShinLeft ? leftAtRest : rightAtRest;
                     Assert.Equal(0f, sole.Y, 4);
                     Assert.Equal(datum.Z, sole.Z, 4);
                     Assert.Equal(datum.X, sole.X, 4);
@@ -136,15 +136,15 @@ public class IdleBreathTests
                 // but its resting transform is a leg that moved, wherever on it the sole happened to land.
                 foreach (int leg in new[]
                 {
-                    TestBodies.ThighLeft, TestBodies.ThighRight,
-                    TestBodies.ShinLeft, TestBodies.ShinRight,
+                    HumanoidSkeleton.ThighLeft, HumanoidSkeleton.ThighRight,
+                    HumanoidSkeleton.ShinLeft, HumanoidSkeleton.ShinRight,
                 })
                 {
                     Assert.Equal(rest[leg], at[leg]);
                 }
 
                 float crown = Vector3.Transform(
-                    new Vector3(0f, rig.RestHeightMetres, 0f), at[TestBodies.Torso]).Y;
+                    new Vector3(0f, rig.RestHeightMetres, 0f), at[HumanoidSkeleton.Torso]).Y;
                 lowest = MathF.Min(lowest, crown);
                 highest = MathF.Max(highest, crown);
             }
@@ -173,7 +173,7 @@ public class IdleBreathTests
     public void TheStanceHoldsEachSoleOnTheFloorAndUnderItsOwnHip()
     {
         var pose = new BodyPose(Vector3.Zero, 0f);
-        Span<Matrix4x4> at = stackalloc Matrix4x4[TestBodies.HumanoidPieceCount];
+        Span<Matrix4x4> at = stackalloc Matrix4x4[HumanoidSkeleton.PieceCount];
         foreach (BodyRig rig in new[] { BodyRig.Human, TestBodies.Small })
         {
             for (int i = 0; i < 64; i++)
@@ -183,11 +183,11 @@ public class IdleBreathTests
                 Assert.Equal(IdleBreath.RestKneeRadians, idle.LeftKnee, 6);
                 Assert.Equal(IdleBreath.RestKneeRadians, idle.RightKnee, 6);
 
-                TestBodies.Humanoid(rig, pose, IdleBreath.Compose(WalkPose.Rest, idle, 1f), at);
+                HumanoidSkeleton.Compose(rig, pose, IdleBreath.Compose(WalkPose.Rest, idle, 1f), at);
                 foreach ((int thigh, int shin) in new[]
                 {
-                    (TestBodies.ThighLeft, TestBodies.ShinLeft),
-                    (TestBodies.ThighRight, TestBodies.ShinRight),
+                    (HumanoidSkeleton.ThighLeft, HumanoidSkeleton.ShinLeft),
+                    (HumanoidSkeleton.ThighRight, HumanoidSkeleton.ShinRight),
                 })
                 {
                     // The hip is the thigh piece's own origin, so its drawn position is that transform's
@@ -212,24 +212,24 @@ public class IdleBreathTests
     {
         BodyRig rig = BodyRig.Human;
         var pose = new BodyPose(Vector3.Zero, 0f);
-        Span<Matrix4x4> at = stackalloc Matrix4x4[TestBodies.HumanoidPieceCount];
-        Span<Matrix4x4> risen = stackalloc Matrix4x4[TestBodies.HumanoidPieceCount];
+        Span<Matrix4x4> at = stackalloc Matrix4x4[HumanoidSkeleton.PieceCount];
+        Span<Matrix4x4> risen = stackalloc Matrix4x4[HumanoidSkeleton.PieceCount];
 
-        TestBodies.Humanoid(rig, pose, WalkPose.Rest, at);
+        HumanoidSkeleton.Compose(rig, pose, WalkPose.Rest, at);
         Assert.Equal(
-            Matrix4x4.CreateTranslation(rig.HeadFromFeet) * at[TestBodies.Torso], at[TestBodies.Head]);
-        Assert.Equal(rig.HeadFromFeet, at[TestBodies.Head].Translation);
+            Matrix4x4.CreateTranslation(rig.HeadFromFeet) * at[HumanoidSkeleton.Torso], at[HumanoidSkeleton.Head]);
+        Assert.Equal(rig.HeadFromFeet, at[HumanoidSkeleton.Head].Translation);
 
         const float Rise = 0.05f;
-        TestBodies.Humanoid(rig, pose, WalkPose.Rest with { TorsoRise = Rise }, risen);
+        HumanoidSkeleton.Compose(rig, pose, WalkPose.Rest with { TorsoRise = Rise }, risen);
         Assert.Equal(
-            Matrix4x4.CreateTranslation(rig.HeadFromFeet) * risen[TestBodies.Torso],
-            risen[TestBodies.Head]);
-        Assert.Equal(at[TestBodies.Head].Translation.Y + Rise, risen[TestBodies.Head].Translation.Y, 5);
+            Matrix4x4.CreateTranslation(rig.HeadFromFeet) * risen[HumanoidSkeleton.Torso],
+            risen[HumanoidSkeleton.Head]);
+        Assert.Equal(at[HumanoidSkeleton.Head].Translation.Y + Rise, risen[HumanoidSkeleton.Head].Translation.Y, 5);
         // And the legs are outside that frame, which is the same claim the soles make: a rise moves the head
         // and the chest and leaves the feet on the ground.
-        Assert.Equal(at[TestBodies.ShinLeft], risen[TestBodies.ShinLeft]);
-        Assert.Equal(at[TestBodies.ShinRight], risen[TestBodies.ShinRight]);
+        Assert.Equal(at[HumanoidSkeleton.ShinLeft], risen[HumanoidSkeleton.ShinLeft]);
+        Assert.Equal(at[HumanoidSkeleton.ShinRight], risen[HumanoidSkeleton.ShinRight]);
     }
 
     [Fact]

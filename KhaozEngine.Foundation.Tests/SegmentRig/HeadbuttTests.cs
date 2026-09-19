@@ -11,7 +11,7 @@ namespace KhaozEngine.Tests.SegmentRig;
 /// happens over four hooves that do not move and four joints that do not open.
 /// </summary>
 /// <remarks>
-/// The planted and closed measurements go through <see cref="TestBodies.Quadruped"/>, the piece chain a draw
+/// The planted and closed measurements go through <see cref="QuadrupedSkeleton.Compose"/>, the piece chain a draw
 /// writes, so a change to the composition's order fails here too.
 /// </remarks>
 public class HeadbuttTests
@@ -34,7 +34,7 @@ public class HeadbuttTests
     const float PlantedWhileBlending = 0.01f;
 
     static void ComposeAt(in QuadrupedPose pose, Span<Matrix4x4> into) =>
-        TestBodies.Quadruped(Rig, Standing, WalkPose.Rest, pose, into);
+        QuadrupedSkeleton.Compose(Rig, Standing, WalkPose.Rest, pose, into);
 
     static QuadrupedPose StrikeAt(float phase, float weight = 1f) =>
         Headbutt.Compose(QuadrupedPose.Rest, Headbutt.PoseAt(phase, Rig), weight);
@@ -43,7 +43,7 @@ public class HeadbuttTests
     static Vector3 Sole(ReadOnlySpan<Matrix4x4> at, int leg)
     {
         float sole = leg < 2 ? Rig.ForeSoleFromHinge : Rig.HindSoleFromHinge;
-        return Vector3.Transform(new Vector3(0f, -sole, 0f), at[TestBodies.LowerForeLeft + leg]);
+        return Vector3.Transform(new Vector3(0f, -sole, 0f), at[QuadrupedSkeleton.LowerForeLeft + leg]);
     }
 
     [Fact]
@@ -134,9 +134,9 @@ public class HeadbuttTests
     [Fact]
     public void EveryHoofStaysPlantedThroughTheWholeStrike()
     {
-        Span<Matrix4x4> rest = stackalloc Matrix4x4[TestBodies.QuadrupedPieceCount];
+        Span<Matrix4x4> rest = stackalloc Matrix4x4[QuadrupedSkeleton.PieceCount];
         ComposeAt(QuadrupedPose.Rest, rest);
-        Span<Matrix4x4> at = stackalloc Matrix4x4[TestBodies.QuadrupedPieceCount];
+        Span<Matrix4x4> at = stackalloc Matrix4x4[QuadrupedSkeleton.PieceCount];
         float worst = 0f, worstBlending = 0f;
         for (int i = 0; i <= 400; i++)
         {
@@ -157,7 +157,7 @@ public class HeadbuttTests
         // And the body really did go somewhere over them, along the way it faces.
         ComposeAt(StrikeAt(0f), at);
         Vector3 facing = new(MathF.Sin(Standing.Yaw), 0f, MathF.Cos(Standing.Yaw));
-        float lunge = Vector3.Dot(at[TestBodies.Trunk].Translation - rest[TestBodies.Trunk].Translation, facing);
+        float lunge = Vector3.Dot(at[QuadrupedSkeleton.Trunk].Translation - rest[QuadrupedSkeleton.Trunk].Translation, facing);
         Assert.True(lunge > 0.1f, $"the body only moved {lunge} m forward");
     }
 
@@ -170,15 +170,15 @@ public class HeadbuttTests
     public void TheShoulderAndHipSocketsStayOnTheirBallsThroughTheStrike()
     {
         Vector3[] joints = [Rig.LeftShoulder, Rig.RightShoulder, Rig.LeftHip, Rig.RightHip];
-        Span<Matrix4x4> at = stackalloc Matrix4x4[TestBodies.QuadrupedPieceCount];
+        Span<Matrix4x4> at = stackalloc Matrix4x4[QuadrupedSkeleton.PieceCount];
         float worst = 0f;
         for (int i = 0; i <= 400; i++)
         {
             ComposeAt(StrikeAt(i / 400f), at);
             for (int leg = 0; leg < 4; leg++)
             {
-                Vector3 socket = Vector3.Transform(joints[leg], at[TestBodies.Trunk]);
-                Vector3 ball = Vector3.Transform(Vector3.Zero, at[TestBodies.UpperForeLeft + leg]);
+                Vector3 socket = Vector3.Transform(joints[leg], at[QuadrupedSkeleton.Trunk]);
+                Vector3 ball = Vector3.Transform(Vector3.Zero, at[QuadrupedSkeleton.UpperForeLeft + leg]);
                 worst = MathF.Max(worst, Vector3.Distance(socket, ball));
             }
         }
@@ -188,31 +188,31 @@ public class HeadbuttTests
     [Fact]
     public void TheHeadComesDownAndForwardIntoTheBlow()
     {
-        Span<Matrix4x4> rest = stackalloc Matrix4x4[TestBodies.QuadrupedPieceCount];
+        Span<Matrix4x4> rest = stackalloc Matrix4x4[QuadrupedSkeleton.PieceCount];
         ComposeAt(QuadrupedPose.Rest, rest);
-        Span<Matrix4x4> blow = stackalloc Matrix4x4[TestBodies.QuadrupedPieceCount];
+        Span<Matrix4x4> blow = stackalloc Matrix4x4[QuadrupedSkeleton.PieceCount];
         ComposeAt(StrikeAt(0f), blow);
         Vector3 facing = new(MathF.Sin(Standing.Yaw), 0f, MathF.Cos(Standing.Yaw));
 
         // The poll LEADS: it is carried forward by most of the lunge.
-        Vector3 pollRest = rest[TestBodies.Poll].Translation;
-        Vector3 pollBlow = blow[TestBodies.Poll].Translation;
+        Vector3 pollRest = rest[QuadrupedSkeleton.Poll].Translation;
+        Vector3 pollBlow = blow[QuadrupedSkeleton.Poll].Translation;
         Assert.True(Vector3.Dot(pollBlow - pollRest, facing) > 0.1f, "the poll did not drive forward");
 
         // And the face goes down under it. A point out along the muzzle, inside the reach the head piece is
         // authored to, is lower by a hand and still ahead of where it stood.
         var muzzle = new Vector3(0f, -0.1f, 0.4f);
-        Vector3 muzzleRest = Vector3.Transform(muzzle, rest[TestBodies.Poll]);
-        Vector3 muzzleBlow = Vector3.Transform(muzzle, blow[TestBodies.Poll]);
+        Vector3 muzzleRest = Vector3.Transform(muzzle, rest[QuadrupedSkeleton.Poll]);
+        Vector3 muzzleBlow = Vector3.Transform(muzzle, blow[QuadrupedSkeleton.Poll]);
         Assert.True(muzzleBlow.Y < muzzleRest.Y - 0.1f, $"the muzzle only dropped {muzzleRest.Y - muzzleBlow.Y} m");
         Assert.True(Vector3.Dot(muzzleBlow - muzzleRest, facing) > 0f, "the muzzle went back into the blow");
 
         // Nowhere in the cadence is the muzzle lower than at the blow.
-        Span<Matrix4x4> at = stackalloc Matrix4x4[TestBodies.QuadrupedPieceCount];
+        Span<Matrix4x4> at = stackalloc Matrix4x4[QuadrupedSkeleton.PieceCount];
         for (int i = 0; i <= 200; i++)
         {
             ComposeAt(StrikeAt(i / 200f), at);
-            Assert.True(Vector3.Transform(muzzle, at[TestBodies.Poll]).Y >= muzzleBlow.Y - 1e-4f,
+            Assert.True(Vector3.Transform(muzzle, at[QuadrupedSkeleton.Poll]).Y >= muzzleBlow.Y - 1e-4f,
                 $"the muzzle is lower at phase {i / 200f} than at the blow");
         }
     }
@@ -234,14 +234,14 @@ public class HeadbuttTests
             Assert.InRange(pose.Bob, -0.03f, 0.005f);
         }
 
-        Span<Matrix4x4> rest = stackalloc Matrix4x4[TestBodies.QuadrupedPieceCount];
+        Span<Matrix4x4> rest = stackalloc Matrix4x4[QuadrupedSkeleton.PieceCount];
         ComposeAt(QuadrupedPose.Rest, rest);
-        Span<Matrix4x4> blow = stackalloc Matrix4x4[TestBodies.QuadrupedPieceCount];
+        Span<Matrix4x4> blow = stackalloc Matrix4x4[QuadrupedSkeleton.PieceCount];
         ComposeAt(StrikeAt(0f), blow);
         Vector3 facing = new(MathF.Sin(Standing.Yaw), 0f, MathF.Cos(Standing.Yaw));
         // How far each hoof sits behind its own joint along the facing, at rest and at the blow.
         float Behind(ReadOnlySpan<Matrix4x4> at, int leg) =>
-            Vector3.Dot(at[TestBodies.UpperForeLeft + leg].Translation - Sole(at, leg), facing);
+            Vector3.Dot(at[QuadrupedSkeleton.UpperForeLeft + leg].Translation - Sole(at, leg), facing);
         for (int leg = 0; leg < 4; leg++)
             Assert.True(Behind(blow, leg) > Behind(rest, leg) + 0.1f, $"leg {leg} did not brace back");
         Assert.True(Behind(blow, 2) > Behind(blow, 0), "the hind legs are not pushing from further back");

@@ -6,20 +6,18 @@ using KhaozEngine.SegmentRig;
 namespace KhaozEngine.Tests.SegmentRig;
 
 /// <summary>
-/// The HELD PIECE half of these suites: where a thing in a fist sits, the two socket rotations a stroke
-/// drives it through, and the two neutral shapes the stroke tests measure.
+/// The HELD PIECE half of these suites: the grips a thing in a fist sits at, and the neutral shapes the
+/// stroke tests measure.
 /// </summary>
 /// <remarks>
-/// None of this belongs in the package, and neither half for the same reason. A grip orientation is a
-/// property of a MESH, so it is content: how far a blade leans out of a fist is a question about the model,
-/// not about the rig. And the tool shapes below are a test's own measuring stick, sampled off the kind of
-/// geometry a game authors rather than off anything the package knows.
-/// <para>The two ROTATIONS (<see cref="Wrist"/> and <see cref="OffTurn"/>) are a different case: they are
-/// size-free and shape-free, they are what the <c>RightWrist</c> and <c>LeftWrist</c> channels MEAN, and
-/// they belong on the package's socket helpers. They live here until those land, transcribed so the
-/// assertions below are measuring the real thing.</para>
-/// <para>The chains are written the way a consumer writes a draw, exactly as <see cref="TestBodies"/>'s piece
-/// chains are, so a sign or a pivot that moved inside the package fails here.</para>
+/// None of this belongs in the package. A grip orientation is a property of a MESH, so it is content: how far
+/// a blade leans out of a fist is a question about the model, not about the rig. And the tool shapes below
+/// are a test's own measuring stick, sampled off the kind of geometry a game authors rather than off anything
+/// the package knows.
+/// <para>The two socket ROTATIONS used to be transcribed here, because they are size-free and shape-free and
+/// the package had nowhere to put them. It does now: <see cref="SegmentSockets.Wrist"/> and
+/// <see cref="SegmentSockets.OffTurn"/> are what the <c>RightWrist</c> and <c>LeftWrist</c> channels MEAN,
+/// and everything below reads them off the package.</para>
 /// </remarks>
 static class TestHeldPieces
 {
@@ -60,26 +58,6 @@ static class TestHeldPieces
         Matrix4x4.CreateRotationY(PlateTurnRadians)
         * Matrix4x4.CreateTranslation(-PlateInsetMetres, 0f, 0f);
 
-    /// <summary>The WEAPON hand's tip: the held piece turned about the hand's own x, applied AFTER the
-    /// piece's own orientation, so it adds to whatever lean that orientation left it at. Positive carries the
-    /// piece's head the way the body faces.</summary>
-    /// <param name="radians">From <c>WalkPose.RightWrist</c>.</param>
-    public static Matrix4x4 Wrist(float radians) =>
-        radians == 0f ? Matrix4x4.Identity : Matrix4x4.CreateRotationX(radians);
-
-    /// <summary>The OFF hand's turn: the held piece swung about the BODY's own up axis through the fist that
-    /// holds it, applied at the very end of the chain, which is what makes the axis the body's rather than
-    /// the hand's. A pitch about x leaves the hand's own x alone, so the face ends up at this angle whatever
-    /// the shoulder and the elbow are doing.</summary>
-    /// <param name="radians">From <c>WalkPose.LeftWrist</c>. Positive carries the face from the character's
-    /// left round toward its back.</param>
-    /// <param name="fist">Where that hand is, in the space the piece is drawn in.</param>
-    public static Matrix4x4 OffTurn(float radians, Vector3 fist) =>
-        radians == 0f
-            ? Matrix4x4.Identity
-            : Matrix4x4.CreateTranslation(-fist) * Matrix4x4.CreateRotationY(radians)
-              * Matrix4x4.CreateTranslation(fist);
-
     /// <summary>The WEAPON arm's two transforms at a set of angles, in BODY space, through the chain a draw
     /// composes: the shoulder's pitch and yaw out to the shoulder joint, then the elbow out to the elbow
     /// joint.</summary>
@@ -91,33 +69,29 @@ static class TestHeldPieces
         return (upper, rig.Elbow(elbow) * upper);
     }
 
-    /// <summary>A piece held in the WEAPON hand, in body space: its own grip, the wrist that hand is bent to,
-    /// the hand socket down the forearm, then the arm.</summary>
+    /// <summary>A piece held in the WEAPON hand, in body space, through the package's own socket chain: its
+    /// own grip, the wrist that hand is bent to, the hand socket down the forearm, then the arm.</summary>
     public static Matrix4x4 HeldInWeaponHand(BodyRig rig, in Matrix4x4 grip, float shoulder, float elbow,
         float yaw, float wrist)
     {
         ArgumentNullException.ThrowIfNull(rig);
         Matrix4x4 forearm = WeaponArm(rig, shoulder, elbow, yaw).Forearm;
-        return grip * Wrist(wrist) * Matrix4x4.CreateTranslation(rig.HandFromElbow) * forearm;
+        return SegmentSockets.Held(rig, grip, forearm, tip: wrist);
     }
 
     /// <summary>The PLATE's world transform off a finished composition, the chain a draw builds for the off
     /// hand: the grip, the socket down the forearm, then the off hand's own turn about the body's vertical.
     /// </summary>
-    /// <param name="at">A composition, from <see cref="TestBodies.Humanoid"/>.</param>
+    /// <param name="at">A composition, from <see cref="HumanoidSkeleton.Compose"/>.</param>
     /// <param name="leftWrist">The pose's <c>LeftWrist</c>. Zero is the plate exactly where it hangs.</param>
-    public static Matrix4x4 HeldInOffHand(ReadOnlySpan<Matrix4x4> at, float leftWrist = 0f)
-    {
-        Matrix4x4 hand =
-            Matrix4x4.CreateTranslation(BodyRig.Human.HandFromElbow) * at[TestBodies.ForearmLeft];
-        return PlateGrip * hand * OffTurn(leftWrist, hand.Translation);
-    }
+    public static Matrix4x4 HeldInOffHand(ReadOnlySpan<Matrix4x4> at, float leftWrist = 0f) =>
+        SegmentSockets.Held(BodyRig.Human, PlateGrip, at[HumanoidSkeleton.ForearmLeft], turn: leftWrist);
 
     /// <summary>A person standing at the origin facing engine +z, through the real piece chain.</summary>
     public static Matrix4x4[] Standing(in WalkPose walk)
     {
-        var at = new Matrix4x4[TestBodies.HumanoidPieceCount];
-        TestBodies.Humanoid(BodyRig.Human, new BodyPose(Vector3.Zero, 0f), walk, at);
+        var at = new Matrix4x4[HumanoidSkeleton.PieceCount];
+        HumanoidSkeleton.Compose(BodyRig.Human, new BodyPose(Vector3.Zero, 0f), walk, at);
         return at;
     }
 

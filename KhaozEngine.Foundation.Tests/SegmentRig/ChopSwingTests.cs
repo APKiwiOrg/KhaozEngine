@@ -394,7 +394,7 @@ public class ChopSwingTests
         BodyRig rig = BodyRig.Human;
         (Matrix4x4 upper, Matrix4x4 forearm) =
             TestHeldPieces.WeaponArm(rig, pose.Shoulder, pose.Elbow, pose.Yaw);
-        Matrix4x4 tool = TestHeldPieces.Wrist(pose.Wrist) * TestHeldPieces.ToolGrip
+        Matrix4x4 tool = SegmentSockets.Wrist(pose.Wrist) * TestHeldPieces.ToolGrip
             * Matrix4x4.CreateTranslation(rig.HandFromElbow) * forearm;
         return (upper, forearm, tool);
     }

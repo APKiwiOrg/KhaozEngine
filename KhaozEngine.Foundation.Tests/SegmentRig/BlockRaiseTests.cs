@@ -199,7 +199,7 @@ public class BlockRaiseTests
     public void BothSolesStayOnTheFloorThroughTheRaiseAndTheFeetStepApartAtTheTop()
     {
         var pose = new BodyPose(Vector3.Zero, 0f);
-        Span<Matrix4x4> at = stackalloc Matrix4x4[TestBodies.HumanoidPieceCount];
+        Span<Matrix4x4> at = stackalloc Matrix4x4[HumanoidSkeleton.PieceCount];
         foreach (BodyRig rig in new[] { BodyRig.Human, TestBodies.Small })
         {
             // Five points through the flinch: before it, on the way up, at the top, settling, and past the
@@ -212,9 +212,9 @@ public class BlockRaiseTests
             })
             {
                 WalkPose walk = BlockRaise.Compose(WalkPose.Rest, BlockRaise.PoseAt(age, rig));
-                TestBodies.Humanoid(rig, pose, walk, at);
-                Vector3 left = TestBodies.Sole(rig, at, TestBodies.ShinLeft);
-                Vector3 right = TestBodies.Sole(rig, at, TestBodies.ShinRight);
+                HumanoidSkeleton.Compose(rig, pose, walk, at);
+                Vector3 left = TestBodies.Sole(rig, at, HumanoidSkeleton.ShinLeft);
+                Vector3 right = TestBodies.Sole(rig, at, HumanoidSkeleton.ShinRight);
                 // A millimetre, on a body that is standing rather than striding.
                 Assert.Equal(0f, left.Y, 3);
                 Assert.Equal(0f, right.Y, 3);
@@ -338,9 +338,9 @@ public class BlockRaiseTests
         Matrix4x4[] top = TestHeldPieces.Standing(
             BlockRaise.Compose(WalkPose.Rest, BlockRaise.PoseAt(BlockRaise.RaiseSeconds)));
         Vector3 shoulder = BodyRig.Human.LeftShoulder;
-        Vector3 elbow = Vector3.Transform(Vector3.Zero, top[TestBodies.ForearmLeft]);
-        Vector3 fist = Vector3.Transform(BodyRig.Human.HandFromElbow, top[TestBodies.ForearmLeft]);
-        Vector3 hanging = Vector3.Transform(BodyRig.Human.HandFromElbow, rest[TestBodies.ForearmLeft]);
+        Vector3 elbow = Vector3.Transform(Vector3.Zero, top[HumanoidSkeleton.ForearmLeft]);
+        Vector3 fist = Vector3.Transform(BodyRig.Human.HandFromElbow, top[HumanoidSkeleton.ForearmLeft]);
+        Vector3 hanging = Vector3.Transform(BodyRig.Human.HandFromElbow, rest[HumanoidSkeleton.ForearmLeft]);
 
         // The ELBOW stays down beside the ribs: barely off the shoulder's own line, and a long way under it.
         Assert.True(elbow.Y < shoulder.Y - 0.2f, "the elbow is at y " + elbow.Y + ", up at the shoulder");
@@ -358,11 +358,11 @@ public class BlockRaiseTests
     // Both soles in the body's own frame at one age, off side first, on a body standing still.
     static (Vector3 Left, Vector3 Right) Feet(BodyRig rig, float age)
     {
-        var at = new Matrix4x4[TestBodies.HumanoidPieceCount];
-        TestBodies.Humanoid(rig, new BodyPose(Vector3.Zero, 0f),
+        var at = new Matrix4x4[HumanoidSkeleton.PieceCount];
+        HumanoidSkeleton.Compose(rig, new BodyPose(Vector3.Zero, 0f),
             BlockRaise.Compose(WalkPose.Rest, BlockRaise.PoseAt(age, rig)), at);
-        return (TestBodies.Sole(rig, at, TestBodies.ShinLeft),
-            TestBodies.Sole(rig, at, TestBodies.ShinRight));
+        return (TestBodies.Sole(rig, at, HumanoidSkeleton.ShinLeft),
+            TestBodies.Sole(rig, at, HumanoidSkeleton.ShinRight));
     }
 
     // Where the envelope is exactly half way up, which is the middle of the raise ramp by the smoothstep's own

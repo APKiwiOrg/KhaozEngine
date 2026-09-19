@@ -135,28 +135,28 @@ public class WalkPoseChannelTests
     {
         BodyRig rig = BodyRig.Human;
         var pose = new BodyPose(Vector3.Zero, 0f);
-        Span<Matrix4x4> upright = stackalloc Matrix4x4[TestBodies.HumanoidPieceCount];
-        Span<Matrix4x4> prone = stackalloc Matrix4x4[TestBodies.HumanoidPieceCount];
+        Span<Matrix4x4> upright = stackalloc Matrix4x4[HumanoidSkeleton.PieceCount];
+        Span<Matrix4x4> prone = stackalloc Matrix4x4[HumanoidSkeleton.PieceCount];
 
-        TestBodies.Humanoid(rig, pose, WalkPose.Rest, upright);
-        TestBodies.Humanoid(rig, pose, WalkPose.Rest with { RootPitch = MathF.PI * 0.5f }, prone);
+        HumanoidSkeleton.Compose(rig, pose, WalkPose.Rest, upright);
+        HumanoidSkeleton.Compose(rig, pose, WalkPose.Rest with { RootPitch = MathF.PI * 0.5f }, prone);
 
         // Standing: the neck base is straight up. Prone: it is the same distance straight ahead.
-        Assert.Equal(new Vector3(0f, rig.HeadFromFeet.Y, 0f), upright[TestBodies.Head].Translation);
-        Vector3 head = prone[TestBodies.Head].Translation;
+        Assert.Equal(new Vector3(0f, rig.HeadFromFeet.Y, 0f), upright[HumanoidSkeleton.Head].Translation);
+        Vector3 head = prone[HumanoidSkeleton.Head].Translation;
         Assert.Equal(0f, head.X, 5);
         Assert.Equal(0f, head.Y, 5);
         Assert.Equal(rig.HeadFromFeet.Y, head.Z, 5);
 
         // THE LEGS CAME WITH IT: every leg piece is drawn somewhere else, so this is the whole rig turning
         // rather than the upper body folding off a fixed pelvis.
-        Assert.NotEqual(upright[TestBodies.ThighLeft], prone[TestBodies.ThighLeft]);
-        Assert.NotEqual(upright[TestBodies.ShinLeft], prone[TestBodies.ShinLeft]);
+        Assert.NotEqual(upright[HumanoidSkeleton.ThighLeft], prone[HumanoidSkeleton.ThighLeft]);
+        Assert.NotEqual(upright[HumanoidSkeleton.ShinLeft], prone[HumanoidSkeleton.ShinLeft]);
 
         // And the CONTACT POINT is preserved, because the pivot is the point the pose names: a resting sole
         // sits at y 0 directly under its hip, which is on the pitch axis, so it does not move at all.
-        Vector3 standingSole = TestBodies.Sole(rig, upright, TestBodies.ShinLeft);
-        Vector3 proneSole = TestBodies.Sole(rig, prone, TestBodies.ShinLeft);
+        Vector3 standingSole = TestBodies.Sole(rig, upright, HumanoidSkeleton.ShinLeft);
+        Vector3 proneSole = TestBodies.Sole(rig, prone, HumanoidSkeleton.ShinLeft);
         Assert.Equal(0f, standingSole.Y, 5);
         Assert.Equal(standingSole.X, proneSole.X, 5);
         Assert.Equal(standingSole.Y, proneSole.Y, 5);
@@ -164,19 +164,19 @@ public class WalkPoseChannelTests
 
         // A LEAN of the same size pivots at HIP height instead, which is what makes it the wrong channel for
         // a body with nothing under its soles: the feet swing up and back off the ground.
-        Span<Matrix4x4> leaning = stackalloc Matrix4x4[TestBodies.HumanoidPieceCount];
-        TestBodies.Humanoid(rig, pose, WalkPose.Rest with { Lean = MathF.PI * 0.5f }, leaning);
-        Vector3 leanedHead = leaning[TestBodies.Head].Translation;
+        Span<Matrix4x4> leaning = stackalloc Matrix4x4[HumanoidSkeleton.PieceCount];
+        HumanoidSkeleton.Compose(rig, pose, WalkPose.Rest with { Lean = MathF.PI * 0.5f }, leaning);
+        Vector3 leanedHead = leaning[HumanoidSkeleton.Head].Translation;
         Assert.Equal(rig.RightHip.Y, leanedHead.Y, 5);
-        Vector3 leanedSole = TestBodies.Sole(rig, leaning, TestBodies.ShinLeft);
+        Vector3 leanedSole = TestBodies.Sole(rig, leaning, HumanoidSkeleton.ShinLeft);
         Assert.Equal(rig.RightHip.Y, leanedSole.Y, 5);
         Assert.Equal(-rig.RightHip.Y, leanedSole.Z, 5);
 
         // The ROLL lifts the character's LEFT side, engine +x, the same sense the quadruped's own roll uses.
-        Span<Matrix4x4> banked = stackalloc Matrix4x4[TestBodies.HumanoidPieceCount];
-        TestBodies.Humanoid(rig, pose, WalkPose.Rest with { RootRoll = 0.4f }, banked);
-        Vector3 leftHip = Vector3.Transform(Vector3.Zero, banked[TestBodies.ThighLeft]);
-        Vector3 rightHip = Vector3.Transform(Vector3.Zero, banked[TestBodies.ThighRight]);
+        Span<Matrix4x4> banked = stackalloc Matrix4x4[HumanoidSkeleton.PieceCount];
+        HumanoidSkeleton.Compose(rig, pose, WalkPose.Rest with { RootRoll = 0.4f }, banked);
+        Vector3 leftHip = Vector3.Transform(Vector3.Zero, banked[HumanoidSkeleton.ThighLeft]);
+        Vector3 rightHip = Vector3.Transform(Vector3.Zero, banked[HumanoidSkeleton.ThighRight]);
         Assert.True(leftHip.Y > rightHip.Y,
             $"the left hip is at {leftHip.Y} and the right at {rightHip.Y}, so a positive roll dropped the left");
     }

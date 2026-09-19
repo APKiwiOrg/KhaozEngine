@@ -77,6 +77,25 @@ public static class ContentPackRebuild
     public const string RefusedCandidateInvalid = "rebuild-candidate-invalid";
 
     /// <summary>
+    /// The version's manifests would name text chunks, which a rebuild cannot reproduce, because no store
+    /// keeps a VERSION's text. It refuses BEFORE any write rather than leaving a pack whose manifest names an
+    /// object the root does not hold.
+    /// <para>
+    /// The two manifest digests cannot stand in for this one. Both rebuilt manifests are built from the same
+    /// language list the recorded ones were, so they name the same text chunk hashes either way and match, and
+    /// the rebuild would report success and write the pointer over a pack a boot then fails to fetch a text
+    /// chunk out of.
+    /// </para>
+    /// <para>
+    /// Every provider publishes an empty language list today, so no rebuild of a version any of them holds can
+    /// reach this. Publishing text at all is
+    /// https://github.com/APKiwiOrg/KhaozEngine/issues/1000, and rebuilding it belongs with that work: a
+    /// version scoped text read has to exist on the seam before there is anything to encode a text chunk from.
+    /// </para>
+    /// </summary>
+    public const string RefusedTextChunks = "text-chunks-unsupported";
+
+    /// <summary>
     /// Reads the version, builds its pack, verifies both digests, and writes.
     /// <para>
     /// The write order is step 9's, deliberately: every chunk, then the rule chunk, then the server manifest,
@@ -90,10 +109,11 @@ public static class ContentPackRebuild
     /// read always performs.
     /// </para>
     /// <para>
-    /// The languages the manifests name come from the ACTIVE version's baseline rather than from the version
-    /// being rebuilt. That is the same list at every version today, because every published language list is
-    /// empty, and a divergence moves the manifest text, so it surfaces as a digest mismatch and the rebuild
-    /// refuses rather than filing a pack no version record describes.
+    /// <b>A version whose manifests would name TEXT chunks is refused before the build and before any write</b>,
+    /// with <see cref="RefusedTextChunks"/>. The write below puts chunks, the rule chunk, both manifests and
+    /// the pointer, and never a text chunk, so a rebuild that proceeded would file a manifest naming an object
+    /// the root does not hold. The languages come from the ACTIVE version's baseline, because no store member
+    /// returns version N's, and that is the same empty list at every version today.
     /// </para>
     /// </summary>
     /// <param name="store">The authoring store the version is read from, through read members only.</param>
@@ -138,6 +158,13 @@ public static class ContentPackRebuild
 
         ContentRebuildSnapshot snapshot = await ContentRebuildSnapshot
             .ReadAsync(store, registry, versionNumber, cancellationToken).ConfigureAwait(false);
+
+        // Ahead of the build, because a rebuild that cannot reproduce the version's text cannot reproduce the
+        // version, and the digest comparison below would pass a pack with a text chunk missing out of it.
+        if (ContentRebuildVerification.CheckText(versionNumber, snapshot.Languages) is ContentRebuildRefusal text)
+        {
+            return new ContentPackRebuildResult(false, versionNumber, 0, 0, 0, text.Reason, text.Detail);
+        }
 
         ContentRebuiltPack pack;
         try
@@ -212,10 +239,11 @@ public static class ContentPackRebuild
     /// RECORD's hashes rather than the rebuilt ones, which the verification has just proved are the same
     /// strings, so the address a boot will ask for is the address the bytes land at by construction.
     /// <para>
-    /// <b>These four kinds of object are the WHOLE pack only while every published language list is empty.</b>
-    /// The day text chunks are publishable, a manifest will name text chunk hashes this method does not write,
-    /// and the digest check cannot catch it, because both manifests are rebuilt from the same source and name
-    /// the same hashes either way. See https://github.com/APKiwiOrg/KhaozEngine/issues/1014.
+    /// <b>These four kinds of object are the WHOLE pack only for a version whose manifests name no text.</b> A
+    /// manifest that names a language names a text chunk hash this method does not write, and the digest check
+    /// cannot catch it, because both manifests are rebuilt from the same language list the recorded ones were
+    /// and name the same hashes either way. That is WHY the guard exists: <see cref="RefusedTextChunks"/>
+    /// refuses such a version before the build, so nothing that reaches this method can need a text chunk.
     /// </para>
     /// </summary>
     static async Task<(int Objects, long Bytes)> WriteAsync(

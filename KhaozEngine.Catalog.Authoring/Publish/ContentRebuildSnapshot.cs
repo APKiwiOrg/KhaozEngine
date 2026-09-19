@@ -50,9 +50,15 @@ sealed class ContentRebuildSnapshot
     public IReadOnlyList<RemapRule> Rules { get; }
 
     /// <summary>
-    /// The languages the manifests name, taken from the ACTIVE version's baseline rather than from the
-    /// version being read. Every published manifest carries an empty list today, so the two are the same
-    /// list, and a divergence would surface as a digest mismatch rather than as a pack nothing describes.
+    /// The languages the manifests would name, taken from the ACTIVE version's baseline rather than from the
+    /// version being read, because no store member returns version N's. Every published language list is
+    /// empty today, so the two are the same list.
+    /// <para>
+    /// A NON-empty list here refuses the whole rebuild, with
+    /// <see cref="ContentPackRebuild.RefusedTextChunks"/>. A named language is a text chunk hash in both
+    /// manifests, the rebuild writes no text chunk, and the digest comparison cannot see the difference, so
+    /// the list being empty is a precondition of the rebuild rather than a detail of it.
+    /// </para>
     /// </summary>
     public IReadOnlyList<ManifestLanguageEntry> Languages { get; }
 

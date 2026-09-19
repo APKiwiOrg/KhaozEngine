@@ -455,6 +455,35 @@ namespace KhaozEngine.Tests.Terrain
         });
 
         [GpuFact]
+        public void ReconfigureLod_KeepsGameplayPropsAndPropColliderHandles() => WithScene(scene =>
+        {
+            TerrainField field = Flat(5f);
+            ScatterConfig scatter = OneKind("pine_a", seed: 3, cell: 6f);
+            var shapes = new Dictionary<string, PhysicsShape> { ["pine_a"] = new BoxShape(new Vector3(0.5f, 1f, 0.5f)) };
+            var world = new FakePhysicsWorld();
+            var dense = new TerrainLodConfig(new TerrainLodTier(64, float.PositiveInfinity));
+            var coarse = new TerrainLodConfig(new TerrainLodTier(16, float.PositiveInfinity));
+            var sink = new Scene3DChunkSink(scene, field, scatter, NoMeshes(), chunkSize: 60f, propDrawRadius: 90f,
+                physics: world, collisionShapes: shapes, lodConfig: dense);
+            var coord = new ChunkCoord(0, 0);
+            object handle = sink.Load(coord, lod: 0, ring: ChunkRing.Gameplay);
+            var load = (Scene3DChunkSink.ChunkLoad)handle;
+            IReadOnlyList<PropPlacement> propsBefore = load.LayerProps[0];
+            var staticsBefore = load.Statics.ToList();
+            int addedBefore = world.Added.Count;
+            Assert.NotEmpty(propsBefore);
+            Assert.NotEmpty(staticsBefore);
+
+            sink.ReconfigureLod(coarse);
+            sink.ReLod(coord, handle, lod: 0, ChunkRing.Gameplay, ChunkBuildReason.ConfigurationChange);
+
+            Assert.Same(propsBefore, load.LayerProps[0]);
+            Assert.Equal(staticsBefore, load.Statics);
+            Assert.Empty(world.Removed);
+            Assert.Equal(addedBefore, world.Added.Count);
+        });
+
+        [GpuFact]
         public void ReLod_DecorToGameplay_GainsCollidersThenLosesThemOnRetreat() => WithScene(scene =>
         {
             TerrainField field = Flat(5f);

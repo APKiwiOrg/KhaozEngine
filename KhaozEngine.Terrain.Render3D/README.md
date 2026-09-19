@@ -60,13 +60,15 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   binary-compat type forwarders (`AssemblyForwarders.cs`) so an existing `using KhaozEngine.Terrain.Render3D;`
   reference to any of them still compiles. What stays here is the render side that actually implements and
   drives the seam, below.
-- **`Scene3DChunkSink`** - the production `IAsyncChunkSink`: builds each chunk's mesh + scatters **`PropLayer`**s
-  (each layer with its own config, mesh set, and draw radius) for a `Gameplay` chunk, re-LODs meshes AND
-  re-adopts the freshly scattered props in place (byte-identical after a pure LOD change, freshly correct
-  after a field swap plus invalidate), draws every loaded chunk + in-range props per frame, and optionally
+- **`Scene3DChunkSink`** - the production `IReasonedAsyncChunkSink`: builds each chunk's mesh + scatters
+  **`PropLayer`**s (each layer with its own config, mesh set, and draw radius) for a `Gameplay` chunk. A pure
+  tier re-LOD reuses the loaded immutable placement snapshot and fixed collision meshes. An invalidate
+  regenerates placements from the live field and adopts them in place. It draws every loaded chunk + in-range
+  props per frame, and optionally
   adds baked prop collision statics to an `IPhysicsWorld` (the `physics` + `collisionShapes` ctor params). A
   **`Decor`**-ring chunk is render-only: the sink skips scatter, prop colliders, dynamics, and terrain
   collision for it. The `lodConfig` ctor param sets the tier table it meshes with (must match the streamer's),
+  and `ReconfigureLod` updates that table after the streamer has drained old-profile builds.
   the `snowLine` ctor param (both ctors, default `60f`) sets the snow transition for every chunk, and the
   `splatRule` ctor param (both ctors, default null) threads a consumer splat rule into every chunk the
   sink builds. These settings are the seams a game configures, since games drive the streamer rather than calling

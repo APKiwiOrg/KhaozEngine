@@ -37,7 +37,7 @@ namespace KhaozEngine.Terrain
         // on the frame thread, so it goes through Interlocked / Volatile rather than a plain int. This is what makes
         // UpdateField's flush precondition enforceable instead of prose (issue #105).
         int _buildsInFlight;
-        readonly IReadOnlyList<PropLayer> _layers;
+        PropLayer[] _layers;
         readonly float _chunkSize;
         readonly Scene3D.SplatMaterialHandle _material;
         readonly IPhysicsWorld? _physics;
@@ -260,15 +260,15 @@ namespace KhaozEngine.Terrain
         internal IReadOnlyList<PropPlacement>[] ScatterLayersFor(ChunkCoord coord)
         {
             RectArea area = ChunkGrid.AreaOf(coord, _chunkSize);
-            var layers = new IReadOnlyList<PropPlacement>[_layers.Count];
-            for (int i = 0; i < _layers.Count; i++)
+            var layers = new IReadOnlyList<PropPlacement>[_layers.Length];
+            for (int i = 0; i < _layers.Length; i++)
                 if (!_layers[i].IsCompanion)
                     layers[i] = _layers[i].PlacementSource is { } source
                         ? Query(source, area)
                         : _layers[i].IsPlacement
                             ? (_placementBuckets![i].TryGetValue(coord, out PropPlacement[]? bucket) ? bucket : Array.Empty<PropPlacement>())
                             : PropScatter.Generate(_field, _layers[i].Scatter!, area);
-            for (int i = 0; i < _layers.Count; i++)
+            for (int i = 0; i < _layers.Length; i++)
                 if (_layers[i].IsCompanion)
                     layers[i] = PropScatter.GenerateCompanions(_field, layers[_layers[i].HostLayerIndex], _layers[i].Companions!);
             return layers;
@@ -311,6 +311,32 @@ namespace KhaozEngine.Terrain
                     "Flush the streamer first (TerrainStreamer.FlushPendingBuilds), or run it synchronously " +
                     "(StreamerConfig.Synchronous), so no build can mesh one chunk from two different fields.");
             _field = field;
+        }
+
+        /// <summary>Replaces captured scatter and companion configuration without changing layer topology. Loaded
+        /// chunks keep their current placement arrays until the streamer invalidates them. Placement layer inputs,
+        /// layer kinds and HLOD presence are topology and must remain unchanged.</summary>
+        public void UpdateLayers(IReadOnlyList<PropLayer> layers)
+        {
+            ArgumentNullException.ThrowIfNull(layers);
+            int inFlight = Volatile.Read(ref _buildsInFlight);
+            if (inFlight > 0)
+                throw new InvalidOperationException(
+                    $"UpdateLayers was called while {inFlight} chunk build(s) are still running. " +
+                    "Flush the streamer before replacing captured generation config.");
+            PropLayer[] next = layers.ToArray();
+            if (next.Length != _layers.Length)
+                throw new ArgumentException("Layer count is topology. Rebuild the sink to add or remove a layer.", nameof(layers));
+            for (int i = 0; i < next.Length; i++)
+            {
+                PropLayer before = _layers[i], after = next[i];
+                if (before.IsCompanion != after.IsCompanion || before.IsPlacement != after.IsPlacement
+                    || before.HasHlod != after.HasHlod)
+                    throw new ArgumentException($"Layer {i} changed topology. Rebuild the sink instead.", nameof(layers));
+                if (before.IsPlacement && !before.Equals(after))
+                    throw new ArgumentException($"Placement layer {i} is construction-only.", nameof(layers));
+            }
+            _layers = next;
         }
 
         /// <inheritdoc />
@@ -364,7 +390,7 @@ namespace KhaozEngine.Terrain
         // ids have no shapes adds nothing. Callers check _physics / _collisionShapes before calling.
         void AddStatics(ChunkLoad load)
         {
-            for (int i = 0; i < _layers.Count; i++)
+            for (int i = 0; i < _layers.Length; i++)
                 if (LayerRegistersColliders(i))
                     ChunkStatics.AddAll(_physics!, _collisionShapes!, load.LayerProps[i], load.Statics);
         }
@@ -376,7 +402,7 @@ namespace KhaozEngine.Terrain
         /// scatter. Index-aligned to the layers so <see cref="Draw"/> iterates it exactly like a gameplay chunk.</summary>
         IReadOnlyList<PropPlacement>[] EmptyLayers()
         {
-            var arr = new IReadOnlyList<PropPlacement>[_layers.Count];
+            var arr = new IReadOnlyList<PropPlacement>[_layers.Length];
             for (int i = 0; i < arr.Length; i++) arr[i] = Array.Empty<PropPlacement>();
             return arr;
         }
@@ -445,10 +471,10 @@ namespace KhaozEngine.Terrain
             // (deterministic per chunk + field, so a runtime bake at load reproduces). Built for both rings, and only
             // when the apply is going to consume it. A null HlodMeshes is the payload's own signal to Apply that this
             // build carries no fresh merge and the uploaded handles must be kept as they are.
-            var clusterBuilds = new PropClusterCpuBuild?[_layers.Count];
+            var clusterBuilds = new PropClusterCpuBuild?[_layers.Length];
             bool anyClusterBuild = false;
-            GltfMesh?[]? hlod = buildHlod ? new GltfMesh?[_layers.Count] : null;
-            for (int i = 0; i < _layers.Count && !reusePlacements; i++)
+            GltfMesh?[]? hlod = buildHlod ? new GltfMesh?[_layers.Length] : null;
+            for (int i = 0; i < _layers.Length && !reusePlacements; i++)
             {
                 PropLayer layer = _layers[i];
                 IReadOnlyList<PropPlacement> mergePlacements = scatter?[i] ?? Array.Empty<PropPlacement>();
@@ -604,8 +630,8 @@ namespace KhaozEngine.Terrain
         void ApplyPropClusters(ChunkCoord coord, ChunkLoad load, CpuBuild cpu)
         {
             if (cpu.PropClusters is null) return;
-            MeshHandle?[]? handles = _hlodGate is null ? null : new MeshHandle?[_layers.Count];
-            for (int i = 0; i < _layers.Count; i++)
+            MeshHandle?[]? handles = _hlodGate is null ? null : new MeshHandle?[_layers.Length];
+            for (int i = 0; i < _layers.Length; i++)
             {
                 if (cpu.PropClusters[i] is { } build)
                     _propClusters.Apply(ClusterKey(coord, i), build);
@@ -617,7 +643,7 @@ namespace KhaozEngine.Terrain
 
         void UnloadPropClusters(ChunkCoord coord, ChunkLoad load)
         {
-            for (int i = 0; i < _layers.Count; i++)
+            for (int i = 0; i < _layers.Length; i++)
             {
                 PropClusterKey key = ClusterKey(coord, i);
                 _propClusters.Unload(key);

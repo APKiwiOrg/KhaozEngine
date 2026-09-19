@@ -39,22 +39,20 @@ public abstract partial class EditorCommand : IEditorCommand
     /// <summary>The world-space region this command's edit can change, or null when the viewport must rebuild the
     /// WHOLE streamed world instead. Read by the document's pending-rebuild-region accumulation
     /// (<see cref="EditorDocument"/>) and only meaningful while <see cref="AffectsWorld"/> is true.
-    /// <para>A non-null region is a promise the PARTIAL path can honour, not merely a claim that the edit's reach
-    /// is bounded. <see cref="ViewportWorld.PartialRebuild"/> swaps the terrain field and re-meshes the chunks the
-    /// region touches, and nothing else: the prop layers, and the scatter configs captured inside them, are built
-    /// once per full Build/Rebuild. So only a TERRAIN-HEIGHT edit qualifies, and the re-meshed chunks re-scatter
-    /// off the new field for free. The feature commands narrow to a single feature's
-    /// <see cref="FeatureGeometry.TryFootprint"/> disc, and the sculpt commands to their stroke footprint.</para>
-    /// <para>Every other <see cref="AffectsWorld"/> command keeps the null default, in two groups. A terrain
-    /// scalar or biome band reaches the whole doc (a biome band is bounded only in its world-Z-range slice, a
-    /// possible future narrowing), and a scatter-layer or companion-layer edit rewrites generation rules read
-    /// across every loaded chunk. An EXCLUSION or SCATTER-OVERRIDE edit has a perfectly bounded reach and still
-    /// reports null (issue #765): its data lives only in the layers' captured
-    /// <c>ScatterConfig</c>, which the partial path never rebuilds, so a bounded region there re-meshes chunks
-    /// that re-scatter byte-identical props and leaves every tree under a freshly drawn exclusion standing until
-    /// some later full rebuild.</para>
+    /// <para>A non-null region is a promise the partial path can honour. Commands that change captured scatter or
+    /// companion configuration also set <see cref="RefreshesLayerConfig"/>, so the viewport rebuilds those immutable
+    /// snapshots before it invalidates the affected chunks. A null region means either all loaded chunks or a full
+    /// topology rebuild, distinguished by <see cref="InvalidatesAllLoaded"/>.</para>
     /// </summary>
     internal virtual RectArea? DirtyRegion => null;
+
+    /// <summary>True when the viewport must rebuild the sink's captured scatter and companion configs before
+    /// invalidating chunks.</summary>
+    internal virtual bool RefreshesLayerConfig => false;
+
+    /// <summary>True when every loaded chunk must be invalidated but sink topology can stay. False with a null
+    /// <see cref="DirtyRegion"/> means a full rebuild remains required.</summary>
+    internal virtual bool InvalidatesAllLoaded => false;
 
     /// <inheritdoc/>
     public abstract void Apply(MapDocument doc);
@@ -1067,7 +1065,7 @@ public sealed class RenamePlayerSpawnCommand : EditorCommand, IVisibilityEffect
 // ---- exclusions (terrain-shape affecting) ----------------------------------------------------------------
 
 /// <summary>Appends a scatter exclusion shape. Affects the streamed world (scatter inputs change).</summary>
-public sealed class AddExclusionCommand : EditorCommand
+public sealed partial class AddExclusionCommand : EditorCommand
 {
     readonly MapExclusion _exclusion;
 
@@ -1079,9 +1077,6 @@ public sealed class AddExclusionCommand : EditorCommand
     public override string Label => "Add exclusion";
     internal override bool AffectsWorld => true;
 
-    // No DirtyRegion override: an exclusion's reach is bounded, but the partial rebuild path cannot serve it (see
-    // EditorCommand.DirtyRegion), so this takes the full rebuild that reconstructs the prop layers.
-
     /// <inheritdoc/>
     public override void Apply(MapDocument doc) => ApplyAppend(doc.Exclusions, _exclusion);
 
@@ -1091,7 +1086,7 @@ public sealed class AddExclusionCommand : EditorCommand
 
 /// <summary>Removes the exclusion at the given index, restoring it at that index on revert. Affects the
 /// streamed world.</summary>
-public sealed class RemoveExclusionCommand : EditorCommand, IVisibilityEffect
+public sealed partial class RemoveExclusionCommand : EditorCommand, IVisibilityEffect
 {
     readonly int _index;
     MapExclusion? _removed;
@@ -1103,9 +1098,6 @@ public sealed class RemoveExclusionCommand : EditorCommand, IVisibilityEffect
     public override string Label => "Remove exclusion";
     internal override bool AffectsWorld => true;
     VisibilityOp IVisibilityEffect.Effect => VisibilityOp.RemoveAt(SelectionKind.Exclusion, _index);
-
-    // No DirtyRegion override: see AddExclusionCommand and EditorCommand.DirtyRegion (the full rebuild is what
-    // reconstructs the prop layers this edit changes).
 
     /// <inheritdoc/>
     public override void Apply(MapDocument doc)
@@ -1129,7 +1121,7 @@ public sealed class RemoveExclusionCommand : EditorCommand, IVisibilityEffect
 /// conversion). The caller supplies both the new and old shape, cloned with the changed field (the
 /// <see cref="EditFeatureCommand"/> idiom). Successive edits of the same index coalesce (scrub coalescing).
 /// Affects the streamed world (scatter inputs change).</summary>
-public sealed class EditExclusionShapeCommand : EditorCommand
+public sealed partial class EditExclusionShapeCommand : EditorCommand
 {
     readonly int _index;
     MapShapeDoc _newShape;
@@ -1147,10 +1139,6 @@ public sealed class EditExclusionShapeCommand : EditorCommand
     /// <inheritdoc/>
     public override string Label => "Edit exclusion shape";
     internal override bool AffectsWorld => true;
-
-    // No DirtyRegion override: see AddExclusionCommand and EditorCommand.DirtyRegion. A gizmo drag on an
-    // exclusion therefore takes the throttled full rebuild (MapEditorScene.CheckWorldRebuild), which is what
-    // makes the drag actually show the props coming and going.
 
     /// <inheritdoc/>
     public override void Apply(MapDocument doc) => doc.Exclusions[_index].Shape = _newShape;
@@ -1234,7 +1222,7 @@ public sealed class RenameExclusionCommand : EditorCommand
 /// layer-filter field already relies on. Both lists are deep-copied at construction and again on every
 /// <see cref="Apply"/>/<see cref="Revert"/>, so the command, the document, and the caller's own list each hold
 /// an independent instance and none can alias another.</summary>
-public sealed class EditExclusionLayersCommand : EditorCommand
+public sealed partial class EditExclusionLayersCommand : EditorCommand
 {
     readonly int _index;
     List<string>? _newLayers;
@@ -1255,12 +1243,8 @@ public sealed class EditExclusionLayersCommand : EditorCommand
     public override string Label => "Edit exclusion layers";
     internal override bool AffectsWorld => true;
 
-    // No DirtyRegion override: see AddExclusionCommand and EditorCommand.DirtyRegion. Retargeting an exclusion's
-    // layer filter changes which layers' captured ScatterConfig carries it, which is precisely what only a full
-    // rebuild reconstructs.
-
     /// <inheritdoc/>
-    public override void Apply(MapDocument doc) => doc.Exclusions[_index].Layers = _newLayers?.ToList();
+    public override void Apply(MapDocument doc) { _shape = doc.Exclusions[_index].Shape; doc.Exclusions[_index].Layers = _newLayers?.ToList(); }
 
     /// <inheritdoc/>
     public override void Revert(MapDocument doc) => doc.Exclusions[_index].Layers = _oldLayers?.ToList();
@@ -1281,7 +1265,7 @@ public sealed class EditExclusionLayersCommand : EditorCommand
 
 /// <summary>Appends a scatter override (a region-scoped density multiplier / kind substitution tweak). Affects
 /// the streamed world (scatter inputs change).</summary>
-public sealed class AddScatterOverrideCommand : EditorCommand
+public sealed partial class AddScatterOverrideCommand : EditorCommand
 {
     readonly MapScatterOverrideDoc _override;
 
@@ -1293,9 +1277,6 @@ public sealed class AddScatterOverrideCommand : EditorCommand
     public override string Label => "Add scatter override";
     internal override bool AffectsWorld => true;
 
-    // No DirtyRegion override: see AddExclusionCommand and EditorCommand.DirtyRegion (an override lives in the
-    // layers' captured ScatterConfig too, alongside the exclusions).
-
     /// <inheritdoc/>
     public override void Apply(MapDocument doc) => ApplyAppend(doc.ScatterOverrides, _override);
 
@@ -1305,7 +1286,7 @@ public sealed class AddScatterOverrideCommand : EditorCommand
 
 /// <summary>Removes the scatter override at the given index, restoring it at that index on revert. Affects the
 /// streamed world.</summary>
-public sealed class RemoveScatterOverrideCommand : EditorCommand, IVisibilityEffect
+public sealed partial class RemoveScatterOverrideCommand : EditorCommand, IVisibilityEffect
 {
     readonly int _index;
     MapScatterOverrideDoc? _removed;
@@ -1317,8 +1298,6 @@ public sealed class RemoveScatterOverrideCommand : EditorCommand, IVisibilityEff
     public override string Label => "Remove scatter override";
     internal override bool AffectsWorld => true;
     VisibilityOp IVisibilityEffect.Effect => VisibilityOp.RemoveAt(SelectionKind.ScatterOverride, _index);
-
-    // No DirtyRegion override: see AddExclusionCommand and EditorCommand.DirtyRegion.
 
     /// <inheritdoc/>
     public override void Apply(MapDocument doc)
@@ -1342,7 +1321,7 @@ public sealed class RemoveScatterOverrideCommand : EditorCommand, IVisibilityEff
 /// scrub). The caller supplies both the new and old shape, cloned with the changed field (the
 /// <see cref="EditExclusionShapeCommand"/> idiom). Successive edits of the same index coalesce (drag/scrub
 /// coalescing). Affects the streamed world (scatter inputs change).</summary>
-public sealed class EditScatterOverrideShapeCommand : EditorCommand
+public sealed partial class EditScatterOverrideShapeCommand : EditorCommand
 {
     readonly int _index;
     MapShapeDoc _newShape;
@@ -1360,8 +1339,6 @@ public sealed class EditScatterOverrideShapeCommand : EditorCommand
     /// <inheritdoc/>
     public override string Label => "Edit scatter override shape";
     internal override bool AffectsWorld => true;
-
-    // No DirtyRegion override: see AddExclusionCommand and EditorCommand.DirtyRegion.
 
     /// <inheritdoc/>
     public override void Apply(MapDocument doc) => doc.ScatterOverrides[_index].Shape = _newShape;
@@ -1393,7 +1370,7 @@ public sealed class EditScatterOverrideShapeCommand : EditorCommand
 /// lets a gizmo drag merge independently of any values edit in flight on the same override. Likewise Name is
 /// carried through unchanged: a rename goes through <see cref="RenameScatterOverrideCommand"/>. Successive edits
 /// of the same index coalesce (scrub coalescing). Affects the streamed world (scatter inputs change).</summary>
-public sealed class EditScatterOverrideValuesCommand : EditorCommand
+public sealed partial class EditScatterOverrideValuesCommand : EditorCommand
 {
     readonly int _index;
     MapScatterOverrideDoc _newValue;
@@ -1411,9 +1388,6 @@ public sealed class EditScatterOverrideValuesCommand : EditorCommand
     /// <inheritdoc/>
     public override string Label => "Edit scatter override values";
     internal override bool AffectsWorld => true;
-
-    // No DirtyRegion override: see AddExclusionCommand and EditorCommand.DirtyRegion. A density or kind scrub is
-    // exactly a captured-ScatterConfig change, so it needs the layers rebuilt to show at all.
 
     /// <inheritdoc/>
     public override void Apply(MapDocument doc) => doc.ScatterOverrides[_index] = _newValue;
@@ -1503,10 +1477,10 @@ public sealed class RenameScatterOverrideCommand : EditorCommand
 /// given patch of ground, and therefore the density multiplier and kind substitution the scatter applies there,
 /// depends on order. Exclusions, by contrast, combine as a pure set union where order never changes which ground
 /// ends up excluded, so that reasoning does not carry over here: <see cref="AffectsWorld"/> stays true and a
-/// reorder forces a full viewport world rebuild. Both indices are range-guarded (non-negative in the constructor,
+/// reorder refreshes captured config and invalidates every loaded chunk. Both indices are range-guarded (non-negative in the constructor,
 /// in-range against the live list at apply time, each with a precise <see cref="ArgumentOutOfRangeException"/>).
 /// <see cref="Revert"/> moves it back (self-inverse), and it never coalesces (no merge).</summary>
-public sealed class ReorderScatterOverrideCommand : EditorCommand, IVisibilityEffect
+public sealed partial class ReorderScatterOverrideCommand : EditorCommand, IVisibilityEffect
 {
     readonly int _fromIndex;
     readonly int _toIndex;
@@ -1525,11 +1499,6 @@ public sealed class ReorderScatterOverrideCommand : EditorCommand, IVisibilityEf
     public override string Label => "Reorder scatter override";
     internal override bool AffectsWorld => true;
     VisibilityOp IVisibilityEffect.Effect => VisibilityOp.Reorder(SelectionKind.ScatterOverride, _fromIndex, _toIndex);
-
-    // No DirtyRegion override: see AddExclusionCommand and EditorCommand.DirtyRegion. A reorder's reach is wider
-    // than either endpoint anyway (moving one override past the others flips ITS first-match-wins order against
-    // every override sandwiched in between, so any of them can start or stop governing ground where they
-    // overlap), and it is a captured-ScatterConfig change either way, so the full rebuild is the honest cover.
 
     /// <inheritdoc/>
     public override void Apply(MapDocument doc) => Move(doc, _fromIndex, _toIndex);
@@ -1630,7 +1599,7 @@ public sealed class RemoveScatterLayerCommand : EditorCommand
 /// The Name is NOT edited through here (it is the lookup key and stays fixed): a rename goes through
 /// <see cref="RenameScatterLayerCommand"/>. Successive edits of the same-named layer coalesce into one undo step
 /// (scrub coalescing). Affects the streamed world (scatter inputs change).</summary>
-public sealed class EditScatterLayerCommand : EditorCommand
+public sealed partial class EditScatterLayerCommand : EditorCommand
 {
     readonly string _name;
     MapScatterLayer _newValue;
@@ -1807,7 +1776,7 @@ public sealed class RemoveCompanionLayerCommand : EditorCommand
 /// rename goes through <see cref="RenameCompanionLayerCommand"/>). The HostLayer, by contrast, IS edited here (it
 /// is a plain field, validated at save time). Successive same-named edits coalesce (scrub coalescing). Affects
 /// the streamed world.</summary>
-public sealed class EditCompanionLayerCommand : EditorCommand
+public sealed partial class EditCompanionLayerCommand : EditorCommand
 {
     readonly string _name;
     MapCompanionLayer _newValue;
@@ -2056,7 +2025,7 @@ public sealed class EditRegionShapeCommand : EditorCommand
 /// old. Affects the streamed world: scatter honours the water level and the noise fields shape the terrain, so any
 /// change forces a wholesale rebuild. The water surface itself derives live from the document, so it also updates
 /// on the same edit.</para></summary>
-public sealed class EditTerrainCommand : EditorCommand
+public sealed partial class EditTerrainCommand : EditorCommand
 {
     float? _newWaterLevel, _oldWaterLevel;
     int? _newSeed, _oldSeed;
@@ -2165,7 +2134,7 @@ public sealed class EditTerrainCommand : EditorCommand
 /// <summary>Appends a terrain biome band (a world-Z-range biome slice, <see cref="MapBiomeBand"/>). Bands feed
 /// the terrain field's biome selection and base-height / hill shaping, so this affects the streamed world. Appends
 /// at the end (the <see cref="AddFeatureCommand"/> idiom), and <see cref="Revert"/> removes the slot it appended.</summary>
-public sealed class AddBiomeBandCommand : EditorCommand
+public sealed partial class AddBiomeBandCommand : EditorCommand
 {
     readonly MapBiomeBand _band;
 
@@ -2188,7 +2157,7 @@ public sealed class AddBiomeBandCommand : EditorCommand
 /// range-guarded up front against the live band list, so a bad index is a precise <see cref="ArgumentException"/>
 /// (with the parameter name) rather than the raw list's <see cref="ArgumentOutOfRangeException"/>, matching the
 /// ke-mapedit RequireIndexInRange convention. Affects the streamed world.</summary>
-public sealed class RemoveBiomeBandCommand : EditorCommand
+public sealed partial class RemoveBiomeBandCommand : EditorCommand
 {
     readonly int _index;
     MapBiomeBand? _removed;
@@ -2226,7 +2195,7 @@ public sealed class RemoveBiomeBandCommand : EditorCommand
 /// <see cref="EditFeatureCommand"/> idiom). The caller supplies both the new and old band (a clone with the one
 /// changed field). Successive edits of the same index coalesce into one undo step (scrub coalescing). Affects the
 /// streamed world.</summary>
-public sealed class EditBiomeBandCommand : EditorCommand
+public sealed partial class EditBiomeBandCommand : EditorCommand
 {
     readonly int _index;
     MapBiomeBand _newValue;

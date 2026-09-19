@@ -205,24 +205,44 @@ public sealed class ViewportWorld : IDisposable
     /// <para>Returns false (a no-op) when the world is not built, so the caller can fall back to a full
     /// <see cref="Rebuild"/> or skip. Throws <see cref="ObjectDisposedException"/> after <see cref="Dispose"/>, like
     /// its siblings.</para>
-    /// <para>This path does NOT rebuild the prop LAYERS (the scatter / companion configs are constructed once per
-    /// <see cref="Build"/> / <see cref="Rebuild"/> and then live inside the sink's <see cref="PropLayer"/> list,
-    /// which has no setter), so it is valid ONLY for a TERRAIN-HEIGHT edit: the re-meshed chunks re-scatter off the
-    /// new field automatically, from the same config as before. Anything that changes what a layer's
-    /// <see cref="ScatterConfig"/> SAYS is invisible here, exclusions and scatter overrides included, because the
-    /// re-scatter reads the captured config and reproduces the very props the edit was meant to remove. That is
-    /// what <see cref="EditorCommand.DirtyRegion"/> encodes: only the feature and sculpt commands report a bounded
-    /// region, and every exclusion / scatter-override / scatter-layer command reports null and so takes the full
-    /// rebuild (issue #765, where they briefly reported bounded shape AABBs and left the props standing).</para></summary>
-    public bool PartialRebuild(MapDocument doc, MapDocRegistry registry, RectArea dirty)
+    /// <para>The four-argument overload can refresh captured scatter and companion configs before invalidation.
+    /// This makes bounded exclusion and scatter-override edits safe. Layer-count and host-topology changes still
+    /// require <see cref="Rebuild"/>.</para></summary>
+    public bool PartialRebuild(MapDocument doc, MapDocRegistry registry, RectArea dirty) =>
+        PartialRebuild(doc, registry, dirty, refreshLayers: false);
+
+    /// <summary>Partial rebuild with an optional refresh of captured scatter and companion configs.</summary>
+    public bool PartialRebuild(MapDocument doc, MapDocRegistry registry, RectArea dirty, bool refreshLayers)
     {
         ThrowIfDisposed();
         if (!_built) return false;
-        _field = MapRuntime.BuildField(doc, registry);   // null-checks doc + registry before any state is swapped
+        TerrainField field = MapRuntime.BuildField(doc, registry);
+        IReadOnlyList<PropLayer>? layers = refreshLayers ? BuildPropLayers(doc) : null;
+        _streamer!.FlushPendingBuilds();
+        if (layers is not null) _sink!.UpdateLayers(layers);
+        _field = field;
         _doc = doc;
-        _sink!.UpdateField(_field);        // future chunk builds sample the new field
+        _sink!.UpdateField(field);         // future chunk builds sample the new field
         _streamer!.Invalidate(dirty);      // re-mesh the loaded chunks the dirty rect overlaps, in place
         _placements.Invalidate();          // authored placements re-ground-snap to the new field on the next Draw
+        return true;
+    }
+
+    /// <summary>Refreshes the field and optional captured generation config, then invalidates every loaded chunk
+    /// in place. Returns false before the first build.</summary>
+    public bool RefreshLoaded(MapDocument doc, MapDocRegistry registry, bool refreshLayers)
+    {
+        ThrowIfDisposed();
+        if (!_built) return false;
+        TerrainField field = MapRuntime.BuildField(doc, registry);
+        IReadOnlyList<PropLayer>? layers = refreshLayers ? BuildPropLayers(doc) : null;
+        _streamer!.FlushPendingBuilds();
+        if (layers is not null) _sink!.UpdateLayers(layers);
+        _sink!.UpdateField(field);
+        _field = field;
+        _doc = doc;
+        _streamer.InvalidateAll();
+        _placements.Invalidate();
         return true;
     }
 
@@ -398,7 +418,7 @@ public sealed class ViewportWorld : IDisposable
     // hidden scatter layer is skipped (its props drop out of the streamed world, terrain unchanged), and its
     // companions go with it (their host is gone, so they cannot ring anything). A document with no visible scatter
     // layers still gets one empty scatter layer so the terrain streams (the sink needs >= 1 layer).
-    IReadOnlyList<PropLayer> BuildPropLayers(MapDocument doc)
+    internal IReadOnlyList<PropLayer> BuildPropLayers(MapDocument doc)
     {
         var layers = new List<PropLayer>();
         var scatterIndex = new Dictionary<string, int>(StringComparer.Ordinal);

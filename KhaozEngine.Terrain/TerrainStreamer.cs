@@ -646,6 +646,15 @@ namespace KhaozEngine.Terrain
             InvalidateLoaded(coord);
         }
 
+        /// <summary>Rebuilds every loaded chunk in place at its current tier and ring. Pending async builds are
+        /// flushed once before the pass, then each resident chunk receives one invalidate.</summary>
+        public void InvalidateAll()
+        {
+            FlushPendingBuilds();
+            var loaded = new List<ChunkCoord>(_loaded.Keys);
+            for (int i = 0; i < loaded.Count; i++) InvalidateLoaded(loaded[i]);
+        }
+
         void InvalidateLoaded(ChunkCoord coord)
         {
             if (!_loaded.TryGetValue(coord, out Entry? e)) return;

@@ -1082,25 +1082,17 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.Null(new AddBiomeBandCommand(new MapBiomeBand()).DirtyRegion);
         }
 
-        // ---- DirtyRegion: exclusion + scatter-override commands report NULL (issue #765) ----------------
+        // ---- Config-refresh invalidation ---------------------------------------------------------------
 
         [Fact]
-        public void ExclusionAndScatterOverrideCommands_DirtyRegion_IsAlwaysNull()
+        public void ExclusionAndScatterOverrideCommands_ReportBoundedConfigRefreshes()
         {
-            // Their reach IS a bounded shape AABB, and they still report null, because a bounded region is a
-            // promise the PARTIAL rebuild path can honour and this one it cannot: ViewportWorld.PartialRebuild
-            // swaps the terrain field and re-meshes the dirty chunks, and those chunks re-scatter from the
-            // ScatterConfig captured inside each PropLayer at the last full Build/Rebuild. Exclusions and
-            // overrides live in exactly that captured config, so a partial rebuild reproduces byte-identical
-            // props and leaves everything under a freshly drawn exclusion standing. Asserted after Apply, since
-            // that is when the editor reads the region (and when the old bounded implementations became
-            // non-null). Every one of the nine world-affecting shape commands is covered here.
             var doc = Sample();   // exclusion[0] is a disc, scatterOverride[0] is a rect
             var shape = new DiscShapeDoc { CenterX = 4f, CenterZ = -6f, Radius = 3f };
             var other = new DiscShapeDoc { CenterX = 20f, CenterZ = -6f, Radius = 3f };
             var value = new MapScatterOverrideDoc { Shape = shape, DensityMultiplier = 0.25f };
 
-            var commands = new EditorCommand[]
+            var bounded = new EditorCommand[]
             {
                 new AddExclusionCommand(new MapExclusion { Shape = shape }),
                 new EditExclusionShapeCommand(0, other, doc.Exclusions[0].Shape!),
@@ -1108,28 +1100,26 @@ namespace KhaozEngine.Tests.MapEditor
                 new AddScatterOverrideCommand(new MapScatterOverrideDoc { Shape = shape }),
                 new EditScatterOverrideShapeCommand(0, other, doc.ScatterOverrides[0].Shape!),
                 new EditScatterOverrideValuesCommand(0, value, doc.ScatterOverrides[0]),
-                new ReorderScatterOverrideCommand(0, 1),
-                // The removes go last: they consume the entries the commands above address.
                 new RemoveExclusionCommand(0),
                 new RemoveScatterOverrideCommand(0),
             };
 
-            foreach (EditorCommand cmd in commands)
+            foreach (EditorCommand cmd in bounded)
             {
-                Assert.True(cmd.AffectsWorld);          // they all still force a rebuild ...
-                Assert.Null(cmd.DirtyRegion);           // ... it just has to be the FULL one
                 cmd.Apply(doc);
-                Assert.Null(cmd.DirtyRegion);
+                Assert.NotNull(cmd.DirtyRegion);
+                Assert.True(cmd.RefreshesLayerConfig);
+                Assert.False(cmd.InvalidatesAllLoaded);
             }
+
+            var reorder = new ReorderScatterOverrideCommand(0, 1);
+            Assert.True(reorder.RefreshesLayerConfig);
+            Assert.True(reorder.InvalidatesAllLoaded);
         }
 
         [Fact]
-        public void ExclusionEdit_TurnsThePendingRegionFullSticky()
+        public void ExclusionEdit_UnionsItsRegionAndRefreshesCapturedConfig()
         {
-            // The document-level consequence, through the real Execute path: a bounded feature edit accumulates a
-            // rect, and an exclusion edit landing in the same batch turns it full-sticky, so CheckWorldRebuild
-            // routes the batch to the full rebuild that reconstructs the prop layers. Undo and redo report the
-            // same, since MarkWorldRebuild reads the same DirtyRegion on all three paths.
             var doc = Sample();
             var ed = new EditorDocument(doc);
             var lake = (LakeFeatureDoc)doc.Terrain.Features[0];
@@ -1140,17 +1130,19 @@ namespace KhaozEngine.Tests.MapEditor
             var shrunk = new DiscShapeDoc { CenterX = -32f, CenterZ = 22f, Radius = 12f };
             ed.Execute(new EditExclusionShapeCommand(0, shrunk, doc.Exclusions[0].Shape!));
             Assert.True(ed.WorldRebuildPending);
-            Assert.Null(ed.PendingRebuildRegion);
+            Assert.NotNull(ed.PendingRebuildRegion);
+            Assert.True(ed.PendingLayerConfigRefresh);
+            Assert.False(ed.PendingFullRebuild);
 
             ed.AcknowledgeWorldRebuild();
             Assert.True(ed.Undo());
             Assert.True(ed.WorldRebuildPending);
-            Assert.Null(ed.PendingRebuildRegion);
+            Assert.NotNull(ed.PendingRebuildRegion);
 
             ed.AcknowledgeWorldRebuild();
             Assert.True(ed.Redo());
             Assert.True(ed.WorldRebuildPending);
-            Assert.Null(ed.PendingRebuildRegion);
+            Assert.NotNull(ed.PendingRebuildRegion);
         }
 
         [Fact]

@@ -811,22 +811,20 @@ count. Biome bands themselves are edited via the Biomes outline category, not th
 Procedural setup editing below.
 
 `MapEditorScene.OnUpdate` runs, in order, `UpdateCamera` -> `UpdateTools` -> `UpdateChrome` ->
-`CheckWorldRebuild` -> `UpdateStreaming`. `CheckWorldRebuild` dispatches a pending edit to either a bounded
-`ViewportWorld.PartialRebuild` (re-meshes only the loaded chunks the edit's accumulated dirty region overlaps)
-or, when the region is unbounded, the full `ViewportWorld.Rebuild` (tear down the sink + streamer, then
-rebuild wholesale from the document, keeping the cached kit meshes and the splat material so a full rebuild
+`CheckWorldRebuild` -> `UpdateStreaming`. `CheckWorldRebuild` dispatches a pending edit to a bounded
+`ViewportWorld.PartialRebuild`, an all-loaded `ViewportWorld.RefreshLoaded`, or the full `ViewportWorld.Rebuild`.
+The first two refresh the field and any captured scatter or companion config before invalidating chunks. Full
+rebuild remains for layer-count and other unsupported topology changes. It tears down the sink + streamer, then
+rebuilds wholesale from the document, keeping the cached kit meshes and the splat material so a full rebuild
 does not re-decode every prop glTF from disk), then calls `EditorDocument.AcknowledgeWorldRebuild()`. The
 full path is throttled while a drag or draw gesture is live (`EditorToolController.IsDragging` / `IsDrawing`):
 it runs at most once per `MapEditorOptions.GestureRebuildInterval` seconds (default 0.25, 0 disables the
 throttle), with `WorldRebuildPending` left untouched on a throttled frame so the very next check after the
-gesture ends always performs the final full rebuild. The partial path is never throttled (it is cheap by
-construction). A bounded `DirtyRegion` comes from `FeatureGeometry.TryFootprint` for terrain features and
-from the stroke footprint for sculpt commands, so a gizmo drag on a lake or a sculpt stroke stays on the
-never-throttled partial path. Only terrain-HEIGHT edits qualify: the partial path swaps the field and
-re-meshes chunks, and the prop layers (with each layer's `ScatterConfig`, exclusions and overrides included)
-are built once per full `Build`/`Rebuild`. An exclusion or scatter-override edit therefore reports a null
-region and takes the full rebuild, because a partial one would re-scatter byte-identical props off the
-stale captured config and leave every prop under a freshly drawn exclusion standing (issue #765).
+gesture ends always performs the final full rebuild. Partial and all-loaded refreshes are never throttled.
+Features and sculpt strokes report bounded regions. Exclusion and scatter-override edits report their shape
+bounds and refresh captured config first. Terrain scalars, biome bands and same-topology scatter or companion
+edits refresh every loaded chunk. Adding or removing a scatter or companion layer still changes topology and
+takes the full path.
 
 **Same-frame inspector rebuild.** A terrain-feature parameter scrub lands through the `PropertyGrid`
 inspector, which is polled inside `UpdateChrome`, now BEFORE `CheckWorldRebuild` in the per-frame order (moved
@@ -1000,9 +998,8 @@ rebuild-on-mismatch idiom `SyncShapeInspector` uses for a shape-kind conversion.
 inspector's own rule rows use the analogous `_inspectorRuleCount` check so a rule add/remove reflows without
 a mid-iteration rebuild.
 
-The add, edit, and remove commands above are `AffectsWorld` true (they change terrain shape or scatter inputs), triggering the same
-streamed-world rebuild path described in Rebuild semantics above (same-frame, gesture-throttled while a drag
-or draw is live). The two rename commands (for scatter layers and companions) are deliberately `AffectsWorld` false,
+The add, edit, and remove commands above are `AffectsWorld` true. Same-topology edits refresh loaded chunks,
+while add and remove change topology and use the full path. The two rename commands are deliberately `AffectsWorld` false,
 since a rename is byte-identical to streamed output and requires no rebuild.
 
 ## `DocumentChanged` unsubscribe note for custom hosts

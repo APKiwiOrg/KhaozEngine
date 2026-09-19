@@ -23,6 +23,8 @@ public sealed class EditorDocument
     // lands, the region is full-sticky for the rest of the batch (a later bounded rect cannot narrow it back).
     RectArea? _pendingRegion;
     bool _pendingRegionIsFull;
+    bool _pendingAllLoaded;
+    bool _pendingLayerConfigRefresh;
 
     /// <summary>Creates an editor document over <paramref name="doc"/>, defaulting the feature registry to
     /// <see cref="MapDocRegistry.CreateDefault"/> when none is supplied.</summary>
@@ -83,12 +85,23 @@ public sealed class EditorDocument
     /// <see cref="AcknowledgeWorldRebuild"/>.</summary>
     public RectArea? PendingRebuildRegion => _pendingRegionIsFull ? null : _pendingRegion;
 
+    /// <summary>True when every loaded chunk can be refreshed in place, without rebuilding sink topology.</summary>
+    public bool PendingAllLoadedInvalidation => !_pendingRegionIsFull && _pendingAllLoaded;
+
+    /// <summary>True when captured scatter and companion configs must refresh before chunk invalidation.</summary>
+    public bool PendingLayerConfigRefresh => _pendingLayerConfigRefresh;
+
+    /// <summary>True when the pending edit requires a full sink and streamer rebuild.</summary>
+    public bool PendingFullRebuild => _pendingRegionIsFull;
+
     /// <summary>Clears the pending world-rebuild flag and its accumulated region once the viewport has rebuilt.</summary>
     public void AcknowledgeWorldRebuild()
     {
         WorldRebuildPending = false;
         _pendingRegion = null;
         _pendingRegionIsFull = false;
+        _pendingAllLoaded = false;
+        _pendingLayerConfigRefresh = false;
     }
 
     /// <summary>Applies a command through the history stack, then raises the change signals. This is the only
@@ -158,10 +171,23 @@ public sealed class EditorDocument
     {
         if (command is not EditorCommand ec || !ec.AffectsWorld) return;
         WorldRebuildPending = true;
+        _pendingLayerConfigRefresh |= ec.RefreshesLayerConfig;
         if (_pendingRegionIsFull) return;
-        if (ec.DirtyRegion is RectArea region)
+        if (ec.InvalidatesAllLoaded)
+        {
+            _pendingAllLoaded = true;
+            _pendingRegion = null;
+        }
+        else if (ec.DirtyRegionFor(Doc) is RectArea region)
+        {
+            if (_pendingAllLoaded) return;
             _pendingRegion = _pendingRegion is RectArea acc ? FeatureGeometry.Union(acc, region) : region;
+        }
         else
+        {
             _pendingRegionIsFull = true;
+            _pendingAllLoaded = false;
+            _pendingRegion = null;
+        }
     }
 }

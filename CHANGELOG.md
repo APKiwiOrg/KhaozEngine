@@ -5,6 +5,52 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 19.4.0
+
+Point light shadows lose the two things the first consumer's playtest showed: triangles of shadow thrown by a
+lamp's own fixture, and an edge as straight as a ruler where light spills through a doorway.
+
+**A light can leave its own fixture out by BOX** (#1011). The near radius of 19.3.0 is a sphere, and a sphere
+cannot serve a wall-mounted fixture: a lantern's flame sits 0.18 to 0.21 m off the wall it hangs on, while its
+caps, rod, arm and back plate reach more than 0.3 m from the flame, so any radius short of the wall leaves those parts
+casting and any radius past them deletes the wall. What was left cast hard triangles across the floor and the
+wall beside every lantern.
+
+- **`LightShadow.ExclusionMin` and `LightShadow.ExclusionMax`** are a world-space, axis-aligned box whose
+  contents are left out of that one light's map. `LightShadow.Static(long key, Vector3 exclusionMin, Vector3
+  exclusionMax)` and `shadow.WithExclusionBox(min, max)` set it, and `HasExclusionBox` reads whether one is
+  carried. The consumer passes the fixture's own world bounds, and a wall a centimetre outside them still casts.
+- **The box and the near radius are independent**, and a request may carry either, both or neither. The corners
+  are ordered per axis, so a rotated fixture's two corners can be passed as they fall. A pair that does not
+  make a box (a non-finite component, or no volume on any axis) leaves the request exactly as it was.
+- **It is part of the request's value**, so changing it on the same `Static` key dirties that row and redraws it
+  under the ordinary rebuild budget. An instance whose world bounds lie wholly inside the box is dropped on the
+  CPU and never costs six faces of draws.
+- **A light with no box costs nothing**: the slice carries an empty box and the caster's test never passes. The
+  three caster programs were re-baked and no receiver program moved.
+
+**The shadow edge is SOFT by default, and it hardens at contact** (#1012). The 19.2.0 receiver took four taps at
+half-texel offsets inside one face cell, which is a clean edge and nothing more. A shadow cast by a small
+emitter is sharp where the occluder touches the receiver and widens with the distance between them, and that
+is now what the receiver draws.
+
+- **`PointShadowSettings.Filter`** picks the edge through the new `PointShadowFilter` enum. `Soft`, the default,
+  is a six-tap blocker search followed by a nine-tap disc whose width comes from
+  `LightSizeMetres * (receiverDistance - blockerDistance) / blockerDistance`. The disc is rotated per fragment
+  off the absolute world position, so the pattern is stable under a moving camera and a moving render origin.
+  Measured on the GPU: the edge eight metres behind a wall goes from 0.22 m to 0.94 m, and the same light's
+  edge 1.4 m behind its occluder stays 0.20 m. The hash folds each half of the position into a 16 m cell before
+  summing them, so a world 100 km from zero dithers as finely as one at the origin.
+- **The soft kernel samples by DIRECTION, not by texel**, so every tap does its own face select and a penumbra
+  that crosses a cube face boundary has no seam. `Hard` stays inside one cell as it always did.
+- **`LightSizeMetres`** (default `0.15`, clamped `0..1` through `ResolvedLightSizeMetres`) is how big the emitter
+  looks and the only thing that decides how fast the edge widens. **`MaxPenumbraTexels`** (default `6`, clamped
+  `1..16` through `ResolvedMaxPenumbraTexels`) caps the width so a distant occluder cannot smear a shadow away.
+  The Low profile pins `Hard` with point shadows off, and Default and High are `Soft`.
+- **`Hard` renders exactly as it did in 19.3.0**, tap for tap, so a consumer that wants the old edge sets one
+  value. A fragment outside a light's radius samples nothing under either filter. The frame block grew one
+  `vec4` (`UboBytes` 1296), seven receiver programs were re-baked and no caster program moved.
+
 ## 19.3.0
 
 Point light shadows take a per-light NEAR RADIUS, so a lamp is no longer fully shadowed by its own fixture.

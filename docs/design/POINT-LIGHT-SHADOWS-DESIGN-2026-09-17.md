@@ -73,7 +73,7 @@ fanning through the doorway. In Ruinborne a fireball lights the far side of a pi
 
 ## What the build taught
 
-Twelve things the implementation settled or corrected, kept here because the decision is not readable off the
+Fourteen things the implementation settled or corrected, kept here because the decision is not readable off the
 shipped code.
 
 1. **The pass stores the NEAREST surface with no face culling, so the whole acne budget sits on the bias
@@ -176,6 +176,30 @@ shipped code.
     lasting lesson is about the PROOFS rather than the feature: a shadow case whose caster is convenient to
     place is a case that has chosen the easy geometry, and the consumer's own arrangement (a light inside a
     model, a caster touching the receiver, a light under a floor) is what has to be in the suite.
+13. **A SPHERE CANNOT CLEAR A WALL-MOUNTED FIXTURE, SO THE CLEARANCE IS ALSO A BOX** (#1011, 19.4.0). The near
+    radius of item 12 has one number to spend and a wall lantern needs two: its flame stands 0.18 to 0.21 m off
+    the wall it hangs on, and its caps, rod, arm and back plate reach more than 0.3 m from the flame. Any radius
+    short of the wall leaves those parts in the map, where they cast hard triangles over the floor and the wall
+    beside the lamp, and any radius past them deletes the wall, which is the one surface the feature exists to
+    respect. The first consumer shipped the short radius and its playtest showed the triangles. The answer is
+    `LightShadow.ExclusionMin`/`ExclusionMax`, a world-space axis-aligned box discarded in the same three caster
+    fragments, carried in the same per-face slice and part of the request's value, so the consumer passes the
+    fixture's own world bounds and everything a centimetre outside them still casts. The sphere stays for the
+    fixture that is round and free-standing. The lesson is that a clearance shaped for the light is the wrong
+    shape: what has to be left out is the FIXTURE, and a fixture is a box someone authored.
+14. **THE SOFT FILTER SAMPLES BY DIRECTION, AND ITS WIDTH IS A RATIO OF DISTANCES** (#1012, 19.4.0). The first
+    receiver took four taps at half-texel offsets inside one face cell, which anti-aliases the edge and cannot
+    widen it, and a kernel widened in TEXEL space stops at the cell border and draws a seam down every cube
+    edge. The soft path offsets the lookup DIRECTION instead and lets each tap do its own face select, so a
+    penumbra crosses a face boundary like any other part of the sphere. Width is the similar-triangles estimate
+    `LightSizeMetres * (receiver - blocker) / blocker` from a six-tap blocker search, capped at
+    `MaxPenumbraTexels`, which is why the edge stays tight where a door frame meets the floor and spreads with
+    the distance into the room. The nine-tap disc is rotated per fragment off a hash of the ABSOLUTE world
+    position (render origin added back), so the noise neither crawls with the camera nor jumps when the
+    floating origin rebases. Review caught that the first form summed before hashing, which a world 100 km from
+    zero turns into banding (an 8 mm float step, and a sin argument in the millions), so each half is folded
+    into a 16 m cell first and summed after. `Hard` was frozen verbatim beside it rather than expressed as a zero-width soft
+    kernel, because a consumer comparing releases needs one path that is byte-for-byte the old picture.
 
 ## Proof
 

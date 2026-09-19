@@ -296,6 +296,13 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   `LightShadow.NearRadius` clears it: set it past the fixture's farthest part from the flame and short of the nearest
   surface that must still block, through `LightShadow.Static(key, nearRadius)`, `DynamicWithNearRadius(nearRadius)` or
   `WithNearRadius(metres)`, and `0` (the default) is the pass exactly as it was.
+  A sphere cannot clear a WALL-MOUNTED fixture, whose parts reach further from the flame than the wall stands, so
+  `LightShadow.Static(key, exclusionMin, exclusionMax)` or `WithExclusionBox(min, max)` leaves a world-space box out
+  of that light's map instead: pass the fixture's own world bounds and the wall a centimetre outside still casts.
+  The edge is SOFT by default (`PointShadowSettings.Filter`, a `PointShadowFilter`): a contact-hardening filter
+  whose penumbra is `LightSizeMetres` (default `0.15`) times the receiver to blocker gap over the blocker
+  distance, capped at `MaxPenumbraTexels` (default `6`), sampled by direction so it crosses cube faces without a
+  seam. `PointShadowFilter.Hard` is the original four-tap edge, unchanged.
   A `Dynamic` light has no identity across frames and its row lives for one frame, so a dynamic light whose map was
   not redrawn on a given frame renders UNSHADOWED for that frame rather than sampling an older one. Stay at or
   under the budget, raise it, or prefer `LightShadow.Static(key)` for anything that does not move.

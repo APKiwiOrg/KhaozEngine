@@ -328,7 +328,7 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData(256u, 16u)]
         [InlineData(512u, 32u)]
         [InlineData(768u, 48u)]    // WaterRenderer.SlotBytes
-        [InlineData(1008u, 64u)]   // ModelRenderer.UboBytes. Was 63, which dropped the whole model pass
+        [InlineData(1008u, 64u)]   // ModelRenderer.UboBytes when this was pinned. Was 63, which dropped the whole model pass
         [InlineData(1040u, 80u)]   // PixelPostProcess.PaletteBufferBytes. Was 65
         [InlineData(1120u, 80u)]   // the splat combined UBO, retired by #604. Was 70, which dropped splat terrain
         [InlineData(8192u, 512u)]  // SkinnedBonePalette.SlotBytes, 128 * 64 and already 256-aligned

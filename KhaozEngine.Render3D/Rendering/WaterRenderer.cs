@@ -100,10 +100,10 @@ namespace KhaozEngine.Render3D.Rendering
         IGpuShaderSet? _clipShaders;
         IGpuPipeline? _clipPipe;
         IGpuBuffer? _ubo;     // grown geometrically to hold _capacity slots
-        // Grown-out UBOs and the sets that ranged over them (a prior frame's submitted command list may still be
-        // reading one), freed in Dispose. The engine's buffer-lifetime rule, stated in
-        // ModelRenderer.EnsureInstanceCapacity and copied by every sibling renderer that grows a buffer.
-        readonly List<IDisposable> _retired = new();
+        // Grown-out UBOs and their sets enter the scene retirement queue because a submitted frame may still read
+        // them. This is the same lifetime rule as ModelRenderer.EnsureInstanceCapacity.
+        readonly GpuRetireQueue _retired;
+        readonly bool _ownsRetired;
         int _capacity;
         IGpuResourceSet? _set;
         RenderResources? _bound;
@@ -183,9 +183,17 @@ namespace KhaozEngine.Render3D.Rendering
             float CenterX, float CenterZ, float SurfaceY, float HalfX, float HalfZ,
             float OriginX, float OriginY, float OriginZ);
 
-        public WaterRenderer(IGpuDevice gd, GpuOutputDescription colorOutput)
+        internal WaterRenderer(IGpuDevice gd, GpuOutputDescription colorOutput)
+            : this(gd, colorOutput,
+                GpuRetireQueue.CreateFrameCounted(gd, GpuRetireQueue.DefaultFrameDelay))
+        {
+            _ownsRetired = true;
+        }
+
+        public WaterRenderer(IGpuDevice gd, GpuOutputDescription colorOutput, GpuRetireQueue retired)
         {
             _gd = gd;
+            _retired = retired;
             _outputs = colorOutput;
             var f = gd.Factory;
             _shaders = f.CreateShadersFromSpirv(ShaderSources.WaterVert, ShaderSources.WaterFrag);
@@ -296,10 +304,10 @@ namespace KhaozEngine.Render3D.Rendering
         {
             if (_ubo != null && _capacity >= planeCount) return;
             _capacity = Math.Max(planeCount, _capacity == 0 ? 4 : _capacity * 2);
-            if (_ubo != null) _retired.Add(_ubo);
+            if (_ubo != null) _retired.Retire(_ubo);
             _ubo = _gd.Factory.CreateBuffer(new GpuBufferDescription((uint)_capacity * SlotBytes, GpuBufferUsage.UniformBuffer));
             ResizeUboImage(_capacity);   // the CPU mirror the whole-buffer upload covers (WaterRenderer.SlotUpload.cs)
-            if (_set != null) _retired.Add(_set);
+            if (_set != null) _retired.Retire(_set);
             _set = null;
         }
 
@@ -724,6 +732,7 @@ namespace KhaozEngine.Render3D.Rendering
 
         public void Dispose()
         {
+            if (_ownsRetired) _retired.Dispose();
             _ocean.Dispose();
             _bathymetry.Dispose();
             _set?.Dispose();
@@ -738,8 +747,6 @@ namespace KhaozEngine.Render3D.Rendering
             _clipVb?.Dispose();
             _clipIb?.Dispose();
             DisposeFlatBuffers();
-            foreach (var r in _retired) r.Dispose();
-            _retired.Clear();
         }
     }
 }

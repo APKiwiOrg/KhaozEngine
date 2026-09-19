@@ -180,6 +180,31 @@ namespace KhaozEngine.Tests.Gpu
                 "the surf band darkened more of the frame than it whitened, which is not what foam does.");
         }
 
+        [GpuFact]
+        public void Overdriven_whitecaps_do_not_amplify_or_flatten_the_surf_gradient()
+        {
+            Action<WaterSettings> tune(float foam, float surf) => w =>
+            {
+                w.Bathymetry = SlopedField();
+                w.FoamStrength = foam;
+                w.FoamShoreWidth = 0f;
+                w.SeaState.FoamGain = 0f;
+                w.SurfStrength = surf;
+            };
+
+            float[] ordinary = Render(tune(1f, 1f));
+            float[] overdriven = Render(tune(1.6f, 1f));
+            (float sameMean, float sameWorst) = Difference(ordinary, overdriven);
+            Assert.True(sameWorst < GoldenCompare.Tolerance,
+                $"whitecap strength changed isolated surf by {sameWorst:F4} worst and {sameMean:F4} mean");
+
+            float[] low = Render(tune(1.6f, 0.35f));
+            (float gradientMean, float gradientWorst) = Difference(low, overdriven);
+            Assert.True(gradientMean > 0.001f && gradientWorst > 0.03f,
+                $"SurfStrength lost its visible gradient under overdriven whitecaps: {gradientMean:F4} mean, "
+                + $"{gradientWorst:F4} worst");
+        }
+
         /// <summary>
         /// The crest-phase lock, which is the difference between a wave crashing and a strip glowing: the band has
         /// to MOVE with the sea. Two frames of wave time apart, with the camera and the whole scene identical, the

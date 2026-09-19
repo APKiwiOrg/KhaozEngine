@@ -63,7 +63,10 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   per-call `IGpuDevice.WaitForIdle` existed for is unchanged: a queued upload or draw may still reference the
   resource, so nothing is destroyed in the frame it was retired in. The unload bodies live in `Scene3D.Unload.cs`,
   and `Scene3D.RetiredResourceCount` is the observable: a healthy streaming world shows a small number that returns
-  to 0 shortly after a burst.
+  to 0 shortly after a burst. The same scene queue owns geometrically replaced buffers and resource sets from the
+  model, shadow, decal, particle, distortion, water and overlay renderers. Those renderers keep no private retired
+  lists, so a grow survives until the same fence or frame boundary and teardown drains the queue once before GPU
+  resources are destroyed.
 - `Scene3D.GetOrLoadMesh` / `GetOrLoadSkinnedMesh` / `GetOrLoadTexture` - keyed, idempotent loads for a scene that
   outlives what it draws ([#250](https://github.com/APKiwiOrg/KhaozEngine/issues/250)). Each takes a key plus a
   loader and runs the loader only the FIRST time that key is seen, returning the cached handle after that, so a
@@ -424,11 +427,11 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   dipping to zero across the crossing so the direction flip is invisible; `None` is a keyless night (black key,
   the sun's true direction held); `Moon` is a real decoupled moon body (own `MoonHourOffset`/`MoonDeclinationDegrees`/
   `MoonKeyColor`/`MoonDiscColor`/`MoonHorizonKeyDipDegrees`) that owns the key + single disc slot while it is up,
-  each body fading to black at its own crossing, with an independent disc color
-  so a decorative moon can cast a black key. That switch is through black only when the two horizon crossings
-  coincide, which the default 12h `MoonHourOffset` delivers near a 12h day (the equator, or a zero declination) and
-  not at the shipped latitude 35 / declination 15 defaults, where the moon is about 17 degrees up at sunset and its
-  key arrives at full strength: see the `NightKeyMode.Moon` doc comment for the caveat and the workarounds. `SunCycleState` exposes `MoonElevationDegrees`/`MoonDirection`/
+  with an independent disc color so a decorative moon can cast a black key. The moon keeps its own visibility and
+  horizon dip, then takes the minimum of that dip and the solar-horizon handover envelope. Source changes therefore
+  pass through black for unequal days and offsets without squaring coincident equatorial fades. A zero solar dip
+  keeps the 0.001-degree numerical floor, making the transition effectively instantaneous outside the exact black
+  crossing. `SunCycleState` exposes `MoonElevationDegrees`/`MoonDirection`/
   `ActiveSource` (`KeyLightSource`)/`DiscDirectionOverride`. The night ambient floor stays above black so scenes
   remain playable. The engine owns no clock: feed it your own game time (an MMO replicates it from the server)
   each frame.
@@ -488,9 +491,9 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   applies the operator per channel (the historical look, hot cores desaturate toward white), `1` maps luminance only
   and rescales RGB so hue is fully preserved (a coloured glow stays chromatic into its core), in between blends. The
   `0.75` default is the user-approved balance from the look-evidence ladder review: saturated preset colours stay
-  legible against the filmic roll-off while the hottest cores still read as hot. Hue is preserved except where a
-  saturated channel clips at the display ceiling before the rescale, where a partial desaturating shift remains even
-  at `1`. At `0` the tonemap short-circuits to the exact per-channel expression, byte-identical to the pre-chroma
+  legible against the filmic roll-off while the hottest cores still read as hot. At `1`, a luminance-mapped vector
+  past the display ceiling is uniformly scaled down until its largest channel is 1. This preserves exposed linear
+  RGB ratios while allowing some luminance reduction near the gamut boundary. At `0` the tonemap short-circuits to the exact per-channel expression, byte-identical to the pre-chroma
   output. The mapping is mirrored headlessly by `Internal.TonemapMath` (kept in sync with the GLSL `TonemapFrag`).
 - Water: `Scene3D.DrawWater(in WaterPlane)` (a per-frame request: centre XZ + surface height + XZ half-extents) plus
   `PixelPostProcessSettings.Water` (a `WaterSettings`, **default no request queued = no pass, no cost**) draws an
@@ -614,11 +617,15 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   depth while the chop rides in untouched (`ShoalingStrength`, `ShoalingDepthScale`); and where the depth falls
   below `Hs / SurfBreakerIndex` the surface foams, gated on the incoming wave's CREST PHASE so the white surges up
   the beach with each wave rather than glowing in place (`SurfStrength`, `SurfBandWidth`, `SurfCrestBias`,
-  `SurfTrailWidth`, `SurfAmplitudeCollapse`). The surge direction is the DEPTH GRADIENT, not the wind heading, so
+  `SurfTrailWidth`, `SurfAmplitudeCollapse`). `SurfStrength` controls that breaking band independently from
+  `FoamStrength`, which controls whitecaps and the ordinary shoreline band, so overdriven whitecaps cannot flatten
+  surf into a white slab. The surge direction is the DEPTH GRADIENT, not the wind heading, so
   anything shallow - a rock, a bar - breaks around itself with no authoring. Outside the rectangle the surface
   reads as deep open water, so a coastal strip can be baked at a useful resolution instead of an ocean at a
   useless one. Pure math is `Internal.WaterShoaling` (headless-tested, mirrors the GLSL). Rationale:
-  `docs/design/WATER-SHORE-DESIGN-2026-07-27.md`.
+  `docs/design/WATER-SHORE-DESIGN-2026-07-27.md`. `WaterSeaState.DepthMetres` is a separate bake-time reference
+  depth for the whole FFT spectrum. Choose it from the broad water body, while bathymetry describes local shelves
+  and shore. Different values are often intentional.
 - FFT ocean sampling frame (since 16.5.0, all opt-in, all defaulting to the exact identity): `OnshoreFocusPoint` /
   `OnshoreFocusStrength` / `OnshoreFocusSectors` aim the local wave heading at a world point, so an island gets
   surf running at it from every azimuth instead of a sea running past it; `CascadeRotationDegrees` turns each

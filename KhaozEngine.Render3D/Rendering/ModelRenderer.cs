@@ -211,13 +211,24 @@ namespace KhaozEngine.Render3D.Rendering
         // here first and uploaded together once per frame.
         byte[] _skinnedMainImage = Array.Empty<byte>();
         readonly Matrix4x4[] _skinnedHeaderScratch = new Matrix4x4[SkinnedHeaderMats]; // Model/P
-        // Instance buffers replaced by a grow are retired here (a prior in-flight frame may still read them);
-        // disposed only in Dispose. Bounded by geometric growth.
-        readonly List<IDisposable> _retired = new();
+        // Instance buffers replaced by a grow enter the scene retirement queue because an in-flight frame may still
+        // read them. Geometric growth bounds how many are pending.
+        readonly GpuRetireQueue _retired;
+        readonly bool _ownsRetired;
 
-        public ModelRenderer(IGpuDevice gd, GpuOutputDescription modelOutputs, int shadowMapResolution, int shadowCascadeCount)
+        internal ModelRenderer(IGpuDevice gd, GpuOutputDescription modelOutputs, int shadowMapResolution,
+            int shadowCascadeCount)
+            : this(gd, modelOutputs, shadowMapResolution, shadowCascadeCount,
+                GpuRetireQueue.CreateFrameCounted(gd, GpuRetireQueue.DefaultFrameDelay))
+        {
+            _ownsRetired = true;
+        }
+
+        public ModelRenderer(IGpuDevice gd, GpuOutputDescription modelOutputs, int shadowMapResolution,
+            int shadowCascadeCount, GpuRetireQueue retired)
         {
             _gd = gd;
+            _retired = retired;
             var factory = gd.Factory;
 
             // The frame's GPU-skinned bone palettes, built BEFORE the shadow map because the depth pass binds the
@@ -227,7 +238,7 @@ namespace KhaozEngine.Render3D.Rendering
             // The cascade atlas is allocated up front at a fixed per-cascade resolution x cascade count so its texture
             // handle stays stable and can be bound into every material set below. The shader gates on ShadowParams.y
             // (strength), so an inactive frame never taps it (byte-stable with ShadowMode.Off).
-            _shadowMap = new ShadowMapRenderer(gd, shadowMapResolution, shadowCascadeCount, _bonePalette);
+            _shadowMap = new ShadowMapRenderer(gd, shadowMapResolution, shadowCascadeCount, _bonePalette, retired);
 
             _ubo = factory.CreateBuffer(new GpuBufferDescription(UboBytes, GpuBufferUsage.UniformBuffer)); // header + 2 vec4[16] point-light arrays + shadow tail
 
@@ -515,8 +526,8 @@ namespace KhaozEngine.Render3D.Rendering
             if (_instanceBuffer != null && _instanceCapacity >= instanceCount) return;
             // Retire (don't dispose inline): a prior frame's command list may still be reading the old buffer on
             // the GPU when this frame grows; disposing it then is a use-after-free. Geometric growth bounds the
-            // retired count; freed in Dispose.
-            if (_instanceBuffer != null) _retired.Add(_instanceBuffer);
+            // pending count, and the scene queue frees it at a safe frame boundary.
+            if (_instanceBuffer != null) _retired.Retire(_instanceBuffer);
             _instanceCapacity = Math.Max(instanceCount, _instanceCapacity == 0 ? 64u : _instanceCapacity * 2);
             _instanceBuffer = _gd.Factory.CreateBuffer(
                 new GpuBufferDescription(_instanceCapacity * InstanceData.SizeInBytes, GpuBufferUsage.VertexBuffer));
@@ -584,14 +595,14 @@ namespace KhaozEngine.Render3D.Rendering
             if (verts.Length == 0 || instances.Length == 0) return;
             if (_skinnedVertexBuffer == null || _skinnedVertexCapacity < (uint)verts.Length)
             {
-                if (_skinnedVertexBuffer != null) _retired.Add(_skinnedVertexBuffer);
+                if (_skinnedVertexBuffer != null) _retired.Retire(_skinnedVertexBuffer);
                 _skinnedVertexCapacity = Math.Max((uint)verts.Length, _skinnedVertexCapacity == 0 ? 4096u : _skinnedVertexCapacity * 2);
                 _skinnedVertexBuffer = _gd.Factory.CreateBuffer(
                     new GpuBufferDescription(_skinnedVertexCapacity * ModelVertex.SizeInBytes, GpuBufferUsage.VertexBuffer));
             }
             if (_skinnedInstanceBuffer == null || _skinnedInstanceCapacity < (uint)instances.Length)
             {
-                if (_skinnedInstanceBuffer != null) _retired.Add(_skinnedInstanceBuffer);
+                if (_skinnedInstanceBuffer != null) _retired.Retire(_skinnedInstanceBuffer);
                 _skinnedInstanceCapacity = Math.Max((uint)instances.Length, _skinnedInstanceCapacity == 0 ? 64u : _skinnedInstanceCapacity * 2);
                 _skinnedInstanceBuffer = _gd.Factory.CreateBuffer(
                     new GpuBufferDescription(_skinnedInstanceCapacity * InstanceData.SizeInBytes, GpuBufferUsage.VertexBuffer));
@@ -635,8 +646,8 @@ namespace KhaozEngine.Render3D.Rendering
         public void EnsureSkinnedMainCapacity(uint slotCount)
         {
             if (_skinnedMainUbo != null && _skinnedMainSlots >= slotCount) return;
-            if (_skinnedMainUbo != null) _retired.Add(_skinnedMainUbo);
-            if (_skinnedMainSet != null) _retired.Add(_skinnedMainSet);
+            if (_skinnedMainUbo != null) _retired.Retire(_skinnedMainUbo);
+            if (_skinnedMainSet != null) _retired.Retire(_skinnedMainSet);
             _skinnedMainSlots = Math.Max(slotCount, _skinnedMainSlots == 0 ? 8u : _skinnedMainSlots * 2);
             var image = new byte[checked((int)(_skinnedMainSlots * SkinnedMainSlotBytes))];
             _skinnedMainImage.AsSpan().CopyTo(image);
@@ -755,6 +766,7 @@ namespace KhaozEngine.Render3D.Rendering
 
         public void Dispose()
         {
+            if (_ownsRetired) _retired.Dispose();
             DisposeFoliageResources();
             _shadowMap.Dispose();
             _pipeline.Dispose(); _defaultSet.Dispose(); _layout.Dispose();
@@ -774,8 +786,6 @@ namespace KhaozEngine.Render3D.Rendering
             _instanceBuffer?.Dispose();
             _skinnedVertexBuffer?.Dispose();
             _skinnedInstanceBuffer?.Dispose();
-            foreach (var r in _retired) r.Dispose();
-            _retired.Clear();
         }
     }
 }

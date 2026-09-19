@@ -1,4 +1,7 @@
+using System;
+using System.Collections.Generic;
 using System.Numerics;
+using System.Reflection;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
@@ -45,14 +48,15 @@ namespace KhaozEngine.Tests.Render3D
         /// made this the live half of #22.
         /// </summary>
         [Fact]
-        public void TheDistortionInstanceBufferSurvivesItsGrowAndIsFreedWithTheRenderer()
+        public void TheDistortionInstanceBufferSurvivesUntilTheSharedQueueBoundary()
         {
             using var device = new FakeGpuDevice();
             var factory = (FakeGpuResourceFactory)device.Factory;
             using var res = new RenderResources(device, W, H, hdrColor: false);
             res.EnsureDistortion(wanted: true, divisor: 2);
+            using GpuRetireQueue retired = GpuRetireQueue.CreateFrameCounted(device, frameDelay: 1);
 
-            var renderer = new DistortionRenderer(device);
+            var renderer = new DistortionRenderer(device, retired);
             int beforeFirstDraw = factory.Buffers.Count;
 
             using var cl = new RecordingGpuCommandList(new NullGpuCommandList());
@@ -67,7 +71,9 @@ namespace KhaozEngine.Tests.Render3D
                 + "still be reading it");
 
             renderer.Dispose();
-            Assert.True(grownOut.Disposed, "a retired buffer must still be freed when the renderer goes away");
+            Assert.False(grownOut.Disposed, "renderer teardown does not own the shared retirement queue");
+            retired.BeginFrame();
+            Assert.True(grownOut.Disposed, "the safe retirement boundary must free the grown-out buffer");
         }
 
         static void Draw(DistortionRenderer renderer, RecordingGpuCommandList cl, RenderResources res, int sprites)
@@ -85,13 +91,14 @@ namespace KhaozEngine.Tests.Render3D
         /// the grow is the same use-after-free one indirection out.
         /// </summary>
         [Fact]
-        public void TheWaterSlotUboAndItsSetSurviveTheirGrowAndAreFreedWithTheRenderer()
+        public void TheWaterSlotUboAndItsSetSurviveUntilTheSharedQueueBoundary()
         {
             using var device = new FakeGpuDevice();
             var factory = (FakeGpuResourceFactory)device.Factory;
             using var res = new RenderResources(device, W, H, hdrColor: false);
+            using GpuRetireQueue retired = GpuRetireQueue.CreateFrameCounted(device, frameDelay: 1);
 
-            var renderer = new WaterRenderer(device, res.ColorDepthFB.Outputs);
+            var renderer = new WaterRenderer(device, res.ColorDepthFB.Outputs, retired);
             int beforeFirstDraw = factory.Buffers.Count;
 
             using var cl = new RecordingGpuCommandList(new NullGpuCommandList());
@@ -108,8 +115,11 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(2, factory.ResourceSets.Count);   // the grow rebound, it did not reuse
 
             renderer.Dispose();
-            Assert.True(grownOutUbo.Disposed, "a retired buffer must still be freed when the renderer goes away");
-            Assert.True(grownOutSet.Disposed, "a retired set must still be freed when the renderer goes away");
+            Assert.False(grownOutUbo.Disposed);
+            Assert.False(grownOutSet.Disposed);
+            retired.BeginFrame();
+            Assert.True(grownOutUbo.Disposed, "the safe retirement boundary must free the grown-out buffer");
+            Assert.True(grownOutSet.Disposed, "the safe retirement boundary must free the grown-out set");
         }
 
         /// <summary>
@@ -120,14 +130,15 @@ namespace KhaozEngine.Tests.Render3D
         /// and the initial capacity is 8, so a ninth collision proxy grows it.
         /// </summary>
         [Fact]
-        public void TheOverlaySlotUboAndItsSetSurviveTheirGrowAndAreFreedWithTheRenderer()
+        public void TheOverlaySlotUboAndItsSetSurviveUntilTheSharedQueueBoundary()
         {
             using var device = new FakeGpuDevice();
             var factory = (FakeGpuResourceFactory)device.Factory;
             var modelOutputs = new GpuOutputDescription(GpuPixelFormat.D32FloatS8UInt,
                 GpuPixelFormat.R8G8B8A8UNorm, GpuPixelFormat.R8G8B8A8UNorm, GpuPixelFormat.R32Float);
+            using GpuRetireQueue retired = GpuRetireQueue.CreateFrameCounted(device, frameDelay: 1);
 
-            var renderer = new OverlayMeshRenderer(device, modelOutputs);
+            var renderer = new OverlayMeshRenderer(device, modelOutputs, retired);
             IGpuBuffer vb = factory.CreateBuffer(new GpuBufferDescription(64, GpuBufferUsage.VertexBuffer));
             IGpuBuffer ib = factory.CreateBuffer(new GpuBufferDescription(64, GpuBufferUsage.IndexBuffer));
             int beforeFirstFrame = factory.Buffers.Count;
@@ -147,8 +158,34 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(2, factory.ResourceSets.Count);   // the grow rebound, it did not reuse
 
             renderer.Dispose();
-            Assert.True(grownOutUbo.Disposed, "a retired buffer must still be freed when the renderer goes away");
-            Assert.True(grownOutSet.Disposed, "a retired set must still be freed when the renderer goes away");
+            Assert.False(grownOutUbo.Disposed);
+            Assert.False(grownOutSet.Disposed);
+            retired.BeginFrame();
+            Assert.True(grownOutUbo.Disposed, "the safe retirement boundary must free the grown-out buffer");
+            Assert.True(grownOutSet.Disposed, "the safe retirement boundary must free the grown-out set");
+        }
+
+        [Fact]
+        public void Named_growing_renderers_hold_the_shared_retirement_queue_instead_of_private_lists()
+        {
+            Type[] renderers =
+            {
+                typeof(ModelRenderer),
+                typeof(GroundDecalRenderer),
+                typeof(ParticleRenderer),
+                typeof(OverlayMeshRenderer),
+                typeof(ShadowMapRenderer),
+                typeof(DistortionRenderer),
+                typeof(WaterRenderer),
+            };
+
+            foreach (Type renderer in renderers)
+            {
+                Assert.Contains(renderer.GetFields(BindingFlags.Instance | BindingFlags.NonPublic),
+                    field => field.FieldType == typeof(GpuRetireQueue));
+                Assert.DoesNotContain(renderer.GetFields(BindingFlags.Instance | BindingFlags.NonPublic),
+                    field => field.FieldType == typeof(List<IDisposable>));
+            }
         }
 
         static void Frame(OverlayMeshRenderer renderer, RecordingGpuCommandList cl, IGpuBuffer vb, IGpuBuffer ib,

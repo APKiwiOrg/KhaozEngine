@@ -40,11 +40,11 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuShaderSet _shaders;
         readonly IGpuResourceLayout _layout;
         IGpuPipeline _pipeline;   // rebuilt by SetOutputs when the MRT sample count (MSAA) changes
-        // Grown-out UBOs and the sets that ranged over them (a prior frame's submitted command list may still be
-        // reading one), freed in Dispose. The engine's buffer-lifetime rule, stated in
-        // ModelRenderer.EnsureInstanceCapacity and copied by every sibling renderer that grows a buffer.
-        readonly List<IDisposable> _retired = new();
-        IGpuBuffer? _ubo;      // grown geometrically to hold _capacity slots; a regrown buffer is retired and freed in Dispose
+        // Grown-out UBOs and their sets enter the scene retirement queue because a submitted frame may still read
+        // them. This is the same lifetime rule as ModelRenderer.EnsureInstanceCapacity.
+        readonly GpuRetireQueue _retired;
+        readonly bool _ownsRetired;
+        IGpuBuffer? _ubo;      // grown geometrically to hold _capacity slots
         int _capacity;
         IGpuResourceSet? _set; // binds the 128-byte window into _ubo at offset 0; per-draw offset supplied at draw time
         Matrix4x4 _viewProj;   // this frame's clip-corrected view-projection (set by BeginFrame, written into every slot)
@@ -63,9 +63,17 @@ namespace KhaozEngine.Render3D.Rendering
         byte[] _image = Array.Empty<byte>();
         readonly List<QueuedDraw> _queue = new();
 
-        public OverlayMeshRenderer(IGpuDevice gd, GpuOutputDescription modelOutputs)
+        internal OverlayMeshRenderer(IGpuDevice gd, GpuOutputDescription modelOutputs)
+            : this(gd, modelOutputs,
+                GpuRetireQueue.CreateFrameCounted(gd, GpuRetireQueue.DefaultFrameDelay))
+        {
+            _ownsRetired = true;
+        }
+
+        public OverlayMeshRenderer(IGpuDevice gd, GpuOutputDescription modelOutputs, GpuRetireQueue retired)
         {
             _gd = gd;
+            _retired = retired;
             var f = gd.Factory;
             _shaders = f.CreateShadersFromSpirv(ShaderSources.OverlayUnlitVert, ShaderSources.OverlayUnlitFrag);
 
@@ -167,17 +175,17 @@ namespace KhaozEngine.Render3D.Rendering
                 _set ??= CreateSet();
                 return;
             }
-            if (_ubo != null) _retired.Add(_ubo);
+            if (_ubo != null) _retired.Retire(_ubo);
             _capacity = Math.Max(drawCount, _capacity == 0 ? 8 : _capacity * 2);
             _ubo = _gd.Factory.CreateBuffer(new GpuBufferDescription((uint)(_capacity * SlotBytes), GpuBufferUsage.UniformBuffer));
             var image = new byte[checked(_capacity * SlotBytes)];
             _image.AsSpan().CopyTo(image);
             _image = image;
-            // The set goes to the same retired list as the buffer, never disposed inline. It is bound by this
+            // The set goes to the same retirement queue as the buffer, never disposed inline. It is bound by this
             // pass's own draws (Flush, with a dynamic offset), the frame path has no WaitForIdle, and this grow
             // runs mid-recording, so a prior frame's submitted command list may still be reading it: freeing it
             // here is the same use-after-free the buffer above avoids, one indirection out.
-            if (_set != null) _retired.Add(_set);
+            if (_set != null) _retired.Retire(_set);
             _set = CreateSet();
         }
 
@@ -198,13 +206,12 @@ namespace KhaozEngine.Render3D.Rendering
 
         public void Dispose()
         {
+            if (_ownsRetired) _retired.Dispose();
             _set?.Dispose();
             _pipeline.Dispose();
             _layout.Dispose();
             _shaders.Dispose();
             _ubo?.Dispose();
-            foreach (var r in _retired) r.Dispose();
-            _retired.Clear();
         }
     }
 }

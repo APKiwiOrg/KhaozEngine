@@ -199,6 +199,29 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(0.6f, WaterShoaling.BackFace(0.1f), 5);
         }
 
+        [Fact]
+        public void Surf_intensity_is_independent_of_overdriven_whitecap_strength()
+        {
+            foreach (float surf in new[] { 0.2f, 0.5f, 0.8f })
+            {
+                Assert.Equal(surf, WaterShoaling.CombineFoam(0.1f, surf, 1f), 5);
+                Assert.Equal(surf, WaterShoaling.CombineFoam(0.1f, surf, 1.6f), 5);
+            }
+        }
+
+        [Fact]
+        public void Zero_surf_preserves_the_existing_whitecap_formula()
+        {
+            foreach (float whitecap in new[] { 0f, 0.2f, 0.8f, 1f })
+            {
+                foreach (float strength in new[] { 0f, 0.85f, 1.6f })
+                {
+                    float expected = Math.Clamp(whitecap * strength, 0f, 1f);
+                    Assert.Equal(expected, WaterShoaling.CombineFoam(whitecap, 0f, strength), 5);
+                }
+            }
+        }
+
         // ---- The consumer seam -------------------------------------------------------------------------------
 
         [Fact]
@@ -318,6 +341,9 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Contains("float oceanSurge(float riseN, float backFace)", ShaderSources.WaterFrag);
             Assert.Contains("float oceanSurfFoam(float band, float surge)", ShaderSources.WaterFrag);
             Assert.Contains("surf = clamp(oceanSurfFoam(surfBand, oceanSurge(riseN, back)) * SurfParams.x, 0.0, 1.0);",
+                ShaderSources.WaterFrag);
+            Assert.Contains(
+                "foam = clamp(max(max(crest, band) * mask * foamStrength, surf), 0.0, 1.0);",
                 ShaderSources.WaterFrag);
         }
 

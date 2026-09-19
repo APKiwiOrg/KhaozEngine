@@ -631,7 +631,7 @@ void main() {
     // not add past white.
     float foamStrength = FoamParams.x;
     float foam = 0.0;
-    if (foamStrength > 0.0) {
+    if (foamStrength > 0.0 || (BathyParams.x > 0.5 && SurfParams.x > 0.0)) {
         float threshold = 1.0 - clamp(FoamParams.y, 0.0, 1.0);
         // Whitecaps. In FFT mode the compute pass has already turned the displacement Jacobian into an
         // accumulating, dissipating foam value per texel, so this is that value; in procedural mode it is the
@@ -656,8 +656,10 @@ void main() {
         // structure is the wave field's (the crest gate and the seaward-face trail), and the mask it would
         // otherwise pass through is the FFT foam channel, which by construction is near zero exactly where the
         // shoaling has calmed the crests - so masking the surf would delete it precisely where it belongs.
-        // With no depth field bound surf is 0 and this is arithmetically the expression it replaced.
-        foam = clamp(max(max(crest, band) * mask, surf) * foamStrength, 0.0, 1.0);
+        // FoamStrength controls whitecaps and the ordinary shoreline band. SurfStrength already controls surf, so
+        // an overdriven whitecap look cannot amplify the breaking band into a flat slab. With surf at zero or no
+        // depth field bound this is arithmetically the expression it replaced.
+        foam = clamp(max(max(crest, band) * mask * foamStrength, surf), 0.0, 1.0);
     }
 
     // Waterline alpha feather (mirrors WaterMath.ShoreFade): a much tighter distance than the depth grading above,

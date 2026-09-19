@@ -51,7 +51,7 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuResourceLayout _layout;
         IGpuPipeline _pipeline;                    // rebuilt by SetOutputs when the target sample count changes
         readonly IGpuBuffer _frameUbo;
-        readonly List<IDisposable> _retired = new();
+        readonly GpuRetireQueue _retired;
         IGpuBuffer? _instances;
         int _capacity;
         ParticleInstance[] _packed = Array.Empty<ParticleInstance>();
@@ -82,9 +82,10 @@ namespace KhaozEngine.Render3D.Rendering
             GpuBlendFactor.One, GpuBlendFactor.InverseSourceAlpha, GpuBlendFunction.Add,
             GpuBlendFactor.One, GpuBlendFactor.InverseSourceAlpha, GpuBlendFunction.Add);
 
-        public ParticleRenderer(IGpuDevice gd, GpuOutputDescription colorOutput)
+        public ParticleRenderer(IGpuDevice gd, GpuOutputDescription colorOutput, GpuRetireQueue retired)
         {
             _gd = gd;
+            _retired = retired;
             var f = gd.Factory;
             _shaders = f.CreateShadersFromSpirv(ShaderSources.ParticleVert, ShaderSources.ParticleFrag);
             // Binding order matches the fragment shader exactly: Frame(0), DepthTex(1), Samp(2), MotionTex(3),
@@ -232,7 +233,7 @@ namespace KhaozEngine.Render3D.Rendering
         void EnsureCapacity(int spriteCount)
         {
             if (_instances != null && _capacity >= spriteCount) return;
-            if (_instances != null) _retired.Add(_instances);
+            if (_instances != null) _retired.Retire(_instances);
             _capacity = Math.Max(spriteCount, _capacity == 0 ? 64 : _capacity * 2);
             _instances = _gd.Factory.CreateBuffer(new GpuBufferDescription((uint)(_capacity * (int)InstanceStride), GpuBufferUsage.VertexBuffer));
             if (_packed.Length < _capacity) _packed = new ParticleInstance[_capacity];
@@ -363,8 +364,6 @@ namespace KhaozEngine.Render3D.Rendering
             _layout.Dispose(); _shaders.Dispose();
             _frameUbo.Dispose();
             _instances?.Dispose();
-            foreach (var r in _retired) r.Dispose();
-            _retired.Clear();
         }
     }
 }

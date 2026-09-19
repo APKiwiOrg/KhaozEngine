@@ -9,6 +9,11 @@ namespace KhaozEngine.Render3D
     /// <see cref="WaterSettings.Bathymetry"/>; leaving that null is the default and leaves the surface exactly what
     /// it was before this existed.
     /// <para>
+    /// This spatial field is independent of <see cref="WaterSeaState.DepthMetres"/>. That scalar is a bake-time
+    /// reference for the whole FFT spectrum. This field describes the local bottom that the baked waves meet. A
+    /// deep-water reference alongside shallow coastal samples is intentional and is usually the useful pairing.
+    /// </para>
+    /// <para>
     /// <b>It is a plain CPU array, deliberately.</b> Every consumer already has the ground height somewhere - a
     /// terrain field, a heightmap, a collision mesh - and none of them have it as a GPU texture in a format the
     /// water pass could read. Asking for an <c>IGpuTexture</c> would push the format, the usage flags and the

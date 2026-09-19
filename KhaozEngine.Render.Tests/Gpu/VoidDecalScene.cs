@@ -19,7 +19,7 @@ namespace KhaozEngine.Tests.Gpu
     /// <see cref="IsoCamera3D"/> looks from (+x, +y, +z) at azimuth 45 and elevation atan(0.5), so its ray drops
     /// <see cref="RayDyDx"/> in y per unit of -x, and the +X and +Z cliffs are the CAMERA-FACING ones. That fixes
     /// three regions along the +X axis, and <see cref="VoidSample"/> / <see cref="GroundSample"/> /
-    /// <see cref="CliffFrontSample"/> pick one pixel in each:
+    /// <see cref="CliffWrapSample"/> / <see cref="CliffFrontSample"/> pick pixels in each:
     /// </para>
     /// <list type="bullet">
     /// <item>plane x in [-3, 3] (and |z| &lt;= 3): the tile top. Real geometry inside the Y band, painted by the base
@@ -90,6 +90,12 @@ namespace KhaozEngine.Tests.Gpu
         /// The ring hangs in FRONT of that cliff, so the geometry pass's fallback must paint it. This is the sample
         /// that fails if the fallback treats "geometry exists" as "do not project".</summary>
         public static readonly Vector3 CliffFrontSample = new(4.0f, PlaneY, 0f);
+
+        /// <summary>Inside the top strip of the +X cliff that the stock downward tolerance admits. The plane point
+        /// is inside the ring, and the visible geometry is the vertical face at a reconstructed Y inside the band.
+        /// A legacy decal must reject that receiver. A fallback decal rejects it too, then paints its own nearer
+        /// horizontal plane.</summary>
+        public static readonly Vector3 CliffWrapSample = new(3.2f, PlaneY, 2.5f);
 
         /// <summary>A static, solid, alpha-blended ring style: no sweep, no flash, no pulse, no noise, so the render
         /// is a clean annulus and every pixel assertion is about the void projection rather than an animation phase.

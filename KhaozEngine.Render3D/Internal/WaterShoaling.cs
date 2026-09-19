@@ -205,6 +205,14 @@ namespace KhaozEngine.Render3D.Internal
         public static float BackFace(float slopeAlongUpBeach)
             => Math.Clamp(slopeAlongUpBeach * BackFaceGain, 0f, 1f);
 
+        /// <summary>
+        /// Combines ordinary whitecap and shoreline foam with breaking surf. <paramref name="foamStrength"/>
+        /// controls the ordinary source only. Surf already carries <see cref="WaterSettings.SurfStrength"/>, so an
+        /// overdriven whitecap look cannot amplify it into a flat slab.
+        /// </summary>
+        public static float CombineFoam(float whitecap, float surf, float foamStrength)
+            => Math.Clamp(MathF.Max(whitecap * foamStrength, surf), 0f, 1f);
+
         /// <summary>GLSL <c>smoothstep</c>, literally, including its degenerate-edge behaviour.</summary>
         static float SmoothStep(float edge0, float edge1, float x)
         {

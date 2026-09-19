@@ -40,8 +40,9 @@ implements NEITHER `IPackVersionPointerStore` nor `IContentVersionPointerSource`
 
 That is a safety property rather than a missing feature. `ContentPublisher` and `ContentPackRebuild` both
 RESOLVE the pointer half of the store they are handed and refuse a store that has none, with the
-`no-pack-store` reason. A store with no pointer half therefore cannot be a publish or rebuild target at
-compile time, so a full server pack can never be published into a public container by mistake.
+`no-pack-store` reason. That refusal happens at RUN time, when a publisher or a rebuild resolves the pointer
+half and finds none, which is before any byte is written, so a full server pack can never be published into a
+public container by mistake.
 
 A public origin gets no `versions/<n>` pointer either, and it is the same decision rather than a second one.
 The pointer format carries the SERVER manifest hash beside the client one, and no client ever reads a

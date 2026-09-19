@@ -50,8 +50,9 @@ public class TileCommandCodecTests
         Assert.Equal(TileCommand.InteractEntity(7, TileMoveMode.Run), decoded);
 
         // A server from before this addition rejects kind 4 at its old `kind > Attack` check. The current decoder
-        // admits 4 and still rejects the next unknown value rather than treating it as an object interaction.
-        entity[5] = 5;
+        // admits 4 and 5 and still rejects the next unknown value rather than treating it as an object
+        // interaction.
+        entity[5] = 6;
         Assert.False(TileProtocol.TryDecodeCommand(entity, Planes, out _, out _));
     }
 

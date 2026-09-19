@@ -44,8 +44,9 @@ public static partial class TileProtocol
     /// <summary>
     /// Decodes a command frame. False (never throws) for: a frame that is not exactly
     /// <see cref="CommandFrameSize"/> bytes, a wrong tag, a negative sequence number, a kind outside
-    /// <see cref="TileCommandKind"/>, a mode outside <see cref="TileMoveMode"/>, or a plane outside
-    /// <c>0 .. planeCount - 1</c>. The two enum checks matter more than they look: a byte cast into an enum is not
+    /// <see cref="TileCommandKind"/>, a mode outside <see cref="TileMoveMode"/>, a plane outside
+    /// <c>0 .. planeCount - 1</c>, or a <see cref="TileCommandKind.Steer"/> whose target is outside
+    /// <see cref="TileDirection"/>. The enum checks matter more than they look: a byte cast into an enum is not
     /// validated by the runtime, so an unchecked one would reach a switch that has no case for it.
     /// <para>The GOAL RADIUS is deliberately not checked here: it is relative to where the player currently stands,
     /// which only the server knows, so it is enforced at apply. This decoder validates SHAPE, and everything that
@@ -61,18 +62,23 @@ public static partial class TileProtocol
         if (s < 0) return false;
 
         byte kind = data[5];
-        if (kind > (byte)TileCommandKind.InteractEntity) return false;
+        if (kind > (byte)TileCommandKind.Steer) return false;
         byte mode = data[15];
         if (mode > (byte)TileMoveMode.Run) return false;
         int plane = data[14];
         if (plane >= planeCount) return false;
+
+        long target = BitConverter.ToInt64(data.Slice(16, 8));
+        // A steer's target is a TileDirection, and a byte cast into an enum is not validated by the runtime, so
+        // an unchecked one would reach TileDirections.Delta and throw mid tick.
+        if (kind == (byte)TileCommandKind.Steer && (ulong)target > (ulong)TileDirection.NE) return false;
 
         seq = s;
         command = new TileCommand(
             (TileCommandKind)kind,
             new TileCoord(BitConverter.ToInt32(data.Slice(6, 4)), BitConverter.ToInt32(data.Slice(10, 4)), plane),
             (TileMoveMode)mode,
-            BitConverter.ToInt64(data.Slice(16, 8)));
+            target);
         return true;
     }
 }

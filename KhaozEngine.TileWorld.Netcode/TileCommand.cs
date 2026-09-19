@@ -1,6 +1,6 @@
 namespace KhaozEngine.TileWorld.Netcode;
 
-/// <summary>What one tick's command asks for. Five values, and the wire form is one byte, because a tile world's
+/// <summary>What one tick's command asks for. Six values, and the wire form is one byte, because a tile world's
 /// entire input vocabulary is where to go, what to touch and what to fight.</summary>
 public enum TileCommandKind : byte
 {
@@ -36,6 +36,14 @@ public enum TileCommandKind : byte
     /// overlap exactly. An older decoder rejects this value as unknown instead of resolving it in the object
     /// domain.</summary>
     InteractEntity = 4,
+
+    /// <summary>Take one step in <see cref="TileCommand.SteerDirection"/> when the body is standing or landing,
+    /// with NO search. A blocked diagonal slides along whichever of its two axis steps is open and a blocked
+    /// straight step stands, so a held key can never send the body on a detour the way a
+    /// <see cref="WalkTo"/> at the adjacent tile would. Replaces a route, a pending interaction and a fight
+    /// exactly as <see cref="WalkTo"/> does. The direction rides <see cref="TileCommand.Target"/> as its
+    /// <see cref="TileDirection"/> byte value. An older decoder rejects this value as unknown.</summary>
+    Steer = 5,
 }
 
 /// <summary>
@@ -52,9 +60,11 @@ public enum TileCommandKind : byte
 /// must be the player's own, or the command is dropped at apply.</param>
 /// <param name="Mode">Walk or run. Carried on every kind, so the run toggle rides the tick stream rather than the
 /// click, and a change takes effect at the start of the next step.</param>
-/// <param name="Target">The authored object id for <see cref="TileCommandKind.Interact"/>, or the entity NET ID
-/// for <see cref="TileCommandKind.InteractEntity"/> and <see cref="TileCommandKind.Attack"/>, otherwise 0. One
-/// field over two id spaces that overlap exactly, which is why <see cref="Kind"/> is what tells them apart.</param>
+/// <param name="Target">The authored object id for <see cref="TileCommandKind.Interact"/>, the entity NET ID
+/// for <see cref="TileCommandKind.InteractEntity"/> and <see cref="TileCommandKind.Attack"/>, or the held
+/// <see cref="TileDirection"/> byte value for <see cref="TileCommandKind.Steer"/>, otherwise 0. One field over
+/// two id spaces that overlap exactly plus a direction, which is why <see cref="Kind"/> is what tells them
+/// apart.</param>
 public readonly record struct TileCommand(TileCommandKind Kind, TileCoord Goal, TileMoveMode Mode, long Target)
 {
     /// <summary>Keep walking the current route, or keep standing, at <paramref name="mode"/>. THE factory a client
@@ -97,4 +107,14 @@ public readonly record struct TileCommand(TileCommandKind Kind, TileCoord Goal, 
     /// to be. A target that moves and stays in range of that same end costs no search.</summary>
     public static TileCommand Attack(long netId, TileMoveMode mode) =>
         new(TileCommandKind.Attack, default, mode, netId);
+
+    /// <summary>Step toward <paramref name="direction"/> with no search. The command a client sends on every
+    /// tick a direction is held. See <see cref="TileCommandKind.Steer"/>.</summary>
+    public static TileCommand Steer(TileDirection direction, TileMoveMode mode) =>
+        new(TileCommandKind.Steer, default, mode, (long)direction);
+
+    /// <summary>The held direction of a <see cref="TileCommandKind.Steer"/>. Meaningless on any other kind,
+    /// whose <see cref="Target"/> is an id. The decoder refuses a steer frame outside the eight directions, so
+    /// a decoded steer always answers a defined value.</summary>
+    public TileDirection SteerDirection => (TileDirection)Target;
 }

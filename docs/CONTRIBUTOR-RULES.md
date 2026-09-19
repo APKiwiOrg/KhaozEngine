@@ -95,10 +95,6 @@ Goldens are backend-family artifacts. A new or changed golden must be baked by t
 Plain `dotnet test` skips GPU facts. A local GPU proof sets `KE_GPU_TESTS=1` and confirms zero skipped
 render tests. [`CROSS-PLATFORM.md`](CROSS-PLATFORM.md) owns the full matrix contract.
 
-If a sandboxed build fails only because it cannot read the user gitconfig, create `.buildhome` in the
-worktree and run with `HOME="$PWD/.buildhome"` plus the real NuGet cache through `NUGET_PACKAGES`.
-Never commit `.buildhome`.
-
 ## Version, package and release rules
 
 `Directory.Build.props` contains the one `<KhaozEngineVersion>` for every package. SemVer is additive

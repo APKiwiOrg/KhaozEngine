@@ -138,30 +138,30 @@ PointShadowClear.layout.msl e10a8968623a864340ff89ebe88cbb22ebf8b6b823dbfacd7871
 PointShadowClear.vertex.hlsl 182865abce7b05548f67dd9d7f23e64c65c98575f988a2692953b2f15e4aadfc 823
 PointShadowClear.vertex.msl 8d4a4a5cf1dd60bbb3fab71ed1006efec0347a24547d46e9bb6fc4f12cc0d33a 569
 PointShadowClear.vertex.spirv 14aacd2a80bcb97333cd0db6b31e6f2aefbcbc8c5358c2b0e9cd824f97cc4b59 1316
-PointShadowRigid.fragment.hlsl 18f48b601768890cb5815f59216c4aebcf6821e07025f07b1c9fbccfd5d10b4d 668
-PointShadowRigid.fragment.msl 19b3f7f58f1b30f3fcebcb156d3d243b1a20c4fb3f5bc9ad92a9f2673696529e 530
-PointShadowRigid.fragment.spirv 51323758c3614c0fa3c0f00237f9bb675523eb36f4d808004f7a5477bebefcbb 940
+PointShadowRigid.fragment.hlsl f4424520ae6cdd493ba7fd794ccf1033710e0b7cf2a3eaa8d4306ac79bc4a307 778
+PointShadowRigid.fragment.msl 50ff659a0d04fab8266eb8f11e2d7c055b428ecd6c1b5ba5b9e54542893bfe9a 632
+PointShadowRigid.fragment.spirv 49748a91fe03ea4595948d1aa1d68b776bc6a50e4cc26b61134a448d67ecaa8f 1112
 PointShadowRigid.layout.hlsl 98a07d1dd87051ebd2a78bc5570a0f5ba068684a5adf5a7ce6a63dde77528e56 13 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF]
 PointShadowRigid.layout.msl 98a07d1dd87051ebd2a78bc5570a0f5ba068684a5adf5a7ce6a63dde77528e56 13 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF]
-PointShadowRigid.vertex.hlsl d4b939d02e169c6882b20c8beee1ce108478b78ca40dd6e6ec2fbe8b050278e7 1716
-PointShadowRigid.vertex.msl 2e15f63785f3c2c7edbc469c144a6b24eadadecec63f5116570f30fdb1a8378e 1098
-PointShadowRigid.vertex.spirv d5a03f16d30b26f34dfa61958f75eac015ad402e6e42352a4a0ab88fba65c062 2064
-PointShadowRigidDissolve.fragment.hlsl a0edd1da032b5aa33bf5ddeba22a56e6c0c5645ae5d3b3364221cfcb7076a8ba 2757
-PointShadowRigidDissolve.fragment.msl f9beb4b927f561df751b8664f3a8427302f9fe014d9566016b43ffd4c5506756 2473
-PointShadowRigidDissolve.fragment.spirv 026b8b32dc668ef5578faa0d6a987cfc53e14e186d77e967390284eb10aa2ba9 3228
+PointShadowRigid.vertex.hlsl 73fd625157efb13cfd63dee083f237235d192db50b06d0e82be054d7ab7abe40 1753
+PointShadowRigid.vertex.msl 05ed54482f64fca071e53a3c52992dd5c7ef706c9e87ea21834ca7da2d0e7833 1114
+PointShadowRigid.vertex.spirv 9337592ebf9d5e2dd04dee0f3907065882517c77b9b4ea4f5dc20653bf345184 2088
+PointShadowRigidDissolve.fragment.hlsl 86809abda1b7b7998b489fc556969868cbe1a62377338758bcbabbfbb74ddb86 2872
+PointShadowRigidDissolve.fragment.msl c4013f738bb8f7cea20878175e51c66b2b23df2ac92ea8dddf989e848591c37a 2579
+PointShadowRigidDissolve.fragment.spirv ee5be033ca5b218ab1abc9c7037c50653941c637788fd062e6ec8d4f70027a36 3376
 PointShadowRigidDissolve.layout.hlsl ac1be3ad0aed38047f2bb90f944192c42d9decafe487d5a59e4b9f38e9a20837 16 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float1,<unnamed>:Float2,<unnamed>:Float1]|set0[<unnamed>:UniformBuffer:VF]
 PointShadowRigidDissolve.layout.msl ac1be3ad0aed38047f2bb90f944192c42d9decafe487d5a59e4b9f38e9a20837 16 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float1,<unnamed>:Float2,<unnamed>:Float1]|set0[<unnamed>:UniformBuffer:VF]
-PointShadowRigidDissolve.vertex.hlsl 2906ed4098d0fe71d8e9900b900f47a5f7eb1a8591e30ba512197eb0fd438905 2275
-PointShadowRigidDissolve.vertex.msl f43ea404bd504956bd80beb612519b098e5bf10fbc4a4f825817577c3e8ce6af 1425
-PointShadowRigidDissolve.vertex.spirv 957cecc9bed70c72e5dd1065f89757f21e47459ab4bc8c19eecbc9ee65f3867e 2612
-PointShadowRigidDissolveInverted.fragment.hlsl d97341cfc34abe865712439ed26721624387ec7773848d1e7e57c48ea35ff532 2347
-PointShadowRigidDissolveInverted.fragment.msl 6f3198ae41bea3f516939a233c6999ae3c99a247f72ba885bcfcad7c8ec5bf9d 2099
-PointShadowRigidDissolveInverted.fragment.spirv f5e4a50d152a06064b566e955c85d4f6e48f2f3b162b6d03ea7a09190110c575 2896
+PointShadowRigidDissolve.vertex.hlsl 8f4076803b4c3688e66e86e1cb8d7a650c53062756732bd5d66a1d9ea0242ef6 2312
+PointShadowRigidDissolve.vertex.msl 315d33d8210dd0b978624246b4c8859e20bd2bc4093db2d05680d5940ccc63ae 1441
+PointShadowRigidDissolve.vertex.spirv 5017b211d1c24bb7e30533c3472420b6e97125237fe85375c5b5b85c8bafe238 2636
+PointShadowRigidDissolveInverted.fragment.hlsl e4371b9db605eaf9f7a613a43fdfa8a1594452ac2e69f9a6ae32c3a6e1706ca8 2462
+PointShadowRigidDissolveInverted.fragment.msl 64f7f7b68e859b20ae69a8748f740f034d6f867efa4a47ab1548e66c507cbed1 2205
+PointShadowRigidDissolveInverted.fragment.spirv c8ec53665efc1a30fc7285f1eddec0dc26c0dfa89150e15aa729bdd0df2d2a48 3044
 PointShadowRigidDissolveInverted.layout.hlsl ac1be3ad0aed38047f2bb90f944192c42d9decafe487d5a59e4b9f38e9a20837 16 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float1,<unnamed>:Float2,<unnamed>:Float1]|set0[<unnamed>:UniformBuffer:VF]
 PointShadowRigidDissolveInverted.layout.msl ac1be3ad0aed38047f2bb90f944192c42d9decafe487d5a59e4b9f38e9a20837 16 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float1,<unnamed>:Float2,<unnamed>:Float1]|set0[<unnamed>:UniformBuffer:VF]
-PointShadowRigidDissolveInverted.vertex.hlsl 2906ed4098d0fe71d8e9900b900f47a5f7eb1a8591e30ba512197eb0fd438905 2275
-PointShadowRigidDissolveInverted.vertex.msl f43ea404bd504956bd80beb612519b098e5bf10fbc4a4f825817577c3e8ce6af 1425
-PointShadowRigidDissolveInverted.vertex.spirv 957cecc9bed70c72e5dd1065f89757f21e47459ab4bc8c19eecbc9ee65f3867e 2612
+PointShadowRigidDissolveInverted.vertex.hlsl 8f4076803b4c3688e66e86e1cb8d7a650c53062756732bd5d66a1d9ea0242ef6 2312
+PointShadowRigidDissolveInverted.vertex.msl 315d33d8210dd0b978624246b4c8859e20bd2bc4093db2d05680d5940ccc63ae 1441
+PointShadowRigidDissolveInverted.vertex.spirv 5017b211d1c24bb7e30533c3472420b6e97125237fe85375c5b5b85c8bafe238 2636
 PostBlit.fragment.hlsl 9712931143511eb994f19ab36144c6bd6995a8476c91584ab0f77ece7c3043e4 839
 PostBlit.fragment.msl 741534047d21682ed6af0632938e2e28257ec9e626cea9980d6231771f56c4b7 743
 PostBlit.fragment.spirv 915fdf5c58a63bdd0c301dfe5f2e6df3a7c29613554812e7554242e2278bf5ec 1376

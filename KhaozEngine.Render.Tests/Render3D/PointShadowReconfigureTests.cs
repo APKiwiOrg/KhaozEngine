@@ -502,6 +502,36 @@ public sealed class PointShadowReconfigureTests
         Assert.Equal(3, rig.Scene.PointShadowedLights);
     }
 
+    /// <summary>
+    /// THE NEAR RADIUS IS PART OF THE CACHED ROW'S IDENTITY. It changes which casters are drawn into the map, so a
+    /// row rendered at one clearance is not the map the same key asks for at another, and a cache that compared
+    /// only the key, the position and the radius would hand the light back the old picture for ever. It sits in
+    /// the per-light signature beside the quantised position and radius, so a change dirties the row and costs
+    /// exactly one rebuild, and a frame that asks for the same clearance again costs none.
+    /// </summary>
+    [Fact]
+    public void ChangingTheNearRadiusOnOneKeyRebuildsThatRowAndNothingElseDoes()
+    {
+        using var rig = new ReconfigureRig();
+        rig.RenderTwoFrames(LightShadow.Static(1));
+        Assert.Equal(1, rig.Scene.LastShadowPassDiagnostics.PointStaticRebuilds);
+
+        rig.RenderFrame(LightShadow.Static(1));
+        Assert.Equal(0, rig.Scene.LastShadowPassDiagnostics.PointStaticRebuilds);
+
+        rig.RenderFrame(LightShadow.Static(1, 0.4f));
+        Assert.Equal(1, rig.Scene.LastShadowPassDiagnostics.PointStaticRebuilds);
+        Assert.Equal(1, rig.Scene.PointShadowedLights);
+
+        // Asked for again unchanged, it is the cached row it always was.
+        rig.RenderFrame(LightShadow.Static(1, 0.4f));
+        Assert.Equal(0, rig.Scene.LastShadowPassDiagnostics.PointStaticRebuilds);
+
+        // And back down again is a change like any other.
+        rig.RenderFrame(LightShadow.Static(1, 0.2f));
+        Assert.Equal(1, rig.Scene.LastShadowPassDiagnostics.PointStaticRebuilds);
+    }
+
     [Fact]
     public void ARequestAfterDisposalThrows()
     {

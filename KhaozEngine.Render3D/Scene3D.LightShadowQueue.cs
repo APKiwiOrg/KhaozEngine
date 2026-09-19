@@ -21,7 +21,7 @@ public sealed partial class Scene3D
     /// <remarks>
     /// <paramref name="shadow"/> is a REQUEST. <see cref="LightShadow.None"/> is exactly the four-argument
     /// overload and renders byte-identically to a scene with no point shadows at all.
-    /// <see cref="LightShadow.Static"/> takes a cached map behind the caller's own key, for a placed light whose
+    /// <see cref="LightShadow.Static(long)"/> takes a cached map behind the caller's own key, for a placed light whose
     /// surroundings do not move, and <see cref="LightShadow.Dynamic"/> takes one rebuilt every frame, for a light
     /// that does. How many requests one frame can honour is
     /// <see cref="ShadowSettings.PointShadows"/>: past the budget a light is drawn unshadowed rather than

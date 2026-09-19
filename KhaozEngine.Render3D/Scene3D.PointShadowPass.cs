@@ -135,15 +135,18 @@ namespace KhaozEngine.Render3D
 
         /// <summary>
         /// Pack one light's six faces into slots <c>packedSlotIndex * 6 + face</c> of the ring, and remember the
-        /// atlas <paramref name="slot"/> (the ROW it renders into), its position and its radius for the draw.
-        /// <paramref name="lightPosAbsolute"/> is in the same absolute space the consumer queued its geometry in,
-        /// and <paramref name="radius"/> is the light's reach, which is also the face far plane.
+        /// atlas <paramref name="slot"/> (the ROW it renders into), its position, its radius and its near radius
+        /// for the draw. <paramref name="lightPosAbsolute"/> is in the same absolute space the consumer queued its
+        /// geometry in, and <paramref name="radius"/> is the light's reach, which is also the face far plane.
+        /// <paramref name="nearRadius"/> is how much geometry around the bulb is the light's own fixture and is
+        /// left out of the map, in metres, zero for a light in open space.
         /// <para>
         /// The packed index and the atlas row are two different numbers on purpose: the ring is packed densely for
         /// THIS frame's lights, while the row is the light's place in the atlas, which the slot cache owns.
         /// </para>
         /// </summary>
-        internal void PackPointShadowSlot(int packedSlotIndex, int slot, Vector3 lightPosAbsolute, float radius)
+        internal void PackPointShadowSlot(int packedSlotIndex, int slot, Vector3 lightPosAbsolute, float radius,
+            float nearRadius = 0f)
         {
             if (_pointShadows is not { } renderer || _pointShadowAtlas is not { } atlas) return;
 
@@ -158,9 +161,10 @@ namespace KhaozEngine.Render3D
                     PointShadowMath.FaceViewProjection(face, slot, atlas.Rows, lightRender, radius),
                     _gd.Capabilities);
                 renderer.PackFace(packedSlotIndex * PointShadowMath.FaceCount + face, vp, lightRender, radius,
-                    noiseScale, _frameOrigin);
+                    noiseScale, _frameOrigin, nearRadius);
             }
-            _packedPointSlots.Add(new PackedPointShadowSlot(packedSlotIndex, slot, lightPosAbsolute, radius));
+            _packedPointSlots.Add(
+                new PackedPointShadowSlot(packedSlotIndex, slot, lightPosAbsolute, radius, nearRadius));
         }
 
         /// <summary>Upload every light packed this frame in ONE whole-buffer write. Must run OUTSIDE the pass, so
@@ -198,7 +202,7 @@ namespace KhaozEngine.Render3D
                 // The caster set is per LIGHT (it is a sphere cull against that light), so it is rebuilt here
                 // rather than once for the pass. This is CPU work with nothing recorded, so it costs the pass
                 // nothing to do it between draws.
-                BuildPointCasterSpans(packed.LightPosAbsolute, packed.Radius);
+                BuildPointCasterSpans(packed.LightPosAbsolute, packed.Radius, packed.NearRadius);
                 for (int face = 0; face < PointShadowMath.FaceCount; face++)
                 {
                     ShadowCastKind bound = ShadowCastKind.None;
@@ -225,15 +229,15 @@ namespace KhaozEngine.Render3D
         /// <summary>One light packed into this frame's ring: where its six faces sit in the ring, which atlas row
         /// it renders into, and the light itself, which the draw re-culls its casters against.</summary>
         readonly record struct PackedPointShadowSlot(
-            int PackedIndex, int Slot, Vector3 LightPosAbsolute, float Radius);
+            int PackedIndex, int Slot, Vector3 LightPosAbsolute, float Radius, float NearRadius);
 
         /// <summary>
         /// Build <see cref="_pointCasterSpans"/>: this light's caster draw list, in the exact order
         /// <see cref="RenderPointShadowSlots"/> draws it. Same rules as the cascade walk (a stale handle, a
         /// receive-only splat mesh and anything the consumer opted out of casting all drop out), plus the light
-        /// sphere test.
+        /// sphere test and the near-radius test inside it.
         /// </summary>
-        void BuildPointCasterSpans(Vector3 lightPosAbsolute, float radius)
+        void BuildPointCasterSpans(Vector3 lightPosAbsolute, float radius, float nearRadius)
         {
             _pointCasterSpans.Clear();
             _pointCasterKinds.Clear();
@@ -255,7 +259,8 @@ namespace KhaozEngine.Render3D
                     int slot = (int)(run.Start + s);
                     if (slot >= _pointCasterKinds.Count) break;
                     if (_pointCasterKinds[slot] == ShadowCastKind.None) continue;
-                    if (!InstanceTouchesLight(mesh.Bounds, _instanceData[slot].Model, lightPosAbsolute, radius))
+                    if (!InstanceTouchesLight(mesh.Bounds, _instanceData[slot].Model, lightPosAbsolute, radius,
+                        nearRadius))
                         _pointCasterKinds[slot] = ShadowCastKind.None;
                 }
                 AppendCasterSpans(run.Mesh.Index, run.Mesh.Generation, run.Start, run.Count,
@@ -273,7 +278,8 @@ namespace KhaozEngine.Render3D
         /// the integration half will drive: one begin, one pack, one upload outside the pass, one pass.
         /// </para>
         /// </summary>
-        internal int DebugRenderPointShadowSlot(int slot, Vector3 lightPosAbsolute, float radius)
+        internal int DebugRenderPointShadowSlot(int slot, Vector3 lightPosAbsolute, float radius,
+            float nearRadius = 0f)
         {
             if (_pointShadows is null) return 0;
             int draws;
@@ -282,7 +288,7 @@ namespace KhaozEngine.Render3D
                 using (GpuRecording.Open(_gd, cl, "Scene3D.DebugRenderPointShadowSlot"))
                 {
                     BeginPointShadowFrame(1);
-                    PackPointShadowSlot(0, slot, lightPosAbsolute, radius);
+                    PackPointShadowSlot(0, slot, lightPosAbsolute, radius, nearRadius);
                     UploadPointShadowFaces(cl);
                     draws = RenderPointShadowSlots(cl);
                 }

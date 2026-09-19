@@ -586,6 +586,25 @@ public sealed class PointShadowScene : IDisposable
         /// of the picture.</summary>
         public void DrawOffscreenPillar() => Box(0.6f, 3f, 0.4f, OffscreenPillarCentre);
 
+        /// <summary>The lamp's own closed body around the flame: a 20 cm cube CENTRED on the light, so the
+        /// nearest surface in every direction is the fixture itself, 10 cm away at the faces and 17.3 cm at the
+        /// corners. Every placed lamp model is this shape.</summary>
+        public void DrawLampFixture(Vector3 centre) => Box(0.2f, 0.2f, 0.2f, centre);
+
+        /// <summary>
+        /// The same lamp with its BRACKET, as one mesh: a 20 cm column running from 60 cm below the flame to 10 cm
+        /// above it, so the flame is closed in on every side and the piece as a whole reaches well past any
+        /// sensible clearance.
+        /// <para>
+        /// That second half is why the cases use this rather than the bare cube. A bare cube lies entirely inside
+        /// a 25 cm clearance, so the instance is dropped by the CPU sphere test and the fragment's own discard is
+        /// never asked anything. Real fixtures hang off brackets and stand on posts, and the geometry that goes
+        /// dark is only the part near the flame.
+        /// </para>
+        /// </summary>
+        public void DrawLampOnItsBracket(Vector3 flame) =>
+            Box(0.2f, 1.2f, 0.2f, flame - new Vector3(0f, 0.5f, 0f));
+
         /// <summary>Queue a point light with a shadow request.</summary>
         public void AddLight(Vector3 at, Color colour, float radius, float intensity, LightShadow shadow)
             => scene.AddLight(at, colour, radius, intensity, shadow);

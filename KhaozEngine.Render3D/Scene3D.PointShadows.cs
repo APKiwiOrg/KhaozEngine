@@ -131,7 +131,7 @@ namespace KhaozEngine.Render3D
                 // rebuilt every frame anyway, so a shuffled queue costs a rebuild rather than a wrong picture.
                 long key = request.Mode == LightShadowMode.Dynamic ? i : request.Key;
                 _pointRequests.Add(new PointShadowRequest(
-                    i, position, posRadius.W, request.Mode, key,
+                    i, position, posRadius.W, request.NearRadius, request.Mode, key,
                     (position - eyeAbsolute).LengthSquared()));
             }
             if (_pointRequests.Count == 0) return false;
@@ -195,7 +195,7 @@ namespace KhaozEngine.Render3D
             {
                 PointShadowRequest request = _pointRequests[i];
                 if (request.Slot < 0 || request.Mode != LightShadowMode.Static) continue;
-                long signature = PointCasterSignature(request.Position, request.Radius);
+                long signature = PointCasterSignature(request.Position, request.Radius, request.NearRadius);
                 // A changed signature can only ADD dirt. A freshly acquired row is already dirty, so a stale
                 // signature left behind by the row's previous owner cannot accidentally report it clean.
                 if (_pointCasterSignatures[request.Slot] != signature) cache.MarkDirty(request.Slot);
@@ -250,7 +250,7 @@ namespace KhaozEngine.Render3D
             for (int packed = 0; packed < _pointRebuilds.Count; packed++)
             {
                 PointShadowRequest r = _pointRequests[_pointRebuilds[packed]];
-                PackPointShadowSlot(packed, r.Slot, r.Position, r.Radius);
+                PackPointShadowSlot(packed, r.Slot, r.Position, r.Radius, r.NearRadius);
             }
             UploadPointShadowFaces(cl);
             int draws = RenderPointShadowSlots(cl);
@@ -311,7 +311,12 @@ namespace KhaozEngine.Render3D
         /// <summary>
         /// A 64-bit signature of everything that would be drawn into one static light's map: every rigid caster
         /// standing inside the light sphere, by mesh identity, world matrix, cast kind and dissolve threshold,
-        /// combined with the light's own position and radius quantised to a millimetre.
+        /// combined with the light's own position, radius and near radius quantised to a millimetre.
+        /// <para>
+        /// THE NEAR RADIUS BELONGS HERE because it decides what the map CONTAINS: raising it takes the light's own
+        /// fixture out of its own shadow. A row rendered at one clearance is not the map the same key asks for at
+        /// another, so a signature that ignored it would answer a changed request with the old picture for ever.
+        /// </para>
         /// <para>
         /// It walks the instances in exactly the order <c>BuildPointCasterSpans</c> does and applies exactly the
         /// same three rejections, so a signature can only miss a change that the pass would also not have drawn.
@@ -325,13 +330,14 @@ namespace KhaozEngine.Render3D
         /// caster spends the static budget and delays the other lights rather than multiplying the work.
         /// </para>
         /// </summary>
-        long PointCasterSignature(Vector3 lightPosAbsolute, float radius)
+        long PointCasterSignature(Vector3 lightPosAbsolute, float radius, float nearRadius)
         {
             ulong hash = 1469598103934665603UL;   // FNV-1a 64, offset basis
             MixPointSignature(ref hash, Quantise(lightPosAbsolute.X));
             MixPointSignature(ref hash, Quantise(lightPosAbsolute.Y));
             MixPointSignature(ref hash, Quantise(lightPosAbsolute.Z));
             MixPointSignature(ref hash, Quantise(radius));
+            MixPointSignature(ref hash, Quantise(nearRadius));
 
             // Read by reference: an InstanceData is 128 bytes and this runs once per instance per static request
             // per frame, so copying one out of the list to reach two of its fields is the one thing here worth
@@ -352,7 +358,8 @@ namespace KhaozEngine.Render3D
                         : ShadowCastKind.Opaque;
                     if (kind == ShadowCastKind.None) continue;
                     ref ModelRenderer.InstanceData data = ref instances[slot];
-                    if (!InstanceTouchesLight(mesh.Bounds, data.Model, lightPosAbsolute, radius)) continue;
+                    if (!InstanceTouchesLight(mesh.Bounds, data.Model, lightPosAbsolute, radius, nearRadius))
+                        continue;
 
                     MixPointSignature(ref hash, (ulong)(uint)run.Mesh.Index);
                     MixPointSignature(ref hash, (ulong)(uint)run.Mesh.Generation);
@@ -364,16 +371,28 @@ namespace KhaozEngine.Render3D
             return unchecked((long)hash);
         }
 
-        /// <summary>Whether one instance's world bounding sphere reaches into a light's sphere, which is the ONE
-        /// definition of "this caster takes part in this light's map" (design decision 8). Shared by the pass's
-        /// caster cull and by the signature above, so the two can never disagree about which instances a light's
-        /// map depends on.</summary>
+        /// <summary>Whether one instance's world bounding sphere reaches into a light's shadowing shell, which is
+        /// the ONE definition of "this caster takes part in this light's map" (design decision 8). Shared by the
+        /// pass's caster cull and by the signature above, so the two can never disagree about which instances a
+        /// light's map depends on.
+        /// <para>
+        /// The shell has an inner wall as well as an outer one. An instance lying WHOLLY inside
+        /// <paramref name="nearRadius"/> is the light's own fixture and every one of its fragments would be
+        /// discarded, so it is dropped here instead and never costs six faces of draws. A fixture the clearance
+        /// only reaches part way into (a lantern on a bracket, a lamp on a post) still draws, and the fragments
+        /// near the bulb are what the shader throws away.
+        /// </para></summary>
         internal static bool InstanceTouchesLight(in MeshBounds bounds, in Matrix4x4 model,
-            Vector3 lightPosAbsolute, float radius)
+            Vector3 lightPosAbsolute, float radius, float nearRadius = 0f)
         {
             bounds.WorldSphere(model, out Vector3 centre, out float r);
             float reach = r + radius;
-            return (centre - lightPosAbsolute).LengthSquared() <= reach * reach;
+            float distanceSq = (centre - lightPosAbsolute).LengthSquared();
+            if (distanceSq > reach * reach) return false;
+            if (nearRadius <= 0f) return true;
+            // Wholly inside the clearance: the farthest point of the sphere is still nearer than the near radius.
+            float farthest = MathF.Sqrt(distanceSq) + r;
+            return farthest > nearRadius;
         }
 
         static ulong Quantise(float metres) => unchecked((ulong)(long)MathF.Round(metres * 1000f));   // millimetres
@@ -410,16 +429,22 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>One queued light asking for a map, with everything the budget and the pass need: where it is,
-        /// how far it reaches, what kind of map it wants, the cache key it is remembered by, how far it is from the
-        /// eye (the budget's ranking) and which atlas row it ended up with.</summary>
-        struct PointShadowRequest(int lightIndex, Vector3 position, float radius, LightShadowMode mode,
-            long key, float distanceSq)
+        /// how far it reaches, how much of its own fixture it clears, what kind of map it wants, the cache key it
+        /// is remembered by, how far it is from the eye (the budget's ranking) and which atlas row it ended up
+        /// with.</summary>
+        struct PointShadowRequest(int lightIndex, Vector3 position, float radius, float nearRadius,
+            LightShadowMode mode, long key, float distanceSq)
         {
             /// <summary>Its index in the UPLOADED light order, which is the index the receiver's slot table is
             /// aligned to.</summary>
             public readonly int LightIndex = lightIndex;
             public readonly Vector3 Position = position;
             public readonly float Radius = radius;
+
+            /// <summary>The metres of geometry around the bulb this light treats as its own fixture, which the
+            /// pass leaves out of the map. Zero for a light in open space.</summary>
+            public readonly float NearRadius = nearRadius;
+
             public readonly LightShadowMode Mode = mode;
             public readonly long Key = key;
             public readonly float DistanceSq = distanceSq;

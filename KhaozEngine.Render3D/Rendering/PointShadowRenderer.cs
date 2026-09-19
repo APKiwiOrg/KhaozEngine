@@ -37,9 +37,10 @@ namespace KhaozEngine.Render3D.Rendering
     /// </remarks>
     internal sealed class PointShadowRenderer : IDisposable
     {
-        /// <summary>One 256-byte-aligned dynamic slot per (light, face). The payload is 96 bytes (a mat4, the light
-        /// position and radius, and the dissolve noise scale beside the render origin); 256 is the alignment every
-        /// supported backend is safe at and the Direct3D 11 friendly 16-constant multiple.</summary>
+        /// <summary>One 256-byte-aligned dynamic slot per (light, face). The payload is 112 bytes (a mat4, the
+        /// light position and radius, the dissolve noise scale beside the render origin, and the light's near
+        /// radius); 256 is the alignment every supported backend is safe at and the Direct3D 11 friendly
+        /// 16-constant multiple.</summary>
         internal const uint FaceSlotBytes = 256;
 
         readonly IGpuDevice _gd;
@@ -153,19 +154,23 @@ namespace KhaozEngine.Render3D.Rendering
         }
 
         /// <summary>Pack one face's slot: its clip-corrected world-to-cell matrix, the light in the SAME space the
-        /// caster geometry is in (render space when a render origin is in force) with its radius, and the dissolve
+        /// caster geometry is in (render space when a render origin is in force) with its radius, the dissolve
         /// noise scale beside this frame's render origin (which the dissolve variants add back to reach absolute
-        /// world space). <paramref name="index"/> is the flat (light * 6 + face) slot.</summary>
+        /// world space), and the light's near radius in metres, inside which the caster fragments discard rather
+        /// than store (a light's own fixture). <paramref name="index"/> is the flat (light * 6 + face)
+        /// slot.</summary>
         public void PackFace(int index, in Matrix4x4 faceViewProjRenderSpace, Vector3 lightPosRenderSpace,
-            float radius, float noiseScale, Vector3 renderOrigin)
+            float radius, float noiseScale, Vector3 renderOrigin, float nearRadius)
         {
             var lightPosRadius = new Vector4(lightPosRenderSpace, radius);
             var noise = new Vector4(noiseScale, renderOrigin.X, renderOrigin.Y, renderOrigin.Z);
+            var near = new Vector4(MathF.Max(0f, nearRadius), 0f, 0f, 0f);
             Span<byte> slot = _faceImage.AsSpan(
                 checked((int)((uint)index * FaceSlotBytes)), checked((int)FaceSlotBytes));
             MemoryMarshal.Write(slot, in faceViewProjRenderSpace);
             MemoryMarshal.Write(slot.Slice(64), in lightPosRadius);
             MemoryMarshal.Write(slot.Slice(80), in noise);
+            MemoryMarshal.Write(slot.Slice(96), in near);
         }
 
         /// <summary>Upload every packed slot in ONE whole-buffer write. Must run OUTSIDE the pass (before

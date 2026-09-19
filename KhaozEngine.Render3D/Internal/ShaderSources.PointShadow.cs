@@ -32,15 +32,29 @@ namespace KhaozEngine.Render3D.Internal
         //      Position and IModel0..3, so SPIRV-Cross would drop the unread inputs and leave a HOLE in the HLSL
         //      vertex-input signature, which FXC/WARP miscompiles. The 1e-30 `sink` reads every declared input so
         //      the signature stays contiguous. Do NOT drop it. ----
-        const string PointShadowUniformBlock = @"layout(set=0, binding=0) uniform U {
+        const string PointShadowUniformBlockHead = @"layout(set=0, binding=0) uniform U {
     mat4 LightVp;             // world (render space) -> this face's atlas cell, clip-corrected by the caller
     vec4 LightPosRadius;      // xyz = light position in render space, w = light radius (the far plane)
     vec4 Noise;               // x = this light's dissolve noise scale, yzw = this frame's render origin
+";
+
+        // The CLEAR quad's view of the slot, which is the three members it has always had. It reads none of them
+        // (it sinks them to keep the declared binding set honest), so it deliberately does NOT grow the near
+        // radius below: leaving it alone is what keeps the clear program's compiled bytes off every re-bake that
+        // a caster change costs.
+        const string PointShadowUniformBlock = PointShadowUniformBlockHead + @"};
+";
+
+        // The CASTERS' view, one member longer. `Near` is the light's near radius in METRES, straight off
+        // LightShadow.NearRadius, and it rides the slice rather than the light vec4 because that one's four
+        // components are all spoken for. std140 appends it at byte 96 of a 256-byte slot, so there is room and
+        // nothing before it moves.
+        const string PointShadowCasterUniformBlock = PointShadowUniformBlockHead + @"    vec4 Near;                // x = the light's near radius in metres (0 = nothing cleared), yzw unused
 };
 ";
 
         public const string PointShadowRigidVert = @"#version 450
-" + PointShadowUniformBlock + @"layout(location=0) in vec3 Position;
+" + PointShadowCasterUniformBlock + @"layout(location=0) in vec3 Position;
 layout(location=1) in vec3 Normal;
 layout(location=2) in vec4 Color;
 layout(location=3) in vec2 TexCoord;
@@ -66,12 +80,20 @@ void main() {
 
         // The caster fragments' shared distance write. The clamp keeps a caster just past the far plane (which the
         // rasterizer would have clipped anyway) from storing above the cleared 1.0 and reading as "nothing here".
+        //
+        // THE NEAR DISCARD IS WHAT LETS A LAMP LIGHT ANYTHING. A placed light sits INSIDE its own fixture, so with
+        // no clearance the nearest surface in every direction is a few centimetres of the lamp itself, every
+        // receiver past it compares as occluded, and the light reaches nothing at all. A fragment closer to the
+        // bulb than the light's near radius is therefore thrown away instead of stored. `Near.x` is 0 for a light
+        // in open space and a distance is never below zero, so that case stores exactly what it always stored.
         const string PointShadowDistanceWrite =
-            @"    float dist = length(vWorldPos - LightPosRadius.xyz) / max(LightPosRadius.w, 1e-4);
+            @"    float toLight = length(vWorldPos - LightPosRadius.xyz);
+    if (toLight < Near.x) discard;
+    float dist = toLight / max(LightPosRadius.w, 1e-4);
     oDist = vec4(clamp(dist, 0.0, 1.0), 0.0, 0.0, 1.0);";
 
         public const string PointShadowRigidFrag = @"#version 450
-" + PointShadowUniformBlock + @"layout(location=0) in vec3 vWorldPos;
+" + PointShadowCasterUniformBlock + @"layout(location=0) in vec3 vWorldPos;
 layout(location=0) out vec4 oDist;            // single R32F target: .r carries distance / radius
 void main() {
 " + PointShadowDistanceWrite + @"
@@ -88,7 +110,7 @@ void main() {
         //      dither (see ShadowDissolveNoise.ScaleForCascade, which this pass feeds the light radius and the face
         //      resolution). ----
         public const string PointShadowRigidDissolveVert = @"#version 450
-" + PointShadowUniformBlock + @"layout(location=0) in vec3 Position;
+" + PointShadowCasterUniformBlock + @"layout(location=0) in vec3 Position;
 layout(location=1) in vec3 Normal;
 layout(location=2) in vec4 Color;
 layout(location=3) in vec2 TexCoord;
@@ -123,7 +145,7 @@ void main() {
         // dissolve and ShadowDepthDissolveFrag's, so a caster's point-light shadow holes match the holes punched in
         // the caster itself and in its sun shadow. Keep the three in sync.
         const string PointShadowDissolveFragPrologue = @"#version 450
-" + PointShadowUniformBlock + @"layout(location=0) in vec3 vWorldPos;
+" + PointShadowCasterUniformBlock + @"layout(location=0) in vec3 vWorldPos;
 layout(location=1) in vec3 vNoisePos;
 layout(location=2) in vec2 vDissolve;
 layout(location=3) in float vDissolveComplement;

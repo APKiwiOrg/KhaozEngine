@@ -17,8 +17,8 @@ namespace KhaozEngine.Tests.Gpu
     /// <para>
     /// Each test renders a scene twice - without the decal, then with it - and compares. The decal must LEAVE the
     /// skinned mesh's pixels unchanged (rejected) while CHANGING the surrounding ground (painted). A rigid control
-    /// mesh proves the tag is skinned-specific: a rigid box in the same band is still painted (so the no-skinned
-    /// world stays byte-identical). Gated on KE_GPU_TESTS.
+    /// mesh separates the two current rules: its horizontal top is painted because rigid geometry is static world,
+    /// while its vertical side is rejected by the universal ground-normal gate. Gated on KE_GPU_TESTS.
     /// </para>
     /// </summary>
     public sealed class GroundDecalDynamicRejectGpuTests
@@ -51,6 +51,17 @@ namespace KhaozEngine.Tests.Gpu
             && px[i] > 60 && px[i] < 210 && !IsGreenTube(px, i);
         static int ChannelDiff(byte[] a, byte[] b, int i) =>
             Math.Abs(a[i] - b[i]) + Math.Abs(a[i + 1] - b[i + 1]) + Math.Abs(a[i + 2] - b[i + 2]);
+
+        static (int X, int Y) Pixel(Scene3D scene, Vector3 world)
+        {
+            Assert.True(scene.Camera.WorldToScreen(world, W, H, out Vector2 screen),
+                $"{world} must project into the preview");
+            int x = (int)MathF.Round(screen.X);
+            int y = (int)MathF.Round(screen.Y);
+            Assert.InRange(x, 0, W - 1);
+            Assert.InRange(y, 0, H - 1);
+            return (x, y);
+        }
 
         static void AssertRejectedOnSkinned(IGpuDevice gd, Render3DPreview preview, byte[] noDecal, byte[] withDecal, string tag)
         {
@@ -140,10 +151,10 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuFact]
-        public void Rigid_mesh_in_the_band_is_still_painted_no_skinned_world_unchanged()
+        public void Rigid_horizontal_top_is_painted_while_vertical_side_is_rejected()
         {
-            // The tag is skinned-specific: a RIGID mesh in the same band must still receive the decal, so a scene
-            // with no skinned geometry is byte-identical to before the reject existed. Blue rigid box, magenta decal.
+            // Dynamic rejection remains skinned-specific, while the ground-normal gate applies to all receivers.
+            // The rigid horizontal top receives the decal and its rigid vertical wall does not.
             using GpuDeviceContext ctx = GpuDeviceContext.CreateHeadless();
             IGpuDevice gd = ctx.GpuDevice;
             using var preview = new Render3DPreview(gd, W, H);
@@ -165,19 +176,36 @@ namespace KhaozEngine.Tests.Gpu
             byte[] noDecal = Read(gd, preview.Capture(Base));
             byte[] withDecal = Read(gd, preview.Capture(s => { Base(s); QueueBandDecal(s); }));
 
-            // The blue box top is in the band, so the decal SHOULD paint it (rigid = static world). Count blue-box
-            // pixels whose colour shifts toward magenta once the decal is added.
-            int boxTop = 0, boxPainted = 0;
-            for (int i = 0; i + 3 < noDecal.Length; i += 4)
+            // The old test called every blue box pixel "top", which included all four walls and became false once
+            // issue #11 correctly rejected steep receivers. Derive a small ROI around the top face centre from the
+            // camera itself, then test a camera-facing side separately.
+            var top = Pixel(preview.Scene, new Vector3(0f, 1.05f, 0f));
+            int topBlue = 0, topPainted = 0;
+            for (int y = top.Y - 2; y <= top.Y + 2; y++)
             {
-                bool isBlue = noDecal[i + 3] > 200 && noDecal[i + 2] > 90
-                    && noDecal[i + 2] - noDecal[i] > 30 && noDecal[i + 2] - noDecal[i + 1] > 30;
-                if (!isBlue) continue;
-                boxTop++;
-                if (ChannelDiff(noDecal, withDecal, i) > 45) boxPainted++;
+                for (int x = top.X - 2; x <= top.X + 2; x++)
+                {
+                    int i = (y * W + x) * 4;
+                    bool isBlue = noDecal[i + 3] > 200 && noDecal[i + 2] > 90
+                        && noDecal[i + 2] - noDecal[i] > 30 && noDecal[i + 2] - noDecal[i + 1] > 30;
+                    if (!isBlue) continue;
+                    topBlue++;
+                    if (ChannelDiff(noDecal, withDecal, i) > 45) topPainted++;
+                }
             }
-            Assert.True(boxTop > 200, $"blue rigid box should be visible, got {boxTop} px");
-            Assert.True(boxPainted > boxTop / 2, $"rigid box must still receive the decal: {boxPainted}/{boxTop}");
+            Assert.True(topBlue >= 20, $"derived top ROI should be solid blue, got {topBlue}/25 blue pixels");
+            Assert.True(topPainted >= 18,
+                $"rigid horizontal top must receive the decal: {topPainted}/{topBlue} blue ROI pixels painted");
+
+            var side = Pixel(preview.Scene, new Vector3(0.65f, 0.4f, 0f));
+            int sideIndex = (side.Y * W + side.X) * 4;
+            Assert.True(IsBlue(noDecal, sideIndex), "derived side pixel must land on the blue rigid box");
+            Assert.True(ChannelDiff(noDecal, withDecal, sideIndex) < 20,
+                "the rigid box's vertical face must be rejected by the universal ground-normal gate");
         }
+
+        static bool IsBlue(byte[] pixels, int i)
+            => pixels[i + 3] > 200 && pixels[i + 2] > 90
+                && pixels[i + 2] - pixels[i] > 30 && pixels[i + 2] - pixels[i + 1] > 30;
     }
 }

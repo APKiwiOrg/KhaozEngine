@@ -9,6 +9,15 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 Oldest-first backlog fixes:
 
+- Main-pass ground decals reject steep and vertical receivers, including legacy decals, while keeping
+  downward tolerance for horizontal ground and the early blob-shadow path (#11).
+- Full HDR chroma preservation fits RGB uniformly into display range, retaining colour ratios at the
+  ceiling. Factor zero keeps the historical per-channel output (#13).
+- Model, shadow, decal, particle, overlay, distortion and water renderers share the scene's GPU
+  retirement queue instead of retaining their own grow-path resource lists (#80).
+- Moon-key handovers fade through black at unequal sun/moon horizon times (#223). FFT reference depth
+  and spatial bathymetry now have an explicit authoring contract (#356), and surf strength is independent
+  of whitecap strength so an overdriven whitecap setting cannot flatten the surf gradient (#367).
 - The Showcase overworld is a shadow and day/night testbed, with a running gradient sky, a collidable
   staircase and an authored tree line around the initial cascade handoff. T pauses the day, N switches
   sky and starfield, and leaving the room restores its shared lighting state (#10, #365).

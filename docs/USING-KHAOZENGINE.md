@@ -3776,16 +3776,12 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       decorative moon can hang a bright disc while casting a black key. `Apply` manages `Sky.SunDirectionOverride`
       (pointed at the moon when the moon owns the disc, cleared for the sun). Read `state.ActiveSource`
       (`KeyLightSource.Sun`/`Moon`/`None`) and `state.MoonElevationDegrees`/`MoonDirection` to drive custom sinks.
-      - **The handover is only through black near a 12h day.** That is a property of the configuration, not of
-        `Moon` mode: the sun-to-moon switch crosses black only when the two horizon crossings coincide, and the
-        default `MoonHourOffset` of 12h lines them up only while both bodies are up for about 12 hours (the
-        equator, or a zero declination). At the shipped defaults (latitude 35, declination 15) the day is longer,
-        so the moon is already about 17 degrees up when the sun sets, well clear of its 2-degree
-        `MoonHorizonKeyDipDegrees` band. The key jumps from black to the moon's full strength in one frame and
-        swings more than 90 degrees in azimuth, which reads as a dusk/dawn pop. Until the cross-fade lands
-        (tracked by [#223](https://github.com/APKiwiOrg/KhaozEngine/issues/223)), either keep the day near 12
-        hours, or set `MoonKeyColor` to black so no key ever hands over (the decorative-moon setup). Widening
-        `MoonHorizonKeyDipDegrees` hides the pop but eats a large shadowless band at a long-day latitude.
+      - **Source handovers fade through black even when the horizons do not coincide.** The moon key is
+        bounded by both its own horizon dip and a solar-horizon handover envelope. The minimum of those
+        envelopes preserves the aligned equatorial fade while preventing a full-strength moon from
+        appearing at sunset on a long day. `HorizonKeyDipDegrees` controls the solar envelope. Setting it
+        to zero leaves only the 0.001-degree numerical floor, so the transition is effectively immediate.
+        `MoonKeyColor = black` still gives a decorative moon with no night key light (#223).
   - **Palettes are calibrated, not fixed.** `SunCycleSettings.DayPalette`/`DuskPalette`/`NightPalette` (each a
     `SunCyclePalette`) default to the engine's existing look (`DefaultDay()` reproduces the stock `Sky`/`Post`
     defaults exactly), blended by sun elevation rather than time of day so one setup works at any latitude or day
@@ -3897,9 +3893,11 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     chromatic into its core, and values between blend. The `0.75` default is the reviewed, user-approved balance: preset
     glow colours stay legible against the filmic roll-off while the hottest cores still read as hot, keeping
     additive telegraphs/decals/auras readable on bright grounds. Escape hatch: set `ChromaPreservation = 0` for the
-    pre-11.x look exactly, byte-identical to the pre-chroma per-channel output. Caveat: hue preservation is partial
-    where a saturated channel clips at the display ceiling before the rescale, a residual desaturating shift remains
-    there even at `1`. Ignored when `Hdr.Enabled = false`. Mirrored headlessly by `Internal.TonemapMath` for tests.
+    pre-11.x look exactly, byte-identical to the pre-chroma per-channel output. At full preservation, a
+    mapped RGB vector that exceeds display range is scaled uniformly into gamut before blending, instead
+    of clipping individual channels. This retains the source RGB ratios but may reduce mapped luminance
+    near the display ceiling (#13). Ignored when `Hdr.Enabled = false`. Mirrored headlessly by
+    `Internal.TonemapMath` for tests.
   - **Authoring intensity above 1.0**: there is no separate "emissive intensity" field. The engine's `Color` is
     unclamped float storage and every colour path (materials, particles, beams, trails, sky, water, lights)
     transports values above 1.0 end-to-end, so the over-range authoring surface IS the colour itself. Use
@@ -3979,7 +3977,7 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       band-limit (`FootprintSamples`, `VarianceToRoughness`), and `DetailFadeDistance`/`DistantDetailScale`.
     - *Glint*: `GlintStrength`, `GlintRoughness` (0 or less selects the legacy Blinn-Phong lobe on
       `GlintExponent`), `GlintDistantRoughness`.
-    - *Foam*: `FoamColor`, `FoamStrength` (0 = off), `FoamCrestCoverage`, `FoamShoreWidth`, `FoamPatternScale`.
+    - *Foam*: `FoamColor`, `FoamStrength` (0 disables whitecaps and the ordinary shoreline band), `FoamCrestCoverage`, `FoamShoreWidth`, `FoamPatternScale`.
     - *Shore*: `ShoreFadeDistance` (world units the alpha softens over at the waterline).
     - *Wave source* (since 16.3.0): `WaveSource` picks where the displacement, normal and whitecaps come from -
       `WaterWaveSource.Procedural` (the default, everything above, unchanged) or `WaterWaveSource.FftOcean` (a
@@ -3995,6 +3993,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     - **Requires `GpuCapabilities.SupportsCompute`** and degrades to `Procedural` silently without it, so it is
       safe to set unconditionally. There is no failure mode to handle.
     - **The sea state is oceanographic, not a wave table** (`Post.Water.SeaState`, a `WaterSeaState`):
+      `DepthMetres` is the bake-time reference depth for the whole spectrum. A bound `Bathymetry` field
+      supplies spatial depths for local shelves, bars and shores, so it need not equal that scalar.
+      Choose a representative depth for the broad water body when authoring the sea state (#356).
       `WindSpeed`, `WindDirectionDegrees`, `FetchKilometres`, `DepthMetres` fix the TMA spectrum;
       `DirectionalSpread` blends a flat distribution into the Hasselmann lobe and `SwellAmount` /
       `SwellDirectionDegrees` add a long-period swell; `Choppiness` is the horizontal displacement scale;
@@ -4143,7 +4144,10 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       `SurfBandWidth` (1, how gradually the band builds), `SurfCrestBias` (0.25, where on the wave foam starts),
       `SurfTrailWidth` (0.8, the wash that lingers on the seaward face behind the surge) and
       `SurfAmplitudeCollapse` (0.6, how much amplitude the break takes out on top of the taper, flat across every
-      cascade). It rides `FoamStrength` like every other foam source.
+      cascade). Surf uses its own intensity budget: `FoamStrength` controls whitecaps and the ordinary
+      shoreline band, while `SurfStrength` controls the breaking surf independently. Set both strengths
+      to zero to disable both sources. Overdriving whitecaps no longer amplifies the surf into a flat
+      white slab (#367).
     - **The surge direction is the depth gradient**, not the wind heading, which is what makes an isolated shallow
       - a rock, a sandbar - break AROUND itself with no extra authoring: the direction wraps it, so every side
       gets its own onshore.
@@ -5033,6 +5037,12 @@ The same two fields sit directly on a raw decal too:
 projected pixel matches a ground pixel, and 1 is fully transparent). ~0.15 is a plausible
 starting point, just enough for a projected pixel to read as projected without dimming the shape
 toward invisibility.
+
+**Ground receiver slope gate.** The main ground-decal pass rejects receiver normals below a world-up
+component of 0.5, including legacy decals. Slopes through 60 degrees and horizontal dips remain eligible,
+with the latter still controlled by `YTolerance` and `MaxStep`. A ring can overhang a cliff without painting
+its vertical face. `VoidFallback` can then paint its own nearer plane. The early blob-shadow pass keeps
+its depth-only receiver behavior (#11).
 
 **Ground decals skip skinned characters** (since 14.0.1, automatic, no opt-in): the main
 ground-decal pass conforms to the static world but no longer paints onto skinned geometry, so a

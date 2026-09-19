@@ -74,11 +74,25 @@ public sealed class PointShadowFilterShaderTests
 
     /// <summary>The per-fragment rotation is hashed off the ABSOLUTE world position (the render-frame one plus the
     /// render origin), so the dither pattern is nailed to the world and does not crawl over a surface as the
-    /// camera moves or as a floating origin shifts under it.</summary>
+    /// camera moves or as a floating origin shifts under it. Both halves are folded into a cell BEFORE they are
+    /// summed, so a world far from zero keeps the hash's precision instead of banding the penumbra.</summary>
     [Fact]
     public void ThePerFragmentRotationIsHashedOffTheAbsoluteWorldPosition()
     {
-        Assert.Contains("worldPos + RenderOrigin.xyz", ShaderSources.LightingCommonGlsl, StringComparison.Ordinal);
+        Assert.Contains("fract(fract(worldPos * 0.0625) + fract(RenderOrigin.xyz * 0.0625))",
+            ShaderSources.LightingCommonGlsl, StringComparison.Ordinal);
+        // The unfolded sum is the form that loses the hash a hundred kilometres out.
+        Assert.DoesNotContain("worldPos + RenderOrigin.xyz", ShaderSources.LightingCommonGlsl,
+            StringComparison.Ordinal);
+    }
+
+    /// <summary>A fragment standing on the light has no direction to sample by, and a zero direction would put a
+    /// NaN basis through every tap. The soft path answers lit before it builds one.</summary>
+    [Fact]
+    public void AFragmentOnTheLightItselfIsLitWithoutSampling()
+    {
+        Assert.Contains("if (dist <= 1e-4) return 1.0;", ShaderSources.LightingCommonGlsl,
+            StringComparison.Ordinal);
     }
 
     /// <summary>A light whose attenuation has already reached zero is outside its own radius, so nothing it could

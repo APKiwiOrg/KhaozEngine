@@ -172,8 +172,12 @@ float pointShadowDepthAt(texture2D atlas, sampler samp, vec3 dir, float slot) {
 // The per-fragment rotation of both discs below, off the ABSOLUTE world position (the render-frame one plus the
 // render origin). Nailing it to the world rather than to the screen is what stops the dither crawling over a
 // surface as the camera moves, and taking the origin in means a floating-origin shift does not re-roll it either.
+// Each half is FOLDED into a 16 m cell before they are summed, never after: a render origin exists because the
+// world is far from zero, and an unfolded sum at 1e5 m has a float step of 8 mm and feeds sin an argument in the
+// millions, where neighbouring fragments collapse onto one rotation and the penumbra bands. Folded, the argument
+// stays under 130 wherever the world is, and the phase repeats every 16 m, far wider than any one penumbra.
 float pointShadowDither(vec3 worldPos) {
-    vec3 w = worldPos + RenderOrigin.xyz;
+    vec3 w = fract(fract(worldPos * 0.0625) + fract(RenderOrigin.xyz * 0.0625));
     return fract(sin(dot(w, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
 }
 
@@ -222,6 +226,7 @@ float pointShadowFilterDisc(texture2D atlas, sampler samp, vec3 dir, vec3 tx, ve
 // angular texel size (a 90 degree face over faceResolution texels) so nine taps always still describe one edge.
 float samplePointShadowSoft(texture2D atlas, sampler samp, vec3 toL, float dist, float radius, float ndlRaw,
                             vec4 params, vec3 worldPos) {
+    if (dist <= 1e-4) return 1.0;                               // on the light itself: no direction to sample by
     vec3 dir = -toL / max(dist, 1e-6);                          // light -> fragment, unit
     float d = dist / max(radius, 1e-6);
     float bias = params.y + params.z * (1.0 - ndlRaw);

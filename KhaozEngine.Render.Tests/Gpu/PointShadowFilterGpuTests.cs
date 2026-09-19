@@ -161,12 +161,16 @@ public sealed class PointShadowFilterGpuTests(PointShadowScene fixture, ITestOut
             Profile(nearSoft, nearPlain, new Vector3(NearEdgeX - 0.6f, 0f, 0f),
                 new Vector3(NearEdgeX + 0.6f, 0f, 0f), 120), 1.2f);
 
-        fixture.FrameOn(new Vector3(FarEdgeX, 0f, 0f), 2.2f);
+        // The far scan is SIX metres long on purpose. The kernel is a disc about the RAY, and this ray meets the
+        // floor at under twenty degrees, so a 0.9 m disc lies nearly three metres along the floor either side of
+        // the edge. A shorter scan starts inside the penumbra, where whether one probe reads under the plateau
+        // threshold is down to that texel's own dither rotation rather than to the filter.
+        fixture.FrameOn(new Vector3(FarEdgeX, 0f, 0f), 3.6f);
         PointShadowScene.Shot farPlain = Wall(FarLight, LightShadow.None, budget);
         PointShadowScene.Shot farSoft = Wall(FarLight, LightShadow.Static(304), budget);
         float farBand = BandMetres(
-            Profile(farSoft, farPlain, new Vector3(FarEdgeX - 1.8f, 0f, 0f),
-                new Vector3(FarEdgeX + 1.8f, 0f, 0f), 120), 3.6f);
+            Profile(farSoft, farPlain, new Vector3(FarEdgeX - 3f, 0f, 0f),
+                new Vector3(FarEdgeX + 3f, 0f, 0f), 120), 6f);
 
         output.WriteLine($"contact hardening: near {nearBand:0.000} m, far {farBand:0.000} m");
         Assert.True(farBand >= 2.5f * nearBand,

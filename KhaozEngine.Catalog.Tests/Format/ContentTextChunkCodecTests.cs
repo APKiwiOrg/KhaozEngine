@@ -445,11 +445,35 @@ public class ContentTextChunkCodecTests
     }
 
     [Fact]
+    public void TheStringOverloadReplacesAnIsolatedHighSurrogateLikeUtf8()
+    {
+        AssertStringAndUtf8DerivationsMatch("\uD800");
+    }
+
+    [Fact]
+    public void TheStringOverloadReplacesAnIsolatedLowSurrogateLikeUtf8()
+    {
+        AssertStringAndUtf8DerivationsMatch("\uDC00");
+    }
+
+    [Fact]
+    public void TheStringOverloadPreservesAValidPairAmongIsolatedSurrogates()
+    {
+        AssertStringAndUtf8DerivationsMatch("left\uD83D\uDE00\uD800middle\uDC00right");
+    }
+
+    [Fact]
     public void TheStringOverloadAllocatesOnlyTheResultString()
+        => AssertStringDeriveAllocatesOnlyResult(new string('a', 256));
+
+    [Fact]
+    public void TheStringOverloadCanonicalizesMalformedUtf16InTheResultAllocation()
+        => AssertStringDeriveAllocatesOnlyResult("left\uD800middle\uDC00right");
+
+    static void AssertStringDeriveAllocatesOnlyResult(string contentKey)
     {
         const string typeKey = "item";
         const string fieldName = "name";
-        string contentKey = new('a', 256);
         int resultLength = typeKey.Length + contentKey.Length + fieldName.Length + 2;
 
         _ = new string('a', resultLength);
@@ -475,6 +499,14 @@ public class ContentTextChunkCodecTests
         Assert.Equal(referenceLength, derivedLength);
         Assert.True(referenceBytes > 0);
         Assert.Equal(referenceBytes, derivedBytes);
+    }
+
+    static void AssertStringAndUtf8DerivationsMatch(string contentKey)
+    {
+        string fromString = ContentTextKey.Derive("item", contentKey, "name");
+        string fromUtf8 = ContentTextKey.Derive("item", Encoding.UTF8.GetBytes(contentKey), "name");
+
+        Assert.Equal(fromUtf8, fromString);
     }
 
     [Fact]

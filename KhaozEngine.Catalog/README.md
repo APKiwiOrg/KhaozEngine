@@ -104,7 +104,8 @@ var key = new ContentKey(rowBlob, start, length);       // no string materialise
 - `ContentTextKey` - the ONE derivation of a content string's localization key,
   `<type key>.<content key>.<field>` (contracts 12.1). Derived, never authored, never stored, capped at
   `MaxKeyLength` 192. Callers holding text use the string overload without allocating a temporary UTF-8
-  array. Runtime callers holding row bytes use the byte-span overload.
+  array. An unpaired surrogate in that string becomes the replacement character, matching a UTF-8
+  encode and decode. Runtime callers holding row bytes use the byte-span overload.
 
 ## The six engine content types
 

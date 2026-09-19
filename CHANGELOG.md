@@ -5,6 +5,41 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 19.5.0
+
+A published content version's pack can be rebuilt from the authoring store, so a server whose pack root does
+not outlive the process can boot (#1013).
+
+The authoring store keeps every published version's rows and both of its manifest hashes, and never the pack's
+bytes. A server in a container with no volume starts with an empty pack root while the store still names an
+active version, and `ContentBoot.RunAsync` refuses with `manifest for version N absent`. Nothing could put the
+pack back. Found by Grimhollow's hosted server (https://github.com/APKiwiOrg/Grimhollow/issues/263).
+
+- **`ContentPackRebuild.RunAsync(store, registry, versionNumber, target, pointers, rowEncoder)`** in
+  `KhaozEngine.Catalog.Authoring` rebuilds one PUBLISHED version's whole pack into a pack store and returns a
+  `ContentPackRebuildResult`. It reads the version's rows through `ListRowsAsync` (retired rows included) and
+  its rules through the publish baseline filtered to the version, and encodes every chunk with the publisher's
+  own `ContentChunkBuilder` and `ContentManifestBuilder`. There is no second encoder.
+- **It verifies before it writes.** Both rebuilt manifest digests are compared with the two the version row
+  records. The manifest text names every chunk hash, so a match pins every chunk, and no member was added to
+  `IContentAuthoringStore`. A mismatch is a result (`server-manifest-mismatch` or `client-manifest-mismatch`,
+  with both digests in the detail) and the target is left with nothing a reader could follow.
+- **The write order is the publisher's**: every chunk, the rule chunk, the server manifest, the client
+  manifest, and the version pointer LAST, through the one put-if-absent `ContentPublishCommit` uses. A second
+  run over a full store writes nothing.
+- **Known limit, by design.** Rows are rehydrated against the CALLER's registry, so a field schema,
+  `ChunkSlots` or visibility change since the version was published digests differently and refuses. The chunk
+  hash is over the uncompressed canonical bytes, so a compressor or runtime change does not.
+- The rebuild calls no publishing or editing member. The one side effect it can have is the baseline read
+  clearing a stale freeze marker left by a publish that died, which is the recovery that read always performs.
+  Languages come from the active version's baseline, which is every version's today because every published
+  language list is empty (#1014 tracks the day that stops being true).
+- The optional `rowEncoder` matches `ContentPublisher`'s: null is `ContentSideRowEncoder.Default`, and a version
+  published through another encoder is rebuilt through that one.
+
+Usage is in `docs/USING-KHAOZENGINE.md` under "Recovering a pack root" and in the package README under
+"Rebuilding a pack root".
+
 ## 19.4.0
 
 Point light shadows lose the two things the first consumer's playtest showed: triangles of shadow thrown by a

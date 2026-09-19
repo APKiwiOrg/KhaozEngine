@@ -89,6 +89,25 @@ namespace KhaozEngine.Gui
                 ? value : throw new ArgumentOutOfRangeException(nameof(value));
         }
 
+        /// <summary>
+        /// Where the wrapped BLOCK of fixed-size tabs sits horizontally inside <see cref="Bounds"/>. Defaults to
+        /// <see cref="GuiAlign.Left"/>, which anchors it at <c>Bounds.X</c>, so an existing bar is unmoved.
+        /// <see cref="GuiAlign.Center"/> is what a side panel wants: two rows of five centred in a band wider than
+        /// they are, lining up under each other. Applies to the fixed-size layout only, since the even-split
+        /// layout fills <see cref="Bounds"/> exactly and has nothing to align. <see cref="ContentBounds"/> follows
+        /// it, so the reserved region moves with the tabs rather than staying behind at the left edge.
+        /// </summary>
+        public GuiAlign BlockAlign = GuiAlign.Left;
+
+        /// <summary>
+        /// This bar's fixed-size layout as one value, for the <see cref="TabStrip"/> statics. Hand it to
+        /// <see cref="TabStrip.TabRect"/> or <see cref="TabStrip.TabAt"/> to hit-test the same rects this bar
+        /// draws from code that holds no widget. Meaningless in the even-split layout, which has no tab size.
+        /// </summary>
+        /// <returns>The strip shape built from <see cref="TabWidth"/>, <see cref="TabHeight"/>,
+        /// <see cref="Spacing"/>, <see cref="Columns"/> and <see cref="BlockAlign"/>.</returns>
+        public TabStripMetrics Metrics => new(TabWidth, TabHeight, Spacing, Columns, BlockAlign);
+
         readonly TabBarItem[] _items;
         readonly LocalizedText[] _labels;
         int _activeIndex;
@@ -117,19 +136,10 @@ namespace KhaozEngine.Gui
         public bool ChangedThisFrame { get; private set; }
 
         /// <summary>The rectangle reserved and drawn by the current layout. Equals <see cref="Bounds"/> in the
-        /// default even-split layout and is derived from the tab size, columns, spacing, and count in fixed layout.</summary>
-        public Rect ContentBounds
-        {
-            get
-            {
-                if (!UsesFixedLayout) return Bounds;
-                int columns = EffectiveColumns;
-                int rows = (_items.Length + columns - 1) / columns;
-                float width = columns * TabWidth + (columns - 1) * Spacing;
-                float height = rows * TabHeight + (rows - 1) * Spacing;
-                return new Rect(Bounds.X, Bounds.Y, width, height);
-            }
-        }
+        /// default even-split layout and is derived from the tab size, columns, spacing, alignment and count in
+        /// fixed layout (<see cref="TabStrip.BlockRect"/>).</summary>
+        public Rect ContentBounds =>
+            UsesFixedLayout ? TabStrip.BlockRect(Bounds, _items.Length, Metrics) : Bounds;
 
         /// <summary>Create a tab bar from at least one localized label.</summary>
         /// <exception cref="ArgumentNullException"><paramref name="tabLabels"/> is null.</exception>
@@ -160,26 +170,18 @@ namespace KhaozEngine.Gui
         /// The rectangle of tab <paramref name="index"/> within <see cref="Bounds"/>, evenly split. Uses fractional
         /// edges (<c>X + Width * i/N</c> .. <c>X + Width * (i+1)/N</c>) so tabs abut with no cumulative rounding gap
         /// and the last tab's right edge equals <see cref="Bounds"/>.Right exactly. Pure math: headless-testable.
+        /// In the fixed-size layout it is <see cref="TabStrip.TabRect"/> under this bar's
+        /// <see cref="Metrics"/>, so an instance and a static hit test cannot drift apart.
         /// </summary>
+        /// <returns>The tab's rectangle in the current layout.</returns>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> is outside [0, Count).</exception>
         public Rect TabRect(int index)
         {
             if (index < 0 || index >= _labels.Length)
                 throw new ArgumentOutOfRangeException(nameof(index));
-            if (UsesFixedLayout)
-            {
-                int columns = EffectiveColumns;
-                int column = index % columns;
-                int row = index / columns;
-                return new Rect(
-                    Bounds.X + column * (TabWidth + Spacing),
-                    Bounds.Y + row * (TabHeight + Spacing),
-                    TabWidth,
-                    TabHeight);
-            }
-            float left = Bounds.X + Bounds.Width * index / _items.Length;
-            float right = Bounds.X + Bounds.Width * (index + 1) / _items.Length;
-            return new Rect(left, Bounds.Y, right - left, Bounds.Height);
+            return UsesFixedLayout
+                ? TabStrip.TabRect(Bounds, index, _items.Length, Metrics)
+                : TabStrip.EvenTabRect(Bounds, index, _items.Length);
         }
 
         /// <summary>
@@ -287,8 +289,6 @@ namespace KhaozEngine.Gui
             batch.SnapRect(new Rect(edges[index], frame.Y, edges[index + 1] - edges[index], frame.Height));
 
         bool UsesFixedLayout => TabWidth > 0f && TabHeight > 0f;
-
-        int EffectiveColumns => Columns > 0 ? Math.Min(Columns, _items.Length) : _items.Length;
 
         internal (Vector4 Fill, Vector4 Text) ResolveVisual(int index)
         {

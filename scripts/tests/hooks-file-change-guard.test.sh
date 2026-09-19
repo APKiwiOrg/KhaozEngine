@@ -153,6 +153,22 @@ patch='*** Begin Patch
 *** End Patch'
 expect_decision "Codex blocks a retired document" deny "$FIXTURE" "$(payload_codex "$patch")"
 
+patch='
+*** Begin Patch
+*** Add File: docs/TODO.md
++work
+*** End Patch
+'
+expect_decision "Codex blocks a padded retired document patch" deny "$FIXTURE" "$(payload_codex "$patch")"
+
+patch='
+*** Begin Patch
+*** Add File: clean.txt
++plain
+*** End Patch
+'
+expect_decision "Codex allows a clean padded patch" '' "$FIXTURE" "$(payload_codex "$patch")"
+
 patch='*** Begin Patch
 *** Update File: notes.md
 *** Move to: docs/TODO.md

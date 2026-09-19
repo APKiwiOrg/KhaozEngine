@@ -91,6 +91,7 @@ sub normalize_changes {
     my $tool = $payload->{tool_name} // '';
     my $tool_input = ref $payload->{tool_input} eq 'HASH' ? $payload->{tool_input} : {};
     my $command = $tool_input->{command};
+    $command =~ s/\A\s+|\s+\z//g if defined $command;
 
     if (defined $command && $command =~ /\A\*\*\* Begin Patch(?:\r?\n|\z)/) {
         return parse_apply_patch($command, $workdir, $repo_root, $hook_phase);

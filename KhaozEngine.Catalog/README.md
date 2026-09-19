@@ -421,6 +421,48 @@ else
   through afterwards, because it verifies on every READ: a cached chunk that went bad on disk is detected
   on first use, evicted and refetched.
 
+## Filling a client origin
+
+`ContentOriginFill` is that same loop pointed the other way round. A game server is the PRODUCER of its
+clients' content origin, so before it opens a socket it makes sure the origin holds its active version's
+CLIENT closure, which is what makes a version published through the admin console reach clients at the
+restart that activates it.
+
+```csharp
+// destination = the origin, source = the server's own pack store
+ContentOriginFillResult fill = await ContentOriginFill.RunAsync(
+    serverPackStore, origin, new ContentVersionIdentity(version, clientManifestHash), registry);
+
+if (!fill.Filled)
+    throw new InvalidOperationException(fill.RefusalReason + " at " + fill.RefusalHash);
+```
+
+- **One walker, not two.** It is a `ContentFetchLoop` with the origin as its local half and the server's own
+  store as its remote one, because a second walk over the same manifest is a second place for the client
+  closure to be computed differently, and neither side's tests would catch the difference.
+- **The client build gate is bypassed**, `ClientBuild = int.MaxValue`. A server is not a client, and a version
+  that raises `MinimumClientBuild` is exactly the version whose closure has to reach the origin. The gate that
+  matters is the connect door's, which enforces the floor on the clients themselves.
+- **ONE attempt and no backoff**, because both stores are the server's own: a failure here is a fault to
+  report rather than a flaky network to wait out. Every language the version ships is copied, since which
+  languages a PLAYER wants is the player's choice.
+- **The CLIENT manifest hash, and the file's own `side` byte proves it.** Nothing can tell a client manifest
+  from a server one by hash alone, so the manifest is read as a client manifest and a server one is refused
+  with `manifest-wrong-side` before any object is written. Handing the server hash here would otherwise
+  publish every server only chunk of the version to a public container.
+- **The manifest is written LAST.** The fetch loop writes it first, which is right for a client cache and
+  wrong for an origin, so the fill holds those bytes back until every chunk landed. A fill that stopped part
+  way therefore leaves content addressed chunks and no manifest, which is nothing a client can follow into a
+  hole, and the next fill completes the set.
+- **No version pointer, ever.** The `versions/<n>` pointer carries the SERVER manifest hash, an origin is
+  public, and a client learns its version from the connect door rather than from a file there.
+- **It never prunes.** A caller that wants stale objects removed does it itself through `IPackStorePruning`,
+  and a hosted origin should think twice: a client may be part way through downloading the previous version.
+- `ObjectsWritten` is counted at the write rather than inferred, so a second fill of a version the origin
+  already holds reports 0, and `ObjectsRequired` is the client manifest plus every hash it names. A refusal is
+  a RESULT carrying the fetch's own reason token and address, never a throw, apart from the argument checks
+  and cancellation.
+
 ## Content strings
 
 `ContentStringCatalog` is the layered catalog of contracts 12.4 and spec 7.6, over `ContentTextIndex`, one

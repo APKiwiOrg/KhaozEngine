@@ -14620,6 +14620,36 @@ address before it is kept), retries with capped jittered exponential backoff, an
 chunk is written to a temporary name and moved. What the caller still owns is the pack HOSTING and the build
 ordinals: the engine reads a build number, it does not mint one.
 
+### Filling a client origin
+
+A client fetches by hash from an ORIGIN, and the server is what puts the version there. `ContentOriginFill`
+is the fetch loop pointed the other way round, run on the boot path before the socket opens, so a version
+published through the admin console reaches clients at the restart that activates it.
+
+```csharp
+// server boot, before the listener starts
+var origin = new FileSystemPackStore(config.ClientOriginDirectory);
+ContentOriginFillResult fill = await ContentOriginFill.RunAsync(
+    serverPackStore, origin,
+    new ContentVersionIdentity(content.VersionNumber, clientManifestHash),
+    registry, cancellationToken: ct);
+
+if (!fill.Filled)
+{
+    log.Error("The client origin is short of version {0}: {1} at {2}",
+        fill.Version.Number, fill.RefusalReason, fill.RefusalHash);
+}
+```
+
+It copies the CLIENT closure and nothing else, which is the point: a server only chunk never reaches a public
+origin, the server manifest never does either, and a version pointer is never written, because that file
+carries the server manifest hash and a client learns its version from the connect door anyway. The identity
+handed in MUST be the client one, and a server manifest offered by hash is refused with `manifest-wrong-side`
+before any write. The manifest itself is written last, so a fill that stopped leaves chunks and no manifest to
+follow into a hole. It never prunes, and a hosted origin should think twice before the caller does, since a
+client may be part way through the previous version. A directory origin is `FileSystemPackStore` as above, and
+a public blob container origin is `AzureBlobPackStore` from the opt-in `KhaozEngine.Catalog.AzureBlob` package.
+
 ### Content strings
 
 `ContentStringCatalog` reads the version's per-language `KECT` text and layers the game's SHIPPED catalog

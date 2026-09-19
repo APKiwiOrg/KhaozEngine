@@ -26,7 +26,8 @@ namespace KhaozEngine.Render3D.Rendering
         // std140 UBO layout: a 176-byte header (the FrameUbo struct) followed by two vec4[MaxPointLights]
         // arrays (point light pos/radius, then colour/intensity) = 176 + 2*256 = 688, then the cascaded shadow tail
         // (MaxCascades light-clip matrices + params) = mat4[4] (256) + 3*vec4 (48) = 304, so 688 + 304 = 992, then
-        // the render-origin vec4 = 1008, then the point-light shadow tail (vec4[16] + vec4) = 1280 bytes.
+        // the render-origin vec4 = 1008, then the point-light shadow tail (vec4[16] + the atlas vec4 + the
+        // filter vec4) = 1296 bytes.
         // (internal so UboLayoutTests can assert these against Marshal.SizeOf/OffsetOf and the GLSL block.)
         internal const uint HeaderBytes = 176;
         internal const uint LightArrayBytes = MaxPointLights * 16;    // vec4 stride is 16 in std140
@@ -52,7 +53,7 @@ namespace KhaozEngine.Render3D.Rendering
         // The point-light shadow tail (vec4 PointShadowParams[16] + vec4 PointShadowAtlas) rides at the very end,
         // AFTER the render origin, so every offset above it is exactly what it was: see
         // ModelRenderer.PointShadowUniforms.cs.
-        internal const uint UboBytes = PointShadowTailOffset + PointShadowTailBytes;           // 1280
+        internal const uint UboBytes = PointShadowTailOffset + PointShadowTailBytes;           // 1296
 
         // ---- GPU skinning (opt-in) PER-DRAW block geometry. The skinned pipeline's set 0 binding 1 is a
         // dynamic-offset UBO laid out as { mat4 Model; mat4 P } (see ShaderSources.SkinnedModelVert): the two header

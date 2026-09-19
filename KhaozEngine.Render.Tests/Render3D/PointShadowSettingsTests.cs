@@ -22,6 +22,47 @@ public sealed class PointShadowSettingsTests
         Assert.Equal(4, s.MaxDynamicLightsPerFrame);
         Assert.Equal(0.01f, s.Bias);
         Assert.Equal(0.02f, s.SlopeBias);
+        Assert.Equal(PointShadowFilter.Soft, s.Filter);
+        Assert.Equal(0.15f, s.LightSizeMetres);
+        Assert.Equal(6f, s.MaxPenumbraTexels);
+    }
+
+    // The enum is on the wire as a float, so its numbering is part of the receiver's contract rather than an
+    // implementation detail: the shader branches on PointShadowFilter.x < 0.5.
+    [Fact]
+    public void TheFilterModesAreNumberedAsTheShaderReadsThem()
+    {
+        Assert.Equal(0, (byte)PointShadowFilter.Hard);
+        Assert.Equal(1, (byte)PointShadowFilter.Soft);
+    }
+
+    [Theory]
+    [InlineData(-1f, 0f)]
+    [InlineData(0f, 0f)]
+    [InlineData(0.15f, 0.15f)]
+    [InlineData(PointShadowSettings.MaxLightSizeMetres, PointShadowSettings.MaxLightSizeMetres)]
+    [InlineData(4f, PointShadowSettings.MaxLightSizeMetres)]
+    [InlineData(float.PositiveInfinity, PointShadowSettings.MaxLightSizeMetres)]
+    [InlineData(float.NaN, 0f)]
+    public void ResolvedLightSizeMetres_Clamps(float requested, float expected)
+    {
+        Assert.Equal(expected,
+            new PointShadowSettings { LightSizeMetres = requested }.ResolvedLightSizeMetres);
+    }
+
+    // The FLOOR is the one worth the clamp. Zero would let the penumbra collapse to nothing whatever the geometry
+    // asked for, which is a soft filter that silently renders hard, and a negative would fold the disc inside out.
+    [Theory]
+    [InlineData(-3f, PointShadowSettings.PenumbraTexelsFloor)]
+    [InlineData(0f, PointShadowSettings.PenumbraTexelsFloor)]
+    [InlineData(6f, 6f)]
+    [InlineData(PointShadowSettings.PenumbraTexelsCeiling, PointShadowSettings.PenumbraTexelsCeiling)]
+    [InlineData(64f, PointShadowSettings.PenumbraTexelsCeiling)]
+    [InlineData(float.NaN, PointShadowSettings.PenumbraTexelsFloor)]
+    public void ResolvedMaxPenumbraTexels_Clamps(float requested, float expected)
+    {
+        Assert.Equal(expected,
+            new PointShadowSettings { MaxPenumbraTexels = requested }.ResolvedMaxPenumbraTexels);
     }
 
     [Fact]
@@ -118,10 +159,15 @@ public sealed class PointShadowSettingsTests
             * PointShadowSettings.MaxFaceResolution * 9, s.AtlasBytes);
     }
 
+    // Low turns the whole pass off, so its filter is what a game that turned point shadows back ON without
+    // touching the rest of a low-end profile would get, and on that profile the cheap one is the answer.
     [Fact]
-    public void ForDetail_Low_TurnsPointShadowsOff()
+    public void ForDetail_Low_TurnsPointShadowsOffAndKeepsTheCheapFilter()
     {
-        Assert.False(ShadowSettings.ForDetail(ShadowMapDetail.Low).PointShadows.Enabled);
+        PointShadowSettings p = ShadowSettings.ForDetail(ShadowMapDetail.Low).PointShadows;
+
+        Assert.False(p.Enabled);
+        Assert.Equal(PointShadowFilter.Hard, p.Filter);
     }
 
     [Fact]
@@ -132,6 +178,7 @@ public sealed class PointShadowSettingsTests
         Assert.True(p.Enabled);
         Assert.Equal(256, p.FaceResolution);
         Assert.Equal(8, p.MaxShadowedLights);
+        Assert.Equal(PointShadowFilter.Soft, p.Filter);
     }
 
     [Fact]
@@ -142,6 +189,7 @@ public sealed class PointShadowSettingsTests
         Assert.True(p.Enabled);
         Assert.Equal(384, p.FaceResolution);
         Assert.Equal(12, p.MaxShadowedLights);
+        Assert.Equal(PointShadowFilter.Soft, p.Filter);
     }
 
     /// <summary>
@@ -175,6 +223,9 @@ public sealed class PointShadowSettingsTests
             MaxDynamicLightsPerFrame = 6,
             Bias = 0.5f,
             SlopeBias = 0.25f,
+            Filter = PointShadowFilter.Hard,
+            LightSizeMetres = 0.4f,
+            MaxPenumbraTexels = 11f,
         };
 
         PointShadowSettings copy = s.Clone();
@@ -187,6 +238,9 @@ public sealed class PointShadowSettingsTests
         Assert.Equal(6, copy.MaxDynamicLightsPerFrame);
         Assert.Equal(0.5f, copy.Bias);
         Assert.Equal(0.25f, copy.SlopeBias);
+        Assert.Equal(PointShadowFilter.Hard, copy.Filter);
+        Assert.Equal(0.4f, copy.LightSizeMetres);
+        Assert.Equal(11f, copy.MaxPenumbraTexels);
 
         copy.FaceResolution = 64;
         copy.Enabled = true;

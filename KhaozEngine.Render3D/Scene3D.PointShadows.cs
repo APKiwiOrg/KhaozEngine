@@ -288,7 +288,8 @@ namespace KhaozEngine.Render3D
                 PointShadowedLights++;
             }
             _model.SetPointShadowUniforms(_pointSlotUniform, settings.ResolvedBias, settings.ResolvedSlopeBias,
-                PointShadowFaceResolution, PointShadowRows);
+                PointShadowFaceResolution, PointShadowRows, settings.Filter, settings.ResolvedLightSizeMetres,
+                settings.ResolvedMaxPenumbraTexels);
         }
 
         /// <summary>Fold this frame's point-shadow counters into the shadow diagnostics snapshot. The key light's

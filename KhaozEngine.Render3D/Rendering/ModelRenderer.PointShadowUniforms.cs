@@ -26,8 +26,9 @@ internal sealed partial class ModelRenderer
     internal const uint PointShadowTailOffset = RenderOriginOffset + RenderOriginBytes;   // 1008
 
     /// <summary>Size of the point-shadow tail: one vec4 per point-light slot
-    /// (<c>PointShadowParams[MaxPointLights]</c>) plus the single <c>PointShadowAtlas</c> vec4 = 272 bytes.</summary>
-    internal const uint PointShadowTailBytes = MaxPointLights * 16 + 16;
+    /// (<c>PointShadowParams[MaxPointLights]</c>) plus the <c>PointShadowAtlas</c> and <c>PointShadowFilter</c>
+    /// vec4s = 288 bytes.</summary>
+    internal const uint PointShadowTailBytes = MaxPointLights * 16 + 32;
 
     // (slot or -1, bias, slopeBias, 0) per point light, index-aligned with the two light arrays above, so the
     // receiver reads PointShadowParams[i] for the light it is already accumulating. -1 everywhere until a host
@@ -36,6 +37,11 @@ internal sealed partial class ModelRenderer
     // (1 / (6 * faceRes), 1 / (rows * faceRes), rows, 6): the atlas texel steps the four-tap compare offsets by,
     // and its shape, so the receiver can place a cell without a second uniform.
     Vector4 _pointShadowAtlas;
+    // (filter mode, lightSizeMetres, maxPenumbraTexels, faceResolution): which filter the receiver runs and the
+    // two knobs its penumbra arithmetic reads. The FACE resolution rides here rather than being recovered from
+    // the atlas texel steps above, which are atlas-wide: the soft filter converts a penumbra in metres into an
+    // angle and then into texels of ONE face, and the host already knows that number.
+    Vector4 _pointShadowFilter;
 
     // The 1x1 R32Float white the PointShadowMap slot binds until a real atlas exists. Sampled-only on purpose:
     // the receiver's own gate means nothing ever reads it, and a render-target usage would make it look like a
@@ -81,9 +87,14 @@ internal sealed partial class ModelRenderer
     /// <see cref="PointShadowSettings.ResolvedBias"/> and <see cref="PointShadowSettings.ResolvedSlopeBias"/>
     /// rather than the raw fields: a negative bias inverts the receiver's compare into a light leak, so the
     /// clamped values are the ones that may reach this uniform. <paramref name="faceResolution"/> and
-    /// <paramref name="rows"/> are the live atlas layout.</summary>
+    /// <paramref name="rows"/> are the live atlas layout. <paramref name="filter"/> selects which receiver path
+    /// runs, and <paramref name="lightSizeMetres"/> and <paramref name="maxPenumbraTexels"/> are
+    /// <see cref="PointShadowSettings.ResolvedLightSizeMetres"/> and
+    /// <see cref="PointShadowSettings.ResolvedMaxPenumbraTexels"/> rather than the raw fields, on the same rule
+    /// the two biases follow: the soft filter divides by neither of them, but a NaN in either poisons every tap
+    /// offset it computes.</summary>
     public void SetPointShadowUniforms(ReadOnlySpan<int> slots, float bias, float slopeBias,
-        int faceResolution, int rows)
+        int faceResolution, int rows, PointShadowFilter filter, float lightSizeMetres, float maxPenumbraTexels)
     {
         for (int i = 0; i < MaxPointLights; i++)
         {
@@ -92,6 +103,7 @@ internal sealed partial class ModelRenderer
         }
         _pointShadowAtlas = new Vector4(
             1f / (PointShadowFaceCount * faceResolution), 1f / (rows * faceResolution), rows, PointShadowFaceCount);
+        _pointShadowFilter = new Vector4((float)filter, lightSizeMetres, maxPenumbraTexels, faceResolution);
         _frameImageDirty = true;
     }
 
@@ -102,6 +114,7 @@ internal sealed partial class ModelRenderer
     {
         for (int i = 0; i < MaxPointLights; i++) _pointShadowParams[i] = new Vector4(-1f, 0f, 0f, 0f);
         _pointShadowAtlas = Vector4.Zero;
+        _pointShadowFilter = Vector4.Zero;
         _frameImageDirty = true;
     }
 

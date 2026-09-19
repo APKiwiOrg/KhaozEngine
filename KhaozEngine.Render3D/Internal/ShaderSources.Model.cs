@@ -42,6 +42,7 @@ layout(set=0, binding=0) uniform U {
     vec4 RenderOrigin;     // camera-relative rendering: add to a render-frame position for the ABSOLUTE world one
     vec4 PointShadowParams[16];  // per point light: x = atlas row or -1 for none, y = bias, z = slope bias, w unused
     vec4 PointShadowAtlas;       // xy = one atlas texel in UV, z = rows (lights), w = face columns (6)
+    vec4 PointShadowFilter;      // x = filter mode (0 hard, 1 soft), y = light size m, z = max penumbra texels, w = face resolution
 };
 layout(location=0) in vec3 Position;
 layout(location=1) in vec3 Normal;
@@ -105,6 +106,7 @@ layout(set=0, binding=0) uniform U {
     vec4 RenderOrigin;     // camera-relative rendering: add to a render-frame position for the ABSOLUTE world one
     vec4 PointShadowParams[16];  // per point light: x = atlas row or -1 for none, y = bias, z = slope bias, w unused
     vec4 PointShadowAtlas;       // xy = one atlas texel in UV, z = rows (lights), w = face columns (6)
+    vec4 PointShadowFilter;      // x = filter mode (0 hard, 1 soft), y = light size m, z = max penumbra texels, w = face resolution
 };
 layout(set=0, binding=1) uniform texture2D Albedo;       // 1x1 white default keeps untextured meshes unchanged
 layout(set=0, binding=2) uniform texture2D NormalMap;    // 1x1 flat default: texel (0.5,0.5,1.0) decodes to tangent-space (0,0,1); sampled up front, applied only when a tangent exists
@@ -231,6 +233,7 @@ layout(set=0, binding=0) uniform U {
     vec4 RenderOrigin;     // camera-relative rendering: add to a render-frame position for the ABSOLUTE world one
     vec4 PointShadowParams[16];  // per point light: x = atlas row or -1 for none, y = bias, z = slope bias, w unused
     vec4 PointShadowAtlas;       // xy = one atlas texel in UV, z = rows (lights), w = face columns (6)
+    vec4 PointShadowFilter;      // x = filter mode (0 hard, 1 soft), y = light size m, z = max penumbra texels, w = face resolution
 };
 layout(set=0, binding=1) uniform texture2D Albedo;
 layout(set=0, binding=2) uniform texture2D NormalMap;
@@ -336,6 +339,7 @@ layout(set=0, binding=0) uniform U {
     vec4 RenderOrigin;     // camera-relative rendering: add to a render-frame position for the ABSOLUTE world one
     vec4 PointShadowParams[16];  // per point light: x = atlas row or -1 for none, y = bias, z = slope bias, w unused
     vec4 PointShadowAtlas;       // xy = one atlas texel in UV, z = rows (lights), w = face columns (6)
+    vec4 PointShadowFilter;      // x = filter mode (0 hard, 1 soft), y = light size m, z = max penumbra texels, w = face resolution
 };
 // This draw's own block, selected by the per-draw dynamic offset. Declared here and NOT in either skinned
 // fragment, because no fragment stage reads any of it (the per-draw constants reach it as interpolants).
@@ -432,6 +436,7 @@ layout(set=0, binding=0) uniform U {
     vec4 RenderOrigin;     // camera-relative rendering: add to a render-frame position for the ABSOLUTE world one
     vec4 PointShadowParams[16];  // per point light: x = atlas row or -1 for none, y = bias, z = slope bias, w unused
     vec4 PointShadowAtlas;       // xy = one atlas texel in UV, z = rows (lights), w = face columns (6)
+    vec4 PointShadowFilter;      // x = filter mode (0 hard, 1 soft), y = light size m, z = max penumbra texels, w = face resolution
 };
 layout(set=1, binding=0) uniform texture2D Albedo;
 layout(set=1, binding=1) uniform texture2D NormalMap;
@@ -503,6 +508,7 @@ layout(set=0, binding=0) uniform U {
     vec4 RenderOrigin;     // camera-relative rendering: add to a render-frame position for the ABSOLUTE world one
     vec4 PointShadowParams[16];  // per point light: x = atlas row or -1 for none, y = bias, z = slope bias, w unused
     vec4 PointShadowAtlas;       // xy = one atlas texel in UV, z = rows (lights), w = face columns (6)
+    vec4 PointShadowFilter;      // x = filter mode (0 hard, 1 soft), y = light size m, z = max penumbra texels, w = face resolution
 };
 layout(set=1, binding=0) uniform texture2D Albedo;
 layout(set=1, binding=1) uniform texture2D NormalMap;

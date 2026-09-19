@@ -328,8 +328,8 @@ public partial class ArchitectureTests
                 "App", "Catalog", "CodeHealth.Analyzers", "Collision", "Content", "Determinism",
                 "Diagnostics", "Dungeon", "Ecs", "Http", "Identity", "ItemInstances", "Items", "Locomotion",
                 "MapDoc", "Navigation", "Objectives", "Persistence", "Physics", "Platform", "Primitives",
-                "Progression", "Serialization", "ServerStatus", "Social", "Stats", "Terrain", "TileWorld",
-                "TileWorld.Editing", "Updates",
+                "Progression", "Serialization", "ServerStatus", "Skills", "Social", "Stats", "Terrain",
+                "TileWorld", "TileWorld.Editing", "Updates",
             }
         },
         {

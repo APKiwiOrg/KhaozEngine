@@ -2071,6 +2071,11 @@ measures the difference of two errors. The double reference removes the ambiguit
     (b) on a deliberately sloped chunk, assert the difference from the intended point is bounded by
     `slope * ULP(absoluteXZ)`. That is the assertion that records the residual as a known, bounded property
     rather than letting a future reader discover it as a flake.
+10b. **A grazing capsule distinguishes the two bakes.** Sweep a capsule horizontally into the same planar ramp
+    at the origin and 100 km. Register chunk-local vertices at the region pose for the current path, then rebuild
+    the pre-release shape by adding the region origin into every vertex and registering at identity. The local bake
+    repeats its 0.19000535 m hit exactly at 100 km. The absolute bake moves from 0.19000535 m to 0.19249132 m, a
+    2.48598 mm drift. Run each measurement twice so the probe also pins reproducibility.
 11. **`CanRebase` is false and `Rebase` throws on a seam default.** The DIM contract.
 
 ### Netcode tests, `KhaozEngine.Server.Tests`

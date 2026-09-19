@@ -5,6 +5,22 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 19.6.0
+
+Oldest-first backlog fixes:
+
+- The Showcase overworld is a shadow and day/night testbed, with a running gradient sky, a collidable
+  staircase and an authored tree line around the initial cascade handoff. T pauses the day, N switches
+  sky and starfield, and leaving the room restores its shared lighting state (#10, #365).
+- Terrain sculpting previews the actual brush pick and radius with a terrain-following cursor ring,
+  hidden outside the viewport or when the pick misses (#274).
+- Vulkan full-suite CI serializes test projects, target frameworks, test hosts and xUnit collections,
+  preventing separate test assemblies from overlapping live devices (#218).
+- Airborne momentum uses the collision resolver's local achieved delta instead of subtracting large
+  absolute positions, preserving slow free-flight speed far from the origin while retaining wall and
+  slide clipping (#321). A grazing capsule regression now distinguishes the local terrain bake from
+  the old absolute bake at 100 km, where the old path introduces about 2.49 mm of query drift (#352).
+
 ## 19.5.0
 
 Backlog reliability and catalog-read fixes:

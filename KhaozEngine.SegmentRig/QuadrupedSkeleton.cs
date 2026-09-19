@@ -38,7 +38,10 @@ public static class QuadrupedSkeleton
 
     /// <summary>The ten pieces in composition order, and a child always follows its own parent. As on
     /// <see cref="HumanoidSkeleton.PieceNames"/>, a game is free to resolve a mesh by index and ignore these:
-    /// they exist so the ORDER has names.</summary>
+    /// they exist so the ORDER has names. Two of them differ from the constants on purpose:
+    /// <see cref="Trunk"/> is named <c>body</c> and <see cref="Poll"/> is named <c>head</c>, because the
+    /// strings are the asset suffixes an existing kit already carries, and the constants could not reuse
+    /// <c>Head</c> without reading as <see cref="QuadrupedRig.Head"/>.</summary>
     public static IReadOnlyList<string> PieceNames { get; } =
     [
         "body", "head",
@@ -84,11 +87,14 @@ public static class QuadrupedSkeleton
     /// <see cref="BodyPose.Origin"/>.</summary>
     /// <param name="rig">The body's proportions.</param>
     /// <param name="piece">The piece index, one of the constants on this type.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="piece"/> is not one of the
+    /// <see cref="PieceCount"/> pieces. See <see cref="HumanoidSkeleton.RestOffset"/>.</exception>
     public static Vector3 RestOffset(QuadrupedRig rig, int piece)
     {
         ArgumentNullException.ThrowIfNull(rig);
         return piece switch
         {
+            Trunk => Vector3.Zero,
             Poll => rig.HeadPivot,
             UpperForeLeft => rig.LeftShoulder,
             UpperForeRight => rig.RightShoulder,
@@ -98,7 +104,7 @@ public static class QuadrupedSkeleton
             LowerForeRight => rig.RightShoulder + rig.ForeHingeFromShoulder,
             LowerHindLeft => rig.LeftHip + rig.HindHingeFromHip,
             LowerHindRight => rig.RightHip + rig.HindHingeFromHip,
-            _ => Vector3.Zero,
+            _ => throw new ArgumentOutOfRangeException(nameof(piece), piece, null),
         };
     }
 }

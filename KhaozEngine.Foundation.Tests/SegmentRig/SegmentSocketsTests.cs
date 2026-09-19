@@ -87,7 +87,8 @@ public class SegmentSocketsTests
     /// <see cref="SegmentSockets.Held"/> IS the five-factor product a consumer would otherwise hand write:
     /// the piece's own orientation, the weapon hand's tip, the socket down the forearm, that forearm's whole
     /// chain, and the off hand's turn last. Written out here at angles that do not commute with each other,
-    /// because at zero almost any order agrees.
+    /// because at zero almost any order agrees. What this pins is the ORDER: the two rotations themselves are
+    /// the package's own here, and the wrist and off-turn tests above are what pin those.
     /// </summary>
     [Fact]
     public void AHeldPieceIsExactlyTheHandWrittenFiveFactorProduct()
@@ -264,7 +265,11 @@ public class SegmentSocketsTests
     /// <see cref="TestHeldPieces"/> against the leg's own AXIS, with the clearance floor the rig already
     /// declares (<see cref="BodyRig.UpperArmRadiusMetres"/>, plus the haft's own half width). That is a
     /// weaker floor than a thigh's real half width, so this is the check that a resting arm does not swing
-    /// what it holds INTO the leg rather than a pinned millimetre budget. The off hand's plate stayed behind
+    /// what it holds INTO the leg rather than a pinned millimetre budget. Be plain about what carries it
+    /// today: the breath drives no shoulder yaw and no roll, so the arm stays in the shoulder's own plane and
+    /// the clearance is dominated by the sideways gap between shoulder and hip, which is a rig constant no
+    /// phase can eat. It is a guard against a future breath that sways the arm INWARD, and the 64 samples
+    /// only start to matter on the day one does. The off hand's plate stayed behind
     /// with it: there is no synthetic plate shape here to sample, and inventing one would mean inventing the
     /// numbers this is meant to avoid.
     /// </remarks>
@@ -314,7 +319,7 @@ public class SegmentSocketsTests
     }
 
     // Every point of one held shape a clearance is measured at, in the space it is composed in. The tool has
-    // its own sampler; the blade is a bare length, so it is sampled from the pommel to the point.
+    // its own sampler. The blade is a bare length, so it is sampled from the pommel to the point.
     static System.Collections.Generic.IEnumerable<Vector3> Sampled(string name, Matrix4x4 held)
     {
         if (name == "tool")

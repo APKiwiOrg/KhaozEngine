@@ -157,6 +157,16 @@ public class SkeletonCompositionTests
             HumanoidSkeleton.Compose(null!, BodyPose.Origin, WalkPose.Rest, at);
         });
 
+        // The origin is the torso's real answer, so an index off either end must refuse rather than return it.
+        foreach (int piece in new[] { -1, HumanoidSkeleton.PieceCount })
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(() => HumanoidSkeleton.RestOffset(rig, piece));
+            Assert.Throws<ArgumentOutOfRangeException>(
+                () => QuadrupedSkeleton.RestOffset(TestBodies.Grazer, piece));
+        }
+        Assert.Equal(Vector3.Zero, HumanoidSkeleton.RestOffset(rig, HumanoidSkeleton.Torso));
+        Assert.Equal(Vector3.Zero, QuadrupedSkeleton.RestOffset(TestBodies.Grazer, QuadrupedSkeleton.Trunk));
+
         // A longer span: exactly PieceCount transforms written, and the sentinel past the end untouched.
         var sentinel = Matrix4x4.CreateScale(7f);
         Span<Matrix4x4> roomy = stackalloc Matrix4x4[HumanoidSkeleton.PieceCount + 2];

@@ -9951,7 +9951,7 @@ span, and `RestOffset(rig, piece)` for the point that piece lands on at a zero p
 
 | | `HumanoidSkeleton` | `QuadrupedSkeleton` |
 |---|---|---|
-| Pieces | 10: `Torso`, two upper arms, two forearms, two thighs, two shins, `Head` | 10: `Trunk`, `Poll`, four upper legs, four cannons |
+| Pieces | 10: `Torso`, two upper arms, two forearms, two thighs, two shins, `Head` | 10: `Trunk`, `Poll`, four upper legs, four cannons (`PieceNames` calls the first two `body` and `head`, the asset suffixes an existing kit carries) |
 | Root frames | `BodyRig.Body` for the legs, `BodyRig.Torso` for everything above the hips | `QuadrupedRig.Body` through the trunk yaw for the legs, `QuadrupedRig.Torso` through the same yaw for the trunk and the poll |
 | Second pose | none | `QuadrupedPose`, for the swings, the flexes, the roll and the head |
 
@@ -9959,7 +9959,10 @@ A parent is always ahead of its children in the order, which is what lets `Compo
 forearm or a cannon. A span shorter than `PieceCount` is refused up front rather than throwing part way
 through and leaving half a body composed, and a longer one is filled with the tail left alone, so a caller
 with extra slots may hand over its whole array. `RestOffset` is what a game measures bounds in: at
-`BodyPose.Origin` with `WalkPose.Rest`, every composed transform IS that offset as a pure translation.
+`BodyPose.Origin` with `WalkPose.Rest` (and `QuadrupedPose.Rest` on four legs), every composed transform IS
+that offset as a pure translation. It refuses a piece index outside `PieceCount`, because the origin is the
+root piece's real answer and must never be a silent one, so a caller walking a longer array of its own stops
+at `PieceCount`.
 
 **Two composers rather than one, and that is the answer rather than a gap.** The two bodies do not share a
 shape. The two-legged one has two root frames, a yaw under each shoulder and a piece on the neck base. The

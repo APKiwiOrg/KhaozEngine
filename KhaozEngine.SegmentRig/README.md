@@ -162,7 +162,8 @@ Vector3 rest = HumanoidSkeleton.RestOffset(rig, HumanoidSkeleton.ShinLeft);   //
   leaves its feet planted. A forearm composes against its own upper arm and a shin against its own thigh,
   which is what makes a flex a hinge rather than a second swing from the shoulder.
 - **`QuadrupedSkeleton`** - ten pieces: the `Trunk`, the `Poll`, four upper legs and four cannons, the legs in
-  `QuadrupedGait.Leg` order from each base. The trunk and the poll ride `QuadrupedRig.Torso` through the trunk
+  `QuadrupedGait.Leg` order from each base. `PieceNames` calls the first two `body` and `head`, the asset
+  suffixes an existing kit already carries. The trunk and the poll ride `QuadrupedRig.Torso` through the trunk
   yaw, and the four legs ride the PLAIN `QuadrupedRig.Body` through the same yaw, so the hooves turn with the
   trunk and stay on the ground while the ribcage lifts.
 

@@ -101,11 +101,16 @@ public static class HumanoidSkeleton
     /// measure a body's bounds in.</summary>
     /// <param name="rig">The body's proportions.</param>
     /// <param name="piece">The piece index, one of the constants on this type.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="piece"/> is not one of the
+    /// <see cref="PieceCount"/> pieces. A caller walking a longer array of its own stops at
+    /// <see cref="PieceCount"/>, because the origin is a real answer here and must never be a silent
+    /// one.</exception>
     public static Vector3 RestOffset(BodyRig rig, int piece)
     {
         ArgumentNullException.ThrowIfNull(rig);
         return piece switch
         {
+            Torso => Vector3.Zero,
             UpperArmLeft => rig.LeftShoulder,
             UpperArmRight => rig.RightShoulder,
             ForearmLeft => rig.LeftShoulder + rig.ElbowFromShoulder,
@@ -115,7 +120,7 @@ public static class HumanoidSkeleton
             ShinLeft => rig.LeftHip + rig.KneeFromHip,
             ShinRight => rig.RightHip + rig.KneeFromHip,
             Head => rig.HeadFromFeet,
-            _ => Vector3.Zero,
+            _ => throw new ArgumentOutOfRangeException(nameof(piece), piece, null),
         };
     }
 }

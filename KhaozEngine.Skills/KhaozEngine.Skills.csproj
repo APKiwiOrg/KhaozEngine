@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Skills</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>Game-agnostic skill progression kernel (in Foundation): SkillXpCurve as a movable, identity-carrying experience table, SkillBook as one character's experience over a game-supplied ISkillRoster of dense int indices, SkillXpRescale to carry a saved character across a curve change keeping the level and the fraction past it, SkillAwards for the child-and-parent share split, SkillProgress for the readout arithmetic, and byte-stable codecs for the book and the curve triple. A game owns skill identity entirely: no enum, no names, no icons, no training rules, and no time base of any kind, so the same kernel serves a slow turn-based world and a continuous one. Pure .NET, no JSON, no external deps.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+</Project>

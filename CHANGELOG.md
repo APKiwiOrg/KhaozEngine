@@ -5,6 +5,59 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 19.6.0
+
+A skill progression kernel, lifted out of a consumer so a second game can share it:
+
+- **`KhaozEngine.Skills` (new package, in `Foundation`): the skill progression kernel, the `Stats`
+  split applied to experience.** The engine owns the arithmetic and the bytes, the game owns what a
+  skill IS: no enum, no name, no icon, no display order, no training action, no balance number, and
+  **no time base of any kind**, so a turn-based world stepping a few times a second and a continuous
+  one at 30 Hz agree on what an experience number means.
+  - **`SkillXpCurve` is a curve with an IDENTITY, not a static table.** `Configured(firstLevelCost,
+    doublingLevels, maxLevel)` is the parametric family, where a level's cost doubles every
+    `doublingLevels` levels and a threshold is the running sum under it, each cost rounded whole.
+    `Osrs` is the classic running-sum table to 99, and its `Hash` is the literal word `osrs` rather
+    than a digest because an ABSENT curve section in a save is the durable way to store it.
+    Experience is a number rather than a level, so the same number reads as a different level the
+    moment a game tunes the curve, which is why a record carries the hash it was written under.
+  - **`ISkillRoster` is the whole seam to a game's identity**: `Count`, `IsLocked(index)` and
+    `ParentOf(index)` with -1 for a root, over dense int indices. `SkillRoster.Of(n)` is the
+    batteries-included builder, every skill open and a root by default, `LockAll` for a roster whose
+    live set is the exception, and a `Build` that refuses a parent chain looping back on itself.
+  - **`SkillBook` is one character's experience**, sized by the roster and priced by the curve it
+    carries. `AddXp` and `RemoveXp` report only the move that CROSSED or DROPPED a level, saturate at
+    `SkillXpLimits.MaxXp` (200,000,000) and floor at zero, and refuse a locked skill silently. `Fresh`
+    seeds LEVELS rather than numbers, priced through the curve when the book is made, so a curve
+    change reprices every new character for free.
+  - **`SkillAwards.Apply` pays a child in full and its parent `shareBp` basis points of
+    `ShareDenominator` (10,000) exactly one level up, and writes nothing anywhere.** It returns a
+    `SkillAwardResult` carrying both TOTALS, so a durable log that stores whole totals rather than
+    deltas records them without reading the book back, where a second award could already have landed.
+  - **`SkillXpRescale` carries a saved character across a curve change keeping the LEVEL and the
+    fraction past it.** A cap that came down pins rather than demotes, an untrained skill is left
+    untouched, and the carried number is held one bit under the next threshold so a fraction of a
+    whisker cannot buy a free level. `SkillProgress` is the readout half, including
+    `RemainingToNextWhole` quoted against the floored number a panel prints, so the lines add up.
+  - **`SkillBookCodec` makes adding a skill not a migration.** A byte version, a byte count, then
+    fixed-width `(id, little-endian double)` entries: an older blob's missing ids decode as zero and a
+    newer blob's higher ids are skipped forward-compatibly, so a COUNT change needs no version bump.
+    An unknown version is refused by number with `VersionOf` as the only migration affordance, and a
+    version never lands in `0xF0` to `0xFF` so a composite record format can tell a wrapped blob from
+    a bare one by byte 0. `Validate` is roster-free, so a store vets bytes without knowing which game
+    wrote them, naming the reason for a bad version, a wrong length, a duplicate id, a non-finite,
+    negative or over-ceiling experience, and the optional `requiredIndex` a character sheet is
+    meaningless without.
+  - **`SkillXpCurveCodec` is the twelve-byte curve triple** (three little-endian `int32`), REBUILT
+    through `Configured` on decode rather than trusted, so zeroes or a negative read as unreadable
+    instead of building a curve whose every level is the cap. A level cap above `MaxLevelCeiling`
+    (10,000) is refused on decode before anything is allocated, and refused on `Encode` too, so the
+    codec never writes a section it cannot read back.
+  - **The persisted format is pinned against bytes this codebase did not write.** Golden-byte tests
+    hold a 209-byte book, a curve section and a curve hash captured from the original game's own
+    encoders. They decode, re-encode byte for byte, and match, which is the guarantee that game needs
+    before it swaps its codec for this one.
+
 ## 19.5.0
 
 Backlog reliability and catalog-read fixes:

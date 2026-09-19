@@ -63,6 +63,7 @@
   <Project Path="KhaozEngine.SegmentRig/KhaozEngine.SegmentRig.csproj" />
   <Project Path="KhaozEngine.Items/KhaozEngine.Items.csproj" />
   <Project Path="KhaozEngine.ItemInstances/KhaozEngine.ItemInstances.csproj" />
+  <Project Path="KhaozEngine.Skills/KhaozEngine.Skills.csproj" />
   <Project Path="KhaozEngine.Stats/KhaozEngine.Stats.csproj" />
   <Project Path="KhaozEngine.Simulation/KhaozEngine.Simulation.csproj" />
   <Project Path="KhaozEngine.Sharding/KhaozEngine.Sharding.csproj" />

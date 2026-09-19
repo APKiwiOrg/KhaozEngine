@@ -91,6 +91,19 @@ public sealed class ManyPointLightsGpuTests(ManyPointLightsScene scene) : IClass
     }
 
     [GpuFact]
+    public void An_empty_frame_after_a_lit_frame_has_no_stale_cluster_light_or_diagnostics()
+    {
+        ManyPointLightsScene.Shot lit = scene.Capture(ManyPointLightsScene.Surface.Model, LeftAzimuth,
+            ManyPointLightsScene.LightQueue.RelevantLast);
+        ManyPointLightsScene.Shot empty = scene.Capture(ManyPointLightsScene.Surface.Model, LeftAzimuth,
+            ManyPointLightsScene.LightQueue.None);
+        Assert.Equal(0, empty.Clusters.SubmittedLightCount);
+        Assert.Equal(0, empty.Clusters.LightReferenceCount);
+        Assert.False(empty.Clusters.HasFallbackClusters);
+        Assert.True(empty.Brightness < lit.Brightness / 3);
+    }
+
+    [GpuFact]
     public void Invalid_light_geometry_cannot_change_illumination_when_a_cluster_overflows()
     {
         ManyPointLightsScene.Shot alone = scene.Capture(ManyPointLightsScene.Surface.Model, LeftAzimuth,
@@ -214,6 +227,7 @@ public sealed class ManyPointLightsScene : IDisposable
 
     public enum LightQueue
     {
+        None,
         RelevantOnly,
         RelevantLast,
         RelevantFirst,
@@ -334,6 +348,7 @@ public sealed class ManyPointLightsScene : IDisposable
 
     static void QueueLights(Scene3D scene, LightQueue lights)
     {
+        if (lights == LightQueue.None) return;
         if (lights is LightQueue.InvalidGeometryAlongsideRelevant or LightQueue.ClusterOverflowWithInvalidGeometry)
         {
             foreach (float radius in new[] { -6f, 0f, float.NaN, float.PositiveInfinity })

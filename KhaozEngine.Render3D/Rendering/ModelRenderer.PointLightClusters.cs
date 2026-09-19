@@ -19,6 +19,9 @@ internal sealed partial class ModelRenderer
 
     internal PointLightClusterDiagnostics PointLightClusterDiagnostics(int submittedLightCount)
     {
+        if (submittedLightCount == 0)
+            return new PointLightClusterDiagnostics(0, PointLightClusterBuilder.ClusterCount, 0, 0,
+                PointLightClusterProjection.Invalid, 0f, 0f);
         PointLightClusterProjection projection = _pointLightClusters.Depth.W switch
         {
             > 0.5f => PointLightClusterProjection.Perspective,
@@ -42,6 +45,13 @@ internal sealed partial class ModelRenderer
         Matrix4x4 viewProjection, Vector3 eyeRender, Vector3 forward, Matrix4x4 projection,
         Vector3 renderOrigin)
     {
+        if (lights.IsEmpty)
+        {
+            _clusterDepth = new Vector4(0f, 0f, 0f, -1f);
+            _clusterCamera = Vector4.Zero;
+            _frameImageDirty = true;
+            return;
+        }
         Matrix4x4 correctedViewProjection = GpuClip.Correct(viewProjection, _gd.Capabilities);
         _pointLightClusters.Build(lights, correctedViewProjection, eyeRender, forward, projection, renderOrigin);
         _clusterDepth = _pointLightClusters.Depth;

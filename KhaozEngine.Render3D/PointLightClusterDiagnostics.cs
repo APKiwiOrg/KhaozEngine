@@ -22,7 +22,7 @@ public readonly record struct PointLightClusterDiagnostics(
     public bool IsValid => Projection != PointLightClusterProjection.Invalid;
 
     /// <summary>Whether every fragment must walk the complete submitted light list.</summary>
-    public bool UsesFullFallback => !IsValid;
+    public bool UsesFullFallback => SubmittedLightCount > 0 && !IsValid;
 
     /// <summary>Whether any fragment may need the complete-list fallback.</summary>
     public bool HasFallbackClusters => UsesFullFallback || OverflowedClusterCount > 0;

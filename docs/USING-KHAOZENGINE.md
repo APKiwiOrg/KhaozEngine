@@ -3084,6 +3084,7 @@ scene.Draw(crate, transform, Color.White, Material.None, dissolve: fadeTimer, ed
   `scene.PointLightClusters` reports submitted lights, cluster references, overflowing clusters, the projection
   kind and its near/far depths. `IsValid` distinguishes real cluster geometry from invalid-camera fallback.
   `HasFallbackClusters` also includes local overflow. These are rendering diagnostics, not simulation state.
+  Empty light frames skip cluster construction and upload, and report zero references without fallback.
 
   `scene.AddLight(worldPos, color, radius, intensity, LightShadow)` is the five-argument overload, and the extra
   argument asks for an omnidirectional shadow map so the light stops at walls instead of pooling through them.

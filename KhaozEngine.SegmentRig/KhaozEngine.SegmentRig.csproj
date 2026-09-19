@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.SegmentRig</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <Description>Render-free pose core for rigid-segment characters, the visual counterpart of KhaozEngine.Locomotion. A body is a set of rigid pieces posed every frame by procedural code rather than by a skinned animation clip, so this package answers with transforms and angles and draws nothing at all: BodyPose (world metres plus a yaw), BodyRig and QuadrupedRig proportions and joint frames, the distance-driven WalkCycle and its WalkPose channel contract, the IdleBreath rest cycle, and the four-beat QuadrupedGait. Time is seconds or a normalized phase and there is no tick count anywhere, so one cycle serves a slow fixed-tick game and a fast continuous one alike. Depends on nothing: not Render3D, not TileWorld, not Netcode, not Gpu, not Primitives. In the Foundation umbrella.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

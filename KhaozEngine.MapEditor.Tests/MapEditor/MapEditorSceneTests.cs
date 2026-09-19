@@ -84,8 +84,7 @@ namespace KhaozEngine.Tests.MapEditor
 
         // Records which rebuild seam CheckWorldRebuild dispatches to (a bounded region -> partial, a null region ->
         // full) without touching a device: BuildWorld stays a no-op (so the viewport is never built), and both
-        // rebuild seams are overridden to log + return a scripted result. RunRebuildCheck exposes the protected step
-        // so a test can drive the routing directly on a document it has set up.
+        // rebuild seams are overridden to log + return a scripted result.
         sealed class RebuildDispatchScene : MapEditorScene
         {
             readonly Func<MapDocument> _factory;
@@ -97,6 +96,7 @@ namespace KhaozEngine.Tests.MapEditor
             protected override void BuildWorld() { }
             protected override void TeardownWorld() { }
             protected override bool PartialRebuildWorld(RectArea dirty) { Log.Add("partial"); LastDirty = dirty; return PartialSucceeds; }
+            protected override bool RefreshAllLoadedWorld() { Log.Add("loaded"); return true; }
             protected override bool RebuildWorld() { Log.Add("full"); return true; }
             public void RunRebuildCheck(float dt = 0f) => CheckWorldRebuild(dt);
         }
@@ -459,7 +459,7 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
-        public void CheckWorldRebuild_NullRegion_RoutesToFullAndAcknowledges()
+        public void CheckWorldRebuild_TerrainScalar_RoutesToAllLoadedAndAcknowledges()
         {
             RebuildDispatchScene scene = PushDispatchScene();
             scene.Document.Execute(new EditTerrainCommand(newWaterLevel: 5f, oldWaterLevel: 3f));   // whole-world edit
@@ -468,7 +468,7 @@ namespace KhaozEngine.Tests.MapEditor
 
             scene.RunRebuildCheck();
 
-            Assert.Equal(new[] { "full" }, scene.Log);   // a null region takes the full rebuild
+            Assert.Equal(new[] { "loaded" }, scene.Log);
             Assert.False(scene.Document.WorldRebuildPending);
         }
 
@@ -520,8 +520,8 @@ namespace KhaozEngine.Tests.MapEditor
 
         // A whole-world edit (AffectsWorld true, DirtyRegion null): marks WorldRebuildPending with a null (full)
         // region, exactly what an inspector-driven terrain scrub does.
-        static void DirtyFull(ThrottleScene scene) =>
-            scene.Document.Execute(new EditTerrainCommand(newWaterLevel: 5f, oldWaterLevel: 3f));
+        static void DirtyFull(ThrottleScene scene) => scene.Document.Execute(
+            new AddScatterLayerCommand(new MapScatterLayer { Name = $"layer-{scene.Document.History.UndoDepth}" }));
 
         // A bounded-region edit (the sample doc's lake at feature index 0): marks WorldRebuildPending with a rect.
         static void DirtyPartial(ThrottleScene scene)

@@ -363,7 +363,10 @@ partial view. A refusal writes nothing at all, not even a chunk, so the target i
 **It is idempotent.** Every object goes in through the publish's own put-if-absent, so a second rebuild into
 the same store reports `ObjectsWritten` 0 and `BytesWritten` 0 and rewrites only the pointer. `pointers` is
 optional and defaults to `PackVersionPointers.Resolve(target)`, and a target with no pointer half is refused
-before anything is read.
+before anything is read. `rowEncoder` is optional in the same way and defaults to
+`ContentSideRowEncoder.Default`, which is `ContentPublisher`'s own parameter under its own name: a version
+published through a custom side encoder is only reproducible through that same encoder, and a rebuild through
+any other one refuses rather than filing bytes no version record describes.
 
 It calls no publishing or editing member of the store, so it is safe to run against a live database with a
 draft open. It is not strictly write free: the one side effect it can have is the baseline read clearing a

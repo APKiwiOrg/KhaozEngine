@@ -14511,7 +14511,10 @@ int version = config.ContentVersion ?? await store.GetActiveVersionAsync(ct);
 // pack store's write half comes from PackVersionPointers.Resolve(pack).
 if (await pack.GetVersionPointerAsync(version, ct) is null)
 {
-    ContentPackRebuildResult rebuilt = await ContentPackRebuild.RunAsync(store, registry, version, pack, null, ct);
+    // pointers and rowEncoder both default: the pointer half resolves off pack, and the rows go through
+    // ContentSideRowEncoder.Default. Name the encoder here when the publish named one.
+    ContentPackRebuildResult rebuilt = await ContentPackRebuild.RunAsync(
+        store, registry, version, pack, cancellationToken: ct);
     if (!rebuilt.Rebuilt)
     {
         Console.Error.WriteLine(rebuilt.RefusalDetail);

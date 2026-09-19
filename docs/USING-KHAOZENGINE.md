@@ -85,6 +85,7 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [Wall-clock periodic rewards (`KhaozEngine.Progression`)](#wall-clock-periodic-rewards-khaozengineprogression)
 - [Objective / goal tracking (`KhaozEngine.Objectives`)](#objective-goal-tracking-khaozengineobjectives)
 - [Stat channels (`KhaozEngine.Stats`)](#stat-channels-khaozenginestats)
+- [Skill progression (`KhaozEngine.Skills`)](#skill-progression-khaozengineskills)
 - [Content catalog (`KhaozEngine.Catalog`)](#content-catalog-khaozenginecatalog)
 - [Item instances (`KhaozEngine.ItemInstances`)](#item-instances-khaozengineiteminstances)
 - [Commerce / wallet (`KhaozEngine.Commerce`)](#commerce-wallet-khaozenginecommerce)
@@ -14071,6 +14072,12 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
   allocation-free bulk reads via `CopyValuesTo`, lazy per-channel recompute, insertion-order fold. The engine
   owns the fold only, never a channel's meaning: no enum, no item, no stacking rule (see "Stat channels"
   below).
+- **`KhaozEngine.Skills`**: the skill progression kernel, the same split applied to experience: a movable
+  `SkillXpCurve` with an identity, a `SkillBook` over a game-supplied `ISkillRoster` of dense int indices,
+  the child-and-parent share in `SkillAwards`, the curve-change carry in `SkillXpRescale`, the readout
+  arithmetic in `SkillProgress` and byte-stable codecs for the book and the curve triple. No tick, no timer
+  and no time base of any kind, so a slow turn-based world and a continuous one share it (see "Skill
+  progression" below).
 - **`KhaozEngine.Catalog`**: the tunable-content catalog's read half: a frozen `ContentTypeRegistry` with its
   field schemas and the six engine content types, the content-addressed `KECC`/`KECM`/`KECT`/`KECR` pack
   formats, the `IPackStore` seam with `FileSystemPackStore` and `ContentPackReader`, the `IContentSnapshot`
@@ -14343,6 +14350,85 @@ numbers (which modifiers a sword grants), items and equipment slots, and the who
 rules, durations, expiry, diminishing returns), the same split `KhaozEngine.Locomotion` already draws for its
 per-entity speed scale: the engine owns the multiplier and its plumbing, the game owns duration, stacking,
 and what granted it.
+
+---
+
+## Skill progression (`KhaozEngine.Skills`)
+
+The `Stats` split applied to experience: the engine owns the arithmetic and the bytes, the game owns what a
+skill IS. There is no enum, no name, no icon, no display order, no training action and no balance number in
+the package, and **no time base of any kind**, so a turn-based world stepping a few times a second and a
+continuous one at 30 Hz agree on what an experience number means.
+
+A game supplies dense `int` indices through one small interface:
+
+```csharp
+public interface ISkillRoster
+{
+    int Count { get; }
+    bool IsLocked(int index);
+    int ParentOf(int index);   // -1 for a root
+}
+```
+
+`SkillRoster` is the batteries-included implementation, so most games never write one. Every skill starts
+OPEN and a root, `LockAll` inverts that for a roster whose live set is the exception, and `Build` refuses a
+parent chain that loops back on itself.
+
+```csharp
+using KhaozEngine.Skills;
+
+ISkillRoster roster = SkillRoster.Of(SkillCount)
+    .LockAll().Unlock(Vitality).Unlock(Melee).Unlock(Chopping)
+    .Parent(Melee, Combat).Parent(Chopping, Gathering)
+    .Build();
+
+SkillXpCurve curve = SkillXpCurve.Configured(firstLevelCost: 114, doublingLevels: 6, maxLevel: 100);
+SkillBook book = SkillBook.Fresh(roster, curve, new SkillSeed(Vitality, 10));
+
+SkillAwardResult award = SkillAwards.Apply(book, Chopping, amount: 100d, shareBp: 5000);
+// award.Crossed, award.Parent, award.ChildXp, award.ParentCrossed, award.ParentXp
+```
+
+**The curve is an object with an IDENTITY, not a static table.** Experience is stored as a number rather
+than a level, so the same number reads as a different level the moment a game tunes the curve. A record
+carries `Curve.Hash`, and a load that finds a different one calls `SkillXpRescale.Rebase`, which keeps the
+LEVEL and the fraction past it. A cap that came down pins a character to the new top rather than demoting
+them, an untrained skill is left alone, and the carried number is held one bit under the next threshold so a
+fraction of a whisker cannot buy a free level. `SkillXpCurve.Osrs` is the classic table, and its hash is the
+literal word `osrs` because an ABSENT curve section is how it is stored.
+
+**A seed is a LEVEL.** `new SkillSeed(Vitality, 10)` is priced through the curve when the book is made, so
+tuning the curve reprices every new character for free.
+
+**`SkillAwards.Apply` writes nothing anywhere.** It pays the child in full and its parent `shareBp` basis
+points of `SkillAwards.ShareDenominator` (10,000) exactly one level up, and hands back both TOTALS so a
+durable log that stores whole totals rather than deltas can record them without reading the book back, where
+a second award could already have landed. A locked skill refuses every award and every removal silently, and
+still holds whatever experience it was decoded with: a lock stops a number moving, it does not erase it.
+
+**The durable form is byte-stable and count-tolerant.** `SkillBookCodec` writes a byte version, a byte count
+and fixed-width `(id, little-endian double)` entries, so ADDING A SKILL IS NOT A MIGRATION: an older blob's
+missing ids decode as zero and a newer blob's higher ids are skipped forward-compatibly. An unknown version
+is refused by number rather than guessed at, and there is no legacy reader hook, because a pre-version-2
+format belongs to one game's own older roster where ids changed meaning. A game with older bytes dispatches
+on `SkillBookCodec.VersionOf(blob)`, migrates its own bytes, and hands a version 2 blob here. Versions never
+land in `0xF0` to `0xFF`, so a composite record format can tell a wrapped blob from a bare one by byte 0.
+
+`Validate` is roster-free, so a store can vet bytes without knowing which game wrote them. It returns a
+quarantine reason or null, refusing a bad version, a wrong length, a duplicate id, a non-finite, negative or
+over-ceiling experience, and (with the optional `requiredIndex`) a blob that lost the one skill a game's
+character sheet is meaningless without. Null or empty input is "no state", not a fault.
+
+`SkillXpCurveCodec` is the twelve-byte curve triple (three little-endian `int32`: first level cost, doubling
+levels, max level), for the record section that says which curve a save was written under. Decode REBUILDS
+through `SkillXpCurve.Configured` rather than trusting the bytes, so zeroes or a negative read as unreadable
+instead of building a curve whose every level is the cap, and an unreadable section means the caller leaves
+the stored experience exactly as it is.
+
+**What stays game-side (the seam):** skill identity and names, the display order (a reading order is not a
+storage order), what an action pays, the balance numbers, the level-up presentation, and any journal or
+event a game writes out of a `SkillAwardResult`.
 
 ---
 

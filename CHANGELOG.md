@@ -58,6 +58,45 @@ A skill progression kernel, lifted out of a consumer so a second game can share 
     encoders. They decode, re-encode byte for byte, and match, which is the guarantee that game needs
     before it swaps its codec for this one.
 
+The pose core for rigid-segment characters, lifted out of the same consumer:
+
+- **`KhaozEngine.SegmentRig` (new package, in `Foundation` beside `Locomotion`): a body drawn as rigid
+  segment meshes posed every frame by procedural code, rather than a skinned rig playing a clip.**
+  Transforms out, nothing drawn, and NO project reference at all: not `Render3D`, not `TileWorld`, not
+  `Netcode`, not even `Primitives`. `Locomotion` decides where a body is, this decides what it looks like
+  there. Part one of two: the value types, the rigs and the locomotion cycles. The strokes, the socket
+  helpers and the skeleton composer follow.
+  - **`BodyPose(Vector3 Position, float Yaw)` is the whole input**, world metres plus radians, and it is
+    the DRAWN position rather than the committed authoritative one, so a cycle follows the glide between
+    server answers instead of stepping once per update.
+  - **`BodyRig` holds one two-legged body's proportions** (four joint pivots, hand socket, neck base,
+    rest height, stride) with `Scaled(f)` to derive another size off the reference `BodyRig.Human`. Two
+    parent frames are the whole shape of a composition: the legs ride `Body` and everything above the
+    hips rides `Torso`, so the feet stay planted while the chest breathes. `QuadrupedRig` is the
+    four-legged sibling. Creature proportions beyond `Human` are game content and stay in the game.
+  - **`WalkPose` is 18 POSITIONAL float channels and a hard append-only contract**, because games build
+    poses positionally and an insertion silently re-points every one of them at the wrong number.
+    `WalkCycle` accumulates phase off GROUND COVERED rather than off a clock, which is what makes a run
+    read as a run with no second set of numbers. `IdleBreath` is the standing-still cycle, with a rest
+    stance solved so each sole stays on the floor under its own hip. `QuadrupedGait` is the four-beat
+    lateral-sequence walk off the same phase, sized off the rig.
+  - **NO TICK COUNTS ANYWHERE.** Every number is seconds or a normalized 0 to 1 phase, so one cycle
+    serves a world that updates a handful of times a second and one that updates every frame.
+  - **`WalkPose.RootPitch` and `WalkPose.RootRoll`, appended last, turn the WHOLE two-legged rig about
+    the point the pose names**, which is what a body with nothing under its soles does: a swimmer lies
+    out flat, a fall pitches into it. Distinct from `Lean`, which folds at the hips and leaves the
+    contact point behind. `BodyRig.Body` skips the pair entirely at zero, so every grounded frame
+    composes to the bits it always did. `QuadrupedRig` does not read them yet.
+  - **`WalkCycle.Advance(phaseDelta, dt, moving, running)` is an explicit phase source for motion that
+    covers no ground.** The distance overload derives phase from horizontal travel and discards y on
+    purpose, so a swim or a fall would stand frozen on it. The caller declares the phase delta and both
+    blend flags, because `RunMetresPerSecond` is a ground speed and there is no ground. It forgets the
+    last sampled position, so returning to the ground path is not one frame of sprinting, it keeps the
+    phase half open for a backwards delta, and it shares the one blend rule with the distance overload,
+    whose behaviour is unchanged.
+  - A game adds its own pose (jump, fall, swim, wade, strafe, backpedal) as a static class with `PoseAt`
+    and `Compose` over these channels and orders them in its own chain. See `docs/USING-KHAOZENGINE.md`.
+
 ## 19.5.0
 
 Backlog reliability and catalog-read fixes:

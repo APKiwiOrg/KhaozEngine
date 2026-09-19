@@ -64,8 +64,9 @@ The pose core for rigid-segment characters, lifted out of the same consumer:
   segment meshes posed every frame by procedural code, rather than a skinned rig playing a clip.**
   Transforms out, nothing drawn, and NO project reference at all: not `Render3D`, not `TileWorld`, not
   `Netcode`, not even `Primitives`. `Locomotion` decides where a body is, this decides what it looks like
-  there. The value types, the rigs, the locomotion cycles and the strokes are in. The socket helpers, a
-  reference rig facade and the skeleton composer follow.
+  there. The value types, the rigs, the locomotion cycles, the strokes, the socket helpers and the skeleton
+  composers are all in, and the package is complete. No reference rig facade: a composer takes the rig it is
+  handed, and a game that wants a named one writes a forwarder.
   - **`BodyPose(Vector3 Position, float Yaw)` is the whole input**, world metres plus radians, and it is
     the DRAWN position rather than the committed authoritative one, so a cycle follows the glide between
     server answers instead of stepping once per update.
@@ -108,6 +109,22 @@ The pose core for rigid-segment characters, lifted out of the same consumer:
     it. It also ADDS rather than replacing, as `Headbutt` does, since lerping a half-second flinch onto a
     fixed pose would stop the walk underneath it dead. A weapon-arm stroke replaces instead, because it
     owns that arm for as long as it runs, and both kinds cost exactly nothing at zero weight.
+  - **`HumanoidSkeleton` and `QuadrupedSkeleton` turn a rig plus a pose into one world transform per
+    piece**, ten each, in the named order `PieceNames` declares, into a caller-supplied span with a
+    parent always ahead of its children. `RestOffset(rig, piece)` is the point each lands on at a zero
+    pose, which is the frame a body's bounds are measured in. A span shorter than `PieceCount` is refused
+    up front rather than leaving half a body composed, and `RestOffset` refuses a piece index outside
+    `PieceCount`, because the origin is the root piece's real answer and must never be a silent one. TWO
+    composers rather than one, because the two bodies do not share a shape: the two-legged one has two
+    root frames, a yaw under each shoulder and a neck-base piece, and the four-legged one has a trunk yaw
+    its legs take off a different frame, a poll and a second pose type. `QuadrupedSkeleton.PieceNames`
+    calls the `Trunk` and the `Poll` `body` and `head`, the asset suffixes an existing kit carries.
+  - **`SegmentSockets` is what the two wrist channels MEAN.** `Wrist(radians)` tips a held piece about
+    the hand's own x AFTER the piece's grip, `OffTurn(radians, fist)` turns it about the BODY's up axis
+    through the fist at the very END of the chain so a plate's face does not depend on how far the elbow
+    is folded, `Held(...)` is that whole five-factor product in one call, and `IsInside(socket, bounds)`
+    is the containment check a consumer measures its own fist with. A grip orientation is a property of
+    a MESH, so named grips stay in the game.
   - **Where a stroke moves legs they are SOLVED, at every weight rather than solved once and scaled.**
     `BlockRaise.StanceAt` takes the knee as the only input and drops the hips by exactly what the bent
     legs got shorter by, so both soles stay on the floor through the whole raise and the whole settle.

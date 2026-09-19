@@ -5,7 +5,7 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 19.5.0
+## 19.6.0
 
 Point lights no longer disappear when a consuming game has more than sixteen nearby lamps.
 
@@ -19,6 +19,8 @@ Point lights no longer disappear when a consuming game has more than sixteen nea
 - GPU regressions compare late-queued lights, queue order and camera poses against single-light controls.
 - `Scene3D.PointLightClusters` exposes projection, reference and overflow diagnostics. Invalid light positions
   and non-positive or non-finite radii are ignored consistently before submission.
+
+## 19.5.0
 
 Backlog reliability and catalog-read fixes:
 

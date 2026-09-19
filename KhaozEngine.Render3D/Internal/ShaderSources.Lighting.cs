@@ -183,7 +183,8 @@ float pointShadowDepthAt(texture2D atlas, sampler samp, vec3 dir, float slot) {
     vec2 cellSize = vec2(1.0 / PointShadowAtlas.w, 1.0 / max(PointShadowAtlas.z, 1.0));
     vec2 cellMin = vec2(face, slot) * cellSize;
     vec2 tap = clamp(cellMin + uv * cellSize, cellMin + texel * 0.5, cellMin + cellSize - texel * 0.5);
-    return texture(sampler2D(atlas, samp), tap).r;
+    // The atlas has only mip zero. Explicit LOD avoids derivatives inside a varying cluster loop (FXC X3511).
+    return textureLod(sampler2D(atlas, samp), tap, 0.0).r;
 }
 
 // The per-fragment rotation of both discs below, off the ABSOLUTE world position (the render-frame one plus the
@@ -295,7 +296,7 @@ float samplePointShadowHard(texture2D atlas, sampler samp, vec3 toL, float dist,
     for (int oy = 0; oy < 2; oy++) {
         for (int ox = 0; ox < 2; ox++) {
             vec2 tap = clamp(base + (vec2(float(ox), float(oy)) - 0.5) * texel, lo, hi);
-            float stored = texture(sampler2D(atlas, samp), tap).r;
+            float stored = textureLod(sampler2D(atlas, samp), tap, 0.0).r;
             lit += step(d, stored + bias);                 // receiver nearer than the stored caster => lit
         }
     }

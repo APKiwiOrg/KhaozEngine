@@ -45,6 +45,11 @@ CPU assignment avoids a new compute producer pass and its synchronization obliga
 performs full 3D clustered shading. GPU-driven assignment remains a possible optimization if measured CPU
 assignment cost warrants it, using the same light records and correctness rules.
 
+Point-shadow atlas reads use explicit mip zero. Their single-mip textures need no implicit derivatives,
+and implicit-gradient sampling inside the varying cluster loop makes the Direct3D compiler attempt an
+unbounded unroll. See [HLSL diagnostics](https://learn.microsoft.com/en-us/windows/win32/direct3dhlsl/hlsl-errors-and-warnings)
+and [SampleLevel](https://learn.microsoft.com/en-us/windows/win32/direct3dhlsl/dx-graphics-hlsl-to-samplelevel).
+
 ## Static shadows
 
 Static requests have stable owner keys. Their residency must not depend on camera distance. Reserve enough

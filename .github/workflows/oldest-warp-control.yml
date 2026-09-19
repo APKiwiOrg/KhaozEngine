@@ -1,0 +1,37 @@
+name: Oldest backlog WARP control
+on:
+  workflow_dispatch:
+    inputs:
+      code_ref:
+        description: Code revision for the isolated seam probe
+        required: true
+        type: string
+        default: v19.5.0
+permissions:
+  contents: read
+jobs:
+  control:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      KE_GPU_TESTS: '1'
+      KE_GRAPHICS_BACKEND: direct3d11-native
+      KE_D3D11_ADAPTER: warp
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.code_ref }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Prepare local restore source
+        shell: pwsh
+        run: New-Item -ItemType Directory -Force local-feed
+      - name: Run unchanged point-shadow fixture
+        shell: pwsh
+        run: dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release -m:2 --filter FullyQualifiedName~PointShadowFilterGpuTests --logger "console;verbosity=detailed" --logger "trx;LogFileName=seam.trx" --results-directory TestResults
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: warp-seam-control
+          path: TestResults

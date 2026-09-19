@@ -612,17 +612,12 @@ namespace KhaozEngine.Terrain
             // HLOD merged mesh: the coarse geometry is field-determined and tier/ring-independent, so a pure tier or
             // ring re-LOD keeps the cached handle (no GPU churn). Only a rebuild in place (editor Invalidate after a
             // field swap, or a placement source's arrival) rebuilds it, mirroring how the placements + terrain
-            // surface refresh only then. The condition is the PAYLOAD, not an inferred rebuild kind: BuildCpu already made this
-            // exact call (it is what decides whether to spend the merge at all), so re-deriving it here would be a
-            // second copy of the rule that could drift from the one that actually spent the work.
-            if (cpu.HlodMeshes is not null)
-            {
-                ApplyPropClusters(coord, relod, cpu);
-            }
-            else if (cpu.PropClusters is not null)
-            {
-                ApplyPropClusters(coord, relod, cpu);
-            }
+            // surface refresh only then. The decision is the PAYLOAD's, not an inferred rebuild kind: BuildCpu already
+            // made this exact call (it is what decides whether to spend the merge at all), so re-deriving it here
+            // would be a second copy of the rule that could drift from the one that actually spent the work. The
+            // call is unconditional because ApplyPropClusters IS that payload read, returning at once when the
+            // build carries no clusters, exactly as the fresh-load arm above calls it.
+            ApplyPropClusters(coord, relod, cpu);
             _hlodGate?.MarkApplied(coord, lod, ring);
             return relod;
         }

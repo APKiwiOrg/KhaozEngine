@@ -42,9 +42,15 @@ namespace KhaozEngine.Tests.Benchmarks;
 /// what ships for those too.
 /// </para>
 /// <para>
-/// Nothing here writes process-global state, so no test needs a collection attribute.
+/// Nothing here WRITES process-global state, but budget 12 READS it, which is just as sensitive: its
+/// resident figures are deltas of the process heap, so a parallel test churning the GC on another thread
+/// lands entirely inside the measurement. That is what the AllocSensitive collection is for, and it is why
+/// <c>CatalogBenchmarkTests</c> beside this one already takes it. Without it budget 12 produced a page
+/// delta of -72,525,224 bytes in a full-solution run, against a live set the builder provably keeps
+/// (https://github.com/APKiwiOrg/KhaozEngine/issues/1030).
 /// </para>
 /// </summary>
+[Collection("AllocSensitive")]
 public sealed class ItemsBenchmarkTests
 {
     /// <summary>The budgets whose measurement is only meaningful above zero. The rest are counters a clean run

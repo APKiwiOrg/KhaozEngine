@@ -385,7 +385,12 @@ public sealed partial class TileWorldClient : IDisposable
         // with no authority behind it into a socket nobody is reading. A reconnect means a NEW TileWorldClient,
         // which is why ClientPrediction.Reseed is deliberately never called here.
         if (!IsJoined || !seeded) return;
-        TileCommand sent = queued;
+        // A QUEUED CLICK WINS ITS TICK, and the held level fills every tick it does not. queued is reset to
+        // Continue after each send, so None is exactly "no click was made since the last tick" and the steering
+        // level is what the player is still asking for. See TileWorldClient.Steering.cs.
+        TileCommand sent = queued.Kind == TileCommandKind.None && Steering is { } held
+            ? TileCommand.Steer(held, steeringMode)
+            : queued;
         queued = TileCommand.Continue(RunMode);
         // PREDICT the admitted form and SEND the raw one. The server rewrites an out-of-range goal itself, off the
         // command it received, so sending the rewrite instead would be telling it a different story than the one
@@ -401,6 +406,8 @@ public sealed partial class TileWorldClient : IDisposable
     // something that went away. Everything else passes through untouched, a cross-plane goal included:
     // the simulator drops that one whole on both heads, and rewriting it here would apply a mode the server never
     // did. Queue already refused the cross-plane click, so this is the backstop for a command built elsewhere.
+    // A Steer passes through untouched too, matching the server: it carries no goal to bound and no target to
+    // resolve, so there is nothing here that could rewrite one.
     TileCommand Admit(in TileCommand cmd) =>
         (cmd.Kind == TileCommandKind.WalkTo && !GoalInRange(Prediction.PredictedState, cmd.Goal))
         || (cmd.Kind == TileCommandKind.Attack && cmd.Target == 0)

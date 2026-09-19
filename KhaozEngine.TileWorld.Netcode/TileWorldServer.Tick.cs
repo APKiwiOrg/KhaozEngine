@@ -151,13 +151,14 @@ public sealed partial class TileWorldServer
             TileCommand admitted = Admit(cmd, arrived, state, slot, netId);
             cell.World.Set(e, new PendingTileCommand { Command = admitted });
             // The lock this player will hold going INTO the movement pass, unless this tick's own command is what
-            // breaks it. A WalkTo or either Interact kind is the player DISENGAGING, which is not a failure to reach
-            // and must not produce a notice. An Attack is watched by the target it NAMES rather than by the one on
-            // the state, because the click's own tick is the commonest tick for a lock to be refused on: the
-            // simulator sets the lock and the follow can clear it again inside that same Advance. See
+            // breaks it. A WalkTo, a Steer or either Interact kind is the player DISENGAGING, which is not a failure
+            // to reach and must not produce a notice. An Attack is watched by the target it NAMES rather than by
+            // the one on the state, because the click's own tick is the commonest tick for a lock to be refused on:
+            // the simulator sets the lock and the follow can clear it again inside that same Advance. See
             // ReportBrokenLocks in TileWorldServer.Combat.cs.
             if (admitted.Kind == TileCommandKind.Attack) watchedLocks.Add((slot, admitted.Target, true));
             else if (state.CombatTarget != 0 && admitted.Kind != TileCommandKind.WalkTo
+                && admitted.Kind != TileCommandKind.Steer
                 && admitted.Kind != TileCommandKind.Interact && admitted.Kind != TileCommandKind.InteractEntity)
                 watchedLocks.Add((slot, state.CombatTarget, false));
         }
@@ -319,6 +320,16 @@ public sealed partial class TileWorldServer
                 // Only an APPLIED walk clears: a cross-plane goal is dropped by the simulator, so it abandons
                 // nothing.
                 if (simulator.Accepts(state, cmd)) actions.Clear(slot);
+                return cmd;
+
+            case TileCommandKind.Steer:
+                // A steer is a walk with no goal, so it ABANDONS a pending action for the reason a walk does: the
+                // simulator clears the state's own InteractTarget on one, and an entry that outlived it would
+                // fire the moment a steered step happened to land on a reach tile of the thing walked away from.
+                // There is no radius to check, and Accepts is the decoder's direction bound again, for a command
+                // built in process.
+                if (!simulator.Accepts(state, cmd)) return TileCommand.Continue(cmd.Mode);
+                actions.Clear(slot);
                 return cmd;
 
             case TileCommandKind.Interact:

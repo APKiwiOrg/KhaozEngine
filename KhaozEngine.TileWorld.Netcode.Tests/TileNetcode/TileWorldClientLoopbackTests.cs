@@ -14,10 +14,6 @@ namespace KhaozEngine.Tests.TileNetcode;
 
 public class TileWorldClientLoopbackTests
 {
-    const float Tick = 0.25f;
-    const float Frame = 0.05f;
-    static readonly TileStepTicks Ticks = new(walk: 4, run: 2);
-
     // A pose names the tile CENTRE, so the half tile comes back off on the way to a tile coordinate. The tests
     // below are all about WHICH TILES a remote was drawn on, which the centring does not move, so they read the
     // same numbers they always did with the offset undone here rather than in every assertion.
@@ -25,77 +21,11 @@ public class TileWorldClientLoopbackTests
 
     static float DrawnTileZ(float worldZ) => TileWorldSpace.TileZ(worldZ, 1f) - 0.5f;
 
-    sealed class Harness : IDisposable
-    {
-        public readonly TileWorldServer Server;
-        public readonly TileWorldClient Client;
-        readonly InMemoryTransportHub hub;
-        readonly INetTransport clientTransport;
-        float serverAccum;
-
-        // goalRadius is handed to BOTH heads, because that is the contract: the client mirrors the server's own
-        // refusal of an out-of-range goal, and a test that set it on one head would be testing the mismatch.
-        // gameComponents is handed to BOTH registries for the same reason goalRadius goes to both heads: a game
-        // component registered on one side only is skipped on the way in, silently, which is the whole of #700.
-        public Harness(TileWorldDocument serverDoc, TileWorldDocument clientDoc, TileCoord spawn, float clientPhase,
-            int goalRadius = TilePathfinder.DefaultMaxRadius, Action<ReplicationRegistry>? gameComponents = null,
-            ushort allocatorNode = 0)
-        {
-            hub = new InMemoryTransportHub();
-            Server = new TileWorldServer(hub.Server,
-                TileWorldServerTickTests.Config(spawn) with { MaxGoalRadius = goalRadius },
-                TileMoveSimulatorTests.Bake(serverDoc),
-                new TileDocumentTargets(serverDoc, TileMoveSimulatorTests.Catalogs), new AllowAllAuthenticator(),
-                TileProtocol.CreateRegistry(gameComponents));
-            if (allocatorNode != 0)
-            {
-                FieldInfo allocator = typeof(TileWorldServer).GetField("allocator",
-                    BindingFlags.Instance | BindingFlags.NonPublic)!;
-                allocator.SetValue(Server, new NetIdAllocator(allocatorNode));
-            }
-            clientTransport = hub.CreateClient();
-            Client = new TileWorldClient(clientTransport, new TileWorldClientConfig
-            {
-                TickSeconds = Tick,
-                StepTicks = Ticks,
-                MaxGoalRadius = goalRadius,
-            }, TileMoveSimulatorTests.Bake(clientDoc), registry: TileProtocol.CreateRegistry(gameComponents));
-            // Phase the client's command tick off the server's, which is the loopback lesson: two hosts stepping
-            // in lockstep hide every ordering bug a real client's independent clock exposes.
-            Client.Tick(clientPhase);
-            Client.Poll();
-        }
-
-        public void Frames(int count)
-        {
-            for (int i = 0; i < count; i++)
-            {
-                Client.Tick(Frame);
-                Server.Poll();
-                serverAccum += Frame;
-                while (serverAccum >= Tick)
-                {
-                    serverAccum -= Tick;
-                    Server.Tick(Tick);
-                }
-                Client.Poll();
-                Client.AdvancePresentation(Frame);
-            }
-        }
-
-        /// <summary>Drops the client's transport, which is how a real link dies. A server-side kick now reaches
-        /// the client on its own (the hub's endpoints route Disconnect through DisconnectClient), so this is the
-        /// CLIENT-side drop and an idempotent no-op after a kick has already taken the link.</summary>
-        public void Drop() => hub.DisconnectClient(clientTransport);
-
-        public void Dispose() { Client.Dispose(); Server.Dispose(); }
-    }
-
     [Fact]
     public void A_packed_negative_local_net_id_still_advances_remote_presentation()
     {
         TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
-        using var h = new Harness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f,
+        using var h = new TileLoopbackHarness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f,
             allocatorNode: 40000);
         h.Frames(24);
         Assert.Equal(NetIdAllocator.Pack(40000, 1), h.Client.LocalNetId);
@@ -110,7 +40,7 @@ public class TileWorldClientLoopbackTests
     public void A_clean_walk_costs_zero_corrections()
     {
         TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
-        using var h = new Harness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), clientPhase: 0.13f);
+        using var h = new TileLoopbackHarness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), clientPhase: 0.13f);
         h.Frames(4);
         Assert.True(h.Client.IsJoined);
 
@@ -132,7 +62,7 @@ public class TileWorldClientLoopbackTests
     public void A_re_click_mid_step_costs_no_correction_and_no_snap()
     {
         TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
-        using var h = new Harness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), clientPhase: 0.13f);
+        using var h = new TileLoopbackHarness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), clientPhase: 0.13f);
         h.Frames(4);
         Assert.True(h.Client.IsJoined);
 
@@ -175,7 +105,7 @@ public class TileWorldClientLoopbackTests
         // still cuts.
         TileWorldDocument serverDoc = TileMoveSimulatorTests.FlatWorld();
         serverDoc.AddObject("tree", 10, 11, 0, 0);                     // only the SERVER knows about this
-        using var h = new Harness(serverDoc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f);
+        using var h = new TileLoopbackHarness(serverDoc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f);
         h.Frames(4);
 
         h.Client.Queue(TileCommand.WalkTo(new TileCoord(10, 18, 0), TileMoveMode.Run));
@@ -198,7 +128,7 @@ public class TileWorldClientLoopbackTests
     {
         TileWorldDocument serverDoc = TileMoveSimulatorTests.FlatWorld();
         serverDoc.AddObject("tree", 10, 14, 0, 0);
-        using var h = new Harness(serverDoc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f);
+        using var h = new TileLoopbackHarness(serverDoc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f);
         h.Frames(4);
 
         h.Client.Queue(TileCommand.WalkTo(new TileCoord(10, 18, 0), TileMoveMode.Run));
@@ -223,7 +153,7 @@ public class TileWorldClientLoopbackTests
     public void A_remote_glides_across_a_step_rather_than_jumping_between_squares()
     {
         TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
-        using var h = new Harness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f);
+        using var h = new TileLoopbackHarness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f);
         h.Frames(4);
         long remote = h.Server.SpawnPlayer(slot: 1, "remote", "Rem");
         h.Server.Enqueue(1, 0, TileCommand.WalkTo(new TileCoord(12, 14, 0), TileMoveMode.Run));
@@ -249,7 +179,7 @@ public class TileWorldClientLoopbackTests
     public void The_run_toggle_rides_every_tick_and_a_change_lands_at_the_next_step()
     {
         TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
-        using var h = new Harness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f);
+        using var h = new TileLoopbackHarness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f);
         h.Frames(4);
 
         h.Client.Queue(TileCommand.WalkTo(new TileCoord(10, 20, 0), TileMoveMode.Run));
@@ -275,7 +205,7 @@ public class TileWorldClientLoopbackTests
     public void A_notice_raises_its_token_and_the_typed_event_that_belongs_to_it()
     {
         TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
-        using var h = new Harness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f);
+        using var h = new TileLoopbackHarness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f);
         h.Frames(4);
 
         var tokens = new List<string>();
@@ -295,7 +225,7 @@ public class TileWorldClientLoopbackTests
     public void An_opaque_game_message_crosses_in_both_directions_untouched()
     {
         TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
-        using var h = new Harness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f);
+        using var h = new TileLoopbackHarness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f);
         h.Frames(4);
 
         byte[]? fromServer = null;
@@ -319,7 +249,7 @@ public class TileWorldClientLoopbackTests
     public void A_kick_arrives_as_its_reason_and_the_dropped_link_as_a_disconnect()
     {
         TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
-        using var h = new Harness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f);
+        using var h = new TileLoopbackHarness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f);
         h.Frames(4);
         Assert.True(h.Client.IsJoined);
 
@@ -348,7 +278,7 @@ public class TileWorldClientLoopbackTests
     public void A_goal_past_the_reach_bound_is_rewritten_the_same_way_on_both_heads()
     {
         TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
-        using var h = new Harness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f,
+        using var h = new TileLoopbackHarness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f,
             goalRadius: 3);
         h.Frames(4);
 
@@ -383,7 +313,7 @@ public class TileWorldClientLoopbackTests
         TileObject booth = serverDoc.AddObject("bank_booth", 13, 10, 0, 0);
         TileWorldDocument clientDoc = TileMoveSimulatorTests.FlatWorld();
         clientDoc.AddObject("bank_booth", 13, 10, 0, 0);
-        using var h = new Harness(serverDoc, clientDoc, new TileCoord(10, 10, 0), 0.13f);
+        using var h = new TileLoopbackHarness(serverDoc, clientDoc, new TileCoord(10, 10, 0), 0.13f);
         h.Frames(4);
         long remote = h.Server.SpawnPlayer(slot: 1, "remote", "Rem");
         h.Server.SetPlayerState(1, TileMoveState.At(new TileCoord(12, 10, 0), TileDirection.S));
@@ -412,7 +342,7 @@ public class TileWorldClientLoopbackTests
     {
         TileWorldDocument serverDoc = TileMoveSimulatorTests.FlatWorld();
         serverDoc.AddObject("tree", 10, 11, 0, 0);                  // only the SERVER knows about this
-        using var h = new Harness(serverDoc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f);
+        using var h = new TileLoopbackHarness(serverDoc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f);
         int teleports = 0;
         h.Client.Teleported += () => teleports++;
 
@@ -441,7 +371,7 @@ public class TileWorldClientLoopbackTests
     public void A_remote_is_drawn_between_the_tile_it_left_and_the_tile_it_is_committed_to()
     {
         TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
-        using var h = new Harness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f);
+        using var h = new TileLoopbackHarness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f);
         h.Frames(4);
         long remote = h.Server.SpawnPlayer(slot: 1, "remote", "Rem");
         h.Server.SetPlayerState(1, TileMoveState.At(new TileCoord(12, 10, 0), TileDirection.S));
@@ -479,7 +409,7 @@ public class TileWorldClientLoopbackTests
     {
         const float Eps = 0.001f;
         TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
-        using var h = new Harness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f);
+        using var h = new TileLoopbackHarness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f);
         h.Frames(4);
         long remote = h.Server.SpawnPlayer(slot: 1, "remote", "Rem");
         // Facing EAST from the start, which is the direction of the first leg. A forward guess is therefore still
@@ -524,7 +454,7 @@ public class TileWorldClientLoopbackTests
     public void A_remote_that_reappears_more_than_one_step_away_cuts_to_its_tile()
     {
         TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
-        using var h = new Harness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f);
+        using var h = new TileLoopbackHarness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f);
         h.Frames(4);
         long remote = h.Server.SpawnPlayer(slot: 1, "remote", "Rem");
         h.Server.SetPlayerState(1, TileMoveState.At(new TileCoord(12, 10, 0), TileDirection.S));
@@ -555,7 +485,7 @@ public class TileWorldClientLoopbackTests
     public void A_remote_that_changes_plane_one_step_away_cuts_rather_than_gliding_between_floors()
     {
         TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
-        using var h = new Harness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f);
+        using var h = new TileLoopbackHarness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f);
         h.Frames(4);
         long remote = h.Server.SpawnPlayer(slot: 1, "remote", "Rem");
         h.Server.SetPlayerState(1, TileMoveState.At(new TileCoord(12, 10, 0), TileDirection.S));
@@ -593,7 +523,7 @@ public class TileWorldClientLoopbackTests
     public void A_remote_that_leaves_the_interest_set_stops_being_presented()
     {
         TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
-        using var h = new Harness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f);
+        using var h = new TileLoopbackHarness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f);
         h.Frames(4);
         long remote = h.Server.SpawnPlayer(slot: 1, "remote", "Rem");
         h.Server.SetPlayerState(1, TileMoveState.At(new TileCoord(12, 10, 0), TileDirection.S));
@@ -613,7 +543,7 @@ public class TileWorldClientLoopbackTests
     public void A_click_off_the_loaded_map_is_dropped_before_it_is_ever_sent()
     {
         TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
-        using var h = new Harness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f);
+        using var h = new TileLoopbackHarness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f);
         h.Frames(4);
 
         h.Client.Queue(TileCommand.WalkTo(new TileCoord(5000, 5000, 0), TileMoveMode.Run));
@@ -632,7 +562,7 @@ public class TileWorldClientLoopbackTests
         using var server = new TileWorldServer(hub.Server, TileWorldServerTickTests.Config(new TileCoord(1, 1, 0)),
             TileMoveSimulatorTests.Bake(TileMoveSimulatorTests.FlatWorld()), null, gate);
         using var client = new TileWorldClient(hub.CreateClient(),
-            new TileWorldClientConfig { TickSeconds = Tick, StepTicks = Ticks },
+            new TileWorldClientConfig { TickSeconds = TileLoopbackHarness.Tick, StepTicks = TileLoopbackHarness.Ticks },
             TileMoveSimulatorTests.Bake(TileMoveSimulatorTests.FlatWorld()), null,
             TileProtocol.BuildConnectToken("tile-1", "hash-2", Array.Empty<byte>()));
 
@@ -665,7 +595,7 @@ public class TileWorldClientLoopbackTests
     public void A_game_component_registered_on_both_heads_arrives_on_the_client()
     {
         TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
-        using var h = new Harness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f,
+        using var h = new TileLoopbackHarness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f,
             gameComponents: RegisterBounty);
         h.Frames(4);
         long remote = h.Server.SpawnPlayer(slot: 1, "remote", "Rem");
@@ -686,7 +616,7 @@ public class TileWorldClientLoopbackTests
     public void A_game_component_the_client_never_registered_is_skipped_rather_than_breaking_the_snapshot()
     {
         TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
-        using var h = new Harness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f);
+        using var h = new TileLoopbackHarness(doc, TileMoveSimulatorTests.FlatWorld(), new TileCoord(10, 10, 0), 0.13f);
         h.Frames(4);
         long remote = h.Server.SpawnPlayer(slot: 1, "remote", "Rem");
         h.Server.SetPlayerState(1, TileMoveState.At(new TileCoord(12, 10, 0), TileDirection.S));

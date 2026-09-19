@@ -32,12 +32,19 @@ public static class SkillXpCurveCodec
     /// parameters to write, and the way to store it is to write no section at all.</param>
     /// <exception cref="ArgumentNullException"><paramref name="curve"/> is null.</exception>
     /// <exception cref="ArgumentException"><paramref name="curve"/> is not parametric.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="curve"/> has a level cap above
+    /// <see cref="MaxLevelCeiling"/>. <see cref="TryDecode"/> refuses such a section, so writing one would
+    /// store bytes this codec itself reads back as unreadable, and a save that cannot be read is worse than
+    /// a refusal at the moment it is written.</exception>
     public static byte[] Encode(SkillXpCurve curve)
     {
         ArgumentNullException.ThrowIfNull(curve);
         if (!curve.IsParametric)
             throw new ArgumentException(
                 "the classic curve has no parameters, and an absent section is how it is stored", nameof(curve));
+        if (curve.MaxLevel > MaxLevelCeiling)
+            throw new ArgumentOutOfRangeException(nameof(curve), curve.MaxLevel,
+                $"a level cap above {MaxLevelCeiling} is refused on decode, so it is refused on encode too");
         var bytes = new byte[Bytes];
         BinaryPrimitives.WriteInt32LittleEndian(bytes, curve.FirstLevelCost);
         BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(4), curve.DoublingLevels);

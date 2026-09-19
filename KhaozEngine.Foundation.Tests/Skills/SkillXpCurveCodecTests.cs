@@ -50,6 +50,20 @@ public class SkillXpCurveCodecTests
     }
 
     [Fact]
+    public void A_level_cap_the_decoder_would_refuse_is_refused_on_encode_too()
+    {
+        // The codec has to be a total round trip: anything it writes, it reads. A cost of 1 doubling every
+        // million levels stays far under the experience ceiling, so this curve is perfectly legal to BUILD,
+        // and the only thing wrong with it is a level cap one past what TryDecode accepts.
+        SkillXpCurve legalButTooTall = SkillXpCurve.Configured(1, 1_000_000, SkillXpCurveCodec.MaxLevelCeiling + 1);
+        Assert.Throws<ArgumentOutOfRangeException>(() => SkillXpCurveCodec.Encode(legalButTooTall));
+
+        SkillXpCurve atTheCeiling = SkillXpCurve.Configured(1, 1_000_000, SkillXpCurveCodec.MaxLevelCeiling);
+        Assert.True(SkillXpCurveCodec.TryDecode(SkillXpCurveCodec.Encode(atTheCeiling), out SkillXpCurve? back));
+        Assert.Equal(atTheCeiling.Hash, back.Hash);
+    }
+
+    [Fact]
     public void An_absurd_level_cap_is_refused_before_anything_is_allocated()
     {
         // A curve builds its thresholds eagerly, one double per level, so four corrupted bytes naming a

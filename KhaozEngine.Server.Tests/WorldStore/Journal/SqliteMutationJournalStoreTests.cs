@@ -325,7 +325,7 @@ internal sealed class SqliteJournalTestDatabase : IDisposable
     internal SqliteJournalTestDatabase() => Directory.CreateDirectory(directory);
 
     internal string NewPath() => Path.Combine(directory, Guid.NewGuid().ToString("N") + ".db");
-    internal string ConnectionString(string path) => new SqliteConnectionStringBuilder { DataSource = path, Pooling = true }.ToString();
+    internal string ConnectionString(string path) => new SqliteConnectionStringBuilder { DataSource = path, Pooling = false }.ToString();
 
     internal SqliteMutationJournalStore Open(string path, SqliteMutationJournalStoreOptions? options = null, SqliteJournalTestHook? hook = null)
     {
@@ -414,7 +414,6 @@ internal sealed class SqliteJournalTestDatabase : IDisposable
     public void Dispose()
     {
         foreach (SqliteMutationJournalStore store in stores) store.Dispose();
-        SqliteConnection.ClearAllPools();
         if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
     }
 }

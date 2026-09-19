@@ -28,6 +28,14 @@ if [ -f scripts/check-prose.sh ]; then
   fi
 fi
 
+# 1c) Root instruction budget. Staged mode reads the index so an unstaged repair cannot hide an
+#     oversized instruction set that the commit would ship.
+if [ -f scripts/check-agent-instructions.sh ]; then
+  if ! sh scripts/check-agent-instructions.sh; then
+    fail=1
+  fi
+fi
+
 # 2) version<->changelog coupling. Engine (has check-doc-versions.sh) couples any version tag;
 #    adopters couple the game version only (exclude the engine pin KhaozEngineVersion). LangVersion
 #    is a compiler setting, not an app version, so it is excluded in both cases.

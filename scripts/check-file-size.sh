@@ -50,12 +50,10 @@
 #   --file <path>   single-file mode - reads candidate CONTENT from stdin (not from disk) and checks it
 #               against <path>'s baseline entry, the cap if <path> is unlisted, or nothing at all if
 #               <path> is exempt. Lets a caller ask "if this content landed at this path, would it
-#               violate the ratchet" without writing anything anywhere. This is what the agent write-time hook
-#               (.claude/settings.json / .codex/settings.json) invokes to simulate a Write/Edit tool
-#               call's result before it lands: PreToolUse fires before the edit reaches disk, so the
-#               hook builds the candidate content itself (the Write tool's whole content, or the
-#               current file with the Edit tool's old_string/new_string substitution applied) and pipes
-#               it in here rather than reading the file, which at that point still holds the old content.
+#               violate the ratchet" without writing anything anywhere. The shared agent write-time
+#               hook invokes this mode to simulate a Write, Edit or apply_patch result before it lands.
+#               PreToolUse fires before the edit reaches disk, so the hook computes the candidate line
+#               count and pipes equivalent content here rather than reading the old file.
 #   --preview   print what --init would freeze, writing nothing. Works with or without an existing
 #               baseline, so it also answers "what would this repo freeze if it adopted the ratchet".
 #   --init      write .filesize-baseline from the current tree. Adoption only; refuses to overwrite.

@@ -14,6 +14,7 @@ Start here. Two kinds of doc live here and they have different lifecycles:
 | Doc | What it's for | Source of truth for |
 |---|---|---|
 | [README.md](../README.md) | Top-level overview: the package table (granular packages + umbrella metapackages), the one hard rule, quickstart wiring, repo layout. | The package list + what each package owns. Guard-enforced complete by `check-doc-versions.sh`, so never trust a prose package list anywhere else. |
+| [CONTRIBUTOR-RULES.md](CONTRIBUTOR-RULES.md) | Detailed engine development, test, release, documentation and issue rules routed from root `AGENTS.md`. | Repository-specific contributor workflow below the always-loaded root instructions. |
 | [USING-KHAOZENGINE.md](USING-KHAOZENGINE.md) | The consumer contract: hard rules, the data-flow model, per-layer API reference, headless-test patterns. Read before wiring a game in. | How a game must use the engine. |
 | [CHANGELOG.md](../CHANGELOG.md) | Newest-first, every version; each entry leads with a one-line summary, so the file doubles as the scannable "story over time". | Release history (full detail + the high-level digest). The single source for the per-version story; nothing else restates it. |
 | [CROSS-PLATFORM.md](CROSS-PLATFORM.md) | Desktop GPU story: platform to engine-owned backend mapping (`MetalNative`/`Direct3D11Native`/`VulkanNative`), the golden-snapshot net, the three-leg CI matrix. | How rendering is verified per OS. |

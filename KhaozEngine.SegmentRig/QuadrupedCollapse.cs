@@ -49,6 +49,8 @@ public static class QuadrupedCollapse
         if (!float.IsFinite(durationSeconds) || durationSeconds <= 0f)
             throw new ArgumentOutOfRangeException(nameof(durationSeconds), durationSeconds,
                 "A collapse duration must be positive and finite.");
+        if (!float.IsFinite(elapsedSeconds) || elapsedSeconds <= 0f) return QuadrupedPose.Rest;
+        if (elapsedSeconds >= durationSeconds) return restingPose;
         return PoseAt(elapsedSeconds / durationSeconds, restingPose);
     }
 }

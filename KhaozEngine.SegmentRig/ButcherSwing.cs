@@ -53,8 +53,8 @@ public static class ButcherSwing
             throw new ArgumentOutOfRangeException(nameof(cycleDurationSeconds), cycleDurationSeconds,
                 "A cutting cycle duration must be positive and finite.");
         if (!float.IsFinite(elapsedSeconds)) return 0f;
-        float phase = elapsedSeconds / cycleDurationSeconds;
-        return phase - MathF.Floor(phase);
+        double phase = (double)elapsedSeconds / cycleDurationSeconds;
+        return (float)(phase - Math.Floor(phase));
     }
 
     static float Lerp(float from, float to, float amount) => from + ((to - from) * amount);

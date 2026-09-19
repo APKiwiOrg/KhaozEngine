@@ -46,6 +46,13 @@ public class QuadrupedCollapseTests
     }
 
     [Fact]
+    public void Finite_elapsed_time_past_a_tiny_duration_reaches_the_resting_pose_without_overflow()
+    {
+        Assert.Equal(Collapsed, QuadrupedCollapse.PoseAt(1f, float.Epsilon, Collapsed));
+        Assert.Equal(QuadrupedPose.Rest, QuadrupedCollapse.PoseAt(-1f, float.Epsilon, Collapsed));
+    }
+
+    [Fact]
     public void Start_mid_and_end_compose_to_finite_unscaled_joint_attached_transforms()
     {
         QuadrupedRig rig = TestBodies.Grazer;

@@ -232,6 +232,11 @@ fixed in 10.18.1 (Metal and Vulkan legs and every actual golden compare were gre
 
 ## CI matrix (`.github/workflows/cross-platform-gpu.yml`)
 
+For diagnosis, a dispatch may set `renderTestFilter` to a vstest filter. That targets only
+`KhaozEngine.Render.Tests` on the selected native legs while retaining their compiler and validation steps.
+Leave it empty for release verification and the standard full-suite policy. The filter is passed through
+a quoted environment value, never interpolated into shell source.
+
 **THREE LEGS SINCE `18.0.0`, not six.** The Veldrid incumbent backend was deleted
 ([#687](https://github.com/APKiwiOrg/KhaozEngine/issues/687)) and its three legs went with it
 ([#689](https://github.com/APKiwiOrg/KhaozEngine/issues/689),

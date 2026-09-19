@@ -135,15 +135,21 @@ hidden.
 - **`TileRouteState`** - the remaining walk as one step DIRECTION per tile, measured from the owner's current tile.
   Its own component because it is owner-only (plus Persist and Migrate): an observer does not need it, and the
   owner does, since a reconciliation basis without its route stands the player still.
-- **`TileCommand`** / **`TileCommandKind`** - one tick of intent: `None` (keep going), `WalkTo` (path to a goal and
-  walk it), `Interact` or its explicit alias `InteractObject` (route to an authored object), `InteractEntity`
-  (route to an entity), or `Attack` (lock onto an entity and chase it while it moves). The MODE
+- **`TileCommand`** / **`TileCommandKind`** - one tick of intent, six kinds: `None` (keep going), `WalkTo` (path to
+  a goal and walk it), `Interact` or its explicit alias `InteractObject` (route to an authored object),
+  `InteractEntity` (route to an entity), `Attack` (lock onto an entity and chase it while it moves), or `Steer`
+  (take one step toward a held `TileDirection`, with no search). The MODE
   rides on every command, `None` included, so the run toggle lives on the tick stream rather than on the click.
   Every entity operation needs a KIND of its own because `Target` spans two id spaces that overlap EXACTLY: a
   `TileObject.Id` is a document counter from 1 and a net id is `(nodeId << 48) | counter` from 1, so object id 7
   and the seventh spawned entity are the same 64 bits. `Interact` always means an authored object and keeps its
   original bytes. `InteractEntity` writes kind 4 into the same 24-byte frame. A pre-addition server rejects that
   kind as unknown rather than resolving its target through the object domain.
+  `TileCommand.Steer(direction, mode)` writes kind 5 into that same frame and rides the direction in `Target` as
+  its `TileDirection` byte value, read back through `TileCommand.SteerDirection`. `Kind` already decides what
+  `Target` means, so that is the existing rule rather than a new pun. The decoder refuses a steer frame whose
+  target is outside the eight directions, whole, exactly as it refuses an unknown kind. A pre-addition decoder
+  refuses kind 5 as unknown, so a consumer moves its own game protocol version when it adopts this pin.
 - **`TileMoveMode`** - walk or run, a two-value selector rather than a speed.
 - **`TileStepTicks`** - ticks per step, per mode. Both heads must hold the same pair, or a step commits a tick
   apart and every step reads as a misprediction.
@@ -187,6 +193,21 @@ hidden.
   it was leaving. The route cap counts the steps still to take from that tile. `Step` and `BeginWalk` also have
   overloads taking a `TilePathfinderScratch`. The caller owns that mutable scratch and must never share it across
   concurrent searches. Omitting it preserves the allocating behavior used by client prediction.
+  A `Steer` command goes through the same stepper: it replaces intent exactly as `WalkTo` does and then hands its
+  held direction to the step doors, which read it on a BOUNDARY tick only, so a steer arriving mid step can
+  neither restart nor redirect the step in flight.
+- **`TileSteerResolver`** - the pure slide-else-stop rule behind a held direction, shared by both heads and by any
+  head that wants to preview a step. `Resolve(map, tile, wanted, footprintSize)` answers `wanted` when it is open,
+  for a blocked DIAGONAL whichever of its two axis steps is open (the Z axis step tested before the X axis step, so
+  both heads pick the same one of two honest answers), and null when the body stands. It throws
+  `ArgumentOutOfRangeException` for a direction outside the eight rather than answering null: the decoder and
+  `TileMoveSimulator.Accepts` are the gates a frame passes through, so a value that far out is an in-process
+  misuse and a silent stand would hide it as a wall. A blocked steer still turns the body to FACE the held
+  direction, so a key pressed into a fence reads as an answer rather than as a dropped input.
+- **THE PACE SEAM is one private method.** `TileMoveSimulator` asks `TileStepTicks` how long a step lasts in
+  `StepTotalFor` and nowhere else, and a steered step and a routed step are both stamped from it through one
+  shared commit body. Steering therefore adds NO speed value: a game that one day needs a haste or a slow changes
+  that one method, and a click, a held key, an actor and a chase inherit it together.
 - **`TileMovementSystem`** - runs the simulator over every OWNED entity inside a cell's own fixed tick,
   skipping ghosts and migrating entities so nothing is stepped twice in one tick. It holds the player simulator
   and the actor traversal registry. A `TileActor` tag selects a registered actor simulator, so each profile reads
@@ -493,6 +514,24 @@ always keep the constructor map.
   interest (misses included, and the thing a hitsplat is drawn from), and `RemoteEntered` / `RemoteLeft`, the
   lifecycle pair a per-remote overlay stack is built and pruned on. The diff behind the pair is already computed
   every frame, so it costs nothing beyond one array per frame that actually carries churn.
+- **`TileWorldClient.SetSteering(direction, mode)`** / **`Steering`** - the held direction a keyboard player walks
+  on, beside the click door. A LEVEL where `Queue` is an EVENT: a head sets it every frame from its own input and
+  the command clock reads it on every tick, so a steering tick can never be lost to frame timing. On a command
+  tick with nothing queued and a direction held, the client predicts and sends `TileCommand.Steer` instead of
+  `Continue`. A queued click WINS its tick, and steering resumes on the next one. `mode` rides the level and is
+  NOT adopted as `RunMode`, unlike a queued click's: a head that lets a modifier invert the pace while steering
+  passes the inverted mode here, and the saved toggle is what the next `Continue` carries once the keys are
+  released. `SetSteering(null, mode)` releases the level, after which the step in flight lands and nothing
+  starts, so the body never takes an extra tile.
+- **`TileSteering.FromAxes(right, forward, cameraForward)`** - the pure quantization from a head's movement keys
+  to the one `TileDirection` a steer carries, so every tile game shares one. `right` is right minus left and
+  `forward` is forward minus back, each clamped to -1..1. **`cameraForward` is a WORLD-space look vector**, exactly
+  what a camera's `Forward` answers, and the helper converts it through `TileWorldSpace` itself, because tile north
+  is world -z. A consumer that hands in a tile-space vector gets a silently north-south MIRRORED result. Only the
+  ground-plane part is read and it need not be normalized. The answer is null for no input, for opposite keys that
+  cancel, and for a camera looking straight down. An exact octant boundary resolves to the counter-clockwise
+  neighbour, the same answer every time. Client only, and its output is an integer direction, so no float it
+  computes reaches the simulation.
 - **`TilePresenter`** / **`TilePose`** - the pure map from a tile point to a world position and a yaw, and the only
   file in the package that consults `TileWorldSpace`. Two answers, and mixing them up is the one mistake here.
   `Pose(state, extraTicks)` is the BODY: the linear glide from `StepFrom` into `Tile` by the step's own tick
@@ -978,6 +1017,10 @@ var client = new TileWorldClient(
 client.RunMode = runButtonHeld ? TileMoveMode.Run : TileMoveMode.Walk;
 if (clicked) client.Queue(TileCommand.WalkTo(clickedTile, client.RunMode));
 
+// The keyboard door, set every frame. camera.Forward is a WORLD-space vector.
+TileDirection? held = TileSteering.FromAxes(right, forward, camera.Forward);
+client.SetSteering(held, client.RunMode);
+
 client.Poll();                                     // once a frame
 client.Tick(dt);                                   // the command clock, one command per whole tick
 client.AdvancePresentation(dt);                    // the render clock, before drawing
@@ -1001,6 +1044,45 @@ DrawMarker(client.Presenter.PoseAt(rules.Tile));
 for (int i = rules.Route.Index; i < rules.Route.Tiles.Count; i++)
     DrawRouteTile(client.Presenter.PoseAt(rules.Route.Tiles[i]));
 ```
+
+## Walking on a held key
+
+A click names a goal and the simulator paths to it. A keyboard player holds a DIRECTION instead, which is its own
+intent and has its own command kind. Faking it with `WalkTo` at the adjacent tile is wrong twice over: `WalkTo`
+searches, and an unreachable goal walks to the nearest reachable tile, so a key held into a fence sends the body
+on a detour, and it costs one search per tick per steering player on the server.
+
+Set the level every frame from the head's own input:
+
+```csharp
+// Each frame, from the head's own input:
+TileDirection? held = TileSteering.FromAxes(right, forward, camera.Forward);
+client.SetSteering(held, client.RunMode);
+```
+
+**`camera.Forward` is WORLD space.** `TileSteering.FromAxes` takes a look vector rather than a yaw angle so no
+consumer has to match an angle convention, and it converts that vector through `TileWorldSpace` itself, because
+tile north is world -z. Hand it a tile-space vector and the answer is silently mirrored north to south. Only the
+ground-plane part is read and it need not be normalized. The contract is the player's seat: forward walks the body
+away from the camera, back toward it, right toward screen right, at every camera angle. It answers null for no
+input, for opposite keys that cancel and for a camera looking straight down, and an exact octant boundary resolves
+to the counter-clockwise neighbour, the same way every time.
+
+What the level does on the wire is ordinary. On a command tick with nothing queued and a direction held, the
+client predicts and sends `TileCommand.Steer(held, mode)` in place of `Continue`. A queued click WINS its tick and
+steering resumes on the next one. The mode rides the level and is NOT adopted as `RunMode`, so a modifier that
+inverts the pace while steering leaves the saved toggle to the next `Continue`.
+
+The simulator resolves the direction on a BOUNDARY tick only, through `TileSteerResolver`: the direction itself
+when it is open, for a blocked diagonal whichever of its two axis steps is open, otherwise a stand. A blocked
+steer still turns the body to face the held direction. A steer replaces a route, a pending interaction and a
+fight exactly as `WalkTo` does, and the server treats it as the deliberate disengage a walk is, so a lock it
+breaks is not reported as a lost target. Releasing the keys means the next command is `Continue`, the step in
+flight lands and nothing starts.
+
+**Steering adds no pace value.** A steered step and a routed step are stamped by the same private `StepTotalFor`,
+the one place this package asks `TileStepTicks` how long a step lasts, through one shared commit body. The run
+gate is unchanged too: the server downgrades a run the game's `CanRun` refuses whatever the command kind is.
 
 ## The determinism contract
 

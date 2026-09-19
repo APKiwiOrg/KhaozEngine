@@ -61,6 +61,7 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [Map editor (`KhaozEngine.MapEditor`)](#map-editor-khaozenginemapeditor)
 - [ke-mapedit (`KhaozEngine.MapEdit.Tool`)](#ke-mapedit-khaozenginemapedittool)
 - [Networked overworld (`KhaozEngine.Locomotion` + `KhaozEngine.NetWorld`)](#networked-overworld-khaozenginelocomotion-khaozenginenetworld)
+- [Rigid-segment character poses (`KhaozEngine.SegmentRig`)](#rigid-segment-character-poses-khaozenginesegmentrig)
 - [Tile-world netcode (`KhaozEngine.TileWorld.Netcode`)](#tile-world-netcode-khaozenginetileworldnetcode)
 - [Charging attack time for something that is not a swing (`TileWorldServer.DelayAttack`, 18.16.0)](#charging-attack-time-for-something-that-is-not-a-swing-tileworldserverdelayattack-18160)
 - [Cancelling a tile player's pending interact (18.19.0)](#cancelling-a-tile-players-pending-interact-18190)
@@ -9901,6 +9902,132 @@ measurement is arithmetically identical to the pre-16.0.0 one. Again nothing to 
 check on the public helper, `CharacterMovement.IntendedHorizontalTargetAtVelocity(position, velocity, dt)` is the
 vector form (`IntendedHorizontalTargetAtSpeed` is unchanged and still correct wherever travel direction is input
 direction).
+
+---
+
+## Rigid-segment character poses (`KhaozEngine.SegmentRig`)
+
+The VISUAL counterpart of the section above. `Locomotion` decides where a body is. This decides what it looks
+like there, for a game whose characters are **rigid segment meshes** (forearm, shin, torso) posed every frame
+by procedural code rather than by a skinned animation clip. Transforms out, nothing drawn.
+
+It depends on nothing at all: no `Render3D`, no `TileWorld`, no `Netcode`, no `Gpu`, not even `Primitives`.
+`Foundation` umbrella, beside `Locomotion`.
+
+```csharp
+using KhaozEngine.SegmentRig;
+
+// Per body, once.
+var cycle = new WalkCycle(BodyRig.Human);
+
+// Per frame, with the position you are DRAWING at (presented or interpolated), not the committed one.
+cycle.Advance(drawnPosition, dt);
+WalkPose pose = cycle.Pose;
+
+// Per frame, the frames a draw hangs pieces off.
+var body = new BodyPose(drawnPosition, drawnYaw);
+Matrix4x4 bodyFrame  = BodyRig.Human.Body(body, pose);            // the legs compose inside this
+Matrix4x4 torsoFrame = BodyRig.Human.Torso(pose, bodyFrame);      // everything above the hips inside this
+Matrix4x4 thighLeft  = BodyRig.Limb(BodyRig.Human.LeftHip, pose.LeftLeg) * bodyFrame;
+Matrix4x4 shinLeft   = BodyRig.Human.Knee(pose.LeftKnee) * thighLeft;
+```
+
+`BodyPose` is the whole input: world metres and radians, a yaw of 0 facing engine +z, with the character's
+RIGHT side at engine -x and their LEFT at +x. That side convention is the half that inverts silently, so it is
+written down once on `BodyRig` and never guessed at a call site.
+
+**Two parent frames, and which piece hangs off which is the whole shape of a composition.** The legs compose
+inside `Body`. The torso, the head, both arms and whatever the hands hold compose inside `Torso`, which is that
+same body matrix with the breath's rise and tip laid over it. That is what keeps the feet planted while the
+chest moves. A forearm composes against its own upper arm's finished transform, not against the body, which is
+what makes a flex a hinge rather than a second swing from the shoulder.
+
+### The pose contract: `WalkPose` is positional and append-only
+
+`WalkPose` is 18 float channels in a fixed order, and **a new channel is APPENDED, never inserted**. A game
+builds poses of its own positionally, so an insertion silently re-points every one of them at the wrong number
+and nothing fails to compile. The order is the contract:
+
+| Channels | Written by |
+|---|---|
+| `LeftArm` `RightArm` `LeftLeg` `RightLeg` | any cycle, the four root swings |
+| `LeftElbow` `RightElbow` `LeftKnee` `RightKnee` | any cycle, the four flexions, never negative |
+| `Bob` `Lean` | a walk, and they carry the WHOLE body about HIP height |
+| `RightArmYaw` `RightWrist` | a stroke, the weapon shoulder's second axis and the held piece's tip |
+| `TorsoRise` `TorsoLean` | a breath, and they carry everything ABOVE the hips and nothing else |
+| `LeftArmYaw` `LeftWrist` | a guard pose, the off shoulder and the off hand's turn |
+| `RootPitch` `RootRoll` | air and water, and they turn the WHOLE rig about the point it stands on |
+
+The three pairs that move the body are not interchangeable, and picking the wrong one is the most common way
+to get a pose subtly wrong. `Bob` and `Lean` pivot at the hips and carry the feet with them, which a walk can
+afford because a walk is lifting its feet anyway. `TorsoRise` and `TorsoLean` pivot at the same height but
+carry only the upper body, which is what a standing breath needs: a breath on `Bob` and `Lean` pushed a
+person's soles 9 mm under the floor at the bottom of every exhale. `RootPitch` and `RootRoll` pivot at the
+ROOT, which only makes sense once the soles are not standing on anything.
+
+### Adding a pose of your own
+
+Jump, fall, land, swim, wade, strafe, backpedal, turn in place and slide are **game-side poses**. The package
+owns the channels and the walk, breath and gait cycles. It does not own your chain.
+
+A pose is a static class with `PoseAt(...)` and `Compose(in WalkPose, ..., float weight)`, and the ORDER poses
+are laid in lives in the game's own chain:
+
+```csharp
+public static class SwimStroke
+{
+    public static WalkPose PoseAt(float phase) => new WalkPose(
+        LeftArm: ..., RightArm: ..., LeftLeg: ..., RightLeg: ...,
+        RootPitch: 1.4f);        // lying out flat, which is what the root channels are for
+
+    // REPLACE what the arms were doing, or ADD a small displacement to it. A stroke is the first,
+    // a breath is the second. IdleBreath.Compose is the worked example of the adding kind.
+    public static WalkPose Compose(in WalkPose pose, in WalkPose stroke, float weight) => ...;
+}
+
+// The game's own chain, in the game's own order.
+WalkPose frame = cycle.Pose;
+if (inWater)   frame = SwimStroke.Compose(frame, SwimStroke.PoseAt(strokePhase), swimWeight);
+if (idle)      frame = IdleBreath.Compose(frame, IdleBreath.PoseAt(clock, bodyId, rig), idleWeight);
+if (swinging)  frame = MySwing.Compose(frame, MySwing.PoseAt(swingPhase), swingWeight);
+```
+
+### Driving a cycle with no ground under it
+
+`WalkCycle.Advance(position, dt)` derives phase from **horizontal** ground distance and discards y on purpose,
+because a metre of climb is not a metre of walk. That is what makes a run read as a run with no second set of
+numbers: a body moving twice as fast covers a stride in half the time and the legs turn over twice as quickly,
+for free. It also means a swim, a fall or a body treading water covers no ground and would stand frozen with a
+leg wherever it was.
+
+The explicit phase source is the second overload:
+
+```csharp
+cycle.Advance(phaseDelta: 2f * dt, dt, moving: true, running: false);   // two strokes a second, no ground
+cycle.Advance(phaseDelta: 0f, dt, moving: false);                       // falling: hold the legs, ease out
+```
+
+`moving` and `running` are the CALLER's to declare here, because `RunMetresPerSecond` is a ground speed and
+there is no ground. A caller that thinks in speed converts once with `metresPerSecond * dt / cycle.Stride`, and
+keeps the per-body scaling `Stride` already gives it.
+
+**One side effect worth knowing.** The phase overload forgets the last sampled position, exactly as
+`Teleport()` does, so the first ground-driven call after a swim does not read thirty metres as one frame of
+sprinting. Alternating the two overloads is safe with no extra call at the seam.
+
+### No tick counts, ever
+
+This has to serve a world that updates a handful of times a second and one that updates every frame, so every
+number in the package is **seconds or a normalized 0 to 1 phase**. There is no tick count in any signature and
+no assumption about update rate. A cadence is a `float` of seconds. A game that bakes its own update rate into
+a cadence keeps that arithmetic on its own side of the seam and hands over the seconds.
+
+### What stays in the game
+
+Creature proportions beyond the reference `BodyRig.Human`, the meshes and their piece order, named grip
+matrices, the skeleton composition that walks a rig's frames into one transform per mesh, and the pose-chain
+order. `BodyRig.Scaled(f)` and the `QuadrupedRig` object initializer are how a game declares its own bodies:
+every number in a rig is a length in metres, and none of them survives being shared between two sizes.
 
 ---
 

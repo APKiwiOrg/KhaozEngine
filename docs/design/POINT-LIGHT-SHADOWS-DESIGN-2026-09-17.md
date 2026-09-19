@@ -73,7 +73,7 @@ fanning through the doorway. In Ruinborne a fireball lights the far side of a pi
 
 ## What the build taught
 
-Eleven things the implementation settled or corrected, kept here because the decision is not readable off the
+Twelve things the implementation settled or corrected, kept here because the decision is not readable off the
 shipped code.
 
 1. **The pass stores the NEAREST surface with no face culling, so the whole acne budget sits on the bias
@@ -162,6 +162,20 @@ shipped code.
     of sets. The order is the cascade replacement's now: build the pair, bind the receivers to it, and commit
     (which retires the old one) only on a confirmed rebind. A refused bind disposes the new pair and the scene
     carries on shadowing at the layout it had, which is what an allocation refusal already did.
+
+12. **EVERY PROOF LIT OPEN SPACE, AND THE FIRST CONSUMER'S LAMPS ALL SAT INSIDE THEIR OWN FIXTURES** (#1010,
+    fixed in 19.3.0). Item 1 above records that the pass stores the nearest surface with `FaceCull.None`, and
+    read alongside it this was predictable: a wall lantern's light is the exact centre of a closed body a few
+    centimetres across, so the nearest surface in every direction is the lamp, every receiver past it compares
+    as occluded, and the lit lantern goes dark the moment it is given a shadow map. Nothing caught it because
+    every GPU case in this round stood its light in open space with a wall two metres away, which is the one
+    arrangement in which a fixture cannot be the nearest thing. The standard answer is a per-light NEAR RADIUS,
+    the counterpart of the far plane the light radius already is: `LightShadow.NearRadius` in metres, carried
+    in the per-face slice, discarded in all three caster fragments and folded into the static cache signature
+    beside the quantised position and radius, with an instance lying wholly inside it dropped on the CPU. The
+    lasting lesson is about the PROOFS rather than the feature: a shadow case whose caster is convenient to
+    place is a case that has chosen the easy geometry, and the consumer's own arrangement (a light inside a
+    model, a caster touching the receiver, a light under a floor) is what has to be in the suite.
 
 ## Proof
 

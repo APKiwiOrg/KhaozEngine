@@ -292,6 +292,10 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   `MaxStaticRebuildsPerFrame` (default `2`), `MaxDynamicLightsPerFrame` (default `4`, nearest-eye-first), and the
   radius-normalized `Bias`/`SlopeBias` (defaults `0.01`/`0.02`, clamped
   `0..MaxBias` via `ResolvedBias`/`ResolvedSlopeBias`).
+  A light placed INSIDE closed geometry, which is every lamp model, is fully shadowed by its own fixture unless
+  `LightShadow.NearRadius` clears it: set it past the fixture's farthest part from the flame and short of the nearest
+  surface that must still block, through `LightShadow.Static(key, nearRadius)`, `DynamicWithNearRadius(nearRadius)` or
+  `WithNearRadius(metres)`, and `0` (the default) is the pass exactly as it was.
   A `Dynamic` light has no identity across frames and its row lives for one frame, so a dynamic light whose map was
   not redrawn on a given frame renders UNSHADOWED for that frame rather than sampling an older one. Stay at or
   under the budget, raise it, or prefer `LightShadow.Static(key)` for anything that does not move.

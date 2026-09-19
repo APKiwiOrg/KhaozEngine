@@ -5,6 +5,37 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 19.3.0
+
+Point light shadows take a per-light NEAR RADIUS, so a lamp is no longer fully shadowed by its own fixture.
+
+The point shadow pass stores the nearest surface in every direction with no face culling, and a placed light
+sits INSIDE its own model: a wall lantern's flame is the exact centre of a closed body a few centimetres
+across, so the stored distance in every direction was the fixture at six to thirteen centimetres, every
+receiver past it compared as occluded, and the lamp lit nothing at all. It reached the first consumer whole
+because every GPU proof in 19.2.0 stood its light in open space, which is the one arrangement in which a
+fixture cannot be the nearest thing. No bias value fixes it: a bias tuned to clear a 6 cm fixture is a bias
+that has stopped resolving contact anywhere. Issue #1010.
+
+- **`LightShadow.NearRadius`**, in metres, is how much geometry around the bulb is the light's own fixture and
+  is left out of that light's map. It is an `init` property rather than a third positional component, so the
+  two-component deconstruction released in 19.2.0 still compiles, and the record's own equality picks it up.
+  `LightShadow.Static(long key, float nearRadius)`, `LightShadow.DynamicWithNearRadius(float nearRadius)` and
+  `shadow.WithNearRadius(float metres)` set it. A negative or non-finite value clamps to `0`.
+- **Size it past the fixture's farthest part from the flame and short of the nearest surface that must still
+  block**, such as the wall a lantern hangs on. `docs/USING-KHAOZENGINE.md` carries the rule, the worked sizing
+  and the samples under both **Dynamic point lights** and **Point light shadows**.
+- **The three caster fragments discard inside it** rather than storing, so a fixture the clearance only reaches
+  part way into (a lantern on a bracket, a lamp on a post) keeps casting from everything past it. The value
+  rides the per-face uniform slice, which had the room. An instance whose whole world sphere lies inside the
+  clearance is dropped on the CPU instead, so it never costs six faces of draws.
+- **It is part of the cached row's identity**, folded into the per-light signature beside the quantised
+  position and radius at millimetre resolution, so changing it on the same `Static` key dirties that row and
+  redraws it under the ordinary rebuild budget.
+- **`0` is the default and is the pass exactly as it was**, so every scene that lights open space renders as it
+  did and there is nothing to adopt. It is not a second near plane either: the pass keeps its own 5 cm
+  projection near plane whatever this says.
+
 ## 19.2.0
 
 The eighteen affix content types, the item generator, the crafting framework and the integer stat evaluator.

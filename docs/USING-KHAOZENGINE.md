@@ -3084,13 +3084,47 @@ scene.Draw(crate, transform, Color.White, Material.None, dissolve: fadeTimer, ed
 
   ```csharp
   // A placed light: keyed on the object id the world already has for this lantern, so the cached map
-  // survives across frames and across the light leaving and re-entering the queue.
+  // survives across frames and across the light leaving and re-entering the queue. The flame sits INSIDE
+  // the lantern, so the near radius clears the fixture: see the rule right below.
   scene.AddLight(lantern.WorldPos, LanternWarm, radius: 7f, intensity: 2.2f,
-                 LightShadow.Static(lantern.ObjectId));
+                 LightShadow.Static(lantern.ObjectId, nearRadius: 0.2f));
 
   // An effect light: it moves every frame, so a cache would be stale the frame after it was taken.
   scene.AddLight(fireball.WorldPos, FireOrange, radius: 6f, intensity: 3f, LightShadow.Dynamic);
   ```
+
+  **A LIGHT INSIDE CLOSED GEOMETRY IS FULLY SHADOWED BY ITS OWN FIXTURE, and that is every lamp model** (issue
+  #1010). The pass stores the NEAREST surface in every direction with no face culling, so a flame sitting inside
+  its own lantern stores the lantern: six to thirteen centimetres in every direction, every receiver past it
+  compares as occluded, and the lamp lights nothing at all. It is not a bias problem and no bias value fixes it.
+  `LightShadow.NearRadius` is the answer: geometry closer to the bulb than that many METRES is left out of that
+  light's map, through `LightShadow.Static(key, nearRadius)`, `LightShadow.DynamicWithNearRadius(nearRadius)` or
+  `shadow.WithNearRadius(metres)` on a request you already hold. The default is `0`, which is the pass exactly as
+  it was, so nothing that lights open space changes.
+
+  SIZE IT between two distances: past the fixture's farthest part from the flame, and short of the nearest
+  surface that must still block. For a wall lantern whose body is 12 by 18 by 12 cm around the flame and which
+  hangs 10 cm off the wall it is mounted on, the body reaches about 12 cm at its corners and the wall stands at
+  10 cm, so there is no gap and the FIXTURE is what has to give: cut the model's rear panel, move the flame
+  forward in the body, or accept a clearance that also clears the wall for that lamp. For the ordinary case of a
+  lantern on a bracket or a lamp on a post, a clearance a couple of centimetres past the body is right, and the
+  bracket and the post below still cast because only the geometry inside the clearance stops writing.
+
+  ```csharp
+  // The lantern body reaches 12 cm from the flame and the nearest thing that must still block (the floor,
+  // the post below) is much further off, so 20 cm clears the fixture and nothing else.
+  scene.AddLight(lantern.FlamePos, LanternWarm, radius: 7f, intensity: 2.2f,
+                 LightShadow.Static(lantern.ObjectId, nearRadius: 0.2f));
+
+  // A torch a character carries: the same rule, on the mode that redraws every frame.
+  scene.AddLight(torch.FlamePos, FireOrange, radius: 5f, intensity: 2f,
+                 LightShadow.DynamicWithNearRadius(0.15f));
+  ```
+
+  It is part of the request's VALUE, so it is part of a cached map's identity: changing it on the same key
+  redraws that row at the next frame's rebuild budget. A negative or non-finite value clamps to `0` rather than
+  throwing, because a light is presentation. It is not a second near plane either: the pass keeps its own 5 cm
+  projection near plane whatever this says.
 
   A good `key` is STABLE across frames and UNIQUE per light. The world's own id for the placed object is the
   right answer (a tile-world object id, an entity id, a prefab instance id). A loop index, an array position or
@@ -3544,6 +3578,19 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
         character standing between a shadowed light and a wall throws no shadow from that light. It is a
         follow-up rather than an oversight: a cached map that had baked a body into it would be wrong the
         following frame.
+      - **A LAMP IS SHADOWED BY ITSELF UNLESS YOU CLEAR ITS FIXTURE** (issue #1010). The pass stores the nearest
+        surface in every direction, and a placed light sits inside its own lantern, post head or forge hood, so
+        with nothing cleared the nearest surface is a few centimetres of the lamp itself and the light reaches
+        nothing. `LightShadow.NearRadius`, in metres, is what leaves that geometry out of the light's own map:
+        `LightShadow.Static(key, nearRadius)`, `LightShadow.DynamicWithNearRadius(nearRadius)` and
+        `shadow.WithNearRadius(metres)` set it, `0` is the default and is byte-identical to the pass before it
+        existed, and a negative or non-finite value clamps to `0`. Size it past the fixture's farthest part from
+        the flame and short of the nearest surface that must still block, and see **Dynamic point lights** above
+        for the worked sizing and the samples. Two things it is not: it is not a second near plane (the pass keeps
+        its own 5 cm projection near plane), and it is not a way of turning the shadow off, since everything past
+        it casts exactly as it did. It is part of the request's value, so raising it on a `Static` key dirties
+        that row and redraws it under the ordinary rebuild budget, and an instance lying WHOLLY inside it is
+        dropped before it is drawn rather than discarded a fragment at a time.
       - **The bias knobs, and when to touch them.** `Bias` (default `0.01`) and `SlopeBias` (default `0.02`) are
         in RADIUS-NORMALIZED units, because the atlas stores distance over radius rather than projected depth,
         and both clamp into `0`..`MaxBias` (`0.25`) through `ResolvedBias` and `ResolvedSlopeBias`. The floor is
@@ -6509,7 +6556,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="19.2.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="19.3.0" />
 ```
 
 ```csharp
@@ -12364,7 +12411,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="19.2.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="19.3.0" />
 ```
 
 ```csharp
@@ -12400,7 +12447,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="19.2.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="19.3.0" />
 ```
 
 ```csharp
@@ -12642,7 +12689,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="19.2.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="19.3.0" />
 ```
 
 ```csharp
@@ -15558,7 +15605,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="19.2.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="19.3.0" />
 </ItemGroup>
 ```
 

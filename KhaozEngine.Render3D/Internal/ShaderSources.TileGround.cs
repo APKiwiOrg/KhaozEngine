@@ -57,6 +57,8 @@ layout(set=0, binding=0) uniform U {
     vec4 PointShadowParams[16];  // per point light: x = atlas row or -1 for none, y = bias, z = slope bias, w unused
     vec4 PointShadowAtlas;       // xy = one atlas texel in UV, z = rows (lights), w = face columns (6)
     vec4 PointShadowFilter;      // x = filter mode (0 hard, 1 soft), y = light size m, z = max penumbra texels, w = face resolution
+    vec4 ClusterDepth;            // x=near, y=far, z=log(far/near), w=1 perspective, 0 orthographic, -1 invalid
+    vec4 ClusterCamera;           // xyz = camera forward in the render frame
 };
 layout(location=0) in vec3 Position;
 layout(location=1) in vec3 Normal;
@@ -131,7 +133,10 @@ layout(set=0, binding=0) uniform U {
     vec4 PointShadowParams[16];  // per point light: x = atlas row or -1 for none, y = bias, z = slope bias, w unused
     vec4 PointShadowAtlas;       // xy = one atlas texel in UV, z = rows (lights), w = face columns (6)
     vec4 PointShadowFilter;      // x = filter mode (0 hard, 1 soft), y = light size m, z = max penumbra texels, w = face resolution
+    vec4 ClusterDepth;            // x=near, y=far, z=log(far/near), w=1 perspective, 0 orthographic, -1 invalid
+    vec4 ClusterCamera;           // xyz = camera forward in the render frame
 };
+" + PointLightBufferGlsl + PointLightClusterBufferGlsl + @"
 // The material's own uniforms, written ONCE at load and never re-uploaded. Declared here and NOT in
 // TileGroundVert, because the vertex stage reads none of them (TileGroundMaterialConfig.BuildParams is the C#
 // side of this block, MaxMaterials + 1 vec4).

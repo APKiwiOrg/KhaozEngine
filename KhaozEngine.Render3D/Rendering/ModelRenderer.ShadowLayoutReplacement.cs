@@ -66,21 +66,33 @@ internal sealed partial class ModelRenderer
 
     void AddReplacement(IGpuResourceSet oldSet, IGpuTexture shadowTexture, IGpuTexture pointShadowTexture,
         Dictionary<IGpuResourceSet, IGpuResourceSet> replacements,
+        Dictionary<IGpuResourceSet, ShadowSamplingBinding> replacementBindings) =>
+        AddReplacement(oldSet, shadowTexture, pointShadowTexture, _pointLightBuffer,
+            replacements, replacementBindings);
+
+    void AddReplacement(IGpuResourceSet oldSet, IGpuTexture shadowTexture, IGpuTexture pointShadowTexture,
+        IGpuBuffer pointLightBuffer, Dictionary<IGpuResourceSet, IGpuResourceSet> replacements,
         Dictionary<IGpuResourceSet, ShadowSamplingBinding> replacementBindings)
     {
         if (replacements.ContainsKey(oldSet)) return;
         if (!_shadowSamplingBindings.TryGetValue(oldSet, out ShadowSamplingBinding? binding))
             throw new InvalidOperationException("a live shadow-sampling set has no rebuild description.");
-        IGpuResourceSet replacement = BuildShadowSamplingSet(binding, shadowTexture, pointShadowTexture);
+        IGpuResourceSet replacement = BuildShadowSamplingSet(
+            binding, shadowTexture, pointShadowTexture, pointLightBuffer);
         replacements.Add(oldSet, replacement);
         replacementBindings.Add(replacement, binding);
     }
 
     IGpuResourceSet CreateShadowSamplingSet(IGpuResourceLayout layout, IGpuTexture shadowTexture,
-        params IGpuBindableResource[] materialResources)
+        params IGpuBindableResource[] materialResources) =>
+        CreateShadowSamplingSet(layout, shadowTexture, includesPointLights: false, materialResources);
+
+    IGpuResourceSet CreateShadowSamplingSet(IGpuResourceLayout layout, IGpuTexture shadowTexture,
+        bool includesPointLights, params IGpuBindableResource[] materialResources)
     {
-        var binding = new ShadowSamplingBinding(layout, materialResources);
-        IGpuResourceSet set = BuildShadowSamplingSet(binding, shadowTexture, _pointShadowTexture);
+        var binding = new ShadowSamplingBinding(layout, materialResources, includesPointLights);
+        IGpuResourceSet set = BuildShadowSamplingSet(
+            binding, shadowTexture, _pointShadowTexture, _pointLightBuffer);
         _shadowSamplingBindings.Add(set, binding);
         return set;
     }
@@ -99,10 +111,21 @@ internal sealed partial class ModelRenderer
     // The three trailing elements EVERY receiver family's layout ends in, in declaration order: the cascade
     // atlas, the sampler both atlases are read through, and the point-light atlas (or its 1x1 default).
     IGpuResourceSet BuildShadowSamplingSet(ShadowSamplingBinding binding, IGpuTexture shadowTexture,
-        IGpuTexture pointShadowTexture)
+        IGpuTexture pointShadowTexture, IGpuBuffer pointLightBuffer)
     {
-        var resources = new IGpuBindableResource[binding.MaterialResources.Length + 3];
-        binding.MaterialResources.CopyTo(resources, 0);
+        int pointLightOffset = binding.IncludesPointLights ? 2 : 0;
+        var resources = new IGpuBindableResource[binding.MaterialResources.Length + pointLightOffset + 3];
+        if (binding.IncludesPointLights)
+        {
+            resources[0] = binding.MaterialResources[0];
+            resources[1] = pointLightBuffer;
+            resources[2] = _pointLightClusterBuffer;
+            binding.MaterialResources.AsSpan(1).CopyTo(resources.AsSpan(3));
+        }
+        else
+        {
+            binding.MaterialResources.CopyTo(resources, 0);
+        }
         resources[^3] = shadowTexture;
         resources[^2] = _shadowMap.ShadowSampler;
         resources[^1] = pointShadowTexture;
@@ -111,13 +134,16 @@ internal sealed partial class ModelRenderer
 
     sealed class ShadowSamplingBinding
     {
-        internal ShadowSamplingBinding(IGpuResourceLayout layout, IGpuBindableResource[] materialResources)
+        internal ShadowSamplingBinding(IGpuResourceLayout layout, IGpuBindableResource[] materialResources,
+            bool includesPointLights)
         {
             Layout = layout;
             MaterialResources = materialResources;
+            IncludesPointLights = includesPointLights;
         }
 
         internal IGpuResourceLayout Layout { get; }
         internal IGpuBindableResource[] MaterialResources { get; }
+        internal bool IncludesPointLights { get; }
     }
 }

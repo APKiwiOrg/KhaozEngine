@@ -68,8 +68,12 @@ namespace KhaozEngine.Render3D.Rendering
             ArgumentNullException.ThrowIfNull(gd);
             int res = NormalizeFaceResolution(faceResolution);
             int n = NormalizeRows(rows);
-            uint w = (uint)(res * PointShadowMath.FaceCount);
-            uint h = (uint)(res * n);
+            long width = (long)res * PointShadowMath.FaceCount;
+            long height = (long)res * n;
+            if (width > PointShadowSettings.MaxAtlasExtent || height > PointShadowSettings.MaxAtlasExtent)
+                return null;
+            uint w = (uint)width;
+            uint h = (uint)height;
             IGpuResourceFactory f = gd.Factory;
             IGpuTexture? texture = null;
             IGpuTexture? depthStencil = null;

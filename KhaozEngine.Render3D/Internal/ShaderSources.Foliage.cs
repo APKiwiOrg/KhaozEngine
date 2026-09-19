@@ -15,6 +15,7 @@ layout(set=0, binding=0) uniform U {
     // so the two stages share this block and a vertex declaring it 272 bytes short is the two disagreeing about
     // the size of one buffer. Same trap the render origin left when it was appended.
     vec4 PointShadowParams[16]; vec4 PointShadowAtlas; vec4 PointShadowFilter;
+    vec4 ClusterDepth; vec4 ClusterCamera;
 };
 layout(set=1, binding=0) uniform Foliage {
     vec4 FocusRadius;

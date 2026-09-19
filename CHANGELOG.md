@@ -7,6 +7,19 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 19.5.0
 
+Point lights no longer disappear when a consuming game has more than sixteen nearby lamps.
+
+- Lit receivers use full 3D clustered forward lighting over a growable structured point-light buffer.
+  Perspective clusters use logarithmic depth slices and orthographic clusters use linear slices. Overflow
+  falls back to the full list rather than dropping a contributing light. Non-affecting radii are rejected before shading.
+  The old sixteen-entry frame arrays remain compatibility padding, not a camera-dependent upload budget.
+- Static point-shadow rows follow stable light keys and expand for the complete static set. Dynamic effects
+  keep a separate stable reserve. Atlas resolution falls before static capacity, with explicit refusal when
+  the required layout cannot be supported.
+- GPU regressions compare late-queued lights, queue order and camera poses against single-light controls.
+- `Scene3D.PointLightClusters` exposes projection, reference and overflow diagnostics. Invalid light positions
+  and non-positive or non-finite radii are ignored consistently before submission.
+
 A published content version's pack can be rebuilt from the authoring store, so a server whose pack root does
 not outlive the process can boot (#1013).
 

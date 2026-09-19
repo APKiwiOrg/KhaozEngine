@@ -283,15 +283,24 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   `LightShadow.None` (the default, and what the four-argument overload forwards, so a scene queuing none of the others
   is byte-identical), `LightShadow.Static(key)` for a CACHED map re-rendered only when the light moves, its radius
   changes or the rigid casters inside its radius change, and `LightShadow.Dynamic` for one rebuilt every frame. The
-  atlas is one R32Float texture of six face columns by `MaxShadowedLights` rows storing LINEAR distance over radius,
+  atlas is one R32Float texture of six face columns and enough rows for the static set plus its dynamic reserve,
+  storing LINEAR distance over radius,
   so the receiver picks a cube face analytically and needs no matrices. Nothing is allocated until a frame has carried
   a request, and the allocation and every rebind happen at the FRAME BOUNDARY, so the first frame to ask renders
   unshadowed and the frame after it carries the map. Knobs on `ShadowSettings.PointShadows` (a `PointShadowSettings`):
   `Enabled`, `FaceResolution` (default `256`, `64..1024` via `ResolvedFaceResolution`), `MaxShadowedLights` (default
-  `8`, `1..16` via `ResolvedMaxLights`, and requests past it fall back to unshadowed nearest-eye-first),
+  `8`, `1..256` via `ResolvedMaxLights`, the configured capacity floor and dynamic-effect budget),
   `MaxStaticRebuildsPerFrame` (default `2`), `MaxDynamicLightsPerFrame` (default `4`, nearest-eye-first), and the
   radius-normalized `Bias`/`SlopeBias` (defaults `0.01`/`0.02`, clamped
   `0..MaxBias` via `ResolvedBias`/`ResolvedSlopeBias`).
+  Every submitted point light reaches a growable shared structured buffer. CPU-built conservative 3D frustum
+  clusters select per-fragment indices in the common lighting shader. Perspective depth is logarithmic and
+  orthographic depth is linear. An overflowing cluster evaluates the full list, so capacity pressure does not
+  remove light. The shader rejects lights outside their radius before shading, and the host no longer picks
+  a camera-nearest subset. Keyed static shadows
+  reserve rows independently of camera distance. Atlas resolution falls before static capacity when a larger
+  set needs space, and an unsupported layout remains visible as an allocation refusal. Dynamic effects cannot
+  evict static rows merely because the camera moves closer to them.
   A light placed INSIDE closed geometry, which is every lamp model, is fully shadowed by its own fixture unless
   `LightShadow.NearRadius` clears it: set it past the fixture's farthest part from the flame and short of the nearest
   surface that must still block, through `LightShadow.Static(key, nearRadius)`, `DynamicWithNearRadius(nearRadius)` or

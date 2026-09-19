@@ -5,7 +5,7 @@ namespace KhaozEngine.Tests.Render3D;
 
 /// <summary>
 /// Pure coverage of <see cref="PointShadowSettings"/>: the defaults a game inherits without asking, the clamps that
-/// keep a menu value from over-running the atlas or the fixed-size UBO arrays, the memory arithmetic a profile
+/// keep a menu value from over-running the atlas, the memory arithmetic a profile
 /// screen quotes, and the deep copy. Nothing here touches a device, because none of it should need one.
 /// </summary>
 public sealed class PointShadowSettingsTests
@@ -89,7 +89,7 @@ public sealed class PointShadowSettingsTests
     [Theory]
     [InlineData(0, PointShadowSettings.MinLights)]
     [InlineData(-1, PointShadowSettings.MinLights)]
-    [InlineData(99, PointShadowSettings.MaxLights)]
+    [InlineData(999, PointShadowSettings.MaxLights)]
     [InlineData(8, 8)]
     public void ResolvedMaxLights_Clamps(int requested, int expected)
     {
@@ -134,10 +134,10 @@ public sealed class PointShadowSettingsTests
     }
 
     [Fact]
-    public void MaxLights_IsTheUboPointLightArraySize()
+    public void MaxLights_IsTheLargestAtlasAtTheMinimumFaceResolution()
     {
-        Assert.Equal(Scene3D.MaxPointLights, PointShadowSettings.MaxLights);
-        Assert.Equal(16, PointShadowSettings.MaxLights);
+        Assert.Equal(256, PointShadowSettings.MaxLights);
+        Assert.NotEqual(Scene3D.MaxPointLights, PointShadowSettings.MaxLights);
     }
 
     [Fact]
@@ -153,10 +153,10 @@ public sealed class PointShadowSettingsTests
     [Fact]
     public void AtlasBytes_ReadsTheClampedValues()
     {
-        var s = new PointShadowSettings { FaceResolution = 4096, MaxShadowedLights = 99 };
+        var s = new PointShadowSettings { FaceResolution = 4096, MaxShadowedLights = 999 };
 
-        Assert.Equal(6L * PointShadowSettings.MaxFaceResolution * PointShadowSettings.MaxLights
-            * PointShadowSettings.MaxFaceResolution * 9, s.AtlasBytes);
+        int face = PointShadowSettings.MaxAtlasExtent / PointShadowSettings.MaxLights;
+        Assert.Equal(6L * face * PointShadowSettings.MaxLights * face * 9, s.AtlasBytes);
     }
 
     // Low turns the whole pass off, so its filter is what a game that turned point shadows back ON without

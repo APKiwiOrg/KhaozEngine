@@ -3070,9 +3070,20 @@ scene.Draw(crate, transform, Color.White, Material.None, dissolve: fadeTimer, ed
 - Dynamic point lights: `scene.AddLight(worldPos, color, radius, intensity)` queues a per-frame
   effect light (muzzle flashes, explosions, thrusters) that adds diffuse + cheap specular to the lit mesh pass,
   on top of the global key+fill+ambient term, with a smooth falloff to zero at `radius`. Cleared each `Begin()`
-  like the draw queue. Only the first `Scene3D.MaxPointLights` (16) queued in a frame are uploaded - the host
-  picks the N nearest to the action so a dense scene stays within the GPU budget. Zero lights renders
+  like the draw queue. Submit the complete resident light list. A growable structured buffer carries every
+  queued light to the shared receiver shader. Full 3D clusters select the conservative light list for each
+  fragment, with logarithmic depth slices for perspective cameras and linear slices for orthographic cameras.
+  A cluster that exceeds its index capacity falls back to the complete list, preserving illumination.
+  The shader rejects non-affecting radii before shading. Do not select
+  a fixed number by camera distance: orbiting the camera would change illumination on stationary surfaces.
+  `Scene3D.MaxPointLights` remains a legacy compatibility constant, not the active upload ceiling. Zero lights renders
   byte-identical to the key+fill path. Presentation only: never feed a light back into simulation/collision.
+  Non-finite positions and non-positive or non-finite radii are ignored at submission, consistently across
+  clustered and full-list fallback shading.
+
+  `scene.PointLightClusters` reports submitted lights, cluster references, overflowing clusters, the projection
+  kind and its near/far depths. `IsValid` distinguishes real cluster geometry from invalid-camera fallback.
+  `HasFallbackClusters` also includes local overflow. These are rendering diagnostics, not simulation state.
 
   `scene.AddLight(worldPos, color, radius, intensity, LightShadow)` is the five-argument overload, and the extra
   argument asks for an omnidirectional shadow map so the light stops at walls instead of pooling through them.
@@ -3539,11 +3550,12 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
         `true`) is the master switch, and `false` renders every point light unshadowed whatever each one asked
         for and releases the atlas. `FaceResolution` (default `256`) is pixels per axis of ONE cube face,
         clamped into `MinFaceResolution`..`MaxFaceResolution` (`64`..`1024`) by `ResolvedFaceResolution`.
-        `MaxShadowedLights` (default `8`) is how many lights may carry a map at once and is also the atlas row
-        count, clamped into `MinLights`..`MaxLights` (`1`..`16`, the fixed point-light array size) by
-        `ResolvedMaxLights`. Requests past it fall back to unshadowed, nearest to the eye first. So when more
-        placed lights ask than there are rows the nearest ones win, and a light that stays inside the budget
-        keeps its cached map while the ones around it come and go.
+        `MaxShadowedLights` (default `8`) supplies the configured capacity floor and dynamic-effect budget,
+        clamped into `MinLights`..`MaxLights` (`1`..`256`) by `ResolvedMaxLights`. Static requests reserve their
+        own keyed rows, independent of camera distance. A stable dynamic reserve avoids reallocating the atlas
+        when an effect appears. The engine grows the atlas for the static set and lowers face resolution before
+        discarding static capacity. A request beyond the conservative atlas extent is reported as refused,
+        rather than selecting different placed lamps as the camera moves.
       - **`Filter` picks the edge, and `Soft` is the default.** `PointShadowFilter.Soft` is a contact-hardening
         filter: a short blocker search reads how far the occluder stands in front of the receiver and widens the
         kernel in proportion, so a shadow is crisp where it touches the thing that casts it (the door frame) and
@@ -3583,15 +3595,16 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
         dynamic lights alight AT ONCE at or under the budget, raise `MaxDynamicLightsPerFrame` if the scene
         genuinely needs more (and pay six faces a frame for each), and use `LightShadow.Static(key)` for
         anything that does not move.
-      - **`AtlasBytes` is what the atlas costs once it exists, and it is allocated at a FRAME BOUNDARY.** Nothing
+      - **`AtlasBytes` estimates the configured floor, and allocation happens at a FRAME BOUNDARY.** Nothing
         is allocated until a frame has actually carried a request, so a game that never asks for a point shadow
         pays no memory for any of these numbers. The allocation and every rebind then happen at the next frame
         boundary rather than inside the frame that asked, beside the cascade atlas's own pending layout, so the
-        first frame carrying a request renders unshadowed and the frame after it carries the map. That is one
-        frame, once. `PointShadowSettings.AtlasBytes` reports the resolved layout at 4 bytes of `R32Float` colour
+        first frame carrying a request renders unshadowed and subsequent frames populate the maps under the
+        rebuild budgets. `PointShadowSettings.AtlasBytes` reports the configured floor at 4 bytes of `R32Float` colour
         plus 5 of `D32FloatS8UInt` depth per texel: `28,311,552` bytes (27 MiB) at the defaults and `95,551,488`
         bytes (about 91 MiB) at `384` by `12`. Read it into a settings screen the way `ShadowMapResolution`'s
-        cascade cost is read.
+        cascade cost is read. Static expansion may require more rows, while extent or allocation limits may
+        reduce face resolution. Use `scene.ResolvedPointShadows` for the actual live dimensions and refusal state.
       - **The three detail profiles carry it.** `ShadowSettings.ForDetail(ShadowMapDetail.Low)` sets
         `Enabled = false` (a whole second shadow pass is the first thing a low-end profile should stop paying)
         and `Filter = Hard` with it, so a game that turns point shadows back on over a low-end profile inherits
@@ -3659,11 +3672,10 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
         first for acne on surfaces the light grazes, then `Bias` for acne facing the light, and lower whichever
         you raised if a shadow detaches from the foot of its caster. Raising `FaceResolution` is the other
         answer to acne and costs memory rather than contact.
-      - **Cull your own lights anyway.** The engine uploads only the first `Scene3D.MaxPointLights` (16) lights
-        queued in a frame, and the shadow budget then selects from within that 16. So a scene that queues fifty
-        lights and leaves the choice to the engine gets whichever sixteen it happened to queue first, shadowed
-        or not. Keep doing what the unshadowed light budget already asked for: pick the nearest few to the
-        camera or the action each frame, and queue those.
+      - **Submit resident lights consistently.** Use stable author keys for static shadows and queue the
+        complete resident light list. Spatial residency may discard lights whose radius cannot affect the
+        rendered world, but a camera-nearest count cutoff makes stationary surfaces change brightness during
+        camera motion. Dynamic shadow rendering remains budgeted separately from base illumination.
 - Edge outline: `Post.Outline` (off by default, opt-in per consumer) draws a depth/normal toon outline. `OutlineColor`,
   `OutlineDepthThreshold` (depth-discontinuity sensitivity), and `OutlineNormalThreshold` (interior-crease
   sensitivity from the geometric normal) tune it. The outline is perspective-correct: under a

@@ -12,7 +12,7 @@ namespace KhaozEngine.Tests.Gpu
     /// block's 272-byte point tail and calls <c>samplePointShadow</c>, so the compiled shaders all moved, and this
     /// is what says the PIXELS did not.
     /// <para>
-    /// The gate being asserted is one branch: <c>PointShadowParams[i].x >= 0.0</c>. Every light without a slot
+    /// The gate being asserted is one branch: <c>pointLight.ShadowParams.x >= 0.0</c>. Every light without a slot
     /// reads -1 there, so the sample, the texture read and the multiply are all skipped and the accumulation is
     /// the pre-shadow arithmetic. Three renders of the same two-point-light scene are compared BYTE for byte
     /// rather than within a tolerance, because a skipped branch is not an approximation.

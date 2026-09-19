@@ -18,8 +18,7 @@ namespace KhaozEngine.Render3D.Rendering
     internal sealed partial class ModelRenderer
     {
         /// <summary>Upload the per-frame uniforms once per frame, before the instanced draws. <paramref name="lights"/>
-        /// is the host's per-frame point-light list; it is clamped to <see cref="MaxPointLights"/> (the host is
-        /// responsible for picking the N nearest) and the active count is written into <c>Params.y</c>. An empty
+        /// is the host's complete per-frame point-light list and its count is written into <c>Params.y</c>. An empty
         /// span leaves the shader's point-light loop unentered, so the render is bit-identical to the key+fill path.
         /// <para>
         /// <paramref name="viewProj"/>, <paramref name="cameraPos"/> and the light positions are all expected in the
@@ -32,15 +31,17 @@ namespace KhaozEngine.Render3D.Rendering
             PixelPostProcessSettings s, ReadOnlySpan<PointLightData> lights, Vector3 renderOrigin = default)
         {
             int count = BuildLightArrays(lights, _lightPosRadius, _lightColorIntensity, renderOrigin);
+            UploadPointLights(cl, lights, renderOrigin);
             _renderOrigin = new Vector4(renderOrigin, 0f);
 
             // Clip-space-Y correction is derived from the live backend (GpuClip), not baked for Metal: it is the
             // identity on Metal/D3D (byte-identical render) and flips clip-Y on inverted-Y backends (Vulkan).
             // Applied only to the GPU-uploaded matrix; IsoCamera3D.ScreenToGround picking keeps the raw
             // Camera.ViewProjection, so render and picking stay consistent (an earlier unconditional flip broke both).
+            Matrix4x4 correctedViewProjection = GpuClip.Correct(viewProj, _gd.Capabilities);
             _frame = new FrameUbo
             {
-                ViewProj = GpuClip.Correct(viewProj, _gd.Capabilities),
+                ViewProj = correctedViewProjection,
                 Dir = new Vector4(Vector3.Normalize(s.LightDirection), 0f),
                 Color = s.LightColor,
                 Ambient = s.AmbientColor,
@@ -106,8 +107,8 @@ namespace KhaozEngine.Render3D.Rendering
         // It used to go up as five writes (header, both light arrays, shadow tail, render origin). They tile the
         // block exactly - 0..176, 176..432, 432..688, 688..992, 992..1008 - so one write of the same bytes at the
         // same base is byte-identical, and every backend records four fewer commands per destination. The
-        // point-shadow tail (1008..1296) was appended AFTER that consolidation and has never been a write of its
-        // own, which is the reason it went on the end rather than beside the light arrays it indexes with.
+        // point-shadow tail (1008..1296) and cluster tail (1296..1328) were appended AFTER that consolidation and
+        // have never been writes of their own.
         //
         // On D3D11 it is not a micro-optimization, it is the difference between two code paths. Veldrid's
         // D3D11CommandList.UpdateBufferCore sent a PARTIAL write to a non-Dynamic UniformBuffer down the staging
@@ -126,7 +127,7 @@ namespace KhaozEngine.Render3D.Rendering
         // The first five offsets are the same constants the five writes used, so those bytes are the same bytes.
         // PointShadowParams is MaxPointLights vec4s, which is LightArrayBytes by the same definition the two light
         // arrays use, so PointShadowAtlas lands one array past the tail's base and PointShadowFilter one vec4
-        // after that, at the very end of the block.
+        // after that. ClusterDepth and ClusterCamera occupy the appended final 32 bytes.
         void PackFrameImage()
         {
             Span<byte> img = _frameImage;
@@ -138,6 +139,8 @@ namespace KhaozEngine.Render3D.Rendering
             MemoryMarshal.AsBytes<Vector4>(_pointShadowParams).CopyTo(img.Slice((int)PointShadowTailOffset));
             MemoryMarshal.Write(img.Slice((int)(PointShadowTailOffset + LightArrayBytes)), in _pointShadowAtlas);
             MemoryMarshal.Write(img.Slice((int)(PointShadowTailOffset + LightArrayBytes + 16)), in _pointShadowFilter);
+            MemoryMarshal.Write(img.Slice((int)ClusterTailOffset), in _clusterDepth);
+            MemoryMarshal.Write(img.Slice((int)(ClusterTailOffset + 16)), in _clusterCamera);
             _frameImageDirty = false;
         }
 
@@ -167,31 +170,31 @@ namespace KhaozEngine.Render3D.Rendering
         /// pipeline at the shared buffer instead.</summary>
         /// <remarks>ONE upload of the whole <see cref="UboBytes"/> block (header, both full fixed-size point-light
         /// arrays so a previous frame's lights never leak past the active count, the shadow tail which is always
-        /// written so the Off render stays byte-stable, then the render origin). See <see cref="_frameImage"/> for
+        /// written so the Off render stays byte-stable, then the render origin and receiver tails). See
+        /// <see cref="_frameImage"/> for
         /// why this is a single write rather than five.</remarks>
         public void WriteFrameUniformsTo(IGpuCommandList cl, IGpuBuffer dst, uint baseOffset)
             => cl.UpdateBuffer(dst, baseOffset, FrameImage);
 
-        /// <summary>Pure, headless-testable packing of the host light list into the two fixed-size UBO arrays:
-        /// copies up to <see cref="MaxPointLights"/> lights (extras are dropped - the host selects the N nearest),
-        /// zero-fills the remaining tail, and returns the active count. Both output arrays must be length
-        /// <see cref="MaxPointLights"/>.</summary>
+        /// <summary>Pure packing of the first sixteen submitted lights into the legacy fixed-size UBO arrays.
+        /// The arrays remain as compatibility padding and are not read by receiver shaders. Returns the complete
+        /// submitted count and zero-fills unused compatibility entries.</summary>
         internal static int BuildLightArrays(ReadOnlySpan<PointLightData> lights, Vector4[] posRadius,
             Vector4[] colorIntensity, Vector3 renderOrigin = default)
         {
-            int count = Math.Min(lights.Length, MaxPointLights);
+            int mirrored = Math.Min(lights.Length, MaxPointLights);
             var originXyz = new Vector4(renderOrigin, 0f);   // the radius (w) is a distance and is frame-invariant
-            for (int i = 0; i < count; i++)
+            for (int i = 0; i < mirrored; i++)
             {
                 posRadius[i] = lights[i].PosRadius - originXyz;
                 colorIntensity[i] = lights[i].ColorIntensity;
             }
-            for (int i = count; i < MaxPointLights; i++)
+            for (int i = mirrored; i < MaxPointLights; i++)
             {
                 posRadius[i] = Vector4.Zero;
                 colorIntensity[i] = Vector4.Zero;
             }
-            return count;
+            return lights.Length;
         }
     }
 }

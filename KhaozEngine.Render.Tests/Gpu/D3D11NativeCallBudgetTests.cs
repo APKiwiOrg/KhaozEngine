@@ -204,8 +204,8 @@ namespace KhaozEngine.Tests.Gpu
         /// wrong constants. So it is asserted as the exact line and its position.
         /// <para>
         /// ALL THREE BASES ARE PINNED, not just the constant buffer's, because the OUTGOING pipeline's model
-        /// layout contributes one constant buffer, four shader resources and two samplers, so the drained set
-        /// lands at <c>b1 t4 s2</c>. Under the tail pipeline it would be <c>b0 t0 s0</c>, and in fact it would not
+        /// layout contributes one constant buffer, seven shader resources and two samplers, so the drained set
+        /// lands at <c>b1 t7 s2</c>. Under the tail pipeline it would be <c>b0 t0 s0</c>, and in fact it would not
         /// bind at all: the tail pipeline declares one layout, so slot one does not exist under it and a drain
         /// taken after the switch throws.
         /// </para>
@@ -226,7 +226,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(
                 $"VSSetConstantBuffers1(1,1,{harness.Log.Id(scene.PerDrawBuffer)}@16+16)",
                 harness.Log.Trace[0]);
-            Assert.StartsWith("PSSetShaderResources(4,1,", harness.Log.Trace[1], StringComparison.Ordinal);
+            Assert.StartsWith("PSSetShaderResources(7,1,", harness.Log.Trace[1], StringComparison.Ordinal);
             Assert.StartsWith("PSSetSamplers(2,1,", harness.Log.Trace[2], StringComparison.Ordinal);
 
             // Those three, then the incoming pipeline's state calls, and nothing else: the wipe that follows the

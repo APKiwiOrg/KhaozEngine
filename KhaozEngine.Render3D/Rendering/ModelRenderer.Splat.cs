@@ -39,8 +39,11 @@ namespace KhaozEngine.Render3D.Rendering
         void CreateSplatResources(IGpuResourceFactory factory)
         {
             _splatFrameLayout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(
-                new GpuResourceLayoutElement("U", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex | GpuShaderStages.Fragment)));
-            _splatFrameSet = factory.CreateResourceSet(new GpuResourceSetDescription(_splatFrameLayout, _ubo));
+                new GpuResourceLayoutElement("U", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex | GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("PointLights", GpuResourceKind.StructuredBufferReadOnly, GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("PointLightClusters", GpuResourceKind.StructuredBufferReadOnly, GpuShaderStages.Fragment)));
+            _splatFrameSet = factory.CreateResourceSet(new GpuResourceSetDescription(
+                _splatFrameLayout, _ubo, _pointLightBuffer, _pointLightClusterBuffer));
 
             // The textures are declared in the order the fragment samples them, with the SHADOW MAP LAST. That was
             // a Metal requirement under the incumbent's numbering and is now the engine's own convention: the

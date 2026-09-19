@@ -95,13 +95,19 @@ public sealed class PointShadowFilterShaderTests
             StringComparison.Ordinal);
     }
 
-    /// <summary>A light whose attenuation has already reached zero is outside its own radius, so nothing it could
-    /// sample can change the pixel. The gate is on the SAMPLE rather than on the accumulation, which leaves the
-    /// unshadowed arithmetic exactly what it was.</summary>
+    /// <summary>A fragment outside a light's radius leaves the loop before normalization, cel lighting, shadow
+    /// sampling or specular work.</summary>
     [Fact]
     public void AFragmentOutsideTheLightsRadiusSamplesNothing()
     {
-        Assert.Contains("if (att > 0.0 && PointShadowParams[i].x >= 0.0)",
-            ShaderSources.LightingCommonGlsl, StringComparison.Ordinal);
+        string source = ShaderSources.LightingCommonGlsl;
+        int reject = source.IndexOf("if (distSquared >= radius * radius) continue;", StringComparison.Ordinal);
+        int normalize = source.IndexOf("vec3 L = (dist > 1e-4)", StringComparison.Ordinal);
+        int sample = source.IndexOf("att *= samplePointShadow", StringComparison.Ordinal);
+        int specular = source.IndexOf("vec3 Hp = normalize(L + V);", StringComparison.Ordinal);
+        Assert.True(reject >= 0, "the squared-radius rejection is missing");
+        Assert.True(reject < normalize, "radius rejection must precede light-vector normalization");
+        Assert.True(reject < sample, "radius rejection must precede point-shadow sampling");
+        Assert.True(reject < specular, "radius rejection must precede point-light specular work");
     }
 }

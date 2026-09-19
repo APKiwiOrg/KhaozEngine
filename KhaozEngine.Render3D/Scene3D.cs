@@ -61,8 +61,8 @@ namespace KhaozEngine.Render3D
         // texture is used for a textured billboard. Disposed in Dispose.
         readonly List<IGpuResourceSet?> _texBillboardSets = new();
         readonly SceneInstances _instances = new();
-        // Per-frame dynamic point lights, cleared each Begin() like the instance queue. The host adds them
-        // (already N-nearest-culled); the renderer clamps to MaxPointLights and zero-fills the rest.
+        // Per-frame dynamic point lights, cleared each Begin() like the instance queue. The renderer uploads the
+        // complete queued list through a growable structured buffer.
         readonly List<ModelRenderer.PointLightData> _lights = new();
         readonly List<LineRenderer.LineVertex> _lineVerts = new();
         // Depth-tested debug wire volumes (DebugDepthMode.DepthTested). Drawn into ColorDepthFB before the post
@@ -380,9 +380,8 @@ namespace KhaozEngine.Render3D
             _transitions.Reset();
         }
 
-        /// <summary>Maximum dynamic point lights consumed in one frame. <see cref="AddLight(Vector3,Color,float,float)"/> accepts any number,
-        /// but only the first <see cref="MaxPointLights"/> queued are uploaded (extras are dropped); the host is
-        /// expected to pick the N nearest per frame so a dense bullet-hell stays within budget.</summary>
+        /// <summary>Size of the legacy frame UBO point-light arrays retained for compatibility. This value is not
+        /// an active receiver limit. <see cref="AddLight(Vector3,Color,float,float)"/> uploads every queued light.</summary>
         public const int MaxPointLights = ModelRenderer.MaxPointLights;
         internal Scene3D(IGpuDevice gd, GpuOutputDescription targetOutput, ShadowSettings? initialShadows = null, KhaozEngine.Diagnostics.ILogger? shadowReconfigureLogger = null)
         {
@@ -910,17 +909,15 @@ namespace KhaozEngine.Render3D
         /// is the light's RGB (alpha ignored). Cleared each <see cref="Begin"/> like the instance queue.
         /// </summary>
         /// <remarks>
-        /// Presentation only - never feed simulation/collision state from a light. Only the first
-        /// <see cref="MaxPointLights"/> lights queued in a frame are uploaded (extras are dropped); pick the
-        /// N nearest to the camera/action per frame so a dense scene stays within the GPU budget. Zero lights ==
-        /// the historical key+fill+ambient render, bit-identical.
+        /// Presentation only. Never feed simulation or collision state from a light. Every queued light is
+        /// uploaded. Zero lights gives the historical key, fill and ambient render bit for bit.
+        /// Non-finite positions and non-positive or non-finite radii are ignored.
         /// </remarks>
         public void AddLight(Vector3 worldPos, Color color, float radius, float intensity)
             => AddLight(worldPos, color, radius, intensity, LightShadow.None);
 
-        /// <summary>Count of point lights queued this frame (before the renderer's <see cref="MaxPointLights"/>
-        /// clamp). Internal: lets tests assert <see cref="Begin"/> clears the queue and <see cref="AddLight(Vector3,Color,float,float)"/>
-        /// enqueues.</summary>
+        /// <summary>Count of point lights queued for upload this frame. Internal so tests can assert
+        /// <see cref="Begin"/> clears the queue and <see cref="AddLight(Vector3,Color,float,float)"/> enqueues.</summary>
         internal int LightCount => _lights.Count;
 
         // ---- Debug line overlay (immediate-mode; queued this frame, drawn on top after post). ----
@@ -1829,6 +1826,7 @@ namespace KhaozEngine.Render3D
             PreparePointShadows(cl, ActiveCamera.Eye);
 
             timingStart = EnableTiming ? Stopwatch.GetTimestamp() : 0;
+            BuildAndUploadPointLightClusters(cl, vp, eye);
             _model.BeginModelPass(cl, _res, Post);
             _model.SetFrameUniforms(cl, vp, eye, Post, CollectionsMarshal.AsSpan(_lights), _frameOrigin);
             _model.BindPass(cl);

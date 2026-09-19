@@ -46,9 +46,10 @@ namespace KhaozEngine.Gui
 
         /// <summary>How wide the block of tabs is: a full row and the gutters inside it.</summary>
         /// <param name="count">How many tabs the strip is drawing.</param>
-        /// <returns>The block's width in the band's units.</returns>
+        /// <returns>The block's width in the band's units, zero for an empty strip.</returns>
         public float BlockWidth(int count)
         {
+            if (count <= 0) return 0f;
             int columns = ColumnsFor(count);
             return columns * TabWidth + (columns - 1) * Spacing;
         }

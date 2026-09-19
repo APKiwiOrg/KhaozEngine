@@ -129,9 +129,16 @@ namespace KhaozEngine.Gui
         /// </summary>
         public int ActiveIndex
         {
-            get => _activeIndex;
-            set => _activeIndex = Math.Clamp(value, _allowNoActiveTab ? NoActiveTab : 0, _labels.Length - 1);
+            get => ActiveTab;
+            set => _activeIndex = Math.Clamp(value, NoActiveTab, _labels.Length - 1);
         }
+
+        // The active tab as everything in this class reads it. The FIELD keeps what was asked for, down to -1, and
+        // the floor is applied here on the way out, so whether -1 is honoured depends on AllowNoActiveTab NOW and
+        // not on which of the two a caller happened to assign first. An object initializer runs in source order,
+        // and a floor applied in the setter made `{ ActiveIndex = NoActiveTab, AllowNoActiveTab = true }` open on
+        // tab 0 with nothing to say why.
+        int ActiveTab => _activeIndex < 0 && !_allowNoActiveTab ? 0 : _activeIndex;
 
         /// <summary>The <see cref="ActiveIndex"/> that means no tab is active. Always -1.</summary>
         public const int NoActiveTab = -1;
@@ -142,10 +149,10 @@ namespace KhaozEngine.Gui
         /// Whether <see cref="ActiveIndex"/> may be <see cref="NoActiveTab"/>. Default FALSE, which is the shipped
         /// rule: the index clamps into <c>0 .. Count-1</c> and exactly one tab is always active, so a bar that
         /// never sets this is unchanged. Set it TRUE for a strip that has a closed state, a collapsed side panel
-        /// drawing its tabs with no panel behind any of them. Set it BEFORE assigning
-        /// <see cref="ActiveIndex"/> = <see cref="NoActiveTab"/>, since the setter clamps against whatever this
-        /// says at the moment of the assignment. Setting it back to false re-clamps a bar that is currently on no
-        /// tab onto the first one, so the closed state cannot outlive the opt-in.
+        /// drawing its tabs with no panel behind any of them. The ORDER it is set in against
+        /// <see cref="ActiveIndex"/> does not matter, in an object initializer or anywhere else: the bar remembers
+        /// that -1 was asked for and honours it from the moment this is true. Setting it back to false puts a
+        /// bar that is on no tab onto the first one for good, so the closed state cannot outlive the opt-in.
         /// </summary>
         /// <remarks>
         /// What -1 does everywhere else is deliberately nothing new. A tap on an enabled tab activates it and
@@ -255,7 +262,7 @@ namespace KhaozEngine.Gui
                     pointer.ConsumeGesture();
                     continue;
                 }
-                if (i != _activeIndex)
+                if (i != ActiveTab)
                 {
                     _activeIndex = i;
                     ChangedThisFrame = true;
@@ -288,7 +295,7 @@ namespace KhaozEngine.Gui
                 }
                 for (int i = 0; i < _items.Length; i++)
                 {
-                    bool selected = i == _activeIndex;
+                    bool selected = i == ActiveTab;
                     GuiDraw.DrawButton(batch, white, Font, TabRect(i), _items[i].Label,
                         selected ? active : inactive, _items[i].Enabled, selected,
                         _hoverIndex == i, _pressIndex == i, TextScale);
@@ -306,9 +313,9 @@ namespace KhaozEngine.Gui
             // 1) Tab bodies: flat fills in the resolved state colour (selected wins over press/hover, as DrawButton).
             for (int i = 0; i < _labels.Length; i++)
             {
-                GuiStyle s = i == _activeIndex ? active : inactive;
+                GuiStyle s = i == ActiveTab ? active : inactive;
                 Vector4 fill = !_items[i].Enabled ? s.DisabledFill
-                    : i == _activeIndex ? s.SelectedFill
+                    : i == ActiveTab ? s.SelectedFill
                     : _pressIndex == i ? s.Press
                     : _hoverIndex == i ? s.Hover
                     : s.Fill;
@@ -319,22 +326,22 @@ namespace KhaozEngine.Gui
             // seams bounding the active tab are left to its accent border below (drawing both would re-double them).
             GuiDraw.Border(batch, white, frame, 1f, inactive.Border);
             // With no tab active there is no accent outline to leave room for, so every seam is drawn here.
-            bool accented = _activeIndex >= 0 && _items[_activeIndex].Enabled;
+            bool accented = ActiveTab >= 0 && _items[ActiveTab].Enabled;
             for (int i = 1; i < _labels.Length; i++)
             {
-                if (accented && (i == _activeIndex || i == _activeIndex + 1)) continue;
+                if (accented && (i == ActiveTab || i == ActiveTab + 1)) continue;
                 GuiDraw.Fill(batch, white, batch.SnapRect(new Rect(edges[i], frame.Y, t, frame.Height)), inactive.Border);
             }
 
             // 3) Active tab accent border on top, so it reads cleanly over the shared frame.
             if (accented)
-                GuiDraw.Border(batch, white, BodyRect(batch, frame, edges, _activeIndex), 1f, active.SelectedBorder);
+                GuiDraw.Border(batch, white, BodyRect(batch, frame, edges, ActiveTab), 1f, active.SelectedBorder);
 
             // 4) Centred labels per snapped body.
             for (int i = 0; i < _labels.Length; i++)
             {
                 Rect body = BodyRect(batch, frame, edges, i);
-                GuiStyle style = i == _activeIndex ? active : inactive;
+                GuiStyle style = i == ActiveTab ? active : inactive;
                 Vector4 text = _items[i].Enabled ? style.Text : style.DisabledText;
                 string str = _labels[i].Resolve();
                 Vector2 pos = GuiDraw.AlignedTextPos(body, Font.Measure(str), Font.LineHeight, GuiAlign.Center, TextScale);
@@ -352,7 +359,7 @@ namespace KhaozEngine.Gui
         internal (Vector4 Fill, Vector4 Text) ResolveVisual(int index)
         {
             if (index < 0 || index >= _items.Length) throw new ArgumentOutOfRangeException(nameof(index));
-            bool selected = index == _activeIndex;
+            bool selected = index == ActiveTab;
             GuiStyle style = (selected ? ActiveStyle : InactiveStyle).Faded(Opacity);
             Vector4 fill = !_items[index].Enabled ? style.DisabledFill
                 : selected ? style.SelectedFill

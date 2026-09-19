@@ -2397,9 +2397,10 @@ behaviour, so a bar that asks for none of them draws and behaves exactly as befo
   rows of five centred in a band wider than they are, lining up under each other. `ContentBounds` follows the
   alignment, so the reserved region moves with the tabs.
 - `AllowNoActiveTab` (default false) opens `ActiveIndex` down to `TabBar.NoActiveTab` (-1), for a collapsed
-  panel whose strip draws with no panel behind any tab. Set it BEFORE assigning -1, because the setter clamps
-  against whatever it says at the moment of the assignment, and setting it back to false re-clamps onto the
-  first tab so the closed state cannot outlive the opt-in. A tap from -1 activates the tapped tab and raises
+  panel whose strip draws with no panel behind any tab. The order it is set in against `ActiveIndex` does
+  not matter, in an object initializer or anywhere else, because the bar remembers that -1 was asked for and
+  honours it from the moment the opt-in is true. Setting it back to false puts the bar onto the first tab for
+  good, so the closed state cannot outlive the opt-in. A tap from -1 activates the tapped tab and raises
   `ChangedThisFrame`, since with nothing active every tab is a change. A disabled tab still swallows its own
   tap. Nothing closes the strip on its own: which gesture returns a panel to its closed state is the host's
   rule, written as an assignment of `TabBar.NoActiveTab`. A tab bar has no keyboard or focus navigation to
@@ -2433,7 +2434,7 @@ var strip = new TabBar(tabs, font, PanelFrame.StripRect(bounds, stripHeight: 56f
     TabWidth = 56f, TabHeight = 26f, Columns = 5, Spacing = 4f,
     BlockAlign = GuiAlign.Center,
     DrawMode = TabBarDrawMode.Flat,
-    AllowNoActiveTab = true,              // before ActiveIndex: the setter clamps against it
+    AllowNoActiveTab = true,              // either order works: the bar remembers -1 was asked for
     ActiveIndex = TabBar.NoActiveTab,
     BlocksPointer = false,                // the window already reserves its own bounds
 };

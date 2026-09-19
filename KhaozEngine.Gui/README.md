@@ -605,8 +605,8 @@ chat.Draw(batch, white);
     `Bounds`, so `GuiAlign.Center` gives two rows of five centred in a wider band, and `ContentBounds` follows it
     rather than staying behind at the left edge. `AllowNoActiveTab` (default false) opens `ActiveIndex` down to
     `TabBar.NoActiveTab` (-1) for a collapsed panel that draws its strip with no panel behind any tab. A tap from
-    -1 activates the tapped tab and reads as a change, a disabled tab still swallows its own tap, and clearing
-    the opt-in re-clamps onto the first tab. There is no keyboard or focus navigation on a tab bar to answer
+    -1 activates the tapped tab and reads as a change, a disabled tab still swallows its own tap, the order the
+    opt-in and the -1 are assigned in does not matter, and clearing the opt-in puts the bar onto the first tab. There is no keyboard or focus navigation on a tab bar to answer
     for, and the roster is fixed at construction, so nothing can strand the index. `BlocksPointer` opts out of
     the `ContentBounds` reservation. It defaults TRUE, unlike `Panel.BlocksPointer` and like
     `ScrollablePanel.BlocksPointer`, because a tab bar is a leaf control that has always reserved its own region.
@@ -631,7 +631,7 @@ chat.Draw(batch, white);
         TabWidth = 56f, TabHeight = 26f, Columns = 5, Spacing = 4f,
         BlockAlign = GuiAlign.Center,
         DrawMode = TabBarDrawMode.Flat,
-        AllowNoActiveTab = true,              // before ActiveIndex: the setter clamps against it
+        AllowNoActiveTab = true,              // either order works: the bar remembers -1 was asked for
         ActiveIndex = TabBar.NoActiveTab,
         BlocksPointer = false,                // the window already reserves its own bounds
     };

@@ -13,7 +13,9 @@ namespace KhaozEngine.Gui
         Button,
 
         /// <summary>A flat fill, a one-unit border and a centred label, coloured from
-        /// <see cref="TabBar.FlatTheme"/>. What a side panel's separated tabs want.</summary>
+        /// <see cref="TabBar.FlatTheme"/>. What a side panel's separated tabs want. Read by the fixed-size layout
+        /// only (a bar with a <see cref="TabBar.TabWidth"/>): an even-split bar keeps its own segmented draw
+        /// whatever this says.</summary>
         Flat,
     }
 
@@ -40,6 +42,13 @@ namespace KhaozEngine.Gui
         /// palette a game did set when it named neither. Ignored by <see cref="TabBarDrawMode.Button"/>, which
         /// draws from <see cref="ActiveStyle"/> and <see cref="InactiveStyle"/>.
         /// </summary>
+        /// <remarks>
+        /// The mode reads COLOURS off this and nothing else. <see cref="GuiTheme.BorderThickness"/> and
+        /// <see cref="GuiTheme.CornerRadius"/> are not read: a flat tab is a square fill under a one-unit border
+        /// whatever the theme says, where the button draw honours both. So a strip switched from
+        /// <see cref="TabBarDrawMode.Button"/> to <see cref="TabBarDrawMode.Flat"/> under a rounded theme loses
+        /// its corners on purpose.
+        /// </remarks>
         public GuiTheme FlatTheme = GuiTheme.Default;
 
         // Whether Draw takes the flat path this frame. The even-split layout never does, whatever the mode says,
@@ -65,6 +74,34 @@ namespace KhaozEngine.Gui
             return _measureWidth;
         }
 
+        // The fitted label per tab, remembered against everything it was fitted to. Fitting a label that does not
+        // fit binary-searches and builds a string per probe, and a strip of ten over-long labels redrawn every
+        // frame would make thousands of short-lived strings a second for an answer that only moves when the
+        // label, the tab width, the scale or the font does.
+        string?[]? _fitSource;
+        string[]? _fitText;
+        float _fitWidth = float.NaN, _fitScale = float.NaN;
+        SpriteFont? _fitFont;
+
+        string FittedLabel(int index, string resolved, float tabWidth, SpriteFont font, Func<string, float> measure)
+        {
+            if (_fitSource is null || _fitText is null || _fitWidth != tabWidth || _fitScale != TextScale
+                || !ReferenceEquals(_fitFont, font))
+            {
+                _fitSource = new string?[_items.Length];
+                _fitText = new string[_items.Length];
+                _fitWidth = tabWidth;
+                _fitScale = TextScale;
+                _fitFont = font;
+            }
+            if (!string.Equals(_fitSource[index], resolved, StringComparison.Ordinal))
+            {
+                _fitSource[index] = resolved;
+                _fitText[index] = FitFlatLabel(tabWidth, resolved, measure, TextScale);
+            }
+            return _fitText[index];
+        }
+
         void DrawFlat(SpriteBatch batch, Texture2D white, SpriteFont font)
         {
             Func<string, float> measure = MeasureWidth(font);
@@ -74,8 +111,10 @@ namespace KhaozEngine.Gui
                 (Vector4 fill, Vector4 border, Vector4 text) = ResolveFlatVisual(i);
                 GuiDraw.Fill(batch, white, rect, fill);
                 GuiDraw.Border(batch, white, rect, 1f, border);
-                var (label, at) = FlatLabel(rect, _labels[i].Resolve(), measure, font.LineHeight, TextScale);
-                if (label.Length > 0) batch.DrawString(font, label, at, (Color)text, TextScale);
+                string label = FittedLabel(i, _labels[i].Resolve(), rect.Width, font, measure);
+                if (label.Length == 0) continue;
+                Vector2 at = FlatLabelOrigin(rect, label, measure, font.LineHeight, TextScale);
+                batch.DrawString(font, label, at, (Color)text, TextScale);
             }
         }
 
@@ -86,7 +125,7 @@ namespace KhaozEngine.Gui
         {
             if (index < 0 || index >= _items.Length) throw new ArgumentOutOfRangeException(nameof(index));
             GuiTheme t = FlatTheme;
-            bool active = index == _activeIndex;
+            bool active = index == ActiveTab;
             bool enabled = _items[index].Enabled;
             Vector4 fill = !enabled ? t.SurfaceDisabled
                 : active ? t.TabActiveFill
@@ -106,12 +145,27 @@ namespace KhaozEngine.Gui
         internal static (string Text, Vector2 At) FlatLabel(in Rect tab, string text,
             Func<string, float> measureWidth, float lineHeight, float scale)
         {
-            if (string.IsNullOrEmpty(text)) return (string.Empty, new Vector2(tab.X, tab.Y));
+            string fitted = FitFlatLabel(tab.Width, text, measureWidth, scale);
+            if (fitted.Length == 0) return (string.Empty, new Vector2(tab.X, tab.Y));
+            return (fitted, FlatLabelOrigin(tab, fitted, measureWidth, lineHeight, scale));
+        }
+
+        // The fit alone, which is the half worth remembering between frames. A scale of zero or less reads as 1,
+        // so an unset or nonsense TextScale fits the label at its natural size rather than dividing by zero.
+        internal static string FitFlatLabel(float tabWidth, string text, Func<string, float> measureWidth, float scale)
+        {
+            if (string.IsNullOrEmpty(text)) return string.Empty;
             float safeScale = scale > 0f ? scale : 1f;
-            float budget = MathF.Max(0f, tab.Width - FlatLabelPad) / safeScale;
-            string fitted = GuiDraw.TruncateWithEllipsis(text, budget, measureWidth);
+            float budget = MathF.Max(0f, tabWidth - FlatLabelPad) / safeScale;
+            return GuiDraw.TruncateWithEllipsis(text, budget, measureWidth);
+        }
+
+        // Where an already fitted label starts so that it sits centred in the tab. Allocates nothing.
+        internal static Vector2 FlatLabelOrigin(in Rect tab, string fitted, Func<string, float> measureWidth,
+            float lineHeight, float scale)
+        {
             var measured = new Vector2(measureWidth(fitted), 0f);
-            return (fitted, GuiDraw.AlignedTextPos(tab, measured, lineHeight, GuiAlign.Center, scale));
+            return GuiDraw.AlignedTextPos(tab, measured, lineHeight, GuiAlign.Center, scale);
         }
     }
 }

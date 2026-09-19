@@ -33,7 +33,7 @@ namespace KhaozEngine.Tests.Gui
                 TabWidth = 56f, TabHeight = 26f, Columns = 5, Spacing = 4f,
                 BlockAlign = GuiAlign.Center,
                 DrawMode = TabBarDrawMode.Flat,
-                AllowNoActiveTab = true,              // before ActiveIndex: the setter clamps against it
+                AllowNoActiveTab = true,              // either order works: the bar remembers -1 was asked for
                 ActiveIndex = TabBar.NoActiveTab,
                 BlocksPointer = false,                // the window already reserves its own bounds
             };
@@ -57,13 +57,6 @@ namespace KhaozEngine.Tests.Gui
     /// </summary>
     public class TabBarDocSampleTests
     {
-        [Fact]
-        public void The_sample_is_compiled_rather_than_only_printed()
-        {
-            // Building the sample is the assertion. Naming it here keeps it wired to a test run.
-            Assert.NotNull(typeof(TabBarDocSample).GetMethod(nameof(TabBarDocSample.Sample)));
-        }
-
         [Fact]
         public void The_shipped_defaults_are_what_a_bar_that_asks_for_nothing_gets()
         {

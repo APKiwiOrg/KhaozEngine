@@ -119,6 +119,13 @@ namespace KhaozEngine.Tests.Gui
             Assert.Equal(0, oneRow.RowsFor(0));
             Assert.Equal(0f, oneRow.BlockHeight(0), 3);
 
+            // An empty strip is empty in BOTH directions, so a centred one sits at the band's edge rather than
+            // half a phantom tab in from it.
+            Assert.Equal(0f, oneRow.BlockWidth(0), 3);
+            Rect empty = TabStrip.BlockRect(Band, 0, oneRow with { Align = GuiAlign.Center });
+            Assert.Equal(0f, empty.Width, 3);
+            Assert.Equal(0f, empty.Height, 3);
+
             // Left-anchored by default, so the third tab sits two tab-plus-gutter steps in from the band's edge.
             Rect third = TabStrip.TabRect(Band, 2, 3, oneRow);
             Assert.Equal(Band.X + 2f * (20f + 2f), third.X, 3);

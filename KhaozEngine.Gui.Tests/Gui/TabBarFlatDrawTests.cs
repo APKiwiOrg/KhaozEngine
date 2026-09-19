@@ -222,6 +222,31 @@ namespace KhaozEngine.Tests.Gui
         }
 
         [Fact]
+        public void The_kept_clear_margin_is_what_decides_a_label_on_the_edge_of_fitting()
+        {
+            // A 60 unit tab less the 6 kept clear leaves 54: three characters and the dots (60 units) do not fit,
+            // so the answer is "In...". With no margin the budget would be the whole 60 and it would be "Inv...",
+            // which is the label drawn hard against both borders.
+            var tab = new Rect(0f, 0f, 60f, 26f);
+            var (text, _) = TabBar.FlatLabel(tab, "Inventory", Measure, lineHeight: 12f, scale: 1f);
+            Assert.Equal("In...", text);
+        }
+
+        [Fact]
+        public void A_scale_of_zero_or_less_fits_the_label_at_its_natural_size()
+        {
+            // TextScale is a plain public field, so zero is reachable. Dividing the budget by it would make the
+            // budget infinite and the over-long label would be drawn whole, straight through the border.
+            var tab = new Rect(200f, 300f, 56f, 26f);
+            foreach (float scale in new[] { 0f, -2f })
+            {
+                var (text, at) = TabBar.FlatLabel(tab, "Inventory", Measure, lineHeight: 12f, scale);
+                Assert.Equal("In...", text);
+                Assert.True(float.IsFinite(at.X) && float.IsFinite(at.Y));
+            }
+        }
+
+        [Fact]
         public void The_scale_widens_the_budget_and_moves_the_origin()
         {
             var tab = new Rect(200f, 300f, 56f, 26f);

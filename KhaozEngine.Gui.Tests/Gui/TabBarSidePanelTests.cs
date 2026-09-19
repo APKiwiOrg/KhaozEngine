@@ -115,6 +115,28 @@ namespace KhaozEngine.Tests.Gui
         }
 
         [Fact]
+        public void The_order_the_opt_in_and_the_closed_state_are_assigned_in_does_not_matter()
+        {
+            // An object initializer runs in source order, so the -1 lands BEFORE the opt-in here. A floor applied
+            // in the setter opened this panel on tab 0 with nothing to say why.
+            var closedFirst = new TabBar(Labels, font: null, Bar)
+            {
+                ActiveIndex = TabBar.NoActiveTab,
+                AllowNoActiveTab = true,
+            };
+            Assert.Equal(TabBar.NoActiveTab, closedFirst.ActiveIndex);
+
+            // Until the opt-in arrives the bar still reads as it always has: one tab active, the first. And it
+            // BEHAVES that way too, not only reads that way: a tap on the first tab is no change.
+            var notYet = new TabBar(Labels, font: null, Bar) { ActiveIndex = TabBar.NoActiveTab };
+            Assert.Equal(0, notYet.ActiveIndex);
+            var pointer = new Pointer();
+            Assert.False(Tap(notYet, pointer, CentreOf(notYet.TabRect(0))));
+            Assert.False(notYet.ChangedThisFrame);
+            Assert.Equal(0, notYet.ActiveIndex);
+        }
+
+        [Fact]
         public void Taking_the_opt_in_away_re_clamps_onto_the_first_tab()
         {
             var bar = NewBar();

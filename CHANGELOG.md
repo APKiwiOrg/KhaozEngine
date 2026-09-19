@@ -7,33 +7,6 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 19.7.0
 
-A second door onto movement on the tile world, for a keyboard player:
-
-- `KhaozEngine.TileWorld.Netcode`: `TileCommandKind.Steer` (kind 5) walks one tile toward a held
-  `TileDirection` with no search. A blocked diagonal slides along whichever of its two axis steps is open,
-  testing the Z axis step before the X axis step so both heads pick the same one of two honest answers. A
-  blocked straight step stands and still turns the body to face the held direction, so a key pressed into a
-  wall reads as an answer rather than as a dropped input. A steer replaces a route, a pending interaction and
-  a fight exactly as `WalkTo` does, and the server treats it as the same deliberate disengage.
-- `TileWorldClient.SetSteering(direction, mode)` holds the direction as a level beside the click event and the
-  command clock reads it every tick, so a steering tick cannot be lost to frame timing. A queued click wins
-  its tick and steering resumes on the next one. The steering mode rides the level and is not adopted as
-  `RunMode`.
-- `TileSteering.FromAxes(right, forward, cameraForward)` maps a head's movement keys and a camera look vector
-  to one direction. The vector is WORLD space, exactly what a camera's `Forward` answers, and the helper
-  converts it through `TileWorldSpace` because tile north is world -z. A consumer that hands in a tile-space
-  vector gets a silently north-south mirrored result. An exact octant boundary resolves to the
-  counter-clockwise neighbour, the same answer every time.
-- `TileSteerResolver.Resolve` is the slide-else-stop rule on its own, pure over the collision map, so a head
-  that wants to preview a step shares one definition with both simulators. It throws
-  `ArgumentOutOfRangeException` for a direction outside the eight rather than standing, which would hide an
-  in-process misuse as a wall.
-- Steered and routed steps share one commit body, and `TileMoveSimulator` asks `TileStepTicks` for a step's
-  length in one private method and nowhere else. Steering therefore adds no pace value, and a future
-  per-entity pace changes that one place for clicks, held keys, actors and chases together.
-- Wire: command kind 5 is new and carries the direction in the existing `Target` field. An older decoder
-  rejects it as unknown, so a consumer moves its own game protocol version when adopting this pin.
-
 Oldest-first backlog fixes:
 
 - Editor generation changes refresh captured field and layer configuration before bounded or all-loaded
@@ -62,6 +35,33 @@ Oldest-first backlog fixes:
   absolute positions, preserving slow free-flight speed far from the origin while retaining wall and
   slide clipping (#321). A grazing capsule regression now distinguishes the local terrain bake from
   the old absolute bake at 100 km, where the old path introduces about 2.49 mm of query drift (#352).
+
+A second door onto movement on the tile world, for a keyboard player:
+
+- `KhaozEngine.TileWorld.Netcode`: `TileCommandKind.Steer` (kind 5) walks one tile toward a held
+  `TileDirection` with no search. A blocked diagonal slides along whichever of its two axis steps is open,
+  testing the Z axis step before the X axis step so both heads pick the same one of two honest answers. A
+  blocked straight step stands and still turns the body to face the held direction, so a key pressed into a
+  wall reads as an answer rather than as a dropped input. A steer replaces a route, a pending interaction and
+  a fight exactly as `WalkTo` does, and the server treats it as the same deliberate disengage.
+- `TileWorldClient.SetSteering(direction, mode)` holds the direction as a level beside the click event and the
+  command clock reads it every tick, so a steering tick cannot be lost to frame timing. A queued click wins
+  its tick and steering resumes on the next one. The steering mode rides the level and is not adopted as
+  `RunMode`.
+- `TileSteering.FromAxes(right, forward, cameraForward)` maps a head's movement keys and a camera look vector
+  to one direction. The vector is WORLD space, exactly what a camera's `Forward` answers, and the helper
+  converts it through `TileWorldSpace` because tile north is world -z. A consumer that hands in a tile-space
+  vector gets a silently north-south mirrored result. An exact octant boundary resolves to the
+  counter-clockwise neighbour, the same answer every time.
+- `TileSteerResolver.Resolve` is the slide-else-stop rule on its own, pure over the collision map, so a head
+  that wants to preview a step shares one definition with both simulators. It throws
+  `ArgumentOutOfRangeException` for a direction outside the eight rather than standing, which would hide an
+  in-process misuse as a wall.
+- Steered and routed steps share one commit body, and `TileMoveSimulator` asks `TileStepTicks` for a step's
+  length in one private method and nowhere else. Steering therefore adds no pace value, and a future
+  per-entity pace changes that one place for clicks, held keys, actors and chases together.
+- Wire: command kind 5 is new and carries the direction in the existing `Target` field. An older decoder
+  rejects it as unknown, so a consumer moves its own game protocol version when adopting this pin.
 
 ## 19.6.0
 

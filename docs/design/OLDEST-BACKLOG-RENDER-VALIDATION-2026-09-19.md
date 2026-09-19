@@ -1,4 +1,4 @@
-# 19.6.0 rendering reference validation
+# 19.7.0 rendering reference validation
 
 This record explains the reference scope for the oldest-first backlog batch. The living rendering
 contracts are in the Render3D README and `docs/USING-KHAOZENGINE.md`.
@@ -6,7 +6,8 @@ contracts are in the Render3D README and `docs/USING-KHAOZENGINE.md`.
 ## Controlled comparison
 
 Two strict Metal captures ran on the same machine with the same golden-test filter. The control used
-`v19.5.0` at `96387259`. The new capture used the integrated 19.6.0 code at `16eec4b4`.
+`v19.5.0` at `96387259`. The new capture used the integrated batch code at `16eec4b4`, which was
+staged as 19.6.0 at the time and ships as 19.7.0.
 Both used `KE_GPU_TESTS=1 KE_UPDATE_GOLDENS=1` with `FullyQualifiedName~Golden`.
 The control passed 124 tests and the new capture passed 125. Each skipped only the cross-backend
 comparison, which is deliberately disabled while references are being written.
@@ -69,7 +70,8 @@ as part of the reference update. The separate verification run also exercises th
 
 The comparison run this record asked for is
 [run 35471553973](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/35471553973), on the batch
-merged with `main` at `19.6.0`. It runs the full suite on every leg, which is what a dispatch does,
+merged with a `main` that was at 19.6.0. It runs the full suite on every leg, which is what a
+dispatch does,
 and it verifies the committed references rather than writing them.
 
 It passed on `metal-native`, on `vulkan-native` and on the Vulkan sync-validation leg. The

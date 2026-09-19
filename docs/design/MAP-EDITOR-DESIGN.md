@@ -445,7 +445,7 @@ into its own partial `EditorToolDuplicate.cs` (and moving `MapEditorScene.ToolLa
 `MapEditorScene.Sculpt.cs`), which shrank both frozen files below the ratchet instead of growing them, the
 same split-not-grow move the zone-freeze round used.
 
-**Original sculpt-brushes deferral, completed in 19.6.0 (#274):** the viewport now previews the brush
+**Original sculpt-brushes deferral, completed in 19.7.0 (#274):** the viewport now previews the brush
 with a terrain-following ring. The live contract is in the MapEditor package README under "Terrain sculpt".
 The `sculpt_*` MCP verbs (`sculpt_apply`, `sculpt_flatten_region`, `sculpt_clear`, tile-stat reads) and the
 Ruinborne repin + first valley sculpt pass are T3, tracked by the sculpt program design doc and #271.

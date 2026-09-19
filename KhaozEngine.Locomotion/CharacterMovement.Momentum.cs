@@ -110,7 +110,8 @@ public static partial class CharacterMovement
     /// direction and clamped into <c>[0, |intended|]</c>. This is the only thing ever written to
     /// <see cref="MoveState.HorizontalVelocity"/>, and the clamp is what makes carrying that field safe: collision
     /// can only ever CLIP the stored velocity, never inject into it.
-    /// <para>Free flight leaves it EXACTLY untouched: a tick that reached all but
+    /// <para>Free flight leaves it EXACTLY untouched: the collision resolve reports the displacement it applied as
+    /// a local delta, so the carry never has to subtract two large world positions. A tick that reached all but
     /// <see cref="ClipUndeniedTolerance"/> of what it aimed for was denied nothing, so the intent is returned as-is
     /// and never round-trips through the measurement at all. A head-on wall clips it to ~0, so an arc stopped by
     /// geometry does not resume the moment the character slides clear. A glancing wall keeps the direction and sheds
@@ -119,15 +120,14 @@ public static partial class CharacterMovement
     /// upper clamp - without that clamp a one-tick push-out of a deeply embedded capsule would read as an enormous
     /// achieved velocity and launch the character on the next airborne tick.</para></summary>
     /// <param name="intended">The velocity the step commanded this tick (<see cref="MoveState.CommandedVelocity"/>).</param>
-    /// <param name="start">The capsule-centre position the tick started from.</param>
-    /// <param name="resolved">The capsule-centre position the tick actually committed.</param>
+    /// <param name="achievedDelta">The horizontal displacement the collision resolve actually committed.</param>
     /// <param name="dt">Timestep in seconds. A non-positive dt has no velocity to measure, so nothing is carried.</param>
-    private static Vector2 ClipToAchieved(Vector2 intended, in Vector3 start, in Vector3 resolved, float dt)
+    private static Vector2 ClipToAchieved(Vector2 intended, Vector2 achievedDelta, float dt)
     {
         float len = intended.Length();
         if (len <= MomentumEpsilon || dt <= 0f) return Vector2.Zero;
         Vector2 dir = intended / len;
-        var achieved = new Vector2((resolved.X - start.X) / dt, (resolved.Z - start.Z) / dt);
+        Vector2 achieved = achievedDelta / dt;
         float along = Vector2.Dot(achieved, dir);
         // A move that reached essentially all of what it aimed for was not denied, so carry the INTENT through
         // unchanged rather than re-deriving it from the committed position. Re-deriving is what erodes an arc: the
@@ -171,17 +171,15 @@ public static partial class CharacterMovement
     /// slide, where it is the in-plane part alone (fall line plus contour, no steer).</param>
     /// <param name="drive">The velocity this tick's advance was actually computed from
     /// (<see cref="MoveState.CommandedVelocity"/>).</param>
-    /// <param name="start">The capsule-centre position the tick started from.</param>
-    /// <param name="resolved">The capsule-centre position the tick actually committed.</param>
+    /// <param name="achievedDelta">The horizontal displacement the collision resolve actually committed.</param>
     /// <param name="dt">Timestep in seconds. A non-positive dt has no velocity to measure, so nothing is carried.</param>
-    private static Vector2 ClipCarryToAchieved(Vector2 carry, Vector2 drive, in Vector3 start, in Vector3 resolved,
-        float dt)
+    private static Vector2 ClipCarryToAchieved(Vector2 carry, Vector2 drive, Vector2 achievedDelta, float dt)
     {
         Vector2 steer = drive - carry;
-        if (steer == Vector2.Zero) return ClipToAchieved(carry, start, resolved, dt);
+        if (steer == Vector2.Zero) return ClipToAchieved(carry, achievedDelta, dt);
         float len = carry.Length();
         if (len <= MomentumEpsilon || dt <= 0f) return Vector2.Zero;
-        var achieved = new Vector2((resolved.X - start.X) / dt, (resolved.Z - start.Z) / dt);
+        Vector2 achieved = achievedDelta / dt;
         float driveLen = drive.Length();
         // The VERDICT, on the drive: a tick that reached essentially all of what it drove for was denied nothing, so
         // the carry is handed through exactly as it was rather than re-measured off a position the steer moved.
@@ -190,6 +188,17 @@ public static partial class CharacterMovement
         // The AMOUNT, on the carry's own share: the committed travel less the steer's contribution to it.
         float along = Vector2.Dot(achieved - steer, carry / len);
         return carry / len * Math.Clamp(along, 0f, len);
+    }
+
+    /// <summary>The horizontal delta represented by an absolute resolve. The common undenied path returns the
+    /// intended delta directly, before world-position rounding. A terrain wall or bounds clamp that changed the
+    /// absolute target falls back to the measured delta because that change is the denial being carried.</summary>
+    private static Vector2 HorizontalDelta(in Vector3 start, float resolvedX, float resolvedZ, Vector2 drive, float dt)
+    {
+        Vector2 intended = drive * dt;
+        return resolvedX == start.X + intended.X && resolvedZ == start.Z + intended.Y
+            ? intended
+            : new Vector2(resolvedX - start.X, resolvedZ - start.Z);
     }
 
     /// <summary>True when both components of <paramref name="v"/> are finite (neither NaN nor infinite). The Vector2

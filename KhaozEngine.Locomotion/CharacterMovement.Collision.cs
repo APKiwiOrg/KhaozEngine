@@ -96,18 +96,19 @@ public static partial class CharacterMovement
     // useless t=0 zero-normal from a touching start). A few passes clear an inner corner (two simultaneous contacts).
     private const int   DepenIterations = 4;
 
-    /// <summary>Move the capsule from <paramref name="start"/> toward <paramref name="target"/> by a substepped
+    /// <summary>Move the capsule from <paramref name="start"/> through <paramref name="full"/> by a substepped
     /// swept collide-and-slide over <see cref="IPhysicsWorld.SweepCapsule"/>. The displacement is split into
     /// substeps no longer than <see cref="SubstepFraction"/> * the capsule radius, so even a near-terminal fall or
     /// fast jump never crosses a face. Deterministic (Bepu Sweep is deterministic single-threaded; the substep
     /// count is a deterministic length).</summary>
-    private static Vector3 SweptMove(IPhysicsWorld world, CapsuleShape capsule, Vector3 start, Vector3 target,
-        in MoveTuning t, bool grounded, bool restHold, Func<float, float, float> groundHeight, out bool steppedUp, out float steppedFloorY)
+    private static Vector3 SweptMove(IPhysicsWorld world, CapsuleShape capsule, Vector3 start, Vector3 full,
+        in MoveTuning t, bool grounded, bool restHold, Func<float, float, float> groundHeight, out bool steppedUp,
+        out float steppedFloorY, out Vector2 achievedHorizontal)
     {
         steppedUp = false; steppedFloorY = 0f;
-        Vector3 full = target - start;
+        achievedHorizontal = Vector2.Zero;
         float fullLen = full.Length();
-        if (fullLen <= 1e-6f) return target;
+        if (fullLen <= 1e-6f) return start + full;
 
         float maxStep = MathF.Max(0.01f, t.CapsuleRadius * SubstepFraction);
         int substeps = (int)MathF.Ceiling(fullLen / maxStep);
@@ -117,7 +118,9 @@ public static partial class CharacterMovement
         Vector3 pos = start;
         for (int i = 0; i < substeps; i++)
         {
-            pos = SlideSubstep(world, capsule, pos, stepDelta, t, grounded, restHold, groundHeight, out bool stepped, out float floorY);
+            pos = SlideSubstep(world, capsule, pos, stepDelta, t, grounded, restHold, groundHeight,
+                out bool stepped, out float floorY, out Vector3 applied);
+            achievedHorizontal += new Vector2(applied.X, applied.Z);
             if (stepped) { steppedUp = true; steppedFloorY = floorY; }
         }
         return pos;
@@ -129,9 +132,11 @@ public static partial class CharacterMovement
     /// steps up over a low ledge or projects the remainder onto the contact plane (slide), iterating to resolve
     /// inner corners.</summary>
     private static Vector3 SlideSubstep(IPhysicsWorld world, CapsuleShape capsule, Vector3 pos, Vector3 delta,
-        in MoveTuning t, bool grounded, bool restHold, Func<float, float, float> groundHeight, out bool steppedUp, out float steppedFloorY)
+        in MoveTuning t, bool grounded, bool restHold, Func<float, float, float> groundHeight, out bool steppedUp,
+        out float steppedFloorY, out Vector3 applied)
     {
         steppedUp = false; steppedFloorY = 0f;
+        applied = Vector3.Zero;
         float cosMaxSlope = MathF.Cos(t.MaxSlopeRadians);
         for (int iter = 0; iter < SlideIterations; iter++)
         {
@@ -164,7 +169,8 @@ public static partial class CharacterMovement
                     float pl = push.Length();
                     if (push.Y >= cosMaxSlope * pl) push = new Vector3(0f, push.Y, 0f);
                 }
-                pos += push;   // MTV is direction*depth; the inflated overlap depth lands the real capsule ~SkinWidth clear
+                pos += push;
+                applied += push;   // MTV is direction*depth; the inflated overlap depth lands the real capsule ~SkinWidth clear
             }
 
             float dist = delta.Length();
@@ -172,10 +178,13 @@ public static partial class CharacterMovement
             Vector3 dir = delta / dist;
             if (!world.SweepCapsule(capsule, Pose.At(pos), dir, dist, out SweepHit hit))
             {
-                pos += delta;     // clear path for the remainder of this substep
+                pos += delta;
+                applied += delta;     // clear path for the remainder of this substep
                 break;
             }
-            pos += dir * MathF.Max(0f, hit.Distance - SkinWidth);
+            Vector3 toHit = dir * MathF.Max(0f, hit.Distance - SkinWidth);
+            pos += toHit;
+            applied += toHit;
             Vector3 remaining = delta - dir * hit.Distance;
             Vector3 n = hit.Normal;
             if (n.LengthSquared() <= 1e-12f)
@@ -194,14 +203,21 @@ public static partial class CharacterMovement
                 // wedge. The HORIZONTAL is still recovered + slid along the wall (so a strafe is not frozen and a
                 // walk straight in stays blocked); when no normal is recoverable the horizontal is blocked but
                 // gravity still wins.
-                pos.Y += MathF.Min(0f, remaining.Y);                       // gravity escape: never blocked by a one-sided mesh (step 4 clamps)
+                float gravityEscape = MathF.Min(0f, remaining.Y);
+                pos.Y += gravityEscape;                                   // gravity escape: never blocked by a one-sided mesh (step 4 clamps)
+                applied.Y += gravityEscape;
                 if (TryContactNormal(world, capsule, pos, dir, out Vector3 recovered))
                 {
-                    if (recovered.Y >= cosMaxSlope) { Vector3 h = remaining; h.Y = 0f; pos += h; break; }  // walkable floor: pass horizontal
+                    if (recovered.Y >= cosMaxSlope)
+                    {
+                        Vector3 h = remaining; h.Y = 0f; pos += h; applied += h; break;
+                    }  // walkable floor: pass horizontal
                     // No step-up attempt here: TryStepUp from this flush-tangent start was tried and proven unable to
                     // seat (its sweeps fail from tangent), so a mountable lip routes via the main-path step-up on the
                     // re-approach tick after this step-off.
-                    pos += recovered * SkinWidth;                          // step off the wall so the next sweep is clean
+                    Vector3 clearance = recovered * SkinWidth;
+                    pos += clearance;
+                    applied += clearance;                                 // step off the wall so the next sweep is clean
                     Vector3 horiz = new(remaining.X, 0f, remaining.Z);     // slide the horizontal along the wall's HORIZONTAL plane,
                     Vector3 nH = new(recovered.X, 0f, recovered.Z);        // then RE-SWEEP it (continue) so a perpendicular wall (corner) still blocks
                     if (nH.LengthSquared() > 1e-12f) { nH = Vector3.Normalize(nH); horiz -= Vector3.Dot(horiz, nH) * nH; }
@@ -219,6 +235,7 @@ public static partial class CharacterMovement
             if (n.Y >= cosMaxSlope)
             {
                 pos += remaining;
+                applied += remaining;
                 break;
             }
 
@@ -232,6 +249,7 @@ public static partial class CharacterMovement
                 LipLandingOk(n.Y, landedNy))
             {
                 steppedUp = true; steppedFloorY = stepped.Y;
+                applied += stepped - pos;
                 pos = stepped;
                 break;
             }
@@ -255,6 +273,7 @@ public static partial class CharacterMovement
                 // Stepping pos.Y here makes gravity win every tick (the gate already proved no floor within reach;
                 // step 4 still clamps at the real support floor). The horizontal slides on as usual.
                 pos.Y += remaining.Y;
+                applied.Y += remaining.Y;
                 slid.Y = 0f;
             }
             delta = slid;

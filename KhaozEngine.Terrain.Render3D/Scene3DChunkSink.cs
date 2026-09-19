@@ -448,7 +448,7 @@ namespace KhaozEngine.Terrain
             var clusterBuilds = new PropClusterCpuBuild?[_layers.Count];
             bool anyClusterBuild = false;
             GltfMesh?[]? hlod = buildHlod ? new GltfMesh?[_layers.Count] : null;
-            for (int i = 0; i < _layers.Count; i++)
+            for (int i = 0; i < _layers.Count && !reusePlacements; i++)
             {
                 PropLayer layer = _layers[i];
                 IReadOnlyList<PropPlacement> mergePlacements = scatter?[i] ?? Array.Empty<PropPlacement>();
@@ -540,7 +540,7 @@ namespace KhaozEngine.Terrain
             // swap (map-editor carve/paint) plus invalidate it is the ONLY way to see the fresh placements. Keeping
             // the old array left stale props behind after an edit, for example trees still standing in a carved
             // lake. Adopt unconditionally (empty for a decor chunk).
-            if (cpu.Reason != ChunkBuildReason.TierChange)
+            if (cpu.Reason is not (ChunkBuildReason.TierChange or ChunkBuildReason.ConfigurationChange))
                 relod.LayerProps = cpu.LayerProps;
 
             // Prop static bodies. A pure tier re-LOD inside the gameplay ring keeps them (placements are

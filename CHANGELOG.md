@@ -75,7 +75,10 @@ Grimhollow (https://github.com/APKiwiOrg/Grimhollow/issues/261). The reasoning i
   is missing, verified, and a second fill writes nothing. The manifest is written LAST, so a failed fill leaves
   no manifest a client could follow into a hole. A server manifest handed in as a client one is refused by the
   manifest codec's side byte with nothing written. It bypasses the client build gate, because a server is not
-  a client. It writes no version pointer and it never prunes.
+  a client. It writes no version pointer and it never prunes. A fault WRITING the origin is a refusal too,
+  `ContentOriginFill.RefusedOriginWrite` (`origin-write-failed`), carrying the address it stopped at and the
+  fault's own message in the result's new optional `RefusalDetail`: a read answers absent for a failure and a
+  write has no such answer, and a boot path wants a reason token rather than a stack.
 - **New opt-in package `KhaozEngine.Catalog.AzureBlob`**, in no umbrella, with `AzureBlobPackStore`: an
   `IPackStore` and `IPackStorePruning` over one Azure Blob container, built from a ready `BlobContainerClient`
   so the package carries `Azure.Storage.Blobs` and no identity library. It holds hash objects ONLY. It has no

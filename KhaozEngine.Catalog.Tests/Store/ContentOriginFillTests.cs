@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.Catalog;
 using KhaozEngine.Catalog.Authoring;
@@ -207,6 +209,64 @@ public class ContentOriginFillTests
         Assert.DoesNotContain(lost, await HashesAsync(origin));
     }
 
+    // A fault WRITING the origin is the one failure a read cannot be asked to stand in for: a store answers
+    // absent for a read it could not do, and has no such answer for a write. It is still a RESULT here,
+    // because a fill runs on a boot path where the useful answer is a reason token and an exit code.
+    [Fact]
+    public async Task A_fill_whose_origin_refuses_a_write_is_a_refusal_result_and_never_a_throw()
+    {
+        using var sourceRoot = new TemporaryRoot();
+        using var originRoot = new TemporaryRoot();
+        var source = new FileSystemPackStore(sourceRoot.Path);
+        var origin = new FileSystemPackStore(originRoot.Path);
+        PublishedVersion published = await PublishAsync(source);
+        var refusing = new RefusingWriteStore(origin, _ => true);
+
+        ContentOriginFillResult fill = await ContentOriginFill.RunAsync(
+            source, refusing, published.ClientVersion, published.Registry, concurrency: 1);
+
+        Assert.False(fill.Filled);
+        Assert.Equal(ContentOriginFill.RefusedOriginWrite, fill.RefusalReason);
+        Assert.Equal(0, fill.ObjectsWritten);
+        Assert.NotNull(fill.RefusalDetail);
+        Assert.Contains(RefusingWriteStore.Message, fill.RefusalDetail, StringComparison.Ordinal);
+
+        // The fill stops at the FIRST write that faulted rather than working through the rest of the
+        // closure: a container that refused one object refuses the next one too, and a boot that keeps
+        // pushing at a throttled origin makes the throttle worse.
+        Assert.Equal(Assert.Single(refusing.Attempted), fill.RefusalHash);
+        Assert.Empty(await HashesAsync(origin));
+        Assert.False(await origin.ExistsAsync(published.Published.ClientManifestHash));
+    }
+
+    // The manifest write is the LAST one and it is made outside the fetch loop, so it is a second place a
+    // write fault can arrive from. It answers the same way, and the origin is left with the chunks and no
+    // manifest, which is the state the next fill completes.
+    [Fact]
+    public async Task A_fill_whose_origin_refuses_the_manifest_write_is_a_refusal_result_too()
+    {
+        using var sourceRoot = new TemporaryRoot();
+        using var originRoot = new TemporaryRoot();
+        var source = new FileSystemPackStore(sourceRoot.Path);
+        var origin = new FileSystemPackStore(originRoot.Path);
+        PublishedVersion published = await PublishAsync(source);
+        string manifestHash = published.Published.ClientManifestHash;
+        var refusing = new RefusingWriteStore(
+            origin,
+            hash => string.Equals(hash, manifestHash, StringComparison.Ordinal));
+
+        ContentOriginFillResult fill = await ContentOriginFill.RunAsync(
+            source, refusing, published.ClientVersion, published.Registry);
+
+        Assert.False(fill.Filled);
+        Assert.Equal(ContentOriginFill.RefusedOriginWrite, fill.RefusalReason);
+        Assert.Equal(manifestHash, fill.RefusalHash);
+        Assert.True(fill.ObjectsWritten > 0);
+        Assert.Equal(published.ClientClosure().Count, fill.ObjectsRequired);
+        Assert.False(await origin.ExistsAsync(manifestHash));
+        Assert.DoesNotContain(manifestHash, await HashesAsync(origin));
+    }
+
     // The versions/<n> pointer format carries the SERVER manifest hash, an origin is public, and a client
     // learns its version from the connect door rather than from a file. So the fill writes no pointer, and
     // the directory one would land in is not even created.
@@ -301,6 +361,45 @@ public class ContentOriginFillTests
         Assert.True(read.Success, read.Reason ?? "no reason");
         Assert.NotNull(read.Manifest);
         return read.Manifest;
+    }
+
+    /// <summary>
+    /// An origin whose WRITES fault, which is what an expired signature or a throttled container is. Reads go
+    /// to the real store behind it, because a store answers absent for a read it could not do and the fill
+    /// has to be able to see what the origin already holds.
+    /// </summary>
+    /// <param name="inner">The store every read, and every write that is not refused, goes to.</param>
+    /// <param name="refuses">Which hashes the write faults for.</param>
+    sealed class RefusingWriteStore(IPackStore inner, Func<string, bool> refuses) : IPackStore
+    {
+        /// <summary>What the fault carries, so the detail can be pinned without naming an exception type.</summary>
+        public const string Message = "the origin refused the write";
+
+        readonly ConcurrentQueue<string> _attempted = new();
+
+        /// <summary>Every hash a write was attempted for, in call order.</summary>
+        public IReadOnlyCollection<string> Attempted => _attempted;
+
+        /// <inheritdoc />
+        public Task<bool> ExistsAsync(string hash, CancellationToken cancellationToken = default)
+            => inner.ExistsAsync(hash, cancellationToken);
+
+        /// <inheritdoc />
+        public Task<ReadOnlyMemory<byte>?> GetAsync(string hash, CancellationToken cancellationToken = default)
+            => inner.GetAsync(hash, cancellationToken);
+
+        /// <inheritdoc />
+        public Task PutAsync(string hash, ReadOnlyMemory<byte> bytes, CancellationToken cancellationToken = default)
+        {
+            _attempted.Enqueue(hash);
+            return refuses(hash)
+                ? throw new IOException(Message)
+                : inner.PutAsync(hash, bytes, cancellationToken);
+        }
+
+        /// <inheritdoc />
+        public IAsyncEnumerable<string> ListAsync(int versionNumber, CancellationToken cancellationToken = default)
+            => inner.ListAsync(versionNumber, cancellationToken);
     }
 
     /// <summary>One published version as the fill sees it: the registry, the result and both manifests.</summary>

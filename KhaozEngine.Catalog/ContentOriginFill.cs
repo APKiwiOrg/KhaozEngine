@@ -14,7 +14,9 @@ namespace KhaozEngine.Catalog;
 /// <param name="Version">The version the fill was asked for, number and CLIENT manifest hash.</param>
 /// <param name="ObjectsRequired">
 /// The client manifest plus every hash it names, which is what the origin has to hold. It is 1 when the
-/// manifest itself is what failed, because a manifest that did not read names nothing.
+/// manifest itself is what failed, because a manifest that did not read names nothing, and 0 when a write
+/// into the origin faulted mid walk, because the count is the fetch loop's answer and the loop was stopped
+/// before it gave one.
 /// </param>
 /// <param name="ObjectsWritten">
 /// How many objects this call actually wrote into the origin, counted at the write rather than inferred: 0
@@ -22,13 +24,19 @@ namespace KhaozEngine.Catalog;
 /// </param>
 /// <param name="RefusalReason">The stable reason token the fetch refused with, or null on a filled origin.</param>
 /// <param name="RefusalHash">The address the fill stopped at, or null on a filled origin.</param>
+/// <param name="RefusalDetail">
+/// What the refusal knows beyond its token, or null when the token says everything. Today that is the
+/// message of the fault an origin's write threw (<see cref="ContentOriginFill.RefusedOriginWrite"/>), which
+/// is the one refusal whose cause is a foreign library's and cannot be a token of ours.
+/// </param>
 public sealed record ContentOriginFillResult(
     bool Filled,
     ContentVersionIdentity Version,
     int ObjectsRequired,
     int ObjectsWritten,
     string? RefusalReason,
-    string? RefusalHash);
+    string? RefusalHash,
+    string? RefusalDetail = null);
 
 /// <summary>
 /// A game server is the PRODUCER of its clients' content origin. Before it opens a socket it makes sure the
@@ -57,6 +65,13 @@ public sealed record ContentOriginFillResult(
 public static class ContentOriginFill
 {
     /// <summary>
+    /// A write into the origin faulted, which is the one failure here that is neither the fetch's nor an
+    /// argument's. A read can answer absent and a write cannot, so the store's own contract has no room for
+    /// it, and a server boot wants a reason token and an exit code rather than a stack out of a fill.
+    /// </summary>
+    public const string RefusedOriginWrite = "origin-write-failed";
+
+    /// <summary>
     /// Copies the version's client closure from the server's own store into the origin, verified on the way
     /// through, and writes the manifest LAST so a fill that stopped leaves nothing a client could follow into
     /// a hole.
@@ -66,6 +81,12 @@ public static class ContentOriginFill
     /// own <c>side</c> byte refuses the other one (<see cref="ContentManifestCodec.ReasonWrongSide"/>), before
     /// any object is written. Handing the server hash here would otherwise publish every server only chunk of
     /// the version.
+    /// </para>
+    /// <para>
+    /// A fault WRITING the origin is a refusal too (<see cref="RefusedOriginWrite"/>), carrying the address it
+    /// stopped at and the fault's own message in <see cref="ContentOriginFillResult.RefusalDetail"/>. A read
+    /// answers absent for a failure and a write has no such answer, so an expired signature or a throttled
+    /// container arrives here as an exception, and a boot path wants one line rather than a stack.
     /// </para>
     /// </summary>
     /// <param name="source">The server's own pack store, which is read and never written.</param>
@@ -121,7 +142,18 @@ public static class ContentOriginFill
             Languages = [],
         });
 
-        ContentFetchResult fetched = await loop.FetchAsync(clientVersion, cancellationToken).ConfigureAwait(false);
+        ContentFetchResult fetched;
+        try
+        {
+            fetched = await loop.FetchAsync(clientVersion, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception failure) when (Refusable(failure, destination, cancellationToken))
+        {
+            // The required count is the LOOP's answer and the loop did not return one, so it is 0 here, the
+            // same shape as the 1 a fill reports when the manifest itself is what failed.
+            return Refused(clientVersion, 0, destination);
+        }
+
         int required = fetched.Progress.ChunksRequired + 1;
         if (!fetched.Success)
         {
@@ -134,9 +166,56 @@ public static class ContentOriginFill
                 fetched.Hash);
         }
 
-        await destination.CommitManifestAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await destination.CommitManifestAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception failure) when (Refusable(failure, destination, cancellationToken))
+        {
+            // Every chunk landed and the manifest did not, which is exactly the state a stopped fill is meant
+            // to leave: content addressed objects and nothing a client could follow into a hole.
+            return Refused(clientVersion, required, destination);
+        }
+
         return new ContentOriginFillResult(true, clientVersion, required, destination.Written, null, null);
     }
+
+    /// <summary>
+    /// Whether an exception the fill caught is the origin WRITE fault the view recorded, which is a refusal
+    /// rather than a throw.
+    /// <para>
+    /// The RECORDED fault decides rather than the exception's own type, because the parallel walk cancels its
+    /// remaining workers the moment one of them throws, so what the await surfaces may be one of those
+    /// cancellations rather than the fault that caused them. A cancellation the CALLER asked for is never
+    /// absorbed, which is what the token is read for, and neither is anything the view would not record.
+    /// </para>
+    /// </summary>
+    static bool Refusable(Exception failure, OriginWriteView destination, CancellationToken cancellationToken)
+        => destination.Fault is not null
+            && !cancellationToken.IsCancellationRequested
+            && (failure is OperationCanceledException || OriginWriteView.IsWriteFault(failure));
+
+    /// <summary>The refusal one recorded write fault makes, which carries the address and the fault's message.</summary>
+    static ContentOriginFillResult Refused(
+        ContentVersionIdentity clientVersion,
+        int required,
+        OriginWriteView destination)
+    {
+        OriginWriteFault fault = destination.Fault!;
+        return new ContentOriginFillResult(
+            false,
+            clientVersion,
+            required,
+            destination.Written,
+            RefusedOriginWrite,
+            fault.Hash,
+            fault.Detail);
+    }
+
+    /// <summary>The first write into the origin that faulted: what it was writing, and what the fault said.</summary>
+    /// <param name="Hash">The address the write was for.</param>
+    /// <param name="Detail">The fault's message, which belongs to whatever library the origin is built on.</param>
+    sealed record OriginWriteFault(string Hash, string Detail);
 
     /// <summary>
     /// The origin as the fetch loop's local half, with two jobs the origin itself has no business having.
@@ -161,9 +240,27 @@ public static class ContentOriginFill
     {
         ReadOnlyMemory<byte>? manifest;
         int written;
+        OriginWriteFault? fault;
+
+        /// <summary>
+        /// Whether a fault out of the origin's write is one this view RECORDS and the fill turns into a
+        /// refusal. The kinds cannot be listed the way a catch over one library's own would, because the
+        /// origin is whatever store the caller handed in and its fault is that library's. What CAN be listed
+        /// is what must never be absorbed: a cancellation is the caller's own decision and the one throwing
+        /// exit this surface has, a <see cref="ContentPackException"/> means bytes that did not digest to the
+        /// name they were offered under, which is a broken invariant rather than a fault of the origin's, and
+        /// the fatal kinds are nobody's to swallow.
+        /// </summary>
+        public static bool IsWriteFault(Exception failure)
+            => failure is not OperationCanceledException
+                and not ContentPackException
+                and not OutOfMemoryException;
 
         /// <summary>How many objects this view actually wrote into the origin.</summary>
         public int Written => Volatile.Read(ref written);
+
+        /// <summary>The FIRST write that faulted, or null while every write this view made went through.</summary>
+        public OriginWriteFault? Fault => Volatile.Read(ref fault);
 
         /// <inheritdoc />
         public Task<bool> ExistsAsync(string hash, CancellationToken cancellationToken = default)
@@ -186,8 +283,7 @@ public static class ContentOriginFill
                 return;
             }
 
-            await origin.PutAsync(hash, bytes, cancellationToken).ConfigureAwait(false);
-            Interlocked.Increment(ref written);
+            await WriteAsync(hash, bytes, cancellationToken).ConfigureAwait(false);
         }
 
         /// <inheritdoc />
@@ -206,9 +302,30 @@ public static class ContentOriginFill
                 return;
             }
 
-            await origin.PutAsync(manifestHash, bytes, cancellationToken).ConfigureAwait(false);
-            Interlocked.Increment(ref written);
+            await WriteAsync(manifestHash, bytes, cancellationToken).ConfigureAwait(false);
             manifest = null;
+        }
+
+        /// <summary>
+        /// One write into the origin, counted when it went through and RECORDED when it faulted. The fault is
+        /// rethrown rather than swallowed: the loop would otherwise carry on believing the object landed, and
+        /// a container that refused one write refuses the next one too, so stopping is both the honest answer
+        /// and the kind one to a throttled origin. The FIRST fault is the one kept, because it is the one
+        /// with a cause, and the workers that follow it are just the same container saying the same thing.
+        /// </summary>
+        async Task WriteAsync(string hash, ReadOnlyMemory<byte> bytes, CancellationToken cancellationToken)
+        {
+            try
+            {
+                await origin.PutAsync(hash, bytes, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception failure) when (IsWriteFault(failure))
+            {
+                Interlocked.CompareExchange(ref fault, new OriginWriteFault(hash, failure.Message), null);
+                throw;
+            }
+
+            Interlocked.Increment(ref written);
         }
     }
 }

@@ -169,6 +169,7 @@ public sealed partial class TileWorldServer : IDisposable
         host.CellCreated += EnsureWired;
         host.CellRemoved += cell =>
         {
+            ForgetStaticEntitiesIn(cell.Coord);
             if (wiredCells.Remove(cell.Coord)) liveCells.Remove(cell);
         };
     }

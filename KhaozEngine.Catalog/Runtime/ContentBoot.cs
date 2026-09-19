@@ -96,9 +96,23 @@ public static class ContentBoot
     /// active version. A server configured with a pin and a pack store therefore reads no authoring database
     /// at boot at all, which is the deployment this design recommends: the authoring database is a TOOLING
     /// dependency.
+    /// <para>
+    /// This is the version <see cref="RunAsync"/> will LOAD out of these same options, and 0 is the answer
+    /// when nothing named one, which is step 2's refusal. It is public because a caller that PREPARES the
+    /// pack store first has to prepare that version and no other: a <c>ContentPackRebuild</c> of the active
+    /// version, run while a config pin or an operator's pin names a different one, fills the root with a pack
+    /// the boot never asks for and the boot still refuses at step 3.
+    /// </para>
     /// </summary>
-    static async Task<int> ResolveVersionAsync(ContentBootOptions options, CancellationToken cancellationToken)
+    /// <param name="options">The same options the boot will be handed, since the answer is theirs.</param>
+    /// <param name="cancellationToken">Cancels the directory reads.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="options"/> is null.</exception>
+    public static async Task<int> ResolveVersionAsync(
+        ContentBootOptions options,
+        CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(options);
+
         if (options.ConfiguredVersion is int configured)
         {
             return configured;

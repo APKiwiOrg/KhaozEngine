@@ -284,17 +284,17 @@ public static class ContentBundleJson
             {
                 fields.Add(new ContentFieldEntry(
                     Text(field, "name"),
-                    (ContentFieldKind)Int(field, "kind"),
+                    FieldKind(field, "kind"),
                     OptionalText(field, "referenceTarget"),
-                    (ContentVisibility)Int(field, "visibility"),
+                    Visibility(field, "visibility"),
                     Bool(field, "required"),
                     Int(field, "scale")));
             }
 
             types.Add(new ContentBundleType(
-                new ContentTypeId((ushort)Int(element, "typeId")),
+                TypeId(element, "typeId"),
                 Text(element, "typeKey"),
-                (ContentVisibility)Int(element, "defaultVisibility"),
+                Visibility(element, "defaultVisibility"),
                 Int(element, "chunkSlots"),
                 OptionalInt(element, "maxDefinitionId"),
                 Schema(fields)));
@@ -326,7 +326,7 @@ public static class ContentBundleJson
             {
                 families.Add(new ContentFamily(
                     familyId,
-                    new ContentTypeId((ushort)Int(element, "typeId")),
+                    TypeId(element, "typeId"),
                     Text(element, "familyKey"),
                     blockSize,
                     Bool(element, "retired"),
@@ -350,12 +350,12 @@ public static class ContentBundleJson
             var fields = new List<ContentFieldEdit>();
             foreach (JsonElement field in Array(element, "fields"))
             {
-                var kind = (ContentFieldKind)Int(field, "kind");
+                ContentFieldKind kind = FieldKind(field, "kind");
                 fields.Add(new ContentFieldEdit(Text(field, "name"), Value(field, kind)));
             }
 
             rows.Add(new ContentBundleRow(
-                new ContentTypeId((ushort)Int(element, "typeId")),
+                TypeId(element, "typeId"),
                 OptionalInt(element, "id"),
                 new ContentKey(Text(element, "key")),
                 Bool(element, "retired"),
@@ -376,8 +376,8 @@ public static class ContentBundleJson
                 rules.Add(new RemapRule(
                     Int(element, "sequence"),
                     Int(element, "introducedIn"),
-                    new ContentTypeId((ushort)Int(element, "typeId")),
-                    (RemapRuleKind)Int(element, "kind"),
+                    TypeId(element, "typeId"),
+                    RuleKind(element, "kind"),
                     Int(element, "fromId"),
                     Int(element, "toId"),
                     Bytes(element, "payload")));
@@ -442,7 +442,54 @@ public static class ContentBundleJson
             ? element.GetString()
             : null;
 
-    static int Int(JsonElement parent, string name) => (int)Long(parent, name);
+    static int Int(JsonElement parent, string name)
+    {
+        if (!parent.TryGetProperty(name, out JsonElement element) || element.ValueKind != JsonValueKind.Number)
+        {
+            throw Refuse(FormattableString.Invariant($"A bundle member '{name}' is a number, and this one is not."));
+        }
+
+        return element.TryGetInt32(out int value)
+            ? value
+            : throw Refuse(FormattableString.Invariant(
+                $"A bundle member '{name}' is a 32-bit integer, and this one is not."));
+    }
+
+    static ContentTypeId TypeId(JsonElement parent, string name)
+    {
+        int value = Int(parent, name);
+        return value is >= 1 and <= ushort.MaxValue
+            ? new ContentTypeId((ushort)value)
+            : throw Refuse(FormattableString.Invariant(
+                $"A bundle member '{name}' is a content type id from 1 to {ushort.MaxValue}, and this one is not."));
+    }
+
+    static ContentFieldKind FieldKind(JsonElement parent, string name)
+    {
+        int value = Int(parent, name);
+        return value is >= (int)ContentFieldKind.Int and <= (int)ContentFieldKind.OpaqueBytes
+            ? (ContentFieldKind)value
+            : throw Refuse(FormattableString.Invariant(
+                $"A bundle member '{name}' is a known content field kind, and this one is not."));
+    }
+
+    static ContentVisibility Visibility(JsonElement parent, string name)
+    {
+        int value = Int(parent, name);
+        return value is >= (int)ContentVisibility.Client and <= (int)ContentVisibility.ServerOnly
+            ? (ContentVisibility)value
+            : throw Refuse(FormattableString.Invariant(
+                $"A bundle member '{name}' is a known content visibility, and this one is not."));
+    }
+
+    static RemapRuleKind RuleKind(JsonElement parent, string name)
+    {
+        int value = Int(parent, name);
+        return value is >= (int)RemapRuleKind.ReplacedBy and <= (int)RemapRuleKind.StackCapLowered
+            ? (RemapRuleKind)value
+            : throw Refuse(FormattableString.Invariant(
+                $"A bundle member '{name}' is a known remap rule kind, and this one is not."));
+    }
 
     // A JSON number is a decimal literal of ANY magnitude, so Number-kinded is not yet integer-valued: 1.5,
     // an id of 9,999,999,999 against an int, and 1e308 against a long are all Number and none of them

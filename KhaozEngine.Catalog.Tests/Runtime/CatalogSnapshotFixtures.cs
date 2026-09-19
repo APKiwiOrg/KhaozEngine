@@ -34,7 +34,7 @@ internal static class CatalogSnapshotFixtures
     }
 
     /// <summary>
-    /// An item row carrying the four hot fields the typed view reads, plus enough of the rest that the walk
+    /// An item row carrying the five hot fields the typed view reads, plus enough of the rest that the walk
     /// has real fields to skip: a tag list, a bool, an asset reference and three scaled ints.
     /// </summary>
     public static ContentRow ItemRow(

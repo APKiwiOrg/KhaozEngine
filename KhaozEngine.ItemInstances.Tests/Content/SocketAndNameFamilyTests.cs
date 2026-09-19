@@ -302,7 +302,7 @@ public class SocketAndNameFamilyTests
         {
             Assert.False(
                 ContentTextKey.ExceedsBound(type.Key, 64, field.Name),
-                ContentTextKey.Derive(type.Key, default, field.Name));
+                ContentTextKey.Derive(type.Key, ReadOnlySpan<byte>.Empty, field.Name));
             foreach (char c in field.Name)
             {
                 Assert.True(c is (>= 'a' and <= 'z') or (>= '0' and <= '9') or '_', field.Name);

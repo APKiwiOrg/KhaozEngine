@@ -69,6 +69,9 @@ up regardless of load order. Plain `float` math throughout.
   when a loaded chunk's tier OR residency ring changes, nearest-first ordering. Pure bookkeeping over
   **`ChunkCoord`**/**`ChunkGrid`** driving an injected **`IChunkSink`**, so it is headless-testable with a
   fake sink and just as usable on a dedicated server (no chunk mesh, no GPU) as on a client.
+  `Reconfigure(newConfig)` applies live load, decor and unload radii, LOD tables, hysteresis and load/unload
+  budgets. Expansion and contraction use those budgets. Chunk size and async topology are construction-only.
+  A selection change drains and discards pending old-profile builds before the next ring scan.
   `StreamerConfig` also carries an optional `DecorRadius` (chunk units, default 0 = off) for a farther,
   coarser decor-only ring tagged with **`ChunkRing`** (`Gameplay` / `Decor`), a `MaxUnloadsPerFrame`
   budget (default 8, farthest first, 0 or less frees everything at once) so a ring shift spreads its GPU

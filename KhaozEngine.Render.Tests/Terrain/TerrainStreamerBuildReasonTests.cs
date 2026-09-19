@@ -165,6 +165,29 @@ namespace KhaozEngine.Tests.Terrain
             Assert.Equal(before.Invalidate, after.Invalidate);
         }
 
+        [Fact]
+        public void A_combined_tier_and_decor_to_gameplay_transition_is_a_ring_change()
+        {
+            var config = new StreamerConfig(
+                LoadRadius: 2, UnloadRadius: 7, MaxLoadsPerFrame: 1000, ChunkSize: ChunkSize, DecorRadius: 5);
+            using var sink = new FakeChunkSink();
+            using var streamer = new TerrainStreamer(config.Synchronous(), sink);
+            var target = new ChunkCoord(3, 0);
+            streamer.PrimeAround(new Vector3(30f, 0f, 30f));
+            Assert.Equal(ChunkRing.Decor, streamer.RingOf(target));
+            Assert.Equal(1, streamer.LodOf(target));
+            sink.Reasons.Clear();
+
+            streamer.PrimeAround(new Vector3(150f, 0f, 30f));
+
+            Assert.Equal(ChunkRing.Gameplay, streamer.RingOf(target));
+            Assert.Equal(0, streamer.LodOf(target));
+            Assert.Contains(sink.Reasons,
+                item => item.coord == target && item.reason == ChunkBuildReason.RingChange);
+            Assert.DoesNotContain(sink.Reasons,
+                item => item.coord == target && item.reason == ChunkBuildReason.TierChange);
+        }
+
         /// <summary>The synchronous path has to attribute the same way the async one does, since a tool or editor
         /// running <c>StreamerConfig.Synchronous()</c> reads the same counters.</summary>
         [Fact]

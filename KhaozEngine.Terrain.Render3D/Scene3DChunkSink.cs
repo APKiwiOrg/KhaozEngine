@@ -29,7 +29,7 @@ namespace KhaozEngine.Terrain
     /// caller must <see cref="Scene3D.UnloadSplatMaterial"/> it when done (or reuse it for the rebuilt sink). Pass
     /// <c>ownsMaterial: true</c> to hand ownership to the sink, whose <see cref="Dispose"/> then frees it too. The
     /// material is never disposed per-chunk.</para></summary>
-    public sealed class Scene3DChunkSink : IReasonedAsyncChunkSink, IDisposable
+    public sealed class Scene3DChunkSink : IReasonedAsyncChunkSink, IChunkLodConfigSink, IDisposable
     {
         readonly Scene3D _scene;
         TerrainField _field;
@@ -45,7 +45,7 @@ namespace KhaozEngine.Terrain
         readonly IChunkDynamicsSource? _dynamicsSource;
         readonly bool _collideTerrain;
         readonly bool _ownsMaterial;
-        readonly TerrainLodConfig _lodConfig;
+        TerrainLodConfig _lodConfig;
         readonly int _collisionLod;
         readonly Func<TerrainSplatContext, TerrainSplatWeights>? _splatRule;
         readonly float _snowLine;
@@ -313,6 +313,18 @@ namespace KhaozEngine.Terrain
             _field = field;
         }
 
+        /// <inheritdoc />
+        public void ReconfigureLod(TerrainLodConfig lodConfig)
+        {
+            ArgumentNullException.ThrowIfNull(lodConfig);
+            int inFlight = Volatile.Read(ref _buildsInFlight);
+            if (inFlight > 0)
+                throw new InvalidOperationException(
+                    $"ReconfigureLod was called while {inFlight} chunk build(s) are still running. " +
+                    "Drain or reset the streamer before changing its LOD table.");
+            _lodConfig = lodConfig;
+        }
+
         /// <summary>The opaque CPU payload <c>BuildCpu</c> hands to <see cref="Apply"/>: the pure-CPU mesh and
         /// the per-layer scatter, both built off the analytic field with no GPU device. Everything here is safe to
         /// compute on a worker thread. The GPU upload + physics registration happen later in <see cref="Apply"/>.
@@ -398,11 +410,13 @@ namespace KhaozEngine.Terrain
         object BuildCpuCore(ChunkCoord coord, int lod, ChunkRing ring, ChunkBuildReason reason)
         {
             TerrainChunkRegion region = ChunkGrid.RegionOf(coord, _chunkSize);
-            bool buildHlod = _hlodGate is not null && _hlodGate.NeedsMerge(coord, lod, ring);
+            bool buildHlod = reason != ChunkBuildReason.ConfigurationChange
+                && _hlodGate is not null && _hlodGate.NeedsMerge(coord, lod, ring);
             // Scatter is needed for a gameplay chunk's props AND for an HLOD merge that is actually going to happen
             // (even on a decor chunk, whose merged mesh stands in for the props it never scatters). Compute it once
             // when either applies. A decor re-LOD that merges nothing does not query placements at all.
-            bool reusePlacements = reason == ChunkBuildReason.TierChange;
+            bool reusePlacements = reason is ChunkBuildReason.TierChange or ChunkBuildReason.ConfigurationChange;
+            bool rebuildCollision = reason != ChunkBuildReason.TierChange;
             IReadOnlyList<PropPlacement>[]? scatter = ring == ChunkRing.Gameplay && !reusePlacements || buildHlod
                 ? ScatterLayersFor(coord)
                 : null;
@@ -422,7 +436,7 @@ namespace KhaozEngine.Terrain
             // render mesh when the tiers coincide (the common near-chunk case), else mesh a second grid off-thread.
             // No splat rule on the second grid: ChunkTerrainCollision reads positions and winding only, so running a
             // per-vertex presentation rule over a mesh whose weights are discarded is pure cost.
-            if (ring == ChunkRing.Gameplay && _collideTerrain && !reusePlacements)
+            if (ring == ChunkRing.Gameplay && _collideTerrain && rebuildCollision)
                 cpu.CollisionMesh = _collisionLod == lod
                     ? cpu.Mesh
                     : TerrainChunkBuilder.Build(_field, region, _collisionLod, _lodConfig,
@@ -513,7 +527,8 @@ namespace KhaozEngine.Terrain
             bool tierChanged = lod != oldLod;
             // Same (tier, ring) with an existing handle only happens through the editor's Invalidate (a field swap at
             // the current tier), where placements + surface may have changed and must be rebuilt.
-            bool fieldRebuild = cpu.Reason == ChunkBuildReason.Invalidate;
+            bool refreshPlacements = cpu.Reason == ChunkBuildReason.Invalidate;
+            bool refreshTerrainCollider = refreshPlacements || cpu.Reason == ChunkBuildReason.ConfigurationChange;
 
             _scene.UnloadMesh(relod.Mesh);
             relod.Mesh = UploadMesh(cpu.Mesh);
@@ -533,7 +548,7 @@ namespace KhaozEngine.Terrain
             // the fresh placements when the chunk is now gameplay, or tear them all down when it is now decor.
             if (_physics is not null && _collisionShapes is not null)
             {
-                bool keepStatics = ring == ChunkRing.Gameplay && !ringChanged && !fieldRebuild;
+                bool keepStatics = ring == ChunkRing.Gameplay && !ringChanged && !refreshPlacements;
                 if (!keepStatics)
                 {
                     ChunkStatics.RemoveAll(_physics, relod.Statics);
@@ -558,7 +573,7 @@ namespace KhaozEngine.Terrain
             // drop it when now decor.
             if (_collideTerrain && _physics is not null)
             {
-                bool keepTerrainCollider = ring == ChunkRing.Gameplay && !ringChanged && !fieldRebuild;
+                bool keepTerrainCollider = ring == ChunkRing.Gameplay && !ringChanged && !refreshTerrainCollider;
                 if (!keepTerrainCollider)
                 {
                     ChunkTerrainCollision.Remove(_physics, relod.HasTerrainCollider, relod.TerrainCollider);
@@ -571,7 +586,7 @@ namespace KhaozEngine.Terrain
             // HLOD merged mesh: the coarse geometry is field-determined and tier/ring-independent, so a pure tier or
             // ring re-LOD keeps the cached handle (no GPU churn). Only a rebuild in place (editor Invalidate after a
             // field swap, or a placement source's arrival) rebuilds it, mirroring how the placements + terrain
-            // surface refresh only then. The condition is the PAYLOAD, not fieldRebuild: BuildCpu already made this
+            // surface refresh only then. The condition is the PAYLOAD, not an inferred rebuild kind: BuildCpu already made this
             // exact call (it is what decides whether to spend the merge at all), so re-deriving it here would be a
             // second copy of the rule that could drift from the one that actually spent the work.
             if (cpu.HlodMeshes is not null)

@@ -72,4 +72,11 @@ namespace KhaozEngine.Terrain
         /// <summary>Build CPU data for one attributed request.</summary>
         object BuildCpu(ChunkCoord coord, int lod, ChunkRing ring, ChunkBuildReason reason);
     }
+
+    /// <summary>Optional sink seam for a live terrain LOD table change.</summary>
+    public interface IChunkLodConfigSink
+    {
+        /// <summary>Use this table for future chunk meshes. The caller has stopped outstanding builds first.</summary>
+        void ReconfigureLod(TerrainLodConfig lodConfig);
+    }
 }

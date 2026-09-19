@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using KhaozEngine.Gpu;
+using KhaozEngine.Physics.Bepu;
 using KhaozEngine.Render3D;
 using KhaozEngine.Terrain;
 using KhaozEngine.Tests.Gpu;
@@ -246,6 +247,44 @@ namespace KhaozEngine.Tests.Terrain
 
             sink.BuildCpu(coord, lod: 1, ChunkRing.Gameplay, ChunkBuildReason.Invalidate);
             Assert.Equal(2, source.Queries);
+        }
+
+        [Fact]
+        public void BuildCpu_ACombinedTierAndDecorToGameplayChangeBuildsGameplayData()
+        {
+            var source = new CountingSource();
+            using var physics = new BepuPhysicsWorld();
+            var sink = new Scene3DChunkSink(scene: null!, Flat(5f),
+                new[] { PropLayer.PlacementLayer(source, NoMeshes(), 90f) }, chunkSize: 60f,
+                physics: physics, collideTerrain: true);
+            var coord = new ChunkCoord(3, 0);
+
+            var cpu = (Scene3DChunkSink.CpuBuild)sink.BuildCpu(
+                coord, lod: 0, ChunkRing.Gameplay, ChunkBuildReason.RingChange);
+
+            Assert.Equal(1, source.Queries);
+            Assert.NotEmpty(cpu.LayerProps[0]);
+            Assert.NotNull(cpu.CollisionMesh);
+        }
+
+        [Fact]
+        public void ReconfigureLod_ChangesTheResolutionUsedByTheSameTierIndex()
+        {
+            var dense = new TerrainLodConfig(new TerrainLodTier(64, float.PositiveInfinity));
+            var coarse = new TerrainLodConfig(new TerrainLodTier(16, float.PositiveInfinity));
+            var sink = new Scene3DChunkSink(scene: null!, Flat(5f),
+                new[] { PropLayer.PlacementLayer(new CountingSource(), NoMeshes(), 90f) }, chunkSize: 60f,
+                lodConfig: dense);
+            var coord = new ChunkCoord(0, 0);
+            var before = (Scene3DChunkSink.CpuBuild)sink.BuildCpu(
+                coord, lod: 0, ChunkRing.Gameplay, ChunkBuildReason.FreshLoad);
+
+            sink.ReconfigureLod(coarse);
+            var after = (Scene3DChunkSink.CpuBuild)sink.BuildCpu(
+                coord, lod: 0, ChunkRing.Gameplay, ChunkBuildReason.ConfigurationChange);
+
+            Assert.True(after.Mesh.SurfaceVertexCount < before.Mesh.SurfaceVertexCount);
+            Assert.Equal((16 + 1) * (16 + 1), after.Mesh.SurfaceVertexCount);
         }
 
         [Fact]

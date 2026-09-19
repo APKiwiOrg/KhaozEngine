@@ -68,6 +68,7 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   adds baked prop collision statics to an `IPhysicsWorld` (the `physics` + `collisionShapes` ctor params). A
   **`Decor`**-ring chunk is render-only: the sink skips scatter, prop colliders, dynamics, and terrain
   collision for it. The `lodConfig` ctor param sets the tier table it meshes with (must match the streamer's),
+  and `ReconfigureLod` updates that table after the streamer has drained old-profile builds.
   the `snowLine` ctor param (both ctors, default `60f`) sets the snow transition for every chunk, and the
   `splatRule` ctor param (both ctors, default null) threads a consumer splat rule into every chunk the
   sink builds. These settings are the seams a game configures, since games drive the streamer rather than calling

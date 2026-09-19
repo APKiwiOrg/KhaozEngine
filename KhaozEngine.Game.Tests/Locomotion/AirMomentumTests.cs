@@ -293,6 +293,30 @@ public class AirMomentumTests
     }
 
     [Fact]
+    public void A_slow_free_flight_at_5km_keeps_6_metres_per_second_for_ten_seconds()
+    {
+        MoveTuning t = Base with { AirMomentum = true, Gravity = 0f };
+        for (int angle = 1; angle < 90; angle++)
+        {
+            float radians = angle * (MathF.PI / 180f);
+            var launch = new Vector2(MathF.Cos(radians), -MathF.Sin(radians)) * 6f;
+            MoveState s = new()
+            {
+                Position = new Vector3(5_000f, 50f, 5_000f),
+                Grounded = false,
+                TimeSinceGrounded = 1f,
+                HorizontalVelocity = launch,
+            };
+
+            for (int i = 0; i < 600; i++)
+                s = CharacterMovement.Step(s, Idle, Dt, FarBelow, t);
+
+            Assert.Equal(6f, s.HorizontalVelocity.Length(), 5);
+            Assert.True(Vector2.Dot(Vector2.Normalize(launch), Vector2.Normalize(s.HorizontalVelocity)) > 0.99999f);
+        }
+    }
+
+    [Fact]
     public void The_default_brake_of_zero_conserves_the_arc_indefinitely()
     {
         MoveTuning t = Base with { AirMomentum = true };

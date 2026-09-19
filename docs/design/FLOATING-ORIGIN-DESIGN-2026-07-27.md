@@ -76,8 +76,9 @@ measurement of the same physics. The airborne-momentum clip's undenied tolerance
 intended speed while the rounding it defends against is a fraction of the coordinate, so the two stop
 lining up once one float step of the position exceeds 0.1 percent of a tick's travel, at roughly
 `|coordinate| > speed * dt * 16800`. That is about **1.7 km at walk speed and 60 Hz**, 3.4 km at 30 Hz.
-Measured: a 6 m/s arc at 5 km sheds 0.0096 m/s of carried velocity per ten-second flight, before and after
-the fix, unchanged.
+The later momentum follow-up removed that specific loss by carrying the collision resolve's achieved delta
+instead of subtracting two absolute positions. The original 0.0096 m/s measurement remains the evidence this
+floating-origin design used.
 
 This is a second, independent, already-measured constraint from a different subsystem, and it is far tighter
 than 100 km. It is load-bearing for section 2: the working radius has to be hundreds of metres, not

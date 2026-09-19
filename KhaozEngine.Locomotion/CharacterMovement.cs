@@ -272,7 +272,14 @@ public static partial class CharacterMovement
                 (dx, dz, commandedVel) = AirborneMomentumMove(s, moveDir, speedFraction, run, dt, t, groundNormal, groundHeight, wade, tractionGate);
             carrySeed = commandedVel;
         }
-        if (clampXz is not null) { Vector2 c = clampXz(dx, dz); dx = c.X; dz = c.Y; }
+        Vector2 achievedHorizontal = HorizontalDelta(s.Position, dx, dz, commandedVel, dt);
+        if (clampXz is not null)
+        {
+            Vector2 c = clampXz(dx, dz);
+            if (c.X != dx || c.Y != dz)
+                achievedHorizontal = new Vector2(c.X - s.Position.X, c.Y - s.Position.Z);
+            dx = c.X; dz = c.Y;
+        }
 
         // 2. Vertical integrate (UNCHANGED math): jump-buffer countdown, gravity, terminal clamp. On a SLIDING tick
         //    the ordinary integrate is replaced wholesale by the fall-line one resolved above, which is the same
@@ -300,14 +307,16 @@ public static partial class CharacterMovement
         }
         else
         {
-            pos = SweptMove(world, capsule, start, target, t, s.Grounded, restHold, groundHeight, out steppedUp, out steppedFloorY);
+            var intendedDelta = new Vector3(achievedHorizontal.X, vVel * dt, achievedHorizontal.Y);
+            pos = SweptMove(world, capsule, start, intendedDelta, t, s.Grounded, restHold, groundHeight,
+                out steppedUp, out steppedFloorY, out achievedHorizontal);
 
             // The settle pass the swept move needs after it commits - residual-overlap depenetration (with the
             // walkable-rest vertical-only rule), the re-applied XZ clamp, and the monotone-forward climb hold that
             // refuses a riser's backward shove - lives in CharacterMovement.Settle.cs. It corrects the candidate
             // position only, and it is the reason propGrounded can be set without the support probe below.
             pos = SettleAfterSweep(world, capsule, pos, s, t, dx, dz, vVel, halfH, restHold, clampXz, groundHeight,
-                out propGrounded);
+                ref achievedHorizontal, out propGrounded);
         }
 
         // 4. Support floor (analytic terrain + a downward prop sweep). The physics world holds only props
@@ -537,7 +546,7 @@ public static partial class CharacterMovement
             // clip is measured against commandedVel because that is the vector this tick's advance was computed
             // from. On a slide it carries a contour steer the carry does not, and reading the carry alone against a
             // displacement the steer helped produce would clip the carry for the steer's travel (see there).
-            HorizontalVelocity = ClipCarryToAchieved(carrySeed, commandedVel, start, pos, dt),
+            HorizontalVelocity = ClipCarryToAchieved(carrySeed, commandedVel, achievedHorizontal, dt),
             Commitment = FinishCommitmentTick(s.Commitment, launchedThisTick, grounded, start, pos, dt),
         };
         // Defense-in-depth: a finite input state must never produce a non-finite result. A pathological command is

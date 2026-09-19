@@ -168,6 +168,20 @@ A non-modal window frame and a title-bar drag, lifted out of the same consumer:
     properties over nullable backing fields, so a theme that never sets them derives them from the
     palette it did set: a rebrand that names only `Surface` carries the title row with it. No existing
     construction site changes meaning and no theme needs an edit.
+  - **`TabBar` gains the four knobs a side panel's two-row strip needs, and `TabStrip` gains the
+    arithmetic as statics.** `BlockAlign` places the wrapped block inside `Bounds` and defaults to
+    the anchored layout every existing bar draws. `AllowNoActiveTab` opens `ActiveIndex` down to
+    `TabBar.NoActiveTab` for a collapsed panel, defaulting to the shipped clamp. The order the opt-in
+    and the -1 are assigned in does not matter, so an object initializer cannot silently open a
+    closed panel on tab 0, and a tap from -1 reads as a change because with nothing active every tab
+    is one. `BlocksPointer` opts out of the reservation and defaults TRUE, unlike `Panel`, because a
+    tab bar is a leaf control that has always reserved its own region. `DrawMode` adds a flat fill, a
+    one-unit border and a fitted centred label off `GuiTheme.TabFill` / `TabActiveFill`, with the
+    shipped button draw as the default. It reads the theme's COLOURS only, not its corner radius or
+    border thickness, it is read by the fixed-size layout only, and a fitted label is remembered
+    between frames so an over-long one costs no strings per draw. `TabStrip` and `TabStripMetrics`
+    are the rects and their inverse with NO widget instance, and `TabBar` calls into them, so a
+    retained and an instance-free hit test cannot drift.
 
 ## 19.5.0
 

@@ -5,11 +5,12 @@ namespace KhaozEngine.Catalog;
 /// <summary>
 /// The typed view over the engine <c>item</c> type of spec 9.1, and the ONLY typed view in the catalog. The
 /// generic read side is <see cref="ContentRow"/>, which is right for an editor, a diff and a game type the
-/// engine has never heard of, and wrong for the stacking rule: <c>stackable</c> and <c>max_stack</c> are read
-/// on every merge test, <c>durability_max</c> at every generation and <c>socket_max</c> in the container
-/// validator, and a field-by-name walk over a value list is not what those paths budget for.
+/// engine has never heard of, and wrong for the hot item fields. <c>stackable</c> and <c>max_stack</c> are
+/// read on every merge test, <c>value</c> on every price read, <c>durability_max</c> at every generation and
+/// <c>socket_max</c> in the container validator. A field-by-name walk over a value list is not what those
+/// paths budget for.
 /// <para>
-/// A <c>ref struct</c> over the body span, with the four hot fields decoded at construction. It is the ENGINE
+/// A <c>ref struct</c> over the body span, with the five hot fields decoded at construction. It is the ENGINE
 /// item type only, which is what makes a fixed walk legal: the schema is spec 3.3's, and a game cannot add a
 /// field to it. Nothing else gets a typed view, because a typed view over a schema the engine does not own
 /// could not be written.
@@ -28,10 +29,18 @@ namespace KhaozEngine.Catalog;
 /// </summary>
 public readonly ref struct ItemRow
 {
-    ItemRow(bool stackable, int maxStack, int durabilityMax, int socketMax, ContentKey key, bool isRetired)
+    ItemRow(
+        bool stackable,
+        int maxStack,
+        int value,
+        int durabilityMax,
+        int socketMax,
+        ContentKey key,
+        bool isRetired)
     {
         Stackable = stackable;
         MaxStack = maxStack;
+        Value = value;
         DurabilityMax = durabilityMax;
         SocketMax = socketMax;
         Key = key;
@@ -43,6 +52,9 @@ public readonly ref struct ItemRow
 
     /// <summary>The largest stack one slot holds.</summary>
     public int MaxStack { get; }
+
+    /// <summary>The item's authored value in the item schema's scaled units.</summary>
+    public int Value { get; }
 
     /// <summary>The durability a fresh instance starts at. 0 means the base has no durability.</summary>
     public int DurabilityMax { get; }
@@ -108,7 +120,7 @@ public readonly ref struct ItemRow
             || !TryReadFlag(span, ref offset, out bool stackable)
             || !ContentVarint.TryRead(span, ref offset, out uint maxStack, out _)
             || !TryReadFlag(span, ref offset, out _)                            // tradable
-            || !ContentVarint.TryRead(span, ref offset, out _, out _)           // value
+            || !ContentVarint.TryRead(span, ref offset, out uint value, out _)
             || !SkipLengthPrefixed(span, ref offset)                            // icon
             || !SkipLengthPrefixed(span, ref offset)                            // mesh
             || !SkipLengthPrefixed(span, ref offset)                            // held_mesh
@@ -132,6 +144,7 @@ public readonly ref struct ItemRow
         row = new ItemRow(
             stackable,
             unchecked((int)maxStack),
+            unchecked((int)value),
             unchecked((int)durabilityMax),
             unchecked((int)socketMax),
             new ContentKey(body, start + keyStart, (int)keyLength),

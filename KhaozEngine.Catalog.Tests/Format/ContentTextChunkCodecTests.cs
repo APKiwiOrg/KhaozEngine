@@ -18,6 +18,7 @@ namespace KhaozEngine.Tests.Catalog.Format;
 /// it forever.
 /// </para>
 /// </summary>
+[Collection("AllocSensitive")]
 public class ContentTextChunkCodecTests
 {
     static KeyValuePair<string, string> Entry(string key, string value) => new(key, value);
@@ -430,6 +431,50 @@ public class ContentTextChunkCodecTests
 
         // The dot never appears inside a segment, so a key splits on it exactly.
         Assert.Equal(3, ContentTextKey.Derive("item", "stone_sword"u8, "name").Split('.').Length);
+    }
+
+    [Theory]
+    [InlineData("café")]
+    [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
+    public void TheStringOverloadMatchesTheUtf8Overload(string contentKey)
+    {
+        string fromString = ContentTextKey.Derive("item", contentKey, "name");
+        string fromUtf8 = ContentTextKey.Derive("item", Encoding.UTF8.GetBytes(contentKey), "name");
+
+        Assert.Equal(fromUtf8, fromString);
+    }
+
+    [Fact]
+    public void TheStringOverloadAllocatesOnlyTheResultString()
+    {
+        const string typeKey = "item";
+        const string fieldName = "name";
+        string contentKey = new('a', 256);
+        int resultLength = typeKey.Length + contentKey.Length + fieldName.Length + 2;
+
+        _ = new string('a', resultLength);
+        _ = ContentTextKey.Derive(typeKey, contentKey, fieldName);
+
+        long beforeReference = GC.GetAllocatedBytesForCurrentThread();
+        int referenceLength = 0;
+        for (int i = 0; i < 1000; i++)
+        {
+            referenceLength += new string('a', resultLength).Length;
+        }
+
+        long referenceBytes = GC.GetAllocatedBytesForCurrentThread() - beforeReference;
+        long beforeDerive = GC.GetAllocatedBytesForCurrentThread();
+        int derivedLength = 0;
+        for (int i = 0; i < 1000; i++)
+        {
+            derivedLength += ContentTextKey.Derive(typeKey, contentKey, fieldName).Length;
+        }
+
+        long derivedBytes = GC.GetAllocatedBytesForCurrentThread() - beforeDerive;
+
+        Assert.Equal(referenceLength, derivedLength);
+        Assert.True(referenceBytes > 0);
+        Assert.Equal(referenceBytes, derivedBytes);
     }
 
     [Fact]

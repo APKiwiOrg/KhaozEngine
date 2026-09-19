@@ -248,6 +248,30 @@ public class RowCodecRoundTripTests
     }
 
     [Fact]
+    public void ReadTagListReturnsIdsInAuthoredOrder()
+    {
+        ContentFieldValue value = ContentRowCodecBase.TagListValue([9, 2, 7]);
+        Span<int> destination = stackalloc int[4];
+
+        int count = ContentRowCodecBase.ReadTagList(in value, destination);
+
+        Assert.Equal(3, count);
+        Assert.Equal([9, 2, 7], destination[..count].ToArray());
+    }
+
+    [Fact]
+    public void ReadTagListKeepsTheIdsBeforeAMalformedVarint()
+    {
+        ContentFieldValue value = ContentFieldValue.OfBytes(ContentFieldKind.TagList, new byte[] { 9, 0x80 });
+        Span<int> destination = stackalloc int[2];
+
+        int count = ContentRowCodecBase.ReadTagList(in value, destination);
+
+        Assert.Equal(1, count);
+        Assert.Equal(9, destination[0]);
+    }
+
+    [Fact]
     public void ANegativeScaledValueRoundTripsThroughTheUnsignedVarint()
     {
         ContentTypeRegistration registration = Type("stat");

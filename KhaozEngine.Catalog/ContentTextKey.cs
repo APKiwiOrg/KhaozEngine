@@ -31,6 +31,19 @@ public static class ContentTextKey
     public const char Separator = '.';
 
     /// <summary>
+    /// Derives the key from a content key the caller already holds as text. The result string is the only
+    /// allocation, with no temporary UTF-8 buffer.
+    /// </summary>
+    public static string Derive(string typeKey, string contentKey, string fieldName)
+    {
+        ArgumentNullException.ThrowIfNull(typeKey);
+        ArgumentNullException.ThrowIfNull(contentKey);
+        ArgumentNullException.ThrowIfNull(fieldName);
+
+        return string.Concat(typeKey, ".", contentKey, ".", fieldName);
+    }
+
+    /// <summary>
     /// Derives the key. The content key arrives as the UTF-8 bytes the runtime already holds, so a caller
     /// does not materialise a row key just to build one. This allocates and is the authoring, publish and
     /// diagnostic path rather than a frame-loop one.

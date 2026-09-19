@@ -90,7 +90,8 @@ var key = new ContentKey(rowBlob, start, length);       // no string materialise
   every field follows in declared order, an ABSENT optional field writes the zero form of its kind (one
   `00` byte in every case) and a derived marker writes nothing at all. A type subclasses it only to add a
   constraint the generic walk cannot express, checked on both sides so an encoder cannot write a row its own
-  decoder refuses.
+  decoder refuses. `TagListValue` writes authored tag ids and `ReadTagList` reads them into a caller span,
+  preserving the readable prefix of malformed bytes for diagnostic consumers.
 - `IContentLoadIndex` - a derived table one type builds ONCE at boot step 7b, after the engine's own
   indexes, in type id order, before the validator. It may read another type's rows and may not read another index, and it
   throws to fail the boot closed rather than returning a partial index. `ContentRuntime.BuildLoadIndexes`
@@ -102,7 +103,8 @@ var key = new ContentKey(rowBlob, start, length);       // no string materialise
   bug at process start and never a content defect.
 - `ContentTextKey` - the ONE derivation of a content string's localization key,
   `<type key>.<content key>.<field>` (contracts 12.1). Derived, never authored, never stored, capped at
-  `MaxKeyLength` 192.
+  `MaxKeyLength` 192. Callers holding text use the string overload without allocating a temporary UTF-8
+  array. Runtime callers holding row bytes use the byte-span overload.
 
 ## The six engine content types
 
@@ -189,8 +191,9 @@ decoder is also fuzzed against.
   `IsAbsent` rather than a sentinel.
 - `ContentVersionIdentity` - the version number and its manifest hash, the pair that travels together.
 - `ItemRow` - the typed view over the engine `item` type, and the only typed view in the catalog: a
-  `ref struct` over the row body with the four hot fields decoded at construction, for the stacking and
-  generation paths a field-by-name walk does not budget for.
+  `ref struct` over the row body with `stackable`, `max_stack`, `value`, `durability_max` and `socket_max`
+  decoded at construction, for the pricing, stacking and generation paths a field-by-name walk does not
+  budget for.
 
 ## The loaded runtime
 
@@ -231,7 +234,8 @@ build inside a tick is a latency spike.
   arrays sliced three deep rather than a dictionary of lists, so a lookup is two searches over small sorted
   runs and hands back a span. It covers EVERY registered type declaring a tag-list field rather than just
   `item`, and it holds retired rows, because the retired bit is the reader's filter and an admin listing wants
-  them.
+  them. A duplicate row id contributes only its first row's tags, matching the type table's first-wins
+  lookup.
 - `ContentFamilyIndex` and `ContentIdBlock` - the block list per family and the two-comparison membership test
   `(id & ~(size - 1)) == base`. **Empty for a version loaded from a pack:** a family and its blocks are
   authoring rows and none of the four pack formats carries them, so the read side has no source and the index
@@ -433,6 +437,8 @@ var strings = new ContentStringCatalog([english, french], "en-US", shipped.TryGe
 
 strings.SelectLanguage(CultureInfo.CurrentUICulture);
 string name = strings.Get(ContentTextKey.Derive("item", row.Key.Utf8, "name"));
+string authoredKey = "bronze_sword";
+string authoredName = strings.Get(ContentTextKey.Derive("item", authoredKey, "name"));
 ```
 
 - **Content is asked FIRST, then the game's catalog, then the key itself** as a visible non-fatal

@@ -266,7 +266,7 @@ public class ModFamilyTests
             Assert.Null(KeyDefect(field.Name));
             Assert.False(
                 ContentTextKey.ExceedsBound(type.Key, 64, field.Name),
-                ContentTextKey.Derive(type.Key, default, field.Name));
+                ContentTextKey.Derive(type.Key, ReadOnlySpan<byte>.Empty, field.Name));
         }
     }
 

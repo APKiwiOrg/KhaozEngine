@@ -365,6 +365,90 @@ public class BundleTests
         Assert.Equal(ContentAuthoringException.BundleFormatReason, refused.Reason);
     }
 
+    [Theory]
+    [InlineData("sourceVersion", "0", "2147483648")]
+    [InlineData("typeId", "1024", "70000")]
+    [InlineData("defaultVisibility", "0", "2")]
+    [InlineData("kind", "0", "7")]
+    public void ABundleIntegerOutsideItsTargetDomainIsRefused(
+        string member,
+        string original,
+        string replacement)
+    {
+        string json = ValidTypeDocument().Replace(
+            FormattableString.Invariant($"\"{member}\": {original}"),
+            FormattableString.Invariant($"\"{member}\": {replacement}"),
+            StringComparison.Ordinal);
+
+        ContentAuthoringException refused = Assert.Throws<ContentAuthoringException>(
+            () => ContentBundleJson.Read(json));
+
+        Assert.Equal(ContentAuthoringException.BundleFormatReason, refused.Reason);
+        Assert.Contains(member, refused.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ABundleRemapKindOutsideTheIntegerDomainIsRefused()
+    {
+        string json = """
+            {
+              "formatVersion": 1,
+              "storeEpoch": "test",
+              "sourceVersion": 0,
+              "types": [],
+              "families": [],
+              "rows": [],
+              "rules": [
+                {
+                  "sequence": 1,
+                  "introducedIn": 1,
+                  "typeId": 1,
+                  "kind": 4294967297,
+                  "fromId": 1,
+                  "toId": 2,
+                  "payload": ""
+                }
+              ]
+            }
+            """;
+
+        ContentAuthoringException refused = Assert.Throws<ContentAuthoringException>(
+            () => ContentBundleJson.Read(json));
+
+        Assert.Equal(ContentAuthoringException.BundleFormatReason, refused.Reason);
+        Assert.Contains("kind", refused.Message, StringComparison.Ordinal);
+    }
+
+    static string ValidTypeDocument() => """
+        {
+          "formatVersion": 1,
+          "storeEpoch": "test",
+          "sourceVersion": 0,
+          "types": [
+            {
+              "typeId": 1024,
+              "typeKey": "thing",
+              "defaultVisibility": 0,
+              "chunkSlots": 1,
+              "maxDefinitionId": null,
+              "fields": [
+                {
+                  "name": "number",
+                  "kind": 0,
+                  "referenceTarget": null,
+                  "visibility": 0,
+                  "required": false,
+                  "scale": 1
+                }
+              ]
+            }
+          ],
+          "families": [],
+          "rows": [],
+          "rules": []
+        }
+        """;
+
     [Fact]
     public async Task AnImportWritesOneBulkImportAuditRowCarryingTheRowCount()
     {

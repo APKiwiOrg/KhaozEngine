@@ -3,7 +3,7 @@ using System;
 namespace KhaozEngine.SegmentRig;
 
 /// <summary>The restrained two-handed pose used for processing actions.</summary>
-/// <remarks>One stroke serves every processing skill. Station work leans into the bench with nothing held in
+/// <remarks>One stroke serves every processing action. Station work leans into the station with nothing held in
 /// either hand. The nonstation form keeps the torso upright as a safe fallback.</remarks>
 public static class ProcessingSwing
 {

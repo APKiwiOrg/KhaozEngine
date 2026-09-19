@@ -309,6 +309,10 @@ public class BlockRaiseTests
         // plate 20 degrees off: the shoulder's yaw carries part of it and the hand's turn carries the rest.
         Assert.Equal(-MathF.PI / 2f, BlockRaise.RaiseWrist - BlockRaise.RaiseYaw, 5);
         Assert.True(BlockRaise.RaiseWrist < 0f);
+        // The difference and one sign do not fix the other sign. The shoulder yaws the arm ACROSS the body,
+        // which is positive, and a flipped one would still satisfy the two lines above with a plate swung
+        // out behind the elbow.
+        Assert.True(BlockRaise.RaiseYaw > 0f);
 
         // And it TURNS THROUGH, so the plate sweeps round rather than snapping: half way up it is half way
         // round, pointing out between the side and the front.

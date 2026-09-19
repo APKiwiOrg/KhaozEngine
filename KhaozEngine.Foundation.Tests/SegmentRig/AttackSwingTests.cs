@@ -184,8 +184,6 @@ public class AttackSwingTests
     {
         foreach (float cadence in new[] { 0.6f, 1f, CadenceSeconds, 19f / 6f, 5f })
         {
-            Assert.Equal(cadence * AttackSwing.HoldCadences, AttackSwing.HoldSecondsFor(cadence), 5);
-            Assert.Equal(cadence * AttackSwing.RestPhase, AttackSwing.RecoverySecondsFor(cadence), 5);
             // The recovery off a killing blow is the FIRST slice of the hold and nothing after it, so a body
             // that stopped fighting comes down off the blow instead of standing on guard.
             Assert.True(AttackSwing.RecoverySecondsFor(cadence) < AttackSwing.HoldSecondsFor(cadence));

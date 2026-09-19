@@ -137,6 +137,12 @@ It also FORGETS the last sampled position, exactly as `Teleport()` does, so the 
 after a swim does not read the whole swim as one frame of sprinting. Alternating the two overloads is safe
 with no extra call at the seam.
 
+## Still to come
+
+The socket helpers (the wrist turn and the off-hand turn a held piece rides), a reference rig facade, and a
+skeleton composer that turns a rig, a pose and an ordered list of pieces into one transform per piece. Until
+they land, a game composes its own piece chain off `Body` and `Torso`, as the tests here do.
+
 ## Headless by construction
 
 No scene, no clock, no renderer, no allocation per frame. Build a rig, advance a cycle, assert on the

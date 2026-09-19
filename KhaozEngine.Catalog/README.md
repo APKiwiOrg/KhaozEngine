@@ -306,7 +306,11 @@ if (!roller.TryRoll(tableId, drops, out int written))
 - `FileSystemPackStore` - the local provider: one file per hash under a two-level shard derived from the
   hash itself, written to a temporary name in the same directory and then moved. The version pointer lives
   outside the shard tree under `versions/`, because a shard name is derived from a hash and a version number
-  is not one.
+  is not one. `FileSystemPackStore.RelativeKeyFor(hash)` is the ONE statement of that layout,
+  `<hash[0..2]>/<hash[2..4]>/<hash>.kec`, lower case with forward slashes and no leading slash, and it
+  throws on a name that is not a content address rather than turning it into a path segment. Every provider
+  that derives a name from a hash goes through it, the local path, the HTTP URI and the blob key alike, so
+  one tree serves all three and a client reads what any of them wrote.
 - `HttpPackStore` - the read-only cloud provider, over ONE injected `HttpClient`, laying the SAME two-level
   shard out under an HTTP base address as the file store does on disk, so one tree serves both and a
   publisher uploads the directory as it stands. `PutAsync` and `ListAsync` throw `NotSupportedException` on
@@ -458,8 +462,14 @@ if (!fill.Filled)
   public, and a client learns its version from the connect door rather than from a file there.
 - **It never prunes.** A caller that wants stale objects removed does it itself through `IPackStorePruning`,
   and a hosted origin should think twice: a client may be part way through downloading the previous version.
+- **A fault WRITING the origin is a refusal too**, `ContentOriginFill.RefusedOriginWrite`
+  (`origin-write-failed`), carrying the address it stopped at and the fault's own message in
+  `RefusalDetail`. A read answers absent for a failure it could not complete and a write has no such answer,
+  so an expired signature or a throttled container arrives as an exception, and a boot path wants one line
+  and an exit code rather than a stack. The fill stops at the first one, and the manifest is not written.
 - `ObjectsWritten` is counted at the write rather than inferred, so a second fill of a version the origin
-  already holds reports 0, and `ObjectsRequired` is the client manifest plus every hash it names. A refusal is
+  already holds reports 0, and `ObjectsRequired` is the client manifest plus every hash it names (1 when the
+  manifest itself failed, 0 when a write fault stopped the walk before the loop could count). A refusal is
   a RESULT carrying the fetch's own reason token and address, never a throw, apart from the argument checks
   and cancellation.
 

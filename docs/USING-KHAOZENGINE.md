@@ -14636,10 +14636,16 @@ ContentOriginFillResult fill = await ContentOriginFill.RunAsync(
 
 if (!fill.Filled)
 {
-    log.Error("The client origin is short of version {0}: {1} at {2}",
-        fill.Version.Number, fill.RefusalReason, fill.RefusalHash);
+    log.Error("The client origin is short of version {0}: {1} at {2} ({3})",
+        fill.Version.Number, fill.RefusalReason, fill.RefusalHash, fill.RefusalDetail);
 }
 ```
+
+Every failure is a RESULT, and cancellation is the one throwing exit, so a boot gets a reason and one line
+rather than a stack trace. A source short of a chunk answers with the fetch loop's own reason. An origin that
+refuses a write (a throttled or unauthorized container, a full disk) answers `origin-write-failed` with the
+hash it stopped at and the fault's message in `RefusalDetail`, and the fill stops at the first such fault
+rather than pushing on at a store that is refusing it.
 
 It copies the CLIENT closure and nothing else, which is the point: a server only chunk never reaches a public
 origin, the server manifest never does either, and a version pointer is never written, because that file

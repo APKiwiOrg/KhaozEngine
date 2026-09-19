@@ -473,7 +473,7 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
         TileDirection? steer = null)
     {
         TileMoveState s = Follow(state, self, scratch);
-        if (s.StepTotal == 0) s.StepTotal = StepTicks.For(s.Mode);
+        if (s.StepTotal == 0) s.StepTotal = StepTotalFor(s);
 
         if (s.IsStepping)
         {
@@ -518,11 +518,15 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
         return s.Route.IsIdle && s.InteractTarget != 0 ? FaceTarget(s) : s;
     }
 
-    // THE one place a step begins, for a routed step and a steered one alike. A STARTING step takes its total here
-    // and nowhere else, which is what makes pace a single seam: whatever decides how fast a body moves decides it
-    // on this line, and a click, a held key, an actor and a chase all inherit the answer. The other two writes of
-    // StepTotal in this class belong to a STANDING state rather than to a step, Advance's blank backstop and
-    // Repath's re-stamp after the map refused one.
+    // THE PACE SEAM. Every StepTotal this class writes comes from here: a starting step through Commit, Advance's
+    // blank backstop and Repath's re-stamp of a standing state. It reads the STATE rather than the mode alone on
+    // purpose. Today the answer is the configured pair for the mode, and a game that one day needs a body to move
+    // faster or slower than its mode says changes this one method, and a click, a held key, an actor and a chase
+    // all inherit it together. Nothing else in the package may ask StepTicks how long a step takes.
+    byte StepTotalFor(in TileMoveState s) => StepTicks.For(s.Mode);
+
+    // THE one place a step begins, for a routed step and a steered one alike, so neither can start one the other
+    // could not, and neither can stamp a cadence the other would not.
     TileMoveState Commit(in TileMoveState state, TileCoord next, TileDirection dir)
     {
         TileMoveState s = state;
@@ -530,7 +534,7 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
         s.Tile = next;
         s.Facing = dir;
         s.StepTicks = 0;
-        s.StepTotal = StepTicks.For(s.Mode);
+        s.StepTotal = StepTotalFor(s);
         return s;
     }
 
@@ -624,7 +628,7 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
         TileMoveState s = state;
         TileCoord end = s.Route.End;
         s.StepTicks = 0;
-        s.StepTotal = StepTicks.For(s.Mode);
+        s.StepTotal = StepTotalFor(s);
         TilePath path = TilePathfinder.FindPath(Map, s.Tile.Plane, s.Tile, end, s.FootprintSize, MaxPathRadius, scratch);
         s.Route = RouteFor(path);
         if (s.Route.IsIdle)

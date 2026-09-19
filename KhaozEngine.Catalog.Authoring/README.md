@@ -15,6 +15,10 @@ one, so a client never pulls a database dependency to decode a pack.
 the version list and the operator pin, the open draft, publish and rollback, row and audit reads, id
 allocation, families, and bulk import and export.
 
+It also INHERITS `KhaozEngine.Catalog`'s `IContentVersionDirectory`, which declares its two version reads, so
+a host that boots off its authoring database assigns the store itself to `ContentBootOptions.Directory` and
+writes no adapter.
+
 ```csharp
 await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
 

@@ -560,8 +560,10 @@ loads before the world and both load before the door opens.
   build's server build number, the optional config pin, the optional `IContentVersionDirectory` and
   `IContentVersionPointerSource`, and the world's content keys.
 - `IContentVersionDirectory` - the authoring database's pinned and active version reads, which is the only
-  thing the boot wants from one. `IContentVersionPointerSource` - the READ half of the version pointer,
-  which `FileSystemPackStore` implements and a store that does not is handed separately.
+  thing the boot wants from one. `KhaozEngine.Catalog.Authoring`'s `IContentAuthoringStore` inherits it, so a
+  host that boots off its authoring database sets `Directory` to the store itself and writes no adapter.
+  `IContentVersionPointerSource` - the READ half of the version pointer, which `FileSystemPackStore`
+  implements and a store that does not is handed separately.
 - `ContentWorldKeyReference` - one place a world document names content, as `(source, type key, content
   key)`. The world document never carries a content ID, because ids are allocated by the authoring store and
   a world file naming id 17 breaks the moment a content database is rebuilt from a bundle.

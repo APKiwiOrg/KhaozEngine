@@ -12,17 +12,23 @@ namespace KhaozEngine.Catalog;
 /// <b>It is optional, and that is the deployment this design recommends.</b> A version pinned in the SERVER'S
 /// OWN CONFIG wins always, so a server configured with a pin and a pack store needs no authoring database at
 /// boot at all: the authoring database is a TOOLING dependency. This interface is what a server that does read
-/// one implements, and <c>IContentAuthoringStore</c> already declares both members with these signatures
-/// without declaring the interface, which is https://github.com/APKiwiOrg/KhaozEngine/issues/938.
+/// one implements, and <c>IContentAuthoringStore</c> INHERITS it, so a host that boots off its authoring
+/// database hands the boot the store itself rather than an adapter of its own
+/// (https://github.com/APKiwiOrg/KhaozEngine/issues/1015).
 /// </para>
 /// </summary>
 public interface IContentVersionDirectory
 {
-    /// <summary>The pinned version, or null when nothing is pinned.</summary>
+    /// <summary>
+    /// The operator's HOLD, or null for the ordinary no-pin state. A server's own config pin wins over this
+    /// one, always, and the active version is the fallback below both.
+    /// </summary>
     /// <param name="cancellationToken">Cancels the read.</param>
     Task<int?> GetPinnedVersionAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>The active version, or 0 when nothing has been published.</summary>
+    /// <summary>
+    /// The active version, which is the one the last publish committed, or 0 when nothing has been published.
+    /// </summary>
     /// <param name="cancellationToken">Cancels the read.</param>
     Task<int> GetActiveVersionAsync(CancellationToken cancellationToken = default);
 }

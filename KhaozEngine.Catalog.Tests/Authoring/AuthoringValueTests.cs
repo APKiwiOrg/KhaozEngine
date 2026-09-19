@@ -332,6 +332,10 @@ public class AuthoringValueTests
         // AppendOperationalAuditAsync is the store-level audit row of spec 10.10, for an operation that
         // changes the store without changing a row: a pack sweep's deletions live in files rather than in a
         // table, so no store transaction spans them and the append is the only record they leave.
+        // The two version reads are DECLARED on IContentVersionDirectory, which the seam inherits, so the
+        // count below is the seam's own declarations plus the inherited interfaces': reflection over an
+        // interface returns neither its base interfaces' members nor anything it does not declare itself.
+        // What a provider implements is unchanged by where a member is declared.
         string[] expected =
         [
             "AllocateAsync",
@@ -365,14 +369,20 @@ public class AuthoringValueTests
             "SetPinnedVersionAsync",
         ];
 
-        string[] actual = typeof(IContentAuthoringStore)
-            .GetMembers(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+        Type seam = typeof(IContentAuthoringStore);
+        Assert.Contains(typeof(IContentVersionDirectory), seam.GetInterfaces());
+
+        string[] actual = seam.GetInterfaces()
+            .Append(seam)
+            .SelectMany(static type => type.GetMembers(
+                BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
             .Where(static member => member is not MethodInfo { IsSpecialName: true })
             .Select(static member => member.Name)
             .OrderBy(static name => name, StringComparer.Ordinal)
             .ToArray();
 
         Assert.Equal(expected, actual);
+        Assert.Equal(29, actual.Length);
     }
 
     [Fact]

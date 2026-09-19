@@ -276,4 +276,9 @@ public sealed class SqlServerContentAuthoringStoreConformanceTests : ContentAuth
     [CatalogSqlServerFact]
     public override Task ARebuildLeavesTheStoresAuditAndActiveVersionUnchanged()
         => base.ARebuildLeavesTheStoresAuditAndActiveVersionUnchanged();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task AStoreUsedAsTheBootsVersionDirectoryAnswersThePinnedVersionThenTheActiveOne()
+        => base.AStoreUsedAsTheBootsVersionDirectoryAnswersThePinnedVersionThenTheActiveOne();
 }

@@ -51,11 +51,17 @@ public sealed record ContentRowRevision(
 /// update path and no delete path for a rule anywhere in any provider, and this seam offers neither.
 /// </para>
 /// <para>
+/// <b>It IS the boot's <see cref="IContentVersionDirectory"/></b>, which is where its two version reads are
+/// declared. A host that boots off its authoring database assigns the store itself to
+/// <c>ContentBootOptions.Directory</c> and writes no adapter, and the two members have ONE home rather than
+/// the two that drifted apart.
+/// </para>
+/// <para>
 /// Every member is asynchronous because both backends are, and every member takes a cancellation token so a
 /// console request that goes away does not hold a transaction open behind it.
 /// </para>
 /// </summary>
-public interface IContentAuthoringStore
+public interface IContentAuthoringStore : IContentVersionDirectory
 {
     /// <summary>
     /// Opens the store's schema under the given mode, creating it only under
@@ -87,17 +93,6 @@ public interface IContentAuthoringStore
     /// </summary>
     /// <param name="cancellationToken">Cancels the call.</param>
     Task<string> GetStoreEpochAsync(CancellationToken cancellationToken = default);
-
-    /// <summary>The version the last publish committed, or 0 when the database has published none.</summary>
-    /// <param name="cancellationToken">Cancels the call.</param>
-    Task<int> GetActiveVersionAsync(CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// The operator's HOLD, or null for the ordinary no-pin state. A server's own config pin wins over this
-    /// one, always, and the active version is the fallback below both.
-    /// </summary>
-    /// <param name="cancellationToken">Cancels the call.</param>
-    Task<int?> GetPinnedVersionAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Writes or clears the operator's hold. This is the only lever between publishing and restarting:

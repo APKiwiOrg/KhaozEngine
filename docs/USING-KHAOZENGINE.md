@@ -1452,7 +1452,7 @@ var mana = new ProgressBar(new Rect(hudX, hudY, 12, 120), manaFrac)
 
 `PopupPanel` is a MODAL dialog: it paints a scrim and reserves the whole scrim rect on the `Pointer`. Use
 `PanelFrame` instead whenever the world underneath must stay visible and live - a side panel, a bank window, an
-inventory stone. It is pure statics plus three draws, not a retained widget, so a game keeps its own window
+inventory window. It is pure statics plus three draws, not a retained widget, so a game keeps its own window
 class and calls into the frame for geometry and chrome.
 
 The bands STACK. `Inner` is the whole panel less the frame on all four sides. `StripRect` is an optional tab
@@ -1477,7 +1477,10 @@ existing theme needs no edit and no construction site changes meaning.
 The frame reserves NOTHING on the `Pointer`. Which taps a window swallows is the window's call, so a caller
 that wants the world ignored under its panel calls `Pointer.BlockRegion` with its OWN bounds, and a caller that
 wants a click-through stripe leaves it alone. Blocking inside the frame would make every consumer modal over
-its own rect, which is the thing `PopupPanel` already does.
+its own rect, which is the thing `PopupPanel` already does. This is the engine's container default rather
+than a one-off: `Panel.BlocksPointer` and `ScrollablePanel.BlocksPointer` are both opt-in too, while leaf
+widgets such as `Button` always block. A window that forgets the call gets world clicks through it and
+nothing catches that, so make it the first line of the window's update.
 
 `WindowDrag` is the title-bar drag. It stores an OFFSET from wherever the window's own layout put it, so a
 window keeps its placement rule (centred, docked, anchored) across a resize instead of being stranded at an
@@ -1497,7 +1500,7 @@ with numbers in it through `LocalizedText.Of(id, args)` so it re-resolves on a l
 ```csharp
 // Layout: where this window wants to be, then where the player has dragged it to.
 Rect natural = Layout.Resolve(viewport.DesignBounds, Anchor.Center, 320f, 240f, 0f, 0f);
-Rect bounds = _drag.Place(natural, new Vector2(viewport.DesignWidth, viewport.DesignHeight));
+Rect bounds = _drag.Place(natural, new Vector2(viewport.Width, viewport.Height));
 
 // Input: the grip is the title row less the close square, so the cross is never also a grab.
 Rect title = PanelFrame.TitleRect(bounds, stripHeight: 0f);

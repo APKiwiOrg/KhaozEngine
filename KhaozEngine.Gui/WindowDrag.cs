@@ -42,6 +42,9 @@ namespace KhaozEngine.Gui
         /// Call once per frame, before the layers underneath hit-test.</summary>
         /// <param name="pointer">The pointer, in the space the window is placed and drawn in.</param>
         /// <param name="grip">The rect a drag may START in, normally the title row less its close button.</param>
+        /// <remarks>It does not read <see cref="Pointer.IsBlocked"/>. Two overlapping windows that both update
+        /// will both grab a press that lands in both grips, so which window is on top is the caller's to settle:
+        /// update the top one first and skip the rest once the gesture is consumed.</remarks>
         public void Update(Pointer pointer, in Rect grip)
         {
             if (pointer is null || !pointer.IsDown) { Dragging = false; return; }
@@ -60,6 +63,8 @@ namespace KhaozEngine.Gui
         /// inside the viewport.</summary>
         /// <param name="natural">The rect the window's own layout asked for.</param>
         /// <param name="viewport">The design viewport, as width and height.</param>
+        /// <returns>The rect to draw and hit-test the window at this frame, the same size as
+        /// <paramref name="natural"/>.</returns>
         /// <remarks>The clamped offset is written BACK, which is the half worth naming: without it a drag off the
         /// right of the screen banks distance the window has not moved, and the player then has to drag all of it
         /// back before the window budges. A viewport smaller than the window clamps to zero rather than to a

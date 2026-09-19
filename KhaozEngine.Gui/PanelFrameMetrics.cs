@@ -2,7 +2,7 @@ namespace KhaozEngine.Gui
 {
     /// <summary>
     /// The sizes a <see cref="PanelFrame"/> is built from, supplied by the caller rather than read from
-    /// <see cref="GuiTheme"/>. Sizes are a per-widget decision (one game's frame is a 6-unit bronze band, another's
+    /// <see cref="GuiTheme"/>. Sizes are a per-widget decision (one game's frame is a 6-unit bevelled band, another's
     /// is a 2-unit hairline) while the palette is global, so keeping them apart lets two games with different
     /// themes share the same frame code. <see cref="Default"/> is the shape the frame shipped with.
     /// </summary>

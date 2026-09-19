@@ -228,16 +228,21 @@ namespace KhaozEngine.Tests.Gui
             Vector2 grip = Centre(GripOf(Natural));
             Frame(grip, down: false);
             Frame(grip, down: true);
-            Rect moved = Frame(grip + new Vector2(-70f, 30f), down: true);
+            // Sideways only, and by less than the grip is wide, so the grip STILL lies over the press origin
+            // afterwards. That is what makes the re-grab below a question of freshness: with a move that carried
+            // the grip off the press, the containment test alone would refuse it and the freshness read could be
+            // deleted with nothing failing.
+            Rect moved = Frame(grip + new Vector2(120f, 0f), down: true);
             Assert.True(_drag.Dragging);
+            Assert.True(GripOf(moved).Contains(_pointer.PressOrigin));
 
             // A window closing under a held button lets go, but remembers where it was put.
             _drag.Release();
             Assert.False(_drag.Dragging);
-            Assert.Equal(new Vector2(-70f, 30f), _drag.Offset);
+            Assert.Equal(new Vector2(120f, 0f), _drag.Offset);
 
             // And it is not re-grabbed by the button that is still down, because that press is no longer fresh.
-            Rect stillThere = Frame(grip + new Vector2(120f, -80f), down: true);
+            Rect stillThere = Frame(grip + new Vector2(200f, -80f), down: true);
             Assert.False(_drag.Dragging);
             Assert.Equal(moved.X, stillThere.X, 3);
             Assert.Equal(moved.Y, stillThere.Y, 3);

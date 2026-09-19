@@ -679,7 +679,7 @@ chat.Draw(batch, white);
     Menu-cancel input is ignored while `InputState.WindowFocused` is false.
   - `PanelFrame` + `PanelFrameMetrics` + `WindowDrag` - a NON-MODAL titled window frame, as pure statics rather
     than a retained widget. Reach for it instead of `PopupPanel` whenever the world underneath must stay visible
-    and live: a side panel, a bank window, an inventory stone. `PopupPanel` is modal, and reserves the whole
+    and live: a side panel, a bank window, an inventory window. `PopupPanel` is modal, and reserves the whole
     scrim rect on the pointer.
     `Inner`, `StripRect`, `TitleRect`, `CloseRect`, `ContentRect` and `FooterRect` are the bands, each derived
     from the one above it with no gap and no overlap, and an absent band (no tab strip, no footer) collapses to
@@ -695,6 +695,8 @@ chat.Draw(batch, white);
     It reserves NOTHING on the `Pointer`. Which taps a window swallows is the window's call: a caller that wants
     the world ignored under its panel calls `Pointer.BlockRegion` with its OWN bounds, and one that wants a
     click-through stripe leaves it alone. Blocking here would make every consumer modal over its own rect.
+    That is the container default here (`Panel.BlocksPointer` and `ScrollablePanel.BlocksPointer` are opt-in
+    too), and a window that forgets the call gets world clicks through it with nothing to catch that.
     `WindowDrag` is the title-bar drag. It stores an OFFSET from wherever the window's own layout put it, so a
     window keeps its placement rule across a resize. `Update(pointer, grip)` latches the grab once on the press
     frame (`Pointer.IsPressOriginFresh`) and holds it until the button goes up, wherever the cursor wanders,
@@ -709,7 +711,7 @@ chat.Draw(batch, white);
     ```csharp
     // Layout: where this window wants to be, then where the player has dragged it to.
     Rect natural = Layout.Resolve(viewport.DesignBounds, Anchor.Center, 320f, 240f, 0f, 0f);
-    Rect bounds = _drag.Place(natural, new Vector2(viewport.DesignWidth, viewport.DesignHeight));
+    Rect bounds = _drag.Place(natural, new Vector2(viewport.Width, viewport.Height));
 
     // Input: the grip is the title row less the close square, so the cross is never also a grab.
     Rect title = PanelFrame.TitleRect(bounds, stripHeight: 0f);

@@ -79,10 +79,11 @@ namespace KhaozEngine.Gui
         public float BorderThickness;
 
         // The four below are PROPERTIES over nullable backing fields rather than plain fields like everything
-        // above, so an unset one falls back to a value DERIVED from the palette that is already there. They were
-        // added after games were building GuiTheme values of their own by object initializer, and a plain field
-        // would have defaulted those themes to transparent black, which draws as a hole. Setting one still works
-        // exactly like setting a field, in an initializer or through `with`.
+        // above, so an unset one falls back to a value DERIVED from the palette that is already there. A game
+        // that rebrands with `GuiTheme.Default with { Surface = ... }` gets a title row that follows its body
+        // colour, where a plain field set in the built-in themes would leave it stuck on theirs, and a theme
+        // built from nothing reads as transparent black only where every other colour does. Setting one still
+        // works exactly like setting a field, in an initializer or through `with`.
         Vector4? _borderShadow, _titleFill, _tabFill, _tabActiveFill;
 
         /// <summary>
@@ -91,7 +92,7 @@ namespace KhaozEngine.Gui
         /// </summary>
         public Vector4 BorderShadow
         {
-            get => _borderShadow ?? Shade(Border, 0.55f);
+            readonly get => _borderShadow ?? Shade(Border, 0.55f);
             set => _borderShadow = value;
         }
 
@@ -101,7 +102,7 @@ namespace KhaozEngine.Gui
         /// </summary>
         public Vector4 TitleFill
         {
-            get => _titleFill ?? Surface;
+            readonly get => _titleFill ?? Surface;
             set => _titleFill = value;
         }
 
@@ -111,14 +112,14 @@ namespace KhaozEngine.Gui
         /// </summary>
         public Vector4 TabFill
         {
-            get => _tabFill ?? SurfaceHover;
+            readonly get => _tabFill ?? SurfaceHover;
             set => _tabFill = value;
         }
 
         /// <summary>Fill behind the ACTIVE tab in a flat tab strip. Unset, it is <see cref="ActiveFill"/>.</summary>
         public Vector4 TabActiveFill
         {
-            get => _tabActiveFill ?? ActiveFill;
+            readonly get => _tabActiveFill ?? ActiveFill;
             set => _tabActiveFill = value;
         }
 

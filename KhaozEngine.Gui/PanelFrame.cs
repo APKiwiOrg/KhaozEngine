@@ -10,7 +10,7 @@ namespace KhaozEngine.Gui
     /// A NON-MODAL titled window frame: a bevelled border band, an optional tab-strip band, a title row carrying a
     /// centred localized title with an optional right-aligned readout and close button, and the content rect that
     /// is left over. Use it instead of <see cref="PopupPanel"/> whenever the world underneath must stay visible and
-    /// live - a side panel, a bank window, an inventory stone. <see cref="PopupPanel"/> is modal: it paints a scrim
+    /// live - a side panel, a bank window, an inventory window. <see cref="PopupPanel"/> is modal: it paints a scrim
     /// and reserves the whole viewport on the pointer.
     /// </summary>
     /// <remarks>
@@ -183,8 +183,10 @@ namespace KhaozEngine.Gui
             batch.DrawString(font, resolvedReadout, new Vector2(right - width, textY), (Color)t.TextMuted);
         }
 
-        // How far the cross's arms stop short of the close square's corners.
-        const float CrossInset = 5f;
+        // How far the cross's arms stop short of the close square's corners, as a share of the square. A quarter
+        // is the shipped 5 units at the default 20 unit square, and it scales with a caller's own CloseSize: a
+        // fixed inset turns the cross into a blob on a 12 unit square and erases it on a 10 unit one.
+        const float CrossInsetShare = 0.25f;
 
         /// <summary>Queue the close button: a bordered square with a cross in it. The cross is two lines rather than
         /// a glyph, so it needs no font and no catalog entry.</summary>
@@ -201,10 +203,11 @@ namespace KhaozEngine.Gui
             GuiDraw.Fill(batch, white, rect, hovered ? t.Accent : t.Border);
             GuiDraw.Border(batch, white, rect, 1f, t.BorderHover);
             Vector4 arm = hovered ? t.Surface : t.Text;
-            GuiDraw.Line(batch, white, new Vector2(rect.X + CrossInset, rect.Y + CrossInset),
-                new Vector2(rect.Right - CrossInset, rect.Bottom - CrossInset), 2f, arm);
-            GuiDraw.Line(batch, white, new Vector2(rect.Right - CrossInset, rect.Y + CrossInset),
-                new Vector2(rect.X + CrossInset, rect.Bottom - CrossInset), 2f, arm);
+            float inset = MathF.Min(rect.Width, rect.Height) * CrossInsetShare;
+            GuiDraw.Line(batch, white, new Vector2(rect.X + inset, rect.Y + inset),
+                new Vector2(rect.Right - inset, rect.Bottom - inset), 2f, arm);
+            GuiDraw.Line(batch, white, new Vector2(rect.Right - inset, rect.Y + inset),
+                new Vector2(rect.X + inset, rect.Bottom - inset), 2f, arm);
         }
     }
 }

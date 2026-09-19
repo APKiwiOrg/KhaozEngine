@@ -6774,7 +6774,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="19.6.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="19.7.0" />
 ```
 
 ```csharp
@@ -10580,6 +10580,10 @@ if (clickedTile is TileCoord goal) client.Queue(TileCommand.WalkTo(goal, client.
 if (clickedObject is long id)      client.Queue(TileCommand.InteractObject(id, client.RunMode));
 if (clickedActor is long actorId)  client.Queue(TileCommand.InteractEntity(actorId, client.RunMode));
 
+// The keyboard door beside the click door. camera.Forward is a WORLD-space vector.
+TileDirection? held = TileSteering.FromAxes(right, forward, camera.Forward);
+client.SetSteering(held, client.RunMode);
+
 client.Poll();
 client.Tick(dt);
 client.AdvancePresentation(dt);
@@ -10735,6 +10739,57 @@ if (client.TryGetRemoteTile(netId, out TileCoord theirs))          // agrees wit
 - **`TilePresenter.Pose(state)` is the BODY**, `TilePresenter.PoseAt(tile)` is the RULES. Mixing them up draws
   the marker on the avatar and makes the lead invisible again, which is the one failure this whole section
   exists to prevent.
+
+### Steering: walking on a held direction
+
+A click names a goal and the simulator paths to it. A keyboard player holds a DIRECTION instead. That is its own
+intent, so it has its own command kind rather than a `WalkTo` at the adjacent tile every tick: `WalkTo` searches,
+and an unreachable goal walks to the nearest reachable tile, so a key held into a fence sends the body on a
+detour, and it costs one search per tick per steering player on the server.
+
+The head sets a LEVEL every frame, where `Queue` is an event:
+
+```csharp
+// Each frame, from the head's own input:
+TileDirection? held = TileSteering.FromAxes(right, forward, camera.Forward);
+client.SetSteering(held, client.RunMode);
+```
+
+**`camera.Forward` is a WORLD-space vector, and that is the one thing to get right here.**
+`TileSteering.FromAxes(right, forward, cameraForward)` takes a look vector rather than a yaw angle so no consumer
+has to match an angle convention, and it converts that vector through `TileWorldSpace` itself, because tile north
+is world -z. Hand it a tile-space vector instead and the answer is silently mirrored north to south: nothing
+throws, the body just walks the wrong way on one axis. Only the ground-plane part is read and it need not be
+normalized. `right` is right minus left and `forward` is forward minus back, each clamped to -1..1. The contract
+is the player's seat rather than the arithmetic: forward walks the body AWAY from the camera, back toward it,
+right toward SCREEN right, at every camera angle. It answers null for no input, for opposite keys that cancel and
+for a camera looking straight down. An exact octant boundary resolves to the counter-clockwise neighbour, the same
+answer every time, so a camera parked on a boundary cannot flutter between two directions.
+
+On a command tick with nothing queued and a direction held, the client predicts and sends
+`TileCommand.Steer(held, mode)` in place of `Continue`, so a steering tick can never be lost to frame timing. A
+queued click WINS its tick and steering resumes on the next one. The mode rides the level and is NOT adopted as
+`RunMode`, unlike a queued click's, so a modifier that inverts the pace while steering leaves the saved toggle to
+the next `Continue`. `SetSteering(null, mode)` releases the level.
+
+The simulator resolves the held direction on a BOUNDARY tick only, through the pure
+`TileSteerResolver.Resolve(map, tile, wanted, footprintSize)`: the direction itself when it is open, for a blocked
+DIAGONAL whichever of its two axis steps is open (Z before X, so both heads pick the same one of two honest
+answers), otherwise a stand. A blocked steer still turns the body to FACE the held direction, so a key pressed
+into a wall reads as an answer rather than as a dropped input. The resolver throws
+`ArgumentOutOfRangeException` for a direction outside the eight rather than answering null, because a value that
+far out is an in-process misuse and a silent stand would hide it as a wall. A steer replaces a route, a pending
+interaction and a fight exactly as `WalkTo` does, and the server treats it as the deliberate disengage a walk is,
+so a lock it breaks is not reported as a lost target. Releasing the keys means the next command is `Continue`, the
+step in flight lands and nothing starts, so the body never takes an extra tile.
+
+**Steering adds no pace value.** A steered step and a routed step are stamped from `TileStepTicks` by the same one
+private method inside `TileMoveSimulator`, through one shared commit body, so a held key moves at exactly the
+cadence a click already moves at and there is no second speed to configure. The run gate is unchanged too: the
+server downgrades a run the game's `CanRun` refuses whatever the command kind is.
+
+Wire note: `Steer` is command kind 5 and carries the direction in `Target`. A pre-addition decoder rejects it as
+unknown, so move your own game protocol version when you adopt this pin.
 
 ### One body per tile: `TileDrawPriority`
 
@@ -10964,14 +11019,17 @@ Draw(playerMesh, me.Position, me.Yaw);
 included, and the simulator applies it at the START of the next step. Holding run halfway through a walking step
 never shortens that step, it makes the one after it a run. A client that sent `TileCommand.None` while a route
 played out would hold run for exactly one tick and then quietly drop back to a walk, because `None` is `Continue`
-at walk.
+at walk. A steering level carries its own mode rather than adopting `RunMode`, so a modifier that inverts the pace
+for held-key movement does not touch the saved toggle the next `Continue` carries.
 
 **The step in progress is never abandoned.** A `WalkTo` or an `Interact` arriving part way through a step keeps
 that step's progress, its tick total and its destination, and paths the new route from `Tile`, which IS the tile
 the step in flight is entering, so the new walk carries on from where the foot lands. Nothing to do on a head: the
 simulator both heads run owns it, so a direction change while moving is predicted without the avatar sliding back
 toward the tile it was leaving. The route cap counts the steps still to take from the committed tile, so one click
-carries a player at most `MaxRouteSteps` further and re-clicking cannot ratchet that.
+carries a player at most `MaxRouteSteps` further and re-clicking cannot ratchet that. A `Steer` arriving mid step
+is the same rule from the other door: it empties the route on the tick it lands, but its direction is read only at
+a step boundary, so it can neither restart nor redirect the step in flight.
 
 **`CorrectionCount` and `SnapCount` are the health readout.** A clean session over a map both heads baked
 identically costs ZERO corrections, because both replay the same commands over the same tiles. `SnapCount` counts
@@ -12929,7 +12987,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="19.6.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="19.7.0" />
 ```
 
 ```csharp
@@ -12965,7 +13023,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="19.6.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="19.7.0" />
 ```
 
 ```csharp
@@ -13207,7 +13265,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="19.6.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="19.7.0" />
 ```
 
 ```csharp
@@ -16307,7 +16365,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="19.6.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="19.7.0" />
 </ItemGroup>
 ```
 

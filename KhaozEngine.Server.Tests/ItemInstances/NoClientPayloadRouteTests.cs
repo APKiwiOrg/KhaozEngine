@@ -152,20 +152,26 @@ public class NoClientPayloadRouteTests
             Assert.NotEqual(mine, theirs);
         }
 
-        // The tile command: the target is a net id or an authored object id, and the frame is a fixed 24
-        // bytes on every kind, so no kind can carry bytes even if a later encoder wanted one to.
+        // The tile command: the target is a net id, an authored object id or a held direction, and the frame is a
+        // fixed 24 bytes on every kind, so no kind can carry bytes even if a later encoder wanted one to.
         foreach (TileCommandKind kind in Enum.GetValues<TileCommandKind>())
         {
-            byte[] frame = TileProtocol.EncodeCommand(4, new TileCommand(kind, new TileCoord(3, 5, 0), TileMoveMode.Walk, 9_000_001));
+            // A steer's target is a TileDirection rather than an id, and the decoder refuses one outside the eight,
+            // so it takes two legal directions here. That is a NARROWER field than an id, which is the point being
+            // pinned: eight values cannot name an item, let alone describe one.
+            (long target, long other) = kind == TileCommandKind.Steer
+                ? ((long)TileDirection.N, (long)TileDirection.NE)
+                : (9_000_001L, 9_000_002L);
+            byte[] frame = TileProtocol.EncodeCommand(4, new TileCommand(kind, new TileCoord(3, 5, 0), TileMoveMode.Walk, target));
 
             Assert.Equal(24, frame.Length);
             Assert.True(TileProtocol.TryDecodeCommand(frame, planeCount: 4, out int seq, out TileCommand decoded));
             Assert.Equal(4, seq);
             Assert.Equal(kind, decoded.Kind);
-            Assert.Equal(9_000_001L, decoded.Target);
+            Assert.Equal(target, decoded.Target);
             Assert.NotEqual(
                 frame,
-                TileProtocol.EncodeCommand(4, new TileCommand(kind, new TileCoord(3, 5, 0), TileMoveMode.Walk, 9_000_002)));
+                TileProtocol.EncodeCommand(4, new TileCommand(kind, new TileCoord(3, 5, 0), TileMoveMode.Walk, other)));
         }
 
         // The page resync request names a CONTAINER and a PAGE and no item at all, in two bytes, because

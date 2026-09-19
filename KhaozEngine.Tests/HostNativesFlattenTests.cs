@@ -56,8 +56,7 @@ public class HostNativesFlattenTests
             {
                 string name = Path.GetFileName(child);
                 if (name is ".git" or "bin" or "obj" or "local-feed") continue;
-                if (File.Exists(Path.Combine(child, ".git")) || Directory.Exists(Path.Combine(child, ".git")))
-                    continue;
+                if (File.Exists(Path.Combine(child, ".git"))) continue;
                 pending.Push(child);
             }
         }
@@ -220,6 +219,27 @@ public class HostNativesFlattenTests
             File.WriteAllText(Path.Combine(worktree, RuleFile), "linked worktree copy");
 
             Assert.Equal(new[] { tracked }, FindRuleFiles(root));
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Rule_file_scan_keeps_duplicates_in_nested_git_repositories()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "ke-host-native-scan-" + System.Guid.NewGuid().ToString("N"));
+        string tracked = Path.Combine(root, RuleFile);
+        string repository = Path.Combine(root, "nested-repository");
+        string duplicate = Path.Combine(repository, RuleFile);
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(repository, ".git"));
+            File.WriteAllText(tracked, "tracked");
+            File.WriteAllText(duplicate, "ordinary repository duplicate");
+
+            Assert.Equal(new[] { tracked, duplicate }.OrderBy(path => path), FindRuleFiles(root));
         }
         finally
         {

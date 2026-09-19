@@ -3,11 +3,16 @@ using System.Collections.Concurrent;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using KhaozEngine.WorldStore.Sqlite;
 using Microsoft.Data.Sqlite;
 using Xunit;
 
 namespace KhaozEngine.Tests.WorldStore.Journal;
 
+[CollectionDefinition("SQLite cleanup isolation", DisableParallelization = true)]
+public sealed class SqliteCleanupIsolationCollection;
+
+[Collection("SQLite cleanup isolation")]
 public sealed class SqliteCleanupIsolationTests
 {
     [Fact]
@@ -21,12 +26,13 @@ public sealed class SqliteCleanupIsolationTests
             for (int i = 0; i < rounds; i++)
             {
                 var databaseToClean = new SqliteJournalTestDatabase();
+                databaseToClean.Open(databaseToClean.NewPath());
                 phase.SignalAndWait();
                 databaseToClean.Dispose();
                 phase.SignalAndWait();
             }
         });
-        Task independentStores = Task.Run(() =>
+        Task independentStores = Task.Run(async () =>
         {
             for (int i = 0; i < rounds; i++)
             {
@@ -38,35 +44,42 @@ public sealed class SqliteCleanupIsolationTests
                     DataSource = path,
                     Pooling = true,
                 }.ToString();
-                using (var original = new SqliteConnection(connectionString))
+                using (var independentStore = new SqliteWorldStore(connectionString))
                 {
-                    original.Open();
-                    using SqliteCommand create = original.CreateCommand();
-                    create.CommandText = "CREATE TEMP TABLE pool_marker (id INTEGER);";
-                    create.ExecuteNonQuery();
-                }
+                    byte[] stored = { 1, 2, 3 };
+                    await independentStore.SaveAsync("independent", stored);
+                    using (var original = new SqliteConnection(connectionString))
+                    {
+                        original.Open();
+                        using SqliteCommand create = original.CreateCommand();
+                        create.CommandText = "CREATE TEMP TABLE pool_marker (id INTEGER);";
+                        create.ExecuteNonQuery();
+                    }
 
-                phase.SignalAndWait();
-                phase.SignalAndWait();
-                using (var reopened = new SqliteConnection(connectionString))
-                {
-                    try
+                    phase.SignalAndWait();
+                    phase.SignalAndWait();
+                    Assert.Equal(stored, await independentStore.LoadAsync("independent"));
+                    using (var reopened = new SqliteConnection(connectionString))
                     {
-                        reopened.Open();
-                        using SqliteCommand read = reopened.CreateCommand();
-                        read.CommandText = "SELECT COUNT(*) FROM temp.pool_marker;";
-                        read.ExecuteScalar();
-                    }
-                    catch (Exception exception)
-                    {
-                        failures.Enqueue(exception);
-                    }
-                    finally
-                    {
-                        SqliteConnection.ClearPool(reopened);
+                        try
+                        {
+                            reopened.Open();
+                            using SqliteCommand read = reopened.CreateCommand();
+                            read.CommandText = "SELECT COUNT(*) FROM temp.pool_marker;";
+                            read.ExecuteScalar();
+                        }
+                        catch (Exception exception)
+                        {
+                            failures.Enqueue(exception);
+                        }
+                        finally
+                        {
+                            SqliteConnection.ClearPool(reopened);
+                        }
                     }
                 }
-                if (File.Exists(path)) File.Delete(path);
+                foreach (string storeFile in new[] { path, path + "-wal", path + "-shm" })
+                    if (File.Exists(storeFile)) File.Delete(storeFile);
             }
         });
 

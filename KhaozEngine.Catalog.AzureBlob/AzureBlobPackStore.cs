@@ -13,11 +13,15 @@ namespace KhaozEngine.Catalog.AzureBlob;
 /// container its clients read over HTTPS and a client needs no change at all.
 /// <para>
 /// <b>It implements NEITHER pointer interface</b>, deliberately: not <c>IPackVersionPointerStore</c> and not
-/// <see cref="IContentVersionPointerSource"/>. A publish and a pack rebuild both RESOLVE a pointer half and
-/// refuse a store that has none (<c>ContentAuthoringException.NoPackStoreReason</c>), so a full server pack
-/// can never be published into a blob container by mistake. Filling a public origin is a deliberate copy of
-/// the CLIENT manifest's closure, made by the caller, and it is the caller that keeps server-only chunks out
-/// of a container anyone can read.
+/// <see cref="IContentVersionPointerSource"/>. That is a RUN time refusal rather than a compile time
+/// impossibility: <c>ContentPublishCommit</c> resolves the pointer half in its constructor and
+/// <c>ContentPackRebuild</c> inside its <c>RunAsync</c>, and each refuses with
+/// <c>ContentAuthoringException.NoPackStoreReason</c> (<c>no-pack-store</c>) before a byte moves, so a full
+/// server pack cannot reach a blob container by mistake. <c>ContentPackRebuild.RunAsync</c> also takes an
+/// explicit pointer store parameter, so a caller who passes one on purpose is not stopped by any of this.
+/// Filling a public origin is a deliberate copy of the CLIENT manifest's closure, which
+/// <see cref="ContentOriginFill"/> makes, and it is that copy rather than this type that keeps server-only
+/// chunks out of a container anyone can read.
 /// </para>
 /// <para>
 /// <b>A public origin gets no <c>versions/&lt;n&gt;</c> pointer either</b>, and that is the same decision
@@ -162,7 +166,10 @@ public sealed class AzureBlobPackStore : IPackStore, IPackStorePruning
 
     /// <summary>
     /// The hash one key names, or null when the key is not a hash object at all. A container may hold
-    /// anything a host put in it, so the walk keeps only what the store itself would have written.
+    /// anything a host put in it, so the walk keeps only what the store itself would have written, which
+    /// means the key has to be the CANONICAL one for the hash and not merely end in it. A
+    /// <c>junk/&lt;hash&gt;.kec</c> yielded here would be enumerated under an address whose real object is a
+    /// different blob, and a prune driven off the enumeration would then delete the canonical one.
     /// </summary>
     static string? HashOf(string key)
     {
@@ -174,7 +181,10 @@ public sealed class AzureBlobPackStore : IPackStore, IPackStorePruning
         ReadOnlySpan<char> name = key.AsSpan(0, key.Length - FileSystemPackStore.FileExtension.Length);
         int slash = name.LastIndexOf('/');
         string stem = name[(slash + 1)..].ToString();
-        return FileSystemPackStore.IsContentAddress(stem) ? stem : null;
+        return FileSystemPackStore.IsContentAddress(stem)
+            && string.Equals(key, FileSystemPackStore.RelativeKeyFor(stem), StringComparison.Ordinal)
+                ? stem
+                : null;
     }
 
     static async IAsyncEnumerable<string> Nothing()

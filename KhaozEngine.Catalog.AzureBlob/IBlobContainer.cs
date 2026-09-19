@@ -21,10 +21,16 @@ internal readonly record struct BlobObjectHeaders(string ContentType, string Cac
 /// and answers whether it wrote, the download answers null for absent and refuses an oversize object from
 /// its declared length before a body is buffered, and the delete answers whether the object was there.
 /// </para>
+/// <para>
+/// The two READS never fault. A service that refused the read answers the same as a container that holds
+/// nothing, because the caller's next move is the same either way, so the SDK's exception stops at the
+/// adapter (<see cref="BlobContainerAdapter.IsAbsentReadAnswer"/>). The two WRITES are loud, deliberately: an
+/// origin that silently did not write is an origin a client is about to be sent to.
+/// </para>
 /// </summary>
 internal interface IBlobContainer
 {
-    /// <summary>Whether the container holds an object under that key.</summary>
+    /// <summary>Whether the container holds an object under that key, and FALSE when the read faulted.</summary>
     Task<bool> ExistsAsync(string key, CancellationToken cancellationToken);
 
     /// <summary>
@@ -38,7 +44,7 @@ internal interface IBlobContainer
         CancellationToken cancellationToken);
 
     /// <summary>
-    /// The object's bytes, or NULL when the key is absent or the object declares more than
+    /// The object's bytes, or NULL when the key is absent, the read faulted, or the object declares more than
     /// <paramref name="maximumBytes"/>. The ceiling is applied to the DECLARED length, so a hostile or
     /// misconfigured origin costs one round trip rather than an allocation.
     /// </summary>

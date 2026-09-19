@@ -14,6 +14,16 @@ namespace KhaozEngine.Catalog.AzureBlob;
 /// The ONLY file that names an Azure SDK type, the store's public constructor apart. Everything the service
 /// answers in its own shapes (a status code, an <see cref="ETag"/> condition, a streaming download's
 /// declared length) is turned into the seam's plain answers here, so the provider above stays ordinary code.
+/// <para>
+/// <b>Nothing in this file is covered by the ordinary suite, and that is structural rather than an
+/// oversight.</b> Faking a <see cref="BlobContainerClient"/> is not practical, so every non-live test drives
+/// the store through an in-memory double of <see cref="IBlobContainer"/> and never reaches the code below it.
+/// What is pinned ONLY by the live leg is therefore: the conditional upload's 409 and 412 classification, the
+/// 404 arms, the <c>Content-Length</c> ceiling applied before a body is buffered,
+/// <c>DeleteIfExistsAsync</c>'s answer, and the read-fault swallowing of
+/// <see cref="IsAbsentReadAnswer"/> as the service actually raises it. A release that touches this file runs
+/// that leg first (<c>KE_PACKSTORE_BLOB</c>, see the package README).
+/// </para>
 /// </summary>
 internal sealed class BlobContainerAdapter : IBlobContainer
 {
@@ -30,13 +40,35 @@ internal sealed class BlobContainerAdapter : IBlobContainer
         _container = container;
     }
 
+    /// <summary>
+    /// Whether one exception out of a READ is answered as absent instead of thrown.
+    /// <see cref="IPackStore.GetAsync"/> promises null for absent so a sweep or a validation pass is never
+    /// taken down by one lookup, and <see cref="HttpPackStore"/> keeps that promise for a FAULT too: a 404, a
+    /// 5xx and a connection that died mid body are one answer there, because the caller's next move is the
+    /// same for all three. So an expired signature, a throttle and a body that arrived short are that same
+    /// answer here. A cancellation is not: it is the caller's own decision, and it propagates.
+    /// <para>
+    /// It is a predicate over a filter rather than two typed <c>catch</c> clauses because a test that cannot
+    /// build a <see cref="BlobContainerClient"/> can still assert the CLASSIFICATION, which is the only part
+    /// of this file reachable without a real container.
+    /// </para>
+    /// </summary>
+    internal static bool IsAbsentReadAnswer(Exception failure) => failure is RequestFailedException or IOException;
+
     /// <inheritdoc />
     public async Task<bool> ExistsAsync(string key, CancellationToken cancellationToken)
     {
-        Response<bool> response = await _container.GetBlobClient(key)
-            .ExistsAsync(cancellationToken)
-            .ConfigureAwait(false);
-        return response.Value;
+        try
+        {
+            Response<bool> response = await _container.GetBlobClient(key)
+                .ExistsAsync(cancellationToken)
+                .ConfigureAwait(false);
+            return response.Value;
+        }
+        catch (Exception failure) when (IsAbsentReadAnswer(failure))
+        {
+            return false;
+        }
     }
 
     /// <inheritdoc />
@@ -99,16 +131,11 @@ internal sealed class BlobContainerAdapter : IBlobContainer
             await result.Content.ReadExactlyAsync(exact, cancellationToken).ConfigureAwait(false);
             return new ReadOnlyMemory<byte>(exact);
         }
-        catch (RequestFailedException failure) when (failure.Status == 404)
+        catch (Exception failure) when (IsAbsentReadAnswer(failure))
         {
-            // Absent is NULL rather than a throw, so a sweep or a validation pass is never taken down by
-            // one lookup.
-            return null;
-        }
-        catch (EndOfStreamException)
-        {
-            // A body that arrived short is a body that did not arrive: the caller's next move is the same
-            // as for an absent object, which is to retry or to try another source.
+            // An absent object, a service that refused the read, and a body that arrived short are ONE answer:
+            // NULL rather than a throw, so a sweep or a validation pass is never taken down by one lookup and
+            // the caller retries or tries another source either way.
             return null;
         }
     }

@@ -9,6 +9,12 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 Oldest-first backlog fixes:
 
+- Editor generation changes refresh captured field and layer configuration before bounded or all-loaded
+  invalidation. Topology changes still rebuild the viewport (#14).
+- Pure terrain LOD transitions reuse immutable placement data. Ring changes still gain or drop gameplay
+  data, and field edits regenerate placements (#101). `TerrainStreamer.Reconfigure` applies live radii,
+  LOD tables, hysteresis and budgets while preserving compatible prop placements and collider handles.
+  Chunk size and async topology remain construction-time choices (#283).
 - Main-pass ground decals reject steep and vertical receivers, including legacy decals, while keeping
   downward tolerance for horizontal ground and the early blob-shadow path (#11).
 - Full HDR chroma preservation fits RGB uniformly into display range, retaining colour ratios at the

@@ -7008,7 +7008,7 @@ terminal one. A backend that can tell a plain disconnect from a real failure rou
 
 ## World streaming (`TerrainStreamer` / `Scene3DChunkSink`)
 
-`TerrainStreamer` (`KhaozEngine.Terrain.Render3D`) makes the world effectively endless: it keeps a ring of
+`TerrainStreamer` (`KhaozEngine.Terrain`) makes the world effectively endless: it keeps a ring of
 terrain chunks (and their props) loaded around the player and unloads the ones left behind, so you can walk
 any direction forever. It is pure bookkeeping (no GPU, no field), so the real mesh/prop/draw work lives behind
 an `IChunkSink`; the package ships a production sink (`Scene3DChunkSink`) and the streamer is headless-tested
@@ -7038,6 +7038,17 @@ rebuilt at the new resolution / ring), and (4) **applies** the completed builds 
 stops churn when the player oscillates across a chunk boundary. `StreamerConfig.Default` is LoadRadius 4
 (~240 m gameplay disk) / UnloadRadius 6 / MaxLoadsPerFrame 3 / 60 m chunks, with no decor ring (see the far
 field below to opt into one).
+
+**Live reconfiguration.** `streamer.Config` exposes the active immutable configuration, and
+`streamer.Reconfigure(newConfig)` updates radii, the LOD table, hysteresis and build/unload budgets without
+reconstructing the streamer. Ring expansion and contraction use the configured budgets. A changed LOD
+table refreshes resident geometry even when a chunk keeps the same numeric tier, while retaining its prop
+placements and compatible prop colliders. Chunk size and asynchronous execution topology remain
+construction-time choices and incompatible changes are refused (#283).
+
+A pure LOD-tier transition reuses immutable placement data instead of querying the scatter source again.
+Field invalidation still regenerates placements, and a simultaneous ring and tier change retains the
+ring's required gameplay-data gain or loss (#101).
 
 **Both sides of the churn are budgeted and damped.** Two knobs beyond the radii, both defaulted, both with a
 plain opt-out:
@@ -9095,19 +9106,12 @@ status-strip panels draw through `SpriteBatch.DrawRounded` against a lifted dark
 column is also wider: `OutlinePanelWidth` (260, unchanged) and `InspectorPanelWidth` (340, up from the old
 shared 260) now split independently, giving the grouped companion/scatter-layer rows room to breathe.
 
-**Viewport rebuild performance.** A bounded terrain-feature edit (a lake or flatten drag, for example)
-reports a `DirtyRegion`, so `CheckWorldRebuild` re-meshes only the loaded chunks the edit's accumulated
-region overlaps (`ViewportWorld.PartialRebuild`) instead of tearing down and rebuilding the whole streamed
-world. Only a terrain-HEIGHT edit narrows this way: the partial path swaps the field and re-meshes chunks,
-and the chunks re-scatter off the new field from the prop layers built at the last full rebuild. An
-exclusion or scatter-override edit (add, remove, shape drag/scrub, layer/value edit, or reorder) changes
-what those captured layers SAY rather than the field, and the partial path has no way to rebuild them, so
-it reports no region and takes the full rebuild. Doing otherwise re-meshed the chunks and re-scattered
-byte-identical props, leaving every tree under a freshly drawn exclusion standing until some later full
-rebuild (issue #765). A ridge or rim edit has unbounded
-reach and, like a scatter layer, companion layer, or terrain-scalar edit, still takes the full
-`ViewportWorld.Rebuild` path (see the `KhaozEngine` `docs/design/MAP-EDITOR-DESIGN.md` deferred-work note for the
-one remaining gap: a biome band is bounded only in its world-Z-range slice, not narrowed yet),
+**Viewport rebuild performance.** Bounded terrain-height edits invalidate only loaded chunks overlapping
+the accumulated dirty region. Exclusion and scatter-override edits first refresh the captured generation
+configuration, then invalidate their jitter-padded shape bounds. Terrain scalars, biome bands and
+same-topology scatter or companion value edits refresh every loaded chunk without rebuilding the viewport.
+Pending asynchronous work is flushed before field or layer snapshots change. Layer-count, layer-kind,
+placement-layer, kit and HLOD topology changes retain the full rebuild path (#14). Full rebuilds are
 throttled to at most once per
 `MapEditorOptions.GestureRebuildInterval` seconds (default 0.25, 0 disables the throttle) while a drag or
 draw gesture is live, so a fast mid-gesture edit stream does not re-mesh the world every frame. Kit meshes

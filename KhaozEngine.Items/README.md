@@ -128,7 +128,8 @@ the fleet unreadable.
   written before version 2 existed.
 - **`Encode` writes the VERSION 1 format**, which is what this type writes: version byte, `ushort` slot
   count, then one 10-byte entry per OCCUPIED slot (`ushort` slot, `int` item id, `int` count). An empty bank
-  costs three bytes.
+  costs three bytes. A container above 65,535 slots is refused at this call rather than truncating the count
+  and high slot indices into a blob the validator rejects later.
 - **Version 2 is a PAGE**, carrying instance ids, opaque payloads and a content version stamp, and its codec
   is `ItemContainerPageCodec` in `KhaozEngine.ItemInstances`, the package above this one. A version 2 blob
   handed to this type is refused by number rather than guessed at.

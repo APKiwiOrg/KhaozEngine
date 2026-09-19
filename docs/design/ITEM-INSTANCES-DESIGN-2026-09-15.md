@@ -1723,7 +1723,8 @@ text chunk rather than a content edit.
 distinction on the ROW rather than in the affix entry (3.4), so the generator reads it to count against
 the rarity rule's two limits. Everything above 2 is a kind the generator treats as its own counted pool,
 which is how an implicit, a corruption line or a Mortal Online material line gets a slot without an
-engine change.
+engine change. The row codec refuses a kind outside 1 to 255 on both write and read, matching the
+`rarity_kind_limit.mod_kind` ceiling.
 
 `group_id` is contracts' exclusivity, one level of indirection rather than a raw integer, so the group
 can carry a count. `mod_group` is three fields: `id`, `key` and `max_per_item` (an int, default 1). Two

@@ -7,13 +7,13 @@ namespace KhaozEngine.TileWorld.Netcode;
 
 /// <summary>
 /// The replicated half of the tile wire: which components cross it, under which extension ids, and how each one
-/// encodes. Both heads build their registry from <see cref="CreateRegistry"/>, so the ids and the codecs cannot
+/// encodes. Both heads build their registry from <c>CreateRegistry</c>, so the ids and the codecs cannot
 /// drift apart the way two hand-written registrations would.
 /// </summary>
 public static partial class TileProtocol
 {
     /// <summary>Extension id of <see cref="TileMoveState"/>. Registered NEAREST-SAMPLED rather than interpolated,
-    /// because a tile is discrete (see <see cref="CreateRegistry"/>).</summary>
+    /// because a tile is discrete (see <c>CreateRegistry</c>).</summary>
     public const ushort TileMoveStateTypeId = ReplicationRegistry.FirstExtensionTypeId + 0;
 
     /// <summary>Extension id of <see cref="TileRouteState"/>, the owner-only route.</summary>
@@ -121,16 +121,34 @@ public static partial class TileProtocol
     /// honest answer to bytes that did not arrive whole is a drop carrying no instance rather than a session
     /// that loses every other drop and every body in it with the frame.</para>
     /// <para>A tile COORDINATE is neither, and it is the first rule's limit rather than a third case. The x and z
-    /// of <see cref="TileMoveState"/> are whole ints, so every value a frame can name is one the type holds, and
-    /// the plane rides in ONE byte (<see cref="WriteMove"/>), so the wire itself is the only bound there is. A
-    /// registry is built once for every world rather than per document, so a codec has no plane count to measure
-    /// against either, and threading one in would put a decoded position at the mercy of two heads agreeing about
-    /// a number that is not on the wire. A plane no world has therefore costs nothing on the way in and is caught
-    /// where the world IS known: <see cref="TileCollisionMap.Get"/> answers Blocked outside its plane count, so a
-    /// body there can never step, and the presenter only multiplies by the plane, so the worst a hostile one buys
-    /// is a remote frozen and drawn a few plane heights up.</para>
+    /// are whole ints, so every value a frame can name is one the type holds. <see cref="TileMoveState"/> carries
+    /// its plane in one byte, which is the wire's own bound. <see cref="TileGroundItem"/> and
+    /// <see cref="PendingTileCommand"/> carry a whole int for compatibility, so the world-bound overload checks
+    /// those two against its plane count. The legacy overload has no world count and keeps its unbounded read for
+    /// callers that already build one registry independently of a document.</para>
     /// </summary>
     public static ReplicationRegistry CreateRegistry(Action<ReplicationRegistry>? registerExtensions = null)
+        => CreateRegistry(planeCount: null, registerExtensions);
+
+    /// <summary>
+    /// Builds the shared tile registry with the world's plane count. The wire stays unchanged, including the
+    /// whole-int planes on <see cref="TileGroundItem"/> and <see cref="PendingTileCommand"/>, while their readers
+    /// refuse a value outside zero through <paramref name="planeCount"/> minus one.
+    /// </summary>
+    /// <param name="planeCount">The plane count both heads received from the world document.</param>
+    /// <param name="registerExtensions">The game's component registrations.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="planeCount"/> is not positive.</exception>
+    public static ReplicationRegistry CreateRegistry(
+        int planeCount,
+        Action<ReplicationRegistry>? registerExtensions = null)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(planeCount);
+        return CreateRegistry((int?)planeCount, registerExtensions);
+    }
+
+    static ReplicationRegistry CreateRegistry(
+        int? planeCount,
+        Action<ReplicationRegistry>? registerExtensions)
     {
         var reg = new ReplicationRegistry();
         reg.Register<TileMoveState>(TileMoveStateTypeId, WriteMove, ReadMove, discreteSample: true);
@@ -140,7 +158,8 @@ public static partial class TileProtocol
         reg.Register<TileHealth>(TileHealthTypeId, WriteHealth, ReadHealth);
         reg.Register<TileCombatState>(TileCombatStateTypeId, WriteCombat, ReadCombat,
             channels: ReplicationChannels.Migrate);
-        reg.Register<TileGroundItem>(TileGroundItemTypeId, WriteGroundItem, ReadGroundItem);
+        reg.Register<TileGroundItem>(TileGroundItemTypeId, WriteGroundItem,
+            reader => ReadGroundItem(reader, planeCount));
         // The DEFAULT channels, and NOT OwnerOnly, which is the obvious-looking wrong answer here. OwnerOnly
         // scopes a component to the client whose OWN net id equals the ENTITY's, and a drop's entity net id is
         // never a viewer's, so it would hide the instance from everyone including the player who dropped it.
@@ -150,7 +169,8 @@ public static partial class TileProtocol
         reg.Register<TileGroundItemInstance>(TileGroundItemInstanceTypeId,
             WriteGroundItemInstance, ReadGroundItemInstance);
         reg.Register<TileObjectState>(TileObjectStateTypeId, WriteObjectState, ReadObjectState);
-        reg.Register<PendingTileCommand>(PendingTileCommandTypeId, WritePendingCommand, ReadPendingCommand,
+        reg.Register<PendingTileCommand>(PendingTileCommandTypeId, WritePendingCommand,
+            reader => ReadPendingCommand(reader, planeCount),
             channels: ReplicationChannels.Migrate);
         registerExtensions?.Invoke(reg);
         return reg;
@@ -158,7 +178,7 @@ public static partial class TileProtocol
 
     /// <summary>
     /// Puts a route back onto a move state: the INVERSE of the component split above, and the one definition of
-    /// that rule. <see cref="CreateRegistry"/> splits a walking player across two components on purpose, so every
+    /// that rule. <c>CreateRegistry</c> splits a walking player across two components on purpose, so every
     /// reader that needs the whole state has to put them back together, and two copies of how is how the heads
     /// drift apart.
     /// <para>The CLIENT's reason is the codec: <c>TileMoveState</c>'s encoding never writes a route
@@ -376,17 +396,17 @@ public static partial class TileProtocol
         w.Write(v.Plane);
     }
 
-    // CLAMPED, the health reader's half of the hostile-frame rule: every bit pattern of these ints is a
-    // meaningful coordinate or id to SOME world, so there is no malformed frame here. The one inconsistency a
-    // frame can carry is a non-positive count, which would draw a stack of nothing, and it clamps to one
-    // because a ground item that exists holds at least one of something.
-    static TileGroundItem ReadGroundItem(BinaryReader r)
+    // CLAMPED for the item, count and planar coordinates. Every bit pattern is meaningful to some game or world,
+    // except a non-positive count, which would draw a stack of nothing and therefore clamps to one. The plane is
+    // different because the world-bound registry knows its actual domain and refuses a value outside it. The
+    // legacy registry has no count and keeps the whole int unchanged.
+    static TileGroundItem ReadGroundItem(BinaryReader r, int? planeCount)
     {
         int itemId = r.ReadInt32();
         int count = r.ReadInt32();
         int x = r.ReadInt32();
         int z = r.ReadInt32();
-        int plane = r.ReadInt32();
+        int plane = ReadPlane(r, planeCount, nameof(TileGroundItem));
         return new TileGroundItem { ItemId = itemId, Count = Math.Max(1, count), X = x, Z = z, Plane = plane };
     }
 
@@ -511,8 +531,8 @@ public static partial class TileProtocol
 
     // Twenty-two bytes, and the SECOND codec here whose bytes never come off a socket: registered on the Migrate
     // channel alone, so the only thing that ever encodes or decodes it is a cell handoff inside one server process.
-    // Nothing is clamped for that reason, the plane rides as a whole int rather than the command frame's one byte,
-    // and the day it gains a Replicate bit is the day it needs the treatment ReadMove gives its enums.
+    // Nothing is clamped for that reason. The plane rides as a whole int rather than the command frame's one byte,
+    // preserving its wire layout, and a world-bound registry refuses it when it falls outside that world's count.
     //
     // It is registered AT ALL because the movement pass reads the three components together, so an entity that
     // arrived in the destination cell without this one fell out of the query. See PendingTileCommand's own doc for
@@ -528,13 +548,23 @@ public static partial class TileProtocol
         w.Write(v.Command.Target);
     }
 
-    static PendingTileCommand ReadPendingCommand(BinaryReader r)
+    static PendingTileCommand ReadPendingCommand(BinaryReader r, int? planeCount)
     {
         var kind = (TileCommandKind)r.ReadByte();
-        int x = r.ReadInt32(), z = r.ReadInt32(), plane = r.ReadInt32();
+        int x = r.ReadInt32(), z = r.ReadInt32();
+        int plane = ReadPlane(r, planeCount, nameof(PendingTileCommand));
         var mode = (TileMoveMode)r.ReadByte();
         long target = r.ReadInt64();
         return new PendingTileCommand { Command = new TileCommand(kind, new TileCoord(x, z, plane), mode, target) };
+    }
+
+    static int ReadPlane(BinaryReader reader, int? planeCount, string component)
+    {
+        int plane = reader.ReadInt32();
+        if (planeCount is int count && (uint)plane >= (uint)count)
+            throw new InvalidDataException(
+                $"A {component} frame names plane {plane}, outside the world's {count} planes.");
+        return plane;
     }
 
     static void WriteHealth(TileHealth v, BinaryWriter w)

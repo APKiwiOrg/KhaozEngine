@@ -4,7 +4,7 @@ using System.Collections.Immutable;
 namespace KhaozEngine.ItemInstances;
 
 /// <summary>
-/// The seventeen finding codes of the <c>KEC0100</c> band and the messages that carry them. The band is
+/// The eighteen finding codes of the <c>KEC0100</c> band and the messages that carry them. The band is
 /// RESERVED for the item instances types, 100 to 199, so an affix rule and a catalog structure rule are
 /// told apart by an operator reading a code rather than by reading a message.
 /// <para>
@@ -13,9 +13,9 @@ namespace KhaozEngine.ItemInstances;
 /// treated. That is why <see cref="All"/> is a pinned list rather than a generated range.
 /// </para>
 /// <para>
-/// <b>Twelve of the seventeen are spec 8.9's twelve checks, two are the weight bounds of
+/// <b>Twelve of the eighteen are spec 8.9's twelve checks, two are the weight bounds of
 /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/944">944</see>, one is the generation tag
-/// position ceiling the candidate tables impose, and two are cross-row rules the type doc comments of spec
+/// position ceiling the candidate tables impose, and three are cross-row rules the type doc comments of spec
 /// 8.5 and 8.6 already promised.</b> The mapping is not one code per check in two places,
 /// and both exceptions are deliberate. Check 2 SPLITS, because an item level
 /// range an author inverted and a tier ordinal outside the payload's byte are different mistakes with

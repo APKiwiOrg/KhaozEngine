@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <OutputType>Library</OutputType>
+    <!-- Pinned so the declared namespaces stay KhaozEngine.Tests.Catalog.*, per AGENTS.md. -->
+    <RootNamespace>KhaozEngine.Tests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <!-- The blob SDK, for the live leg's own BlobContainerClient, and Azure.Identity for the credential
+         that leg builds. Azure.Identity is a TEST-ONLY reference on purpose: the shipped package takes a
+         ready container client and never builds a credential, so a host picks its own identity stack. -->
+    <PackageReference Include="Azure.Storage.Blobs" />
+    <PackageReference Include="Azure.Identity" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The two packages these tests compile against, and nothing else. The conformance suite runs over
+         FileSystemPackStore from Catalog and over AzureBlobPackStore from the new package, so both are
+         used rather than carried: push CI selects test projects by the reference graph, and a reference
+         for a type these tests do not use would silently degrade that selection. Catalog.Authoring is
+         deliberately ABSENT, which is what makes the no-pointer-half fact assert by interface name. -->
+    <ProjectReference Include="../KhaozEngine.Catalog/KhaozEngine.Catalog.csproj" />
+    <ProjectReference Include="../KhaozEngine.Catalog.AzureBlob/KhaozEngine.Catalog.AzureBlob.csproj" />
+  </ItemGroup>
+</Project>

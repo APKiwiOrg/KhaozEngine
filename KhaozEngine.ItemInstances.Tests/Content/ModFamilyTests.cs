@@ -266,7 +266,7 @@ public class ModFamilyTests
             Assert.Null(KeyDefect(field.Name));
             Assert.False(
                 ContentTextKey.ExceedsBound(type.Key, 64, field.Name),
-                ContentTextKey.Derive(type.Key, default, field.Name));
+                ContentTextKey.Derive(type.Key, ReadOnlySpan<byte>.Empty, field.Name));
         }
     }
 
@@ -509,6 +509,36 @@ public class ModFamilyTests
         AssertField(line, 5, "max", ContentFieldKind.Int, null, ContentVisibility.Client, true);
         AssertField(line, 6, "tag_scope", ContentFieldKind.TagList, "tag", ContentVisibility.Client, false);
         AssertField(line, 7, "condition_id", ContentFieldKind.Int, null, ContentVisibility.Client, false);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(256)]
+    [InlineData(-1)]
+    [InlineData(int.MaxValue)]
+    public void A_mod_kind_outside_1_to_255_is_refused_on_both_sides(int kind)
+    {
+        ContentTypeRegistry registry = Registered();
+        ContentTypeRegistration mod = Lookup(registry, InstanceContentTypeIds.ModTypeKey);
+
+        ContentRow row = Row(mod, "fine_crafted", Int(kind), Reference(7), Flag(false), Marker());
+        Assert.Throws<ArgumentException>(() => Encode(mod, row));
+
+        byte[] bytes = Forge(mod, "fine_crafted", kind, 7, 0);
+        Assert.False(mod.Codec.TryDecode(bytes, out _, out string? reason));
+        Assert.Equal(ContentRowCodecBase.ReasonFieldMalformed, reason);
+    }
+
+    [Theory]
+    [InlineData(ModContentType.PrefixKind)]
+    [InlineData(ModContentType.MaxKind)]
+    public void A_mod_kind_inside_1_to_255_round_trips(int kind)
+    {
+        ContentTypeRegistry registry = Registered();
+        ContentTypeRegistration mod = Lookup(registry, InstanceContentTypeIds.ModTypeKey);
+        ContentRow row = Row(mod, "fine_crafted", Int(kind), Reference(7), Flag(false), Marker());
+
+        Assert.Equal(row.Fields, Decode(mod, Encode(mod, row)).Fields);
     }
 
     [Theory]

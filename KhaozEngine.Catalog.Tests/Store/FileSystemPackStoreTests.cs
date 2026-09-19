@@ -64,6 +64,43 @@ public class FileSystemPackStoreTests
         Assert.True(pack.TagChunk.StoredFile.Span.SequenceEqual(read.Value.Span));
     }
 
+    // The one statement of the key layout, which three providers derive a name from: the local store's path,
+    // the HTTP store's URI and the blob store's key. A change here moves all three together, which is what
+    // lets a client read through HttpPackStore what another provider wrote.
+    [Fact]
+    public void RelativeKeyFor_is_the_two_shard_segments_then_the_hash_and_the_extension()
+    {
+        string hash = new string('a', 62) + "9f";
+
+        string key = FileSystemPackStore.RelativeKeyFor(hash);
+
+        Assert.Equal("aa/aa/" + hash + FileSystemPackStore.FileExtension, key);
+        Assert.Equal(hash[..2], key[..2]);
+        Assert.Equal(hash.Substring(2, 2), key.Substring(3, 2));
+        Assert.Equal(key.ToLowerInvariant(), key);
+        Assert.DoesNotContain('\\', key);
+        Assert.False(key.StartsWith('/'));
+
+        using var root = new TemporaryRoot();
+        var store = new FileSystemPackStore(root.Path);
+        Assert.Equal(
+            Path.Combine(root.Path, key.Replace('/', Path.DirectorySeparatorChar)),
+            store.PathFor(hash));
+    }
+
+    // A name that is not a content address never becomes a path segment, because a hash arrives from a
+    // manifest a remote peer may have written. The refusal is a throw rather than a null, because a caller
+    // asking for a key has already decided to build a path out of the answer.
+    [Fact]
+    public void RelativeKeyFor_refuses_a_name_that_is_not_a_content_address()
+    {
+        Assert.Throws<ArgumentException>(() => FileSystemPackStore.RelativeKeyFor("../../etc/passwd"));
+        Assert.Throws<ArgumentException>(() => FileSystemPackStore.RelativeKeyFor(new string('a', 63)));
+        Assert.Throws<ArgumentException>(() => FileSystemPackStore.RelativeKeyFor(new string('A', 64)));
+        Assert.Throws<ArgumentException>(() => FileSystemPackStore.RelativeKeyFor(string.Empty));
+        Assert.Throws<ArgumentException>(() => FileSystemPackStore.RelativeKeyFor(null!));
+    }
+
     [Fact]
     public async Task PutAsync_verifies_the_digest_of_the_bytes_it_was_handed()
     {

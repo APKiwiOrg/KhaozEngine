@@ -5,7 +5,8 @@ using KhaozEngine.Catalog;
 namespace KhaozEngine.ItemInstances;
 
 /// <summary>
-/// The <c>KEC0100</c> band's sweep, spec 8.9's twelve checks plus the two weight bounds, over one
+/// The <c>KEC0100</c> band's sweep, with twelve spec 8.9 checks, two weight bounds, one generation tag
+/// position ceiling and three cross-row rules, over one
 /// candidate and the previous published snapshot or null. It is the band's whole public face and it is what
 /// <see cref="InstanceContentValidator"/> hands to the catalog's pass 6.
 /// <para>

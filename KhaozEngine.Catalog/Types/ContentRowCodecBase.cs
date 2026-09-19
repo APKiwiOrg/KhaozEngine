@@ -110,6 +110,40 @@ public abstract class ContentRowCodecBase : IContentRowCodec
         return ContentFieldValue.OfBytes(ContentFieldKind.TagList, bytes.ToArray());
     }
 
+    /// <summary>
+    /// Reads tag ids from a tag-list value into <paramref name="destination"/> in authored order. Reading
+    /// stops when the destination is full or the value reaches a malformed varint. Any ids already written
+    /// remain available to the caller.
+    /// </summary>
+    /// <returns>The number of ids written.</returns>
+    /// <exception cref="ArgumentException"><paramref name="value"/> is not a tag-list value.</exception>
+    public static int ReadTagList(in ContentFieldValue value, Span<int> destination)
+    {
+        if (value.Kind != ContentFieldKind.TagList)
+        {
+            throw new ArgumentException("The field value is not a tag list.", nameof(value));
+        }
+
+        ReadOnlySpan<byte> bytes = value.Bytes.Span;
+        int offset = 0;
+        int written = 0;
+        while (offset < bytes.Length && written < destination.Length)
+        {
+            if (!ContentVarint.TryRead(bytes, ref offset, out uint raw, out _))
+            {
+                break;
+            }
+
+            int tagId = unchecked((int)raw);
+            if (tagId >= 1)
+            {
+                destination[written++] = tagId;
+            }
+        }
+
+        return written;
+    }
+
     /// <inheritdoc />
     public void Encode(ContentRow row, IBufferWriter<byte> destination)
     {

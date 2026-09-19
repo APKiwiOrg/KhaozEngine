@@ -32,7 +32,7 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// <see cref="System.IO.InvalidDataException"/> by design, and the conversion to a false plus a reason happens one
 /// layer out, in <c>ClientReplicationView.TryApply</c>'s catch, which the caller treats as terminal for the
 /// session. The ONE component reader that is total is the item instance's, whose payload the engine never decodes
-/// and which therefore answers an empty payload instead. <see cref="CreateRegistry"/> carries both halves of that
+/// and which therefore answers an empty payload instead. <c>CreateRegistry</c> carries both halves of that
 /// reasoning: why a lying length is refused rather than clamped, and why that one reader answers instead.</para>
 /// </summary>
 public static partial class TileProtocol

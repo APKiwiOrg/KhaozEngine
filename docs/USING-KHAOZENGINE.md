@@ -9985,6 +9985,7 @@ TileCollisionMap map = TileCollisionBaker.Bake(document, catalogs);
 // 3. Build the replication registry. ONE factory, so the two heads cannot register different ids.
 //    A game's own components register at or above TileProtocol.FirstGameTypeId.
 ReplicationRegistry registry = TileProtocol.CreateRegistry(
+    document.PlaneCount,
     r => r.Register<MyComponent>(TileProtocol.FirstGameTypeId, WriteMine, ReadMine));
 
 // The CATALOGS are half the identity too: an archetype that gains a CollisionKind bakes a different collision
@@ -10166,12 +10167,15 @@ IDs remain compatible. Client and server must adopt the new entity command kind 
 rejects it. Pending entity interactions add one optional domain byte inside the framed movement component,
 while legacy payloads retain their layout and decode as authored-object interactions.
 
-**Both heads take the same `ReplicationRegistry`.** Each constructor takes one and each defaults to
-`TileProtocol.CreateRegistry()`, so a game registering its own components at or above
-`TileProtocol.FirstGameTypeId` builds ONE registry and passes it to both. It has to pass it to both: extension
-ids are length-prefixed, so a client whose registry never heard of a component SKIPS it rather than failing,
-which is the forward compatibility the wire wants and also the trap. The components never arrive, movement and
-the owner route and the display name all keep working, and nothing anywhere says a thing.
+**Both heads take the same `ReplicationRegistry`.** Without one, each constructor builds a world-bound registry
+from its configured `PlaneCount`. A game registering its own components at or above
+`TileProtocol.FirstGameTypeId` builds ONE with `TileProtocol.CreateRegistry(document.PlaneCount, configure)` and
+passes it to both. That overload keeps the whole-int ground-item and pending-command wire compatible while
+refusing a plane outside the actual world. The legacy `CreateRegistry(configure)` overload stays unbounded because
+it has no document count. Extension ids are length-prefixed, so a client whose registry never heard of a component
+SKIPS it rather than failing, which is the forward compatibility the wire wants and also the trap. The components
+never arrive, movement and the owner route and the display name all keep working, and nothing anywhere says a
+thing.
 
 `Presenter` starts as a placeholder and is REPLACED once the document is loaded
 (`client.Presenter = new TilePresenter(document)`), so it carries the world's real tile size and plane height and
@@ -14631,6 +14635,42 @@ address before it is kept), retries with capped jittered exponential backoff, an
 `IProgress<ContentFetchProgress>`. Cancellation is its one throwing exit, and it leaves no partial file: a
 chunk is written to a temporary name and moved. What the caller still owns is the pack HOSTING and the build
 ordinals: the engine reads a build number, it does not mint one.
+
+### Filling a client origin
+
+A client fetches by hash from an ORIGIN, and the server is what puts the version there. `ContentOriginFill`
+is the fetch loop pointed the other way round, run on the boot path before the socket opens, so a version
+published through the admin console reaches clients at the restart that activates it.
+
+```csharp
+// server boot, before the listener starts
+var origin = new FileSystemPackStore(config.ClientOriginDirectory);
+ContentOriginFillResult fill = await ContentOriginFill.RunAsync(
+    serverPackStore, origin,
+    new ContentVersionIdentity(content.VersionNumber, clientManifestHash),
+    registry, cancellationToken: ct);
+
+if (!fill.Filled)
+{
+    log.Error("The client origin is short of version {0}: {1} at {2} ({3})",
+        fill.Version.Number, fill.RefusalReason, fill.RefusalHash, fill.RefusalDetail);
+}
+```
+
+Every failure is a RESULT, and cancellation is the one throwing exit, so a boot gets a reason and one line
+rather than a stack trace. A source short of a chunk answers with the fetch loop's own reason. An origin that
+refuses a write (a throttled or unauthorized container, a full disk) answers `origin-write-failed` with the
+hash it stopped at and the fault's message in `RefusalDetail`, and the fill stops at the first such fault
+rather than pushing on at a store that is refusing it.
+
+It copies the CLIENT closure and nothing else, which is the point: a server only chunk never reaches a public
+origin, the server manifest never does either, and a version pointer is never written, because that file
+carries the server manifest hash and a client learns its version from the connect door anyway. The identity
+handed in MUST be the client one, and a server manifest offered by hash is refused with `manifest-wrong-side`
+before any write. The manifest itself is written last, so a fill that stopped leaves chunks and no manifest to
+follow into a hole. It never prunes, and a hosted origin should think twice before the caller does, since a
+client may be part way through the previous version. A directory origin is `FileSystemPackStore` as above, and
+a public blob container origin is `AzureBlobPackStore` from the opt-in `KhaozEngine.Catalog.AzureBlob` package.
 
 ### Content strings
 

@@ -518,8 +518,9 @@ repository beside the code it seeds and two exports of one version have to be th
 written as numbers and bytes as lower hex, because a bundle is read and edited by hand as often as it is
 generated. Reading is total for shape: a document this build cannot read is a refusal naming what was wrong,
 never a half-built bundle. Shape includes MAGNITUDE, because JSON has one number type and a member the reader
-wants as an integer can be handed `1.5`, an id past `int.MaxValue` or `1e308`. Each of those is refused
-naming the member, the same as a missing one.
+wants as an integer can be handed `1.5`, an id past `int.MaxValue` or `1e308`. Type ids must also fit their
+1 to 65,535 domain, and field kinds, visibility values and remap kinds must be known enum values. Each bad
+value is refused naming the member, the same as a missing one.
 
 An import runs through the ORDINARY publish and there is no second mechanism. It restores the families and
 their blocks verbatim, restamps the bundle's rules as the new line's, turns every row into an `Add` edit and

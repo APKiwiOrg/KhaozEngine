@@ -757,7 +757,7 @@ row carries a key reference to its parent, and a `sort` wherever its order is me
 
 | Id | Key | Parent | One row is | Visibility | Chunk slots | Row cap |
 |---|---|---|---|---|---|---|
-| 256 | `mod` | none | one affix: its `kind` (1 prefix, 2 suffix), its `group_id`, its `legacy` flag and its display `line` | Client | 4,096 | 1,024 |
+| 256 | `mod` | none | one affix: its `kind` (1 prefix, 2 suffix, 3 to 255 game), its `group_id`, its `legacy` flag and its display `line` | Client | 4,096 | 1,024 |
 | 257 | `mod_group` | none | an exclusivity group and its `max_per_item` | Client | 256 | 1,024 |
 | 258 | `rarity_rule` | none | how many affixes a rarity permits, its per kind caps, its `name_word_positions` and its `upgrade_from` | Client | 256 | 1,024 |
 | 259 | `unique_template` | none | a fixed item on a `base_id`, with its `name`, its `item_level_min` and its `weight` | Client | 4,096 | 1,024 |
@@ -775,6 +775,9 @@ row carries a key reference to its parent, and a `sort` wherever its order is me
 | 271 | `currency_step` | `crafting_currency` | one step: an `operation` and its four parameters | Client | 16,384 | 512 |
 | 272 | `currency_guard` | `crafting_currency` | one guard, on the currency's target or on one of its steps | Client | 16,384 | 512 |
 | 273 | `rare_name_word_weight` | `rare_name_word` | one word's `weight` against one `tag_id` | ServerOnly | 16,384 | 512 |
+
+The `mod` codec refuses a `kind` outside 1 to 255 on encode and decode. This is the same row-local domain
+the `rarity_kind_limit` codec uses for the game-owned kinds above 2.
 
 **The chunk slot count and the row cap are per TYPE rather than the format's defaults**, because the shapes
 differ by two orders of magnitude. A `mod_tier_weight` row is three small numbers and there are more of them

@@ -97,8 +97,9 @@ public sealed partial class TileWorldServer : IDisposable
     /// traversal profile.</param>
     /// <param name="targets">Resolves interaction targets, null on a head with no interactions wired.</param>
     /// <param name="authenticator">Gate for inbound connect tokens. Null admits every token.</param>
-    /// <param name="registry">The replication registry both heads share. Null builds
-    /// <see cref="TileProtocol.CreateRegistry"/>, which is the one a client with no game components needs.</param>
+    /// <param name="registry">The replication registry both heads share. Null builds a world-bound
+    /// <c>TileProtocol.CreateRegistry</c> with <see cref="TileWorldServerConfig.PlaneCount"/>. A game registry
+    /// should use the same bound overload so ground-item and pending-command planes are checked on read.</param>
     /// <exception cref="ArgumentNullException"><paramref name="transport"/>, <paramref name="config"/> or
     /// <paramref name="map"/> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="config"/> asks for a tick of zero seconds or
@@ -132,7 +133,7 @@ public sealed partial class TileWorldServer : IDisposable
                 nameof(config));
 
         this.config = config;
-        this.registry = registry ?? TileProtocol.CreateRegistry();
+        this.registry = registry ?? TileProtocol.CreateRegistry(config.PlaneCount);
         interactionTargets = targets;
         maxActionAgeTicks =
             (long)config.Move.MaxRouteSteps * (Math.Max(config.StepTicks.Walk, config.StepTicks.Run) + 1);
@@ -176,7 +177,7 @@ public sealed partial class TileWorldServer : IDisposable
     public ShardHost Host => host;
 
     /// <summary>The registry both heads must share. Hand a client the one this returns, or build both from
-    /// <see cref="TileProtocol.CreateRegistry"/> with the same extension registrations.</summary>
+    /// <c>TileProtocol.CreateRegistry</c> with the same extension registrations.</summary>
     public ReplicationRegistry Registry => registry;
 
     /// <summary>Ticks stepped since construction, so this is 1 once the first tick has returned. The snapshot

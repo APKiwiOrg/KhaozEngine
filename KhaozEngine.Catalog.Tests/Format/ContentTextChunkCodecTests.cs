@@ -18,6 +18,7 @@ namespace KhaozEngine.Tests.Catalog.Format;
 /// it forever.
 /// </para>
 /// </summary>
+[Collection("AllocSensitive")]
 public class ContentTextChunkCodecTests
 {
     static KeyValuePair<string, string> Entry(string key, string value) => new(key, value);
@@ -430,6 +431,82 @@ public class ContentTextChunkCodecTests
 
         // The dot never appears inside a segment, so a key splits on it exactly.
         Assert.Equal(3, ContentTextKey.Derive("item", "stone_sword"u8, "name").Split('.').Length);
+    }
+
+    [Theory]
+    [InlineData("café")]
+    [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
+    public void TheStringOverloadMatchesTheUtf8Overload(string contentKey)
+    {
+        string fromString = ContentTextKey.Derive("item", contentKey, "name");
+        string fromUtf8 = ContentTextKey.Derive("item", Encoding.UTF8.GetBytes(contentKey), "name");
+
+        Assert.Equal(fromUtf8, fromString);
+    }
+
+    [Fact]
+    public void TheStringOverloadReplacesAnIsolatedHighSurrogateLikeUtf8()
+    {
+        AssertStringAndUtf8DerivationsMatch("\uD800");
+    }
+
+    [Fact]
+    public void TheStringOverloadReplacesAnIsolatedLowSurrogateLikeUtf8()
+    {
+        AssertStringAndUtf8DerivationsMatch("\uDC00");
+    }
+
+    [Fact]
+    public void TheStringOverloadPreservesAValidPairAmongIsolatedSurrogates()
+    {
+        AssertStringAndUtf8DerivationsMatch("left\uD83D\uDE00\uD800middle\uDC00right");
+    }
+
+    [Fact]
+    public void TheStringOverloadAllocatesOnlyTheResultString()
+        => AssertStringDeriveAllocatesOnlyResult(new string('a', 256));
+
+    [Fact]
+    public void TheStringOverloadCanonicalizesMalformedUtf16InTheResultAllocation()
+        => AssertStringDeriveAllocatesOnlyResult("left\uD800middle\uDC00right");
+
+    static void AssertStringDeriveAllocatesOnlyResult(string contentKey)
+    {
+        const string typeKey = "item";
+        const string fieldName = "name";
+        int resultLength = typeKey.Length + contentKey.Length + fieldName.Length + 2;
+
+        _ = new string('a', resultLength);
+        _ = ContentTextKey.Derive(typeKey, contentKey, fieldName);
+
+        long beforeReference = GC.GetAllocatedBytesForCurrentThread();
+        int referenceLength = 0;
+        for (int i = 0; i < 1000; i++)
+        {
+            referenceLength += new string('a', resultLength).Length;
+        }
+
+        long referenceBytes = GC.GetAllocatedBytesForCurrentThread() - beforeReference;
+        long beforeDerive = GC.GetAllocatedBytesForCurrentThread();
+        int derivedLength = 0;
+        for (int i = 0; i < 1000; i++)
+        {
+            derivedLength += ContentTextKey.Derive(typeKey, contentKey, fieldName).Length;
+        }
+
+        long derivedBytes = GC.GetAllocatedBytesForCurrentThread() - beforeDerive;
+
+        Assert.Equal(referenceLength, derivedLength);
+        Assert.True(referenceBytes > 0);
+        Assert.Equal(referenceBytes, derivedBytes);
+    }
+
+    static void AssertStringAndUtf8DerivationsMatch(string contentKey)
+    {
+        string fromString = ContentTextKey.Derive("item", contentKey, "name");
+        string fromUtf8 = ContentTextKey.Derive("item", Encoding.UTF8.GetBytes(contentKey), "name");
+
+        Assert.Equal(fromUtf8, fromString);
     }
 
     [Fact]

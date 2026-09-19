@@ -20,8 +20,30 @@ Point lights no longer disappear when a consuming game has more than sixteen nea
 - `Scene3D.PointLightClusters` exposes projection, reference and overflow diagnostics. Invalid light positions
   and non-positive or non-finite radii are ignored consistently before submission.
 
+Backlog reliability and catalog-read fixes:
+
+- Catalog text keys accept text directly, hoisted item rows expose their value, and stat readers share
+  the catalog tag-list decoder (#1003, #1004, #987). Calls to `ContentTextKey.Derive` that pass an
+  untyped `default` key must now use `ReadOnlySpan<byte>.Empty` or an explicitly typed argument to
+  select the byte overload.
+- The tag index follows the same first-wins rule as row lookup for duplicate ids. Bundle numeric fields
+  refuse values outside their declared integer domains instead of silently narrowing them (#950, #956).
+- Item container encoding refuses slot counts that its wire format cannot represent, and mod content
+  refuses kinds outside the documented 1 to 255 domain (#888, #961).
+- Default tile replication registries validate ground-item and pending-command planes against the
+  configured world. Custom registries can opt into the same check through the world-bound factory
+  overload. Empty interest footprints use their anchor instead of throwing during the serve (#805, #977).
+- Test infrastructure excludes nested worktree copies from the native-target scan, keeps SQLite
+  cleanup scoped to its own connections, and allows overflow-boundary tests a realistic scheduling
+  budget under suite load (#857, #850, #1007).
+- Consumer documentation includes Grimhollow. The item journal package description includes its
+  batched commit path, and instance validation comments match the eighteen finding codes
+  (#1008, #943, #993).
+
+
 A published content version's pack can be rebuilt from the authoring store, so a server whose pack root does
-not outlive the process can boot (#1013).
+not outlive the process can boot (#1013), and a server can fill its clients' content origin, a blob container
+included, with the client closure and nothing else (#1016).
 
 The authoring store keeps every published version's rows and both of its manifest hashes, and never the pack's
 bytes. A server in a container with no volume starts with an empty pack root while the store still names an
@@ -73,6 +95,38 @@ pack back. Found by Grimhollow's hosted server (https://github.com/APKiwiOrg/Gri
 
 Usage is in `docs/USING-KHAOZENGINE.md` under "Recovering a pack root" and in the package README under
 "Rebuilding a pack root".
+
+**A server fills its clients' content origin** (#1016). A server is the producer of the origin its clients
+fetch from: a version published through the admin console becomes active at a restart, the connect door then
+refuses a client on the old version, and the client fetches the new pack from one configured origin. With a
+deploy as the only producer, a console publish plus a restart locked every hosted client out. Found by
+Grimhollow (https://github.com/APKiwiOrg/Grimhollow/issues/261). The reasoning is in
+`docs/design/CATALOG-BLOB-ORIGIN-DESIGN-2026-09-19.md`.
+
+- **`ContentOriginFill.RunAsync(source, origin, clientVersion, registry)`** in `KhaozEngine.Catalog` makes an
+  origin hold one version's CLIENT closure and returns a `ContentOriginFillResult`. It is `ContentFetchLoop`
+  pointed the other way, not a second closure walker: it takes the client manifest hash, copies what the origin
+  is missing, verified, and a second fill writes nothing. The manifest is written LAST, so a failed fill leaves
+  no manifest a client could follow into a hole. A server manifest handed in as a client one is refused by the
+  manifest codec's side byte with nothing written. It bypasses the client build gate, because a server is not
+  a client. It writes no version pointer and it never prunes. A fault WRITING the origin is a refusal too,
+  `ContentOriginFill.RefusedOriginWrite` (`origin-write-failed`), carrying the address it stopped at and the
+  fault's own message in the result's new optional `RefusalDetail`: a read answers absent for a failure and a
+  write has no such answer, and a boot path wants a reason token rather than a stack.
+- **New opt-in package `KhaozEngine.Catalog.AzureBlob`**, in no umbrella, with `AzureBlobPackStore`: an
+  `IPackStore` and `IPackStorePruning` over one Azure Blob container, built from a ready `BlobContainerClient`
+  so the package carries `Azure.Storage.Blobs` and no identity library. It holds hash objects ONLY. It has no
+  version pointer half, because the `versions/<n>` format carries the SERVER manifest hash and clients never
+  read one, and that is also a safety property: a publisher or a rebuild that resolves a pointer store refuses
+  it with `no-pack-store`, so a full server pack cannot be published into a blob container by mistake. Objects
+  are uploaded if absent with `If-None-Match: *`, never overwritten, and carry an immutable cache lifetime.
+- **`FileSystemPackStore.RelativeKeyFor(hash)`** is the one key layout rule (`<hh>/<hh>/<hash>.kec`) the three
+  providers share. `FileSystemPackStore` and `HttpPackStore` now build their paths from it with byte identical
+  results, which is what lets a client read through `HttpPackStore` what the blob store wrote, with no change.
+- The Azure SDK sits behind one internal seam and one adapter. The store is tested over an in-memory
+  container, shares a conformance suite with `FileSystemPackStore`, and has a live leg gated on
+  `KE_PACKSTORE_BLOB` (a container URL whose name carries `-packstore-test-`, because the leg deletes what it
+  writes). A host's identity needs Storage Blob Data Contributor scoped to the ONE container.
 
 ## 19.4.0
 

@@ -31,6 +31,81 @@ public static class ContentTextKey
     public const char Separator = '.';
 
     /// <summary>
+    /// Derives the key from a content key the caller already holds as text. The result string is the only
+    /// allocation, with no temporary UTF-8 buffer. An unpaired surrogate in the content key becomes the
+    /// replacement character, matching the UTF-8 overload's decode result.
+    /// </summary>
+    public static string Derive(string typeKey, string contentKey, string fieldName)
+    {
+        ArgumentNullException.ThrowIfNull(typeKey);
+        ArgumentNullException.ThrowIfNull(contentKey);
+        ArgumentNullException.ThrowIfNull(fieldName);
+
+        if (!HasUnpairedSurrogate(contentKey))
+        {
+            return string.Concat(typeKey, ".", contentKey, ".", fieldName);
+        }
+
+        return string.Create(
+            typeKey.Length + contentKey.Length + fieldName.Length + 2,
+            (TypeKey: typeKey, ContentKey: contentKey, FieldName: fieldName),
+            static (destination, state) =>
+            {
+                state.TypeKey.AsSpan().CopyTo(destination);
+                int offset = state.TypeKey.Length;
+                destination[offset++] = Separator;
+                CopyCanonicalUtf16(state.ContentKey, destination.Slice(offset, state.ContentKey.Length));
+                offset += state.ContentKey.Length;
+                destination[offset++] = Separator;
+                state.FieldName.AsSpan().CopyTo(destination[offset..]);
+            });
+    }
+
+    static bool HasUnpairedSurrogate(string value)
+    {
+        for (int i = 0; i < value.Length; i++)
+        {
+            char current = value[i];
+            if (char.IsHighSurrogate(current))
+            {
+                if (i + 1 < value.Length && char.IsLowSurrogate(value[i + 1]))
+                {
+                    i++;
+                    continue;
+                }
+
+                return true;
+            }
+
+            if (char.IsLowSurrogate(current))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    static void CopyCanonicalUtf16(string source, Span<char> destination)
+    {
+        for (int i = 0; i < source.Length; i++)
+        {
+            char current = source[i];
+            if (char.IsHighSurrogate(current)
+                && i + 1 < source.Length
+                && char.IsLowSurrogate(source[i + 1]))
+            {
+                destination[i] = current;
+                destination[++i] = source[i];
+            }
+            else
+            {
+                destination[i] = char.IsSurrogate(current) ? '\uFFFD' : current;
+            }
+        }
+    }
+
+    /// <summary>
     /// Derives the key. The content key arrives as the UTF-8 bytes the runtime already holds, so a caller
     /// does not materialise a row key just to build one. This allocates and is the authoring, publish and
     /// diagnostic path rather than a frame-loop one.

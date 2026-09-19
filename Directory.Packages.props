@@ -80,6 +80,13 @@
     <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.9" />
     <PackageVersion Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.50.3" />
     <PackageVersion Include="Microsoft.Data.SqlClient" Version="6.1.6" />
+    <!-- The blob SDK, for the catalog's public-origin pack store (KhaozEngine.Catalog.AzureBlob). Newest
+         stable of the 12.x line. NOTE what is NOT here for the shipped package: Azure.Identity. The store
+         takes a ready BlobContainerClient, so the host builds the credential and a consumer that already
+         has an identity stack does not get a second one. The TEST project pins Azure.Identity below,
+         because the gated live leg builds a client of its own. -->
+    <PackageVersion Include="Azure.Storage.Blobs" Version="12.29.2" />
+    <PackageVersion Include="Azure.Identity" Version="1.21.0" />
 
     <!-- Identity (opt-in OIDC provider) -->
     <PackageVersion Include="Microsoft.IdentityModel.Protocols.OpenIdConnect" Version="8.19.1" />

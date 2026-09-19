@@ -629,26 +629,7 @@ public sealed partial class InstanceStatLines
         }
 
         ContentFieldValue value = row.Fields[StatLineContentType.TagScopeIndex];
-        if (value.IsAbsent || value.Bytes.Length == 0)
-        {
-            return;
-        }
-
-        ReadOnlySpan<byte> bytes = value.Bytes.Span;
-        int offset = 0;
-        while (offset < bytes.Length)
-        {
-            if (!ContentVarint.TryRead(bytes, ref offset, out uint raw, out _))
-            {
-                return;
-            }
-
-            int tagId = unchecked((int)raw);
-            if (tagId >= 1)
-            {
-                into.Add(tagId);
-            }
-        }
+        ContentTagListReader.Read(in value, into);
     }
 
     /// <summary>

@@ -109,6 +109,19 @@ public class ItemContainerTests
     }
 
     [Fact]
+    public void The_version_1_codec_accepts_65535_slots_and_refuses_the_next_count()
+    {
+        byte[] widest = ItemContainerCodec.Encode(Bag(ushort.MaxValue));
+        ItemContainer tooWide = Bag(ushort.MaxValue + 1);
+
+        ArgumentOutOfRangeException error =
+            Assert.Throws<ArgumentOutOfRangeException>(() => ItemContainerCodec.Encode(tooWide));
+
+        Assert.Equal(3, widest.Length);
+        Assert.Contains(ushort.MaxValue.ToString(), error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void The_codec_refuses_disorder_and_the_set_door_sanitises()
     {
         ItemContainer bag = Bag(slots: 4);

@@ -514,29 +514,7 @@ public sealed partial class ContentStatEvaluator
         }
 
         ContentFieldValue value = row.Fields[StatTagsIndex];
-        if (value.IsAbsent || value.Bytes.Length == 0)
-        {
-            return;
-        }
-
-        // The varint ids in authored order with no count of their own, which is what the row walk wrote. A
-        // malformed list stops the walk rather than failing the build: the bytes already decoded into a
-        // row, so a list nothing can read is the validator's finding rather than this constructor's.
-        ReadOnlySpan<byte> bytes = value.Bytes.Span;
-        int offset = 0;
-        while (offset < bytes.Length)
-        {
-            if (!ContentVarint.TryRead(bytes, ref offset, out uint raw, out _))
-            {
-                return;
-            }
-
-            int tagId = unchecked((int)raw);
-            if (tagId >= 1)
-            {
-                into.Add(tagId);
-            }
-        }
+        ContentTagListReader.Read(in value, into);
     }
 
     /// <summary>One authored number into an int, or the fallback when the row does not carry it.</summary>

@@ -98,6 +98,28 @@ public class DerivedIndexTests
     }
 
     [Fact]
+    public void The_tag_index_uses_the_first_row_when_ids_are_duplicated()
+    {
+        ContentTypeRegistry registry = CatalogSnapshotFixtures.Registry();
+        var builder = new ContentSnapshotBuilder(registry);
+        CatalogRuntimeFixtures.AddItem(builder, registry, 5, "winner", [CatalogRuntimeFixtures.SwordTag]);
+        CatalogRuntimeFixtures.AddItem(builder, registry, 5, "loser", [CatalogRuntimeFixtures.MetalTag]);
+
+        ContentRuntime runtime = ContentRuntime.FromSnapshot(builder.Build(), registry);
+
+        Assert.True(runtime.TryGetRow(CatalogSnapshotFixtures.ItemType, 5, out ContentRow? winner));
+        Assert.Equal("winner", winner.Key.ToString());
+        Assert.True(runtime.Indexes.Tags.Carries(
+            CatalogSnapshotFixtures.ItemType,
+            CatalogRuntimeFixtures.SwordTag,
+            5));
+        Assert.False(runtime.Indexes.Tags.Carries(
+            CatalogSnapshotFixtures.ItemType,
+            CatalogRuntimeFixtures.MetalTag,
+            5));
+    }
+
+    [Fact]
     public void Walking_a_tag_list_allocates_nothing()
     {
         ContentRuntime runtime = CatalogRuntimeFixtures.Runtime(out _);

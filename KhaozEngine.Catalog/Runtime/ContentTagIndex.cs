@@ -116,13 +116,16 @@ public sealed class ContentTagIndex
             }
 
             IReadOnlyList<ContentRow> rows = runtime.Rows(type);
+            int claimedId = 0;
             for (int r = 0; r < rows.Count; r++)
             {
                 ContentRow row = rows[r];
-                if (row.Id < 1)
+                if (row.Id < 1 || row.Id == claimedId)
                 {
                     continue;
                 }
+
+                claimedId = row.Id;
 
                 for (int f = 0; f < tagFields.Length; f++)
                 {

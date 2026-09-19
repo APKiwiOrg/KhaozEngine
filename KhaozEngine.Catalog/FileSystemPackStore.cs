@@ -86,9 +86,19 @@ public sealed class FileSystemPackStore : IPackStore, IPackStorePruning, IConten
         return true;
     }
 
-    /// <summary>The file one hash lands at, which is derived and never looked up.</summary>
+    /// <summary>
+    /// The shard-tree path one hash lands at, RELATIVE to whatever the tree hangs off and always with
+    /// forward slashes: <c>&lt;hash[0..2]&gt;/&lt;hash[2..4]&gt;/&lt;hash&gt;.kec</c>, lower case, no leading
+    /// slash.
+    /// <para>
+    /// It is the ONE statement of the layout in the engine, which is why it is static and public. Three
+    /// providers derive a name from a hash (this one a file path, <see cref="HttpPackStore"/> a URL and the
+    /// blob provider a container key), and the whole point of the tree is that one publisher's output is
+    /// another provider's input, so a second copy of the rule would be a copy that could drift.
+    /// </para>
+    /// </summary>
     /// <exception cref="ArgumentException"><paramref name="hash"/> is not a content address.</exception>
-    public string PathFor(string hash)
+    public static string RelativeKeyFor(string hash)
     {
         if (!IsContentAddress(hash))
         {
@@ -97,8 +107,13 @@ public sealed class FileSystemPackStore : IPackStore, IPackStorePruning, IConten
                 nameof(hash));
         }
 
-        return Path.Combine(Root, hash[..2], hash.Substring(2, 2), hash + FileExtension);
+        return hash[..2] + "/" + hash.Substring(2, 2) + "/" + hash + FileExtension;
     }
+
+    /// <summary>The file one hash lands at, which is derived and never looked up.</summary>
+    /// <exception cref="ArgumentException"><paramref name="hash"/> is not a content address.</exception>
+    public string PathFor(string hash)
+        => Path.Combine(Root, RelativeKeyFor(hash).Replace('/', Path.DirectorySeparatorChar));
 
     /// <summary>The file one version's pointer lands at, outside the shard tree.</summary>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="versionNumber"/> is not positive.</exception>

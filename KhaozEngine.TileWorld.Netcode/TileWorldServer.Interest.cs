@@ -103,8 +103,12 @@ public sealed partial class TileWorldServer
     bool IsOutsideFootprintInterest(long netId)
     {
         if (!footprintByNetId.TryGetValue(netId, out TileRect rect)) return false;
-        float nearestX = Math.Clamp(viewerTileX, rect.X, rect.X1 - 1);
-        float nearestZ = Math.Clamp(viewerTileZ, rect.Z, rect.Z1 - 1);
+        float nearestX = rect.X, nearestZ = rect.Z;
+        if (!rect.IsEmpty)
+        {
+            nearestX = Math.Clamp(viewerTileX, rect.X, rect.X1 - 1);
+            nearestZ = Math.Clamp(viewerTileZ, rect.Z, rect.Z1 - 1);
+        }
         float dx = nearestX - viewerTileX, dz = nearestZ - viewerTileZ;
         float radius = config.InterestRadius;
         return dx * dx + dz * dz > radius * radius;

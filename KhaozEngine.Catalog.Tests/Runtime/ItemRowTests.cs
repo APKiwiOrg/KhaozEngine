@@ -5,7 +5,7 @@ using Xunit;
 namespace KhaozEngine.Tests.Catalog.Runtime;
 
 /// <summary>
-/// The typed view of spec 9.1 over the engine <c>item</c> type: the four fields Scope B reads per
+/// The typed view of spec 9.1 over the engine <c>item</c> type: the five fields Scope B reads per
 /// operation, decoded from the row body in one pass with no allocation and no walk by field name.
 /// <para>
 /// Joins <c>AllocSensitive</c> because the budget test reads
@@ -16,13 +16,14 @@ namespace KhaozEngine.Tests.Catalog.Runtime;
 public class ItemRowTests
 {
     [Fact]
-    public void TryGetItem_decodes_the_four_hot_fields_and_the_key()
+    public void TryGetItem_decodes_the_five_hot_fields_and_the_key()
     {
         ContentSnapshot snapshot = Snapshot(out _);
 
         Assert.True(snapshot.TryGetItem(2, out ItemRow row));
         Assert.True(row.Stackable);
         Assert.Equal(64, row.MaxStack);
+        Assert.Equal(250, row.Value);
         Assert.Equal(900, row.DurabilityMax);
         Assert.Equal(3, row.SocketMax);
         Assert.Equal("iron_sword", row.Key.ToString());
@@ -82,7 +83,7 @@ public class ItemRowTests
             for (int i = 0; i < 1000; i++)
             {
                 snapshot.TryGetItem(2, out ItemRow row);
-                total += row.MaxStack + row.DurabilityMax + row.SocketMax + (row.Stackable ? 1 : 0);
+                total += row.MaxStack + row.Value + row.DurabilityMax + row.SocketMax + (row.Stackable ? 1 : 0);
             }
 
             Assert.True(total > 0);

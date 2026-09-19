@@ -137,6 +137,38 @@ The pose core for rigid-segment characters, lifted out of the same consumer:
   - A game adds its own pose (jump, fall, swim, wade, strafe, backpedal) as a static class with `PoseAt`
     and `Compose` over these channels and orders them in its own chain. See `docs/USING-KHAOZENGINE.md`.
 
+A non-modal window frame and a title-bar drag, lifted out of the same consumer:
+
+- **`KhaozEngine.Gui`: a NON-MODAL titled window frame, a title-bar drag, and the four theme colours
+  they need.** `PopupPanel` is the package's only titled frame and it is modal, painting a scrim and
+  reserving the whole `ScrimRect` on the pointer. A side panel or a bank window has to leave the world
+  visible and live.
+  - **`PanelFrame` is pure statics plus three draws, not a retained widget.** `Inner`, `StripRect`,
+    `TitleRect`, `CloseRect`, `ContentRect` and `FooterRect` each derive from the one above with no gap
+    and no overlap, and an absent band collapses to zero height rather than leaving a hole. `DrawFrame`,
+    `DrawTitle` and `DrawClose` walk exactly those functions, so the rect a click-through guard tests
+    and the rect the player sees cannot drift. It reserves NOTHING on the `Pointer`: which taps a window
+    swallows is the window's call, as it is for `Panel` and `ScrollablePanel`, and blocking here would
+    make every consumer modal over its own rect. The title readout is a `LocalizedText`, so it follows a
+    locale switch.
+  - **`PanelFrameMetrics` carries the sizes, because a size is a per-widget decision and a palette is
+    global.** Frame thickness, bevel, title height, close size and text pad travel as a caller value
+    rather than as theme fields or baked constants, so two games with different looks share the code.
+    `Default` is the shipped shape and every entry point takes it as an optional trailing argument. The
+    close cross scales with the close square, a quarter in from each corner, so a small `CloseSize`
+    still draws a cross.
+  - **`WindowDrag` moves a window by its title bar, which no engine type did.** It stores an OFFSET from
+    the window's own layout, so a window keeps its placement rule across a resize. The grab latches once
+    on the press frame through `Pointer.IsPressOriginFresh`, because re-reading the press origin every
+    frame drops the grab as soon as the grip travels further than the title row is tall, and a window
+    released under a held button is not picked up again by that same press. A held drag consumes the
+    gesture so a release over the world is not a world click, and `Place` writes its clamp back so
+    dragging off the edge banks no distance the window did not travel.
+  - **`GuiTheme` gains `BorderShadow`, `TitleFill`, `TabFill` and `TabActiveFill` additively.** They are
+    properties over nullable backing fields, so a theme that never sets them derives them from the
+    palette it did set: a rebrand that names only `Surface` carries the title row with it. No existing
+    construction site changes meaning and no theme needs an edit.
+
 ## 19.5.0
 
 Backlog reliability and catalog-read fixes:

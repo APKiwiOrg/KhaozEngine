@@ -37,6 +37,10 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// the next step: the step already under way keeps the total it was stamped with, so holding run halfway through a
 /// walking step never shortens that step, it only makes the one after it a run. A client sends
 /// <see cref="TileCommand.Continue"/> carrying the run state it is holding, on every tick.</para>
+/// <para>A HELD DIRECTION enters through the SECOND DOOR into a step, <c>StartSteered</c>, which resolves
+/// <see cref="TileCommandKind.Steer"/> against the live map through <see cref="TileSteerResolver"/> at step
+/// boundaries only and commits the answer through the same body a routed step does, so a steered step and a
+/// routed one are stamped with one cadence and the pace of the whole game stays one line.</para>
 /// <para>A LOCKED COMBAT TARGET IS CHASED ON EVERY TICK, by the follow at the top of <c>Advance</c>. That is one
 /// more thing the tick does than an interaction, which routes once at the click and never again: a chase re-paths
 /// whenever the target's committed tile moves out from under the route it already has, drops its route on the tick
@@ -135,7 +139,8 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
     /// <param name="state">The state the command would be applied to. Only its tile's plane is consulted.</param>
     /// <param name="command">The command to weigh.</param>
     /// <returns>False for a cross-plane walk goal, a resolved cross-plane object interaction, an entity
-    /// interaction that does not resolve on this plane, or a resolved cross-plane combat target. True otherwise,
+    /// interaction that does not resolve on this plane, a resolved cross-plane combat target, or a
+    /// <see cref="TileCommandKind.Steer"/> naming a direction outside the eight. True otherwise,
     /// including <see cref="TileCommandKind.None"/> because its mode is always applied.</returns>
     public bool Accepts(in TileMoveState state, in TileCommand command) => command.Kind switch
     {
@@ -156,6 +161,9 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
             combatTargets is null
             || !combatTargets.TryGetFootprint(command.Target, out _, out int combatPlane)
             || combatPlane == state.Tile.Plane,
+        // A steer has no plane to disagree with. The decoder already refused an undefined direction, and this
+        // is the backstop for a command built in process.
+        TileCommandKind.Steer => (ulong)command.Target <= (ulong)TileDirection.NE,
         _ => true,
     };
 
@@ -215,6 +223,16 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
                 // that outlived the walk would keep steering the route back at something they walked away from.
                 s.CombatTarget = 0;
                 break;
+            // A STEER IS A WALK for every rule that asks: it replaces the route and breaks the interaction and the
+            // fight exactly as WalkTo does. What it does not do is search. The direction is handed to Advance,
+            // which reads it ONLY on a boundary tick, so a steer arriving mid step has done all its work here.
+            case TileCommandKind.Steer when Accepts(s, command):
+                s.Route = TileRoute.None;
+                s.InteractTarget = 0;
+                s.InteractDomain = TileInteractionDomain.AuthoredObject;
+                s.CombatTarget = 0;
+                s.Mode = command.Mode;
+                return Advance(s, self, scratch, command.SteerDirection);
             case TileCommandKind.Interact:
                 s = BeginInteract(s, command.Target, command.Mode, TileCommandKind.Interact, targets, scratch);
                 break;
@@ -445,7 +463,14 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
     // step itself, so it counts one immediately, and a freshly clicked route therefore reads one tick in.
     // The chase runs FIRST, before anything about this tick's step is decided, so a route it drops or rebuilds is
     // the route the step below reads. See Follow.
-    TileMoveState Advance(in TileMoveState state, long self, TilePathfinderScratch? scratch)
+    //
+    // A HELD DIRECTION arrives as steer, and it is read at the two doors and nowhere else, which is the whole of
+    // "resolution happens on a boundary tick". A steer on any other tick falls through the early return above the
+    // landing, so it can neither restart nor redirect the step in flight. Where a route is consulted a steer takes
+    // precedence over it, because the command that carried the steer already emptied the route: the ordering is
+    // there so the two doors read the same way rather than because the two could ever both be live.
+    TileMoveState Advance(in TileMoveState state, long self, TilePathfinderScratch? scratch,
+        TileDirection? steer = null)
     {
         TileMoveState s = Follow(state, self, scratch);
         if (s.StepTotal == 0) s.StepTotal = StepTicks.For(s.Mode);
@@ -459,7 +484,15 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
             // every predicate that asks IsStepping.
             s.StepFrom = s.Tile;
             s.StepTicks = 0;
+            if (steer is { } landing) return StartSteered(s, landing);
             return s.Route.IsIdle ? s : Start(s, scratch);
+        }
+
+        if (steer is { } standing)
+        {
+            s = StartSteered(s, standing);
+            if (s.IsStepping) s.StepTicks++;
+            return s;
         }
 
         if (s.Route.IsIdle) { s.StepTicks = 0; return s; }
@@ -480,13 +513,45 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
         if (!TileCollision.CanStep(Map, s.Tile.X, s.Tile.Z, s.Tile.Plane, dir, s.FootprintSize))
             return Repath(s, scratch);
 
+        s = Commit(s, next, dir);
+        s.Route = s.Route.Advanced();
+        return s.Route.IsIdle && s.InteractTarget != 0 ? FaceTarget(s) : s;
+    }
+
+    // THE one place a step begins, for a routed step and a steered one alike. A STARTING step takes its total here
+    // and nowhere else, which is what makes pace a single seam: whatever decides how fast a body moves decides it
+    // on this line, and a click, a held key, an actor and a chase all inherit the answer. The other two writes of
+    // StepTotal in this class belong to a STANDING state rather than to a step, Advance's blank backstop and
+    // Repath's re-stamp after the map refused one.
+    TileMoveState Commit(in TileMoveState state, TileCoord next, TileDirection dir)
+    {
+        TileMoveState s = state;
         s.StepFrom = s.Tile;
         s.Tile = next;
         s.Facing = dir;
         s.StepTicks = 0;
-        s.Route = s.Route.Advanced();
         s.StepTotal = StepTicks.For(s.Mode);
-        return s.Route.IsIdle && s.InteractTarget != 0 ? FaceTarget(s) : s;
+        return s;
+    }
+
+    // The steer door. Called only with the body standing on its tile, from both of Advance's doors. A blocked
+    // steer still turns the body, so a key pressed into a wall reads as an answer rather than a dropped input.
+    //
+    // No route is built and none is consulted: the resolver answers from the committed tile and the live map, which
+    // is why a key held into a fence stands there instead of taking the detour a WalkTo at the adjacent tile would
+    // path. Nothing is remembered between ticks either, so the next held tick asks the same question again.
+    TileMoveState StartSteered(in TileMoveState state, TileDirection held)
+    {
+        TileMoveState s = state;
+        TileDirection? dir = TileSteerResolver.Resolve(Map, s.Tile, held, s.FootprintSize);
+        if (dir is not { } step)
+        {
+            s.Facing = held;
+            s.StepTicks = 0;
+            return s;
+        }
+        (int dx, int dz) = TileDirections.Delta(step);
+        return Commit(s, new TileCoord(s.Tile.X + dx, s.Tile.Z + dz, s.Tile.Plane), step);
     }
 
     // The tick a walked interaction's route empties, the player turns to face what the walk was for. That tick is

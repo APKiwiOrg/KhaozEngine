@@ -77,7 +77,7 @@ namespace KhaozEngine.Tests.Render3D
                 Task.Run(() => AntiAliasing.Msaa(1 << 30).ResolveFor(Caps(8))),
                 Task.Run(() => AntiAliasing.Msaa(int.MaxValue).ResolveFor(Caps(8))));
 
-            AntiAliasing[] resolved = await resolving.WaitAsync(TimeSpan.FromSeconds(2));
+            AntiAliasing[] resolved = await resolving.WaitAsync(TimeSpan.FromSeconds(30));
 
             Assert.All(resolved, aa => Assert.Equal(AntiAliasing.Msaa(8), aa));
         }

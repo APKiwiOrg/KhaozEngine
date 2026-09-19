@@ -9973,6 +9973,7 @@ TileCollisionMap map = TileCollisionBaker.Bake(document, catalogs);
 // 3. Build the replication registry. ONE factory, so the two heads cannot register different ids.
 //    A game's own components register at or above TileProtocol.FirstGameTypeId.
 ReplicationRegistry registry = TileProtocol.CreateRegistry(
+    document.PlaneCount,
     r => r.Register<MyComponent>(TileProtocol.FirstGameTypeId, WriteMine, ReadMine));
 
 // The CATALOGS are half the identity too: an archetype that gains a CollisionKind bakes a different collision
@@ -10154,12 +10155,15 @@ IDs remain compatible. Client and server must adopt the new entity command kind 
 rejects it. Pending entity interactions add one optional domain byte inside the framed movement component,
 while legacy payloads retain their layout and decode as authored-object interactions.
 
-**Both heads take the same `ReplicationRegistry`.** Each constructor takes one and each defaults to
-`TileProtocol.CreateRegistry()`, so a game registering its own components at or above
-`TileProtocol.FirstGameTypeId` builds ONE registry and passes it to both. It has to pass it to both: extension
-ids are length-prefixed, so a client whose registry never heard of a component SKIPS it rather than failing,
-which is the forward compatibility the wire wants and also the trap. The components never arrive, movement and
-the owner route and the display name all keep working, and nothing anywhere says a thing.
+**Both heads take the same `ReplicationRegistry`.** Without one, each constructor builds a world-bound registry
+from its configured `PlaneCount`. A game registering its own components at or above
+`TileProtocol.FirstGameTypeId` builds ONE with `TileProtocol.CreateRegistry(document.PlaneCount, configure)` and
+passes it to both. That overload keeps the whole-int ground-item and pending-command wire compatible while
+refusing a plane outside the actual world. The legacy `CreateRegistry(configure)` overload stays unbounded because
+it has no document count. Extension ids are length-prefixed, so a client whose registry never heard of a component
+SKIPS it rather than failing, which is the forward compatibility the wire wants and also the trap. The components
+never arrive, movement and the owner route and the display name all keep working, and nothing anywhere says a
+thing.
 
 `Presenter` starts as a placeholder and is REPLACED once the document is loaded
 (`client.Presenter = new TilePresenter(document)`), so it carries the world's real tile size and plane height and

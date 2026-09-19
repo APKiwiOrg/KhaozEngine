@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using KhaozEngine.Netcode;
 using KhaozEngine.TileWorld;
 using KhaozEngine.TileWorld.Netcode;
@@ -18,6 +19,30 @@ public class TileFootprintInterestTests
 
     // The viewer for every ORTHOGONAL case below. At radius 15 the tile 15 west of it is the last one in interest.
     static readonly TileCoord West = new(30, 30, 0);
+
+    [Theory]
+    [InlineData(0, 1)]
+    [InlineData(1, 0)]
+    [InlineData(-1, 1)]
+    public void A_degenerate_footprint_is_measured_from_its_anchor(int width, int height)
+    {
+        using var h = new Harness(radius: 5f);
+        const long NetId = 99;
+        Type serverType = typeof(TileWorldServer);
+        var footprints = Assert.IsType<Dictionary<long, TileRect>>(
+            serverType.GetField("footprintByNetId", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .GetValue(h.Server));
+        footprints[NetId] = new TileRect(10, 0, width, height);
+        serverType.GetField("viewerTileX", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(h.Server, 0f);
+        serverType.GetField("viewerTileZ", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(h.Server, 0f);
+        MethodInfo predicate = serverType.GetMethod(
+            "IsOutsideFootprintInterest",
+            BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+        bool outside = (bool)predicate.Invoke(h.Server, [NetId])!;
+
+        Assert.True(outside);
+    }
 
     [Fact]
     public void A_two_by_two_enters_on_the_same_tick_a_one_tile_body_on_its_near_tile_does()

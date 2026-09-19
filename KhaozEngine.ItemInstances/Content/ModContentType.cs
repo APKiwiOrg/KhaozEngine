@@ -51,6 +51,9 @@ public static class ModContentType
     /// <summary>The suffix kind, the second of the two. Everything above it is the game's own pool.</summary>
     public const int SuffixKind = 2;
 
+    /// <summary>The largest mod kind, which is the top of spec 8.2's game range.</summary>
+    public const int MaxKind = 255;
+
     /// <summary>Prefix, suffix, or a game kind above them.</summary>
     public const string KindField = "kind";
 
@@ -90,9 +93,8 @@ public static class ModContentType
     ]);
 
     /// <summary>
-    /// The mod row codec, which is the generic positional walk with nothing added. Every rule a mod row is
-    /// held to is a CROSS-ROW one (a group that resolves, a kind the rarity rules can place), so it belongs
-    /// to the validator rather than here.
+    /// The mod row codec. It adds the kind's IN-ROW domain, checked on both sides so an encoder cannot write
+    /// a row its own decoder refuses. Cross-row rules such as a group resolving still belong to the validator.
     /// </summary>
     public sealed class Codec : ContentRowCodecBase
     {
@@ -100,5 +102,11 @@ public static class ModContentType
         public Codec(ContentTypeId type, ContentFieldSchema schema) : base(type, schema)
         {
         }
+
+        /// <inheritdoc />
+        protected override string? CheckFieldValue(int fieldIndex, ContentFieldEntry field, in ContentFieldValue value)
+            => field.Name == KindField && value.Number is < PrefixKind or > MaxKind
+                ? ReasonFieldMalformed
+                : null;
     }
 }

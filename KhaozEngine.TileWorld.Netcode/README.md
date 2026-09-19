@@ -402,7 +402,9 @@ always keep the constructor map.
 **Wire**
 
 - **`TileProtocol`** - the tile wire. Every frame carries a leading TAG byte, so the demux is by tag and never by
-  length. `CreateRegistry` builds the `ReplicationRegistry` both heads share, `AssembleMoveState` is the one
+  length. `CreateRegistry(planeCount, configure)` builds the world-bound `ReplicationRegistry` both heads share
+  and refuses a ground item or pending command whose whole-int plane is outside that world. The legacy
+  `CreateRegistry(configure)` overload stays unbounded because it has no world count. `AssembleMoveState` is the one
   sanctioned way to put a route back onto a decoded or migrated state, `BuildConnectToken` builds the token the
   door reads, and the frame codecs are the command, the snapshot, the opaque game message, the notice and the
   combat frame. `ServerFrameCombat` (`EncodeCombat` / `TryDecodeCombat`, at most `MaxCombatEvents` of them) is its
@@ -851,6 +853,9 @@ viewer's snapshot on the same tick a one-tile body on its near tile would, and a
 arrives. Cell ownership and region handoff are untouched and still measure from the anchor. The viewer's own
 position is its anchor too, which costs nothing because a player is one tile.
 
+An empty or negative-size footprint is defensive input no current writer produces. The interest predicate treats
+one as its anchor, so a future source cannot make `Math.Clamp` throw inside the serve.
+
 **Pad `OverlapMargin` for the largest body you author.** The serve asks the grid for
 `InterestRadius + (N - 1) * sqrt(2)`, where N is `TileWorldServer.LargestFootprintSize`, the largest
 `FootprintSize` the server has spawned: a body's anchor can sit its own diagonal behind the near tile that put it
@@ -908,7 +913,7 @@ foreach (int recipientSlot in recipients)
 var document = TileWorldFile.Load(worldDirectory);
 var map = TileCollisionBaker.Bake(document, catalogs);
 // ONE registry, handed to BOTH heads. A game's own components register at or above TileProtocol.FirstGameTypeId.
-var registry = TileProtocol.CreateRegistry(RegisterGameComponents);
+var registry = TileProtocol.CreateRegistry(document.PlaneCount, RegisterGameComponents);
 
 var server = new TileWorldServer(
     transport,

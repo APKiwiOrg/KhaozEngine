@@ -44,9 +44,14 @@ public static class ItemContainerCodec
     /// page carries instance ids and payloads this package has no reader for, and its writer is
     /// <c>ItemContainerPageCodec.Encode</c> one package up. Never null, never empty.</summary>
     /// <param name="container">The container to encode.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="container"/> has more than
+    /// <see cref="ushort.MaxValue"/> slots, which the version 1 header cannot represent.</exception>
     public static byte[] Encode(ItemContainer container)
     {
         ArgumentNullException.ThrowIfNull(container);
+        if (container.SlotCount > ushort.MaxValue)
+            throw new ArgumentOutOfRangeException(nameof(container), container.SlotCount,
+                $"A version 1 item container cannot carry more than {ushort.MaxValue} slots.");
         using var buffer = new MemoryStream();
         using (var writer = new BinaryWriter(buffer, System.Text.Encoding.UTF8, leaveOpen: true))
         {

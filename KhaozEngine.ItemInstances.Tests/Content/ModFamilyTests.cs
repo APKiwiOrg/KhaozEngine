@@ -515,6 +515,36 @@ public class ModFamilyTests
     [InlineData(0)]
     [InlineData(256)]
     [InlineData(-1)]
+    [InlineData(int.MaxValue)]
+    public void A_mod_kind_outside_1_to_255_is_refused_on_both_sides(int kind)
+    {
+        ContentTypeRegistry registry = Registered();
+        ContentTypeRegistration mod = Lookup(registry, InstanceContentTypeIds.ModTypeKey);
+
+        ContentRow row = Row(mod, "fine_crafted", Int(kind), Reference(7), Flag(false), Marker());
+        Assert.Throws<ArgumentException>(() => Encode(mod, row));
+
+        byte[] bytes = Forge(mod, "fine_crafted", kind, 7, 0);
+        Assert.False(mod.Codec.TryDecode(bytes, out _, out string? reason));
+        Assert.Equal(ContentRowCodecBase.ReasonFieldMalformed, reason);
+    }
+
+    [Theory]
+    [InlineData(ModContentType.PrefixKind)]
+    [InlineData(ModContentType.MaxKind)]
+    public void A_mod_kind_inside_1_to_255_round_trips(int kind)
+    {
+        ContentTypeRegistry registry = Registered();
+        ContentTypeRegistration mod = Lookup(registry, InstanceContentTypeIds.ModTypeKey);
+        ContentRow row = Row(mod, "fine_crafted", Int(kind), Reference(7), Flag(false), Marker());
+
+        Assert.Equal(row.Fields, Decode(mod, Encode(mod, row)).Fields);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(256)]
+    [InlineData(-1)]
     public void A_mod_tier_ordinal_outside_1_to_255_is_refused_on_both_sides(int ordinal)
     {
         ContentTypeRegistry registry = Registered();

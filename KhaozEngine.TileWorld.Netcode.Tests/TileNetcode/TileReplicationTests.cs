@@ -390,9 +390,8 @@ public class TileReplicationTests
     [Fact]
     public void A_plane_no_world_has_rides_the_wire_intact_and_is_caught_where_the_world_is_known()
     {
-        // The plane is the one tile field with neither a clamp nor a length check, because one byte on the wire is
-        // already the whole of what a plane index can be and a codec registered for every world has no plane count
-        // to measure against. What that buys has to hold: the value arrives verbatim, the apply does not throw, and
+        // A move plane rides in one byte, already the whole of its wire domain. The world-bound checks belong to
+        // the two frames whose plane is a whole int, so the legacy registry used here keeps this byte verbatim and
         // the map a body is actually stepped against answers Blocked for it.
         using var ms = new MemoryStream();
         using var w = new BinaryWriter(ms);
@@ -418,6 +417,52 @@ public class TileReplicationTests
         var map = new TileCollisionMap(TileWorldDocument.DefaultPlaneCount);
         map.EnsureRegion(RegionCoord.Of(got.Tile.X, got.Tile.Z));
         Assert.Equal(TileCollisionFlags.Blocked, map.Get(got.Tile.X, got.Tile.Z, got.Tile.Plane));
+    }
+
+    [Theory]
+    [InlineData(TileProtocol.TileGroundItemTypeId, -1)]
+    [InlineData(TileProtocol.TileGroundItemTypeId, 300)]
+    [InlineData(TileProtocol.PendingTileCommandTypeId, -1)]
+    [InlineData(TileProtocol.PendingTileCommandTypeId, 300)]
+    public void A_ground_item_or_pending_command_plane_outside_the_world_is_refused(ushort typeId, int plane)
+    {
+        byte[] payload = typeId == TileProtocol.TileGroundItemTypeId
+            ? GroundItemBytes(plane)
+            : PendingCommandBytes(plane);
+
+        Assert.False(new ClientReplicationView(TileProtocol.CreateRegistry(planeCount: 4))
+            .TryApply(new World(), OneEntity(typeId, payload), out string? error));
+        Assert.Contains("plane", error!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void A_world_with_more_than_300_planes_keeps_plane_300_on_both_frames()
+    {
+        ReplicationRegistry registry = TileProtocol.CreateRegistry(planeCount: 301);
+        var groundWorld = new World();
+        var pendingWorld = new World();
+
+        Assert.True(new ClientReplicationView(registry).TryApply(
+            groundWorld, OneEntity(TileProtocol.TileGroundItemTypeId, GroundItemBytes(300)), out _));
+        Assert.True(new ClientReplicationView(registry).TryApply(
+            pendingWorld, OneEntity(TileProtocol.PendingTileCommandTypeId, PendingCommandBytes(300)), out _));
+
+        Entity ground = groundWorld.Query().With<TileGroundItem>().Entities().Single();
+        Entity pending = pendingWorld.Query().With<PendingTileCommand>().Entities().Single();
+        Assert.Equal(300, groundWorld.Get<TileGroundItem>(ground).Plane);
+        Assert.Equal(300, pendingWorld.Get<PendingTileCommand>(pending).Command.Goal.Plane);
+    }
+
+    [Fact]
+    public void The_legacy_registry_factory_keeps_a_whole_int_plane_unbounded()
+    {
+        var world = new World();
+
+        Assert.True(new ClientReplicationView(TileProtocol.CreateRegistry()).TryApply(
+            world, OneEntity(TileProtocol.TileGroundItemTypeId, GroundItemBytes(300)), out _));
+
+        Entity ground = world.Query().With<TileGroundItem>().Entities().Single();
+        Assert.Equal(300, world.Get<TileGroundItem>(ground).Plane);
     }
 
     [Fact]
@@ -493,6 +538,33 @@ public class TileReplicationTests
         w.Write7BitEncodedInt(payload.Length);
         w.Write(payload);
         w.Write((ushort)0);      // end of entity
+        w.Flush();
+        return ms.ToArray();
+    }
+
+    static byte[] GroundItemBytes(int plane)
+    {
+        using var ms = new MemoryStream();
+        using var w = new BinaryWriter(ms);
+        w.Write(7);
+        w.Write(1);
+        w.Write(5);
+        w.Write(6);
+        w.Write(plane);
+        w.Flush();
+        return ms.ToArray();
+    }
+
+    static byte[] PendingCommandBytes(int plane)
+    {
+        using var ms = new MemoryStream();
+        using var w = new BinaryWriter(ms);
+        w.Write((byte)TileCommandKind.WalkTo);
+        w.Write(5);
+        w.Write(6);
+        w.Write(plane);
+        w.Write((byte)TileMoveMode.Walk);
+        w.Write(0L);
         w.Flush();
         return ms.ToArray();
     }

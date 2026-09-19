@@ -40,7 +40,7 @@ public static class RarityKindLimitContentType
     public const int MinModKind = ModContentType.SuffixKind + 1;
 
     /// <summary>The largest mod kind a limit may name, which is the top of spec 8.2's game range.</summary>
-    public const int MaxModKind = 255;
+    public const int MaxModKind = ModContentType.MaxKind;
 
     /// <summary>The rarity this limit belongs to.</summary>
     public const string RarityRuleIdField = "rarity_rule_id";

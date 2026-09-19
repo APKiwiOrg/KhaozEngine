@@ -52,8 +52,10 @@ public sealed record ContentPackRebuildResult(
 /// even a chunk, so a refused rebuild leaves the target as it found it.
 /// </para>
 /// <para>
-/// <b>It never calls a mutating member of the authoring store.</b> It reads rows, the publish baseline and
-/// one version row, so a rebuild is safe to run against a live store with a draft open.
+/// <b>It calls no publishing or editing member of the authoring store.</b> It reads rows, the publish
+/// baseline and one version row, so a rebuild is safe to run against a live store with a draft open. It is
+/// not strictly write free: the one side effect it can have is the baseline read clearing a STALE freeze
+/// marker left by a publish that died, which is the recovery that read always performs.
 /// </para>
 /// </summary>
 public static class ContentPackRebuild
@@ -75,8 +77,19 @@ public static class ContentPackRebuild
     /// inert content-addressed files and no pointer, which reads as a listing failure and SKIPS the next
     /// sweep rather than authorising it to delete on a partial view.
     /// </para>
+    /// <para>
+    /// It calls no publishing or editing member of the store, and the one side effect it can have is the
+    /// baseline read clearing a STALE freeze marker left by a publish that died, which is the recovery that
+    /// read always performs.
+    /// </para>
+    /// <para>
+    /// The languages the manifests name come from the ACTIVE version's baseline rather than from the version
+    /// being rebuilt. That is the same list at every version today, because every published language list is
+    /// empty, and a divergence moves the manifest text, so it surfaces as a digest mismatch and the rebuild
+    /// refuses rather than filing a pack no version record describes.
+    /// </para>
     /// </summary>
-    /// <param name="store">The authoring store the version is read from, never written to.</param>
+    /// <param name="store">The authoring store the version is read from, through read members only.</param>
     /// <param name="registry">The registry the rows are encoded and the manifests are named through.</param>
     /// <param name="versionNumber">The published version to rebuild.</param>
     /// <param name="target">The pack store the rebuilt files go into.</param>

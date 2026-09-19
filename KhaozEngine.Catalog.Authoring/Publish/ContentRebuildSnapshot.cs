@@ -50,13 +50,14 @@ sealed class ContentRebuildSnapshot
     public IReadOnlyList<RemapRule> Rules { get; }
 
     /// <summary>
-    /// The languages the manifests name. Every published manifest carries an empty list today, and the digest
-    /// comparison is what would catch a version whose list was not the one this read hands back.
+    /// The languages the manifests name, taken from the ACTIVE version's baseline rather than from the
+    /// version being read. Every published manifest carries an empty list today, so the two are the same
+    /// list, and a divergence would surface as a digest mismatch rather than as a pack nothing describes.
     /// </summary>
     public IReadOnlyList<ManifestLanguageEntry> Languages { get; }
 
     /// <summary>Reads one published version, walking every registered type's rows a page at a time.</summary>
-    /// <param name="store">The authoring store, read and never written.</param>
+    /// <param name="store">The authoring store, through read members only. The baseline read clears a stale freeze marker, which is the one side effect a rebuild can have.</param>
     /// <param name="registry">The registry whose types are walked and whose id ranges the rows fall into.</param>
     /// <param name="versionNumber">The published version to read.</param>
     /// <param name="cancellationToken">Cancels the read.</param>

@@ -329,6 +329,12 @@ public sealed class PackRebuildTests
         await AssertSameFileAsync(packA, packB, second.ClientManifestHash);
     }
 
+    /// <summary>
+    /// A rebuild calls no publishing or editing member, which is what the audit, the active version and the
+    /// draft below are asserted against. It is not strictly write free: the publish baseline read clears a
+    /// STALE freeze marker left by a publish that died, which is the recovery that read always performs and
+    /// which no store in a healthy state is in a position to need.
+    /// </summary>
     [Fact]
     public async Task ARebuildNeverWritesToTheAuthoringStore()
     {

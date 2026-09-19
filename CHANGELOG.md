@@ -37,6 +37,12 @@ pack back. Found by Grimhollow's hosted server (https://github.com/APKiwiOrg/Gri
 - The optional `rowEncoder` matches `ContentPublisher`'s: null is `ContentSideRowEncoder.Default`, and a version
   published through another encoder is rebuilt through that one.
 
+- **`ContentBoot.ResolveVersionAsync(options)` is public.** It is the version `RunAsync` will load out of the
+  same options: the configured version, then the store's pinned version, then the active one, and 0 when
+  nothing names one. A caller that prepares the pack store has to rebuild THAT version. Rebuilding the active
+  version while an operator's pin names another fills the root with a pack the boot never reads, and the boot
+  still refuses. The precedence has one home, so a consumer reads it and never copies it.
+
 Usage is in `docs/USING-KHAOZENGINE.md` under "Recovering a pack root" and in the package README under
 "Rebuilding a pack root".
 

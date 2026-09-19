@@ -14518,8 +14518,8 @@ var options = new ContentBootOptions
     Holder = holder,
     ServerBuild = buildOrdinal,
     ConfiguredVersion = config.ContentVersion,      // wins always, and null falls to the directory
-    Directory = versions,                           // an IContentVersionDirectory over the database's two
-                                                    // reads, GetPinnedVersionAsync and GetActiveVersionAsync
+    Directory = store,                              // the authoring store IS the IContentVersionDirectory,
+                                                    // so the two reads need no adapter around them
     WorldKeys = world.ContentKeys,
 };
 

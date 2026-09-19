@@ -15,6 +15,10 @@ one, so a client never pulls a database dependency to decode a pack.
 the version list and the operator pin, the open draft, publish and rollback, row and audit reads, id
 allocation, families, and bulk import and export.
 
+It also INHERITS `KhaozEngine.Catalog`'s `IContentVersionDirectory`, which declares its two version reads, so
+a host that boots off its authoring database assigns the store itself to `ContentBootOptions.Directory` and
+writes no adapter.
+
 ```csharp
 await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
 
@@ -385,6 +389,21 @@ list, so both digests move with them and the rebuild refuses with `server-manife
 by design: the alternative is filing a pack at addresses no version record describes, which every later boot
 and every later sweep would then have to reason about. Recovering such a version means rebuilding with the
 registry that version was published from.
+
+**A version whose manifests would name TEXT is refused outright, with `text-chunks-unsupported`.** The write
+puts chunks, the rule chunk, both manifests and the pointer, and never a text chunk, so a manifest naming a
+language would name a KECT text chunk hash the rebuilt root does not hold. The digest comparison cannot catch
+that on its own, because both rebuilt manifests are built from the same language list the recorded ones were
+and name the same hashes either way, so the check is a separate one on the SNAPSHOT, ahead of the build and
+ahead of any write. Rebuilding the text instead is not available: no store keeps a VERSION's text, so there is
+nothing to encode a text chunk from, and that belongs with publishing text at all
+(https://github.com/APKiwiOrg/KhaozEngine/issues/1000). Every provider publishes an empty language list today,
+which the shared conformance suite pins, so no version any of them holds can reach this refusal.
+
+The four refusal reasons, all reported as `RefusalReason` on the result rather than thrown, are therefore
+`server-manifest-mismatch`, `client-manifest-mismatch`, `rebuild-candidate-invalid` (the builders refused a
+row, which is a caller's own side encoder leaving a `ServerOnly` field in the client bytes) and
+`text-chunks-unsupported`.
 
 ## Rollback
 

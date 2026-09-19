@@ -43,6 +43,21 @@ pack back. Found by Grimhollow's hosted server (https://github.com/APKiwiOrg/Gri
   version while an operator's pin names another fills the root with a pack the boot never reads, and the boot
   still refuses. The precedence has one home, so a consumer reads it and never copies it.
 
+- **`IContentAuthoringStore` is the boot's `IContentVersionDirectory`** (#1015). The store already declared
+  `GetActiveVersionAsync` and `GetPinnedVersionAsync` with the directory's exact signatures and did not
+  implement it, so every host booting off its authoring database wrote the same adapter. The store now
+  inherits the interface and declares each member once, and a host sets `ContentBootOptions.Directory` to the
+  store itself. A provider implements the same twenty-nine members as before, and the contract pin now counts
+  the inherited two. An implementer that names either member EXPLICITLY qualifies it with
+  `IContentVersionDirectory` now. No implementer in the engine does.
+- **A rebuild refuses a version whose manifests would name text chunks** (#1014), with
+  `ContentPackRebuild.RefusedTextChunks` (`text-chunks-unsupported`), before it builds or writes anything. No
+  store keeps a version's text and no publish path writes a text chunk yet (#1000), so a rebuild cannot
+  reproduce one, and the digest check cannot see the gap because both rebuilt manifests would name the same
+  hashes as the recorded ones. Without the refusal it would have reported success and left a pack whose
+  manifest names an object the root does not hold. Every provider publishes an empty language list today, and
+  a conformance fact on all three goes red the day one does not.
+
 Usage is in `docs/USING-KHAOZENGINE.md` under "Recovering a pack root" and in the package README under
 "Rebuilding a pack root".
 

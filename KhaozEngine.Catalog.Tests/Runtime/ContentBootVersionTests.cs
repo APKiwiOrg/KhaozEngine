@@ -1,6 +1,8 @@
 using System;
 using System.Threading.Tasks;
 using KhaozEngine.Catalog;
+using KhaozEngine.Catalog.Authoring;
+using KhaozEngine.Tests.Catalog.Publish;
 using KhaozEngine.Tests.Catalog.Store;
 using KhaozEngine.Tests.Catalog.Validation;
 using Xunit;
@@ -18,6 +20,9 @@ public sealed class ContentBootVersionTests
 {
     /// <summary>The build the options carry, which step 2 never looks at.</summary>
     const int ServerBuild = 20;
+
+    /// <summary>The one published type the authoring store's versions carry.</summary>
+    static ContentTypeId Thing => new(PublishFixtures.ThingTypeId);
 
     [Fact]
     public async Task TheResolvedVersionIsTheConfiguredOneThenThePinnedOneThenTheActiveOne()
@@ -56,6 +61,42 @@ public sealed class ContentBootVersionTests
         Assert.Equal(0, await ContentBoot.ResolveVersionAsync(Options(root, configuredVersion: null, directory: null)));
 
         await Assert.ThrowsAsync<ArgumentNullException>(() => ContentBoot.ResolveVersionAsync(null!));
+    }
+
+    /// <summary>
+    /// An authoring store IS the directory step 2 reads, so a host that boots off its authoring database
+    /// assigns the store itself and writes no adapter of its own. Two versions are published and the OLDER
+    /// one is pinned, which is the one arrangement where the two reads disagree, so the resolved number
+    /// names which member answered.
+    /// </summary>
+    [Fact]
+    public async Task AnAuthoringStoreIsTheVersionDirectoryABootResolvesThrough()
+    {
+        using var packRoot = new TemporaryRoot();
+        using var bootRoot = new TemporaryRoot();
+        ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing);
+        InMemoryContentAuthoringStore store = PublishFixtures.Store(registry, new FileSystemPackStore(packRoot.Path));
+
+        await PublishFixtures.ApplyAsync(
+            store,
+            ContentEdit.Add(Thing, new ContentKey("one"), PublishFixtures.Fields(11)));
+        Assert.Equal(1, (await store.PublishAsync(PublishFixtures.Request(0))).VersionNumber);
+
+        await PublishFixtures.ApplyAsync(
+            store,
+            ContentEdit.Add(Thing, new ContentKey("two"), PublishFixtures.Fields(22)));
+        Assert.Equal(2, (await store.PublishAsync(PublishFixtures.Request(1))).VersionNumber);
+
+        await store.SetPinnedVersionAsync(1, PublishFixtures.Actor, "oid:tests");
+        Assert.Equal(2, await store.GetActiveVersionAsync());
+
+        // The store handed straight to the seam, with nothing between it and the boot.
+        ContentBootOptions options = Options(bootRoot, configuredVersion: null, directory: store);
+        Assert.Equal(1, await ContentBoot.ResolveVersionAsync(options));
+
+        // And the hold cleared, so the same options resolve the active version through the same store.
+        await store.SetPinnedVersionAsync(null, PublishFixtures.Actor, "oid:tests");
+        Assert.Equal(2, await ContentBoot.ResolveVersionAsync(options));
     }
 
     /// <summary>

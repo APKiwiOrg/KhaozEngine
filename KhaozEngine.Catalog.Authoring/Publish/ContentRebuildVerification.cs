@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace KhaozEngine.Catalog.Authoring;
 
@@ -29,9 +30,43 @@ readonly record struct ContentRebuildRefusal(string Reason, string Detail);
 /// same rows compressed by a different build are a different FILE at the same content address. Comparing
 /// files would report a difference where the format says there is none.
 /// </para>
+/// <para>
+/// <b>The TEXT check is the one thing a digest comparison cannot stand in for</b>, which is why it is here
+/// beside the comparison rather than folded into it. A manifest that names a language names a text chunk
+/// hash, the rebuild writes no text chunk, and both rebuilt manifests are built from the SAME language list
+/// the recorded ones were, so they name the same hashes and match. See <see cref="CheckText"/>.
+/// </para>
 /// </summary>
 static class ContentRebuildVerification
 {
+    /// <summary>
+    /// The refusal when the version's manifests would name text chunks, or null when they would name none.
+    /// <para>
+    /// It runs on the SNAPSHOT, ahead of the build and far ahead of the digest comparison, because a rebuild
+    /// cannot reproduce a text chunk at all: no store keeps a version's text, so there is nothing to encode
+    /// one from. Refusing is the only answer that does not leave a pack whose manifest names an object the
+    /// root does not hold, which the digest comparison below would pass as sound.
+    /// </para>
+    /// </summary>
+    /// <param name="versionNumber">The version being rebuilt, which the detail names.</param>
+    /// <param name="languages">The languages the manifests would name, empty on every provider today.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="languages"/> is null.</exception>
+    public static ContentRebuildRefusal? CheckText(
+        int versionNumber,
+        IReadOnlyList<ManifestLanguageEntry> languages)
+    {
+        ArgumentNullException.ThrowIfNull(languages);
+
+        if (languages.Count == 0)
+        {
+            return null;
+        }
+
+        return new ContentRebuildRefusal(
+            ContentPackRebuild.RefusedTextChunks,
+            TextDetail(versionNumber, languages.Count));
+    }
+
     /// <summary>
     /// The refusal, or null when both digests match what the version record holds.
     /// </summary>
@@ -75,4 +110,12 @@ static class ContentRebuildVerification
     static string Detail(string side, int versionNumber, string rebuilt, string recorded)
         => FormattableString.Invariant(
             $"The rebuilt {side} manifest digests to {rebuilt} and version {versionNumber} records {recorded}. The rows, the rules or the registry the rebuild read are not the ones the version was published from, so nothing was written.");
+
+    /// <summary>
+    /// The text refusal's text. It names the version and HOW MANY languages, because that count is the number
+    /// of text chunks the manifests would name and the rebuild would not have written.
+    /// </summary>
+    static string TextDetail(int versionNumber, int languages)
+        => FormattableString.Invariant(
+            $"The manifests of version {versionNumber} name {languages} {(languages == 1 ? "language" : "languages")}, so they name {languages} KECT text chunk {(languages == 1 ? "hash" : "hashes")}, and no store keeps a version's text for a rebuild to encode those chunks from. Nothing was written, because a pack whose manifest names an object the root does not hold is one a boot follows into a hole, and the two manifest digests cannot catch it: both rebuilt manifests name the recorded hashes either way. Publishing text chunks is https://github.com/APKiwiOrg/KhaozEngine/issues/1000, and rebuilding them belongs with that work.");
 }

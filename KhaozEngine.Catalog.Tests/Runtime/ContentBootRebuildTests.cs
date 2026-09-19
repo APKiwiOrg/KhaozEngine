@@ -1,5 +1,4 @@
 using System;
-using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.Catalog;
 using KhaozEngine.Catalog.Authoring;
@@ -195,7 +194,8 @@ public sealed class ContentBootRebuildTests
 
     /// <summary>
     /// The other deployment: no config pin, so the version comes from the authoring database, which is where
-    /// an operator's hold lives. A fresh holder per call, so no boot reads what another one published.
+    /// an operator's hold lives. The store goes straight into the seam, because it IS the boot's version
+    /// directory. A fresh holder per call, so no boot reads what another one published.
     /// </summary>
     static ContentBootOptions Directed(
         ContentTypeRegistry registry,
@@ -208,23 +208,7 @@ public sealed class ContentBootRebuildTests
             Holder = new ContentRuntimeHolder(),
             ServerBuild = ServerBuild,
             ConfiguredVersion = null,
-            Directory = new AuthoringVersionDirectory(store),
+            Directory = store,
             StoreName = StoreName,
         };
-}
-
-/// <summary>
-/// The authoring store as boot step 2 reads it. <see cref="IContentAuthoringStore"/> declares the same two
-/// version reads and does not inherit <see cref="IContentVersionDirectory"/>, which keeps the read side free
-/// of the authoring package, so a host that boots off its database hands the boot a wrapper of this shape.
-/// </summary>
-internal sealed class AuthoringVersionDirectory(IContentAuthoringStore store) : IContentVersionDirectory
-{
-    /// <inheritdoc />
-    public Task<int?> GetPinnedVersionAsync(CancellationToken cancellationToken = default)
-        => store.GetPinnedVersionAsync(cancellationToken);
-
-    /// <inheritdoc />
-    public Task<int> GetActiveVersionAsync(CancellationToken cancellationToken = default)
-        => store.GetActiveVersionAsync(cancellationToken);
 }

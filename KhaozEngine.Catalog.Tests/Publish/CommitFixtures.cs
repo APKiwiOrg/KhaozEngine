@@ -22,9 +22,21 @@ internal sealed class CountingPackStore(FileSystemPackStore inner)
 {
     readonly List<string> _puts = [];
     readonly List<string> _existsChecks = [];
+    readonly List<string> _writes = [];
+
+    /// <summary>The sentinel a pointer write records into <see cref="Writes"/>, which is no content address.</summary>
+    public const string PointerWrite = "pointer";
 
     /// <summary>Every hash <see cref="PutAsync"/> reached the store with, in call order.</summary>
     public IReadOnlyList<string> Puts => _puts;
+
+    /// <summary>
+    /// Every WRITE in call order, objects and the pointer together: each put's hash, and
+    /// <see cref="PointerWrite"/> where the pointer went in. It is the ordered record <see cref="Puts"/>
+    /// cannot be, because the pointer is not an object and carries no address of its own, and the order of
+    /// the two against each other is the whole claim a crash part way through leaves no pointer to follow.
+    /// </summary>
+    public IReadOnlyList<string> Writes => _writes;
 
     /// <summary>Every hash <see cref="ExistsAsync"/> was asked about, in call order.</summary>
     public IReadOnlyList<string> ExistsChecks => _existsChecks;
@@ -47,6 +59,7 @@ internal sealed class CountingPackStore(FileSystemPackStore inner)
     public Task PutAsync(string hash, ReadOnlyMemory<byte> bytes, CancellationToken cancellationToken = default)
     {
         _puts.Add(hash);
+        _writes.Add(hash);
         return inner.PutAsync(hash, bytes, cancellationToken);
     }
 
@@ -68,7 +81,10 @@ internal sealed class CountingPackStore(FileSystemPackStore inner)
         string serverManifestHash,
         string clientManifestHash,
         CancellationToken cancellationToken = default)
-        => inner.PutVersionPointerAsync(versionNumber, serverManifestHash, clientManifestHash, cancellationToken);
+    {
+        _writes.Add(PointerWrite);
+        return inner.PutVersionPointerAsync(versionNumber, serverManifestHash, clientManifestHash, cancellationToken);
+    }
 
     /// <inheritdoc />
     public Task<PackVersionPointer?> GetVersionPointerAsync(

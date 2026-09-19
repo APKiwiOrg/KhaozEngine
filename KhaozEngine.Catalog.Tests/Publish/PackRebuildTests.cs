@@ -375,6 +375,163 @@ public sealed class PackRebuildTests
     }
 
     /// <summary>
+    /// The write ORDER is the contract rather than merely the set of objects: every chunk, then the rule
+    /// chunk, then the server manifest, then the client manifest, and the version POINTER last of all. A
+    /// crash part way through therefore leaves inert content-addressed files and no pointer, which reads as
+    /// a listing failure and SKIPS the next sweep rather than authorising it to delete on a partial view.
+    /// The chunks' order against each other is not part of the claim, so they are asserted as a set.
+    /// </summary>
+    [Fact]
+    public async Task ARebuildWritesEveryChunkThenTheRuleChunkThenBothManifestsAndThePointerLast()
+    {
+        using var rootA = new TemporaryRoot();
+        using var rootB = new TemporaryRoot();
+        ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing);
+        var packA = new FileSystemPackStore(rootA.Path);
+        InMemoryContentAuthoringStore store = PublishFixtures.Store(registry, packA);
+
+        await PublishFixtures.ApplyAsync(
+            store,
+            ContentEdit.Add(Thing, new ContentKey("one"), PublishFixtures.Fields(1)),
+            ContentEdit.Import(Thing, PublishFixtures.SecondChunkId, new ContentKey("far"), PublishFixtures.Fields(2)));
+        await store.PublishAsync(PublishFixtures.Request(0));
+
+        ContentVersionRecord record = await RecordAsync(store, 1);
+        ContentPublishBaseline baseline = await store.ReadPublishBaselineAsync();
+        string ruleHash = ContentRuleChunkCodec.Hash(baseline.Rules);
+
+        var target = new CountingPackStore(new FileSystemPackStore(rootB.Path));
+        ContentPackRebuildResult rebuilt = await ContentPackRebuild.RunAsync(store, registry, 1, target);
+
+        Assert.True(rebuilt.Rebuilt, rebuilt.RefusalDetail ?? rebuilt.RefusalReason);
+
+        IReadOnlyList<string> writes = target.Writes;
+        Assert.Equal(rebuilt.ChunksBuilt + 4, writes.Count);
+        Assert.Equal(CountingPackStore.PointerWrite, writes[^1]);
+        Assert.Equal(record.ClientManifestHash, writes[^2]);
+        Assert.Equal(record.ServerManifestHash, writes[^3]);
+        Assert.Equal(ruleHash, writes[^4]);
+
+        // Everything before the rule chunk is a chunk, all of them, and nothing at all follows the pointer.
+        var expected = new HashSet<string>(StringComparer.Ordinal);
+        foreach (ContentChunkRecord chunk in baseline.Chunks)
+        {
+            expected.Add(chunk.Hash);
+        }
+
+        var written = new HashSet<string>(StringComparer.Ordinal);
+        for (int i = 0; i < writes.Count - 4; i++)
+        {
+            written.Add(writes[i]);
+        }
+
+        Assert.Equal(expected, written);
+    }
+
+    /// <summary>
+    /// Chunk 0 is not special, and a type whose rows all sit at an id the second chunk owns is the case that
+    /// would catch a rebuild that walked chunk indexes from zero or assumed a dense range.
+    /// </summary>
+    [Fact]
+    public async Task ARebuildOfATypeWhoseRowsAllSitAboveTheFirstChunkReproducesItsManifests()
+    {
+        using var rootA = new TemporaryRoot();
+        using var rootB = new TemporaryRoot();
+        ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing);
+        var packA = new FileSystemPackStore(rootA.Path);
+        InMemoryContentAuthoringStore store = PublishFixtures.Store(registry, packA);
+
+        await PublishFixtures.ApplyAsync(
+            store,
+            ContentEdit.Import(Thing, PublishFixtures.SecondChunkId, new ContentKey("far"), PublishFixtures.Fields(1)),
+            ContentEdit.Import(Thing, PublishFixtures.SecondChunkId + 1, new ContentKey("farther"), PublishFixtures.Fields(2)));
+        await store.PublishAsync(PublishFixtures.Request(0));
+
+        ContentVersionRecord record = await RecordAsync(store, 1);
+        ContentPublishBaseline baseline = await store.ReadPublishBaselineAsync();
+        Assert.All(baseline.Chunks, chunk => Assert.Equal(1, chunk.ChunkIndex));
+
+        var packB = new FileSystemPackStore(rootB.Path);
+        ContentPackRebuildResult rebuilt = await ContentPackRebuild.RunAsync(store, registry, 1, packB);
+
+        Assert.True(rebuilt.Rebuilt, rebuilt.RefusalDetail ?? rebuilt.RefusalReason);
+        Assert.Equal(baseline.Chunks.Count, rebuilt.ChunksBuilt);
+
+        PackVersionPointer? pointer = await packB.GetVersionPointerAsync(1);
+        Assert.NotNull(pointer);
+        Assert.Equal(record.ServerManifestHash, pointer.ServerManifestHash);
+        Assert.Equal(record.ClientManifestHash, pointer.ClientManifestHash);
+        await AssertSameFileAsync(packA, packB, record.ServerManifestHash);
+        await AssertSameFileAsync(packA, packB, record.ClientManifestHash);
+    }
+
+    /// <summary>
+    /// A target with no pointer half at all is refused the way a publish target is, before anything is read
+    /// and long before anything is written: a rebuilt version nothing can enumerate is not a recovery.
+    /// </summary>
+    [Fact]
+    public async Task ARebuildIntoATargetWithNoPointerHalfThrowsNoPackStoreAndWritesNothing()
+    {
+        using var rootA = new TemporaryRoot();
+        using var rootB = new TemporaryRoot();
+        ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing);
+        var packA = new FileSystemPackStore(rootA.Path);
+        InMemoryContentAuthoringStore store = PublishFixtures.Store(registry, packA);
+
+        await PublishFixtures.ApplyAsync(
+            store,
+            ContentEdit.Add(Thing, new ContentKey("one"), PublishFixtures.Fields(1)));
+        await store.PublishAsync(PublishFixtures.Request(0));
+
+        var packB = new FileSystemPackStore(rootB.Path);
+        var pointerless = new PointerlessPackStore(packB);
+
+        ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
+            () => ContentPackRebuild.RunAsync(store, registry, 1, pointerless, pointers: null));
+
+        Assert.Equal(ContentAuthoringException.NoPackStoreReason, refused.Reason);
+        Assert.Empty(await EverythingAsync(packB));
+    }
+
+    /// <summary>
+    /// The rebuild takes the publisher's own optional row side encoder, and what pins that it HONOURS it is
+    /// the wrong encoder: the same rows through one that writes the server bytes on the client side land
+    /// <c>KEC0014</c> in the builders, so the rebuild refuses as an invalid candidate and writes nothing,
+    /// while the same rows through the default rebuild fine. The direction is the wrong encoder rather than
+    /// the right one because the only non-default encoder here is that defective stub, and an encoder that
+    /// agrees with the default on these rows could not tell the parameter being read from it being ignored.
+    /// </summary>
+    [Fact]
+    public async Task ARebuildThroughAnEncoderTheVersionWasNotPublishedThroughIsRefusedAndWritesNothing()
+    {
+        using var rootA = new TemporaryRoot();
+        using var rootB = new TemporaryRoot();
+        ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.SecretThing);
+        var packA = new FileSystemPackStore(rootA.Path);
+        InMemoryContentAuthoringStore store = PublishFixtures.Store(registry, packA);
+
+        await PublishFixtures.ApplyAsync(
+            store,
+            ContentEdit.Add(Thing, new ContentKey("one"), PublishFixtures.Fields(1, 7)));
+        await store.PublishAsync(PublishFixtures.Request(0));
+
+        var packB = new FileSystemPackStore(rootB.Path);
+        ContentPackRebuildResult refused = await ContentPackRebuild.RunAsync(
+            store, registry, 1, packB, rowEncoder: new LeakyRowEncoder());
+
+        Assert.False(refused.Rebuilt);
+        Assert.Equal(ContentPackRebuild.RefusedCandidateInvalid, refused.RefusalReason);
+        Assert.NotNull(refused.RefusalDetail);
+        Assert.Contains("KEC0014", refused.RefusalDetail, StringComparison.Ordinal);
+        Assert.Equal(0, refused.ObjectsWritten);
+        Assert.Empty(await EverythingAsync(packB));
+
+        // The same store, the same version, the same target, through the encoder it was published with.
+        ContentPackRebuildResult rebuilt = await ContentPackRebuild.RunAsync(store, registry, 1, packB);
+        Assert.True(rebuilt.Rebuilt, rebuilt.RefusalDetail ?? rebuilt.RefusalReason);
+    }
+
+    /// <summary>
     /// The fixture type through a registry whose schema has DRIFTED since the publish: the optional field is
     /// marked <c>ServerOnly</c> now, which gives the type two sides where it had one and moves the bytes of
     /// both.

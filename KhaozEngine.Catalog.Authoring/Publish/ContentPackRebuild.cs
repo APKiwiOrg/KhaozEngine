@@ -66,7 +66,14 @@ public static class ContentPackRebuild
     /// <summary>The rebuilt CLIENT manifest does not digest to the hash the version record holds.</summary>
     public const string RefusedClientManifest = "client-manifest-mismatch";
 
-    /// <summary>The builders refused the rows outright, so there was nothing to digest.</summary>
+    /// <summary>
+    /// The builders refused the rows outright, so there was nothing to digest.
+    /// <para>
+    /// The read walks the REGISTRY's own types, so no row of an unregistered type can reach the builders and
+    /// that half of the refusal is unreachable from here. What remains is the row side encoder refusing a
+    /// row, which is the caller's own encoder leaving a <c>ServerOnly</c> field in the client bytes.
+    /// </para>
+    /// </summary>
     public const string RefusedCandidateInvalid = "rebuild-candidate-invalid";
 
     /// <summary>
@@ -94,6 +101,7 @@ public static class ContentPackRebuild
     /// <param name="versionNumber">The published version to rebuild.</param>
     /// <param name="target">The pack store the rebuilt files go into.</param>
     /// <param name="pointers">The pointer half, or null to resolve one off <paramref name="target"/>.</param>
+    /// <param name="rowEncoder">The side encoder, or null for <see cref="ContentSideRowEncoder.Default"/>. It is the publisher's own parameter, because a version published through a custom encoder is only reproducible through that same encoder.</param>
     /// <param name="cancellationToken">Cancels the rebuild.</param>
     /// <exception cref="ArgumentNullException">A required argument is null.</exception>
     /// <exception cref="ContentAuthoringException">The store holds no such version, or no pointer half can be resolved.</exception>
@@ -103,6 +111,7 @@ public static class ContentPackRebuild
         int versionNumber,
         IPackStore target,
         IPackVersionPointerStore? pointers = null,
+        IContentRowSideEncoder? rowEncoder = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(store);
@@ -133,7 +142,7 @@ public static class ContentPackRebuild
         ContentRebuiltPack pack;
         try
         {
-            pack = Build(registry, record, snapshot);
+            pack = Build(registry, record, snapshot, rowEncoder ?? ContentSideRowEncoder.Default);
         }
         catch (ContentAuthoringException refused)
         {
@@ -165,7 +174,8 @@ public static class ContentPackRebuild
     static ContentRebuiltPack Build(
         ContentTypeRegistry registry,
         ContentVersionRecord record,
-        ContentRebuildSnapshot snapshot)
+        ContentRebuildSnapshot snapshot,
+        IContentRowSideEncoder rowEncoder)
     {
         var findings = new List<ContentFinding>();
         List<ContentChunkRecord> chunks = ContentChunkBuilder.Build(
@@ -173,7 +183,7 @@ public static class ContentPackRebuild
             snapshot.Rows,
             ContentChunkBuilder.EveryChunk(registry, snapshot.Rows),
             ContentPublishBaseline.Empty,
-            ContentSideRowEncoder.Default,
+            rowEncoder,
             findings);
 
         if (findings.Count > 0)
@@ -201,6 +211,12 @@ public static class ContentPackRebuild
     /// Step 9's order, against a store that may already hold some of it. The manifests go in under the
     /// RECORD's hashes rather than the rebuilt ones, which the verification has just proved are the same
     /// strings, so the address a boot will ask for is the address the bytes land at by construction.
+    /// <para>
+    /// <b>These four kinds of object are the WHOLE pack only while every published language list is empty.</b>
+    /// The day text chunks are publishable, a manifest will name text chunk hashes this method does not write,
+    /// and the digest check cannot catch it, because both manifests are rebuilt from the same source and name
+    /// the same hashes either way. See https://github.com/APKiwiOrg/KhaozEngine/issues/1014.
+    /// </para>
     /// </summary>
     static async Task<(int Objects, long Bytes)> WriteAsync(
         IPackStore target,

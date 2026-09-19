@@ -445,9 +445,8 @@ into its own partial `EditorToolDuplicate.cs` (and moving `MapEditorScene.ToolLa
 `MapEditorScene.Sculpt.cs`), which shrank both frozen files below the ratchet instead of growing them, the
 same split-not-grow move the zone-freeze round used.
 
-**Deferred out of this round (sculpt-brushes)**: no viewport brush-cursor ring is drawn yet (the ground pick
-that positions the brush is in place, but the disc outline that would show the radius/position is not), so the
-brush footprint is not previewed in the viewport, filed as https://github.com/APKiwiOrg/KhaozEngine/issues/274.
+**Original sculpt-brushes deferral, completed in 19.6.0 (#274):** the viewport now previews the brush
+with a terrain-following ring. The live contract is in the MapEditor package README under "Terrain sculpt".
 The `sculpt_*` MCP verbs (`sculpt_apply`, `sculpt_flatten_region`, `sculpt_clear`, tile-stat reads) and the
 Ruinborne repin + first valley sculpt pass are T3, tracked by the sculpt program design doc and #271.
 

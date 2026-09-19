@@ -25,7 +25,7 @@ namespace KhaozEngine.Showcase
     /// showcase's shared Scene3D (injected via Init, since a GameScene cannot reach the app's 3D surface). Builds
     /// its world in OnEnter and tears it down in OnExit (the Scene3D is shared with the other rooms, so it must
     /// leave no camera override or loaded ring behind). Esc returns to the menu.</summary>
-    public sealed class Room3D : GameScene, IGameScene3D, IShowcaseRoom
+    public sealed partial class Room3D : GameScene, IGameScene3D, IShowcaseRoom
     {
         static readonly StringId[] Hints = { ShowcaseStrings.ControlsWorld1, ShowcaseStrings.ControlsWorld2 };
 
@@ -243,7 +243,7 @@ namespace KhaozEngine.Showcase
 
             var terrainMaterial = _scene.LoadTerrainMaterial(TerrainMaterialPresets.Procedural());
 
-            _camera = new FollowCamera3D { Target = _character.Position, HeightOffset = 1.2f, GroundHeight = _terrain.GroundHeight };
+            _camera = new FollowCamera3D { Target = _character.Position, Yaw = MathF.PI, HeightOffset = 1.2f, GroundHeight = _terrain.GroundHeight };
             _camera.Distance = 9f;
             _camera.Occlusion = _physics;   // spring-arm: pull the eye in through a wall/roof rather than clip it
             // Demo-only: smooth the camera's follow target over the small per-riser fore-aft stutter the physics XZ
@@ -257,7 +257,7 @@ namespace KhaozEngine.Showcase
             // back to that default so a toggle does not bleed into the menu / other rooms.
 
             // A hand-placed visible platform box in the clearing so there is something to look at.
-            const float platformHeight = 1.0f;
+            const float platformHeight = Room3DTestbed.PlatformHeight;
             var platformCenter = new Vector2(0f, 12f);
             var platformHalf = new Vector2(3f, 2.5f);
             float platformBaseY = _terrain.GroundHeight(platformCenter.X, platformCenter.Y);
@@ -319,6 +319,7 @@ namespace KhaozEngine.Showcase
             // is actually shown.
             _collisionOverlay = new CollisionShapeOverlay();
             _legend = new OverlayLegend();
+            BuildTestbedFixtures();
 
             // Exclude trees from the town: reuse ForestRing's defaults but hole out the flattened plateau so no
             // tree spawns on the levelled ground the buildings sit on. Retained on the room (_scatterConfig) so the
@@ -342,12 +343,14 @@ namespace KhaozEngine.Showcase
             // Step the physics world once after the initial ring loads so Bepu's broad phase is current.
             _physics.Step(1f / 30f);
 
+            _environment = new Room3DEnvironment(_scene.Post);
             _built = true;
         }
 
         public override void OnUpdate(float dt)
         {
             if (Manager!.Input.WasPressed(Key.Escape)) { Manager!.Pop(); return; }
+            UpdateTestbed(dt);
 
             // --- rendering consult: live A/B of the outline knobs ---
             var post = _scene.Post;
@@ -367,10 +370,7 @@ namespace KhaozEngine.Showcase
             if (Manager!.Input.WasPressed(Key.H)) { post.OutlineNormalThreshold = MathF.Min(2f, post.OutlineNormalThreshold + 0.05f); _hud.Toast($"[post] OutlineNormalThreshold = {post.OutlineNormalThreshold:0.00}"); }
             if (Manager!.Input.WasPressed(Key.G)) { post.OutlineNormalThreshold = MathF.Max(0f, post.OutlineNormalThreshold - 0.05f); _hud.Toast($"[post] OutlineNormalThreshold = {post.OutlineNormalThreshold:0.00}"); }
 
-            // Starfield background (N) and cel-shading bands (C). Render3DSample bound the starfield to A, but this
-            // room has a WASD character, so A is strafe-left: every leftward step would flip the background. N is
-            // the remap (no movement or toggle uses it).
-            if (Manager!.Input.WasPressed(Key.N)) { post.Starfield = !post.Starfield; _hud.Toast($"[post] Starfield = {post.Starfield}"); }
+            // Background and day-cycle controls live with the outdoor testbed. C toggles cel bands.
             if (Manager!.Input.WasPressed(Key.C)) { post.CelBands = post.CelBands == 0 ? 4 : 0; _hud.Toast($"[post] CelBands = {post.CelBands}"); }
 
             // Retro combo (R): toggles quantize+dither+pixelated together, cel bands, and the internal render
@@ -473,6 +473,7 @@ namespace KhaozEngine.Showcase
 
             // The hand-placed visible platform.
             scene.Draw(_platformMesh, _platformXform, new Color(0.62f, 0.6f, 0.66f, 1f));
+            DrawTestbed(scene);
 
             // Textured prop demo: procedural mossy-stone block (albedo + normal maps).
             scene.Draw(_texturedProp, _texturedPropXform, Color.White);
@@ -560,6 +561,7 @@ namespace KhaozEngine.Showcase
         {
             if (!_built) return;
             _built = false;
+            DisposeTestbed();
 
             // TerrainStreamer.Dispose flushes the loaded ring through the sink (freeing every chunk mesh) and then
             // disposes the sink itself (it owns Scene3DChunkSink), matching TerrainWalkSample's turn-key teardown.
@@ -591,7 +593,6 @@ namespace KhaozEngine.Showcase
             post.Outline = false;
             post.OutlineDepthThreshold = 0.2f;
             post.OutlineNormalThreshold = 0.45f;
-            post.Starfield = true;
 
             // Retro combo + palette (R/P in OnUpdate above) back to PixelPostProcessSettings's own defaults, so
             // leaving the room never bleeds a low-res/quantized/palette-swapped look under the menu or 2D rooms.

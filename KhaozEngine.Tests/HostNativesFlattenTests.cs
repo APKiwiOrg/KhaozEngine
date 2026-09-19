@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -41,6 +42,27 @@ public class HostNativesFlattenTests
 
     static XElement Target(string name)
         => RuleRoot().Elements("Target").Single(t => (string?)t.Attribute("Name") == name);
+
+    static string[] FindRuleFiles(string root)
+    {
+        var copies = new List<string>();
+        var pending = new Stack<string>();
+        pending.Push(root);
+        while (pending.Count > 0)
+        {
+            string directory = pending.Pop();
+            copies.AddRange(Directory.EnumerateFiles(directory, RuleFile, SearchOption.TopDirectoryOnly));
+            foreach (string child in Directory.EnumerateDirectories(directory))
+            {
+                string name = Path.GetFileName(child);
+                if (name is ".git" or "bin" or "obj" or "local-feed") continue;
+                if (File.Exists(Path.Combine(child, ".git")) || Directory.Exists(Path.Combine(child, ".git")))
+                    continue;
+                pending.Push(child);
+            }
+        }
+        return copies.OrderBy(path => path, System.StringComparer.Ordinal).ToArray();
+    }
 
     [Fact]
     public void BuildTarget_IsLinuxOnly_RunsAfterTheOutputCopy_AndIsOptOut()
@@ -185,16 +207,30 @@ public class HostNativesFlattenTests
     /// class exists to stop, and it would be invisible until the two behaved differently on someone's Linux box.
     /// </summary>
     [Fact]
+    public void Rule_file_scan_skips_nested_git_worktrees()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "ke-host-native-scan-" + System.Guid.NewGuid().ToString("N"));
+        string tracked = Path.Combine(root, RuleFile);
+        string worktree = Path.Combine(root, ".claude", "worktrees", "repro");
+        try
+        {
+            Directory.CreateDirectory(worktree);
+            File.WriteAllText(tracked, "tracked");
+            File.WriteAllText(Path.Combine(worktree, ".git"), "gitdir: ../../../../.git/worktrees/repro");
+            File.WriteAllText(Path.Combine(worktree, RuleFile), "linked worktree copy");
+
+            Assert.Equal(new[] { tracked }, FindRuleFiles(root));
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void TheRuleFileExistsExactlyOnceOnDisk()
     {
-        string[] copies = Directory.GetFiles(RepoRoot(), RuleFile, SearchOption.AllDirectories)
-            .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}",
-                            System.StringComparison.Ordinal)
-                && !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}",
-                            System.StringComparison.Ordinal)
-                && !f.Contains($"{Path.DirectorySeparatorChar}local-feed{Path.DirectorySeparatorChar}",
-                            System.StringComparison.Ordinal))
-            .ToArray();
+        string[] copies = FindRuleFiles(RepoRoot());
 
         Assert.True(copies.Length == 1,
             $"expected one {RuleFile} in the tree, found {copies.Length}: {string.Join(", ", copies)}");

@@ -359,6 +359,45 @@ public abstract partial class ContentAuthoringStoreConformance
         Assert.Equal(new[] { 1, 2 }, Ids(await RowsAsync(store, includeRetired: true)));
     }
 
+    /// <summary>
+    /// A published version's language list is EMPTY on every provider, which is the fact a pack rebuild
+    /// relies on. A manifest that names a language names a KECT text chunk hash, and
+    /// <c>ContentPackRebuild</c> writes chunks, the rule chunk, both manifests and the pointer and no text
+    /// chunk at all, so the only pack it can honestly reproduce is one whose manifests name no text.
+    /// <para>
+    /// This fact exists to go RED the day a provider starts returning languages. When it does, the reader is
+    /// looking for two things. The gap is
+    /// https://github.com/APKiwiOrg/KhaozEngine/issues/1000, publishing text chunks at all. The rebuild's
+    /// answer while that gap is open is <c>ContentPackRebuild.RefusedTextChunks</c>, which refuses a version
+    /// whose manifests would name text rather than filing a pack a reader follows into a hole. So a provider
+    /// that publishes text needs the text chunk rebuild built FIRST, not a baseline read quietly widened
+    /// under a rebuild that cannot reproduce what it now reports.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public virtual async Task EveryProviderPublishesAnEmptyLanguageListWhichIsWhatARebuildReliesOn()
+    {
+        IContentAuthoringStore store = await OpenAsync();
+        await PublishAsync(
+            store,
+            ContentEdit.Add(Thing, new ContentKey("one"), CatalogFixtures.Fields(11)),
+            ContentEdit.Add(Thing, new ContentKey("two"), CatalogFixtures.Fields(22)));
+
+        ContentPublishBaseline afterFirst = await store.ReadPublishBaselineAsync();
+        Assert.Equal(1, afterFirst.VersionNumber);
+        Assert.NotEmpty(afterFirst.Chunks);
+        Assert.Empty(afterFirst.Languages);
+
+        // And a SECOND publish, because carrying the base version's languages forward is what step 8 does
+        // with them, so a provider that invented one would most likely do it on the carry rather than on the
+        // first publish into an empty database.
+        await PublishAsync(store, ContentEdit.Update(Thing, 1, new ContentKey("one"), CatalogFixtures.Fields(99)));
+
+        ContentPublishBaseline afterSecond = await store.ReadPublishBaselineAsync();
+        Assert.Equal(2, afterSecond.VersionNumber);
+        Assert.Empty(afterSecond.Languages);
+    }
+
     /// <summary>The version row, failing with a message naming the number when the store holds no such row.</summary>
     /// <param name="store">The store.</param>
     /// <param name="versionNumber">The version.</param>

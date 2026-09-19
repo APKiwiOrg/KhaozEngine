@@ -73,11 +73,18 @@ public static class TileSteering
 }
 ```
 
-It takes the look vector rather than a yaw angle so no consumer has to match an angle convention. The helper
-owns the mapping from world X and Z to tile directions, which is the tile world's own fact. It builds the
-ground-plane forward and right vectors, combines them by the axis pair and snaps to the nearest of eight
-directions. Ties on an exact boundary resolve toward the clockwise neighbor so the result is stable. The
-helper runs on the client only. Its output is an integer direction, so no float reaches the simulation.
+It takes the look vector rather than a yaw angle so no consumer has to match an angle convention. The vector
+is WORLD space, exactly what a camera's `Forward` answers. The helper owns the mapping from world X and Z to
+tile directions, which is the tile world's own fact and is not the identity: `TileWorldSpace` maps tile north
+to world -Z, so the helper converts the vector through `TileWorldSpace` before it does anything else. A consumer
+that handed in a tile-space vector would get a silently north-south mirrored result.
+
+In tile space it builds the ground-plane forward and right vectors, combines them by the axis pair and snaps
+to the nearest of eight directions. The engine's cameras are right handed in world space, so screen right of a
+camera with ground forward world `(wx, wz)` is world `(-wz, wx)`. Through the tile mirror that is tile
+`(fz, -fx)` for tile forward `(fx, fz)`. An exact octant boundary resolves to the counter-clockwise neighbor on
+a north-up map, which is what rounding the angle up does, so the result is stable. The helper runs on the
+client only. Its output is an integer direction, so no float reaches the simulation.
 
 ## Simulator rules
 

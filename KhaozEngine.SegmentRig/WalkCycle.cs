@@ -269,9 +269,7 @@ public struct WalkCycle
 
         bool moving = dt > 0f && travelled > MovingMetresPerSecond * dt;
         bool running = dt > 0f && travelled > RunMetresPerSecond * dt;
-        float step = dt / BlendSeconds;
-        _weight = Math.Clamp(moving ? _weight + step : _weight - step, 0f, 1f);
-        _runWeight = Math.Clamp(running ? _runWeight + step : _runWeight - step, 0f, 1f);
+        Blend(dt, moving, running);
     }
 
     /// <summary>Advances the cycle from an EXPLICIT phase source rather than from ground covered: the path
@@ -314,8 +312,20 @@ public struct WalkCycle
         {
             _phase += phaseDelta;
             _phase -= MathF.Floor(_phase);
+            // The phase is half open, 0 up to but not including 1, and the ground path keeps it that way for
+            // free because ground covered is never negative. A delta can be: a tiny negative one floors to -1
+            // and the subtraction rounds to exactly 1. Same point on the cycle, so fold it back to 0.
+            if (_phase >= 1f) _phase = 0f;
         }
 
+        Blend(dt, moving, running);
+    }
+
+    /// <summary>Eases the walk and run weights toward the two flags over <see cref="BlendSeconds"/>. The ONE
+    /// copy of the blend rule, shared by both phase sources, so a change to how a body eases in or out of a
+    /// gait cannot land on the ground path and miss the no-ground one.</summary>
+    void Blend(float dt, bool moving, bool running)
+    {
         float step = dt / BlendSeconds;
         _weight = Math.Clamp(moving ? _weight + step : _weight - step, 0f, 1f);
         _runWeight = Math.Clamp(running ? _runWeight + step : _runWeight - step, 0f, 1f);

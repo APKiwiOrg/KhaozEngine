@@ -9923,14 +9923,15 @@ var cycle = new WalkCycle(BodyRig.Human);
 
 // Per frame, with the position you are DRAWING at (presented or interpolated), not the committed one.
 cycle.Advance(drawnPosition, dt);
-WalkPose pose = cycle.Pose;
+WalkPose walk = cycle.Pose;
 
-// Per frame, the frames a draw hangs pieces off.
-var body = new BodyPose(drawnPosition, drawnYaw);
-Matrix4x4 bodyFrame  = BodyRig.Human.Body(body, pose);            // the legs compose inside this
-Matrix4x4 torsoFrame = BodyRig.Human.Torso(pose, bodyFrame);      // everything above the hips inside this
-Matrix4x4 thighLeft  = BodyRig.Limb(BodyRig.Human.LeftHip, pose.LeftLeg) * bodyFrame;
-Matrix4x4 shinLeft   = BodyRig.Human.Knee(pose.LeftKnee) * thighLeft;
+// Per frame, the frames a draw hangs pieces off. The names match the API's own parameters:
+// a BodyPose is "pose" (where and which way), a WalkPose is "walk" (what the limbs are doing).
+var pose = new BodyPose(drawnPosition, drawnYaw);
+Matrix4x4 bodyFrame  = BodyRig.Human.Body(pose, walk);            // the legs compose inside this
+Matrix4x4 torsoFrame = BodyRig.Human.Torso(walk, bodyFrame);      // everything above the hips inside this
+Matrix4x4 thighLeft  = BodyRig.Limb(BodyRig.Human.LeftHip, walk.LeftLeg) * bodyFrame;
+Matrix4x4 shinLeft   = BodyRig.Human.Knee(walk.LeftKnee) * thighLeft;
 ```
 
 `BodyPose` is the whole input: world metres and radians, a yaw of 0 facing engine +z, with the character's
@@ -9957,7 +9958,7 @@ and nothing fails to compile. The order is the contract:
 | `RightArmYaw` `RightWrist` | a stroke, the weapon shoulder's second axis and the held piece's tip |
 | `TorsoRise` `TorsoLean` | a breath, and they carry everything ABOVE the hips and nothing else |
 | `LeftArmYaw` `LeftWrist` | a guard pose, the off shoulder and the off hand's turn |
-| `RootPitch` `RootRoll` | air and water, and they turn the WHOLE rig about the point it stands on |
+| `RootPitch` `RootRoll` | air and water, and on a two-legged `BodyRig` they turn the WHOLE rig about the point it stands on. `QuadrupedRig` does not read them yet |
 
 The three pairs that move the body are not interchangeable, and picking the wrong one is the most common way
 to get a pose subtly wrong. `Bob` and `Lean` pivot at the hips and carry the feet with them, which a walk can

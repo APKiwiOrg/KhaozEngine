@@ -163,4 +163,18 @@ public class NoGroundPhaseTests
         }
         Assert.Equal(1f, fast.RunWeight, 3);
     }
+
+
+    [Fact]
+    public void ATinyBackwardsDeltaLeavesThePhaseHalfOpenLikeTheGroundPathDoes()
+    {
+        // The phase lives in 0 up to but not including 1, and everything downstream leans on that. Ground
+        // covered is never negative, so the distance path keeps it for free. A delta can be negative, and the
+        // nasty one is tiny: it floors to -1 and the subtraction rounds to exactly 1, the closed end.
+        var cycle = new WalkCycle(BodyRig.Human);
+
+        cycle.Advance(-1e-9f, 1f / 60f, moving: true);
+
+        Assert.True(cycle.Phase >= 0f && cycle.Phase < 1f, $"phase {cycle.Phase} left the half open range");
+    }
 }

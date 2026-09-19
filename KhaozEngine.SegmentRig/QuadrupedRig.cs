@@ -94,7 +94,10 @@ public sealed record QuadrupedRig
     /// <see cref="Torso"/>.</summary>
     /// <param name="pose">Where and which way the body draws.</param>
     /// <param name="walk">This frame's biped-shaped pose, read for its run lean only. Its own bob is a
-    /// two-legged one and is ignored: the quadruped's comes from its own gait.</param>
+    /// two-legged one and is ignored: the quadruped's comes from its own gait. <c>RootPitch</c> and
+    /// <c>RootRoll</c> are NOT read here either. Only the two-legged <see cref="BodyRig"/> turns about its
+    /// root, because nothing four-legged swims or falls yet. A game that sets them on a quadruped gets an
+    /// upright animal and no error, so add the read here when the first one needs it.</param>
     /// <param name="gait">This frame's four-legged pose, for the bob, the surge and the pitch.</param>
     /// <remarks>Rotation THEN translation, the engine's own model-transform hand. The lean tips about the
     /// shoulder height rather than about a hip, because that is the pivot a body on four legs leans about,

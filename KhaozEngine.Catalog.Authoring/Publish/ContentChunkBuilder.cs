@@ -163,6 +163,38 @@ static class ContentChunkBuilder
     }
 
     /// <summary>
+    /// EVERY chunk the rows occupy, which is what a rebuild hands <see cref="Build"/> in place of an affected
+    /// set.
+    /// <para>
+    /// A publish encodes the affected chunks and carries the rest forward from its baseline, so the set it
+    /// selects is a function of the DIFF. A rebuild has no baseline and no diff: it stands on one published
+    /// version's whole row set and has to encode all of it, so the set it selects is a function of the ROWS.
+    /// Naming that here rather than in the rebuild is what keeps one encoder in the tree, because the two
+    /// callers then differ only in which addresses they ask for.
+    /// </para>
+    /// </summary>
+    /// <param name="registry">The registry the id ranges come from.</param>
+    /// <param name="rows">Every row live at the version being rebuilt.</param>
+    /// <exception cref="ArgumentNullException">An argument is null.</exception>
+    /// <exception cref="ContentAuthoringException">A row names a type the registry does not declare.</exception>
+    public static SortedSet<(ushort TypeId, int ChunkIndex)> EveryChunk(
+        ContentTypeRegistry registry,
+        IReadOnlyList<ContentCandidateRow> rows)
+    {
+        ArgumentNullException.ThrowIfNull(registry);
+        ArgumentNullException.ThrowIfNull(rows);
+
+        var every = new SortedSet<(ushort TypeId, int ChunkIndex)>();
+        for (int i = 0; i < rows.Count; i++)
+        {
+            ContentCandidateRow row = rows[i];
+            Add(every, registry, row.Registration.Type, row.DefinitionId);
+        }
+
+        return every;
+    }
+
+    /// <summary>
     /// Step 7, then step 6's carry forward: encodes every affected chunk at every side its type produces,
     /// and copies forward every chunk row the base version holds for a chunk this version did not touch.
     /// </summary>

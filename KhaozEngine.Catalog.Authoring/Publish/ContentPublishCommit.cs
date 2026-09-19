@@ -256,19 +256,37 @@ public sealed class ContentPublishCommit
         return await ContentPackSweep.RunAsync(PackStore, numbers, cancellationToken).ConfigureAwait(false);
     }
 
-    async Task<(int Written, long Bytes)> PutAsync(
+    /// <summary>
+    /// The ONE put-if-absent in this package, shared with <see cref="ContentPackRebuild"/>, which writes the
+    /// same four kinds of object in the same order against a store that may already hold some of them. A
+    /// second copy of these six lines would be a second place for "a hash the store already holds is not
+    /// rewritten" to stop being true.
+    /// </summary>
+    /// <param name="store">The pack store to write into.</param>
+    /// <param name="hash">The object's content address.</param>
+    /// <param name="bytes">The file.</param>
+    /// <param name="cancellationToken">Cancels the write.</param>
+    /// <returns>1 and the length when the file was written, 0 and 0 when the store already held it.</returns>
+    internal static async Task<(int Written, long Bytes)> PutIfAbsentAsync(
+        IPackStore store,
         string hash,
         ReadOnlyMemory<byte> bytes,
         CancellationToken cancellationToken)
     {
-        if (await PackStore.ExistsAsync(hash, cancellationToken).ConfigureAwait(false))
+        if (await store.ExistsAsync(hash, cancellationToken).ConfigureAwait(false))
         {
             return (0, 0);
         }
 
-        await PackStore.PutAsync(hash, bytes, cancellationToken).ConfigureAwait(false);
+        await store.PutAsync(hash, bytes, cancellationToken).ConfigureAwait(false);
         return (1, bytes.Length);
     }
+
+    Task<(int Written, long Bytes)> PutAsync(
+        string hash,
+        ReadOnlyMemory<byte> bytes,
+        CancellationToken cancellationToken)
+        => PutIfAbsentAsync(PackStore, hash, bytes, cancellationToken);
 
     void Step(ContentPublishStep step) => _publisher.OnStep?.Invoke(step);
 

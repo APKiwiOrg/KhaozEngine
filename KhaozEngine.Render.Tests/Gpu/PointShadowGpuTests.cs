@@ -613,9 +613,13 @@ public sealed class PointShadowScene : IDisposable
         public void AddLight(Vector3 at, Color colour, float radius, float intensity)
             => scene.AddLight(at, colour, radius, intensity);
 
-        void Box(float sx, float sy, float sz, Vector3 centre) =>
+        /// <summary>One box caster, <paramref name="sx"/> by <paramref name="sy"/> by <paramref name="sz"/> metres
+        /// at <paramref name="centre"/>, white unless <paramref name="colour"/> says otherwise. Public so a
+        /// sibling class can assemble a fixture of its own out of the same shared scene, and so a case that needs
+        /// to tell one surface from another in the picture can give it its own albedo.</summary>
+        public void Box(float sx, float sy, float sz, Vector3 centre, Color? colour = null) =>
             scene.Draw(box, Matrix4x4.CreateScale(sx, sy, sz) * Matrix4x4.CreateTranslation(centre),
-                new Color(1f, 1f, 1f, 1f));
+                colour ?? new Color(1f, 1f, 1f, 1f));
     }
 
     /// <summary>Render ONE frame of <paramref name="describe"/> and read it back, under

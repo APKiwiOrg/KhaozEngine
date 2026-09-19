@@ -142,6 +142,25 @@ public sealed class PointShadowPassGpuTests(PointShadowPassScene fixture) : ICla
         Assert.Equal(0, atlas.Draws);
     }
 
+    /// <summary>
+    /// THE EXCLUSION BOX, read off the atlas rather than off a lit picture. The cube stands inside a box of its
+    /// own, so every one of its fragments is thrown away and the whole row goes back to the clear: this is the
+    /// fragment discard on its own, with no lighting, no receiver and no bias between the pass and the assertion.
+    /// The cube is still DRAWN (its world sphere reaches out of the box, so the CPU cull cannot drop it), which is
+    /// what makes the cleared row a statement about the shader.
+    /// </summary>
+    [GpuFact]
+    public void ACasterWhollyInsideTheExclusionBoxWritesNothingIntoTheRow()
+    {
+        Vector3 light = PointShadowPassScene.LightPos;
+        Vector3 cube = light + Vector3.UnitX * CubeDistance;
+        PointShadowPassScene.Atlas atlas = fixture.RenderCube(cube, light, Radius,
+            cube - new Vector3(0.6f), cube + new Vector3(0.6f));
+
+        Assert.Equal(6, atlas.Draws);
+        Assert.Equal(1f, atlas.MinInRow(PointShadowPassScene.Slot), 3);
+    }
+
     [GpuFact]
     public void RenderingARowTwiceClearsWhatTheLastPassWroteIntoIt()
     {
@@ -253,15 +272,17 @@ public sealed class PointShadowPassScene : IDisposable
 
     /// <summary>Queue one unit cube at <paramref name="cubeCentre"/>, render an ordinary frame so the instance
     /// buffer is uploaded, then render the point-shadow row for a light at <paramref name="lightPos"/> and read
-    /// the atlas back.</summary>
-    public Atlas RenderCube(Vector3 cubeCentre, Vector3 lightPos, float radius)
+    /// the atlas back. <paramref name="exclusionMin"/> and <paramref name="exclusionMax"/> are the light's
+    /// world-space exclusion box, and an empty pair (the default) is no box at all.</summary>
+    public Atlas RenderCube(Vector3 cubeCentre, Vector3 lightPos, float radius,
+        Vector3 exclusionMin = default, Vector3 exclusionMax = default)
     {
         Scene3D scene = Scene;
         scene.Post.Quality.Shadows.Mode = ShadowMode.Off;   // the key light is not what this class measures
         scene.Camera.Frame(lightPos, lightPos + new Vector3(8f, 6f, 8f));
         _preview!.Capture(s => s.Draw(_cube, Matrix4x4.CreateTranslation(cubeCentre), Color.White));
         Assert.True(scene.EnsurePointShadowAtlas(FaceResolution, Rows));
-        int draws = scene.DebugRenderPointShadowSlot(Slot, lightPos, radius);
+        int draws = scene.DebugRenderPointShadowSlot(Slot, lightPos, radius, 0f, exclusionMin, exclusionMax);
         float[] texels = scene.DebugReadPointShadowAtlas(out int w, out int h);
         return new Atlas(texels, w, h, Rows, draws);
     }

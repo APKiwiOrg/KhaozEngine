@@ -85,6 +85,83 @@ public sealed class LightShadowTests
         Assert.Equal(LightShadow.Static(1), LightShadow.Static(1, -0.5f));
     }
 
+    /// <summary>
+    /// THE EXCLUSION BOX IS PART OF THE REQUEST'S IDENTITY TOO, and for the same reason the near radius is: it
+    /// decides what a map CONTAINS. It rides as two <c>init</c> properties beside the near radius, so the released
+    /// two-component deconstruction still compiles, and the record's own equality picks the corners up off the
+    /// backing fields.
+    /// </summary>
+    [Fact]
+    public void ExclusionBox_IsPartOfTheValueAndDefaultsToNothing()
+    {
+        var min = new Vector3(-0.2f, 1.8f, -0.2f);
+        var max = new Vector3(0.2f, 2.2f, 0.2f);
+
+        Assert.False(LightShadow.None.HasExclusionBox);
+        Assert.False(LightShadow.Static(7).HasExclusionBox);
+        Assert.False(LightShadow.Dynamic.HasExclusionBox);
+        Assert.Equal(Vector3.Zero, LightShadow.Static(7).ExclusionMin);
+        Assert.Equal(Vector3.Zero, LightShadow.Static(7).ExclusionMax);
+
+        LightShadow boxed = LightShadow.Static(7, min, max);
+        Assert.True(boxed.HasExclusionBox);
+        Assert.Equal(min, boxed.ExclusionMin);
+        Assert.Equal(max, boxed.ExclusionMax);
+        Assert.Equal(LightShadowMode.Static, boxed.Mode);
+        Assert.Equal(7L, boxed.Key);
+        Assert.Equal(0f, boxed.NearRadius);
+
+        Assert.Equal(boxed, LightShadow.Static(7).WithExclusionBox(min, max));
+        Assert.Equal(boxed.GetHashCode(), LightShadow.Static(7).WithExclusionBox(min, max).GetHashCode());
+        Assert.NotEqual(LightShadow.Static(7), boxed);
+        Assert.NotEqual(LightShadow.Static(7, min, max * 1.1f), boxed);
+
+        // The two clearances are independent and either one excludes, so a caller may set both.
+        LightShadow both = LightShadow.Static(7, 0.25f).WithExclusionBox(min, max);
+        Assert.Equal(0.25f, both.NearRadius);
+        Assert.True(both.HasExclusionBox);
+    }
+
+    /// <summary>The corners are ORDERED per axis, so a caller handing over the two corners of its own bounds in
+    /// whichever order it holds them gets the same box either way.</summary>
+    [Fact]
+    public void ExclusionBox_OrdersTheCornersOnEveryAxis()
+    {
+        var min = new Vector3(-1f, 2f, -3f);
+        var max = new Vector3(4f, 5f, 6f);
+        LightShadow ordered = LightShadow.Static(1, min, max);
+
+        Assert.Equal(ordered, LightShadow.Static(1, max, min));
+        Assert.Equal(ordered, LightShadow.Static(1,
+            new Vector3(max.X, min.Y, max.Z), new Vector3(min.X, max.Y, min.Z)));
+        Assert.Equal(ordered, LightShadow.Static(1).WithExclusionBox(max, min));
+        Assert.Equal(min, LightShadow.Static(1, max, min).ExclusionMin);
+        Assert.Equal(max, LightShadow.Static(1, max, min).ExclusionMax);
+    }
+
+    /// <summary>A request is presentation, so nonsense corners leave the request EXACTLY as it was rather than
+    /// throwing: a box that is not a box excludes nothing, and a light is never worth refusing to draw.</summary>
+    [Fact]
+    public void ExclusionBox_RefusesAnythingThatIsNotABox()
+    {
+        var min = new Vector3(-1f, -1f, -1f);
+        var max = new Vector3(1f, 1f, 1f);
+
+        Assert.False(LightShadow.Static(1, new Vector3(float.NaN, 0f, 0f), max).HasExclusionBox);
+        Assert.False(LightShadow.Static(1, min, new Vector3(0f, float.NaN, 0f)).HasExclusionBox);
+        Assert.False(LightShadow.Static(1, new Vector3(float.NegativeInfinity), new Vector3(float.PositiveInfinity))
+            .HasExclusionBox);
+        Assert.Equal(LightShadow.Static(1), LightShadow.Static(1, new Vector3(float.NaN), max));
+
+        // Flat on one axis is not a box either: nothing is inside it, so it is the same as asking for none.
+        Assert.False(LightShadow.Static(1, min, new Vector3(1f, -1f, 1f)).HasExclusionBox);
+        Assert.False(LightShadow.Static(1, min, min).HasExclusionBox);
+
+        // And a bad box does not take a good one away from a request that already carried it.
+        LightShadow boxed = LightShadow.Static(1, min, max);
+        Assert.Equal(boxed, boxed.WithExclusionBox(new Vector3(float.NaN), max));
+    }
+
     [Fact]
     public void TheFourArgumentOverload_QueuesAnUnshadowedLight()
     {

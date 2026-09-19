@@ -3105,8 +3105,8 @@ scene.Draw(crate, transform, Color.White, Material.None, dissolve: fadeTimer, ed
   SIZE IT between two distances: past the fixture's farthest part from the flame, and short of the nearest
   surface that must still block. For a wall lantern whose body is 12 by 18 by 12 cm around the flame and which
   hangs 10 cm off the wall it is mounted on, the body reaches about 12 cm at its corners and the wall stands at
-  10 cm, so there is no gap and the FIXTURE is what has to give: cut the model's rear panel, move the flame
-  forward in the body, or accept a clearance that also clears the wall for that lamp. For the ordinary case of a
+  10 cm, so there is NO SUCH RADIUS and a sphere is the wrong shape for that fixture: use the exclusion box
+  below, which is exactly the case it exists for. For the ordinary case of a
   lantern on a bracket or a lamp on a post, a clearance a couple of centimetres past the body is right, and the
   bracket and the post below still cast because only the geometry inside the clearance stops writing.
 
@@ -3125,6 +3125,32 @@ scene.Draw(crate, transform, Color.White, Material.None, dissolve: fadeTimer, ed
   redraws that row at the next frame's rebuild budget. A negative or non-finite value clamps to `0` rather than
   throwing, because a light is presentation. It is not a second near plane either: the pass keeps its own 5 cm
   projection near plane whatever this says.
+
+  **A WALL-MOUNTED FIXTURE NEEDS A BOX, NOT A RADIUS** (issue #1011). A sphere is centred on the flame, and a
+  lantern on a wall is not: the plate, the arm and the cap corners reach further from the flame than the wall
+  behind it does, so every radius either leaves those parts writing or takes the wall out of the map with them.
+  `LightShadow.ExclusionMin` and `LightShadow.ExclusionMax` are a world-space, axis-aligned box instead, and what
+  a consumer passes is the FIXTURE'S OWN BOUNDS: everything inside the box stops writing and the wall a centimetre
+  outside it keeps writing. Set it with `LightShadow.Static(key, exclusionMin, exclusionMax)` or
+  `shadow.WithExclusionBox(min, max)`, both of which order the corners per axis so the two corners of your own
+  bounds go in either way round. `HasExclusionBox` says whether a request carries one.
+
+  ```csharp
+  // The fixture's own world bounds, with a centimetre of skin so no face of the model sits on the boundary.
+  // The wall it hangs on is outside the box, so it still casts.
+  (Vector3 min, Vector3 max) bounds = lantern.WorldBounds;
+  scene.AddLight(lantern.FlamePos, LanternWarm, radius: 7f, intensity: 2.2f,
+                 LightShadow.Static(lantern.ObjectId, min - new Vector3(0.01f), max + new Vector3(0.01f)));
+  ```
+
+  The two clearances are INDEPENDENT and either one excludes, so a lamp whose head suits a radius and whose
+  bracket suits a box may carry both. Everything the near radius is, the box is too: part of the request's value
+  (so changing it on a `Static` key dirties that row and redraws it under the ordinary rebuild budget), not a way
+  of turning the shadow off (everything outside it casts exactly as it did), and cheap to leave unset, because a
+  light with no box is packed with an empty one and the fragments' test is false by construction. An instance
+  whose world sphere lies WHOLLY inside the box is dropped before it is drawn rather than discarded a fragment at
+  a time. Corners that are not a box (not a number, or flat on an axis) leave the request exactly as it was rather
+  than throwing, for the near radius's reason: a light is presentation.
 
   A good `key` is STABLE across frames and UNIQUE per light. The world's own id for the placed object is the
   right answer (a tile-world object id, an entity id, a prefab instance id). A loop index, an array position or
@@ -3591,6 +3617,16 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
         it casts exactly as it did. It is part of the request's value, so raising it on a `Static` key dirties
         that row and redraws it under the ordinary rebuild budget, and an instance lying WHOLLY inside it is
         dropped before it is drawn rather than discarded a fragment at a time.
+      - **A WALL LANTERN NEEDS A BOX RATHER THAN A RADIUS** (issue #1011). The clearance above is a SPHERE around
+        the flame, and a fixture mounted on something is not spherical: its plate and arm reach further from the
+        flame than the surface behind it does, so no radius clears the fixture while leaving that surface casting.
+        `LightShadow.ExclusionMin` and `LightShadow.ExclusionMax` are a world-space axis-aligned box for exactly
+        that, set through `LightShadow.Static(key, exclusionMin, exclusionMax)` or
+        `shadow.WithExclusionBox(min, max)` (both order the corners per axis), read back through
+        `HasExclusionBox`, and sized as the fixture's own bounds. Everything above holds for it unchanged: either
+        clearance may be set, both may be set at once, the box is part of the cached row's identity, an instance
+        whose world sphere lies wholly inside it is dropped before it is drawn, and corners that are not a box
+        leave the request as it was. A light with no box costs nothing, because the pass packs it an empty one.
       - **The bias knobs, and when to touch them.** `Bias` (default `0.01`) and `SlopeBias` (default `0.02`) are
         in RADIUS-NORMALIZED units, because the atlas stores distance over radius rather than projected depth,
         and both clamp into `0`..`MaxBias` (`0.25`) through `ResolvedBias` and `ResolvedSlopeBias`. The floor is

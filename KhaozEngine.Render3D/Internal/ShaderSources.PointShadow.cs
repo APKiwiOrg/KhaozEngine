@@ -45,11 +45,15 @@ namespace KhaozEngine.Render3D.Internal
         const string PointShadowUniformBlock = PointShadowUniformBlockHead + @"};
 ";
 
-        // The CASTERS' view, one member longer. `Near` is the light's near radius in METRES, straight off
+        // The CASTERS' view, three members longer. `Near` is the light's near radius in METRES, straight off
         // LightShadow.NearRadius, and it rides the slice rather than the light vec4 because that one's four
-        // components are all spoken for. std140 appends it at byte 96 of a 256-byte slot, so there is room and
-        // nothing before it moves.
+        // components are all spoken for. `ExclusionMin`/`ExclusionMax` are the same clearance as a BOX, for the
+        // fixture a sphere cannot describe, and they are in the same RENDER space the light position and the
+        // interpolated caster position are in. std140 appends the three at bytes 96, 112 and 128 of a 256-byte
+        // slot, so there is room and nothing before them moves.
         const string PointShadowCasterUniformBlock = PointShadowUniformBlockHead + @"    vec4 Near;                // x = the light's near radius in metres (0 = nothing cleared), yzw unused
+    vec4 ExclusionMin;        // xyz = low corner of the exclusion box in render space, w unused
+    vec4 ExclusionMax;        // xyz = high corner. Low past high (the packed default) is the EMPTY box
 };
 ";
 
@@ -86,9 +90,17 @@ void main() {
         // receiver past it compares as occluded, and the light reaches nothing at all. A fragment closer to the
         // bulb than the light's near radius is therefore thrown away instead of stored. `Near.x` is 0 for a light
         // in open space and a distance is never below zero, so that case stores exactly what it always stored.
+        //
+        // THE EXCLUSION BOX IS THE SAME DISCARD IN THE SHAPE A SPHERE CANNOT TAKE. A wall-mounted fixture reaches
+        // further from the flame than the wall it hangs on does, so no radius clears the fixture while leaving the
+        // wall casting, and the consumer passes the fixture's own world bounds instead. A light with no box is
+        // packed with an EMPTY one (low corner past high on every axis), so this test is false for every finite
+        // position with no branch on whether a box exists at all.
         const string PointShadowDistanceWrite =
             @"    float toLight = length(vWorldPos - LightPosRadius.xyz);
     if (toLight < Near.x) discard;
+    if (all(greaterThanEqual(vWorldPos, ExclusionMin.xyz)) && all(lessThanEqual(vWorldPos, ExclusionMax.xyz)))
+        discard;
     float dist = toLight / max(LightPosRadius.w, 1e-4);
     oDist = vec4(clamp(dist, 0.0, 1.0), 0.0, 0.0, 1.0);";
 

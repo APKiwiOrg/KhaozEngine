@@ -140,17 +140,28 @@ namespace KhaozEngine.Render3D
         /// geometry in, and <paramref name="radius"/> is the light's reach, which is also the face far plane.
         /// <paramref name="nearRadius"/> is how much geometry around the bulb is the light's own fixture and is
         /// left out of the map, in metres, zero for a light in open space.
+        /// <paramref name="exclusionMin"/> and <paramref name="exclusionMax"/> are the same clearance as a box, in
+        /// the same ABSOLUTE space as the light, and the zero pair is no box.
         /// <para>
         /// The packed index and the atlas row are two different numbers on purpose: the ring is packed densely for
         /// THIS frame's lights, while the row is the light's place in the atlas, which the slot cache owns.
         /// </para>
+        /// <para>
+        /// THE BOX IS REBASED WITH THE LIGHT. The caster fragments compare it against a render-space position, so
+        /// a box left in absolute space would move out from under the fixture the moment a render origin is in
+        /// force. A light with no box is given the EMPTY box, whose low corner is past its high corner on every
+        /// axis, so the shader's containment test is false for every finite position without a branch.
+        /// </para>
         /// </summary>
         internal void PackPointShadowSlot(int packedSlotIndex, int slot, Vector3 lightPosAbsolute, float radius,
-            float nearRadius = 0f)
+            float nearRadius = 0f, Vector3 exclusionMin = default, Vector3 exclusionMax = default)
         {
             if (_pointShadows is not { } renderer || _pointShadowAtlas is not { } atlas) return;
 
             Vector3 lightRender = ToRender(lightPosAbsolute);
+            bool boxed = IsExclusionBox(exclusionMin, exclusionMax);
+            Vector3 exclusionMinRender = boxed ? ToRender(exclusionMin) : EmptyExclusionMin;
+            Vector3 exclusionMaxRender = boxed ? ToRender(exclusionMax) : EmptyExclusionMax;
             // The dissolve noise cell is floored at a few atlas texels for the cascade pass's reason: below that a
             // dither stops resolving. A face texel is widest at the far plane, where it spans 2 * radius / res, so
             // the cascade helper answers this pass correctly with the light radius in the cascade radius's place.
@@ -161,11 +172,18 @@ namespace KhaozEngine.Render3D
                     PointShadowMath.FaceViewProjection(face, slot, atlas.Rows, lightRender, radius),
                     _gd.Capabilities);
                 renderer.PackFace(packedSlotIndex * PointShadowMath.FaceCount + face, vp, lightRender, radius,
-                    noiseScale, _frameOrigin, nearRadius);
+                    noiseScale, _frameOrigin, nearRadius, exclusionMinRender, exclusionMaxRender);
             }
-            _packedPointSlots.Add(
-                new PackedPointShadowSlot(packedSlotIndex, slot, lightPosAbsolute, radius, nearRadius));
+            _packedPointSlots.Add(new PackedPointShadowSlot(
+                packedSlotIndex, slot, lightPosAbsolute, radius, nearRadius, exclusionMin, exclusionMax));
         }
+
+        /// <summary>The box a light with no box of its own is packed with: empty by construction, so the fragments'
+        /// containment test is false for every finite position and the whole feature costs an unboxed light
+        /// nothing. The corners survive a rebase: both move by the same origin, and a rebase big enough to
+        /// saturate one of them saturates it to an infinity that is still empty.</summary>
+        static readonly Vector3 EmptyExclusionMin = new(float.MaxValue);
+        static readonly Vector3 EmptyExclusionMax = new(float.MinValue);
 
         /// <summary>Upload every light packed this frame in ONE whole-buffer write. Must run OUTSIDE the pass, so
         /// between the last <see cref="PackPointShadowSlot"/> and <see cref="RenderPointShadowSlots"/>, which is
@@ -202,7 +220,8 @@ namespace KhaozEngine.Render3D
                 // The caster set is per LIGHT (it is a sphere cull against that light), so it is rebuilt here
                 // rather than once for the pass. This is CPU work with nothing recorded, so it costs the pass
                 // nothing to do it between draws.
-                BuildPointCasterSpans(packed.LightPosAbsolute, packed.Radius, packed.NearRadius);
+                BuildPointCasterSpans(packed.LightPosAbsolute, packed.Radius, packed.NearRadius,
+                    packed.ExclusionMin, packed.ExclusionMax);
                 for (int face = 0; face < PointShadowMath.FaceCount; face++)
                 {
                     ShadowCastKind bound = ShadowCastKind.None;
@@ -229,15 +248,17 @@ namespace KhaozEngine.Render3D
         /// <summary>One light packed into this frame's ring: where its six faces sit in the ring, which atlas row
         /// it renders into, and the light itself, which the draw re-culls its casters against.</summary>
         readonly record struct PackedPointShadowSlot(
-            int PackedIndex, int Slot, Vector3 LightPosAbsolute, float Radius, float NearRadius);
+            int PackedIndex, int Slot, Vector3 LightPosAbsolute, float Radius, float NearRadius,
+            Vector3 ExclusionMin, Vector3 ExclusionMax);
 
         /// <summary>
         /// Build <see cref="_pointCasterSpans"/>: this light's caster draw list, in the exact order
         /// <see cref="RenderPointShadowSlots"/> draws it. Same rules as the cascade walk (a stale handle, a
         /// receive-only splat mesh and anything the consumer opted out of casting all drop out), plus the light
-        /// sphere test and the near-radius test inside it.
+        /// sphere test, the near-radius test inside it and the exclusion box.
         /// </summary>
-        void BuildPointCasterSpans(Vector3 lightPosAbsolute, float radius, float nearRadius)
+        void BuildPointCasterSpans(Vector3 lightPosAbsolute, float radius, float nearRadius,
+            Vector3 exclusionMin, Vector3 exclusionMax)
         {
             _pointCasterSpans.Clear();
             _pointCasterKinds.Clear();
@@ -260,7 +281,7 @@ namespace KhaozEngine.Render3D
                     if (slot >= _pointCasterKinds.Count) break;
                     if (_pointCasterKinds[slot] == ShadowCastKind.None) continue;
                     if (!InstanceTouchesLight(mesh.Bounds, _instanceData[slot].Model, lightPosAbsolute, radius,
-                        nearRadius))
+                        nearRadius, exclusionMin, exclusionMax))
                         _pointCasterKinds[slot] = ShadowCastKind.None;
                 }
                 AppendCasterSpans(run.Mesh.Index, run.Mesh.Generation, run.Start, run.Count,
@@ -279,7 +300,7 @@ namespace KhaozEngine.Render3D
         /// </para>
         /// </summary>
         internal int DebugRenderPointShadowSlot(int slot, Vector3 lightPosAbsolute, float radius,
-            float nearRadius = 0f)
+            float nearRadius = 0f, Vector3 exclusionMin = default, Vector3 exclusionMax = default)
         {
             if (_pointShadows is null) return 0;
             int draws;
@@ -288,7 +309,7 @@ namespace KhaozEngine.Render3D
                 using (GpuRecording.Open(_gd, cl, "Scene3D.DebugRenderPointShadowSlot"))
                 {
                     BeginPointShadowFrame(1);
-                    PackPointShadowSlot(0, slot, lightPosAbsolute, radius, nearRadius);
+                    PackPointShadowSlot(0, slot, lightPosAbsolute, radius, nearRadius, exclusionMin, exclusionMax);
                     UploadPointShadowFaces(cl);
                     draws = RenderPointShadowSlots(cl);
                 }

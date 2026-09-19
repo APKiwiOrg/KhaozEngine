@@ -532,6 +532,60 @@ public sealed class PointShadowReconfigureTests
         Assert.Equal(1, rig.Scene.LastShadowPassDiagnostics.PointStaticRebuilds);
     }
 
+    /// <summary>
+    /// THE EXCLUSION BOX IS PART OF THE CACHED ROW'S IDENTITY, for the near radius's reason one shape over: it
+    /// changes which casters are drawn into the map and which fragments of them are stored, so a row rendered at
+    /// one box is not the map the same key asks for at another. It sits in the per-light signature beside the
+    /// quantised position, radius and near radius, so a change dirties the row and costs exactly one rebuild, and
+    /// a frame that asks for the same box again costs none.
+    /// </summary>
+    [Fact]
+    public void ChangingTheExclusionBoxOnOneKeyRebuildsThatRowAndNothingElseDoes()
+    {
+        var min = new Vector3(-0.2f, 1.8f, -0.2f);
+        var max = new Vector3(0.2f, 2.2f, 0.2f);
+        using var rig = new ReconfigureRig();
+        rig.RenderTwoFrames(LightShadow.Static(1));
+        Assert.Equal(1, rig.Scene.LastShadowPassDiagnostics.PointStaticRebuilds);
+
+        rig.RenderFrame(LightShadow.Static(1));
+        Assert.Equal(0, rig.Scene.LastShadowPassDiagnostics.PointStaticRebuilds);
+
+        rig.RenderFrame(LightShadow.Static(1, min, max));
+        Assert.Equal(1, rig.Scene.LastShadowPassDiagnostics.PointStaticRebuilds);
+        Assert.Equal(1, rig.Scene.PointShadowedLights);
+
+        // Asked for again unchanged, it is the cached row it always was.
+        rig.RenderFrame(LightShadow.Static(1, min, max));
+        Assert.Equal(0, rig.Scene.LastShadowPassDiagnostics.PointStaticRebuilds);
+
+        // A box of another size on the same key is a change like any other, and so is taking it away.
+        rig.RenderFrame(LightShadow.Static(1, min, max * 2f));
+        Assert.Equal(1, rig.Scene.LastShadowPassDiagnostics.PointStaticRebuilds);
+        rig.RenderFrame(LightShadow.Static(1));
+        Assert.Equal(1, rig.Scene.LastShadowPassDiagnostics.PointStaticRebuilds);
+    }
+
+    /// <summary>
+    /// AN INSTANCE WHOLLY INSIDE THE BOX IS NOT DRAWN AT ALL. The fragment discard would answer it anyway, but six
+    /// faces of an instance that can contribute nothing is work the pass should not be doing, so the caster cull
+    /// drops it on the CPU. One span across six faces is six caster draws, and a dropped instance is none.
+    /// </summary>
+    [Fact]
+    public void AnInstanceWhollyInsideTheExclusionBoxIsNotDrawnAtAll()
+    {
+        using var kept = new ReconfigureRig();
+        kept.RenderTwoFrames(LightShadow.Static(1));
+        Assert.Equal(6, kept.Scene.LastShadowPassDiagnostics.PointFaceDrawCalls);
+
+        // The rig's one caster is a unit box at the origin, so its world sphere reaches 0.87 m: a box two metres
+        // across swallows the sphere and every fragment with it.
+        using var dropped = new ReconfigureRig();
+        dropped.RenderTwoFrames(LightShadow.Static(1, new Vector3(-1f), new Vector3(1f)));
+        Assert.Equal(1, dropped.Scene.LastShadowPassDiagnostics.PointStaticRebuilds);
+        Assert.Equal(0, dropped.Scene.LastShadowPassDiagnostics.PointFaceDrawCalls);
+    }
+
     [Fact]
     public void ARequestAfterDisposalThrows()
     {

@@ -12,10 +12,10 @@
 # instead, which reads the version at the moment it is true. What is left here is the half a hook can
 # actually judge: a version the command spells out itself.
 #
-# Lived inline in .claude/settings.json and .codex/settings.json as one JSON string until it was moved
-# here verbatim, and both settings files now invoke this file. The rule for what "already taken" means
+# Lived inline in the Claude and Codex hook configs as one JSON string until it was moved here
+# verbatim. Both configs now invoke this file. The rule for what "already taken" means
 # is scripts/tag-standard.sh (tag_taken), shared with tag-release.sh so the two cannot drift.
-here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+here=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 [ -f "$here/../tag-standard.sh" ] || exit 0
 . "$here/../tag-standard.sh"
 data=$(cat)

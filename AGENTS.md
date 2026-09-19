@@ -1,444 +1,130 @@
 # KhaozEngine
 
-Shared, game-agnostic engine - a custom MonoGame-free 2D/3D render + windowing/input + Gui + ECS + netcode
-stack (Hardpoint, Nullwake, SpaceGame, Ruinborne all run on it). See README.md and docs/USING-KHAOZENGINE.md.
+KhaozEngine is the shared MonoGame-free 2D and 3D engine used by the APKiwiOrg games. The root
+[`README.md`](README.md) is the authoritative package and umbrella catalog.
+[`docs/USING-KHAOZENGINE.md`](docs/USING-KHAOZENGINE.md) is the consumer contract.
 
-This is the canonical, tool-neutral instruction file for every agent (Claude Code, Codex, and any
-other) and human contributor. `CLAUDE.md` is a thin `@AGENTS.md` import so Claude Code reads the same
-source; Codex reads this file directly.
+This is the canonical tool-neutral instruction entry point. `CLAUDE.md` imports it and Codex reads it
+directly. Keep this root short enough to load with global guidance. Detailed repository rules live in
+[`docs/CONTRIBUTOR-RULES.md`](docs/CONTRIBUTOR-RULES.md).
 
-## Consumers
+## Route by task
 
-Each game pins its own engine version in its `Directory.Build.props` and bumps to adopt.
+| Task | Read first |
+|---|---|
+| Engine code or tests | [Contributor rules: Engine code and test contracts](docs/CONTRIBUTOR-RULES.md#engine-code-and-test-contracts) |
+| Package or dependency changes | [Contributor rules: Dependencies and package structure](docs/CONTRIBUTOR-RULES.md#dependencies-and-package-structure), [DEPENDENCY-SEAMS.md](docs/DEPENDENCY-SEAMS.md) |
+| Build or CI work | [Contributor rules: Build and CI](docs/CONTRIBUTOR-RULES.md#build-and-ci), [CI selective design](docs/design/CI-SELECTIVE-TESTS-DESIGN-2026-07-18.md) |
+| Version, pack or release work | [Contributor rules: Version, package and release rules](docs/CONTRIBUTOR-RULES.md#version-package-and-release-rules) |
+| Documentation | [Contributor rules: Documentation governance](docs/CONTRIBUTOR-RULES.md#documentation-governance), [docs index](docs/INDEX.md) |
+| Discovered work or handoffs | [Contributor rules: Issues and handoffs](docs/CONTRIBUTOR-RULES.md#issues-and-handoffs) |
+| Rendering verification | [CROSS-PLATFORM.md](docs/CROSS-PLATFORM.md), relevant pipeline and design docs |
+| Security-sensitive work | [SECURITY-BASELINE.md](docs/SECURITY-BASELINE.md) |
 
-| Game | Path | Packages |
-|---|---|---|
-| Hardpoint | `~/Hardpoint` | `Game3D` + `Foundation` |
-| Nullwake | `~/Nullwake` | `Game2D` |
-| SpaceGame | `~/SpaceGame` | `Game2D` + `Render3D`, only the Desktop head ships |
-| Ruinborne | `~/Ruinborne` | client `Game3D` + `NetWorld`, headless server `Server` + `WorldStore.SqlServer` |
+## Before changing anything
 
-Packages come from `~/KhaozEngine/local-feed` in dev and GitHub Packages on `v*` tags. Every repo
-under `APKiwiOrg` is private, and that is load-bearing rather than trivia: the Packages feed needs
-auth, so every consumer vendors the engine nupkgs in-repo (`vendor/khaozengine`, the
-`khaoz-vendored` nuget source) and restores offline on a clean checkout or in CI. Client updates
-ship via an Azure Blob feed for the same reason, because a private repo cannot serve Release assets
-to an unauthenticated client.
+- Work in an isolated worktree. Inspect active worktrees, branches and fetched state first. Join a
+  matching worktree or branch from current `origin/main`. The narrow clean-main exception is limited
+  to a self-contained documentation typo, comment, governance edit or one-line non-API fix with no
+  conflicting work.
+- Use `feature/<name>` or `fix/<name>`. Promotion batches may use `<batchN>-promote`.
+- This repository is not a game-template adopter. Do not bulk-copy game manifests, version rules,
+  feeds or hooks into it. Adopt a shared script only when its contract applies, and preserve the
+  engine-specific release, local-feed and doc-version guards.
+- In shared worktrees, stage and commit explicit paths. Never use the shared stash for coordination.
+- Existing unrelated changes belong to their owner. Do not revert or absorb them.
 
-New game repos follow the shared game-repo standard, canonical in `game-template` (`~/GameTemplate`,
-remote `APKiwiOrg/game-template`). Use the `scaffold-game-repo` skill to create or align one.
+## Binding engine contracts
 
+- `AppWindow` is the only class that touches raw Silk.NET or GLFW input. All other code reads
+  `InputState` through `InputManager` and `Pointer`, including hit tests.
+- New behavior gets a headless test in the matching area test project. Test projects reference only
+  the engine projects they use and keep namespaces under `KhaozEngine.Tests.*`.
+- Tests that mutate process-global state use a collection definition with
+  `DisableParallelization = true`.
+- Player-facing text resolves through the localization catalog with `StringId`. Prefer
+  `LocalizedText` at GUI sinks. Raw text is limited to developer output and non-localizable tokens.
+- Third-party libraries sit behind dependency-free engine seams with opt-in backends. Read
+  `docs/DEPENDENCY-SEAMS.md` before changing an edge.
+- KESIZE is a structure ratchet. Put new behavior in a new type. Do not split at an arbitrary line.
+  Baseline growth and exemptions require owner approval. Ratchet down freely with
+  `scripts/check-file-size.sh --update`.
+- Warnings are errors. Fix them at the source. Do not add blanket suppressions or disable the rule.
+- CI tests Release. Validate any Debug-only behavior in Release with a configuration-independent
+  observable.
+- No em-dash or en-dash glyphs in shipped prose or comments. No prose semicolons in Markdown. Run the
+  whole-tree guards before completion.
 
-## Global policy, restated for Codex
+## Build and test
 
-Claude loads the full versions from ~/.claude/CLAUDE.md every session. Codex does not, so the rules are restated here in brief:
+Create the gitignored local source before restore:
 
-- Work in a worktree, never loose on main. Finish: fetch, merge main into YOUR branch, build and test there, then merge back and push main right away. Tagging is never automatic.
-- Ride the staged version: if the version is ahead of the newest tag, append to its changelog entry, roll the date, no bump, no asking. Nothing in flight: cut exactly ONE fresh version and leave it untagged. Only the user starts a release.
-- Ask about releasing only when git worktree list shows you are the last chat standing, once, as the last line of the report.
-- A validated result exists as a pushed commit before you move on. A backlog entry is a pointer to a sha, never the only home of a fix.
-- Discovered work becomes an issue at discovery and is never actioned mid-task. Resolved means closed on the spot. A decline is closed as not planned with its written reason. Cross-repo handoffs are full URLs, short forms do not backlink private repos.
-- No em/en dashes and no prose semicolons in shipped text.
-
-`scripts/check-dashes.sh --tree` is the sweep for that last rule: it checks every tracked `.md`/`.cs`
-file as it stands. The pre-commit hook only sees staged additions, and implementers of every tier emit
-dashes and then report clean, so run it across the whole branch diff before merging. Since #554, CI
-runs it too, alongside `check-prose.sh --tree` and `check-file-size.sh --tree`, in one unconditional
-`ci.yml` step on every push and PR. The orchestrator sweep is still the one that catches a violation
-before it becomes someone else's red run, and it is the only one that sees a branch that was never
-pushed.
-
-Everything below binds those rules to this engine's own mechanics, and wins where it differs.
-
-## Before starting ANY engine work (concurrent-dev rule)
-Heavy parallel dev makes the worktree mandatory here (the trivial-change exception below is the only
-way out), and finishing a piece of work is merge to `main` + push `main` + pack to `local-feed`.
-Before you touch anything:
-1. Check for ongoing parallel work first: `git worktree list`, `git branch -a`,
-   and `git fetch && git status` to see other branches/trees in flight.
-2. If your change fits an existing branch/worktree, work there.
-3. If it does not fit any of them, create a NEW worktree (do not start work
-   loose on `main` or pile onto an unrelated branch). Isolate the change in its
-   own tree so concurrent work does not collide.
-
-That covers every change: code, tests, docs, and version/release work. The one
-exception is the trivial-change case below.
-
-- **How to create the tree:** prefer the native `EnterWorktree` tool, not
-  `git worktree add`. The native tool is what the parallel-dev workflow expects.
-  `EnterWorktree` branches from `origin/<default-branch>` by default. Since this repo
-  auto-pushes, `origin/main` is normally current, but a concurrent chat may have just
-  landed work - `git fetch` first. If your change builds on local `main` work not yet
-  on `origin` (a just-merged commit mid-push), create the tree from local HEAD instead:
-  `git worktree add .claude/worktrees/<name> -b worktree-<name> main`, then rename the branch
-  immediately (`git branch -m feature/<name>`, or `fix/<name>`) so it obeys the naming rule below,
-  then `EnterWorktree` with its `path` to switch in. `EnterWorktree` names its branch
-  `worktree-<slug>` too, so it gets the same immediate rename.
-- **Branch / tree naming:** `feature/<short-name>` for new features, `fix/<short-name>`
-  for bug fixes, `<batchN>-promote` for game-code-into-engine promotion batches
-  (e.g. `batch1-promote`). Keep the worktree directory name matching the branch.
-- **Trivial-change exception:** a self-contained edit that ships no package
-  (a doc typo, a comment, an AGENTS.md/governance tweak, a one-line non-API fix
-  with no version bump) may be made directly on a clean `main` without a worktree,
-  as long as the parallel-work check in step 1 comes back clean. Anything that
-  touches public API, tests, or triggers the release ritual still needs a tree.
-
-## Rules
-- `AppWindow` (KhaozEngine.Windowing) is the ONLY class that touches the Silk.NET/GLFW input
-  statics. Everything else reads the immutable `InputState` snapshot (handed in via `Frame.Input`)
-  through `InputManager`/`Pointer` - keeps input headless-testable. (There is no `MonoGameRawInput`
-  or `IRawInput` any more; the engine is MonoGame-free.)
-- New behaviour ships with a headless test in the matching per-area test project
-  (`KhaozEngine.<Area>.Tests`), or the rump `KhaozEngine.Tests` when it is genuinely cross-cutting
-  (construct an `InputState` frame-by-frame and feed `InputManager.Update(input, viewport?)` -
-  `dt` is a plain `float` in seconds, no `GameTime`). A test project references ONLY the engine
-  projects its tests use - push CI selects test projects by the reference graph, so an over-broad
-  reference silently degrades selection. Declared test namespaces stay `KhaozEngine.Tests.*`
-  (`RootNamespace` is pinned in every split project), and a new test project needs an explicit
-  `<IsPackable>false</IsPackable>`.
-- **A test that WRITES process-global state enlists in a `DisableParallelization` collection.** xUnit runs
-  collections in parallel, so a class that swaps an ambient static and restores it in a `finally` leaves a
-  window in which every other class in the assembly reads the other value, which surfaces as a rare failure on
-  someone else's branch (#349, `GuiTheme.Default`). The assembly-level collections are the pattern to copy
-  (`gui-theme-global`, `ClipboardSerial`, `LoggingSerial`, `AmbientLocalization`, `AllocSensitive`,
-  `NativeDeviceLifecycle`), each with the shared state named in its doc comment. The attribute that does the
-  work is the `[CollectionDefinition(..., DisableParallelization = true)]`, not the `[Collection]` on the class:
-  a `[Collection("name")]` with no definition anywhere serializes that name's classes against each other and
-  leaves them running in parallel with everything else, which is how #349 sat open under a collection attribute
-  that looked like a fix.
-- **A GPU test class that captures more than a couple of pictures shares ONE `Scene3D` through a class fixture.**
-  `new Scene3D(...)` used to cost about 2.57 seconds and made `OceanFocusGpuTests` 105s of the lavapipe leg's full
-  suite for 11 tests (#332). #640 found that 2515 ms of that was glslang recompiling the same unchanged shader
-  sources on every call, and a process-wide memo (`SpirvCompileCache`, `KE_SPIRV_CACHE` switches it off) took the
-  constructor to 21 ms on Metal, first scene in a process apart. What is LEFT is pipeline creation, which is per
-  device by nature and which the software legs pay much more of than Metal does, so the fixture is still the right
-  shape for a class that captures a lot: a capture through an already-built scene costs 3 ms and a device under a
-  millisecond. Measure before you convert one, because the number this rule was written against has moved.
-  `KhaozEngine.Render.Tests/Gpu/OceanFocusScene.cs`
-  is the pattern and the assembly's first class fixture: it creates its device LAZILY, so a plain `dotnet test`
-  that skips every `[GpuFact]` never asks for one, and it holds no process-global state, so it needs no
-  `DisableParallelization` collection. **A reused scene is never assumed to render what a fresh one does.** State
-  crosses a frame by design in several producers (the FFT foam accumulator, the ping-ponged row intermediates,
-  the frame clock), so the class carries ONE test that ages the shared scene through several configurations and
-  pins its picture byte-for-byte against the same scene rendered through `Render3DSnapshot.Capture` on its own
-  device. That test is the licence for the rest, and it is what goes red first if a producer starts carrying
-  state across a configuration change.
-- **CI tests Release, a local `dotnet test` runs Debug.** `ci.yml` and `scripts/ci-selective-test.sh` both pass
-  `-c Release`, so `Debug.Assert`, `[Conditional("DEBUG")]` members and `#if DEBUG` blocks do not exist on the
-  runner. A test that asserts on Debug-only behaviour passes on every developer machine and goes red on the first
-  push (`TeleportEpochBasisTests`, #637, asserted that a forced miss THROWS via the test host's `Debug.Assert`
-  rescue: green locally, red on CI). Pin a configuration-independent observable (a counter, a log line, a return
-  value) and put the Debug-only escalation under `#if DEBUG` in the test itself. When a change leans on any of
-  those constructs, run the affected test project once with `-c Release` before merging.
-- Hit-test via `InputManager`/`Pointer` bounds helpers (`IsTapIn`, etc.), never raw position + button.
-- **The KESIZE file-size ratchet is compile-time, and moving a baseline is the USER's call.** When
-  KESIZE001/002 fires, the fix is to put the new code in its own type. Never split a file at an
-  arbitrary line to satisfy the check: two god halves are worse than one, and that split is the
-  failure the ratchet exists to prevent. When the growth is genuinely legitimate, STOP AND ASK rather
-  than editing `.filesize-baseline` yourself. A write-time hook turns any hand-edit of that file into
-  a confirmation prompt, so raising a frozen size or granting an exemption cannot land silently
-  inside a large diff. Ratcheting DOWN is free and needs no approval: run
-  `scripts/check-file-size.sh --update` (it can only lower or drop entries, never raise one) in the
-  same branch as the shrink, so the baseline follows the new low-water mark. An `exempt <path>` line
-  is for a file whose size is CONTENT rather than STRUCTURE (a generated lookup table, an embedded
-  data blob), and never for a test fixture that accreted cases or a screen/frame-loop class, both of
-  which should be split instead. **The test is GROWTH, not syntax:** does the file grow only when the
-  DATA grows, or also whenever its subsystem gains a feature? Check `git log`, do not reason from what
-  the file looks like. "It is all constants" is NOT the test: `ShaderSources.cs` was 2624 lines of
-  nothing but `const string` with no logic at all, and was still the wrong candidate, because it grew
-  with every renderer feature. It was split into `ShaderSources.<Domain>.cs` partials instead (14.8.1).
-
-## Build / test / release
-- `dotnet test` (root, runs `KhaozEngine.slnx` - every test assembly in the solution) - every new behaviour ships with a headless test in its matching per-area project.
-- **`ci.yml` runs two paths.** Tag pushes and `workflow_dispatch` run the full sequence (restore, build,
-  full test, determinism double-pass, pack, publish). Ordinary pushes and PRs run
-  `scripts/ci-selective-test.sh`, which builds and tests only the test projects `dotnet-affected` marks
-  affected by the diff, skips entirely on a docs-only diff, and forces full on a
-  workflow/scripts/props/slnx/tool-manifest change or a missing base sha. Ahead of that split, both
-  paths run the convention step (`check-dashes.sh --tree`, `check-prose.sh --tree`,
-  `check-file-size.sh --tree`) and `check-doc-versions.sh` unconditionally, so a docs-only push that
-  builds nothing is still gated on content (#554). See
-  `docs/design/CI-SELECTIVE-TESTS-DESIGN-2026-07-18.md` for the full design.
-- **Public repo, every leg GitHub-hosted.** The engine went public on 2026-08-06, after its private CI
-  became the largest line on the org's GitHub bill, so standard hosted runners are free and no leg
-  touches a personal machine any more. `ci.yml` builds, tests, packs and publishes on **x64**
-  `ubuntu-latest`. **x64 is no longer load-bearing and the leg stays on it anyway.** The reason it was
-  pinned there was `libveldrid-spirv`, which shipped linux-x64 and not linux-arm64. That package left
-  with the toolchain swap in 18.0.0, and its replacements (`Silk.NET.Shaderc.Native` and
-  `Silk.NET.SPIRV.Cross.Native`) ship eight RIDs including linux-arm64, so the constraint is gone.
-  Moving the leg is a separate, deliberate change with its own bake, not a side effect of the swap:
-  every golden in the tree was baked on x64 runners. `cross-platform-gpu.yml`, the path-gated matrix,
-  runs THREE blocking golden legs since 18.0.0, one per engine-owned backend: `metal-native` on hosted
-  `macos-26` (pinned to the number, not to `macos-latest`, so an image promotion cannot move the GPU
-  under a golden gate), `direct3d11-native` on Windows/WARP and `vulkan-native` on Linux/lavapipe. The
-  three incumbent legs were deleted with the backend they tested, and each native leg owns the golden
-  family named after itself (seeded from the incumbent's as a byte-identical copy in 17.41.0). That matrix
-  also carries the engine's only
-  Vulkan validation gate, in two tiers: `strict` on the native leg's scheduled full suite, and `sync`
-  in a separate golden-and-compute job, which is the one instrument in CI that can see a missing
-  barrier a software rasterizer orders correctly anyway. `docs/CROSS-PLATFORM.md` is the living doc for
-  the matrix, and the games' fleet-wide CI model (org, both runners, secretless OIDC, macOS arm64-only)
-  is in `GameTemplate/docs/CI-AND-RUNNERS.md`.
-- **Warnings are errors.** `<TreatWarningsAsErrors>true</TreatWarningsAsErrors>` in `Directory.Build.props`
-  (every config), so any compiler/analyzer warning fails the build, the tests, and CI. Keep the engine at zero
-  warnings and fix them at the source, not with `<NoWarn>` / `#pragma warning disable` / `TreatWarningsAsErrors=false`
-  (the only standing suppression is `1591`, missing XML doc on public members). This is the fleet-wide build rule;
-  the engine still keeps its own SemVer and developer-facing `CHANGELOG.md`, and is exempt from the games'
-  player-changelog style and version-segment scheme.
-- **Always add a `CHANGELOG.md` entry on every version bump.** Newest-first, detailed (public API / behaviour
-  change), with a tight one-line summary as the entry's first sentence so the file doubles as the high-level
-  "history over time" view. It goes in the SAME commit as the `Directory.Build.props` version bump. Never bump
-  the version (or tag a release) without it. (There is no separate `CHANGENOTES.md` - it was folded into
-  `CHANGELOG.md`; one file is the single source of truth.)
-- **The shared `<KhaozEngineVersion>` line collides constantly.** Parallel dev is heavy here and
-  local `main` is routinely ahead of `origin/main`, so never assume your intended version or tag is
-  free. A concurrent chat may have already bumped it and tagged that `vX.Y.Z`, so re-read the current
-  version and `git tag` on the up-to-date `main` right before you bump, take the next FREE version
-  for your bump + tag, and rebase your `CHANGELOG.md` entry onto it. That collision is auto-resolved,
-  no asking.
-- Finishing ritual, in order: bump `<KhaozEngineVersion>` in `Directory.Build.props`, unless you are
-  riding an in-flight bump (global policy above), in which case skip this step → add the
-  `CHANGELOG.md` entry (or append your notes to the in-flight entry when riding) → update the
-  engine-version declarations the guard checks (EVERY `README.md` `<PackageReference>` example line,
-  one per umbrella) → close any issue this work resolves (`gh issue close`, or `Closes #123` in the
-  commit) if it is somehow still open, a backstop only: that should already have happened when the
-  work landed, per the Discovered work section → `scripts/pack-local-feed.sh` (the guarded pack, see the
-  bullet below: cumulative, and happens on every finish whether or not a tag follows) → commit → push
-  `main` right away, don't
-  hold or ask. Stop there: a `vX.Y.Z` tag is a separate, deliberate act, never automatic (the user
-  starts one, with the single pinned-and-waiting exception below). When a release IS due, cut it with
-  `scripts/tag-release.sh` (creates the annotated tag `vX.Y.Z` with the canonical
-  `area(<version>): summary`, reading `<KhaozEngineVersion>`, and do NOT hand-type `git tag vX.Y.Z`, a
-  lightweight tag is rejected by `pre-push` and is how merge-commit subjects leaked into old tags),
-  then push the tag (CI publishes to GitHub Packages on `v*`).
-  `local-feed/` is a gitignored dev convenience; GitHub Packages (every published `v*`) is the durable store, so
-  `local-feed` may be pruned up to the lowest version any consumer still pins (each consumer's `Directory.Build.props`
-  `<KhaozEngineVersion>`; do not prune below it) without losing anything recoverable.
-- **The pack REFUSES to overwrite an already-released version, which is why the ritual names a script.** The pack
-  step packs whatever `<KhaozEngineVersion>` currently says, and that version does not move until someone bumps
-  it, so every finish in the window between a tag and the next bump used to re-pack a released number. The feed's
-  `17.30.0` then held a bigger build than `v17.30.0` describes, a consumer vendoring in that window shipped an
-  engine build no tag names, and its tag-to-tag adopt sweep read the capability in the wrong release (#492).
-  `scripts/pack-local-feed.sh` runs the guard and then the same `dotnet pack -c Release -o ./local-feed`. It packs
-  a STAGED version (the ordinary case, and it says so rather than staying silent), packs when HEAD is the tag with
-  a clean tree (a re-pack then reproduces the released bytes, which is how a pruned feed is rebuilt), and refuses
-  anything else. The deliberate exception is `PACK_RELEASED_OK=1`, in the same spirit as `FILESIZE_OK`. Note the
-  guard is silent through a normal release: `tag-release.sh` tags AFTER the pack, so at pack time the version is
-  still staged. `scripts/hooks/pack-release-guard.sh` is the agent-side half, denying a bare `dotnet pack` into
-  `local-feed` under the same rule (both settings files invoke it, as they do the tag-collision guard), because
-  the raw command is what an agent types from memory. `scripts/check-local-feed.sh` is the DETECTION for a feed
-  that already drifted: it reports every version whose newest package was written after its tag, and it is what to
-  run before vendoring the feed into a consumer. The rule itself lives once, in `scripts/pack-standard.sh`, sourced
-  by all three, the same anti-drift shape as `scripts/tag-standard.sh`. Exercised by
-  `scripts/tests/pack-local-feed.test.sh` (`sh scripts/tests/pack-local-feed.test.sh`). The tag-collision
-  rule has the same shape and its own test: `tag_taken` in `scripts/tag-standard.sh`, checked by
-  `scripts/tag-release.sh` at the moment the version is true (the PreToolUse hook only judges a literal
-  `vX.Y.Z` in the command), exercised by `sh scripts/tests/tag-collision-guard.test.sh`.
-- **Full doc sweep on EVERY feature / bug / change - not just the guard-checked declarations.**
-  `check-doc-versions.sh` verifies the engine-version declarations, the newest `CHANGELOG.md` heading, AND the
-  package inventory (every packable package has a README catalog row and ships its own `<Package>/README.md`).
-  What it does NOT check is whether
-  any of that prose is CORRECT: a stale catalog row, or a package README describing removed API, sails straight
-  through. The sweep below is for content accuracy, which no guard can do for you.
-  Each artifact has ONE canonical source - edit that one, the rest point at it:
-  - **Package + umbrella catalog -> `README.md`** (the package table + "Umbrella metapackages" table, plus the
-    repo-layout block). When a package is ADDED/REMOVED or its summary/deps change, edit the README table.
-    This `AGENTS.md` only POINTS at the README catalog - do not re-enumerate packages here. (7.34.0 shipped with
-    the README package table missing two new packages - one source means one place to forget.)
-  - **Per-package API -> that package's own `<Package>/README.md`.** When public API is ADDED/CHANGED WITHIN an
-    existing package, update the package's own README - the `PackageReadmeFile` that ships *inside the nupkg* and is
-    read standalone on NuGet.org, so it rots independently of the master catalog (the `NetWorld` README still
-    described pre-8.0.0 `WorldColliders`/`WorldSurfaces` ctor params two releases later; 8.2.0's telemetry types
-    were missing from the `Diagnostics`/`Gui`/`Netcode` READMEs). These stay self-contained; keep them correct.
-  - **Usage -> `docs/USING-KHAOZENGINE.md`** (a section for new public API); **seams/edges ->
-    `docs/DEPENDENCY-SEAMS.md`** whenever a dependency edge or a seam member changed.
-  - **`CHANGELOG.md`** + the version bump as before; for a behaviour/bug change also fix any doc, README, or code
-    comment that described the OLD behaviour.
-  - **Discovered follow-ups -> a GitHub issue.** Anything the change knowingly leaves undone, defers, or
-    works around is filed as you find it, with a `confidence/*` label, and any issue the change resolves
-    is closed as it lands.
-  - **Design rationale -> `docs/design/`, and NOTHING else lives there.** A design doc holds the why: the
-    alternatives weighed, the decisions taken, and the reasoning that a corrected-in-flight implementation
-    proved out. It is not a reference surface, so shipped API and usage move to `CHANGELOG.md` /
-    `docs/USING-KHAOZENGINE.md` / the package README as they land. An IN-FLIGHT program's doc may carry its own
-    round-scoped deferrals as working notes (the map editor does, and its `kind/roadmap` issue delegates to it),
-    but that licence ends with the program: anything still open when the program completes MUST become an issue,
-    because a design doc nobody is actively working is not a ledger anyone reads. The dungeon generator stranded
-    three follow-ups exactly there, invisible for 20+ releases after it finished (now filed as #74). Add a row +
-    a status line to `docs/INDEX.md`'s design table when you add a doc, or it is orphaned on arrival (three nav
-    docs were, for releases). A complete design doc is KEPT as history rather than deleted,
-    because the reasoning behind a shipped decision is the expensive thing to reconstruct. `docs/` root is for
-    the living docs only.
-  Mechanical check before committing: grep the new (or removed) type / package / flag name across **ALL `*.md`
-  recursively** (root, `docs/`, `docs/design/`, AND every per-package `<Package>/README.md`) + `AGENTS.md`, and confirm every place
-  that should mention it does (and no stale doc still describes what you removed).
-- `scripts/check-doc-versions.sh` enforces three things. First, that the engine-version declarations
-  (EVERY `<PackageReference>` example line in `README.md` AND `docs/USING-KHAOZENGINE.md`, not just one) match the
-  **engine version line** (`<KhaozEngineVersion>`). `docs/ROADMAP.md` "Current released version" was checked here
-  too and is not any more: the roadmap is issues now, the file is gone, and no prose copy of the version is left
-  to drift. Second, that the newest `CHANGELOG.md` heading is `## <KhaozEngineVersion>`, so a version bump cannot
-  ship without a changelog entry that actually names the new version (the pre-commit and PostToolUse hooks only
-  check the file was touched). Third, that every packable package has a README catalog row and ships its own
-  `<Package>/README.md` via `<PackageReadmeFile>`, which is what catches a new package landing undocumented. CI
-  runs it on every push, so a forgotten bump, a stale doc version, a missing changelog entry, or an undocumented
-  package fails the build. Consumer pins are exempt and may lag.
-- SemVer: additive = minor, fixes = patch, breaking = major.
-- **One shared version line - the engine is entirely MonoGame-free.** `Directory.Build.props` carries a single
-  `<KhaozEngineVersion>` governing the WHOLE engine; every packable project sets
-  `<Version>$(KhaozEngineVersion)</Version>` in its csproj, so one bump releases all packages together (repack to
-  `local-feed`, single tag `vX.Y.Z`). `check-doc-versions.sh` enforces this line. **Per-version history lives in
-  `CHANGELOG.md`, and the package + umbrella catalog (every package, what it gives you, and its deps) is the
-  table in `README.md` - not here.** When a package is added/removed or a summary/dep changes, edit the README
-  table (the single source) plus that package's own `<Package>/README.md`; this file only points at the README
-  catalog. The only package facts kept here are the engine-dev orientation below:
-  - **Dependency layering** - the SHAPE only. Which packages exist, which umbrella carries each one, and the
-    full per-package deps are the README catalog and its "Depends on" column. Do not re-enumerate any of that
-    here: the duplicate is what rots, and the README's copy is guard-checked while a copy here is not.
-    `Primitives` sits at the bottom of the render/runtime stack, which layers `Gpu` -> `Windowing` ->
-    `Render2D`/`Render3D` -> `Gui`/`Game`/`Game.Render3D`. The GPU-free `Foundation` packages sit beside it
-    (9.0.0 folded Pooling into Primitives, Localization into App, and Effects into Particles). `Gui` also
-    references `App` (for the `LocalizedText` localization sink type, acyclic - `App` never references `Gui`).
-    `Simulation` sits at the bottom of the server/netcode stack, which layers `Simulation` ->
-    `Netcode`/`Replication`/`Sharding`/`WorldStore` -> `NetWorld`. `Ecs` depends on `Simulation` (acyclic).
-    Not every package is in an umbrella: the opt-in ones (`Physics.Bepu` and the `*.Sqlite`/`*.SqlServer`
-    backends are the usual suspects) must be referenced explicitly. Each umbrella's own csproj
-    `ProjectReference` set is the authority on what it carries - read it, do not trust a prose list.
-    A `netstandard2.0` Roslyn analyzer `KhaozEngine.Localization.Analyzers` (KELOC001/002/003) flows to consumers via the `Game2D`/`Game3D` umbrellas.
-    The four umbrellas (`Foundation`, `Game2D`, `Game3D`, `Server`) are code-free dependency groups.
-  - **Gotcha:** the package id is `KhaozEngine.Sharding`, NOT `KhaozEngine.World` (a `World` leaf would
-    shadow the ECS `World` type). Older package history is in `CHANGELOG.md`.
-- **Commit subjects:** conventional-commit style `area(scope): summary`, e.g.
-  `audio(4.3.1): MacOsMusicBackend loads built .ogg` or `docs(readme): ...`.
-  On a release/version-bump commit, use the new version as the scope (`audio(4.3.1):`).
-- **One version bump per batch, not per item (avoid version-number churn).** When a worktree promotes several
-  related items, commit each item individually but do the single `Directory.Build.props`
-  bump + `CHANGELOG.md` entry + `dotnet pack` ONCE at the end of the batch, then do
-  per-consumer adopt PRs. Never bump the version per-item within a batch. Same spirit for a small
-  standalone fix landing alongside other small work: fold it into that shared bump rather than cutting
-  its own `vX.Y.Z`, and lean on the trivial-change exception (no bump at all) for anything that ships no
-  package, so the engine version does not creep through a run of one-line releases.
-- **The one sanctioned divergence from the global rule: tag immediately, without asking, when a game
-  is pinned-and-waiting on this change.** The engine-first rule pauses the dependent game's work until
-  the upgrade ships, so holding the tag holds that game. This is the one case the engine tags on its
-  own initiative, and the only place in this file where an automatic tag is authorized at all. Riding,
-  cutting a fresh version, and the release ask are the global policy at the top of this file, unchanged.
-  The default end of a piece of work here is merge, push `main`, pack to `local-feed`, stop.
-- `local-feed/` is gitignored but MUST exist before `dotnet restore` (`mkdir -p local-feed`).
-- **SessionStart injects the discovered-work ledger** into every session: the open backlog count, via
-  `scripts/session-context.sh` on top of `scripts/ledger.sh`. Informational, never blocks. There is no
-  handoff-reciprocity guard any more (`scripts/check-handoffs.sh` and `HANDOFF_CHECK_OK` are both retired):
-  a cross-repo handoff is an issue reference now, and GitHub backlinks it for free, so there is no
-  one-sided handoff left to block.
-- **Two guards keep the backlog files retired.** A pre-commit check and a `Write`/`Edit` agent hook both
-  reject re-creating `docs/TODO.md` or `docs/ROADMAP.md` (migrated to GitHub Issues 2026-07-17, deleted),
-  pointing you at `gh issue create` instead. Override a deliberate exception with `BACKLOG_FILE_OK=1`.
-- **The ledger still wants a token.** The repo is public now, so the issues are anonymously readable, but
-  `gh` rate-limits unauthenticated calls hard enough (60/hour per IP) that a mirror sync will fail part way
-  through and look like an outage. Keep `gh auth login` or `GH_TOKEN` exported. Codex
-  and CI generally need the env var. When it cannot read, it says `BACKLOG: UNKNOWN` or `STALE MIRROR` and
-  names the fix. **It never says `0`**, deliberately, because a count is only ever printed when it was
-  actually read (the full case is in the `ledger.sh` header).
-- net10.0, MonoGame-free: Silk.NET (windowing + input, GLFW natives bundled per-RID), the engine's own
-  Metal / Direct3D 11 / Vulkan backends behind `KhaozEngine.Gpu` (GPU, with `Silk.NET.Shaderc` and
-  `Silk.NET.SPIRV.Cross` as the shader toolchain since 18.0.0, replacing `Veldrid.SPIRV`),
-  Silk.NET.OpenAL (audio), xUnit (tests). Veldrid is gone from the tree entirely, and
-  `ArchitectureTests.NoTwoShaderToolchains` keeps it out: two glslang copies in one process corrupt
-  each other, so a second shader toolchain cannot be added back even temporarily for a comparison.
-
-### Agent build workaround: .buildhome (unreadable ~/.gitconfig)
-
-`dotnet build` / `dotnet test` can fail with an error about reading `~/.gitconfig` when run from a
-sandboxed or agent context. When, and only when, that specific failure appears, rerun with a
-scratch HOME inside the working tree and the real NuGet cache pinned, so restore does not
-re-download:
-
-```bash
-real_home="$HOME"
-mkdir -p "$PWD/.buildhome"
-HOME="$PWD/.buildhome" NUGET_PACKAGES="$real_home/.nuget/packages" dotnet build KhaozEngine.slnx
+```sh
+mkdir -p local-feed
+dotnet build KhaozEngine.slnx -c Release
+dotnet test KhaozEngine.slnx -c Release --no-build --filter "Category!=LiveSocket"
 ```
 
-Same prefix for `dotnet test`. `.buildhome/` is gitignored fleet-wide (game-template standard):
-never commit it, avoid `git add -A` around it, and let it die with the worktree. Where the build
-reads `~/.gitconfig` fine, this rule never fires.
+Also run the checks appropriate to the files changed. Repository governance changes run at least:
 
-## Discovered work (follow-ups and chips)
-
-### The ledger
-
-The backlog is **GitHub Issues** in this repo. There is no `docs/TODO.md` and no `docs/ROADMAP.md`
-any more, and no file to keep in sync.
-
-```
-gh issue create --label kind/backlog --label confidence/lead --title "..." --body "..."
-scripts/ledger.sh search <term>    # prior art, INCLUDING closed issues. Use before filing.
-scripts/ledger.sh status           # what the open pile looks like right now
+```sh
+sh scripts/check-dashes.sh --tree
+sh scripts/check-prose.sh --tree
+sh scripts/check-file-size.sh --tree
+sh scripts/check-agent-instructions.sh --tree
+bash scripts/check-doc-versions.sh
 ```
 
-**Search before you file.** `ledger.sh search` greps a local mirror of every issue, open and closed.
-Use it, not GitHub's search box: GitHub tokenizes, so it will not reliably find `WorldColliders` or
-`KELOC001`, and those identifiers are exactly how you look things up. A hit on a *closed* issue is the
-most valuable result it can give you, because it usually means "this was investigated and declined,
-here is why".
+Plain `dotnet test` skips GPU facts. GPU work follows `docs/CROSS-PLATFORM.md` and uses the relevant
+backend CI bake. Do not launch consumer clients for engine tooling or documentation work.
 
-**At your checkpoint.** Discovery here usually happens in a bake or a consumer adopt. The checkpoint
-is the moment you are about to end your turn and report back, reachable in every session including the
-ones that never cut a release. Anything small and self-contained is a subagent job then, so do it and
-say you did. Anything needing its own design, its own release, or another repo is handed off and
-reported, not started.
+## Version and release boundary
 
-**Say how much to trust it.** Every backlog issue carries a `confidence/*` label, and it is required
-(`.github/workflows/issue-confidence.yml` flags anything filed without one, CLI included). This is the
-thing most often lost: a checked finding and an unverified guess look identical once they are both just
-an issue in a list, and acting on a guess as though it were a finding wastes exactly the time the guess
-was meant to save. `confidence/verified` = checked against the code. `confidence/lead` = surfaced, not
-checked, may well be wrong. `confidence/authored` = written deliberately, with the context. A decline
-carries `confidence/refuted` alongside its written reason.
+`Directory.Build.props` contains the single `<KhaozEngineVersion>` used by every package. Tooling,
+documentation and repository governance do not bump it.
 
-**Handoffs go out labelled `needs/upstream`, written as a full URL**
-(`https://github.com/APKiwiOrg/Nullwake/issues/45`). Plain `#123` is still correct WITHIN this repo.
-Cross-repo is the common direction here: the engine is upstream of four games, so a consumer-side item
-the engine is blocking (or a game-side gap an engine change creates) is a reference, not a pair of
-hand-written entries.
+Package-bearing work follows the full ritual in
+[`docs/CONTRIBUTOR-RULES.md`](docs/CONTRIBUTOR-RULES.md#version-package-and-release-rules). The durable
+minimum is:
 
-**Consumer fit-failure pairs are the decline ledger's inflow, and the engine treats them as a primary
-API-gap signal.** A game that cannot adopt an engine type files a pair: a `needs/upstream` record on
-its side and, here, a `kind/backlog` (or `kind/roadmap` if it needs a spec) issue carrying the
-code-cited fit evidence with `confidence/verified` and the fleet `parity` label, cross-linked by full
-URL both ways and added by the filer to the org board
-(https://github.com/orgs/APKiwiOrg/projects/1, which has no auto-add). These are not noise. They are
-the main way the engine learns what blocked adoption, especially for `Gui` and utility API gaps where
-a missing knob (a text scale, a predicate hook) silently forces a bespoke fork downstream. The
-precedent pair is https://github.com/APKiwiOrg/KhaozEngine/issues/237 (here) and
-https://github.com/APKiwiOrg/SpaceGame/issues/82 (SpaceGame). The consumer-side process that generates
-these lives in `GameTemplate/docs/ENGINE-INTEGRATION.md` and the games' own
-`docs/ENGINE-INTEGRATION.md`, and is not restated here.
+1. Re-read current `main`, the version and tags before selecting a version.
+2. Put the `CHANGELOG.md` entry in the same commit as a version bump.
+3. Update every declaration guarded by `scripts/check-doc-versions.sh`.
+4. Build and test Release, then run `scripts/pack-local-feed.sh`.
+5. Reconcile through the owning orchestrator and push the validated result.
 
-### Filing
+Never run a bare pack into `local-feed`. Never hand-create a release tag. `scripts/tag-release.sh`
+creates the canonical annotated tag only when a release is explicitly due. The sole automatic tag
+exception is an explicitly pinned and waiting consumer.
 
-- Use the issue forms (**Backlog item** / **Roadmap item**). Blank issues are off, because a blank issue
-  cannot carry a confidence rating.
-- **Backlog vs roadmap** is the old TODO-vs-ROADMAP split, now two labels instead of two files.
-  `kind/backlog` is the chip pile. `kind/roadmap` is the program list: anything that earns its own design
-  spec and its own release. **If it needs a spec, it is a roadmap item. Otherwise it is a TODO.** That is
-  the whole test, and it did not change when the files went away. A roadmap item's spec lands in
-  `docs/design/` (`<TOPIC>-DESIGN-<YYYY-MM-DD>.md`), never `docs/` root, with the issue pointing at it
-  and a row added to `docs/INDEX.md`'s design table.
-- Title it the way you would say it out loud. Then, in the body, write enough context and file links to
-  action it without the chat that found it: paths, symbols, line numbers, what you already ruled out.
-  Do not compress what you know into a task title. The next reader has none of your context, and
-  re-deriving it costs far more than writing it down did.
-- Priority is a `priority/*` label (`critical` > `high` > `medium` > `low`), synced fleet-wide by
-  `scripts/sync-labels.sh` and mirrored on the org board's Priority field
-  (https://github.com/orgs/APKiwiOrg/projects/1), not the board's order. The board still tracks status
-  (Todo / In Progress / Done); the ordered `docs/ROADMAP.md` list it replaced is in git history.
+## Documentation and issues
 
-## Localization
+Each fact has one source:
 
-**Localization is a founding principle.** All player-facing text (UI, menus, settings, dialogue,
-tooltips, notifications, player-visible errors and status) must resolve through the localization
-catalog via a `StringId` (`LocalizationManager` / `IStringCatalog`), never a hardcoded display literal.
-Add the string to the catalog first, then reference it. The engine is moving player-facing Gui sinks to
-a `LocalizedText` value type so bare strings become a compile error. Prefer that API as it lands.
-Exemptions: developer/debug-only UI and non-localizable tokens (proper names, numbers) via the explicit
-raw escape hatch, kept greppable.
+- Packages and umbrella membership: root `README.md`.
+- Public API use: `docs/USING-KHAOZENGINE.md` and each package README.
+- Dependency edges: `docs/DEPENDENCY-SEAMS.md`.
+- Release history: `CHANGELOG.md`.
+- Design rationale: `docs/design/`, indexed in `docs/INDEX.md`.
+- Open work: GitHub Issues.
+
+Every feature, fix and API change gets a full Markdown sweep for the changed names and old behavior.
+Guarded version declarations are only part of that sweep.
+
+`docs/TODO.md` and `docs/ROADMAP.md` are retired. Search with
+`scripts/ledger.sh search <identifier>` before filing. Use `kind/backlog` for actionable work and
+`kind/roadmap` when a design spec is required. Every issue carries one `confidence/*` label.
+Cross-repository handoffs use `needs/upstream` and full GitHub URLs. Consumer fit failures are linked
+issue pairs with code evidence and the engine `parity` label.
+
+## Hook layout
+
+- `.claude/settings.json` is Claude's project hook registration.
+- `.codex/hooks.json` is Codex's native project hook registration. It mirrors the Claude registration.
+- `.githooks/` is the tool-independent backstop through `core.hooksPath`.
+- `scripts/hooks/file-change-guard.pl` normalizes Claude Write/Edit payloads and Codex apply patches.
+
+The agent hooks preserve engine-specific behavior: local-feed and ledger SessionStart setup, dash and
+retired-file guards, the KESIZE approval and preflight checks, tag collision, released-pack refusal,
+the engine version to changelog reminder and the Stop doc-version check. Do not replace this set with
+the smaller game hook set.

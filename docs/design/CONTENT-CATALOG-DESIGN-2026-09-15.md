@@ -2682,7 +2682,7 @@ carries everything the fetch needs, which is why it carries the hash and not jus
 **Where the client gets the base URL.** Not from the refusal token. A URL in a refusal token is a redirect an
 unauthenticated party controls, and section 13.4 spends why that is unacceptable. The client is configured
 with its pack base address the same way it is configured with its server address, which for the two consumers
-is already how the Azure Blob client update feed works (AGENTS.md, Consumers).
+is already how the Azure Blob client update feed works (`README.md`, Consumers).
 
 ### 8.6 Which endpoint serves the chunks, weighed
 

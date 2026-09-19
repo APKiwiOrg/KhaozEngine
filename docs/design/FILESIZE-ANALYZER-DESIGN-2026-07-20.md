@@ -121,7 +121,7 @@ merges, and pushes to `main` in one pass, so a one-line baseline raise buried in
 by nobody. The blessing was silent, which made the ratchet's whole strictness story rest on an
 enforcement step that was not happening.
 
-Fixed with agent write-time hooks in `.claude/settings.json` and `.codex/settings.json`, in this repo
+Fixed with agent write-time hooks in `.claude/settings.json` and `.codex/hooks.json`, in this repo
 and in game-template. They emit `permissionDecision: "ask"`, deliberately NOT `"deny"`. Deny is the
 right shape for the em-dash and retired-backlog-file guards, where there is no legitimate case. Here
 there is: the whole point is a workaround the user can approve, and a hard deny would leave no path

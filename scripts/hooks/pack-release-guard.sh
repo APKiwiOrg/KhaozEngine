@@ -3,7 +3,7 @@
 # `dotnet pack` whose output lands in local-feed, and denies it when <KhaozEngineVersion> names a
 # version that is already released (issue #492). Silent (exit 0, no output) for everything else, which
 # is the allow path. Same shape and the same stdin contract as scripts/hooks/tag-collision-guard.sh,
-# which both settings files already invoke.
+# which both agent hook configs already invoke.
 #
 # WHY A HOOK AND NOT JUST A SCRIPT. The prevention is scripts/pack-local-feed.sh, which carries the
 # guard inline. But the ritual line has read `dotnet pack -c Release -o ./local-feed` for a very long

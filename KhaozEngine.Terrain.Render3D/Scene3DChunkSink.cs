@@ -658,8 +658,13 @@ namespace KhaozEngine.Terrain
         public void ReLod(ChunkCoord coord, object handle, int lod, ChunkRing ring = ChunkRing.Gameplay)
         {
             var load = (ChunkLoad)handle;
-            ChunkBuildReason reason = lod != load.Lod ? ChunkBuildReason.TierChange
-                : ring != load.Ring ? ChunkBuildReason.RingChange
+            // A ring transition dominates a tier change that happens in the same call. The approach that promotes a
+            // chunk to gameplay almost always moves it to a finer tier at the same moment, and only the ring decides
+            // whether placements, prop statics and the terrain collider exist at all. Calling that a TierChange took
+            // the placement-reuse fast path over a decor chunk, which has no placements to reuse, so the promoted
+            // chunk arrived with no props, no statics and no collider. TerrainStreamer already orders it this way.
+            ChunkBuildReason reason = ring != load.Ring ? ChunkBuildReason.RingChange
+                : lod != load.Lod ? ChunkBuildReason.TierChange
                 : ChunkBuildReason.Invalidate;
             ReLod(coord, handle, lod, ring, reason);
         }

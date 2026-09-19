@@ -34,6 +34,10 @@ assumption about update rate. A cadence is a `float` of seconds.
 - **`IdleBreath`** - the standing-still cycle: torso rise and tip, an arm sway a quarter cycle behind it, a
   held break at both elbows, and a solved rest stance that keeps each sole on the floor under its own hip.
 - **`QuadrupedGait`** / **`QuadrupedPose`** - the four-beat lateral-sequence walk off the same phase.
+- **`HumanoidSkeleton`** / **`QuadrupedSkeleton`** - the composers: ordered piece names, one transform per
+  piece into a caller's span, and the rest offsets those transforms land on at a zero pose. See below.
+- **`SegmentSockets`** - the wrist and off-hand turns a held piece rides, the hand chain that carries it, and
+  a containment check for a socket against a measured box. See below.
 
 ## The strokes
 
@@ -137,11 +141,65 @@ It also FORGETS the last sampled position, exactly as `Teleport()` does, so the 
 after a swim does not read the whole swim as one frame of sprinting. Alternating the two overloads is safe
 with no extra call at the seam.
 
-## Still to come
+## The skeletons: a rig plus a pose to one transform per piece
 
-The socket helpers (the wrist turn and the off-hand turn a held piece rides), a reference rig facade, and a
-skeleton composer that turns a rig, a pose and an ordered list of pieces into one transform per piece. Until
-they land, a game composes its own piece chain off `Body` and `Torso`, as the tests here do.
+`HumanoidSkeleton` and `QuadrupedSkeleton` are the composers. Each answers `PieceCount` transforms into a
+caller-supplied span, in the order `PieceNames` declares, with a parent always ahead of its children. Nothing
+is drawn, nothing is allocated, and the rest frame is available on its own so a game can measure a body's
+bounds without composing one.
+
+```csharp
+Span<Matrix4x4> at = stackalloc Matrix4x4[HumanoidSkeleton.PieceCount];
+HumanoidSkeleton.Compose(rig, pose, walk, at);
+scene.Draw(myMeshes[HumanoidSkeleton.ForearmRight], at[HumanoidSkeleton.ForearmRight]);
+
+Vector3 rest = HumanoidSkeleton.RestOffset(rig, HumanoidSkeleton.ShinLeft);   // where that piece sits at zero
+```
+
+- **`HumanoidSkeleton`** - ten pieces: `Torso`, the two upper arms, the two forearms, the two thighs, the two
+  shins, and a `Head` piece riding the neck base. TWO parent frames: the thighs compose inside `BodyRig.Body`
+  and everything above the hips inside `BodyRig.Torso`, so a breathing body moves its chest and its arms and
+  leaves its feet planted. A forearm composes against its own upper arm and a shin against its own thigh,
+  which is what makes a flex a hinge rather than a second swing from the shoulder.
+- **`QuadrupedSkeleton`** - ten pieces: the `Trunk`, the `Poll`, four upper legs and four cannons, the legs in
+  `QuadrupedGait.Leg` order from each base. The trunk and the poll ride `QuadrupedRig.Torso` through the trunk
+  yaw, and the four legs ride the PLAIN `QuadrupedRig.Body` through the same yaw, so the hooves turn with the
+  trunk and stay on the ground while the ribcage lifts.
+
+**Two composers rather than one, deliberately.** The two bodies do not share a shape: the two-legged one has
+two root frames, a shoulder yaw on each arm and a piece on the neck base, and the four-legged one has a trunk
+yaw its legs take off a different frame, a poll, and a second pose type. Folding them into one data-driven
+walk would need a parent table plus a per-piece selector over two unrelated rig types and two pose types,
+which is more machinery than either method is. They share a vocabulary (`PieceCount`, `PieceNames`,
+`Compose`, `RestOffset`) and nothing else.
+
+A span shorter than `PieceCount` is refused up front rather than throwing part way through, and a longer one
+is filled with the tail left alone.
+
+## The sockets: what the two wrist channels mean
+
+`SegmentSockets` is the held-piece half, and it is the whole of what the `RightWrist` and `LeftWrist` channels
+mean.
+
+- **`Wrist(radians)`** - the WEAPON hand's tip, about the hand's own x, applied after the piece's own
+  orientation so it adds to whatever lean that orientation left it at. Positive carries the piece's head the
+  way the body faces.
+- **`OffTurn(radians, fist)`** - the OFF hand's turn, about the BODY's up axis through the fist, applied at
+  the very end of the chain. That is what makes a plate's face independent of how far the elbow is folded: a
+  pitch about x leaves the hand's own x alone.
+- **`Held(rig, grip, forearm, tip, turn)`** - the whole five-factor product, so a game does not hand write it:
+  `grip * Wrist(tip) * translate(HandFromElbow) * forearm * OffTurn(turn, fist)`.
+- **`IsInside(socket, bounds)`** - whether a socket offset lands in a box, the sanity check a consumer makes
+  against the fist its own mesh actually has.
+
+```csharp
+Matrix4x4 blade = SegmentSockets.Held(rig, myBladeGrip, at[HumanoidSkeleton.ForearmRight], tip: walk.RightWrist);
+Matrix4x4 plate = SegmentSockets.Held(rig, myPlateGrip, at[HumanoidSkeleton.ForearmLeft], turn: walk.LeftWrist);
+```
+
+A GRIP ORIENTATION is not here and will not be. How far a blade leans out of a fist, which way a plate's face
+starts, how a short haft sits: those are properties of a MESH, so they are content and stay with the mesh. The
+two rotations above are properties of the RIG.
 
 ## Headless by construction
 

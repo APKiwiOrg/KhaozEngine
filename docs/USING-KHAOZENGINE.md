@@ -9925,13 +9925,12 @@ var cycle = new WalkCycle(BodyRig.Human);
 cycle.Advance(drawnPosition, dt);
 WalkPose walk = cycle.Pose;
 
-// Per frame, the frames a draw hangs pieces off. The names match the API's own parameters:
-// a BodyPose is "pose" (where and which way), a WalkPose is "walk" (what the limbs are doing).
+// Per frame, one world transform per piece. The names match the API's own parameters: a BodyPose is
+// "pose" (where and which way), a WalkPose is "walk" (what the limbs are doing).
 var pose = new BodyPose(drawnPosition, drawnYaw);
-Matrix4x4 bodyFrame  = BodyRig.Human.Body(pose, walk);            // the legs compose inside this
-Matrix4x4 torsoFrame = BodyRig.Human.Torso(walk, bodyFrame);      // everything above the hips inside this
-Matrix4x4 thighLeft  = BodyRig.Limb(BodyRig.Human.LeftHip, walk.LeftLeg) * bodyFrame;
-Matrix4x4 shinLeft   = BodyRig.Human.Knee(walk.LeftKnee) * thighLeft;
+Span<Matrix4x4> at = stackalloc Matrix4x4[HumanoidSkeleton.PieceCount];
+HumanoidSkeleton.Compose(BodyRig.Human, pose, walk, at);
+scene.Draw(myMeshes[HumanoidSkeleton.ShinLeft], at[HumanoidSkeleton.ShinLeft]);
 ```
 
 `BodyPose` is the whole input: world metres and radians, a yaw of 0 facing engine +z, with the character's
@@ -9943,6 +9942,62 @@ inside `Body`. The torso, the head, both arms and whatever the hands hold compos
 same body matrix with the breath's rise and tip laid over it. That is what keeps the feet planted while the
 chest moves. A forearm composes against its own upper arm's finished transform, not against the body, which is
 what makes a flex a hinge rather than a second swing from the shoulder.
+
+### The skeletons: ordered pieces, one transform each
+
+`HumanoidSkeleton` and `QuadrupedSkeleton` own that composition so a game does not write it. Each declares
+`PieceCount`, the ordered `PieceNames`, an index constant per piece, `Compose(...)` into a caller-supplied
+span, and `RestOffset(rig, piece)` for the point that piece lands on at a zero pose.
+
+| | `HumanoidSkeleton` | `QuadrupedSkeleton` |
+|---|---|---|
+| Pieces | 10: `Torso`, two upper arms, two forearms, two thighs, two shins, `Head` | 10: `Trunk`, `Poll`, four upper legs, four cannons |
+| Root frames | `BodyRig.Body` for the legs, `BodyRig.Torso` for everything above the hips | `QuadrupedRig.Body` through the trunk yaw for the legs, `QuadrupedRig.Torso` through the same yaw for the trunk and the poll |
+| Second pose | none | `QuadrupedPose`, for the swings, the flexes, the roll and the head |
+
+A parent is always ahead of its children in the order, which is what lets `Compose` read its own output for a
+forearm or a cannon. A span shorter than `PieceCount` is refused up front rather than throwing part way
+through and leaving half a body composed, and a longer one is filled with the tail left alone, so a caller
+with extra slots may hand over its whole array. `RestOffset` is what a game measures bounds in: at
+`BodyPose.Origin` with `WalkPose.Rest`, every composed transform IS that offset as a pure translation.
+
+**Two composers rather than one, and that is the answer rather than a gap.** The two bodies do not share a
+shape. The two-legged one has two root frames, a yaw under each shoulder and a piece on the neck base. The
+four-legged one has a trunk yaw its legs take off a DIFFERENT frame from its trunk, a poll, and a second pose
+type. One data-driven walk over both would need a parent table plus a per-piece selector across two unrelated
+rig types and two pose types, which is more machinery than either method is. They share a vocabulary and
+nothing else.
+
+### The sockets: what the two wrist channels mean
+
+`SegmentSockets` is the held-piece half. `WalkPose.RightWrist` and `WalkPose.LeftWrist` are defined by it.
+
+```csharp
+Span<Matrix4x4> at = stackalloc Matrix4x4[HumanoidSkeleton.PieceCount];
+HumanoidSkeleton.Compose(rig, pose, walk, at);
+
+// The whole chain, so nothing hand writes the five-factor product:
+// grip * Wrist(tip) * translate(HandFromElbow) * forearm * OffTurn(turn, fist)
+Matrix4x4 blade = SegmentSockets.Held(rig, myBladeGrip, at[HumanoidSkeleton.ForearmRight],
+    tip: walk.RightWrist);
+Matrix4x4 plate = SegmentSockets.Held(rig, myPlateGrip, at[HumanoidSkeleton.ForearmLeft],
+    turn: walk.LeftWrist);
+```
+
+- **`Wrist(radians)`** is the WEAPON hand's tip, about the hand's own x, applied AFTER the piece's own grip so
+  it adds to whatever lean that grip left it at. It goes after the grip rather than before because a grip that
+  rolls a piece about its own length turns the axis a wrist would otherwise tip it on, and the wrist applied
+  first would carry the piece out to the side instead of forward.
+- **`OffTurn(radians, fist)`** is the OFF hand's turn, about the BODY's up axis through the fist, applied at
+  the very END of the chain. That is what makes a plate's face independent of the arm: every joint between the
+  hand and the body pitches about the body's x, and a pitch about x leaves the hand's own x alone. A roll
+  about the forearm's own bone does not work here, which is the axis a reader reaches for first.
+- **`IsInside(socket, bounds)`** answers whether a socket offset lands in a measured box, inclusive on every
+  face. A consumer measures its own fist and asks.
+
+**A grip orientation is NOT here and will not be.** How far a blade leans out of a fist, which way a plate's
+face starts, how a short haft sits: all properties of a MESH, so all content. The two rotations above are
+properties of the rig, which is why they moved.
 
 ### The pose contract: `WalkPose` is positional and append-only
 
@@ -10102,10 +10157,14 @@ a cadence keeps that arithmetic on its own side of the seam and hands over the s
 
 ### What stays in the game
 
-Creature proportions beyond the reference `BodyRig.Human`, the meshes and their piece order, named grip
-matrices, the skeleton composition that walks a rig's frames into one transform per mesh, and the pose-chain
-order. `BodyRig.Scaled(f)` and the `QuadrupedRig` object initializer are how a game declares its own bodies:
-every number in a rig is a length in metres, and none of them survives being shared between two sizes.
+Creature proportions beyond the reference `BodyRig.Human`, the meshes themselves and which mesh each piece
+index resolves to, named grip matrices, and the pose-chain order. `BodyRig.Scaled(f)` and the `QuadrupedRig`
+object initializer are how a game declares its own bodies: every number in a rig is a length in metres, and
+none of them survives being shared between two sizes.
+
+The piece ORDER is the package's (`HumanoidSkeleton.PieceNames` and `QuadrupedSkeleton.PieceNames`) and the
+mapping from an index to an asset is the game's. A game is free to ignore those names entirely and key its
+own table off the index.
 
 On the stroke side the same line falls in three places: which stroke an equipped item picks, how a cadence in
 seconds is arrived at, and how a held piece is oriented in the fist. A grip orientation is a property of a

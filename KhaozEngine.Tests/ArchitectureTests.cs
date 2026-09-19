@@ -36,7 +36,7 @@ public partial class ArchitectureTests
     {
         "Physics.Bepu", "WorldStore.Sqlite", "WorldStore.SqlServer",
         "Server.Admin", "Social.Discord", "Commerce.Sqlite", "Commerce.SqlServer",
-        "Identity.Oidc", "Identity.Discord", "Catalog.Sqlite", "Catalog.SqlServer",
+        "Identity.Oidc", "Identity.Discord", "Catalog.Sqlite", "Catalog.SqlServer", "Catalog.AzureBlob",
         // THE THREE NATIVE GPU BACKENDS ARE NOT ON THIS LIST ANY MORE, and their absence is asserted rather than
         // assumed: NativeGpuBackends_AreCarriedByEveryUmbrellaThatCarriesGpu below requires the opposite of what
         // this list would have meant. They were opt-in from decisions P1 / V-P1 / M-P1, on pay-for-what-you-use
@@ -115,6 +115,11 @@ public partial class ArchitectureTests
         ["Microsoft.Data.Sqlite"] = new[] { "Sqlite", "WorldStore.Sqlite", "Commerce.Sqlite", "Catalog.Sqlite" },
         ["SQLitePCLRaw.lib.e_sqlite3"] = new[] { "Sqlite", "WorldStore.Sqlite", "Commerce.Sqlite", "Catalog.Sqlite" },
         ["Microsoft.Data.SqlClient"] = new[] { "WorldStore.SqlServer", "Commerce.SqlServer", "Catalog.SqlServer" },
+        // The blob SDK, contained in the catalog's public-origin pack store and nowhere else. Azure.Identity
+        // has NO row here, and the absence is the assertion: the store takes a ready BlobContainerClient so
+        // the host owns the credential, and the only project in the tree that references Azure.Identity is
+        // that package's test project, which this scan does not reach because it is non-packable.
+        ["Azure.Storage.Blobs"] = new[] { "Catalog.AzureBlob" },
         // glTF load contained in Render3D's GltfLoader.
         ["SharpGLTF.Core"] = new[] { "Render3D" },
         // Image + font decode contained in Render2D (ImageRgba / SpriteFont).

@@ -33,6 +33,7 @@
     <ProjectReference Include="../KhaozEngine.Persistence/KhaozEngine.Persistence.csproj" />
     <ProjectReference Include="../KhaozEngine.Platform/KhaozEngine.Platform.csproj" />
     <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
+    <ProjectReference Include="../KhaozEngine.SegmentRig/KhaozEngine.SegmentRig.csproj" />
     <ProjectReference Include="../KhaozEngine.Serialization/KhaozEngine.Serialization.csproj" />
     <ProjectReference Include="../KhaozEngine.Updates/KhaozEngine.Updates.csproj" />
     <ProjectReference Include="../KhaozEngine.TestSupport/KhaozEngine.TestSupport.csproj" />

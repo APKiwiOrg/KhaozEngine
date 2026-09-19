@@ -28,7 +28,8 @@ namespace KhaozEngine.SegmentRig;
 /// arm inside a plane this has already turned. Zero everywhere but a stroke: a walk and a breath both hang
 /// their arms in the body's own plane.</param>
 /// <param name="RightWrist">How far the piece in the WEAPON hand is tipped about that hand, radians, positive
-/// carrying its head the way the body faces. It moves the HELD PIECE and never the arm. The off hand has
+/// carrying its head the way the body faces. It moves the HELD PIECE and never the arm, through
+/// <see cref="SegmentSockets.Wrist"/>, which is this channel's definition. The off hand has
 /// <see cref="LeftWrist"/> below rather than a copy of this one, on a different axis, because a blade wants
 /// its head pointed and a plate wants its face aimed. Zero everywhere but a stroke.</param>
 /// <param name="TorsoRise">How far the TORSO alone is lifted off the pelvis this frame, METRES, positive
@@ -48,7 +49,8 @@ namespace KhaozEngine.SegmentRig;
 /// one turns the piece about the BODY's vertical, which is the only axis a plate's face can be aimed on
 /// without the arm under it having a say. Positive carries the face from the character's left round toward
 /// its back and negative round toward its FRONT, so a quarter turn negative presents a plate square at
-/// whatever the body faces. It moves the HELD PIECE and never the arm. Zero everywhere but a guard
+/// whatever the body faces. It moves the HELD PIECE and never the arm, through
+/// <see cref="SegmentSockets.OffTurn"/>, which is this channel's definition. Zero everywhere but a guard
 /// pose.</param>
 /// <param name="TorsoLean">How far the torso alone tips about its own BASE, radians, positive tipping the
 /// head the way the body faces. <paramref name="Lean"/>'s twin above the hips: the same rotation about the

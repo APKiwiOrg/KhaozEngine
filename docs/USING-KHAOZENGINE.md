@@ -2389,6 +2389,65 @@ Use `TabBarItem` entries to disable individual tabs. Fixed-size tabs opt into a 
 tabs use their disabled palette and cannot be selected by a pointer gesture. They still reserve their
 footprint and consume taps, so pressing a disabled tab cannot trigger the world or controls behind it.
 
+**A side panel's two-row strip (19.6.0).** Four additive knobs carry it, each defaulting to the shipped
+behaviour, so a bar that asks for none of them draws and behaves exactly as before.
+
+- `BlockAlign` (default `GuiAlign.Left`) places the wrapped BLOCK of fixed-size tabs inside `Bounds`. The
+  default anchors it at `Bounds.X`, which is what every wrapped bar already drew. `GuiAlign.Center` gives two
+  rows of five centred in a band wider than they are, lining up under each other. `ContentBounds` follows the
+  alignment, so the reserved region moves with the tabs.
+- `AllowNoActiveTab` (default false) opens `ActiveIndex` down to `TabBar.NoActiveTab` (-1), for a collapsed
+  panel whose strip draws with no panel behind any tab. Set it BEFORE assigning -1, because the setter clamps
+  against whatever it says at the moment of the assignment, and setting it back to false re-clamps onto the
+  first tab so the closed state cannot outlive the opt-in. A tap from -1 activates the tapped tab and raises
+  `ChangedThisFrame`, since with nothing active every tab is a change. A disabled tab still swallows its own
+  tap. Nothing closes the strip on its own: which gesture returns a panel to its closed state is the host's
+  rule, written as an assignment of `TabBar.NoActiveTab`. A tab bar has no keyboard or focus navigation to
+  answer for, and its roster is fixed at construction, so no replacement can strand the index.
+- `BlocksPointer` opts out of the `ContentBounds` reservation. It defaults TRUE, unlike
+  `Panel.BlocksPointer` and like `ScrollablePanel.BlocksPointer`, because a tab bar is a leaf control that has
+  always reserved its own region and a bar that silently stopped would start letting the world act on a tab
+  tap. Clear it for a strip inside a frame that reserves its own bounds.
+- `DrawMode` (default `TabBarDrawMode.Button`) switches a fixed-size strip to `TabBarDrawMode.Flat`: a flat
+  fill, a one-unit border and a centred label truncated to the tab and scaled by `TextScale`. Its colours come
+  from `FlatTheme`, captured off the ambient `GuiTheme` at construction the way every other widget captures
+  its colours, so a startup rebrand carries the strip with the rest of the UI. `GuiTheme.TabFill` and
+  `GuiTheme.TabActiveFill` are the two slots it is built on. The even-split layout ignores the mode: its tabs
+  abut with no gutter, so a per-tab border would draw every interior seam twice, which is what its single
+  shared border grid exists to avoid.
+
+`TabStrip` and `TabStripMetrics` are the same geometry as pure statics, callable with NO widget instance, for
+a consumer that hit-tests a strip without retaining one. `TabStrip.TabRect(band, index, count, metrics)` is
+one tab's rect, `TabStrip.TabAt(band, point, count, metrics)` is its inverse and answers -1 for a gutter
+between tabs as well as for anywhere off the block, `TabStrip.BlockRect(band, count, metrics)` is the
+footprint, and `EvenTabRect` / `EvenTabAt` are the even-split pair. `TabStripMetrics` carries the shape (tab
+width, tab height, spacing, columns, alignment) as a caller value rather than as theme fields, for the reason
+`PanelFrameMetrics` does. `TabBar.Metrics` hands a live bar's shape over, and `TabBar.TabRect` and
+`TabBar.ContentBounds` call straight into these statics, so there is one copy of the arithmetic and an
+instance and a static hit test cannot disagree.
+
+```csharp
+// A collapsed side panel's strip: two centred rows of five, flat, with nothing active.
+var strip = new TabBar(tabs, font, PanelFrame.StripRect(bounds, stripHeight: 56f))
+{
+    TabWidth = 56f, TabHeight = 26f, Columns = 5, Spacing = 4f,
+    BlockAlign = GuiAlign.Center,
+    DrawMode = TabBarDrawMode.Flat,
+    AllowNoActiveTab = true,              // before ActiveIndex: the setter clamps against it
+    ActiveIndex = TabBar.NoActiveTab,
+    BlocksPointer = false,                // the window already reserves its own bounds
+};
+
+// Per frame, after laying the window out:
+strip.Bounds = PanelFrame.StripRect(bounds, stripHeight: 56f);
+strip.Update(pointer);
+if (strip.ChangedThisFrame) OpenPanel(strip.ActiveIndex);
+strip.Draw(batch, white);
+
+// The same rects with no widget in hand, for a window that hit-tests before it builds anything:
+int hovered = TabStrip.TabAt(strip.Bounds, pointer.Position, tabs.Count, strip.Metrics);
+```
+
 ## File-size ratchet (KESIZE analyzer)
 
 Every umbrella carries `KhaozEngine.CodeHealth.Analyzers`, the compile-time twin of

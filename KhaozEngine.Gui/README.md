@@ -600,6 +600,51 @@ chat.Draw(batch, white);
     `ActiveIndex` is settable to restore or persist selection without raising the change signal. Active tabs use
     `ActiveStyle` (`GuiStyle.Active`), inactive tabs use `InactiveStyle` (`GuiStyle.Secondary`), and `TabRect(i)`
     exposes the active layout. `TextScale` scales every label only. `Opacity` fades the whole bar.
+    Four additive knobs carry a side panel's two-row strip, each defaulting to the shipped behaviour so no
+    existing bar moves. `BlockAlign` (default `GuiAlign.Left`) places the wrapped BLOCK of fixed-size tabs inside
+    `Bounds`, so `GuiAlign.Center` gives two rows of five centred in a wider band, and `ContentBounds` follows it
+    rather than staying behind at the left edge. `AllowNoActiveTab` (default false) opens `ActiveIndex` down to
+    `TabBar.NoActiveTab` (-1) for a collapsed panel that draws its strip with no panel behind any tab. A tap from
+    -1 activates the tapped tab and reads as a change, a disabled tab still swallows its own tap, and clearing
+    the opt-in re-clamps onto the first tab. There is no keyboard or focus navigation on a tab bar to answer
+    for, and the roster is fixed at construction, so nothing can strand the index. `BlocksPointer` opts out of
+    the `ContentBounds` reservation. It defaults TRUE, unlike `Panel.BlocksPointer` and like
+    `ScrollablePanel.BlocksPointer`, because a tab bar is a leaf control that has always reserved its own region.
+    `DrawMode` (default `TabBarDrawMode.Button`, the shipped draw) switches a fixed-size strip to
+    `TabBarDrawMode.Flat`: a flat fill, a one-unit border and a centred label truncated to the tab, coloured from
+    `FlatTheme`, which the bar captures off the ambient `GuiTheme` at construction (`TabFill` / `TabActiveFill`
+    and the surface, border and text slots around them). The even-split layout ignores the mode, since its tabs
+    abut with no gutter and a per-tab border would double every interior seam.
+  - `TabStrip` + `TabStripMetrics` - the tab arithmetic as pure statics, callable with NO widget instance, for a
+    consumer that hit-tests a strip without retaining one. `TabStrip.TabRect(band, index, count, metrics)`,
+    its inverse `TabStrip.TabAt(band, point, count, metrics)` (-1 for a gutter between tabs and for anywhere off
+    the block), `TabStrip.BlockRect(band, count, metrics)` for the footprint, and `EvenTabRect` / `EvenTabAt` for
+    the even-split layout. `TabStripMetrics` is the shape those take (tab width, tab height, spacing, columns,
+    alignment), a caller value rather than theme fields, for the reason `PanelFrameMetrics` is one. `TabBar.Metrics`
+    hands a live bar's shape over, and `TabBar.TabRect` / `TabBar.ContentBounds` call straight into these, so an
+    instance and a static hit test cannot drift apart.
+
+    ```csharp
+    // A collapsed side panel's strip: two centred rows of five, flat, with nothing active.
+    var strip = new TabBar(tabs, font, PanelFrame.StripRect(bounds, stripHeight: 56f))
+    {
+        TabWidth = 56f, TabHeight = 26f, Columns = 5, Spacing = 4f,
+        BlockAlign = GuiAlign.Center,
+        DrawMode = TabBarDrawMode.Flat,
+        AllowNoActiveTab = true,              // before ActiveIndex: the setter clamps against it
+        ActiveIndex = TabBar.NoActiveTab,
+        BlocksPointer = false,                // the window already reserves its own bounds
+    };
+
+    // Per frame, after laying the window out:
+    strip.Bounds = PanelFrame.StripRect(bounds, stripHeight: 56f);
+    strip.Update(pointer);
+    if (strip.ChangedThisFrame) OpenPanel(strip.ActiveIndex);
+    strip.Draw(batch, white);
+
+    // The same rects with no widget in hand:
+    int hovered = TabStrip.TabAt(strip.Bounds, pointer.Position, tabs.Count, strip.Metrics);
+    ```
   - **Keyboard/gamepad control (opt-in, additive)** on `Toggle`/`Slider`/`Dropdown`: each has an
     `Update(InputManager, bool focused, PlayerIndex? = null)` overload that layers `InputManager` menu actions on
     top of the pointer path (only when `focused`), mirroring `FocusNavigator`. So a settings row is fully

@@ -5,6 +5,16 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 19.8.0
+
+- `KhaozEngine.Skills`: `HarvestYieldRange` distributes inclusive yield ceilings across level bands,
+  clamps at the configured cap and supports a minimum-preserving improvised-tool ceiling.
+- `KhaozEngine.TileWorld.Netcode`: retained static entities support existing entity interaction and
+  replication without actor AI, combat health, pickup semantics or engine-owned expiry.
+- `KhaozEngine.SegmentRig`: `QuadrupedCollapse` blends into caller-authored resting poses with root
+  displacement, root roll and independent leg splay. Existing zero-channel living poses are unchanged.
+- `ButcherSwing` supplies a repeating cutting pose whose cycle is independent of harvest duration.
+
 ## 19.7.0
 
 Oldest-first backlog fixes:

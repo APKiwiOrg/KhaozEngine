@@ -1,7 +1,9 @@
+using System;
 using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
+using KhaozEngine.Render3D.Internal;
 using KhaozEngine.Render3D.Rendering;
 using Xunit;
 using DecalRun = KhaozEngine.Render3D.Rendering.GroundDecalRenderer.DecalRun;
@@ -16,6 +18,24 @@ namespace KhaozEngine.Tests.Render3D
     /// </summary>
     public sealed class DecalBatchTests
     {
+        [Theory]
+        [InlineData(9.7f, 10f, 0.3f, 0f, 1f, true)]
+        [InlineData(9.7f, 10f, 0.3f, 0f, 0.5f, true)]
+        [InlineData(9.7f, 10f, 0.3f, 0f, 0.49f, false)]
+        [InlineData(9.9f, 10f, 0.3f, 0f, 0f, false)]
+        [InlineData(9.6f, 10f, 0.3f, 0f, 1f, false)]
+        public void Receiver_gate_keeps_ground_dips_and_rejects_steep_faces(
+            float surfaceY, float groundY, float tolerance, float maxStep, float normalY, bool expected)
+            => Assert.Equal(expected,
+                GroundDecalRenderer.AcceptsGroundReceiver(surfaceY, groundY, tolerance, maxStep, normalY));
+
+        [Fact]
+        public void Decal_shader_applies_the_normal_gate_to_every_geometry_receiver()
+        {
+            Assert.Contains("if (isGround && TimeQ.w > 0.5) {", ShaderSources.DecalFrag, StringComparison.Ordinal);
+            Assert.DoesNotContain("if (isGround && Extra.w > 0.5)", ShaderSources.DecalFrag, StringComparison.Ordinal);
+        }
+
         static GroundDecal Circle(float cx, float cz, float radius, DecalBlend blend = DecalBlend.Alpha) => new()
         {
             Shape = DecalShape.Circle, Center = new Vector3(cx, 0f, cz), Rotation = 0f,

@@ -72,6 +72,13 @@ namespace KhaozEngine.Render3D.Internal
             float hg = cg * scale;
             float hb = cb * scale;
 
+            // Fit the whole vector under the display ceiling with one scale, preserving its RGB ratios. Clamping
+            // channels independently here is the saturation loss this path exists to avoid.
+            float hueCeiling = MathF.Max(1f, MathF.Max(hr, MathF.Max(hg, hb)));
+            hr /= hueCeiling;
+            hg /= hueCeiling;
+            hb /= hueCeiling;
+
             // mix(perChannel, huePreserving, chroma), then saturate.
             float mr = Math.Clamp(Mix(pr, hr, chroma), 0f, 1f);
             float mg = Math.Clamp(Mix(pg, hg, chroma), 0f, 1f);

@@ -116,6 +116,41 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
+        public void Factor1_PreservesRgbRatios_ForSaturatedColours_AllOperatorsAndExposures()
+        {
+            var colours = new[]
+            {
+                (8f, 0.2f, 0.02f),
+                (0.1f, 6f, 0.3f),
+                (0.05f, 0.4f, 9f),
+            };
+
+            foreach (int op in Operators)
+            {
+                foreach (float exposure in new[] { 0.5f, 1f, 2f })
+                {
+                    foreach (var (r, g, b) in colours)
+                    {
+                        var mapped = TonemapMath.Map(r, g, b, exposure, op, 1f);
+                        float sr = mapped.R / r;
+                        float sg = mapped.G / g;
+                        float sb = mapped.B / b;
+                        Assert.Equal(sr, sg, 4);
+                        Assert.Equal(sr, sb, 4);
+                        Assert.InRange(MathF.Max(mapped.R, MathF.Max(mapped.G, mapped.B)), 0f, 1f);
+                    }
+                }
+            }
+        }
+
+        [Fact]
+        public void Shader_uniformly_fits_the_luminance_mapped_vector_before_blending()
+            => Assert.Contains(
+                "huePreserving /= max(1.0, max(huePreserving.r, max(huePreserving.g, huePreserving.b)));",
+                ShaderSources.TonemapFrag,
+                StringComparison.Ordinal);
+
+        [Fact]
         public void Factor1_OutputLuma_EqualsOperatorOfInputLuma()
         {
             // The hue-preserving path maps luminance through the operator: luma(out) == curve(luma(in)).

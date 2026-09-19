@@ -295,6 +295,7 @@ void main() {
     else if (op == 1) lm = l / (1.0 + l);
     else lm = clamp(l, 0.0, 1.0);
     vec3 huePreserving = c * (lm / max(l, 1e-5));
+    huePreserving /= max(1.0, max(huePreserving.r, max(huePreserving.g, huePreserving.b)));
     vec3 mapped = clamp(mix(perChannel, huePreserving, Params.z), 0.0, 1.0);
     oColor = vec4(mapped, s.a);
 }";

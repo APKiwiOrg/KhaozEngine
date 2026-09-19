@@ -204,7 +204,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuFact]
-        public void Golden_void_fallback_keeps_the_disc_flat_across_a_cliff_face()
+        public void Golden_all_ground_decals_reject_the_cliff_face()
         {
             // THE FLAT-DISC INVARIANT, stated so it cannot pass vacuously.
             //
@@ -214,9 +214,8 @@ namespace KhaozEngine.Tests.Gpu
             // runs it down the edge, evaluated at the cliff's XZ instead of the plane point's. The geometric normal is
             // the only thing that tells them apart.
             //
-            // So: with the normal gate, YTolerance must stop mattering ON A CLIFF entirely. Rendering the same scene
-            // at the stock 0.3 and at 0 must agree. And the control proves the test has teeth: without the gate (flag
-            // off) those two renders DIFFER, because 0.3 drips and 0 does not.
+            // So YTolerance must stop mattering ON A CLIFF for both the legacy and fallback paths. Rendering the
+            // same scene at the stock 0.3 and at 0 must agree either way.
             byte[] RenderTol(bool voidFallback, float yTol)
             {
                 MeshHandle island = default;
@@ -234,16 +233,12 @@ namespace KhaozEngine.Tests.Gpu
                 return n;
             }
 
-            // Control: the legacy path IS tolerance-sensitive on this cliff. If this ever stops being true the scene
-            // no longer exercises the wrap-down and the assertion below would pass for the wrong reason.
             int legacyDelta = Differing(RenderTol(false, 0.3f), RenderTol(false, 0f));
-            Assert.True(legacyDelta > 400,
-                $"the scene must actually exercise the cliff wrap-down or this test is vacuous, got {legacyDelta} px");
-
-            // The fix: with the gate, the tolerance cannot reach the cliff, so the two renders converge.
             int gatedDelta = Differing(RenderTol(true, 0.3f), RenderTol(true, 0f));
-            Assert.True(gatedDelta < legacyDelta / 10,
-                $"the normal gate must make YTolerance irrelevant on a cliff: {legacyDelta} px legacy vs {gatedDelta} px gated");
+            Assert.True(legacyDelta < 40,
+                $"the universal normal gate must make legacy YTolerance irrelevant on a cliff, got {legacyDelta} px");
+            Assert.True(gatedDelta < 40,
+                $"the normal gate must make fallback YTolerance irrelevant on a cliff, got {gatedDelta} px");
         }
 
         [GpuFact]

@@ -37,11 +37,12 @@ namespace KhaozEngine.Render3D
         /// Default <c>120</c>.</summary>
         public float FetchKilometres = 120f;
 
-        /// <summary>Water depth in metres, used by the Kitaigorodskii depth attenuation and by the finite-depth
-        /// dispersion relation. Shallow water slows and steepens the long components and cuts their energy, which
-        /// is what makes a coastal shelf read differently from open ocean. Values at or below 0 are treated as very
-        /// deep (the attenuation becomes 1 and the dispersion reduces to the deep-water
-        /// <c>omega = sqrt(g k)</c>). Default <c>60</c>.</summary>
+        /// <summary>One bake-time reference depth in metres for the whole FFT sea state. It shapes which waves
+        /// exist through the Kitaigorodskii attenuation and how fast they travel through finite-depth dispersion.
+        /// It is independent of <see cref="WaterSettings.Bathymetry"/>, the runtime spatial field that decides how
+        /// those baked waves survive and break at each position. Choose a representative depth for the water body
+        /// that owns the spectrum, usually its broad deep-water region rather than its shallowest shore. Values at
+        /// or below 0 select deep-water attenuation and dispersion. Default <c>60</c>.</summary>
         public float DepthMetres = 60f;
 
         // ---- Directionality ------------------------------------------------------------------------------------

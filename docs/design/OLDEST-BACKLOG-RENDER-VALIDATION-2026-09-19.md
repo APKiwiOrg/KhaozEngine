@@ -50,7 +50,7 @@ The per-backend reference bytes come from the three-family
 [bake run 35444309146](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/35444309146), pinned to
 `93eca9c4`, which contains the same rendering and shader changes. Later streaming/editor integration
 changes do not change these fixed-scene shader inputs. Only the selected scene names are copied from
-its artifacts. A separate comparison run must verify the committed references before integration.
+its artifacts. A separate comparison run must verify the committed references before merging main.
 
 The native Metal cliff-region, horizontal-ground-dip, rigid-top, rigid-side and CPU/GPU-skinned tests
 passed. The HDR ratio and surf-gradient probes passed. Four native streaming regressions also passed,
@@ -58,3 +58,8 @@ including live LOD-table placement and collider-handle retention.
 
 The GLSL edits change exactly four fragment programs in each HLSL, MSL and SPIR-V hash table:
 `GroundDecal`, `PostTonemap`, `Water` and `WaterClipmap`. No vertex program or compiler option changed.
+
+The bake completed all selected images. Metal and Vulkan passed their full bake legs. WARP failed one
+existing HDR-disabled point-shadow seam probe after producing its images. That result is tracked in
+[issue 1024](https://github.com/APKiwiOrg/KhaozEngine/issues/1024). Its bound and shader were not changed
+as part of the reference update. The separate verification run also exercises that probe.

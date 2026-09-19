@@ -233,6 +233,22 @@ namespace KhaozEngine.Tests.Terrain
         }
 
         [Fact]
+        public void BuildCpu_ReusesPlacementsForATierChange_AndRegeneratesForInvalidate()
+        {
+            var source = new CountingSource();
+            var sink = new Scene3DChunkSink(scene: null!, Flat(5f),
+                new[] { PropLayer.PlacementLayer(source, NoMeshes(), 90f) }, chunkSize: 60f);
+            var coord = new ChunkCoord(0, 0);
+
+            sink.BuildCpu(coord, lod: 0, ChunkRing.Gameplay, ChunkBuildReason.FreshLoad);
+            sink.BuildCpu(coord, lod: 1, ChunkRing.Gameplay, ChunkBuildReason.TierChange);
+            Assert.Equal(1, source.Queries);
+
+            sink.BuildCpu(coord, lod: 1, ChunkRing.Gameplay, ChunkBuildReason.Invalidate);
+            Assert.Equal(2, source.Queries);
+        }
+
+        [Fact]
         public void BuildCpu_ForADecorReLod_DoesNotEvenQueryPlacements()
         {
             // The decor ring carries no props of its own, so its only reason to ask for placements is the merge. Once

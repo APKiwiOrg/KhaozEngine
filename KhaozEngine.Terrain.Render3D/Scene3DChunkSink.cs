@@ -29,7 +29,7 @@ namespace KhaozEngine.Terrain
     /// caller must <see cref="Scene3D.UnloadSplatMaterial"/> it when done (or reuse it for the rebuilt sink). Pass
     /// <c>ownsMaterial: true</c> to hand ownership to the sink, whose <see cref="Dispose"/> then frees it too. The
     /// material is never disposed per-chunk.</para></summary>
-    public sealed class Scene3DChunkSink : IAsyncChunkSink, IDisposable
+    public sealed class Scene3DChunkSink : IReasonedAsyncChunkSink, IDisposable
     {
         readonly Scene3D _scene;
         TerrainField _field;
@@ -56,7 +56,7 @@ namespace KhaozEngine.Terrain
         readonly HlodBuildGate? _hlodGate;
 
         /// <summary>The HLOD merge gate, or null when no layer bakes one. Internal (not private) so a headless test
-        /// can put a chunk into the applied state a re-LOD would see and then assert what <see cref="BuildCpu"/>
+        /// can put a chunk into the applied state a re-LOD would see and then assert what <c>BuildCpu</c>
         /// does, without a GPU device to run <see cref="Apply"/> through. Same seam as <see cref="CpuBuild"/>.</summary>
         internal HlodBuildGate? HlodGate => _hlodGate;
         /// <summary>Each placement layer's placements split by chunk coord (index-aligned to the layers, null for
@@ -296,7 +296,7 @@ namespace KhaozEngine.Terrain
         /// fixed at ctor time, so a swap never changes what it serves. A SOURCE-BACKED placement layer is queried
         /// live per build, so what it serves can change on its own without a field swap.
         /// <para><b>That precondition is enforced, not merely documented</b> (issue #105). A swap while any
-        /// <see cref="BuildCpu"/> is EXECUTING throws <see cref="InvalidOperationException"/>, because that build
+        /// <c>BuildCpu</c> is EXECUTING throws <see cref="InvalidOperationException"/>, because that build
         /// reads <c>_field</c> at several points (mesh, collision surface, companion scatter) and would otherwise
         /// mesh half a chunk from each field with nothing anywhere to say so. A build that has already RETURNED and
         /// is waiting to apply is not visible here, and is the half <see cref="TerrainStreamer.FlushPendingBuilds"/>
@@ -313,7 +313,7 @@ namespace KhaozEngine.Terrain
             _field = field;
         }
 
-        /// <summary>The opaque CPU payload <see cref="BuildCpu"/> hands to <see cref="Apply"/>: the pure-CPU mesh and
+        /// <summary>The opaque CPU payload <c>BuildCpu</c> hands to <see cref="Apply"/>: the pure-CPU mesh and
         /// the per-layer scatter, both built off the analytic field with no GPU device. Everything here is safe to
         /// compute on a worker thread. The GPU upload + physics registration happen later in <see cref="Apply"/>.
         /// Internal (not private) so headless tests can inspect a CPU build's mesh without a GPU device.</summary>
@@ -336,6 +336,8 @@ namespace KhaozEngine.Terrain
             public GltfMesh?[]? HlodMeshes;
             /// <summary>Shared-owner payloads, one per layer when that layer needs applying.</summary>
             internal PropClusterCpuBuild?[]? PropClusters;
+            /// <summary>The request reason captured before this payload entered the async pipeline.</summary>
+            public ChunkBuildReason Reason;
         }
 
         /// <summary>Whether layer <paramref name="layerIndex"/>'s props register static collision bodies. A placement
@@ -382,21 +384,28 @@ namespace KhaozEngine.Terrain
         /// <see cref="UpdateField"/> refuse a field swap out from under it (issue #105) instead of documenting the
         /// precondition and hoping. The counter is the only thing the wrapper adds: no lock, no allocation, and the
         /// build itself is unchanged.</para></summary>
-        public object BuildCpu(ChunkCoord coord, int lod, ChunkRing ring = ChunkRing.Gameplay)
+        public object BuildCpu(ChunkCoord coord, int lod, ChunkRing ring = ChunkRing.Gameplay) =>
+            BuildCpu(coord, lod, ring, ChunkBuildReason.Invalidate);
+
+        /// <inheritdoc />
+        public object BuildCpu(ChunkCoord coord, int lod, ChunkRing ring, ChunkBuildReason reason)
         {
             Interlocked.Increment(ref _buildsInFlight);
-            try { return BuildCpuCore(coord, lod, ring); }
+            try { return BuildCpuCore(coord, lod, ring, reason); }
             finally { Interlocked.Decrement(ref _buildsInFlight); }
         }
 
-        object BuildCpuCore(ChunkCoord coord, int lod, ChunkRing ring)
+        object BuildCpuCore(ChunkCoord coord, int lod, ChunkRing ring, ChunkBuildReason reason)
         {
             TerrainChunkRegion region = ChunkGrid.RegionOf(coord, _chunkSize);
             bool buildHlod = _hlodGate is not null && _hlodGate.NeedsMerge(coord, lod, ring);
             // Scatter is needed for a gameplay chunk's props AND for an HLOD merge that is actually going to happen
             // (even on a decor chunk, whose merged mesh stands in for the props it never scatters). Compute it once
             // when either applies. A decor re-LOD that merges nothing does not query placements at all.
-            IReadOnlyList<PropPlacement>[]? scatter = ring == ChunkRing.Gameplay || buildHlod ? ScatterLayersFor(coord) : null;
+            bool reusePlacements = reason == ChunkBuildReason.TierChange;
+            IReadOnlyList<PropPlacement>[]? scatter = ring == ChunkRing.Gameplay && !reusePlacements || buildHlod
+                ? ScatterLayersFor(coord)
+                : null;
             var cpu = new CpuBuild
             {
                 // Tier-aware skirt (issue #100). The sink is the one place that knows both the tier table and the
@@ -406,13 +415,14 @@ namespace KhaozEngine.Terrain
                 Mesh = TerrainChunkBuilder.Build(_field, region, lod, _lodConfig,
                                                  skirtDepth: _lodConfig.SkirtDepthFor(lod, _chunkSize),
                                                  snowLine: _snowLine, splatRule: _splatRule),
-                LayerProps = ring == ChunkRing.Gameplay ? scatter! : EmptyLayers(),
+                LayerProps = ring == ChunkRing.Gameplay && !reusePlacements ? scatter! : EmptyLayers(),
+                Reason = reason,
             };
             // Terrain collision surface at the FIXED collision tier, only for a gameplay chunk that opts in. Reuse the
             // render mesh when the tiers coincide (the common near-chunk case), else mesh a second grid off-thread.
             // No splat rule on the second grid: ChunkTerrainCollision reads positions and winding only, so running a
             // per-vertex presentation rule over a mesh whose weights are discarded is pure cost.
-            if (ring == ChunkRing.Gameplay && _collideTerrain)
+            if (ring == ChunkRing.Gameplay && _collideTerrain && !reusePlacements)
                 cpu.CollisionMesh = _collisionLod == lod
                     ? cpu.Mesh
                     : TerrainChunkBuilder.Build(_field, region, _collisionLod, _lodConfig,
@@ -503,7 +513,7 @@ namespace KhaozEngine.Terrain
             bool tierChanged = lod != oldLod;
             // Same (tier, ring) with an existing handle only happens through the editor's Invalidate (a field swap at
             // the current tier), where placements + surface may have changed and must be rebuilt.
-            bool fieldRebuild = !tierChanged && !ringChanged;
+            bool fieldRebuild = cpu.Reason == ChunkBuildReason.Invalidate;
 
             _scene.UnloadMesh(relod.Mesh);
             relod.Mesh = UploadMesh(cpu.Mesh);
@@ -515,7 +525,8 @@ namespace KhaozEngine.Terrain
             // swap (map-editor carve/paint) plus invalidate it is the ONLY way to see the fresh placements. Keeping
             // the old array left stale props behind after an edit, for example trees still standing in a carved
             // lake. Adopt unconditionally (empty for a decor chunk).
-            relod.LayerProps = cpu.LayerProps;
+            if (cpu.Reason != ChunkBuildReason.TierChange)
+                relod.LayerProps = cpu.LayerProps;
 
             // Prop static bodies. A pure tier re-LOD inside the gameplay ring keeps them (placements are
             // LOD-independent - the flagged churn fix). A ring change or a field rebuild refreshes them: rebuild from
@@ -601,10 +612,20 @@ namespace KhaozEngine.Terrain
         }
 
         public object Load(ChunkCoord coord, int lod, ChunkRing ring = ChunkRing.Gameplay) =>
-            Apply(coord, lod, ring, BuildCpu(coord, lod, ring), existing: null);
+            Apply(coord, lod, ring, BuildCpu(coord, lod, ring, ChunkBuildReason.FreshLoad), existing: null);
 
-        public void ReLod(ChunkCoord coord, object handle, int lod, ChunkRing ring = ChunkRing.Gameplay) =>
-            Apply(coord, lod, ring, BuildCpu(coord, lod, ring), handle);
+        public void ReLod(ChunkCoord coord, object handle, int lod, ChunkRing ring = ChunkRing.Gameplay)
+        {
+            var load = (ChunkLoad)handle;
+            ChunkBuildReason reason = lod != load.Lod ? ChunkBuildReason.TierChange
+                : ring != load.Ring ? ChunkBuildReason.RingChange
+                : ChunkBuildReason.Invalidate;
+            ReLod(coord, handle, lod, ring, reason);
+        }
+
+        /// <inheritdoc />
+        public void ReLod(ChunkCoord coord, object handle, int lod, ChunkRing ring, ChunkBuildReason reason) =>
+            Apply(coord, lod, ring, BuildCpu(coord, lod, ring, reason), handle);
 
         public void Unload(ChunkCoord coord, object handle)
         {

@@ -125,6 +125,10 @@ up regardless of load order. Plain `float` math throughout.
   **`Apply(coord, lod, ring, cpuBuild, existing)`** (GPU buffers + physics on the frame thread, implemented
   by a render-side sink such as `Scene3DChunkSink` in `KhaozEngine.Terrain.Render3D`). A sink implementing
   only `IChunkSink` streams synchronously, no async split needed.
+- **`ChunkBuildReason`** / **`IChunkBuildReasonSink`** / **`IReasonedAsyncChunkSink`** - attributed rebuilds.
+  Fresh loads, tier changes, ring changes and invalidates carry their reason through the scheduler generation,
+  so a sink can reuse immutable placement data on a pure tier transition and a superseded completion cannot
+  arrive under a later reason.
 - **`ChunkBuildScheduler<T>`** + **`ChunkBuild<T>`** - the GPU-free heart of async streaming: per-chunk
   generation tokens dispatch each build, collect the finished ones, and drop the superseded (a newer
   re-LOD) or cancelled (left the ring) results before they can be applied (last request wins). Pure

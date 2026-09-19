@@ -96,6 +96,23 @@ namespace KhaozEngine.Tests.Terrain
         }
 
         [Fact]
+        public void Scheduler_last_request_wins_with_the_build_reason_that_requested_its_payload()
+        {
+            var manual = new ManualBuildDispatcher();
+            var sched = new ChunkBuildScheduler<ChunkBuildReason>((_, _, _, reason) => reason, manual);
+            var c = new ChunkCoord(0, 0);
+
+            sched.Request(c, 1, ChunkRing.Gameplay, ChunkBuildReason.TierChange);
+            sched.Request(c, 1, ChunkRing.Gameplay, ChunkBuildReason.Invalidate);
+            manual.RunAll();
+            sched.Pump();
+
+            ChunkBuild<ChunkBuildReason> ready = Assert.Single(sched.TakeReady(1, static (_, _) => 0));
+            Assert.Equal(ChunkBuildReason.Invalidate, ready.Reason);
+            Assert.Equal(ChunkBuildReason.Invalidate, ready.Payload);
+        }
+
+        [Fact]
         public void Scheduler_cancel_discards_an_in_flight_build_result()
         {
             var manual = new ManualBuildDispatcher();

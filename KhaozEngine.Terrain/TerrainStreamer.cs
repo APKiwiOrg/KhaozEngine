@@ -71,10 +71,6 @@ namespace KhaozEngine.Terrain
 
         bool _disposed;
 
-        // Which ring-scan site asked for a build, so the counter is picked where the decision is made rather than
-        // re-derived at the request call.
-        enum BuildReason { FreshLoad, TierChange, RingChange }
-
         sealed class Entry { public object Handle = null!; public int Lod; public ChunkRing Ring; }
 
         /// <summary>Build the streamer over a config and sink. <paramref name="dispatcher"/> chooses how background
@@ -102,7 +98,11 @@ namespace KhaozEngine.Terrain
             {
                 _async = true;
                 _asyncSink = asyncSink;
-                _scheduler = new ChunkBuildScheduler<object>(asyncSink.BuildCpu, dispatcher)
+                _scheduler = new ChunkBuildScheduler<object>(
+                    sink is IReasonedAsyncChunkSink reasoned
+                        ? reasoned.BuildCpu
+                        : (coord, lod, ring, _) => asyncSink.BuildCpu(coord, lod, ring),
+                    dispatcher)
                 {
                     // Contain a faulted background build here instead of letting it out of Update into the game's
                     // frame loop, where it terminates the process (issue #402).
@@ -232,20 +232,20 @@ namespace KhaozEngine.Terrain
 
         // One build request, attributed. Kept next to the counters rather than inlined at the three request sites so
         // the mapping from decision to counter is readable in one place.
-        void CountBuild(BuildReason reason)
+        void CountBuild(ChunkBuildReason reason)
         {
             switch (reason)
             {
-                case BuildReason.TierChange: _tierChanges++; break;
-                case BuildReason.RingChange: _ringChanges++; break;
+                case ChunkBuildReason.TierChange: _tierChanges++; break;
+                case ChunkBuildReason.RingChange: _ringChanges++; break;
                 default: _freshLoads++; break;
             }
         }
 
         // A loaded chunk whose tier or ring no longer matches the scan: the tier wins the attribution when both moved,
         // because a tier flip is the metre-distance signal and a ring flip is the integer-distance one.
-        static BuildReason ReasonForRebuild(int appliedLod, int wantedLod) =>
-            appliedLod != wantedLod ? BuildReason.TierChange : BuildReason.RingChange;
+        static ChunkBuildReason ReasonForRebuild(int appliedLod, int wantedLod) =>
+            appliedLod != wantedLod ? ChunkBuildReason.TierChange : ChunkBuildReason.RingChange;
 
         /// <summary>The residency ring for a chunk at Euclidean chunk-distance-squared <paramref name="chunkDistSq"/>
         /// from the player's chunk: <see cref="ChunkRing.Gameplay"/> within <see cref="StreamerConfig.LoadRadius"/>,
@@ -411,7 +411,7 @@ namespace KhaozEngine.Terrain
                 int lod = _lodConfig.PickLod(metreDist, loaded ? e!.Lod : -1, _config.LodHysteresis);
 
                 if (!loaded)
-                    pending.Add(new Pending(c, lod, ring, metreDist, isLoad: true, BuildReason.FreshLoad));
+                    pending.Add(new Pending(c, lod, ring, metreDist, isLoad: true, ChunkBuildReason.FreshLoad));
                 else if (e!.Lod != lod || e.Ring != ring)
                     pending.Add(new Pending(c, lod, ring, metreDist, isLoad: false, ReasonForRebuild(e.Lod, lod)));
             }
@@ -431,7 +431,10 @@ namespace KhaozEngine.Terrain
                 else
                 {
                     Entry e = _loaded[p.Coord];
-                    _sink.ReLod(p.Coord, e.Handle, p.Lod, p.Ring);
+                    if (_sink is IChunkBuildReasonSink reasoned)
+                        reasoned.ReLod(p.Coord, e.Handle, p.Lod, p.Ring, p.Reason);
+                    else
+                        _sink.ReLod(p.Coord, e.Handle, p.Lod, p.Ring);
                     e.Lod = p.Lod;
                     e.Ring = p.Ring;
                 }
@@ -507,8 +510,9 @@ namespace KhaozEngine.Terrain
                     {
                         if (!requestMatches)
                         {
-                            sched.Request(c, lod, ring);   // re-LOD / ring change (supersede a stale one)
-                            CountBuild(ReasonForRebuild(e.Lod, lod));
+                            ChunkBuildReason reason = ReasonForRebuild(e.Lod, lod);
+                            sched.Request(c, lod, ring, reason);   // re-LOD / ring change (supersede a stale one)
+                            CountBuild(reason);
                         }
                     }
                     else if (reqLod != -1)
@@ -518,7 +522,7 @@ namespace KhaozEngine.Terrain
                 }
                 else if (!requestMatches)
                 {
-                    sched.Request(c, lod, ring);   // fresh load, or re-target an in-flight load whose tier/ring changed
+                    sched.Request(c, lod, ring, ChunkBuildReason.FreshLoad);   // fresh load, or re-target an in-flight load whose tier/ring changed
                     _freshLoads++;
                 }
             }
@@ -564,7 +568,10 @@ namespace KhaozEngine.Terrain
         void InvalidateLoaded(ChunkCoord coord)
         {
             if (!_loaded.TryGetValue(coord, out Entry? e)) return;
-            _sink.ReLod(coord, e.Handle, e.Lod, e.Ring);
+            if (_sink is IChunkBuildReasonSink reasoned)
+                reasoned.ReLod(coord, e.Handle, e.Lod, e.Ring, ChunkBuildReason.Invalidate);
+            else
+                _sink.ReLod(coord, e.Handle, e.Lod, e.Ring);
             _invalidates++;
         }
 
@@ -657,8 +664,8 @@ namespace KhaozEngine.Terrain
             public readonly ChunkRing Ring;
             public readonly float Dist;
             public readonly bool IsLoad;
-            public readonly BuildReason Reason;
-            public Pending(ChunkCoord coord, int lod, ChunkRing ring, float dist, bool isLoad, BuildReason reason)
+            public readonly ChunkBuildReason Reason;
+            public Pending(ChunkCoord coord, int lod, ChunkRing ring, float dist, bool isLoad, ChunkBuildReason reason)
             { Coord = coord; Lod = lod; Ring = ring; Dist = dist; IsLoad = isLoad; Reason = reason; }
         }
     }

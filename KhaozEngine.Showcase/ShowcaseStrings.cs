@@ -40,6 +40,10 @@ namespace KhaozEngine.Showcase
         public static readonly StringId ControlsBoot = new("Controls.Boot");
         public static readonly StringId ControlsWorld1 = new("Controls.World1");
         public static readonly StringId ControlsWorld2 = new("Controls.World2");
+        public static readonly StringId WorldSky = new("World.Sky");
+        public static readonly StringId WorldStars = new("World.Stars");
+        public static readonly StringId WorldCyclePaused = new("World.CyclePaused");
+        public static readonly StringId WorldCycleRunning = new("World.CycleRunning");
         public static readonly StringId ControlsVfx = new("Controls.Vfx");
         public static readonly StringId ControlsNet = new("Controls.Net");
         public static readonly StringId ControlsDungeon = new("Controls.Dungeon");

@@ -527,6 +527,10 @@ stroke is one undo step: each frame's dab picks the terrain point under the curs
 (`EditorPicking.PickTerrain`, the same ground raycast the place tools use) and applies the brush, and the dabs
 coalesce into a single `TerrainSculptStrokeCommand` via `TryMerge`, exactly like the transform-gizmo drag.
 
+A terrain-following ring previews the live brush radius and ground pick while the pointer is over the
+viewport. It hides over editor chrome, outside sculpt mode, and when the terrain pick misses. The cursor
+uses the same ray and pick distance as the stroke.
+
 The inspector shows the brush parameters while the tool is active (`BuildSculptInspector`), editing the
 controller directly (they are tool settings, not document edits, so they carry no undo gesture):
 

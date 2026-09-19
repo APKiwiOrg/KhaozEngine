@@ -1,6 +1,9 @@
 using System;
+using System.Numerics;
 using KhaozEngine.App;
 using KhaozEngine.Gui;
+using KhaozEngine.Primitives;
+using KhaozEngine.Render3D;
 
 namespace KhaozEngine.MapEditor;
 
@@ -24,6 +27,18 @@ public partial class MapEditorScene
 
     // True while the sculpt tool is active, so RebuildInspector shows the brush panel instead of a selection panel.
     bool SculptMode => _controller is not null && _controller.Mode == EditorToolMode.SculptTerrain;
+
+    void DrawSculptCursor(Scene3D scene)
+    {
+        if (!SculptMode || Manager is null || _exitDialog is not null) return;
+        bool overViewport = Manager.Input.Width > 0 && Manager.Input.Height > 0
+            && !IsOverChrome(Manager.Input.MousePosition);
+        Span<Vector3> ring = stackalloc Vector3[SculptCursor.Segments];
+        int count = SculptCursor.Build(_controller, BuildFrameInput(0f), overViewport, ring);
+        var color = new Color(1f, 0.84f, 0.2f, 1f);
+        for (int i = 0; i < count; i++)
+            scene.DebugLine(ring[i], ring[(i + 1) % count], color);
+    }
 
     // The sculpt-mode inspector: the brush op, radius, strength, and the set-height target. These edit the tool's
     // brush parameters directly (not the document), so they are plain rows with no undo gesture. The stroke itself

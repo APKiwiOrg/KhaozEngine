@@ -18,6 +18,10 @@ public static class TileSteerResolver
     /// <param name="wanted">The held direction.</param>
     /// <param name="footprintSize">The body's square footprint size in tiles.</param>
     /// <returns>The direction to step, or null when the body stands.</returns>
+    /// <exception cref="System.ArgumentOutOfRangeException"><paramref name="wanted"/> is outside the eight
+    /// directions, which reaches <see cref="TileDirections.Delta"/> and is refused there. Loud rather than null on
+    /// purpose: the decoder and <c>TileMoveSimulator.Accepts</c> are the gates a frame passes through, so a value
+    /// this far out is an in-process misuse and a stand would hide it as a wall.</exception>
     public static TileDirection? Resolve(TileCollisionMap map, TileCoord tile, TileDirection wanted,
         int footprintSize)
     {

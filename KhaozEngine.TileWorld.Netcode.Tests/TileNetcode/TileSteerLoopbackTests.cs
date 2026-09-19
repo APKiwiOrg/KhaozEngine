@@ -173,4 +173,38 @@ public class TileSteerLoopbackTests
         Assert.Empty(refused);
         Assert.DoesNotContain(TileServerReason.CannotReach, notices);
     }
+
+    [Fact]
+    public void Steering_out_of_a_fight_is_a_disengage_rather_than_a_broken_lock()
+    {
+        using TileLoopbackHarness h = Joined(TileMoveSimulatorTests.FlatWorld(), TileMoveSimulatorTests.FlatWorld());
+        long actor = h.Server.SpawnActor(new TileCoord(10, 20, 0), new TileActorSpawn(30, 10, TileDirection.S));
+        var refused = new List<(int slot, long target)>();
+        var notices = new List<string>();
+        h.Server.OnCannotReach += (slot, target) => refused.Add((slot, target));
+        h.Client.NoticeReceived += notices.Add;
+
+        h.Client.Queue(TileCommand.Attack(actor, TileMoveMode.Walk));
+        Pump(h, 2);
+        Assert.True(h.Server.TryGetPlayerState(0, out TileMoveState chasing));
+        Assert.Equal(actor, chasing.CombatTarget);
+        Assert.False(chasing.Route.IsIdle);
+
+        // The tick's own steer is what breaks this lock, and the fight-lock watch has to read that the way it reads
+        // a click: the player DISENGAGED, so there is nothing owed to them. A watch that missed the steer would see
+        // a lock cleared by the movement pass whose target still resolves, which is the failure-to-reach case, and
+        // would answer a deliberate walk away with a CannotReach the client is holding a pending attack against.
+        h.Client.SetSteering(TileDirection.S, TileMoveMode.Walk);
+        Pump(h, 4);
+
+        Assert.True(h.Server.TryGetPlayerState(0, out TileMoveState left));
+        Assert.Equal(0L, left.CombatTarget);
+        Assert.True(left.Route.IsIdle);
+        // Two ticks of the chase committed one step north and left the body mid glide, so the first steered tick
+        // finishes that step and the landing tick commits the step back south. The body is on the tile it joined
+        // on, walking away from the fight rather than standing in it.
+        Assert.Equal(new TileCoord(10, 10, 0), left.Tile);
+        Assert.Empty(refused);
+        Assert.DoesNotContain(TileServerReason.CannotReach, notices);
+    }
 }

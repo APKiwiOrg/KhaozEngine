@@ -31,10 +31,12 @@ public class TileSteerSimulatorTests
             Assert.Equal(routed.StepTicks, steered.StepTicks);
             Assert.Equal(routed.StepTotal, steered.StepTotal);
         }
-        // Goal (5, 18) is exactly the 13 tiles a run covers in 24 ticks, so the routed line never stops early and
+        // Goal (5, 18) is exactly the 13 tiles a RUN covers in 24 ticks, so the routed line never stops early and
         // the two are compared on every one of them. Thirteen rather than twelve because the tick that carries the
-        // command commits its step immediately, so only the twelve after the first cost two ticks each.
-        Assert.True(steered.Route.IsIdle);
+        // command commits its step immediately, so only the twelve after the first cost two ticks each. A walk pays
+        // four ticks a step instead, so the same 24 ticks buy 7 tiles and leave the route live.
+        Assert.Equal(mode == TileMoveMode.Run ? new TileCoord(5, 18, 0) : new TileCoord(5, 12, 0), routed.Tile);
+        Assert.Equal(mode == TileMoveMode.Run, routed.Route.IsIdle);
     }
 
     [Fact]
@@ -97,15 +99,22 @@ public class TileSteerSimulatorTests
     [Fact]
     public void Steering_replaces_a_route_a_pending_interaction_and_a_fight()
     {
-        TileMoveSimulator sim = Sim();
+        // The combat seam is WIRED and its target resolves on the player's own plane, out of reach and reachable,
+        // which is the only shape that makes the fight assertion say anything: with no seam the follow clears every
+        // lock by itself and the last line would pass however the steer behaved. Out of reach because a lock the
+        // follow is happily chasing is exactly the one a steer has to break.
+        var sim = new TileMoveSimulator(TileMoveSimulatorTests.Bake(TileMoveSimulatorTests.FlatWorld()),
+            TileMoveSimulatorTests.Ticks, combatTargets: new ResolvingTarget(11, new TileRect(12, 5, 1, 1)));
         TileMoveState s = sim.Step(Standing(), TileCommand.WalkTo(new TileCoord(20, 20, 0), TileMoveMode.Walk), Dt);
         s.InteractTarget = 9;
         s.CombatTarget = 11;
         s = sim.Step(s, TileCommand.Steer(TileDirection.W, TileMoveMode.Walk), Dt);
-        Assert.True(s.Route.IsIdle);
+        Assert.Equal(0, s.CombatTarget);
         Assert.Equal(0, s.InteractTarget);
         Assert.Equal(TileInteractionDomain.AuthoredObject, s.InteractDomain);
-        Assert.Equal(0, s.CombatTarget);
+        // Last, because a lock left behind would have the follow rebuild a route on this very tick and the fight
+        // assertion above is the one that should name that fault.
+        Assert.True(s.Route.IsIdle);
     }
 
     [Fact]
@@ -129,6 +138,50 @@ public class TileSteerSimulatorTests
     }
 
     [Fact]
+    public void A_command_lost_on_the_landing_tick_costs_one_standing_tick_and_nothing_else()
+    {
+        TileMoveSimulator sim = Sim();
+        TileMoveState s = Standing();
+        // The first three ticks of a walking step, the third of which leaves it one tick short of landing.
+        for (int i = 0; i < 3; i++) s = sim.Step(s, TileCommand.Steer(TileDirection.E, TileMoveMode.Walk), Dt);
+        Assert.Equal(new TileCoord(6, 5, 0), s.Tile);
+        Assert.Equal(3, s.StepTicks);
+
+        // The steer that would have chained the next step is the one that went missing, so the landing tick reads as
+        // a Continue: the body lands on the tile it already owned and starts nothing behind it.
+        s = sim.Step(s, TileCommand.Continue(TileMoveMode.Walk), Dt);
+        Assert.Equal(new TileCoord(6, 5, 0), s.Tile);
+        Assert.False(s.IsStepping);
+        Assert.Equal(0, s.StepTicks);
+
+        // And exactly one tick is lost. The next steer comes in through the STANDING door, which spends its own tick
+        // on the new step rather than on a glide, so it reads one tick in the moment it commits.
+        s = sim.Step(s, TileCommand.Steer(TileDirection.E, TileMoveMode.Walk), Dt);
+        Assert.Equal(new TileCoord(7, 5, 0), s.Tile);
+        Assert.Equal(1, s.StepTicks);
+        Assert.Equal(TileMoveSimulatorTests.Ticks.Walk, s.StepTotal);
+    }
+
+    [Fact]
+    public void A_refused_steer_leaves_the_tick_as_though_no_command_arrived()
+    {
+        TileMoveSimulator sim = Sim();
+        TileMoveState s = sim.Step(Standing(), TileCommand.WalkTo(new TileCoord(5, 10, 0), TileMoveMode.Walk), Dt);
+        TileRoute route = s.Route;
+        Assert.Equal(1, s.StepTicks);
+
+        // A direction outside the eight is refused by Accepts, so the case never matches and its MODE is dropped
+        // with the rest of it. A refusal that applied the mode would put this walking body on a running cadence at
+        // the next step, which is a divergence the client would have to be snapped out of.
+        s = sim.Step(s, new TileCommand(TileCommandKind.Steer, default, TileMoveMode.Run, 99L), Dt);
+        Assert.Equal(TileMoveMode.Walk, s.Mode);
+        Assert.Equal(route, s.Route);
+        Assert.Equal(new TileCoord(5, 6, 0), s.Tile);
+        Assert.Equal(2, s.StepTicks);
+        Assert.Equal(TileMoveSimulatorTests.Ticks.Walk, s.StepTotal);
+    }
+
+    [Fact]
     public void Two_instances_steering_the_same_inputs_stay_identical()
     {
         TileMoveSimulator a = Sim(), b = Sim();
@@ -142,6 +195,18 @@ public class TileSteerSimulatorTests
             sa = a.Step(sa, c, Dt);
             sb = b.Step(sb, c, Dt);
             Assert.Equal(sa, sb);
+        }
+    }
+
+    // One entity that always resolves, at a fixed 1x1 rect on plane 0, which is what the server's own entity space
+    // answers for an actor standing still.
+    sealed class ResolvingTarget(long id, TileRect rect) : ITileTargets
+    {
+        public bool TryGetFootprint(long target, out TileRect footprint, out int plane)
+        {
+            footprint = rect;
+            plane = 0;
+            return target == id;
         }
     }
 }

@@ -41,12 +41,12 @@ public readonly record struct TilePendingAction(long Target, TileActionKind Kind
 /// different hash layouts resolve the same actions in the same order.</para>
 /// <para>CALLER OBLIGATION, and the one this class cannot enforce for itself: an entry lives until someone calls
 /// <see cref="Clear"/>, so the command apply path MUST call <c>Clear(slot)</c> when it applies a
-/// <see cref="TileCommandKind.WalkTo"/>. <see cref="TileMoveSimulator"/> clears the state's own
-/// <c>InteractTarget</c> on a walk, and these are two records of ONE intent: an entry that outlives the state's
-/// copy is armed against every later step, so a player who clicks a booth and then walks a route passing through
-/// one of its reach tiles fires the action they visibly abandoned. The queue sees commands only through its Issue
-/// calls, so it cannot notice the walk on its own, which is why the rule is written here rather than
-/// implemented here.</para>
+/// <see cref="TileCommandKind.WalkTo"/> or a <see cref="TileCommandKind.Steer"/>. <see cref="TileMoveSimulator"/>
+/// clears the state's own <c>InteractTarget</c> on either of them, and these are two records of ONE intent: an
+/// entry that outlives the state's copy is armed against every later step, so a player who clicks a booth and then
+/// walks or steers over one of its reach tiles fires the action they visibly abandoned. The queue sees commands
+/// only through its Issue calls, so it cannot notice the walk or the held direction on its own, which is why the
+/// rule is written here rather than implemented here.</para>
 /// </summary>
 public sealed class TileActionQueue
 {
@@ -79,8 +79,9 @@ public sealed class TileActionQueue
     public bool TryPeek(int slot, out TilePendingAction action) => bySlot.TryGetValue(slot, out action);
 
     /// <summary>Drops the pending action after it was raised or refused, and on an applied
-    /// <see cref="TileCommandKind.WalkTo"/>, which is the caller obligation the class doc states. A slot with no
-    /// pending action is not an error, so a command path can call this unconditionally.</summary>
+    /// <see cref="TileCommandKind.WalkTo"/> or <see cref="TileCommandKind.Steer"/>, which is the caller obligation
+    /// the class doc states. A slot with no pending action is not an error, so a command path can call this
+    /// unconditionally.</summary>
     /// <param name="slot">The player's connection slot.</param>
     public void Clear(int slot) => bySlot.Remove(slot);
 

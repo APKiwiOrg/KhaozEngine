@@ -527,6 +527,9 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
 
     // THE one place a step begins, for a routed step and a steered one alike, so neither can start one the other
     // could not, and neither can stamp a cadence the other would not.
+    //
+    // It runs BEFORE Start pops the route with s.Route.Advanced(), so a StepTotalFor that one day reads more of the
+    // state than its Mode sees the route as it stood before the advance.
     TileMoveState Commit(in TileMoveState state, TileCoord next, TileDirection dir)
     {
         TileMoveState s = state;

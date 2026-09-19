@@ -9967,10 +9967,86 @@ carry only the upper body, which is what a standing breath needs: a breath on `B
 person's soles 9 mm under the floor at the bottom of every exhale. `RootPitch` and `RootRoll` pivot at the
 ROOT, which only makes sense once the soles are not standing on anything.
 
+### The strokes: the action half
+
+A stroke is a one-shot or looping ACTION pose laid over whatever the cycles left the body at. The package
+ships seven of them and one shared clock, all over the `WalkPose` and `QuadrupedPose` channels above:
+
+| Type | Takes | Writes |
+|---|---|---|
+| `AttackTrajectory` | a phase plus two end poses, and an optional mid-strike key | nothing, it answers an `AttackPose` or an amount |
+| `AttackSwing` / `AttackPose` | a phase | the weapon arm: `RightArm` `RightElbow` `RightArmYaw` `RightWrist` |
+| `SlashSwing` | a phase | the same four, a different shape on the same clock |
+| `AttackStyles.PoseAt(style, phase)` | an `AttackStyle` and a phase | dispatches to one of those two |
+| `ChopSwing` / `ChopPose` | a phase | the same four |
+| `ProcessingSwing` | a phase, a station flag and a weight | both arms plus `TorsoLean`, and it has no pose type |
+| `BlockRaise` / `BlockPose` | an AGE IN SECONDS and a rig | the off arm, `TorsoLean`, both hips, both knees, `Bob` |
+| `Headbutt` / `HeadbuttPose` | a phase and a `QuadrupedRig` | the four-legged channels, and it is the only producer of `Surge` and `Pitch` |
+
+**One clock, and it is `AttackTrajectory`.** Every fighting stroke recovers off the blow to
+`AttackSwing.RestPhase`, holds a guard with nothing moving until `AttackSwing.StrikePhase`, then strikes eased
+in so it is fastest as it arrives. Phase 0 and phase 1 are both the BLOW, so seeding the phase at zero when an
+authoritative hit arrives is continuous rather than a snap. A style supplies its own two end poses and
+optionally a mid-strike key, and nothing else about the timing is a style's to choose: a fight reads the same
+whatever is in the hand. Values outside 0 to 1 are wrapped and a value that is not a number is the blow, so a
+raw accumulator is a legal argument.
+
+**`BlockRaise` is an AGE, not a phase, and that is the one exception worth knowing.** It is a REACTION rather
+than an action: there is no cadence to phase it against, it does not wrap, and a second blow inside the first
+raise restarts it from the beginning. `WeightAt(ageSeconds)` is zero at and before the blow and zero from
+`BlockRaise.Seconds` on, so an age that has run past the end costs nothing and needs no clamp at the call site.
+
+### Cadence is always a caller's number, in seconds
+
+There is no cadence in this package, no default for one, and no way to express one in ticks. Every member that
+speaks in seconds takes it as a `float` parameter:
+
+```csharp
+float cadence = MyProtocol.AttackTicks * MyProtocol.TickSeconds;   // the GAME's arithmetic, on the game's side
+float hold     = AttackSwing.HoldSecondsFor(cadence);              // how long one blow keeps the arm running
+float recovery = AttackSwing.RecoverySecondsFor(cadence);          // the same after a KILLING blow: recover, stop
+```
+
+Deciding WHICH stroke a body throws is the game's too. `AttackStyles.PoseAt` dispatches on an `AttackStyle` the
+game hands it, and reading an equipped item, a weapon family or a creature kind to produce that style is a
+content question that stays behind the seam.
+
+### Composing a stroke
+
+`PoseAt` first, then `Compose(in WalkPose, ..., weight)`, and the ORDER the strokes are laid in is the game's
+own chain:
+
+```csharp
+WalkPose frame = cycle.Pose;
+frame = IdleBreath.Compose(frame, IdleBreath.PoseAt(clock, bodyId, rig), idleWeight);
+if (swinging) frame = AttackSwing.Compose(frame, AttackStyles.PoseAt(style, swingPhase), swingWeight);
+if (chopping) frame = ChopSwing.Compose(frame, ChopSwing.PoseAt(chopPhase), chopWeight);
+if (working)  frame = ProcessingSwing.Compose(frame, workPhase, atStation, workWeight);
+frame = BlockRaise.Compose(frame, BlockRaise.PoseAt(secondsSinceBlow, rig));   // no weight: the pose carries it
+
+// Four legs: the gait, then the strike over it.
+QuadrupedPose gait = QuadrupedGait.PoseAt(rig, cycle.Phase, cycle.Weight);
+gait = Headbutt.Compose(gait, Headbutt.PoseAt(strikePhase, rig), strikeWeight);
+```
+
+**A weapon-arm stroke REPLACES, a flinch ADDS, and the difference is not cosmetic.** A swing owns the weapon
+arm for as long as it runs, so it lerps that arm onto the stroke and back, and the two channels no other cycle
+writes blend up from zero so a stop eases them out with the rest of the arm. `BlockRaise` and `Headbutt` add
+instead: a block lasts under half a second on an arm that is still walking, and lerping it onto a fixed pose
+would stop that arm's own swing dead for the length of the flinch and start it again afterwards, which reads
+as a stutter. Both kinds cost exactly nothing at zero, so composing unconditionally is free.
+
+**Where a stroke moves legs, they are SOLVED rather than tuned.** `BlockRaise.StanceAt(weight, rig)` takes the
+knee as the one input, spans the bent leg with the law of cosines and drops the hips by exactly what the legs
+got shorter by, so both soles stay on the floor at EVERY weight rather than only at the ends. `Headbutt` does
+the same on four legs: the two chosen folds say how long each braced leg is, the shoulders sink until the
+foreleg's reach meets its hoof, the trunk tips until the hind leg's meets its own, and every hoof ends where it
+stood through the whole lunge.
+
 ### Adding a pose of your own
 
 Jump, fall, land, swim, wade, strafe, backpedal, turn in place and slide are **game-side poses**. The package
-owns the channels and the walk, breath and gait cycles. It does not own your chain.
+owns the channels, the walk, breath and gait cycles, and the strokes above. It does not own your chain.
 
 A pose is a static class with `PoseAt(...)` and `Compose(in WalkPose, ..., float weight)`, and the ORDER poses
 are laid in lives in the game's own chain:
@@ -10030,6 +10106,10 @@ Creature proportions beyond the reference `BodyRig.Human`, the meshes and their 
 matrices, the skeleton composition that walks a rig's frames into one transform per mesh, and the pose-chain
 order. `BodyRig.Scaled(f)` and the `QuadrupedRig` object initializer are how a game declares its own bodies:
 every number in a rig is a length in metres, and none of them survives being shared between two sizes.
+
+On the stroke side the same line falls in three places: which stroke an equipped item picks, how a cadence in
+seconds is arrived at, and how a held piece is oriented in the fist. A grip orientation is a property of a
+MESH rather than of a rig, so it stays with the mesh.
 
 ---
 

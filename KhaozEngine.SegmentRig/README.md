@@ -35,6 +35,62 @@ assumption about update rate. A cadence is a `float` of seconds.
   held break at both elbows, and a solved rest stance that keeps each sole on the floor under its own hip.
 - **`QuadrupedGait`** / **`QuadrupedPose`** - the four-beat lateral-sequence walk off the same phase.
 
+## The strokes
+
+A stroke is a one-shot or looping action pose laid over whatever the cycles left the body at. Every one of
+them is a static class with `PoseAt(...)` and `Compose(...)`, and the order they are laid in is the game's.
+
+- **`AttackTrajectory`** - the clock every fighting stroke shares, and the only one: recover off the blow,
+  stand still, strike late and fast. `PoseAt(phase, impact, rest)` blends two end poses over it, the four-key
+  overload `PoseAt(phase, impact, rest, key, keyFraction)` splits the strike alone for a stroke that passes
+  through a key on the way, and `AmountAt(phase, out landing)` reads how much of the blow is carried for a
+  stroke whose channels are not an arm's.
+- **`AttackSwing`** / **`AttackPose`** - the EMPTY-hand punch, on the weapon arm alone. The three phase
+  boundaries (`ImpactPhase`, `RestPhase`, `StrikePhase`) are fractions of a cadence and every stroke below
+  reads them. `HoldSecondsFor(cadenceSeconds)` and `RecoverySecondsFor(cadenceSeconds)` turn a cadence into
+  an envelope.
+- **`SlashSwing`** - the ARMED cut, the same clock and a different shape: carried at the side, then out to
+  the weapon side and across, both inside the strike.
+- **`AttackStyle`** / **`AttackStyles.PoseAt(style, phase)`** - the dispatch between those two. Which style a
+  body throws is the GAME's to decide off whatever is in the hand.
+- **`ChopSwing`** / **`ChopPose`** - the tool stroke: wound back slowly over the shoulder and brought down
+  hard and sideways into the target, `HoldPhase` and `LiftPhase` its own two boundaries.
+- **`ProcessingSwing`** - the restrained two-handed working pose, one `Compose(pose, phase, atStation,
+  weight)` and no pose type of its own.
+- **`BlockRaise`** / **`BlockPose`** - the flinch a plate in the off hand answers a blow with. An AGE in
+  seconds rather than a phase, because it is a reaction and does not wrap: `WeightAt(ageSeconds)` is the
+  envelope, `StanceAt(weight, rig)` solves the braced legs so both soles stay planted, and `PoseAt` carries
+  the envelope itself.
+- **`Headbutt`** / **`HeadbuttPose`** / **`QuadrupedStrike`** - the four-legged strike, on the punch's clock,
+  and the only thing that writes `QuadrupedPose.Surge` and `Pitch`. `PoseAt(phase, rig)` solves every leg so
+  the hooves stay where they stood.
+
+## Cadence is always a caller's number
+
+A cadence is a `float` of SECONDS and it is always a parameter. The package has no cadence of its own, no
+default, and no idea how often a game updates: `AttackSwing.HoldSecondsFor(2.67f)` is the whole interface. A
+game that derives a cadence from its own update rate does that arithmetic on its own side and hands over the
+seconds.
+
+Everything else is a normalized phase, 0 to 1, with 0 and 1 both the blow. Values outside it are WRAPPED and
+a value that is not a number is the blow, so a caller may hand over a raw accumulator.
+
+## Composing a stroke
+
+`PoseAt` first, then `Compose(in WalkPose, ..., weight)`, and the chain's ORDER is the game's:
+
+```csharp
+WalkPose frame = cycle.Pose;
+frame = IdleBreath.Compose(frame, IdleBreath.PoseAt(clock, bodyId, rig), idleWeight);
+if (swinging) frame = AttackSwing.Compose(frame, AttackStyles.PoseAt(style, swingPhase), swingWeight);
+if (chopping) frame = ChopSwing.Compose(frame, ChopSwing.PoseAt(chopPhase), chopWeight);
+frame = BlockRaise.Compose(frame, BlockRaise.PoseAt(secondsSinceBlow, rig));   // adds, costs nothing at zero
+```
+
+A stroke on the WEAPON arm REPLACES what that arm was doing, because it owns the arm for as long as it runs.
+`BlockRaise` and `Headbutt` ADD instead, because a flinch lasts under half a second on an arm that is still
+walking and replacing it would stop the cycle underneath dead. Both kinds cost exactly nothing at zero.
+
 ## The pose contract
 
 `WalkPose` is **positional**, so a new channel is APPENDED and never inserted. A game holds poses of its own

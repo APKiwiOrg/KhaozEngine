@@ -11,8 +11,8 @@ namespace KhaozEngine.Tests.Gpu
     /// (<see cref="Scene3D.AddLight(System.Numerics.Vector3,KhaozEngine.Primitives.Color,float,float)"/>). Renders the SAME box with
     /// the global key/fill/ambient lights dimmed to near-black, so any illumination is attributable to the point
     /// lights, and reads the result back. Backend-agnostic (asserts relative brightening, not absolute pixel
-    /// values, so it needs no per-backend committed golden). Also asserts colour tinting, the host budget clamp
-    /// (over-MaxPointLights renders without crashing), and that <see cref="Scene3D.Begin"/> clears the queue.
+    /// values, so it needs no per-backend committed golden). Also asserts colour tinting, growth beyond the legacy
+    /// UBO mirror size, and that <see cref="Scene3D.Begin"/> clears the queue.
     /// Skipped unless KE_GPU_TESTS=1.
     /// </summary>
     public sealed class PointLightGpuTests
@@ -118,7 +118,7 @@ namespace KhaozEngine.Tests.Gpu
                 drawFrame: scene =>
                 {
                     scene.Draw(box, Matrix4x4.Identity);
-                    // Queue well over the per-frame budget; the renderer clamps to MaxPointLights.
+                    // Queue beyond the legacy sixteen-entry UBO mirror to exercise structured-buffer growth.
                     for (int i = 0; i < Scene3D.MaxPointLights + 12; i++)
                         scene.AddLight(new Vector3(2f, 2f, 2f), new Color(1f, 1f, 1f, 1f), radius: 8f, intensity: 1f);
                 }, frames: 1);

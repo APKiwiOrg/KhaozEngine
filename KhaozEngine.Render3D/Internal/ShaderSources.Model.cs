@@ -43,6 +43,8 @@ layout(set=0, binding=0) uniform U {
     vec4 PointShadowParams[16];  // per point light: x = atlas row or -1 for none, y = bias, z = slope bias, w unused
     vec4 PointShadowAtlas;       // xy = one atlas texel in UV, z = rows (lights), w = face columns (6)
     vec4 PointShadowFilter;      // x = filter mode (0 hard, 1 soft), y = light size m, z = max penumbra texels, w = face resolution
+    vec4 ClusterDepth;            // x=near, y=far, z=log(far/near), w=1 perspective, 0 orthographic, -1 invalid
+    vec4 ClusterCamera;           // xyz = camera forward in the render frame
 };
 layout(location=0) in vec3 Position;
 layout(location=1) in vec3 Normal;
@@ -107,14 +109,17 @@ layout(set=0, binding=0) uniform U {
     vec4 PointShadowParams[16];  // per point light: x = atlas row or -1 for none, y = bias, z = slope bias, w unused
     vec4 PointShadowAtlas;       // xy = one atlas texel in UV, z = rows (lights), w = face columns (6)
     vec4 PointShadowFilter;      // x = filter mode (0 hard, 1 soft), y = light size m, z = max penumbra texels, w = face resolution
+    vec4 ClusterDepth;            // x=near, y=far, z=log(far/near), w=1 perspective, 0 orthographic, -1 invalid
+    vec4 ClusterCamera;           // xyz = camera forward in the render frame
 };
-layout(set=0, binding=1) uniform texture2D Albedo;       // 1x1 white default keeps untextured meshes unchanged
-layout(set=0, binding=2) uniform texture2D NormalMap;    // 1x1 flat default: texel (0.5,0.5,1.0) decodes to tangent-space (0,0,1); sampled up front, applied only when a tangent exists
-layout(set=0, binding=3) uniform texture2D RoughnessMap; // 1x1 zero default => spec uses per-instance params
-layout(set=0, binding=4) uniform sampler Samp;           // shared sampler for all three textures (EdgeFrag-style)
-layout(set=0, binding=5) uniform texture2D ShadowMap;    // key-light depth map (R32F); sampled LAST, after the material maps (Metal first-sample-order rule); 1x1 default when shadows off
-layout(set=0, binding=6) uniform sampler ShadowSamp;     // clamp/linear sampler for the shadow-map PCF taps
-layout(set=0, binding=7) uniform texture2D PointShadowMap;  // point-light distance atlas (R32F), read through ShadowSamp; 1x1 default when no light carries one
+" + PointLightBufferGlsl + PointLightClusterBufferGlsl + @"
+layout(set=0, binding=3) uniform texture2D Albedo;       // 1x1 white default keeps untextured meshes unchanged
+layout(set=0, binding=4) uniform texture2D NormalMap;    // 1x1 flat default: texel (0.5,0.5,1.0) decodes to tangent-space (0,0,1); sampled up front, applied only when a tangent exists
+layout(set=0, binding=5) uniform texture2D RoughnessMap; // 1x1 zero default => spec uses per-instance params
+layout(set=0, binding=6) uniform sampler Samp;           // shared sampler for all three textures (EdgeFrag-style)
+layout(set=0, binding=7) uniform texture2D ShadowMap;    // key-light depth map (R32F); sampled LAST, after the material maps (Metal first-sample-order rule); 1x1 default when shadows off
+layout(set=0, binding=8) uniform sampler ShadowSamp;     // clamp/linear sampler for the shadow-map PCF taps
+layout(set=0, binding=9) uniform texture2D PointShadowMap;  // point-light distance atlas (R32F), read through ShadowSamp; 1x1 default when no light carries one
 layout(location=0) in vec3 vNormalW;
 layout(location=1) in vec4 vColor;
 layout(location=2) in vec3 vWorldPos;
@@ -234,14 +239,17 @@ layout(set=0, binding=0) uniform U {
     vec4 PointShadowParams[16];  // per point light: x = atlas row or -1 for none, y = bias, z = slope bias, w unused
     vec4 PointShadowAtlas;       // xy = one atlas texel in UV, z = rows (lights), w = face columns (6)
     vec4 PointShadowFilter;      // x = filter mode (0 hard, 1 soft), y = light size m, z = max penumbra texels, w = face resolution
+    vec4 ClusterDepth;            // x=near, y=far, z=log(far/near), w=1 perspective, 0 orthographic, -1 invalid
+    vec4 ClusterCamera;           // xyz = camera forward in the render frame
 };
-layout(set=0, binding=1) uniform texture2D Albedo;
-layout(set=0, binding=2) uniform texture2D NormalMap;
-layout(set=0, binding=3) uniform texture2D RoughnessMap;
-layout(set=0, binding=4) uniform sampler Samp;
-layout(set=0, binding=5) uniform texture2D ShadowMap;
-layout(set=0, binding=6) uniform sampler ShadowSamp;
-layout(set=0, binding=7) uniform texture2D PointShadowMap;
+" + PointLightBufferGlsl + PointLightClusterBufferGlsl + @"
+layout(set=0, binding=3) uniform texture2D Albedo;
+layout(set=0, binding=4) uniform texture2D NormalMap;
+layout(set=0, binding=5) uniform texture2D RoughnessMap;
+layout(set=0, binding=6) uniform sampler Samp;
+layout(set=0, binding=7) uniform texture2D ShadowMap;
+layout(set=0, binding=8) uniform sampler ShadowSamp;
+layout(set=0, binding=9) uniform texture2D PointShadowMap;
 layout(location=0) in vec3 vNormalW;
 layout(location=1) in vec4 vColor;
 layout(location=2) in vec3 vWorldPos;
@@ -303,7 +311,7 @@ void main() {
         // ---- GPU skinning (opt-in, Scene3D.UseGpuSkinning). THREE uniform buffers, split by update frequency. The
         //      SHARED per-frame block `U` is at set 0 binding 0, read by BOTH stages, and is the very same buffer
         //      (and the very same declaration) the model pass binds. The per-draw block `VBlock` follows it at set 0
-        //      binding 1, VERTEX only, dynamic-offset: this draw's Model and its P column-packed Tint/Emissive/
+        //      binding 3, VERTEX only, dynamic-offset: this draw's Model and its P column-packed Tint/Emissive/
         //      SpecParams. The per-CASTER `Palette` is at set 2 binding 0, VERTEX only, dynamic-offset, and is the
         //      buffer the shadow depth pass binds too (#407). Material TEXTURES are at set 1, fragment only. The 4-bone
         //      blend + position/normal/tangent deform mirror SkinningMath.SkinVertex exactly, and the position now
@@ -340,10 +348,12 @@ layout(set=0, binding=0) uniform U {
     vec4 PointShadowParams[16];  // per point light: x = atlas row or -1 for none, y = bias, z = slope bias, w unused
     vec4 PointShadowAtlas;       // xy = one atlas texel in UV, z = rows (lights), w = face columns (6)
     vec4 PointShadowFilter;      // x = filter mode (0 hard, 1 soft), y = light size m, z = max penumbra texels, w = face resolution
+    vec4 ClusterDepth;            // x=near, y=far, z=log(far/near), w=1 perspective, 0 orthographic, -1 invalid
+    vec4 ClusterCamera;           // xyz = camera forward in the render frame
 };
 // This draw's own block, selected by the per-draw dynamic offset. Declared here and NOT in either skinned
 // fragment, because no fragment stage reads any of it (the per-draw constants reach it as interpolants).
-layout(set=0, binding=1) uniform VBlock {
+layout(set=0, binding=3) uniform VBlock {
     mat4 Model;            // world transform (for worldPos + world normal/tangent the fragment lights with)
     mat4 P;                // columns: [0]=Tint, [1]=Emissive, [2]=SpecParams (per-draw constants, packed row-major)
 };
@@ -415,7 +425,7 @@ void main() {
 
         // Skinned fragment: byte-for-byte ModelFrag lighting, off byte-for-byte ModelFrag's frame block, which since
         // #604 is the SHARED per-frame buffer at set 0 binding 0 rather than a copy folded into the per-draw slot.
-        // It declares nothing of VBlock (set 0 binding 1), because it reads nothing of it: the per-draw constants
+        // It declares nothing of VBlock (set 0 binding 3), because it reads nothing of it: the per-draw constants
         // arrive as interpolants. Material maps at set 1. Sample order (Albedo first, ShadowMap last) is preserved.
         public const string SkinnedModelFrag = @"#version 450
 layout(set=0, binding=0) uniform U {
@@ -437,7 +447,10 @@ layout(set=0, binding=0) uniform U {
     vec4 PointShadowParams[16];  // per point light: x = atlas row or -1 for none, y = bias, z = slope bias, w unused
     vec4 PointShadowAtlas;       // xy = one atlas texel in UV, z = rows (lights), w = face columns (6)
     vec4 PointShadowFilter;      // x = filter mode (0 hard, 1 soft), y = light size m, z = max penumbra texels, w = face resolution
+    vec4 ClusterDepth;            // x=near, y=far, z=log(far/near), w=1 perspective, 0 orthographic, -1 invalid
+    vec4 ClusterCamera;           // xyz = camera forward in the render frame
 };
+" + PointLightBufferGlsl + PointLightClusterBufferGlsl + @"
 layout(set=1, binding=0) uniform texture2D Albedo;
 layout(set=1, binding=1) uniform texture2D NormalMap;
 layout(set=1, binding=2) uniform texture2D RoughnessMap;
@@ -509,7 +522,10 @@ layout(set=0, binding=0) uniform U {
     vec4 PointShadowParams[16];  // per point light: x = atlas row or -1 for none, y = bias, z = slope bias, w unused
     vec4 PointShadowAtlas;       // xy = one atlas texel in UV, z = rows (lights), w = face columns (6)
     vec4 PointShadowFilter;      // x = filter mode (0 hard, 1 soft), y = light size m, z = max penumbra texels, w = face resolution
+    vec4 ClusterDepth;            // x=near, y=far, z=log(far/near), w=1 perspective, 0 orthographic, -1 invalid
+    vec4 ClusterCamera;           // xyz = camera forward in the render frame
 };
+" + PointLightBufferGlsl + PointLightClusterBufferGlsl + @"
 layout(set=1, binding=0) uniform texture2D Albedo;
 layout(set=1, binding=1) uniform texture2D NormalMap;
 layout(set=1, binding=2) uniform texture2D RoughnessMap;

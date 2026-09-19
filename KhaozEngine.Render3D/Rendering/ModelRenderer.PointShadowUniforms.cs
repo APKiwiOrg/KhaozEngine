@@ -7,13 +7,13 @@ using KhaozEngine.Gpu;
 namespace KhaozEngine.Render3D.Rendering;
 
 /// <summary>
-/// The RECEIVER half of point-light shadows: the frame-UBO tail every shader family reads its per-light slot out
-/// of, and the atlas binding that sits directly after <c>ShadowSamp</c> in every one of their resource sets.
+/// The RECEIVER half of point-light shadows: the full slot cache packed into each structured light record, the
+/// legacy frame-UBO mirror for the first sixteen entries, and the atlas binding after <c>ShadowSamp</c>.
 /// The atlas itself, the pass that fills it and the slot cache that decides which light owns which row are all
 /// outside this renderer.
 /// <para>
 /// A SLOT BELOW ZERO IS THE WHOLE SAFETY PROPERTY. The receiver skips the sample, the multiply and the texture
-/// read on <c>PointShadowParams[i].x &lt; 0</c>, so a frame in which no light carries a map renders exactly as it
+/// read on <c>pointLight.ShadowParams.x &lt; 0</c>, so a frame in which no light carries a map renders exactly as it
 /// did before this feature existed. That is why <see cref="_pointShadowParams"/> starts at -1 rather than at the
 /// zero a fresh array would hold: zero is a VALID slot, and a renderer nobody has called
 /// <see cref="SetPointShadowUniforms"/> on would otherwise have all sixteen lights sampling row 0.
@@ -30,10 +30,13 @@ internal sealed partial class ModelRenderer
     /// vec4s = 288 bytes.</summary>
     internal const uint PointShadowTailBytes = MaxPointLights * 16 + 32;
 
-    // (slot or -1, bias, slopeBias, 0) per point light, index-aligned with the two light arrays above, so the
-    // receiver reads PointShadowParams[i] for the light it is already accumulating. -1 everywhere until a host
-    // hands slots in.
+    // The first sixteen (slot or -1, bias, slopeBias, 0) entries mirror the structured records for compatibility.
+    // Receiver shaders read the complete structured record list.
     readonly Vector4[] _pointShadowParams = NoPointShadowSlots();
+    int[] _pointShadowSlots = new int[MaxPointLights];
+    int _pointShadowSlotCount;
+    float _pointShadowBias;
+    float _pointShadowSlopeBias;
     // (1 / (6 * faceRes), 1 / (rows * faceRes), rows, 6): the atlas texel steps the four-tap compare offsets by,
     // and its shape, so the receiver can place a cell without a second uniform.
     Vector4 _pointShadowAtlas;
@@ -71,6 +74,19 @@ internal sealed partial class ModelRenderer
         return slots;
     }
 
+    internal void EnsurePointShadowSlotCapacity(int required)
+    {
+        if (required < 0)
+            throw new ArgumentOutOfRangeException(nameof(required), required,
+                "Point-shadow slot capacity cannot be negative.");
+        if (_pointShadowSlots.Length >= required) return;
+
+        int capacity = _pointShadowSlots.Length;
+        while (capacity < required)
+            capacity = capacity > int.MaxValue / 2 ? required : capacity * 2;
+        Array.Resize(ref _pointShadowSlots, capacity);
+    }
+
     void CreatePointShadowDefault(IGpuResourceFactory factory)
     {
         _pointShadowDefault = factory.CreateTexture(GpuTextureDescription.Texture2D(
@@ -96,6 +112,14 @@ internal sealed partial class ModelRenderer
     public void SetPointShadowUniforms(ReadOnlySpan<int> slots, float bias, float slopeBias,
         int faceResolution, int rows, PointShadowFilter filter, float lightSizeMetres, float maxPenumbraTexels)
     {
+        if (_pointShadowSlots.Length < slots.Length)
+            throw new InvalidOperationException(
+                $"The frame published {slots.Length} point-shadow slots to receiver storage with capacity "
+                + $"{_pointShadowSlots.Length}. Grow it during frame preparation before command recording.");
+        slots.CopyTo(_pointShadowSlots);
+        _pointShadowSlotCount = slots.Length;
+        _pointShadowBias = bias;
+        _pointShadowSlopeBias = slopeBias;
         for (int i = 0; i < MaxPointLights; i++)
         {
             float slot = i < slots.Length ? slots[i] : -1f;
@@ -112,6 +136,9 @@ internal sealed partial class ModelRenderer
     /// cascade atlas.</summary>
     public void ClearPointShadowUniforms()
     {
+        _pointShadowSlotCount = 0;
+        _pointShadowBias = 0f;
+        _pointShadowSlopeBias = 0f;
         for (int i = 0; i < MaxPointLights; i++) _pointShadowParams[i] = new Vector4(-1f, 0f, 0f, 0f);
         _pointShadowAtlas = Vector4.Zero;
         _pointShadowFilter = Vector4.Zero;

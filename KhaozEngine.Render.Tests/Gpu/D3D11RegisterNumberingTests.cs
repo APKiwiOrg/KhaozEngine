@@ -43,8 +43,9 @@ namespace KhaozEngine.Tests.Gpu
             => new(name, GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment);
         static GpuResourceLayoutElement S(string name)
             => new(name, GpuResourceKind.Sampler, GpuShaderStages.Fragment);
-        static GpuResourceLayoutElement StructRO(string name)
-            => new(name, GpuResourceKind.StructuredBufferReadOnly, GpuShaderStages.Compute);
+        static GpuResourceLayoutElement StructRO(string name,
+            GpuShaderStages stages = GpuShaderStages.Compute)
+            => new(name, GpuResourceKind.StructuredBufferReadOnly, stages);
         static GpuResourceLayoutElement StructRW(string name)
             => new(name, GpuResourceKind.StructuredBufferReadWrite, GpuShaderStages.Compute);
         static GpuResourceLayoutElement TextureRW(string name)
@@ -66,12 +67,16 @@ namespace KhaozEngine.Tests.Gpu
                 new[] { T("DepthTex"), S("Samp"), U("Frame", dynamic: true), T("NormalTex") }, "t0 s0 b0 t1"),
 
             ("ModelRenderer._layout",
-                new[] { U("U"), T("Albedo"), T("NormalMap"), T("RoughnessMap"), S("Sampler"), T("ShadowMap"),
-                    S("ShadowSamp"), T("PointShadowMap") },
-                "b0 t0 t1 t2 s0 t3 s1 t4"),
+                new[] { U("U"), StructRO("PointLights", GpuShaderStages.Fragment),
+                    StructRO("PointLightClusters", GpuShaderStages.Fragment), T("Albedo"), T("NormalMap"),
+                    T("RoughnessMap"), S("Sampler"), T("ShadowMap"), S("ShadowSamp"), T("PointShadowMap") },
+                "b0 t0 t1 t2 t3 t4 s0 t5 s1 t6"),
             // The only shipped layout with TWO uniform buffers in it, since #604 unfolded the skinned pipeline's
             // combined block into a shared frame block and a per-draw one.
-            ("ModelRenderer._skinnedMainLayout", new[] { U("U"), U("VBlock", dynamic: true) }, "b0 b1"),
+            ("ModelRenderer._skinnedMainLayout",
+                new[] { U("U"), StructRO("PointLights", GpuShaderStages.Fragment),
+                    StructRO("PointLightClusters", GpuShaderStages.Fragment), U("VBlock", dynamic: true) },
+                "b0 t0 t1 b1"),
             ("ModelRenderer._skinnedFragLayout",
                 new[] { T("Albedo"), T("NormalMap"), T("RoughnessMap"), S("Sampler"), T("ShadowMap"),
                     S("ShadowSamp"), T("PointShadowMap") },
@@ -81,14 +86,18 @@ namespace KhaozEngine.Tests.Gpu
             // and the ACROSS-layouts row below is where the two pipelines' different bases show up.
             ("SkinnedBonePalette._layout", new[] { U("Palette", dynamic: true) }, "b0"),
             // The splat pass's two, also since #604: the shared frame block on its own, then the material.
-            ("ModelRenderer._splatFrameLayout", new[] { U("U") }, "b0"),
+            ("ModelRenderer._splatFrameLayout",
+                new[] { U("U"), StructRO("PointLights", GpuShaderStages.Fragment),
+                    StructRO("PointLightClusters", GpuShaderStages.Fragment) }, "b0 t0 t1"),
             ("ModelRenderer._splatMaterialLayout",
                 new[] { U("SplatParams"), T("AlbedoArray"), T("NormalArray"), S("Sampler"), T("ShadowMap"),
                     S("ShadowSamp"), T("PointShadowMap") },
                 "b0 t0 t1 s0 t2 s1 t3"),
             // And the tile-ground pass's two, the same split at #727. One albedo array where the splat material
             // has two, so its shadow map lands a t lower.
-            ("ModelRenderer._tileGroundFrameLayout", new[] { U("U") }, "b0"),
+            ("ModelRenderer._tileGroundFrameLayout",
+                new[] { U("U"), StructRO("PointLights", GpuShaderStages.Fragment),
+                    StructRO("PointLightClusters", GpuShaderStages.Fragment) }, "b0 t0 t1"),
             ("ModelRenderer._tileGroundMaterialLayout",
                 new[] { U("TileGroundParams"), T("AlbedoArray"), S("Sampler"), T("ShadowMap"), S("ShadowSamp"),
                     T("PointShadowMap") },
@@ -272,7 +281,8 @@ namespace KhaozEngine.Tests.Gpu
             // textures and samplers at set 1, the shared per-caster bone palette at set 2 since #407. Three sets,
             // and the b file accumulates across all three, so the palette lands at b2.
             using var skinnedMain = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
-                U("U"), U("VBlock", dynamic: true)));
+                U("U"), StructRO("PointLights", GpuShaderStages.Fragment),
+                StructRO("PointLightClusters", GpuShaderStages.Fragment), U("VBlock", dynamic: true)));
             using var skinnedFrag = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
                 T("Albedo"), T("NormalMap"), T("RoughnessMap"), S("Sampler"), T("ShadowMap"), S("ShadowSamp"),
                 T("PointShadowMap")));
@@ -280,8 +290,8 @@ namespace KhaozEngine.Tests.Gpu
                 U("Palette", dynamic: true)));
             D3D11ResourceLayout[] skinned = { skinnedMain, skinnedFrag, bonePalette };
 
-            Assert.Equal("b0 b1", Absolute(skinned, 0));
-            Assert.Equal("t0 t1 t2 s0 t3 s1 t4", Absolute(skinned, 1));
+            Assert.Equal("b0 t0 t1 b1", Absolute(skinned, 0));
+            Assert.Equal("t2 t3 t4 s0 t5 s1 t6", Absolute(skinned, 1));
             Assert.Equal("b2", Absolute(skinned, 2));
 
             // The skinned DEPTH pass takes the SAME palette layout object at a different slot, where the base in
@@ -296,26 +306,30 @@ namespace KhaozEngine.Tests.Gpu
 
             // The splat pass, which is where a shipped pipeline really does accumulate a base ACROSS its sets: set
             // 0 is the shared frame block at b0 and set 1's own params buffer lands at b1 because of it.
-            using var splatFrame = new D3D11ResourceLayout(new GpuResourceLayoutDescription(U("U")));
+            using var splatFrame = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
+                U("U"), StructRO("PointLights", GpuShaderStages.Fragment),
+                StructRO("PointLightClusters", GpuShaderStages.Fragment)));
             using var splatMaterial = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
                 U("SplatParams"), T("AlbedoArray"), T("NormalArray"), S("Sampler"), T("ShadowMap"), S("ShadowSamp"),
                 T("PointShadowMap")));
             D3D11ResourceLayout[] splat = { splatFrame, splatMaterial };
 
-            Assert.Equal("b0", Absolute(splat, 0));
-            Assert.Equal("b1 t0 t1 s0 t2 s1 t3", Absolute(splat, 1));
+            Assert.Equal("b0 t0 t1", Absolute(splat, 0));
+            Assert.Equal("b1 t2 t3 s0 t4 s1 t5", Absolute(splat, 1));
 
             // The tile-ground pass, the second shipped case of that same b accumulation since #727. Asserted
             // separately rather than treated as the splat shape again, because its material set carries one albedo
             // array instead of two and the t and s files therefore flatten differently.
-            using var groundFrame = new D3D11ResourceLayout(new GpuResourceLayoutDescription(U("U")));
+            using var groundFrame = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
+                U("U"), StructRO("PointLights", GpuShaderStages.Fragment),
+                StructRO("PointLightClusters", GpuShaderStages.Fragment)));
             using var groundMaterial = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
                 U("TileGroundParams"), T("AlbedoArray"), S("Sampler"), T("ShadowMap"), S("ShadowSamp"),
                 T("PointShadowMap")));
             D3D11ResourceLayout[] ground = { groundFrame, groundMaterial };
 
-            Assert.Equal("b0", Absolute(ground, 0));
-            Assert.Equal("b1 t0 s0 t1 s1 t2", Absolute(ground, 1));
+            Assert.Equal("b0 t0 t1", Absolute(ground, 0));
+            Assert.Equal("b1 t2 s0 t3 s1 t4", Absolute(ground, 1));
         }
 
         /// <summary>

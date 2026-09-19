@@ -24,8 +24,7 @@ public enum LightShadowMode : byte
     /// It keeps NOTHING across a frame. A dynamic light carries no key, so the scene identifies it by its place in
     /// the light queue, and that place belongs to a different light as soon as one of them expires. So a dynamic
     /// light past <see cref="PointShadowSettings.MaxDynamicLightsPerFrame"/> on a given frame renders unshadowed
-    /// for that frame rather than sampling the row it had before. Queue the ones that matter first, or raise the
-    /// budget.
+    /// for that frame rather than sampling the row it had before. The nearest effects win the dynamic budget.
     /// </para>
     /// </summary>
     Dynamic = 2,
@@ -33,9 +32,11 @@ public enum LightShadowMode : byte
 
 /// <summary>
 /// The shadow REQUEST a caller attaches to one <see cref="Scene3D.AddLight(System.Numerics.Vector3,KhaozEngine.Primitives.Color,float,float,LightShadow)"/>.
-/// It is a request rather than an instruction: the scene budgets how many lights can carry a map in one frame
-/// (<see cref="PointShadowSettings.MaxShadowedLights"/> and the per-frame rebuild budgets), and a light past the
-/// budget falls back to unshadowed rather than being dropped.
+/// It is a request rather than an instruction. Every keyed static request reserves a persistent atlas row,
+/// independent of camera distance, while dynamic effects use the stable reserve and per-frame rebuild budget in
+/// <see cref="PointShadowSettings"/>. A dynamic request past that budget falls back to unshadowed rather than
+/// being dropped. A static set beyond the supported atlas capacity is reported through
+/// <see cref="Scene3D.ResolvedPointShadows"/> rather than camera-trimmed.
 /// <para>
 /// <see cref="Key"/> is the caller's own identity for a <see cref="LightShadowMode.Static"/> light and nothing
 /// else reads it: the slot cache keys a cached map on it, so the same key across frames is the same map. Two

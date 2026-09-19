@@ -114,10 +114,11 @@ namespace KhaozEngine.Render3D
         public int RigidSpanCount(int cascade)
             => (uint)cascade < (uint)ShadowSettings.MaxCascades ? _rigidSpanCounts[cascade] : 0;
 
-        /// <summary>How many point lights carried an omnidirectional shadow map this frame, after the budget in
-        /// <see cref="PointShadowSettings.MaxShadowedLights"/> cut the requests down. Below the number of lights
-        /// that ASKED whenever the budget bound. 0 when no light asked, when point shadows are off, and before
-        /// the point shadow pass exists at all.</summary>
+        /// <summary>How many point lights carried a sampleable omnidirectional shadow map this frame. Every keyed
+        /// static request has a row, but a newly allocated row is not counted until its turn under
+        /// <see cref="PointShadowSettings.MaxStaticRebuildsPerFrame"/> has rendered it. Dynamic requests are
+        /// bounded by <see cref="PointShadowSettings.MaxDynamicLightsPerFrame"/>. 0 when no light asked, when point
+        /// shadows are off, and before the point shadow pass exists at all.</summary>
         public int PointShadowedLights { get; init; }
 
         /// <summary>How many CACHED (<see cref="LightShadowMode.Static"/>) maps were re-rendered this frame, at
@@ -134,8 +135,8 @@ namespace KhaozEngine.Render3D
         public int PointFaceDrawCalls { get; init; }
 
         /// <summary>How many atlas rows the slot cache is holding, including rows kept for lights that were not
-        /// requested this frame and have not been evicted yet. At or below
-        /// <see cref="PointShadowSettings.MaxShadowedLights"/>.</summary>
+        /// requested this frame and have not been evicted yet. At or below the live row count reported by
+        /// <see cref="Scene3D.ResolvedPointShadows"/>.</summary>
         public int PointSlotsInUse { get; init; }
 
         /// <summary>The sum of <see cref="RigidSpanCount"/> over this frame's active cascades. 0 on a skipped

@@ -30,11 +30,10 @@ namespace KhaozEngine.Render3D
         // frame wanted a map and there was no atlas for it".
         PointShadowSettings? _pendingPointShadowSettings;
 
-        // Whether a rendered frame has ever carried a shadow request. It is a flag rather than the layout that
-        // frame wanted, because the SETTINGS are the layout and this boundary reads them directly: what a frame
-        // can tell the boundary that the settings cannot is only that somebody asked at all, which is the one
-        // thing keeping the allocation lazy.
+        // Whether a rendered frame has ever carried a shadow request, and how many stable static owners that frame
+        // carried. Settings supply the configured floor. The request count is what can expand it.
         bool _pointShadowLayoutPending;
+        int _pointShadowStaticRequests;
 
         // The layout the device refused, LATCHED. An allocation refusal is not transient: retrying it every frame
         // costs two texture allocations, four pipelines and a stall a frame, forever, for the same answer. Cleared
@@ -98,7 +97,7 @@ namespace KhaozEngine.Render3D
                 return;
             }
 
-            var wanted = new PointShadowLayout(settings.ResolvedFaceResolution, settings.ResolvedMaxLights);
+            PointShadowLayout wanted = ResolvePointShadowLayout(settings, _pointShadowStaticRequests);
             if (_failedPointShadowLayout is { } failed && failed != wanted)
             {
                 // A different layout is a different question, so the refusal stops standing in its way.
@@ -124,7 +123,23 @@ namespace KhaozEngine.Render3D
             }
 
             if (_failedPointShadowLayout is not null) return;   // already answered, and the answer was no
+            if (_pointShadowStaticRequests > PointShadowSettings.MaxLights)
+            {
+                FailPointShadowLayout(wanted, $"{_pointShadowStaticRequests} static requests exceed the supported "
+                    + $"{PointShadowSettings.MaxLights} rows");
+                return;
+            }
             AttemptPointShadowLayout(wanted);
+        }
+
+        static PointShadowLayout ResolvePointShadowLayout(PointShadowSettings settings, int staticRequests)
+        {
+            int staticRows = Math.Max(0, staticRequests);
+            int dynamicReserve = Math.Min(Math.Max(0, settings.MaxDynamicLightsPerFrame),
+                settings.ResolvedMaxLights);
+            dynamicReserve = Math.Min(dynamicReserve, Math.Max(0, PointShadowSettings.MaxLights - staticRows));
+            int rows = Math.Max(settings.ResolvedMaxLights, staticRows + dynamicReserve);
+            return new PointShadowLayout(settings.ResolveFaceResolution(rows), rows);
         }
 
         /// <summary>Bring up <paramref name="wanted"/> and put every receiver on it. Either the whole thing lands
@@ -190,6 +205,7 @@ namespace KhaozEngine.Render3D
         void ReleasePointShadows()
         {
             _pointShadowLayoutPending = false;
+            _pointShadowStaticRequests = 0;
             _failedPointShadowLayout = null;
             _pointShadowFailureLogged = false;
             if (_pointShadowAtlas is null)

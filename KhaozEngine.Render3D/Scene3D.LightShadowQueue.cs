@@ -23,12 +23,17 @@ public sealed partial class Scene3D
     /// overload and renders byte-identically to a scene with no point shadows at all.
     /// <see cref="LightShadow.Static(long)"/> takes a cached map behind the caller's own key, for a placed light whose
     /// surroundings do not move, and <see cref="LightShadow.Dynamic"/> takes one rebuilt every frame, for a light
-    /// that does. How many requests one frame can honour is
-    /// <see cref="ShadowSettings.PointShadows"/>: past the budget a light is drawn unshadowed rather than
-    /// dropped, nearest to the eye winning. Presentation only, exactly like the light itself.
+    /// that does. <see cref="ShadowSettings.PointShadows"/> reserves every keyed static request independently of
+    /// camera distance and keeps a stable dynamic reserve. Dynamic effects past their render budget are drawn
+    /// unshadowed rather than dropped, with the nearest effects winning. Presentation only, exactly like the
+    /// light itself.
+    /// Non-finite positions and non-positive or non-finite radii are ignored, so clustered and full-list
+    /// fallback shading receive the same valid light geometry.
     /// </remarks>
     public void AddLight(Vector3 worldPos, Color color, float radius, float intensity, LightShadow shadow)
     {
+        if (!(radius > 0f) || !float.IsFinite(radius)
+            || !float.IsFinite(worldPos.X) || !float.IsFinite(worldPos.Y) || !float.IsFinite(worldPos.Z)) return;
         Vector4 c = color;
         _lights.Add(new ModelRenderer.PointLightData
         {

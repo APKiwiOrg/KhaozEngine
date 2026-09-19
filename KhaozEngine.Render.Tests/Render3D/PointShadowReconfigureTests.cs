@@ -95,7 +95,7 @@ public sealed class PointShadowReconfigureTests
         requested.FaceResolution = 1024;
         rig.RenderFrame(LightShadow.Static(1));
 
-        Assert.Equal(new PointShadowResolution(true, 128, 4, false, null), rig.Scene.ResolvedPointShadows);
+        Assert.Equal(new PointShadowResolution(true, 128, 5, false, null), rig.Scene.ResolvedPointShadows);
         Assert.NotSame(requested, rig.Settings.PointShadows);
     }
 
@@ -318,9 +318,9 @@ public sealed class PointShadowReconfigureTests
     }
 
     /// <summary>
-    /// A LIGHT ARRIVING COSTS ONE REBUILD, WHOEVER ASKS FIRST. The requests are offered rows nearest first, so a
-    /// newcomer standing closest to the eye asks before every incumbent behind it, and a cache that handed it a
-    /// row on that first ask would evict a light that was about to re-ask. Each displaced incumbent then evicts
+    /// A LIGHT ARRIVING COSTS ONE REBUILD, WHOEVER ASKS FIRST. Static requests are offered rows by stable key, so a
+    /// newcomer with the earliest key asks before every incumbent, and a cache that handed it a row on that first
+    /// ask would evict a light that was about to re-ask. Each displaced incumbent then evicts
     /// the next, and a walk through a town with more lanterns than rows re-renders half the atlas every time the
     /// nearest light changes.
     /// <para>
@@ -334,7 +334,7 @@ public sealed class PointShadowReconfigureTests
         using var rig = new ReconfigureRig();
         rig.Settings.PointShadows.MaxStaticRebuildsPerFrame = 8;
         Vector3 eye = rig.Scene.Camera.Eye;
-        const long Newcomer = 99;
+        const long Newcomer = -1;
 
         // Eight lights on one line away from the eye, nearest first, so their queue order is their rank order.
         void Incumbents(Scene3D scene, int skip)
@@ -355,7 +355,7 @@ public sealed class PointShadowReconfigureTests
         Assert.Equal(0, rig.Scene.LastShadowPassDiagnostics.PointStaticRebuilds);
         Assert.Equal(8, rig.Scene.PointShadowedLights);
 
-        // Light 3 stops being queued and the newcomer stands NEAREST, so it is the first request offered a row.
+        // Light 3 stops being queued and the newcomer has the earliest key, so it asks for a row first.
         rig.RenderFrame(s =>
         {
             s.AddLight(eye + new Vector3(0f, 0f, 5f), Color.White, 4f, 1f, LightShadow.Static(Newcomer));

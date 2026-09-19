@@ -35,6 +35,9 @@ namespace KhaozEngine.Tests.Gpu
         internal static GpuResourceLayoutElement S(string name, GpuShaderStages stages)
             => new(name, GpuResourceKind.Sampler, stages);
 
+        internal static GpuResourceLayoutElement StructRO(string name, GpuShaderStages stages)
+            => new(name, GpuResourceKind.StructuredBufferReadOnly, stages);
+
         /// <summary>A read-write structured-buffer element, which is the only kind that reaches the <c>u</c> file
         /// in shipped code and does so from compute alone.</summary>
         internal static GpuResourceLayoutElement StructRW(string name)
@@ -48,22 +51,25 @@ namespace KhaozEngine.Tests.Gpu
 
         internal static FakeTexture Texture() => new(4, 4, 1, 1, GpuPixelFormat.R8G8B8A8UNorm);
 
-        /// <summary><c>ModelRenderer._layout</c> verbatim: one UBO both stages read, four textures and two
-        /// samplers the pixel stage reads. Registers <c>b0 t0 t1 t2 s0 t3 s1</c>.</summary>
+        /// <summary><c>ModelRenderer._layout</c> verbatim: the frame UBO, two point-light buffers, five textures and
+        /// two samplers. Registers <c>b0 t0 t1 t2 t3 t4 s0 t5 s1 t6</c>.</summary>
         internal static D3D11ResourceLayout ModelLayout() => Layout(
             U("U", GpuShaderStages.Vertex | GpuShaderStages.Fragment),
+            StructRO("PointLights", GpuShaderStages.Fragment),
+            StructRO("PointLightClusters", GpuShaderStages.Fragment),
             T("Albedo", GpuShaderStages.Fragment),
             T("NormalMap", GpuShaderStages.Fragment),
             T("RoughnessMap", GpuShaderStages.Fragment),
             S("Sampler", GpuShaderStages.Fragment),
             T("ShadowMap", GpuShaderStages.Fragment),
-            S("ShadowSamp", GpuShaderStages.Fragment));
+            S("ShadowSamp", GpuShaderStages.Fragment),
+            T("PointShadowMap", GpuShaderStages.Fragment));
 
         /// <summary>A set on <see cref="ModelLayout"/>. Distinct resource instances per call, so two sets built
         /// here are two materials rather than the same one twice.</summary>
         internal static D3D11ResourceSet ModelSet(D3D11ResourceLayout layout, IGpuBuffer? ubo = null) => Set(layout,
-            ubo ?? new FakeBuffer(256), Texture(), Texture(), Texture(), new FakeSampler(), Texture(),
-            new FakeSampler());
+            ubo ?? new FakeBuffer(256), new FakeBuffer(768), new FakeBuffer(940032), Texture(), Texture(), Texture(),
+            new FakeSampler(), Texture(), new FakeSampler(), Texture());
 
         /// <summary><c>WaterRenderer._layout</c> verbatim, and the worst case in the engine at six native calls.
         /// Registers <c>t0 s0 t1 s1 t2 s2 b0</c>, with the first two texture-and-sampler pairs and the dynamic UBO

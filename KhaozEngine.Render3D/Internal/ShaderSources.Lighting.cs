@@ -7,9 +7,26 @@ namespace KhaozEngine.Render3D.Internal
     /// </summary>
     internal static partial class ShaderSources
     {
+        public const string PointLightBufferGlsl = @"
+struct PointLightRecord {
+    vec4 PosRadius;
+    vec4 ColorIntensity;
+    vec4 ShadowParams;
+};
+layout(std430, set=0, binding=1) readonly buffer PointLightBuffer {
+    PointLightRecord PointLights[];
+};
+";
+
+        public const string PointLightClusterBufferGlsl = @"
+layout(std430, set=0, binding=2) readonly buffer PointLightClusterBuffer {
+    uvec4 PointLightClusters[];
+};
+";
+
         // ---- Shared lighting block, single-sourced into ModelFrag and SplatFrag (const-string concatenation is
         //      compile-time, so both remain `public const string`). This is the ONE copy of the key+fill directional
-        //      lighting, cel banding, Blinn-Phong specular, and the up-to-16 dynamic point-light accumulation. Both
+        //      lighting, cel banding, Blinn-Phong specular, and the complete dynamic point-light accumulation. Both
         //      fragments splice this in verbatim and call computeLighting(), so a lighting edit is single-place by
         //      construction (no more hand-kept "KEEP IN SYNC" comments). The two things that legitimately differ per
         //      caller - the specular strength source and the specular exponent - are function PARAMETERS: ModelFrag
@@ -166,7 +183,8 @@ float pointShadowDepthAt(texture2D atlas, sampler samp, vec3 dir, float slot) {
     vec2 cellSize = vec2(1.0 / PointShadowAtlas.w, 1.0 / max(PointShadowAtlas.z, 1.0));
     vec2 cellMin = vec2(face, slot) * cellSize;
     vec2 tap = clamp(cellMin + uv * cellSize, cellMin + texel * 0.5, cellMin + cellSize - texel * 0.5);
-    return texture(sampler2D(atlas, samp), tap).r;
+    // The atlas has only mip zero. Explicit LOD avoids derivatives inside a varying cluster loop (FXC X3511).
+    return textureLod(sampler2D(atlas, samp), tap, 0.0).r;
 }
 
 // The per-fragment rotation of both discs below, off the ABSOLUTE world position (the render-frame one plus the
@@ -278,7 +296,7 @@ float samplePointShadowHard(texture2D atlas, sampler samp, vec3 toL, float dist,
     for (int oy = 0; oy < 2; oy++) {
         for (int ox = 0; ox < 2; ox++) {
             vec2 tap = clamp(base + (vec2(float(ox), float(oy)) - 0.5) * texel, lo, hi);
-            float stored = texture(sampler2D(atlas, samp), tap).r;
+            float stored = textureLod(sampler2D(atlas, samp), tap, 0.0).r;
             lit += step(d, stored + bias);                 // receiver nearer than the stored caster => lit
         }
     }
@@ -295,6 +313,43 @@ float samplePointShadow(texture2D atlas, sampler samp, vec3 toL, float dist, flo
 
 // pointAtlas/pointSamp are parameters for the same reason sampleKeyShadow's are: their set/binding differ per
 // fragment and GLSL cannot reference a fragment's own bindings from a shared function.
+bool pointLightClusterForFragment(vec3 worldPos, out uint clusterBase) {
+    clusterBase = 0u;
+    if (ClusterDepth.w < -0.5) return false;
+
+    vec4 clip = ViewProj * vec4(worldPos, 1.0);
+    if (any(isnan(clip)) || any(isinf(clip)) || clip.w <= 0.0) return false;
+    vec2 ndc = clip.xy / clip.w;
+    if (any(isnan(ndc)) || any(isinf(ndc))) return false;
+    const float ndcEpsilon = 1e-5;
+    if (ndc.x < -1.0 - ndcEpsilon || ndc.x > 1.0 + ndcEpsilon ||
+        ndc.y < -1.0 - ndcEpsilon || ndc.y > 1.0 + ndcEpsilon) return false;
+
+    float depth = dot(worldPos - CameraPos.xyz, ClusterCamera.xyz);
+    if (isnan(depth) || isinf(depth)) return false;
+    float depthEpsilon = 1e-4 * max(1.0, max(abs(ClusterDepth.x), abs(ClusterDepth.y)));
+    if (depth < ClusterDepth.x - depthEpsilon || depth > ClusterDepth.y + depthEpsilon) return false;
+    float clampedDepth = clamp(depth, ClusterDepth.x, ClusterDepth.y);
+
+    float zNorm;
+    if (ClusterDepth.w > 0.5) {
+        if (ClusterDepth.x <= 0.0 || ClusterDepth.z <= 0.0) return false;
+        zNorm = log(max(clampedDepth, ClusterDepth.x) / ClusterDepth.x) / ClusterDepth.z;
+    } else {
+        float span = ClusterDepth.y - ClusterDepth.x;
+        if (span <= 0.0) return false;
+        zNorm = (clampedDepth - ClusterDepth.x) / span;
+    }
+    if (isnan(zNorm) || isinf(zNorm)) return false;
+
+    int tileX = clamp(int(floor((ndc.x * 0.5 + 0.5) * 16.0)), 0, 15);
+    int tileY = clamp(int(floor((ndc.y * 0.5 + 0.5) * 9.0)), 0, 8);
+    int tileZ = clamp(int(floor(clamp(zNorm, 0.0, 1.0) * 24.0)), 0, 23);
+    int cluster = (tileZ * 9 + tileY) * 16 + tileX;
+    clusterBase = uint(cluster * 17);
+    return true;
+}
+
 void computeLighting(texture2D pointAtlas, sampler pointSamp, vec3 N, vec3 worldPos, float specStrength, float specExp, float keyShadow, out vec3 diffuse, out vec3 specColor) {
     float ndlKey  = max(dot(N, -normalize(LightDir.xyz)), 0.0);
     float ndlFill = max(dot(N, -normalize(FillDir.xyz)), 0.0);
@@ -309,13 +364,33 @@ void computeLighting(texture2D pointAtlas, sampler pointSamp, vec3 N, vec3 world
     specColor = LightColor.rgb*spec;
     // Dynamic point/effect lights (muzzle flashes, explosions, thrusters): accumulate diffuse (+ cheap
     // specular) with a windowed distance attenuation, on top of the key+fill term and back-face gated by
-    // max(dot(N,L),0). Params.y is the host-capped active count; zero leaves diffuse/specColor untouched,
+    // max(dot(N,L),0). Params.y is the complete submitted count; zero leaves diffuse/specColor untouched,
     // so the lit term stays bit-identical to the key+fill+ambient path.
     int npl = int(Params.y);
-    for (int i = 0; i < npl; i++) {
-        vec3 toL = PointPosRadius[i].xyz - worldPos;
-        float radius = PointPosRadius[i].w;
-        float dist = length(toL);
+    if (npl <= 0) return;
+
+    uint clusterBase;
+    bool fullPointLightFallback = !pointLightClusterForFragment(worldPos, clusterBase);
+    uvec4 clusterHeader = uvec4(0u);
+    if (!fullPointLightFallback) {
+        clusterHeader = PointLightClusters[clusterBase];
+        if (clusterHeader.y != 0u || clusterHeader.x > 64u) fullPointLightFallback = true;
+    }
+    int candidateCount = fullPointLightFallback ? npl : int(clusterHeader.x);
+    for (int candidate = 0; candidate < candidateCount; candidate++) {
+        int clusteredLightIndex = 0;
+        if (!fullPointLightFallback) {
+            uvec4 packedIndices = PointLightClusters[clusterBase + 1u + uint(candidate / 4)];
+            clusteredLightIndex = int(packedIndices[candidate & 3]);
+        }
+        int lightIndex = fullPointLightFallback ? candidate : clusteredLightIndex;
+        if (lightIndex < 0 || lightIndex >= npl) continue;
+        PointLightRecord pointLight = PointLights[lightIndex];
+        vec3 toL = pointLight.PosRadius.xyz - worldPos;
+        float radius = pointLight.PosRadius.w;
+        float distSquared = dot(toL, toL);
+        if (distSquared >= radius * radius) continue;
+        float dist = sqrt(distSquared);
         vec3 L = (dist > 1e-4) ? toL / dist : vec3(0.0);
         float ndl = max(dot(N, L), 0.0);
         // The UNBANDED grazing angle, kept for the slope bias alone. Cel banding quantises ndl below, and a bias
@@ -325,7 +400,7 @@ void computeLighting(texture2D pointAtlas, sampler pointSamp, vec3 N, vec3 world
         if (bands >= 1.0) ndl = floor(ndl*bands+0.5)/bands;
         // Smooth falloff: 1 at the light, easing to exactly 0 at its radius; scaled by intensity.
         float f = clamp(1.0 - (dist*dist)/max(radius*radius, 1e-6), 0.0, 1.0);
-        float att = f * f * PointColorIntensity[i].w;
+        float att = f * f * pointLight.ColorIntensity.w;
         // A slot below zero is every light that carries no shadow map, which is every light in a scene that never
         // asked for one: the branch is not taken, nothing is sampled, and the accumulation below is the pre-shadow
         // arithmetic byte for byte.
@@ -333,10 +408,10 @@ void computeLighting(texture2D pointAtlas, sampler pointSamp, vec3 N, vec3 world
         // att = 0, so whatever the sample answered it would be multiplied by nothing. Skipping it keeps the cost
         // of the soft filter on the one to three lights that actually reach a fragment, and it moves no picture,
         // because 0 * lit is 0 for every lit in 0..1.
-        if (att > 0.0 && PointShadowParams[i].x >= 0.0)
-            att *= samplePointShadow(pointAtlas, pointSamp, toL, dist, radius, ndlRaw, PointShadowParams[i],
+        if (att > 0.0 && pointLight.ShadowParams.x >= 0.0)
+            att *= samplePointShadow(pointAtlas, pointSamp, toL, dist, radius, ndlRaw, pointLight.ShadowParams,
                                      worldPos);
-        vec3 lc = PointColorIntensity[i].rgb;
+        vec3 lc = pointLight.ColorIntensity.rgb;
         diffuse += lc * (ndl * att);
         vec3 Hp = normalize(L + V);
         float sp = pow(max(dot(N,Hp),0.0), specExp) * specStrength * step(0.0001, ndl);

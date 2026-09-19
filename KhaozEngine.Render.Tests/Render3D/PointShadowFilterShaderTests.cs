@@ -18,10 +18,8 @@ namespace KhaozEngine.Tests.Render3D;
 public sealed class PointShadowFilterShaderTests
 {
     /// <summary>
-    /// The four-tap compare EXACTLY as it stood before the soft filter landed, copied out of the shipped source at
-    /// that commit. Not a paraphrase and not a re-derivation: a reformat here would pass a test that exists to
-    /// catch a reformat there. The soft path shares no line of it, deliberately, because the cheapest way to move
-    /// the Hard picture is to factor a helper out of it and have the helper grow a line for the other mode.
+    /// The original four-tap geometry and compare, with explicit mip-zero sampling for clustered loops.
+    /// The atlas has no other mip. Keeping the complete compare here pins Hard filtering separately from Soft.
     /// </summary>
     const string FourTapCompare = @"
     float face; vec2 uv;
@@ -38,12 +36,23 @@ public sealed class PointShadowFilterShaderTests
     for (int oy = 0; oy < 2; oy++) {
         for (int ox = 0; ox < 2; ox++) {
             vec2 tap = clamp(base + (vec2(float(ox), float(oy)) - 0.5) * texel, lo, hi);
-            float stored = texture(sampler2D(atlas, samp), tap).r;
+            float stored = textureLod(sampler2D(atlas, samp), tap, 0.0).r;
             lit += step(d, stored + bias);                 // receiver nearer than the stored caster => lit
         }
     }
     return lit * 0.25;
 ";
+
+    [Fact]
+    public void PointShadowSamplesUseAnExplicitMipInsideVaryingClusterLoops()
+    {
+        // Implicit gradients in a variable-length per-fragment loop force FXC to unroll it (X3511).
+        // The point-shadow atlas has only mip zero, so both filters must use derivative-free samples.
+        Assert.DoesNotContain("texture(sampler2D(atlas, samp)", ShaderSources.LightingCommonGlsl,
+            StringComparison.Ordinal);
+        Assert.Contains("textureLod(sampler2D(atlas, samp), tap, 0.0)", ShaderSources.LightingCommonGlsl,
+            StringComparison.Ordinal);
+    }
 
     [Fact]
     public void TheHardPathIsStillTheFourTapCompareItShippedAs()
@@ -95,13 +104,19 @@ public sealed class PointShadowFilterShaderTests
             StringComparison.Ordinal);
     }
 
-    /// <summary>A light whose attenuation has already reached zero is outside its own radius, so nothing it could
-    /// sample can change the pixel. The gate is on the SAMPLE rather than on the accumulation, which leaves the
-    /// unshadowed arithmetic exactly what it was.</summary>
+    /// <summary>A fragment outside a light's radius leaves the loop before normalization, cel lighting, shadow
+    /// sampling or specular work.</summary>
     [Fact]
     public void AFragmentOutsideTheLightsRadiusSamplesNothing()
     {
-        Assert.Contains("if (att > 0.0 && PointShadowParams[i].x >= 0.0)",
-            ShaderSources.LightingCommonGlsl, StringComparison.Ordinal);
+        string source = ShaderSources.LightingCommonGlsl;
+        int reject = source.IndexOf("if (distSquared >= radius * radius) continue;", StringComparison.Ordinal);
+        int normalize = source.IndexOf("vec3 L = (dist > 1e-4)", StringComparison.Ordinal);
+        int sample = source.IndexOf("att *= samplePointShadow", StringComparison.Ordinal);
+        int specular = source.IndexOf("vec3 Hp = normalize(L + V);", StringComparison.Ordinal);
+        Assert.True(reject >= 0, "the squared-radius rejection is missing");
+        Assert.True(reject < normalize, "radius rejection must precede light-vector normalization");
+        Assert.True(reject < sample, "radius rejection must precede point-shadow sampling");
+        Assert.True(reject < specular, "radius rejection must precede point-light specular work");
     }
 }

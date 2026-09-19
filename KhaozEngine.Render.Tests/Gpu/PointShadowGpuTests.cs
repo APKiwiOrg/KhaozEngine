@@ -183,10 +183,10 @@ public sealed class PointShadowGpuTests(PointShadowScene fixture) : IClassFixtur
     }
 
     [GpuFact]
-    public void PastTheBudgetOnlyTheNearerLightKeepsItsMap()
+    public void StaticLightsKeepTheirMapsBeyondTheConfiguredEffectBudget()
     {
-        // Two static requests against a one-row atlas. The far light loses, so the wall shadows the near light's
-        // contribution and nothing else.
+        // The configured floor is one, but both static owners retain maps. The far light cannot reach the
+        // measured floor, so the near light's own map must still block its contribution behind the wall.
         PointShadowScene.Shot shot = fixture.One(s =>
         {
             s.Settings.MaxShadowedLights = 1;
@@ -197,11 +197,11 @@ public sealed class PointShadowGpuTests(PointShadowScene fixture) : IClassFixtur
             s.AddLight(Light, Color.White, Radius, PointShadowScene.Intensity, LightShadow.Static(106));
         });
 
-        Assert.Equal(1, shot.ShadowedLights);
-        Assert.Equal(1, shot.Diagnostics.PointShadowedLights);
-        Assert.Equal(1, shot.Diagnostics.PointSlotsInUse);
+        Assert.Equal(2, shot.ShadowedLights);
+        Assert.Equal(2, shot.Diagnostics.PointShadowedLights);
+        Assert.Equal(2, shot.Diagnostics.PointSlotsInUse);
         Assert.True(shot.Red(Shadowed) <= shot.Red(Open) - 20,
-            $"the nearer light is the one that kept its map, so its shadow must be on the floor: "
+            $"the near light must retain its own wall shadow when both maps are resident: "
             + $"{shot.Red(Shadowed)} against {shot.Red(Open)}");
     }
 

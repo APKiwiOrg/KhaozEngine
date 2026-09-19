@@ -10,7 +10,7 @@ namespace KhaozEngine.Tests.Gpu
     /// <para>
     /// THIS IS WHERE #418 IS PINNED. That defect was one native call per resource per stage, and the cure is one
     /// call per register FILE per stage. The two numbers that matter are the model set at four and the water set
-    /// at six, and both are seven-element sets, so a test over an invented set would have proved neither. The
+    /// at six. A test over invented sets would have proved neither. The
     /// traces are spelled out rather than counted wherever the ORDER and the REGISTERS carry the meaning, because
     /// a count that is right with the wrong start register renders wrongly and passes.
     /// </para>
@@ -20,8 +20,8 @@ namespace KhaozEngine.Tests.Gpu
         // ---- The two numbers the spec quotes ---------------------------------------------------------------
 
         /// <summary>
-        /// THE MODEL SET IS FOUR NATIVE CALLS, from seven elements. One constant-buffer call per stage that reads
-        /// the UBO, one shader-resource array covering all four textures at once, one sampler array covering both.
+        /// THE MODEL SET IS FOUR NATIVE CALLS. One constant-buffer call per stage that reads the UBO, one
+        /// shader-resource array covering the structured light buffer and all five textures, and one sampler array.
         /// The incumbent issued 42 for the same set before its own batching and 8 after.
         /// </summary>
         [Fact]
@@ -44,9 +44,10 @@ namespace KhaozEngine.Tests.Gpu
                 {
                     $"VSSetConstantBuffers1(0,1,{Id(harness, set, 0)}@0+16)",
                     $"PSSetConstantBuffers1(0,1,{Id(harness, set, 0)}@0+16)",
-                    "PSSetShaderResources(0,4," + $"{Id(harness, set, 1)}|{Id(harness, set, 2)}|"
-                        + $"{Id(harness, set, 3)}|{Id(harness, set, 5)})",
-                    $"PSSetSamplers(0,2,{Id(harness, set, 4)}|{Id(harness, set, 6)})",
+                    "PSSetShaderResources(0,7," + $"{Id(harness, set, 1)}|{Id(harness, set, 2)}|"
+                        + $"{Id(harness, set, 3)}|{Id(harness, set, 4)}|{Id(harness, set, 5)}|"
+                        + $"{Id(harness, set, 7)}|{Id(harness, set, 9)})",
+                    $"PSSetSamplers(0,2,{Id(harness, set, 6)}|{Id(harness, set, 8)})",
                 },
                 harness.BindTrace());
         }
@@ -144,8 +145,8 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// A SET'S REGISTERS START PAST EVERY LAYOUT BEFORE IT IN THE PIPELINE'S ARRAY, per file. The model layout
-        /// consumes one constant buffer, four shader resources and two samplers, so a water set at slot one starts
-        /// at <c>b1</c>, <c>t4</c> and <c>s2</c>. That flattening is the whole of decision S2's across-layout
+        /// consumes one constant buffer, seven shader resources and two samplers, so a water set at slot one starts
+        /// at <c>b1</c>, <c>t7</c> and <c>s2</c>. That flattening is the whole of decision S2's across-layout
         /// half, and getting it wrong compiles, draws and renders every pixel from the wrong resource.
         /// </summary>
         [Fact]
@@ -164,7 +165,7 @@ namespace KhaozEngine.Tests.Gpu
             emitter.Draw(3, 1, 0, 0);
 
             Assert.Contains($"VSSetConstantBuffers1(1,1,{Id(harness, set, 6)}@0+64)", harness.BindTrace());
-            Assert.Contains($"VSSetShaderResources(4,2,{Id(harness, set, 0)}|{Id(harness, set, 2)})",
+            Assert.Contains($"VSSetShaderResources(7,2,{Id(harness, set, 0)}|{Id(harness, set, 2)})",
                 harness.BindTrace());
             Assert.Contains($"VSSetSamplers(2,2,{Id(harness, set, 1)}|{Id(harness, set, 3)})", harness.BindTrace());
         }

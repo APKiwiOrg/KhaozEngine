@@ -48,6 +48,7 @@ namespace KhaozEngine.Render3D
         public void PrepareFrame()
         {
             if (_framePrepared) return;
+            EnsurePointLightCapacity();
             _framePrepared = true;
             var frame = new FramePrepare(Post.Water, RelativeWaterPlanes(), EffectTimeSeconds);
             IFramePreparer[] preparers = _preparers ??= new IFramePreparer[] { _water };

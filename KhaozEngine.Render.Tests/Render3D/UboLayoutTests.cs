@@ -35,7 +35,7 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void UboBytes_EqualsHeaderPlusLightArraysPlusShadowTailPlusRenderOrigin()
+        public void UboBytes_EqualsEveryCompatibilityAndClusterTail()
         {
             // The renderer derives UboBytes = HeaderBytes + 2 * LightArrayBytes + ShadowTailBytes + RenderOriginBytes
             // and uploads the two point-light arrays, then the shadow tail, then the render origin (see
@@ -44,7 +44,8 @@ namespace KhaozEngine.Tests.Render3D
             // upload land at the wrong offsets.
             Assert.Equal(
                 ModelRenderer.HeaderBytes + 2 * ModelRenderer.LightArrayBytes + ModelRenderer.ShadowTailBytes
-                    + ModelRenderer.RenderOriginBytes + ModelRenderer.PointShadowTailBytes,
+                    + ModelRenderer.RenderOriginBytes + ModelRenderer.PointShadowTailBytes
+                    + ModelRenderer.ClusterTailBytes,
                 ModelRenderer.UboBytes);
             Assert.Equal(ModelRenderer.ShadowTailOffset + ModelRenderer.ShadowTailBytes,
                 ModelRenderer.RenderOriginOffset);
@@ -74,16 +75,15 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void UboBytes_Is1296_TheDocumentedCombinedSize()
+        public void UboBytes_Is1328_WithTheAppendedClusterTail()
         {
-            // 176 + 2*256 + 304 + 16 + 288 = 1296. The value the comments/docs quote, a sanity anchor on the
-            // derived arithmetic (header + both point-light arrays + the cascaded shadow tail = mat4[4] + 3*vec4 +
-            // the camera-relative render origin + the point-light shadow tail = vec4[16] + the atlas vec4 + the
-            // filter vec4). The point tail went LAST and GREW ON ITS OWN END, so every offset above it is
-            // unchanged, which PointShadowUboLayoutTests pins.
+            // 176 + 2*256 + 304 + 16 + 288 + 32 = 1328. The cluster tail follows every compatibility field, so
+            // all offsets that existed before clustered lighting remain unchanged.
             Assert.Equal(992u, ModelRenderer.RenderOriginOffset);
             Assert.Equal(1008u, ModelRenderer.PointShadowTailOffset);
-            Assert.Equal(1296u, ModelRenderer.UboBytes);
+            Assert.Equal(1296u, ModelRenderer.ClusterTailOffset);
+            Assert.Equal(32u, ModelRenderer.ClusterTailBytes);
+            Assert.Equal(1328u, ModelRenderer.UboBytes);
         }
 
         [Fact]
@@ -213,7 +213,8 @@ namespace KhaozEngine.Tests.Render3D
             // The #604 split, pinned as a shape rather than as an offset. `U` comes FIRST at set 0 binding 0 and is
             // declared by every skinned stage, which kept each stage's buffer usage a prefix of the layout while
             // MslBindingOrder.CheckPrefix still ran (#604 deleted it in the same program, so the order is a shape
-            // kept rather than a requirement). `VBlock` follows it at binding 1 and is declared by the VERTEX alone:
+            // kept rather than a requirement). Point-light records and clusters occupy fragment-only bindings 1
+            // and 2, then `VBlock` follows at binding 3 and is declared by the VERTEX alone:
             // no fragment reads Model or P, they arrive as interpolants. Folding either back would reinstate the
             // per-draw copy of the frame block the unfold deleted.
             foreach (var (name, src) in new[]
@@ -225,10 +226,19 @@ namespace KhaozEngine.Tests.Render3D
             {
                 Assert.True(src.Contains("layout(set=0, binding=0) uniform U {"),
                     $"{name} no longer opens on the shared frame block at set 0 binding 0. Every skinned stage "
-                    + "declares it, which is what makes the vertex-only VBlock at binding 1 legal.");
+                    + "declares it, which is what makes the vertex-only VBlock at binding 3 legal.");
             }
 
-            Assert.Contains("layout(set=0, binding=1) uniform VBlock {", ShaderSources.SkinnedModelVert);
+            Assert.DoesNotContain("PointLightBuffer", ShaderSources.SkinnedModelVert);
+            Assert.Contains("layout(std430, set=0, binding=1) readonly buffer PointLightBuffer",
+                ShaderSources.SkinnedModelFrag);
+            Assert.Contains("layout(std430, set=0, binding=1) readonly buffer PointLightBuffer",
+                ShaderSources.SkinnedModelDissolveFrag);
+            Assert.Contains("layout(std430, set=0, binding=2) readonly buffer PointLightClusterBuffer",
+                ShaderSources.SkinnedModelFrag);
+            Assert.Contains("layout(std430, set=0, binding=2) readonly buffer PointLightClusterBuffer",
+                ShaderSources.SkinnedModelDissolveFrag);
+            Assert.Contains("layout(set=0, binding=3) uniform VBlock {", ShaderSources.SkinnedModelVert);
             Assert.DoesNotContain("VBlock", ShaderSources.SkinnedModelFrag);
             Assert.DoesNotContain("VBlock", ShaderSources.SkinnedModelDissolveFrag);
             Assert.DoesNotContain("mat4 Mvp;", ShaderSources.SkinnedModelVert);

@@ -52,8 +52,8 @@ public sealed class PointShadowUboLayoutTests
         return (f[i], f[i + 1], f[i + 2], f[i + 3]);
     }
 
-    /// <summary>The filter vec4, which is the LAST member of the whole block: (mode, lightSizeMetres,
-    /// maxPenumbraTexels, faceResolution).</summary>
+    /// <summary>The filter vec4 at the end of the point-shadow compatibility tail: (mode, lightSizeMetres,
+    /// maxPenumbraTexels, faceResolution). Cluster selection data follows it.</summary>
     static (float Mode, float LightSize, float MaxTexels, float FaceRes) FilterParams(ModelRenderer model)
     {
         ReadOnlySpan<float> f = MemoryMarshal.Cast<byte, float>(model.FrameImage);
@@ -62,12 +62,13 @@ public sealed class PointShadowUboLayoutTests
     }
 
     [Fact]
-    public void TheTailGrowsTheBlockByExactlySixteenVec4sPlusTwo()
+    public void ThePointShadowTailKeepsItsSizeAndTheClusterTailFollowsIt()
     {
         Assert.Equal((uint)(ModelRenderer.MaxPointLights * 16 + 32), ModelRenderer.PointShadowTailBytes);
         Assert.Equal(288u, ModelRenderer.PointShadowTailBytes);
-        Assert.Equal(OldUboBytes + ModelRenderer.PointShadowTailBytes, ModelRenderer.UboBytes);
-        Assert.Equal(1296u, ModelRenderer.UboBytes);
+        Assert.Equal(OldUboBytes + ModelRenderer.PointShadowTailBytes, ModelRenderer.ClusterTailOffset);
+        Assert.Equal(1296u, ModelRenderer.ClusterTailOffset);
+        Assert.Equal(1328u, ModelRenderer.UboBytes);
     }
 
     [Fact]
@@ -158,6 +159,7 @@ public sealed class PointShadowUboLayoutTests
         using ModelRenderer model = NewRenderer(device);
         var slots = new int[ModelRenderer.MaxPointLights + 4];
         Array.Fill(slots, 2);
+        model.EnsurePointShadowSlotCapacity(slots.Length);
 
         model.SetPointShadowUniforms(slots, 0.5f, 0.25f, 64, 1, PointShadowFilter.Hard, 1f, 16f);
 
@@ -213,14 +215,20 @@ public sealed class PointShadowUboLayoutTests
             int slots = src.IndexOf("vec4 PointShadowParams[16];", StringComparison.Ordinal);
             int atlas = src.IndexOf("vec4 PointShadowAtlas;", StringComparison.Ordinal);
             int filter = src.IndexOf("vec4 PointShadowFilter;", StringComparison.Ordinal);
+            int clusterDepth = src.IndexOf("vec4 ClusterDepth;", StringComparison.Ordinal);
+            int clusterCamera = src.IndexOf("vec4 ClusterCamera;", StringComparison.Ordinal);
             Assert.True(origin >= 0, $"{name}: the frame block is missing the render origin.");
             Assert.True(slots >= 0, $"{name}: the frame block is missing PointShadowParams.");
             Assert.True(atlas >= 0, $"{name}: the frame block is missing PointShadowAtlas.");
             Assert.True(filter >= 0, $"{name}: the frame block is missing PointShadowFilter.");
+            Assert.True(clusterDepth >= 0, $"{name}: the frame block is missing ClusterDepth.");
+            Assert.True(clusterCamera >= 0, $"{name}: the frame block is missing ClusterCamera.");
             Assert.True(origin < slots,
                 $"{name}: the point-shadow tail must follow the render origin, matching the C# offsets.");
             Assert.True(slots < atlas, $"{name}: PointShadowAtlas follows PointShadowParams.");
-            Assert.True(atlas < filter, $"{name}: PointShadowFilter is the last member of the block.");
+            Assert.True(atlas < filter, $"{name}: PointShadowFilter follows PointShadowAtlas.");
+            Assert.True(filter < clusterDepth, $"{name}: ClusterDepth follows the compatibility tails.");
+            Assert.True(clusterDepth < clusterCamera, $"{name}: ClusterCamera is the last member of the block.");
         }
     }
 
@@ -233,5 +241,7 @@ public sealed class PointShadowUboLayoutTests
         Assert.Contains("vec4 PointShadowParams[16];", ShaderSources.FoliageVert, StringComparison.Ordinal);
         Assert.Contains("vec4 PointShadowAtlas;", ShaderSources.FoliageVert, StringComparison.Ordinal);
         Assert.Contains("vec4 PointShadowFilter;", ShaderSources.FoliageVert, StringComparison.Ordinal);
+        Assert.Contains("vec4 ClusterDepth;", ShaderSources.FoliageVert, StringComparison.Ordinal);
+        Assert.Contains("vec4 ClusterCamera;", ShaderSources.FoliageVert, StringComparison.Ordinal);
     }
 }

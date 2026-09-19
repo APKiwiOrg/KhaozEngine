@@ -31,17 +31,14 @@ namespace KhaozEngine.Render3D
     /// </summary>
     public sealed partial class Scene3D
     {
-        // This frame's requesting lights, in the order they will be offered rows (nearest to the eye first), and
-        // the subset of them whose rows are actually re-drawn. Reused rather than reallocated, so an ordinary
-        // shadowed frame allocates nothing here.
+        // This frame's requesting lights, keyed statics first in stable-key order and then dynamic effects nearest
+        // first, plus the subset whose rows are re-drawn. Reused so an ordinary shadowed frame allocates nothing.
         readonly List<PointShadowRequest> _pointRequests = new();
         readonly List<int> _pointRebuilds = new();
 
-        // The receiver's slot table, INDEX-ALIGNED WITH THE UPLOADED LIGHT ORDER (the first MaxPointLights queued
-        // lights, in queue order, which is what ModelRenderer.BuildLightArrays uploads). Never the request order:
-        // the requests are sorted by distance, and a shader indexing PointShadowParams by the light it is
-        // accumulating would read another light's row.
-        readonly int[] _pointSlotUniform = new int[ModelRenderer.MaxPointLights];
+        // The receiver's slot table, INDEX-ALIGNED WITH THE COMPLETE UPLOADED LIGHT ORDER. Never the request order:
+        // static requests sort by stable key and dynamics by distance, while the receiver indexes queue order.
+        int[] _pointSlotUniform = Array.Empty<int>();
 
         PointShadowSlots? _pointSlotCache;
         // One caster signature per atlas row, parallel to the cache. Kept here rather than in the cache because it
@@ -50,9 +47,8 @@ namespace KhaozEngine.Render3D
         int _pointShadowFrame;
 
         /// <summary>How many point lights actually carried a shadow map on the last rendered frame, which is at or
-        /// below how many asked: <see cref="PointShadowSettings.MaxShadowedLights"/> caps it, and a light whose row
-        /// has not been drawn into yet is not counted because it samples nothing. 0 when point shadows are off and
-        /// before the first frame.</summary>
+        /// below how many asked. Every keyed static request has a reserved row, while dynamic requests use the
+        /// configured effect budget. A row not drawn yet is not counted because it samples nothing.</summary>
         public int PointShadowedLights { get; private set; }
 
         /// <summary>
@@ -105,71 +101,15 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>
-        /// Fill <see cref="_pointRequests"/> with the queued lights asking for a map, nearest to the eye first,
-        /// cut to the budget. Returns false when there is nothing to do, which is the path that must allocate
-        /// nothing.
-        /// <para>
-        /// Only the first <see cref="ModelRenderer.MaxPointLights"/> queued lights are considered, because those
-        /// are the only ones uploaded: a light past that index is dropped by the renderer, so shadowing it would
-        /// be work nothing can sample.
-        /// </para>
-        /// </summary>
-        bool GatherPointShadowRequests(PointShadowSettings settings, Vector3 eyeAbsolute)
-        {
-            _pointRequests.Clear();
-            if (!settings.Enabled) return false;
-
-            int uploaded = Math.Min(_lights.Count, ModelRenderer.MaxPointLights);
-            for (int i = 0; i < uploaded; i++)
-            {
-                LightShadow request = _lights[i].Shadow;
-                if (!request.Requested) continue;
-                Vector4 posRadius = _lights[i].PosRadius;
-                var position = new Vector3(posRadius.X, posRadius.Y, posRadius.Z);
-                // A dynamic light carries no key, so it is keyed by its place in the uploaded order. That is
-                // stable for as long as the caller queues its lights in a stable order, and a dynamic row is
-                // rebuilt every frame anyway, so a shuffled queue costs a rebuild rather than a wrong picture.
-                long key = request.Mode == LightShadowMode.Dynamic ? i : request.Key;
-                // A request that does not carry a real box carries the zero pair, which is the one encoding the
-                // rest of the pass reads as "no box": nothing downstream has to ask LightShadow again.
-                Vector3 exclusionMin = request.HasExclusionBox ? request.ExclusionMin : Vector3.Zero;
-                Vector3 exclusionMax = request.HasExclusionBox ? request.ExclusionMax : Vector3.Zero;
-                _pointRequests.Add(new PointShadowRequest(
-                    i, position, posRadius.W, request.NearRadius, exclusionMin, exclusionMax, request.Mode, key,
-                    (position - eyeAbsolute).LengthSquared()));
-            }
-            if (_pointRequests.Count == 0) return false;
-
-            // Nearest first, ties broken by queue order, so the budget cut is deterministic frame to frame.
-            _pointRequests.Sort(static (a, b) =>
-            {
-                int byDistance = a.DistanceSq.CompareTo(b.DistanceSq);
-                return byDistance != 0 ? byDistance : a.LightIndex.CompareTo(b.LightIndex);
-            });
-            // The budget is the SMALLER of what the settings ask for and what the live atlas actually has. A raised
-            // row count is not live until the boundary has reshaped the atlas, so between the request and the
-            // reshape (and forever, if the device refused that layout) the settings promise rows that do not
-            // exist, and a light past the live count would spend a whole acquire asking for one. With no cache at
-            // all the setting stands on its own, because that is the frame whose request is what makes the atlas
-            // wanted in the first place.
-            int budget = _pointSlotCache is { } cache
-                ? Math.Min(settings.ResolvedMaxLights, cache.Capacity)
-                : settings.ResolvedMaxLights;
-            if (_pointRequests.Count > budget) _pointRequests.RemoveRange(budget, _pointRequests.Count - budget);
-            return true;
-        }
-
-        /// <summary>
         /// Give every request a row, and decide which of the static ones changed underneath. A static light's
         /// signature is compared here rather than in the cache because it is a question about the SCENE (which
         /// casters stand inside this light) rather than about the cache's bookkeeping.
         /// <para>
         /// IN TWO PHASES, AND THE ORDER IS THE WHOLE POINT. Every request that already owns a row is re-seated
-        /// first, then the rest are offered rows. The requests are sorted nearest first, so a one-pass acquire
-        /// would let a newcomer at the head of the list evict an incumbent standing further back in the same list,
-        /// which then evicts the next one, and so on: one arrival in a town with more lanterns than rows costs as
-        /// many valid maps as there are lights behind it, every time the player walks. Re-seating first makes
-        /// every incumbent's row "requested this frame", and a row requested this frame is never a victim.
+        /// first, then the rest are offered rows. Static requests are sorted by stable key, so a one-pass acquire
+        /// could let a new earlier key evict an incumbent that is about to ask later in the list, which then evicts
+        /// the next one. Re-seating first makes every incumbent's row "requested this frame", and a row requested
+        /// this frame is never a victim.
         /// </para>
         /// </summary>
         void AcquirePointShadowSlots(PointShadowSlots cache, int frame)
@@ -293,7 +233,8 @@ namespace KhaozEngine.Render3D
                 _pointSlotUniform[r.LightIndex] = r.Slot;   // the UPLOADED light order, not the request order
                 PointShadowedLights++;
             }
-            _model.SetPointShadowUniforms(_pointSlotUniform, settings.ResolvedBias, settings.ResolvedSlopeBias,
+            _model.SetPointShadowUniforms(_pointSlotUniform.AsSpan(0, _lights.Count), settings.ResolvedBias,
+                settings.ResolvedSlopeBias,
                 PointShadowFaceResolution, PointShadowRows, settings.Filter, settings.ResolvedLightSizeMetres,
                 settings.ResolvedMaxPenumbraTexels);
         }

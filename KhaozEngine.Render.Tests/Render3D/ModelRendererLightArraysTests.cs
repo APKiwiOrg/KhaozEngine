@@ -7,9 +7,9 @@ namespace KhaozEngine.Tests.Render3D
 {
     /// <summary>
     /// Headless coverage of <see cref="ModelRenderer.BuildLightArrays"/>: the pure packing that the dynamic
-    /// point-light UBO upload relies on. Verifies lights are copied into the two fixed-size arrays, the active
-    /// count is returned, the unused tail is zero-filled (so a previous frame can't leak), and an over-budget
-    /// list is clamped to <see cref="ModelRenderer.MaxPointLights"/> (the host picks the N nearest).
+    /// point-light compatibility UBO mirror relies on. Verifies the first sixteen lights are copied into the two
+    /// fixed-size arrays, the complete submitted count is returned, and the unused tail is zero-filled so a
+    /// previous frame cannot leak. The receiver shader reads the structured buffer instead of these arrays.
     /// </summary>
     public class ModelRendererLightArraysTests
     {
@@ -62,7 +62,7 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void OverBudget_ClampsToMax_KeepsFirstN()
+        public void MoreThanTheCompatibilityMirror_ReturnsTheFullCountAndMirrorsTheFirstSixteen()
         {
             int extra = 5;
             var lights = new ModelRenderer.PointLightData[ModelRenderer.MaxPointLights + extra];
@@ -72,8 +72,8 @@ namespace KhaozEngine.Tests.Render3D
 
             int count = ModelRenderer.BuildLightArrays(lights, pos, col);
 
-            Assert.Equal(ModelRenderer.MaxPointLights, count);
-            // The first MaxPointLights lights are kept in order; the over-budget tail is dropped.
+            Assert.Equal(lights.Length, count);
+            // The compatibility mirror keeps its original fixed layout and preserves the first sixteen in order.
             for (int i = 0; i < ModelRenderer.MaxPointLights; i++)
                 Assert.Equal((float)i, pos[i].X, 4);
         }

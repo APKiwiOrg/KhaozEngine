@@ -26,15 +26,16 @@ public enum PointShadowFilter : byte
 /// The point-light shadow budget: whether omnidirectional maps are built at all, how big each cube face is, how
 /// many lights can carry one at once, and how much rebuilding one frame is allowed to do.
 /// <para>
-/// The atlas is ONE R32Float texture of six face columns by <see cref="ResolvedMaxLights"/> rows, allocated at the
-/// FRAME BOUNDARY after the first frame that carries a request, so that first request renders one frame unshadowed
-/// and carries its map from the next, and a game that never asks for a point shadow allocates nothing and pays no
-/// memory for these numbers. <see cref="AtlasBytes"/> is what it would cost if it did.
+/// The atlas is ONE R32Float texture of six face columns. Its configured row floor is
+/// <see cref="ResolvedMaxLights"/>, and keyed static requests expand it at the existing frame boundary. The first
+/// request renders one frame unshadowed and carries its map from the next. A game that never asks allocates
+/// nothing. <see cref="AtlasBytes"/> reports the configured floor before static expansion.
 /// </para>
 /// <para>
 /// Rides <see cref="ShadowSettings.PointShadows"/>, and the three <see cref="ShadowSettings.ForDetail"/> profiles
 /// seed it: Low turns it off, Default is the values below (256 by 8, about 27 MiB), High is 384 by 12 (about
-/// 91 MiB). <see cref="AtlasBytes"/> is why High is not larger than that.
+/// 91 MiB). Those row counts are a floor. Keyed static requests expand the live atlas as needed, with a stable
+/// dynamic reserve, and the live face resolution falls before any static row is discarded.
 /// </para>
 /// </summary>
 public sealed class PointShadowSettings
@@ -47,13 +48,18 @@ public sealed class PointShadowSettings
     /// keeps the atlas inside an ordinary maximum texture dimension.</summary>
     public const int MaxFaceResolution = 1024;
 
+    /// <summary>Conservative maximum atlas width or height when a backend does not expose a tighter device limit.
+    /// The six-column layout and the minimum face resolution derive every other public capacity limit from this
+    /// one value.</summary>
+    public const int MaxAtlasExtent = 16384;
+
     /// <summary>Smallest light budget a menu value resolves to. Zero rows would be an atlas with no rows, so the
     /// floor is one rather than none: turn the feature off with <see cref="Enabled"/> instead.</summary>
     public const int MinLights = 1;
 
-    /// <summary>Largest light budget. The frame UBO carries one shadow slot per POINT LIGHT slot, so the budget
-    /// can never exceed the fixed point-light array size.</summary>
-    public const int MaxLights = ModelRenderer.MaxPointLights;
+    /// <summary>Largest supported row count at <see cref="MinFaceResolution"/> within
+    /// <see cref="MaxAtlasExtent"/>. This is independent of receiver light-record capacity.</summary>
+    public const int MaxLights = MaxAtlasExtent / MinFaceResolution;
 
     /// <summary>Whether point lights may carry shadow maps at all. <c>false</c> renders every point light
     /// unshadowed, whatever each one requested, and releases the atlas.</summary>
@@ -64,9 +70,9 @@ public sealed class PointShadowSettings
     /// <see cref="ResolvedFaceResolution"/>.</summary>
     public int FaceResolution = 256;
 
-    /// <summary>How many lights may carry a map in one frame, which is also the atlas row count. Requests past it
-    /// fall back to unshadowed, nearest to the eye first. Clamped into
-    /// <see cref="MinLights"/>..<see cref="MaxLights"/> by <see cref="ResolvedMaxLights"/>.</summary>
+    /// <summary>The configured atlas row floor and dynamic effect budget. Keyed static requests expand the live
+    /// row count beyond it. Dynamic rows use its remaining capacity and never displace a keyed static row. Clamped
+    /// into <see cref="MinLights"/>..<see cref="MaxLights"/> by <see cref="ResolvedMaxLights"/>.</summary>
     public int MaxShadowedLights = 8;
 
     /// <summary>How many CACHED (<see cref="LightShadowMode.Static"/>) maps may be re-rendered on one frame. A
@@ -132,9 +138,19 @@ public sealed class PointShadowSettings
     /// <see cref="MinFaceResolution"/>..<see cref="MaxFaceResolution"/>.</summary>
     public int ResolvedFaceResolution => Math.Clamp(FaceResolution, MinFaceResolution, MaxFaceResolution);
 
-    /// <summary>The light budget actually used, clamped into <see cref="MinLights"/>..<see cref="MaxLights"/>.
-    /// Also the atlas row count.</summary>
+    /// <summary>The configured row floor and dynamic effect budget, clamped into
+    /// <see cref="MinLights"/>..<see cref="MaxLights"/>. The live atlas may carry more rows for keyed statics.</summary>
     public int ResolvedMaxLights => Math.Clamp(MaxShadowedLights, MinLights, MaxLights);
+
+    /// <summary>Largest face resolution that keeps <paramref name="rows"/> inside the conservative atlas extent.
+    /// Rows are preserved and resolution falls first.</summary>
+    internal int ResolveFaceResolution(int rows)
+    {
+        int faceByHeight = MaxAtlasExtent / Math.Max(1, rows);
+        int faceByWidth = MaxAtlasExtent / PointShadowMath.FaceCount;
+        return Math.Max(MinFaceResolution,
+            Math.Min(ResolvedFaceResolution, Math.Min(faceByHeight, faceByWidth)));
+    }
 
     /// <summary>The constant bias actually used, clamped into 0..<see cref="MaxBias"/>. THE FLOOR IS THE POINT: a
     /// negative bias does not make shadows tighter, it subtracts from the stored distance and turns the compare
@@ -165,15 +181,15 @@ public sealed class PointShadowSettings
     static float ResolveBias(float value) =>
         float.IsNaN(value) ? 0f : Math.Clamp(value, 0f, MaxBias);
 
-    /// <summary>What the atlas would cost in GPU memory at the resolved layout: six face columns by
-    /// <see cref="ResolvedMaxLights"/> rows of <see cref="ResolvedFaceResolution"/> square, at 4 bytes a texel of
-    /// R32Float colour plus 5 of D32FloatS8UInt depth. Reported for a settings screen, and it is what the atlas
-    /// costs ONCE ALLOCATED rather than what a game not using point shadows is paying.</summary>
+    /// <summary>What the configured atlas floor costs in GPU memory: six face columns by
+    /// <see cref="ResolvedMaxLights"/> rows at the largest face resolution that fits
+    /// <see cref="MaxAtlasExtent"/>, with 4 colour bytes plus 5 depth-stencil bytes per texel. Keyed static
+    /// expansion is visible through <see cref="Scene3D.ResolvedPointShadows"/> instead.</summary>
     public long AtlasBytes
     {
         get
         {
-            long res = ResolvedFaceResolution;
+            long res = ResolveFaceResolution(ResolvedMaxLights);
             return 6L * res * ResolvedMaxLights * res * 9L;
         }
     }

@@ -6,6 +6,17 @@ namespace KhaozEngine.Render3D;
 
 public sealed partial class Scene3D
 {
+    void EnsurePointLightCapacity()
+    {
+        int required = _lights.Count;
+        EnsurePointSlotUniformCapacity(required);
+        _model.EnsurePointShadowSlotCapacity(required);
+        if (!_model.RequiresPointLightGrowth(required)) return;
+        var liveSets = new List<IGpuResourceSet>();
+        CollectLiveMaterialSets(liveSets);
+        _model.EnsurePointLightCapacity(required, liveSets, CommitMaterialSets);
+    }
+
     internal bool ReplaceShadowLayout(int resolution, int cascadeCount) =>
         ReplaceShadowLayoutWithResult(resolution, cascadeCount) == ShadowLayoutReplacementResult.Replaced;
 

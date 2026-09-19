@@ -4,6 +4,25 @@ using KhaozEngine.Render3D.Rendering;
 namespace KhaozEngine.Render3D;
 
 /// <summary>
+/// How a receiver filters a point light's shadow map, which is a choice between a crisp edge and a believable one.
+/// </summary>
+public enum PointShadowFilter : byte
+{
+    /// <summary>Four taps at half-texel offsets inside the cube face's own atlas cell, averaged. The cheapest
+    /// thing that is not a single tap, and the edge it draws is one atlas texel wide wherever it stands: a
+    /// straight hard line that reads as a stencil rather than as light. This is what shipped first, and it is what
+    /// a low-end profile should keep.</summary>
+    Hard = 0,
+
+    /// <summary>A contact-hardening filter: a short blocker search decides how far the occluder is in front of the
+    /// receiver, and the kernel is widened in proportion, so the shadow stays crisp where it touches what casts it
+    /// and spreads the further the receiver stands behind it. Every tap runs the cube-face select for itself, so
+    /// the kernel crosses a face boundary without a seam. Costs about fifteen atlas fetches against Hard's
+    /// four.</summary>
+    Soft = 1,
+}
+
+/// <summary>
 /// The point-light shadow budget: whether omnidirectional maps are built at all, how big each cube face is, how
 /// many lights can carry one at once, and how much rebuilding one frame is allowed to do.
 /// <para>
@@ -75,6 +94,40 @@ public sealed class PointShadowSettings
     /// which is what the uniform must be fed.</summary>
     public float SlopeBias = 0.02f;
 
+    /// <summary>Largest emitter size a menu value resolves to, in metres. A metre of apparent flame is already a
+    /// bonfire, and past it the blocker search is casting about so far that it finds occluders which have nothing
+    /// to do with the edge being drawn.</summary>
+    public const float MaxLightSizeMetres = 1f;
+
+    /// <summary>Smallest penumbra ceiling a menu value resolves to, in atlas texels. Below one texel the filter
+    /// can never reach past the tap it started on, which is a soft filter rendering hard at the price of the
+    /// blocker search.</summary>
+    public const float PenumbraTexelsFloor = 1f;
+
+    /// <summary>Largest penumbra ceiling a menu value resolves to, in atlas texels. The filter takes a fixed nine
+    /// taps however wide it spreads them, so past this they are far enough apart to read as nine separate shadows
+    /// rather than as one soft one.</summary>
+    public const float PenumbraTexelsCeiling = 16f;
+
+    /// <summary>Which filter a receiver uses. <see cref="PointShadowFilter.Soft"/> is the default and is what
+    /// makes a doorway wedge read as light rather than as a stencil.</summary>
+    public PointShadowFilter Filter = PointShadowFilter.Soft;
+
+    /// <summary>How big the emitter looks, in metres, which is the ONLY thing that decides how far a
+    /// <see cref="PointShadowFilter.Soft"/> penumbra spreads: the shadow widens as
+    /// <c>LightSizeMetres * (receiverDistance - blockerDistance) / blockerDistance</c>. A candle at a couple of
+    /// centimetres throws an almost hard edge, and a metre-wide fire throws a very soft one. Clamped into
+    /// 0..<see cref="MaxLightSizeMetres"/> by <see cref="ResolvedLightSizeMetres"/>, and read by no other
+    /// filter.</summary>
+    public float LightSizeMetres = 0.15f;
+
+    /// <summary>The ceiling on that spread, in ATLAS TEXELS of the light's own cube face, which is what keeps the
+    /// filter's nine taps close enough together to still describe one edge. Raising it buys a softer far shadow
+    /// and spends the taps over a wider area, where a very wide kernel starts to band. Clamped into
+    /// <see cref="PenumbraTexelsFloor"/>..<see cref="PenumbraTexelsCeiling"/> by
+    /// <see cref="ResolvedMaxPenumbraTexels"/>.</summary>
+    public float MaxPenumbraTexels = 6f;
+
     /// <summary>The face resolution actually used, clamped into
     /// <see cref="MinFaceResolution"/>..<see cref="MaxFaceResolution"/>.</summary>
     public int ResolvedFaceResolution => Math.Clamp(FaceResolution, MinFaceResolution, MaxFaceResolution);
@@ -93,6 +146,21 @@ public sealed class PointShadowSettings
     /// <summary>The slope-scaled bias actually used, clamped into 0..<see cref="MaxBias"/> on the same rule as
     /// <see cref="ResolvedBias"/>.</summary>
     public float ResolvedSlopeBias => ResolveBias(SlopeBias);
+
+    /// <summary>The emitter size actually used, clamped into 0..<see cref="MaxLightSizeMetres"/> on
+    /// <see cref="ResolvedBias"/>'s rule: NaN resolves to zero rather than being handed to
+    /// <see cref="Math.Clamp(float, float, float)"/>, which is undefined on it, and a NaN here would poison every
+    /// tap offset in the filter rather than one compare.</summary>
+    public float ResolvedLightSizeMetres =>
+        float.IsNaN(LightSizeMetres) ? 0f : Math.Clamp(LightSizeMetres, 0f, MaxLightSizeMetres);
+
+    /// <summary>The penumbra ceiling actually used, clamped into
+    /// <see cref="PenumbraTexelsFloor"/>..<see cref="PenumbraTexelsCeiling"/>. NaN resolves to the FLOOR rather
+    /// than to zero: zero is not a value this knob has, and the floor is the conservative answer.</summary>
+    public float ResolvedMaxPenumbraTexels =>
+        float.IsNaN(MaxPenumbraTexels)
+            ? PenumbraTexelsFloor
+            : Math.Clamp(MaxPenumbraTexels, PenumbraTexelsFloor, PenumbraTexelsCeiling);
 
     static float ResolveBias(float value) =>
         float.IsNaN(value) ? 0f : Math.Clamp(value, 0f, MaxBias);
@@ -121,6 +189,9 @@ public sealed class PointShadowSettings
         MaxDynamicLightsPerFrame = MaxDynamicLightsPerFrame,
         Bias = Bias,
         SlopeBias = SlopeBias,
+        Filter = Filter,
+        LightSizeMetres = LightSizeMetres,
+        MaxPenumbraTexels = MaxPenumbraTexels,
     };
 }
 

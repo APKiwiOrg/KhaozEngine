@@ -41,7 +41,7 @@ namespace KhaozEngine.Tests.Gpu
         const int W = 128, H = 96;
 
         // ModelRenderer.UboBytes: 176 header + 2 * 256 point-light arrays + 304 shadow tail + 16 render origin +
-        // 272 point-shadow tail. Read off the constant rather than spelled out, so growing the block again is one
+        // 288 point-shadow tail. Read off the constant rather than spelled out, so growing the block again is one
         // edit rather than a silent "no destination of that size was written this frame".
         const uint FrameUboBytes = ModelRenderer.UboBytes;
         // ShadowMapRenderer: MaxCascades (4) 256-byte dynamic slots.

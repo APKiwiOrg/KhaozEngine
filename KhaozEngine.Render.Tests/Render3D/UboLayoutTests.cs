@@ -74,15 +74,16 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void UboBytes_Is1280_TheDocumentedCombinedSize()
+        public void UboBytes_Is1296_TheDocumentedCombinedSize()
         {
-            // 176 + 2*256 + 304 + 16 + 272 = 1280. The value the comments/docs quote, a sanity anchor on the
+            // 176 + 2*256 + 304 + 16 + 288 = 1296. The value the comments/docs quote, a sanity anchor on the
             // derived arithmetic (header + both point-light arrays + the cascaded shadow tail = mat4[4] + 3*vec4 +
-            // the camera-relative render origin + the point-light shadow tail = vec4[16] + vec4). The point tail
-            // went LAST so every offset above it is unchanged, which PointShadowUboLayoutTests pins.
+            // the camera-relative render origin + the point-light shadow tail = vec4[16] + the atlas vec4 + the
+            // filter vec4). The point tail went LAST and GREW ON ITS OWN END, so every offset above it is
+            // unchanged, which PointShadowUboLayoutTests pins.
             Assert.Equal(992u, ModelRenderer.RenderOriginOffset);
             Assert.Equal(1008u, ModelRenderer.PointShadowTailOffset);
-            Assert.Equal(1280u, ModelRenderer.UboBytes);
+            Assert.Equal(1296u, ModelRenderer.UboBytes);
         }
 
         [Fact]

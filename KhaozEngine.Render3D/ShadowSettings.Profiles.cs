@@ -43,7 +43,11 @@ namespace KhaozEngine.Render3D
             switch (detail)
             {
                 case ShadowMapDetail.Low:
+                    // Off, and HARD as well, which is what a game turning point shadows back on over a low-end
+                    // profile should inherit: the soft filter is about fifteen atlas fetches a lit fragment
+                    // against four.
                     points.Enabled = false;
+                    points.Filter = PointShadowFilter.Hard;
                     break;
                 case ShadowMapDetail.High:
                     points.FaceResolution = 384;

@@ -3544,6 +3544,28 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
         `ResolvedMaxLights`. Requests past it fall back to unshadowed, nearest to the eye first. So when more
         placed lights ask than there are rows the nearest ones win, and a light that stays inside the budget
         keeps its cached map while the ones around it come and go.
+      - **`Filter` picks the edge, and `Soft` is the default.** `PointShadowFilter.Soft` is a contact-hardening
+        filter: a short blocker search reads how far the occluder stands in front of the receiver and widens the
+        kernel in proportion, so a shadow is crisp where it touches the thing that casts it (the door frame) and
+        spreads the deeper into the room the receiver stands. Every tap samples by DIRECTION and runs the cube
+        face select for itself, so a kernel that reaches past a face boundary lands on the neighbouring face
+        rather than on the clamped edge of the one it started in, and there is no seam along the 45 degree
+        planes. `PointShadowFilter.Hard` is the original four taps at half-texel offsets inside one cell, an
+        edge one atlas texel wide wherever it stands, and it renders exactly as it did before this filter
+        existed. The cost is about fifteen atlas fetches a lit fragment against Hard's four, paid only by the
+        one to three lights that actually reach a fragment: a light whose attenuation has already fallen to zero
+        samples nothing at all.
+      - **`LightSizeMetres` (default `0.15`) is how big the emitter looks, and it is the only thing that decides
+        how far a soft penumbra spreads.** The shadow widens as
+        `LightSizeMetres * (receiverDistance - blockerDistance) / blockerDistance`, so a candle at a couple of
+        centimetres throws an almost hard edge and a metre-wide fire throws a very soft one. Clamped into
+        `0`..`MaxLightSizeMetres` (`1`) by `ResolvedLightSizeMetres`. `Hard` reads it not at all.
+      - **`MaxPenumbraTexels` (default `6`) is the ceiling on that spread, in atlas texels of the light's own
+        cube face.** The filter takes a fixed nine taps however wide it spreads them, so this is what keeps them
+        close enough together to still describe one edge rather than nine. Raising it buys a softer far shadow
+        and starts to band once the taps are far apart, and the ceiling grows with distance by construction (it
+        is an angle off the light), so a far receiver is still allowed a wider penumbra than a near one. Clamped
+        into `PenumbraTexelsFloor`..`PenumbraTexelsCeiling` (`1`..`16`) by `ResolvedMaxPenumbraTexels`.
       - **Two per-frame budgets.** `MaxStaticRebuildsPerFrame` (default `2`) caps how many CACHED maps one frame
         may re-render, which bounds the frame in which several of them changed at once. A still scene rebuilds
         none, which is the whole point of the cache. `MaxDynamicLightsPerFrame` (default `4`) caps the
@@ -3571,9 +3593,10 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
         bytes (about 91 MiB) at `384` by `12`. Read it into a settings screen the way `ShadowMapResolution`'s
         cascade cost is read.
       - **The three detail profiles carry it.** `ShadowSettings.ForDetail(ShadowMapDetail.Low)` sets
-        `Enabled = false` (a whole second shadow pass is the first thing a low-end profile should stop paying),
-        `Default` keeps the values above (`256` by `8`), and `High` is `FaceResolution = 384` with
-        `MaxShadowedLights = 12`. On a live scene, `scene.RequestShadowMapDetail(detail)` applies the point
+        `Enabled = false` (a whole second shadow pass is the first thing a low-end profile should stop paying)
+        and `Filter = Hard` with it, so a game that turns point shadows back on over a low-end profile inherits
+        the cheap one. `Default` keeps the values above (`256` by `8`, `Soft`), and `High` is
+        `FaceResolution = 384` with `MaxShadowedLights = 12`, also `Soft`. On a live scene, `scene.RequestShadowMapDetail(detail)` applies the point
         profile along with the cascade layout, so a game with ONE shadow quality setting needs no second call.
         `scene.RequestPointShadowSettings(settings)` is the supported path for a custom budget: it clones what it
         is handed, so the caller may keep and reuse its own object. Mutating the public

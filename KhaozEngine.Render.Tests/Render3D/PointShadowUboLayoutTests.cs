@@ -4,6 +4,7 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
+using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
 using KhaozEngine.Render3D.Rendering;
 using KhaozEngine.Tests.Gpu;
@@ -51,13 +52,22 @@ public sealed class PointShadowUboLayoutTests
         return (f[i], f[i + 1], f[i + 2], f[i + 3]);
     }
 
-    [Fact]
-    public void TheTailGrowsTheBlockByExactlySixteenVec4sPlusOne()
+    /// <summary>The filter vec4, which is the LAST member of the whole block: (mode, lightSizeMetres,
+    /// maxPenumbraTexels, faceResolution).</summary>
+    static (float Mode, float LightSize, float MaxTexels, float FaceRes) FilterParams(ModelRenderer model)
     {
-        Assert.Equal((uint)(ModelRenderer.MaxPointLights * 16 + 16), ModelRenderer.PointShadowTailBytes);
-        Assert.Equal(272u, ModelRenderer.PointShadowTailBytes);
+        ReadOnlySpan<float> f = MemoryMarshal.Cast<byte, float>(model.FrameImage);
+        int i = (int)(ModelRenderer.PointShadowTailOffset / 4) + ModelRenderer.MaxPointLights * 4 + 4;
+        return (f[i], f[i + 1], f[i + 2], f[i + 3]);
+    }
+
+    [Fact]
+    public void TheTailGrowsTheBlockByExactlySixteenVec4sPlusTwo()
+    {
+        Assert.Equal((uint)(ModelRenderer.MaxPointLights * 16 + 32), ModelRenderer.PointShadowTailBytes);
+        Assert.Equal(288u, ModelRenderer.PointShadowTailBytes);
         Assert.Equal(OldUboBytes + ModelRenderer.PointShadowTailBytes, ModelRenderer.UboBytes);
-        Assert.Equal(1280u, ModelRenderer.UboBytes);
+        Assert.Equal(1296u, ModelRenderer.UboBytes);
     }
 
     [Fact]
@@ -80,6 +90,7 @@ public sealed class PointShadowUboLayoutTests
         for (int i = 0; i < ModelRenderer.MaxPointLights; i++)
             Assert.Equal(-1f, Slot(model, i).Slot);
         Assert.Equal((0f, 0f, 0f, 0f), AtlasParams(model));
+        Assert.Equal((0f, 0f, 0f, 0f), FilterParams(model));
     }
 
     [Fact]
@@ -87,13 +98,14 @@ public sealed class PointShadowUboLayoutTests
     {
         using var device = new FakeGpuDevice();
         using ModelRenderer model = NewRenderer(device);
-        model.SetPointShadowUniforms([0, 1, 2], 0.01f, 0.02f, 256, 8);
+        model.SetPointShadowUniforms([0, 1, 2], 0.01f, 0.02f, 256, 8, PointShadowFilter.Soft, 0.15f, 6f);
 
         model.ClearPointShadowUniforms();
 
         for (int i = 0; i < ModelRenderer.MaxPointLights; i++)
             Assert.Equal((-1f, 0f, 0f, 0f), Slot(model, i));
         Assert.Equal((0f, 0f, 0f, 0f), AtlasParams(model));
+        Assert.Equal((0f, 0f, 0f, 0f), FilterParams(model));
     }
 
     [Fact]
@@ -102,7 +114,7 @@ public sealed class PointShadowUboLayoutTests
         using var device = new FakeGpuDevice();
         using ModelRenderer model = NewRenderer(device);
 
-        model.SetPointShadowUniforms([3, -1, 0], 0.01f, 0.02f, 256, 8);
+        model.SetPointShadowUniforms([3, -1, 0], 0.01f, 0.02f, 256, 8, PointShadowFilter.Soft, 0.15f, 6f);
 
         Assert.Equal((3f, 0.01f, 0.02f, 0f), Slot(model, 0));
         Assert.Equal((-1f, 0.01f, 0.02f, 0f), Slot(model, 1));
@@ -117,9 +129,26 @@ public sealed class PointShadowUboLayoutTests
         using var device = new FakeGpuDevice();
         using ModelRenderer model = NewRenderer(device);
 
-        model.SetPointShadowUniforms([3, -1, 0], 0.01f, 0.02f, 256, 8);
+        model.SetPointShadowUniforms([3, -1, 0], 0.01f, 0.02f, 256, 8, PointShadowFilter.Soft, 0.15f, 6f);
 
         Assert.Equal((1f / 1536f, 1f / 2048f, 8f, 6f), AtlasParams(model));
+    }
+
+    /// <summary>The filter vec4 carries the MODE the receiver branches on, the two knobs its penumbra arithmetic
+    /// reads, and the face resolution it converts a penumbra into texels with. The face resolution rides here
+    /// rather than being derived from the atlas texel steps because those are ATLAS-wide, and a receiver dividing
+    /// one by the other to recover a face would be re-deriving a number the host already knows.</summary>
+    [Fact]
+    public void SetPointShadowUniforms_WritesTheFilterModeAndItsTwoKnobs()
+    {
+        using var device = new FakeGpuDevice();
+        using ModelRenderer model = NewRenderer(device);
+
+        model.SetPointShadowUniforms([0], 0.01f, 0.02f, 256, 8, PointShadowFilter.Soft, 0.15f, 6f);
+        Assert.Equal((1f, 0.15f, 6f, 256f), FilterParams(model));
+
+        model.SetPointShadowUniforms([0], 0.01f, 0.02f, 384, 12, PointShadowFilter.Hard, 0.5f, 16f);
+        Assert.Equal((0f, 0.5f, 16f, 384f), FilterParams(model));
     }
 
     [Fact]
@@ -130,7 +159,7 @@ public sealed class PointShadowUboLayoutTests
         var slots = new int[ModelRenderer.MaxPointLights + 4];
         Array.Fill(slots, 2);
 
-        model.SetPointShadowUniforms(slots, 0.5f, 0.25f, 64, 1);
+        model.SetPointShadowUniforms(slots, 0.5f, 0.25f, 64, 1, PointShadowFilter.Hard, 1f, 16f);
 
         for (int i = 0; i < ModelRenderer.MaxPointLights; i++)
             Assert.Equal(2f, Slot(model, i).Slot);
@@ -144,7 +173,7 @@ public sealed class PointShadowUboLayoutTests
         using ModelRenderer model = NewRenderer(device);
         byte[] before = model.FrameImage.ToArray();
 
-        model.SetPointShadowUniforms([5], 0.01f, 0.02f, 128, 4);
+        model.SetPointShadowUniforms([5], 0.01f, 0.02f, 128, 4, PointShadowFilter.Soft, 0.2f, 4f);
 
         ReadOnlySpan<byte> after = model.FrameImage;
         Assert.Equal((int)ModelRenderer.UboBytes, after.Length);
@@ -183,12 +212,15 @@ public sealed class PointShadowUboLayoutTests
             int origin = src.IndexOf("vec4 RenderOrigin;", StringComparison.Ordinal);
             int slots = src.IndexOf("vec4 PointShadowParams[16];", StringComparison.Ordinal);
             int atlas = src.IndexOf("vec4 PointShadowAtlas;", StringComparison.Ordinal);
+            int filter = src.IndexOf("vec4 PointShadowFilter;", StringComparison.Ordinal);
             Assert.True(origin >= 0, $"{name}: the frame block is missing the render origin.");
             Assert.True(slots >= 0, $"{name}: the frame block is missing PointShadowParams.");
             Assert.True(atlas >= 0, $"{name}: the frame block is missing PointShadowAtlas.");
+            Assert.True(filter >= 0, $"{name}: the frame block is missing PointShadowFilter.");
             Assert.True(origin < slots,
                 $"{name}: the point-shadow tail must follow the render origin, matching the C# offsets.");
-            Assert.True(slots < atlas, $"{name}: PointShadowAtlas is the last member of the block.");
+            Assert.True(slots < atlas, $"{name}: PointShadowAtlas follows PointShadowParams.");
+            Assert.True(atlas < filter, $"{name}: PointShadowFilter is the last member of the block.");
         }
     }
 
@@ -200,5 +232,6 @@ public sealed class PointShadowUboLayoutTests
         Assert.Contains(FrameBlockMarker, ShaderSources.FoliageVert, StringComparison.Ordinal);
         Assert.Contains("vec4 PointShadowParams[16];", ShaderSources.FoliageVert, StringComparison.Ordinal);
         Assert.Contains("vec4 PointShadowAtlas;", ShaderSources.FoliageVert, StringComparison.Ordinal);
+        Assert.Contains("vec4 PointShadowFilter;", ShaderSources.FoliageVert, StringComparison.Ordinal);
     }
 }

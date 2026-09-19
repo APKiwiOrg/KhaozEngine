@@ -154,6 +154,99 @@ void pointShadowFace(vec3 d, out float face, out vec2 uv) {
     uv = (vec2(sc, tc) / max(ma, 1e-6)) * 0.5 + 0.5;
 }
 
+// ONE STORED DISTANCE FOR AN ARBITRARY DIRECTION out of the light, in the cell belonging to `slot`. This is the
+// whole reason the soft filter can be wider than one texel without seaming: it runs the face select PER TAP, so a
+// tap that leaves the +Z face lands on the +X face's own cell rather than on the clamped edge of the cell it
+// started in. The clamp that is left is the half-texel inset inside the chosen cell, which keeps a cell's own
+// bilinear footprint off its neighbours.
+float pointShadowDepthAt(texture2D atlas, sampler samp, vec3 dir, float slot) {
+    float face; vec2 uv;
+    pointShadowFace(dir, face, uv);
+    vec2 texel = PointShadowAtlas.xy;
+    vec2 cellSize = vec2(1.0 / PointShadowAtlas.w, 1.0 / max(PointShadowAtlas.z, 1.0));
+    vec2 cellMin = vec2(face, slot) * cellSize;
+    vec2 tap = clamp(cellMin + uv * cellSize, cellMin + texel * 0.5, cellMin + cellSize - texel * 0.5);
+    return texture(sampler2D(atlas, samp), tap).r;
+}
+
+// The per-fragment rotation of both discs below, off the ABSOLUTE world position (the render-frame one plus the
+// render origin). Nailing it to the world rather than to the screen is what stops the dither crawling over a
+// surface as the camera moves, and taking the origin in means a floating-origin shift does not re-roll it either.
+float pointShadowDither(vec3 worldPos) {
+    vec3 w = worldPos + RenderOrigin.xyz;
+    return fract(sin(dot(w, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+}
+
+// BLOCKER SEARCH: the average stored distance of the taps that stand in front of this receiver, or -1 when none
+// of them does. Six taps (the centre plus five on two rings, so an occluder INSIDE the disc is not stepped over)
+// across a disc whose angular radius is the emitter's apparent size, which is the region that could possibly
+// shade this fragment at all. The centre tap is what keeps the soft path at least as occluding as the hard one:
+// without it a thin caster dead ahead would be reported as nothing found and the light would leak through it.
+float pointShadowBlockerSearch(texture2D atlas, sampler samp, vec3 dir, vec3 tx, vec3 ty, float slot,
+                               float searchAngle, float d, float bias, float rotation) {
+    float sum = 0.0; float hits = 0.0;
+    for (int i = 0; i < 6; i++) {
+        vec3 t = dir;
+        if (i > 0) {
+            float a = rotation + float(i) * 1.2566371;          // five taps, 72 degrees apart
+            float r = (i % 2 == 0) ? 0.55 : 1.0;                // two rings on one pass
+            t = normalize(dir + (tx * cos(a) + ty * sin(a)) * (searchAngle * r));
+        }
+        float stored = pointShadowDepthAt(atlas, samp, t, slot);
+        if (stored + bias < d) { sum += stored; hits += 1.0; }  // this tap has something in front of the receiver
+    }
+    return hits > 0.0 ? sum / hits : -1.0;
+}
+
+// The filter itself: nine taps on a disc of the given angular radius, COMPARE FIRST and FILTER AFTER exactly as
+// the cascade PCF does, so the atlas clear value can never be averaged into a tap next to a gap. Two rings again,
+// rotated per fragment, which is what turns nine taps into something that reads as a gradient rather than as nine
+// shadows.
+float pointShadowFilterDisc(texture2D atlas, sampler samp, vec3 dir, vec3 tx, vec3 ty, float slot,
+                            float angle, float d, float bias, float rotation) {
+    float lit = step(d, pointShadowDepthAt(atlas, samp, dir, slot) + bias);
+    for (int i = 0; i < 8; i++) {
+        float a = rotation + float(i) * 0.7853982;              // 45 degrees apart
+        float r = (i % 2 == 0) ? 0.6 : 1.0;
+        vec3 t = normalize(dir + (tx * cos(a) + ty * sin(a)) * (angle * r));
+        lit += step(d, pointShadowDepthAt(atlas, samp, t, slot) + bias);
+    }
+    return lit / 9.0;
+}
+
+// THE SOFT PATH, which is contact hardening rather than a blur: the blocker search says how far in front of this
+// receiver the occluder stands, and the kernel is widened in proportion, so the shadow is crisp where it touches
+// what casts it (a door frame) and spreads the deeper into the room the receiver stands. The penumbra is
+// lightSize * (dReceiver - dBlocker) / dBlocker in metres AT THE RECEIVER, which becomes an angle off the light by
+// dividing by the receiver's own distance, and the whole thing is held under maxPenumbraTexels of the face's
+// angular texel size (a 90 degree face over faceResolution texels) so nine taps always still describe one edge.
+float samplePointShadowSoft(texture2D atlas, sampler samp, vec3 toL, float dist, float radius, float ndlRaw,
+                            vec4 params, vec3 worldPos) {
+    vec3 dir = -toL / max(dist, 1e-6);                          // light -> fragment, unit
+    float d = dist / max(radius, 1e-6);
+    float bias = params.y + params.z * (1.0 - ndlRaw);
+    float lightSize = PointShadowFilter.y;
+    float texelAngle = 1.5707963 / max(PointShadowFilter.w, 1.0);
+    float maxAngle = PointShadowFilter.z * texelAngle;
+
+    // A basis PERPENDICULAR TO THE RAY, so every offset below is an angle away from the direction being sampled
+    // rather than a step across one face's UV. The up vector is swapped near the poles for the usual reason: a
+    // cross product with a parallel vector is zero and normalize would divide by it.
+    vec3 up = abs(dir.y) < 0.999 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+    vec3 tx = normalize(cross(up, dir));
+    vec3 ty = cross(dir, tx);
+    float rotation = pointShadowDither(worldPos) * 6.2831853;
+
+    float searchAngle = min(lightSize / max(dist, 1e-3), maxAngle);
+    float blocker = pointShadowBlockerSearch(atlas, samp, dir, tx, ty, params.x, searchAngle, d, bias, rotation);
+    if (blocker < 0.0) return 1.0;                              // nothing occluding: fully lit, nothing filtered
+
+    float dBlocker = max(blocker * radius, 1e-3);               // the atlas stores distance over radius
+    float width = lightSize * max(dist - dBlocker, 0.0) / dBlocker;
+    float angle = min(width / max(dist, 1e-3), maxAngle);
+    return pointShadowFilterDisc(atlas, samp, dir, tx, ty, params.x, angle, d, bias, rotation);
+}
+
 // One point light's shadow term: 1 = fully lit, 0 = fully occluded. toL is the fragment-to-light vector (so the
 // face select negates it), dist its length, radius the light's, ndl the already-computed N.L, and params is that
 // light's PointShadowParams entry - (slot, bias, slopeBias, 0). The caller has already checked slot >= 0.
@@ -162,7 +255,10 @@ void pointShadowFace(vec3 d, out float face, out vec2 uv) {
 // it can never bleed into the neighbouring face column or the next light's row.
 // ndlRaw is the UNBANDED dot(N, L): the slope bias is an acne remedy and has to read the real grazing angle, not
 // the cel-quantised one the diffuse term uses.
-float samplePointShadow(texture2D atlas, sampler samp, vec3 toL, float dist, float radius, float ndlRaw, vec4 params) {
+// THIS BODY IS FROZEN. It is what PointShadowFilter.Hard renders, and Hard is the pre-soft picture byte for byte,
+// so it shares no helper with the soft path above however much the two look alike: a helper factored out of both
+// is one line away from moving a picture that is pinned not to move (PointShadowFilterShaderTests).
+float samplePointShadowHard(texture2D atlas, sampler samp, vec3 toL, float dist, float radius, float ndlRaw, vec4 params) {
     float face; vec2 uv;
     pointShadowFace(-toL, face, uv);
     vec2 texel = PointShadowAtlas.xy;                      // one ATLAS texel, in atlas UV
@@ -182,6 +278,14 @@ float samplePointShadow(texture2D atlas, sampler samp, vec3 toL, float dist, flo
         }
     }
     return lit * 0.25;
+}
+
+// The mode is read off the frame block rather than compiled in, so one program serves both filters and a settings
+// change costs no pipeline rebuild. PointShadowFilter.x is 0 for Hard and 1 for Soft.
+float samplePointShadow(texture2D atlas, sampler samp, vec3 toL, float dist, float radius, float ndlRaw,
+                        vec4 params, vec3 worldPos) {
+    if (PointShadowFilter.x < 0.5) return samplePointShadowHard(atlas, samp, toL, dist, radius, ndlRaw, params);
+    return samplePointShadowSoft(atlas, samp, toL, dist, radius, ndlRaw, params, worldPos);
 }
 
 // pointAtlas/pointSamp are parameters for the same reason sampleKeyShadow's are: their set/binding differ per
@@ -220,8 +324,13 @@ void computeLighting(texture2D pointAtlas, sampler pointSamp, vec3 N, vec3 world
         // A slot below zero is every light that carries no shadow map, which is every light in a scene that never
         // asked for one: the branch is not taken, nothing is sampled, and the accumulation below is the pre-shadow
         // arithmetic byte for byte.
-        if (PointShadowParams[i].x >= 0.0)
-            att *= samplePointShadow(pointAtlas, pointSamp, toL, dist, radius, ndlRaw, PointShadowParams[i]);
+        // ZERO ATTENUATION IS THE OTHER HALF of that gate and it is free: a fragment past this light's radius has
+        // att = 0, so whatever the sample answered it would be multiplied by nothing. Skipping it keeps the cost
+        // of the soft filter on the one to three lights that actually reach a fragment, and it moves no picture,
+        // because 0 * lit is 0 for every lit in 0..1.
+        if (att > 0.0 && PointShadowParams[i].x >= 0.0)
+            att *= samplePointShadow(pointAtlas, pointSamp, toL, dist, radius, ndlRaw, PointShadowParams[i],
+                                     worldPos);
         vec3 lc = PointColorIntensity[i].rgb;
         diffuse += lc * (ndl * att);
         vec3 Hp = normalize(L + V);

@@ -12,6 +12,23 @@ kernel in the engine, meaning in the game.
 a function of the numbers handed to it, so the same kernel serves a slow turn-based world and a continuous
 one at any frame rate, and two games on different clocks agree on what an experience number means.
 
+## `HarvestYieldRange`
+
+A validated inclusive level and yield interval for gathering systems. The constructor takes unlock level,
+cap level, minimum yield and maximum yield. `CeilingAt(level)` distributes every inclusive yield ceiling
+across the inclusive level interval with integer arithmetic, refuses levels below unlock and clamps levels
+above cap. `ImprovisedCeilingAt(level)` halves that ceiling with integer division and never falls below the
+configured minimum. A default struct is invalid and refuses sampling.
+
+```csharp
+var yields = new HarvestYieldRange(unlockLevel: 1, capLevel: 50, minimum: 1, maximum: 10);
+int normal = yields.CeilingAt(level);
+int improvised = yields.ImprovisedCeilingAt(level);
+```
+
+The type owns no random roll, item identity, creature identity or action timing. The caller rolls from
+`Minimum` through the returned inclusive ceiling after its own authoritative completion succeeds.
+
 ## `SkillXpCurve`
 
 One experience table, with an IDENTITY. Experience is stored as a number rather than as a level, so the

@@ -600,6 +600,51 @@ chat.Draw(batch, white);
     `ActiveIndex` is settable to restore or persist selection without raising the change signal. Active tabs use
     `ActiveStyle` (`GuiStyle.Active`), inactive tabs use `InactiveStyle` (`GuiStyle.Secondary`), and `TabRect(i)`
     exposes the active layout. `TextScale` scales every label only. `Opacity` fades the whole bar.
+    Four additive knobs carry a side panel's two-row strip, each defaulting to the shipped behaviour so no
+    existing bar moves. `BlockAlign` (default `GuiAlign.Left`) places the wrapped BLOCK of fixed-size tabs inside
+    `Bounds`, so `GuiAlign.Center` gives two rows of five centred in a wider band, and `ContentBounds` follows it
+    rather than staying behind at the left edge. `AllowNoActiveTab` (default false) opens `ActiveIndex` down to
+    `TabBar.NoActiveTab` (-1) for a collapsed panel that draws its strip with no panel behind any tab. A tap from
+    -1 activates the tapped tab and reads as a change, a disabled tab still swallows its own tap, the order the
+    opt-in and the -1 are assigned in does not matter, and clearing the opt-in puts the bar onto the first tab. There is no keyboard or focus navigation on a tab bar to answer
+    for, and the roster is fixed at construction, so nothing can strand the index. `BlocksPointer` opts out of
+    the `ContentBounds` reservation. It defaults TRUE, unlike `Panel.BlocksPointer` and like
+    `ScrollablePanel.BlocksPointer`, because a tab bar is a leaf control that has always reserved its own region.
+    `DrawMode` (default `TabBarDrawMode.Button`, the shipped draw) switches a fixed-size strip to
+    `TabBarDrawMode.Flat`: a flat fill, a one-unit border and a centred label truncated to the tab, coloured from
+    `FlatTheme`, which the bar captures off the ambient `GuiTheme` at construction (`TabFill` / `TabActiveFill`
+    and the surface, border and text slots around them). The even-split layout ignores the mode, since its tabs
+    abut with no gutter and a per-tab border would double every interior seam.
+  - `TabStrip` + `TabStripMetrics` - the tab arithmetic as pure statics, callable with NO widget instance, for a
+    consumer that hit-tests a strip without retaining one. `TabStrip.TabRect(band, index, count, metrics)`,
+    its inverse `TabStrip.TabAt(band, point, count, metrics)` (-1 for a gutter between tabs and for anywhere off
+    the block), `TabStrip.BlockRect(band, count, metrics)` for the footprint, and `EvenTabRect` / `EvenTabAt` for
+    the even-split layout. `TabStripMetrics` is the shape those take (tab width, tab height, spacing, columns,
+    alignment), a caller value rather than theme fields, for the reason `PanelFrameMetrics` is one. `TabBar.Metrics`
+    hands a live bar's shape over, and `TabBar.TabRect` / `TabBar.ContentBounds` call straight into these, so an
+    instance and a static hit test cannot drift apart.
+
+    ```csharp
+    // A collapsed side panel's strip: two centred rows of five, flat, with nothing active.
+    var strip = new TabBar(tabs, font, PanelFrame.StripRect(bounds, stripHeight: 56f))
+    {
+        TabWidth = 56f, TabHeight = 26f, Columns = 5, Spacing = 4f,
+        BlockAlign = GuiAlign.Center,
+        DrawMode = TabBarDrawMode.Flat,
+        AllowNoActiveTab = true,              // either order works: the bar remembers -1 was asked for
+        ActiveIndex = TabBar.NoActiveTab,
+        BlocksPointer = false,                // the window already reserves its own bounds
+    };
+
+    // Per frame, after laying the window out:
+    strip.Bounds = PanelFrame.StripRect(bounds, stripHeight: 56f);
+    strip.Update(pointer);
+    if (strip.ChangedThisFrame) OpenPanel(strip.ActiveIndex);
+    strip.Draw(batch, white);
+
+    // The same rects with no widget in hand:
+    int hovered = TabStrip.TabAt(strip.Bounds, pointer.Position, tabs.Count, strip.Metrics);
+    ```
   - **Keyboard/gamepad control (opt-in, additive)** on `Toggle`/`Slider`/`Dropdown`: each has an
     `Update(InputManager, bool focused, PlayerIndex? = null)` overload that layers `InputManager` menu actions on
     top of the pointer path (only when `focused`), mirroring `FocusNavigator`. So a settings row is fully
@@ -677,6 +722,57 @@ chat.Draw(batch, white);
     null fonts. Code that deliberately passes a null literal to test one overload must cast it to `SpriteFont`
     or `ITextMeasurer`, because those source-compatible overloads otherwise make the literal ambiguous.
     Menu-cancel input is ignored while `InputState.WindowFocused` is false.
+  - `PanelFrame` + `PanelFrameMetrics` + `WindowDrag` - a NON-MODAL titled window frame, as pure statics rather
+    than a retained widget. Reach for it instead of `PopupPanel` whenever the world underneath must stay visible
+    and live: a side panel, a bank window, an inventory window. `PopupPanel` is modal, and reserves the whole
+    scrim rect on the pointer.
+    `Inner`, `StripRect`, `TitleRect`, `CloseRect`, `ContentRect` and `FooterRect` are the bands, each derived
+    from the one above it with no gap and no overlap, and an absent band (no tab strip, no footer) collapses to
+    zero height rather than leaving a hole. `TitleTextOrigin` centres a measured title in its row.
+    `DrawFrame` / `DrawTitle` / `DrawClose` walk exactly those functions, so the rect a click-through guard
+    tests and the rect the player sees cannot drift. The title and the optional right-aligned readout are
+    `LocalizedText` (build a readout with numbers in it through `LocalizedText.Of(id, args)`).
+    Sizes travel in a caller-supplied `PanelFrameMetrics` (frame thickness, bevel, title height, close size,
+    text pad) rather than in `GuiTheme` or in baked constants, because a size is a per-widget decision while a
+    palette is global. `PanelFrameMetrics.Default` is the shipped shape (6 / 2 / 26 / 20 / 8). Colours come from
+    `GuiTheme`: the four this needs (`BorderShadow`, `TitleFill`, `TabFill`, `TabActiveFill`) derive from the
+    palette already set, so an existing theme needs no edit.
+    It reserves NOTHING on the `Pointer`. Which taps a window swallows is the window's call: a caller that wants
+    the world ignored under its panel calls `Pointer.BlockRegion` with its OWN bounds, and one that wants a
+    click-through stripe leaves it alone. Blocking here would make every consumer modal over its own rect.
+    That is the container default here (`Panel.BlocksPointer` and `ScrollablePanel.BlocksPointer` are opt-in
+    too), and a window that forgets the call gets world clicks through it with nothing to catch that.
+    `WindowDrag` is the title-bar drag. It stores an OFFSET from wherever the window's own layout put it, so a
+    window keeps its placement rule across a resize. `Update(pointer, grip)` latches the grab once on the press
+    frame (`Pointer.IsPressOriginFresh`) and holds it until the button goes up, wherever the cursor wanders,
+    because re-reading the press origin every frame drops the grab as soon as the grip travels further than the
+    title row is tall. A held drag calls `Pointer.ConsumeGesture`, so a release over the world is not a world
+    click. `Place(natural, viewport)` clamps the window inside the viewport and writes the clamp BACK, so
+    dragging off the edge banks no distance the window did not travel. `Release()` lets go without forgetting
+    the position (for a close under a held button), `Reset()` forgets it.
+    The game keeps: the palette values, the metric numbers, which taps it swallows, each window's natural-bounds
+    rule, and the grip rect (normally `TitleRect` less `CloseRect`, so a press on the cross only ever closes).
+
+    ```csharp
+    // Layout: where this window wants to be, then where the player has dragged it to.
+    Rect natural = Layout.Resolve(viewport.DesignBounds, Anchor.Center, 320f, 240f, 0f, 0f);
+    Rect bounds = _drag.Place(natural, new Vector2(viewport.Width, viewport.Height));
+
+    // Input: the grip is the title row less the close square, so the cross is never also a grab.
+    Rect title = PanelFrame.TitleRect(bounds, stripHeight: 0f);
+    Rect close = PanelFrame.CloseRect(bounds, stripHeight: 0f);
+    var grip = new Rect(title.X, title.Y, close.X - title.X, title.Height);
+    _drag.Update(pointer, grip);
+    if (pointer.IsTapIn(close)) Close();
+    pointer.BlockRegion(bounds);   // this window's call, not the frame's
+
+    // Draw: no scrim, so the world stays visible behind it.
+    PanelFrame.DrawFrame(batch, white, bounds);
+    PanelFrame.DrawTitle(batch, font, white, bounds, stripHeight: 0f, title: BankStrings.Title,
+        readout: LocalizedText.Of(BankStrings.Used, used, capacity), showClose: true,
+        closeHovered: close.Contains(pointer.Position));
+    DrawRows(batch, PanelFrame.ContentRect(bounds, stripHeight: 0f));
+    ```
   - `PopupPanel` - modal dialog: scrim + title + `PopupRow` content + dismiss/primary footer. `Update` reserves
     the whole `ScrimRect` (the full viewport the scrim dims) through `Pointer.BlockRegion`, not just the panel,
     so a click on the dimmed area cannot reach the UI underneath. That only matters when the popup is driven

@@ -159,5 +159,33 @@ namespace KhaozEngine.Tests.Gui
                 Assert.Equal(new Vector4(0.196f, 0.294f, 0.431f, 1f), theme.ActiveSelectedFill);
             }
         }
+
+        [Fact]
+        public void The_frame_colours_derive_from_the_palette_until_a_theme_sets_them()
+        {
+            foreach (GuiTheme theme in new[] { GuiTheme.Crisp, GuiTheme.Legacy })
+            {
+                Vector4 border = theme.Border;
+                Assert.Equal(new Vector4(border.X * 0.55f, border.Y * 0.55f, border.Z * 0.55f, border.W),
+                    theme.BorderShadow);
+                Assert.Equal(theme.Surface, theme.TitleFill);
+                Assert.Equal(theme.SurfaceHover, theme.TabFill);
+                Assert.Equal(theme.ActiveFill, theme.TabActiveFill);
+            }
+
+            // A rebrand that only names the body colour carries the title row with it, which is the reason these
+            // derive rather than being plain fields set in the built-in themes.
+            var bronze = new Vector4(0.29f, 0.2f, 0.125f, 1f);
+            GuiTheme rebranded = GuiTheme.Crisp with { Surface = bronze };
+            Assert.Equal(bronze, rebranded.TitleFill);
+
+            // A set one is honoured, stops following, and survives the memberwise copy a `with` makes.
+            var title = new Vector4(0.1f, 0.2f, 0.3f, 1f);
+            GuiTheme set = GuiTheme.Crisp with { TitleFill = title };
+            Assert.Equal(title, set.TitleFill);
+            GuiTheme copied = set with { Surface = bronze };
+            Assert.Equal(title, copied.TitleFill);
+            Assert.Equal(bronze, copied.Surface);
+        }
     }
 }

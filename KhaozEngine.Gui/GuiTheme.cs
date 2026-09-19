@@ -78,6 +78,55 @@ namespace KhaozEngine.Gui
         /// <summary>Border thickness in pixels.</summary>
         public float BorderThickness;
 
+        // The four below are PROPERTIES over nullable backing fields rather than plain fields like everything
+        // above, so an unset one falls back to a value DERIVED from the palette that is already there. A game
+        // that rebrands with `GuiTheme.Default with { Surface = ... }` gets a title row that follows its body
+        // colour, where a plain field set in the built-in themes would leave it stuck on theirs, and a theme
+        // built from nothing reads as transparent black only where every other colour does. Setting one still
+        // works exactly like setting a field, in an initializer or through `with`.
+        Vector4? _borderShadow, _titleFill, _tabFill, _tabActiveFill;
+
+        /// <summary>
+        /// The dark hairline under a raised border, where a bevelled band meets the surface it frames (see
+        /// <see cref="PanelFrame.DrawFrame"/>). Unset, it is <see cref="Border"/> at 55% brightness, alpha kept.
+        /// </summary>
+        public Vector4 BorderShadow
+        {
+            readonly get => _borderShadow ?? Shade(Border, 0.55f);
+            set => _borderShadow = value;
+        }
+
+        /// <summary>
+        /// Fill behind a window's title row. Unset, it is <see cref="Surface"/>: a title row that is the body
+        /// colour with a line of text on it, rather than a second frame inside the frame.
+        /// </summary>
+        public Vector4 TitleFill
+        {
+            readonly get => _titleFill ?? Surface;
+            set => _titleFill = value;
+        }
+
+        /// <summary>
+        /// Fill behind an INACTIVE tab in a flat tab strip. Unset, it is <see cref="SurfaceHover"/>, one step off
+        /// the panel body so a resting tab still reads as a tab.
+        /// </summary>
+        public Vector4 TabFill
+        {
+            readonly get => _tabFill ?? SurfaceHover;
+            set => _tabFill = value;
+        }
+
+        /// <summary>Fill behind the ACTIVE tab in a flat tab strip. Unset, it is <see cref="ActiveFill"/>.</summary>
+        public Vector4 TabActiveFill
+        {
+            readonly get => _tabActiveFill ?? ActiveFill;
+            set => _tabActiveFill = value;
+        }
+
+        // Scale a colour's RGB toward black, keeping its alpha: the one derivation the fallbacks above need.
+        static Vector4 Shade(Vector4 color, float factor) =>
+            new(color.X * factor, color.Y * factor, color.Z * factor, color.W);
+
         /// <summary>
         /// The ambient theme new widgets read at construction. Defaults to <see cref="Crisp"/>. Set it once at
         /// startup (before building widgets) to rebrand the whole UI; changing it later does not restyle widgets

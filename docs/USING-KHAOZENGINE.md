@@ -61,6 +61,7 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [Map editor (`KhaozEngine.MapEditor`)](#map-editor-khaozenginemapeditor)
 - [ke-mapedit (`KhaozEngine.MapEdit.Tool`)](#ke-mapedit-khaozenginemapedittool)
 - [Networked overworld (`KhaozEngine.Locomotion` + `KhaozEngine.NetWorld`)](#networked-overworld-khaozenginelocomotion-khaozenginenetworld)
+- [Rigid-segment character poses (`KhaozEngine.SegmentRig`)](#rigid-segment-character-poses-khaozenginesegmentrig)
 - [Tile-world netcode (`KhaozEngine.TileWorld.Netcode`)](#tile-world-netcode-khaozenginetileworldnetcode)
 - [Charging attack time for something that is not a swing (`TileWorldServer.DelayAttack`, 18.16.0)](#charging-attack-time-for-something-that-is-not-a-swing-tileworldserverdelayattack-18160)
 - [Cancelling a tile player's pending interact (18.19.0)](#cancelling-a-tile-players-pending-interact-18190)
@@ -85,6 +86,7 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [Wall-clock periodic rewards (`KhaozEngine.Progression`)](#wall-clock-periodic-rewards-khaozengineprogression)
 - [Objective / goal tracking (`KhaozEngine.Objectives`)](#objective-goal-tracking-khaozengineobjectives)
 - [Stat channels (`KhaozEngine.Stats`)](#stat-channels-khaozenginestats)
+- [Skill progression (`KhaozEngine.Skills`)](#skill-progression-khaozengineskills)
 - [Content catalog (`KhaozEngine.Catalog`)](#content-catalog-khaozenginecatalog)
 - [Item instances (`KhaozEngine.ItemInstances`)](#item-instances-khaozengineiteminstances)
 - [Commerce / wallet (`KhaozEngine.Commerce`)](#commerce-wallet-khaozenginecommerce)
@@ -1446,6 +1448,80 @@ var mana = new ProgressBar(new Rect(hudX, hudY, 12, 120), manaFrac)
 { FillDirection = FillDirection.BottomToTop };                   // vertical, grows upward
 ```
 
+### Non-modal titled windows (`PanelFrame` / `PanelFrameMetrics` / `WindowDrag`, 19.6.0)
+
+`PopupPanel` is a MODAL dialog: it paints a scrim and reserves the whole scrim rect on the `Pointer`. Use
+`PanelFrame` instead whenever the world underneath must stay visible and live - a side panel, a bank window, an
+inventory window. It is pure statics plus three draws, not a retained widget, so a game keeps its own window
+class and calls into the frame for geometry and chrome.
+
+The bands STACK. `Inner` is the whole panel less the frame on all four sides. `StripRect` is an optional tab
+band at the top of it, `TitleRect` the row under that, `CloseRect` a square right-aligned in the title row,
+`ContentRect` everything between the title row and the footer, and `FooterRect` the bottom band. Each is
+derived from the one above it with no gap and no overlap, and an absent band (no strip, no footer) collapses to
+zero height rather than leaving a hole. Every one is a pure static callable with no instance, so a headless
+test hit-tests the same rects the draw uses. `TitleTextOrigin` centres a measured title in its row.
+
+Sizes come from a caller-supplied `PanelFrameMetrics` (frame thickness, bevel, title height, close size, text
+pad), not from `GuiTheme` and not from constants baked into the widget, because a size is a per-widget decision
+while a palette is global. `PanelFrameMetrics.Default` is the shipped shape (6 / 2 / 26 / 20 / 8) and every
+entry point takes it as an optional trailing argument, so a caller that wants today's look writes no numbers
+and one that wants a hairline frame writes `PanelFrameMetrics.Default with { FrameThickness = 2f }`.
+
+Colours come from `GuiTheme`. Four were added for this: `BorderShadow` (the dark hairline where a bevelled band
+meets the surface it frames), `TitleFill`, and `TabFill` / `TabActiveFill` for a flat tab strip. They are
+properties over nullable backing fields, so a theme that never sets them DERIVES them from the palette it did
+set (`Border` darkened, `Surface`, `SurfaceHover`, `ActiveFill`) rather than reading as transparent black. An
+existing theme needs no edit and no construction site changes meaning.
+
+The frame reserves NOTHING on the `Pointer`. Which taps a window swallows is the window's call, so a caller
+that wants the world ignored under its panel calls `Pointer.BlockRegion` with its OWN bounds, and a caller that
+wants a click-through stripe leaves it alone. Blocking inside the frame would make every consumer modal over
+its own rect, which is the thing `PopupPanel` already does. This is the engine's container default rather
+than a one-off: `Panel.BlocksPointer` and `ScrollablePanel.BlocksPointer` are both opt-in too, while leaf
+widgets such as `Button` always block. A window that forgets the call gets world clicks through it and
+nothing catches that, so make it the first line of the window's update.
+
+`WindowDrag` is the title-bar drag. It stores an OFFSET from wherever the window's own layout put it, so a
+window keeps its placement rule (centred, docked, anchored) across a resize instead of being stranded at an
+absolute position. `Update(pointer, grip)` latches the grab ONCE on the press frame, through
+`Pointer.IsPressOriginFresh`, and holds it until the button goes up wherever the cursor wanders. Re-reading the
+press origin every frame is the defect this exists to avoid: the grip travels with the window while the press
+origin stays where the button went down, so a window dragged further than its title row is tall moves the grip
+out from under its own press and drops the grab part way. A held drag calls `Pointer.ConsumeGesture`, so a
+release over the world is not a world click. `Place(natural, viewport)` clamps the window inside the viewport
+and writes the clamp BACK, so a drag off the edge banks no distance the window did not travel and the next drag
+back moves it at once. `Release()` lets go without forgetting the position, for a window closing under a held
+button. `Reset()` forgets it.
+
+Player-facing text is `LocalizedText`, both the title and the optional right-aligned readout. Build a readout
+with numbers in it through `LocalizedText.Of(id, args)` so it re-resolves on a locale switch.
+
+```csharp
+// Layout: where this window wants to be, then where the player has dragged it to.
+Rect natural = Layout.Resolve(viewport.DesignBounds, Anchor.Center, 320f, 240f, 0f, 0f);
+Rect bounds = _drag.Place(natural, new Vector2(viewport.Width, viewport.Height));
+
+// Input: the grip is the title row less the close square, so the cross is never also a grab.
+Rect title = PanelFrame.TitleRect(bounds, stripHeight: 0f);
+Rect close = PanelFrame.CloseRect(bounds, stripHeight: 0f);
+var grip = new Rect(title.X, title.Y, close.X - title.X, title.Height);
+_drag.Update(pointer, grip);
+if (pointer.IsTapIn(close)) Close();
+pointer.BlockRegion(bounds);   // this window's call, not the frame's
+
+// Draw: no scrim, so the world stays visible and live behind it.
+PanelFrame.DrawFrame(batch, white, bounds);
+PanelFrame.DrawTitle(batch, font, white, bounds, stripHeight: 0f, title: Strings.BankTitle,
+    readout: LocalizedText.Of(Strings.BankUsed, used, capacity), showClose: true,
+    closeHovered: close.Contains(pointer.Position));
+DrawRows(batch, PanelFrame.ContentRect(bounds, stripHeight: 0f));
+```
+
+What stays in the GAME: the palette values it assigns to `GuiTheme`, the metric numbers if the default shape is
+wrong for it, which taps it swallows through `BlockRegion`, each window's natural-bounds rule, the grip rect,
+and whatever fills the strip, content and footer bands.
+
 ---
 
 ## Retained chat (`ChatHistory` / `ChatBox`, 18.21.0)
@@ -2312,6 +2388,66 @@ Use `TabBarItem` entries to disable individual tabs. Fixed-size tabs opt into a 
 `TabWidth`, `TabHeight`, `Columns` and `Spacing`, leaving the default evenly split row unchanged. Disabled
 tabs use their disabled palette and cannot be selected by a pointer gesture. They still reserve their
 footprint and consume taps, so pressing a disabled tab cannot trigger the world or controls behind it.
+
+**A side panel's two-row strip (19.6.0).** Four additive knobs carry it, each defaulting to the shipped
+behaviour, so a bar that asks for none of them draws and behaves exactly as before.
+
+- `BlockAlign` (default `GuiAlign.Left`) places the wrapped BLOCK of fixed-size tabs inside `Bounds`. The
+  default anchors it at `Bounds.X`, which is what every wrapped bar already drew. `GuiAlign.Center` gives two
+  rows of five centred in a band wider than they are, lining up under each other. `ContentBounds` follows the
+  alignment, so the reserved region moves with the tabs.
+- `AllowNoActiveTab` (default false) opens `ActiveIndex` down to `TabBar.NoActiveTab` (-1), for a collapsed
+  panel whose strip draws with no panel behind any tab. The order it is set in against `ActiveIndex` does
+  not matter, in an object initializer or anywhere else, because the bar remembers that -1 was asked for and
+  honours it from the moment the opt-in is true. Setting it back to false puts the bar onto the first tab for
+  good, so the closed state cannot outlive the opt-in. A tap from -1 activates the tapped tab and raises
+  `ChangedThisFrame`, since with nothing active every tab is a change. A disabled tab still swallows its own
+  tap. Nothing closes the strip on its own: which gesture returns a panel to its closed state is the host's
+  rule, written as an assignment of `TabBar.NoActiveTab`. A tab bar has no keyboard or focus navigation to
+  answer for, and its roster is fixed at construction, so no replacement can strand the index.
+- `BlocksPointer` opts out of the `ContentBounds` reservation. It defaults TRUE, unlike
+  `Panel.BlocksPointer` and like `ScrollablePanel.BlocksPointer`, because a tab bar is a leaf control that has
+  always reserved its own region and a bar that silently stopped would start letting the world act on a tab
+  tap. Clear it for a strip inside a frame that reserves its own bounds.
+- `DrawMode` (default `TabBarDrawMode.Button`) switches a fixed-size strip to `TabBarDrawMode.Flat`: a flat
+  fill, a one-unit border and a centred label truncated to the tab and scaled by `TextScale`. Its colours come
+  from `FlatTheme`, captured off the ambient `GuiTheme` at construction the way every other widget captures
+  its colours, so a startup rebrand carries the strip with the rest of the UI. `GuiTheme.TabFill` and
+  `GuiTheme.TabActiveFill` are the two slots it is built on. The even-split layout ignores the mode: its tabs
+  abut with no gutter, so a per-tab border would draw every interior seam twice, which is what its single
+  shared border grid exists to avoid.
+
+`TabStrip` and `TabStripMetrics` are the same geometry as pure statics, callable with NO widget instance, for
+a consumer that hit-tests a strip without retaining one. `TabStrip.TabRect(band, index, count, metrics)` is
+one tab's rect, `TabStrip.TabAt(band, point, count, metrics)` is its inverse and answers -1 for a gutter
+between tabs as well as for anywhere off the block, `TabStrip.BlockRect(band, count, metrics)` is the
+footprint, and `EvenTabRect` / `EvenTabAt` are the even-split pair. `TabStripMetrics` carries the shape (tab
+width, tab height, spacing, columns, alignment) as a caller value rather than as theme fields, for the reason
+`PanelFrameMetrics` does. `TabBar.Metrics` hands a live bar's shape over, and `TabBar.TabRect` and
+`TabBar.ContentBounds` call straight into these statics, so there is one copy of the arithmetic and an
+instance and a static hit test cannot disagree.
+
+```csharp
+// A collapsed side panel's strip: two centred rows of five, flat, with nothing active.
+var strip = new TabBar(tabs, font, PanelFrame.StripRect(bounds, stripHeight: 56f))
+{
+    TabWidth = 56f, TabHeight = 26f, Columns = 5, Spacing = 4f,
+    BlockAlign = GuiAlign.Center,
+    DrawMode = TabBarDrawMode.Flat,
+    AllowNoActiveTab = true,              // either order works: the bar remembers -1 was asked for
+    ActiveIndex = TabBar.NoActiveTab,
+    BlocksPointer = false,                // the window already reserves its own bounds
+};
+
+// Per frame, after laying the window out:
+strip.Bounds = PanelFrame.StripRect(bounds, stripHeight: 56f);
+strip.Update(pointer);
+if (strip.ChangedThisFrame) OpenPanel(strip.ActiveIndex);
+strip.Draw(batch, white);
+
+// The same rects with no widget in hand, for a window that hit-tests before it builds anything:
+int hovered = TabStrip.TabAt(strip.Bounds, pointer.Position, tabs.Count, strip.Metrics);
+```
 
 ## File-size ratchet (KESIZE analyzer)
 
@@ -9917,6 +10053,275 @@ direction).
 
 ---
 
+## Rigid-segment character poses (`KhaozEngine.SegmentRig`)
+
+The VISUAL counterpart of the section above. `Locomotion` decides where a body is. This decides what it looks
+like there, for a game whose characters are **rigid segment meshes** (forearm, shin, torso) posed every frame
+by procedural code rather than by a skinned animation clip. Transforms out, nothing drawn.
+
+It depends on nothing at all: no `Render3D`, no `TileWorld`, no `Netcode`, no `Gpu`, not even `Primitives`.
+`Foundation` umbrella, beside `Locomotion`.
+
+```csharp
+using KhaozEngine.SegmentRig;
+
+// Per body, once.
+var cycle = new WalkCycle(BodyRig.Human);
+
+// Per frame, with the position you are DRAWING at (presented or interpolated), not the committed one.
+cycle.Advance(drawnPosition, dt);
+WalkPose walk = cycle.Pose;
+
+// Per frame, one world transform per piece. The names match the API's own parameters: a BodyPose is
+// "pose" (where and which way), a WalkPose is "walk" (what the limbs are doing).
+var pose = new BodyPose(drawnPosition, drawnYaw);
+Span<Matrix4x4> at = stackalloc Matrix4x4[HumanoidSkeleton.PieceCount];
+HumanoidSkeleton.Compose(BodyRig.Human, pose, walk, at);
+scene.Draw(myMeshes[HumanoidSkeleton.ShinLeft], at[HumanoidSkeleton.ShinLeft]);
+```
+
+`BodyPose` is the whole input: world metres and radians, a yaw of 0 facing engine +z, with the character's
+RIGHT side at engine -x and their LEFT at +x. That side convention is the half that inverts silently, so it is
+written down once on `BodyRig` and never guessed at a call site.
+
+**Two parent frames, and which piece hangs off which is the whole shape of a composition.** The legs compose
+inside `Body`. The torso, the head, both arms and whatever the hands hold compose inside `Torso`, which is that
+same body matrix with the breath's rise and tip laid over it. That is what keeps the feet planted while the
+chest moves. A forearm composes against its own upper arm's finished transform, not against the body, which is
+what makes a flex a hinge rather than a second swing from the shoulder.
+
+### The skeletons: ordered pieces, one transform each
+
+`HumanoidSkeleton` and `QuadrupedSkeleton` own that composition so a game does not write it. Each declares
+`PieceCount`, the ordered `PieceNames`, an index constant per piece, `Compose(...)` into a caller-supplied
+span, and `RestOffset(rig, piece)` for the point that piece lands on at a zero pose.
+
+| | `HumanoidSkeleton` | `QuadrupedSkeleton` |
+|---|---|---|
+| Pieces | 10: `Torso`, two upper arms, two forearms, two thighs, two shins, `Head` | 10: `Trunk`, `Poll`, four upper legs, four cannons (`PieceNames` calls the first two `body` and `head`, the asset suffixes an existing kit carries) |
+| Root frames | `BodyRig.Body` for the legs, `BodyRig.Torso` for everything above the hips | `QuadrupedRig.Body` through the trunk yaw for the legs, `QuadrupedRig.Torso` through the same yaw for the trunk and the poll |
+| Second pose | none | `QuadrupedPose`, for the swings, the flexes, the roll and the head |
+
+A parent is always ahead of its children in the order, which is what lets `Compose` read its own output for a
+forearm or a cannon. A span shorter than `PieceCount` is refused up front rather than throwing part way
+through and leaving half a body composed, and a longer one is filled with the tail left alone, so a caller
+with extra slots may hand over its whole array. `RestOffset` is what a game measures bounds in: at
+`BodyPose.Origin` with `WalkPose.Rest` (and `QuadrupedPose.Rest` on four legs), every composed transform IS
+that offset as a pure translation. It refuses a piece index outside `PieceCount`, because the origin is the
+root piece's real answer and must never be a silent one, so a caller walking a longer array of its own stops
+at `PieceCount`.
+
+**Two composers rather than one, and that is the answer rather than a gap.** The two bodies do not share a
+shape. The two-legged one has two root frames, a yaw under each shoulder and a piece on the neck base. The
+four-legged one has a trunk yaw its legs take off a DIFFERENT frame from its trunk, a poll, and a second pose
+type. One data-driven walk over both would need a parent table plus a per-piece selector across two unrelated
+rig types and two pose types, which is more machinery than either method is. They share a vocabulary and
+nothing else.
+
+### The sockets: what the two wrist channels mean
+
+`SegmentSockets` is the held-piece half. `WalkPose.RightWrist` and `WalkPose.LeftWrist` are defined by it.
+
+```csharp
+Span<Matrix4x4> at = stackalloc Matrix4x4[HumanoidSkeleton.PieceCount];
+HumanoidSkeleton.Compose(rig, pose, walk, at);
+
+// The whole chain, so nothing hand writes the five-factor product:
+// grip * Wrist(tip) * translate(HandFromElbow) * forearm * OffTurn(turn, fist)
+Matrix4x4 blade = SegmentSockets.Held(rig, myBladeGrip, at[HumanoidSkeleton.ForearmRight],
+    tip: walk.RightWrist);
+Matrix4x4 plate = SegmentSockets.Held(rig, myPlateGrip, at[HumanoidSkeleton.ForearmLeft],
+    turn: walk.LeftWrist);
+```
+
+- **`Wrist(radians)`** is the WEAPON hand's tip, about the hand's own x, applied AFTER the piece's own grip so
+  it adds to whatever lean that grip left it at. It goes after the grip rather than before because a grip that
+  rolls a piece about its own length turns the axis a wrist would otherwise tip it on, and the wrist applied
+  first would carry the piece out to the side instead of forward.
+- **`OffTurn(radians, fist)`** is the OFF hand's turn, about the BODY's up axis through the fist, applied at
+  the very END of the chain. That is what makes a plate's face independent of the arm: every joint between the
+  hand and the body pitches about the body's x, and a pitch about x leaves the hand's own x alone. A roll
+  about the forearm's own bone does not work here, which is the axis a reader reaches for first.
+- **`IsInside(socket, bounds)`** answers whether a socket offset lands in a measured box, inclusive on every
+  face. A consumer measures its own fist and asks.
+
+**A grip orientation is NOT here and will not be.** How far a blade leans out of a fist, which way a plate's
+face starts, how a short haft sits: all properties of a MESH, so all content. The two rotations above are
+properties of the rig, which is why they moved.
+
+### The pose contract: `WalkPose` is positional and append-only
+
+`WalkPose` is 18 float channels in a fixed order, and **a new channel is APPENDED, never inserted**. A game
+builds poses of its own positionally, so an insertion silently re-points every one of them at the wrong number
+and nothing fails to compile. The order is the contract:
+
+| Channels | Written by |
+|---|---|
+| `LeftArm` `RightArm` `LeftLeg` `RightLeg` | any cycle, the four root swings |
+| `LeftElbow` `RightElbow` `LeftKnee` `RightKnee` | any cycle, the four flexions, never negative |
+| `Bob` `Lean` | a walk, and they carry the WHOLE body about HIP height |
+| `RightArmYaw` `RightWrist` | a stroke, the weapon shoulder's second axis and the held piece's tip |
+| `TorsoRise` `TorsoLean` | a breath, and they carry everything ABOVE the hips and nothing else |
+| `LeftArmYaw` `LeftWrist` | a guard pose, the off shoulder and the off hand's turn |
+| `RootPitch` `RootRoll` | air and water, and on a two-legged `BodyRig` they turn the WHOLE rig about the point it stands on. `QuadrupedRig` does not read them yet |
+
+The three pairs that move the body are not interchangeable, and picking the wrong one is the most common way
+to get a pose subtly wrong. `Bob` and `Lean` pivot at the hips and carry the feet with them, which a walk can
+afford because a walk is lifting its feet anyway. `TorsoRise` and `TorsoLean` pivot at the same height but
+carry only the upper body, which is what a standing breath needs: a breath on `Bob` and `Lean` pushed a
+person's soles 9 mm under the floor at the bottom of every exhale. `RootPitch` and `RootRoll` pivot at the
+ROOT, which only makes sense once the soles are not standing on anything.
+
+### The strokes: the action half
+
+A stroke is a one-shot or looping ACTION pose laid over whatever the cycles left the body at. The package
+ships seven of them and one shared clock, all over the `WalkPose` and `QuadrupedPose` channels above:
+
+| Type | Takes | Writes |
+|---|---|---|
+| `AttackTrajectory` | a phase plus two end poses, and an optional mid-strike key | nothing, it answers an `AttackPose` or an amount |
+| `AttackSwing` / `AttackPose` | a phase | the weapon arm: `RightArm` `RightElbow` `RightArmYaw` `RightWrist` |
+| `SlashSwing` | a phase | the same four, a different shape on the same clock |
+| `AttackStyles.PoseAt(style, phase)` | an `AttackStyle` and a phase | dispatches to one of those two |
+| `ChopSwing` / `ChopPose` | a phase | the same four |
+| `ProcessingSwing` | a phase, a station flag and a weight | both arms plus `TorsoLean`, and it has no pose type |
+| `BlockRaise` / `BlockPose` | an AGE IN SECONDS and a rig | the off arm, `TorsoLean`, both hips, both knees, `Bob` |
+| `Headbutt` / `HeadbuttPose` | a phase and a `QuadrupedRig` | the four-legged channels, and it is the only producer of `Surge` and `Pitch` |
+
+**One clock, and it is `AttackTrajectory`.** Every fighting stroke recovers off the blow to
+`AttackSwing.RestPhase`, holds a guard with nothing moving until `AttackSwing.StrikePhase`, then strikes eased
+in so it is fastest as it arrives. Phase 0 and phase 1 are both the BLOW, so seeding the phase at zero when an
+authoritative hit arrives is continuous rather than a snap. A style supplies its own two end poses and
+optionally a mid-strike key, and nothing else about the timing is a style's to choose: a fight reads the same
+whatever is in the hand. Values outside 0 to 1 are wrapped and a value that is not a number is the blow, so a
+raw accumulator is a legal argument.
+
+**`BlockRaise` is an AGE, not a phase, and that is the one exception worth knowing.** It is a REACTION rather
+than an action: there is no cadence to phase it against, it does not wrap, and a second blow inside the first
+raise restarts it from the beginning. `WeightAt(ageSeconds)` is zero at and before the blow and zero from
+`BlockRaise.Seconds` on, so an age that has run past the end costs nothing and needs no clamp at the call site.
+
+### Cadence is always a caller's number, in seconds
+
+There is no cadence in this package, no default for one, and no way to express one in ticks. Every member that
+speaks in seconds takes it as a `float` parameter:
+
+```csharp
+float cadence = MyProtocol.AttackTicks * MyProtocol.TickSeconds;   // the GAME's arithmetic, on the game's side
+float hold     = AttackSwing.HoldSecondsFor(cadence);              // how long one blow keeps the arm running
+float recovery = AttackSwing.RecoverySecondsFor(cadence);          // the same after a KILLING blow: recover, stop
+```
+
+Deciding WHICH stroke a body throws is the game's too. `AttackStyles.PoseAt` dispatches on an `AttackStyle` the
+game hands it, and reading an equipped item, a weapon family or a creature kind to produce that style is a
+content question that stays behind the seam.
+
+### Composing a stroke
+
+`PoseAt` first, then `Compose(in WalkPose, ..., weight)`, and the ORDER the strokes are laid in is the game's
+own chain:
+
+```csharp
+WalkPose frame = cycle.Pose;
+frame = IdleBreath.Compose(frame, IdleBreath.PoseAt(clock, bodyId, rig), idleWeight);
+if (swinging) frame = AttackSwing.Compose(frame, AttackStyles.PoseAt(style, swingPhase), swingWeight);
+if (chopping) frame = ChopSwing.Compose(frame, ChopSwing.PoseAt(chopPhase), chopWeight);
+if (working)  frame = ProcessingSwing.Compose(frame, workPhase, atStation, workWeight);
+frame = BlockRaise.Compose(frame, BlockRaise.PoseAt(secondsSinceBlow, rig));   // no weight: the pose carries it
+
+// Four legs: the gait, then the strike over it.
+QuadrupedPose gait = QuadrupedGait.PoseAt(rig, cycle.Phase, cycle.Weight);
+gait = Headbutt.Compose(gait, Headbutt.PoseAt(strikePhase, rig), strikeWeight);
+```
+
+**A weapon-arm stroke REPLACES, a flinch ADDS, and the difference is not cosmetic.** A swing owns the weapon
+arm for as long as it runs, so it lerps that arm onto the stroke and back, and the two channels no other cycle
+writes blend up from zero so a stop eases them out with the rest of the arm. `BlockRaise` and `Headbutt` add
+instead: a block lasts under half a second on an arm that is still walking, and lerping it onto a fixed pose
+would stop that arm's own swing dead for the length of the flinch and start it again afterwards, which reads
+as a stutter. Both kinds cost exactly nothing at zero, so composing unconditionally is free.
+
+**Where a stroke moves legs, they are SOLVED rather than tuned.** `BlockRaise.StanceAt(weight, rig)` takes the
+knee as the one input, spans the bent leg with the law of cosines and drops the hips by exactly what the legs
+got shorter by, so both soles stay on the floor at EVERY weight rather than only at the ends. `Headbutt` does
+the same on four legs: the two chosen folds say how long each braced leg is, the shoulders sink until the
+foreleg's reach meets its hoof, the trunk tips until the hind leg's meets its own, and every hoof ends where it
+stood through the whole lunge.
+
+### Adding a pose of your own
+
+Jump, fall, land, swim, wade, strafe, backpedal, turn in place and slide are **game-side poses**. The package
+owns the channels, the walk, breath and gait cycles, and the strokes above. It does not own your chain.
+
+A pose is a static class with `PoseAt(...)` and `Compose(in WalkPose, ..., float weight)`, and the ORDER poses
+are laid in lives in the game's own chain:
+
+```csharp
+public static class SwimStroke
+{
+    public static WalkPose PoseAt(float phase) => new WalkPose(
+        LeftArm: ..., RightArm: ..., LeftLeg: ..., RightLeg: ...,
+        RootPitch: 1.4f);        // lying out flat, which is what the root channels are for
+
+    // REPLACE what the arms were doing, or ADD a small displacement to it. A stroke is the first,
+    // a breath is the second. IdleBreath.Compose is the worked example of the adding kind.
+    public static WalkPose Compose(in WalkPose pose, in WalkPose stroke, float weight) => ...;
+}
+
+// The game's own chain, in the game's own order.
+WalkPose frame = cycle.Pose;
+if (inWater)   frame = SwimStroke.Compose(frame, SwimStroke.PoseAt(strokePhase), swimWeight);
+if (idle)      frame = IdleBreath.Compose(frame, IdleBreath.PoseAt(clock, bodyId, rig), idleWeight);
+if (swinging)  frame = MySwing.Compose(frame, MySwing.PoseAt(swingPhase), swingWeight);
+```
+
+### Driving a cycle with no ground under it
+
+`WalkCycle.Advance(position, dt)` derives phase from **horizontal** ground distance and discards y on purpose,
+because a metre of climb is not a metre of walk. That is what makes a run read as a run with no second set of
+numbers: a body moving twice as fast covers a stride in half the time and the legs turn over twice as quickly,
+for free. It also means a swim, a fall or a body treading water covers no ground and would stand frozen with a
+leg wherever it was.
+
+The explicit phase source is the second overload:
+
+```csharp
+cycle.Advance(phaseDelta: 2f * dt, dt, moving: true, running: false);   // two strokes a second, no ground
+cycle.Advance(phaseDelta: 0f, dt, moving: false);                       // falling: hold the legs, ease out
+```
+
+`moving` and `running` are the CALLER's to declare here, because `RunMetresPerSecond` is a ground speed and
+there is no ground. A caller that thinks in speed converts once with `metresPerSecond * dt / cycle.Stride`, and
+keeps the per-body scaling `Stride` already gives it.
+
+**One side effect worth knowing.** The phase overload forgets the last sampled position, exactly as
+`Teleport()` does, so the first ground-driven call after a swim does not read thirty metres as one frame of
+sprinting. Alternating the two overloads is safe with no extra call at the seam.
+
+### No tick counts, ever
+
+This has to serve a world that updates a handful of times a second and one that updates every frame, so every
+number in the package is **seconds or a normalized 0 to 1 phase**. There is no tick count in any signature and
+no assumption about update rate. A cadence is a `float` of seconds. A game that bakes its own update rate into
+a cadence keeps that arithmetic on its own side of the seam and hands over the seconds.
+
+### What stays in the game
+
+Creature proportions beyond the reference `BodyRig.Human`, the meshes themselves and which mesh each piece
+index resolves to, named grip matrices, and the pose-chain order. `BodyRig.Scaled(f)` and the `QuadrupedRig`
+object initializer are how a game declares its own bodies: every number in a rig is a length in metres, and
+none of them survives being shared between two sizes.
+
+The piece ORDER is the package's (`HumanoidSkeleton.PieceNames` and `QuadrupedSkeleton.PieceNames`) and the
+mapping from an index to an asset is the game's. A game is free to ignore those names entirely and key its
+own table off the index.
+
+On the stroke side the same line falls in three places: which stroke an equipped item picks, how a cadence in
+seconds is arrived at, and how a held piece is oriented in the fist. A grip orientation is a property of a
+MESH rather than of a rig, so it stays with the mesh.
+
+---
+
 ## Tile-world netcode (`KhaozEngine.TileWorld.Netcode`)
 
 The SIBLING of the section above, for a world made of tiles rather than of metres. A player IS a `TileCoord`, a
@@ -14084,6 +14489,12 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
   allocation-free bulk reads via `CopyValuesTo`, lazy per-channel recompute, insertion-order fold. The engine
   owns the fold only, never a channel's meaning: no enum, no item, no stacking rule (see "Stat channels"
   below).
+- **`KhaozEngine.Skills`**: the skill progression kernel, the same split applied to experience: a movable
+  `SkillXpCurve` with an identity, a `SkillBook` over a game-supplied `ISkillRoster` of dense int indices,
+  the child-and-parent share in `SkillAwards`, the curve-change carry in `SkillXpRescale`, the readout
+  arithmetic in `SkillProgress` and byte-stable codecs for the book and the curve triple. No tick, no timer
+  and no time base of any kind, so a slow turn-based world and a continuous one share it (see "Skill
+  progression" below).
 - **`KhaozEngine.Catalog`**: the tunable-content catalog's read half: a frozen `ContentTypeRegistry` with its
   field schemas and the six engine content types, the content-addressed `KECC`/`KECM`/`KECT`/`KECR` pack
   formats, the `IPackStore` seam with `FileSystemPackStore` and `ContentPackReader`, the `IContentSnapshot`
@@ -14356,6 +14767,85 @@ numbers (which modifiers a sword grants), items and equipment slots, and the who
 rules, durations, expiry, diminishing returns), the same split `KhaozEngine.Locomotion` already draws for its
 per-entity speed scale: the engine owns the multiplier and its plumbing, the game owns duration, stacking,
 and what granted it.
+
+---
+
+## Skill progression (`KhaozEngine.Skills`)
+
+The `Stats` split applied to experience: the engine owns the arithmetic and the bytes, the game owns what a
+skill IS. There is no enum, no name, no icon, no display order, no training action and no balance number in
+the package, and **no time base of any kind**, so a turn-based world stepping a few times a second and a
+continuous one at 30 Hz agree on what an experience number means.
+
+A game supplies dense `int` indices through one small interface:
+
+```csharp
+public interface ISkillRoster
+{
+    int Count { get; }
+    bool IsLocked(int index);
+    int ParentOf(int index);   // -1 for a root
+}
+```
+
+`SkillRoster` is the batteries-included implementation, so most games never write one. Every skill starts
+OPEN and a root, `LockAll` inverts that for a roster whose live set is the exception, and `Build` refuses a
+parent chain that loops back on itself.
+
+```csharp
+using KhaozEngine.Skills;
+
+ISkillRoster roster = SkillRoster.Of(SkillCount)
+    .LockAll().Unlock(Vitality).Unlock(Melee).Unlock(Chopping)
+    .Parent(Melee, Combat).Parent(Chopping, Gathering)
+    .Build();
+
+SkillXpCurve curve = SkillXpCurve.Configured(firstLevelCost: 114, doublingLevels: 6, maxLevel: 100);
+SkillBook book = SkillBook.Fresh(roster, curve, new SkillSeed(Vitality, 10));
+
+SkillAwardResult award = SkillAwards.Apply(book, Chopping, amount: 100d, shareBp: 5000);
+// award.Crossed, award.Parent, award.ChildXp, award.ParentCrossed, award.ParentXp
+```
+
+**The curve is an object with an IDENTITY, not a static table.** Experience is stored as a number rather
+than a level, so the same number reads as a different level the moment a game tunes the curve. A record
+carries `Curve.Hash`, and a load that finds a different one calls `SkillXpRescale.Rebase`, which keeps the
+LEVEL and the fraction past it. A cap that came down pins a character to the new top rather than demoting
+them, an untrained skill is left alone, and the carried number is held one bit under the next threshold so a
+fraction of a whisker cannot buy a free level. `SkillXpCurve.Osrs` is the classic table, and its hash is the
+literal word `osrs` because an ABSENT curve section is how it is stored.
+
+**A seed is a LEVEL.** `new SkillSeed(Vitality, 10)` is priced through the curve when the book is made, so
+tuning the curve reprices every new character for free.
+
+**`SkillAwards.Apply` writes nothing anywhere.** It pays the child in full and its parent `shareBp` basis
+points of `SkillAwards.ShareDenominator` (10,000) exactly one level up, and hands back both TOTALS so a
+durable log that stores whole totals rather than deltas can record them without reading the book back, where
+a second award could already have landed. A locked skill refuses every award and every removal silently, and
+still holds whatever experience it was decoded with: a lock stops a number moving, it does not erase it.
+
+**The durable form is byte-stable and count-tolerant.** `SkillBookCodec` writes a byte version, a byte count
+and fixed-width `(id, little-endian double)` entries, so ADDING A SKILL IS NOT A MIGRATION: an older blob's
+missing ids decode as zero and a newer blob's higher ids are skipped forward-compatibly. An unknown version
+is refused by number rather than guessed at, and there is no legacy reader hook, because a pre-version-2
+format belongs to one game's own older roster where ids changed meaning. A game with older bytes dispatches
+on `SkillBookCodec.VersionOf(blob)`, migrates its own bytes, and hands a version 2 blob here. Versions never
+land in `0xF0` to `0xFF`, so a composite record format can tell a wrapped blob from a bare one by byte 0.
+
+`Validate` is roster-free, so a store can vet bytes without knowing which game wrote them. It returns a
+quarantine reason or null, refusing a bad version, a wrong length, a duplicate id, a non-finite, negative or
+over-ceiling experience, and (with the optional `requiredIndex`) a blob that lost the one skill a game's
+character sheet is meaningless without. Null or empty input is "no state", not a fault.
+
+`SkillXpCurveCodec` is the twelve-byte curve triple (three little-endian `int32`: first level cost, doubling
+levels, max level), for the record section that says which curve a save was written under. Decode REBUILDS
+through `SkillXpCurve.Configured` rather than trusting the bytes, so zeroes or a negative read as unreadable
+instead of building a curve whose every level is the cap, and an unreadable section means the caller leaves
+the stored experience exactly as it is.
+
+**What stays game-side (the seam):** skill identity and names, the display order (a reading order is not a
+storage order), what an action pays, the balance numbers, the level-up presentation, and any journal or
+event a game writes out of a `SkillAwardResult`.
 
 ---
 

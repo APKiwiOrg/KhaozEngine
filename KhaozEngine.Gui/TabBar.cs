@@ -25,7 +25,7 @@ namespace KhaozEngine.Gui
     /// <see cref="ContentBounds"/> on the pointer (the click-through gate) so a layer beneath can check
     /// <see cref="Pointer.IsBlocked"/>.
     /// </summary>
-    public sealed class TabBar
+    public sealed partial class TabBar
     {
         /// <summary>The bar rectangle the tabs are evenly split across; assign per frame from the panel layout.</summary>
         public Rect Bounds;
@@ -89,6 +89,25 @@ namespace KhaozEngine.Gui
                 ? value : throw new ArgumentOutOfRangeException(nameof(value));
         }
 
+        /// <summary>
+        /// Where the wrapped BLOCK of fixed-size tabs sits horizontally inside <see cref="Bounds"/>. Defaults to
+        /// <see cref="GuiAlign.Left"/>, which anchors it at <c>Bounds.X</c>, so an existing bar is unmoved.
+        /// <see cref="GuiAlign.Center"/> is what a side panel wants: two rows of five centred in a band wider than
+        /// they are, lining up under each other. Applies to the fixed-size layout only, since the even-split
+        /// layout fills <see cref="Bounds"/> exactly and has nothing to align. <see cref="ContentBounds"/> follows
+        /// it, so the reserved region moves with the tabs rather than staying behind at the left edge.
+        /// </summary>
+        public GuiAlign BlockAlign = GuiAlign.Left;
+
+        /// <summary>
+        /// This bar's fixed-size layout as one value, for the <see cref="TabStrip"/> statics. Hand it to
+        /// <see cref="TabStrip.TabRect"/> or <see cref="TabStrip.TabAt"/> to hit-test the same rects this bar
+        /// draws from code that holds no widget. Meaningless in the even-split layout, which has no tab size.
+        /// </summary>
+        /// <returns>The strip shape built from <see cref="TabWidth"/>, <see cref="TabHeight"/>,
+        /// <see cref="Spacing"/>, <see cref="Columns"/> and <see cref="BlockAlign"/>.</returns>
+        public TabStripMetrics Metrics => new(TabWidth, TabHeight, Spacing, Columns, BlockAlign);
+
         readonly TabBarItem[] _items;
         readonly LocalizedText[] _labels;
         int _activeIndex;
@@ -105,31 +124,63 @@ namespace KhaozEngine.Gui
 
         /// <summary>
         /// The active tab index. Settable so the caller can restore or persist the selection; setting it directly
-        /// does NOT raise <see cref="ChangedThisFrame"/> (only an input tap does). Clamped to a valid index.
+        /// does NOT raise <see cref="ChangedThisFrame"/> (only an input tap does). Clamped to a valid index, which
+        /// is <c>0 .. Count-1</c> until <see cref="AllowNoActiveTab"/> opens it down to -1.
         /// </summary>
         public int ActiveIndex
         {
-            get => _activeIndex;
-            set => _activeIndex = Math.Clamp(value, 0, _labels.Length - 1);
+            get => ActiveTab;
+            set => _activeIndex = Math.Clamp(value, NoActiveTab, _labels.Length - 1);
+        }
+
+        // The active tab as everything in this class reads it. The FIELD keeps what was asked for, down to -1, and
+        // the floor is applied here on the way out, so whether -1 is honoured depends on AllowNoActiveTab NOW and
+        // not on which of the two a caller happened to assign first. An object initializer runs in source order,
+        // and a floor applied in the setter made `{ ActiveIndex = NoActiveTab, AllowNoActiveTab = true }` open on
+        // tab 0 with nothing to say why.
+        int ActiveTab => _activeIndex < 0 && !_allowNoActiveTab ? 0 : _activeIndex;
+
+        /// <summary>The <see cref="ActiveIndex"/> that means no tab is active. Always -1.</summary>
+        public const int NoActiveTab = -1;
+
+        bool _allowNoActiveTab;
+
+        /// <summary>
+        /// Whether <see cref="ActiveIndex"/> may be <see cref="NoActiveTab"/>. Default FALSE, which is the shipped
+        /// rule: the index clamps into <c>0 .. Count-1</c> and exactly one tab is always active, so a bar that
+        /// never sets this is unchanged. Set it TRUE for a strip that has a closed state, a collapsed side panel
+        /// drawing its tabs with no panel behind any of them. The ORDER it is set in against
+        /// <see cref="ActiveIndex"/> does not matter, in an object initializer or anywhere else: the bar remembers
+        /// that -1 was asked for and honours it from the moment this is true. Setting it back to false puts a
+        /// bar that is on no tab onto the first one for good, so the closed state cannot outlive the opt-in.
+        /// </summary>
+        /// <remarks>
+        /// What -1 does everywhere else is deliberately nothing new. A tap on an enabled tab activates it and
+        /// raises <see cref="ChangedThisFrame"/> exactly as a tap from any other tab does, because no tab is
+        /// active and so every tab is a change. Nothing here closes the strip on its own: which gesture returns a
+        /// panel to its closed state is the host's rule, expressed by assigning <see cref="NoActiveTab"/>. There
+        /// is no keyboard or focus navigation on a tab bar to answer for, and the roster is fixed at construction
+        /// (<see cref="Items"/> is read-only), so no replacement can strand the active index. A tab going
+        /// disabled does not move it either, which is the behaviour a bar already had.
+        /// </remarks>
+        public bool AllowNoActiveTab
+        {
+            get => _allowNoActiveTab;
+            set
+            {
+                _allowNoActiveTab = value;
+                if (!value && _activeIndex < 0) _activeIndex = 0;
+            }
         }
 
         /// <summary>True only on the frame the active tab changed via an input tap (never via the setter).</summary>
         public bool ChangedThisFrame { get; private set; }
 
         /// <summary>The rectangle reserved and drawn by the current layout. Equals <see cref="Bounds"/> in the
-        /// default even-split layout and is derived from the tab size, columns, spacing, and count in fixed layout.</summary>
-        public Rect ContentBounds
-        {
-            get
-            {
-                if (!UsesFixedLayout) return Bounds;
-                int columns = EffectiveColumns;
-                int rows = (_items.Length + columns - 1) / columns;
-                float width = columns * TabWidth + (columns - 1) * Spacing;
-                float height = rows * TabHeight + (rows - 1) * Spacing;
-                return new Rect(Bounds.X, Bounds.Y, width, height);
-            }
-        }
+        /// default even-split layout and is derived from the tab size, columns, spacing, alignment and count in
+        /// fixed layout (<see cref="TabStrip.BlockRect"/>).</summary>
+        public Rect ContentBounds =>
+            UsesFixedLayout ? TabStrip.BlockRect(Bounds, _items.Length, Metrics) : Bounds;
 
         /// <summary>Create a tab bar from at least one localized label.</summary>
         /// <exception cref="ArgumentNullException"><paramref name="tabLabels"/> is null.</exception>
@@ -160,38 +211,44 @@ namespace KhaozEngine.Gui
         /// The rectangle of tab <paramref name="index"/> within <see cref="Bounds"/>, evenly split. Uses fractional
         /// edges (<c>X + Width * i/N</c> .. <c>X + Width * (i+1)/N</c>) so tabs abut with no cumulative rounding gap
         /// and the last tab's right edge equals <see cref="Bounds"/>.Right exactly. Pure math: headless-testable.
+        /// In the fixed-size layout it is <see cref="TabStrip.TabRect"/> under this bar's
+        /// <see cref="Metrics"/>, so an instance and a static hit test cannot drift apart.
         /// </summary>
+        /// <returns>The tab's rectangle in the current layout.</returns>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> is outside [0, Count).</exception>
         public Rect TabRect(int index)
         {
             if (index < 0 || index >= _labels.Length)
                 throw new ArgumentOutOfRangeException(nameof(index));
-            if (UsesFixedLayout)
-            {
-                int columns = EffectiveColumns;
-                int column = index % columns;
-                int row = index / columns;
-                return new Rect(
-                    Bounds.X + column * (TabWidth + Spacing),
-                    Bounds.Y + row * (TabHeight + Spacing),
-                    TabWidth,
-                    TabHeight);
-            }
-            float left = Bounds.X + Bounds.Width * index / _items.Length;
-            float right = Bounds.X + Bounds.Width * (index + 1) / _items.Length;
-            return new Rect(left, Bounds.Y, right - left, Bounds.Height);
+            return UsesFixedLayout
+                ? TabStrip.TabRect(Bounds, index, _items.Length, Metrics)
+                : TabStrip.EvenTabRect(Bounds, index, _items.Length);
         }
 
         /// <summary>
-        /// Reserve <see cref="Bounds"/> for click-through (<see cref="Pointer.BlockRegion"/>) and hit-test each tab.
-        /// A valid press-origin tap (<see cref="Pointer.IsTapIn"/>) on a tab OTHER than the active one makes it
-        /// active, sets <see cref="ChangedThisFrame"/>, and returns true. A tap on the already-active tab, or
-        /// anywhere outside the bar, changes nothing and returns false.
+        /// When <see cref="BlocksPointer"/> is set, <see cref="Update"/> reserves <see cref="ContentBounds"/> via
+        /// <see cref="Pointer.BlockRegion"/> so a layer beneath can check <see cref="Pointer.IsBlocked"/> and skip
+        /// hit-testing under the bar. Default TRUE, unlike <see cref="Panel.BlocksPointer"/> and like
+        /// <see cref="ScrollablePanel.BlocksPointer"/>, because a tab bar is a leaf control that has always
+        /// reserved its own region and a bar that stopped would start letting the world act on a tab tap. Clear it
+        /// for a strip drawn inside a frame that reserves its own bounds, where reserving twice is just a second
+        /// region for every layer beneath to test.
         /// </summary>
+        public bool BlocksPointer = true;
+
+        /// <summary>
+        /// Reserve <see cref="Bounds"/> for click-through (<see cref="Pointer.BlockRegion"/>, unless
+        /// <see cref="BlocksPointer"/> is cleared) and hit-test each tab. A valid press-origin tap
+        /// (<see cref="Pointer.IsTapIn"/>) on a tab OTHER than the active one makes it active, sets
+        /// <see cref="ChangedThisFrame"/>, and returns true. A tap on the already-active tab, or anywhere outside
+        /// the bar, changes nothing and returns false. With no tab active
+        /// (<see cref="AllowNoActiveTab"/>), every enabled tab is a change.
+        /// </summary>
+        /// <returns>True on the frame a tap moved the active tab.</returns>
         public bool Update(Pointer pointer)
         {
             ChangedThisFrame = false;
-            pointer.BlockRegion(ContentBounds);
+            if (BlocksPointer) pointer.BlockRegion(ContentBounds);
             _hoverIndex = _pressIndex = -1;
             bool changed = false;
             for (int i = 0; i < _labels.Length; i++)
@@ -205,7 +262,7 @@ namespace KhaozEngine.Gui
                     pointer.ConsumeGesture();
                     continue;
                 }
-                if (i != _activeIndex)
+                if (i != ActiveTab)
                 {
                     _activeIndex = i;
                     ChangedThisFrame = true;
@@ -217,7 +274,11 @@ namespace KhaozEngine.Gui
 
         /// <summary>Draw the tab strip as a flat segmented control: per-tab fills plus a single shared border grid.
         /// <paramref name="white"/> is a 1x1 white texture for the fills. Hover/press visuals are the ones cached by
-        /// the last <see cref="Update"/>. Requires <see cref="Font"/> (a no-op when unset).</summary>
+        /// the last <see cref="Update"/>. Requires <see cref="Font"/> (a no-op when unset). A fixed-size strip set
+        /// to <see cref="TabBarDrawMode.Flat"/> takes the separated-tab path instead (see
+        /// <see cref="DrawMode"/>).</summary>
+        /// <param name="batch">An in-progress sprite batch.</param>
+        /// <param name="white">A one by one white texture for the fills.</param>
         public void Draw(SpriteBatch batch, Texture2D white)
         {
             if (Font == null) return;
@@ -227,9 +288,14 @@ namespace KhaozEngine.Gui
 
             if (UsesFixedLayout)
             {
+                if (DrawsFlat)
+                {
+                    DrawFlat(batch, white, Font);
+                    return;
+                }
                 for (int i = 0; i < _items.Length; i++)
                 {
-                    bool selected = i == _activeIndex;
+                    bool selected = i == ActiveTab;
                     GuiDraw.DrawButton(batch, white, Font, TabRect(i), _items[i].Label,
                         selected ? active : inactive, _items[i].Enabled, selected,
                         _hoverIndex == i, _pressIndex == i, TextScale);
@@ -247,9 +313,9 @@ namespace KhaozEngine.Gui
             // 1) Tab bodies: flat fills in the resolved state colour (selected wins over press/hover, as DrawButton).
             for (int i = 0; i < _labels.Length; i++)
             {
-                GuiStyle s = i == _activeIndex ? active : inactive;
+                GuiStyle s = i == ActiveTab ? active : inactive;
                 Vector4 fill = !_items[i].Enabled ? s.DisabledFill
-                    : i == _activeIndex ? s.SelectedFill
+                    : i == ActiveTab ? s.SelectedFill
                     : _pressIndex == i ? s.Press
                     : _hoverIndex == i ? s.Hover
                     : s.Fill;
@@ -259,21 +325,23 @@ namespace KhaozEngine.Gui
             // 2) One shared frame + one 1-unit divider per interior seam, drawn once so no seam is doubled. The two
             // seams bounding the active tab are left to its accent border below (drawing both would re-double them).
             GuiDraw.Border(batch, white, frame, 1f, inactive.Border);
+            // With no tab active there is no accent outline to leave room for, so every seam is drawn here.
+            bool accented = ActiveTab >= 0 && _items[ActiveTab].Enabled;
             for (int i = 1; i < _labels.Length; i++)
             {
-                if (_items[_activeIndex].Enabled && (i == _activeIndex || i == _activeIndex + 1)) continue;
+                if (accented && (i == ActiveTab || i == ActiveTab + 1)) continue;
                 GuiDraw.Fill(batch, white, batch.SnapRect(new Rect(edges[i], frame.Y, t, frame.Height)), inactive.Border);
             }
 
             // 3) Active tab accent border on top, so it reads cleanly over the shared frame.
-            if (_items[_activeIndex].Enabled)
-                GuiDraw.Border(batch, white, BodyRect(batch, frame, edges, _activeIndex), 1f, active.SelectedBorder);
+            if (accented)
+                GuiDraw.Border(batch, white, BodyRect(batch, frame, edges, ActiveTab), 1f, active.SelectedBorder);
 
             // 4) Centred labels per snapped body.
             for (int i = 0; i < _labels.Length; i++)
             {
                 Rect body = BodyRect(batch, frame, edges, i);
-                GuiStyle style = i == _activeIndex ? active : inactive;
+                GuiStyle style = i == ActiveTab ? active : inactive;
                 Vector4 text = _items[i].Enabled ? style.Text : style.DisabledText;
                 string str = _labels[i].Resolve();
                 Vector2 pos = GuiDraw.AlignedTextPos(body, Font.Measure(str), Font.LineHeight, GuiAlign.Center, TextScale);
@@ -288,12 +356,10 @@ namespace KhaozEngine.Gui
 
         bool UsesFixedLayout => TabWidth > 0f && TabHeight > 0f;
 
-        int EffectiveColumns => Columns > 0 ? Math.Min(Columns, _items.Length) : _items.Length;
-
         internal (Vector4 Fill, Vector4 Text) ResolveVisual(int index)
         {
             if (index < 0 || index >= _items.Length) throw new ArgumentOutOfRangeException(nameof(index));
-            bool selected = index == _activeIndex;
+            bool selected = index == ActiveTab;
             GuiStyle style = (selected ? ActiveStyle : InactiveStyle).Faded(Opacity);
             Vector4 fill = !_items[index].Enabled ? style.DisabledFill
                 : selected ? style.SelectedFill

@@ -64,8 +64,8 @@ The pose core for rigid-segment characters, lifted out of the same consumer:
   segment meshes posed every frame by procedural code, rather than a skinned rig playing a clip.**
   Transforms out, nothing drawn, and NO project reference at all: not `Render3D`, not `TileWorld`, not
   `Netcode`, not even `Primitives`. `Locomotion` decides where a body is, this decides what it looks like
-  there. Part one of two: the value types, the rigs and the locomotion cycles. The strokes, the socket
-  helpers and the skeleton composer follow.
+  there. The value types, the rigs, the locomotion cycles and the strokes are in. The socket helpers, a
+  reference rig facade and the skeleton composer follow.
   - **`BodyPose(Vector3 Position, float Yaw)` is the whole input**, world metres plus radians, and it is
     the DRAWN position rather than the committed authoritative one, so a cycle follows the glide between
     server answers instead of stepping once per update.
@@ -94,6 +94,29 @@ The pose core for rigid-segment characters, lifted out of the same consumer:
     last sampled position, so returning to the ground path is not one frame of sprinting, it keeps the
     phase half open for a backwards delta, and it shares the one blend rule with the distance overload,
     whose behaviour is unchanged.
+  - **The STROKES are the action half, over those same channels**, and every one is a static class with
+    `PoseAt(...)` and `Compose(...)` so the ORDER they are laid in stays the game's own chain.
+    `AttackTrajectory` is the one clock they share and the reason there is only one: a fight has to read
+    the same whatever is in the hand, so it owns the recovery, the still guard and the late fast strike,
+    and a style supplies nothing but its own two end poses and an optional mid-strike key. `AttackSwing`
+    is the empty-hand punch and carries the three phase boundaries every other stroke reads, `SlashSwing`
+    is the armed cut on that clock, and `AttackStyles.PoseAt` dispatches between them. `ChopSwing` is the
+    tool stroke, `ProcessingSwing` the restrained two-handed working pose, and `Headbutt` the four-legged
+    strike, the only producer of `QuadrupedPose.Surge` and `Pitch`.
+  - **`BlockRaise` takes an AGE IN SECONDS rather than a phase**, because a flinch is a REACTION: there is
+    no cadence to phase it against, it does not wrap, and a second blow inside the first raise restarts
+    it. It also ADDS rather than replacing, as `Headbutt` does, since lerping a half-second flinch onto a
+    fixed pose would stop the walk underneath it dead. A weapon-arm stroke replaces instead, because it
+    owns that arm for as long as it runs, and both kinds cost exactly nothing at zero weight.
+  - **Where a stroke moves legs they are SOLVED, at every weight rather than solved once and scaled.**
+    `BlockRaise.StanceAt` takes the knee as the only input and drops the hips by exactly what the bent
+    legs got shorter by, so both soles stay on the floor through the whole raise and the whole settle.
+    `Headbutt` does the same on four: every hoof is where it stood at every phase of the lunge.
+  - **A CADENCE IS ALWAYS A CALLER-SUPPLIED `float` OF SECONDS.** The package has none of its own, no
+    default for one, and no way to express one in ticks: `HoldSecondsFor(cadenceSeconds)` and
+    `RecoverySecondsFor(cadenceSeconds)` are the whole seconds interface, and a game that derives a
+    cadence from its own update rate keeps that arithmetic behind the seam. Which stroke an equipped item
+    picks and how a held piece is oriented in the fist stay in the game for the same reason.
   - A game adds its own pose (jump, fall, swim, wade, strafe, backpedal) as a static class with `PoseAt`
     and `Compose` over these channels and orders them in its own chain. See `docs/USING-KHAOZENGINE.md`.
 

@@ -25,7 +25,7 @@ namespace KhaozEngine.Gui
     /// <see cref="ContentBounds"/> on the pointer (the click-through gate) so a layer beneath can check
     /// <see cref="Pointer.IsBlocked"/>.
     /// </summary>
-    public sealed class TabBar
+    public sealed partial class TabBar
     {
         /// <summary>The bar rectangle the tabs are evenly split across; assign per frame from the panel layout.</summary>
         public Rect Bounds;
@@ -267,7 +267,11 @@ namespace KhaozEngine.Gui
 
         /// <summary>Draw the tab strip as a flat segmented control: per-tab fills plus a single shared border grid.
         /// <paramref name="white"/> is a 1x1 white texture for the fills. Hover/press visuals are the ones cached by
-        /// the last <see cref="Update"/>. Requires <see cref="Font"/> (a no-op when unset).</summary>
+        /// the last <see cref="Update"/>. Requires <see cref="Font"/> (a no-op when unset). A fixed-size strip set
+        /// to <see cref="TabBarDrawMode.Flat"/> takes the separated-tab path instead (see
+        /// <see cref="DrawMode"/>).</summary>
+        /// <param name="batch">An in-progress sprite batch.</param>
+        /// <param name="white">A one by one white texture for the fills.</param>
         public void Draw(SpriteBatch batch, Texture2D white)
         {
             if (Font == null) return;
@@ -277,6 +281,11 @@ namespace KhaozEngine.Gui
 
             if (UsesFixedLayout)
             {
+                if (DrawsFlat)
+                {
+                    DrawFlat(batch, white, Font);
+                    return;
+                }
                 for (int i = 0; i < _items.Length; i++)
                 {
                     bool selected = i == _activeIndex;

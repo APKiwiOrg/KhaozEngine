@@ -124,12 +124,46 @@ namespace KhaozEngine.Gui
 
         /// <summary>
         /// The active tab index. Settable so the caller can restore or persist the selection; setting it directly
-        /// does NOT raise <see cref="ChangedThisFrame"/> (only an input tap does). Clamped to a valid index.
+        /// does NOT raise <see cref="ChangedThisFrame"/> (only an input tap does). Clamped to a valid index, which
+        /// is <c>0 .. Count-1</c> until <see cref="AllowNoActiveTab"/> opens it down to -1.
         /// </summary>
         public int ActiveIndex
         {
             get => _activeIndex;
-            set => _activeIndex = Math.Clamp(value, 0, _labels.Length - 1);
+            set => _activeIndex = Math.Clamp(value, _allowNoActiveTab ? NoActiveTab : 0, _labels.Length - 1);
+        }
+
+        /// <summary>The <see cref="ActiveIndex"/> that means no tab is active. Always -1.</summary>
+        public const int NoActiveTab = -1;
+
+        bool _allowNoActiveTab;
+
+        /// <summary>
+        /// Whether <see cref="ActiveIndex"/> may be <see cref="NoActiveTab"/>. Default FALSE, which is the shipped
+        /// rule: the index clamps into <c>0 .. Count-1</c> and exactly one tab is always active, so a bar that
+        /// never sets this is unchanged. Set it TRUE for a strip that has a closed state, a collapsed side panel
+        /// drawing its tabs with no panel behind any of them. Set it BEFORE assigning
+        /// <see cref="ActiveIndex"/> = <see cref="NoActiveTab"/>, since the setter clamps against whatever this
+        /// says at the moment of the assignment. Setting it back to false re-clamps a bar that is currently on no
+        /// tab onto the first one, so the closed state cannot outlive the opt-in.
+        /// </summary>
+        /// <remarks>
+        /// What -1 does everywhere else is deliberately nothing new. A tap on an enabled tab activates it and
+        /// raises <see cref="ChangedThisFrame"/> exactly as a tap from any other tab does, because no tab is
+        /// active and so every tab is a change. Nothing here closes the strip on its own: which gesture returns a
+        /// panel to its closed state is the host's rule, expressed by assigning <see cref="NoActiveTab"/>. There
+        /// is no keyboard or focus navigation on a tab bar to answer for, and the roster is fixed at construction
+        /// (<see cref="Items"/> is read-only), so no replacement can strand the active index. A tab going
+        /// disabled does not move it either, which is the behaviour a bar already had.
+        /// </remarks>
+        public bool AllowNoActiveTab
+        {
+            get => _allowNoActiveTab;
+            set
+            {
+                _allowNoActiveTab = value;
+                if (!value && _activeIndex < 0) _activeIndex = 0;
+            }
         }
 
         /// <summary>True only on the frame the active tab changed via an input tap (never via the setter).</summary>
@@ -185,15 +219,29 @@ namespace KhaozEngine.Gui
         }
 
         /// <summary>
-        /// Reserve <see cref="Bounds"/> for click-through (<see cref="Pointer.BlockRegion"/>) and hit-test each tab.
-        /// A valid press-origin tap (<see cref="Pointer.IsTapIn"/>) on a tab OTHER than the active one makes it
-        /// active, sets <see cref="ChangedThisFrame"/>, and returns true. A tap on the already-active tab, or
-        /// anywhere outside the bar, changes nothing and returns false.
+        /// When <see cref="BlocksPointer"/> is set, <see cref="Update"/> reserves <see cref="ContentBounds"/> via
+        /// <see cref="Pointer.BlockRegion"/> so a layer beneath can check <see cref="Pointer.IsBlocked"/> and skip
+        /// hit-testing under the bar. Default TRUE, unlike <see cref="Panel.BlocksPointer"/> and like
+        /// <see cref="ScrollablePanel.BlocksPointer"/>, because a tab bar is a leaf control that has always
+        /// reserved its own region and a bar that stopped would start letting the world act on a tab tap. Clear it
+        /// for a strip drawn inside a frame that reserves its own bounds, where reserving twice is just a second
+        /// region for every layer beneath to test.
         /// </summary>
+        public bool BlocksPointer = true;
+
+        /// <summary>
+        /// Reserve <see cref="Bounds"/> for click-through (<see cref="Pointer.BlockRegion"/>, unless
+        /// <see cref="BlocksPointer"/> is cleared) and hit-test each tab. A valid press-origin tap
+        /// (<see cref="Pointer.IsTapIn"/>) on a tab OTHER than the active one makes it active, sets
+        /// <see cref="ChangedThisFrame"/>, and returns true. A tap on the already-active tab, or anywhere outside
+        /// the bar, changes nothing and returns false. With no tab active
+        /// (<see cref="AllowNoActiveTab"/>), every enabled tab is a change.
+        /// </summary>
+        /// <returns>True on the frame a tap moved the active tab.</returns>
         public bool Update(Pointer pointer)
         {
             ChangedThisFrame = false;
-            pointer.BlockRegion(ContentBounds);
+            if (BlocksPointer) pointer.BlockRegion(ContentBounds);
             _hoverIndex = _pressIndex = -1;
             bool changed = false;
             for (int i = 0; i < _labels.Length; i++)
@@ -261,14 +309,16 @@ namespace KhaozEngine.Gui
             // 2) One shared frame + one 1-unit divider per interior seam, drawn once so no seam is doubled. The two
             // seams bounding the active tab are left to its accent border below (drawing both would re-double them).
             GuiDraw.Border(batch, white, frame, 1f, inactive.Border);
+            // With no tab active there is no accent outline to leave room for, so every seam is drawn here.
+            bool accented = _activeIndex >= 0 && _items[_activeIndex].Enabled;
             for (int i = 1; i < _labels.Length; i++)
             {
-                if (_items[_activeIndex].Enabled && (i == _activeIndex || i == _activeIndex + 1)) continue;
+                if (accented && (i == _activeIndex || i == _activeIndex + 1)) continue;
                 GuiDraw.Fill(batch, white, batch.SnapRect(new Rect(edges[i], frame.Y, t, frame.Height)), inactive.Border);
             }
 
             // 3) Active tab accent border on top, so it reads cleanly over the shared frame.
-            if (_items[_activeIndex].Enabled)
+            if (accented)
                 GuiDraw.Border(batch, white, BodyRect(batch, frame, edges, _activeIndex), 1f, active.SelectedBorder);
 
             // 4) Centred labels per snapped body.

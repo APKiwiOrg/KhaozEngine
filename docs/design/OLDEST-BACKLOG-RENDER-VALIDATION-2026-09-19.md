@@ -53,8 +53,9 @@ changes do not change these fixed-scene shader inputs. Only the selected scene n
 its artifacts. A separate comparison run must verify the committed references before merging main.
 
 The native Metal cliff-region, horizontal-ground-dip, rigid-top, rigid-side and CPU/GPU-skinned tests
-passed. The HDR ratio and surf-gradient probes passed. Four native streaming regressions also passed,
-including live LOD-table placement and collider-handle retention.
+passed. The HDR ratio and surf-gradient probes passed. Four native streaming regressions were run on
+Metal at that point and reported as passing. Two of them did not survive the verification run below,
+so treat that particular line as superseded by the section that follows.
 
 The GLSL edits change exactly four fragment programs in each HLSL, MSL and SPIR-V hash table:
 `GroundDecal`, `PostTonemap`, `Water` and `WaterClipmap`. No vertex program or compiler option changed.
@@ -63,3 +64,45 @@ The bake completed all selected images. Metal and Vulkan passed their full bake 
 existing HDR-disabled point-shadow seam probe after producing its images. That result is tracked in
 [issue 1024](https://github.com/APKiwiOrg/KhaozEngine/issues/1024). Its bound and shader were not changed
 as part of the reference update. The separate verification run also exercises that probe.
+
+## Verification run
+
+The comparison run this record asked for is
+[run 35471553973](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/35471553973), on the batch
+merged with `main` at `19.6.0`. It runs the full suite on every leg, which is what a dispatch does,
+and it verifies the committed references rather than writing them.
+
+It passed on `metal-native`, on `vulkan-native` and on the Vulkan sync-validation leg. The
+`direct3d11-native` leg ran 7,775 render tests with nothing skipped and failed exactly one, the
+point-shadow seam probe covered in the section below, at the same residual that issue 1024 already
+records. Every committed reference therefore verifies on all three backends, and both terrain
+regressions are gone.
+
+The first attempt at that run, [35446751621](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/35446751621)
+on `cfec0023`, failed on all three backends with the same two headless terrain regressions:
+
+- `Scene3DChunkSinkTests.ReLod_DecorToGameplay_GainsCollidersThenLosesThemOnRetreat`
+- `PropClusterRendererTests.Decor_first_then_gameplay_refreshes_props_without_replacing_the_hlod_handle`
+
+Both reproduce locally in Release. The cause was in `Scene3DChunkSink.ReLod`, which derived its
+`ChunkBuildReason` by testing the tier before the ring. A chunk entering the gameplay ring almost
+always moves to a finer tier in the same call, so that transition was classified `TierChange` and took
+the placement-reuse path added for #101. A decor chunk holds no placements, so the promoted chunk
+arrived with no props, no prop static bodies and no terrain collider. `TerrainStreamer` already
+classified the ring first at both of its own sites, so the sink was the one that disagreed. The fix
+puts the ring test first, and the apply side needed no change because it already branches on whether
+the ring moved.
+
+This is the case for running a dispatched full suite before a merge rather than trusting the push
+legs. The `direct3d11-native` and `vulkan-native` legs carry `fullSuite: scheduled`, so a push or a
+pull request runs the golden subset on them. Neither of these two tests is in the Golden family, and
+neither is a golden image, so no push run on this branch would have gone red.
+
+## WARP point-shadow probe
+
+[Control run 35446943072](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/35446943072) checked
+out `v19.5.0` on `windows-latest` under the same `KE_D3D11_ADAPTER=warp` pin and ran the point-shadow
+fixture against that unchanged tree. It failed there too, which rules this batch out as the cause,
+including the renderer resource retirement change that issue 1024 had not yet excluded. The bound and
+the shader stay as they are. The control harness is kept on the `fix/oldest-warp-control` branch so
+the next attempt at 1024 can re-run it.

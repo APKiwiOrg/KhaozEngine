@@ -345,6 +345,12 @@ is in the database, and this is the operation that does it. It reads rows throug
 version number, retired ones included, and the rule list through `ReadPublishBaselineAsync` filtered to
 `IntroducedIn <= n`, so it needs no member the seam did not already have.
 
+**The version to rebuild is the one the BOOT will load**, which is `ContentBoot.ResolveVersionAsync(options)`
+on the same options the boot is handed, and NOT in general `GetActiveVersionAsync`. A version pinned in the
+server's own config wins over everything, and an operator's pin in the database wins over the active version,
+so a recovery that rebuilds the active version while either names another one fills the root with a pack the
+boot never asks for, and the boot still refuses at step 3 with `manifest for version N absent`.
+
 **It encodes rather than copies, through the SAME builders a publish uses.** The rows go through
 `ContentChunkBuilder` against an empty baseline, so every chunk the version occupies is encoded again rather
 than carried forward, and both manifests go through `ContentManifestBuilder` exactly as step 8 builds them.

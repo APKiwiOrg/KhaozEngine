@@ -14503,13 +14503,31 @@ boot above refuses at step 3 with `manifest for version N absent`. `ContentPackR
 version's whole pack again out of the authoring store: check the pointer first, rebuild when it is missing,
 then boot exactly as before.
 
+The version to rebuild is the one the BOOT will load, which is what `ContentBoot.ResolveVersionAsync` answers
+out of the same options, and it is not in general the store's active version: a config pin wins over
+everything and an operator's pin in the database wins over the active version, so rebuilding the active one
+fills the root with a pack the boot never asks for and the boot still refuses at step 3. The options are
+therefore built ONCE and both calls read them.
+
 ```csharp
 var pack = new FileSystemPackStore(packRoot);
-int version = config.ContentVersion ?? await store.GetActiveVersionAsync(ct);
+var options = new ContentBootOptions
+{
+    Registry = registry,
+    Store = pack,
+    Holder = holder,
+    ServerBuild = buildOrdinal,
+    ConfiguredVersion = config.ContentVersion,      // wins always, and null falls to the directory
+    Directory = versions,                           // an IContentVersionDirectory over the database's two
+                                                    // reads, GetPinnedVersionAsync and GetActiveVersionAsync
+    WorldKeys = world.ContentKeys,
+};
+
+int version = await ContentBoot.ResolveVersionAsync(options, ct);   // 0 when nothing names one
 
 // IContentVersionPointerSource.GetVersionPointerAsync, which FileSystemPackStore answers directly. Any other
 // pack store's write half comes from PackVersionPointers.Resolve(pack).
-if (await pack.GetVersionPointerAsync(version, ct) is null)
+if (version > 0 && await pack.GetVersionPointerAsync(version, ct) is null)
 {
     // pointers and rowEncoder both default: the pointer half resolves off pack, and the rows go through
     // ContentSideRowEncoder.Default. Name the encoder here when the publish named one.
@@ -14522,16 +14540,9 @@ if (await pack.GetVersionPointerAsync(version, ct) is null)
     }
 }
 
-ContentBootResult boot = await ContentBoot.RunAsync(
-    new ContentBootOptions
-    {
-        Registry = registry,
-        Store = pack,
-        Holder = holder,
-        ServerBuild = buildOrdinal,
-        ConfiguredVersion = version,
-    },
-    ct);
+// The same options, so the boot loads the version the rebuild just prepared. A version of 0 reaches this
+// call untouched and refuses at step 2, which is the one place that refusal is written.
+ContentBootResult boot = await ContentBoot.RunAsync(options, ct);
 ```
 
 It verifies before it writes anything a reader could follow: both rebuilt manifests are digested and compared

@@ -537,6 +537,10 @@ loads before the world and both load before the door opens.
    otherwise the authoring database's pinned version when it is not null, otherwise its active version. A
    server with a config pin and a pack store reads no authoring database at boot at all, which is the
    deployment this design recommends: the authoring database is a TOOLING dependency.
+   `ContentBoot.ResolveVersionAsync(options)` is that one precedence as a public member, answering 0 when
+   nothing names a version, so a caller that prepares the pack store first (a `ContentPackRebuild` after a
+   pack root did not outlive its process) prepares the version this boot will read rather than guessing at
+   the active one.
 2. **Step 3, the manifest**, through the `versions/<n>` pointer, verified against the name it was fetched
    under AND against the version the boot resolved. A manifest whose embedded number differs means the
    pointer and the pack disagree, and the server would otherwise announce one number at the door while

@@ -1,6 +1,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
@@ -17,6 +18,9 @@ namespace KhaozEngine.Tests.Catalog;
 /// </summary>
 public abstract partial class ContentAuthoringStoreConformance
 {
+    /// <summary>The id the rebuild facts put in chunk 1, so a second publish has a chunk to carry forward.</summary>
+    const int FarId = CatalogFixtures.ChunkSlots + 44;
+
     /// <summary>
     /// FACT 7. Publish assigns version 1 then 2, never skipping. The number is the pack's own address and a
     /// gap in it would be a version a rollback, a pin and a diff all name and none can find.
@@ -252,5 +256,160 @@ public abstract partial class ContentAuthoringStoreConformance
         // And the reader saw the publish land at all, so the loop above is not vacuously true.
         Assert.Contains(looks, static look => look.ActiveVersion == 2);
         Assert.Contains(looks, static look => look.ActiveVersion == 1);
+    }
+
+    /// <summary>
+    /// A rebuild of a PUBLISHED version reproduces the two manifest hashes that version's row records, at
+    /// every version rather than only at the active one. The store keeps rows, rules and hashes and never the
+    /// pack BYTES, so this is what says a provider holds enough to write the pack again after a pack root is
+    /// lost, and a manifest digest covers every chunk hash inline, so the pair pins the whole closure.
+    /// <para>
+    /// Two versions, because version 2 carries chunk 1 forward untouched and appends a remap rule, and both
+    /// are things a rebuild has to reproduce out of the row and rule tables with no baseline to copy from.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public virtual async Task ARebuildOfAPublishedVersionReproducesTheManifestHashesTheVersionRowRecords()
+    {
+        IContentAuthoringStore store = await OpenAsync();
+        await PublishAsync(
+            store,
+            ContentEdit.Add(Thing, new ContentKey("one"), CatalogFixtures.Fields(11)),
+            ContentEdit.Add(Thing, new ContentKey("two"), CatalogFixtures.Fields(22)),
+            ContentEdit.Import(Thing, FarId, new ContentKey("far"), CatalogFixtures.Fields(33)));
+
+        // Version 2 moves chunk 0 and leaves chunk 1 alone, and the retire is what appends the rule.
+        await PublishAsync(
+            store,
+            ContentEdit.Update(Thing, 1, new ContentKey("one"), CatalogFixtures.Fields(99)),
+            ContentEdit.Retire(Thing, 2, new ContentKey("two"), ContentRetirePolicy.Placeholder, 0));
+
+        Assert.Equal(2, await store.GetActiveVersionAsync());
+        Assert.Single(await RulesAsync(store));
+
+        ContentVersionRecord first = await VersionAsync(store, 1);
+        ContentVersionRecord second = await VersionAsync(store, 2);
+
+        using var forFirst = new TemporaryPackRoot();
+        using var forSecond = new TemporaryPackRoot();
+        ContentPackRebuildResult one = await ContentPackRebuild.RunAsync(store, Registry, 1, forFirst.Store);
+        ContentPackRebuildResult two = await ContentPackRebuild.RunAsync(store, Registry, 2, forSecond.Store);
+
+        Assert.True(one.Rebuilt, one.RefusalDetail ?? one.RefusalReason);
+        Assert.True(two.Rebuilt, two.RefusalDetail ?? two.RefusalReason);
+        Assert.Equal(2, one.ChunksBuilt);
+        Assert.Equal(2, two.ChunksBuilt);
+
+        // The pointer each target carries names EXACTLY the two hashes the version row records, which is the
+        // address a boot asks that store for.
+        await AssertPointerNamesAsync(forFirst.Store, first);
+        await AssertPointerNamesAsync(forSecond.Store, second);
+
+        // And each target holds its own version and not the other one, so a rebuild is version scoped rather
+        // than "whatever the store stands at now".
+        Assert.False(await forFirst.Store.ExistsAsync(second.ServerManifestHash));
+        Assert.False(await forSecond.Store.ExistsAsync(first.ServerManifestHash));
+    }
+
+    /// <summary>
+    /// A rebuild leaves the store's AUDIT ledger, its active version, its version list and its open draft
+    /// exactly where it found them. It is a recovery an operator runs against a live database, so a rebuild
+    /// that wrote anything would make recovering a pack root an edit to the content history.
+    /// <para>
+    /// The one write it can cause is the publish baseline read clearing a STALE freeze marker, which is the
+    /// recovery that read always performs and which no store here is in a position to need.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public virtual async Task ARebuildLeavesTheStoresAuditAndActiveVersionUnchanged()
+    {
+        IContentAuthoringStore store = await OpenAsync();
+        await PublishAsync(
+            store,
+            ContentEdit.Add(Thing, new ContentKey("one"), CatalogFixtures.Fields(11)),
+            ContentEdit.Add(Thing, new ContentKey("two"), CatalogFixtures.Fields(22)));
+        await PublishAsync(
+            store,
+            ContentEdit.Retire(Thing, 2, new ContentKey("two"), ContentRetirePolicy.Placeholder, 0));
+
+        // An UNPUBLISHED draft is open while the rebuild runs, which is the state an operator recovering a
+        // pack root is most likely to be in.
+        await ApplyAsync(store, ContentEdit.Add(Thing, new ContentKey("three"), CatalogFixtures.Fields(33)));
+
+        IReadOnlyList<ContentAuditEntry> auditBefore = await store.ListAuditAsync(default, 0, 0, 500);
+        int activeBefore = await store.GetActiveVersionAsync();
+        int versionsBefore = (await store.ListVersionsAsync()).Count;
+        IReadOnlyList<RemapRule> rulesBefore = await RulesAsync(store);
+        ContentDraft draftBefore = await DraftAsync(store);
+
+        using var target = new TemporaryPackRoot();
+        ContentPackRebuildResult rebuilt = await ContentPackRebuild.RunAsync(store, Registry, 1, target.Store);
+
+        Assert.True(rebuilt.Rebuilt, rebuilt.RefusalDetail ?? rebuilt.RefusalReason);
+        Assert.Equal(auditBefore.Count, (await store.ListAuditAsync(default, 0, 0, 500)).Count);
+        Assert.Equal(activeBefore, await store.GetActiveVersionAsync());
+        Assert.Equal(versionsBefore, (await store.ListVersionsAsync()).Count);
+        Assert.Equal(rulesBefore.Count, (await RulesAsync(store)).Count);
+
+        ContentDraft draftAfter = await DraftAsync(store);
+        Assert.Equal(draftBefore.EditCount, draftAfter.EditCount);
+        Assert.False(draftAfter.IsFrozen);
+
+        // The rows the store answers with are the rows it answered with before, retired ones included.
+        Assert.Equal(new[] { 1, 2 }, Ids(await RowsAsync(store, includeRetired: true)));
+    }
+
+    /// <summary>The version row, failing with a message naming the number when the store holds no such row.</summary>
+    /// <param name="store">The store.</param>
+    /// <param name="versionNumber">The version.</param>
+    static async Task<ContentVersionRecord> VersionAsync(IContentAuthoringStore store, int versionNumber)
+    {
+        ContentVersionRecord? record = await store.GetVersionAsync(versionNumber);
+        Assert.NotNull(record);
+        return record;
+    }
+
+    /// <summary>Asserts the target's pointer names the version row's two hashes and nothing else.</summary>
+    /// <param name="target">The rebuilt pack store.</param>
+    /// <param name="record">The version row the hashes are read off.</param>
+    static async Task AssertPointerNamesAsync(FileSystemPackStore target, ContentVersionRecord record)
+    {
+        PackVersionPointer? pointer = await target.GetVersionPointerAsync(record.VersionNumber);
+        Assert.NotNull(pointer);
+        Assert.Equal(record.ServerManifestHash, pointer.ServerManifestHash);
+        Assert.Equal(record.ClientManifestHash, pointer.ClientManifestHash);
+        Assert.True(await target.ExistsAsync(record.ServerManifestHash), record.ServerManifestHash);
+        Assert.True(await target.ExistsAsync(record.ClientManifestHash), record.ClientManifestHash);
+    }
+
+    /// <summary>
+    /// An EMPTY pack store on disk that dies with the fact, which is the target a rebuild needs: a pack root
+    /// that already held the version would prove nothing about what was written into it.
+    /// </summary>
+    sealed class TemporaryPackRoot : IDisposable
+    {
+        readonly string _path = Path.Combine(
+            Path.GetTempPath(), "kec-conformance-rebuild-" + Guid.NewGuid().ToString("n"));
+
+        public TemporaryPackRoot() => Store = new FileSystemPackStore(_path);
+
+        /// <summary>The store over the empty root.</summary>
+        public FileSystemPackStore Store { get; }
+
+        /// <inheritdoc />
+        public void Dispose()
+        {
+            try
+            {
+                if (Directory.Exists(_path))
+                {
+                    Directory.Delete(_path, recursive: true);
+                }
+            }
+            catch (IOException)
+            {
+                // A leftover temp directory is not worth failing a green test over.
+            }
+        }
     }
 }

@@ -266,4 +266,14 @@ public sealed class SqlServerContentAuthoringStoreConformanceTests : ContentAuth
     [CatalogSqlServerFact]
     public override Task Fact26_AStoreLevelChangeWhoseAuditWriteFailsIsNotMade()
         => base.Fact26_AStoreLevelChangeWhoseAuditWriteFailsIsNotMade();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task ARebuildOfAPublishedVersionReproducesTheManifestHashesTheVersionRowRecords()
+        => base.ARebuildOfAPublishedVersionReproducesTheManifestHashesTheVersionRowRecords();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task ARebuildLeavesTheStoresAuditAndActiveVersionUnchanged()
+        => base.ARebuildLeavesTheStoresAuditAndActiveVersionUnchanged();
 }

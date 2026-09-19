@@ -332,6 +332,51 @@ recovery sweep has no prepared `ContentPublisher` to build a commit around, and 
 is no longer the same operation: it refuses while a publish holds the draft frozen, and it records an audit
 row naming who ran it.
 
+## Rebuilding a pack root
+
+`ContentPackRebuild.RunAsync(store, registry, versionNumber, target, pointers)` writes one PUBLISHED version's
+whole pack into a pack store again, out of the authoring store.
+
+**It is for a server whose pack root does not outlive its process.** The authoring store keeps rows, rules and
+hashes and never the BYTES, so a container that restarts onto an empty volume comes back to an empty
+`IPackStore` while the store still names an active version, and `ContentBoot` refuses at step 3: the manifest
+for that version is absent and there is nowhere to fetch it from. Everything needed to write those bytes again
+is in the database, and this is the operation that does it. It reads rows through `ListRowsAsync` at the
+version number, retired ones included, and the rule list through `ReadPublishBaselineAsync` filtered to
+`IntroducedIn <= n`, so it needs no member the seam did not already have.
+
+**It encodes rather than copies, through the SAME builders a publish uses.** The rows go through
+`ContentChunkBuilder` against an empty baseline, so every chunk the version occupies is encoded again rather
+than carried forward, and both manifests go through `ContentManifestBuilder` exactly as step 8 builds them.
+
+**It verifies before it writes, and the verification is the two manifest digests the version row records.** The
+canonical manifest text carries every chunk hash inline, so a match pins the whole closure and there is nothing
+left for a per-chunk comparison to catch. Stored bytes are never compared, because a chunk's hash is over the
+UNCOMPRESSED canonical bytes and the same rows compressed by a different build are a different FILE at the same
+content address.
+
+The write order is step 9's: every chunk, then the rule chunk, then the server manifest, then the client
+manifest, then the version POINTER last. A crash part way through leaves inert content-addressed files and no
+pointer, which reads as a listing failure and SKIPS the next sweep rather than authorising it to delete on a
+partial view. A refusal writes nothing at all, not even a chunk, so the target is left as it was found.
+
+**It is idempotent.** Every object goes in through the publish's own put-if-absent, so a second rebuild into
+the same store reports `ObjectsWritten` 0 and `BytesWritten` 0 and rewrites only the pointer. `pointers` is
+optional and defaults to `PackVersionPointers.Resolve(target)`, and a target with no pointer half is refused
+before anything is read.
+
+It calls no publishing or editing member of the store, so it is safe to run against a live database with a
+draft open. It is not strictly write free: the one side effect it can have is the baseline read clearing a
+STALE freeze marker left by a publish that died, which is the recovery that read always performs.
+
+**The known limit: rows are rehydrated against the CALLER's registry.** A field schema change, a `ChunkSlots`
+change or a visibility change since the version was published moves the chunk bytes, the chunk set or the type
+list, so both digests move with them and the rebuild refuses with `server-manifest-mismatch` or
+`client-manifest-mismatch`, naming the digest it built and the one the version row holds. That is fail closed
+by design: the alternative is filing a pack at addresses no version record describes, which every later boot
+and every later sweep would then have to reason about. Recovering such a version means rebuilding with the
+registry that version was published from.
+
 ## Rollback
 
 `RollbackToAsync(targetVersion)` BUILDS A DRAFT rather than publishing one, so an operator reviews the diff

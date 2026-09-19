@@ -14495,6 +14495,49 @@ lazy build inside a tick is the latency spike the design exists to refuse: key t
 `IContentLoadIndex`. A version change builds a whole new runtime beside the old one and `ContentRuntimeHolder`
 swaps it in, so a reader mid-frame keeps reading the version it started on.
 
+### Recovering a pack root
+
+The authoring store keeps rows, rules and hashes and never the pack BYTES, so a host whose pack root does not
+outlive its process comes back to an empty store while the database still names an active version, and the
+boot above refuses at step 3 with `manifest for version N absent`. `ContentPackRebuild.RunAsync` writes that
+version's whole pack again out of the authoring store: check the pointer first, rebuild when it is missing,
+then boot exactly as before.
+
+```csharp
+var pack = new FileSystemPackStore(packRoot);
+int version = config.ContentVersion ?? await store.GetActiveVersionAsync(ct);
+
+// IContentVersionPointerSource.GetVersionPointerAsync, which FileSystemPackStore answers directly. Any other
+// pack store's write half comes from PackVersionPointers.Resolve(pack).
+if (await pack.GetVersionPointerAsync(version, ct) is null)
+{
+    ContentPackRebuildResult rebuilt = await ContentPackRebuild.RunAsync(store, registry, version, pack, null, ct);
+    if (!rebuilt.Rebuilt)
+    {
+        Console.Error.WriteLine(rebuilt.RefusalDetail);
+        return 3;                                   // fail closed, the same code a refused boot exits with
+    }
+}
+
+ContentBootResult boot = await ContentBoot.RunAsync(
+    new ContentBootOptions
+    {
+        Registry = registry,
+        Store = pack,
+        Holder = holder,
+        ServerBuild = buildOrdinal,
+        ConfiguredVersion = version,
+    },
+    ct);
+```
+
+It verifies before it writes anything a reader could follow: both rebuilt manifests are digested and compared
+against the two hashes the version row records, and a manifest digest covers every chunk hash inline, so one
+comparison pins the whole closure. A second rebuild into the same store writes no object at all. Rows are
+rehydrated through the CALLER's registry, so a schema, `ChunkSlots` or visibility change since the publish
+refuses with `server-manifest-mismatch` or `client-manifest-mismatch` rather than filing a pack no version
+record describes.
+
 ### Rolling loot
 
 ```csharp

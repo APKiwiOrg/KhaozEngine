@@ -7,6 +7,27 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 19.5.0
 
+Backlog reliability and catalog-read fixes:
+
+- Catalog text keys accept text directly, hoisted item rows expose their value, and stat readers share
+  the catalog tag-list decoder (#1003, #1004, #987). Calls to `ContentTextKey.Derive` that pass an
+  untyped `default` key must now use `ReadOnlySpan<byte>.Empty` or an explicitly typed argument to
+  select the byte overload.
+- The tag index follows the same first-wins rule as row lookup for duplicate ids. Bundle numeric fields
+  refuse values outside their declared integer domains instead of silently narrowing them (#950, #956).
+- Item container encoding refuses slot counts that its wire format cannot represent, and mod content
+  refuses kinds outside the documented 1 to 255 domain (#888, #961).
+- Default tile replication registries validate ground-item and pending-command planes against the
+  configured world. Custom registries can opt into the same check through the world-bound factory
+  overload. Empty interest footprints use their anchor instead of throwing during the serve (#805, #977).
+- Test infrastructure excludes nested worktree copies from the native-target scan, keeps SQLite
+  cleanup scoped to its own connections, and allows overflow-boundary tests a realistic scheduling
+  budget under suite load (#857, #850, #1007).
+- Consumer documentation includes Grimhollow. The item journal package description includes its
+  batched commit path, and instance validation comments match the eighteen finding codes
+  (#1008, #943, #993).
+
+
 A published content version's pack can be rebuilt from the authoring store, so a server whose pack root does
 not outlive the process can boot (#1013).
 

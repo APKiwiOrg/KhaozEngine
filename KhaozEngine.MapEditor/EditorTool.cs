@@ -74,7 +74,7 @@ internal enum GizmoAffordance
 public sealed partial class EditorToolController
 {
     /// <summary>Cap for the pick / ground raycasts, in world units (the ray direction is caller-normalized).</summary>
-    const float PickDistance = 100_000f;
+    internal const float PickDistance = 100_000f;
 
     /// <summary>Fallback world-space box height for a kit id absent from <see cref="HeightOf"/>.</summary>
     const float DefaultKindHeight = 2f;

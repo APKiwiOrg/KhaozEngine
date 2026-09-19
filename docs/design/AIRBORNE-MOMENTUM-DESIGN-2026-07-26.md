@@ -186,17 +186,14 @@ Two new `MoveTuning` knobs, both appended so positional construction is unaffect
 4. Reconcile-replay corrects a client mid-air and converges.
 5. The anomaly check reports no denial for a legitimate momentum flight with released input.
 
-## Deferred
+## Resolved follow-up
 
-**The undenied tolerance does not cover a SLOW arc at extreme range.** The clip's tolerance is a
+**The undenied tolerance did not cover a SLOW arc at extreme range.** The clip's tolerance was a
 fraction of the intended speed while the rounding error it defends against is a fraction of the
 COORDINATE, so the two stop lining up once one float step of the position exceeds 0.1% of a tick's
 travel: roughly `|coordinate| > speed * dt * 16800`, i.e. about 8 km at 30 m/s and 60 Hz, or about
-1.7 km at walk speed. Beyond that some ticks fall back to the measured branch and the ratchet resumes,
+1.7 km at walk speed. Beyond that some ticks fell back to the measured branch and the ratchet resumed,
 though at a reduced rate. Measured, with an off-axis arc over a ten-second flight: a 6 m/s arc at 5 km
-sheds 0.0096 m/s both before and after the fix, unchanged, while a 30 m/s arc at 12 km goes from
-0.0218 m/s to exactly 0. Left alone because the magnitudes are small and the fix that removes the
-limit entirely is a different shape: carry the achieved DELTA out of the collision resolve rather than
-re-deriving it by differencing two absolute positions, which means threading a value through
-`StepCore` rather than tuning a constant. Worth filing if a game ever runs slow airborne movement far
-from the origin.
+shed 0.0096 m/s. The follow-up carries the achieved DELTA out of the collision resolve rather than
+re-deriving it by differencing two absolute positions. The same fixture now holds 6 m/s through every
+whole-degree off-axis direction for ten seconds at 5 km, while the wall and slide controls still clip.

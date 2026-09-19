@@ -308,6 +308,12 @@ namespace KhaozEngine.Render3D
         /// <c>null</c> (the default) means the surface has no idea where the shallows are, which is exactly what
         /// it knew before 16.13.0 and renders bit-identically.
         /// <para>
+        /// This is spatial runtime bathymetry. It does not rebake or override
+        /// <see cref="WaterSeaState.DepthMetres"/>, which is one reference depth used when the FFT spectrum is
+        /// built. The two may intentionally differ when a deep-water spectrum runs onto a shallow coast. Choose
+        /// the sea-state reference from the broad water body and use this field for local shelves, bars and shore.
+        /// </para>
+        /// <para>
         /// <b>It needs <see cref="WaterWaveSource.FftOcean"/>.</b> Under
         /// <see cref="WaterWaveSource.Procedural"/> the depth field and every knob in this group go fully inert:
         /// the shoaling taper is per-cascade against each cascade's own mean wave number, and the procedural swell
@@ -341,8 +347,9 @@ namespace KhaozEngine.Render3D
         /// surges up the beach with each wave rather than glowing in place, and it wraps anything shallow - a rock
         /// standing in shallow water breaks around itself with no extra authoring.
         /// <para>
-        /// It rides <see cref="FoamStrength"/> like every other foam source, so a scene with foam turned off has
-        /// no surf either. Needs <see cref="Bathymetry"/>. Default <c>1</c>.
+        /// It is independent of <see cref="FoamStrength"/>, which controls whitecaps and the ordinary shoreline
+        /// band. This separation lets a scene overdrive whitecaps without flattening the breaking band to solid
+        /// white. Needs <see cref="Bathymetry"/>. Default <c>1</c>.
         /// </para>
         /// </summary>
         public float SurfStrength = 1f;
@@ -513,8 +520,9 @@ namespace KhaozEngine.Render3D
         /// the surface that should read as nearly solid). Default a cool white.</summary>
         public Color FoamColor = new(0.94f, 0.97f, 1f, 1f);
 
-        /// <summary>Overall foam intensity multiplier for BOTH sources (whitecaps and the shoreline band).
-        /// <c>0</c> disables foam entirely and skips its whole branch. Default <c>0.85</c>.</summary>
+        /// <summary>Intensity multiplier for whitecaps and the ordinary shoreline band. Breaking surf uses
+        /// <see cref="SurfStrength"/> independently, so raising this value cannot amplify surf. <c>0</c> disables
+        /// those two ordinary sources. Default <c>0.85</c>.</summary>
         public float FoamStrength = 0.85f;
 
         /// <summary>How much of the swell carries whitecaps, 0..1: it is the threshold on the Gerstner fold factor,

@@ -1,6 +1,8 @@
 using System;
 using System.Numerics;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
+using KhaozEngine.Telegraphs;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
@@ -97,13 +99,31 @@ namespace KhaozEngine.Tests.Gpu
             float riseAtEdge = (MathF.Abs(VoidDecalScene.VoidSample.X) - VoidDecalScene.TileHalf) * VoidDecalScene.RayDyDx;
             Assert.True(riseAtEdge > 0f, "the far-side ray must rise above the tile top before reaching it, so nothing occludes the plane");
             Assert.InRange(VoidDecalScene.CliffFrontSample.X, VoidDecalScene.StripStartX, VoidDecalScene.CliffEndX);
+            Assert.InRange(VoidDecalScene.CliffWrapSample.X, VoidDecalScene.TileHalf, VoidDecalScene.StripStartX);
+            float wrapRadius = new Vector2(VoidDecalScene.CliffWrapSample.X, VoidDecalScene.CliffWrapSample.Z).Length();
+            Assert.InRange(wrapRadius, VoidDecalScene.RingInner, VoidDecalScene.RingOuter);
+            float wrapTravel = VoidDecalScene.CliffWrapSample.X - VoidDecalScene.TileHalf;
+            float wrapCliffY = VoidDecalScene.PlaneY - wrapTravel * VoidDecalScene.RayDyDx;
+            float wrapCliffZ = VoidDecalScene.CliffWrapSample.Z - wrapTravel;
+            Assert.InRange(wrapCliffY, VoidDecalScene.PlaneY - VoidDecalScene.YTolerance, VoidDecalScene.PlaneY);
+            Assert.InRange(new Vector2(VoidDecalScene.TileHalf, wrapCliffZ).Length(),
+                VoidDecalScene.RingInner, VoidDecalScene.RingOuter);
+
+            const float DipSurfaceY = 0.8f;
+            Vector3 dipPlaneSample = new(3.1f, VoidDecalScene.PlaneY, 3.1f);
+            float dipTravel = (VoidDecalScene.PlaneY - DipSurfaceY) / VoidDecalScene.RayDyDx;
+            Vector2 dipHit = new(dipPlaneSample.X - dipTravel, dipPlaneSample.Z - dipTravel);
+            Assert.True(MathF.Abs(dipHit.X) < VoidDecalScene.TileHalf
+                && MathF.Abs(dipHit.Y) < VoidDecalScene.TileHalf);
+            Assert.InRange(dipHit.Length(), VoidDecalScene.RingInner, VoidDecalScene.RingOuter);
             // GroundSample must be ON the tile top AND inside the ring band, or the byte-identity test is vacuous.
             Assert.True(MathF.Abs(VoidDecalScene.GroundSample.X) < VoidDecalScene.TileHalf
                      && MathF.Abs(VoidDecalScene.GroundSample.Z) < VoidDecalScene.TileHalf, "GroundSample must be on the tile top");
             float gr = new Vector2(VoidDecalScene.GroundSample.X, VoidDecalScene.GroundSample.Z).Length();
             Assert.InRange(gr, VoidDecalScene.RingInner, VoidDecalScene.RingOuter);
             // Every sample sits on the decal's plane, or it is not testing the projection.
-            foreach (var s in new[] { VoidDecalScene.VoidSample, VoidDecalScene.GroundSample, VoidDecalScene.CliffFrontSample, VoidDecalScene.BehindWallSample })
+            foreach (var s in new[] { VoidDecalScene.VoidSample, VoidDecalScene.GroundSample,
+                VoidDecalScene.CliffWrapSample, VoidDecalScene.CliffFrontSample, VoidDecalScene.BehindWallSample })
                 Assert.Equal(VoidDecalScene.PlaneY, s.Y, 4);
         }
 
@@ -204,7 +224,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuFact]
-        public void Golden_void_fallback_keeps_the_disc_flat_across_a_cliff_face()
+        public void Golden_universal_receiver_gate_rejects_the_in_band_cliff_strip()
         {
             // THE FLAT-DISC INVARIANT, stated so it cannot pass vacuously.
             //
@@ -214,9 +234,8 @@ namespace KhaozEngine.Tests.Gpu
             // runs it down the edge, evaluated at the cliff's XZ instead of the plane point's. The geometric normal is
             // the only thing that tells them apart.
             //
-            // So: with the normal gate, YTolerance must stop mattering ON A CLIFF entirely. Rendering the same scene
-            // at the stock 0.3 and at 0 must agree. And the control proves the test has teeth: without the gate (flag
-            // off) those two renders DIFFER, because 0.3 drips and 0 does not.
+            // The proof samples the cliff strip directly. A whole-frame 0.3-vs-0 comparison is invalid because it
+            // also removes the intended tolerance from horizontal ground receivers.
             byte[] RenderTol(bool voidFallback, float yTol)
             {
                 MeshHandle island = default;
@@ -226,24 +245,53 @@ namespace KhaozEngine.Tests.Gpu
                     frames: 2);
             }
 
-            int Differing(byte[] a, byte[] b)
+            var px = Pixel(VoidDecalScene.CliffWrapSample);
+            var legacyTolerance = At(RenderTol(false, 0.3f), px);
+            var legacyZero = At(RenderTol(false, 0f), px);
+            Assert.False(IsRing(legacyTolerance), $"legacy decal wrapped onto the in-band cliff: {legacyTolerance}");
+            Assert.False(IsRing(legacyZero), $"zero-tolerance legacy control should show bare cliff: {legacyZero}");
+
+            var fallbackTolerance = At(RenderTol(true, 0.3f), px);
+            var fallbackZero = At(RenderTol(true, 0f), px);
+            Assert.True(IsRing(fallbackTolerance), $"fallback plane should remain visible before the cliff: {fallbackTolerance}");
+            Assert.True(IsRing(fallbackZero), $"zero-tolerance fallback control should remain visible: {fallbackZero}");
+        }
+
+        [GpuFact]
+        public void Golden_downward_tolerance_still_accepts_a_horizontal_ground_dip()
+        {
+            byte[] RenderDip(float tolerance)
             {
-                int n = 0;
-                for (int i = 0; i < a.Length; i += 4)
-                    if (Diff((a[i], a[i + 1], a[i + 2]), (b[i], b[i + 1], b[i + 2])) > 12) n++;
-                return n;
+                MeshHandle dip = default;
+                return Render3DSnapshot.Capture(W, H,
+                    setup: scene =>
+                    {
+                        VoidDecalScene.Setup(scene);
+                        dip = scene.LoadMesh(MeshPrimitives.Tile(VoidDecalScene.TileSize, 0.2f));
+                    },
+                    drawFrame: scene =>
+                    {
+                        scene.Draw(dip, Matrix4x4.CreateTranslation(0f, 0.6f, 0f),
+                            new Color(0.16f, 0.17f, 0.20f, 1f));
+                        GroundDecal decal = GroundTelegraphs.BuildRing(
+                            VoidDecalScene.Center,
+                            VoidDecalScene.RingInner,
+                            VoidDecalScene.RingOuter,
+                            1f,
+                            VoidDecalScene.Style(voidFallback: false));
+                        decal.YTolerance = tolerance;
+                        scene.DrawGroundDecal(decal);
+                    },
+                    frames: 2);
             }
 
-            // Control: the legacy path IS tolerance-sensitive on this cliff. If this ever stops being true the scene
-            // no longer exercises the wrap-down and the assertion below would pass for the wrong reason.
-            int legacyDelta = Differing(RenderTol(false, 0.3f), RenderTol(false, 0f));
-            Assert.True(legacyDelta > 400,
-                $"the scene must actually exercise the cliff wrap-down or this test is vacuous, got {legacyDelta} px");
-
-            // The fix: with the gate, the tolerance cannot reach the cliff, so the two renders converge.
-            int gatedDelta = Differing(RenderTol(true, 0.3f), RenderTol(true, 0f));
-            Assert.True(gatedDelta < legacyDelta / 10,
-                $"the normal gate must make YTolerance irrelevant on a cliff: {legacyDelta} px legacy vs {gatedDelta} px gated");
+            // The plane-space sample is slightly outside the lowered tile corner. Along the iso ray, the receiver
+            // 0.2 below lands back inside the tile and inside the ring band.
+            var px = Pixel(new Vector3(3.1f, VoidDecalScene.PlaneY, 3.1f));
+            var accepted = At(RenderDip(0.3f), px);
+            var rejected = At(RenderDip(0f), px);
+            Assert.True(IsRing(accepted), $"a horizontal ground dip inside tolerance must receive the decal: {accepted}");
+            Assert.False(IsRing(rejected), $"zero tolerance control must reject the 0.2 ground dip: {rejected}");
         }
 
         [GpuFact]

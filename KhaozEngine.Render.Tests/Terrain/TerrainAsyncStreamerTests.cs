@@ -24,21 +24,25 @@ namespace KhaozEngine.Tests.Terrain
     // An async sink that records BuildCpu (background) / Apply (frame) / Unload (frame) so a headless test can assert
     // the async invariants with no GPU. The handle is a mutable holder tracking the live LOD (mirrors the production
     // Scene3DChunkSink.ChunkLoad). BuildCpu is guarded so the real-thread-pool test can call it concurrently.
-    sealed class FakeAsyncChunkSink : IAsyncChunkSink, IDisposable
+    sealed class FakeAsyncChunkSink : IReasonedAsyncChunkSink, IDisposable
     {
         readonly object _buildsLock = new();
         public readonly List<(ChunkCoord coord, int lod, ChunkRing ring)> Builds = new();       // BuildCpu ran (background)
         public readonly List<(ChunkCoord coord, int lod, ChunkRing ring, bool relod)> Applies = new();  // Apply ran (frame)
         public readonly List<ChunkCoord> Unloads = new();
+        public readonly List<(ChunkCoord coord, ChunkBuildReason reason)> Reasons = new();
         public int DisposeCount;
 
         sealed class Handle { public ChunkCoord Coord; public int Lod; public ChunkRing Ring; }
-        sealed class Payload { public ChunkCoord Coord; public int Lod; public ChunkRing Ring; }
+        sealed class Payload { public ChunkCoord Coord; public int Lod; public ChunkRing Ring; public ChunkBuildReason Reason; }
 
         public object BuildCpu(ChunkCoord coord, int lod, ChunkRing ring)
+            => BuildCpu(coord, lod, ring, ChunkBuildReason.FreshLoad);
+
+        public object BuildCpu(ChunkCoord coord, int lod, ChunkRing ring, ChunkBuildReason reason)
         {
             lock (_buildsLock) Builds.Add((coord, lod, ring));
-            return new Payload { Coord = coord, Lod = lod, Ring = ring };
+            return new Payload { Coord = coord, Lod = lod, Ring = ring, Reason = reason };
         }
 
         public object Apply(ChunkCoord coord, int lod, ChunkRing ring, object cpuBuild, object? existing)
@@ -46,6 +50,7 @@ namespace KhaozEngine.Tests.Terrain
             var p = (Payload)cpuBuild;
             if (p.Coord != coord || p.Lod != lod || p.Ring != ring)
                 throw new InvalidOperationException("payload did not match the coord/lod/ring it was applied for");
+            Reasons.Add((coord, p.Reason));
             Applies.Add((coord, lod, ring, existing is not null));
             if (existing is Handle h) { h.Lod = lod; h.Ring = ring; return h; }
             return new Handle { Coord = coord, Lod = lod, Ring = ring };
@@ -54,6 +59,8 @@ namespace KhaozEngine.Tests.Terrain
         // Synchronous IChunkSink members (used only when the streamer runs in synchronous mode).
         public object Load(ChunkCoord coord, int lod, ChunkRing ring) => Apply(coord, lod, ring, BuildCpu(coord, lod, ring), existing: null);
         public void ReLod(ChunkCoord coord, object handle, int lod, ChunkRing ring) => Apply(coord, lod, ring, BuildCpu(coord, lod, ring), handle);
+        public void ReLod(ChunkCoord coord, object handle, int lod, ChunkRing ring, ChunkBuildReason reason) =>
+            Apply(coord, lod, ring, BuildCpu(coord, lod, ring, reason), handle);
         public void Unload(ChunkCoord coord, object handle) => Unloads.Add(coord);
         public void Dispose() => DisposeCount++;
 
@@ -93,6 +100,23 @@ namespace KhaozEngine.Tests.Terrain
             Assert.Single(ready);
             Assert.Equal(2, ready[0].Lod);        // the last-requested LOD
             Assert.Equal(2, ready[0].Payload);
+        }
+
+        [Fact]
+        public void Scheduler_last_request_wins_with_the_build_reason_that_requested_its_payload()
+        {
+            var manual = new ManualBuildDispatcher();
+            var sched = new ChunkBuildScheduler<ChunkBuildReason>((_, _, _, reason) => reason, manual);
+            var c = new ChunkCoord(0, 0);
+
+            sched.Request(c, 1, ChunkRing.Gameplay, ChunkBuildReason.TierChange);
+            sched.Request(c, 1, ChunkRing.Gameplay, ChunkBuildReason.Invalidate);
+            manual.RunAll();
+            sched.Pump();
+
+            ChunkBuild<ChunkBuildReason> ready = Assert.Single(sched.TakeReady(1, static (_, _) => 0));
+            Assert.Equal(ChunkBuildReason.Invalidate, ready.Reason);
+            Assert.Equal(ChunkBuildReason.Invalidate, ready.Payload);
         }
 
         [Fact]

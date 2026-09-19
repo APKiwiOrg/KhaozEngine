@@ -53,6 +53,11 @@ public partial class MapEditorScene
 
     void CheckWorldRebuildCore(float dt)
     {
+        if (_document.PendingAllLoadedInvalidation && RefreshAllLoadedWorld())
+        {
+            _document.AcknowledgeWorldRebuild();
+            return;
+        }
         if (_document.PendingRebuildRegion is RectArea dirty && PartialRebuildWorld(dirty))
         {
             _document.AcknowledgeWorldRebuild();
@@ -74,11 +79,22 @@ public partial class MapEditorScene
 
     /// <summary>Partial-rebuild seam: re-mesh only the loaded chunks overlapping <paramref name="dirty"/> and
     /// re-point the tool controller at the swapped field. Returns false when the viewport is not built (the
-    /// <see cref="ViewportWorld.PartialRebuild"/> not-built contract), so <see cref="CheckWorldRebuild"/> falls back
+    /// <c>ViewportWorld.PartialRebuild</c> not-built contract), so <see cref="CheckWorldRebuild"/> falls back
     /// to a full rebuild. Overridable so a headless test can observe the dispatch without a device.</summary>
     protected virtual bool PartialRebuildWorld(RectArea dirty)
     {
-        if (!_viewport.PartialRebuild(_document.Doc, _document.Registry, dirty)) return false;
+        if (!_viewport.PartialRebuild(
+                _document.Doc, _document.Registry, dirty, _document.PendingLayerConfigRefresh)) return false;
+        _controller.Field = _viewport.Field;
+        return true;
+    }
+
+    /// <summary>Refreshes field and captured generation config, then invalidates every loaded chunk without
+    /// replacing the sink or streamer. Returns false when the viewport is not built.</summary>
+    protected virtual bool RefreshAllLoadedWorld()
+    {
+        if (!_viewport.RefreshLoaded(
+                _document.Doc, _document.Registry, _document.PendingLayerConfigRefresh)) return false;
         _controller.Field = _viewport.Field;
         return true;
     }

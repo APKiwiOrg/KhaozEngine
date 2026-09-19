@@ -63,15 +63,13 @@ internal static class ShapeGeometry
     /// exactly on a chunk seam), and a disc/rect authored with a boundary exactly on a seam can drift either way
     /// by float rounding. It stays well under <see cref="FeatureGeometry.FootprintMargin"/>'s 8 m, which pads a
     /// height/normal reach this shape-only case does not have.
-    /// <para>NOTE: no command wires this to a <see cref="EditorCommand.DirtyRegion"/> today. Shape edits take the
-    /// full rebuild instead, because the partial path cannot rebuild the prop layers a shape edit changes (see
-    /// <see cref="ViewportWorld.PartialRebuild"/> and issue #765). The margin analysis is kept because it is the
-    /// correctness floor any future partial handling of these edits has to clear.</para></summary>
+    /// <para>Shape-edit commands use <see cref="BoundsMarginFor"/> when they report their document-aware dirty
+    /// region, so a captured-config refresh followed by bounded invalidation covers jittered candidates too.</para></summary>
     internal const float ShapeBoundsMargin = 2f;
 
     /// <summary>The chunk-invalidation margin for a shape edit against <paramref name="doc"/>:
     /// <see cref="ShapeBoundsMargin"/> plus the largest scatter-layer jitter in the document (the margin floor,
-    /// see the constant's doc for why jitter reaches beyond the shape, and for why no command reads this today).
+    /// see the constant's doc for why jitter reaches beyond the shape).
     /// Absolute value per layer: a degenerate negative-authored jitter displaces candidates by the same magnitude
     /// (the Jitter field has no clamp). A document with no scatter layers pads by the bare constant (no scatter
     /// means nothing can flip, the rect is already conservative).</summary>
@@ -94,7 +92,7 @@ internal static class ShapeGeometry
     /// <paramref name="margin"/>: a disc's center +/- radius, a rect's Min/Max (normalized if authored with
     /// Min &gt; Max), or the min/max over a polygon's points. False (and a default area) for a null shape or an
     /// empty polygon (no points to bound), the same no-guessing rule <see cref="TryCenter"/> follows: a false
-    /// here means the edit takes the full rebuild.</summary>
+    /// here means the edit invalidates every loaded chunk.</summary>
     internal static bool TryBounds(MapShapeDoc? shape, float margin, out RectArea area)
     {
         switch (shape)

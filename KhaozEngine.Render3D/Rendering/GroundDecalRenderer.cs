@@ -41,6 +41,21 @@ namespace KhaozEngine.Render3D.Rendering
     /// </remarks>
     internal sealed partial class GroundDecalRenderer : IDisposable
     {
+        /// <summary>Minimum world-up normal component accepted as ground. A value of 0.5 accepts slopes through
+        /// 60 degrees and rejects steeper faces.</summary>
+        internal const float GroundNormalMinY = 0.5f;
+
+        /// <summary>Pure mirror of the fragment receiver gate for headless boundary tests.</summary>
+        internal static bool AcceptsGroundReceiver(
+            float surfaceY,
+            float groundY,
+            float yTolerance,
+            float maxStep,
+            float normalY)
+            => surfaceY >= groundY - yTolerance
+                && surfaceY <= groundY + maxStep
+                && normalY >= GroundNormalMinY;
+
         /// <summary>Per-instance decal attributes, matching the <c>I*</c> inputs of <see cref="ShaderSources.DecalVert"/>
         /// (12 x vec4 = 192 bytes, every member 16-byte aligned). One entry per queued decal, streamed into the
         /// instance vertex buffer each frame.</summary>
@@ -69,7 +84,7 @@ namespace KhaozEngine.Render3D.Rendering
         internal struct FrameUniforms
         {
             public Matrix4x4 InvViewProj;   // RAW (un-clip-corrected), matching Camera.ScreenToRay picking
-            public Vector4 TimeQ;           // x = effect time seconds, y = quality (1 full / 0 reduced), z = maxRgb ceiling, w = reject dynamic geometry (1 = discard skinned-tagged pixels)
+            public Vector4 TimeQ;           // x = effect time, y = quality, z = maxRgb, w = main-pass receiver gates
             public Vector4 RenderOrigin;    // xyz restores render-relative decal centres to absolute phase space
         }
 
@@ -97,7 +112,7 @@ namespace KhaozEngine.Render3D.Rendering
         IGpuPipeline _alphaPipe, _additivePipe;
         // Equal at z=1: the exact complement, on BACKGROUND pixels. Bound only when a flagged decal is in the frame.
         IGpuPipeline _voidAlphaPipe, _voidAdditivePipe;
-        readonly List<IDisposable> _retired = new();
+        readonly GpuRetireQueue _retired;
         readonly IGpuBuffer _frameUbo;            // FrameSlotCount 256-byte slots, one per pass (see GroundDecalRenderer.FrameSlots.cs)
         IGpuBuffer? _instances;                   // per-instance attribute stream, grown geometrically (old one retired)
         int _capacity;
@@ -117,14 +132,15 @@ namespace KhaozEngine.Render3D.Rendering
         /// use it to isolate the fill-reduction win. Off by default, so production always bounds the fill.</summary>
         internal bool ForceFullscreenQuads;
 
-        public GroundDecalRenderer(IGpuDevice gd, GpuOutputDescription colorOutput)
+        public GroundDecalRenderer(IGpuDevice gd, GpuOutputDescription colorOutput, GpuRetireQueue retired)
         {
             _gd = gd;
+            _retired = retired;
             var f = gd.Factory;
             _shaders = f.CreateShadersFromSpirv(ShaderSources.DecalVert, ShaderSources.DecalFrag);
             // Still ONE uniform buffer (the Metal invariant when this was written, retired by #604), and the extra TEXTURE is fine. NormalTex is appended last so
-            // the existing bindings do not renumber. Only the void-fallback path reads it, to reject a near-vertical
-            // face as "not this decal's ground" - the Y band alone cannot tell the top of a cliff from a terrain dip.
+            // the existing bindings do not renumber. Every MAIN-pass decal reads it to reject a near-vertical face
+            // as ground because the Y band alone cannot tell the top of a cliff from a terrain dip.
             _layout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 new GpuResourceLayoutElement("DepthTex", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("Samp", GpuResourceKind.Sampler, GpuShaderStages.Fragment),
@@ -214,7 +230,7 @@ namespace KhaozEngine.Render3D.Rendering
         void EnsureCapacity(int decalCount)
         {
             if (_instances != null && _capacity >= decalCount) return;
-            if (_instances != null) _retired.Add(_instances);
+            if (_instances != null) _retired.Retire(_instances);
             _capacity = Math.Max(decalCount, _capacity == 0 ? 8 : _capacity * 2);
             _instances = _gd.Factory.CreateBuffer(new GpuBufferDescription((uint)(_capacity * (int)InstanceStride), GpuBufferUsage.VertexBuffer));
             if (_packed.Length < _capacity) _packed = new DecalInstance[_capacity];
@@ -484,8 +500,6 @@ namespace KhaozEngine.Render3D.Rendering
             _layout.Dispose(); _shaders.Dispose();
             _frameUbo.Dispose();
             _instances?.Dispose();
-            foreach (var r in _retired) r.Dispose();
-            _retired.Clear();
         }
     }
 }

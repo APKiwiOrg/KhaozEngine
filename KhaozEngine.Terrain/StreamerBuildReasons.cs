@@ -6,11 +6,11 @@ namespace KhaozEngine.Terrain
     /// <see cref="TerrainStreamer.FailedBuildCount"/>), so a per-second rate is the difference of two samples.
     /// <para><b>What this answers.</b> <c>Scene3DChunkSink.MergeStats</c> says HOW MUCH build work happened and how
     /// much of it was thrown away. It cannot say WHY any of it was asked for, and a client rebuilding chunks while
-    /// its player stands still is exactly the case where that is the only question worth asking. These five counters
+    /// its player stands still is exactly the case where that is the only question worth asking. These six counters
     /// split the streamer's own request sites, so one panel row (or one log line) separates a ring that is following
     /// a moving player from one being wiped by something upstream.</para>
     /// <para><b>Frame thread only.</b> Every increment happens on the thread that calls
-    /// <c>Update</c> / <c>Invalidate</c> / <c>PrimeAround</c>, unlike the merge counters, whose merges run on the
+    /// <c>Update</c> / <c>Invalidate</c> / <c>PrimeAround</c> / <c>Reconfigure</c>, unlike the merge counters, whose merges run on the
     /// background build threads. So these are plain adds and a reader on another thread can see a torn pair.</para></summary>
     public readonly struct StreamerBuildReasons
     {
@@ -36,6 +36,10 @@ namespace KhaozEngine.Terrain
         /// covers unloaded chunks counts nothing for them).</summary>
         public long Invalidate { get; }
 
+        /// <summary>Rebuilds of loaded chunks because a live <see cref="TerrainStreamer.Reconfigure"/> changed the
+        /// LOD table while their tier index remained otherwise current.</summary>
+        public long ConfigurationChange { get; }
+
         /// <summary>How many times the ring RE-CENTRED on a different chunk. Not a build count: it is the upstream
         /// cause of a burst of the three ring-scan reasons above, and the one number that separates "the disk moved"
         /// from "something invalidated or wiped the ring". A streamer's first anchor is not a re-centre (a fresh
@@ -44,16 +48,19 @@ namespace KhaozEngine.Terrain
         public long AnchorRecentre { get; }
 
         /// <summary>Every build this streamer asked for, whatever the reason:
-        /// <see cref="FreshLoad"/> + <see cref="TierChange"/> + <see cref="RingChange"/> + <see cref="Invalidate"/>.
+        /// <see cref="FreshLoad"/> + <see cref="TierChange"/> + <see cref="RingChange"/> + <see cref="Invalidate"/>
+        /// + <see cref="ConfigurationChange"/>.
         /// <see cref="AnchorRecentre"/> is deliberately not in the sum (it counts causes, not builds).</summary>
-        public long Total => FreshLoad + TierChange + RingChange + Invalidate;
+        public long Total => FreshLoad + TierChange + RingChange + Invalidate + ConfigurationChange;
 
-        internal StreamerBuildReasons(long freshLoad, long tierChange, long ringChange, long invalidate, long anchorRecentre)
+        internal StreamerBuildReasons(long freshLoad, long tierChange, long ringChange, long invalidate,
+            long configurationChange, long anchorRecentre)
         {
             FreshLoad = freshLoad;
             TierChange = tierChange;
             RingChange = ringChange;
             Invalidate = invalidate;
+            ConfigurationChange = configurationChange;
             AnchorRecentre = anchorRecentre;
         }
     }

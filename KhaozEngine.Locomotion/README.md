@@ -407,7 +407,9 @@ decision. **A null provider never engages swim.** The swim flag replicates via N
   replicated state (`MovementState.HorizontalVelocityXQ` / `HorizontalVelocityZQ`). Maintained on EVERY tick
   regardless of `MoveTuning.AirMomentum` and consumed only when it is on, so with momentum off the field is
   written and never read. What is stored is the step's intended velocity CLIPPED to what the collision resolve
-  delivered, projected along its own direction and clamped into `[0, |intended|]`: free flight leaves it exactly
+  delivered, projected along its own direction and clamped into `[0, |intended|]`. The resolve carries its achieved
+  horizontal delta directly, so a slow free flight at overworld coordinates never loses speed by subtracting two
+  large positions. Free flight leaves it exactly
   untouched, a head-on wall clips it to ~0, a glancing wall sheds magnitude and keeps direction, and no
   depenetration nudge or play-area clamp can ever inject speed into it. `SwimStep` replaces it with the swim's own
   commanded velocity, so a flight into water drops its arc at the waterline. `default` (zero) is "carrying

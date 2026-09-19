@@ -5,6 +5,7 @@ using KhaozEngine.Physics.Bepu;
 using KhaozEngine.Render3D;
 using KhaozEngine.Terrain;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace KhaozEngine.Tests.Physics;
 
@@ -17,6 +18,9 @@ namespace KhaozEngine.Tests.Physics;
 public class TerrainMeshCollisionTests
 {
     const float Dt = 1f / 60f;
+    readonly ITestOutputHelper _output;
+
+    public TerrainMeshCollisionTests(ITestOutputHelper output) => _output = output;
 
     // Build a synthetic flat terrain chunk: a res x res grid of quads over [0,size] x [0,size] at a constant
     // height, CCW-from-above (matching TerrainChunkBuilder's surface winding), plus DOWNWARD skirt vertices
@@ -343,6 +347,62 @@ public class TerrainMeshCollisionTests
         float atRange = HitHeight(far, far, 30.125f, 21.5f);
         Assert.True(MathF.Abs(atOrigin - atRange) < 1e-3f,
             $"the chunk at 100 km answers {atRange:F6} m where the same chunk at the origin answers {atOrigin:F6} m");
+    }
+
+    [Fact]
+    public void Grazing_capsule_probe_compares_chunk_local_and_old_absolute_bakes_at_origin_and_100km()
+    {
+        const float far = 100_000f;
+        const float slope = 0.05f;
+
+        static float Measure(float origin, bool oldAbsolute)
+        {
+            var region = new TerrainChunkRegion { OriginX = origin, OriginZ = origin, Size = 60f };
+            TerrainChunkMesh chunk = TerrainChunkBuilder.Build(RampField(origin, slope), region, lod: 0);
+            TriangleMeshShape local = TerrainChunkCollision.Build(chunk)!;
+            using IPhysicsWorld world = new BepuPhysicsWorld(Vector3.Zero);
+            if (oldAbsolute)
+            {
+                var absolute = new Vector3[local.Vertices.Length];
+                for (int i = 0; i < absolute.Length; i++)
+                    absolute[i] = local.Vertices[i] + new Vector3(origin, 0f, origin);
+                world.AddStatic(new TriangleMeshShape(absolute, local.Indices), Pose.Identity);
+            }
+            else
+            {
+                world.AddStatic(local, Pose.At(new Vector3(origin, 0f, origin)));
+            }
+
+            var capsule = new CapsuleShape(0.4f, 1.2f);
+            float localX = 5f, localZ = 30f;
+            float surfaceY = slope * localX;
+            var start = new Vector3(origin + localX, surfaceY + 1.01f, origin + localZ);
+            Assert.True(world.SweepCapsule(capsule, Pose.At(start), Vector3.UnitX, 40f, out SweepHit hit,
+                QueryFilter.StaticsOnly));
+            return hit.Distance;
+        }
+
+        float localOrigin = Measure(0f, oldAbsolute: false);
+        float localFar = Measure(far, oldAbsolute: false);
+        float oldOrigin = Measure(0f, oldAbsolute: true);
+        float oldFar = Measure(far, oldAbsolute: true);
+
+        _output.WriteLine($"local origin={localOrigin:R}, local 100km={localFar:R}, delta={localFar - localOrigin:R}");
+        _output.WriteLine($"old origin={oldOrigin:R}, old 100km={oldFar:R}, delta={oldFar - oldOrigin:R}");
+        _output.WriteLine($"100km local minus old={localFar - oldFar:R}");
+
+        Assert.True(MathF.Abs(localFar - localOrigin) < 0.0005f,
+            $"the chunk-local bake drifted {MathF.Abs(localFar - localOrigin) * 1000f:F4} mm at 100 km");
+        Assert.True(MathF.Abs(oldFar - oldOrigin) > 0.001f,
+            $"the old absolute bake moved only {MathF.Abs(oldFar - oldOrigin) * 1000f:F4} mm in this grazing probe");
+        Assert.InRange(localOrigin, 0f, 40f);
+        Assert.InRange(localFar, 0f, 40f);
+        Assert.InRange(oldOrigin, 0f, 40f);
+        Assert.InRange(oldFar, 0f, 40f);
+        Assert.Equal(localOrigin, Measure(0f, oldAbsolute: false));
+        Assert.Equal(localFar, Measure(far, oldAbsolute: false));
+        Assert.Equal(oldOrigin, Measure(0f, oldAbsolute: true));
+        Assert.Equal(oldFar, Measure(far, oldAbsolute: true));
     }
 
     [Fact]

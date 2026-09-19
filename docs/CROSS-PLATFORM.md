@@ -243,6 +243,10 @@ a quoted environment value, never interpolated into shell source.
 [#540](https://github.com/APKiwiOrg/KhaozEngine/issues/540)), along with the `libdl` / `libvulkan` symlink step
 that only Veldrid's Vulkan binding needed.
 
+Vulkan full-suite runs serialize both test assemblies and the collections inside each assembly (#218).
+The workflow uses MSBuild `-m:1`, disables parallel target frameworks, and sets VSTest host concurrency
+and xUnit collection concurrency to one. Other backend and golden-only paths retain their existing policy.
+
 The suite each leg runs is split by trigger, from measured hosted-runner cost
 (`KE_GPU_TESTS=1`, `fail-fast: false`).
 

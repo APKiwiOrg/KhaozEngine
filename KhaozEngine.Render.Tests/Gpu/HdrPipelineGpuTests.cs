@@ -44,6 +44,19 @@ namespace KhaozEngine.Tests.Gpu
             return (float)(sum / n);
         }
 
+        static (float R, float G, float B) CenterRgb(byte[] rgba)
+        {
+            double r = 0, g = 0, b = 0;
+            int n = 0;
+            for (int y = H / 2 - 3; y <= H / 2 + 3; y++)
+                for (int x = W / 2 - 3; x <= W / 2 + 3; x++)
+                {
+                    int i = (y * W + x) * 4;
+                    r += rgba[i]; g += rgba[i + 1]; b += rgba[i + 2]; n++;
+                }
+            return ((float)(r / n), (float)(g / n), (float)(b / n));
+        }
+
         // Render a single centred, pure-emissive sphere (tint black zeroes albedo, so the pixel value IS the emissive
         // driven through the tonemap) at the given emissive level and operator, HDR on and bloom off.
         static byte[] RenderEmissiveSphere(float emissive, TonemapOperator op)
@@ -84,6 +97,32 @@ namespace KhaozEngine.Tests.Gpu
                 $"Clamp should saturate both cores to white (1x={clamp1}, 6x={clamp6})");
             Assert.True(MathF.Abs(clamp6 - clamp1) <= 3f,
                 $"Clamp should not separate the two cores (1x={clamp1}, 6x={clamp6})");
+        }
+
+        [GpuFact]
+        public void Full_chroma_preservation_keeps_saturated_rgb_ratios_at_the_display_ceiling()
+        {
+            MeshHandle sphere = default;
+            byte[] rgba = Render3DSnapshot.Capture(W, H,
+                setup: s =>
+                {
+                    sphere = s.LoadMesh(MeshPrimitives.Sphere(0.5f));
+                    s.Post.Starfield = false;
+                    s.Post.BackgroundColor = Color.Black;
+                    s.Post.Bloom.Enabled = false;
+                    s.Post.Hdr.Enabled = true;
+                    s.Post.Hdr.Operator = TonemapOperator.Clamp;
+                    s.Post.Hdr.ChromaPreservation = 1f;
+                    s.Camera.Frame(Vector3.Zero, new Vector3(1.4f, 1.4f, 1.4f));
+                },
+                drawFrame: s => s.Draw(sphere, Matrix4x4.Identity, Color.Black,
+                    Material.Glowing(new Color(4f, 2f, 1f, 1f))),
+                frames: 2);
+
+            var c = CenterRgb(rgba);
+            Assert.True(c.R > 245f, $"the strongest channel should reach the display ceiling, got {c}");
+            Assert.InRange(c.G / c.R, 0.47f, 0.53f);
+            Assert.InRange(c.B / c.R, 0.22f, 0.28f);
         }
 
         // Count background pixels (the a=0 marker still set, so TransparentBackground preserves it) that carry a

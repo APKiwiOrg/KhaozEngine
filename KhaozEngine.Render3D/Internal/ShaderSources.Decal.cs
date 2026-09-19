@@ -83,7 +83,7 @@ layout(set=0, binding=1) uniform sampler Samp;
 layout(set=0, binding=2) uniform Frame {
     mat4 InvViewProj;   // RAW (un-clip-corrected) inverse view-projection, shared by every decal this frame
     vec4 TimeQ;         // x = effect time seconds, y = quality (1 full / 0 reduced), z = maxRgb ceiling,
-                        // w = dynamic-geometry reject (1 on, read on the GEOMETRY path below, issue #235)
+                        // w = main-pass receiver gates (normal and dynamic geometry)
     vec4 RenderOrigin;  // restores render-relative Center to its absolute world position for stable shimmer phase
 };
 // GEOMETRIC world normal, encoded *0.5+0.5 by the model pass, ALPHA 0 on dynamic/skinned surfaces. Read on two
@@ -253,11 +253,10 @@ void main() {
         // cliff face - at one pixel, with only depth, those are the same number. Conforming onto the latter runs the
         // decal down the cliff (evaluated at the cliff's XZ, pinned at the edge) instead of leaving it flat, which is
         // exactly wrong for a decal whose whole point is to be a flat disc at its own height. The geometric normal is
-        // the only thing that separates them, so a fallback decal additionally requires a near-horizontal surface.
-        // Gated on the flag: an unflagged decal never samples this and keeps the legacy band-only behaviour, wart and
-        // all, so the zero-neutral contract holds. (That legacy wrap-down is a pre-existing artifact on any sharp
-        // edge - see https://github.com/APKiwiOrg/KhaozEngine/issues/11.)
-        if (isGround && Extra.w > 0.5) {
+        // the only thing that separates them, so every geometry receiver also requires a near-horizontal surface.
+        // The same threshold serves legacy and VoidFallback decals. The latter still gets its plane projection when
+        // geometry is rejected, while a legacy decal simply leaves the steep face unpainted.
+        if (isGround && TimeQ.w > 0.5) {
             vec3 nrm = texelFetch(sampler2D(NormalTex, Samp), ivec2(gl_FragCoord.xy), 0).xyz * 2.0 - 1.0;
             isGround = nrm.y >= GroundNormalMinY;
         }

@@ -196,6 +196,35 @@ Point lights no longer disappear when a consuming game has more than sixteen nea
 - `Scene3D.PointLightClusters` exposes projection, reference and overflow diagnostics. Invalid light positions
   and non-positive or non-finite radii are ignored consistently before submission.
 
+Oldest-first backlog fixes:
+
+- Editor generation changes refresh captured field and layer configuration before bounded or all-loaded
+  invalidation. Topology changes still rebuild the viewport (#14).
+- Pure terrain LOD transitions reuse immutable placement data. Ring changes still gain or drop gameplay
+  data, and field edits regenerate placements (#101). `TerrainStreamer.Reconfigure` applies live radii,
+  LOD tables, hysteresis and budgets while preserving compatible prop placements and collider handles.
+  Chunk size and async topology remain construction-time choices (#283).
+- Main-pass ground decals reject steep and vertical receivers, including legacy decals, while keeping
+  downward tolerance for horizontal ground and the early blob-shadow path (#11).
+- Full HDR chroma preservation fits RGB uniformly into display range, retaining colour ratios at the
+  ceiling. Factor zero keeps the historical per-channel output (#13).
+- Model, shadow, decal, particle, overlay, distortion and water renderers share the scene's GPU
+  retirement queue instead of retaining their own grow-path resource lists (#80).
+- Moon-key handovers fade through black at unequal sun/moon horizon times (#223). FFT reference depth
+  and spatial bathymetry now have an explicit authoring contract (#356), and surf strength is independent
+  of whitecap strength so an overdriven whitecap setting cannot flatten the surf gradient (#367).
+- The Showcase overworld is a shadow and day/night testbed, with a running gradient sky, a collidable
+  staircase and an authored tree line around the initial cascade handoff. T pauses the day, N switches
+  sky and starfield, and leaving the room restores its shared lighting state (#10, #365).
+- Terrain sculpting previews the actual brush pick and radius with a terrain-following cursor ring,
+  hidden outside the viewport or when the pick misses (#274).
+- Vulkan full-suite CI serializes test projects, target frameworks, test hosts and xUnit collections,
+  preventing separate test assemblies from overlapping live devices (#218).
+- Airborne momentum uses the collision resolver's local achieved delta instead of subtracting large
+  absolute positions, preserving slow free-flight speed far from the origin while retaining wall and
+  slide clipping (#321). A grazing capsule regression now distinguishes the local terrain bake from
+  the old absolute bake at 100 km, where the old path introduces about 2.49 mm of query drift (#352).
+
 ## 19.5.0
 
 Backlog reliability and catalog-read fixes:

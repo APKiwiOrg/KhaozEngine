@@ -208,7 +208,7 @@ namespace KhaozEngine.Render3D.Internal
         /// No-op when not <see cref="Msaa"/>.
         /// <para>
         /// The NORMAL is resolved here, with the depth, rather than later with the colour: the ground-decal pass reads
-        /// it (a void-fallback decal needs the surface orientation to tell a terrain dip from the top of a cliff face)
+        /// it (every main-pass decal needs surface orientation to tell a terrain dip from the top of a cliff face)
         /// and would otherwise sample a stale resolve under MSAA. The colour, which the decals DO write, still
         /// resolves after them in <see cref="ResolveColor"/>.
         /// </para>
@@ -218,8 +218,8 @@ namespace KhaozEngine.Render3D.Internal
         /// particles) binds ColorDepthFB and cannot. The MAIN decal pass sits after all of them, so it gets this.
         /// The blob-shadow decal pass does NOT: it runs early, before the billboards/beams/trails/overlay meshes, so
         /// resolving the normal there would publish an incomplete one. It calls <see cref="ResolveDepth"/> instead,
-        /// which is correct because a blob-shadow decal is engine-built and never sets VoidFallback, so it never
-        /// reads the normal.
+        /// which is correct because the blob-shadow pass disables the main-pass receiver gate and never reads the
+        /// normal.
         /// </para></summary>
         public void ResolveDepthNormal(IGpuCommandList cl)
         {

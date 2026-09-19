@@ -34,9 +34,9 @@ namespace KhaozEngine.Terrain
     /// to the new streamer. Call <see cref="Dispose"/> only when the sink (and its GPU resources) should go too.</para></summary>
     public sealed class TerrainStreamer : IDisposable
     {
-        readonly StreamerConfig _config;
+        StreamerConfig _config;
         readonly IChunkSink _sink;
-        readonly TerrainLodConfig _lodConfig;
+        TerrainLodConfig _lodConfig;
         readonly Dictionary<ChunkCoord, Entry> _loaded = new();
 
         // Set only when async build is active (config asked for it AND the sink supports the split seam). Null => the
@@ -64,18 +64,22 @@ namespace KhaozEngine.Terrain
 
         // Per-reason build counters (see StreamerBuildReasons). Every one of these sites is on the frame thread, so
         // plain adds are enough here, unlike the sink's merge counters, which are bumped from the build threads.
-        long _freshLoads, _tierChanges, _ringChanges, _invalidates, _anchorRecentres;
+        long _freshLoads, _tierChanges, _ringChanges, _invalidates, _configurationChanges, _anchorRecentres;
+        long _configurationGeneration;
+        bool _contractToOuterRadius;
         // Whether this streamer has ever anchored. Survives UnloadAll's anchor reset, so the first anchor of a
         // session is not counted as a re-centre while a post-teleport re-anchor onto a different chunk is.
         bool _anchoredOnce;
 
         bool _disposed;
 
-        // Which ring-scan site asked for a build, so the counter is picked where the decision is made rather than
-        // re-derived at the request call.
-        enum BuildReason { FreshLoad, TierChange, RingChange }
-
-        sealed class Entry { public object Handle = null!; public int Lod; public ChunkRing Ring; }
+        sealed class Entry
+        {
+            public object Handle = null!;
+            public int Lod;
+            public ChunkRing Ring;
+            public long ConfigurationGeneration;
+        }
 
         /// <summary>Build the streamer over a config and sink. <paramref name="dispatcher"/> chooses how background
         /// builds run when async is active (null uses the thread pool). Tests inject a manual dispatcher to control
@@ -87,6 +91,28 @@ namespace KhaozEngine.Terrain
         {
             _sink = sink ?? throw new ArgumentNullException(nameof(sink));
             _nearestFirst = NearestFirstCompare;
+            ValidateConfig(config);
+            _config = config;
+            _lodConfig = config.ResolvedLodConfig;
+            if (config.Async && sink is IAsyncChunkSink asyncSink)
+            {
+                _async = true;
+                _asyncSink = asyncSink;
+                _scheduler = new ChunkBuildScheduler<object>(
+                    sink is IReasonedAsyncChunkSink reasoned
+                        ? reasoned.BuildCpu
+                        : (coord, lod, ring, _) => asyncSink.BuildCpu(coord, lod, ring),
+                    dispatcher)
+                {
+                    // Contain a faulted background build here instead of letting it out of Update into the game's
+                    // frame loop, where it terminates the process (issue #402).
+                    BuildFailed = OnBuildFailed,
+                };
+            }
+        }
+
+        static void ValidateConfig(StreamerConfig config)
+        {
             if (config.UnloadRadius <= config.OuterRadius)
                 throw new ArgumentException(
                     $"UnloadRadius ({config.UnloadRadius}) must exceed the outer load radius ({config.OuterRadius}) so the hysteresis band stops churn.",
@@ -96,19 +122,49 @@ namespace KhaozEngine.Terrain
                     $"ChunkSize ({config.ChunkSize}) must be positive: every metre distance the streamer measures, LOD tiers included, is derived from it.",
                     nameof(config));
             ValidateLodAgainstChunkSize(config);
+        }
+
+        /// <summary>The live configuration currently governing ring scans and budgets.</summary>
+        public StreamerConfig Config => _config;
+
+        /// <summary>Applies live radii, LOD tiers, hysteresis and budgets. Chunk size and async topology are fixed
+        /// at construction and a change to either is refused before state changes. Pending async builds are drained
+        /// and discarded when a selection rule changes, so no payload built for the old profile can land later.
+        /// Ring expansion and contraction are performed by later <see cref="Update"/> or <see cref="PrimeAround"/>
+        /// calls through the configured load and unload budgets.</summary>
+        public void Reconfigure(StreamerConfig config)
+        {
+            if (_disposed) throw new ObjectDisposedException(nameof(TerrainStreamer));
+            if (config.ChunkSize != _config.ChunkSize)
+                throw new ArgumentException("ChunkSize is construction-only. Build a new TerrainStreamer to change it.", nameof(config));
+            if (config.Async != _config.Async)
+                throw new ArgumentException("Async build topology is construction-only. Build a new TerrainStreamer to change it.", nameof(config));
+            ValidateConfig(config);
+
+            bool lodChanged = !SameLod(_lodConfig, config.ResolvedLodConfig);
+            bool selectionChanged = lodChanged
+                || config.LoadRadius != _config.LoadRadius
+                || config.DecorRadius != _config.DecorRadius
+                || config.UnloadRadius != _config.UnloadRadius
+                || config.LodHysteresis != _config.LodHysteresis;
+            if (selectionChanged) _scheduler?.Reset();
+            if (lodChanged && _sink is IChunkLodConfigSink configurable)
+                configurable.ReconfigureLod(config.ResolvedLodConfig);
+
+            int oldOuter = _config.OuterRadius;
             _config = config;
             _lodConfig = config.ResolvedLodConfig;
-            if (config.Async && sink is IAsyncChunkSink asyncSink)
-            {
-                _async = true;
-                _asyncSink = asyncSink;
-                _scheduler = new ChunkBuildScheduler<object>(asyncSink.BuildCpu, dispatcher)
-                {
-                    // Contain a faulted background build here instead of letting it out of Update into the game's
-                    // frame loop, where it terminates the process (issue #402).
-                    BuildFailed = OnBuildFailed,
-                };
-            }
+            if (lodChanged) _configurationGeneration++;
+            _contractToOuterRadius = config.OuterRadius < oldOuter;
+        }
+
+        static bool SameLod(TerrainLodConfig a, TerrainLodConfig b)
+        {
+            if (a.TierCount != b.TierCount) return false;
+            for (int i = 0; i < a.TierCount; i++)
+                if (a.Tiers[i].Resolution != b.Tiers[i].Resolution
+                    || a.Tiers[i].MaxDistance != b.Tiers[i].MaxDistance) return false;
+            return true;
         }
 
         /// <summary>Rejects a LOD table whose tier distances are finer than this config's chunk granularity.
@@ -232,20 +288,16 @@ namespace KhaozEngine.Terrain
 
         // One build request, attributed. Kept next to the counters rather than inlined at the three request sites so
         // the mapping from decision to counter is readable in one place.
-        void CountBuild(BuildReason reason)
+        void CountBuild(ChunkBuildReason reason)
         {
             switch (reason)
             {
-                case BuildReason.TierChange: _tierChanges++; break;
-                case BuildReason.RingChange: _ringChanges++; break;
+                case ChunkBuildReason.TierChange: _tierChanges++; break;
+                case ChunkBuildReason.RingChange: _ringChanges++; break;
+                case ChunkBuildReason.ConfigurationChange: _configurationChanges++; break;
                 default: _freshLoads++; break;
             }
         }
-
-        // A loaded chunk whose tier or ring no longer matches the scan: the tier wins the attribution when both moved,
-        // because a tier flip is the metre-distance signal and a ring flip is the integer-distance one.
-        static BuildReason ReasonForRebuild(int appliedLod, int wantedLod) =>
-            appliedLod != wantedLod ? BuildReason.TierChange : BuildReason.RingChange;
 
         /// <summary>The residency ring for a chunk at Euclidean chunk-distance-squared <paramref name="chunkDistSq"/>
         /// from the player's chunk: <see cref="ChunkRing.Gameplay"/> within <see cref="StreamerConfig.LoadRadius"/>,
@@ -274,7 +326,7 @@ namespace KhaozEngine.Terrain
         /// <c>Scene3DChunkSink.MergeStats</c> is read, as a value snapshot, and difference two samples for a rate.
         /// Life-of-streamer totals: <see cref="UnloadAll"/> does not reset them.</summary>
         public StreamerBuildReasons BuildReasons =>
-            new(_freshLoads, _tierChanges, _ringChanges, _invalidates, _anchorRecentres);
+            new(_freshLoads, _tierChanges, _ringChanges, _invalidates, _configurationChanges, _anchorRecentres);
 
         /// <summary>Chunks whose builds failed <see cref="StreamerConfig.MaxChunkBuildAttempts"/> times and are no
         /// longer requested. These are the permanent holes in the world: everything else either loaded or is still
@@ -379,7 +431,8 @@ namespace KhaozEngine.Terrain
             ChunkCoord pc = AnchorChunk(playerPos);
 
             // 1. Unload chunks past the hysteresis radius, within this frame's budget.
-            float unloadSq = _config.UnloadRadius * (float)_config.UnloadRadius;
+            int unloadRadius = _contractToOuterRadius ? _config.OuterRadius : _config.UnloadRadius;
+            float unloadSq = unloadRadius * (float)unloadRadius;
             List<ChunkCoord> far = FarChunksToUnload(pc, unloadSq);
             foreach (ChunkCoord c in far)
             {
@@ -411,9 +464,16 @@ namespace KhaozEngine.Terrain
                 int lod = _lodConfig.PickLod(metreDist, loaded ? e!.Lod : -1, _config.LodHysteresis);
 
                 if (!loaded)
-                    pending.Add(new Pending(c, lod, ring, metreDist, isLoad: true, BuildReason.FreshLoad));
-                else if (e!.Lod != lod || e.Ring != ring)
-                    pending.Add(new Pending(c, lod, ring, metreDist, isLoad: false, ReasonForRebuild(e.Lod, lod)));
+                    pending.Add(new Pending(c, lod, ring, metreDist, isLoad: true, ChunkBuildReason.FreshLoad));
+                else if (e!.Lod != lod || e.Ring != ring || e.ConfigurationGeneration != _configurationGeneration)
+                {
+                    ChunkBuildReason reason = e.Ring != ring
+                        ? ChunkBuildReason.RingChange
+                        : e.ConfigurationGeneration != _configurationGeneration
+                            ? ChunkBuildReason.ConfigurationChange
+                            : ChunkBuildReason.TierChange;
+                    pending.Add(new Pending(c, lod, ring, metreDist, isLoad: false, reason));
+                }
             }
 
             // 3. Process nearest-first, capped at MaxLoadsPerFrame.
@@ -426,18 +486,24 @@ namespace KhaozEngine.Terrain
                 if (p.IsLoad)
                 {
                     object handle = _sink.Load(p.Coord, p.Lod, p.Ring);
-                    _loaded[p.Coord] = new Entry { Handle = handle, Lod = p.Lod, Ring = p.Ring };
+                    _loaded[p.Coord] = new Entry { Handle = handle, Lod = p.Lod, Ring = p.Ring,
+                        ConfigurationGeneration = _configurationGeneration };
                 }
                 else
                 {
                     Entry e = _loaded[p.Coord];
-                    _sink.ReLod(p.Coord, e.Handle, p.Lod, p.Ring);
+                    if (_sink is IChunkBuildReasonSink reasoned)
+                        reasoned.ReLod(p.Coord, e.Handle, p.Lod, p.Ring, p.Reason);
+                    else
+                        _sink.ReLod(p.Coord, e.Handle, p.Lod, p.Ring);
                     e.Lod = p.Lod;
                     e.Ring = p.Ring;
+                    e.ConfigurationGeneration = _configurationGeneration;
                 }
                 CountBuild(p.Reason);
                 ops++;
             }
+            FinishContraction(pc);
             return far.Count > 0 || ops > 0;
         }
 
@@ -447,7 +513,8 @@ namespace KhaozEngine.Terrain
             ChunkBuildScheduler<object> sched = _scheduler!;
             float cs = _config.ChunkSize;
             ChunkCoord pc = AnchorChunk(playerPos);
-            float unloadSq = _config.UnloadRadius * (float)_config.UnloadRadius;
+            int unloadRadius = _contractToOuterRadius ? _config.OuterRadius : _config.UnloadRadius;
+            float unloadSq = unloadRadius * (float)unloadRadius;
 
             // 1a. Cancel in-flight/ready builds for chunks now beyond the unload radius. These were requested but never
             //     applied, so cancelling drops their result (invariant: unloaded-while-building -> discarded, no leak).
@@ -503,12 +570,17 @@ namespace KhaozEngine.Terrain
 
                 if (loaded)
                 {
-                    if (e!.Lod != lod || e.Ring != ring)
+                    if (e!.Lod != lod || e.Ring != ring || e.ConfigurationGeneration != _configurationGeneration)
                     {
                         if (!requestMatches)
                         {
-                            sched.Request(c, lod, ring);   // re-LOD / ring change (supersede a stale one)
-                            CountBuild(ReasonForRebuild(e.Lod, lod));
+                            ChunkBuildReason reason = e.Ring != ring
+                                ? ChunkBuildReason.RingChange
+                                : e.ConfigurationGeneration != _configurationGeneration
+                                    ? ChunkBuildReason.ConfigurationChange
+                                    : ChunkBuildReason.TierChange;
+                            sched.Request(c, lod, ring, reason);   // re-LOD / ring change (supersede a stale one)
+                            CountBuild(reason);
                         }
                     }
                     else if (reqLod != -1)
@@ -518,7 +590,7 @@ namespace KhaozEngine.Terrain
                 }
                 else if (!requestMatches)
                 {
-                    sched.Request(c, lod, ring);   // fresh load, or re-target an in-flight load whose tier/ring changed
+                    sched.Request(c, lod, ring, ChunkBuildReason.FreshLoad);   // fresh load, or re-target an in-flight load whose tier/ring changed
                     _freshLoads++;
                 }
             }
@@ -531,7 +603,20 @@ namespace KhaozEngine.Terrain
             _nearestFirstChunkSize = cs;
             sched.Pump();
             int applied = ApplyBuilds(sched.TakeReady(_config.MaxLoadsPerFrame, _nearestFirst));
+            FinishContraction(pc);
             return far.Count > 0 || applied > 0;
+        }
+
+        void FinishContraction(ChunkCoord centre)
+        {
+            if (!_contractToOuterRadius) return;
+            int outerSq = _config.OuterRadius * _config.OuterRadius;
+            foreach (ChunkCoord c in _loaded.Keys)
+                if (DistSq(c, centre) > outerSq) return;
+            if (_scheduler is not null)
+                foreach (ChunkCoord c in _scheduler.Tracked)
+                    if (DistSq(c, centre) > outerSq) return;
+            _contractToOuterRadius = false;
         }
 
         /// <summary>Rebuild every currently loaded chunk intersecting <paramref name="area"/> in place, at its
@@ -561,11 +646,24 @@ namespace KhaozEngine.Terrain
             InvalidateLoaded(coord);
         }
 
+        /// <summary>Rebuilds every loaded chunk in place at its current tier and ring. Pending async builds are
+        /// flushed once before the pass, then each resident chunk receives one invalidate.</summary>
+        public void InvalidateAll()
+        {
+            FlushPendingBuilds();
+            var loaded = new List<ChunkCoord>(_loaded.Keys);
+            for (int i = 0; i < loaded.Count; i++) InvalidateLoaded(loaded[i]);
+        }
+
         void InvalidateLoaded(ChunkCoord coord)
         {
             if (!_loaded.TryGetValue(coord, out Entry? e)) return;
-            _sink.ReLod(coord, e.Handle, e.Lod, e.Ring);
+            if (_sink is IChunkBuildReasonSink reasoned)
+                reasoned.ReLod(coord, e.Handle, e.Lod, e.Ring, ChunkBuildReason.Invalidate);
+            else
+                _sink.ReLod(coord, e.Handle, e.Lod, e.Ring);
             _invalidates++;
+            e.ConfigurationGeneration = _configurationGeneration;
         }
 
         /// <summary>The loaded chunks past <paramref name="unloadSq"/> that this frame should free: farthest first,
@@ -617,7 +715,8 @@ namespace KhaozEngine.Terrain
                 ChunkBuild<object> rb = builds[i];
                 object? existing = _loaded.TryGetValue(rb.Coord, out Entry? e) ? e.Handle : null;
                 object handle = _asyncSink!.Apply(rb.Coord, rb.Lod, rb.Ring, rb.Payload, existing);
-                _loaded[rb.Coord] = new Entry { Handle = handle, Lod = rb.Lod, Ring = rb.Ring };
+                _loaded[rb.Coord] = new Entry { Handle = handle, Lod = rb.Lod, Ring = rb.Ring,
+                    ConfigurationGeneration = _configurationGeneration };
                 // A build that landed clears this chunk's failure streak, so the cap only ever counts CONSECUTIVE
                 // failures and a chunk that recovers is not abandoned later for damage it already walked off.
                 if (_attempts.Count > 0) _attempts.Remove(rb.Coord);
@@ -657,8 +756,8 @@ namespace KhaozEngine.Terrain
             public readonly ChunkRing Ring;
             public readonly float Dist;
             public readonly bool IsLoad;
-            public readonly BuildReason Reason;
-            public Pending(ChunkCoord coord, int lod, ChunkRing ring, float dist, bool isLoad, BuildReason reason)
+            public readonly ChunkBuildReason Reason;
+            public Pending(ChunkCoord coord, int lod, ChunkRing ring, float dist, bool isLoad, ChunkBuildReason reason)
             { Coord = coord; Lod = lod; Ring = ring; Dist = dist; IsLoad = isLoad; Reason = reason; }
         }
     }

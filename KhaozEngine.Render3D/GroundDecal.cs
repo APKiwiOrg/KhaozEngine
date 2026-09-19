@@ -133,10 +133,10 @@ namespace KhaozEngine.Render3D
         /// keeps the legacy depth-only behaviour, byte-for-byte.
         /// </summary>
         /// <remarks>
-        /// The decal still CONFORMS to any surface inside its Y band (<see cref="YTolerance"/> / <see cref="MaxStep"/>),
-        /// exactly as it always did. The plane is a fallback for the two cases where that surface is not there:
-        /// background (no geometry at all) and geometry outside the band (a cliff face below the decal, a lower
-        /// ledge).
+        /// The decal still CONFORMS to ground inside its Y band (<see cref="YTolerance"/> / <see cref="MaxStep"/>).
+        /// Ground requires a world-up normal component of at least 0.5, so terrain dips and slopes through 60
+        /// degrees receive it while steeper faces do not. The plane is a fallback for background and rejected
+        /// geometry such as a cliff face below the decal or a lower ledge.
         /// <para>
         /// In the out-of-band case the plane is painted only where it is genuinely VISIBLE, decided by a depth
         /// comparison against the surface actually at that pixel, not by whether geometry is present. Both answers

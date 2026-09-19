@@ -46,8 +46,8 @@ namespace KhaozEngine.Render3D.Rendering
 
             _clipSliceVerts = Math.Max(_clipSliceVerts, vcount);
             _clipSliceIndices = Math.Max(_clipSliceIndices, icount);
-            if (_clipVb != null) _retired.Add(_clipVb);
-            if (_clipIb != null) _retired.Add(_clipIb);
+            if (_clipVb != null) _retired.Retire(_clipVb);
+            if (_clipIb != null) _retired.Retire(_clipIb);
             _clipVerts = new WaterClipmapVertex[_clipSliceVerts];
             _clipIndices = new uint[_clipSliceIndices];
             _clipVb = _gd.Factory.CreateBuffer(new GpuBufferDescription(

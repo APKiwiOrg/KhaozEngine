@@ -51,6 +51,7 @@ public partial class MapEditorScene
     void DrawOverlays(Scene3D scene)
     {
         if (_controller.Field is not { } field) return;
+        DrawSculptCursor(scene);
         foreach (OverlayDraw o in ComputeOverlayDrawList(
                      _document.Doc, _document.Selection, field.SampleHeight, _options.ShowOverlays, _visibility,
                      _overlayDrawList))

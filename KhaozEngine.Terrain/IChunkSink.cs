@@ -1,5 +1,17 @@
 namespace KhaozEngine.Terrain
 {
+    /// <summary>Why a chunk payload is being built. The reason travels with an async request, so a superseded
+    /// completion cannot be mistaken for a later invalidate. A sink may use it to keep immutable work on a pure
+    /// tier transition while refreshing it for an explicit data change.</summary>
+    public enum ChunkBuildReason
+    {
+        FreshLoad,
+        TierChange,
+        RingChange,
+        Invalidate,
+        ConfigurationChange,
+    }
+
     /// <summary>The load/unload callback seam the <see cref="TerrainStreamer"/> drives. The streamer owns only the
     /// bookkeeping (which chunks are loaded, at what LOD and in which <see cref="ChunkRing"/>); all GPU work (mesh
     /// build + prop scatter + draw) lives behind this interface, so the streamer is headless-testable with a fake
@@ -44,5 +56,27 @@ namespace KhaozEngine.Terrain
         /// <see cref="Apply"/> / <see cref="IChunkSink.Load"/> returned, which this may mutate in place. Returns the
         /// new or mutated handle.</summary>
         object Apply(ChunkCoord coord, int lod, ChunkRing ring, object cpuBuild, object? existing);
+    }
+
+    /// <summary>Optional sink seam for rebuilds whose reason affects what work can be reused.</summary>
+    public interface IChunkBuildReasonSink : IChunkSink
+    {
+        /// <summary>Rebuild a loaded chunk for the stated reason.</summary>
+        void ReLod(ChunkCoord coord, object handle, int lod, ChunkRing ring, ChunkBuildReason reason);
+    }
+
+    /// <summary>Async companion to <see cref="IChunkBuildReasonSink"/>. The reason is captured in the CPU payload
+    /// before it leaves the scheduler and reaches the frame-thread apply.</summary>
+    public interface IReasonedAsyncChunkSink : IAsyncChunkSink, IChunkBuildReasonSink
+    {
+        /// <summary>Build CPU data for one attributed request.</summary>
+        object BuildCpu(ChunkCoord coord, int lod, ChunkRing ring, ChunkBuildReason reason);
+    }
+
+    /// <summary>Optional sink seam for a live terrain LOD table change.</summary>
+    public interface IChunkLodConfigSink
+    {
+        /// <summary>Use this table for future chunk meshes. The caller has stopped outstanding builds first.</summary>
+        void ReconfigureLod(TerrainLodConfig lodConfig);
     }
 }

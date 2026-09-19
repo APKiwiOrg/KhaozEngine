@@ -205,40 +205,77 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
-        public void ExclusionEdit_TakesTheFullRebuild_BecausePartialKeepsTheCapturedScatterConfigs()
+        public void ScatterLayerEdit_RefreshesCapturedConfigBeforeInvalidatingLoadedChunks()
         {
-            // Issue #765. PartialRebuild swaps the field and re-meshes the dirty chunks, and the sink re-scatters
-            // each of them from the ScatterConfig captured inside its PropLayer at Build time
-            // (Scene3DChunkSink.ScatterLayersFor reads _layers[i].Scatter, and the sink has no layer setter). An
-            // exclusion lives in that captured config (MapRuntime.BuildScatterConfig fills Exclusions), and it
-            // changes no terrain at all, so a partial rebuild after drawing one regenerates BYTE-IDENTICAL props
-            // and every tree under the new exclusion keeps standing. Only a full Rebuild, which reruns
-            // BuildPropLayers, clears them. So the command must not report a bounded region.
             MapDocument doc = ScatterDoc();
             MapDocRegistry registry = MapDocRegistry.CreateDefault();
-            var area = new RectArea(-20f, -20f, 20f, 20f);
+            ViewportWorld viewport = Construct();
+            TerrainField beforeField = MapRuntime.BuildField(doc, registry);
+            IReadOnlyList<PropLayer> beforeLayers = viewport.BuildPropLayers(doc);
+            var sink = new Scene3DChunkSink(null!, beforeField, beforeLayers, chunkSize: 60f);
+            var area = new RectArea(0f, 0f, 60f, 60f);
+            Assert.NotEmpty(PropScatter.Generate(beforeField, beforeLayers[0].Scatter!, area));
 
-            // What ViewportWorld.Build hands the sink: the layer configs as the document reads right now.
-            ScatterConfig captured = MapRuntime.BuildScatterConfigs(doc)["trees"];
-            Assert.NotEmpty(PropScatter.Generate(MapRuntime.BuildField(doc, registry), captured, area));
-
-            // Draw an exclusion over the whole area through the real command path.
-            var editor = new EditorDocument(doc, registry);
-            editor.Execute(new AddExclusionCommand(new MapExclusion
+            MapScatterLayer oldLayer = doc.ScatterLayers[0];
+            var edited = new MapScatterLayer { Name = "trees", CellSize = 4f, Jitter = 0f };
+            edited.Rules.Add(new MapBiomeScatterRule
             {
-                Shape = new DiscShapeDoc { CenterX = 0f, CenterZ = 0f, Radius = 40f },
-            }));
+                Biome = BiomeId.Meadow,
+                Density = 0f,
+                Kinds = { new MapPropKind { Id = "pine_a", Weight = 1f } },
+            });
+            var editor = new EditorDocument(doc, registry);
+            editor.Execute(new EditScatterLayerCommand("trees", edited, oldLayer));
 
-            // The field PartialRebuild would swap in is unchanged by an exclusion (it is a scatter input, not a
-            // terrain one), so the re-meshed chunks re-scatter the same props off the stale captured config...
-            TerrainField after = MapRuntime.BuildField(doc, registry);
-            Assert.NotEmpty(PropScatter.Generate(after, captured, area));
-            // ...while the configs a full rebuild would construct place nothing inside the exclusion.
-            Assert.Empty(PropScatter.Generate(after, MapRuntime.BuildScatterConfigs(doc)["trees"], area));
-
-            // Which is why the edit has to route to the full rebuild: pending with a NULL region.
             Assert.True(editor.WorldRebuildPending);
-            Assert.Null(editor.PendingRebuildRegion);
+            Assert.True(editor.PendingAllLoadedInvalidation);
+            Assert.True(editor.PendingLayerConfigRefresh);
+            Assert.False(editor.PendingFullRebuild);
+
+            IReadOnlyList<PropLayer> afterLayers = viewport.BuildPropLayers(doc);
+            TerrainField afterField = MapRuntime.BuildField(doc, registry);
+            sink.UpdateLayers(afterLayers);
+            sink.UpdateField(afterField);
+            Assert.Empty(PropScatter.Generate(afterField, afterLayers[0].Scatter!, area));
+        }
+
+        [Fact]
+        public void CompanionLayerEdit_RefreshesItsCapturedGenerationConfig()
+        {
+            MapDocument doc = ScatterDoc();
+            var original = new MapCompanionLayer
+            {
+                Name = "understory", HostLayer = "trees", CountMin = 1, CountMax = 1,
+                RadiusMin = 1f, RadiusMax = 1f,
+                Kinds = { new MapPropKind { Id = "fern", Weight = 1f } },
+            };
+            doc.CompanionLayers.Add(original);
+            ViewportWorld viewport = Construct();
+            IReadOnlyList<PropLayer> beforeLayers = viewport.BuildPropLayers(doc);
+            TerrainField field = MapRuntime.BuildField(doc, MapDocRegistry.CreateDefault());
+            var area = new RectArea(0f, 0f, 60f, 60f);
+            IReadOnlyList<PropPlacement> hosts = PropScatter.Generate(field, beforeLayers[0].Scatter!, area);
+            IReadOnlyList<PropPlacement> before = PropScatter.GenerateCompanions(
+                field, hosts, beforeLayers[1].Companions!);
+
+            var edited = new MapCompanionLayer
+            {
+                Name = "understory", HostLayer = "trees", CountMin = 2, CountMax = 2,
+                RadiusMin = 1f, RadiusMax = 1f,
+                Kinds = { new MapPropKind { Id = "fern", Weight = 1f } },
+            };
+            var editor = new EditorDocument(doc);
+            editor.Execute(new EditCompanionLayerCommand("understory", edited, original));
+            IReadOnlyList<PropLayer> afterLayers = viewport.BuildPropLayers(doc);
+            var sink = new Scene3DChunkSink(null!, field, beforeLayers, chunkSize: 60f);
+
+            sink.UpdateLayers(afterLayers);
+            IReadOnlyList<PropPlacement> after = PropScatter.GenerateCompanions(
+                field, hosts, afterLayers[1].Companions!);
+
+            Assert.True(editor.PendingAllLoadedInvalidation);
+            Assert.True(editor.PendingLayerConfigRefresh);
+            Assert.Equal(before.Count * 2, after.Count);
         }
 
         // ---- after dispose (never built) ---------------------------------------------------------------

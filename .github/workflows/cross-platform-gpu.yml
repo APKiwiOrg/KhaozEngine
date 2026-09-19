@@ -126,7 +126,8 @@
 #     teardown-order pair where a wrapper outliving its device drained or destroyed against the dead device
 #     (latched by a shared DeviceLiveness token). The full PARALLEL suite on lavapipe still exhibits residual
 #     driver-side instability with delayed-corruption symptoms (a CoreCLR fatal, deliberately not chased), so
-#     the full-suite runs serialize xUnit test collections via KE_TEST_EXTRA_ARGS, one live device at a time.
+#     the full-suite runs serialize projects and xUnit collections via KE_TEST_BUILD_ARGS/KE_TEST_EXTRA_ARGS.
+#     This bounds devices across test assemblies as well as within each one (#218).
 #     That is most of why this leg's full suite measured 26m36s in run 32579723071. Golden-only runs keep
 #     their months-green parallel configuration.
 #   * The Vulkan SYNC-VALIDATION job (1x, gpu-vulkan-sync below) is the second validation tier, and it
@@ -446,7 +447,7 @@ jobs:
           #   scheduled - weekly schedule + workflow_dispatch only, which is the other four legs (both D3D11
           #               legs billed 2x and both Vulkan legs 1x while the repo was private, golden subset
           #               only on push/pull_request). Both Vulkan legs' full-suite runs additionally
-          #               serialize xUnit collections (KE_TEST_EXTRA_ARGS, header). Every leg is hosted and
+          #               serialize projects and collections (KE_TEST_BUILD_ARGS/KE_TEST_EXTRA_ARGS, header). Every leg is hosted and
           #               free now, so these tiers are kept for feedback speed rather than for money.
           #
           # `d3d11Adapter` is the leg's KE_D3D11_ADAPTER value, pinned to warp (decision G2). The leg pins it
@@ -917,8 +918,8 @@ jobs:
       #     29542939552 / 29545657401), and the native leg's own full suite measured 25m43s in run
       #     32579723071, so per-push hosted coverage stays golden-only and the weekly cron
       #     carries the full sweep (decision T5, re-decided at the 18.0.0 delete: see the header).
-      #     The Vulkan leg takes the same tier, and its full-suite runs serialize xUnit
-      #     test collections (KE_TEST_EXTRA_ARGS below) because lavapipe under full parallel load still shows
+      #     The Vulkan leg takes the same tier, and its full-suite runs serialize projects and xUnit
+      #     test collections (KE_TEST_BUILD_ARGS/KE_TEST_EXTRA_ARGS below) because lavapipe under full parallel load still shows
       #     residual driver-side instability after the four engine-defect fixes (see the header). The native
       #     Vulkan leg inherited that serialisation on day one rather than claiming to have fixed it, and MV7 is
       #     the experiment that takes it off that leg alone if four green weeks plus one unserialized dispatch
@@ -1141,12 +1142,15 @@ jobs:
           KE_UPDATE_GOLDENS: ${{ (github.event_name == 'workflow_dispatch' && inputs.bake) && '1' || '' }}
           KE_RENDER_TEST_FILTER: ${{ github.event_name == 'workflow_dispatch' && inputs.renderTestFilter || '' }}
           KE_TEST_FILTER: ${{ (github.event_name == 'workflow_dispatch' && inputs.renderTestFilter) || ((matrix.fullSuite == 'always' || (matrix.fullSuite == 'scheduled' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'))) && 'Category!=LiveSocket' || 'FullyQualifiedName~Golden|FullyQualifiedName~FoliageGpuTests') }}
-          # BOTH Vulkan legs' full-suite runs: serialize xUnit collections, one live device at a time
+          # BOTH Vulkan legs' full-suite runs: serialize MSBuild projects, target frameworks, test hosts
+          # and xUnit collections, one live device at a time. Collection settings alone cannot stop two
+          # assemblies opening devices at once
           # (~22 min serialized vs minutes parallel, header). Empty for every other leg and for
           # golden-only runs (months of parallel green history). It is named rather than matched on a prefix
           # because MV7 takes serialisation off this leg if it wins, and a prefix match would take it off any
           # future Linux leg with it.
-          KE_TEST_EXTRA_ARGS: ${{ (matrix.backend == 'vulkan-native' && matrix.fullSuite == 'scheduled' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')) && '-- xUnit.ParallelizeTestCollections=false' || '' }}
+          KE_TEST_BUILD_ARGS: ${{ (matrix.backend == 'vulkan-native' && matrix.fullSuite == 'scheduled' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')) && '-m:1 -p:TestTfmsInParallel=false' || '' }}
+          KE_TEST_EXTRA_ARGS: ${{ (matrix.backend == 'vulkan-native' && matrix.fullSuite == 'scheduled' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')) && '-- RunConfiguration.MaxCpuCount=1 xUnit.ParallelizeTestCollections=false' || '' }}
         # Plain --blame (no --blame-crash) is kept permanently: it only writes a tiny Sequence.xml naming the
         # last-started test if the host dies (no dump utility attached, no measurable overhead), and a lavapipe
         # native crash without it is unattributable - an unnamed crash on the unattended weekly cron would cost
@@ -1165,7 +1169,7 @@ jobs:
           if [ -n "$KE_RENDER_TEST_FILTER" ]; then
             test_target=(KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj)
           fi
-          dotnet test "${test_target[@]}" -c Release --no-build --filter "$KE_TEST_FILTER" --blame --results-directory TestResults $KE_TEST_LOGGER_ARGS $KE_TEST_EXTRA_ARGS 2>&1 | tee TestResults/suite-output.log
+          dotnet test "${test_target[@]}" -c Release --no-build $KE_TEST_BUILD_ARGS --filter "$KE_TEST_FILTER" --blame --results-directory TestResults $KE_TEST_LOGGER_ARGS $KE_TEST_EXTRA_ARGS 2>&1 | tee TestResults/suite-output.log
         shell: bash
 
       # WHAT THE BOOT'S GPU ACTUALLY WAS (#614), on the macOS leg. That issue's whole difficulty is that a red

@@ -84,20 +84,13 @@ namespace KhaozEngine.Render3D
         /// (<see cref="SunCycleSettings.MoonDeclinationDegrees"/>), its own key color
         /// (<see cref="SunCycleSettings.MoonKeyColor"/>) and its own horizon dip
         /// (<see cref="SunCycleSettings.MoonHorizonKeyDipDegrees"/>). The key is the sun while the sun is up, else the
-        /// moon while the moon is up, else black; each body fades to black at its OWN crossing, and the direction is
-        /// continuous within each body. The disc follows the
+        /// moon while the moon is up, else black. The moon keeps its own horizon dip and is also bounded by the
+        /// sun's horizon dip as the source changes, guaranteeing a through-black handover even when the two bodies'
+        /// crossings do not align. The two fades form a minimum envelope rather than multiplying, so coincident
+        /// equatorial fades are not squared. The direction is continuous within each body. The disc follows the
         /// active body (sun when up, else moon when up) and can show a decorative moon that casts no key. Kills the
         /// pre-dawn 180-degree flip: below the horizon the sun is simply never the key.
-        /// <para>The source switch is only through BLACK when the two crossings COINCIDE, which is a property of the
-        /// configuration rather than of this mode. The default 12h <see cref="SunCycleSettings.MoonHourOffset"/>
-        /// lines them up only while both bodies are up for about 12 hours: the equator, or a zero declination.
-        /// At the shipped defaults (latitude 35, declination 15) the day is longer than that, so the moon is already
-        /// about 17 degrees up when the sun sets, well clear of its 2-degree
-        /// <see cref="SunCycleSettings.MoonHorizonKeyDipDegrees"/> band. The key then jumps from black to the moon's
-        /// full strength in one frame and swings more than 90 degrees in azimuth: a visible dusk/dawn pop, not a
-        /// handover. Until the cross-fade lands (issue #223), either keep the day near 12 hours, or give the moon a
-        /// black <see cref="SunCycleSettings.MoonKeyColor"/> so no key ever hands over (the decorative-moon setup).
-        /// Widening the dip hides the pop but eats a large shadowless band at a long-day latitude.</para></summary>
+        /// </summary>
         Moon,
     }
 
@@ -140,7 +133,10 @@ namespace KhaozEngine.Render3D
         /// <summary>Sun elevation in degrees at and below which the palette is pure night. Stored negative. The dusk-to-night blend runs from the horizon down to here.</summary>
         public float NightFullElevationDegrees { get; set; } = -12f;
 
-        /// <summary>Half-width in degrees of the key-light dip that hides the direction flip at the horizon crossing.</summary>
+        /// <summary>Half-width in degrees of the key-light dip that hides a source or direction change at the solar
+        /// horizon. Under <see cref="NightKeyMode.Moon"/> it also bounds the incoming or outgoing moon key. A value
+        /// of 0 retains a 0.001-degree numerical floor, so the exact crossing is black and the fade is otherwise
+        /// effectively instantaneous.</summary>
         public float HorizonKeyDipDegrees { get; set; } = 2f;
 
         /// <summary>Elevation in degrees over which the sun disc color fades in from the horizon. The moon disc reuses this width against the moon's elevation.</summary>
@@ -379,10 +375,12 @@ namespace KhaozEngine.Render3D
                         // the moon. The key can be black (decorative moon) while the disc stays visible.
                         float moonKeyDip = MathUtil.SmoothStep(
                             0f, MathF.Max(1e-3f, settings.MoonHorizonKeyDipDegrees), MathF.Abs(moonElDeg));
+                        float handoverDip = MathUtil.SmoothStep(
+                            0f, MathF.Max(1e-3f, settings.HorizonKeyDipDegrees), MathF.Abs(elDeg));
                         float moonDiscFade = MathUtil.SmoothStep(
                             0f, MathF.Max(1e-3f, settings.SunDiscFadeElevationDegrees), moonElDeg);
                         lightDir = moonLightDir;
-                        key = settings.MoonKeyColor.ScaleRgb(moonKeyDip);
+                        key = settings.MoonKeyColor.ScaleRgb(MathF.Min(moonKeyDip, handoverDip));
                         disc = settings.MoonDiscColor.ScaleRgb(moonDiscFade);
                         discEnabled = true;
                         discOverride = moonToward;   // direction TO the moon (the moon light travels -moonToward)

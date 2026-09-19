@@ -69,6 +69,9 @@ up regardless of load order. Plain `float` math throughout.
   when a loaded chunk's tier OR residency ring changes, nearest-first ordering. Pure bookkeeping over
   **`ChunkCoord`**/**`ChunkGrid`** driving an injected **`IChunkSink`**, so it is headless-testable with a
   fake sink and just as usable on a dedicated server (no chunk mesh, no GPU) as on a client.
+  `Reconfigure(newConfig)` applies live load, decor and unload radii, LOD tables, hysteresis and load/unload
+  budgets. Expansion and contraction use those budgets. Chunk size and async topology are construction-only.
+  A selection change drains and discards pending old-profile builds before the next ring scan.
   `StreamerConfig` also carries an optional `DecorRadius` (chunk units, default 0 = off) for a farther,
   coarser decor-only ring tagged with **`ChunkRing`** (`Gameplay` / `Decor`), a `MaxUnloadsPerFrame`
   budget (default 8, farthest first, 0 or less frees everything at once) so a ring shift spreads its GPU
@@ -125,6 +128,10 @@ up regardless of load order. Plain `float` math throughout.
   **`Apply(coord, lod, ring, cpuBuild, existing)`** (GPU buffers + physics on the frame thread, implemented
   by a render-side sink such as `Scene3DChunkSink` in `KhaozEngine.Terrain.Render3D`). A sink implementing
   only `IChunkSink` streams synchronously, no async split needed.
+- **`ChunkBuildReason`** / **`IChunkBuildReasonSink`** / **`IReasonedAsyncChunkSink`** - attributed rebuilds.
+  Fresh loads, tier changes, ring changes and invalidates carry their reason through the scheduler generation,
+  so a sink can reuse immutable placement data on a pure tier transition and a superseded completion cannot
+  arrive under a later reason.
 - **`ChunkBuildScheduler<T>`** + **`ChunkBuild<T>`** - the GPU-free heart of async streaming: per-chunk
   generation tokens dispatch each build, collect the finished ones, and drop the superseded (a newer
   re-LOD) or cancelled (left the ring) results before they can be applied (last request wins). Pure

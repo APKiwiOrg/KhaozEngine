@@ -59,9 +59,9 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuPipeline _pipeline;
         readonly IGpuBuffer _frameUbo;
         IGpuBuffer? _instances;
-        // Grown-out instance buffers (a prior frame's submitted command list may still be reading one), freed in
-        // Dispose. The engine's buffer-lifetime rule, stated in ModelRenderer.EnsureInstanceCapacity.
-        readonly List<IDisposable> _retired = new();
+        // Grown-out instance buffers enter the scene retirement queue because a submitted frame may still read one.
+        // The engine's buffer-lifetime rule is stated in ModelRenderer.EnsureInstanceCapacity.
+        readonly GpuRetireQueue _retired;
         int _capacity;
         DistortionInstance[] _packed = Array.Empty<DistortionInstance>();
         // One cached resource set over the resolved depth texture, rebuilt on a target rebind (generation bump).
@@ -78,9 +78,10 @@ namespace KhaozEngine.Render3D.Rendering
             GpuBlendFactor.One, GpuBlendFactor.One, GpuBlendFunction.Add,
             GpuBlendFactor.One, GpuBlendFactor.One, GpuBlendFunction.Add);
 
-        public DistortionRenderer(IGpuDevice gd)
+        public DistortionRenderer(IGpuDevice gd, GpuRetireQueue retired)
         {
             _gd = gd;
+            _retired = retired;
             var f = gd.Factory;
             _shaders = f.CreateShadersFromSpirv(ShaderSources.DistortionVert, ShaderSources.DistortionFrag);
             // Binding order matches the fragment shader exactly: Frame(0), DepthTex(1), Samp(2). The sampler is point:
@@ -125,7 +126,7 @@ namespace KhaozEngine.Render3D.Rendering
             // Retire, never dispose inline. The frame path has no WaitForIdle, so the CPU can be several frames
             // ahead of the GPU and a prior frame's command list may still be reading the buffer this grow
             // replaces: freeing it here is a use-after-free. Geometric growth bounds how many pile up.
-            if (_instances != null) _retired.Add(_instances);
+            if (_instances != null) _retired.Retire(_instances);
             _capacity = Math.Max(spriteCount, _capacity == 0 ? 64 : _capacity * 2);
             _instances = _gd.Factory.CreateBuffer(new GpuBufferDescription((uint)(_capacity * (int)InstanceStride), GpuBufferUsage.VertexBuffer));
             if (_packed.Length < _capacity) _packed = new DistortionInstance[_capacity];
@@ -198,8 +199,6 @@ namespace KhaozEngine.Render3D.Rendering
             _shaders.Dispose();
             _frameUbo.Dispose();
             _instances?.Dispose();
-            foreach (var r in _retired) r.Dispose();
-            _retired.Clear();
         }
     }
 }

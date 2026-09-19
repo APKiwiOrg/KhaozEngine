@@ -76,8 +76,9 @@ measurement of the same physics. The airborne-momentum clip's undenied tolerance
 intended speed while the rounding it defends against is a fraction of the coordinate, so the two stop
 lining up once one float step of the position exceeds 0.1 percent of a tick's travel, at roughly
 `|coordinate| > speed * dt * 16800`. That is about **1.7 km at walk speed and 60 Hz**, 3.4 km at 30 Hz.
-Measured: a 6 m/s arc at 5 km sheds 0.0096 m/s of carried velocity per ten-second flight, before and after
-the fix, unchanged.
+The later momentum follow-up removed that specific loss by carrying the collision resolve's achieved delta
+instead of subtracting two absolute positions. The original 0.0096 m/s measurement remains the evidence this
+floating-origin design used.
 
 This is a second, independent, already-measured constraint from a different subsystem, and it is far tighter
 than 100 km. It is load-bearing for section 2: the working radius has to be hundreds of metres, not
@@ -2070,6 +2071,11 @@ measures the difference of two errors. The double reference removes the ambiguit
     (b) on a deliberately sloped chunk, assert the difference from the intended point is bounded by
     `slope * ULP(absoluteXZ)`. That is the assertion that records the residual as a known, bounded property
     rather than letting a future reader discover it as a flake.
+10b. **A grazing capsule distinguishes the two bakes.** Sweep a capsule horizontally into the same planar ramp
+    at the origin and 100 km. Register chunk-local vertices at the region pose for the current path, then rebuild
+    the pre-release shape by adding the region origin into every vertex and registering at identity. The local bake
+    repeats its 0.19000535 m hit exactly at 100 km. The absolute bake moves from 0.19000535 m to 0.19249132 m, a
+    2.48598 mm drift. Run each measurement twice so the probe also pins reproducibility.
 11. **`CanRebase` is false and `Rebase` throws on a seam default.** The DIM contract.
 
 ### Netcode tests, `KhaozEngine.Server.Tests`

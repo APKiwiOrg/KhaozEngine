@@ -19,7 +19,8 @@ public static partial class CharacterMovement
     /// whether a depenetration separated the capsule along a mostly-upward direction (standing on a prop).</summary>
     private static Vector3 SettleAfterSweep(IPhysicsWorld world, in CapsuleShape capsule, Vector3 pos,
         in MoveState s, in MoveTuning t, float dx, float dz, float vVel, float halfH, bool restHold,
-        Func<float, float, Vector2>? clampXz, Func<float, float, float> groundHeight, out bool propGrounded)
+        Func<float, float, Vector2>? clampXz, Func<float, float, float> groundHeight, ref Vector2 achievedHorizontal,
+        out bool propGrounded)
     {
         propGrounded = false;
 
@@ -50,8 +51,14 @@ public static partial class CharacterMovement
             // len > 1e-6 above, so mtv.Y >= cosMaxSlope*len is the divide-free normal.Y >= cosMaxSlope test.
             if (restHold && mtv.Y >= cosMaxSlopeSettle * len) correction = new Vector3(0f, correction.Y, 0f);
             pos += correction;
+            achievedHorizontal += new Vector2(correction.X, correction.Z);
         }
-        if (clampXz is not null) { Vector2 c = clampXz(pos.X, pos.Z); pos.X = c.X; pos.Z = c.Y; }
+        if (clampXz is not null)
+        {
+            Vector2 c = clampXz(pos.X, pos.Z);
+            achievedHorizontal += c - new Vector2(pos.X, pos.Z);
+            pos.X = c.X; pos.Z = c.Y;
+        }
 
         // MONOTONE-FORWARD climb. The paced step-up caps the per-tick horizontal advance to the walk step while the
         // rise is throttled, so between mounts the footprint sits slightly behind the tread it is climbing, embedded
@@ -86,7 +93,11 @@ public static partial class CharacterMovement
             {
                 float inv = 1f / mvLen; mvx *= inv; mvz *= inv;
                 float along = (pos.X - s.Position.X) * mvx + (pos.Z - s.Position.Z) * mvz;
-                if (along < 0f) { pos.X = s.Position.X; pos.Z = s.Position.Z; }   // net backward: hold last tick's XZ
+                if (along < 0f)
+                {
+                    pos.X = s.Position.X; pos.Z = s.Position.Z;
+                    achievedHorizontal = Vector2.Zero;
+                }   // net backward: hold last tick's XZ
             }
             else
             {
@@ -100,6 +111,7 @@ public static partial class CharacterMovement
                 // is untouched; a commanded move (mvLen > 1e-6) takes the forward-hold branch, so walking into a
                 // wall still slides normally.
                 pos.X = s.Position.X; pos.Z = s.Position.Z;
+                achievedHorizontal = Vector2.Zero;
             }
         }
 

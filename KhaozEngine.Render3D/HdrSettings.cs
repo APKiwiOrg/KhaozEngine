@@ -67,12 +67,11 @@ namespace KhaozEngine.Render3D
         /// Values in between blend the two. Default <c>0.75</c>, the user-approved balance from the look-evidence
         /// ladder review: close enough to full hue preservation that saturated preset colours (telegraph fire/poison/
         /// frost/arcane, glow decals, beams) stay legible against the filmic roll-off, while still leaving a touch of
-        /// the classic bleach-toward-white so the hottest cores read as hot. Hue is preserved except where a
-        /// saturated channel clips at the display ceiling (<c>1.0</c>) before the rescale: the clipped channel cannot
-        /// be pushed back down to hold the exact ratio, so a partial desaturating shift remains at the very core of
-        /// the brightest highlights even at <c>1</c>. At <c>0</c> the shader short-circuits to the exact per-channel
-        /// expression, byte-identical to the pre-chroma tonemap. Applies to all three operators. Ignored when
-        /// <see cref="Enabled"/> is <c>false</c>.
+        /// the classic bleach-toward-white so the hottest cores read as hot. At <c>1</c> a luminance-mapped vector
+        /// past the display ceiling is uniformly scaled down until its brightest channel is 1, preserving exposed
+        /// linear RGB ratios at the cost of some mapped luminance near the gamut boundary. At <c>0</c> the shader
+        /// short-circuits to the exact per-channel expression, byte-identical to the pre-chroma tonemap. Applies to
+        /// all three operators. Ignored when <see cref="Enabled"/> is <c>false</c>.
         /// </summary>
         public float ChromaPreservation = 0.75f;
     }

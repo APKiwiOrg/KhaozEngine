@@ -17,11 +17,13 @@ namespace KhaozEngine.Terrain
         public ChunkRing Ring { get; }
         /// <summary>The sink's opaque CPU payload (hand back to its apply step on the frame thread).</summary>
         public T Payload { get; }
+        /// <summary>Why this payload was requested.</summary>
+        public ChunkBuildReason Reason { get; }
         internal long Generation { get; }
 
-        internal ChunkBuild(ChunkCoord coord, int lod, ChunkRing ring, T payload, long generation)
+        internal ChunkBuild(ChunkCoord coord, int lod, ChunkRing ring, ChunkBuildReason reason, T payload, long generation)
         {
-            Coord = coord; Lod = lod; Ring = ring; Payload = payload; Generation = generation;
+            Coord = coord; Lod = lod; Ring = ring; Reason = reason; Payload = payload; Generation = generation;
         }
     }
 
@@ -55,7 +57,7 @@ namespace KhaozEngine.Terrain
     /// CPU payload (mesh + scatter for the production sink) and is never touched here beyond being carried through.</para></summary>
     public sealed class ChunkBuildScheduler<T> : IDisposable
     {
-        readonly Func<ChunkCoord, int, ChunkRing, T> _build;
+        readonly Func<ChunkCoord, int, ChunkRing, ChunkBuildReason, T> _build;
         readonly IChunkBuildDispatcher _dispatcher;
 
         // Frame-thread-only bookkeeping. _current tracks every chunk with an outstanding or ready build (last request
@@ -69,24 +71,33 @@ namespace KhaozEngine.Terrain
         long _nextGen = 1;
         bool _disposed;
 
-        struct Slot { public long Gen; public int Lod; public ChunkRing Ring; public bool Ready; }
+        struct Slot { public long Gen; public int Lod; public ChunkRing Ring; public ChunkBuildReason Reason; public bool Ready; }
 
         readonly struct Completion
         {
             public readonly ChunkCoord Coord;
             public readonly int Lod;
             public readonly ChunkRing Ring;
+            public readonly ChunkBuildReason Reason;
             public readonly long Gen;
             public readonly T Payload;
             public readonly Exception? Error;
-            public Completion(ChunkCoord coord, int lod, ChunkRing ring, long gen, T payload, Exception? error)
-            { Coord = coord; Lod = lod; Ring = ring; Gen = gen; Payload = payload; Error = error; }
+            public Completion(ChunkCoord coord, int lod, ChunkRing ring, ChunkBuildReason reason, long gen, T payload, Exception? error)
+            { Coord = coord; Lod = lod; Ring = ring; Reason = reason; Gen = gen; Payload = payload; Error = error; }
         }
 
         /// <summary>Build the scheduler over <paramref name="build"/> (the sink's CPU build step, run on a worker
         /// thread). <paramref name="dispatcher"/> chooses how builds run, or null for the default <see cref="TaskChunkBuildDispatcher"/>
         /// (the thread pool).</summary>
         public ChunkBuildScheduler(Func<ChunkCoord, int, ChunkRing, T> build, IChunkBuildDispatcher? dispatcher = null)
+            : this((coord, lod, ring, _) => build(coord, lod, ring), dispatcher)
+        {
+        }
+
+        /// <summary>Build a scheduler whose worker receives the attributed request reason.</summary>
+        public ChunkBuildScheduler(
+            Func<ChunkCoord, int, ChunkRing, ChunkBuildReason, T> build,
+            IChunkBuildDispatcher? dispatcher = null)
         {
             _build = build ?? throw new ArgumentNullException(nameof(build));
             _dispatcher = dispatcher ?? new TaskChunkBuildDispatcher();
@@ -112,7 +123,7 @@ namespace KhaozEngine.Terrain
         /// a build bug to surface loudly relies on. When it is set, the fault is handed to it instead and the pump
         /// keeps draining, so one bad chunk cannot abort the rest of the frame's completions or escape into the
         /// caller's frame loop.
-        /// <para>Either way the chunk is dropped from the tracking set first, so a later <see cref="Request"/> for the
+        /// <para>Either way the chunk is dropped from the tracking set first, so a later <c>Request</c> for the
         /// same coord builds again: the handler decides whether to retry it or leave it out (issue #402, where an
         /// exception from one chunk's HLOD merge terminated the client mid-play).</para></summary>
         public Action<ChunkBuildException>? BuildFailed { get; set; }
@@ -130,27 +141,31 @@ namespace KhaozEngine.Terrain
         /// <summary>(Re)request a build for <paramref name="coord"/> at <paramref name="lod"/> and <paramref name="ring"/>.
         /// Bumps the chunk's generation, so any earlier build for it still running or sitting ready is now stale and
         /// will be discarded instead of applied (last request wins). Dispatches the CPU build onto the dispatcher.</summary>
-        public void Request(ChunkCoord coord, int lod, ChunkRing ring)
+        public void Request(ChunkCoord coord, int lod, ChunkRing ring) =>
+            Request(coord, lod, ring, ChunkBuildReason.FreshLoad);
+
+        /// <summary>Request a build with its reason captured in the same generation token.</summary>
+        public void Request(ChunkCoord coord, int lod, ChunkRing ring, ChunkBuildReason reason)
         {
             long gen = _nextGen++;
-            _current[coord] = new Slot { Gen = gen, Lod = lod, Ring = ring, Ready = false };
+            _current[coord] = new Slot { Gen = gen, Lod = lod, Ring = ring, Reason = reason, Ready = false };
             _ready.Remove(coord);   // an earlier ready build for this coord is superseded by the newer request
 
-            Func<ChunkCoord, int, ChunkRing, T> build = _build;
+            Func<ChunkCoord, int, ChunkRing, ChunkBuildReason, T> build = _build;
             ConcurrentQueue<Completion> done = _done;
             _dispatcher.Schedule(() =>
             {
                 T payload = default!;
                 Exception? error = null;
-                try { payload = build(coord, lod, ring); }
+                try { payload = build(coord, lod, ring, reason); }
                 catch (Exception e) { error = e; }
-                done.Enqueue(new Completion(coord, lod, ring, gen, payload, error));
+                done.Enqueue(new Completion(coord, lod, ring, reason, gen, payload, error));
             });
         }
 
         /// <summary>Discard any outstanding or ready build for <paramref name="coord"/> (the chunk left the ring). The
         /// running body, if any, still finishes on its worker thread, but its result is dropped at <see cref="Pump"/>
-        /// because the generation no longer matches. Idempotent. A later <see cref="Request"/> for the same coord
+        /// because the generation no longer matches. Idempotent. A later <c>Request</c> for the same coord
         /// builds again (a fresh generation), so a cancelled chunk that re-enters the ring is not stuck.</summary>
         public void Cancel(ChunkCoord coord)
         {
@@ -180,7 +195,7 @@ namespace KhaozEngine.Terrain
 
                 s.Ready = true;
                 _current[c.Coord] = s;
-                _ready[c.Coord] = new ChunkBuild<T>(c.Coord, c.Lod, c.Ring, c.Payload, c.Gen);
+                _ready[c.Coord] = new ChunkBuild<T>(c.Coord, c.Lod, c.Ring, c.Reason, c.Payload, c.Gen);
             }
         }
 

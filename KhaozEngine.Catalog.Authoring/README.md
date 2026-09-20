@@ -517,6 +517,125 @@ Engine package versions and published version numbers are not migration history.
 many publishes happened, not which upgrades ran, and a convention over version notes cannot tell "applied,
 then tuned back" from "never applied".
 
+## Upgrade definitions and the runner
+
+A game build registers a new content type or needs new rows. A fresh install seeds the current bundle and
+works. An existing catalog still holds the older content, the strict runtime load refuses it correctly and
+fail closed, and the host exits before it opens a socket. The lifecycle here is what turns that into an
+ordinary step: versioned upgrade definitions shipped with the application, applied before the strict load,
+with durable history in the ledger above.
+
+**The engine owns the orchestration and a game owns only its definitions.** There is no game noun and no game
+content anywhere in this package.
+
+`ContentUpgradeDefinition` is a stable id, an `Order`, an operator-readable description, and a PLANNER. The
+id is the ledger's primary key, so it is stable forever and never reused: renaming one reruns it against every
+catalog in the field. `ContentUpgradeSet` is what a build ships, ordered ascending and validated whole at
+construction, because two definitions under one id would have the ledger record one and skip the other
+forever.
+
+A planner is a pure function of `ContentUpgradeContext`, which carries the baseline version number, that
+version exported as a whole `ContentBundle`, and the frozen registry. It performs no I/O and returns one of
+three shapes:
+
+| Shape | Built with | What the runner does |
+|---|---|---|
+| Changes | `ContentUpgradePlan.Changes(edits, changeLines)` | Publishes the edits as ONE version stamped with the definition's id. |
+| Already satisfied | `ContentUpgradePlan.AlreadySatisfied(reason)` | Records the id as `Adopted`. No version is published. |
+| Refused | `ContentUpgradePlan.Refused(reason)` | Stops the run. Nothing is changed by that definition. |
+
+An empty edit list under `Changes` is an `ArgumentException`, because a planner with nothing to do is saying
+one of the other two.
+
+### The three rules a planner follows
+
+1. **Detect by identity, never by value.** A row present under the committed id and the committed key is
+   present whatever its fields hold, because those fields may be operator tuning an upgrade has no business
+   reverting.
+2. **A value patch names the old shipped default it replaces.** A field already holding the new value is
+   satisfied, a field holding the named old default is patched, and a field holding anything else belongs to
+   an operator and is left exactly as it is.
+3. **A partial state is refused rather than completed.** Completing the remainder guesses which of the
+   existing rows an operator owns, and that guess is unrecoverable once it publishes.
+
+`ContentUpgradeChecks` and `ContentUpgradePlanBuilder` are those rules as code, generic over the types and
+keys a caller passes. The checks are the ones the first hand-written catalog upgrade command proved: the
+committed target bundle agrees with this build's registry, every baseline type is schema compatible with the
+target, an identity is absent or present under BOTH the same id and the same key (anything else is a
+conflict), and plain allocation will issue exactly the committed ids, contiguously from the type's current
+highest row id. A type with id families is refused outright, because a family allocates from aligned blocks
+and nothing here can prove which id a member would be issued.
+
+Every check ANSWERS a refusal string rather than throwing, because the run reports catalog state to an
+operator and a stack trace is not an instruction. A planner that throws `InvalidDataException`,
+`ContentAuthoringException` or `ArgumentException` is still reported as a refusal, which is the shape a
+hand-written check already has.
+
+```csharp
+var definition = new ContentUpgradeDefinition(
+    id: "harvest-profiles",
+    order: 4,
+    description: "adds the harvest profile type's rows",
+    plan: context => new ContentUpgradePlanBuilder(context, ShippedBundle)
+        .AddRows([new ContentUpgradeIdentity(harvestProfile, new ContentKey("cow"))])
+        .RetireRow(monsterDrop, new ContentKey("cow"), ContentRetirePolicy.Placeholder)
+        .Build());
+
+ContentUpgradeReport report = await ContentUpgradeRunner.RunAsync(
+    store, registry, new ContentUpgradeSet(definition),
+    new ContentUpgradeOptions(ContentUpgradeMode.Apply, actor, operatorId, serverBuild, clientBuild));
+```
+
+### What the runner does, in order
+
+1. A store implementing no `IContentUpgradeLedger` is `Unsupported`. No history means an upgrade reapplies
+   its defaults over an operator's values on the next run.
+2. No active version is `NoCatalog`. **The runner never seeds.** It is a SUCCESS, and a host that seeds its
+   bundle calls `ContentUpgradeRunner.RecordBaselineAsync` straight after, which records every shipped
+   definition as `Baseline`. A crash between the two is safe: the next run finds each definition satisfied and
+   records it as `Adopted` instead.
+3. A ledger id this build does not ship is `CatalogAheadOfBuild`, with nothing changed.
+4. Pending means shipped and not in the ledger. None pending is `UpToDate` and writes **nothing**: no draft,
+   no version, no audit row, no ledger row.
+5. An open draft carrying the runner's own actor and a note of `content upgrade <id>` naming a pending
+   upgrade is an interrupted run. Its freeze is cleared and it is discarded, because a frozen draft refuses
+   every later edit and every later discard and a catalog in that state is wedged. Any other open draft is
+   operator work: `OperatorDraftOpen`, draft untouched.
+6. A pin on another version is `PinnedElsewhere`. A pin on the active version does not block the publish, the
+   pin is never moved, and the report carries a `PinHeld` diagnostic naming the version to repin to.
+7. A supplied `ExpectedVersion` that is not the active version is `BaselineMoved`.
+8. Each pending definition runs in ascending order and publishes as its OWN version, so history shows each
+   upgrade separately and an interruption between two of them resumes at the second. The planner is handed a
+   bundle exported at the version active right then, so the second definition sees the first one's result.
+   The minimum builds rise to at least the running build's ordinals and never fall below the baseline's.
+9. After ANY publish failure the run discards its own draft and then READS the ledger. A row means the
+   upgrade landed, here or in a concurrent runner, and the run continues rather than publishing it twice. An
+   exception thrown after the commit point and a refusal before it look identical from outside, and only the
+   ledger tells them apart.
+10. `Preview` writes nothing. It plans the first pending definition exactly and lists the rest as pending,
+    because a later plan depends on the published result of an earlier one.
+
+Every refusal carries a stable `KECU` code beside a message naming the catalog, the upgrade id and the next
+action, and `ContentUpgradeReport.WriteTo` renders every line through `ContentBoot.LinePrefix`.
+`ContentUpgradeReport.ExitCode` is 0 on a success and `ContentBootResult.ContentFailureExitCode` otherwise.
+
+Contention with a second runner is waited out rather than reported. Two replicas booting together is an
+ordinary deployment and a boot that lost a race is a real outage, so a run stands off while another publish
+holds the one draft and replans when it is free. The ledger's primary key is what makes standing off safe: an
+upgrade that did land cannot be published a second time.
+
+### Host integration
+
+- **Local arm.** Open under `AutoCreate`. Seed and call `RecordBaselineAsync` when the report is `NoCatalog`,
+  otherwise run `Apply`, then perform the strict load. A failed report stops the host with the report text and
+  its exit code.
+- **Hosted arm.** A dependent server never upgrades implicitly. A deploy step runs the game's upgrade command
+  in `Preview`, then in `Apply` with `ExpectedVersion` set to the version it previewed, before the server
+  starts. A server booting against a catalog with pending upgrades refuses with the pending ids and the
+  command to run.
+- **Solo client.** A host that fails before listening hands its report to the client, which shows it on screen
+  instead of retrying a join that cannot succeed. The launching mechanism is game owned.
+
 ## The bundle
 
 `ContentBundle` is the whole catalog as one document: a format version, the type list with their schemas,

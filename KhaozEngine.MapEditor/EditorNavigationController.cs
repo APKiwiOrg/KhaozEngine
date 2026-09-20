@@ -155,10 +155,27 @@ internal sealed class EditorNavigationController
     void Orbit(Vector2 delta)
     {
         if (delta == Vector2.Zero || Pivot is not Vector3 pivot) return;
-        float distance = ValidDistance(Vector3.Distance(_camera.Position, pivot), InitialOrbitDistance);
-        _camera.Yaw -= delta.X * OrbitSpeed;
-        _camera.Pitch -= delta.Y * OrbitSpeed;
-        _camera.Position = pivot - _camera.Forward * distance;
+        Vector3 offset = _camera.Position - pivot;
+        if (!IsFinite(offset) || offset.LengthSquared() <= 1e-12f)
+            offset = -_camera.Forward * InitialOrbitDistance;
+
+        float yawDelta = -delta.X * OrbitSpeed;
+        if (!float.IsFinite(yawDelta)) yawDelta = 0f;
+        float oldPitch = _camera.Pitch;
+        float requestedPitchDelta = -delta.Y * OrbitSpeed;
+        if (!float.IsFinite(requestedPitchDelta)) requestedPitchDelta = 0f;
+        _camera.Yaw += yawDelta;
+        _camera.Pitch += requestedPitchDelta;
+        float pitchDelta = _camera.Pitch - oldPitch;
+
+        if (yawDelta != 0f)
+            offset = Vector3.Transform(offset, Quaternion.CreateFromAxisAngle(Vector3.UnitY, yawDelta));
+        if (pitchDelta != 0f)
+        {
+            Vector3 right = SafeNormalize(Vector3.Cross(_camera.Forward, Vector3.UnitY), -Vector3.UnitX);
+            offset = Vector3.Transform(offset, Quaternion.CreateFromAxisAngle(right, pitchDelta));
+        }
+        if (IsFinite(offset)) _camera.Position = pivot + offset;
     }
 
     void Pan(Vector2 delta, int viewportHeight)

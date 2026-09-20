@@ -28,6 +28,23 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
+        public void OrbitTinyDeltaRotatesExistingEyeOffsetWithoutJumping()
+        {
+            var camera = Camera();
+            var navigation = new EditorNavigationController(camera);
+            var pivot = new Vector3(3f, 0f, 7f);
+            Vector3 eyeAtPress = camera.Position;
+            float distanceAtPress = Vector3.Distance(eyeAtPress, pivot);
+            navigation.Update(Frame(MouseButton.Middle, down: true), true, pivot, 0.016f);
+
+            navigation.Update(Frame(MouseButton.Middle, down: true, delta: new Vector2(0.001f, -0.001f)),
+                true, new Vector3(90f, 0f, 90f), 0.016f);
+
+            Assert.True(Vector3.Distance(eyeAtPress, camera.Position) < 0.001f);
+            AssertNear(distanceAtPress, Vector3.Distance(camera.Position, pivot), 0.0001f);
+        }
+
+        [Fact]
         public void ShiftMiddleCapturesPanModeAtPress()
         {
             var camera = Camera();

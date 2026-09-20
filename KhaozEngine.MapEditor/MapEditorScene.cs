@@ -783,6 +783,7 @@ public partial class MapEditorScene : GameScene, IGameScene3D
             _statusText = "Bookmark " + slot.ToString(CultureInfo.InvariantCulture) + " is empty";
             return;
         }
+        CancelNavigation();
         _camera.Position = b.Position;
         _camera.Yaw = b.Yaw;
         _camera.Pitch = b.Pitch;

@@ -61,6 +61,37 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
+        public void BookmarkRecallCancelsHeldNavigationUntilFreshPress()
+        {
+            (NavigationScene scene, SceneManager manager, Pointer pointer) = PushScene();
+            Vector2 viewportPoint = new(480f, 270f);
+            Vector3 storedPosition = scene.Camera.Position;
+            float storedYaw = scene.Camera.Yaw;
+            float storedPitch = scene.Camera.Pitch;
+            Step(manager, pointer, Frame(viewportPoint,
+                keysDown: new[] { Key.LeftShift, Key.D1 }, pressedKeys: new[] { Key.D1 }));
+
+            scene.Camera.Position = new Vector3(20f, 15f, -10f);
+            Step(manager, pointer, Frame(viewportPoint, new[] { MouseButton.Middle }));
+            Step(manager, pointer, Frame(viewportPoint, new[] { MouseButton.Middle },
+                delta: new Vector2(20f, 0f), keysDown: new[] { Key.D1 }, pressedKeys: new[] { Key.D1 }));
+            Assert.Equal(storedPosition, scene.Camera.Position);
+            Assert.Equal(storedYaw, scene.Camera.Yaw);
+            Assert.Equal(storedPitch, scene.Camera.Pitch);
+
+            Step(manager, pointer, Frame(viewportPoint, new[] { MouseButton.Middle },
+                delta: new Vector2(50f, 0f)));
+            Assert.Equal(storedPosition, scene.Camera.Position);
+            Assert.Equal(storedYaw, scene.Camera.Yaw);
+            Assert.Equal(storedPitch, scene.Camera.Pitch);
+
+            Step(manager, pointer, Frame(viewportPoint));
+            Step(manager, pointer, Frame(viewportPoint, new[] { MouseButton.Middle },
+                delta: new Vector2(20f, 0f)));
+            Assert.NotEqual(storedPosition, scene.Camera.Position);
+        }
+
+        [Fact]
         public void FocusLossCancelsSceneNavigation()
         {
             (NavigationScene scene, SceneManager manager, Pointer pointer) = PushScene();

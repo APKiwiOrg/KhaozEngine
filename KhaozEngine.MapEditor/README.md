@@ -124,9 +124,10 @@ See `KhaozEngine.Showcase/RoomMapEditor.cs` for a worked example (`RoomMapEditor
 The viewport uses a pivot-based editor camera. Middle drag orbits around the terrain point captured when the
 button is pressed. Shift+middle captures pan instead, and the chosen mode stays fixed until release. A terrain
 miss reuses the last pivot or starts 25 metres ahead of the camera. The wheel dollies toward or away from the
-pivot between 0.5 and 100000 metres without changing fly speed. Hold right mouse to look and use WASD plus E/Q
-to fly at the independently configured fly speed. Movement keys do nothing until a right-button press acquires
-the viewport. Navigation cannot start over editor chrome or while a field or modal owns input, and a captured
+pivot between 0.5 and 100000 metres. Hold right mouse to look and use WASD plus E/Q to fly, with Shift to sprint.
+While right mouse is held the wheel retunes the fly speed instead of dollying: each notch scales it by 1.2 inside
+the 0.5 to 200 settings range, the new value is persisted, and the status strip reports it. Movement keys do
+nothing until a right-button press acquires the viewport. Navigation cannot start over editor chrome or while a field or modal owns input, and a captured
 gesture suppresses tool pointer input through its release frame. Press unmodified F to frame the current viewport
 selection. F does nothing for an empty or outline-only selection and remains text input while a field is focused.
 
@@ -213,7 +214,7 @@ The rows, and what each one drives:
   one thing this cannot grow live (`EditorWindowRadius` is read at open time), so it says so in the status
   strip rather than under-loading in silence. Editor view only, it never touches the document.
 - **Navigation / Fly speed** - world units per second while right mouse owns the viewport, from 0.5 to 200.
-  This value is persisted independently from wheel dolly distance, so scrolling never changes flight speed.
+  Scrolling while right mouse flies changes the same value. Scrolling outside a fly gesture only dollies.
 - **Sky / Sky preset** - `Day` (the default), `Sunset`, `Night`, `Starfield`, via
   `Render3D.EnvironmentPresets`. Picking one resets the sun and lighting sliders to that preset's own values,
   so a pick shows that preset rather than the previous one's sliders carried onto a new palette.
@@ -677,7 +678,11 @@ of its group. A renamable element's row is polled through the same live-key clos
 **Hidden but still selectable in the outline.** A hidden element is neither drawn nor pickable from the
 viewport: `EditorPicking.Pick` and `OverlayPicking.Pick` both take an optional visibility filter, wired to
 `EditorToolController.IsVisible` (which the scene points at `EditorVisibility.IsElementVisible`), that skips
-it. But it stays exactly where it was in the outline tree, since the outline is rebuilt straight from the
+it. A hidden prop category (Trees, Rocks) filters placements through a second, kit-keyed filter,
+`EditorToolController.PlacementKindVisible`, which the pick reads from the placement it already holds. Both
+filters run once per element inside the pick loop, so both must be constant-time. A filter that searches the
+document per call makes one click quadratic: that cost about 510 ms per click on a 17,281-placement island
+before the kit-keyed filter replaced an id lookup. But a hidden element stays exactly where it was in the outline tree, since the outline is rebuilt straight from the
 document and visibility never touches the document. Selecting it from the outline still opens its
 inspector, Visible row included, so hiding something never blocks un-hiding it.
 
@@ -689,11 +694,23 @@ the tree always shows what is actually selected instead of drifting out of sync 
 `MapEditorScene.SyncOutlineSelection` resolves the live `EditorSelection` to its `TreeNode` via
 `TreeView.FindByTag` (matching on `OutlineRef` kind/id value equality, so a new `SelectionKind` gets this for
 free the day its outline nodes start carrying an `OutlineRef` tag), sets `TreeView.Selected` to it, and calls
-`TreeView.ScrollTo` to bring it into view. It runs from `OnSelectionChanged` (a viewport pick or an outline
+`TreeView.ScrollTo` to bring it into view. A placement resolves through `PlacementOutline.Resolve` instead (see
+Placement groups below), which answers with the kit group row while that group is collapsed. It runs from `OnSelectionChanged` (a viewport pick or an outline
 tap) and again at the end of every `RebuildOutline`, since a rebuild replaces every `TreeNode` wholesale and
 would otherwise orphan the previous highlight against a node no longer reachable from `Roots` - this is what
 fixes the highlight dropping on every document edit. An outline-originated selection resolves back to the
 same node it already set, so the re-set and `ScrollTo` are harmless no-ops, not a feedback loop.
+
+### Placement groups
+
+The Placements branch holds one row per kit id, labelled with its count ("grass (5524)"), and the placements of
+that kit sit beneath it labelled by id. `PlacementOutline` builds it. A baked scatter leaves thousands of rows of a
+few kits in the document, and a flat list buried every other outline category. Groups sort by kit id. A group of
+more than `PlacementOutline.AutoExpandLimit` (12) rows starts collapsed and a smaller hand-placed one starts open.
+A toggle away from that default is remembered across the rebuild every document edit triggers, while a group left
+at its default keeps following its size. Picking a placement whose group is collapsed highlights the group row
+and leaves it collapsed, so a viewport click never unrolls thousands of rows. A tap anywhere on a group row
+toggles it, not only its caret, and leaves the selection alone.
 
 Mid-rename, the highlight stays glued to the row being renamed: each keystroke executes a rename command
 that rebuilds the outline before the actual re-select onto the new key fires (that re-select is deferred

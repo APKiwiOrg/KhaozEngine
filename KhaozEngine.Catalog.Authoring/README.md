@@ -618,21 +618,31 @@ ContentUpgradeReport report = await ContentUpgradeRunner.RunAsync(
 3. A ledger id this build does not ship is `CatalogAheadOfBuild`, with nothing changed.
 4. Pending means shipped and not in the ledger. None pending is `UpToDate` and writes **nothing**: no draft,
    no version, no audit row, no ledger row.
-5. An open draft carrying the runner's own actor and a note of `content upgrade <id>` naming a pending
-   upgrade is an interrupted run. Its freeze is cleared and it is discarded, because a frozen draft refuses
-   every later edit and every later discard and a catalog in that state is wedged. Any other open draft is
-   operator work: `OperatorDraftOpen`, draft untouched.
+5. An open draft is the runner's OWN only when three things hold together: the actor matches, the note is
+   `content upgrade <id>` naming a pending upgrade, and the draft's expanded edits are exactly what a fresh
+   plan of that definition produces against the current active version. The actor and the note alone are not
+   proof, because both stores keep the standing note when a writer passes none and neither rewrites the
+   identity that opened the draft, so an operator's edit lands under both. Such a draft is PUBLISHED as it
+   stands. Its freeze is never cleared and it is never discarded first: a marker naming the active version is
+   a live publish or a dead one and nothing on the seam tells them apart, and a publish is the store's own
+   recovery for a dead one. Any other open draft is operator work: `OperatorDraftOpen`, draft untouched. The
+   publish pre-flight asks the same question, so a draft that appears after this step is answered the same
+   way, and only another runner's is waited out.
 6. A pin on another version is `PinnedElsewhere`. A pin on the active version does not block the publish, the
    pin is never moved, and the report carries a `PinHeld` diagnostic naming the version to repin to.
-7. A supplied `ExpectedVersion` that is not the active version is `BaselineMoved`.
+7. A supplied `ExpectedVersion` that is not the active version is `BaselineMoved`. It is checked again at
+   EVERY later re-read of the active version, so a run that stood off and came back to a version a rival left
+   stops rather than publishing onto a baseline nobody previewed. Only a version this run published itself is
+   not a move.
 8. Each pending definition runs in ascending order and publishes as its OWN version, so history shows each
    upgrade separately and an interruption between two of them resumes at the second. The planner is handed a
    bundle exported at the version active right then, so the second definition sees the first one's result.
    The minimum builds rise to at least the running build's ordinals and never fall below the baseline's.
-9. After ANY publish failure the run discards its own draft and then READS the ledger. A row means the
-   upgrade landed, here or in a concurrent runner, and the run continues rather than publishing it twice. An
-   exception thrown after the commit point and a refusal before it look identical from outside, and only the
-   ledger tells them apart.
+9. After ANY publish failure the run READS the ledger and reports the disposition the row holds, which is
+   `Adopted` when a rival found the catalog already satisfied and published no version at all. It discards
+   its own draft only while that draft still passes step 5, and a `publish-in-progress` refusal means a rival
+   is live, so the draft is left alone and the run stands off. An exception thrown after the commit point and
+   a refusal before it look identical from outside, and only the ledger tells them apart.
 10. `Preview` writes nothing. It plans the first pending definition exactly and lists the rest as pending,
     because a later plan depends on the published result of an earlier one.
 
@@ -643,7 +653,14 @@ action, and `ContentUpgradeReport.WriteTo` renders every line through `ContentBo
 Contention with a second runner is waited out rather than reported. Two replicas booting together is an
 ordinary deployment and a boot that lost a race is a real outage, so a run stands off while another publish
 holds the one draft and replans when it is free. The ledger's primary key is what makes standing off safe: an
-upgrade that did land cannot be published a second time.
+upgrade that did land cannot be published a second time, and carried ids make two runners' plans for one
+definition identical so the commit's version confirmation lets exactly one win.
+
+The patience is spent on a catalog that is NOT MOVING rather than on a clock. Every wait reads the ledger,
+the active version and the open draft, and a rival that moved any of them buys the attempt count back, so a
+loaded machine cannot turn a correct run into a failure. A provider fault counts as contention only when the
+provider calls it transient, so a permissions or connectivity failure costs one attempt and is reported as
+`KECU0009` naming the upgrade, the operation and the next step.
 
 ### Host integration
 

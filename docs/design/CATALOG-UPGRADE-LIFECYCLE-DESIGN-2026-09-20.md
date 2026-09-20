@@ -142,18 +142,33 @@ ordinals.
    `CatalogAheadOfBuild`, nothing changed.
 4. Pending means shipped and not in the ledger. None pending gives `UpToDate` with zero writes. No draft, no
    version, no audit row.
-5. An open draft that the upgrade actor created for a pending upgrade is an interrupted run. The runner clears
-   the freeze, discards it and continues. Any other open draft is operator work: outcome `OperatorDraftOpen`,
-   draft untouched.
+5. An open draft is the runner's own only when the actor matches, the note names a pending upgrade AND the
+   draft's expanded edits are exactly what a fresh plan of that definition produces against the current active
+   version. The actor and the note alone prove nothing: both stores keep the standing note when a writer
+   passes none and neither rewrites the identity that opened a draft, so an operator's noteless edit lands
+   under both. A draft that IS the runner's own is published as it stands, with the stamp, through the normal
+   publish path. Its freeze is never cleared and it is never discarded first, because a marker naming the
+   active version is a live publish or a dead one and nothing in the seam tells them apart, while a publish is
+   the store's own recovery for a dead one. Carried ids make two runners' plans for one definition identical,
+   so the commit's version confirmation lets exactly one win and the loser resolves through the ledger. Any
+   other open draft is operator work: outcome `OperatorDraftOpen`, draft untouched. The publish pre-flight
+   asks the same question, so a draft that appears after this step is answered the same way and only another
+   runner's is waited out.
 6. A pin on another version gives `PinnedElsewhere`. A pin on the active version does not block the publish.
    The pin is never moved, and the report carries a `PinHeld` diagnostic naming the version to repin to.
 7. A supplied expected version that differs from the active version gives `BaselineMoved`.
 8. Each pending definition runs in ascending order and publishes as its own version, so immutable history
    shows each upgrade separately and an interruption between two upgrades resumes at the second. The minimum
    builds rise to at least the running build and never fall.
-9. A failed publish discards the runner's own draft and re-reads the ledger. If a concurrent runner applied the
-   same upgrade the run continues. An exception after the commit point is resolved the same way, by reading
-   the ledger rather than assuming.
+9. A failed publish re-reads the ledger and reports the disposition the row actually holds, so a rival's
+   `adopted` row is reported as adopted rather than as published at a version. It discards its own draft only
+   while that draft still passes step 5, and a `publish-in-progress` refusal means a rival is live, so the
+   draft is left alone and the run stands off. An exception after the commit point is resolved the same way,
+   by reading the ledger rather than assuming. Every re-read of the active version re-checks a supplied
+   expected version: a version that is neither the expected one nor one this run published is `BaselineMoved`
+   with nothing further changed. The stand-off gives up only when the ledger, the active version and the open
+   draft are all unchanged across a whole attempt budget, so a loaded machine cannot turn a correct run into a
+   failure.
 10. `Preview` writes nothing. It plans the first pending definition exactly and lists the rest as pending,
     because a later plan depends on the published result of an earlier one.
 

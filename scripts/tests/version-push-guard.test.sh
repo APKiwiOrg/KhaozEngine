@@ -58,9 +58,10 @@ new_repo() {
   chmod +x scripts/check-doc-versions.sh
   git config core.hooksPath .githooks
   printf '<Project><PropertyGroup><KhaozEngineVersion>%s</KhaozEngineVersion></PropertyGroup></Project>\n' "$_ver" > Directory.Build.props
-  mkdir -p src docs
+  mkdir -p src docs tools/kit
   echo 'shipped' > src/Engine.cs
   echo 'notes' > docs/NOTES.md
+  echo '{}' > tools/kit/package-lock.json
   git add -A
   git commit --quiet -m "init"
   git remote add origin "$_root/origin.git"
@@ -94,6 +95,16 @@ git push --quiet origin v1.0.0 2>/dev/null
 echo 'more notes' >> docs/NOTES.md
 git commit --quiet -am "docs: explain the thing"
 check "documentation rides a released version" allowed "$(try_push main)"
+
+# --- 2b. main past the tag with a dev-tool dependency bump: ALLOWED ---------------------------------
+# The shape of the dependabot fix that found this carve-out: nothing under tools/ is packable, so a
+# lockfile there cannot reach the version it would otherwise be refused for failing to bump.
+w=$(new_repo 1.0.0); cd "$w"
+git tag -a v1.0.0 -m "release(1.0.0): first" >/dev/null 2>&1
+git push --quiet origin v1.0.0 2>/dev/null
+echo '{"sharp":"0.35.4"}' > tools/kit/package-lock.json
+git commit --quiet -am "deps: patch a dev tool's dependency"
+check "a dev-tool dependency bump rides a release" allowed "$(try_push main)"
 
 # --- 3. main sitting exactly at the tag: ALLOWED ----------------------------------------------------
 w=$(new_repo 1.0.0); cd "$w"

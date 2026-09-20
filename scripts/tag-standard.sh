@@ -100,10 +100,17 @@ tag_release_window() {
 # would be refused for failing to bump a version it is forbidden to bump, and a guard that cries wolf is
 # a guard people learn to pass --no-verify to. Markdown is excluded even though package READMEs are
 # packed: a README edit changes package BYTES but not package BEHAVIOUR, and the same rule says it rides.
+#
+# tools/ is carved out on evidence rather than by category, and the first use of this guard is what
+# found it: a dependabot bump to tools/kit-bake's npm lockfile would have been refused for not bumping
+# a version that lockfile cannot reach. Every csproj under tools/ carries IsPackable=false, no packable
+# project takes a ProjectReference on one, and the `tools/` path that DOES appear in a nupkg is
+# KhaozEngine.Content's PackagePath for its own validator output, not this directory. If a packable
+# project ever moves under tools/, this line is the one to revisit.
 tag_version_bearing() {
   _vb_from=$1; _vb_to=$2
   git diff --name-only "$_vb_from" "$_vb_to" -- \
-    ':(exclude)docs/**' ':(exclude)*.md' ':(exclude)scripts/**' \
+    ':(exclude)docs/**' ':(exclude)*.md' ':(exclude)scripts/**' ':(exclude)tools/**' \
     ':(exclude).github/**' ':(exclude).githooks/**' ':(exclude).claude/**' ':(exclude).codex/**' \
     ':(exclude).filesize-baseline' 2>/dev/null | grep -q .
 }

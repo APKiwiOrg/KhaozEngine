@@ -13,6 +13,22 @@ namespace KhaozEngine.Catalog.Authoring;
 /// under one order would run in an order that depends on the list the caller happened to build, which is the
 /// kind of defect that only shows up on the one catalog that is old enough to need both.
 /// </para>
+/// <para>
+/// <b>An order is only a running order, and the IDENTITY is the id.</b> So two shapes a stricter check would
+/// refuse are allowed, and each one is reported as an informational diagnostic rather than a refusal:
+/// </para>
+/// <list type="bullet">
+/// <item>
+/// A definition whose <see cref="ContentUpgradeDefinition.Order"/> differs from the order the ledger
+/// recorded it under (<see cref="ContentUpgradeCodes.UpgradeOrderMoved"/>). The ledger holds the id, so the
+/// catalog already carries the upgrade and it never runs again.
+/// </item>
+/// <item>
+/// A PENDING definition ordered below one the catalog already holds
+/// (<see cref="ContentUpgradeCodes.PendingBelowApplied"/>), which is what two feature branches merging
+/// produces. It has not run, so it runs now, in its own order, against the catalog as it stands.
+/// </item>
+/// </list>
 /// </summary>
 public sealed class ContentUpgradeSet
 {

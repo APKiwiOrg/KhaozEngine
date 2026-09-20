@@ -78,4 +78,16 @@ public static class ContentUpgradeCodes
 
     /// <summary>A preview wrote nothing. The line names the command that applies it.</summary>
     public const string PreviewOnly = "KECU0013";
+
+    /// <summary>
+    /// INFORMATIONAL. A shipped definition's order differs from the order the ledger recorded it under. The
+    /// id is the identity, so the catalog holds the upgrade and it will not run again.
+    /// </summary>
+    public const string UpgradeOrderMoved = "KECU0014";
+
+    /// <summary>
+    /// INFORMATIONAL. A pending definition is ordered below one the catalog already holds, which is what two
+    /// feature branches merging produces. It runs now, in its own order.
+    /// </summary>
+    public const string PendingBelowApplied = "KECU0015";
 }

@@ -184,6 +184,60 @@ public sealed class ContentUpgradeRunnerTests
         Assert.Equal(3, report.ActiveVersionAfter);
     }
 
+    /// <summary>
+    /// A definition whose ORDER moved since it ran is allowed. The id is the identity, so the catalog holds
+    /// it and it never runs again, and the run says so rather than refusing a catalog that is correct.
+    /// </summary>
+    [Fact]
+    public async Task ADefinitionWhoseOrderMovedSinceItRanIsAllowedAndSaysSo()
+    {
+        using var harness = new UpgradeHarness();
+        await harness.SeedOlderCatalogAsync();
+        await harness.Store.RecordUpgradeAsync(
+            new ContentUpgradeStamp(UpgradeHarness.FirstId, 7),
+            ContentUpgradeDisposition.Adopted,
+            UpgradeFixtures.Actor,
+            UpgradeFixtures.Operator);
+
+        ContentUpgradeReport report = await ContentUpgradeRunner.RunAsync(
+            harness.Store, harness.Registry, harness.Set, UpgradeFixtures.Apply());
+
+        Assert.Equal(ContentUpgradeOutcome.Applied, report.Outcome);
+        Assert.Contains(
+            report.Diagnostics,
+            diagnostic => string.Equals(
+                diagnostic.Code, ContentUpgradeCodes.UpgradeOrderMoved, System.StringComparison.Ordinal));
+        Assert.Equal(2, (await harness.Store.ListUpgradesAsync()).Count);
+    }
+
+    /// <summary>
+    /// A pending definition ordered BELOW one the catalog already holds is allowed too, which is what two
+    /// feature branches merging produces. It runs now, in its own order, and the run says so.
+    /// </summary>
+    [Fact]
+    public async Task APendingDefinitionOrderedBelowAnAppliedOneIsAllowedAndSaysSo()
+    {
+        using var harness = new UpgradeHarness();
+        await harness.SeedOlderCatalogAsync();
+        await harness.Store.RecordUpgradeAsync(
+            harness.Second.Stamp,
+            ContentUpgradeDisposition.Adopted,
+            UpgradeFixtures.Actor,
+            UpgradeFixtures.Operator);
+
+        ContentUpgradeReport report = await ContentUpgradeRunner.RunAsync(
+            harness.Store, harness.Registry, harness.Set, UpgradeFixtures.Apply());
+
+        Assert.Equal(ContentUpgradeOutcome.Applied, report.Outcome);
+        Assert.Contains(
+            report.Diagnostics,
+            diagnostic => string.Equals(
+                diagnostic.Code,
+                ContentUpgradeCodes.PendingBelowApplied,
+                System.StringComparison.Ordinal));
+        Assert.Equal(2, report.ActiveVersionAfter);
+    }
+
     /// <summary>The LOCAL arm supplies no expected version and upgrades whatever it finds.</summary>
     [Fact]
     public async Task AnApplyWithNoExpectedVersionUpgradesWhateverItFinds()

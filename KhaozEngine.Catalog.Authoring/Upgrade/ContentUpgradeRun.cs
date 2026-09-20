@@ -147,6 +147,10 @@ sealed partial class ContentUpgradeRun
         return new ContentUpgradeReport(outcome, ActiveBefore, Active, [.. _steps], [.. _diagnostics]);
     }
 
+    /// <summary>One diagnostic the run only OBSERVES, which stops nothing and changes no outcome.</summary>
+    /// <param name="diagnostic">The note.</param>
+    internal void Note(ContentUpgradeDiagnostic diagnostic) => _diagnostics.Add(diagnostic);
+
     /// <summary>One diagnostic and then the report, which is what every gate that stops the run returns.</summary>
     /// <param name="outcome">How the run ended.</param>
     /// <param name="code">The stable code.</param>

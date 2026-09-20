@@ -151,6 +151,15 @@ public static partial class ContentUpgradeRunner
 
         // Step 4. Pending means shipped and not in the ledger. None pending writes NOTHING at all.
         List<ContentUpgradeDefinition> pending = Pending(set, held);
+
+        // An order that moved and a pending upgrade ordered below an applied one are both ALLOWED, because
+        // the id is the identity. They are reported so an operator reading the history is not left to guess.
+        IReadOnlyList<ContentUpgradeDiagnostic> notes = ContentUpgradeOrderNotes.For(set, recorded, pending);
+        for (int i = 0; i < notes.Count; i++)
+        {
+            run.Note(notes[i]);
+        }
+
         if (pending.Count == 0)
         {
             return run.Stop(

@@ -543,6 +543,18 @@ catalog in the field. `ContentUpgradeSet` is what a build ships, ordered ascendi
 construction, because two definitions under one id would have the ledger record one and skip the other
 forever.
 
+**The identity is the id and never the order.** An order decides which of two PENDING definitions runs first
+and nothing else, so two shapes that look wrong are allowed and each one only adds an informational
+diagnostic:
+
+| What | Code | Why it is allowed |
+|---|---|---|
+| A shipped definition whose `Order` differs from the order the ledger recorded it under | `KECU0014` | The ledger holds the id, so the catalog already carries the upgrade and it never runs again. |
+| A pending definition ordered below one the catalog already holds | `KECU0015` | Two feature branches merging produces it. The pending one has not run, so it runs now, in its own order, against the catalog as it stands. |
+
+Two definitions sharing an id or an order in ONE set is still an `ArgumentException` at construction, because
+that is a build shipping an ambiguity rather than a catalog carrying a history.
+
 A planner is a pure function of `ContentUpgradeContext`, which carries the baseline version number, that
 version exported as a whole `ContentBundle`, and the frozen registry. It performs no I/O and returns one of
 three shapes:

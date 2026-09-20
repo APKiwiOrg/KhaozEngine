@@ -61,6 +61,66 @@ the object and the migration `catalog-v1-initial`.
 rename and a reassignment are both refused, because either one repoints every row already stored under the old
 pairing.
 
+## Replacing the catalog: `SqlServerCatalogReset`
+
+A game that ships its client content pack inside the client build cuts that pack from a fresh store, so the
+pack is always content version 1. The connect door compares the version NUMBER as well as the manifest hash,
+and the number is inside the hashed manifest, so such a game cannot publish its server store forward to
+version 2. It has to REPLACE the store from its committed bundle on every content release, and
+`ImportBundleAsync` refuses a store that has published anything. `SqlServerCatalogReset` is the way back to an
+importable store.
+
+```csharp
+ContentCatalogResetResult reset = await SqlServerCatalogReset.ResetAsync(
+    migrationConnectionString,
+    actor: "release-runner",
+    operatorId: "oid:8f2c",
+    note: "autumn pass",
+    force: false);
+
+Console.WriteLine(reset.Summary);          // one operator line, also filed in the new catalog_audit
+
+var store = new SqlServerContentAuthoringStore(connectionString, registry, packStore);
+await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
+await store.ImportBundleAsync(bundle, "release-runner", "oid:8f2c", "autumn pass");   // version 1 again
+```
+
+It drops every catalog object and recreates the schema from the same embedded DDL the initializer creates
+from, in ONE transaction. Either the catalog is replaced or it is exactly as it stood, which matters because
+a half-dropped catalog refuses the next open outright: the initializer creates only when it counts zero
+catalog tables and validates every object by name otherwise. The drop is driven off the names `sys.tables`
+holds under the same `catalog[_]%` rule the initializer counts with, so a table added to the schema later is
+dropped without anyone having to remember it here.
+
+Drop and recreate rather than `DELETE`, because a delete leaves the `IDENTITY` marks on `catalog_family`,
+`catalog_draft_edit` and `catalog_audit` where they stood, and the next family created after a reimport would
+land above the bundle's ids.
+
+It is a separate type taking its own connection string rather than a member on `IContentAuthoringStore`,
+because a reset is DDL and the everyday authoring path is DML. A production application login should not hold
+DDL at all, so the reset runs under the migration credential and the authoring seam keeps the surface it had.
+
+An open draft is refused with reason `draft-open`, because the reset would destroy unpublished authoring with
+nothing left afterwards that says what it held. Pass `force: true` to take it anyway. A database carrying no
+catalog table, or one at another schema version, is refused with `schema-mismatch` naming the migration.
+
+**The store epoch is NEW.** The recreate mints one, the same as a first create, and that is deliberate: a
+reset store shares no history with the one it replaced, so a durable page stamped against the old epoch must
+not be taken for a page of this one.
+
+**The reset writes one audit row and it is the first row in the new store.** `catalog_audit` is dropped with
+everything else, so the reset cannot record itself in the old one. The table carries no foreign key to
+`catalog_version` and defaults every target column, so a row naming no version is a shape the schema already
+accepts. It holds the action `reset`, the actor, the operator, the note, and `reset.Summary` in
+`before_value`.
+
+**The pack store is NOT touched.** The reset knows nothing about a pack root, and a caller that replaces
+content at the same version number must clear or rebuild its own, because `ContentBoot.ReadManifestAsync`
+trusts the pack pointer it finds without comparing its hash with `catalog_version.server_manifest_hash`. A
+stale pack root under a replaced catalog is served as if it were the new content. `ContentCatalogResetResult`
+carries the server and client manifest hashes that stood, which is the last moment they can be read, for
+exactly that comparison.
+
 ## What the tables hold, and what they do not
 
 A row is TEMPORAL: `catalog_row` carries one row per row VERSION, with `valid_from_version` and a nullable
@@ -115,6 +175,11 @@ family membership survives the import.
 `AutoCreate` needs DDL rights plus `EXECUTE` on `sys.sp_getapplock`. `ValidateOnly` needs only `SELECT` on the
 `sys` catalog views plus the ordinary read and write rights on the fourteen tables, which is what a production
 application login should have.
+
+`SqlServerCatalogReset.ResetAsync` needs DDL rights plus `EXECUTE` on `sys.sp_executesql`, so give it the
+migration credential rather than the application login. It takes no application lock, unlike the schema
+create: it is a maintenance action taken with writers stopped, and the schema modification locks its own drops
+hold already serialize it against a concurrent create or reset inside the database.
 
 ## Testing this backend
 

@@ -15070,6 +15070,57 @@ rewrote one chunk and reused the rest. `ContentRollback` builds a reviewable dra
 version's field values, `ContentDiff` is the field-level comparison, and `ContentBundle` is the lossless
 seeding document, imported into an EMPTY database only.
 
+### Replacing a catalog from its bundle
+
+A game that ships its client content pack inside the client build cuts that pack from a fresh store, so the
+pack is always content version 1. The connect door compares the version NUMBER as well as the manifest hash,
+and the number is inside the hashed manifest, so such a game cannot publish its server store forward to
+version 2. It REPLACES the store from its committed bundle on every content release, and `ImportBundleAsync`
+refuses a store that has published anything. The way back to an importable store is a RESET, one per durable
+provider, `SqliteCatalogReset.ResetAsync` and `SqlServerCatalogReset.ResetAsync`.
+
+```csharp
+ContentCatalogResetResult reset = await SqliteCatalogReset.ResetAsync(
+    migrationConnectionString,                      // DDL rights, not the application role's
+    actor: "release-runner",
+    operatorId: "oid:8f2c",
+    note: "autumn pass",
+    force: false,                                   // true destroys an open draft
+    ct);
+
+logger.Info(reset.Summary);                         // also filed in the new store's catalog_audit
+
+using var store = new SqliteContentAuthoringStore(connectionString, registry, packStore);
+await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate, ct);
+await store.ImportBundleAsync(bundle, "release-runner", "oid:8f2c", "autumn pass", ct);   // version 1 again
+```
+
+Both drop every catalog object and recreate the schema from the same script the initializer creates from, in
+ONE transaction, so either the catalog is replaced or it is exactly as it stood. That is not a nicety: a
+half-dropped catalog refuses the next open outright, because the initializer creates only when it counts zero
+catalog tables and validates every object by name otherwise. Drop and recreate rather than `DELETE`, because a
+delete leaves the identity state on `catalog_family`, `catalog_draft_edit` and `catalog_audit` where it stood
+and the next family id after a reimport would land above the bundle's. The drop is driven off the names the
+database holds under the same rule the initializer counts with, so a table added to the schema later goes with
+the rest.
+
+It is a separate type per provider rather than a member on `IContentAuthoringStore`, because a reset is DDL
+and the everyday authoring path is DML: a production deployment should not give its application role DDL at
+all, so the reset takes the migration credential's own connection string. An open draft is refused with reason
+`draft-open` unless `force` is set, and a database carrying no catalog table or one at another schema version
+is refused with `schema-mismatch`.
+
+`ContentCatalogResetResult` carries what stood (the active version number, its server and client manifest
+hashes, and the counts of versions and row revisions dropped) plus the NEW `store_epoch`. The epoch is fresh
+on purpose: a reset store shares no history with the one it replaced. The result is also the last moment those
+two hashes exist anywhere, because `catalog_version` goes with everything else.
+
+**The pack store is NOT touched by a reset.** A caller that replaces content at the same version number must
+clear or rebuild its own pack root, because `ContentBoot.ReadManifestAsync` trusts the pack pointer it finds
+and checks only the manifest's self-declared version number. Nothing compares that pointer's hash with
+`catalog_version.server_manifest_hash`, so a stale pack root under a replaced catalog is served as if it were
+the new content. The two hashes on the result are what a caller compares against its pack root to decide.
+
 ### The server boot
 
 `ContentBoot.RunAsync` is the whole boot in one call, and it FAILS CLOSED. Each of its twelve refusals comes

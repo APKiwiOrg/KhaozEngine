@@ -41,7 +41,7 @@ namespace KhaozEngine.Render3D.Rendering
             public Vector4 SkyZenith;     // rgb, the reflected sky's zenith colour
             public Vector4 SkySunColor;   // rgb, the reflected sun disc + halo colour
             public Vector4 SkyParams;     // x=sunEnabled, y=sunRadius, z=haloStrength, w=haloFalloff
-            public Vector4 ReflectGlint;  // x=skyReflStrength, y=skyReflSunStrength, z=glintRoughness, w=glintDistantRoughness
+            public Vector4 ReflectGlint;  // x=skyReflStrength, y=skyReflSunStrength * sun opacity, z=glintRoughness, w=glintDistantRoughness
             public Vector4 SwellParams;   // x=amplitude, y=wavelength, z=directionRadians, w=spreadRadians
             public Vector4 SwellShape;    // x=steepness, y=speedScale, z=componentCount, w=seed
             public Vector4 Absorption;    // rgb = per-metre coefficients (all-zero = legacy blend), w unused
@@ -388,7 +388,10 @@ namespace KhaozEngine.Render3D.Rendering
                 SkyZenith = skyZenith,
                 SkySunColor = skySun,
                 SkyParams = new Vector4(sky.SunEnabled ? 1f : 0f, sky.SunRadius, sky.HaloStrength, sky.HaloFalloff),
-                ReflectGlint = new Vector4(settings.SkyReflectionStrength, settings.SkyReflectionSunStrength,
+                // The reflected disc fades with the sky's own (SunColor alpha), so the sea never reflects a sun the sky
+                // has already dissolved.
+                ReflectGlint = new Vector4(settings.SkyReflectionStrength,
+                    settings.SkyReflectionSunStrength * Math.Clamp(sky.SunColor.A, 0f, 1f),
                     settings.GlintRoughness, settings.GlintDistantRoughness),
                 SwellParams = new Vector4(settings.SwellAmplitude, settings.SwellWavelength,
                     GerstnerWaves.DegreesToRadians(settings.SwellDirectionDegrees),

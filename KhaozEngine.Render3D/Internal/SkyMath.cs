@@ -124,9 +124,12 @@ namespace KhaozEngine.Render3D.Internal
         /// <param name="sunRadius">Screen-space (NDC-y units) radius of the solid disc.</param>
         /// <param name="haloStrength">Peak intensity of the soft halo around the disc (0 = disc only).</param>
         /// <param name="haloFalloff">Screen-space (NDC-y units) width of the halo falloff.</param>
+        /// <param name="sunOpacity">How much of the disc + halo is blended in, 0..1 (<see cref="SkySettings.SunColor"/>
+        /// alpha). The blend REPLACES the sky colour, so a body fades by losing weight here, never by darkening
+        /// <paramref name="sunColor"/>, which would paint a dark disc over the sky.</param>
         public static Vector3 Shade(Vector2 ndc, Vector2 sunNdc, bool sunVisible, float aspect,
             Vector3 horizon, Vector3 zenith, Vector3 sunColor,
-            bool sunEnabled, float sunRadius, float haloStrength, float haloFalloff)
+            bool sunEnabled, float sunRadius, float haloStrength, float haloFalloff, float sunOpacity = 1f)
         {
             // Vertical screen gradient: NDC.y in [-1,1] -> [0,1] (bottom -> top), smoothstep for a soft ramp.
             float up = Math.Clamp(ndc.Y * 0.5f + 0.5f, 0f, 1f);
@@ -148,7 +151,7 @@ namespace KhaozEngine.Render3D.Internal
                     float beyond = MathF.Max(0f, d - sunRadius);
                     halo = haloStrength * MathF.Exp(-beyond / haloFalloff);
                 }
-                float sun = Math.Clamp(disc + halo, 0f, 1f);
+                float sun = Math.Clamp(disc + halo, 0f, 1f) * Math.Clamp(sunOpacity, 0f, 1f);
                 col = Vector3.Lerp(col, sunColor, sun);
             }
             return col;

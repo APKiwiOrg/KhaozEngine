@@ -26,7 +26,7 @@ namespace KhaozEngine.Render3D.Rendering
         {
             public Vector4 Horizon;   // rgb gradient at the horizon (bottom)
             public Vector4 Zenith;    // rgb gradient at the zenith (top)
-            public Vector4 SunColor;  // rgb sun disc + halo colour
+            public Vector4 SunColor;  // rgb sun disc + halo colour, a = disc + halo opacity
             public Vector4 SunNdc;    // xy = sun screen NDC, z = sunVisible (1/0), w = aspect (width/height)
             public Vector4 Params;    // x=sunEnabled, y=sunRadius, z=haloStrength, w=haloFalloff
             public Vector4 Res;       // xy = 1/renderWidth, 1/renderHeight
@@ -103,7 +103,7 @@ namespace KhaozEngine.Render3D.Rendering
             {
                 Horizon = new Vector4(horizon.X, horizon.Y, horizon.Z, 0f),
                 Zenith = new Vector4(zenith.X, zenith.Y, zenith.Z, 0f),
-                SunColor = new Vector4(sunCol.X, sunCol.Y, sunCol.Z, 0f),
+                SunColor = sunCol,
                 SunNdc = new Vector4(sunNdc.X, sunNdc.Y, visible ? 1f : 0f, aspect),
                 Params = new Vector4(sky.SunEnabled ? 1f : 0f, sky.SunRadius, sky.HaloStrength, sky.HaloFalloff),
                 Res = new Vector4(invW, invH, 0f, 0f),

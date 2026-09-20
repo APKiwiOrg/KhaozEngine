@@ -81,7 +81,7 @@ void main() {
 layout(set=0, binding=0) uniform Sky {
     vec4 Horizon;     // rgb gradient at the horizon (bottom)
     vec4 Zenith;      // rgb gradient at the zenith (top)
-    vec4 SunColor;    // rgb sun disc + halo colour
+    vec4 SunColor;    // rgb sun disc + halo colour, a = disc + halo opacity (the horizon fade)
     vec4 SunNdc;      // xy = sun screen NDC, z = sunVisible (1/0), w = aspect (width/height)
     vec4 Params;      // x=sunEnabled, y=sunRadius, z=haloStrength, w=haloFalloff
     vec4 Res;         // xy = 1/renderWidth, 1/renderHeight
@@ -107,7 +107,7 @@ void main() {
             float beyond = max(0.0, d - sunRadius);
             halo = haloStrength * exp(-beyond / haloFalloff);
         }
-        float sun = clamp(disc + halo, 0.0, 1.0);
+        float sun = clamp(disc + halo, 0.0, 1.0) * clamp(SunColor.a, 0.0, 1.0);
         col = mix(col, SunColor.rgb, sun);
     }
     oColor = vec4(col, 1.0);   // alpha 1: opaque painted background (consistent with starfield)

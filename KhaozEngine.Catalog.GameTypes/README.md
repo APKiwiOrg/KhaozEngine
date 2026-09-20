@@ -4,9 +4,8 @@ The thirteen game-shaped content types most RPG-shaped worlds re-author from scr
 keys, ordered field schemas, row codecs and one registration call each over `KhaozEngine.Catalog`. GPU-free,
 zero third-party dependencies, part of the `KhaozEngine.Foundation` umbrella.
 
-**All thirteen types are here, eleven of them ship a validator, and `GameContentTypes.Register` puts the
-whole set on a registry in one call.** The cross-type sweep is still only the `KGT1301` to `KGT1307` codes
-it will emit.
+**All thirteen types are here with their schemas, codecs, registration, validators and the cross-type
+sweep.** `GameContentTypes.Register` puts the whole set on a registry in one call.
 
 The engine's own six types (`tag`, `item`, `stat`, `loot_table`, `loot_entry`, `base_socket`) are the shapes
 every catalog needs. These thirteen are the next layer up: the shapes a world with food, equipment, shops,
@@ -106,8 +105,8 @@ construction, which on a server is before a socket is open.
 
 ## `GameContentFindings`
 
-The finding-code table, banded by content type, ascending by type id, a hundred to a band, with 1300 held
-for a cross-type sweep. A code is a stable token a counter, a test and a runbook key on, and it is never
+The finding-code table, banded by content type, ascending by type id, a hundred to a band, with 1300 the
+cross-type sweep's. A code is a stable token a counter, a test and a runbook key on, and it is never
 reused or renumbered, which is why the whole table is written down before the rules that emit the codes.
 The engine folds a game-band finding into `KEC0040` and puts the `KGT` code in the message, so this is what
 an operator reads off a refused publish.
@@ -211,13 +210,58 @@ GameContentTypes.Register(registry, ContentDurationUnit.Ticks, new GameContentOp
         IsNameableStation = value => value is >= 1 and <= 3,
     },
     IsKnownSkill = value => MyGame.Skills.Exists(value),
+    Sweep = new GameContentSweepOptions
+    {
+        MaxLevelKnob = "max_level",
+        MaxChanceKnob = "gathering_max_chance_bp",
+        RequiredKnobs = MyGame.Tuning.EveryKnobThisBuildReads,
+    },
 });
 ```
 
 The per-type `Register` calls stay public. Registering only the types a world actually authors is the
 ordinary case, and a game that wants a validator of its own on one type needs the narrow call.
 
-**The cross-type sweep is not here yet.** `KGT1301` to `KGT1307` are reserved for it and nothing emits them.
+## The cross-type sweep
+
+`GameContentChecks` holds the seven rules no single type can state, because each one reads a row of one type
+against a row of another or against a global knob.
+
+| Code | Rule | Needs |
+| --- | --- | --- |
+| `KGT1301` | a shelf item a player cannot trade | the engine `item` type |
+| `KGT1302` | a node quoting a chance over the global ceiling | `MaxChanceKnob` |
+| `KGT1303` | a node gated on a level over the global cap | `MaxLevelKnob` |
+| `KGT1304` | a recipe gated on a level over the global cap | `MaxLevelKnob` |
+| `KGT1305` | a recipe with no live `recipe_output` row | nothing |
+| `KGT1306` | a tool tier whose item does not carry its family tag | the engine `item` type |
+| `KGT1307` | a knob the build reads with no row in a table that carries the rest | `RequiredKnobs` |
+
+**`GameContentSweepOptions` names the knobs and nothing else.** A tuning row's key is one world's vocabulary,
+so the sweep holds the rules and a game says which rows they read: `MaxLevelKnob`, `MaxChanceKnob` and
+`RequiredKnobs`. **A null name disables that rule and an empty list disables the required-knob rule**, so a
+world with no level cap has no rule to run rather than a rule that refuses everything or passes everything.
+`GameContentSweepOptions.None` is every knob-driven rule off, and the four that read no knob still run.
+
+`KGT1307` is ASYMMETRIC on purpose. A required name with no row is a finding, because the boot would fall
+back to a default the pack does not name, and a row whose name is not required is IGNORED, because a knob a
+newer build writes must not stop an older server loading the pack. It is also gated on the table being
+authored at all: a candidate with no tuning rows makes no claim, and a boot falls back wholesale rather than
+half way.
+
+**The sweep rides ONE registration slot.** The engine takes one `IContentValidator` per type and hands each
+of them the WHOLE candidate, and it offers a game no whole-registry slot of its own: the one pass that is
+not per-type, the item-instances band, is engine code reached through a band registration a game cannot
+join. So a whole-registry check mounted on all thirteen would report every defect thirteen times. It goes on
+the lowest game id, `food`, COMPOSED over that type's own validator, and runs once.
+`GameContentTypes.Register` wires that up, and `GameContentChecks` is public with a `beside` parameter for a
+game registering by hand.
+
+Both rules that read an ITEM row resolve their field positions off the live registry at validation time,
+for the same reason the store's ceiling rule does.
+
+Every knob is read out of the CANDIDATE. Nothing here reads a running process: a sweep that did would pass
+or fail the same pack differently depending on what a server happened to have loaded.
 
 ## Registering by hand
 

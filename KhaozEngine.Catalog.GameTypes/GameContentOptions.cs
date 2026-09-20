@@ -31,4 +31,14 @@ public sealed class GameContentOptions
     /// questions have different answers and one predicate could not serve both.
     /// </remarks>
     public required Func<long, bool> IsKnownSkill { get; init; }
+
+    /// <summary>
+    /// Which of the cross-type sweep's knob-driven rules to run, and the knob NAMES they read.
+    /// </summary>
+    /// <remarks>
+    /// Required like the rest, and <see cref="GameContentSweepOptions.None"/> is the answer for a world with
+    /// no tuning table. A game that left it out would silently lose three rules, which is the same failure
+    /// a missing predicate is.
+    /// </remarks>
+    public required GameContentSweepOptions Sweep { get; init; }
 }

@@ -23,6 +23,15 @@ namespace KhaozEngine.Catalog.GameTypes;
 /// The order is ASCENDING by type id, which is the order the id table declares and the order the engine
 /// walks registrations in.
 /// </para>
+/// <para>
+/// <b>The cross-type sweep rides <c>food</c>'s slot, composed over that type's own validator.</b> The
+/// engine's validation model takes one <see cref="IContentValidator"/> per type and hands each of them the
+/// WHOLE candidate, and it offers a game no whole-registry slot of its own: the one pass that is not
+/// per-type, the item-instances band, is engine code reached through a band registration a game cannot join.
+/// So a cross-type check registered on all thirteen would report every defect thirteen times, and the
+/// answer is one slot, the lowest game id, running once. <see cref="GameContentChecks"/> is public for a
+/// game registering by hand, which mounts it the same way.
+/// </para>
 /// </remarks>
 public static class GameContentTypes
 {
@@ -50,7 +59,10 @@ public static class GameContentTypes
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(options);
 
-        FoodContentType.Register(registry, unit, new FoodContentType.Validator());
+        FoodContentType.Register(
+            registry,
+            unit,
+            new GameContentChecks(registry, options.Sweep, new FoodContentType.Validator()));
         EquipProfileContentType.Register(registry, unit, validator: null);
         EquipStatLineContentType.Register(registry, new EquipStatLineContentType.Validator());
         StoreContentType.Register(registry, new StoreContentType.Validator(registry));

@@ -27,6 +27,10 @@ public class GameContentTypesRegisterTests
             IsNameableStation = value => value is 1 or 2,
         },
         IsKnownSkill = value => value is > 0 and < 100,
+
+        // A world with no tuning table says so rather than leaving the member out, which the compiler would
+        // not let it do anyway. The four rules that read no knob still run.
+        Sweep = GameContentSweepOptions.None,
     };
 
     static ContentTypeRegistry Registered(ContentDurationUnit unit = ContentDurationUnit.Ticks)
@@ -49,7 +53,11 @@ public class GameContentTypesRegisterTests
         Assert.Equal(
             new (ushort Id, string Key, string? Validator)[]
             {
-                (1024, "food", nameof(FoodContentType.Validator)),
+                // The lowest game id carries the cross-type sweep, composed over food's own rules, because
+                // the engine hands every per-type validator the whole candidate and thirteen mountings
+                // would report every cross-type defect thirteen times.
+                (1024, "food", nameof(GameContentChecks)),
+
 
                 // equip_profile carries three durable numbers and no rule a schema does not already make.
                 (1025, "equip_profile", null),

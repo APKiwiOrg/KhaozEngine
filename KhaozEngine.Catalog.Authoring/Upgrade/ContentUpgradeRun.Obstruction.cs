@@ -132,11 +132,11 @@ sealed partial class ContentUpgradeRun
                 : StopForOperatorDraft(definition, standing);
         }
 
-        // Nothing stands in the way now, so another attempt is owed. It still costs budget: a window that
-        // keeps reopening is a livelock rather than progress, and the ceiling is what bounds it.
-        return !standOff.Observe(await ProgressAsync().ConfigureAwait(false))
-            ? Fail(definition, what)
-            : await RetryOrStopAsync(definition).ConfigureAwait(false);
+        // Nothing stands in the way now, so another attempt is owed. It costs budget AND the stand-off's own
+        // wait: a window that keeps reopening is a livelock rather than progress, and two runners retrying
+        // the instant each clears the other's draft spend the whole ceiling in one burst with no gap for
+        // either to get a publish through. The backoff is what turns that burst into turns.
+        return await StandOffAsync(definition, standOff, what).ConfigureAwait(false);
     }
 
     /// <summary>

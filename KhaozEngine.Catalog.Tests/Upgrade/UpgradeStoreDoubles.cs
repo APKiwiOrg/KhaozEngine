@@ -498,6 +498,55 @@ internal sealed class BaseMovesBetweenAttemptsStore(InMemoryContentAuthoringStor
 }
 
 /// <summary>
+/// A store where a RIVAL runner records the upgrade as <see cref="ContentUpgradeDisposition.Adopted"/> while
+/// this run's publish is in flight, and the publish is then refused because the id is already recorded. It
+/// is the one case where the step a run reports and the row the ledger holds could disagree.
+/// </summary>
+/// <param name="inner">The store behind the double.</param>
+/// <param name="stamp">The upgrade the rival records.</param>
+internal sealed class RivalAdoptsDuringPublishStore(
+    InMemoryContentAuthoringStore inner,
+    ContentUpgradeStamp stamp)
+    : ForwardingContentAuthoringStore(inner), IContentUpgradeLedger
+{
+    bool _armed = true;
+
+    /// <inheritdoc />
+    public override async Task<ContentPublishResult> PublishAsync(
+        ContentPublishRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (!_armed)
+        {
+            return await base.PublishAsync(request, cancellationToken);
+        }
+
+        _armed = false;
+        await inner.RecordUpgradeAsync(
+            stamp, ContentUpgradeDisposition.Adopted, "a-rival-runner", "oid:rival", cancellationToken);
+        throw new ContentAuthoringException(
+            "this upgrade id is already recorded in the ledger.",
+            default,
+            0,
+            ContentAuthoringException.UpgradeAlreadyRecordedReason);
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<ContentUpgradeRecord>> ListUpgradesAsync(
+        CancellationToken cancellationToken = default)
+        => inner.ListUpgradesAsync(cancellationToken);
+
+    /// <inheritdoc />
+    public Task RecordUpgradeAsync(
+        ContentUpgradeStamp stamp,
+        ContentUpgradeDisposition disposition,
+        string actor,
+        string operatorId,
+        CancellationToken cancellationToken = default)
+        => inner.RecordUpgradeAsync(stamp, disposition, actor, operatorId, cancellationToken);
+}
+
+/// <summary>
 /// A store whose publish throws AFTER the commit transaction returns, which is the interruption design step 9
 /// exists for: the version is live, the ledger row is written, the draft is deleted, and the caller sees an
 /// exception. A runner that assumed the upgrade did not land would publish it a second time.

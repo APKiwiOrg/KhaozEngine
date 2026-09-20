@@ -115,11 +115,23 @@ sealed partial class ContentUpgradeRun
         ContentUpgradeRecord? landed = await FindRecordAsync(definition.Id).ConfigureAwait(false);
         if (landed is not null)
         {
-            _steps.Add(ContentUpgradeStepResult.Applied(definition, landed.VersionNumber, plan.ChangeLines));
+            // The step says what the LEDGER says. A rival that found the catalog already satisfied wrote an
+            // adopted row and published no version at all, so reporting it as published as version N would
+            // name a version that says nothing about this upgrade.
+            string token = ContentUpgradeDispositions.Token(landed.Disposition);
+            _steps.Add(landed.Disposition == ContentUpgradeDisposition.Applied
+                ? ContentUpgradeStepResult.Applied(definition, landed.VersionNumber, plan.ChangeLines)
+                : ContentUpgradeStepResult.Adopted(
+                    definition,
+                    FormattableString.Invariant(
+                        $"another runner recorded it as {token} at version {landed.VersionNumber}.")));
             Add(
                 ContentUpgradeCodes.AppliedConcurrently,
-                FormattableString.Invariant(
-                    $"upgrade '{definition.Id}' was published as version {landed.VersionNumber} by another runner, so this run adopted that result and continued."));
+                landed.Disposition == ContentUpgradeDisposition.Applied
+                    ? FormattableString.Invariant(
+                        $"upgrade '{definition.Id}' was published as version {landed.VersionNumber} by another runner, so this run adopted that result and continued.")
+                    : FormattableString.Invariant(
+                        $"upgrade '{definition.Id}' is held in the ledger as {token} at version {landed.VersionNumber}, recorded by another runner rather than published, so this run adopted that result and continued."));
             await RereadActiveAsync().ConfigureAwait(false);
             return true;
         }

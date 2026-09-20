@@ -109,6 +109,34 @@ public sealed class ContentUpgradeRecoveryTests
     }
 
     /// <summary>
+    /// A step resolved through the LEDGER reports the disposition the ledger holds. A rival that found the
+    /// catalog already satisfied wrote an adopted row and published no version, and a step that claimed the
+    /// upgrade was published as version N would name a version that says nothing about this upgrade.
+    /// </summary>
+    [Fact]
+    public async Task AStepResolvedThroughTheLedgerReportsTheDispositionTheLedgerHolds()
+    {
+        using var harness = new UpgradeHarness();
+        await harness.SeedOlderCatalogAsync();
+        var rival = new RivalAdoptsDuringPublishStore(harness.Store, harness.First.Stamp);
+
+        ContentUpgradeReport report = await ContentUpgradeRunner.RunAsync(
+            rival, harness.Registry, harness.Set, UpgradeFixtures.Apply());
+
+        Assert.Equal(ContentUpgradeOutcome.Applied, report.Outcome);
+        ContentUpgradeStepResult first = Assert.Single(
+            report.Steps,
+            step => string.Equals(step.Id, UpgradeHarness.FirstId, StringComparison.Ordinal));
+        Assert.Equal(ContentUpgradeStepState.Adopted, first.State);
+        Assert.Equal(ContentUpgradeDisposition.Adopted, first.Disposition);
+        Assert.Null(first.PublishedVersion);
+        Assert.Contains(
+            report.Diagnostics,
+            diagnostic => diagnostic.Code == ContentUpgradeCodes.AppliedConcurrently
+                && diagnostic.Message.Contains("adopted", StringComparison.Ordinal));
+    }
+
+    /// <summary>
     /// An open draft the runner cannot prove is its own is OPERATOR work. It is left exactly as it stands,
     /// edits and all, and the run refuses rather than publishing over it.
     /// </summary>

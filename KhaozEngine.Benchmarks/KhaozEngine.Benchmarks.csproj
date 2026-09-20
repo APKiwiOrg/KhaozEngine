@@ -27,4 +27,10 @@
          budget 9 times ModCandidateTables.Build over them and every roll goes through ItemGenerator. -->
     <ProjectReference Include="../KhaozEngine.ItemInstances/KhaozEngine.ItemInstances.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- ResidentMemory is the instrument every memory budget is read through, so its own accuracy is a fact
+         the CI suite pins rather than something only a hand-run benchmark would notice. See
+         KhaozEngine.Server.Tests/Benchmarks/ResidentMemoryTests.cs. -->
+    <InternalsVisibleTo Include="KhaozEngine.Server.Tests" />
+  </ItemGroup>
 </Project>

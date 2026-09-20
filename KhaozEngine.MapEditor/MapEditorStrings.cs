@@ -16,6 +16,7 @@ internal static class MapEditorStrings
     public static readonly StringId Navigation = new("mapeditor.settings.navigation");
     public static readonly StringId FlySpeed = new("mapeditor.settings.fly_speed");
     public static readonly StringId FlySpeedDescription = new("mapeditor.settings.fly_speed.description");
+    public static readonly StringId FlySpeedStatus = new("mapeditor.navigation.fly_speed.status");
     public static readonly StringId View = new("mapeditor.view.button");
     public static readonly StringId ViewOptions = new("mapeditor.view.options");
     public static readonly StringId TerrainOnly = new("mapeditor.view.terrain_only");
@@ -53,7 +54,8 @@ internal static class MapEditorStrings
         ["mapeditor.settings.navigation"] = "Navigation",
         ["mapeditor.settings.fly_speed"] = "Fly speed",
         ["mapeditor.settings.fly_speed.description"] =
-            "Movement speed while right mouse owns the viewport. The wheel changes pivot distance instead.",
+            "Movement speed while right mouse owns the viewport. Scroll while flying to change it.",
+        ["mapeditor.navigation.fly_speed.status"] = "Fly speed {0}",
         ["mapeditor.view.button"] = "View",
         ["mapeditor.view.options"] = "View Options",
         ["mapeditor.view.terrain_only"] = "Terrain Only",

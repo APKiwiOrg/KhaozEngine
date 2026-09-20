@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.Game;
@@ -33,6 +34,29 @@ namespace KhaozEngine.Tests.MapEditor
             Step(manager, pointer, Frame(new Vector2(480f, 270f), new[] { MouseButton.Middle },
                 delta: new Vector2(40f, 0f)));
             Assert.Equal(beforeField, scene.Camera.Position);
+        }
+
+        [Fact]
+        public void WheelWhileFlyingRetunesThePersistedFlySpeedAndReportsIt()
+        {
+            (NavigationScene scene, SceneManager manager, Pointer pointer) = PushScene();
+            Vector2 viewportPoint = new(480f, 270f);
+            float speed = scene.Settings.FlySpeed;
+            Step(manager, pointer, Frame(viewportPoint, new[] { MouseButton.Right }));
+            Vector3 before = scene.Camera.Position;
+
+            Step(manager, pointer, Frame(viewportPoint, new[] { MouseButton.Right }, scroll: 2f));
+
+            Assert.True(scene.Settings.FlySpeed > speed);
+            Assert.Equal(before, scene.Camera.Position);
+            Assert.Contains(scene.Settings.FlySpeed.ToString("0.#", CultureInfo.InvariantCulture), scene.StatusText);
+
+            // Out of the fly gesture the wheel is a dolly again and leaves the speed alone.
+            Step(manager, pointer, Frame(viewportPoint));
+            float tuned = scene.Settings.FlySpeed;
+            Step(manager, pointer, Frame(viewportPoint, scroll: 2f));
+            Assert.Equal(tuned, scene.Settings.FlySpeed);
+            Assert.NotEqual(before, scene.Camera.Position);
         }
 
         [Fact]

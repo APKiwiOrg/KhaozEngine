@@ -1,0 +1,271 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+using KhaozEngine.Catalog;
+using KhaozEngine.Catalog.Authoring;
+
+namespace KhaozEngine.Tests.Catalog.Upgrade;
+
+/// <summary>
+/// Every member of <see cref="IContentAuthoringStore"/> forwarded to an inner store, so a double overrides
+/// the one member it is about and says nothing about the other twenty-five.
+/// </summary>
+internal abstract class ForwardingContentAuthoringStore(IContentAuthoringStore inner) : IContentAuthoringStore
+{
+    /// <summary>The store behind the decorator, which a double also reads directly.</summary>
+    protected IContentAuthoringStore Inner => inner;
+
+    /// <inheritdoc />
+    public IPackStore? PackStore => inner.PackStore;
+
+    /// <inheritdoc />
+    public virtual Task InitializeAsync(ContentAuthoringSchemaMode mode, CancellationToken cancellationToken = default)
+        => inner.InitializeAsync(mode, cancellationToken);
+
+    /// <inheritdoc />
+    public virtual Task<int> GetSchemaVersionAsync(CancellationToken cancellationToken = default)
+        => inner.GetSchemaVersionAsync(cancellationToken);
+
+    /// <inheritdoc />
+    public virtual Task<string> GetStoreEpochAsync(CancellationToken cancellationToken = default)
+        => inner.GetStoreEpochAsync(cancellationToken);
+
+    /// <inheritdoc />
+    public virtual Task<int> GetActiveVersionAsync(CancellationToken cancellationToken = default)
+        => inner.GetActiveVersionAsync(cancellationToken);
+
+    /// <inheritdoc />
+    public virtual Task<int?> GetPinnedVersionAsync(CancellationToken cancellationToken = default)
+        => inner.GetPinnedVersionAsync(cancellationToken);
+
+    /// <inheritdoc />
+    public virtual Task SetPinnedVersionAsync(
+        int? version,
+        string actor,
+        string operatorId,
+        CancellationToken cancellationToken = default)
+        => inner.SetPinnedVersionAsync(version, actor, operatorId, cancellationToken);
+
+    /// <inheritdoc />
+    public virtual Task<IReadOnlyList<ContentVersionRecord>> ListVersionsAsync(
+        CancellationToken cancellationToken = default)
+        => inner.ListVersionsAsync(cancellationToken);
+
+    /// <inheritdoc />
+    public virtual Task<ContentVersionRecord?> GetVersionAsync(
+        int versionNumber,
+        CancellationToken cancellationToken = default)
+        => inner.GetVersionAsync(versionNumber, cancellationToken);
+
+    /// <inheritdoc />
+    public virtual Task<ContentSnapshot> LoadSnapshotAsync(
+        int versionNumber,
+        ContentTypeRegistry registry,
+        CancellationToken cancellationToken = default)
+        => inner.LoadSnapshotAsync(versionNumber, registry, cancellationToken);
+
+    /// <inheritdoc />
+    public virtual Task<ContentDraft?> GetOpenDraftAsync(CancellationToken cancellationToken = default)
+        => inner.GetOpenDraftAsync(cancellationToken);
+
+    /// <inheritdoc />
+    public virtual Task<ContentDraft> ApplyEditsAsync(
+        IReadOnlyList<ContentEdit> edits,
+        string actor,
+        string operatorId,
+        string note,
+        CancellationToken cancellationToken = default)
+        => inner.ApplyEditsAsync(edits, actor, operatorId, note, cancellationToken);
+
+    /// <inheritdoc />
+    public virtual Task DiscardDraftAsync(
+        string actor,
+        string operatorId,
+        CancellationToken cancellationToken = default)
+        => inner.DiscardDraftAsync(actor, operatorId, cancellationToken);
+
+    /// <inheritdoc />
+    public virtual Task FreezeDraftAsync(int baseVersion, CancellationToken cancellationToken = default)
+        => inner.FreezeDraftAsync(baseVersion, cancellationToken);
+
+    /// <inheritdoc />
+    public virtual Task ClearDraftFreezeAsync(CancellationToken cancellationToken = default)
+        => inner.ClearDraftFreezeAsync(cancellationToken);
+
+    /// <inheritdoc />
+    public virtual Task<ContentPublishBaseline> ReadPublishBaselineAsync(CancellationToken cancellationToken = default)
+        => inner.ReadPublishBaselineAsync(cancellationToken);
+
+    /// <inheritdoc />
+    public virtual Task<ContentVersionRecord> CommitPublishAsync(
+        ContentPublishPlan plan,
+        ContentPublishRequest request,
+        CancellationToken cancellationToken = default)
+        => inner.CommitPublishAsync(plan, request, cancellationToken);
+
+    /// <inheritdoc />
+    public virtual Task<ContentPublishResult> PublishAsync(
+        ContentPublishRequest request,
+        CancellationToken cancellationToken = default)
+        => inner.PublishAsync(request, cancellationToken);
+
+    /// <inheritdoc />
+    public virtual Task<ContentDraft> RollbackToAsync(
+        int targetVersion,
+        string actor,
+        string operatorId,
+        string note,
+        CancellationToken cancellationToken = default)
+        => inner.RollbackToAsync(targetVersion, actor, operatorId, note, cancellationToken);
+
+    /// <inheritdoc />
+    public virtual Task<ContentRowPage> ListRowsAsync(
+        ContentTypeId type,
+        int versionNumber,
+        string? keyPrefix,
+        bool includeRetired,
+        int skip,
+        int take,
+        CancellationToken cancellationToken = default)
+        => inner.ListRowsAsync(type, versionNumber, keyPrefix, includeRetired, skip, take, cancellationToken);
+
+    /// <inheritdoc />
+    public virtual Task<IReadOnlyList<ContentRowRevision>> GetRowHistoryAsync(
+        ContentTypeId type,
+        int definitionId,
+        CancellationToken cancellationToken = default)
+        => inner.GetRowHistoryAsync(type, definitionId, cancellationToken);
+
+    /// <inheritdoc />
+    public virtual Task<IReadOnlyList<ContentAuditEntry>> ListAuditAsync(
+        ContentTypeId type,
+        int definitionId,
+        int skip,
+        int take,
+        CancellationToken cancellationToken = default)
+        => inner.ListAuditAsync(type, definitionId, skip, take, cancellationToken);
+
+    /// <inheritdoc />
+    public virtual Task AppendOperationalAuditAsync(
+        string action,
+        string actor,
+        string operatorId,
+        string fieldName,
+        string? value,
+        string note,
+        CancellationToken cancellationToken = default)
+        => inner.AppendOperationalAuditAsync(action, actor, operatorId, fieldName, value, note, cancellationToken);
+
+    /// <inheritdoc />
+    public virtual Task<int> AllocateAsync(
+        ContentTypeId type,
+        int count,
+        CancellationToken cancellationToken = default)
+        => inner.AllocateAsync(type, count, cancellationToken);
+
+    /// <inheritdoc />
+    public virtual Task<int> AllocateInFamilyAsync(long familyId, CancellationToken cancellationToken = default)
+        => inner.AllocateInFamilyAsync(familyId, cancellationToken);
+
+    /// <inheritdoc />
+    public virtual Task<IReadOnlyList<ContentFamily>> ListFamiliesAsync(
+        ContentTypeId type,
+        CancellationToken cancellationToken = default)
+        => inner.ListFamiliesAsync(type, cancellationToken);
+
+    /// <inheritdoc />
+    public virtual Task<ContentFamily> CreateFamilyAsync(
+        ContentTypeId type,
+        string familyKey,
+        int blockSize,
+        string actor,
+        string operatorId,
+        CancellationToken cancellationToken = default)
+        => inner.CreateFamilyAsync(type, familyKey, blockSize, actor, operatorId, cancellationToken);
+
+    /// <inheritdoc />
+    public virtual Task<ContentPublishResult> ImportBundleAsync(
+        ContentBundle bundle,
+        string actor,
+        string operatorId,
+        string note,
+        CancellationToken cancellationToken = default)
+        => inner.ImportBundleAsync(bundle, actor, operatorId, note, cancellationToken);
+
+    /// <inheritdoc />
+    public virtual Task<ContentBundle> ExportBundleAsync(
+        int versionNumber,
+        CancellationToken cancellationToken = default)
+        => inner.ExportBundleAsync(versionNumber, cancellationToken);
+}
+
+/// <summary>
+/// A store that keeps NO upgrade ledger, which is a pre-schema-version-2 catalog from the runner's side. It
+/// forwards everything and simply does not implement <see cref="IContentUpgradeLedger"/>.
+/// </summary>
+internal sealed class LedgerlessStore(IContentAuthoringStore inner) : ForwardingContentAuthoringStore(inner)
+{
+}
+
+/// <summary>
+/// A store whose publish throws AFTER the commit transaction returns, which is the interruption design step 9
+/// exists for: the version is live, the ledger row is written, the draft is deleted, and the caller sees an
+/// exception. A runner that assumed the upgrade did not land would publish it a second time.
+/// <para>
+/// It builds the publish pipeline over ITSELF rather than delegating to the inner store's own
+/// <c>PublishAsync</c>, so the throw really is after <see cref="CommitPublishAsync"/> returned rather than
+/// around a publish that ran somewhere else.
+/// </para>
+/// </summary>
+internal sealed class CrashAfterCommitStore(
+    InMemoryContentAuthoringStore inner,
+    IPackStore packs,
+    ContentTypeRegistry registry)
+    : ForwardingContentAuthoringStore(inner), IContentUpgradeLedger
+{
+    /// <summary>Whether the NEXT commit throws after it returns. It disarms itself, so a retry gets through.</summary>
+    public bool Armed { get; set; } = true;
+
+    /// <summary>How many commits ran to completion, which proves the second publish never happened.</summary>
+    public int Commits { get; private set; }
+
+    /// <inheritdoc />
+    public override async Task<ContentVersionRecord> CommitPublishAsync(
+        ContentPublishPlan plan,
+        ContentPublishRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ContentVersionRecord record = await Inner.CommitPublishAsync(plan, request, cancellationToken);
+        Commits++;
+        if (Armed)
+        {
+            Armed = false;
+            throw new IOException("the host died after the commit point and before the sweep.");
+        }
+
+        return record;
+    }
+
+    /// <inheritdoc />
+    public override Task<ContentPublishResult> PublishAsync(
+        ContentPublishRequest request,
+        CancellationToken cancellationToken = default)
+        => new ContentPublishCommit(this, packs, new ContentPublisher(this, inner, registry))
+            .PublishAsync(request, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<ContentUpgradeRecord>> ListUpgradesAsync(
+        CancellationToken cancellationToken = default)
+        => inner.ListUpgradesAsync(cancellationToken);
+
+    /// <inheritdoc />
+    public Task RecordUpgradeAsync(
+        ContentUpgradeStamp stamp,
+        ContentUpgradeDisposition disposition,
+        string actor,
+        string operatorId,
+        CancellationToken cancellationToken = default)
+        => inner.RecordUpgradeAsync(stamp, disposition, actor, operatorId, cancellationToken);
+}

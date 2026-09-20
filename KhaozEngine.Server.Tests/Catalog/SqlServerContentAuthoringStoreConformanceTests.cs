@@ -326,4 +326,24 @@ public sealed class SqlServerContentAuthoringStoreConformanceTests : ContentAuth
     [CatalogSqlServerFact]
     public override Task TheLedgerReadsAscendingByOrderThenId()
         => base.TheLedgerReadsAscendingByOrderThenId();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task TheUpgradeRunnerPublishesAPendingUpgradeAsItsOwnVersion()
+        => base.TheUpgradeRunnerPublishesAPendingUpgradeAsItsOwnVersion();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task TheUpgradeRunnerWritesNothingOnceEveryUpgradeIsRecorded()
+        => base.TheUpgradeRunnerWritesNothingOnceEveryUpgradeIsRecorded();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task TheUpgradeRunnerHasNothingToDoAfterAFreshInstallRecordsItsBaseline()
+        => base.TheUpgradeRunnerHasNothingToDoAfterAFreshInstallRecordsItsBaseline();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task TheUpgradeRunnerRefusesWhileAnOperatorDraftIsOpen()
+        => base.TheUpgradeRunnerRefusesWhileAnOperatorDraftIsOpen();
 }

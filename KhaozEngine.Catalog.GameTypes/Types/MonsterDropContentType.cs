@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace KhaozEngine.Catalog.GameTypes;
 
@@ -57,8 +58,8 @@ public static class MonsterDropContentType
     /// </remarks>
     /// <param name="registry">A registry that is not frozen and carries neither this id nor this key.</param>
     /// <param name="validator">
-    /// The type's own validator, or null for none. This package ships NO validators yet, so a game either
-    /// passes one of its own or passes null. The package's own arrive separately.
+    /// The type's own validator, or null for none. <see cref="Validator"/> is the one this package ships
+    /// for it, and a game passes that, one of its own, a wrapper over both, or null.
     /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="registry"/> is null.</exception>
     /// <exception cref="ContentRegistrationException">
@@ -86,6 +87,53 @@ public static class MonsterDropContentType
         /// <summary>Builds the codec over the monster drop schema.</summary>
         public Codec(ContentTypeId type, ContentFieldSchema schema) : base(type, schema)
         {
+        }
+    }
+
+    /// <summary>
+    /// The type's one rule: a creature kind names one table. A death has to resolve to a single roll, and
+    /// two rows claiming one kind would make that a choice nobody authored.
+    /// </summary>
+    /// <remarks>
+    /// It takes NO options. Which creature kinds exist is the game's, and the rule is about two rows
+    /// agreeing rather than about any one number meaning anything. It ACCUMULATES, so one run reports every
+    /// duplicate rather than the earliest.
+    /// <para>
+    /// A RETIRED row is skipped, the same way the engine's own reference pass skips one. A withdrawn rule
+    /// rolls nothing, so holding a kind against its live replacement would report a defect nobody can fix.
+    /// </para>
+    /// </remarks>
+    public sealed class Validator : IContentValidator
+    {
+        /// <inheritdoc />
+        public void Validate(ContentTypeId type, IContentSnapshot candidate, ICollection<ContentFinding> findings)
+        {
+            ArgumentNullException.ThrowIfNull(candidate);
+            ArgumentNullException.ThrowIfNull(findings);
+
+            var byKind = new Dictionary<long, int>();
+            foreach (ContentRow row in candidate.Rows(type))
+            {
+                // A row whose value count does not match the schema is the engine's own finding, and reading
+                // it positionally here would be reading someone else's fields.
+                if (row.IsRetired || row.Fields.Count != FieldCount)
+                {
+                    continue;
+                }
+
+                ContentFieldValue kind = row.Fields[MonsterKindIndex];
+                if (kind.IsAbsent || byKind.TryAdd(kind.Number, row.Id))
+                {
+                    continue;
+                }
+
+                findings.Add(new ContentFinding(
+                    type,
+                    row.Id,
+                    GameContentFindings.MonsterDropDuplicateMonsterKind,
+                    FormattableString.Invariant(
+                        $"Drop rule {row.Id} claims creature kind {kind.Number}, which rule {byKind[kind.Number]} already claims. A death rolls one table, so two rules for one kind is a choice nobody authored.")));
+            }
         }
     }
 }

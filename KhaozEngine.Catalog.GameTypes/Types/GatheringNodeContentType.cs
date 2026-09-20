@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace KhaozEngine.Catalog.GameTypes;
 
@@ -111,8 +112,8 @@ public static class GatheringNodeContentType
     /// <param name="registry">A registry that is not frozen and carries neither this id nor this key.</param>
     /// <param name="unit">The game's own time unit, which picks the duration field's name.</param>
     /// <param name="validator">
-    /// The type's own validator, or null for none. This package ships NO validators yet, so a game either
-    /// passes one of its own or passes null. The package's own arrive separately.
+    /// The type's own validator, or null for none. <see cref="Validator"/> is the one this package ships
+    /// for it, and a game passes that, one of its own, a wrapper over both, or null.
     /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="registry"/> is null.</exception>
     /// <exception cref="ContentRegistrationException">
@@ -143,6 +144,83 @@ public static class GatheringNodeContentType
         /// <summary>Builds the codec over the gathering node schema.</summary>
         public Codec(ContentTypeId type, ContentFieldSchema schema) : base(type, schema)
         {
+        }
+    }
+
+    /// <summary>
+    /// The node's own per-row rules: it holds at least one life, it asks for a level a character can reach,
+    /// and it yields something still in play.
+    /// </summary>
+    /// <remarks>
+    /// It takes NO options. The skill number is the game's and this type says nothing about it, and the
+    /// three rules read only numbers whose meaning is arithmetic. It ACCUMULATES, so one run over a whole
+    /// node list reports every defect rather than the earliest.
+    /// <para>
+    /// Two bounds are deliberately NOT here, because neither can be read from one row: a chance ceiling and
+    /// a level cap are global knobs on <c>game_tuning</c>, so holding a node against either is the
+    /// cross-type sweep's rather than this type's.
+    /// </para>
+    /// <para>
+    /// A RETIRED node is skipped, the same way the engine's reference pass skips a retired row. A withdrawn
+    /// node stands nowhere and yields nothing.
+    /// </para>
+    /// </remarks>
+    public sealed class Validator : IContentValidator
+    {
+        /// <inheritdoc />
+        public void Validate(ContentTypeId type, IContentSnapshot candidate, ICollection<ContentFinding> findings)
+        {
+            ArgumentNullException.ThrowIfNull(candidate);
+            ArgumentNullException.ThrowIfNull(findings);
+
+            var itemType = new ContentTypeId(EngineContentTypes.ItemTypeId);
+            foreach (ContentRow row in candidate.Rows(type))
+            {
+                // A row whose value count does not match the schema is the engine's own finding, and reading
+                // it positionally here would be reading someone else's fields.
+                if (row.IsRetired || row.Fields.Count != FieldCount)
+                {
+                    continue;
+                }
+
+                ContentFieldValue lives = row.Fields[LivesIndex];
+                if (!lives.IsAbsent && lives.Number <= 0)
+                {
+                    findings.Add(new ContentFinding(
+                        type,
+                        row.Id,
+                        GameContentFindings.GatheringNodeLivesNotPositive,
+                        FormattableString.Invariant(
+                            $"Node {row.Id} holds {lives.Number} lives. Lives are shared by everyone working the node and the node falls when the last one goes, so a node with none is spent before the first swing lands.")));
+                }
+
+                ContentFieldValue level = row.Fields[LevelRequiredIndex];
+                if (!level.IsAbsent && level.Number < 1)
+                {
+                    findings.Add(new ContentFinding(
+                        type,
+                        row.Id,
+                        GameContentFindings.GatheringNodeLevelRequiredBelowOne,
+                        FormattableString.Invariant(
+                            $"Node {row.Id} asks for level {level.Number}. One is the level every character starts at, so a node below it is quoting a chance at a level nobody is ever under.")));
+                }
+
+                ContentFieldValue item = row.Fields[YieldItemIndex];
+
+                // A reference of 0 is NO CONTENT rather than a dangling id, and a required field left empty
+                // is the engine's KEC0005.
+                if (item.IsAbsent || item.Number == 0 || !candidate.IsRetired(itemType, (int)item.Number))
+                {
+                    continue;
+                }
+
+                findings.Add(new ContentFinding(
+                    type,
+                    row.Id,
+                    GameContentFindings.GatheringNodeRetiredYieldItem,
+                    FormattableString.Invariant(
+                        $"Node {row.Id} yields item {item.Number}, which is retired. A retired row keeps its bytes so a stored stack still decodes, so the node still resolves and would go on handing out something the game withdrew.")));
+            }
         }
     }
 }

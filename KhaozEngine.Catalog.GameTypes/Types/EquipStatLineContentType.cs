@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace KhaozEngine.Catalog.GameTypes;
 
@@ -79,8 +80,8 @@ public static class EquipStatLineContentType
     /// </remarks>
     /// <param name="registry">A registry that is not frozen and carries neither this id nor this key.</param>
     /// <param name="validator">
-    /// The type's own validator, or null for none. This package ships NO validators yet, so a game either
-    /// passes one of its own or passes null. The package's own arrive separately.
+    /// The type's own validator, or null for none. <see cref="Validator"/> is the one this package ships
+    /// for it, and a game passes that, one of its own, a wrapper over both, or null.
     /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="registry"/> is null.</exception>
     /// <exception cref="ContentRegistrationException">
@@ -108,6 +109,70 @@ public static class EquipStatLineContentType
         /// <summary>Builds the codec over the stat line schema.</summary>
         public Codec(ContentTypeId type, ContentFieldSchema schema) : base(type, schema)
         {
+        }
+    }
+
+    /// <summary>
+    /// The two rules the schema alone cannot say: one line per profile and stat, and a draw order that does
+    /// not tie within a profile.
+    /// </summary>
+    /// <remarks>
+    /// It takes NO options: which stats exist is the <c>stat</c> type's and neither rule reads a number this
+    /// package gives meaning to. It runs STANDALONE and it COMPOSES, because the engine registry holds one
+    /// validator per type and a cross-type sweep wraps this one rather than replacing it. It ACCUMULATES, so
+    /// one pass reports every defect instead of the earliest.
+    /// <para>
+    /// A duplicate pair would make the equipped bonus depend on row order, and a tied sort would make the
+    /// panel's line order depend on it. Both are silent, which is why they are refused at publish.
+    /// </para>
+    /// </remarks>
+    public sealed class Validator : IContentValidator
+    {
+        /// <inheritdoc />
+        public void Validate(ContentTypeId type, IContentSnapshot candidate, ICollection<ContentFinding> findings)
+        {
+            ArgumentNullException.ThrowIfNull(candidate);
+            ArgumentNullException.ThrowIfNull(findings);
+
+            var firstByPair = new Dictionary<(int Profile, int Stat), int>();
+            var firstBySort = new Dictionary<(int Profile, int Sort), int>();
+            foreach (ContentRow row in candidate.Rows(type))
+            {
+                if (row.IsRetired)
+                {
+                    continue;
+                }
+
+                int profile = (int)GameRowNumbers.At(row, ProfileIndex);
+                if (profile == 0)
+                {
+                    // No profile is no content, which the engine's own required-field check owns. Two lines
+                    // belonging to nothing are not two lines of one profile.
+                    continue;
+                }
+
+                int stat = (int)GameRowNumbers.At(row, StatIndex);
+                if (stat != 0 && !firstByPair.TryAdd((profile, stat), row.Id))
+                {
+                    findings.Add(new ContentFinding(
+                        type,
+                        row.Id,
+                        GameContentFindings.EquipStatLineDuplicatePair,
+                        FormattableString.Invariant(
+                            $"Stat line '{row.Key}' moves stat {stat} on profile {profile}, which line {firstByPair[(profile, stat)]} already moves. Two lines for one pair make the bonus depend on row order.")));
+                }
+
+                int sort = (int)GameRowNumbers.At(row, SortIndex);
+                if (!firstBySort.TryAdd((profile, sort), row.Id))
+                {
+                    findings.Add(new ContentFinding(
+                        type,
+                        row.Id,
+                        GameContentFindings.EquipStatLineDuplicateSort,
+                        FormattableString.Invariant(
+                            $"Stat line '{row.Key}' sorts at {sort} within profile {profile}, which line {firstBySort[(profile, sort)]} already takes. A tie makes the drawn order depend on row order.")));
+                }
+            }
         }
     }
 }

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace KhaozEngine.Catalog.GameTypes;
 
@@ -72,8 +73,8 @@ public static class FoodContentType
     /// <param name="registry">A registry that is not frozen and carries neither this id nor this key.</param>
     /// <param name="unit">The game's own time unit, which picks the duration field's name.</param>
     /// <param name="validator">
-    /// The type's own validator, or null for none. This package ships NO validators yet, so a game either
-    /// passes one of its own or passes null. The package's own arrive separately.
+    /// The type's own validator, or null for none. <see cref="Validator"/> is the one this package ships
+    /// for it, and a game passes that, one of its own, a wrapper over both, or null.
     /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="registry"/> is null.</exception>
     /// <exception cref="ContentRegistrationException">
@@ -104,6 +105,85 @@ public static class FoodContentType
         /// <summary>Builds the codec over the food schema.</summary>
         public Codec(ContentTypeId type, ContentFieldSchema schema) : base(type, schema)
         {
+        }
+    }
+
+    /// <summary>
+    /// The three rules the schema alone cannot say: a heal above zero, a delay at or above zero, and one
+    /// food row per item.
+    /// </summary>
+    /// <remarks>
+    /// It takes NO options, because none of the three reads a number this package gives meaning to. It runs
+    /// STANDALONE and it COMPOSES: the engine registry takes one validator per type, so a cross-type sweep
+    /// mounted on this id wraps this one and forwards to it rather than replacing it, which is why the class
+    /// holds no state of its own.
+    /// <para>
+    /// It ACCUMULATES. One pass reports every defect it finds instead of the earliest, so a bulk import is
+    /// fixed in one round rather than one row at a time.
+    /// </para>
+    /// <para>
+    /// The delay rule is unit-neutral. The field is named for the game's own clock and the rule is about its
+    /// SIGN, which is the same statement under either spelling, so it reads the position rather than a name.
+    /// </para>
+    /// </remarks>
+    public sealed class Validator : IContentValidator
+    {
+        /// <inheritdoc />
+        public void Validate(ContentTypeId type, IContentSnapshot candidate, ICollection<ContentFinding> findings)
+        {
+            ArgumentNullException.ThrowIfNull(candidate);
+            ArgumentNullException.ThrowIfNull(findings);
+
+            var firstByItem = new Dictionary<int, int>();
+            foreach (ContentRow row in candidate.Rows(type))
+            {
+                // A retired row keeps its bytes so a stored stack still decodes, and the item it named is
+                // usually retired beside it. Following one reports a defect nobody can fix.
+                if (row.IsRetired)
+                {
+                    continue;
+                }
+
+                long heals = GameRowNumbers.At(row, HealsIndex);
+                if (heals <= 0)
+                {
+                    findings.Add(new ContentFinding(
+                        type,
+                        row.Id,
+                        GameContentFindings.FoodHealsNotPositive,
+                        FormattableString.Invariant(
+                            $"Food '{row.Key}' heals {heals}. A food that heals nothing is not food, and the boot refuses one.")));
+                }
+
+                long delay = GameRowNumbers.At(row, AttackDelayIndex);
+                if (delay < 0)
+                {
+                    findings.Add(new ContentFinding(
+                        type,
+                        row.Id,
+                        GameContentFindings.FoodAttackDelayNegative,
+                        FormattableString.Invariant(
+                            $"Food '{row.Key}' delays the next attack by {delay}. Eating never gives time back.")));
+                }
+
+                int item = (int)GameRowNumbers.At(row, ItemIndex);
+                if (item == 0)
+                {
+                    // A reference of 0 is no content, which the engine's own required-field check owns. Two
+                    // rows both saying nothing are not a duplicate.
+                    continue;
+                }
+
+                if (!firstByItem.TryAdd(item, row.Id))
+                {
+                    findings.Add(new ContentFinding(
+                        type,
+                        row.Id,
+                        GameContentFindings.FoodDuplicateItem,
+                        FormattableString.Invariant(
+                            $"Food '{row.Key}' claims item {item}, which food row {firstByItem[item]} already claims. One item eats one way.")));
+                }
+            }
         }
     }
 }

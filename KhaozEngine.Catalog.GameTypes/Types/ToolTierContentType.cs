@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace KhaozEngine.Catalog.GameTypes;
 
@@ -81,8 +82,8 @@ public static class ToolTierContentType
     /// </remarks>
     /// <param name="registry">A registry that is not frozen and carries neither this id nor this key.</param>
     /// <param name="validator">
-    /// The type's own validator, or null for none. This package ships NO validators yet, so a game either
-    /// passes one of its own or passes null. The package's own arrive separately.
+    /// The type's own validator, or null for none. <see cref="Validator"/> is the one this package ships
+    /// for it, and a game passes that, one of its own, a wrapper over both, or null.
     /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="registry"/> is null.</exception>
     /// <exception cref="ContentRegistrationException">
@@ -110,6 +111,78 @@ public static class ToolTierContentType
         /// <summary>Builds the codec over the tool tier schema.</summary>
         public Codec(ContentTypeId type, ContentFieldSchema schema) : base(type, schema)
         {
+        }
+    }
+
+    /// <summary>
+    /// The three rules the schema alone cannot say: one tier per rank within a family, and two scales above
+    /// zero.
+    /// </summary>
+    /// <remarks>
+    /// It takes NO options and it ACCUMULATES: one pass reports every defect instead of the earliest.
+    /// <para>
+    /// What it deliberately does NOT check is whether the tag <see cref="FamilyField"/> names is a tool
+    /// family at all. The reference resolves either way, because any live tag is a live tag, so which tags
+    /// are families is a rule that reads the ITEM's own tag list and belongs to the cross-type sweep.
+    /// </para>
+    /// </remarks>
+    public sealed class Validator : IContentValidator
+    {
+        /// <inheritdoc />
+        public void Validate(ContentTypeId type, IContentSnapshot candidate, ICollection<ContentFinding> findings)
+        {
+            ArgumentNullException.ThrowIfNull(candidate);
+            ArgumentNullException.ThrowIfNull(findings);
+
+            var firstByRank = new Dictionary<(int Family, int Rank), int>();
+            foreach (ContentRow row in candidate.Rows(type))
+            {
+                if (row.IsRetired)
+                {
+                    continue;
+                }
+
+                long success = GameRowNumbers.At(row, SuccessScaleBasisPointsIndex);
+                if (success <= 0)
+                {
+                    findings.Add(new ContentFinding(
+                        type,
+                        row.Id,
+                        GameContentFindings.ToolTierSuccessScaleNotPositive,
+                        FormattableString.Invariant(
+                            $"Tool tier '{row.Key}' scales its success rate by {success} basis points, so the tool never succeeds.")));
+                }
+
+                long time = GameRowNumbers.At(row, TimeScaleBasisPointsIndex);
+                if (time <= 0)
+                {
+                    findings.Add(new ContentFinding(
+                        type,
+                        row.Id,
+                        GameContentFindings.ToolTierTimeScaleNotPositive,
+                        FormattableString.Invariant(
+                            $"Tool tier '{row.Key}' scales its action time by {time} basis points, so the action takes no time at all.")));
+                }
+
+                int family = (int)GameRowNumbers.At(row, FamilyIndex);
+                if (family == 0)
+                {
+                    // No family is no content, which the engine's own required-field check owns. Two tiers
+                    // belonging to nothing are not two tiers of one family.
+                    continue;
+                }
+
+                int rank = (int)GameRowNumbers.At(row, RankIndex);
+                if (!firstByRank.TryAdd((family, rank), row.Id))
+                {
+                    findings.Add(new ContentFinding(
+                        type,
+                        row.Id,
+                        GameContentFindings.ToolTierDuplicateRank,
+                        FormattableString.Invariant(
+                            $"Tool tier '{row.Key}' takes rank {rank} of family {family}, which tier {firstByRank[(family, rank)]} already takes. Two tools at one rank leave the better one undecided.")));
+                }
+            }
         }
     }
 }

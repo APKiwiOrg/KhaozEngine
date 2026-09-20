@@ -15345,9 +15345,9 @@ using KhaozEngine.Catalog;
 using KhaozEngine.Catalog.GameTypes;
 
 const ContentDurationUnit Unit = ContentDurationUnit.Ticks;
-FoodContentType.Register(registry, Unit, validator: null);
-StoreContentType.Register(registry, validator: null);
-MonsterDropContentType.Register(registry, validator: null);
+FoodContentType.Register(registry, Unit, new FoodContentType.Validator());
+StoreContentType.Register(registry, new StoreContentType.Validator(registry));
+MonsterDropContentType.Register(registry, new MonsterDropContentType.Validator());
 ```
 
 Each type's own `Register` supplies the id, the key, the band, the type's visibility, its chunk slots, the
@@ -15355,7 +15355,8 @@ schema for the unit and the codec over it. **The visibility and the chunk slot c
 choose.** `monster_drop` registered as `Client` would put every drop row's key in the client manifest, and a
 wrong slot count moves every content address, so two worlds authoring the same facts would stop agreeing
 about where they live. Neither fails loudly, which is why the hand-written eight-argument call is not the
-documented path. The validator is a parameter the caller passes, and this package ships none yet.
+documented path. The validator is a parameter the caller passes, and a type that ships one names it
+`Validator` on the type class.
 
 **Reach a field BY NAME, never by a literal position.** A row's values are parallel by index to its type's
 schema, and a duration field is named for the game's own unit, so a reader resolves the position once at
@@ -15369,9 +15370,17 @@ reused and never renumbered, which is why the whole table is written down before
 codes. The engine folds a game-band finding into `KEC0040` and puts the `KGT` code in the message text, so
 that is what an operator reads off a refused publish.
 
-**What the package carries today is the thirteen types as schemas, codecs and registration, plus that code
-table and `ContentDurationUnit`. There are no validators and no cross-type sweep yet**, so a game passes its
-own validator to `Register` or passes null.
+**Six types ship a validator so far**, each a nested `Validator` on its type class: `food` (`KGT0101` to
+`KGT0103`), `equip_stat_line` (`KGT0201`, `KGT0202`), `store` (`KGT0301` to `KGT0303`), `monster_drop`
+(`KGT0501`), `gathering_node` (`KGT0601` to `KGT0603`) and `tool_tier` (`KGT1001` to `KGT1003`). Four take
+nothing. `StoreContentType.Validator` takes the registry, because it holds a rate against the dearest item
+the candidate carries and so needs where the engine `item` type keeps its `value`. **That index is read off
+the live registration at validation time and never off a schema the validator built at type load**, which is
+this build's idea of the item type rather than the one the candidate was registered against. Every rule is
+unit-neutral: a duration rule is about the number's SIGN, so one validator serves both spellings.
+
+**The remaining validators and the cross-type sweep are not here yet**, so a game passes its own validator to
+`Register` or passes null for the other seven types.
 
 `KhaozEngine.Catalog.GameTypes/README.md` is the API reference, type by type.
 

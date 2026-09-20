@@ -1,7 +1,7 @@
 # Map editor interaction and terrain workflow refresh
 
-Status: proposed. The owner selected middle-mouse orbit around the terrain point under the cursor.
-The remaining scope below is a proposal for review, not a shipped contract.
+Status: approved for implementation. The owner selected middle-mouse terrain orbit and authorized
+implementation planning followed by subagent-driven development. This is not yet a shipped contract.
 
 ## Purpose
 

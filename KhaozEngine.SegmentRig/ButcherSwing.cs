@@ -13,17 +13,17 @@ public static class ButcherSwing
         float phase = PhaseAt(elapsedSeconds, cycleDurationSeconds);
         float cut = 0.5f - (0.5f * MathF.Cos(phase * 2f * MathF.PI));
         return new WalkPose(
-            LeftArm: Lerp(1.1f, 0.72f, cut),
-            RightArm: Lerp(1.35f, 0.82f, cut),
+            LeftArm: Lerp(1.1f, 0.45f, cut),
+            RightArm: Lerp(1.35f, 0f, cut),
             LeftLeg: 0f,
             RightLeg: 0f,
-            LeftElbow: Lerp(1.25f, 0.95f, cut),
-            RightElbow: Lerp(0.85f, 0.62f, cut),
-            RightArmYaw: Lerp(0.3f, -0.24f, cut),
-            RightWrist: Lerp(0.4f, 0.88f, cut),
-            TorsoLean: Lerp(0.1f, 0.2f, cut),
-            LeftArmYaw: Lerp(-0.1f, -0.28f, cut),
-            LeftWrist: Lerp(0.15f, -0.12f, cut));
+            LeftElbow: Lerp(1.25f, 0.60f, cut),
+            RightElbow: Lerp(0.85f, 0f, cut),
+            RightArmYaw: Lerp(0.3f, -0.18f, cut),
+            RightWrist: Lerp(0.4f, 1.8f, cut),
+            TorsoLean: Lerp(0.1f, 0.24f, cut),
+            LeftArmYaw: Lerp(-0.1f, -0.24f, cut),
+            LeftWrist: Lerp(0.15f, -0.20f, cut));
     }
 
     /// <summary>Lays the cutting loop over a body's current pose.</summary>

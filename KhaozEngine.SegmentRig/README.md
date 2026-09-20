@@ -66,7 +66,8 @@ them is a static class with `PoseAt(...)` and `Compose(...)`, and the order they
   weight)` and no pose type of its own.
 - **`ButcherSwing`** - a two-handed cutting loop sampled by elapsed seconds and a caller-selected cycle duration.
   `PoseAt(elapsedSeconds, cycleDurationSeconds)` keeps its normal cycle speed however long the surrounding action
-  runs, and `Compose` blends only its arm, wrist and torso channels over another pose.
+  runs, and `Compose` blends only its arm, wrist and torso channels over another pose. At contact the weapon arm
+  straightens and the wrist points a standard +Y blade down and forward across ordinary grip lean angles.
 - **`BlockRaise`** / **`BlockPose`** - the flinch a plate in the off hand answers a blow with. An AGE in
   seconds rather than a phase, because it is a reaction and does not wrap: `WeightAt(ageSeconds)` is the
   envelope, `StanceAt(weight, rig)` solves the braced legs so both soles stay planted, and `PoseAt` carries

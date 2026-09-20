@@ -5,6 +5,24 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 19.9.0
+
+- `ButcherSwing` directs the contact stroke down and forward through the real skeleton and grip sockets.
+- Added a populated SQLite regression proving additive content types preserve prior rows and version history.
+
+Measurement and dead-branch fixes:
+
+- The benchmark suite's resident-memory instrument reads the collection it forced. `ResidentMemory.Read`
+  asked `GetGCMemoryInfo()` with no argument, which reports the latest collection of any kind, so a
+  background collection finishing in between left a before and an after describing two different ones.
+  Budget 12 reported a page delta of -72,525,224 bytes that way in a full-solution run, against a live
+  set the builder provably keeps. It now asks for `GCKind.FullBlocking`, and the items benchmark joins
+  the `AllocSensitive` collection so nothing else in the process churns the GC while it samples, which is
+  the rule its sibling catalog benchmark already followed (#1030).
+- `Scene3DChunkSink.Apply` had an `if`/`else if` whose two arms were the same call, on the streaming path
+  where a reader has to trust that a distinction means something. Both arms collapse to the unconditional
+  call the fresh-load arm already makes, since `ApplyPropClusters` is itself the payload read (#1029).
+
 ## 19.8.0
 
 - `KhaozEngine.Skills`: `HarvestYieldRange` distributes inclusive yield ceilings across level bands,

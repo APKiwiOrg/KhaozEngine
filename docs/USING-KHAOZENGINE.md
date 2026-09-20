@@ -88,6 +88,7 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [Stat channels (`KhaozEngine.Stats`)](#stat-channels-khaozenginestats)
 - [Skill progression (`KhaozEngine.Skills`)](#skill-progression-khaozengineskills)
 - [Content catalog (`KhaozEngine.Catalog`)](#content-catalog-khaozenginecatalog)
+- [Shared game content types (`KhaozEngine.Catalog.GameTypes`)](#shared-game-content-types-khaozenginecataloggametypes)
 - [Item instances (`KhaozEngine.ItemInstances`)](#item-instances-khaozengineiteminstances)
 - [Commerce / wallet (`KhaozEngine.Commerce`)](#commerce-wallet-khaozenginecommerce)
 - [Identity / sign-in (`KhaozEngine.Identity`)](#identity-sign-in-khaozengineidentity)
@@ -14594,6 +14595,12 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
   field schemas and the six engine content types, the content-addressed `KECC`/`KECM`/`KECT`/`KECR` pack
   formats, the `IPackStore` seam with `FileSystemPackStore` and `ContentPackReader`, the `IContentSnapshot`
   read seam, and the pure `ContentValidator`. No third-party dependency at all (see "Content catalog" below).
+- **`KhaozEngine.Catalog.GameTypes`**: the thirteen game-shaped content types over that catalog, the shapes a
+  world with food, equipment, shops, drops, gathering, crafting, tools and tuning knobs authors anyway, as
+  stable ids in the game band, stable keys, ordered schemas and row codecs. A game declares its time unit
+  through `ContentDurationUnit` and the four duration fields take the matching name, with identical order,
+  kinds and codecs either way. No enum, no name, no roster and no balance number in it (see "Shared game
+  content types" below).
 - **`KhaozEngine.Commerce`**: server-authoritative currency wallet (`IWalletStore`, `Wallet`, entitlement
   redemption, `PeriodicGrant` built on `Progression`). Not in any umbrella; add explicitly. SQL backends are
   the opt-in `Commerce.Sqlite`/`Commerce.SqlServer` siblings (see "Commerce / wallet" below).
@@ -15291,6 +15298,76 @@ seam, the four pack formats, the `kec/` digests, the remap rules and the `KEC` f
 documents its own connection string, schema mode and migration name. The reasoning is
 `docs/design/CONTENT-CATALOG-DESIGN-2026-09-15.md`, written against the shared contracts in
 `docs/design/CONTENT-CONTRACTS-DESIGN-2026-09-14.md`.
+
+---
+
+## Shared game content types (`KhaozEngine.Catalog.GameTypes`)
+
+The engine's own six content types (`tag`, `item`, `stat`, `loot_table`, `loot_entry`, `base_socket`) are the
+shapes every catalog needs. This package is the next layer up: the thirteen shapes a world with food,
+equipment, shops, drops, gathering, crafting, tools and tuning knobs writes anyway, so two games that author
+the same facts store them under the same keys and read them with the same code.
+
+`GameContentTypeIds` is the whole id table, ascending and contiguous from the game band floor:
+
+| Id | Key | Id | Key |
+| --- | --- | --- | --- |
+| 1024 | `food` | 1031 | `recipe` |
+| 1025 | `equip_profile` | 1032 | `recipe_input` |
+| 1026 | `equip_stat_line` | 1033 | `recipe_output` |
+| 1027 | `store` | 1034 | `tool_tier` |
+| 1028 | `store_shelf` | 1035 | `skill_curve` |
+| 1029 | `monster_drop` | 1036 | `game_tuning` |
+| 1030 | `gathering_node` | | |
+
+**The package owns no vocabulary.** A skill, a station, a repeat mode, an equip slot, a weapon archetype, an
+npc kind and a creature kind are raw numbers on a row. There is no enum, no name, no icon, no roster and no
+balance number, which is the split `Items`, `Stats` and `Skills` already draw: kernel in the engine, meaning
+in the game. Nothing registers itself either, because which of the thirteen a world uses, which validator
+each carries and what a row's numbers mean are all the game's.
+
+**`equip_profile` registers under `EngineContentTypes.EquipProfileTypeKey`**, never a second copy of the
+spelling. The engine `item` type carries an `equip_profile` key reference that is late bound: the engine
+writes the key down and registers no type under it. A type under any other key is one nothing ever points at,
+and every item's `equip_profile` would have to stay 0.
+
+**A game declares its time unit.** A world stepping a fixed tick stores ticks and a wall-clock world stores
+seconds, so `ContentDurationUnit` goes to each schema factory and picks the NAME of the four duration fields:
+`attack_delay_ticks` or `attack_delay_seconds` on `food`, `attack_ticks` or `attack_seconds` on
+`equip_profile`, `respawn_ticks` or `respawn_seconds` on `gathering_node`, and `base_ticks` or `base_seconds`
+on `recipe`. Field order, kinds, reference targets, visibility, required flags, scales and the row codecs are
+IDENTICAL under either unit, so the choice costs a name in the generic editor and the localization key derived
+from it, and never a byte of layout. The package converts nothing, because only the game knows how long its
+tick is.
+
+```csharp
+using KhaozEngine.Catalog;
+using KhaozEngine.Catalog.GameTypes;
+
+ContentFieldSchema food = FoodContentType.CreateSchema(ContentDurationUnit.Ticks);
+registry.RegisterContentType(
+    ContentRegistrationBand.Game,
+    GameContentTypeIds.Food,
+    GameContentTypeIds.FoodKey,
+    new FoodContentType.Codec(new ContentTypeId(GameContentTypeIds.Food), food),
+    validator: null,
+    food,
+    ContentVisibility.Client,
+    FoodContentType.DefaultChunkSlots);
+```
+
+**Reach a field BY NAME, never by a literal position.** A row's values are parallel by index to its type's
+schema, and a duration field is named for the game's own unit, so a reader resolves the position once at
+construction through `ContentFieldLookup.IndexIn(runtime, type, field)` and a field the schema lacks is a
+REFUSAL naming both rather than a -1 a caller reads as zero. On a server that runs at boot, before a socket is
+open, so a publish that moved a field stops the boot rather than pricing a world at nothing and carrying on.
+
+`GameContentFindings` is the `KGT` finding-code table, banded by content type a hundred to a band with 1300
+for the cross-type sweep. A code is a stable token a counter, a test and a runbook key on, and it is never
+reused and never renumbered. The engine folds a game-band finding into `KEC0040` and puts the `KGT` code in
+the message text, so that is what an operator reads off a refused publish.
+
+`KhaozEngine.Catalog.GameTypes/README.md` is the API reference, type by type.
 
 ---
 

@@ -5,6 +5,7 @@
   <Project Path="KhaozEngine.Catalog/KhaozEngine.Catalog.csproj" />
   <Project Path="KhaozEngine.Catalog.Authoring/KhaozEngine.Catalog.Authoring.csproj" />
   <Project Path="KhaozEngine.Catalog.AzureBlob/KhaozEngine.Catalog.AzureBlob.csproj" />
+  <Project Path="KhaozEngine.Catalog.GameTypes/KhaozEngine.Catalog.GameTypes.csproj" />
   <Project Path="KhaozEngine.Catalog.Netcode/KhaozEngine.Catalog.Netcode.csproj" />
   <Project Path="KhaozEngine.Catalog.Sqlite/KhaozEngine.Catalog.Sqlite.csproj" />
   <Project Path="KhaozEngine.Catalog.SqlServer/KhaozEngine.Catalog.SqlServer.csproj" />

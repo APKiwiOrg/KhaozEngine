@@ -325,7 +325,7 @@ public partial class ArchitectureTests
             "KhaozEngine.Foundation",
             new[]
             {
-                "App", "Catalog", "CodeHealth.Analyzers", "Collision", "Content", "Determinism",
+                "App", "Catalog", "Catalog.GameTypes", "CodeHealth.Analyzers", "Collision", "Content", "Determinism",
                 "Diagnostics", "Dungeon", "Ecs", "Http", "Identity", "ItemInstances", "Items", "Locomotion",
                 "MapDoc", "Navigation", "Objectives", "Persistence", "Physics", "Platform", "Primitives",
                 "Progression", "SegmentRig", "Serialization", "ServerStatus", "Skills", "Social", "Stats", "Terrain",

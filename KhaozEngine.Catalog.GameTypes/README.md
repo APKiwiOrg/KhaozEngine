@@ -53,6 +53,9 @@ Every type is a static class with the same shape, so a game registers any of the
   from. A duration field has both spellings as constants and a method taking the unit.
 - `CreateSchema()`, or `CreateSchema(ContentDurationUnit)` on the four types with a duration.
 - A nested `Codec`, the engine's positional row walk with nothing added.
+- `Register(registry, validator)`, or `Register(registry, unit, validator)` on the four with a duration,
+  which supplies the id, the key, the band, the visibility, the chunk slots, the schema and the codec. The
+  validator is the CALLER's: this package ships none yet.
 
 Positions are deliberately NOT public. A reader resolves a field by name through `ContentFieldLookup`, once,
 against the schema the loaded runtime was actually built from.
@@ -113,17 +116,20 @@ using KhaozEngine.Catalog.GameTypes;
 var registry = new ContentTypeRegistry();
 EngineContentTypes.Register(registry);
 
-ContentFieldSchema food = FoodContentType.CreateSchema(ContentDurationUnit.Ticks);
-registry.RegisterContentType(
-    ContentRegistrationBand.Game,
-    GameContentTypeIds.Food,
-    GameContentTypeIds.FoodKey,
-    new FoodContentType.Codec(new ContentTypeId(GameContentTypeIds.Food), food),
-    validator: null,
-    food,
-    FoodContentType.DefaultVisibility,
-    FoodContentType.DefaultChunkSlots);
+const ContentDurationUnit Unit = ContentDurationUnit.Ticks;
+FoodContentType.Register(registry, Unit, validator: null);
+StoreContentType.Register(registry, validator: null);
+MonsterDropContentType.Register(registry, validator: null);
 ```
+
+Each `Register` supplies the id, the key, the band, the type's own visibility and chunk slots, the schema
+for the unit and the codec over it. **The visibility and the chunk slots are not a caller's to choose**:
+`monster_drop` registered as `Client` would put every drop row's key in the client manifest, and a wrong
+slot count moves every content address, so two worlds authoring the same facts would stop agreeing about
+where they live. Neither fails loudly.
+
+The validator is a parameter the caller passes, and **this package ships none yet**. A game either passes
+one of its own or passes null.
 
 A game registers only the types it authors. Nothing here registers itself, because which of the thirteen a
 world uses, which validator each one carries and what a row's numbers mean are all the game's.

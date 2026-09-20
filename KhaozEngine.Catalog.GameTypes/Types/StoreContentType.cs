@@ -1,3 +1,5 @@
+using System;
+
 namespace KhaozEngine.Catalog.GameTypes;
 
 /// <summary>
@@ -46,6 +48,40 @@ public static class StoreContentType
         new ContentFieldEntry(SellRateBasisPointsField, ContentFieldKind.Int, null, ContentVisibility.Client, true),
         new ContentFieldEntry(BuyRateBasisPointsField, ContentFieldKind.Int, null, ContentVisibility.Client, true),
     ]);
+
+    /// <summary>
+    /// Registers the type on <paramref name="registry"/>, in the game band, under the id and key
+    /// <see cref="GameContentTypeIds"/> declares for it and this type's own visibility and chunk slots.
+    /// </summary>
+    /// <remarks>
+    /// The visibility and the chunk slot count are the TYPE's rather than a caller's: a wrong visibility
+    /// moves rows between the two manifests and a wrong slot count moves every content address, and neither
+    /// fails loudly.
+    /// </remarks>
+    /// <param name="registry">A registry that is not frozen and carries neither this id nor this key.</param>
+    /// <param name="validator">
+    /// The type's own validator, or null for none. This package ships NO validators yet, so a game either
+    /// passes one of its own or passes null. The package's own arrive separately.
+    /// </param>
+    /// <exception cref="ArgumentNullException"><paramref name="registry"/> is null.</exception>
+    /// <exception cref="ContentRegistrationException">
+    /// The registry is frozen, or already carries this id or this key.
+    /// </exception>
+    public static void Register(ContentTypeRegistry registry, IContentValidator? validator)
+    {
+        ArgumentNullException.ThrowIfNull(registry);
+
+        ContentFieldSchema schema = CreateSchema();
+        registry.RegisterContentType(
+            ContentRegistrationBand.Game,
+            GameContentTypeIds.Store,
+            GameContentTypeIds.StoreKey,
+            new Codec(new ContentTypeId(GameContentTypeIds.Store), schema),
+            validator,
+            schema,
+            DefaultVisibility,
+            DefaultChunkSlots);
+    }
 
     /// <summary>The store row codec, which is the engine's positional walk with nothing added.</summary>
     public sealed class Codec : ContentRowCodecBase

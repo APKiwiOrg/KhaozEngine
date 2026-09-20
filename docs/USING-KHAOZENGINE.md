@@ -15344,17 +15344,18 @@ tick is.
 using KhaozEngine.Catalog;
 using KhaozEngine.Catalog.GameTypes;
 
-ContentFieldSchema food = FoodContentType.CreateSchema(ContentDurationUnit.Ticks);
-registry.RegisterContentType(
-    ContentRegistrationBand.Game,
-    GameContentTypeIds.Food,
-    GameContentTypeIds.FoodKey,
-    new FoodContentType.Codec(new ContentTypeId(GameContentTypeIds.Food), food),
-    validator: null,
-    food,
-    FoodContentType.DefaultVisibility,
-    FoodContentType.DefaultChunkSlots);
+const ContentDurationUnit Unit = ContentDurationUnit.Ticks;
+FoodContentType.Register(registry, Unit, validator: null);
+StoreContentType.Register(registry, validator: null);
+MonsterDropContentType.Register(registry, validator: null);
 ```
+
+Each type's own `Register` supplies the id, the key, the band, the type's visibility, its chunk slots, the
+schema for the unit and the codec over it. **The visibility and the chunk slot count are not a caller's to
+choose.** `monster_drop` registered as `Client` would put every drop row's key in the client manifest, and a
+wrong slot count moves every content address, so two worlds authoring the same facts would stop agreeing
+about where they live. Neither fails loudly, which is why the hand-written eight-argument call is not the
+documented path. The validator is a parameter the caller passes, and this package ships none yet.
 
 **Reach a field BY NAME, never by a literal position.** A row's values are parallel by index to its type's
 schema, and a duration field is named for the game's own unit, so a reader resolves the position once at

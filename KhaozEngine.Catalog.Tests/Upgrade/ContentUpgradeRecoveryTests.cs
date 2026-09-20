@@ -14,8 +14,8 @@ namespace KhaozEngine.Tests.Catalog.Upgrade;
 /// </summary>
 public sealed class ContentUpgradeRecoveryTests
 {
-    /// <summary>The edits an interrupted run left behind, which must never reach a published version.</summary>
-    static ContentEdit Leftover
+    /// <summary>An edit no definition plans, which is what makes a draft carrying it somebody else's.</summary>
+    static ContentEdit Foreign
         => ContentEdit.Add(UpgradeFixtures.Thing, new ContentKey("leftover"), PublishFixtures.Fields(77));
 
     /// <summary>
@@ -121,7 +121,7 @@ public sealed class ContentUpgradeRecoveryTests
             UpgradeFixtures.Actor,
             UpgradeFixtures.Operator);
         await harness.Store.ApplyEditsAsync(
-            [Leftover],
+            [Foreign],
             UpgradeFixtures.Actor,
             UpgradeFixtures.Operator,
             ContentUpgradeRunner.NoteFor(UpgradeHarness.FirstId));
@@ -131,6 +131,75 @@ public sealed class ContentUpgradeRecoveryTests
 
         Assert.Equal(ContentUpgradeOutcome.OperatorDraftOpen, report.Outcome);
         Assert.Equal(1, (await harness.Store.GetOpenDraftAsync())!.EditCount);
+    }
+
+    /// <summary>
+    /// An EXTRA edit in an interrupted run's draft is an operator's work, whatever the actor and the note
+    /// still say. The draft is left standing with both edits and the run refuses.
+    /// </summary>
+    [Fact]
+    public async Task AnExtraEditInTheRunnersOwnDraftMakesItOperatorWork()
+        => await AssertDraftLeftAloneAsync(async harness =>
+        {
+            await LeaveInterruptedDraftAsync(harness, freeze: false);
+            await harness.Store.ApplyEditsAsync(
+                [Foreign], "a-human-operator", "oid:human", string.Empty);
+            return 2;
+        });
+
+    /// <summary>
+    /// A REMOVED edit is the same answer. An operator who discarded half the work and re-added one edit
+    /// leaves a draft that reproduces no plan.
+    /// </summary>
+    [Fact]
+    public async Task ADraftHoldingFewerEditsThanThePlanIsOperatorWork()
+        => await AssertDraftLeftAloneAsync(async harness =>
+        {
+            await harness.Store.ApplyEditsAsync(
+                [Foreign],
+                UpgradeFixtures.Actor,
+                UpgradeFixtures.Operator,
+                ContentUpgradeRunner.NoteFor(UpgradeHarness.FirstId));
+            return 1;
+        });
+
+    /// <summary>
+    /// A changed FIELD VALUE under an unchanged target is the case an actor-and-note proof cannot see at
+    /// all: the edit count, the targets and the operations are identical and only the value moved.
+    /// </summary>
+    [Fact]
+    public async Task AChangedFieldValueInTheRunnersOwnDraftMakesItOperatorWork()
+        => await AssertDraftLeftAloneAsync(async harness =>
+        {
+            IReadOnlyList<ContentEdit> planned = await PlannedEditsAsync(harness, harness.First);
+            ContentEdit only = Assert.Single(planned);
+            await harness.Store.ApplyEditsAsync(
+                [ContentEdit.Import(only.Type, only.DefinitionId, only.Key, PublishFixtures.Fields(99))],
+                UpgradeFixtures.Actor,
+                UpgradeFixtures.Operator,
+                ContentUpgradeRunner.NoteFor(UpgradeHarness.FirstId));
+            return 1;
+        });
+
+    /// <summary>
+    /// One older catalog, one draft left in the state the arrange step describes, and the two things that
+    /// have to hold: the run refuses and the draft still carries every edit it carried.
+    /// </summary>
+    /// <param name="arrange">Leaves the draft and answers how many edits it should still hold.</param>
+    static async Task AssertDraftLeftAloneAsync(Func<UpgradeHarness, Task<int>> arrange)
+    {
+        using var harness = new UpgradeHarness();
+        await harness.SeedOlderCatalogAsync();
+        int edits = await arrange(harness);
+        CatalogFootprint before = await harness.FootprintAsync();
+
+        ContentUpgradeReport report = await ContentUpgradeRunner.RunAsync(
+            harness.Store, harness.Registry, harness.Set, UpgradeFixtures.Apply());
+
+        Assert.Equal(ContentUpgradeOutcome.OperatorDraftOpen, report.Outcome);
+        Assert.Equal(ContentUpgradeCodes.OperatorDraftOpen, report.Diagnostics[0].Code);
+        Assert.Equal(before, await harness.FootprintAsync());
+        Assert.Equal(edits, (await harness.Store.GetOpenDraftAsync())!.EditCount);
     }
 
     /// <summary>
@@ -182,11 +251,14 @@ public sealed class ContentUpgradeRecoveryTests
         Assert.Equal(1, await harness.Store.GetPinnedVersionAsync());
     }
 
-    /// <summary>Leaves the store exactly as a run killed part way through would, with the runner's own note.</summary>
+    /// <summary>
+    /// Leaves the store exactly as a run killed between its edits and its publish would: the runner's actor,
+    /// the runner's note, and the EDITS that run's definition plans, which is the third half of the proof.
+    /// </summary>
     static async Task LeaveInterruptedDraftAsync(UpgradeHarness harness, bool freeze)
     {
         await harness.Store.ApplyEditsAsync(
-            [Leftover],
+            await PlannedEditsAsync(harness, harness.First),
             UpgradeFixtures.Actor,
             UpgradeFixtures.Operator,
             ContentUpgradeRunner.NoteFor(UpgradeHarness.FirstId));
@@ -196,9 +268,19 @@ public sealed class ContentUpgradeRecoveryTests
         }
     }
 
+    /// <summary>The edits one definition plans against the catalog as it stands.</summary>
+    static async Task<IReadOnlyList<ContentEdit>> PlannedEditsAsync(
+        UpgradeHarness harness,
+        ContentUpgradeDefinition definition)
+    {
+        int active = await harness.Store.GetActiveVersionAsync();
+        ContentBundle baseline = await harness.Store.ExportBundleAsync(active);
+        return definition.Plan(new ContentUpgradeContext(active, baseline, harness.Registry)).Edits;
+    }
+
     /// <summary>
-    /// Exactly one published version per definition, both ledger rows, no draft left standing, and none of
-    /// the interrupted run's own edits anywhere in the catalog.
+    /// Exactly one published version per definition, both ledger rows, no draft left standing, and EXACTLY
+    /// the committed rows in the catalog: no leftover of the interrupted run and no row twice.
     /// </summary>
     static async Task AssertRecoveredAsync(UpgradeHarness harness, ContentUpgradeReport report)
     {
@@ -210,12 +292,24 @@ public sealed class ContentUpgradeRecoveryTests
 
         ContentRowPage things = await harness.Store.ListRowsAsync(
             UpgradeFixtures.Thing, 0, null, true, 0, 50);
-        Assert.DoesNotContain(
-            things.Rows,
-            row => string.Equals(row.Key.ToString(), "leftover", StringComparison.Ordinal));
+        Assert.Equal(["old_row"], Keys(things));
+        ContentRowPage others = await harness.Store.ListRowsAsync(
+            UpgradeFixtures.Other, 0, null, true, 0, 50);
+        Assert.Equal(["new_row", "second_new_row"], Keys(others));
 
         IReadOnlyList<ContentUpgradeRecord> ledger = await harness.Store.ListUpgradesAsync();
         Assert.Equal([2, 3], VersionNumbers(ledger));
+    }
+
+    static string[] Keys(ContentRowPage page)
+    {
+        var keys = new string[page.Rows.Count];
+        for (int i = 0; i < keys.Length; i++)
+        {
+            keys[i] = page.Rows[i].Key.ToString();
+        }
+
+        return keys;
     }
 
     static int[] VersionNumbers(IReadOnlyList<ContentUpgradeRecord> records)

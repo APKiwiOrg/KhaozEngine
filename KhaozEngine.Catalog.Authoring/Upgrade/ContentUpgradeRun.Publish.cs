@@ -94,7 +94,7 @@ sealed partial class ContentUpgradeRun
         Exception failure,
         int attempt)
     {
-        await DiscardOwnDraftAsync(note).ConfigureAwait(false);
+        await DiscardOwnDraftAsync(note, plan.Edits).ConfigureAwait(false);
 
         ContentUpgradeRecord? landed = await FindRecordAsync(definition.Id).ConfigureAwait(false);
         if (landed is not null)

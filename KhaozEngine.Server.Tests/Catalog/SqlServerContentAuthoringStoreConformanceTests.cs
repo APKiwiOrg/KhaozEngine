@@ -349,6 +349,11 @@ public sealed class SqlServerContentAuthoringStoreConformanceTests : ContentAuth
 
     /// <inheritdoc />
     [CatalogSqlServerFact]
+    public override Task TheUpgradeRunnerLeavesItsOwnDraftAloneOnceAnOperatorHasAddedToIt()
+        => base.TheUpgradeRunnerLeavesItsOwnDraftAloneOnceAnOperatorHasAddedToIt();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
     public override Task ACarriedAddIntoAPopulatedCatalogPublishesUnderExactlyThatId()
         => base.ACarriedAddIntoAPopulatedCatalogPublishesUnderExactlyThatId();
 

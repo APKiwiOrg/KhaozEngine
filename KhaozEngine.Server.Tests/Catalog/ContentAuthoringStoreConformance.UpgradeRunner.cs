@@ -112,6 +112,57 @@ public abstract partial class ContentAuthoringStoreConformance
         Assert.Equal(1, (await DraftAsync(store)).EditCount);
     }
 
+    /// <summary>
+    /// The data-loss path an ownership proof of actor plus note cannot close. A run dies after its edits, an
+    /// operator adds one of their own WITHOUT a note, and both stores keep the standing note and never
+    /// rewrite the identity that opened the draft, so the draft still carries the runner's actor and the
+    /// runner's note. The edits are what say it is no longer the runner's work.
+    /// </summary>
+    [Fact]
+    public virtual async Task TheUpgradeRunnerLeavesItsOwnDraftAloneOnceAnOperatorHasAddedToIt()
+    {
+        IContentAuthoringStore store = await OpenAsync();
+        await PublishAsync(store, ContentEdit.Add(Thing, new ContentKey("one"), CatalogFixtures.Fields(11)));
+        await store.ApplyEditsAsync(
+            await UpgradeEditsAsync(store),
+            UpgradeActor,
+            CatalogFixtures.Operator,
+            ContentUpgradeRunner.NoteFor(UpgradeId));
+        await store.ApplyEditsAsync(
+            [ContentEdit.Update(Thing, 1, new ContentKey("one"), CatalogFixtures.Fields(55))],
+            "a-human-operator",
+            CatalogFixtures.Operator,
+            string.Empty);
+
+        ContentDraft standing = await DraftAsync(store);
+        Assert.Equal(2, standing.EditCount);
+        Assert.Equal(UpgradeActor, standing.OpenedBy);
+        Assert.Equal(ContentUpgradeRunner.NoteFor(UpgradeId), standing.Note);
+
+        ContentUpgradeReport report = await ContentUpgradeRunner.RunAsync(
+            store, Registry, UpgradeSet(), UpgradeOptions(ContentUpgradeMode.Apply));
+
+        Assert.Equal(ContentUpgradeOutcome.OperatorDraftOpen, report.Outcome);
+        Assert.Equal(2, (await DraftAsync(store)).EditCount);
+        Assert.Equal(1, await store.GetActiveVersionAsync());
+        Assert.Empty(await Ledger(store).ListUpgradesAsync());
+    }
+
+    /// <summary>
+    /// The edits this build's one definition plans against the catalog as it stands, which is what an
+    /// interrupted run would have left in the draft.
+    /// </summary>
+    /// <param name="store">The store to plan against.</param>
+    protected async Task<IReadOnlyList<ContentEdit>> UpgradeEditsAsync(IContentAuthoringStore store)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+
+        int active = await store.GetActiveVersionAsync();
+        ContentBundle baseline = await store.ExportBundleAsync(active);
+        ContentUpgradeDefinition definition = UpgradeSet().Definitions[0];
+        return definition.Plan(new ContentUpgradeContext(active, baseline, Registry)).Edits;
+    }
+
     /// <summary>The one definition these facts ship, which adds the second row of the fixture type.</summary>
     protected ContentUpgradeSet UpgradeSet()
     {

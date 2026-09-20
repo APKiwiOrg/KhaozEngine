@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Threading.Tasks;
 
 namespace KhaozEngine.Catalog.Authoring;
@@ -8,17 +9,18 @@ namespace KhaozEngine.Catalog.Authoring;
 /// The draft half of a run: how an interrupted run's own draft is PROVEN to be its own, and what is done with
 /// it.
 /// <para>
-/// <b>The proof is the two things the seam already persists.</b> A draft carries the actor that opened it
+/// <b>The proof is the actor, the note AND the edits.</b> A draft carries the actor that opened it
 /// (<see cref="ContentDraft.OpenedBy"/>) and the note of the last write into it
-/// (<see cref="ContentDraft.Note"/>), both durable and both readable without a new column. The runner's own
-/// actor plus a note of <c>content upgrade &lt;id&gt;</c> naming a PENDING upgrade is a draft only this
-/// runner could have left, and anything else is operator work that is left exactly as it stands.
+/// (<see cref="ContentDraft.Note"/>), and neither is enough on its own. Both stores KEEP the standing note
+/// when a writer passes an empty one, the shipped admin edit action takes an optional note, and no store
+/// rewrites the identity that opened a draft, so an operator's edit lands in an interrupted run's draft
+/// under the runner's actor and the runner's note. The third half closes it: the draft's expanded edits have
+/// to be EXACTLY what a fresh plan of that definition produces against the current active baseline, which
+/// <see cref="ContentUpgradeDraftMatch"/> decides.
 /// </para>
 /// <para>
-/// <b>A frozen own draft is the harder half and it is still recoverable.</b> A run killed between the freeze
-/// of step 1 and the commit of step 10 leaves a marker that refuses every later edit and every later discard,
-/// so the freeze is cleared first and the draft discarded second. The marker is never left standing, because
-/// a draft nothing can write to and nothing can discard is a wedged catalog.
+/// <b>Anything else is operator work</b> and is left exactly as it stands, because everything the runner
+/// would do to a draft it believed was its own is irreversible.
 /// </para>
 /// </summary>
 sealed partial class ContentUpgradeRun
@@ -44,7 +46,8 @@ sealed partial class ContentUpgradeRun
             return null;
         }
 
-        if (!IsInterruptedRun(draft, pending, out string? upgradeId))
+        ContentUpgradeDefinition? named = NamedPending(draft, pending);
+        if (named is null)
         {
             Add(
                 ContentUpgradeCodes.OperatorDraftOpen,
@@ -53,12 +56,21 @@ sealed partial class ContentUpgradeRun
             return ContentUpgradeOutcome.OperatorDraftOpen;
         }
 
+        if (!await HoldsPlanOfAsync(draft, named).ConfigureAwait(false))
+        {
+            Add(
+                ContentUpgradeCodes.OperatorDraftOpen,
+                FormattableString.Invariant(
+                    $"this catalog has an open draft of {draft.EditCount} edit(s) on version {draft.BaseVersion} that an upgrade run opened for '{named.Id}' and that has since been changed, so it is no longer that run's to publish or discard. Review it, then publish or discard it and run the {pending.Count} pending upgrade(s). The draft was left untouched."));
+            return ContentUpgradeOutcome.OperatorDraftOpen;
+        }
+
         if (Options.Mode == ContentUpgradeMode.Preview)
         {
             Add(
                 ContentUpgradeCodes.DraftRecovered,
                 FormattableString.Invariant(
-                    $"an interrupted run of upgrade '{upgradeId}' left a draft of {draft.EditCount} edit(s) on version {draft.BaseVersion}. An apply discards it and replans. Nothing was written."));
+                    $"an interrupted run of upgrade '{named.Id}' left a draft of {draft.EditCount} edit(s) on version {draft.BaseVersion} that still holds exactly this build's plan. An apply discards it and replans. Nothing was written."));
             return null;
         }
 
@@ -95,7 +107,7 @@ sealed partial class ContentUpgradeRun
         Add(
             ContentUpgradeCodes.DraftRecovered,
             FormattableString.Invariant(
-                $"an interrupted run of upgrade '{upgradeId}' left a {(draft.IsFrozen ? "frozen " : string.Empty)}draft of {draft.EditCount} edit(s) on version {draft.BaseVersion}, which this run discarded before replanning."));
+                $"an interrupted run of upgrade '{named.Id}' left a {(draft.IsFrozen ? "frozen " : string.Empty)}draft of {draft.EditCount} edit(s) on version {draft.BaseVersion}, which this run discarded before replanning."));
         return null;
     }
 
@@ -125,15 +137,16 @@ sealed partial class ContentUpgradeRun
 
     /// <summary>
     /// Discards the draft this run itself opened for one definition, on a failure path. It is scoped to THIS
-    /// definition's note and skips a FROZEN draft, for one reason each: a note naming another definition
-    /// belongs to another run that is further ahead, and a frozen draft belongs to a publish in flight, since
-    /// this run's own publish releases its freeze on every exit path.
+    /// definition's plan and skips a FROZEN draft, for one reason each: a draft that is not this plan belongs
+    /// to another run or to an operator, and a frozen draft belongs to a publish in flight, since this run's
+    /// own publish releases its freeze on every exit path.
     /// </summary>
     /// <param name="note">The note this definition's draft carries.</param>
-    async Task DiscardOwnDraftAsync(string note)
+    /// <param name="planned">The edits this definition's plan produced.</param>
+    async Task DiscardOwnDraftAsync(string note, IReadOnlyList<ContentEdit> planned)
     {
         ContentDraft? draft = await Store.GetOpenDraftAsync(CancellationToken).ConfigureAwait(false);
-        if (draft is null || draft.IsFrozen || !IsOwn(draft, note))
+        if (draft is null || draft.IsFrozen || !IsOwn(draft, note, planned))
         {
             return;
         }
@@ -142,33 +155,69 @@ sealed partial class ContentUpgradeRun
     }
 
     /// <summary>
-    /// Whether a draft is one of THIS runner's, left behind by a run that did not finish: the actor matches
-    /// and the note names one of the upgrades still pending.
+    /// The PENDING definition a draft's actor and note name, or null when the draft names none of them. It
+    /// is the cheap half of the proof and never the whole of it.
     /// </summary>
-    bool IsInterruptedRun(
+    ContentUpgradeDefinition? NamedPending(
         ContentDraft draft,
-        IReadOnlyList<ContentUpgradeDefinition> pending,
-        out string? upgradeId)
+        IReadOnlyList<ContentUpgradeDefinition> pending)
     {
-        upgradeId = null;
         if (!string.Equals(draft.OpenedBy, Options.Actor, StringComparison.Ordinal))
         {
-            return false;
+            return null;
         }
 
         for (int i = 0; i < pending.Count; i++)
         {
-            if (IsOwn(draft, ContentUpgradeRunner.NoteFor(pending[i].Id)))
+            if (string.Equals(
+                draft.Note, ContentUpgradeRunner.NoteFor(pending[i].Id), StringComparison.Ordinal))
             {
-                upgradeId = pending[i].Id;
-                return true;
+                return pending[i];
             }
         }
 
-        return false;
+        return null;
     }
 
-    bool IsOwn(ContentDraft draft, string note)
+    /// <summary>
+    /// Whether the draft holds EXACTLY what one definition plans right now. A planner that refuses or that
+    /// finds the catalog already satisfied answers no, because neither produces a change set the draft could
+    /// be reproducing.
+    /// </summary>
+    async Task<bool> HoldsPlanOfAsync(ContentDraft draft, ContentUpgradeDefinition definition)
+    {
+        IReadOnlyList<ContentEdit>? planned = await ReplanAsync(definition).ConfigureAwait(false);
+        return planned is not null && ContentUpgradeDraftMatch.IsPlan(draft, planned);
+    }
+
+    /// <summary>
+    /// One definition planned again against the CURRENT active version, for comparison only: no step is
+    /// recorded and no refusal stops the run, because this is a question about a draft rather than an
+    /// attempt at the upgrade.
+    /// </summary>
+    async Task<IReadOnlyList<ContentEdit>?> ReplanAsync(ContentUpgradeDefinition definition)
+    {
+        ContentBundle baseline = await Store.ExportBundleAsync(Active, CancellationToken).ConfigureAwait(false);
+        var context = new ContentUpgradeContext(Active, baseline, Registry);
+
+        ContentUpgradePlan? plan;
+        try
+        {
+            plan = definition.Plan(context);
+        }
+        catch (Exception refused) when (refused is InvalidDataException
+            or ContentAuthoringException
+            or ArgumentException)
+        {
+            return null;
+        }
+
+        return plan is not null && plan.Kind == ContentUpgradePlanKind.Changes ? plan.Edits : null;
+    }
+
+    /// <summary>The whole proof for one definition: the actor, the note and the edits.</summary>
+    bool IsOwn(ContentDraft draft, string note, IReadOnlyList<ContentEdit> planned)
         => string.Equals(draft.OpenedBy, Options.Actor, StringComparison.Ordinal)
-            && string.Equals(draft.Note, note, StringComparison.Ordinal);
+            && string.Equals(draft.Note, note, StringComparison.Ordinal)
+            && ContentUpgradeDraftMatch.IsPlan(draft, planned);
 }

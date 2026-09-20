@@ -1,7 +1,8 @@
 # Map editor interaction and terrain workflow refresh
 
-Status: approved for implementation. The owner selected middle-mouse terrain orbit and authorized
-implementation planning followed by subagent-driven development. This is not yet a shipped contract.
+Status: implemented for staged 19.9.1. Living API and usage instructions are in the package README and
+consumer guide. [CPU measurements](MAP-EDITOR-RESPONSIVENESS-2026-09-20.md) record the performance boundary.
+Consumer integration and final validation are tracked in the [implementation plan](MAP-EDITOR-REFRESH-IMPLEMENTATION-2026-09-20.md).
 
 ## Purpose
 

@@ -16,6 +16,17 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   correspondingly fainter disc. Alpha 1 is bit-identical, so no golden moved. `Sky.fragment` is repinned on all
   three backends. Part 1 of #396. The horizon half of that issue stays open.
 
+
+- Map editor navigation uses middle-mouse terrain-pivot orbit, Shift+middle-mouse pan, wheel dolly,
+  captured right-mouse fly navigation, selection framing, and persisted fly speed.
+- The editor View panel exposes prop categories, named layers, water, markers, Terrain Only and Show All.
+  Visibility filters draw submission and picking without rebuilding streamed terrain or scatter.
+- Sculpt feedback adds a terrain-following footprint, falloff guide, screen-scaled centre marker and
+  localized operation/state labels. Segments crossing unloaded chunks are omitted.
+- Editor navigation samples terrain only when a new pivot is needed. Authored prop draws reuse their
+  preparation buffer, and hidden placement caches rebuild on reveal. The copied-island CPU profile
+  removes roughly 1.24 MB of warmed authored draw-preparation allocation per frame.
+
 ## 19.9.0
 
 - `ButcherSwing` directs the contact stroke down and forward through the real skeleton and grip sockets.

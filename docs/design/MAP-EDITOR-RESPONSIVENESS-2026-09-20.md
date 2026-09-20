@@ -18,7 +18,7 @@ are stable. Small timing differences and p95 values remain noise-sensitive.
 
 ## Navigation results
 
-The original implementation was measured at `b0517e1d`. The demand-driven implementation was measured at
+The refreshed editor before this performance pass was measured at `b0517e1d`. The demand-driven implementation was measured at
 `cc7cee01`. Each navigation sample contains 64 editor updates.
 
 | Operation | Base median / p95 us | Base B/op | `cc7cee01` median / p95 us | `cc7cee01` B/op |

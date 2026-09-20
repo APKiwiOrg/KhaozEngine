@@ -19,8 +19,10 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 - Map editor navigation uses middle-mouse terrain-pivot orbit, Shift+middle-mouse pan, wheel dolly,
   captured right-mouse fly navigation, selection framing, and persisted fly speed.
-- The editor View panel exposes prop categories, named layers, water, markers, Terrain Only and Show All.
+- The editor View panel exposes authored props, prop categories, named layers, water, markers, Terrain Only and Show All.
   Visibility filters draw submission and picking without rebuilding streamed terrain or scatter.
+- `InputManager.SuppressPointerInput` blocks GUI mouse buttons and scrolling during captured navigation
+  while retaining hover, keyboard and gamepad input. Held buttons remain ignored until release.
 - Sculpt feedback adds a terrain-following footprint, falloff guide, screen-scaled centre marker and
   localized operation/state labels. Segments crossing unloaded chunks are omitted.
 - Editor navigation samples terrain only when a new pivot is needed. Authored prop draws reuse their

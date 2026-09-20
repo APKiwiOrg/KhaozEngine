@@ -550,7 +550,7 @@ diagnostic:
 | What | Code | Why it is allowed |
 |---|---|---|
 | A shipped definition whose `Order` differs from the order the ledger recorded it under | `KECU0014` | The ledger holds the id, so the catalog already carries the upgrade and it never runs again. |
-| A pending definition ordered below one the catalog already holds | `KECU0015` | Two feature branches merging produces it. The pending one has not run, so it runs now, in its own order, against the catalog as it stands. |
+| A pending definition ordered below one the catalog already holds, or below one a recovered draft makes this run publish first | `KECU0015` | Two feature branches merging produces both. The pending one has not run, so it runs now, against the catalog as it stands. |
 
 Two definitions sharing an id or an order in ONE set is still an `ArgumentException` at construction, because
 that is a build shipping an ambiguity rather than a catalog carrying a history.
@@ -630,7 +630,11 @@ ContentUpgradeReport report = await ContentUpgradeRunner.RunAsync(
    plan of that definition produces against the current active version. The actor and the note alone are not
    proof, because both stores keep the standing note when a writer passes none and neither rewrites the
    identity that opened the draft, so an operator's edit lands under both. Such a draft is PUBLISHED as it
-   stands. Its freeze is never cleared and it is never discarded first: a marker naming the active version is
+   stands, and its definition runs FIRST, ahead of any pending upgrade ordered below it, because only that
+   definition can publish the draft that is standing and every other one would read it as a rival
+   publisher's. The jump is reported as `KECU0015` and changes nothing else: each definition is still planned
+   against a baseline exported at the version active right then. Its freeze is never cleared and it is never
+   discarded first: a marker naming the active version is
    a live publish or a dead one and nothing on the seam tells them apart, and a publish is the store's own
    recovery for a dead one. Any other open draft is operator work: `OperatorDraftOpen`, draft untouched. The
    publish pre-flight asks the same question, so a draft that appears after this step is answered the same
@@ -641,7 +645,8 @@ ContentUpgradeReport report = await ContentUpgradeRunner.RunAsync(
    EVERY later re-read of the active version, so a run that stood off and came back to a version a rival left
    stops rather than publishing onto a baseline nobody previewed. Only a version this run published itself is
    not a move.
-8. Each pending definition runs in ascending order and publishes as its OWN version, so history shows each
+8. Each pending definition runs in ascending order, after any definition whose draft step 5 recovered, and
+   publishes as its OWN version, so history shows each
    upgrade separately and an interruption between two of them resumes at the second. The planner is handed a
    bundle exported at the version active right then, so the second definition sees the first one's result.
    The minimum builds rise to at least the running build's ordinals and never fall below the baseline's.

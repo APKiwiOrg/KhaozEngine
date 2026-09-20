@@ -70,4 +70,19 @@ static class ContentUpgradeOrderNotes
 
         return notes;
     }
+
+    /// <summary>
+    /// The note for a definition the run publishes FIRST because an interrupted run left its draft standing.
+    /// It is the same informational shape as a pending definition ordered below an applied one, and for the
+    /// same reason: the id is the identity, so an order jumped is a thing to report rather than to refuse.
+    /// </summary>
+    /// <param name="recovered">The definition whose draft is standing.</param>
+    /// <param name="below">Every pending id ordered below it, which now runs after it.</param>
+    internal static ContentUpgradeDiagnostic RecoveredFirst(
+        ContentUpgradeDefinition recovered,
+        IReadOnlyList<string> below)
+        => new(
+            ContentUpgradeCodes.PendingBelowApplied,
+            FormattableString.Invariant(
+                $"upgrade '{recovered.Id}' at order {recovered.Order} runs FIRST, because an interrupted run left its draft standing and only it can publish that draft. Pending upgrade(s) '{string.Join("', '", below)}' are ordered below it and run after it, against the catalog as it stands."));
 }

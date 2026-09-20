@@ -203,10 +203,12 @@ public static partial class ContentUpgradeRunner
                     $"expected catalog version {expected}, but version {active} is active, so the baseline moved since it was previewed. Preview again and rerun with the new version. Nothing was changed."));
         }
 
-        // Steps 8 to 10.
+        // Steps 8 to 10, with a recovered draft's definition moved to the front: only it can publish the
+        // draft that is standing, and every other definition would read that draft as a rival publisher's.
+        IReadOnlyList<ContentUpgradeDefinition> ordered = run.RecoveredFirst(pending);
         return options.Mode == ContentUpgradeMode.Preview
-            ? await run.PreviewAsync(pending).ConfigureAwait(false)
-            : await run.ApplyAsync(pending).ConfigureAwait(false);
+            ? await run.PreviewAsync(ordered).ConfigureAwait(false)
+            : await run.ApplyAsync(ordered).ConfigureAwait(false);
     }
 
     /// <summary>

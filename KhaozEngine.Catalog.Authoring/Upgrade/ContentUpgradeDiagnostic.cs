@@ -87,7 +87,8 @@ public static class ContentUpgradeCodes
 
     /// <summary>
     /// INFORMATIONAL. A pending definition is ordered below one the catalog already holds, which is what two
-    /// feature branches merging produces. It runs now, in its own order.
+    /// feature branches merging produces, or below one this run publishes first out of a recovered draft. It
+    /// runs now, against the catalog as it stands.
     /// </summary>
     public const string PendingBelowApplied = "KECU0015";
 }

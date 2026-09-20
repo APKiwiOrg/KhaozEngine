@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading.Tasks;
 using KhaozEngine.Catalog;
 using KhaozEngine.Catalog.Authoring;
@@ -81,6 +82,55 @@ public sealed class ContentUpgradeRecoveryTests
         Assert.Equal(0, counting.FreezeClearsBeforeFirstPublish);
         Assert.Equal(0, counting.FreezeClears);
         Assert.Equal(0, counting.Discards);
+    }
+
+    /// <summary>
+    /// The recovered draft belongs to a definition that is NOT first in the pending list, which the order
+    /// rules allow: the build that died shipped the second upgrade only, and the build that replaced it adds
+    /// a first one at a lower order. The draft is published FIRST, as it stands, and the rest of the pending
+    /// list follows in ascending order.
+    /// <para>
+    /// Applying the first one first instead would find an open draft that is not its own, read it as a rival
+    /// publisher's, and spend the whole stand-off budget against a catalog that cannot move.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task ARecoveredDraftIsPublishedFirstWhenItsDefinitionIsNotFirstPending()
+    {
+        using var harness = new UpgradeHarness();
+        await harness.SeedOlderCatalogAsync();
+        await harness.Store.ApplyEditsAsync(
+            await PlannedEditsAsync(harness, harness.Second),
+            UpgradeFixtures.Actor,
+            UpgradeFixtures.Operator,
+            ContentUpgradeRunner.NoteFor(UpgradeHarness.SecondId));
+        var clock = Stopwatch.StartNew();
+
+        ContentUpgradeReport report = await ContentUpgradeRunner.RunAsync(
+            harness.Store, harness.Registry, harness.Set, UpgradeFixtures.Apply());
+
+        clock.Stop();
+        Assert.Equal(ContentUpgradeOutcome.Applied, report.Outcome);
+
+        // A stand-off against a catalog that cannot move costs a whole attempt budget, so anything near it
+        // means the run waited rather than recognising its own draft.
+        Assert.True(
+            clock.Elapsed < TimeSpan.FromSeconds(5),
+            FormattableString.Invariant($"the run took {clock.Elapsed}, so it stood off."));
+        Assert.Equal(3, (await harness.Store.ListVersionsAsync()).Count);
+        Assert.Null(await harness.Store.GetOpenDraftAsync());
+
+        // The recovered one published first, so it carries the LOWER version despite the higher order.
+        Assert.Equal(2, VersionOf(await harness.Store.ListUpgradesAsync(), UpgradeHarness.SecondId));
+        Assert.Equal(3, VersionOf(await harness.Store.ListUpgradesAsync(), UpgradeHarness.FirstId));
+        Assert.Contains(
+            report.Diagnostics,
+            diagnostic => string.Equals(
+                diagnostic.Code, ContentUpgradeCodes.PendingBelowApplied, StringComparison.Ordinal));
+
+        ContentRowPage others = await harness.Store.ListRowsAsync(
+            UpgradeFixtures.Other, 0, null, true, 0, 50);
+        Assert.Equal(["new_row", "second_new_row"], Keys(others));
     }
 
     /// <summary>
@@ -440,6 +490,21 @@ public sealed class ContentUpgradeRecoveryTests
         }
 
         return keys;
+    }
+
+    /// <summary>The version one ledger row holds, failing loudly when the ledger holds no such upgrade.</summary>
+    static int VersionOf(IReadOnlyList<ContentUpgradeRecord> records, string id)
+    {
+        for (int i = 0; i < records.Count; i++)
+        {
+            if (string.Equals(records[i].Id, id, StringComparison.Ordinal))
+            {
+                return records[i].VersionNumber;
+            }
+        }
+
+        Assert.Fail(FormattableString.Invariant($"The ledger holds no upgrade '{id}'."));
+        return 0;
     }
 
     static int[] VersionNumbers(IReadOnlyList<ContentUpgradeRecord> records)

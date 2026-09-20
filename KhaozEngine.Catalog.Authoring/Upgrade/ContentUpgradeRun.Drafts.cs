@@ -35,6 +35,53 @@ namespace KhaozEngine.Catalog.Authoring;
 sealed partial class ContentUpgradeRun
 {
     /// <summary>
+    /// The definition an open draft was PROVEN to belong to at step 5, which the apply loop publishes before
+    /// anything else. It is null on the ordinary run that found no draft.
+    /// </summary>
+    ContentUpgradeDefinition? _recovered;
+
+    /// <summary>
+    /// The pending definitions in the order this run will work them: the definition a recovered draft
+    /// belongs to FIRST, then the rest ascending by order.
+    /// <para>
+    /// A recovered draft is only publishable by the definition that opened it, and the apply loop holds one
+    /// draft at a time, so a run that started at a lower-ordered definition instead would find the standing
+    /// draft, read it as a rival publisher's, and spend its whole stand-off budget against a catalog that
+    /// cannot move until it gives up blaming another runner. The order is informational (the id is the
+    /// identity), so moving one definition to the front costs a diagnostic and nothing else.
+    /// </para>
+    /// </summary>
+    /// <param name="pending">The pending definitions, ascending by order.</param>
+    internal IReadOnlyList<ContentUpgradeDefinition> RecoveredFirst(
+        IReadOnlyList<ContentUpgradeDefinition> pending)
+    {
+        if (_recovered is not ContentUpgradeDefinition recovered
+            || ReferenceEquals(pending[0], recovered))
+        {
+            return pending;
+        }
+
+        var ordered = new List<ContentUpgradeDefinition>(pending.Count) { recovered };
+        var below = new List<string>();
+        for (int i = 0; i < pending.Count; i++)
+        {
+            if (ReferenceEquals(pending[i], recovered))
+            {
+                continue;
+            }
+
+            ordered.Add(pending[i]);
+            if (pending[i].Order < recovered.Order)
+            {
+                below.Add(pending[i].Id);
+            }
+        }
+
+        Note(ContentUpgradeOrderNotes.RecoveredFirst(recovered, below));
+        return ordered;
+    }
+
+    /// <summary>
     /// Step 5. Answers the outcome the run stops with, or null to carry on. It WRITES NOTHING: a draft this
     /// run can prove is its own is left standing for the apply loop to publish, and anything else is an
     /// operator's to resolve.
@@ -68,6 +115,9 @@ sealed partial class ContentUpgradeRun
             return ContentUpgradeOutcome.OperatorDraftOpen;
         }
 
+        // Held so the apply loop publishes THIS definition first. Nothing else can publish the draft that
+        // stands, and every other pending definition would read it as a rival publisher's.
+        _recovered = named;
         string frozen = draft.IsFrozen ? "frozen " : string.Empty;
         Add(
             ContentUpgradeCodes.DraftRecovered,

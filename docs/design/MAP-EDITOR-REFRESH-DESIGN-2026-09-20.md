@@ -1,6 +1,6 @@
 # Map editor interaction and terrain workflow refresh
 
-Status: implemented for staged 19.9.1. Living API and usage instructions are in the package README and
+Status: implemented for staged 19.10.0. Living API and usage instructions are in the package README and
 consumer guide. [CPU measurements](MAP-EDITOR-RESPONSIVENESS-2026-09-20.md) record the performance boundary.
 Consumer integration and final validation are tracked in the [implementation plan](MAP-EDITOR-REFRESH-IMPLEMENTATION-2026-09-20.md).
 

@@ -31,13 +31,12 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   use as the blend weight, so the disc dissolves into the sky and keeps its colour. `SunCycleState.SunColor`
   RGB is no longer darkened inside the fade band. A consumer that set a `SunColor` alpha below 1 by hand gets a
   correspondingly fainter disc. Alpha 1 is bit-identical, so no golden moved. `Sky.fragment` is repinned on all
-  three backends. Part 1 of #396. The horizon half of that issue stays open.
-
+  three backends. This fixes the disc-fade part of #396.
 
 - Map editor navigation uses middle-mouse terrain-pivot orbit, Shift+middle-mouse pan, wheel dolly,
   captured right-mouse fly navigation, selection framing, and persisted fly speed.
-- The editor View panel exposes authored props, prop categories, named layers, water, markers, Terrain Only and Show All.
-  Visibility filters draw submission and picking without rebuilding streamed terrain or scatter.
+- The editor View panel exposes authored props, prop categories, named layers, water, markers, Terrain Only
+  and Show All. Visibility filters draw submission and picking without rebuilding streamed terrain or scatter.
 - `InputManager.SuppressPointerInput` blocks GUI mouse buttons and scrolling during captured navigation
   while retaining hover, keyboard and gamepad input. Held buttons remain ignored until release.
 - Sculpt feedback adds a terrain-following footprint, falloff guide, screen-scaled centre marker and

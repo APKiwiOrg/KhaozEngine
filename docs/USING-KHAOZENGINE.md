@@ -10479,6 +10479,16 @@ ones a search per anchor gave.
 The same predicate is the follow's range test, the entity interaction's arrival and the combat roll, so a large
 body and a small one agree on reach whichever of them is attacking.
 
+An interaction target can opt into extra reach without changing global movement or combat. Override
+`ITileTargets.GetInteractionReachPolicy(target)` for authored objects, or pass the same seventh
+`Func<long, TileInteractionReachPolicy>` argument to `TileWorldServer` and `TileWorldClient` for entity targets.
+`TileInteractionReachPolicy.IncludeDiagonals` adds corner neighbours only when `TileCollision.CanStep` admits the
+diagonal without walls, blocked side tiles or corner cutting. `IncludeOverlap` adds anchors whose whole actor
+footprint passes `TileCollision.CanStand` and overlaps the target. The flags compose. `Default` remains the
+cardinal, non-overlapping `TileReach` behavior. The policy-aware `TileInteractionReach.Set`, `Contains`,
+`TryNearest` and `FacingToward` methods are the shared kernel used by prediction and authority. The wire layout and
+combat reach do not change.
+
 ### Standing a server up
 
 ```csharp

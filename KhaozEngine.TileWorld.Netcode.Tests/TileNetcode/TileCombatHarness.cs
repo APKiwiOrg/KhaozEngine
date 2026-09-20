@@ -37,16 +37,18 @@ internal sealed class TileCombatHarness : IDisposable
     /// </param>
     /// <param name="predictObjectInteractions">Whether the client receives the document's authored-object target
     /// resolver. False preserves the harness default where object actions wait for the authoritative round trip.</param>
+    /// <param name="entityInteractionReachPolicy">Optional policy used by both heads for entity interactions.</param>
     public TileCombatHarness(TileWorldDocument doc, TileCoord spawn, float clientPhase = 0.06f,
         TileWorldServerConfig? config = null, Func<INetTransport, INetTransport>? wrapServer = null,
-        bool predictObjectInteractions = false)
+        bool predictObjectInteractions = false,
+        Func<long, TileInteractionReachPolicy>? entityInteractionReachPolicy = null)
     {
         hub = new InMemoryTransportHub();
         INetTransport serverTransport = wrapServer is null ? hub.Server : wrapServer(hub.Server);
         Server = new TileWorldServer(serverTransport, config ?? TileWorldServerTickTests.Config(spawn),
             TileMoveSimulatorTests.Bake(doc),
             new TileDocumentTargets(doc, TileMoveSimulatorTests.Catalogs), new AllowAllAuthenticator(),
-            TileProtocol.CreateRegistry());
+            TileProtocol.CreateRegistry(), entityInteractionReachPolicy);
         clientTransport = hub.CreateClient();
         Client = new TileWorldClient(clientTransport, new TileWorldClientConfig
         {
@@ -54,7 +56,7 @@ internal sealed class TileCombatHarness : IDisposable
             StepTicks = new TileStepTicks(walk: 4, run: 2),
         }, TileMoveSimulatorTests.Bake(doc),
             predictObjectInteractions ? new TileDocumentTargets(doc, TileMoveSimulatorTests.Catalogs) : null,
-            registry: TileProtocol.CreateRegistry());
+            null, TileProtocol.CreateRegistry(), entityInteractionReachPolicy);
         Client.Tick(clientPhase);
         Client.Poll();
     }

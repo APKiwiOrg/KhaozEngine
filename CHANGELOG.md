@@ -5,11 +5,10 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 19.8.1
+## 19.9.0
 
-- `ButcherSwing` now directs the contact stroke down and forward through the real skeleton and grip sockets.
+- `ButcherSwing` directs the contact stroke down and forward through the real skeleton and grip sockets.
 - Added a populated SQLite regression proving additive content types preserve prior rows and version history.
-
 
 Measurement and dead-branch fixes:
 
@@ -23,6 +22,7 @@ Measurement and dead-branch fixes:
 - `Scene3DChunkSink.Apply` had an `if`/`else if` whose two arms were the same call, on the streaming path
   where a reader has to trust that a distinction means something. Both arms collapse to the unconditional
   call the fresh-load arm already makes, since `ApplyPropClusters` is itself the payload read (#1029).
+
 ## 19.8.0
 
 - `KhaozEngine.Skills`: `HarvestYieldRange` distributes inclusive yield ceilings across level bands,

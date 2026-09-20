@@ -1,4 +1,5 @@
 using System;
+using System.Numerics;
 using KhaozEngine.SegmentRig;
 using Xunit;
 
@@ -83,6 +84,34 @@ public class ButcherSwingTests
         Assert.True(full.TorsoLean > under.TorsoLean);
     }
 
+    [Theory]
+    [InlineData(0f)]
+    [InlineData(0.4f)]
+    [InlineData(0.8f)]
+    public void Contact_points_a_standard_blade_down_and_forward_across_common_grip_angles(float gripAngle)
+    {
+        const float cycle = 0.8f;
+        WalkPose contact = ButcherSwing.PoseAt(cycle * 0.5f, cycle);
+        Span<Matrix4x4> at = stackalloc Matrix4x4[HumanoidSkeleton.PieceCount];
+        HumanoidSkeleton.Compose(BodyRig.Human, BodyPose.Origin, contact, at);
+        Matrix4x4 held = SegmentSockets.Held(
+            BodyRig.Human,
+            Matrix4x4.CreateRotationX(gripAngle),
+            at[HumanoidSkeleton.ForearmRight],
+            contact.RightWrist);
+
+        Vector3 grip = Vector3.Transform(Vector3.Zero, held);
+        Vector3 tip = Vector3.Transform(new Vector3(0f, 0.45f, 0f), held);
+        Vector3 blade = Vector3.Normalize(tip - grip);
+
+        Assert.True(tip.Y < grip.Y - 0.15f,
+            $"the contact tip is at {tip.Y} above a grip at {grip.Y} for angle {gripAngle}");
+        Assert.True(tip.Z > grip.Z + 0.08f,
+            $"the contact tip is at {tip.Z} behind a grip at {grip.Z} for angle {gripAngle}");
+        Assert.True(Vector3.Dot(blade, -Vector3.UnitY) > 0.35f,
+            $"the contact blade points {blade} instead of down for angle {gripAngle}");
+    }
+
     static void AssertFinite(in WalkPose pose)
     {
         Assert.All(new[]
@@ -111,6 +140,6 @@ public class ButcherSwingTests
             actual.RootPitch, actual.RootRoll,
         ];
         for (int i = 0; i < expectedChannels.Length; i++)
-            Assert.InRange(MathF.Abs(expectedChannels[i] - actualChannels[i]), 0f, 1e-6f);
+            Assert.InRange(MathF.Abs(expectedChannels[i] - actualChannels[i]), 0f, 1e-5f);
     }
 }

@@ -34,6 +34,39 @@ public interface IContentVersionDirectory
 }
 
 /// <summary>
+/// The two manifest hashes one published version's ROW records, which is the fact that says which manifest a
+/// version number means. It is the version record's answer and never the store's, so a pointer and this
+/// disagreeing is a stale pack root rather than a difference of opinion.
+/// </summary>
+/// <param name="ServerManifestHash">The version's server manifest digest, lower hex.</param>
+/// <param name="ClientManifestHash">The version's client manifest digest, lower hex.</param>
+public readonly record struct ContentVersionHashes(string ServerManifestHash, string ClientManifestHash);
+
+/// <summary>
+/// The optional half of <see cref="IContentVersionDirectory"/>: a directory that holds the version ROW and can
+/// therefore say which manifest a version number means, rather than only which number to load.
+/// <para>
+/// It is a SEPARATE interface because a directory is allowed to carry numbers and nothing else, and widening
+/// the seam every backend implements would make the hash a requirement for implementations that have none. A
+/// boot handed a directory that is not one of these skips the comparison at step 3, which is exactly the boot
+/// it ran before this check existed. <c>IContentAuthoringStore</c> IS one, out of its own version record, so a
+/// host that boots off its authoring database gets the comparison without writing an adapter.
+/// </para>
+/// </summary>
+public interface IContentVersionHashSource
+{
+    /// <summary>
+    /// The version row's two manifest hashes, or NULL when this directory holds no such version, which is not
+    /// a refusal: a server pinned to a version its directory never published has no fact to compare against.
+    /// </summary>
+    /// <param name="versionNumber">The version the boot resolved.</param>
+    /// <param name="cancellationToken">Cancels the read.</param>
+    Task<ContentVersionHashes?> GetVersionHashesAsync(
+        int versionNumber,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
 /// How a boot turns a version NUMBER into the manifest hash to fetch: the <c>versions/&lt;n&gt;</c> pointer of
 /// publish step 9, which is the one object in a content-addressed store not named by its own hash.
 /// <para>

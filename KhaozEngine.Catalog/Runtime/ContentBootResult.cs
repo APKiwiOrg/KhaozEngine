@@ -50,6 +50,13 @@ public enum ContentBootRefusal
 
     /// <summary>Step 11: the world names a content key that is not live in the version.</summary>
     WorldKeyUnresolved,
+
+    /// <summary>
+    /// Step 3, BEFORE the manifest is fetched: the store's <c>versions/&lt;n&gt;</c> pointer names a manifest
+    /// the version record does not. It is last rather than in step order because these values ship in a
+    /// package, and inserting one in the middle would move every value under it.
+    /// </summary>
+    PackPointerMismatch,
 }
 
 /// <summary>

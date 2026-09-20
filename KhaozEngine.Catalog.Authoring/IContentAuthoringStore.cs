@@ -54,14 +54,15 @@ public sealed record ContentRowRevision(
 /// <b>It IS the boot's <see cref="IContentVersionDirectory"/></b>, which is where its two version reads are
 /// declared. A host that boots off its authoring database assigns the store itself to
 /// <c>ContentBootOptions.Directory</c> and writes no adapter, and the two members have ONE home rather than
-/// the two that drifted apart.
+/// the two that drifted apart. It is the boot's <see cref="IContentVersionHashSource"/> too, answered here
+/// out of <see cref="GetVersionAsync"/>, so the boot's stale-pointer check costs no backend a member.
 /// </para>
 /// <para>
 /// Every member is asynchronous because both backends are, and every member takes a cancellation token so a
 /// console request that goes away does not hold a transaction open behind it.
 /// </para>
 /// </summary>
-public interface IContentAuthoringStore : IContentVersionDirectory
+public interface IContentAuthoringStore : IContentVersionDirectory, IContentVersionHashSource
 {
     /// <summary>
     /// Opens the store's schema under the given mode, creating it only under
@@ -117,6 +118,20 @@ public interface IContentAuthoringStore : IContentVersionDirectory
     /// <param name="versionNumber">The version number.</param>
     /// <param name="cancellationToken">Cancels the call.</param>
     Task<ContentVersionRecord?> GetVersionAsync(int versionNumber, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The boot's stale-pointer check, answered out of the version row this seam already holds, so no backend
+    /// implements a member for it and no host writes an adapter. A store holding no such version answers null,
+    /// which the boot reads as nothing to compare rather than as a refusal.
+    /// </summary>
+    /// <param name="versionNumber">The version the boot resolved.</param>
+    /// <param name="cancellationToken">Cancels the read.</param>
+    async Task<ContentVersionHashes?> IContentVersionHashSource.GetVersionHashesAsync(
+        int versionNumber,
+        CancellationToken cancellationToken)
+        => await GetVersionAsync(versionNumber, cancellationToken).ConfigureAwait(false) is ContentVersionRecord record
+            ? new ContentVersionHashes(record.ServerManifestHash, record.ClientManifestHash)
+            : null;
 
     /// <summary>
     /// Loads one published version as a snapshot, decoding through the registry's codecs. The registry is

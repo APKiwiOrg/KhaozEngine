@@ -32,7 +32,7 @@ public sealed class SculptBrushOverlayTests
 
         int count = SculptBrushOverlay.Build(
             new Vector3(10f, Slope(10f, 20f), 20f), radius: 8f, WideBounds, cellSize: 1f,
-            Slope, static (_, _) => true, lines);
+            Slope, static (_, _) => true, static (_, _) => true, lines);
 
         Assert.Equal(SculptBrushOverlay.MaxLines, count);
         Assert.Equal(SculptBrushOverlay.Segments,
@@ -60,7 +60,7 @@ public sealed class SculptBrushOverlayTests
 
         int count = SculptBrushOverlay.Build(
             new Vector3(5f, 5f, 3f), radius: 4f, bounds, cellSize: 1f,
-            Height, static (_, _) => true, lines);
+            Height, static (_, _) => true, static (_, _) => true, lines);
 
         Assert.InRange(count, 1, SculptBrushOverlay.MaxLines - 1);
         Assert.All(lines[..count].ToArray(), line =>
@@ -81,7 +81,7 @@ public sealed class SculptBrushOverlayTests
 
         int count = SculptBrushOverlay.Build(
             new Vector3(3f, 0f, 0f), radius: 4f, WideBounds, cellSize: 1f,
-            static (_, _) => 0f, static (x, _) => x < 5f, lines);
+            static (_, _) => 0f, static (x, _) => x < 5f, static (_, _) => true, lines);
 
         Assert.InRange(count, 1, SculptBrushOverlay.MaxLines - 1);
         Assert.All(lines[..count].ToArray(), line =>
@@ -100,7 +100,7 @@ public sealed class SculptBrushOverlayTests
 
         Assert.Throws<ArgumentException>(() => SculptBrushOverlay.Build(
             Vector3.Zero, radius: 4f, WideBounds, cellSize: 1f,
-            static (_, _) => 0f, static (_, _) => true, tooSmall));
+            static (_, _) => 0f, static (_, _) => true, static (_, _) => true, tooSmall));
         Assert.All(tooSmall, line => Assert.Equal(default, line));
     }
 
@@ -112,7 +112,7 @@ public sealed class SculptBrushOverlayTests
 
         int count = SculptBrushOverlay.Build(
             Vector3.Zero, 8f, halfSize, WideBounds, 1f,
-            static (_, _) => 0f, static (_, _) => true, lines);
+            static (_, _) => 0f, static (_, _) => true, static (_, _) => true, lines);
 
         SculptOverlayLine[] marker = lines[..count].ToArray()
             .Where(line => line.Part == SculptOverlayPart.CenterMarker).ToArray();
@@ -135,7 +135,7 @@ public sealed class SculptBrushOverlayTests
 
         int count = SculptCursor.Build(controller, input, WideBounds, cellSize: 1f,
             pointerInViewport, navigationOwnsPointer, modalOpen, static (_, _) => true,
-            static _ => 1f, lines, out SculptOverlayFrame frame);
+            static _ => 1f, static (_, _) => true, lines, out SculptOverlayFrame frame);
 
         Assert.Equal(0, count);
         Assert.False(frame.Visible);
@@ -150,7 +150,7 @@ public sealed class SculptBrushOverlayTests
 
         int hoverCount = SculptCursor.Build(controller, hover, WideBounds, 1f,
             true, false, false, static (_, _) => true, static _ => 1f,
-            lines, out SculptOverlayFrame hoverFrame);
+            static (_, _) => true, lines, out SculptOverlayFrame hoverFrame);
         Assert.Equal(SculptOverlayState.Hover, hoverFrame.State);
         Assert.True(hoverFrame.Visible);
         Assert.Equal("Lower", MapEditorStrings.Resolve(hoverFrame.OperationLabel));
@@ -161,7 +161,7 @@ public sealed class SculptBrushOverlayTests
             pointerPressed: true, pointerDown: true, dt: 0.016f));
         int activeCount = SculptCursor.Build(controller, hover, WideBounds, 1f,
             true, false, false, static (_, _) => true, static _ => 1f,
-            lines, out SculptOverlayFrame activeFrame);
+            static (_, _) => true, lines, out SculptOverlayFrame activeFrame);
         Assert.Equal(SculptOverlayState.Active, activeFrame.State);
         Assert.Equal("Active", MapEditorStrings.Resolve(activeFrame.StateLabel));
         Assert.True(activeCount > 0);
@@ -169,7 +169,7 @@ public sealed class SculptBrushOverlayTests
         int invalidCount = SculptCursor.Build(controller,
             new EditorFrameInput(new Vector3(0f, 100f, 0f), Vector3.UnitY), WideBounds, 1f,
             true, false, false, static (_, _) => true, static _ => 1f,
-            lines, out SculptOverlayFrame invalidFrame);
+            static (_, _) => true, lines, out SculptOverlayFrame invalidFrame);
         Assert.Equal(0, invalidCount);
         Assert.True(invalidFrame.Visible);
         Assert.Equal(SculptOverlayState.Invalid, invalidFrame.State);
@@ -185,10 +185,10 @@ public sealed class SculptBrushOverlayTests
 
         int unloaded = SculptCursor.Build(controller, input, WideBounds, 1f,
             true, false, false, static (_, _) => false, static _ => 1f,
-            lines, out SculptOverlayFrame unloadedFrame);
+            static (_, _) => true, lines, out SculptOverlayFrame unloadedFrame);
         int outside = SculptCursor.Build(controller, input, new SculptBounds(0, 0, 4, 4), 1f,
             true, false, false, static (_, _) => true, static _ => 1f,
-            lines, out SculptOverlayFrame outsideFrame);
+            static (_, _) => true, lines, out SculptOverlayFrame outsideFrame);
 
         Assert.Equal(0, unloaded);
         Assert.Equal(SculptOverlayState.Invalid, unloadedFrame.State);

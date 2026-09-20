@@ -10,12 +10,14 @@ internal static class SculptCursor
     internal static int Build(EditorToolController controller, in EditorFrameInput input,
         in SculptBounds bounds, float cellSize, bool pointerInViewport, bool navigationOwnsPointer,
         bool modalOpen, Func<float, float, bool> isLoaded, Func<Vector3, float> markerHalfSize,
+        Func<Vector2, Vector2, bool> isSegmentLoaded,
         Span<SculptOverlayLine> lines,
         out SculptOverlayFrame frame)
     {
         ArgumentNullException.ThrowIfNull(controller);
         ArgumentNullException.ThrowIfNull(isLoaded);
         ArgumentNullException.ThrowIfNull(markerHalfSize);
+        ArgumentNullException.ThrowIfNull(isSegmentLoaded);
         if (controller.Mode != EditorToolMode.SculptTerrain || !pointerInViewport
             || navigationOwnsPointer || modalOpen || controller.Field is not { } field)
         {
@@ -36,7 +38,7 @@ internal static class SculptCursor
         frame = new SculptOverlayFrame(true, state, operationLabel,
             MapEditorStrings.SculptState(state), center, true);
         return SculptBrushOverlay.Build(center, controller.BrushRadius, markerHalfSize(center), bounds, cellSize,
-            field.SampleHeight, isLoaded, lines);
+            field.SampleHeight, isLoaded, isSegmentLoaded, lines);
     }
 
     static bool CenterInside(Vector3 center, in SculptBounds bounds, float cellSize) =>

@@ -71,6 +71,7 @@ public sealed class SculptBrushOverlayGoldenGpuTests
             count = SculptCursor.Build(controller, input, Bounds, 1f,
                 pointerInViewport: true, navigationOwnsPointer: true, modalOpen: false,
                 static (_, _) => true, static _ => 1f,
+                static (_, _) => true,
                 lines, out SculptOverlayFrame frame);
             Assert.Equal(0, count);
             Assert.False(frame.Visible);
@@ -79,7 +80,8 @@ public sealed class SculptBrushOverlayGoldenGpuTests
         {
             float markerHalfSize = SculptBrushOverlay.ScreenMarkerHalfSize(distance);
             count = SculptBrushOverlay.Build(Center, 8f, markerHalfSize,
-                Bounds, 1f, Field.SampleHeight, static (_, _) => true, lines);
+                Bounds, 1f, Field.SampleHeight, static (_, _) => true,
+                static (_, _) => true, lines);
             Assert.Equal(SculptBrushOverlay.MaxLines, count);
             Assert.True(lines[0].Start.Y != lines[SculptBrushOverlay.Segments / 2].Start.Y,
                 "the GPU fixture must carry the generated overlay across a slope");

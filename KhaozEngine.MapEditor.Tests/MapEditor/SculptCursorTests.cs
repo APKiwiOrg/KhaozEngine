@@ -30,7 +30,8 @@ public sealed class SculptCursorTests
 
         int count = SculptCursor.Build(controller, input, Bounds, 1f,
             pointerInViewport: true, navigationOwnsPointer: false, modalOpen: false,
-            static (_, _) => true, static _ => 1f, lines, out SculptOverlayFrame frame);
+            static (_, _) => true, static _ => 1f, static (_, _) => true,
+            lines, out SculptOverlayFrame frame);
 
         Assert.True(frame.Visible);
         Assert.Equal(SculptOverlayState.Hover, frame.State);
@@ -55,7 +56,7 @@ public sealed class SculptCursorTests
         Span<SculptOverlayLine> lines = stackalloc SculptOverlayLine[SculptBrushOverlay.MaxLines];
         Assert.Equal(0, SculptCursor.Build(controller, input, Bounds, 1f, inViewport,
             navigationOwnsPointer: false, modalOpen: false, static (_, _) => true,
-            static _ => 1f, lines, out SculptOverlayFrame frame));
+            static _ => 1f, static (_, _) => true, lines, out SculptOverlayFrame frame));
         Assert.False(frame.Visible);
     }
 
@@ -67,14 +68,14 @@ public sealed class SculptCursorTests
         var miss = new EditorFrameInput(new Vector3(0f, 100f, 0f), Vector3.UnitY);
         Assert.Equal(0, SculptCursor.Build(controller, miss, Bounds, 1f, true,
             navigationOwnsPointer: false, modalOpen: false, static (_, _) => true,
-            static _ => 1f, lines, out SculptOverlayFrame missed));
+            static _ => 1f, static (_, _) => true, lines, out SculptOverlayFrame missed));
         Assert.True(missed.Visible);
         Assert.Equal(SculptOverlayState.Invalid, missed.State);
         controller.Field = null;
         var down = new EditorFrameInput(new Vector3(0f, 100f, 0f), -Vector3.UnitY);
         Assert.Equal(0, SculptCursor.Build(controller, down, Bounds, 1f, true,
             navigationOwnsPointer: false, modalOpen: false, static (_, _) => true,
-            static _ => 1f, lines, out SculptOverlayFrame noField));
+            static _ => 1f, static (_, _) => true, lines, out SculptOverlayFrame noField));
         Assert.False(noField.Visible);
     }
 }

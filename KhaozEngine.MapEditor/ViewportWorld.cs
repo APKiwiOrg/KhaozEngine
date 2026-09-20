@@ -53,6 +53,7 @@ public sealed class ViewportWorld : IDisposable
     readonly Dictionary<string, float> _kindHeights;
     readonly Dictionary<string, string> _kindCategories;
     readonly Dictionary<string, EditorPropCategory> _authoredCategories;
+    readonly Func<int, int, bool> _terrainChunkLoaded;
     readonly Dictionary<string, IReadOnlyList<MeshHandle>> _propMeshes = new();
     readonly PlacementCache _placements = new();
 
@@ -82,6 +83,7 @@ public sealed class ViewportWorld : IDisposable
     {
         ArgumentNullException.ThrowIfNull(manifestPaths);
         _scene = scene;
+        _terrainChunkLoaded = IsTerrainChunkLoaded;
 
         var entries = new List<AssetEntry>();
         var heights = new Dictionary<string, float>(StringComparer.Ordinal);
@@ -188,10 +190,17 @@ public sealed class ViewportWorld : IDisposable
     {
         if (!_built || _streamer is null || !float.IsFinite(x) || !float.IsFinite(z)) return false;
         ChunkCoord wanted = ChunkGrid.CoordOf(x, z, _streamer.Config.ChunkSize);
-        foreach (ChunkCoord loaded in _streamer.Loaded)
-            if (loaded == wanted) return true;
-        return false;
+        return IsTerrainChunkLoaded(wanted.X, wanted.Z);
     }
+
+    /// <summary>True when every applied terrain chunk touched by the segment is loaded.</summary>
+    internal bool IsTerrainSegmentLoaded(Vector2 from, Vector2 to) =>
+        _built && _streamer is not null
+        && SculptBrushOverlay.SegmentIsLoaded(
+            from, to, _streamer.Config.ChunkSize, _terrainChunkLoaded);
+
+    bool IsTerrainChunkLoaded(int x, int z) =>
+        _streamer is not null && _streamer.LodOf(new ChunkCoord(x, z)) >= 0;
 
     /// <summary>Each manifest kit id's declared <see cref="AssetEntry.HeightMeters"/>, the world-space box height
     /// picking multiplies by a placement's scale (feeds <see cref="EditorPicking"/>). First-manifest-wins on a

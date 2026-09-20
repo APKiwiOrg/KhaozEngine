@@ -56,6 +56,7 @@ public partial class MapEditorScene
         int count = SculptCursor.Build(_controller, BuildFrameInput(0f), bounds, cellSize,
             overViewport, NavigationOwnsPointer, _exitDialog is not null || _settingsDialog is not null,
             _viewport.IsTerrainLoaded, SculptMarkerHalfSizeFor,
+            _viewport.IsTerrainSegmentLoaded,
             _sculptOverlayLines, out _sculptOverlayFrame);
         SculptBrushOverlay.Draw(scene, _sculptOverlayLines, count,
             SculptOperationColor(_controller.Brush, _sculptOverlayFrame.State));

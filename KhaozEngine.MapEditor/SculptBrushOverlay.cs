@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using KhaozEngine.App;
+using KhaozEngine.Collision;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 
@@ -43,6 +44,7 @@ internal static class SculptBrushOverlay
     const float MinCenterHalfSize = 0.25f;
     const float MaxCenterHalfSize = 1f;
     const float MarkerHalfSizePerCameraDistance = 0.025f;
+    const int MaxSegmentGridSteps = 4096;
 
     internal static float ScreenMarkerHalfSize(float cameraDistance) =>
         float.IsFinite(cameraDistance)
@@ -51,17 +53,19 @@ internal static class SculptBrushOverlay
 
     internal static int Build(Vector3 center, float radius, in SculptBounds bounds, float cellSize,
         Func<float, float, float> sampleHeight, Func<float, float, bool> isLoaded,
-        Span<SculptOverlayLine> lines) => Build(center, radius,
+        Func<Vector2, Vector2, bool> isSegmentLoaded, Span<SculptOverlayLine> lines) => Build(center, radius,
         Math.Clamp(radius * 0.15f, MinCenterHalfSize, MaxCenterHalfSize),
-        bounds, cellSize, sampleHeight, isLoaded, lines);
+        bounds, cellSize, sampleHeight, isLoaded, isSegmentLoaded, lines);
 
     internal static int Build(Vector3 center, float radius, float centerHalfSize,
         in SculptBounds bounds, float cellSize,
         Func<float, float, float> sampleHeight, Func<float, float, bool> isLoaded,
+        Func<Vector2, Vector2, bool> isSegmentLoaded,
         Span<SculptOverlayLine> lines)
     {
         ArgumentNullException.ThrowIfNull(sampleHeight);
         ArgumentNullException.ThrowIfNull(isLoaded);
+        ArgumentNullException.ThrowIfNull(isSegmentLoaded);
         if (lines.Length < MaxLines)
             throw new ArgumentException("The overlay buffer must hold the complete bounded geometry.", nameof(lines));
         if (!bounds.HasArea || !float.IsFinite(cellSize) || !(cellSize > 0f)
@@ -78,16 +82,42 @@ internal static class SculptBrushOverlay
 
         int count = 0;
         count += BuildRing(center, radius, minX, minZ, maxX, maxZ,
-            sampleHeight, isLoaded, SculptOverlayPart.OuterFootprint, lines[count..]);
+            sampleHeight, isLoaded, isSegmentLoaded, SculptOverlayPart.OuterFootprint, lines[count..]);
         count += BuildRing(center, radius * FalloffGuideScale, minX, minZ, maxX, maxZ,
-            sampleHeight, isLoaded, SculptOverlayPart.FalloffGuide, lines[count..]);
+            sampleHeight, isLoaded, isSegmentLoaded, SculptOverlayPart.FalloffGuide, lines[count..]);
 
         float half = MathF.Max(MinCenterHalfSize, centerHalfSize);
         TryAddLine(center.X - half, center.Z, center.X + half, center.Z,
-            minX, minZ, maxX, maxZ, sampleHeight, isLoaded, SculptOverlayPart.CenterMarker, lines, ref count);
+            minX, minZ, maxX, maxZ, sampleHeight, isLoaded, isSegmentLoaded,
+            SculptOverlayPart.CenterMarker, lines, ref count);
         TryAddLine(center.X, center.Z - half, center.X, center.Z + half,
-            minX, minZ, maxX, maxZ, sampleHeight, isLoaded, SculptOverlayPart.CenterMarker, lines, ref count);
+            minX, minZ, maxX, maxZ, sampleHeight, isLoaded, isSegmentLoaded,
+            SculptOverlayPart.CenterMarker, lines, ref count);
         return count;
+    }
+
+    /// <summary>True when a segment's exact 4-connected grid supercover contains only loaded cells. Pathological
+    /// finite coordinates and segments spanning more than a bounded number of cells fail closed before traversal.</summary>
+    internal static bool SegmentIsLoaded(
+        Vector2 from, Vector2 to, float cellSize, Func<int, int, bool> isCellLoaded)
+    {
+        ArgumentNullException.ThrowIfNull(isCellLoaded);
+        if (!float.IsFinite(from.X) || !float.IsFinite(from.Y)
+            || !float.IsFinite(to.X) || !float.IsFinite(to.Y)
+            || !float.IsFinite(cellSize) || !(cellSize > 0f)) return false;
+
+        double startX = Math.Floor((double)from.X / cellSize);
+        double startZ = Math.Floor((double)from.Y / cellSize);
+        double endX = Math.Floor((double)to.X / cellSize);
+        double endZ = Math.Floor((double)to.Y / cellSize);
+        const double safeMin = int.MinValue + 1d;
+        const double safeMax = int.MaxValue - 1d;
+        if (startX < safeMin || startX > safeMax || startZ < safeMin || startZ > safeMax
+            || endX < safeMin || endX > safeMax || endZ < safeMin || endZ > safeMax) return false;
+
+        long steps = Math.Abs((long)endX - (long)startX) + Math.Abs((long)endZ - (long)startZ);
+        if (steps > MaxSegmentGridSteps) return false;
+        return GridRay.Trace(from, to, cellSize, isCellLoaded);
     }
 
     internal static void Draw(Scene3D scene, ReadOnlySpan<SculptOverlayLine> lines, int count, Color operationColor)
@@ -106,6 +136,7 @@ internal static class SculptBrushOverlay
 
     static int BuildRing(Vector3 center, float radius, float minX, float minZ, float maxX, float maxZ,
         Func<float, float, float> sampleHeight, Func<float, float, bool> isLoaded,
+        Func<Vector2, Vector2, bool> isSegmentLoaded,
         SculptOverlayPart part, Span<SculptOverlayLine> lines)
     {
         Span<Vector3> points = stackalloc Vector3[Segments];
@@ -123,6 +154,8 @@ internal static class SculptBrushOverlay
         {
             int next = (i + 1) % Segments;
             if (valid[i] == 0 || valid[next] == 0 || SamePosition(points[i], points[next])) continue;
+            if (!isSegmentLoaded(
+                    new Vector2(points[i].X, points[i].Z), new Vector2(points[next].X, points[next].Z))) continue;
             lines[count++] = new SculptOverlayLine(points[i], points[next], part);
         }
         return count;
@@ -131,6 +164,7 @@ internal static class SculptBrushOverlay
     static void TryAddLine(float ax, float az, float bx, float bz,
         float minX, float minZ, float maxX, float maxZ,
         Func<float, float, float> sampleHeight, Func<float, float, bool> isLoaded,
+        Func<Vector2, Vector2, bool> isSegmentLoaded,
         SculptOverlayPart part, Span<SculptOverlayLine> lines, ref int count)
     {
         ax = Math.Clamp(ax, minX, maxX);
@@ -139,7 +173,8 @@ internal static class SculptBrushOverlay
         bz = Math.Clamp(bz, minZ, maxZ);
         if (!TryPoint(ax, az, sampleHeight, isLoaded, out Vector3 a)
             || !TryPoint(bx, bz, sampleHeight, isLoaded, out Vector3 b)
-            || SamePosition(a, b)) return;
+            || SamePosition(a, b)
+            || !isSegmentLoaded(new Vector2(a.X, a.Z), new Vector2(b.X, b.Z))) return;
         lines[count++] = new SculptOverlayLine(a, b, part);
     }
 

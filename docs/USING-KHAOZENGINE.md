@@ -8960,6 +8960,13 @@ cancels), without a second tap. `EditorToolController.ModeHint` gives a one-line
 tool (folding in `PlaceKind` / `SpawnArchetype` / `PlaceFeatureType`) that the scene renders at the head of
 the status strip.
 
+While Sculpt Terrain is armed, the viewport draws a 64-sample surface-following outer footprint, a dashed
+half-strength falloff guide, and a screen-readable centre cross. Its localized label names the selected brush
+and Hover, Active, or Unavailable state, so colour is supplementary. The footprint uses the stroke's live field,
+radius, paintable document bounds, and applied streamed-terrain residency. Missed picks and unloaded targets do
+not show a valid footprint. Chrome, the View panel, modals, and navigation ownership suppress the feedback.
+Terrain Only leaves it visible while masking unrelated authoring markers.
+
 **Kit palette.** The bottom-left panel is tool-scoped, hosting at most one of three pickers. `PlacePlacement`
 shows every manifest kit id in a filter box over a collapsible `TreeView`, categorized by
 `AssetEntry.Category` when the manifest declares one, else the declaring manifest's own file-name stem

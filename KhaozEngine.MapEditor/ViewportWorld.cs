@@ -182,6 +182,17 @@ public sealed class ViewportWorld : IDisposable
     /// <summary>True once <see cref="Build"/> has run and before <see cref="Dispose"/>.</summary>
     public bool IsBuilt => _built;
 
+    /// <summary>True when the terrain chunk containing the world point has reached the applied streamer set.
+    /// Pending and deferred chunks return false, so editor feedback never claims an unloaded surface is editable.</summary>
+    internal bool IsTerrainLoaded(float x, float z)
+    {
+        if (!_built || _streamer is null || !float.IsFinite(x) || !float.IsFinite(z)) return false;
+        ChunkCoord wanted = ChunkGrid.CoordOf(x, z, _streamer.Config.ChunkSize);
+        foreach (ChunkCoord loaded in _streamer.Loaded)
+            if (loaded == wanted) return true;
+        return false;
+    }
+
     /// <summary>Each manifest kit id's declared <see cref="AssetEntry.HeightMeters"/>, the world-space box height
     /// picking multiplies by a placement's scale (feeds <see cref="EditorPicking"/>). First-manifest-wins on a
     /// duplicate id across manifests, matching <see cref="KindCategories"/> and the mesh tiebreak in

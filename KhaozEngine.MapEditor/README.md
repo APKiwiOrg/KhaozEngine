@@ -537,9 +537,18 @@ stroke is one undo step: each frame's dab picks the terrain point under the curs
 (`EditorPicking.PickTerrain`, the same ground raycast the place tools use) and applies the brush, and the dabs
 coalesce into a single `TerrainSculptStrokeCommand` via `TryMerge`, exactly like the transform-gizmo drag.
 
-A terrain-following ring previews the live brush radius and ground pick while the pointer is over the
-viewport. It hides over editor chrome, outside sculpt mode, and when the terrain pick misses. The cursor
-uses the same ray and pick distance as the stroke.
+The viewport previews the live brush with a terrain-following outer footprint, a dashed guide at the
+half-strength falloff, and a centre cross whose world size follows camera distance so it remains readable in
+screen space. A nearby label names both the operation and its Hover, Active, or Unavailable state. Operation
+colour reinforces that label instead of carrying the meaning alone. The geometry uses the same field, pick,
+radius, paintable bounds, and applied terrain-chunk residency as the stroke. It clips at paintable document
+bounds and omits segments over unloaded or non-finite terrain. A missed or unloaded target shows Unavailable
+without presenting a valid footprint.
+
+The feedback hides over editor chrome and the View panel, under exit or settings modals, while navigation owns
+the pointer, and outside sculpt mode. Terrain Only keeps sculpt feedback visible while hiding unrelated markers.
+The overlay uses one fixed caller-owned 130-line buffer. Its outer footprint has 64 samples, its falloff guide
+has 64 samples, and the centre marker has two lines.
 
 The inspector shows the brush parameters while the tool is active (`BuildSculptInspector`), editing the
 controller directly (they are tool settings, not document edits, so they carry no undo gesture):

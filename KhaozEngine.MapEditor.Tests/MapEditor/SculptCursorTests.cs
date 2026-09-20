@@ -9,6 +9,8 @@ namespace KhaozEngine.Tests.MapEditor;
 
 public sealed class SculptCursorTests
 {
+    static readonly SculptBounds Bounds = new(-100, -100, 100, 100);
+
     static EditorToolController Controller(float radius = 4f) => new(new EditorDocument(new MapDocument()))
     {
         Mode = EditorToolMode.SculptTerrain,
@@ -24,17 +26,22 @@ public sealed class SculptCursorTests
     {
         var controller = Controller(radius);
         var input = new EditorFrameInput(new Vector3(3f, 100f, 7f), -Vector3.UnitY);
-        Span<Vector3> ring = stackalloc Vector3[SculptCursor.Segments];
+        Span<SculptOverlayLine> lines = stackalloc SculptOverlayLine[SculptBrushOverlay.MaxLines];
 
-        int count = SculptCursor.Build(controller, input, pointerInViewport: true, ring);
+        int count = SculptCursor.Build(controller, input, Bounds, 1f,
+            pointerInViewport: true, navigationOwnsPointer: false, modalOpen: false,
+            static (_, _) => true, static _ => 1f, lines, out SculptOverlayFrame frame);
 
-        Assert.Equal(SculptCursor.Segments, count);
-        foreach (Vector3 point in ring)
+        Assert.True(frame.Visible);
+        Assert.Equal(SculptOverlayState.Hover, frame.State);
+        Assert.Equal(SculptBrushOverlay.MaxLines, count);
+        foreach (SculptOverlayLine line in lines[..SculptBrushOverlay.Segments])
         {
+            Vector3 point = line.Start;
             Assert.Equal(radius, Vector2.Distance(new Vector2(3f, 7f), new Vector2(point.X, point.Z)), 4);
-            Assert.Equal(controller.Field!.SampleHeight(point.X, point.Z) + SculptCursor.Lift, point.Y);
+            Assert.Equal(controller.Field!.SampleHeight(point.X, point.Z) + SculptBrushOverlay.Lift, point.Y);
         }
-        Assert.True(Vector3.Distance(ring[0], ring[^1]) < radius * 0.25f);
+        Assert.True(Vector3.Distance(lines[0].Start, lines[SculptBrushOverlay.Segments - 1].Start) < radius * 0.25f);
     }
 
     [Theory]
@@ -45,19 +52,29 @@ public sealed class SculptCursorTests
         var controller = Controller();
         controller.Mode = mode;
         var input = new EditorFrameInput(new Vector3(0f, 100f, 0f), -Vector3.UnitY);
-        Span<Vector3> ring = stackalloc Vector3[SculptCursor.Segments];
-        Assert.Equal(0, SculptCursor.Build(controller, input, inViewport, ring));
+        Span<SculptOverlayLine> lines = stackalloc SculptOverlayLine[SculptBrushOverlay.MaxLines];
+        Assert.Equal(0, SculptCursor.Build(controller, input, Bounds, 1f, inViewport,
+            navigationOwnsPointer: false, modalOpen: false, static (_, _) => true,
+            static _ => 1f, lines, out SculptOverlayFrame frame));
+        Assert.False(frame.Visible);
     }
 
     [Fact]
     public void A_missing_field_or_missed_pick_has_no_cursor()
     {
         var controller = Controller();
-        Span<Vector3> ring = stackalloc Vector3[SculptCursor.Segments];
+        Span<SculptOverlayLine> lines = stackalloc SculptOverlayLine[SculptBrushOverlay.MaxLines];
         var miss = new EditorFrameInput(new Vector3(0f, 100f, 0f), Vector3.UnitY);
-        Assert.Equal(0, SculptCursor.Build(controller, miss, true, ring));
+        Assert.Equal(0, SculptCursor.Build(controller, miss, Bounds, 1f, true,
+            navigationOwnsPointer: false, modalOpen: false, static (_, _) => true,
+            static _ => 1f, lines, out SculptOverlayFrame missed));
+        Assert.True(missed.Visible);
+        Assert.Equal(SculptOverlayState.Invalid, missed.State);
         controller.Field = null;
         var down = new EditorFrameInput(new Vector3(0f, 100f, 0f), -Vector3.UnitY);
-        Assert.Equal(0, SculptCursor.Build(controller, down, true, ring));
+        Assert.Equal(0, SculptCursor.Build(controller, down, Bounds, 1f, true,
+            navigationOwnsPointer: false, modalOpen: false, static (_, _) => true,
+            static _ => 1f, lines, out SculptOverlayFrame noField));
+        Assert.False(noField.Visible);
     }
 }

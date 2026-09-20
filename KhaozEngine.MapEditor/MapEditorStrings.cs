@@ -33,6 +33,14 @@ internal static class MapEditorStrings
     public static readonly StringId Regions = new("mapeditor.view.regions");
     public static readonly StringId FeatureMarkers = new("mapeditor.view.feature_markers");
     public static readonly StringId ScatterLayers = new("mapeditor.view.scatter_layers");
+    public static readonly StringId SculptRaise = new("mapeditor.sculpt.raise");
+    public static readonly StringId SculptLower = new("mapeditor.sculpt.lower");
+    public static readonly StringId SculptSmooth = new("mapeditor.sculpt.smooth");
+    public static readonly StringId SculptFlatten = new("mapeditor.sculpt.flatten");
+    public static readonly StringId SculptSetHeight = new("mapeditor.sculpt.set_height");
+    public static readonly StringId SculptHover = new("mapeditor.sculpt.hover");
+    public static readonly StringId SculptActive = new("mapeditor.sculpt.active");
+    public static readonly StringId SculptUnavailable = new("mapeditor.sculpt.unavailable");
 
     static readonly IReadOnlyDictionary<string, string> English = new Dictionary<string, string>(StringComparer.Ordinal)
     {
@@ -62,6 +70,14 @@ internal static class MapEditorStrings
         ["mapeditor.view.regions"] = "Regions",
         ["mapeditor.view.feature_markers"] = "Feature markers",
         ["mapeditor.view.scatter_layers"] = "Scatter Layers",
+        ["mapeditor.sculpt.raise"] = "Raise",
+        ["mapeditor.sculpt.lower"] = "Lower",
+        ["mapeditor.sculpt.smooth"] = "Smooth",
+        ["mapeditor.sculpt.flatten"] = "Flatten",
+        ["mapeditor.sculpt.set_height"] = "Set height",
+        ["mapeditor.sculpt.hover"] = "Hover",
+        ["mapeditor.sculpt.active"] = "Active",
+        ["mapeditor.sculpt.unavailable"] = "Unavailable",
     };
 
     public static string Resolve(StringId id, params object?[] args)
@@ -76,4 +92,22 @@ internal static class MapEditorStrings
     }
 
     public static LocalizedText Text(StringId id) => LocalizedText.Raw(Resolve(id));
+
+    public static StringId SculptOperation(SculptBrush brush) => brush switch
+    {
+        SculptBrush.Raise => SculptRaise,
+        SculptBrush.Lower => SculptLower,
+        SculptBrush.Smooth => SculptSmooth,
+        SculptBrush.Flatten => SculptFlatten,
+        SculptBrush.SetHeight => SculptSetHeight,
+        _ => SculptRaise,
+    };
+
+    public static StringId SculptState(SculptOverlayState state) => state switch
+    {
+        SculptOverlayState.Hover => SculptHover,
+        SculptOverlayState.Active => SculptActive,
+        SculptOverlayState.Invalid => SculptUnavailable,
+        _ => SculptUnavailable,
+    };
 }

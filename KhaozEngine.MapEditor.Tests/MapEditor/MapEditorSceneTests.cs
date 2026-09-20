@@ -359,12 +359,7 @@ namespace KhaozEngine.Tests.MapEditor
         // Whether the outline lists a placement by id (its node label is "<id> (<kind>)"). The outline is rebuilt
         // from the document, so a still-listed placement means the document still holds it.
         static bool OutlineListsPlacement(TreeView outline, string id)
-        {
-            foreach (TreeNode root in outline.Roots)
-                foreach (TreeNode child in root.Children)
-                    if (child.Label.Resolve().StartsWith(id + " ", StringComparison.Ordinal)) return true;
-            return false;
-        }
+            => outline.FindByTag(t => t is MapEditorScene.OutlineRef { Kind: SelectionKind.Placement } r && r.Id == id) is not null;
 
         static void Near(float expected, float actual, float eps = 1e-3f) =>
             Assert.True(MathF.Abs(expected - actual) < eps, $"expected ~{expected} but got {actual}");
@@ -1219,8 +1214,8 @@ namespace KhaozEngine.Tests.MapEditor
 
             TreeView outline = scene.Outline;
             outline.Bounds = new Rect(0f, 0f, 240f, 400f);
-            TreeNode c0 = CategoryChild(outline, "Placements", 0);
-            TreeNode c1 = CategoryChild(outline, "Placements", 1);
+            TreeNode c0 = CategoryChild(outline, "Placements", 0).Children[0];
+            TreeNode c1 = CategoryChild(outline, "Placements", 1).Children[0];
 
             var input = new InputManager();
             DragTreeRow(outline, input, RowOf(outline, c0), RowOf(outline, c1), afterTarget: true);
@@ -2397,7 +2392,7 @@ namespace KhaozEngine.Tests.MapEditor
 
             TreeView outline = scene.Outline;
             outline.Bounds = new Rect(0f, 0f, 240f, 400f);
-            TreeNode node = CategoryChild(outline, "Placements", 0);
+            TreeNode node = CategoryChild(outline, "Placements", 0).Children[0];
 
             var input = new InputManager();
             TapTree(outline, input, RowCenter(outline, node));

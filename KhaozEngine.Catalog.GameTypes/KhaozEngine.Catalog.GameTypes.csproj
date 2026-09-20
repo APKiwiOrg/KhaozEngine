@@ -12,6 +12,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The positional *Index constants are internal on purpose: a position is not a consumer's to write
+         down. The test project reaches them to pin each one against its schema's own IndexOf, which is what
+         makes an off-by-one a failing test rather than a read of the neighbouring field. -->
+    <InternalsVisibleTo Include="KhaozEngine.Catalog.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../KhaozEngine.Catalog/KhaozEngine.Catalog.csproj" />
   </ItemGroup>
 

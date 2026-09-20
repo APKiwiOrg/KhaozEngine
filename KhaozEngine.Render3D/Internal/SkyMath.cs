@@ -127,12 +127,18 @@ namespace KhaozEngine.Render3D.Internal
         /// <param name="sunOpacity">How much of the disc + halo is blended in, 0..1 (<see cref="SkySettings.SunColor"/>
         /// alpha). The blend REPLACES the sky colour, so a body fades by losing weight here, never by darkening
         /// <paramref name="sunColor"/>, which would paint a dark disc over the sky.</param>
+        /// <param name="worldHorizon">The world-horizon camera terms (<see cref="SkyHorizon.World"/>). The default is
+        /// the historical screen-space ramp with no ground.</param>
         public static Vector3 Shade(Vector2 ndc, Vector2 sunNdc, bool sunVisible, float aspect,
             Vector3 horizon, Vector3 zenith, Vector3 sunColor,
-            bool sunEnabled, float sunRadius, float haloStrength, float haloFalloff, float sunOpacity = 1f)
+            bool sunEnabled, float sunRadius, float haloStrength, float haloFalloff, float sunOpacity = 1f,
+            SkyHorizonFrame worldHorizon = default)
         {
-            // Vertical screen gradient: NDC.y in [-1,1] -> [0,1] (bottom -> top), smoothstep for a soft ramp.
-            float up = Math.Clamp(ndc.Y * 0.5f + 0.5f, 0f, 1f);
+            // Screen horizon: a vertical screen gradient, NDC.y in [-1,1] -> [0,1] (bottom -> top). World horizon:
+            // the same ramp off the elevation of this pixel's view ray, which is the ShadeDirection gradient, so
+            // the sky the camera sees and the sky the water reflects are one function of direction.
+            float sinElevation = worldHorizon.Live ? worldHorizon.SinElevation(ndc) : 0f;
+            float up = worldHorizon.Live ? Math.Clamp(sinElevation, 0f, 1f) : Math.Clamp(ndc.Y * 0.5f + 0.5f, 0f, 1f);
             float t = Smoothstep(0f, 1f, up);
             Vector3 col = Vector3.Lerp(horizon, zenith, t);
 
@@ -154,7 +160,8 @@ namespace KhaozEngine.Render3D.Internal
                 float sun = Math.Clamp(disc + halo, 0f, 1f) * Math.Clamp(sunOpacity, 0f, 1f);
                 col = Vector3.Lerp(col, sunColor, sun);
             }
-            return col;
+            // The ground goes over the sun: that is the horizon the disc sets through.
+            return worldHorizon.Ground.Over(col, sinElevation);
         }
 
         /// <summary>
@@ -184,9 +191,12 @@ namespace KhaozEngine.Render3D.Internal
         /// <param name="sunStrength">How much of the disc + halo this evaluation carries, 0..1. The water
         /// reflection scales it down because the sharp part of the reflected sun is already supplied by its own
         /// specular lobe, and carrying both at full strength double-counts the sun.</param>
+        /// <param name="ground">The ground band below the world horizon (<see cref="SkyHorizon.World"/>), laid over
+        /// the sun exactly as <see cref="Shade"/> does. The default is no ground.</param>
         public static Vector3 ShadeDirection(Vector3 direction, Vector3 sunDirection,
             Vector3 horizon, Vector3 zenith, Vector3 sunColor,
-            bool sunEnabled, float sunRadius, float haloStrength, float haloFalloff, float sunStrength)
+            bool sunEnabled, float sunRadius, float haloStrength, float haloFalloff, float sunStrength,
+            SkyGround ground = default)
         {
             float up = Math.Clamp(direction.Y, 0f, 1f);
             float t = Smoothstep(0f, 1f, up);
@@ -207,12 +217,12 @@ namespace KhaozEngine.Render3D.Internal
                 float sun = Math.Clamp((disc + halo) * strength, 0f, 1f);
                 col = Vector3.Lerp(col, sunColor, sun);
             }
-            return col;
+            return ground.Over(col, direction.Y);
         }
 
         /// <summary>GLSL-identical smoothstep (Hermite) so the mirrored shader matches this host math. Returns 0 for
         /// x&lt;=edge0, 1 for x&gt;=edge1, a smooth cubic between.</summary>
-        static float Smoothstep(float edge0, float edge1, float x)
+        internal static float Smoothstep(float edge0, float edge1, float x)
         {
             if (edge0 == edge1) return x < edge0 ? 0f : 1f;
             float u = Math.Clamp((x - edge0) / (edge1 - edge0), 0f, 1f);

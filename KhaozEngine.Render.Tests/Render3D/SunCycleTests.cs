@@ -180,6 +180,95 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(1f, SunCycle.Evaluate(0.5f, s).SunColor.A, 4);
         }
 
+        // ---- Disc set elevation: a disc that sets THROUGH a world horizon (#396) ------------------------------------
+
+        // lat 0, dec 0: the sun crosses the horizon at t = 0.25 / 0.75 and climbs 360 degrees per day.
+        static SunCycleSettings Equatorial(NightKeyMode mode, float discSet) => new()
+        {
+            LatitudeDegrees = 0f, SolarDeclinationDegrees = 0f, NightKey = mode,
+            DiscSetElevationDegrees = discSet, SunDiscFadeElevationDegrees = 4f,
+        };
+
+        static float TimeAtEveningElevation(float degrees) => 0.75f - degrees / 360f;
+
+        [Theory]
+        [InlineData(NightKeyMode.AntiSolarMoon)]
+        [InlineData(NightKeyMode.None)]
+        [InlineData(NightKeyMode.Moon)]
+        public void A_setting_sun_crosses_the_horizon_at_full_strength_and_still_pointed_at_the_sun(NightKeyMode mode)
+        {
+            var s = Equatorial(mode, discSet: 6f);
+            foreach (float el in new[] { 1f, -0.5f, -1.5f })
+            {
+                float t = TimeAtEveningElevation(el);
+                var st = SunCycle.Evaluate(t, s);
+                Assert.True(st.SunEnabled, $"{mode}: disc should hold the slot at {el} degrees");
+                Assert.Equal(1f, st.SunColor.A, 3);
+
+                // Whatever the key did at the crossing (flip, moon, black), the disc is still where the sun is.
+                var post = new PixelPostProcessSettings();
+                SunCycle.Apply(st, post);
+                Vector3 toward = post.Sky.ResolveSunDirection(post.LightDirection);
+                Vector3 sun = SunCycle.SolarDirection(t, 0f, 0f, s.HeadingDegrees, out _);
+                Assert.True(Vector3.Dot(toward, sun) > 0.9999f, $"{mode}: disc drifted off the sun at {el} degrees: {toward} vs {sun}");
+            }
+        }
+
+        [Theory]
+        [InlineData(NightKeyMode.AntiSolarMoon)]
+        [InlineData(NightKeyMode.None)]
+        public void The_disc_fades_out_below_the_horizon_and_is_gone_at_the_set_elevation(NightKeyMode mode)
+        {
+            var s = Equatorial(mode, discSet: 6f);
+            var fading = SunCycle.Evaluate(TimeAtEveningElevation(-4f), s);   // mid band: -6 .. -2
+            Assert.True(fading.SunEnabled);
+            Assert.InRange(fading.SunColor.A, 0.3f, 0.7f);
+            Assert.False(SunCycle.Evaluate(TimeAtEveningElevation(-6.5f), s).SunEnabled);
+        }
+
+        [Fact]
+        public void The_key_light_still_dips_at_elevation_zero_whatever_the_disc_does()
+        {
+            var with = Equatorial(NightKeyMode.None, discSet: 6f);
+            var without = Equatorial(NightKeyMode.None, discSet: 0f);
+            for (float el = -8f; el <= 8f; el += 0.5f)
+            {
+                float t = TimeAtEveningElevation(el);
+                var a = SunCycle.Evaluate(t, with);
+                var b = SunCycle.Evaluate(t, without);
+                AssertColorEqual(b.LightColor, a.LightColor);
+                Assert.Equal(b.LightDirection, a.LightDirection);
+                Assert.Equal(b.ActiveSource, a.ActiveSource);
+            }
+        }
+
+        [Fact]
+        public void Under_a_moon_the_setting_sun_keeps_the_disc_until_it_is_down_then_the_moon_takes_it()
+        {
+            var s = Equatorial(NightKeyMode.Moon, discSet: 6f);   // moon at opposition: up exactly when the sun is down
+            var sinking = SunCycle.Evaluate(TimeAtEveningElevation(-3f), s);
+            Assert.Equal(KeyLightSource.Moon, sinking.ActiveSource);
+            AssertColorEqual(SunCycle.Evaluate(TimeAtEveningElevation(-3f), Equatorial(NightKeyMode.None, 6f)).SunColor, sinking.SunColor);
+
+            var night = SunCycle.Evaluate(TimeAtEveningElevation(-20f), s);
+            Assert.True(night.SunEnabled);
+            AssertColorEqual(s.MoonDiscColor, night.SunColor);
+            Assert.Equal(night.MoonDirection, -night.DiscDirectionOverride!.Value);
+        }
+
+        [Fact]
+        public void Ground_color_blends_across_the_palettes_and_reaches_the_sky()
+        {
+            var s = new SunCycleSettings();
+            AssertColorEqual(s.DayPalette.GroundColor, SunCycle.Evaluate(0.5f, s).GroundColor);
+            AssertColorEqual(s.NightPalette.GroundColor, SunCycle.Evaluate(0f, s).GroundColor);
+
+            var post = new PixelPostProcessSettings();
+            var noon = SunCycle.Evaluate(0.5f, s);
+            SunCycle.Apply(noon, post);
+            Assert.Equal(noon.GroundColor, post.Sky.GroundColor);
+        }
+
         [Fact]
         public void Fading_moon_disc_keeps_its_colour_and_fades_in_alpha()
         {

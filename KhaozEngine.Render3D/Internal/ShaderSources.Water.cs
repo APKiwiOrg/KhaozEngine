@@ -50,6 +50,7 @@ namespace KhaozEngine.Render3D.Internal
     vec4 SurfParams;       // x = surf strength (0 = off), y = break depth (m), z = band width, w = crest bias
     vec4 SurfShape;        // x = trail width, y = amplitude collapse, z = the plane's surface Y (render frame), w = bathymetry texel size (m)
     vec4 RenderOrigin;     // xyz = camera-relative render origin: add to a render-frame position for the ABSOLUTE one
+    vec4 SkyGround;        // rgb = the reflected sky's ground band below the world horizon, a = blend depth (negative = no ground)
 };";
 
         // ---- Stylized ocean surface. Drawn AFTER the sky and the ground decals into ColorDepthFB (lit colour +
@@ -398,6 +399,10 @@ vec3 skyAlongDirection(vec3 dir, vec3 sunDir, float sunStrength) {
         }
         float sun = clamp((disc + halo) * strength, 0.0, 1.0);
         col = mix(col, SkySunColor.rgb, sun);
+    }
+    // The ground goes over the sun, exactly as SkyFrag lays it (SkyGround.Weight).
+    if (SkyGround.a >= 0.0) {
+        col = mix(col, SkyGround.rgb, smoothstep(0.0, max(SkyGround.a, 1e-5), -dir.y));
     }
     return col;
 }

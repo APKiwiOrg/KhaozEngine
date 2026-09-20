@@ -16,6 +16,23 @@ internal static class MapEditorStrings
     public static readonly StringId Navigation = new("mapeditor.settings.navigation");
     public static readonly StringId FlySpeed = new("mapeditor.settings.fly_speed");
     public static readonly StringId FlySpeedDescription = new("mapeditor.settings.fly_speed.description");
+    public static readonly StringId View = new("mapeditor.view.button");
+    public static readonly StringId ViewOptions = new("mapeditor.view.options");
+    public static readonly StringId TerrainOnly = new("mapeditor.view.terrain_only");
+    public static readonly StringId ShowAll = new("mapeditor.view.show_all");
+    public static readonly StringId PropCategories = new("mapeditor.view.prop_categories");
+    public static readonly StringId OtherProps = new("mapeditor.view.other_props");
+    public static readonly StringId Trees = new("mapeditor.view.trees");
+    public static readonly StringId Rocks = new("mapeditor.view.rocks");
+    public static readonly StringId Water = new("mapeditor.view.water");
+    public static readonly StringId Markers = new("mapeditor.view.markers");
+    public static readonly StringId Spawns = new("mapeditor.view.spawns");
+    public static readonly StringId PlayerSpawns = new("mapeditor.view.player_spawns");
+    public static readonly StringId Exclusions = new("mapeditor.view.exclusions");
+    public static readonly StringId ScatterOverrides = new("mapeditor.view.scatter_overrides");
+    public static readonly StringId Regions = new("mapeditor.view.regions");
+    public static readonly StringId FeatureMarkers = new("mapeditor.view.feature_markers");
+    public static readonly StringId ScatterLayers = new("mapeditor.view.scatter_layers");
 
     static readonly IReadOnlyDictionary<string, string> English = new Dictionary<string, string>(StringComparer.Ordinal)
     {
@@ -28,6 +45,23 @@ internal static class MapEditorStrings
         ["mapeditor.settings.fly_speed"] = "Fly speed",
         ["mapeditor.settings.fly_speed.description"] =
             "Movement speed while right mouse owns the viewport. The wheel changes pivot distance instead.",
+        ["mapeditor.view.button"] = "View",
+        ["mapeditor.view.options"] = "View Options",
+        ["mapeditor.view.terrain_only"] = "Terrain Only",
+        ["mapeditor.view.show_all"] = "Show All",
+        ["mapeditor.view.prop_categories"] = "Props",
+        ["mapeditor.view.other_props"] = "Other props",
+        ["mapeditor.view.trees"] = "Trees",
+        ["mapeditor.view.rocks"] = "Rocks",
+        ["mapeditor.view.water"] = "Water",
+        ["mapeditor.view.markers"] = "Markers",
+        ["mapeditor.view.spawns"] = "Spawns",
+        ["mapeditor.view.player_spawns"] = "Player spawns",
+        ["mapeditor.view.exclusions"] = "Exclusions",
+        ["mapeditor.view.scatter_overrides"] = "Scatter overrides",
+        ["mapeditor.view.regions"] = "Regions",
+        ["mapeditor.view.feature_markers"] = "Feature markers",
+        ["mapeditor.view.scatter_layers"] = "Scatter Layers",
     };
 
     public static string Resolve(StringId id, params object?[] args)
@@ -40,4 +74,6 @@ internal static class MapEditorStrings
             ? format
             : IStringCatalog.SafeFormat(CultureInfo.InvariantCulture, format, args);
     }
+
+    public static LocalizedText Text(StringId id) => LocalizedText.Raw(Resolve(id));
 }

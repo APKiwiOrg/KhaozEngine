@@ -2565,7 +2565,7 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
-        public void ScatterLayerVisibility_Flip_RebuildsWithoutInvalidatingKitMeshes()
+        public void ScatterLayerVisibility_Flip_IsDrawOnlyWithoutRebuildOrInvalidation()
         {
             // A scatter-layer visibility toggle only changes WHICH layers stream, never which mesh form an id
             // loads, so it must rebuild without touching the retained kit-mesh cache.
@@ -2582,8 +2582,8 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.True(TapBool(layerRow));
 
             Assert.Equal(0, scene.KitMeshInvalidations);
-            Assert.Equal(1, scene.Rebuilds);
-            Assert.Equal(new[] { "rebuild" }, scene.Log);
+            Assert.Equal(0, scene.Rebuilds);
+            Assert.Empty(scene.Log);
         }
 
         // ---- categorized palette + filters ---------------------------------------------------------------

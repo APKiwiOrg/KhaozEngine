@@ -9067,17 +9067,26 @@ no kind in the host layer"), live-tracked through edits, host swaps, and undo/re
 `KhaozEngine.MapEditor` README's "Procedural setup editing" section for the full mechanics.
 
 **Visibility.** `EditorVisibility` is editor-session view state, not the document: it gates eight
-`VisibilityGroup`s (placements, spawns, water, exclusions, scatter overrides, regions, feature markers, player spawns), named scatter layers,
-and individual elements, and toggling any of it never dirties the document or lands an undo step. A per-element
+`VisibilityGroup`s (placements, spawns, water, exclusions, scatter overrides, regions, feature markers, player spawns),
+the `OtherProps`, `Trees`, and `Rocks` categories, named scatter layers, and individual elements. Toggling any
+of it never dirties the document or lands an undo step. A per-element
 hide follows its element across reorder, delete, and rename (including undo and redo), driven by the
 reorder/remove/rename commands' `IVisibilityEffect` through `EditorDocument`'s
 `CommandApplied`/`CommandRedone`/`CommandUndone` events. With
-nothing selected the inspector is the Layers panel (`MapEditorScene.BuildLayersInspector`): a `BoolRow` per
-group, then one per scatter layer in the open document (toggling a scatter layer also rebuilds the streamed
-world so its props actually drop out). Every element inspector also gets a per-element "Visible" `BoolRow`.
+nothing selected the inspector is the Layers panel (`MapEditorScene.BuildLayersInspector`). The toolbar's
+always-available **View** button opens the independent visibility panel while a selection inspector or terrain
+sculpt inspector remains active. **Terrain Only** is a temporary mask and restores the underlying choices when
+cleared. **Show All** clears the mask and every hide override. Every element inspector also gets a per-element
+"Visible" `BoolRow`.
 A hidden element is neither drawn nor pickable from the viewport, but stays selectable from the outline tree
 (which reads straight off the document), so hiding something is always reversible. See the
 `KhaozEngine.MapEditor` README's "Visibility" section for the full mechanics.
+
+Set `MapEditorOptions.ResolvePropCategory` when the game has its own kit classification. Without a callback,
+only explicit manifest `category` values classify trees and rocks. Manifest file names and kit names are never
+guessed. Visibility switches filter retained flat, textured, companion, and HLOD-backed batches at submission
+time. They do not rebuild terrain or scatter. A mixed-category HLOD cluster falls back to its visible individual
+placements while a category filter is active.
 
 **Map editor navigation.** Middle drag orbits around the terrain point captured at press. Shift+middle captures
 pan mode at press and keeps it for the full gesture. A miss keeps the previous pivot or falls back to a point 25
@@ -9278,6 +9287,7 @@ draw gesture is live, so a fast mid-gesture edit stream does not re-mesh the wor
 and the splat material persist across a full rebuild by default, so it no longer re-decodes every prop glTF
 from disk; a toggle that changes their cached form (the "Textured props" toggle) calls
 `ViewportWorld.InvalidateKitMeshes` first.
+Layer, category, marker, Show All, and Terrain Only changes are draw-only and cause zero world rebuilds.
 
 See the `KhaozEngine.MapEditor` package README for the command stack and gesture sealing, world-rebuild
 semantics (including the partial vs full rebuild dispatch and the gesture-throttled full rebuild), the

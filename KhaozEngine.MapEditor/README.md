@@ -628,20 +628,31 @@ reversible document), an accepted view-only limit.
 
 `EditorVisibility` is editor-session view state, not part of the document: it gates whole
 `VisibilityGroup`s (`Placements`, `Spawns`, `Water`, `Exclusions`, `ScatterOverrides`, `Regions`,
-`FeatureMarkers`, `PlayerSpawns`), named scatter layers, and individual elements, and none of it is saved or undoable. A group or element toggle
+`FeatureMarkers`, `PlayerSpawns`), the `OtherProps`, `Trees`, and `Rocks` prop categories, named scatter
+layers, and individual elements. None of it is saved or undoable. A group or element toggle
 writes straight to `EditorVisibility`, never through `EditorDocument.Execute`, so hiding something never
 dirties the document (no leading `*` in the status strip) and never lands an undo step.
+
+The toolbar's persistent **View** button opens a floating `EditorViewPanel` without replacing the selection
+or sculpt inspector. Its **Terrain Only** switch temporarily masks every non-terrain choice. Turning it off
+restores the underlying group, category, layer, and per-element choices, including choices edited while the
+mask was active. **Show All** clears every hide choice and exits Terrain Only. The panel uses localized
+`StringId` labels for fixed UI text and raw labels only for authored layer names.
+
+`MapEditorOptions.ResolvePropCategory` can explicitly classify each kit identity. When it is null, manifest
+entries whose authored `AssetEntry.Category` is `tree` or `trees` classify as `Trees`, and `rock` or `rocks`
+classify as `Rocks`. Every other kit is `OtherProps`. The palette-only manifest file-name fallback in
+`ViewportWorld.KindCategories` never classifies a kit.
 
 **Layers panel.** The empty-selection inspector (`MapEditorScene.BuildLayersInspector`) is the Layers
 panel: one `BoolRow` per `VisibilityGroup` (raw dev-tool labels, `FeatureMarkers` reads "Feature markers",
 `ScatterOverrides` reads "Scatter overrides", `PlayerSpawns` reads "Player spawns"),
 a **Rendering** section holding the "Textured props" `BoolRow` bound to `MapEditorOptions.TexturedProps`,
-then one `BoolRow` per named scatter layer in the open document. A group toggle only gates draws and picks,
-no rebuild. The "Textured props" toggle and a scatter-layer toggle both also call `ViewportWorld.Rebuild`
-(`RebuildWorldForVisibility`), since both are read at prop-mesh load time rather than live: flipping
+then one `BoolRow` per named scatter layer in the open document. A group or scatter-layer toggle only gates
+draws and picks, with no terrain, scatter, companion, or mesh rebuild. The "Textured props" toggle still calls
+`ViewportWorld.Rebuild` (`RebuildWorldForVisibility`), since mesh form is read at prop-mesh load time. Flipping
 "Textured props" reloads every manifest entry's mesh through `PropLoader.LoadPropAuto` under the new
-setting, and a hidden scatter layer's props actually drop out of the streamed world, taking its companion
-layers with it (their host is gone). Because `Rebuild` now retains the cached kit meshes and splat material
+setting. Because `Rebuild` now retains the cached kit meshes and splat material
 by default (see Rebuild semantics below), the "Textured props" toggle calls `ViewportWorld.InvalidateKitMeshes`
 first (`MapEditorScene.InvalidateViewportKitMeshes`) so the follow-up rebuild reloads every mesh in its new
 form instead of serving the stale cached one. The panel rebuilds on every selection change, so it always
@@ -789,10 +800,10 @@ match its sibling add/edit/remove commands' `AffectsWorld` value. Placement/spaw
 (they draw outside the streamed sink, so a drag never triggers a chunk rebuild). `EditorDocument` sets
 `WorldRebuildPending` whenever an executed, undone, or redone command's `AffectsWorld` is true.
 
-A scatter-layer visibility toggle also rebuilds the streamed world, but through a separate path
-(`MapEditorScene.RebuildWorldForVisibility` calling `ViewportWorld.Rebuild` directly), never through
-`WorldRebuildPending`: visibility is view-only session state, not a document change, so it never touches the
-command/dirty machinery above. See Visibility above.
+Visibility switches do not enter any rebuild path. `ViewportWorld.BuildPropLayers` keeps every scatter and
+companion layer resident and carries the host scatter-layer identity into its `PropLayer`. At draw time the
+sink filters retained batches by layer and kit identity. The same effective category predicate gates authored
+placement drawing, picking, and the selected placement gizmo. See Visibility above.
 
 A rebuild reads the document as it stands, and mid-edit that can be invalid: `ViewportWorld`'s prop-layer
 build throws `MapDocumentException` for a companion layer naming a host scatter layer the document does not

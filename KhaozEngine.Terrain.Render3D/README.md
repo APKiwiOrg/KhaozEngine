@@ -114,6 +114,7 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   deterministic coverage phase, so the handoff does not double-brighten the body or double-cast its shadow. An
   overlapping draw-radius fade or HLOD dissolve floor carves one shared gap between the complementary LOD sets.
   The pair therefore cannot restore coverage that the independent fade already removed.
+  `WithIdentity(identity)` retains a neutral producer-assigned layer identity for draw-time filtering.
   `CastsShadows` (default true) is the layer's shadow policy: pass `castsShadows: false` to ANY of the
   factories and the layer's props (and its merged HLOD mesh) stop writing into the key light's shadow depth pass
   while still drawing and still RECEIVING shadows - what a dense short-radius ground-cover or understory layer wants
@@ -162,6 +163,9 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   rides each part's material state (set at load via `LoadPropMeshes`), so a MASK leaf-card kit scatters and
   draws through this path with its silhouette carved, exactly like an opaque prop (see the Render3D README's
   "Alpha cutout" bullet).
+  The filtered `DrawProps` overloads and the shared `Emit` paths accept a `PropDrawFilter` plus an optional
+  layer identity. A null filter preserves the legacy all-visible path. The predicate runs before flat or
+  multi-part submission and before blob registration.
 - **`GroundCoverRenderer`** - queues precomputed `GroundCoverInstance` transforms through `SceneInstances`,
   with a `Scene3D.DrawGroundCover` convenience overload. `GroundCoverRenderOptions` carries draw radius, fade
   band, quality density, distant density and shadow policy. Optional `DensityRadius` bounds the dense
@@ -189,7 +193,8 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
 - **`PropClusterRenderer`** - the shared runtime owner for terrain and TileWorld prop clusters.
   `BuildCpu(PropClusterBuildRequest)` accepts detached placements, a stable `PropClusterKey`, a content
   generation, a cluster area and its `PropLayer`. It performs the pure `PropHlod` merge on a worker with no GPU
-  access. `Apply(key, build)`, `Draw(focus)`, `Invalidate(key)` and `Unload(key)` belong on the scene thread. Apply
+  access. `Apply(key, build)`, `Draw(focus)`, `Draw(focus, filter)`, `Invalidate(key)` and `Unload(key)` belong on
+  the scene thread. Apply
   discards stale generations and results completed after unload. An initial HLOD failure retries three times,
   logs once for that key and generation, and retains individual props. A rebuild failure keeps the last accepted
   merged handle while adopting the failed request's current individual placements and layer. A successful
@@ -198,6 +203,9 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   and `Dispose` frees every retained handle exactly once. `Scene3DChunkSink` delegates this ownership while keeping
   terrain, physics, water and chunk orchestration itself, so existing `PropLayer.WithHlod` callers need no format
   or game-code migration.
+  A filter that hides part of a merged HLOD cluster suppresses the merged mesh and submits only the visible
+  individual placements through the legacy backend method. The renderer reuses one filtered buffer, so a
+  custom backend that implements only the original method remains compatible and cannot draw hidden kits.
 - **`PropHlod`** - author-agnostic HLOD (hierarchical LOD) merge+weld for a chunk cluster's props.
   `PropHlod.Merge(placements, sourceMeshes)` transforms each placement's flat source mesh to world space and
   concatenates into one `GltfMesh` (per-kit opt-in, an id with no source mesh contributes nothing).

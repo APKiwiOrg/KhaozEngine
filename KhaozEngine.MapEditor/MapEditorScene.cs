@@ -98,6 +98,7 @@ public partial class MapEditorScene : GameScene, IGameScene3D
     TabBar _toolbar = null!;
     TreeView _outline = null!;
     PropertyGrid _inspector = null!;
+    EditorViewPanel _viewPanel = null!;
     // The inspector's hover tooltip, built lazily on first draw (see DrawInspectorTooltip): BuildChrome runs
     // before a UiViewport exists, so no SpriteFont is resolvable yet at chrome-build time. Rebuilt whenever the
     // resolved SpriteFont instance changes (a DPI rebake, see DpiFont.For), since Tooltip's fonts are fixed at
@@ -253,6 +254,8 @@ public partial class MapEditorScene : GameScene, IGameScene3D
     /// the dirty flag and its click saves).</summary>
     internal Button SaveButton => _saveButton;
 
+    internal EditorViewPanel ViewPanel => _viewPanel;
+
     /// <summary>The fly camera, or null before <see cref="OnEnter"/>. Exposed for tests (assert the command-modifier
     /// camera suppression leaves the position untouched).</summary>
     internal FlyCamera3D Camera => _camera;
@@ -272,12 +275,14 @@ public partial class MapEditorScene : GameScene, IGameScene3D
         _controller = new EditorToolController(_document)
         {
             HeightOf = KindHeight,
-            IsVisible = _visibility.IsElementVisible,
+            IsVisible = ElementVisible,
         };
         _viewport = new ViewportWorld(_scene, _options.ManifestPaths)
         {
             ScatterLayerVisible = _visibility.GetLayer, RenderDistance = _options.RenderDistance,
             TexturedPropsEnabled = () => _options.TexturedProps,
+            PropCategoryResolver = _options.ResolvePropCategory,
+            PropKindVisible = PropKindVisible,
         };
         _camera = CreateInitialCamera();
         InitializeNavigation();
@@ -464,7 +469,7 @@ public partial class MapEditorScene : GameScene, IGameScene3D
         FillPanel(batch, L.Inspector, PanelBackground);
         FillPanel(batch, L.Status, StatusBackground);
 
-        (Rect tabsRect, Rect saveRect) = SplitToolbar(L.Toolbar);
+        (Rect tabsRect, Rect viewRect, Rect saveRect) = SplitToolbar(L.Toolbar);
         _toolbar.Bounds = tabsRect;
         _toolbar.Font = font;
         _toolbar.Draw(batch, _white);
@@ -480,6 +485,7 @@ public partial class MapEditorScene : GameScene, IGameScene3D
         _inspector.Draw(batch, _white, font);
 
         DrawPalette(batch, font, L.Palette);
+        DrawViewPanel(batch, font, L, viewRect);
         string statusLine = TruncateStatusLine(StatusLine(), L.Status.Width, s => font.Measure(s).X);
         batch.DrawString(font, statusLine,
             new Vector2(MathF.Floor(L.Status.X + StatusTextInset), MathF.Floor(L.Status.Y + (StatusHeight - font.LineHeight) * 0.5f)),
@@ -649,6 +655,7 @@ public partial class MapEditorScene : GameScene, IGameScene3D
         {
             Style = GuiStyle.Modern,
         };
+        _viewPanel = new EditorViewPanel(_visibility, ScatterLayerNames);
     }
 
     void UpdateWidgets(float dt)
@@ -658,12 +665,13 @@ public partial class MapEditorScene : GameScene, IGameScene3D
         _ui.Update(Manager.Input, ui);
         ChromeLayout L = ComputeLayout(ui.Width, ui.Height);
 
-        (Rect tabsRect, Rect saveRect) = SplitToolbar(L.Toolbar);
+        (Rect tabsRect, Rect viewRect, Rect saveRect) = SplitToolbar(L.Toolbar);
         _toolbar.Bounds = tabsRect;
         if (_toolbar.Update(_ui.Pointer)) _controller.Mode = (EditorToolMode)_toolbar.ActiveIndex;
 
         _saveButton.Bounds = saveRect;
         _saveButton.Update(_ui.Pointer);
+        UpdateViewPanel(dt, L, viewRect);
 
         _outline.Bounds = L.Outline;
         _outline.Update(_ui);
@@ -723,6 +731,7 @@ public partial class MapEditorScene : GameScene, IGameScene3D
     /// Gating on the same visibility condition that drives the filter's <c>Update</c> call keeps a hidden
     /// field's stale focus from blocking shortcuts in a different tool mode.</summary>
     bool AnyEditorFocused => _inspector.HasActiveEditor
+        || _viewPanel.HasActiveEditor
         || (KitPaletteVisible && _paletteFilter.IsFocused)
         || (SpawnMode && _spawnFilter.IsFocused);
 
@@ -1433,86 +1442,6 @@ public partial class MapEditorScene : GameScene, IGameScene3D
             default: BuildLayersInspector(); break;   // nothing selected: the visibility Layers panel
         }
     }
-
-    // The empty-selection inspector is the Layers panel: a Visible toggle per group, a Rendering section (the
-    // Textured props toggle), then one per named scatter layer. Group toggles only gate draws / picks (no rebuild).
-    // The Textured props toggle and a scatter-layer toggle both rebuild the streamed world (RebuildWorldForVisibility)
-    // since each is read at load time. Raw dev-tool labels (the editor is not player-facing). Rebuilt on every
-    // selection change, so the panel tracks the live scatter-layer set.
-    void BuildLayersInspector()
-    {
-        _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Groups"), LocalizedText.Raw(
-            "Shows or hides a whole category of editor markers and shapes in the viewport. Editor view only, " +
-            "turning a group off never changes the saved document or what the game loads, it only stops that " +
-            "category from drawing and being pickable here.")));
-        foreach (VisibilityGroup group in Enum.GetValues<VisibilityGroup>())
-        {
-            VisibilityGroup g = group;   // capture per iteration for the closures
-            _inspector.Rows.Add(new BoolRow(LocalizedText.Raw(GroupLabel(g)),
-                () => _visibility.GetGroup(g), v => _visibility.SetGroup(g, v),
-                LocalizedText.Raw($"Shows or hides every {GroupLabel(g)} in the viewport. Editor view only, " +
-                    "does not affect the saved document or the game.")));
-        }
-        _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Rendering"), LocalizedText.Raw(
-            "Viewport rendering options. Editor view only, these never change the saved document or what the " +
-            "game loads.")));
-        _inspector.Rows.Add(new BoolRow(LocalizedText.Raw("Textured props"),
-            () => _options.TexturedProps,
-            v => { _options.TexturedProps = v; InvalidateViewportKitMeshes(); RebuildWorldForVisibility(); },
-            LocalizedText.Raw("When on (the default, matching gameplay) a kit prop flagged textured shows its " +
-                "baked materials in the viewport. Turn off to render every prop in its flattened average colour " +
-                "instead, which can be easier to read while placing a dense textured forest. Editor view only, " +
-                "does not affect the saved document or the game, and rebuilds the streamed world to take effect.")));
-
-        if (_document.Doc.ScatterLayers.Count > 0)
-            _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Scatter Layers"), LocalizedText.Raw(
-                "Streams or hides one named scatter layer's placed props in the viewport, independent of the " +
-                "whole-group toggles above.")));
-        foreach (MapScatterLayer layer in _document.Doc.ScatterLayers)
-        {
-            string name = layer.Name;
-            _inspector.Rows.Add(new BoolRow(LocalizedText.Raw(name),
-                () => _visibility.GetLayer(name),
-                v => { _visibility.SetLayer(name, v); RebuildWorldForVisibility(); },
-                LocalizedText.Raw($"Streams or hides the '{name}' scatter layer's placed props in the viewport. " +
-                    "Editor view only, does not affect the saved document.")));
-        }
-    }
-
-    // The raw dev-tool label for a visibility group (FeatureMarkers reads "Feature markers", ScatterOverrides reads
-    // "Scatter overrides", the rest are their enum name). No em / en dashes or semicolons (the editor label
-    // convention).
-    static string GroupLabel(VisibilityGroup group) => group switch
-    {
-        VisibilityGroup.FeatureMarkers => "Feature markers",
-        VisibilityGroup.ScatterOverrides => "Scatter overrides",
-        VisibilityGroup.PlayerSpawns => "Player spawns",
-        _ => group.ToString(),
-    };
-
-    /// <summary>GPU seam: rebuilds the streamed viewport world so a scatter-layer visibility toggle takes effect
-    /// (hidden layers drop out of the fresh prop layers). Called directly from the Layers-panel scatter toggle,
-    /// NOT through <see cref="EditorDocument.WorldRebuildPending"/> (visibility is not a document change). No-op
-    /// until the world is built, and overridden headless in tests. Re-points the controller field at the rebuilt
-    /// world, matching <see cref="CheckWorldRebuild"/>. <see cref="ViewportWorld.Rebuild"/> retains the viewport's
-    /// kit meshes and splat material across this call, so a scatter-layer toggle (which never changes which mesh
-    /// form a kit id loads) does not need <see cref="InvalidateViewportKitMeshes"/> first, unlike the Textured
-    /// props toggle.</summary>
-    protected virtual void RebuildWorldForVisibility()
-    {
-        if (!_viewport.IsBuilt) return;
-        _viewport.Rebuild(_document.Doc, _document.Registry);
-        _controller.Field = _viewport.Field;
-    }
-
-    /// <summary>GPU seam: invalidates the viewport's retained kit-mesh cache (and its cached splat material) so the
-    /// next <see cref="RebuildWorldForVisibility"/> reloads every kit id from disk instead of serving a stale
-    /// cached form. The Textured props Layers-panel toggle calls this immediately before
-    /// <see cref="RebuildWorldForVisibility"/>, because <see cref="ViewportWorld.LoadKitMeshes"/> keys its cache on
-    /// the entry id alone and does not encode which form (textured parts vs. flattened) was loaded, so a retained
-    /// cache would otherwise serve the pre-toggle form. Overridden headless in tests (mirrors
-    /// <see cref="RebuildWorldForVisibility"/>).</summary>
-    protected virtual void InvalidateViewportKitMeshes() => _viewport.InvalidateKitMeshes();
 
     // The single spot every FloatRow the inspector builds funnels through, directly or via a domain wrapper
     // (AddFeatureRow, AddBandFloatRow, AddScatterFloatRow, AddCompanionFloatRow, AddShapeRow): wires
@@ -3042,7 +2971,8 @@ public partial class MapEditorScene : GameScene, IGameScene3D
         if (ui is null) return false;
         float dpi = ui.DpiScale > 0f ? ui.DpiScale : 1f;
         Vector2 p = windowPixel / dpi;
-        return !ComputeLayout(ui.Width, ui.Height).Viewport.Contains(p);
+        return !ComputeLayout(ui.Width, ui.Height).Viewport.Contains(p)
+            || (_viewPanel.IsOpen && _viewPanel.PanelBounds.Contains(p));
     }
 
     float GizmoScaleFor(Vector3 pos) => MathF.Max(0.25f, Vector3.Distance(_camera.Position, pos) * 0.12f);
@@ -3129,13 +3059,15 @@ public partial class MapEditorScene : GameScene, IGameScene3D
     // (decision 4): the button reserves SaveButtonWidth plus gaps, and the tab bar takes the rest, so the tabs
     // shrink to leave room instead of overlapping the button. The button is inset vertically within the strip.
     // Pure math, so the split is asserted headless.
-    (Rect Tabs, Rect Save) SplitToolbar(Rect toolbar)
+    (Rect Tabs, Rect View, Rect Save) SplitToolbar(Rect toolbar)
     {
         float saveW = MathF.Min(SaveButtonWidth, MathF.Max(0f, toolbar.Width - ToolbarGap * 2f));
         var save = new Rect(toolbar.Right - saveW - ToolbarGap,
             toolbar.Y + (toolbar.Height - SaveButtonHeight) * 0.5f, saveW, SaveButtonHeight);
-        var tabs = new Rect(toolbar.X, toolbar.Y, MathF.Max(0f, toolbar.Width - saveW - ToolbarGap * 2f), toolbar.Height);
-        return (tabs, save);
+        float viewW = MathF.Min(ViewButtonWidth, MathF.Max(0f, save.X - toolbar.X - ToolbarGap * 2f));
+        var view = new Rect(save.X - viewW - ToolbarGap, save.Y, viewW, save.Height);
+        var tabs = new Rect(toolbar.X, toolbar.Y, MathF.Max(0f, view.X - toolbar.X - ToolbarGap), toolbar.Height);
+        return (tabs, view, save);
     }
 
     // Identity payload on an outline row: which document element the row selects. Internal (not private) so

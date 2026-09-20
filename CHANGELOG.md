@@ -30,8 +30,9 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   suite stayed green (https://github.com/APKiwiOrg/Grimhollow/issues/259). `ContentUpgradePlanBuilder` and
   `ContentUpgradeChecks` detect by identity and never by value, patch a field only when it still holds the
   named old default, refuse a partial state, and CARRY the committed id on every added row. A run with nothing
-  pending writes nothing. The runner never discards an operator draft (a draft is its own only when the actor,
-  the note and the exact edits match a fresh plan), never moves the pin, publishes only after freezing a draft
+  pending writes nothing. The runner discards a draft only when it can prove every edit in it is its own work (the actor matches
+  and each edit equals an edit of a plan this run computed), a proof that is narrowed and not closed against
+  an operator edit landing between it and the discard, never moves the pin, publishes only after freezing a draft
   it has just read as exactly its own plan and re-proving it under that marker, so an operator edit
   that lands in the draft is never published inside an upgrade, releases that marker on every attempt that
   froze and did not publish, re-checks `ExpectedVersion` on every re-read, retries only a transient `DbException`, and resolves

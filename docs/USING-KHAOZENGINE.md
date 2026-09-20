@@ -15285,8 +15285,10 @@ Planner rules, which the runner cannot enforce for you:
   publish refused after allocation burns ids and a predicted id would then be wrong.
 
 What the runner guarantees. A run with nothing pending writes nothing at all. Each definition publishes as
-its own version. An operator's open draft is never discarded: a draft counts as the runner's own only when the
-actor, the note and the exact edits all match a fresh plan, and anything else is `OperatorDraftOpen`. The pin is
+its own version. A draft is PUBLISHED as it stands only when the actor, the note and the exact edits all
+match one definition's fresh plan. A draft is DISCARDED only when the runner can prove every edit in it is its
+own work: the actor matches and each edit equals an edit of a plan this run computed. Anything else is
+`OperatorDraftOpen`, untouched. The pin is
 never moved. A pin on the active version does not block the publish and the report names the version to repin
 to. Before every publish it freezes the draft, re-reads it and requires exactly its own plan on the expected
 base, so an operator edit that lands in the draft is never published inside an upgrade. It freezes only a

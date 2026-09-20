@@ -58,8 +58,8 @@ public static class GameTuningContentType
     /// </remarks>
     /// <param name="registry">A registry that is not frozen and carries neither this id nor this key.</param>
     /// <param name="validator">
-    /// The type's own validator, or null for none. This package ships NO validators yet, so a game either
-    /// passes one of its own or passes null. The package's own arrive separately.
+    /// The type's own validator, or null for none. This package ships NONE for this type: it carries no
+    /// rule a schema does not already make, so <see cref="GameContentTypes.Register"/> passes null here.
     /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="registry"/> is null.</exception>
     /// <exception cref="ContentRegistrationException">

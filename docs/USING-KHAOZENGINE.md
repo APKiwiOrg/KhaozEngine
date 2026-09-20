@@ -15370,19 +15370,57 @@ reused and never renumbered, which is why the whole table is written down before
 codes. The engine folds a game-band finding into `KEC0040` and puts the `KGT` code in the message text, so
 that is what an operator reads off a refused publish.
 
-**Nine types ship a validator so far**, each a nested `Validator` on its type class: `food` (`KGT0101` to
-`KGT0103`), `equip_stat_line` (`KGT0201`, `KGT0202`), `store` (`KGT0301` to `KGT0303`), `store_shelf`
-(`KGT0401` to `KGT0403`), `monster_drop` (`KGT0501`), `gathering_node` (`KGT0601` to `KGT0603`),
-`recipe_input` (`KGT0801` to `KGT0803`), `recipe_output` (`KGT0901` to `KGT0903`) and `tool_tier`
-(`KGT1001` to `KGT1003`). The two recipe sides are one rule set read twice, under two sets of codes, so a
-report names which side of the recipe is wrong. All but one take nothing. `StoreContentType.Validator` takes the registry, because it holds a rate against the dearest item
-the candidate carries and so needs where the engine `item` type keeps its `value`. **That index is read off
-the live registration at validation time and never off a schema the validator built at type load**, which is
-this build's idea of the item type rather than the one the candidate was registered against. Every rule is
-unit-neutral: a duration rule is about the number's SIGN, so one validator serves both spellings.
+**Eleven of the thirteen ship a validator**, each a nested `Validator` on its type class: `food` (`KGT0101`
+to `KGT0103`), `equip_stat_line` (`KGT0201`, `KGT0202`), `store` (`KGT0301` to `KGT0303`), `store_shelf`
+(`KGT0401` to `KGT0403`), `monster_drop` (`KGT0501`), `gathering_node` (`KGT0601` to `KGT0603`), `recipe`
+(`KGT0701` to `KGT0710`), `recipe_input` (`KGT0801` to `KGT0803`), `recipe_output` (`KGT0901` to `KGT0903`),
+`tool_tier` (`KGT1001` to `KGT1003`) and `skill_curve` (`KGT1101` to `KGT1103`). The two recipe sides are
+one rule set read twice, under two sets of codes, so a report names which side of the recipe is wrong.
+`equip_profile` and `game_tuning` ship none on purpose: the first carries no rule a schema does not already
+make, and every rule about the second is a statement about the SET of rows or about a type that READS a
+knob.
 
-**The remaining two validators and the cross-type sweep are not here yet**, so a game passes its own
-validator to `Register` or passes null for the other four types.
+Eight take nothing at all. `StoreContentType.Validator` takes the registry, because it holds a rate against
+the dearest item the candidate carries and so needs where the engine `item` type keeps its `value`. **That
+index is read off the live registration at validation time and never off a schema the validator built at
+type load**, which is this build's idea of the item type rather than the one the candidate was registered
+against. Every rule is unit-neutral: a duration rule is about the number's SIGN, so one validator serves
+both spellings.
+
+**Two validators need an answer only a game has, and both take it as a predicate over the raw stored
+number** rather than as an enum, a roster or a list. `RecipeValidatorOptions` carries four, every one
+required: `IsKnownRepeatMode` (`KGT0710`), `IsPayableSkill` (`KGT0702`), `IsOpenSkill` (`KGT0703`) and
+`IsNameableStation` (`KGT0707`). Two SEPARATE skill predicates, because a number nothing stands for and a
+real skill that is not open yet are different defects with different fixes and different codes, and
+`IsOpenSkill` is asked only of a skill `IsPayableSkill` already accepted.
+`RecipeValidatorOptions.NoStation` is 0 and is never offered to the predicate, so a row naming it is
+`KGT0706` rather than `KGT0707`. `SkillCurveContentType.Validator` takes one `isKnownSkill` predicate, a
+different question from `IsPayableSkill` because a curve row is about any skill the game has, and its
+message names the raw NUMBER.
+
+**`GameContentTypes.Register` puts all thirteen on a registry in one call**, the way
+`EngineContentTypes.Register` does for the engine's six. Every member of `GameContentOptions` is required,
+so a game cannot forget a seam and leave a rule silently never firing:
+
+```csharp
+GameContentTypes.Register(registry, ContentDurationUnit.Ticks, new GameContentOptions
+{
+    Recipe = new RecipeValidatorOptions
+    {
+        IsKnownRepeatMode = value => value is >= 0 and <= 1,
+        IsPayableSkill = value => MyGame.Skills.TakesRecipes(value),
+        IsOpenSkill = value => MyGame.Skills.IsOpen(value),
+        IsNameableStation = value => value is >= 1 and <= 3,
+    },
+    IsKnownSkill = value => MyGame.Skills.Exists(value),
+});
+```
+
+The per-type `Register` calls stay public, because registering only the types a world authors is the
+ordinary case and a game that wants a validator of its own on one type needs the narrow call.
+
+**The cross-type sweep is not here yet.** `KGT1301` to `KGT1307` are reserved for it and nothing emits
+them.
 
 `KhaozEngine.Catalog.GameTypes/README.md` is the API reference, type by type.
 

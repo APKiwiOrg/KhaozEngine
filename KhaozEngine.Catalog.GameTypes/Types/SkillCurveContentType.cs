@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace KhaozEngine.Catalog.GameTypes;
 
@@ -56,8 +57,8 @@ public static class SkillCurveContentType
     /// </remarks>
     /// <param name="registry">A registry that is not frozen and carries neither this id nor this key.</param>
     /// <param name="validator">
-    /// The type's own validator, or null for none. This package ships NO validators yet, so a game either
-    /// passes one of its own or passes null. The package's own arrive separately.
+    /// The type's own validator, or null for none. <see cref="Validator"/> is the one this package ships
+    /// for it, and a game passes that, one of its own, a wrapper over both, or null.
     /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="registry"/> is null.</exception>
     /// <exception cref="ContentRegistrationException">
@@ -85,6 +86,98 @@ public static class SkillCurveContentType
         /// <summary>Builds the codec over the skill curve schema.</summary>
         public Codec(ContentTypeId type, ContentFieldSchema schema) : base(type, schema)
         {
+        }
+    }
+
+    /// <summary>
+    /// The three rules the schema alone cannot say: one row per skill, a skill the game knows, and a knob
+    /// that pays something when it is set at all.
+    /// </summary>
+    /// <remarks>
+    /// The ONE thing it needs from a game is whether a skill number means anything, which arrives as a
+    /// predicate rather than a roster: a skill is a raw durable number here, and which numbers exist is not
+    /// this package's to hold. Everything else is arithmetic.
+    /// <para>
+    /// It ACCUMULATES, so one pass over a whole roster reports every defect rather than the earliest.
+    /// </para>
+    /// <para>
+    /// An UNSET knob is legal and is the ordinary case, which is why the rule is about the value and not
+    /// about presence: the absence convention writes the same zero form for an unset field and an authored
+    /// zero, and the decoder resolves an optional zero as absent, so a row that reaches here carrying a
+    /// value carried an authored one.
+    /// </para>
+    /// <para>
+    /// <b>A message names the raw NUMBER.</b> A name for it would be the game's vocabulary, and the number
+    /// is what the row actually carries and what an author edits.
+    /// </para>
+    /// </remarks>
+    /// <param name="isKnownSkill">
+    /// Whether the game stands for this skill number at all. False is
+    /// <see cref="GameContentFindings.SkillCurveUnknownSkill"/>. A game whose skill numbers are a
+    /// byte-backed enum checks the range BEFORE it casts, because a cast from a long is unchecked and would
+    /// fold 256 onto the first constant rather than refusing it.
+    /// </param>
+    public sealed class Validator(Func<long, bool> isKnownSkill) : IContentValidator
+    {
+        readonly Func<long, bool> _isKnownSkill = isKnownSkill
+            ?? throw new ArgumentNullException(nameof(isKnownSkill));
+
+        /// <inheritdoc />
+        public void Validate(ContentTypeId type, IContentSnapshot candidate, ICollection<ContentFinding> findings)
+        {
+            ArgumentNullException.ThrowIfNull(candidate);
+            ArgumentNullException.ThrowIfNull(findings);
+
+            var firstBySkill = new Dictionary<long, int>();
+            foreach (ContentRow row in candidate.Rows(type))
+            {
+                // A row whose value count does not match the schema is the engine's own finding, and reading
+                // it positionally here would be reading someone else's fields.
+                if (row.IsRetired || row.Fields.Count != FieldCount)
+                {
+                    continue;
+                }
+
+                ContentFieldValue rate = row.Fields[XpPerDamageIndex];
+                if (!rate.IsAbsent && rate.Number <= 0)
+                {
+                    findings.Add(new ContentFinding(
+                        type,
+                        row.Id,
+                        GameContentFindings.SkillCurveXpPerDamageNotPositive,
+                        FormattableString.Invariant(
+                            $"Curve '{row.Key}' pays {rate.Number} experience per point of damage. A rate of nothing is what leaving the knob unset already means, so authoring one says the skill trains and then refuses to.")));
+                }
+
+                ContentFieldValue skill = row.Fields[SkillIndex];
+                if (skill.IsAbsent)
+                {
+                    // A required field left empty is the engine's KEC0005, and a row that names no skill
+                    // cannot duplicate one.
+                    continue;
+                }
+
+                if (!_isKnownSkill(skill.Number))
+                {
+                    findings.Add(new ContentFinding(
+                        type,
+                        row.Id,
+                        GameContentFindings.SkillCurveUnknownSkill,
+                        FormattableString.Invariant(
+                            $"Curve '{row.Key}' carries skill {skill.Number}, which nothing in the game stands for. The number is the game's own durable skill value, so a row may only carry one the roster already knows.")));
+                    continue;
+                }
+
+                if (!firstBySkill.TryAdd(skill.Number, row.Id))
+                {
+                    findings.Add(new ContentFinding(
+                        type,
+                        row.Id,
+                        GameContentFindings.SkillCurveDuplicateSkill,
+                        FormattableString.Invariant(
+                            $"Curve '{row.Key}' carries the knobs of skill {skill.Number}, which curve {firstBySkill[skill.Number]} already carries. One skill reads one row, so two leave every knob on it ambiguous.")));
+                }
+            }
         }
     }
 }

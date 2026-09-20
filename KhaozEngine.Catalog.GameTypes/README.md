@@ -4,8 +4,9 @@ The thirteen game-shaped content types most RPG-shaped worlds re-author from scr
 keys, ordered field schemas, row codecs and one registration call each over `KhaozEngine.Catalog`. GPU-free,
 zero third-party dependencies, part of the `KhaozEngine.Foundation` umbrella.
 
-**All thirteen types are here. Nine of them now ship a validator.** The remaining two validators and the
-cross-type sweep are still only the `KGT` codes they will emit.
+**All thirteen types are here, eleven of them ship a validator, and `GameContentTypes.Register` puts the
+whole set on a registry in one call.** The cross-type sweep is still only the `KGT1301` to `KGT1307` codes
+it will emit.
 
 The engine's own six types (`tag`, `item`, `stat`, `loot_table`, `loot_entry`, `base_socket`) are the shapes
 every catalog needs. These thirteen are the next layer up: the shapes a world with food, equipment, shops,
@@ -118,7 +119,7 @@ whole candidate, it ACCUMULATES rather than stopping at the first defect, and it
 reason. The engine runs it last in the sweep and folds every finding into `KEC0040` with the `KGT` code in
 the message.
 
-Nine are here so far, each a nested `Validator` on its type class:
+Eleven of the thirteen ship one, each a nested `Validator` on its type class:
 
 | Type | Rules | Codes |
 | --- | --- | --- |
@@ -128,15 +129,24 @@ Nine are here so far, each a nested `Validator` on its type class:
 | `store_shelf` | one draw position per store, one shelf per item, no item that has left play | `KGT0401` to `KGT0403` |
 | `monster_drop` | one creature kind names one table | `KGT0501` |
 | `gathering_node` | at least one life, a reachable level, a yield still in play | `KGT0601` to `KGT0603` |
+| `recipe` | one list position, a payable and open skill, a station the game names, a positive duration and rate, a reachable level, a known repeat mode, a primary item still in play | `KGT0701` to `KGT0710` |
 | `recipe_input` | one list position per recipe, a count above zero, no item that has left play | `KGT0801` to `KGT0803` |
 | `recipe_output` | the same three rules on the product side | `KGT0901` to `KGT0903` |
 | `tool_tier` | one tier per rank within a family, both scales above zero | `KGT1001` to `KGT1003` |
+| `skill_curve` | one row per skill, a skill the game knows, a rate above zero when it is set | `KGT1101` to `KGT1103` |
 
-All but one take nothing at all. `StoreContentType.Validator` takes the REGISTRY, because the one thing it needs
-from outside its own type is where the engine `item` type keeps its `value`, and **that index is read off
-the live registration at validation time, never off a schema the validator built at type load.** A static
-index is this build's idea of the item type rather than the one the candidate was registered against, and an
-engine release that moved an item field would leave the rule silently reading its neighbour.
+**`equip_profile` and `game_tuning` ship none, deliberately.** `equip_profile` carries three durable numbers
+and no rule a schema does not already make. Every rule about `game_tuning` is a statement about the SET of
+rows or about a type that READS a knob, both of which are the cross-type sweep's, and the one rule a single
+tuning row could carry, that its knob name is unique, is already the engine's `KEC0002`.
+
+Eight of the eleven take nothing at all.
+
+`StoreContentType.Validator` takes the REGISTRY, because the one thing it needs from outside its own type is
+where the engine `item` type keeps its `value`, and **that index is read off the live registration at
+validation time, never off a schema the validator built at type load.** A static index is this build's idea
+of the item type rather than the one the candidate was registered against, and an engine release that moved
+an item field would leave the rule silently reading its neighbour.
 
 `StoreContentType.BasisPointDenominator` is 10,000 and `LargestSafeRateBasisPoints(largestItemValue)` is the
 widest rate that prices every item in a catalog inside the 32 bit range a price is carried in. The ceiling
@@ -150,10 +160,39 @@ separate codes so a report names which side of the recipe is wrong, but the cont
 each side supplies its own codes, positions and nouns. Two copies of it would let a correctness fix land on
 whichever side the next person happened to be editing.
 
-**The remaining validators and the cross-type sweep are not here yet.** A game passes its own or passes null
-for the other four types.
+### The game seams
 
-## Usage
+Two validators need an answer only a game has, and both take it as a predicate over the raw stored number
+rather than as an enum, a roster or a list.
+
+`RecipeValidatorOptions` carries four, every one required:
+
+| Member | Answers | Code when false |
+| --- | --- | --- |
+| `IsKnownRepeatMode` | does the game stand for this repeat mode number | `KGT0710` |
+| `IsPayableSkill` | can experience be paid into this skill at all | `KGT0702` |
+| `IsOpenSkill` | is a skill the game already accepted OPEN in this build | `KGT0703` |
+| `IsNameableStation` | does the game stand for this station number | `KGT0707` |
+
+Two SEPARATE skill predicates, because a number nothing stands for and a real skill that is not open yet
+are different defects with different fixes, and they carry different codes. `IsOpenSkill` is asked only of a
+skill `IsPayableSkill` already accepted, so a game never has to answer it for a number that means nothing.
+
+`RecipeValidatorOptions.NoStation` is 0 and is never offered to `IsNameableStation`: zero is the absence
+convention everywhere else in the catalog, so a row naming it is `KGT0706` rather than `KGT0707`.
+
+`SkillCurveContentType.Validator` takes one predicate, `isKnownSkill`. It is a different question from
+`IsPayableSkill`: a curve row is a statement about ANY skill the game has, including one no recipe may be
+listed under. A message from it names the raw NUMBER, because a name would be the game's vocabulary.
+
+A game whose numbers are a byte-backed enum checks the range BEFORE it casts. A cast from a long is
+unchecked and would fold 256 onto the first constant rather than refusing it.
+
+## One call for all thirteen
+
+`GameContentTypes.Register` is to these thirteen what `EngineContentTypes.Register` is to the engine's six.
+It takes the unit and ONE options object holding every answer the package needs from the game, and every
+member of it is required, so a game cannot forget a seam and leave a rule silently never firing.
 
 ```csharp
 using KhaozEngine.Catalog;
@@ -162,10 +201,31 @@ using KhaozEngine.Catalog.GameTypes;
 var registry = new ContentTypeRegistry();
 EngineContentTypes.Register(registry);
 
+GameContentTypes.Register(registry, ContentDurationUnit.Ticks, new GameContentOptions
+{
+    Recipe = new RecipeValidatorOptions
+    {
+        IsKnownRepeatMode = value => value is >= 0 and <= 1,
+        IsPayableSkill = value => MyGame.Skills.TakesRecipes(value),
+        IsOpenSkill = value => MyGame.Skills.IsOpen(value),
+        IsNameableStation = value => value is >= 1 and <= 3,
+    },
+    IsKnownSkill = value => MyGame.Skills.Exists(value),
+});
+```
+
+The per-type `Register` calls stay public. Registering only the types a world actually authors is the
+ordinary case, and a game that wants a validator of its own on one type needs the narrow call.
+
+**The cross-type sweep is not here yet.** `KGT1301` to `KGT1307` are reserved for it and nothing emits them.
+
+## Registering by hand
+
+```csharp
 const ContentDurationUnit Unit = ContentDurationUnit.Ticks;
 FoodContentType.Register(registry, Unit, new FoodContentType.Validator());
 StoreContentType.Register(registry, new StoreContentType.Validator(registry));
-MonsterDropContentType.Register(registry, new MonsterDropContentType.Validator());
+MonsterDropContentType.Register(registry, validator: null);
 ```
 
 Each `Register` supplies the id, the key, the band, the type's own visibility and chunk slots, the schema
@@ -174,8 +234,9 @@ for the unit and the codec over it. **The visibility and the chunk slots are not
 slot count moves every content address, so two worlds authoring the same facts would stop agreeing about
 where they live. Neither fails loudly.
 
-The validator is a parameter the caller passes. Nine types ship one as `Validator` on the type class, and a
-game passes that, one of its own, a wrapper over both, or null.
+The validator is a parameter the caller passes. Eleven types ship one as `Validator` on the type class, and
+a game passes that, one of its own, a wrapper over both, or null. `GameContentTypes.Register` is the path
+for a game that wants the whole set.
 
 A game registers only the types it authors. Nothing here registers itself, because which of the thirteen a
 world uses, which validator each one carries and what a row's numbers mean are all the game's.

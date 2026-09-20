@@ -140,27 +140,32 @@ namespace KhaozEngine.Terrain
                 if (!_latestGenerations.TryGetValue(key, out latest) || build.Generation > latest)
                     _latestGenerations[key] = build.Generation;
                 _clusters.TryGetValue(key, out Cluster? old);
+                IReadOnlyList<PropPlacement> filterPlacements = build.PreservesFilterPlacementBatch && old is not null
+                    ? old.FilterPlacements : build.FilterPlacementBatch;
                 if (!build.Succeeded)
                 {
                     if (old is null)
                         _clusters[key] = new Cluster(build.Generation, build.Area, build.Layer,
-                            build.PlacementBatch, handle: null, presentationGeneration: build.Generation);
+                            build.PlacementBatch, filterPlacements, handle: null,
+                            presentationGeneration: build.Generation);
                     else
                         _clusters[key] = new Cluster(old.Generation, build.Area, build.Layer,
-                            build.PlacementBatch, old.Handle, presentationGeneration: build.Generation);
+                            build.PlacementBatch, filterPlacements, old.Handle,
+                            presentationGeneration: build.Generation);
                     return;
                 }
                 if (build.ReusesCurrent)
                 {
                     if (old is not null)
                         _clusters[key] = new Cluster(old.Generation, build.Area, build.Layer,
-                            build.PlacementBatch, old.Handle, presentationGeneration: build.Generation);
+                            build.PlacementBatch, filterPlacements, old.Handle,
+                            presentationGeneration: build.Generation);
                     return;
                 }
 
                 MeshHandle? fresh = build.MergedMesh is { } mesh ? _backend.LoadMesh(mesh) : null;
-                var next = new Cluster(build.Generation, build.Area, build.Layer, build.PlacementBatch, fresh,
-                    build.Generation);
+                var next = new Cluster(build.Generation, build.Area, build.Layer, build.PlacementBatch,
+                    filterPlacements, fresh, build.Generation);
                 _clusters[key] = next;
                 _invalidated.Remove(key);
                 _loggedFailures.Remove((key, build.Generation));
@@ -212,7 +217,7 @@ namespace KhaozEngine.Terrain
                     if (filtered == FilterResult.None) continue;
                     if (filtered == FilterResult.Some)
                     {
-                        if (state.DrawsIndividuals || state.DrawsMerged)
+                        if ((state.DrawsIndividuals && cluster.Placements.Count > 0) || state.DrawsMerged)
                         {
                             _backend.DrawProps(_filteredPlacements, cluster.Layer, focus, 0f);
                         }
@@ -233,7 +238,7 @@ namespace KhaozEngine.Terrain
             if (filter is null) return FilterResult.All;
             visible.Clear();
             bool anyHidden = false;
-            foreach (PropPlacement placement in cluster.Placements)
+            foreach (PropPlacement placement in cluster.FilterPlacements)
             {
                 if (filter(cluster.Layer.Identity, placement.Id)) visible.Add(placement);
                 else anyHidden = true;
@@ -343,10 +348,12 @@ namespace KhaozEngine.Terrain
             public readonly RectArea Area;
             public readonly PropLayer Layer;
             public readonly IReadOnlyList<PropPlacement> Placements;
+            public readonly IReadOnlyList<PropPlacement> FilterPlacements;
             public readonly MeshHandle? Handle;
 
             public Cluster(long generation, RectArea area, PropLayer layer,
-                           IReadOnlyList<PropPlacement> placements, MeshHandle? handle,
+                           IReadOnlyList<PropPlacement> placements,
+                           IReadOnlyList<PropPlacement> filterPlacements, MeshHandle? handle,
                            long presentationGeneration)
             {
                 Generation = generation;
@@ -354,6 +361,7 @@ namespace KhaozEngine.Terrain
                 Area = area;
                 Layer = layer;
                 Placements = placements;
+                FilterPlacements = filterPlacements;
                 Handle = handle;
             }
         }

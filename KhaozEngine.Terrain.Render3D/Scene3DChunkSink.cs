@@ -189,6 +189,14 @@ namespace KhaozEngine.Terrain
             _propClusters = scene is null ? PropClusterRenderer.CreateCpuOnly() : new PropClusterRenderer(scene);
         }
 
+        internal Scene3DChunkSink(Scene3D scene, TerrainField field, IReadOnlyList<PropLayer> layers,
+                                  float chunkSize, PropClusterRenderer propClusters)
+            : this(scene, field, layers, chunkSize)
+        {
+            _propClusters.Dispose();
+            _propClusters = propClusters ?? throw new ArgumentNullException(nameof(propClusters));
+        }
+
         /// <summary>Single-layer sink (back-compat): one scatter config, one mesh set, one draw radius. The splat
         /// <paramref name="material"/> is caller-owned unless <paramref name="ownsMaterial"/> is set (see the class
         /// remarks). Optional <paramref name="physics"/>/<paramref name="collisionShapes"/> add this layer's props
@@ -499,7 +507,8 @@ namespace KhaozEngine.Terrain
                 PropClusterCpuBuild cluster = _propClusters.BuildCpu(new PropClusterBuildRequest(
                     key, generation, ChunkGrid.AreaOf(coord, _chunkSize), layer, mergePlacements));
                 if (ring != ChunkRing.Gameplay)
-                    cluster = cluster.WithPlacementBatch(Array.Empty<PropPlacement>());
+                    cluster = cluster.WithPlacementBatch(Array.Empty<PropPlacement>(),
+                        preserveFilterPlacementBatch: !buildHlod && mergePlacements.Count == 0);
                 clusterBuilds[i] = cluster;
                 anyClusterBuild = true;
                 if (buildHlod && layer.HasHlod) hlod![i] = cluster.MergedMesh;

@@ -76,6 +76,78 @@ public sealed class PropVisibilityFilterTests
         Assert.Equal(0, backend.DrawCalls);
     }
 
+    [Fact]
+    public void DecorPayload_KeepsMergedDefaultAndUsesMetadataOnlyForFarMixedFallback()
+    {
+        var backend = new RecordingBackend();
+        using var renderer = new PropClusterRenderer(backend, Merge, static (_, _) => { });
+        PropLayer layer = PropLayer.PlacementLayer(Placements,
+                new Dictionary<string, MeshHandle>
+                {
+                    ["oak"] = new MeshHandle(1),
+                    ["rock"] = new MeshHandle(2),
+                }, 500f)
+            .WithHlod(new Dictionary<string, GltfMesh>
+            {
+                ["oak"] = MeshPrimitives.Box(1f),
+                ["rock"] = MeshPrimitives.Box(1f),
+            }, 10f, 0f)
+            .WithIdentity("forest");
+        var field = new TerrainField(new TerrainConfig { GentleAmplitude = 0f });
+        using var sink = new Scene3DChunkSink(null!, field, new[] { layer }, 64f, renderer);
+        var coord = new ChunkCoord(0, 0);
+        var cpu = (Scene3DChunkSink.CpuBuild)sink.BuildCpu(coord, lod: 2, ring: ChunkRing.Decor);
+        PropClusterCpuBuild build = cpu.PropClusters![0]!;
+        var key = new PropClusterKey("0", 0, 0, 0);
+        renderer.Apply(key, build);
+
+        Assert.Empty(cpu.LayerProps[0]);
+        Assert.Empty(build.PlacementBatch);
+        Assert.Equal(2, build.FilterPlacementBatch.Count);
+
+        renderer.Draw(new Vector3(100f, 0f, 100f));
+        Assert.Equal(1, backend.MergedDraws);
+        Assert.Equal(0, backend.VisibleIndividuals);
+
+        backend.Reset();
+        renderer.Draw(new Vector3(100f, 0f, 100f), static (_, _) => true);
+        Assert.Equal(1, backend.MergedDraws);
+        Assert.Equal(0, backend.VisibleIndividuals);
+
+        backend.Reset();
+        renderer.Draw(new Vector3(100f, 0f, 100f), static (_, kit) => kit == "oak");
+        Assert.Equal(0, backend.MergedDraws);
+        Assert.Equal(1, backend.VisibleIndividuals);
+
+        backend.Reset();
+        renderer.Draw(new Vector3(32f, 0f, 32f), static (_, kit) => kit == "oak");
+        Assert.Equal(0, backend.MergedDraws);
+        Assert.Equal(0, backend.VisibleIndividuals);
+
+        sink.HlodGate!.MarkApplied(coord, lod: 2, ChunkRing.Decor);
+        var gameplay = (Scene3DChunkSink.CpuBuild)sink.BuildCpu(
+            coord, lod: 0, ChunkRing.Gameplay, ChunkBuildReason.RingChange);
+        renderer.Apply(key, gameplay.PropClusters![0]!);
+        sink.HlodGate.MarkApplied(coord, lod: 0, ChunkRing.Gameplay);
+        Assert.NotEmpty(gameplay.PropClusters[0]!.PlacementBatch);
+        Assert.Equal(1, renderer.GenerationOf(key));
+
+        backend.Reset();
+        renderer.Draw(new Vector3(32f, 0f, 32f), static (_, kit) => kit == "oak");
+        Assert.Equal(1, backend.VisibleIndividuals);
+
+        var decorAgain = (Scene3DChunkSink.CpuBuild)sink.BuildCpu(
+            coord, lod: 2, ChunkRing.Decor, ChunkBuildReason.RingChange);
+        renderer.Apply(key, decorAgain.PropClusters![0]!);
+        Assert.Empty(decorAgain.PropClusters[0]!.PlacementBatch);
+        Assert.True(decorAgain.PropClusters[0]!.PreservesFilterPlacementBatch);
+        Assert.Equal(1, renderer.GenerationOf(key));
+
+        backend.Reset();
+        renderer.Draw(new Vector3(100f, 0f, 100f), static (_, kit) => kit == "oak");
+        Assert.Equal(1, backend.VisibleIndividuals);
+    }
+
     static GltfMesh Merge(IReadOnlyList<PropPlacement> placements,
         IReadOnlyDictionary<string, GltfMesh> meshes, float weldCell, out long dropped)
     {

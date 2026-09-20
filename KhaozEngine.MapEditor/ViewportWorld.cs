@@ -98,8 +98,9 @@ public sealed class ViewportWorld : IDisposable
                 // heights/categories/meshes consistent. Heights used to be last-wins, a divergence closed here).
                 if (!heights.ContainsKey(entry.Id)) heights[entry.Id] = entry.HeightMeters;
                 if (!categories.ContainsKey(entry.Id)) categories[entry.Id] = entry.Category ?? stem;
-                if (!authoredCategories.ContainsKey(entry.Id) && entry.Category is not null)
-                    authoredCategories[entry.Id] = CategoryFromMetadata(entry.Category);
+                if (!authoredCategories.ContainsKey(entry.Id))
+                    authoredCategories[entry.Id] = entry.Category is null
+                        ? EditorPropCategory.OtherProps : CategoryFromMetadata(entry.Category);
             }
         }
         _entries = entries;

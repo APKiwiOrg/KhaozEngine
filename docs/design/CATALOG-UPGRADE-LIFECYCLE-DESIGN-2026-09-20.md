@@ -173,8 +173,10 @@ ordinals.
    with nothing further changed. The stand-off gives up only when the ledger, the active version and the open
    draft are all unchanged across a whole attempt budget, so a loaded machine cannot turn a correct run into a
    failure.
-10. `Preview` writes nothing. It plans the first pending definition exactly and lists the rest as pending,
-    because a later plan depends on the published result of an earlier one.
+10. `Preview` writes nothing. It plans the first pending definition exactly and says which disposition an
+    `Apply` would record for it: would publish a new version, or is already present and would only be
+    recorded as adopted with no version published (19.12.0). The rest are listed as pending, because a later
+    plan depends on the published result of an earlier one.
 
 Every refusal carries a stable diagnostic code, a message that names the catalog, the upgrade id and the
 action an operator or developer takes next, and the report renders through the existing content boot line

@@ -5,6 +5,30 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 19.12.0
+
+- `ContentUpgradePlanBuilder.AppendTag(type, key, fieldName, tagId)` appends one element to a tag-list field of an
+  existing row. `PatchField` replaces a value only while it still equals a named old default, which is right for
+  a scalar and wrong for a list: a tag appended to an item whose list an operator has extended was skipped
+  forever, and the first consumer had to hand-write the fold. The verb finds the row by type and key, is
+  satisfied with no edit when the element is already present, and otherwise appends at the END, keeping every
+  existing element and its order. It merges into the one `Update` edit a row gets, so a draft read back from a
+  store still matches its plan, and it counts toward the builder's existing partial-state rule, so "these six
+  rows each get this tag, all six or none" refuses a mixed catalog. One field written twice on one row, by two
+  appends or by an append and a `PatchField`, throws naming the row and the field. The tag id must name a tag
+  row that is live in the catalog or added by the same plan, in either call order. An unknown or retired tag
+  is refused at plan time, which is exactly what the publish validator would reject as `KEC0008`, and no
+  wider. Closes #1050.
+- A `Preview` now says what an `Apply` would record. A pending definition whose content is already present
+  needs only a ledger row and publishes nothing, one with edits publishes a version, and both used to read as
+  planned, so a hosted operator could not tell that an apply would publish nothing. `ContentUpgradeStepState`
+  gains `WouldPublish` and `WouldAdopt`, `ContentUpgradeStepResult` gains `WouldRecord` with the matching
+  factories and a `Pending(definition, reason)` overload, and the rendered lines name the upgrade id. Preview
+  still plans only the first pending definition exactly and still writes nothing. All additive. Point 1 of #1051.
+- Fixed: the pack store test host found a free port by probing, released it, then bound, so anything taking
+  the port in between failed a test with `Address already in use`. Probe and bind now retry as one unit. Test
+  helper only. Closes #1057.
+
 ## 19.11.0
 
 - `SkySettings.ExtraDiscs` (a list of `SkyDisc`, up to `SkySettings.MaxDiscs` = 8 with the primary) puts more than

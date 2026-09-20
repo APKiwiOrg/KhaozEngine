@@ -6811,7 +6811,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="19.11.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="19.12.0" />
 ```
 
 ```csharp
@@ -13064,7 +13064,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="19.11.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="19.12.0" />
 ```
 
 ```csharp
@@ -13100,7 +13100,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="19.11.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="19.12.0" />
 ```
 
 ```csharp
@@ -13342,7 +13342,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="19.11.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="19.12.0" />
 ```
 
 ```csharp
@@ -15280,6 +15280,11 @@ Planner rules, which the runner cannot enforce for you:
 - Detect by identity, never by value. A row present under the committed id and key is satisfied whatever its
   fields hold, because those values may be operator tuning. `AddRow` does this.
 - A value patch names the old shipped default it replaces. `PatchField` leaves any other value alone.
+- A LIST is appended to, never patched. `AppendTag` (19.12.0) adds one element to a tag-list field, is satisfied
+  when the element is already there, and keeps every element an operator added and their order. The tag id
+  must name a tag row that is live in the catalog or added by the same plan, otherwise the plan is refused.
+  `PatchField` on a list would skip any row an operator had extended, because the field no longer equals the
+  old default.
 - A partial state is refused rather than completed by guesswork.
 - An added row CARRIES the id the committed bundle gives it. It is never left to the allocator, because a
   publish refused after allocation burns ids and a predicted id would then be wrong.
@@ -15310,7 +15315,10 @@ no operator.
 
 The hosted arm never upgrades implicitly. A deploy step runs the game's command in `Preview`, then `Apply`
 with `ExpectedVersion` set to the version the preview printed, before the server starts. `Preview` writes
-nothing. Every refusal carries a stable `KECU` code and a next action, and a failed report maps to
+nothing, and since 19.12.0 it says what the apply would RECORD for the first pending definition: would publish
+a new version with these changes, or is already present and would only be recorded with no version published.
+A catalog seeded or repaired before the ledger existed reads as the second for every definition, so an
+operator can see that the apply publishes nothing. Every refusal carries a stable `KECU` code and a next action, and a failed report maps to
 `ContentBootResult.ContentFailureExitCode`. A solo client whose in-process host returns a failed report shows
 it instead of retrying a join that cannot succeed. Design: `docs/design/CATALOG-UPGRADE-LIFECYCLE-DESIGN-2026-09-20.md`.
 
@@ -16519,7 +16527,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="19.11.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="19.12.0" />
 </ItemGroup>
 ```
 

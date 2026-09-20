@@ -95,6 +95,11 @@ public static class ContentUpgradeDraftMatch
     /// The changed fields, matched BY NAME rather than by position. A field set is a map in every sense that
     /// matters here: two edits that set the same fields to the same values are the same edit whichever order
     /// a provider stored them in.
+    /// <para>
+    /// One name TWICE is a set no row can hold, on either side. The check is symmetric because the counts
+    /// alone would otherwise let two distinct fields match one field named twice, which is two edits away
+    /// from the same row.
+    /// </para>
     /// </summary>
     static bool SameFields(IReadOnlyList<ContentFieldEdit> left, IReadOnlyList<ContentFieldEdit> right)
     {
@@ -112,9 +117,11 @@ public static class ContentUpgradeDraftMatch
             }
         }
 
+        var seen = new HashSet<string>(right.Count, StringComparer.Ordinal);
         for (int i = 0; i < right.Count; i++)
         {
-            if (!byName.TryGetValue(right[i].Name, out ContentFieldValue held)
+            if (!seen.Add(right[i].Name)
+                || !byName.TryGetValue(right[i].Name, out ContentFieldValue held)
                 || !held.Equals(right[i].Value))
             {
                 return false;

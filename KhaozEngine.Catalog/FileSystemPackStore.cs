@@ -412,6 +412,11 @@ public sealed class FileSystemPackStore : IPackStore, IPackStorePruning, IConten
     /// succeed. Every error here is ignored: a leftover temporary is never read, because a reader only ever
     /// asks for a content address, so failing a completed write over one would be the worse answer.
     /// </para>
+    /// <para>
+    /// <b>The errors are ignored ONE FILE at a time.</b> A shared pack root can hold an orphan this process
+    /// is not allowed to delete, and a sweep that abandoned the rest of the listing at the first of them
+    /// would never catch up with the ones it can delete.
+    /// </para>
     /// </summary>
     /// <param name="path">The destination whose siblings are swept.</param>
     static void SweepStaleTemporaries(string path)
@@ -422,23 +427,37 @@ public sealed class FileSystemPackStore : IPackStore, IPackStorePruning, IConten
             return;
         }
 
-        DateTime before = DateTime.UtcNow - StaleTemporaryAge;
+        string[] siblings;
         try
         {
-            foreach (string sibling in Directory.EnumerateFiles(
-                directory, Path.GetFileName(path) + ".*" + TemporaryExtension))
-            {
-                if (File.GetLastWriteTimeUtc(sibling) < before)
-                {
-                    File.Delete(sibling);
-                }
-            }
+            siblings = Directory.GetFiles(
+                directory, Path.GetFileName(path) + ".*" + TemporaryExtension);
         }
         catch (IOException)
         {
+            return;
         }
         catch (UnauthorizedAccessException)
         {
+            return;
+        }
+
+        DateTime before = DateTime.UtcNow - StaleTemporaryAge;
+        for (int i = 0; i < siblings.Length; i++)
+        {
+            try
+            {
+                if (File.GetLastWriteTimeUtc(siblings[i]) < before)
+                {
+                    File.Delete(siblings[i]);
+                }
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
         }
     }
 

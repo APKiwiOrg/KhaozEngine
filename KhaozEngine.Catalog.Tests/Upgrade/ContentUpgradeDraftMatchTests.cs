@@ -109,6 +109,27 @@ public sealed class ContentUpgradeDraftMatchTests
         Assert.True(ContentUpgradeDraftMatch.IsPlan(Draft(planned), planned));
     }
 
+    /// <summary>
+    /// One field named TWICE is a set no row can hold, and the answer has to be the same whichever side
+    /// carries the duplicate. A check that only looked at the held side would accept a draft holding two
+    /// different fields as a plan naming one field twice, which is two edits away from the same row.
+    /// </summary>
+    [Fact]
+    public void ADuplicateFieldNameOnEitherSideIsNotThePlan()
+    {
+        ContentFieldEdit value = new(
+            PublishFixtures.ValueField, ContentFieldValue.OfNumber(ContentFieldKind.Int, 33));
+        ContentFieldEdit legacy = new(
+            PublishFixtures.LegacyField, ContentFieldValue.OfNumber(ContentFieldKind.Bool, 1));
+        ContentEdit two = ContentEdit.Update(
+            UpgradeFixtures.Thing, 1, new ContentKey("old_row"), [value, legacy]);
+        ContentEdit twice = ContentEdit.Update(
+            UpgradeFixtures.Thing, 1, new ContentKey("old_row"), [value, value]);
+
+        Assert.False(ContentUpgradeDraftMatch.IsPlan(Draft([two]), [twice]));
+        Assert.False(ContentUpgradeDraftMatch.IsPlan(Draft([twice]), [two]));
+    }
+
     /// <summary>An empty draft against an empty plan is not a match, because a plan is never empty.</summary>
     [Fact]
     public void AnEmptyDraftIsNotThePlan()

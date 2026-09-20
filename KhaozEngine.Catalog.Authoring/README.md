@@ -674,6 +674,11 @@ loaded machine cannot turn a correct run into a failure. A provider fault counts
 provider calls it transient, so a permissions or connectivity failure costs one attempt and is reported as
 `KECU0009` naming the upgrade, the operation and the next step.
 
+The patience is bounded twice. A catalog that never moves gives up after a little over thirty seconds, and
+the ceiling standing behind it is four of those budgets, so a rival that keeps making progress can hold one
+definition for about two minutes before the run fails. That is the worst case per pending definition, and a
+run with no rival pays none of it.
+
 ### Host integration
 
 - **Local arm.** Open under `AutoCreate`. Seed and call `RecordBaselineAsync` when the report is `NoCatalog`,

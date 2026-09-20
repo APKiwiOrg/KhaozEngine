@@ -151,10 +151,14 @@ public sealed class ContentUpgradeRecoveryTests
         Assert.Equal(ContentUpgradeOutcome.Applied, report.Outcome);
         Assert.Equal(3, report.ActiveVersionAfter);
         Assert.Equal(2, crashing.Commits);
-        Assert.Contains(
+
+        // The ledger cannot say WHICH run wrote the row, and here it was this one, so a line blaming another
+        // runner would be false. It names both possibilities instead.
+        ContentUpgradeDiagnostic adopted = Assert.Single(
             report.Diagnostics,
             diagnostic => string.Equals(
                 diagnostic.Code, ContentUpgradeCodes.AppliedConcurrently, StringComparison.Ordinal));
+        Assert.Contains("before an interruption", adopted.Message, StringComparison.Ordinal);
         await AssertRecoveredAsync(harness, report);
     }
 

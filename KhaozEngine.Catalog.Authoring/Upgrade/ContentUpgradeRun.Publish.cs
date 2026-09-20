@@ -118,20 +118,25 @@ sealed partial class ContentUpgradeRun
             // The step says what the LEDGER says. A rival that found the catalog already satisfied wrote an
             // adopted row and published no version at all, so reporting it as published as version N would
             // name a version that says nothing about this upgrade.
+            //
+            // It never says WHO wrote the row, because nothing here can tell: this run's own commit landing
+            // before the exception that reached this handler looks exactly like a rival's, and two runners
+            // of one deploy write the same actor. Naming a rival would be false half the time, and it is
+            // the half an operator hunting a crashed boot is reading.
             string token = ContentUpgradeDispositions.Token(landed.Disposition);
             _steps.Add(landed.Disposition == ContentUpgradeDisposition.Applied
                 ? ContentUpgradeStepResult.Applied(definition, landed.VersionNumber, plan.ChangeLines)
                 : ContentUpgradeStepResult.Adopted(
                     definition,
                     FormattableString.Invariant(
-                        $"another runner recorded it as {token} at version {landed.VersionNumber}.")));
+                        $"the ledger already records it as {token} at version {landed.VersionNumber}.")));
             Add(
                 ContentUpgradeCodes.AppliedConcurrently,
                 landed.Disposition == ContentUpgradeDisposition.Applied
                     ? FormattableString.Invariant(
-                        $"upgrade '{definition.Id}' was published as version {landed.VersionNumber} by another runner, so this run adopted that result and continued.")
+                        $"upgrade '{definition.Id}' was already published as version {landed.VersionNumber}, by this run before an interruption or by another runner, so this run adopted that result and continued.")
                     : FormattableString.Invariant(
-                        $"upgrade '{definition.Id}' is held in the ledger as {token} at version {landed.VersionNumber}, recorded by another runner rather than published, so this run adopted that result and continued."));
+                        $"upgrade '{definition.Id}' is already held in the ledger as {token} at version {landed.VersionNumber}, recorded rather than published, by this run before an interruption or by another runner, so this run adopted that result and continued."));
             await RereadActiveAsync().ConfigureAwait(false);
             return true;
         }

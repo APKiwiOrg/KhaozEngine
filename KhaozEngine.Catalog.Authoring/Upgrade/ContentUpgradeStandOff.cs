@@ -21,9 +21,9 @@ namespace KhaozEngine.Catalog.Authoring;
 sealed class ContentUpgradeStandOff
 {
     /// <summary>
-    /// How many attempts one definition gets while the catalog does not move. With the backoff below this
-    /// is a little over thirty seconds of waiting, which is sized for a loaded CI machine writing a pack to
-    /// remote storage rather than for the local case, and none of it is paid by a run with no rival.
+    /// How many attempts one definition gets while the catalog does not move. With the backoff below that
+    /// is a little over thirty seconds, which is sized for a loaded CI machine writing a pack to remote
+    /// storage rather than for the local case, and none of it is paid by a run with no rival.
     /// </summary>
     internal const int MaxAttempts = 40;
 
@@ -35,7 +35,9 @@ sealed class ContentUpgradeStandOff
 
     /// <summary>
     /// The ceiling on attempts INCLUDING the ones progress bought back, which is what keeps a livelock
-    /// between two runners bounded.
+    /// between two runners bounded. Four budgets is the real worst case: a rival that keeps the catalog
+    /// moving can hold ONE definition for about two minutes before this stops the run, and a whole shipped
+    /// set is that per pending definition.
     /// </summary>
     internal const int MaxTotalAttempts = MaxAttempts * 4;
 

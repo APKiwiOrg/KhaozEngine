@@ -25,6 +25,12 @@ public readonly record struct ContentUpgradeIdentity(ContentTypeId Type, Content
 /// neither side of the partial check, because operator tuning is not evidence that the upgrade ran.
 /// </para>
 /// <para>
+/// <b>A LIST is the one place that rule inverts.</b> <see cref="AppendTag"/> detects by ELEMENT rather than
+/// by the whole value, because a tag list an operator has extended equals no default a build ever shipped
+/// and a patch would skip that row forever. It appends at the end, keeps every element already there in the
+/// order it was written, and counts satisfied against pending like every other verb.
+/// </para>
+/// <para>
 /// <b>ONE row is ONE edit, whatever a planner stages.</b> A draft holds one pending intent per row
 /// (<see cref="ContentChangeSet"/>), so two patches of one row are merged into a single
 /// <see cref="ContentEditOperation.Update"/> carrying both fields, in the order they were staged. Any
@@ -177,10 +183,7 @@ public sealed class ContentUpgradePlanBuilder
         StagedRow patch = Stage(target, ContentEditOperation.Update, type, key, "patched");
         if (!patch.Claim(fieldName))
         {
-            throw new ArgumentException(
-                FormattableString.Invariant(
-                    $"This upgrade already patches {TypeName(type)} {id} '{key}' field '{fieldName}', and a row carries one value per field. Name each field once."),
-                nameof(fieldName));
+            throw FieldWrittenTwice(type, id, key, fieldName);
         }
 
         if (current == replacement)
@@ -199,6 +202,91 @@ public sealed class ContentUpgradePlanBuilder
         patch.Fields.Add(new ContentFieldEdit(fieldName, replacement));
         _lines.Add(FormattableString.Invariant(
             $"patch {TypeName(type)} {id} '{key}' field '{fieldName}' from the old shipped default"));
+        _pending++;
+        return this;
+    }
+
+    /// <summary>
+    /// Appends ONE element to a TAG LIST field of a row the catalog already holds, keeping every element
+    /// already in the list and the order it was written in.
+    /// <para>
+    /// The list rule is not the value-patch rule. <see cref="PatchField"/> acts only while the field still
+    /// equals a named old default, and a list an operator has extended equals no default this build ever
+    /// shipped, so a patch would leave that row unappended forever. Identity here is the ELEMENT: a list
+    /// already carrying <paramref name="tagId"/> is SATISFIED and emits nothing, and a list without it is
+    /// written back with it at the END. Nothing is sorted and nothing is deduplicated.
+    /// </para>
+    /// <para>
+    /// It composes like a patch: the append lands in the ONE <see cref="ContentEditOperation.Update"/> the
+    /// row's other changes land in, and it counts toward the same satisfied and pending tallies, which is
+    /// what makes several appends across several rows all-or-none under the partial-state rule. Naming one
+    /// field twice under either verb is thrown rather than merged, because a row carries one value per
+    /// field, and so is appending to a row this plan also adds or retires.
+    /// </para>
+    /// </summary>
+    /// <param name="type">The content type.</param>
+    /// <param name="key">The row's key.</param>
+    /// <param name="fieldName">The schema field, which has to be a tag list, compared ordinally.</param>
+    /// <param name="tagId">The tag id to append at the end of the list.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="fieldName"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="tagId"/> is below 1.</exception>
+    /// <exception cref="ArgumentException">The field is already written, or the row is staged otherwise.</exception>
+    public ContentUpgradePlanBuilder AppendTag(
+        ContentTypeId type,
+        ContentKey key,
+        string fieldName,
+        int tagId)
+    {
+        ArgumentNullException.ThrowIfNull(fieldName);
+
+        // A tag id below 1 is not content. The codec drops it on the way back out, so appending one would
+        // stage an edit that read back as the list the row already had and never settle.
+        ArgumentOutOfRangeException.ThrowIfLessThan(tagId, 1);
+
+        if (_refusal is not null)
+        {
+            return this;
+        }
+
+        if (!TryReadBaseline(type, key, out ContentBundleRow? row, out int id))
+        {
+            _refusal = FormattableString.Invariant(
+                $"The catalog carries no {TypeName(type)} row '{key}' to append to '{fieldName}' on. Nothing was changed.");
+            return this;
+        }
+
+        if (!TryRead(type, row, fieldName, out ContentFieldValue current))
+        {
+            _refusal = FormattableString.Invariant(
+                $"Type {TypeName(type)} declares no field '{fieldName}', so this upgrade's append on '{key}' cannot be applied.");
+            return this;
+        }
+
+        if (current.Kind != ContentFieldKind.TagList)
+        {
+            _refusal = FormattableString.Invariant(
+                $"Type {TypeName(type)} declares field '{fieldName}' as {current.Kind} rather than a tag list, and only a list is appended to. Patch a value instead.");
+            return this;
+        }
+
+        // The field is claimed BEFORE the catalog is consulted, for the same reason a patch claims it: one
+        // field written twice by one plan is the planner contradicting itself whatever the row holds.
+        var target = new ContentEditTarget(type, id, key);
+        StagedRow append = Stage(target, ContentEditOperation.Update, type, key, "appended to");
+        if (!append.Claim(fieldName))
+        {
+            throw FieldWrittenTwice(type, id, key, fieldName);
+        }
+
+        if (!ContentUpgradeTagList.TryAppend(in current, tagId, out ContentFieldValue appended))
+        {
+            _satisfied++;
+            return this;
+        }
+
+        append.Fields.Add(new ContentFieldEdit(fieldName, appended));
+        _lines.Add(FormattableString.Invariant(
+            $"append tag {tagId} to {TypeName(type)} {id} '{key}' field '{fieldName}'"));
         _pending++;
         return this;
     }
@@ -389,10 +477,24 @@ public sealed class ContentUpgradePlanBuilder
         }
     }
 
-    /// <summary>What a standing edit did to its row, as the past tense a refusal reads with.</summary>
+    /// <summary>What a standing edit did to its row, as the present tense a refusal reads with.</summary>
     /// <param name="operation">The standing edit's operation.</param>
     static string Describe(ContentEditOperation operation)
-        => operation == ContentEditOperation.Retire ? "retires" : "patches";
+        => operation == ContentEditOperation.Retire ? "retires" : "writes";
+
+    /// <summary>
+    /// The refusal for ONE field written twice on one row, whichever verbs named it. A row carries one value
+    /// per field, so two writes of one field have no single answer the draft could keep.
+    /// </summary>
+    /// <param name="type">The content type.</param>
+    /// <param name="id">The row's stable id.</param>
+    /// <param name="key">The row's key.</param>
+    /// <param name="fieldName">The schema field named twice.</param>
+    ArgumentException FieldWrittenTwice(ContentTypeId type, int id, ContentKey key, string fieldName)
+        => new(
+            FormattableString.Invariant(
+                $"This upgrade already writes {TypeName(type)} {id} '{key}' field '{fieldName}', and a row carries one value per field. Name each field once."),
+            nameof(fieldName));
 
     /// <summary>
     /// One baseline row by key, with its id. A row an export produced always carries its id, so the id half

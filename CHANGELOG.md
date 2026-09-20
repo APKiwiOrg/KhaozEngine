@@ -5,6 +5,25 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 19.11.0
+
+- `SkySettings.ExtraDiscs` (a list of `SkyDisc`, up to `SkySettings.MaxDiscs` = 8 with the primary) puts more than
+  one body in the sky: a moon, a second sun. Each extra disc carries its own direction, colour, radius and halo.
+  The sky pass and the water reflection both loop over the list, in order, and every disc sets through a world
+  horizon. The primary disc stays on `SkySettings` because it follows the key light. Scenes with no extra discs
+  are byte-identical on all three backends (full rebakes moved no grid). New golden `scene3d_sky_two_discs`. The sky UBO becomes
+  6 vec4 plus three `vec4[8]`, the water UBO 34 vec4 plus three `vec4[8]` and its slot grows from 768 to 1280
+  bytes. `Sky.fragment` and the four water programs are repinned. Closes #1041.
+- Under `NightKeyMode.Moon`, `SunCycle` emits the moon as an extra disc (`SunCycleState.ExtraDiscCount`,
+  `GetExtraDisc`, `SunCycleDisc`) while the sun still holds the primary slot, and `SunCycle.Apply` replaces
+  `Sky.ExtraDiscs` with it, shaped like the primary. A moon rising as the sun sets now comes up through the
+  horizon instead of appearing once the sun lets go, and a moon that is up by day is now drawn. `SunCycleState`'s
+  constructor gains a trailing optional `extraDisc`.
+- Fixed: the water reflected the sun disc along the key light and ignored `Sky.SunDirectionOverride`. In 19.10.0
+  a `SunCycle` sun with `DiscSetElevationDegrees` above 0 under the default `AntiSolarMoon` night (where the key
+  flips anti-solar at the horizon) reflects a ghost sun opposite the real one while it sets. Each disc is now
+  reflected along its own direction.
+
 ## 19.10.0
 
 - `TileInteractionReachPolicy` lets targets opt into diagonal and overlapping interaction reach. The
@@ -28,21 +47,6 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   world horizon the disc crosses the line at full strength and the halo dims as an afterglow. The key light is
   unaffected. When the key has flipped, moved to the moon or gone black, the disc stays pointed at the sun
   through `DiscDirectionOverride`. `NightKeyMode.Moon` now decides the single disc slot apart from the key.
-- `SkySettings.ExtraDiscs` (a list of `SkyDisc`, up to `SkySettings.MaxDiscs` = 8 with the primary) puts more than
-  one body in the sky: a moon, a second sun. Each extra disc carries its own direction, colour, radius and halo.
-  The sky pass and the water reflection both loop over the list, in order, and every disc sets through a world
-  horizon. The primary disc stays on `SkySettings` because it follows the key light. Scenes with no extra discs
-  are byte-identical (a full Metal rebake moved no grid). New golden `scene3d_sky_two_discs`. The sky UBO becomes
-  6 vec4 plus three `vec4[8]`, the water UBO 34 vec4 plus three `vec4[8]` and its slot grows from 768 to 1280
-  bytes. `Sky.fragment` and the four water programs are repinned again. Closes #1041.
-- Under `NightKeyMode.Moon`, `SunCycle` emits the moon as an extra disc (`SunCycleState.ExtraDiscCount`,
-  `GetExtraDisc`, `SunCycleDisc`) while the sun still holds the primary slot, and `SunCycle.Apply` replaces
-  `Sky.ExtraDiscs` with it, shaped like the primary. A moon rising as the sun sets now comes up through the
-  horizon instead of appearing once the sun lets go, and a moon that is up by day is now drawn. `SunCycleState`'s
-  constructor gains a trailing optional `extraDisc`.
-- Fixed: the water reflected the sun disc along the key light and ignored `Sky.SunDirectionOverride`. A setting
-  `SunCycle` sun under the default `AntiSolarMoon` night (where the key flips anti-solar at the horizon) would
-  have reflected a ghost sun opposite the real one. Each disc is now reflected along its own direction.
 - `SunCyclePalette.GroundColor`, `SunCycleState.GroundColor` and `SunCycle.Apply` drive the ground band across
   day, dusk and night. `SunCycleState`'s constructor gains a trailing optional `groundColor`.
 - The sun and moon disc no longer turn into a black circle near the horizon. The sky and the water reflection

@@ -72,6 +72,55 @@ public sealed class ContentUpgradeRivalVersionTests
     }
 
     /// <summary>
+    /// The `ExpectedVersion` re-check inside the draft classification stops the run mid-flight, and the
+    /// reading it hands back is a live publisher's, which every other caller waits out. A run already stopped
+    /// on `BaselineMoved` may not wait and may not have that outcome overwritten: the wait would delay a run
+    /// that is finished, and a spent attempt budget would report `Failed` over the one thing the expected
+    /// version exists to say.
+    /// <para>
+    /// The absence of the wait is asserted through the reads the stand-off itself makes rather than through
+    /// the clock, because the first backoff is fifty milliseconds and no clock assertion that small survives
+    /// a loaded machine. Every stand-off delay is preceded by the progress reading, and that reading is one
+    /// of the three store calls counted here, so exactly one active-version read after the move means the
+    /// run neither waited nor came back for another attempt.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task ABaselineThatMovedDuringTheDraftClassificationStopsAtOnceAndReportsOnce()
+    {
+        using var harness = new UpgradeHarness();
+        await harness.SeedOlderCatalogAsync();
+        var moving = new VersionMovesDuringClassificationStore(harness.Store);
+
+        using var deadline = new CancellationTokenSource(Deadline);
+        ContentUpgradeReport report = await ContentUpgradeRunner.RunAsync(
+            moving, harness.Registry, harness.Set, UpgradeFixtures.Apply(expectedVersion: 1), deadline.Token);
+
+        Assert.True(moving.Moved, "the version never moved, so the interleaving was not exercised.");
+        Assert.Equal(ContentUpgradeOutcome.BaselineMoved, report.Outcome);
+        Assert.Single(
+            report.Diagnostics,
+            diagnostic => string.Equals(
+                diagnostic.Code, ContentUpgradeCodes.BaselineMoved, StringComparison.Ordinal));
+        Assert.DoesNotContain(
+            report.Diagnostics,
+            diagnostic => string.Equals(
+                diagnostic.Code, ContentUpgradeCodes.PublishFailed, StringComparison.Ordinal));
+
+        // The read that NOTICED the move, and no other. A stand-off reads the active version to compute its
+        // progress signature and then again on the attempt it comes back for.
+        Assert.Equal(1, moving.ActiveReadsAfterTheMove);
+
+        // Nothing was applied and nothing was touched: both definitions stand pending and the draft the
+        // classification was about is exactly as it was.
+        Assert.Equal(2, report.Steps.Count);
+        Assert.All(report.Steps, step => Assert.Equal(ContentUpgradeStepState.Pending, step.State));
+        Assert.Single(await harness.Store.ListVersionsAsync());
+        Assert.Empty(await harness.Store.ListUpgradesAsync());
+        Assert.Equal(1, (await harness.Store.GetOpenDraftAsync())!.EditCount);
+    }
+
+    /// <summary>
     /// The committed bundle this build ships, which carries the marker row the rival publishes as well as
     /// both rows the definition adds.
     /// </summary>
@@ -132,6 +181,77 @@ public sealed class ContentUpgradeRivalVersionTests
 
         return keys;
     }
+}
+
+/// <summary>
+/// A store where a draft the runner must classify appears at the publish pre-flight and the ACTIVE VERSION
+/// moves in the same moment. The classification replans against the current version, so it is the first
+/// thing to notice the move, and it notices it with a draft in hand that every other caller would wait out.
+/// <para>
+/// The version is bumped by the double rather than really published, because what is under test is the
+/// runner's own bookkeeping after its expected version stopped it, not the catalog's state.
+/// </para>
+/// </summary>
+/// <param name="inner">The store behind the double, which keeps the upgrade ledger.</param>
+internal sealed class VersionMovesDuringClassificationStore(InMemoryContentAuthoringStore inner)
+    : ForwardingContentAuthoringStore(inner), IContentUpgradeLedger
+{
+    /// <summary>An edit no definition plans, so the draft is one the runner has to classify.</summary>
+    static readonly ContentEdit Foreign = ContentEdit.Add(
+        UpgradeFixtures.Thing, new ContentKey("leftover"), PublishFixtures.Fields(77));
+
+    int _looks;
+
+    /// <summary>Whether the version really moved, which a test asserts the interleaving happened by.</summary>
+    public bool Moved { get; private set; }
+
+    /// <summary>How many times the active version was read after it moved.</summary>
+    public int ActiveReadsAfterTheMove { get; private set; }
+
+    /// <inheritdoc />
+    public override async Task<int> GetActiveVersionAsync(CancellationToken cancellationToken = default)
+    {
+        int active = await base.GetActiveVersionAsync(cancellationToken);
+        if (!Moved)
+        {
+            return active;
+        }
+
+        ActiveReadsAfterTheMove++;
+        return active + 1;
+    }
+
+    /// <inheritdoc />
+    public override async Task<ContentDraft?> GetOpenDraftAsync(CancellationToken cancellationToken = default)
+    {
+        _looks++;
+        if (_looks == 2)
+        {
+            await inner.ApplyEditsAsync(
+                [Foreign],
+                UpgradeFixtures.Actor,
+                "oid:injected",
+                ContentUpgradeRunner.NoteFor(UpgradeHarness.SecondId),
+                cancellationToken);
+            Moved = true;
+        }
+
+        return await base.GetOpenDraftAsync(cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<ContentUpgradeRecord>> ListUpgradesAsync(
+        CancellationToken cancellationToken = default)
+        => inner.ListUpgradesAsync(cancellationToken);
+
+    /// <inheritdoc />
+    public Task RecordUpgradeAsync(
+        ContentUpgradeStamp stamp,
+        ContentUpgradeDisposition disposition,
+        string actor,
+        string operatorId,
+        CancellationToken cancellationToken = default)
+        => inner.RecordUpgradeAsync(stamp, disposition, actor, operatorId, cancellationToken);
 }
 
 /// <summary>

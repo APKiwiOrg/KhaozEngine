@@ -300,6 +300,10 @@ sealed partial class ContentUpgradeRun
     /// and the open draft, and an attempt budget that ran out while all three stood still is the only way to
     /// give up. The wait itself grows with the attempt, because a publish holds the draft for its whole pack
     /// write.
+    /// <para>
+    /// A run ALREADY stopped on <see cref="ContentUpgradeOutcome.BaselineMoved"/> waits for nothing and
+    /// reports nothing further, which is the one case where the answer is not about the rival at all.
+    /// </para>
     /// </summary>
     /// <param name="definition">The definition being applied.</param>
     /// <param name="standOff">This definition's patience.</param>
@@ -309,6 +313,17 @@ sealed partial class ContentUpgradeRun
         ContentUpgradeStandOff standOff,
         string what)
     {
+        if (_stopped == ContentUpgradeOutcome.BaselineMoved)
+        {
+            // The expected version re-check can stop the run from INSIDE the draft classification, and the
+            // reading it hands back is a live publisher's, which is the one every caller here waits out. A
+            // run that is already stopped waits for nothing: the backoff would delay a run that is finished,
+            // and an attempt budget spent on the way out would report Failed over the one thing the expected
+            // version exists to say. The definition is left where it stands, as the retry path leaves it.
+            _steps.Add(ContentUpgradeStepResult.Pending(definition));
+            return true;
+        }
+
         if (!standOff.Observe(await ProgressAsync().ConfigureAwait(false)))
         {
             return Fail(definition, what);

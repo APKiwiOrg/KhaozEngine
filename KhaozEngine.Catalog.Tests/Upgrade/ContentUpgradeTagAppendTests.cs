@@ -26,6 +26,12 @@ public sealed class ContentUpgradeTagAppendTests
     /// <summary>The committed row an additive upgrade brings, which the baseline holds no row under.</summary>
     const string NewRow = "new_row";
 
+    /// <summary>A tag id no row of the vocabulary holds, live or retired.</summary>
+    const int UnknownTag = 99;
+
+    /// <summary>The tag row this build ADDS, which the baseline's vocabulary stops one short of.</summary>
+    const int AddedTag = TagUpgradeFixtures.TagCount + 1;
+
     /// <summary>
     /// The case the whole verb exists for: an operator added their own tag, so the field equals no shipped
     /// default. The append still lands, every element the operator wrote keeps its place, and the new one
@@ -266,6 +272,131 @@ public sealed class ContentUpgradeTagAppendTests
         Assert.Contains("tag list", plan.Reason, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// A tag list names tag ROWS rather than strings, so an id the catalog holds no row for is refused at
+    /// PLAN time naming the row, the field and the id. Staging it would publish a list the validator answers
+    /// with <c>KEC0008</c>, which throws at the store and ends the run failed rather than refused.
+    /// </summary>
+    [Fact]
+    public void ATagIdTheCatalogHoldsNoRowForIsRefused()
+    {
+        ContentUpgradePlan plan = Builder()
+            .AppendTag(
+                TagUpgradeFixtures.Tagged,
+                new ContentKey(TagUpgradeFixtures.PlainRow),
+                TagUpgradeFixtures.TagsField,
+                UnknownTag)
+            .Build();
+
+        Assert.Equal(ContentUpgradePlanKind.Refused, plan.Kind);
+        Assert.Empty(plan.Edits);
+        Assert.Contains(TagUpgradeFixtures.PlainRow, plan.Reason, StringComparison.Ordinal);
+        Assert.Contains(TagUpgradeFixtures.TagsField, plan.Reason, StringComparison.Ordinal);
+        Assert.Contains("tag row 99", plan.Reason, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A RETIRED tag row is refused the same way, because that is exactly what the publish validator would
+    /// reject: <c>KEC0008</c> accepts a list entry only when the tag row is present AND live, and a retired
+    /// row keeps its id and its bytes forever without being live.
+    /// </summary>
+    [Fact]
+    public void ARetiredTagRowIsRefusedTheWayTheValidatorRejectsIt()
+    {
+        ContentUpgradePlan plan = BuilderOver(TagUpgradeFixtures.Vocabulary(TagUpgradeFixtures.NewTag))
+            .AppendTag(
+                TagUpgradeFixtures.Tagged,
+                new ContentKey(TagUpgradeFixtures.PlainRow),
+                TagUpgradeFixtures.TagsField,
+                TagUpgradeFixtures.NewTag)
+            .Build();
+
+        Assert.Equal(ContentUpgradePlanKind.Refused, plan.Kind);
+        Assert.Empty(plan.Edits);
+        Assert.Contains(TagUpgradeFixtures.PlainRow, plan.Reason, StringComparison.Ordinal);
+        Assert.Contains("tag row 3", plan.Reason, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Adding the tag row and appending it in ONE definition is legitimate, so the id resolves against the
+    /// rows this plan adds as well as the rows the baseline holds. It is answered at <c>Build</c> time, which
+    /// is what makes the two call orders read the same.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ATagRowThisPlanAddsResolvesInEitherCallOrder(bool addFirst)
+    {
+        ContentUpgradePlanBuilder builder = Builder();
+        if (addFirst)
+        {
+            builder.AddRow(TagUpgradeFixtures.Tag, TagUpgradeFixtures.TagKey(AddedTag));
+        }
+
+        builder.AppendTag(
+            TagUpgradeFixtures.Tagged,
+            new ContentKey(TagUpgradeFixtures.PlainRow),
+            TagUpgradeFixtures.TagsField,
+            AddedTag);
+
+        if (!addFirst)
+        {
+            builder.AddRow(TagUpgradeFixtures.Tag, TagUpgradeFixtures.TagKey(AddedTag));
+        }
+
+        ContentUpgradePlan plan = builder.Build();
+
+        Assert.Equal(ContentUpgradePlanKind.Changes, plan.Kind);
+        Assert.Equal(2, plan.Edits.Count);
+        Assert.Equal(ContentEditOperation.Add, plan.Edits[0].Operation);
+        Assert.Equal(
+            [TagUpgradeFixtures.ShippedTag, AddedTag],
+            Tags(plan.Edits[1].Fields[0].Value));
+    }
+
+    /// <summary>
+    /// The refusal reaches the RUNNER as a refusal rather than as a failed publish: no draft is left open
+    /// and no version is published, which is the whole difference this check buys.
+    /// </summary>
+    [Fact]
+    public async Task AnUnknownTagIdStopsTheRunWithNoDraftAndNoVersion()
+    {
+        using var files = new TemporaryCatalogDatabase();
+        ContentTypeRegistry registry = TagUpgradeFixtures.Registry();
+        var store = new InMemoryContentAuthoringStore(registry, files.Pack());
+        await TagUpgradeFixtures.SeedAsync(store);
+
+        ContentUpgradeReport report = await ContentUpgradeRunner.RunAsync(
+            store,
+            registry,
+            new ContentUpgradeSet(TagUpgradeFixtures.AppendsTag(
+                UpgradeFixtures.Target(registry), UnknownTag, TagUpgradeFixtures.PlainRow)),
+            UpgradeFixtures.Apply());
+
+        Assert.Equal(ContentUpgradeOutcome.Refused, report.Outcome);
+        Assert.Null(await store.GetOpenDraftAsync());
+        Assert.Single(await store.ListVersionsAsync());
+        Assert.Empty(await store.ListUpgradesAsync());
+    }
+
+    /// <summary>
+    /// A row carrying NO tag list at all is appended to as an empty one. A codec leaves an empty list off
+    /// the row entirely, so absence is the ordinary shape of a row with no tags rather than a defect, and the
+    /// append writes the one-element list a row authored with that tag would carry.
+    /// </summary>
+    [Fact]
+    public Task AppendingToARowWhoseListIsAbsentWritesAOneElementList()
+        => AssertOneElementListAsync(TagUpgradeFixtures.Row(1, TagUpgradeFixtures.PlainRow, 11));
+
+    /// <summary>
+    /// A row carrying a list that is PRESENT and EMPTY is the other zero-tag shape, and it reads the same
+    /// way. The two are separate cases because the value carries a flag for the first and a length for the
+    /// second, and nothing but a test says they agree.
+    /// </summary>
+    [Fact]
+    public Task AppendingToARowWhoseListIsEmptyWritesAOneElementList()
+        => AssertOneElementListAsync(TagUpgradeFixtures.EmptyListRow(1, TagUpgradeFixtures.PlainRow, 11));
+
     /// <summary>A field the type does not declare at all is the caller's own typo, and it is refused.</summary>
     [Fact]
     public void AppendingToAFieldTheTypeDoesNotDeclareIsRefused()
@@ -346,6 +477,36 @@ public sealed class ContentUpgradeTagAppendTests
             tuned);
     }
 
+    /// <summary>
+    /// The append on a row that carries no tag yet, in whichever of the two zero-tag shapes the caller
+    /// states: one element in the plan, and the same list still there after a store has held it as a draft.
+    /// </summary>
+    /// <param name="baselineRow">The tagged row the catalog holds.</param>
+    static async Task AssertOneElementListAsync(ContentBundleRow baselineRow)
+    {
+        ContentUpgradePlan plan = Builder(baselineRow)
+            .AppendTag(
+                TagUpgradeFixtures.Tagged,
+                new ContentKey(TagUpgradeFixtures.PlainRow),
+                TagUpgradeFixtures.TagsField,
+                TagUpgradeFixtures.NewTag)
+            .Build();
+
+        Assert.Equal(ContentUpgradePlanKind.Changes, plan.Kind);
+        ContentEdit only = Assert.Single(plan.Edits);
+        Assert.Equal(ContentEditOperation.Update, only.Operation);
+        ContentFieldEdit field = Assert.Single(only.Fields);
+        Assert.Equal(TagUpgradeFixtures.TagsField, field.Name);
+        Assert.Equal([TagUpgradeFixtures.NewTag], Tags(field.Value));
+
+        var store = new InMemoryContentAuthoringStore(TagUpgradeFixtures.Registry());
+        await store.ApplyEditsAsync(
+            plan.Edits, UpgradeFixtures.Actor, UpgradeFixtures.Operator, "one element list");
+
+        ContentDraft draft = Assert.IsType<ContentDraft>(await store.GetOpenDraftAsync());
+        Assert.True(ContentUpgradeDraftMatch.IsPlan(draft, plan.Edits));
+    }
+
     /// <summary>The append plan applied to a store and read back as the draft the match accepts.</summary>
     /// <param name="store">The store under test, already open.</param>
     static async Task AssertRoundTripsAsync(IContentAuthoringStore store)
@@ -399,10 +560,23 @@ public sealed class ContentUpgradeTagAppendTests
 
     /// <summary>
     /// A builder over the named baseline rows, or over the two seeded ones when the caller names none, and
-    /// this build's committed bundle, which carries one row the baseline does not.
+    /// this build's committed bundle, which carries one row the baseline does not. The baseline's tag
+    /// vocabulary is live, which is what an append's id has to resolve against.
     /// </summary>
     /// <param name="baselineRows">The tagged rows the catalog holds.</param>
     static ContentUpgradePlanBuilder Builder(params ContentBundleRow[] baselineRows)
+        => BuilderOver(TagUpgradeFixtures.Vocabulary(), baselineRows);
+
+    /// <summary>
+    /// The same builder over a STATED vocabulary, so a test may say that one of the tags is retired. The
+    /// committed bundle always carries one tag row past the baseline's, which is the row an upgrade adds and
+    /// appends in the same definition.
+    /// </summary>
+    /// <param name="vocabulary">The tag rows the catalog holds.</param>
+    /// <param name="baselineRows">The tagged rows the catalog holds.</param>
+    static ContentUpgradePlanBuilder BuilderOver(
+        ContentBundleRow[] vocabulary,
+        params ContentBundleRow[] baselineRows)
     {
         ContentTypeRegistry registry = TagUpgradeFixtures.Registry();
         ContentBundleRow[] rows = baselineRows.Length > 0
@@ -417,22 +591,26 @@ public sealed class ContentUpgradeTagAppendTests
                     TagUpgradeFixtures.ShippedTag,
                     TagUpgradeFixtures.OperatorTag),
             ];
-        ContentBundle baseline = UpgradeFixtures.Target(registry, rows);
+        ContentBundle baseline = UpgradeFixtures.Target(registry, [.. vocabulary, .. rows]);
         ContentBundle target = UpgradeFixtures.Target(
             registry,
-            TagUpgradeFixtures.Row(
-                1,
-                TagUpgradeFixtures.PlainRow,
-                11,
-                TagUpgradeFixtures.ShippedTag,
-                TagUpgradeFixtures.NewTag),
-            TagUpgradeFixtures.Row(
-                2,
-                TagUpgradeFixtures.TunedRow,
-                22,
-                TagUpgradeFixtures.ShippedTag,
-                TagUpgradeFixtures.NewTag),
-            TagUpgradeFixtures.Row(3, NewRow, 33, TagUpgradeFixtures.NewTag));
+            [
+                .. TagUpgradeFixtures.Vocabulary(),
+                TagUpgradeFixtures.TagRow(AddedTag),
+                TagUpgradeFixtures.Row(
+                    1,
+                    TagUpgradeFixtures.PlainRow,
+                    11,
+                    TagUpgradeFixtures.ShippedTag,
+                    TagUpgradeFixtures.NewTag),
+                TagUpgradeFixtures.Row(
+                    2,
+                    TagUpgradeFixtures.TunedRow,
+                    22,
+                    TagUpgradeFixtures.ShippedTag,
+                    TagUpgradeFixtures.NewTag),
+                TagUpgradeFixtures.Row(3, NewRow, 33, TagUpgradeFixtures.NewTag),
+            ]);
         return new ContentUpgradePlanBuilder(new ContentUpgradeContext(1, baseline, registry), target);
     }
 

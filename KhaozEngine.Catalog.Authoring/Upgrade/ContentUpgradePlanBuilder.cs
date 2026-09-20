@@ -47,6 +47,7 @@ public sealed class ContentUpgradePlanBuilder
     readonly List<StagedRow> _staged = [];
     readonly Dictionary<ContentEditTarget, int> _byTarget = [];
     readonly HashSet<ContentEditTarget> _addedTargets = [];
+    readonly List<ContentUpgradeTagAppend> _appends = [];
     readonly List<string> _lines = [];
     string? _refusal;
     int _satisfied;
@@ -221,7 +222,13 @@ public sealed class ContentUpgradePlanBuilder
     /// row's other changes land in, and it counts toward the same satisfied and pending tallies, which is
     /// what makes several appends across several rows all-or-none under the partial-state rule. Naming one
     /// field twice under either verb is thrown rather than merged, because a row carries one value per
-    /// field, and so is appending to a row this plan also adds or retires.
+    /// field, and so is appending to a row this plan also retires.
+    /// </para>
+    /// <para>
+    /// A tag list names tag ROWS, so <paramref name="tagId"/> has to be a tag row that is live in the
+    /// baseline or added by this same plan, in either call order. Anything else is the plan-level refusal,
+    /// as is appending to a row this plan ADDS, which the baseline read below answers first because the
+    /// catalog holds no such row yet.
     /// </para>
     /// </summary>
     /// <param name="type">The content type.</param>
@@ -268,6 +275,10 @@ public sealed class ContentUpgradePlanBuilder
                 $"Type {TypeName(type)} declares field '{fieldName}' as {current.Kind} rather than a tag list, and only a list is appended to. Patch a value instead.");
             return this;
         }
+
+        // Whether the id names a tag row is answered at Build, because a plan may ADD the tag row and append
+        // it in either order and a check here would read the two orders differently.
+        _appends.Add(new ContentUpgradeTagAppend(type, id, key, fieldName, tagId));
 
         // The field is claimed BEFORE the catalog is consulted, for the same reason a patch claims it: one
         // field written twice by one plan is the planner contradicting itself whatever the row holds.
@@ -341,9 +352,16 @@ public sealed class ContentUpgradePlanBuilder
     /// A row whose every patch turned out satisfied or operator tuned contributes NO edit, because an update
     /// carrying no field is a write that says nothing.
     /// </para>
+    /// <para>
+    /// Every appended tag id is resolved to a live tag row HERE, because a plan may add the tag row and
+    /// append it in either order (<see cref="ContentUpgradeTagRows"/>). A satisfied append is resolved too:
+    /// a list already holding a tag no live row backs is a catalog the next publish refuses whatever this
+    /// upgrade does, and reporting it as already satisfied would name the wrong thing.
+    /// </para>
     /// </summary>
     public ContentUpgradePlan Build()
     {
+        _refusal ??= ContentUpgradeTagRows.Unresolved(_context, _additions, _appends);
         if (_refusal is not null)
         {
             return ContentUpgradePlan.Refused(_refusal);

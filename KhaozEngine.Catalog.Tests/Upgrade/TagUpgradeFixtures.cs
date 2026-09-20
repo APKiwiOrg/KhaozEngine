@@ -113,16 +113,63 @@ internal static class TagUpgradeFixtures
     public static ContentBundleRow Row(int id, string key, int value, params int[] tags)
         => new(Tagged, id, new ContentKey(key), false, null, Fields(value, tags));
 
+    /// <summary>
+    /// One tagged row whose list field is PRESENT and EMPTY, which is the other zero-tag shape. A codec
+    /// leaves an empty list off the row entirely, so <see cref="Fields"/> cannot produce this one.
+    /// </summary>
+    /// <param name="id">The stable definition id.</param>
+    /// <param name="key">The row's key.</param>
+    /// <param name="value">The required int field's value.</param>
+    public static ContentBundleRow EmptyListRow(int id, string key, int value)
+        => new(
+            Tagged,
+            id,
+            new ContentKey(key),
+            false,
+            null,
+            [
+                new ContentFieldEdit(
+                    PublishFixtures.ValueField, ContentFieldValue.OfNumber(ContentFieldKind.Int, value)),
+                new ContentFieldEdit(
+                    TagsField, ContentFieldValue.OfBytes(ContentFieldKind.TagList, ReadOnlyMemory<byte>.Empty)),
+            ]);
+
+    /// <summary>One tag row's key, which is how the vocabulary names its rows.</summary>
+    /// <param name="id">The tag's stable id.</param>
+    public static ContentKey TagKey(int id)
+        => new("tag_" + id.ToString(System.Globalization.CultureInfo.InvariantCulture));
+
     /// <summary>One tag row, whose only written field is the console's sort order.</summary>
     /// <param name="id">The tag's stable id.</param>
-    public static ContentBundleRow TagRow(int id)
+    public static ContentBundleRow TagRow(int id) => TagRow(id, false);
+
+    /// <summary>The same tag row, retired or live, because a retired tag is not one a list may name.</summary>
+    /// <param name="id">The tag's stable id.</param>
+    /// <param name="retired">Whether the row is retired.</param>
+    public static ContentBundleRow TagRow(int id, bool retired)
         => new(
             Tag,
             id,
-            new ContentKey("tag_" + id.ToString(System.Globalization.CultureInfo.InvariantCulture)),
-            false,
+            TagKey(id),
+            retired,
             null,
             [new ContentFieldEdit(TagContentType.SortField, ContentFieldValue.OfNumber(ContentFieldKind.Int, id))]);
+
+    /// <summary>
+    /// The whole tag vocabulary as committed rows, every one of them live. A baseline bundle carries it
+    /// because an append resolves its id against the rows the catalog actually holds.
+    /// </summary>
+    /// <param name="retired">A tag id to write RETIRED instead of live, or 0 for none.</param>
+    public static ContentBundleRow[] Vocabulary(int retired = 0)
+    {
+        var rows = new ContentBundleRow[TagCount];
+        for (int id = 1; id <= TagCount; id++)
+        {
+            rows[id - 1] = TagRow(id, id == retired);
+        }
+
+        return rows;
+    }
 
     /// <summary>
     /// A definition that appends <see cref="NewTag"/> to the named rows, which is the shape a build ships
@@ -131,6 +178,13 @@ internal static class TagUpgradeFixtures
     /// <param name="target">The committed target bundle.</param>
     /// <param name="keys">The rows to append to.</param>
     public static ContentUpgradeDefinition AppendsTag(ContentBundle target, params string[] keys)
+        => AppendsTag(target, NewTag, keys);
+
+    /// <summary>The same definition over a stated tag id, which is how a test ships one no row backs.</summary>
+    /// <param name="target">The committed target bundle.</param>
+    /// <param name="tagId">The tag id to append.</param>
+    /// <param name="keys">The rows to append to.</param>
+    public static ContentUpgradeDefinition AppendsTag(ContentBundle target, int tagId, params string[] keys)
     {
         ArgumentNullException.ThrowIfNull(keys);
 
@@ -143,7 +197,7 @@ internal static class TagUpgradeFixtures
                 var builder = new ContentUpgradePlanBuilder(context, target);
                 for (int i = 0; i < keys.Length; i++)
                 {
-                    builder.AppendTag(Tagged, new ContentKey(keys[i]), TagsField, NewTag);
+                    builder.AppendTag(Tagged, new ContentKey(keys[i]), TagsField, tagId);
                 }
 
                 return builder.Build();

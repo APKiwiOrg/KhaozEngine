@@ -23,13 +23,15 @@ namespace KhaozEngine.Catalog.Authoring;
 /// would do to a draft it believed was its own is irreversible.
 /// </para>
 /// <para>
-/// <b>A proven own draft is PUBLISHED, never cleared and never discarded.</b> A freeze marker naming the
-/// active version is either a live publish or a dead one and nothing on the seam tells them apart, so
-/// clearing one would let a later edit land in a draft a live publisher's commit then deletes. The store's
-/// own rule is that a publish is how a dead freeze is recovered, because
-/// <see cref="IContentAuthoringStore.FreezeDraftAsync"/> overwrites the marker, so the runner publishes the
-/// draft as it stands. Carried ids make two runners' plans for one definition identical and the commit's
-/// version confirmation lets exactly one of them win.
+/// <b>A proven own draft is PUBLISHED, never discarded, and its freeze is never cleared before the publish
+/// takes it.</b> A marker found standing here is either a live publish or a dead one and nothing on the seam
+/// tells them apart, so clearing one on sight would let a later edit land in a draft a live publisher's
+/// commit then deletes. The store's own rule is that a publish is how a dead freeze is recovered, because
+/// <see cref="IContentAuthoringStore.FreezeDraftAsync"/> overwrites the marker. So the publish path freezes
+/// the draft for ITSELF and proves it again under that marker before publishing it: only a run that then
+/// finds the draft is not its plan clears the marker, and only because that draft is one no publisher may
+/// take. Carried ids make two runners' plans for one definition identical and the commit's version
+/// confirmation lets exactly one of them win.
 /// </para>
 /// </summary>
 sealed partial class ContentUpgradeRun

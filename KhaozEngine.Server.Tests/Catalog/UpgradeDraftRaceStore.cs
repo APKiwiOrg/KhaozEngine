@@ -23,13 +23,22 @@ namespace KhaozEngine.Tests.Catalog;
 /// suites into every catalog change.
 /// </para>
 /// </summary>
+/// <para>
+/// It also lands an OPERATOR's edit on the far side of that write, which is the PUBLISH window: the runner
+/// has already inspected what its own write returned, and nothing looks at the draft again until the publish
+/// freezes it. That rival is content no shipped definition plans, under an identity that is nobody's runner.
+/// </para>
 /// <param name="inner">The store behind the double, which must keep the upgrade ledger.</param>
-/// <param name="captureNote">The note whose write is captured to be replayed later.</param>
-/// <param name="targetNote">The note of the write the rival's write lands just before.</param>
+/// <param name="captureNote">The note whose write is captured to be replayed later, empty under an operator edit.</param>
+/// <param name="targetNote">The note of the write the rival's write lands around.</param>
+/// <param name="operatorEdit">The operator's edit to land AFTER the targeted write, or null to replay the capture before it.</param>
+/// <param name="operatorActor">The identity the operator's edit is written under.</param>
 internal sealed class UpgradeDraftRaceStore(
     IContentAuthoringStore inner,
     string captureNote,
-    string targetNote)
+    string targetNote,
+    ContentEdit? operatorEdit = null,
+    string operatorActor = "")
     : IContentAuthoringStore, IContentUpgradeLedger
 {
     readonly IContentUpgradeLedger _ledger = inner as IContentUpgradeLedger
@@ -54,10 +63,25 @@ internal sealed class UpgradeDraftRaceStore(
         string note,
         CancellationToken cancellationToken = default)
     {
-        if (_captured is null && string.Equals(note, captureNote, StringComparison.Ordinal))
+        if (_captured is null && captureNote.Length > 0
+            && string.Equals(note, captureNote, StringComparison.Ordinal))
         {
             _captured = edits;
             _capturedActor = actor;
+        }
+
+        if (_armed && operatorEdit is not null && string.Equals(note, targetNote, StringComparison.Ordinal))
+        {
+            _armed = false;
+            Raced = true;
+
+            // The runner's own write returned the draft as it stood THEN, so what it holds is exactly its
+            // plan and the operator's edit arrives after it has stopped looking.
+            ContentDraft written = await inner.ApplyEditsAsync(
+                edits, actor, operatorId, note, cancellationToken);
+            await inner.ApplyEditsAsync(
+                [operatorEdit], operatorActor, "oid:operator", "an operator's own afternoon", cancellationToken);
+            return written;
         }
 
         if (_armed && _captured is not null && string.Equals(note, targetNote, StringComparison.Ordinal))

@@ -62,6 +62,48 @@ public abstract partial class ContentAuthoringStoreConformance
         Assert.Equal([1, 2, 3], Ids(rows));
     }
 
+    /// <summary>
+    /// The PUBLISH window on every provider: an operator's edit lands after the runner inspected what its own
+    /// write returned and before the publish freezes the draft. Nothing the operator wrote reaches a version,
+    /// the run stops for them, and the draft is left holding both edits and unfrozen.
+    /// <para>
+    /// The operator's edit UPDATES a row the catalog already holds rather than adding one. An add would take
+    /// an id from the allocator, collide with the id the upgrade's plan carries, and be refused at publish for
+    /// a reason that has nothing to do with the window under test.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public virtual async Task TheUpgradeRunnerNeverPublishesAnOperatorEditThatLandsInItsPublishWindow()
+    {
+        IContentAuthoringStore store = await OpenAsync();
+        await PublishAsync(store, ContentEdit.Add(Thing, new ContentKey("one"), CatalogFixtures.Fields(11)));
+        var race = new UpgradeDraftRaceStore(
+            store,
+            string.Empty,
+            ContentUpgradeRunner.NoteFor(UpgradeId),
+            ContentEdit.Update(Thing, 1, new ContentKey("one"), CatalogFixtures.Fields(77)),
+            "a-human-operator");
+
+        ContentUpgradeReport report = await ContentUpgradeRunner.RunAsync(
+            race, Registry, UpgradeSet(), UpgradeOptions(ContentUpgradeMode.Apply));
+
+        Assert.True(race.Raced, "the operator's edit never landed, so the interleaving was not exercised.");
+
+        // The evidence first: the operator's value inside a version the upgrade published.
+        IReadOnlyList<ContentVersionRecord> versions = await store.ListVersionsAsync();
+        ContentRowPage published = await RowsAsync(store, versions[0].VersionNumber);
+        Assert.Equal(11, published.Rows[0].Fields[0].Number);
+
+        Assert.Equal(ContentUpgradeOutcome.OperatorDraftOpen, report.Outcome);
+        Assert.Single(versions);
+        Assert.Equal(1, await store.GetActiveVersionAsync());
+        Assert.Empty(await Ledger(store).ListUpgradesAsync());
+
+        ContentDraft draft = await DraftAsync(store);
+        Assert.Equal(2, draft.EditCount);
+        Assert.False(draft.IsFrozen, "the operator cannot edit or discard a draft the run left frozen.");
+    }
+
     /// <summary>The two definitions the race ships, each adding one row of the committed target bundle.</summary>
     protected ContentUpgradeSet RaceSet()
     {

@@ -69,6 +69,19 @@ public sealed class ContentUpgradeStaleApplyTests
             UpgradeFixtures.Actor, ContentUpgradeRunner.NoteFor(UpgradeHarness.SecondId));
 
     /// <summary>
+    /// The PUBLISH window: an operator's edit lands after the runner inspected what its own write returned
+    /// and before the publish freezes the draft. The publish would otherwise take it.
+    /// </summary>
+    [Fact]
+    public Task AnOperatorEditAfterTheRunnersWriteIsNeverPublishedInMemory()
+        => OperatorEditInThePublishWindowAsync(sqlite: false);
+
+    /// <summary>The same window on a real SQLite file, where the freeze is a column rather than a field.</summary>
+    [Fact]
+    public Task AnOperatorEditAfterTheRunnersWriteIsNeverPublishedOnSqlite()
+        => OperatorEditInThePublishWindowAsync(sqlite: true);
+
+    /// <summary>
     /// One run over a catalog where the rival replays this run's OWN earlier plan into the second upgrade's
     /// window. Whatever the interleaving, both upgrades land exactly once and no draft is left standing.
     /// </summary>
@@ -127,6 +140,72 @@ public sealed class ContentUpgradeStaleApplyTests
         ContentDraft? draft = await race.GetOpenDraftAsync();
         Assert.NotNull(draft);
         Assert.Equal(2, draft.EditCount);
+    }
+
+    /// <summary>
+    /// An OPERATOR's edit, of content no shipped definition plans, landing in the window between the runner's
+    /// own write and the publish that would take it. The runner already inspected what its write returned, so
+    /// nothing later in the sequence looks at the draft again until the publish freezes it for itself.
+    /// <para>
+    /// The operator's row must never appear in a published version, the run must stop for the operator, and
+    /// the draft must be left holding BOTH edits and UNFROZEN, because an operator who came back to a frozen
+    /// draft could neither edit it nor discard it.
+    /// </para>
+    /// </summary>
+    /// <param name="sqlite">Whether the catalog is a real SQLite file rather than the reference store.</param>
+    static async Task OperatorEditInThePublishWindowAsync(bool sqlite)
+    {
+        using var files = new TemporaryCatalogDatabase();
+        ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing, PublishFixtures.Other);
+        using ContentAuthoringStoreLease lease = await LeaseAsync(files, registry, sqlite);
+        var race = new DraftRaceStore(
+            lease.Store,
+            ContentUpgradeRunner.NoteFor(UpgradeHarness.FirstId),
+            DraftRaceMoment.AfterTheRunnersWrite,
+            "an-operator",
+            "an operator's own afternoon",
+            [ContentEdit.Add(UpgradeFixtures.Thing, new ContentKey("operator_row"), PublishFixtures.Fields(77))]);
+
+        ContentUpgradeReport report = await RunAsync(race, registry);
+
+        Assert.True(race.Raced, "the rival write never landed, so the interleaving was not exercised.");
+
+        // The evidence first: the operator's row inside a version the upgrade published.
+        IReadOnlyList<ContentVersionRecord> versions = await race.ListVersionsAsync();
+        ContentRowPage published = await race.ListRowsAsync(
+            UpgradeFixtures.Thing, versions[0].VersionNumber, null, false, 0, 50);
+        Assert.DoesNotContain("operator_row", Keys(published));
+
+        Assert.Equal(ContentUpgradeOutcome.OperatorDraftOpen, report.Outcome);
+        Assert.Single(versions);
+        Assert.Equal(1, await race.GetActiveVersionAsync());
+        Assert.Empty(await race.ListUpgradesAsync());
+
+        ContentDraft? draft = await race.GetOpenDraftAsync();
+        Assert.NotNull(draft);
+        Assert.Equal(2, draft.EditCount);
+        Assert.Contains(draft.Changes.Edits, edit => Targets(edit, UpgradeFixtures.Thing, "operator_row"));
+        Assert.False(draft.IsFrozen, "the operator cannot edit or discard a draft the run left frozen.");
+    }
+
+    /// <summary>Whether one edit names a type and key, which is how a surviving edit is identified.</summary>
+    /// <param name="edit">The edit.</param>
+    /// <param name="type">The type it must name.</param>
+    /// <param name="key">The key it must name.</param>
+    static bool Targets(ContentEdit edit, ContentTypeId type, string key)
+        => edit.Type == type && string.Equals(edit.Key.ToString(), key, StringComparison.Ordinal);
+
+    /// <summary>Every key in a page, in page order.</summary>
+    /// <param name="page">The page.</param>
+    static string[] Keys(ContentRowPage page)
+    {
+        var keys = new string[page.Rows.Count];
+        for (int i = 0; i < keys.Length; i++)
+        {
+            keys[i] = page.Rows[i].Key.ToString();
+        }
+
+        return keys;
     }
 
     /// <summary>One apply run under a hard deadline, so a stall fails fast instead of spending the budget.</summary>

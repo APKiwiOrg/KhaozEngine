@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace KhaozEngine.Catalog.Authoring;
@@ -19,6 +20,13 @@ namespace KhaozEngine.Catalog.Authoring;
 /// </summary>
 sealed partial class ContentUpgradeRun
 {
+    /// <summary>
+    /// Whether the freeze standing over the draft is the one THIS attempt set for its own publish. It is
+    /// what lets a failure path tell a marker this run owes a release from one that arrived from somewhere
+    /// else, which the seam itself cannot, because the marker carries no identity.
+    /// </summary>
+    bool _frozenForPublish;
+
     /// <summary>
     /// The publish of one definition's edits, stamped with its id so the ledger row lands inside the commit.
     /// It answers whether the definition is SETTLED, and a false answer asks for another attempt.
@@ -105,6 +113,33 @@ sealed partial class ContentUpgradeRun
                 }
             }
 
+            // The publish window CLOSED. Everything above read the draft and then stopped looking, and the
+            // store's publish does not freeze until its own first step, so an operator's edit arriving in
+            // between was published without review. The freeze is taken here instead and the draft is proved
+            // again UNDER it, which is the only order in which what is proved is what is published.
+            ContentDraft frozen = await FreezeForPublishAsync().ConfigureAwait(false);
+            if (!ContentUpgradeDraftMatch.IsPlan(frozen, plan.Edits) || frozen.BaseVersion != Active)
+            {
+                // The marker this run set is cleared, and it may not be the one this run set: the seam's
+                // freeze OVERWRITES, and it carries no identity, so a live rival publisher's marker is
+                // indistinguishable from a dead one and from this run's own. Clearing is still the safest
+                // rule. The draft standing here is by definition not a clean plan of this definition, so a
+                // rival publishing it would be publishing the same contaminated draft and its own proof under
+                // its own freeze refuses it exactly as this one just did. Leaving the marker instead would
+                // wedge the draft: a run that stops for an operator would hand them back a draft they can
+                // neither edit nor discard, and no publisher is coming to recover it.
+                await ReleaseFreezeAsync().ConfigureAwait(false);
+                return await ResolveObstructionAsync(
+                    definition,
+                    plan,
+                    note,
+                    standOff,
+                    FormattableString.Invariant(
+                        $"the frozen draft holds {frozen.EditCount} edit(s) on version {frozen.BaseVersion}, which is not this upgrade's change set on version {Active}."),
+                    frozen)
+                    .ConfigureAwait(false);
+            }
+
             Operation = "publish its edits as a new version";
             ContentPublishResult published = await Store.PublishAsync(
                 new ContentPublishRequest(
@@ -119,14 +154,67 @@ sealed partial class ContentUpgradeRun
                 },
                 CancellationToken).ConfigureAwait(false);
 
+            // The publish took the marker over from here: it overwrites it with its own at its first step and
+            // releases it on every exit path of its own, so there is nothing left for this run to release.
+            _frozenForPublish = false;
             RecordPublished(published.VersionNumber);
             _steps.Add(ContentUpgradeStepResult.Applied(definition, published.VersionNumber, plan.ChangeLines));
             return true;
         }
         catch (Exception failure) when (ContentUpgradeFault.IsHandled(failure))
         {
+            // A publish that never reached the store's own pipeline leaves the marker this run set standing,
+            // and everything below reads a standing marker as a live publisher's, so this run's own goes
+            // first. A failure before the freeze released nothing: the flag says which.
+            await ReleaseFreezeAsync().ConfigureAwait(false);
             return await ResolveFailureAsync(definition, plan, note, failure, standOff).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>
+    /// Steps (a) and (b) of the publish window: the draft FROZEN for the version this plan was computed
+    /// against, then read back under that marker. While the marker stands the store refuses
+    /// <see cref="IContentAuthoringStore.ApplyEditsAsync"/> and
+    /// <see cref="IContentAuthoringStore.DiscardDraftAsync"/>, so what comes back here is what the publish
+    /// will take. The store's own publish overwrites the marker with its own, so freezing first costs the
+    /// publish nothing.
+    /// <para>
+    /// A draft gone after a freeze that succeeded is a rival that discarded it in the one moment it could,
+    /// which is contention. It is raised as such and resolved through the ledger like any other.
+    /// </para>
+    /// </summary>
+    async Task<ContentDraft> FreezeForPublishAsync()
+    {
+        Operation = "freeze the draft for its own publish";
+        await Store.FreezeDraftAsync(Active, CancellationToken).ConfigureAwait(false);
+        _frozenForPublish = true;
+
+        Operation = "read the frozen draft back";
+        return await Store.GetOpenDraftAsync(CancellationToken).ConfigureAwait(false)
+            ?? throw new ContentAuthoringException(
+                "the draft this run froze for its own publish is no longer open.",
+                default,
+                0,
+                ContentAuthoringException.NoOpenDraftReason);
+    }
+
+    /// <summary>
+    /// The freeze THIS attempt set, released, and nothing otherwise: a marker this run did not set belongs
+    /// to a publisher that may be live, and the whole obstruction path reads one standing over a draft as
+    /// exactly that. It ignores the run's cancellation for the same reason the store's own publish does on
+    /// its exit paths: a token that went away must not leave a marker standing over a draft nobody is
+    /// publishing.
+    /// </summary>
+    async Task ReleaseFreezeAsync()
+    {
+        if (!_frozenForPublish)
+        {
+            return;
+        }
+
+        _frozenForPublish = false;
+        Operation = "release the freeze it set";
+        await Store.ClearDraftFreezeAsync(CancellationToken.None).ConfigureAwait(false);
     }
 
     /// <summary>

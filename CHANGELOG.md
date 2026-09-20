@@ -23,6 +23,38 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   a `SunCycle` sun with `DiscSetElevationDegrees` above 0 under the default `AntiSolarMoon` night (where the key
   flips anti-solar at the horizon) reflects a ghost sun opposite the real one while it sets. Each disc is now
   reflected along its own direction.
+- Catalog upgrade lifecycle. A game ships ordered `ContentUpgradeDefinition`s in a `ContentUpgradeSet` and
+  `ContentUpgradeRunner.RunAsync` applies the pending ones before the strict load, each as its own published
+  version, in `Preview` or `Apply` with an optional `ExpectedVersion`. It exists because an existing catalog
+  that lacked a newly registered type made a host exit before it listened while fresh installs and the whole
+  suite stayed green (https://github.com/APKiwiOrg/Grimhollow/issues/259). `ContentUpgradePlanBuilder` and
+  `ContentUpgradeChecks` detect by identity and never by value, patch a field only when it still holds the
+  named old default, refuse a partial state, and CARRY the committed id on every added row. A run with nothing
+  pending writes nothing. The runner never discards an operator draft (a draft is its own only when the actor,
+  the note and the exact edits match a fresh plan), never moves the pin, never clears another publisher's
+  freeze, re-checks `ExpectedVersion` on every re-read, retries only a transient `DbException`, and resolves
+  every failure by reading the ledger, so two hosts racing publish each upgrade exactly once. Refusals carry
+  `KECU0001` to `KECU0015` and a failed report maps to `ContentBootResult.ContentFailureExitCode`. Closes #1038.
+- Catalog schema version 2 on both providers, migration `catalog-v2-content-upgrade-ledger`. The one new table
+  is `catalog_content_upgrade`, read through the new `IContentUpgradeLedger` that the in-memory, SQLite and SQL
+  Server stores implement. `ContentPublishRequest.Upgrade` is an optional init-only stamp, and an `applied`
+  row commits inside the publish transaction, so a version and its history land together or not at all. A
+  second publish of one upgrade id fails the commit with nothing changed. `IContentAuthoringStore` gains no
+  member. A SQLite file at version 1 migrates in place under `AutoCreate`. SQL Server ships
+  `CatalogSchemaV2.sql` as the operator script and migrates behind the create's application lock under
+  `AutoCreate`. **`ValidateOnly` refuses a version 1 database by naming the migration, so a hosted catalog
+  needs the script applied before a server on this version starts.**
+- A carried definition id (`ContentEdit.Import`) is now legal in a populated store and is fully policed. It is
+  refused when it matches a live row, a RETIRED row, another add in the same draft, exceeds the type's
+  ceiling, or falls inside a family's reserved block with no family named, and every refusal now lands BEFORE
+  the id marks advance. Previously a carried id on a retired row was refused only by an incidental publish
+  check, two refusals left the marks advanced for a version nobody published, and the family block case was
+  not refused at all.
+- Fixed: `FileSystemPackStore` used one fixed temporary name per hash, so two publishers filing the same chunk
+  into one pack root collided. Each write now takes its own temporary name, and a successful write removes
+  stale temporary siblings of the same hash.
+- CI: a `catalog-sqlserver` job runs the catalog conformance facts against a SQL Server 2022 service
+  container. They previously ran only through a manual leg.
 
 ## 19.10.0
 

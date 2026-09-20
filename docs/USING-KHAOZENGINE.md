@@ -15236,6 +15236,66 @@ rehydrated through the CALLER's registry, so a schema, `ChunkSlots` or visibilit
 refuses with `server-manifest-mismatch` or `client-manifest-mismatch` rather than filing a pack no version
 record describes.
 
+### Upgrading an existing catalog (19.11.0)
+
+A fresh install seeds the current bundle and boots. An existing catalog still holds the older content, so a
+build that registers a new type or needs new rows makes the strict load refuse and the host exits before it
+listens. A suite that only ever boots a fresh catalog stays green while that ships. The upgrade lifecycle is
+the fix: a game ships ordered `ContentUpgradeDefinition`s in its server assembly, and
+`ContentUpgradeRunner` applies the pending ones before `ContentBoot.RunAsync`.
+
+Migration history is its own ledger, the `catalog_content_upgrade` table added by catalog schema version 2.
+An engine package version does not say which upgrades ran, and neither does a published version number. An
+`applied` row commits inside the publish transaction, so a version and its history land together or not at
+all. A SQLite file at schema version 1 migrates in place when opened under `AutoCreate`. SQL Server ships
+`CatalogSchemaV2.sql` as the operator script for migration `catalog-v2-content-upgrade-ledger`, and
+`ValidateOnly` refuses a version 1 database by naming it.
+
+```csharp
+static readonly ContentUpgradeSet Upgrades = new(
+    new ContentUpgradeDefinition(
+        "2026-09-add-recipe-type", 1, "the recipe type and the item it needs",
+        context => new ContentUpgradePlanBuilder(context, ShippedBundle.Read())
+            .AddRow(RecipeType, new ContentKey("iron_bar"))
+            .AddRow(new ContentTypeId(EngineContentTypes.ItemTypeId), new ContentKey("iron_ore"))
+            .Build()));
+
+// Local arm, after the store is open and before the strict load.
+if (await store.GetActiveVersionAsync() == 0)
+{
+    await store.ImportBundleAsync(ShippedBundle.Read(), actor, operatorId, "first run seed");
+    await ContentUpgradeRunner.RecordBaselineAsync(store, Upgrades, actor, operatorId);
+}
+
+ContentUpgradeReport report = await ContentUpgradeRunner.RunAsync(
+    store, registry, Upgrades,
+    new ContentUpgradeOptions(ContentUpgradeMode.Apply, actor, operatorId, serverBuild, clientBuild));
+report.WriteTo(Console.Out, Console.Error);
+if (!report.Success) return report.ExitCode;
+```
+
+Planner rules, which the runner cannot enforce for you:
+
+- Detect by identity, never by value. A row present under the committed id and key is satisfied whatever its
+  fields hold, because those values may be operator tuning. `AddRow` does this.
+- A value patch names the old shipped default it replaces. `PatchField` leaves any other value alone.
+- A partial state is refused rather than completed by guesswork.
+- An added row CARRIES the id the committed bundle gives it. It is never left to the allocator, because a
+  publish refused after allocation burns ids and a predicted id would then be wrong.
+
+What the runner guarantees. A run with nothing pending writes nothing at all. Each definition publishes as
+its own version. An operator's open draft is never discarded: a draft counts as the runner's own only when the
+actor, the note and the exact edits all match a fresh plan, and anything else is `OperatorDraftOpen`. The pin is
+never moved. A pin on the active version does not block the publish and the report names the version to repin
+to. The runner never clears another publisher's freeze. A ledger id this build does not ship is
+`CatalogAheadOfBuild`. Two hosts racing publish each upgrade exactly once.
+
+The hosted arm never upgrades implicitly. A deploy step runs the game's command in `Preview`, then `Apply`
+with `ExpectedVersion` set to the version the preview printed, before the server starts. `Preview` writes
+nothing. Every refusal carries a stable `KECU` code and a next action, and a failed report maps to
+`ContentBootResult.ContentFailureExitCode`. A solo client whose in-process host returns a failed report shows
+it instead of retrying a join that cannot succeed. Design: `docs/design/CATALOG-UPGRADE-LIFECYCLE-DESIGN-2026-09-20.md`.
+
 ### Rolling loot
 
 ```csharp

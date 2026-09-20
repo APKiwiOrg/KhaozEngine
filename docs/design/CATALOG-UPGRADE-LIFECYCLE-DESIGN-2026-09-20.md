@@ -1,6 +1,6 @@
 # Catalog upgrade lifecycle
 
-Status: accepted, in implementation. Origin: https://github.com/APKiwiOrg/Grimhollow/issues/259
+Status: shipped in 19.11.0. Origin: https://github.com/APKiwiOrg/Grimhollow/issues/259
 
 ## 1. Problem
 
@@ -124,8 +124,8 @@ Rules a planner must follow, which the engine documents and the template enforce
 
 `ContentUpgradePlanBuilder` and `ContentUpgradeChecks` generalise the checks Grimhollow's butchering plan
 already proved: the target bundle matches the registry, every baseline type is schema compatible with the
-target, an identity is either absent or present under both the same id and the same key, and plain id
-allocation will issue exactly the committed ids.
+target, an identity is either absent or present under both the same id and the same key, and every added row carries
+the committed id rather than leaving it to the allocator, because a publish refused after allocation burns ids.
 
 ## 7. The runner
 

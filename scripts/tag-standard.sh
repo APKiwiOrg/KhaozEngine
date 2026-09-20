@@ -107,10 +107,19 @@ tag_release_window() {
 # project takes a ProjectReference on one, and the `tools/` path that DOES appear in a nupkg is
 # KhaozEngine.Content's PackagePath for its own validator output, not this directory. If a packable
 # project ever moves under tools/, this line is the one to revisit.
+#
+# .gitignore and .filesize-baseline are governance in the same sense: they decide what is TRACKED and
+# how large a file may be, never what a package contains. .gitignore joined the list the third time
+# this guard refused its own author, which is worth stating plainly. The list is derived by reasoning
+# about what ships, and reasoning keeps missing entries, so expect to add more.
+#
+# That asymmetry is why the list EXCLUDES rather than includes. A missing exclusion costs a refusal
+# someone reads and fixes, as happened three times here. A missing inclusion would silently let
+# through the exact push this guard exists to stop, and nobody would ever learn it was wrong.
 tag_version_bearing() {
   _vb_from=$1; _vb_to=$2
   git diff --name-only "$_vb_from" "$_vb_to" -- \
     ':(exclude)docs/**' ':(exclude)*.md' ':(exclude)scripts/**' ':(exclude)tools/**' \
     ':(exclude).github/**' ':(exclude).githooks/**' ':(exclude).claude/**' ':(exclude).codex/**' \
-    ':(exclude).filesize-baseline' 2>/dev/null | grep -q .
+    ':(exclude).filesize-baseline' ':(exclude).gitignore' 2>/dev/null | grep -q .
 }

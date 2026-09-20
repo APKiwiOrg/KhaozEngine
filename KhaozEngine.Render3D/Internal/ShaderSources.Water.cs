@@ -27,8 +27,7 @@ namespace KhaozEngine.Render3D.Internal
     vec4 DetailParams;  // x=warpStrength, y=detailFadeDistance, z=distantDetailScale, w=shallowDepth
     vec4 SkyHorizon;    // rgb, the reflected sky's horizon colour
     vec4 SkyZenith;     // rgb, the reflected sky's zenith colour
-    vec4 SkySunColor;   // rgb, the reflected sun disc + halo colour
-    vec4 SkyParams;     // x=sunEnabled, y=sunRadius, z=haloStrength, w=haloFalloff
+    vec4 SkyParams;     // x = reflected disc count, yzw unused
     vec4 ReflectGlint;  // x=skyReflectionStrength, y=skyReflectionSunStrength, z=glintRoughness, w=glintDistantRoughness
     vec4 SwellParams;   // x=amplitude, y=wavelength, z=directionRadians, w=spreadRadians
     vec4 SwellShape;    // x=steepness, y=speedScale, z=componentCount, w=seed
@@ -51,6 +50,9 @@ namespace KhaozEngine.Render3D.Internal
     vec4 SurfShape;        // x = trail width, y = amplitude collapse, z = the plane's surface Y (render frame), w = bathymetry texel size (m)
     vec4 RenderOrigin;     // xyz = camera-relative render origin: add to a render-frame position for the ABSOLUTE one
     vec4 SkyGround;        // rgb = the reflected sky's ground band below the world horizon, a = blend depth (negative = no ground)
+    vec4 SkyDiscColor[8];  // per reflected disc: rgb colour, a = opacity
+    vec4 SkyDiscDir[8];    // xyz = unit direction TO the body, w = radius
+    vec4 SkyDiscHalo[8];   // x = halo strength, y = halo falloff
 };";
 
         // ---- Stylized ocean surface. Drawn AFTER the sky and the ground decals into ColorDepthFB (lit colour +
@@ -382,14 +384,18 @@ vec3 slopeToNormal(float dhdx, float dhdz, float normalStrength) {
 // off the direction's elevation and the sun distance is the chord between unit directions, so SkySettings'
 // radius/falloff read as angular sizes here. This is what replaces the flat HorizonColor and kills the two-tone
 // banding: every fragment gets the colour of the sky it is actually pointing at.
-vec3 skyAlongDirection(vec3 dir, vec3 sunDir, float sunStrength) {
+vec3 skyAlongDirection(vec3 dir, float sunStrength) {
     float up = clamp(dir.y, 0.0, 1.0);
     float t = smoothstep(0.0, 1.0, up);
     vec3 col = mix(SkyHorizon.rgb, SkyZenith.rgb, t);
-    float strength = clamp(sunStrength, 0.0, 1.0);
-    if (SkyParams.x > 0.5 && strength > 0.0) {
-        float sunRadius = SkyParams.y, haloStrength = SkyParams.z, haloFalloff = SkyParams.w;
-        float d = length(dir - sunDir);
+    // Every disc the sky draws, each along its own direction, a later one over an earlier one.
+    int discCount = int(SkyParams.x);
+    for (int i = 0; i < 8; i++) {
+        if (i >= discCount) break;
+        float strength = clamp(sunStrength * SkyDiscColor[i].a, 0.0, 1.0);
+        if (strength <= 0.0) continue;
+        float sunRadius = SkyDiscDir[i].w, haloStrength = SkyDiscHalo[i].x, haloFalloff = SkyDiscHalo[i].y;
+        float d = length(dir - SkyDiscDir[i].xyz);
         float feather = max(haloFalloff * 0.25, 1e-4);
         float disc = 1.0 - smoothstep(sunRadius, sunRadius + feather, d);
         float halo = 0.0;
@@ -398,9 +404,9 @@ vec3 skyAlongDirection(vec3 dir, vec3 sunDir, float sunStrength) {
             halo = haloStrength * exp(-beyond / haloFalloff);
         }
         float sun = clamp((disc + halo) * strength, 0.0, 1.0);
-        col = mix(col, SkySunColor.rgb, sun);
+        col = mix(col, SkyDiscColor[i].rgb, sun);
     }
-    // The ground goes over the sun, exactly as SkyFrag lays it (SkyGround.Weight).
+    // The ground goes over every disc, exactly as SkyFrag lays it (SkyGround.Weight).
     if (SkyGround.a >= 0.0) {
         col = mix(col, SkyGround.rgb, smoothstep(0.0, max(SkyGround.a, 1e-5), -dir.y));
     }
@@ -583,7 +589,7 @@ void main() {
     vec3 reflectColor = HorizonColor.rgb;
     if (skyReflStrength > 0.0) {
         vec3 R = reflect(-V, N);
-        reflectColor = mix(HorizonColor.rgb, skyAlongDirection(R, Lsun, skyReflSun), clamp(skyReflStrength, 0.0, 1.0));
+        reflectColor = mix(HorizonColor.rgb, skyAlongDirection(R, skyReflSun), clamp(skyReflStrength, 0.0, 1.0));
     }
 
     float ndotv = clamp(dot(N, V), 0.0, 1.0);

@@ -86,6 +86,16 @@ namespace KhaozEngine.Render3D
         /// <see cref="PixelPostProcessSettings.LightDirection"/> so the sky and lighting agree automatically.</summary>
         public Vector3? SunDirectionOverride = null;
 
+        /// <summary>The most discs one frame draws, the primary included. Further <see cref="ExtraDiscs"/> are
+        /// ignored.</summary>
+        public const int MaxDiscs = 8;
+
+        /// <summary>Celestial discs beyond the primary sun (a moon, a second sun), drawn in list order after it, so
+        /// a later disc goes over an earlier one. Each carries its own direction, colour and shape. Empty by
+        /// default. <see cref="SunCycle.Apply"/> rewrites this list every call (it owns the body that does not hold
+        /// the primary slot), so add your own after it.</summary>
+        public readonly System.Collections.Generic.List<SkyDisc> ExtraDiscs = new();
+
         /// <summary>The direction TO the sun this frame: <see cref="SunDirectionOverride"/> if set (normalized), else
         /// derived from the key-light travel direction (<c>-normalize(lightDirection)</c>). Used by the renderer to
         /// build the sky UBO. A degenerate input falls back to straight up.</summary>

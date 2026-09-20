@@ -419,7 +419,9 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   `Sky.SunDirectionOverride`. `Sky.Horizon` (a `SkyHorizon`, default `Screen`) chooses where the horizon is: `World`
   anchors the gradient to the world horizon and paints `Sky.GroundColor` below it (blend depth
   `Sky.HorizonSoftness`), so a finite world runs on to the horizon and the sun disc sets through that line. It needs
-  a perspective camera and `SunAnchor.World`, and the water's reflected sky follows it. `Sky.Anchor` (a `SunAnchor`, default `SunAnchor.World`) chooses how the disc is placed:
+  a perspective camera and `SunAnchor.World`, and the water's reflected sky follows it. `Sky.ExtraDiscs` (a list of
+  `SkyDisc`, up to `SkySettings.MaxDiscs` = 8 with the primary) adds further bodies, each with its own direction,
+  colour and shape, drawn in order and reflected by the water. `Sky.Anchor` (a `SunAnchor`, default `SunAnchor.World`) chooses how the disc is placed:
   `World` anchors it to the world-space sun direction via a true point-at-infinity projection through the camera (the
   disc stays fixed over the world direction the sun lies in as the camera orbits, and is hidden when the sun is behind
   the camera - correct for the perspective `FollowCamera3D`/`FlyCamera3D`. It degenerates under the orthographic

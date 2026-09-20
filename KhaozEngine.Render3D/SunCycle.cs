@@ -158,8 +158,8 @@ namespace KhaozEngine.Render3D
         /// <see cref="SkyHorizon.World"/> sky raise it past the disc's angular size (6 is a good start): the whole
         /// fade band moves down with it, so the disc crosses the horizon at full strength, the ground band occludes
         /// it, and the halo left above the line dims as an afterglow. The key light is unaffected and still dips
-        /// to black at elevation zero. The slot is single, so under <see cref="NightKeyMode.Moon"/> a moon rising
-        /// at opposition takes it this many degrees late.</summary>
+        /// to black at elevation zero. Under <see cref="NightKeyMode.Moon"/> a moon that is up while the sun still
+        /// holds the primary slot is drawn as an extra disc (<see cref="SunCycleState.ExtraDiscCount"/>).</summary>
         public float DiscSetElevationDegrees { get; set; }
 
         /// <summary>Which night track the key light follows below the sun's horizon. Default
@@ -226,7 +226,8 @@ namespace KhaozEngine.Render3D
             Vector3 moonDirection = default,
             KeyLightSource activeSource = KeyLightSource.Sun,
             Vector3? discDirectionOverride = null,
-            Color groundColor = default)
+            Color groundColor = default,
+            SunCycleDisc? extraDisc = null)
         {
             LightDirection = lightDirection;
             SunElevationDegrees = sunElevationDegrees;
@@ -242,7 +243,22 @@ namespace KhaozEngine.Render3D
             ActiveSource = activeSource;
             DiscDirectionOverride = discDirectionOverride;
             GroundColor = groundColor;
+            _extraDisc = extraDisc;
         }
+
+        // Storage for one extra today (sun and moon are the only bodies, and one of them holds the primary slot).
+        // The accessors below are shaped for any number, so more bodies widen this field, not the API.
+        readonly SunCycleDisc? _extraDisc;
+
+        /// <summary>How many bodies besides the primary disc want drawing this frame. Under
+        /// <see cref="NightKeyMode.Moon"/> that is the moon while the sun still holds the primary slot (a day moon,
+        /// or a moon rising as the sun sets), otherwise 0.</summary>
+        public int ExtraDiscCount => _extraDisc.HasValue ? 1 : 0;
+
+        /// <summary>The extra body at <paramref name="index"/> (0 to <see cref="ExtraDiscCount"/> - 1).
+        /// <see cref="SunCycle.Apply"/> writes them all to <see cref="SkySettings.ExtraDiscs"/>.</summary>
+        public SunCycleDisc GetExtraDisc(int index) =>
+            index == 0 && _extraDisc is { } disc ? disc : throw new ArgumentOutOfRangeException(nameof(index));
 
         /// <summary>Direction the key light travels, following <see cref="PixelPostProcessSettings.LightDirection"/>
         /// semantics (from the light toward the scene). Under <see cref="NightKeyMode.AntiSolarMoon"/> it flips to the
@@ -379,6 +395,7 @@ namespace KhaozEngine.Render3D
             Color disc;
             bool discEnabled;
             Vector3? discOverride;
+            SunCycleDisc? extraDisc = null;
             KeyLightSource source;
 
             switch (settings.NightKey)
@@ -431,6 +448,14 @@ namespace KhaozEngine.Render3D
                         disc = sunDisc;
                         discEnabled = true;
                         discOverride = setSunOverride;
+                        // Both bodies in the sky at once: the moon rides as an extra disc until the sun lets go of
+                        // the primary slot, so it rises through the horizon instead of popping in afterwards.
+                        if (moonElDeg > discSet)
+                        {
+                            float risingFade = MathUtil.SmoothStep(discSet, discFadeTop, moonElDeg);
+                            extraDisc = new SunCycleDisc(
+                                moonToward, settings.MoonDiscColor.WithAlpha(settings.MoonDiscColor.A * risingFade));
+                        }
                     }
                     else if (moonElDeg > discSet)
                     {
@@ -459,7 +484,7 @@ namespace KhaozEngine.Render3D
 
             return new SunCycleState(
                 lightDir, elDeg, horizon, zenith, disc, discEnabled, key, ambient, fill,
-                moonElDeg, moonLightDir, source, discOverride, ground);
+                moonElDeg, moonLightDir, source, discOverride, ground, extraDisc);
         }
 
         /// <summary>
@@ -507,10 +532,12 @@ namespace KhaozEngine.Render3D
 
         /// <summary>
         /// Writes a state to the scene's lighting and sky settings. Touches exactly the key light
-        /// direction and color, ambient, fill color, sky gradient, sun disc color, sun disc
-        /// visibility, and the sky's sun-direction override (pointed at the moon when the moon owns
-        /// the disc, cleared to null when the sun does). Leaves Sky.Enabled, the anchor, halo shape,
-        /// radius, and the fill direction to the caller.
+        /// direction and color, ambient, fill color, sky gradient, ground band color, sun disc color,
+        /// sun disc visibility, the sky's sun-direction override (pointed at whichever body holds the
+        /// primary disc when that is not where the key light comes from, else null), and
+        /// <see cref="SkySettings.ExtraDiscs"/>, which it REPLACES with the cycle's own extra bodies.
+        /// Add your own extra discs after this call. Leaves Sky.Enabled, the anchor, the horizon
+        /// mode, halo shape, radius, and the fill direction to the caller.
         /// </summary>
         public static void Apply(in SunCycleState state, PixelPostProcessSettings post)
         {
@@ -524,6 +551,22 @@ namespace KhaozEngine.Render3D
             post.Sky.SunEnabled = state.SunEnabled;
             post.Sky.SunDirectionOverride = state.DiscDirectionOverride;
             post.Sky.GroundColor = state.GroundColor;
+
+            // The cycle owns this list. Its extras take the primary disc's shape, so a body handing the primary slot
+            // over (the moon, once the sun has set) does not change size on the way.
+            post.Sky.ExtraDiscs.Clear();
+            for (int i = 0; i < state.ExtraDiscCount; i++)
+            {
+                SunCycleDisc body = state.GetExtraDisc(i);
+                post.Sky.ExtraDiscs.Add(new SkyDisc
+                {
+                    Direction = body.Direction,
+                    Color = body.Color,
+                    Radius = post.Sky.SunRadius,
+                    HaloStrength = post.Sky.HaloStrength,
+                    HaloFalloff = post.Sky.HaloFalloff,
+                });
+            }
         }
     }
 }

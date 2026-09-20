@@ -256,6 +256,62 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(night.MoonDirection, -night.DiscDirectionOverride!.Value);
         }
 
+        // ---- Extra discs: more than one body in the sky at once (#1041) -------------------------------------------
+
+        [Fact]
+        public void A_moon_rising_as_the_sun_sets_is_an_extra_disc_and_never_pops_in()
+        {
+            var s = Equatorial(NightKeyMode.Moon, discSet: 6f);   // opposition: the moon rises exactly as the sun sets
+
+            // Sun 3 degrees down and still holding the primary slot: the moon (3 degrees up) rides as the extra.
+            var handover = SunCycle.Evaluate(TimeAtEveningElevation(-3f), s);
+            Assert.Equal(1, handover.ExtraDiscCount);
+            SunCycleDisc moon = handover.GetExtraDisc(0);
+            Assert.Equal(-handover.MoonDirection, moon.Direction);
+            Assert.Equal(1f, moon.Color.A, 3);
+
+            // The moon's direction and color are continuous across the moment it takes the primary slot.
+            float tBefore = TimeAtEveningElevation(-5.99f), tAfter = TimeAtEveningElevation(-6.01f);
+            var before = SunCycle.Evaluate(tBefore, s);
+            var after = SunCycle.Evaluate(tAfter, s);
+            Assert.Equal(1, before.ExtraDiscCount);
+            Assert.Equal(0, after.ExtraDiscCount);
+            AssertColorEqual(before.GetExtraDisc(0).Color, after.SunColor);
+            Assert.True(Vector3.Dot(before.GetExtraDisc(0).Direction, after.DiscDirectionOverride!.Value) > 0.9999f);
+        }
+
+        [Theory]
+        [InlineData(NightKeyMode.AntiSolarMoon)]
+        [InlineData(NightKeyMode.None)]
+        public void Modes_without_a_moon_disc_never_emit_an_extra(NightKeyMode mode)
+        {
+            var s = Equatorial(mode, discSet: 6f);
+            for (int i = 0; i <= 200; i++)
+                Assert.Equal(0, SunCycle.Evaluate(i / 200f, s).ExtraDiscCount);
+        }
+
+        [Fact]
+        public void Apply_replaces_the_extra_discs_and_gives_them_the_primary_shape()
+        {
+            var s = Equatorial(NightKeyMode.Moon, discSet: 6f);
+            var post = new PixelPostProcessSettings();
+            post.Sky.SunRadius = 0.07f;
+            post.Sky.HaloStrength = 0.3f;
+            post.Sky.HaloFalloff = 0.11f;
+            post.Sky.ExtraDiscs.Add(new SkyDisc { Direction = Vector3.UnitX, Color = new Color(1f, 0f, 0f, 1f), Radius = 0.5f });
+
+            var handover = SunCycle.Evaluate(TimeAtEveningElevation(-3f), s);
+            SunCycle.Apply(handover, post);
+            SkyDisc moon = Assert.Single(post.Sky.ExtraDiscs);
+            Assert.Equal(handover.GetExtraDisc(0).Direction, moon.Direction);
+            Assert.Equal(0.07f, moon.Radius);
+            Assert.Equal(0.3f, moon.HaloStrength);
+            Assert.Equal(0.11f, moon.HaloFalloff);
+
+            SunCycle.Apply(SunCycle.Evaluate(0.5f, s), post);   // noon at opposition: the moon is far below
+            Assert.Empty(post.Sky.ExtraDiscs);
+        }
+
         [Fact]
         public void Ground_color_blends_across_the_palettes_and_reaches_the_sky()
         {

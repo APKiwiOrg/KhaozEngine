@@ -3906,8 +3906,21 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       disc would dissolve before it reached the line. Set `SunCycleSettings.DiscSetElevationDegrees` past the disc's
       angular size (6 is a good start). The whole fade band moves down with it, so the disc crosses the horizon at
       full strength, the ground occludes it, and the halo left above the line dims as an afterglow. The key light
-      is unaffected and still dips to black at elevation zero. The disc slot is single, so under
-      `NightKeyMode.Moon` a moon rising at opposition takes the slot that many degrees late.
+      is unaffected and still dips to black at elevation zero. Under `NightKeyMode.Moon` the rising moon is drawn
+      as an extra disc until the sun lets go of the primary slot, so it comes up through the horizon too.
+  - **More than one body** (`Sky.ExtraDiscs`, a list of `SkyDisc`, empty by default): a moon, a second sun, a
+    neighbouring planet. The primary disc stays on `SkySettings` itself (`SunColor`, `SunRadius`, the halo knobs)
+    because it is the one that follows the key light. An extra disc always carries its own `Direction` (world
+    space, toward the body), plus `Color` (alpha is opacity), `Radius`, `HaloStrength` and `HaloFalloff`. Discs draw
+    in order, the primary first, so a later disc goes over an earlier one (an eclipse is two discs in the right
+    order). A frame draws at most `SkySettings.MaxDiscs` (8), the primary included, and ignores the rest. Every
+    disc sets through a `SkyHorizon.World` horizon and every disc is reflected by the water along its own
+    direction. `SunCycle.Apply` REPLACES this list each call with the cycle's own extra bodies (under
+    `NightKeyMode.Moon`, the moon while the sun still holds the primary slot, so a day moon shows and a rising
+    moon comes up through the horizon as the sun sets). Add your own discs after `Apply`. `SunCycle` models one
+    sun and one moon. A second sun is drawn with an extra disc, and which sun keys the light and drives the
+    palette is yours to decide. `SunCycle.SolarDirection` is the per-body arc (time offset, declination, heading)
+    for placing more bodies on their own tracks.
   - **Where the disc is placed** (`Sky.Anchor`, a `SunAnchor`, default `SunAnchor.World`):
     - `SunAnchor.World` (default) anchors the disc to the WORLD-space sun direction with a true point-at-infinity
       projection (rotate the world sun direction into view space, project through the camera projection,

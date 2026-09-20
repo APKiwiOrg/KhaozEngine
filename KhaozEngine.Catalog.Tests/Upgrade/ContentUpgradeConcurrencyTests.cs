@@ -79,10 +79,13 @@ public sealed class ContentUpgradeConcurrencyTests
             UpgradeFixtures.Row(UpgradeFixtures.Other, 1, "new_row", 22),
             UpgradeFixtures.Row(UpgradeFixtures.Other, 2, "second_new_row", 33));
         return new ContentUpgradeSet(
-            UpgradeFixtures.AddsByKey(
-                UpgradeHarness.FirstId, 1, target, UpgradeFixtures.Other, "new_row"),
-            UpgradeFixtures.AddsByKey(
-                UpgradeHarness.SecondId, 2, target, UpgradeFixtures.Other, "second_new_row"));
+            UpgradeFixtures.Adds(
+                UpgradeHarness.FirstId, 1, target, UpgradeFixtures.Identity(UpgradeFixtures.Other, "new_row")),
+            UpgradeFixtures.Adds(
+                UpgradeHarness.SecondId,
+                2,
+                target,
+                UpgradeFixtures.Identity(UpgradeFixtures.Other, "second_new_row")));
     }
 
     /// <summary>
@@ -111,7 +114,16 @@ public sealed class ContentUpgradeConcurrencyTests
 
         // A failure path that left a draft behind would refuse every later edit and wedge the catalog.
         Assert.Null(await store.GetOpenDraftAsync());
-        Assert.Equal(2, (await store.ListRowsAsync(UpgradeFixtures.Other, 0, null, false, 0, 50)).Total);
+
+        // EXACTLY the committed ids, under contention. A losing runner's prepare still advanced the id mark
+        // durably before it was refused, so ids that came from the allocator could not hold this. They come
+        // from the committed bundle instead, so they do.
+        ContentRowPage rows = await store.ListRowsAsync(UpgradeFixtures.Other, 0, null, false, 0, 50);
+        Assert.Equal(2, rows.Total);
+        Assert.Equal(1, rows.Rows[0].Id);
+        Assert.Equal("new_row", rows.Rows[0].Key.ToString());
+        Assert.Equal(2, rows.Rows[1].Id);
+        Assert.Equal("second_new_row", rows.Rows[1].Key.ToString());
     }
 
     static string Describe(int iteration, IReadOnlyList<ContentUpgradeReport> reports)

@@ -346,4 +346,44 @@ public sealed class SqlServerContentAuthoringStoreConformanceTests : ContentAuth
     [CatalogSqlServerFact]
     public override Task TheUpgradeRunnerRefusesWhileAnOperatorDraftIsOpen()
         => base.TheUpgradeRunnerRefusesWhileAnOperatorDraftIsOpen();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task ACarriedAddIntoAPopulatedCatalogPublishesUnderExactlyThatId()
+        => base.ACarriedAddIntoAPopulatedCatalogPublishesUnderExactlyThatId();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task ACarriedAddUnderABurntIdIsAcceptedAndPublishesUnderIt()
+        => base.ACarriedAddUnderABurntIdIsAcceptedAndPublishesUnderIt();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task ADraftHoldingACarriedAddReadsBackWithItsIdIntact()
+        => base.ADraftHoldingACarriedAddReadsBackWithItsIdIntact();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task ACarriedAddOnALiveRowsIdIsRefusedAndChangesNothing()
+        => base.ACarriedAddOnALiveRowsIdIsRefusedAndChangesNothing();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task ACarriedAddOnARetiredRowsIdIsRefusedAndChangesNothing()
+        => base.ACarriedAddOnARetiredRowsIdIsRefusedAndChangesNothing();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task TwoCarriedAddsOfOneIdInOneDraftAreRefusedAndChangeNothing()
+        => base.TwoCarriedAddsOfOneIdInOneDraftAreRefusedAndChangeNothing();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task ACarriedAddOverTheTypesCeilingIsRefusedAndChangesNothing()
+        => base.ACarriedAddOverTheTypesCeilingIsRefusedAndChangesNothing();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task ACarriedAddInsideAFamilysBlockNamingNoFamilyIsRefusedAndChangesNothing()
+        => base.ACarriedAddInsideAFamilysBlockNamingNoFamilyIsRefusedAndChangesNothing();
 }

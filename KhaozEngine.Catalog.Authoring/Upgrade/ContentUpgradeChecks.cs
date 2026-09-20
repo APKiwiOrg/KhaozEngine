@@ -136,39 +136,50 @@ public static class ContentUpgradeChecks
     }
 
     /// <summary>
-    /// Plain id allocation will issue EXACTLY the committed ids. For each type the additions span, the ids
-    /// have to be contiguous and to start one past the type's current highest row id, because the allocator
-    /// issues from a counter and an upgrade that guessed wrong would file the new rows under ids the
-    /// committed bundle names other rows by.
+    /// Every committed identity the plan would add is FREE: the catalog holds neither the id nor the key,
+    /// and the id is within the type's declared ceiling.
     /// <para>
-    /// A type with id FAMILIES is refused outright. A family allocates from aligned blocks rather than from
-    /// the plain counter, so nothing here can prove which id a family member would be issued.
+    /// <b>It asks whether the id can be WRITTEN, not what an allocator would issue.</b> An upgrade emits its
+    /// adds carrying the committed ids, so nothing here has to predict a counter. Predicting one was wrong as
+    /// well as unnecessary: a publish refused after step 3 burns the ids it reserved, reserve before issue
+    /// working as designed, so a long-lived catalog's marks sit above its highest row id after a single
+    /// failed operator publish and a prediction from the rows would pass while the publish issued higher
+    /// numbers.
+    /// </para>
+    /// <para>
+    /// A type with id FAMILIES is still refused outright. A family's members come from its aligned blocks and
+    /// a planner that added one from the committed bundle alone would have to reproduce the block layout as
+    /// well as the id, which nothing here is given.
     /// </para>
     /// </summary>
     /// <param name="baseline">The catalog as it stands.</param>
     /// <param name="additions">The committed rows the plan would add, each carrying its stable id.</param>
-    /// <returns>The refusal naming the type and the numbers, or null when every type would allocate exactly.</returns>
+    /// <param name="registry">This build's registry, which declares each type's id ceiling.</param>
+    /// <returns>The refusal naming the identity, or null when every one of them is free.</returns>
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
-    public static string? AllocationIssuesExactly(
+    public static string? IdentityIsFree(
         ContentBundle baseline,
-        IReadOnlyList<ContentBundleRow> additions)
+        IReadOnlyList<ContentBundleRow> additions,
+        ContentTypeRegistry registry)
     {
         ArgumentNullException.ThrowIfNull(baseline);
         ArgumentNullException.ThrowIfNull(additions);
+        ArgumentNullException.ThrowIfNull(registry);
 
-        var seen = new HashSet<ushort>();
+        var checkedTypes = new HashSet<ushort>();
         for (int i = 0; i < additions.Count; i++)
         {
-            ContentTypeId type = additions[i].Type;
-            if (!seen.Add(type.Value))
-            {
-                continue;
-            }
-
-            string? refusal = AllocationForType(baseline, additions, type);
+            ContentBundleRow row = additions[i];
+            string? refusal = IsFree(baseline, row, registry);
             if (refusal is not null)
             {
                 return refusal;
+            }
+
+            if (checkedTypes.Add(row.Type.Value) && HasFamilies(baseline, row.Type))
+            {
+                return FormattableString.Invariant(
+                    $"Type {TypeName(registry, row.Type)} has id families, and a family's members come from its aligned blocks, so an upgrade will not add a row to it.");
             }
         }
 
@@ -229,59 +240,54 @@ public static class ContentUpgradeChecks
             : type.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
     }
 
-    static string? AllocationForType(
-        ContentBundle baseline,
-        IReadOnlyList<ContentBundleRow> additions,
-        ContentTypeId type)
+    /// <summary>
+    /// One committed row's id and key against the catalog and against the type's ceiling. The id half and
+    /// the key half are asked separately, because a catalog that holds one and not the other is a half
+    /// applied upgrade and the refusal has to say which half it found.
+    /// </summary>
+    static string? IsFree(ContentBundle baseline, ContentBundleRow row, ContentTypeRegistry registry)
     {
-        int first = int.MaxValue;
-        int last = 0;
-        int count = 0;
-        for (int i = 0; i < additions.Count; i++)
-        {
-            ContentBundleRow row = additions[i];
-            if (row.Type.Value != type.Value)
-            {
-                continue;
-            }
-
-            if (row.Id is not int id)
-            {
-                return FormattableString.Invariant(
-                    $"Committed row type {type.Value} '{row.Key}' does not carry its stable id, so allocation cannot be proved.");
-            }
-
-            first = Math.Min(first, id);
-            last = Math.Max(last, id);
-            count++;
-        }
-
-        int existingMax = 0;
-        for (int i = 0; i < baseline.Rows.Count; i++)
-        {
-            ContentBundleRow row = baseline.Rows[i];
-            if (row.Type.Value == type.Value && row.Id is int id && id > existingMax)
-            {
-                existingMax = id;
-            }
-        }
-
-        if (existingMax != first - 1 || last - first + 1 != count)
+        string type = TypeName(registry, row.Type);
+        if (row.Id is not int id)
         {
             return FormattableString.Invariant(
-                $"Type {type.Value} cannot allocate the committed ids {first} through {last}. Its current highest row id is {existingMax}.");
+                $"Committed row {type} '{row.Key}' does not carry its stable id, so an upgrade cannot add it under the id the build names it by.");
         }
 
+        if (FindById(baseline, row.Type, id) is ContentBundleRow held)
+        {
+            return FormattableString.Invariant(
+                $"The catalog already holds {type} id {id} as '{held.Key}', so the committed row '{row.Key}' cannot be added under it. An id is never reused.");
+        }
+
+        if (FindByKey(baseline, row.Type, row.Key) is ContentBundleRow byKey)
+        {
+            return FormattableString.Invariant(
+                $"The catalog already holds {type} '{row.Key}' as id {Describe(byKey.Id)}, and the committed bundle names it {id}, so this upgrade will not add it.");
+        }
+
+        if (registry.TryGet(row.Type, out ContentTypeRegistration? registration)
+            && registration.MaxDefinitionId is int ceiling
+            && id > ceiling)
+        {
+            return FormattableString.Invariant(
+                $"Committed row {type} '{row.Key}' carries id {id}, over the ceiling of {ceiling} that type declares, so it cannot be written at all.");
+        }
+
+        return null;
+    }
+
+    static bool HasFamilies(ContentBundle baseline, ContentTypeId type)
+    {
         for (int i = 0; i < baseline.Families.Count; i++)
         {
             if (baseline.Families[i].Type.Value == type.Value)
             {
-                return FormattableString.Invariant(
-                    $"Type {type.Value} has id families, so plain allocation cannot be proved to issue the committed ids {first} through {last}.");
+                return true;
             }
         }
 
-        return null;
+        return false;
     }
 
     static ContentBundleType? TypeOf(ContentBundle bundle, ContentTypeId type)

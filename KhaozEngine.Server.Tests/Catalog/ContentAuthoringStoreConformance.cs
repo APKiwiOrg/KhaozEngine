@@ -40,10 +40,14 @@ public readonly record struct CatalogPointerLook(int ActiveVersion, bool Version
 public abstract partial class ContentAuthoringStoreConformance
 {
     /// <summary>The registry every store in one test instance is opened over. Per instance, never ambient.</summary>
-    protected ContentTypeRegistry Registry { get; } = CatalogFixtures.Registry(CatalogFixtures.ThingSpec);
+    protected ContentTypeRegistry Registry { get; } =
+        CatalogFixtures.Registry(CatalogFixtures.ThingSpec, CatalogFixtures.CappedSpec);
 
     /// <summary>The fixture type as a type id, which is what every seam member takes.</summary>
     protected static ContentTypeId Thing => CatalogFixtures.Thing;
+
+    /// <summary>The type that declares an id CEILING, which only the carried-id facts put a row on.</summary>
+    protected static ContentTypeId Capped => CatalogFixtures.Capped;
 
     /// <summary>The migration a schema refusal names, which is per provider and identical in both so far.</summary>
     protected virtual string RequiredMigration => "catalog-v2-content-upgrade-ledger";

@@ -226,10 +226,11 @@ public sealed class ContentUpgradePlanBuilder
         var lines = new List<string>(_additions.Count + _lines.Count);
         if (_additions.Count > 0)
         {
-            string? allocation = ContentUpgradeChecks.AllocationIssuesExactly(_context.Baseline, _additions);
-            if (allocation is not null)
+            string? occupied = ContentUpgradeChecks.IdentityIsFree(
+                _context.Baseline, _additions, _context.Registry);
+            if (occupied is not null)
             {
-                return ContentUpgradePlan.Refused(allocation);
+                return ContentUpgradePlan.Refused(occupied);
             }
 
             _additions.Sort(static (left, right) => left.Type.Value != right.Type.Value
@@ -238,10 +239,16 @@ public sealed class ContentUpgradePlanBuilder
             for (int i = 0; i < _additions.Count; i++)
             {
                 ContentBundleRow row = _additions[i];
-                edits.Add(ContentEdit.Add(row.Type, row.Key, row.Fields));
 
-                // The id is never null here: AllocationIssuesExactly above refuses a committed row that does
-                // not carry its stable id, so the line below always names a real number.
+                // The add CARRIES the committed id rather than leaving it to the allocator. Nothing else
+                // makes the published id the one the build names the row by: the allocator issues from a
+                // durable mark that sits above the highest row id whenever a publish was refused after step
+                // 3, and a row filed under a number a code constant does not name is a stable-id violation
+                // nothing detects afterwards.
+                //
+                // The id is never null here: IdentityIsFree above refuses a committed row that does not carry
+                // its stable id, so both the edit and the line below name a real number.
+                edits.Add(ContentEdit.Import(row.Type, row.Id ?? 0, row.Key, row.Fields));
                 lines.Add(FormattableString.Invariant(
                     $"add {TypeName(row.Type)} {row.Id} '{row.Key}'"));
             }

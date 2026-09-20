@@ -114,38 +114,6 @@ internal static class UpgradeFixtures
             "adds " + string.Join(", ", KeysOf(identities)),
             context => new ContentUpgradePlanBuilder(context, target).AddRows(identities).Build());
 
-    /// <summary>
-    /// A definition whose planner detects by KEY alone and lets the allocator issue whatever id it issues.
-    /// <para>
-    /// It exists for the concurrency suite. The ordinary builder also proves that plain allocation will issue
-    /// exactly the committed ids, and that property cannot survive a rival publisher: a prepare that is later
-    /// refused still advances the id mark durably, which is reserve-before-issue working as designed. Mixing
-    /// the two claims in one test would report an id-allocation fact as a concurrency failure, so the race
-    /// uses a planner that makes only the claim under test.
-    /// </para>
-    /// </summary>
-    /// <param name="id">The definition's stable id.</param>
-    /// <param name="order">The definition's order.</param>
-    /// <param name="target">The committed target bundle.</param>
-    /// <param name="type">The content type the row belongs to.</param>
-    /// <param name="key">The row's key.</param>
-    public static ContentUpgradeDefinition AddsByKey(
-        string id,
-        int order,
-        ContentBundle target,
-        ContentTypeId type,
-        string key)
-        => new(id, order, "adds " + key, context =>
-        {
-            ContentBundleRow row = ContentUpgradeChecks.FindByKey(target, type, new ContentKey(key))
-                ?? throw new InvalidOperationException("The fixture target carries the row.");
-            return ContentUpgradeChecks.FindByKey(context.Baseline, type, new ContentKey(key)) is not null
-                ? ContentUpgradePlan.AlreadySatisfied("the catalog already carries '" + key + "'.")
-                : ContentUpgradePlan.Changes(
-                    [ContentEdit.Add(type, row.Key, row.Fields)],
-                    ["add " + ContentUpgradeChecks.TypeName(context.Registry, type) + " '" + key + "'"]);
-        });
-
     /// <summary>A definition whose planner always refuses, for the refusal path.</summary>
     /// <param name="id">The definition's stable id.</param>
     /// <param name="order">The definition's order.</param>

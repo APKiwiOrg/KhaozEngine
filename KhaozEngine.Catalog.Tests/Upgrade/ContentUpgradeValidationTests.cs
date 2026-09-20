@@ -108,12 +108,13 @@ public sealed class ContentUpgradeValidationTests
     }
 
     /// <summary>
-    /// Plain allocation must issue EXACTLY the committed ids: contiguous, starting one past the type's
-    /// current highest row id. Anything else files the new rows under numbers the committed bundle names
-    /// other rows by.
+    /// The committed identity has to be FREE in the catalog, and that is the whole of the id check now the
+    /// adds carry their ids. A gap between the highest row id and the committed id is fine, deliberately:
+    /// the allocator is not consulted, and a catalog whose marks sit above its rows after a refused publish
+    /// is the ordinary state this check used to fail on.
     /// </summary>
     [Fact]
-    public void AllocationMustIssueExactlyTheCommittedIdsFromTheCurrentHighWater()
+    public void ACommittedIdentityIsFreeWhenNeitherTheIdNorTheKeyIsInTheCatalog()
     {
         ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing);
         ContentBundle baseline = UpgradeFixtures.Target(
@@ -121,20 +122,69 @@ public sealed class ContentUpgradeValidationTests
             UpgradeFixtures.Row(UpgradeFixtures.Thing, 1, "one", 1),
             UpgradeFixtures.Row(UpgradeFixtures.Thing, 2, "two", 2));
 
-        Assert.Null(ContentUpgradeChecks.AllocationIssuesExactly(
+        Assert.Null(ContentUpgradeChecks.IdentityIsFree(
             baseline,
             [
                 UpgradeFixtures.Row(UpgradeFixtures.Thing, 3, "three", 3),
                 UpgradeFixtures.Row(UpgradeFixtures.Thing, 4, "four", 4),
-            ]));
+            ],
+            registry));
 
-        // A gap: id 3 would be issued to the row committed as id 5.
-        Assert.NotNull(ContentUpgradeChecks.AllocationIssuesExactly(
-            baseline, [UpgradeFixtures.Row(UpgradeFixtures.Thing, 5, "five", 5)]));
+        // A GAP is free. The rows stop at 2 and the committed id is 500, which the old prediction refused
+        // and which a catalog that burnt ids on a refused publish reaches by ordinary means.
+        Assert.Null(ContentUpgradeChecks.IdentityIsFree(
+            baseline, [UpgradeFixtures.Row(UpgradeFixtures.Thing, 500, "five_hundred", 5)], registry));
 
-        // An id already below the high-water mark.
-        Assert.NotNull(ContentUpgradeChecks.AllocationIssuesExactly(
-            baseline, [UpgradeFixtures.Row(UpgradeFixtures.Thing, 2, "two", 2)]));
+        // The id is occupied, under another key.
+        string? occupied = ContentUpgradeChecks.IdentityIsFree(
+            baseline, [UpgradeFixtures.Row(UpgradeFixtures.Thing, 2, "not_two", 2)], registry);
+        Assert.NotNull(occupied);
+        Assert.Contains("two", occupied, StringComparison.Ordinal);
+
+        // The key is occupied, under another id.
+        Assert.NotNull(ContentUpgradeChecks.IdentityIsFree(
+            baseline, [UpgradeFixtures.Row(UpgradeFixtures.Thing, 9, "two", 2)], registry));
+    }
+
+    /// <summary>
+    /// A committed id over the type's declared CEILING is refused by the planner, because the publish could
+    /// not write it at all and a refusal an operator reads beats a finding out of the sweep.
+    /// </summary>
+    [Fact]
+    public void ACommittedIdOverTheTypesCeilingIsRefused()
+    {
+        ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.CappedThing);
+        ContentBundle baseline = UpgradeFixtures.Target(
+            registry, UpgradeFixtures.Row(UpgradeFixtures.Thing, 1, "one", 1));
+
+        string? refusal = ContentUpgradeChecks.IdentityIsFree(
+            baseline,
+            [UpgradeFixtures.Row(UpgradeFixtures.Thing, PublishFixtures.Ceiling + 1, "over", 2)],
+            registry);
+
+        Assert.NotNull(refusal);
+        Assert.Contains("ceiling", refusal, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A type with id FAMILIES is refused outright. A family's members come from aligned blocks, and a
+    /// planner reading the committed bundle alone is not given the block layout that would place one.
+    /// </summary>
+    [Fact]
+    public void ATypeWithIdFamiliesIsRefusedOutright()
+    {
+        ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing);
+        ContentBundle plain = UpgradeFixtures.Target(
+            registry, UpgradeFixtures.Row(UpgradeFixtures.Thing, 1, "one", 1));
+        var family = new ContentFamily(
+            1, UpgradeFixtures.Thing, "swords", 16, false, 1, [new ContentFamilyBlock(1, 0, 16, 16, 16, 1)]);
+        var withFamilies = new ContentBundle(
+            plain.FormatVersion, plain.StoreEpoch, plain.SourceVersion, plain.Types, plain.Rows, [family], []);
+
+        Assert.NotNull(ContentUpgradeChecks.IdentityIsFree(
+            withFamilies, [UpgradeFixtures.Row(UpgradeFixtures.Thing, 40, "forty", 2)], registry));
+        Assert.Null(ContentUpgradeChecks.IdentityIsFree(
+            plain, [UpgradeFixtures.Row(UpgradeFixtures.Thing, 40, "forty", 2)], registry));
     }
 
     /// <summary>

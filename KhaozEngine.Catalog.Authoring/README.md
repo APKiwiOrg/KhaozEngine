@@ -215,10 +215,19 @@ a publish is the state the marker describes. Call `ClearDraftFreezeAsync` when s
 ### Ids come from the edit, not from the caller
 
 There is ONE allocation path with two sources, and which one runs is a property of the edit. An `Add` with
-`definition_id` 0 is allocated one, an `Add` carrying a non-zero id keeps it, and only a bulk import into an
-empty database writes the second kind. After every add has an id, the high-water marks are SEEDED from the
-largest carried id per type, so the first ordinary add after an import does not allocate id 1 straight onto
-an imported row. `ContentIdAllocationRecord.Seeds` is empty for an ordinary publish.
+`definition_id` 0 is allocated one, an `Add` carrying a non-zero id keeps it, and two paths write the second
+kind and no others: a bulk import into an empty database, and a content upgrade adding a row the committed
+bundle already names by id. Both carry the number because a game states a definition id as a code constant,
+and the allocator's durable mark sits above the highest row id whenever an earlier publish was refused after
+it reserved. After every add has an id, the high-water marks are SEEDED from the largest carried id per type,
+so the first ordinary add after one of those does not allocate id 1 straight onto a row that already holds
+it. `ContentIdAllocationRecord.Seeds` is empty for an ordinary publish.
+
+A carried id is checked before the candidate is built, because step 3's seeding commits on its own and a
+refusal after it would leave the marks raised for a version nobody published. The publish refuses a carried
+id that a live or retired row already holds, one a second add in the same draft names, one over the type's
+declared ceiling, and one that disagrees with the type's family blocks, under `KEC0036`, `KEC0042` and
+`KEC0037`.
 
 Allocation runs BEFORE validation, because `KEC0006` resolves references and `KEC0010` asks about family
 membership, and neither can be asked of a row whose id does not exist yet.

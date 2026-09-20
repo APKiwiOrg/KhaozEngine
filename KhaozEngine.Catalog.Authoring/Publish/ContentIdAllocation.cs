@@ -50,9 +50,10 @@ static class ContentIdAllocation
             ContentTypeId type = row.Registration.Type;
             if (!row.NeedsId)
             {
-                // Branch 1: the edit CARRIED the id, which only a bulk import into an empty database
-                // writes. Carrying it is what makes an adoption a no-op for stored player data, where
-                // ordering alone would not preserve a single one.
+                // Branch 1: the edit CARRIED the id, which a bulk import and a content upgrade write and no
+                // other path does. Carrying it is what makes an adoption a no-op for stored player data,
+                // where ordering alone would not preserve a single one, and what makes an upgrade's rows
+                // land under the numbers the committed bundle names them by.
                 carried[type.Value] = carried.TryGetValue(type.Value, out int held)
                     ? Math.Max(held, row.DefinitionId)
                     : row.DefinitionId;

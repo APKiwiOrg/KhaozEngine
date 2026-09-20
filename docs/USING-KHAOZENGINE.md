@@ -3878,7 +3878,10 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
   - Gradient: `Sky.HorizonColor` (bottom of the sky) and `Sky.ZenithColor` (top); the gradient is vertical in screen
     space, so it reads correctly under BOTH the orthographic `IsoCamera3D` (where all view rays are parallel) and the
     perspective `FollowCamera3D`.
-  - Sun: `Sky.SunEnabled` (default `true`; `false` = plain overcast gradient), `Sky.SunColor`, `Sky.SunRadius`
+  - Sun: `Sky.SunEnabled` (default `true`, and `false` gives a plain overcast gradient), `Sky.SunColor` (alpha is the
+    disc + halo opacity: the sky replace-blends toward this colour, so fade a body by lowering alpha, never by
+    darkening the RGB, which paints a dark disc. `SunCycle` fades its discs this way and the water's reflected
+    sun follows the same alpha), `Sky.SunRadius`
     (screen-space, NDC-y units - the vertical half-screen is `1.0`), `Sky.HaloStrength` (0 = disc only) and
     `Sky.HaloFalloff` (halo width). **The sun direction defaults to the key light** (`Post.LightDirection`): the disc
     sits where the light comes from, so the sky and the scene lighting agree and the sun lands on the opposite screen
@@ -6774,7 +6777,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="19.9.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="19.9.1" />
 ```
 
 ```csharp
@@ -12987,7 +12990,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="19.9.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="19.9.1" />
 ```
 
 ```csharp
@@ -13023,7 +13026,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="19.9.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="19.9.1" />
 ```
 
 ```csharp
@@ -13265,7 +13268,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="19.9.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="19.9.1" />
 ```
 
 ```csharp
@@ -16365,7 +16368,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="19.9.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="19.9.1" />
 </ItemGroup>
 ```
 

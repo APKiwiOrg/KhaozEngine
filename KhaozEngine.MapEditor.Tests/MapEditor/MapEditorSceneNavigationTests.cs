@@ -1,8 +1,11 @@
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using KhaozEngine.Game;
+using KhaozEngine.Gui;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapEditor;
+using KhaozEngine.Primitives;
 using KhaozEngine.Terrain;
 using KhaozEngine.Windowing;
 using Xunit;
@@ -121,6 +124,42 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.Equal(beforeHash, MapDocumentHash.OfWorld(scene.Document.Doc));
             Assert.Empty(scene.Document.Doc.Spawns);
             Assert.False(scene.Document.History.CanUndo);
+        }
+
+        [Theory]
+        [InlineData(MouseButton.Middle)]
+        [InlineData(MouseButton.Right)]
+        public void NavigationCaptureBlocksInspectorScrubUntilFreshPointerGesture(MouseButton navigationButton)
+        {
+            (NavigationScene scene, SceneManager manager, Pointer pointer) = PushScene();
+            scene.Document.Selection.Set(SelectionKind.Placement, "focus-me");
+            Vector2 viewportPoint = new(480f, 270f);
+            Step(manager, pointer, Frame(viewportPoint));
+
+            int xIndex = scene.Inspector.Rows.FindIndex(row => row is FloatRow && row.Label.Resolve() == "X");
+            Rect xCell = scene.Inspector.RowEditorBounds(xIndex);
+            Vector2 xField = new(xCell.X + xCell.Width * 0.5f, xCell.Y + xCell.Height * 0.5f);
+            float beforeX = scene.Document.Doc.Placements.Single(p => p.Id == "focus-me").X;
+            string beforeHash = MapDocumentHash.OfWorld(scene.Document.Doc);
+
+            Step(manager, pointer, Frame(viewportPoint, new[] { navigationButton }));
+            Step(manager, pointer, Frame(xField, new[] { navigationButton, MouseButton.Left }));
+            Step(manager, pointer, Frame(xField + new Vector2(20f, 0f),
+                new[] { navigationButton, MouseButton.Left }));
+            Step(manager, pointer, Frame(xField + new Vector2(40f, 0f), new[] { MouseButton.Left }));
+            Step(manager, pointer, Frame(xField));
+
+            Assert.Equal(beforeX, scene.Document.Doc.Placements.Single(p => p.Id == "focus-me").X);
+            Assert.Equal(beforeHash, MapDocumentHash.OfWorld(scene.Document.Doc));
+            Assert.False(scene.Document.History.CanUndo);
+
+            Step(manager, pointer, Frame(xField, new[] { MouseButton.Left }));
+            Step(manager, pointer, Frame(xField + new Vector2(20f, 0f), new[] { MouseButton.Left }));
+            Step(manager, pointer, Frame(xField + new Vector2(20f, 0f)));
+
+            Assert.NotEqual(beforeX, scene.Document.Doc.Placements.Single(p => p.Id == "focus-me").X);
+            Assert.NotEqual(beforeHash, MapDocumentHash.OfWorld(scene.Document.Doc));
+            Assert.True(scene.Document.History.CanUndo);
         }
 
         [Fact]

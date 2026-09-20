@@ -21,6 +21,7 @@ internal static class MapEditorStrings
     public static readonly StringId TerrainOnly = new("mapeditor.view.terrain_only");
     public static readonly StringId ShowAll = new("mapeditor.view.show_all");
     public static readonly StringId PropCategories = new("mapeditor.view.prop_categories");
+    public static readonly StringId AuthoredProps = new("mapeditor.view.authored_props");
     public static readonly StringId OtherProps = new("mapeditor.view.other_props");
     public static readonly StringId Trees = new("mapeditor.view.trees");
     public static readonly StringId Rocks = new("mapeditor.view.rocks");
@@ -58,6 +59,7 @@ internal static class MapEditorStrings
         ["mapeditor.view.terrain_only"] = "Terrain Only",
         ["mapeditor.view.show_all"] = "Show All",
         ["mapeditor.view.prop_categories"] = "Props",
+        ["mapeditor.view.authored_props"] = "Authored props",
         ["mapeditor.view.other_props"] = "Other props",
         ["mapeditor.view.trees"] = "Trees",
         ["mapeditor.view.rocks"] = "Rocks",

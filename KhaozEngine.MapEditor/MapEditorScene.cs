@@ -607,7 +607,7 @@ public partial class MapEditorScene : GameScene, IGameScene3D
     {
         UiViewport? ui = Manager!.UiViewport;
         if (ui is null) return;
-        _ui.Update(Manager.Input, ui);
+        UpdateGuiInput(ui);
         ChromeLayout L = ComputeLayout(ui.Width, ui.Height);
 
         (Rect tabsRect, Rect viewRect, Rect saveRect) = SplitToolbar(L.Toolbar);

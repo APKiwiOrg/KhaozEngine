@@ -29,6 +29,7 @@ namespace KhaozEngine.Windowing
 
         readonly Pointer _pointer = new();
         InputState _input = InputState.Empty;
+        bool _pointerInputSuppressed;
 
         // Previous/current left-stick deflection per player, for edge-detected menu up/down.
         readonly bool[] _stickUpNow = new bool[MaxPlayers];
@@ -55,6 +56,7 @@ namespace KhaozEngine.Windowing
         public void Update(InputState input, IDesignViewport? viewport = null)
         {
             _input = input;
+            _pointerInputSuppressed = false;
             _pointer.Update(input, viewport);
 
             for (int i = 0; i < MaxPlayers; i++)
@@ -65,6 +67,14 @@ namespace KhaozEngine.Windowing
                 _stickUpNow[i] = s.Y > StickThreshold;     // +Y = up (stick pushed up)
                 _stickDownNow[i] = s.Y < -StickThreshold;
             }
+        }
+
+        /// <summary>Suppress mouse buttons and wheel input for the rest of this frame. Held buttons stay ignored
+        /// until physically released. Keyboard and gamepad input remain available.</summary>
+        public void SuppressPointerInput()
+        {
+            _pointerInputSuppressed = true;
+            _pointer.SuppressButtonsUntilRelease();
         }
 
         // ---- pointer (delegates to the composed Pointer) --------------------
@@ -114,15 +124,15 @@ namespace KhaozEngine.Windowing
         // ---- scroll wheel ---------------------------------------------------
 
         /// <summary>Raw scroll-wheel delta this frame (positive = up).</summary>
-        public float ScrollDelta => _input.ScrollDelta;
+        public float ScrollDelta => _pointerInputSuppressed ? 0f : _input.ScrollDelta;
         /// <summary>Integer scroll-notch delta this frame when the pointer is over <paramref name="bounds"/>, else 0.
         /// Scopes wheel scrolling to a region (e.g. a scrollable panel) using the bounds helpers rather than a raw
         /// position check.</summary>
         public int GetScrollIn(Rect bounds) => IsPointerIn(bounds) ? (int)MathF.Round(ScrollDelta) : 0;
         /// <summary>True this frame if the scroll wheel moved up.</summary>
-        public bool IsMouseWheelScrolledUp => _input.ScrollDelta > 0f;
+        public bool IsMouseWheelScrolledUp => ScrollDelta > 0f;
         /// <summary>True this frame if the scroll wheel moved down.</summary>
-        public bool IsMouseWheelScrolledDown => _input.ScrollDelta < 0f;
+        public bool IsMouseWheelScrolledDown => ScrollDelta < 0f;
 
         // ---- keyboard / gamepad edges --------------------------------------
 

@@ -19,6 +19,7 @@ namespace KhaozEngine.Windowing
     {
         readonly List<Rect> _blocked = new();
         bool _down, _wasDown, _mid, _wasMid, _right, _wasRight;
+        bool _ignoreLeftUntilReleased, _ignoreMiddleUntilReleased, _ignoreRightUntilReleased;
         bool _consumed;   // current LEFT gesture claimed by a consumer; reset on the next fresh left press
         bool _rightConsumed;   // the same latch for the RIGHT gesture, tracked separately (see ConsumeRightGesture)
         bool _focused = true;   // OS window focus, from InputState.WindowFocused; windows start focused
@@ -107,10 +108,25 @@ namespace KhaozEngine.Windowing
             // inWindow)" reads as already latched, so ignore inWindow, or not latched, so this is a
             // fresh transition and inWindow must gate it.
             bool leftHeld = input.IsDown(MouseButton.Left);
+            if (_ignoreLeftUntilReleased)
+            {
+                if (!leftHeld) _ignoreLeftUntilReleased = false;
+                leftHeld = false;
+            }
             _down = leftHeld && (_wasDown || inWindow);
             bool midHeld = input.IsDown(MouseButton.Middle);
+            if (_ignoreMiddleUntilReleased)
+            {
+                if (!midHeld) _ignoreMiddleUntilReleased = false;
+                midHeld = false;
+            }
             _mid = midHeld && (_wasMid || inWindow);
             bool rightHeld = input.IsDown(MouseButton.Right);
+            if (_ignoreRightUntilReleased)
+            {
+                if (!rightHeld) _ignoreRightUntilReleased = false;
+                rightHeld = false;
+            }
             _right = rightHeld && (_wasRight || inWindow);
 
             // A tap whose press AND release both landed inside a single frame leaves the button already up by
@@ -124,11 +140,14 @@ namespace KhaozEngine.Windowing
             // Additive on purpose. A producer that never fills MousePressed (a replay, a synthesized headless
             // frame, a game's own test rig) reads exactly as it did before, so nothing here tightens the
             // contract Pointer places on InputState. See KhaozEngine#300.
-            bool leftTapped = !_down && !_wasDown && inWindow && input.WasPressed(MouseButton.Left);
+            bool leftTapped = !_ignoreLeftUntilReleased
+                && !_down && !_wasDown && inWindow && input.WasPressed(MouseButton.Left);
             if (leftTapped) _wasDown = true;
-            bool midTapped = !_mid && !_wasMid && inWindow && input.WasPressed(MouseButton.Middle);
+            bool midTapped = !_ignoreMiddleUntilReleased
+                && !_mid && !_wasMid && inWindow && input.WasPressed(MouseButton.Middle);
             if (midTapped) _wasMid = true;
-            bool rightTapped = !_right && !_wasRight && inWindow && input.WasPressed(MouseButton.Right);
+            bool rightTapped = !_ignoreRightUntilReleased
+                && !_right && !_wasRight && inWindow && input.WasPressed(MouseButton.Right);
             if (rightTapped) _wasRight = true;
 
             // A fresh press starts a fresh, unconsumed gesture, and a same-frame tap is a fresh press that also
@@ -139,6 +158,17 @@ namespace KhaozEngine.Windowing
             _pressOriginFresh = IsJustPressed || leftTapped;
             if (_pressOriginFresh) { _pressOrigin = _pos; _consumed = false; }
             if (IsRightJustPressed || rightTapped) { _rightPressOrigin = _pos; _rightConsumed = false; }
+        }
+
+        /// <summary>Suppress every mouse-button gesture currently in flight and ignore each held button until its
+        /// physical release. Position and hover remain live for normal layout and feedback.</summary>
+        internal void SuppressButtonsUntilRelease()
+        {
+            _ignoreLeftUntilReleased |= _down || _wasDown;
+            _ignoreMiddleUntilReleased |= _mid || _wasMid;
+            _ignoreRightUntilReleased |= _right || _wasRight;
+            _down = _wasDown = _mid = _wasMid = _right = _wasRight = false;
+            _pressOriginFresh = false;
         }
 
         /// <summary>Reserve a region for an overlay this frame; the layer beneath checks <see cref="IsBlocked"/>. Cleared each <see cref="Update(KhaozEngine.Windowing.InputState)"/>.</summary>

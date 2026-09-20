@@ -643,7 +643,8 @@ writes straight to `EditorVisibility`, never through `EditorDocument.Execute`, s
 dirties the document (no leading `*` in the status strip) and never lands an undo step.
 
 The toolbar's persistent **View** button opens a floating `EditorViewPanel` without replacing the selection
-or sculpt inspector. Its **Terrain Only** switch temporarily masks every non-terrain choice. Turning it off
+or sculpt inspector. Its **Authored props** switch gates all authored placements independently of the prop
+category and named scatter-layer choices. Its **Terrain Only** switch temporarily masks every non-terrain choice. Turning it off
 restores the underlying group, category, layer, and per-element choices, including choices edited while the
 mask was active. **Show All** clears every hide choice and exits Terrain Only. The panel uses localized
 `StringId` labels for fixed UI text and raw labels only for authored layer names.

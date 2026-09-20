@@ -3,6 +3,7 @@ using System.Numerics;
 using KhaozEngine.Gui;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapEditor;
+using KhaozEngine.Terrain;
 using Xunit;
 
 namespace KhaozEngine.Tests.MapEditor;
@@ -22,17 +23,24 @@ public partial class MapEditorSceneTests
             return doc;
         }, options);
         string hash = MapDocumentHash.OfWorld(scene.Document.Doc);
+        var authored = new[]
+        {
+            new EditorPlacement("oak-1", new PropPlacement("oak", 0f, 0f, 0f, 1f, 0f, 0)),
+        };
         scene.Document.Selection.Set(SelectionKind.Placement, "oak-1");
         PropertyRow inspectorRow = scene.Inspector.Rows[0];
 
         TapButton(scene.ViewPanel.Button);
         Assert.True(scene.ViewPanel.IsOpen);
         Assert.Same(inspectorRow, scene.Inspector.Rows[0]);
-        TapBool(scene.ViewPanel.Grid.Rows.OfType<BoolRow>().Single(r => r.Label.Resolve() == "Trees"));
-        TapBool(scene.ViewPanel.Grid.Rows.OfType<BoolRow>().Single(r => r.Label.Resolve() == "forest"));
+        TapBool(scene.ViewPanel.Grid.Rows.OfType<BoolRow>().Single(r => r.Label.Resolve() == "Authored props"));
 
-        Assert.False(scene.Visibility.GetCategory(EditorPropCategory.Trees));
-        Assert.False(scene.Visibility.GetLayer("forest"));
+        Assert.False(scene.Visibility.GetGroup(VisibilityGroup.Placements));
+        Assert.True(scene.Visibility.GetCategory(EditorPropCategory.Trees));
+        Assert.True(scene.Visibility.GetLayer("forest"));
+        Assert.Empty(ViewportWorld.FilterVisiblePlacements(authored, scene.Visibility));
+        Assert.False(scene.Visibility.IsElementVisible(SelectionKind.Placement, "oak-1"));
+        Assert.Equal(GizmoAffordance.None, scene.Controller.TryGizmo(out _));
         Assert.Equal(0, scene.Rebuilds);
         Assert.Equal(hash, MapDocumentHash.OfWorld(scene.Document.Doc));
         Assert.False(scene.Document.History.CanUndo);
@@ -43,6 +51,18 @@ public partial class MapEditorSceneTests
         Assert.Contains(scene.Inspector.Rows.OfType<HeaderRow>(), row => row.Label.Resolve() == "Terrain Sculpt");
         TapBool(scene.ViewPanel.Grid.Rows.OfType<BoolRow>().Single(r => r.Label.Resolve() == "Terrain Only"));
         Assert.True(scene.Visibility.TerrainOnly);
+        TapBool(scene.ViewPanel.Grid.Rows.OfType<BoolRow>().Single(r => r.Label.Resolve() == "Terrain Only"));
+        Assert.False(scene.Visibility.TerrainOnly);
+        Assert.False(scene.Visibility.GetGroup(VisibilityGroup.Placements));
+        Assert.True(scene.Visibility.GetCategory(EditorPropCategory.Trees));
+        Assert.True(scene.Visibility.GetLayer("forest"));
+
+        TapBool(scene.ViewPanel.Grid.Rows.OfType<BoolRow>().Single(r => r.Label.Resolve() == "Show All"));
+        Assert.True(scene.Visibility.GetGroup(VisibilityGroup.Placements));
+        Assert.True(scene.Visibility.GetCategory(EditorPropCategory.Trees));
+        Assert.True(scene.Visibility.GetLayer("forest"));
+        Assert.Single(ViewportWorld.FilterVisiblePlacements(authored, scene.Visibility));
+        Assert.True(scene.Visibility.IsElementVisible(SelectionKind.Placement, "oak-1"));
         Assert.Equal(hash, MapDocumentHash.OfWorld(scene.Document.Doc));
         Assert.False(scene.Document.History.CanUndo);
         Assert.Equal(0, scene.Rebuilds);

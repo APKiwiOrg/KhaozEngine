@@ -9085,7 +9085,8 @@ reorder/remove/rename commands' `IVisibilityEffect` through `EditorDocument`'s
 `CommandApplied`/`CommandRedone`/`CommandUndone` events. With
 nothing selected the inspector is the Layers panel (`MapEditorScene.BuildLayersInspector`). The toolbar's
 always-available **View** button opens the independent visibility panel while a selection inspector or terrain
-sculpt inspector remains active. **Terrain Only** is a temporary mask and restores the underlying choices when
+sculpt inspector remains active. **Authored props** gates all authored placements independently of the prop
+category and named scatter-layer choices. **Terrain Only** is a temporary mask and restores the underlying choices when
 cleared. **Show All** clears the mask and every hide override. Every element inspector also gets a per-element
 "Visible" `BoolRow`.
 A hidden element is neither drawn nor pickable from the viewport, but stays selectable from the outline tree

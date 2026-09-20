@@ -74,6 +74,7 @@ internal sealed class EditorViewPanel
         Grid.Rows.Add(new BoolRow(MapEditorStrings.Text(MapEditorStrings.ShowAll),
             () => false, value => { if (value) _visibility.ShowAll(); }));
         Grid.Rows.Add(new HeaderRow(MapEditorStrings.Text(MapEditorStrings.PropCategories)));
+        AddGroup(MapEditorStrings.AuthoredProps, VisibilityGroup.Placements);
         AddCategory(MapEditorStrings.OtherProps, EditorPropCategory.OtherProps);
         AddCategory(MapEditorStrings.Trees, EditorPropCategory.Trees);
         AddCategory(MapEditorStrings.Rocks, EditorPropCategory.Rocks);

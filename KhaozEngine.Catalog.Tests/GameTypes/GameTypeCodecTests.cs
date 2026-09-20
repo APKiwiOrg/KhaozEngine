@@ -8,20 +8,20 @@ using Xunit;
 namespace KhaozEngine.Tests.Catalog.GameTypes;
 
 /// <summary>
-/// The nine leaf codecs, registered on a real registry and round-tripped.
+/// All thirteen codecs, registered on a real registry and round-tripped.
 /// <para>
 /// Registration is half the proof: <c>RegisterContentType</c> checks a codec's written fields against the
 /// schema it was built over, checks the id against the band the caller claims and checks the chunk shape, so
 /// a type that registers here is one a game can register the same way.
 /// </para>
 /// </summary>
-public class LeafCodecTests
+public class GameTypeCodecTests
 {
     const ContentDurationUnit Ticks = ContentDurationUnit.Ticks;
 
-    /// <summary>The nine leaf types, ascending by id, each as the four things a registration needs.</summary>
+    /// <summary>All thirteen types, ascending by id, each as the four things a registration needs.</summary>
     static IEnumerable<(ushort Id, string Key, ContentFieldSchema Schema, ContentVisibility Visibility, int Slots)>
-        Leaves(ContentDurationUnit unit)
+        Types(ContentDurationUnit unit)
     {
         yield return (
             GameContentTypeIds.Food,
@@ -36,11 +36,23 @@ public class LeafCodecTests
             EquipProfileContentType.DefaultVisibility,
             EquipProfileContentType.DefaultChunkSlots);
         yield return (
+            GameContentTypeIds.EquipStatLine,
+            GameContentTypeIds.EquipStatLineKey,
+            EquipStatLineContentType.CreateSchema(),
+            EquipStatLineContentType.DefaultVisibility,
+            EquipStatLineContentType.DefaultChunkSlots);
+        yield return (
             GameContentTypeIds.Store,
             GameContentTypeIds.StoreKey,
             StoreContentType.CreateSchema(),
             StoreContentType.DefaultVisibility,
             StoreContentType.DefaultChunkSlots);
+        yield return (
+            GameContentTypeIds.StoreShelf,
+            GameContentTypeIds.StoreShelfKey,
+            StoreShelfContentType.CreateSchema(),
+            StoreShelfContentType.DefaultVisibility,
+            StoreShelfContentType.DefaultChunkSlots);
         yield return (
             GameContentTypeIds.MonsterDrop,
             GameContentTypeIds.MonsterDropKey,
@@ -59,6 +71,18 @@ public class LeafCodecTests
             RecipeContentType.CreateSchema(unit),
             RecipeContentType.DefaultVisibility,
             RecipeContentType.DefaultChunkSlots);
+        yield return (
+            GameContentTypeIds.RecipeInput,
+            GameContentTypeIds.RecipeInputKey,
+            RecipeInputContentType.CreateSchema(),
+            RecipeInputContentType.DefaultVisibility,
+            RecipeInputContentType.DefaultChunkSlots);
+        yield return (
+            GameContentTypeIds.RecipeOutput,
+            GameContentTypeIds.RecipeOutputKey,
+            RecipeOutputContentType.CreateSchema(),
+            RecipeOutputContentType.DefaultVisibility,
+            RecipeOutputContentType.DefaultChunkSlots);
         yield return (
             GameContentTypeIds.ToolTier,
             GameContentTypeIds.ToolTierKey,
@@ -86,10 +110,14 @@ public class LeafCodecTests
         {
             GameContentTypeIds.FoodKey => new FoodContentType.Codec(type, schema),
             GameContentTypeIds.EquipProfileKey => new EquipProfileContentType.Codec(type, schema),
+            GameContentTypeIds.EquipStatLineKey => new EquipStatLineContentType.Codec(type, schema),
             GameContentTypeIds.StoreKey => new StoreContentType.Codec(type, schema),
+            GameContentTypeIds.StoreShelfKey => new StoreShelfContentType.Codec(type, schema),
             GameContentTypeIds.MonsterDropKey => new MonsterDropContentType.Codec(type, schema),
             GameContentTypeIds.GatheringNodeKey => new GatheringNodeContentType.Codec(type, schema),
             GameContentTypeIds.RecipeKey => new RecipeContentType.Codec(type, schema),
+            GameContentTypeIds.RecipeInputKey => new RecipeInputContentType.Codec(type, schema),
+            GameContentTypeIds.RecipeOutputKey => new RecipeOutputContentType.Codec(type, schema),
             GameContentTypeIds.ToolTierKey => new ToolTierContentType.Codec(type, schema),
             GameContentTypeIds.SkillCurveKey => new SkillCurveContentType.Codec(type, schema),
             _ => new GameTuningContentType.Codec(type, schema),
@@ -101,7 +129,7 @@ public class LeafCodecTests
         var registry = new ContentTypeRegistry();
         EngineContentTypes.Register(registry);
         foreach ((ushort id, string key, ContentFieldSchema schema, ContentVisibility visibility, int slots)
-            in Leaves(unit))
+            in Types(unit))
         {
             registry.RegisterContentType(
                 ContentRegistrationBand.Game,
@@ -120,7 +148,7 @@ public class LeafCodecTests
     [Theory]
     [InlineData(ContentDurationUnit.Ticks)]
     [InlineData(ContentDurationUnit.Seconds)]
-    public void TheNineRegisterInTheGameBandUnderEitherUnit(ContentDurationUnit unit)
+    public void TheThirteenRegisterInTheGameBandUnderEitherUnit(ContentDurationUnit unit)
     {
         ContentTypeRegistry registry = Registered(unit);
 
@@ -129,10 +157,14 @@ public class LeafCodecTests
             {
                 (1024, "food"),
                 (1025, "equip_profile"),
+                (1026, "equip_stat_line"),
                 (1027, "store"),
+                (1028, "store_shelf"),
                 (1029, "monster_drop"),
                 (1030, "gathering_node"),
                 (1031, "recipe"),
+                (1032, "recipe_input"),
+                (1033, "recipe_output"),
                 (1034, "tool_tier"),
                 (1035, "skill_curve"),
                 (1036, "game_tuning"),
@@ -146,7 +178,7 @@ public class LeafCodecTests
     [Theory]
     [InlineData(ContentDurationUnit.Ticks)]
     [InlineData(ContentDurationUnit.Seconds)]
-    public void EveryLeafRowRoundTrips(ContentDurationUnit unit)
+    public void EveryRowRoundTrips(ContentDurationUnit unit)
     {
         ContentTypeRegistry registry = Registered(unit);
 

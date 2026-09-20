@@ -15364,9 +15364,14 @@ REFUSAL naming both rather than a -1 a caller reads as zero. On a server that ru
 open, so a publish that moved a field stops the boot rather than pricing a world at nothing and carrying on.
 
 `GameContentFindings` is the `KGT` finding-code table, banded by content type a hundred to a band with 1300
-for the cross-type sweep. A code is a stable token a counter, a test and a runbook key on, and it is never
-reused and never renumbered. The engine folds a game-band finding into `KEC0040` and puts the `KGT` code in
-the message text, so that is what an operator reads off a refused publish.
+held for a cross-type sweep. A code is a stable token a counter, a test and a runbook key on, and it is never
+reused and never renumbered, which is why the whole table is written down before the rules that emit the
+codes. The engine folds a game-band finding into `KEC0040` and puts the `KGT` code in the message text, so
+that is what an operator reads off a refused publish.
+
+**What the package carries today is the thirteen types as schemas, codecs and registration, plus that code
+table and `ContentDurationUnit`. There are no validators and no cross-type sweep yet**, so a game passes its
+own validator to `Register` or passes null.
 
 `KhaozEngine.Catalog.GameTypes/README.md` is the API reference, type by type.
 

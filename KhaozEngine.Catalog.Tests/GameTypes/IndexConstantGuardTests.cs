@@ -48,6 +48,17 @@ public class IndexConstantGuardTests
             ]);
 
         yield return new TypeIndexes(
+            GameContentTypeIds.EquipStatLineKey,
+            EquipStatLineContentType.CreateSchema(),
+            EquipStatLineContentType.FieldCount,
+            [
+                (EquipStatLineContentType.ProfileField, EquipStatLineContentType.ProfileIndex),
+                (EquipStatLineContentType.StatField, EquipStatLineContentType.StatIndex),
+                (EquipStatLineContentType.ValueField, EquipStatLineContentType.ValueIndex),
+                (EquipStatLineContentType.SortField, EquipStatLineContentType.SortIndex),
+            ]);
+
+        yield return new TypeIndexes(
             GameContentTypeIds.StoreKey,
             StoreContentType.CreateSchema(),
             StoreContentType.FieldCount,
@@ -55,6 +66,16 @@ public class IndexConstantGuardTests
                 (StoreContentType.NpcKindField, StoreContentType.NpcKindIndex),
                 (StoreContentType.SellRateBasisPointsField, StoreContentType.SellRateBasisPointsIndex),
                 (StoreContentType.BuyRateBasisPointsField, StoreContentType.BuyRateBasisPointsIndex),
+            ]);
+
+        yield return new TypeIndexes(
+            GameContentTypeIds.StoreShelfKey,
+            StoreShelfContentType.CreateSchema(),
+            StoreShelfContentType.FieldCount,
+            [
+                (StoreShelfContentType.StoreField, StoreShelfContentType.StoreIndex),
+                (StoreShelfContentType.ItemField, StoreShelfContentType.ItemIndex),
+                (StoreShelfContentType.SortField, StoreShelfContentType.SortIndex),
             ]);
 
         yield return new TypeIndexes(
@@ -95,6 +116,28 @@ public class IndexConstantGuardTests
                 (RecipeContentType.BaseDurationField(unit), RecipeContentType.BaseDurationIndex),
                 (RecipeContentType.XpPerItemField, RecipeContentType.XpPerItemIndex),
                 (RecipeContentType.RepeatModeField, RecipeContentType.RepeatModeIndex),
+            ]);
+
+        yield return new TypeIndexes(
+            GameContentTypeIds.RecipeInputKey,
+            RecipeInputContentType.CreateSchema(),
+            RecipeInputContentType.FieldCount,
+            [
+                (RecipeInputContentType.RecipeField, RecipeInputContentType.RecipeIndex),
+                (RecipeInputContentType.ItemField, RecipeInputContentType.ItemIndex),
+                (RecipeInputContentType.CountField, RecipeInputContentType.CountIndex),
+                (RecipeInputContentType.SortField, RecipeInputContentType.SortIndex),
+            ]);
+
+        yield return new TypeIndexes(
+            GameContentTypeIds.RecipeOutputKey,
+            RecipeOutputContentType.CreateSchema(),
+            RecipeOutputContentType.FieldCount,
+            [
+                (RecipeOutputContentType.RecipeField, RecipeOutputContentType.RecipeIndex),
+                (RecipeOutputContentType.ItemField, RecipeOutputContentType.ItemIndex),
+                (RecipeOutputContentType.CountField, RecipeOutputContentType.CountIndex),
+                (RecipeOutputContentType.SortField, RecipeOutputContentType.SortIndex),
             ]);
 
         yield return new TypeIndexes(
@@ -168,12 +211,12 @@ public class IndexConstantGuardTests
     }
 
     [Fact]
-    public void EveryPinnedTypeIsOneTheIdTableDeclares()
+    public void ThePinnedTypesAreEveryTypeTheIdTableDeclares()
     {
-        string[] declared = GameContentTypeIds.TypeKeys.Select(t => t.Key).ToArray();
-        string[] pinned = EveryType(ContentDurationUnit.Ticks).Select(t => t.Key).ToArray();
-
-        Assert.Equal(pinned.Distinct().ToArray(), pinned);
-        Assert.Equal(declared.Where(key => pinned.Contains(key)).ToArray(), pinned);
+        // A type added to the id table with no constants pinned here is a failing test rather than a type
+        // whose positions nothing ever compares.
+        Assert.Equal(
+            GameContentTypeIds.TypeKeys.Select(t => t.Key).ToArray(),
+            EveryType(ContentDurationUnit.Ticks).Select(t => t.Key).ToArray());
     }
 }

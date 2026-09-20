@@ -7,7 +7,7 @@ using Xunit;
 namespace KhaozEngine.Tests.Catalog.GameTypes;
 
 /// <summary>
-/// The STORED schema of the nine leaf game types, pinned field by field: the name, the declared order, the
+/// The STORED schema of all thirteen game types, pinned field by field: the name, the declared order, the
 /// kind, the reference target, the visibility, the required flag and the scale, plus each type's chunk slots
 /// and type-level visibility.
 /// <para>
@@ -17,7 +17,7 @@ namespace KhaozEngine.Tests.Catalog.GameTypes;
 /// back off the constants that produced them would pin nothing.
 /// </para>
 /// </summary>
-public class LeafSchemaGoldenTests
+public class GameTypeSchemaGoldenTests
 {
     /// <summary>One expected field, in the order a schema declares it.</summary>
     sealed record Field(
@@ -66,6 +66,25 @@ public class LeafSchemaGoldenTests
     }
 
     [Fact]
+    public void EquipStatLine()
+    {
+        // Four times its parent's floor: lines outnumber profiles by roughly the stats a piece of
+        // equipment touches.
+        Assert.Equal(1024, EquipStatLineContentType.DefaultChunkSlots);
+        Assert.Equal(ContentVisibility.Client, EquipStatLineContentType.DefaultVisibility);
+
+        AssertSchema(
+            EquipStatLineContentType.CreateSchema(),
+            new Field("profile", ContentFieldKind.KeyReference, "equip_profile", ContentVisibility.Client, true),
+            new Field("stat", ContentFieldKind.KeyReference, "stat", ContentVisibility.Client, true),
+
+            // A plain Int and not a scaled one: the stat row owns the scale, and a second copy of it here
+            // would be a copy the two could disagree about.
+            new Field("value", ContentFieldKind.Int, null, ContentVisibility.Client, true),
+            new Field("sort", ContentFieldKind.Int, null, ContentVisibility.Client, true));
+    }
+
+    [Fact]
     public void Store()
     {
         Assert.Equal(256, StoreContentType.DefaultChunkSlots);
@@ -76,6 +95,19 @@ public class LeafSchemaGoldenTests
             new Field("npc_kind", ContentFieldKind.Int, null, ContentVisibility.Client, true),
             new Field("sell_rate_bp", ContentFieldKind.Int, null, ContentVisibility.Client, true),
             new Field("buy_rate_bp", ContentFieldKind.Int, null, ContentVisibility.Client, true));
+    }
+
+    [Fact]
+    public void StoreShelf()
+    {
+        Assert.Equal(512, StoreShelfContentType.DefaultChunkSlots);
+        Assert.Equal(ContentVisibility.Client, StoreShelfContentType.DefaultVisibility);
+
+        AssertSchema(
+            StoreShelfContentType.CreateSchema(),
+            new Field("store", ContentFieldKind.KeyReference, "store", ContentVisibility.Client, true),
+            new Field("item", ContentFieldKind.KeyReference, "item", ContentVisibility.Client, true),
+            new Field("sort", ContentFieldKind.Int, null, ContentVisibility.Client, true));
     }
 
     [Fact]
@@ -131,6 +163,36 @@ public class LeafSchemaGoldenTests
     }
 
     [Fact]
+    public void RecipeInput()
+    {
+        Assert.Equal(1024, RecipeInputContentType.DefaultChunkSlots);
+        Assert.Equal(ContentVisibility.Client, RecipeInputContentType.DefaultVisibility);
+
+        AssertSchema(
+            RecipeInputContentType.CreateSchema(),
+            new Field("recipe", ContentFieldKind.KeyReference, "recipe", ContentVisibility.Client, true),
+            new Field("item", ContentFieldKind.KeyReference, "item", ContentVisibility.Client, true),
+            new Field("count", ContentFieldKind.Int, null, ContentVisibility.Client, true),
+            new Field("sort", ContentFieldKind.Int, null, ContentVisibility.Client, true));
+    }
+
+    [Fact]
+    public void RecipeOutput()
+    {
+        // Byte for byte the input's schema, and still its own type. The two sides are read at different
+        // moments, and a side flag would be a field every reader has to filter on.
+        Assert.Equal(1024, RecipeOutputContentType.DefaultChunkSlots);
+        Assert.Equal(ContentVisibility.Client, RecipeOutputContentType.DefaultVisibility);
+
+        AssertSchema(
+            RecipeOutputContentType.CreateSchema(),
+            new Field("recipe", ContentFieldKind.KeyReference, "recipe", ContentVisibility.Client, true),
+            new Field("item", ContentFieldKind.KeyReference, "item", ContentVisibility.Client, true),
+            new Field("count", ContentFieldKind.Int, null, ContentVisibility.Client, true),
+            new Field("sort", ContentFieldKind.Int, null, ContentVisibility.Client, true));
+    }
+
+    [Fact]
     public void ToolTier()
     {
         Assert.Equal(256, ToolTierContentType.DefaultChunkSlots);
@@ -171,7 +233,7 @@ public class LeafSchemaGoldenTests
     }
 
     [Fact]
-    public void EveryLeafFieldIsRequiredExceptTheOneCurveKnob()
+    public void EveryFieldIsRequiredExceptTheOneCurveKnob()
     {
         string[] optional = EverySchema(Ticks)
             .SelectMany(schema => schema.Fields)
@@ -235,15 +297,19 @@ public class LeafSchemaGoldenTests
         Assert.Throws<System.ArgumentOutOfRangeException>(() => FoodContentType.CreateSchema(undefined));
     }
 
-    /// <summary>The nine leaf schemas, ASCENDING by type id, which is the order the moved names are read in.</summary>
+    /// <summary>All thirteen schemas, ASCENDING by type id, which is the order the moved names are read in.</summary>
     static IEnumerable<ContentFieldSchema> EverySchema(ContentDurationUnit unit)
     {
         yield return FoodContentType.CreateSchema(unit);
         yield return EquipProfileContentType.CreateSchema(unit);
+        yield return EquipStatLineContentType.CreateSchema();
         yield return StoreContentType.CreateSchema();
+        yield return StoreShelfContentType.CreateSchema();
         yield return MonsterDropContentType.CreateSchema();
         yield return GatheringNodeContentType.CreateSchema(unit);
         yield return RecipeContentType.CreateSchema(unit);
+        yield return RecipeInputContentType.CreateSchema();
+        yield return RecipeOutputContentType.CreateSchema();
         yield return ToolTierContentType.CreateSchema();
         yield return SkillCurveContentType.CreateSchema();
         yield return GameTuningContentType.CreateSchema();

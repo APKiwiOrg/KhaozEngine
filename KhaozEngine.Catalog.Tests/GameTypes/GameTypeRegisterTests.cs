@@ -26,10 +26,14 @@ public class GameTypeRegisterTests
 
         FoodContentType.Register(registry, unit, validator: null);
         EquipProfileContentType.Register(registry, unit, validator: null);
+        EquipStatLineContentType.Register(registry, validator: null);
         StoreContentType.Register(registry, validator: null);
+        StoreShelfContentType.Register(registry, validator: null);
         MonsterDropContentType.Register(registry, validator: null);
         GatheringNodeContentType.Register(registry, unit, validator: null);
         RecipeContentType.Register(registry, unit, validator: null);
+        RecipeInputContentType.Register(registry, validator: null);
+        RecipeOutputContentType.Register(registry, validator: null);
         ToolTierContentType.Register(registry, validator: null);
         SkillCurveContentType.Register(registry, validator: null);
         GameTuningContentType.Register(registry, validator: null);
@@ -49,7 +53,13 @@ public class GameTypeRegisterTests
             {
                 (1024, "food", ContentVisibility.Client, 256),
                 (1025, "equip_profile", ContentVisibility.Client, 256),
+
+                // A child takes a bigger chunk than its parent, because it outnumbers it. Three take four
+                // times the floor and the shelf takes twice.
+                (1026, "equip_stat_line", ContentVisibility.Client, 1024),
+
                 (1027, "store", ContentVisibility.Client, 256),
+                (1028, "store_shelf", ContentVisibility.Client, 512),
 
                 // The one ServerOnly type of the set. A client that can read a drop table knows every roll
                 // before it happens, and the visibility is at the TYPE level so the whole family stays out
@@ -58,6 +68,8 @@ public class GameTypeRegisterTests
 
                 (1030, "gathering_node", ContentVisibility.Client, 256),
                 (1031, "recipe", ContentVisibility.Client, 512),
+                (1032, "recipe_input", ContentVisibility.Client, 1024),
+                (1033, "recipe_output", ContentVisibility.Client, 1024),
                 (1034, "tool_tier", ContentVisibility.Client, 256),
                 (1035, "skill_curve", ContentVisibility.Client, 256),
                 (1036, "game_tuning", ContentVisibility.Client, 256),

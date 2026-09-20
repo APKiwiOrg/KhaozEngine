@@ -1,8 +1,11 @@
 # KhaozEngine.Catalog.GameTypes
 
 The thirteen game-shaped content types most RPG-shaped worlds re-author from scratch, as stable ids, stable
-keys, ordered field schemas and row codecs over `KhaozEngine.Catalog`. GPU-free, zero third-party
-dependencies, part of the `KhaozEngine.Foundation` umbrella.
+keys, ordered field schemas, row codecs and one registration call each over `KhaozEngine.Catalog`. GPU-free,
+zero third-party dependencies, part of the `KhaozEngine.Foundation` umbrella.
+
+**All thirteen types are here. No validators and no cross-type sweep yet**, only the `KGT` code table they
+will emit.
 
 The engine's own six types (`tag`, `item`, `stat`, `loot_table`, `loot_entry`, `base_socket`) are the shapes
 every catalog needs. These thirteen are the next layer up: the shapes a world with food, equipment, shops,
@@ -102,10 +105,15 @@ construction, which on a server is before a socket is open.
 
 ## `GameContentFindings`
 
-Every finding code the validators over these types emit, banded by content type, ascending by type id, a
-hundred to a band, with 1300 for the cross-type sweep. A code is a stable token a counter, a test and a
-runbook key on, and it is never reused or renumbered. The engine folds a game-band finding into `KEC0040`
-and puts the `KGT` code in the message, so this is what an operator reads off a refused publish.
+The finding-code table, banded by content type, ascending by type id, a hundred to a band, with 1300 held
+for a cross-type sweep. A code is a stable token a counter, a test and a runbook key on, and it is never
+reused or renumbered, which is why the whole table is written down before the rules that emit the codes.
+The engine folds a game-band finding into `KEC0040` and puts the `KGT` code in the message, so this is what
+an operator reads off a refused publish.
+
+**The package ships no validators and no sweep yet.** What exists today is the thirteen types as schemas,
+codecs and registration, plus this table and `ContentDurationUnit`. A game validates with its own until the
+package's own arrive.
 
 ## Usage
 

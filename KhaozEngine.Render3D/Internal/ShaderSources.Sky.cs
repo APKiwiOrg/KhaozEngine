@@ -85,13 +85,24 @@ layout(set=0, binding=0) uniform Sky {
     vec4 SunNdc;      // xy = sun screen NDC, z = sunVisible (1/0), w = aspect (width/height)
     vec4 Params;      // x=sunEnabled, y=sunRadius, z=haloStrength, w=haloFalloff
     vec4 Res;         // xy = 1/renderWidth, 1/renderHeight
+    vec4 Ground;      // rgb ground band below the world horizon, a = blend depth (sin-elevation units)
+    vec4 HorizonRay;  // view ray through NDC (x,y) = (x * .x + .z, y * .y + .w, -1)
+    vec4 HorizonUp;   // xyz = world-Y of the camera right, up and back axes, w = 1 when the world horizon is live
 };
 layout(location=0) out vec4 oColor;
 void main() {
     // NDC from gl_FragCoord (upper-left origin on every backend): x in [-1,1] rightward, y in [-1,1] UPWARD.
     vec2 ndc = vec2(gl_FragCoord.x * Res.x * 2.0 - 1.0, 1.0 - gl_FragCoord.y * Res.y * 2.0);
-    // Vertical screen gradient: NDC.y in [-1,1] -> [0,1] (bottom -> top), smoothstep for a soft ramp.
+    // Screen horizon: a vertical screen gradient, NDC.y in [-1,1] -> [0,1] (bottom -> top). World horizon: the same
+    // ramp off the elevation of this pixel's view ray (SkyHorizonFrame.SinElevation), which is the gradient the
+    // water's skyAlongDirection already uses.
+    float sinElevation = 0.0;
     float up = clamp(ndc.y * 0.5 + 0.5, 0.0, 1.0);
+    if (HorizonUp.w > 0.5) {
+        vec2 v = ndc * HorizonRay.xy + HorizonRay.zw;
+        sinElevation = (v.x * HorizonUp.x + v.y * HorizonUp.y - HorizonUp.z) / sqrt(dot(v, v) + 1.0);
+        up = clamp(sinElevation, 0.0, 1.0);
+    }
     float t = smoothstep(0.0, 1.0, up);
     vec3 col = mix(Horizon.rgb, Zenith.rgb, t);
 
@@ -109,6 +120,10 @@ void main() {
         }
         float sun = clamp(disc + halo, 0.0, 1.0) * clamp(SunColor.a, 0.0, 1.0);
         col = mix(col, SunColor.rgb, sun);
+    }
+    // The ground goes over the sun: that is the horizon the disc sets through (SkyGround.Weight).
+    if (HorizonUp.w > 0.5) {
+        col = mix(col, Ground.rgb, smoothstep(0.0, max(Ground.a, 1e-5), -sinElevation));
     }
     oColor = vec4(col, 1.0);   // alpha 1: opaque painted background (consistent with starfield)
 }";

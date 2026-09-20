@@ -590,11 +590,12 @@ namespace KhaozEngine.Tests.Render3D
         [Fact]
         public void SkyUbo_MarshalSize_EqualsUboBytesConstant_And_GlslBlock()
         {
-            // GLSL Sky block: 6 vec4 (Horizon, Zenith, SunColor, SunNdc, Params, Res) = 96 bytes. If the struct or
+            // GLSL Sky block: 9 vec4 (Horizon, Zenith, SunColor, SunNdc, Params, Res, Ground, HorizonRay, HorizonUp) = 144
+            // bytes. If the struct or
             // the shader block drift apart, the per-frame sky UBO upload smears the colours / sun params. The other
             // half lives in ShaderSources.SkyFrag.
             Assert.Equal((int)SkyRenderer.UboBytes, Marshal.SizeOf<SkyRenderer.SkyUbo>());
-            Assert.Equal(6 * 16, (int)SkyRenderer.UboBytes);
+            Assert.Equal(9 * 16, (int)SkyRenderer.UboBytes);
         }
 
         [Fact]
@@ -613,15 +614,15 @@ namespace KhaozEngine.Tests.Render3D
         [Fact]
         public void WaterUbo_MarshalSize_EqualsPayloadBytesConstant_And_GlslBlock()
         {
-            // GLSL Water block: 2 mat4 (ViewProj, InvViewProj) + 34 vec4 (LightDir, LightColor, CameraPos,
+            // GLSL Water block: 2 mat4 (ViewProj, InvViewProj) + 35 vec4 (LightDir, LightColor, CameraPos,
             // DeepColor, ShallowColor, HorizonColor, WaveParams, ShoreGlint, DetailParams, SkyHorizon, SkyZenith,
             // SkySunColor, SkyParams, ReflectGlint, SwellParams, SwellShape, Absorption, FoamColor, FoamParams,
             // RippleSpectrum, FootprintParams, FftParams, FftTiles, FftVariance, FftFocus, FftRotCos, FftRotSin,
-            // FftSector, FftWave, BathyRect, BathyParams, SurfParams, SurfShape, RenderOrigin) = 128 + 544 = 672
+            // FftSector, FftWave, BathyRect, BathyParams, SurfParams, SurfShape, RenderOrigin, SkyGround) = 128 + 560 = 688
             // bytes. If the struct or the shader block drift apart, the per-plane water UBO upload smears the
             // colours/wave/swell/foam params. Other half: ShaderSources.WaterFrag.
             Assert.Equal((int)WaterRenderer.PayloadBytes, Marshal.SizeOf<WaterRenderer.WaterUbo>());
-            Assert.Equal(2 * 64 + 34 * 16, (int)WaterRenderer.PayloadBytes);
+            Assert.Equal(2 * 64 + 35 * 16, (int)WaterRenderer.PayloadBytes);
         }
 
         [Fact]

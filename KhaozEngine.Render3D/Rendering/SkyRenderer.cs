@@ -20,7 +20,7 @@ namespace KhaozEngine.Render3D.Rendering
     /// </summary>
     internal sealed class SkyRenderer : IDisposable
     {
-        /// <summary>96-byte UBO matching the Sky block in <see cref="ShaderSources.SkyFrag"/> (6 vec4; every member
+        /// <summary>144-byte UBO matching the Sky block in <see cref="ShaderSources.SkyFrag"/> (9 vec4; every member
         /// 16-byte aligned, so std140 needs no extra padding). Size-checked by the UboLayoutTests tripwire.</summary>
         public struct SkyUbo
         {
@@ -30,10 +30,13 @@ namespace KhaozEngine.Render3D.Rendering
             public Vector4 SunNdc;    // xy = sun screen NDC, z = sunVisible (1/0), w = aspect (width/height)
             public Vector4 Params;    // x=sunEnabled, y=sunRadius, z=haloStrength, w=haloFalloff
             public Vector4 Res;       // xy = 1/renderWidth, 1/renderHeight
+            public Vector4 Ground;      // rgb ground band below the world horizon, a = blend depth (sin-elevation)
+            public Vector4 HorizonRay;  // view ray through NDC (x,y) = (x * .x + .z, y * .y + .w, -1)
+            public Vector4 HorizonUp;   // xyz = world-Y of the camera right/up/back axes, w = 1 when live
         }
 
-        /// <summary>Byte size of <see cref="SkyUbo"/> / the GPU uniform buffer. 6 * 16 (vec4) = 96.</summary>
-        internal const uint UboBytes = 96;
+        /// <summary>Byte size of <see cref="SkyUbo"/> / the GPU uniform buffer. 9 * 16 (vec4) = 144.</summary>
+        internal const uint UboBytes = 144;
 
         readonly IGpuDevice _gd;
         readonly IGpuShaderSet _shaders;
@@ -99,6 +102,7 @@ namespace KhaozEngine.Render3D.Rendering
             Vector4 horizon = sky.HorizonColor;
             Vector4 zenith = sky.ZenithColor;
             Vector4 sunCol = sky.SunColor;
+            SkyHorizonFrame frame = SkyHorizonMath.ResolveFrame(sky, view, projection);
             return new SkyUbo
             {
                 Horizon = new Vector4(horizon.X, horizon.Y, horizon.Z, 0f),
@@ -107,6 +111,9 @@ namespace KhaozEngine.Render3D.Rendering
                 SunNdc = new Vector4(sunNdc.X, sunNdc.Y, visible ? 1f : 0f, aspect),
                 Params = new Vector4(sky.SunEnabled ? 1f : 0f, sky.SunRadius, sky.HaloStrength, sky.HaloFalloff),
                 Res = new Vector4(invW, invH, 0f, 0f),
+                Ground = new Vector4(frame.Ground.Color, frame.Ground.Softness),
+                HorizonRay = frame.Ray,
+                HorizonUp = new Vector4(frame.Up, frame.Live ? 1f : 0f),
             };
         }
 

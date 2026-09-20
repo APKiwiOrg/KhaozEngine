@@ -27,6 +27,11 @@ namespace KhaozEngine.Render3D
         /// <summary>Fill light color.</summary>
         public Color FillColor { get; set; }
 
+        /// <summary>Ground band color below the world horizon (<see cref="SkySettings.GroundColor"/>). Only a
+        /// <see cref="SkyHorizon.World"/> sky draws it. The band is unlit, so this is the color the far terrain or
+        /// sea reads as UNDER this anchor's light. A custom palette that leaves it unset gets a black band.</summary>
+        public Color GroundColor { get; set; }
+
         /// <summary>Midday anchor matching the engine's default scene look.</summary>
         public static SunCyclePalette DefaultDay() => new()
         {
@@ -36,6 +41,7 @@ namespace KhaozEngine.Render3D
             LightColor = new Color(1f, 0.95f, 0.86f, 1f),
             AmbientColor = new Color(0.16f, 0.19f, 0.30f, 1f),
             FillColor = new Color(0.20f, 0.24f, 0.34f, 1f),
+            GroundColor = new Color(0.30f, 0.34f, 0.28f, 1f),
         };
 
         /// <summary>Warm low-sun anchor blended in across the twilight band.</summary>
@@ -47,6 +53,7 @@ namespace KhaozEngine.Render3D
             LightColor = new Color(0.95f, 0.62f, 0.38f, 1f),
             AmbientColor = new Color(0.21f, 0.17f, 0.25f, 1f),
             FillColor = new Color(0.24f, 0.19f, 0.26f, 1f),
+            GroundColor = new Color(0.20f, 0.17f, 0.17f, 1f),
         };
 
         /// <summary>Cool night anchor. Deliberately not pitch black so scenes stay playable.</summary>
@@ -58,6 +65,7 @@ namespace KhaozEngine.Render3D
             LightColor = new Color(0.10f, 0.14f, 0.24f, 1f),
             AmbientColor = new Color(0.07f, 0.09f, 0.15f, 1f),
             FillColor = new Color(0.08f, 0.10f, 0.16f, 1f),
+            GroundColor = new Color(0.03f, 0.04f, 0.06f, 1f),
         };
     }
 
@@ -144,6 +152,16 @@ namespace KhaozEngine.Render3D
         /// moon disc reuses this width against the moon's elevation.</summary>
         public float SunDiscFadeElevationDegrees { get; set; } = 4f;
 
+        /// <summary>How far BELOW the horizon, in degrees, a body keeps the disc slot. Default 0, the historical
+        /// behavior: the disc is cut at elevation zero and the <see cref="SunDiscFadeElevationDegrees"/> band sits
+        /// just above it, so a body fades out in the sky and never reaches the horizon. Under a
+        /// <see cref="SkyHorizon.World"/> sky raise it past the disc's angular size (6 is a good start): the whole
+        /// fade band moves down with it, so the disc crosses the horizon at full strength, the ground band occludes
+        /// it, and the halo left above the line dims as an afterglow. The key light is unaffected and still dips
+        /// to black at elevation zero. The slot is single, so under <see cref="NightKeyMode.Moon"/> a moon rising
+        /// at opposition takes it this many degrees late.</summary>
+        public float DiscSetElevationDegrees { get; set; }
+
         /// <summary>Which night track the key light follows below the sun's horizon. Default
         /// <see cref="NightKeyMode.AntiSolarMoon"/> (the legacy virtual moon), so existing scenes are byte-stable.</summary>
         public NightKeyMode NightKey { get; set; } = NightKeyMode.AntiSolarMoon;
@@ -207,7 +225,8 @@ namespace KhaozEngine.Render3D
             float moonElevationDegrees = 0f,
             Vector3 moonDirection = default,
             KeyLightSource activeSource = KeyLightSource.Sun,
-            Vector3? discDirectionOverride = null)
+            Vector3? discDirectionOverride = null,
+            Color groundColor = default)
         {
             LightDirection = lightDirection;
             SunElevationDegrees = sunElevationDegrees;
@@ -222,6 +241,7 @@ namespace KhaozEngine.Render3D
             MoonDirection = moonDirection;
             ActiveSource = activeSource;
             DiscDirectionOverride = discDirectionOverride;
+            GroundColor = groundColor;
         }
 
         /// <summary>Direction the key light travels, following <see cref="PixelPostProcessSettings.LightDirection"/>
@@ -279,6 +299,10 @@ namespace KhaozEngine.Render3D
         /// slot (the disc derives from the key light) or nothing does. <see cref="SunCycle.Apply"/> writes it straight
         /// to <see cref="SkySettings.SunDirectionOverride"/>.</summary>
         public Vector3? DiscDirectionOverride { get; }
+
+        /// <summary>Ground band color for a <see cref="SkyHorizon.World"/> sky, blended across the palettes like the
+        /// rest of the sky. <see cref="SunCycle.Apply"/> writes it to <see cref="SkySettings.GroundColor"/>.</summary>
+        public Color GroundColor { get; }
     }
 
     /// <summary>
@@ -329,18 +353,26 @@ namespace KhaozEngine.Render3D
             Color fill = Color.Lerp(from.FillColor, to.FillColor, s);
             Color baseKey = Color.Lerp(from.LightColor, to.LightColor, s);
             Color baseSun = Color.Lerp(from.SunColor, to.SunColor, s);
+            Color ground = Color.Lerp(from.GroundColor, to.GroundColor, s);
 
             // The sun's own key dip + disc fade at its horizon crossing.
             float sunKeyDip = MathUtil.SmoothStep(
                 0f, MathF.Max(1e-3f, settings.HorizonKeyDipDegrees), MathF.Abs(elDeg));
-            float sunDiscFade = MathUtil.SmoothStep(
-                0f, MathF.Max(1e-3f, settings.SunDiscFadeElevationDegrees), elDeg);
+            // The disc band hangs off the set elevation, not off zero, so a disc that sets through a world horizon
+            // is still at full strength when it crosses the line. At the default 0 this is the historical band.
+            float discSet = -MathF.Max(0f, settings.DiscSetElevationDegrees);
+            float discFadeTop = discSet + MathF.Max(1e-3f, settings.SunDiscFadeElevationDegrees);
+            float sunDiscFade = MathUtil.SmoothStep(discSet, discFadeTop, elDeg);
 
             // The sun-owned disc (shared by AntiSolarMoon and None; the sun's disc is hidden below the horizon).
             // The fade rides in ALPHA, the sky's blend weight. The sky replace-blends toward the disc colour, so
             // darkening the RGB instead would paint a black disc over the twilight sky.
             Color sunDisc = baseSun.WithAlpha(baseSun.A * sunDiscFade);
             bool sunUp = elDeg > 0f;
+            // The key follows sunUp. The DISC follows this, which outlives the key by DiscSetElevationDegrees, and a
+            // disc whose key has moved on (flipped, handed to the moon, or gone) has to be pointed at the sun itself.
+            bool sunHoldsDisc = elDeg > discSet;
+            Vector3? setSunOverride = sunHoldsDisc && !sunUp ? sunToward : null;
 
             Vector3 lightDir;
             Color key;
@@ -357,49 +389,61 @@ namespace KhaozEngine.Render3D
                     lightDir = -sunToward;
                     key = sunUp ? baseKey.ScaleRgb(sunKeyDip) : Black;
                     disc = sunDisc;
-                    discEnabled = sunUp;
-                    discOverride = null;
+                    discEnabled = sunHoldsDisc;
+                    discOverride = setSunOverride;
                     source = sunUp ? KeyLightSource.Sun : KeyLightSource.None;
                     break;
 
                 case NightKeyMode.Moon:
                     if (sunUp)
                     {
-                        // Sun owns the key + disc.
+                        // Sun owns the key.
                         lightDir = -sunToward;
                         key = baseKey.ScaleRgb(sunKeyDip);
-                        disc = sunDisc;
-                        discEnabled = true;
-                        discOverride = null;
                         source = KeyLightSource.Sun;
                     }
                     else if (moonElDeg > 0f)
                     {
-                        // Moon owns the key + disc: its own key color/dip and its own disc color/fade, disc pointed at
-                        // the moon. The key can be black (decorative moon) while the disc stays visible.
+                        // Moon owns the key: its own key color/dip. The key can be black (decorative moon) while the
+                        // disc stays visible.
                         float moonKeyDip = MathUtil.SmoothStep(
                             0f, MathF.Max(1e-3f, settings.MoonHorizonKeyDipDegrees), MathF.Abs(moonElDeg));
                         float handoverDip = MathUtil.SmoothStep(
                             0f, MathF.Max(1e-3f, settings.HorizonKeyDipDegrees), MathF.Abs(elDeg));
-                        float moonDiscFade = MathUtil.SmoothStep(
-                            0f, MathF.Max(1e-3f, settings.SunDiscFadeElevationDegrees), moonElDeg);
                         lightDir = moonLightDir;
                         key = settings.MoonKeyColor.ScaleRgb(MathF.Min(moonKeyDip, handoverDip));
-                        disc = settings.MoonDiscColor.WithAlpha(settings.MoonDiscColor.A * moonDiscFade);
-                        discEnabled = true;
-                        discOverride = moonToward;   // direction TO the moon (the moon light travels -moonToward)
                         source = KeyLightSource.Moon;
                     }
                     else
                     {
-                        // Neither body up: keyless, discless. Hold the sun's true direction for continuity (the key is
-                        // black, so a switch through this state is invisible).
+                        // Neither body up: keyless. Hold the sun's true direction for continuity (the key is black, so
+                        // a switch through this state is invisible).
                         lightDir = -sunToward;
                         key = Black;
+                        source = KeyLightSource.None;
+                    }
+
+                    // The single disc slot is decided apart from the key. A setting sun keeps it down to the set
+                    // elevation, then the moon takes it on the same band (its own disc color, pointed at the moon),
+                    // then nobody. At the default set elevation of 0 this is the key's own sun, moon, none order.
+                    if (sunHoldsDisc)
+                    {
+                        disc = sunDisc;
+                        discEnabled = true;
+                        discOverride = setSunOverride;
+                    }
+                    else if (moonElDeg > discSet)
+                    {
+                        float moonDiscFade = MathUtil.SmoothStep(discSet, discFadeTop, moonElDeg);
+                        disc = settings.MoonDiscColor.WithAlpha(settings.MoonDiscColor.A * moonDiscFade);
+                        discEnabled = true;
+                        discOverride = moonToward;   // direction TO the moon (the moon light travels -moonToward)
+                    }
+                    else
+                    {
                         disc = Black;
                         discEnabled = false;
                         discOverride = null;
-                        source = KeyLightSource.None;
                     }
                     break;
 
@@ -407,15 +451,15 @@ namespace KhaozEngine.Render3D
                     lightDir = sunUp ? -sunToward : sunToward;
                     key = baseKey.ScaleRgb(sunKeyDip);
                     disc = sunDisc;
-                    discEnabled = sunUp;
-                    discOverride = null;
+                    discEnabled = sunHoldsDisc;
+                    discOverride = setSunOverride;
                     source = sunUp ? KeyLightSource.Sun : KeyLightSource.None;
                     break;
             }
 
             return new SunCycleState(
                 lightDir, elDeg, horizon, zenith, disc, discEnabled, key, ambient, fill,
-                moonElDeg, moonLightDir, source, discOverride);
+                moonElDeg, moonLightDir, source, discOverride, ground);
         }
 
         /// <summary>
@@ -479,6 +523,7 @@ namespace KhaozEngine.Render3D
             post.Sky.SunColor = state.SunColor;
             post.Sky.SunEnabled = state.SunEnabled;
             post.Sky.SunDirectionOverride = state.DiscDirectionOverride;
+            post.Sky.GroundColor = state.GroundColor;
         }
     }
 }

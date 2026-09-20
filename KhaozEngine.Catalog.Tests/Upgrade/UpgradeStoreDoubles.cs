@@ -392,12 +392,14 @@ internal sealed class DatabaseFaultStore(
 /// <param name="note">The note the injected draft carries.</param>
 /// <param name="edit">The edit the injected draft holds.</param>
 /// <param name="withdrawAtLook">The look the draft is discarded on, or 0 to leave it standing.</param>
+/// <param name="churn">Whether the injected draft GROWS between looks, which is a rival making progress.</param>
 internal sealed class DraftAppearsAfterTheGateStore(
     InMemoryContentAuthoringStore inner,
     string actor,
     string note,
     ContentEdit edit,
-    int withdrawAtLook = 0)
+    int withdrawAtLook = 0,
+    bool churn = false)
     : ForwardingContentAuthoringStore(inner), IContentUpgradeLedger
 {
     /// <summary>How many times the RUNNER looked at the open draft, which is how a stand-off is counted.</summary>
@@ -414,6 +416,18 @@ internal sealed class DraftAppearsAfterTheGateStore(
         else if (withdrawAtLook > 0 && Looks == withdrawAtLook)
         {
             await inner.DiscardDraftAsync(actor, "oid:injected", cancellationToken);
+        }
+        else if (churn && Looks > 2 && (withdrawAtLook == 0 || Looks < withdrawAtLook))
+        {
+            await inner.ApplyEditsAsync(
+                [ContentEdit.Add(
+                    edit.Type,
+                    new ContentKey("churn_" + Looks.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+                    edit.Fields)],
+                actor,
+                "oid:injected",
+                note,
+                cancellationToken);
         }
 
         return await base.GetOpenDraftAsync(cancellationToken);

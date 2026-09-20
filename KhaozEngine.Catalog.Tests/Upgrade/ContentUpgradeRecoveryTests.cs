@@ -278,6 +278,33 @@ public sealed class ContentUpgradeRecoveryTests
     }
 
     /// <summary>
+    /// A rival that keeps MAKING PROGRESS is waited out past one whole attempt budget. The patience is spent
+    /// on a catalog that is not moving, not on a clock, which is what stops a loaded machine turning a
+    /// correct run into a failure. Each attempt costs two looks at the draft, one for the publish pre-flight
+    /// and one for the progress reading, so ninety-five of them is comfortably past the forty attempts a
+    /// still catalog buys.
+    /// </summary>
+    [Fact]
+    public async Task ARivalThatKeepsMovingIsWaitedOutPastOneAttemptBudget()
+    {
+        using var harness = new UpgradeHarness();
+        await harness.SeedOlderCatalogAsync();
+        var appearing = new DraftAppearsAfterTheGateStore(
+            harness.Store,
+            UpgradeFixtures.Actor,
+            ContentUpgradeRunner.NoteFor(UpgradeHarness.FirstId),
+            Foreign,
+            withdrawAtLook: 95,
+            churn: true);
+
+        ContentUpgradeReport report = await ContentUpgradeRunner.RunAsync(
+            appearing, harness.Registry, harness.Set, UpgradeFixtures.Apply());
+
+        Assert.Equal(ContentUpgradeOutcome.Applied, report.Outcome);
+        Assert.True(appearing.Looks >= 95, "the run gave up while the catalog was still moving.");
+    }
+
+    /// <summary>
     /// A pin on the ACTIVE version does not block the publish and is never moved. The report names the
     /// version to repin to, because the pin is what a restart will serve.
     /// </summary>

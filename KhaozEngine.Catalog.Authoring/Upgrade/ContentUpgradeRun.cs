@@ -18,33 +18,16 @@ namespace KhaozEngine.Catalog.Authoring;
 sealed partial class ContentUpgradeRun
 {
     /// <summary>
-    /// How many times one definition's publish is attempted. Attempts past the first exist for exactly one
-    /// reason: a SECOND runner against the same catalog holds the one draft, or moves the base version,
-    /// between this run's plan and its commit, and the plan is then stale through no fault of the catalog.
-    /// Two replicas booting together is an ordinary deployment and a boot that lost the race is a real
-    /// outage, so the contention is waited out rather than reported.
+    /// The attempts past the first exist for exactly one reason: a SECOND runner against the same catalog
+    /// holds the one draft, or moves the base version, between this run's plan and its commit, and the plan
+    /// is then stale through no fault of the catalog. Two replicas booting together is an ordinary deployment
+    /// and a boot that lost the race is a real outage, so the contention is waited out rather than reported.
     /// <para>
     /// The retry is safe because the ledger's primary key is: an upgrade that DID land cannot be published a
-    /// second time, and the ledger is re-read before every decision.
+    /// second time, and the ledger is re-read before every decision. How long the patience lasts and what
+    /// ends it are <see cref="ContentUpgradeStandOff"/>'s.
     /// </para>
     /// </summary>
-    internal const int MaxAttemptsPerDefinition = 12;
-
-    /// <summary>
-    /// The backoff between contended attempts, multiplied by the attempt number up to
-    /// <see cref="MaxContentionBackoffMilliseconds"/>. A publish holds the draft for its whole pack write, so
-    /// the budget has to outlast one on a real provider, and none of it is paid by a run with no rival.
-    /// </summary>
-    internal const int ContentionBackoffMilliseconds = 25;
-
-    /// <summary>The longest single wait, so the budget grows with attempts rather than with each wait.</summary>
-    internal const int MaxContentionBackoffMilliseconds = 200;
-
-    /// <summary>The wait before one contended attempt, which is the backoff schedule in one place.</summary>
-    /// <param name="attempt">The attempt that just lost, from 1.</param>
-    internal static int BackoffFor(int attempt)
-        => Math.Min(attempt * ContentionBackoffMilliseconds, MaxContentionBackoffMilliseconds);
-
     readonly List<ContentUpgradeStepResult> _steps = [];
     readonly List<ContentUpgradeDiagnostic> _diagnostics = [];
     readonly HashSet<int> _published = [];
@@ -220,10 +203,11 @@ sealed partial class ContentUpgradeRun
         for (int i = 0; i < pending.Count; i++)
         {
             ContentUpgradeDefinition definition = pending[i];
+            var standOff = new ContentUpgradeStandOff();
             bool settled = false;
-            for (int attempt = 1; attempt <= MaxAttemptsPerDefinition && !settled; attempt++)
+            while (!settled)
             {
-                settled = await AttemptAsync(definition, attempt).ConfigureAwait(false);
+                settled = await AttemptAsync(definition, standOff).ConfigureAwait(false);
             }
 
             if (_stopped is ContentUpgradeOutcome stopped)
@@ -241,7 +225,7 @@ sealed partial class ContentUpgradeRun
     /// whether the definition is SETTLED, and a false answer means the publish failed in a way a second
     /// attempt against the moved baseline can resolve.
     /// </summary>
-    async Task<bool> AttemptAsync(ContentUpgradeDefinition definition, int attempt)
+    async Task<bool> AttemptAsync(ContentUpgradeDefinition definition, ContentUpgradeStandOff standOff)
     {
         ContentUpgradePlan? plan = await PlanAsync(definition).ConfigureAwait(false);
         if (plan is null)
@@ -269,7 +253,7 @@ sealed partial class ContentUpgradeRun
                 return true;
 
             default:
-                return await PublishAsync(definition, plan, attempt).ConfigureAwait(false);
+                return await PublishAsync(definition, plan, standOff).ConfigureAwait(false);
         }
     }
 

@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Text;
 using System.Threading.Tasks;
 
 namespace KhaozEngine.Catalog.Authoring;
@@ -21,7 +23,10 @@ sealed partial class ContentUpgradeRun
     /// The publish of one definition's edits, stamped with its id so the ledger row lands inside the commit.
     /// It answers whether the definition is SETTLED, and a false answer asks for another attempt.
     /// </summary>
-    async Task<bool> PublishAsync(ContentUpgradeDefinition definition, ContentUpgradePlan plan, int attempt)
+    async Task<bool> PublishAsync(
+        ContentUpgradeDefinition definition,
+        ContentUpgradePlan plan,
+        ContentUpgradeStandOff standOff)
     {
         string note = ContentUpgradeRunner.NoteFor(definition.Id);
         Operation = "read the open draft";
@@ -39,7 +44,7 @@ sealed partial class ContentUpgradeRun
             return IsRunnersDraft(standing)
                 ? await StandOffAsync(
                     definition,
-                    attempt,
+                    standOff,
                     FormattableString.Invariant(
                         $"another publisher holds the open draft of {standing.EditCount} edit(s) on version {standing.BaseVersion}."))
                     .ConfigureAwait(false)
@@ -86,7 +91,7 @@ sealed partial class ContentUpgradeRun
         }
         catch (Exception failure) when (ContentUpgradeFault.IsHandled(failure))
         {
-            return await ResolveFailureAsync(definition, plan, note, failure, attempt).ConfigureAwait(false);
+            return await ResolveFailureAsync(definition, plan, note, failure, standOff).ConfigureAwait(false);
         }
     }
 
@@ -101,7 +106,7 @@ sealed partial class ContentUpgradeRun
         ContentUpgradePlan plan,
         string note,
         Exception failure,
-        int attempt)
+        ContentUpgradeStandOff standOff)
     {
         Operation = "discard its own draft";
         bool rivalIsLive = await DiscardOwnDraftAsync(note, plan.Edits).ConfigureAwait(false);
@@ -122,22 +127,31 @@ sealed partial class ContentUpgradeRun
         // A live rival on this run's own draft is contention whatever the exception said, because the draft
         // it would have to republish into is not free yet.
         return rivalIsLive || ContentUpgradeFault.IsContention(failure)
-            ? await StandOffAsync(definition, attempt, failure.Message).ConfigureAwait(false)
+            ? await StandOffAsync(definition, standOff, failure.Message).ConfigureAwait(false)
             : Fail(definition, failure.Message);
     }
 
     /// <summary>
     /// Waits out another publisher and asks for another attempt, or gives up when the patience is spent. The
-    /// wait grows with the attempt, because a publish holds the draft for its whole pack write.
+    /// patience is spent on a catalog that is NOT MOVING: every wait records the ledger, the active version
+    /// and the open draft, and an attempt budget that ran out while all three stood still is the only way to
+    /// give up. The wait itself grows with the attempt, because a publish holds the draft for its whole pack
+    /// write.
     /// </summary>
-    async Task<bool> StandOffAsync(ContentUpgradeDefinition definition, int attempt, string what)
+    /// <param name="definition">The definition being applied.</param>
+    /// <param name="standOff">This definition's patience.</param>
+    /// <param name="what">What the rival did, which a refusal quotes.</param>
+    async Task<bool> StandOffAsync(
+        ContentUpgradeDefinition definition,
+        ContentUpgradeStandOff standOff,
+        string what)
     {
-        if (attempt >= MaxAttemptsPerDefinition)
+        if (!standOff.Observe(await ProgressAsync().ConfigureAwait(false)))
         {
             return Fail(definition, what);
         }
 
-        await Task.Delay(BackoffFor(attempt), CancellationToken).ConfigureAwait(false);
+        await Task.Delay(standOff.Delay, CancellationToken).ConfigureAwait(false);
         if (!await RereadActiveAsync().ConfigureAwait(false))
         {
             // The version moved to one nobody previewed. The definition is left where it stands and the
@@ -147,6 +161,36 @@ sealed partial class ContentUpgradeRun
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// The catalog's three moving parts as ONE comparable value: the ledger, the active version and the open
+    /// draft. It is a string rather than a record because the only question asked of it is whether it is the
+    /// same as last time, and a string makes that one ordinal comparison over everything at once.
+    /// </summary>
+    async Task<string> ProgressAsync()
+    {
+        Operation = "read what the catalog is doing";
+        IReadOnlyList<ContentUpgradeRecord> records = await Ledger
+            .ListUpgradesAsync(CancellationToken)
+            .ConfigureAwait(false);
+        int active = await Store.GetActiveVersionAsync(CancellationToken).ConfigureAwait(false);
+        ContentDraft? draft = await Store.GetOpenDraftAsync(CancellationToken).ConfigureAwait(false);
+
+        var progress = new StringBuilder();
+        progress.Append(CultureInfo.InvariantCulture, $"v{active}");
+        for (int i = 0; i < records.Count; i++)
+        {
+            ContentUpgradeRecord record = records[i];
+            progress.Append(CultureInfo.InvariantCulture, $"|{record.Id}@{record.VersionNumber}");
+            progress.Append(ContentUpgradeDispositions.Token(record.Disposition));
+        }
+
+        progress.Append(draft is null
+            ? "|no-draft"
+            : FormattableString.Invariant(
+                $"|{draft.OpenedBy}@{draft.OpenedAtUtc.UtcTicks}:{draft.EditCount}:{draft.FrozenForBaseVersion}:{draft.Note}"));
+        return progress.ToString();
     }
 
     /// <summary>The refusal step and its diagnostic for a publish the ledger says did not land.</summary>

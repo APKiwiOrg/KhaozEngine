@@ -26,6 +26,13 @@ public static class ContentAuditActions
     /// <summary>A bundle imported into an empty database.</summary>
     public const string BulkImport = "bulk-import";
 
+    /// <summary>
+    /// The whole catalog dropped and recreated. The row is the FIRST one in the new store, because the old
+    /// <c>catalog_audit</c> went with everything else, and it carries the summary of what stood so the fact
+    /// survives the only event that could erase it.
+    /// </summary>
+    public const string Reset = "reset";
+
     /// <summary>A family created with its first reserved block.</summary>
     public const string FamilyCreate = "family-create";
 

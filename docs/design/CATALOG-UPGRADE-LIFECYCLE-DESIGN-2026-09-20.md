@@ -153,7 +153,8 @@ ordinals.
    so the commit's version confirmation lets exactly one win and the loser resolves through the ledger. Any
    other open draft is operator work: outcome `OperatorDraftOpen`, draft untouched. The publish pre-flight
    asks the same question, so a draft that appears after this step is answered the same way and only another
-   runner's is waited out.
+   runner's is waited out. A draft carries TWO proofs and they answer different questions, which section 7.1
+   sets out.
 6. A pin on another version gives `PinnedElsewhere`. A pin on the active version does not block the publish.
    The pin is never moved, and the report carries a `PinHeld` diagnostic naming the version to repin to.
 7. A supplied expected version that differs from the active version gives `BaselineMoved`.
@@ -162,8 +163,9 @@ ordinals.
    builds rise to at least the running build and never fall.
 9. A failed publish re-reads the ledger and reports the disposition the row actually holds, so a rival's
    `adopted` row is reported as adopted rather than as published at a version. It discards its own draft only
-   while that draft still passes step 5, and a `publish-in-progress` refusal means a rival is live, so the
-   draft is left alone and the run stands off. An exception after the commit point is resolved the same way,
+   under one of the two proofs of section 7.1, and a `publish-in-progress` refusal means a rival is live, so
+   the draft is left alone and the run stands off. A refusal over a draft that is NOT this plan says nothing
+   about this plan, so that draft is resolved and the upgrade is tried again rather than blamed. An exception after the commit point is resolved the same way,
    by reading the ledger rather than assuming. Every re-read of the active version re-checks a supplied
    expected version: a version that is neither the expected one nor one this run published is `BaselineMoved`
    with nothing further changed. The stand-off gives up only when the ledger, the active version and the open
@@ -175,6 +177,45 @@ ordinals.
 Every refusal carries a stable diagnostic code, a message that names the catalog, the upgrade id and the
 action an operator or developer takes next, and the report renders through the existing content boot line
 prefix. Hosts map a failed report to `ContentBootResult.ContentFailureExitCode`.
+
+### 7.1 The two draft proofs
+
+An open draft is compared two ways and the two answers authorise different acts.
+
+- **Publish takes the exact match.** `ContentUpgradeDraftMatch.IsPlan` asks whether the draft holds exactly
+  one definition's whole change set: the same count, one edit per planned target under the same type,
+  operation, definition id and key, and the same payload on each. Nothing added and nothing missing. A run
+  publishes a draft it did not write in this attempt only under this proof, alongside the actor and the note.
+- **Discard takes the known-plan subset.** `ContentUpgradeDraftMatch.IsKnownWork` asks whether EVERY edit the
+  draft holds is, by the same identity and payload comparison, an edit of some plan this run computed. The
+  known set is every plan the run computed during the run plus a fresh replan of each still-pending
+  definition. One edit outside it means the draft may hold work an operator authored, so the draft is left
+  untouched and the outcome is `OperatorDraftOpen`. A draft that is exactly the plan of a definition still
+  PENDING is not discarded either, because that is the shape a rival holds between its own write and its own
+  publish, and it is waited out instead. A frozen draft is never discarded at all.
+
+The discard proof is strictly weaker than the publish proof and it can destroy nothing an operator authored,
+which is what lets it clear the draft two runners' writes merged into. That draft is the reason it exists:
+the write into a draft is not atomic with the read that found none, and the store's write APPENDS into
+whatever draft is open, so a rival that reached its own write inside that window leaves the one draft holding
+two definitions' edits under one actor and one note. It is nobody's plan, so nobody could publish it, and
+before the second proof nobody could discard it either. Both runners read it as the other's live work and
+stood off until their patience ran out.
+
+Three things close that window.
+
+1. The ledger is re-read for this definition immediately before the write. An id a rival recorded while this
+   run was planning is adopted rather than written again.
+2. The `ContentDraft` the write RETURNS decides what happens next, not the edits that went in. A draft that
+   is not exactly this plan, or one that opened on a different base version than the plan was computed
+   against, is never published. A draft that is exactly this run's own plan on the wrong base is discarded at
+   once rather than left for a rival to append into.
+3. A draft the run may not publish is RESOLVED before it is judged. The run offers the discard proof first,
+   and only a draft it cannot prove is then classified as a rival's to wait out or an operator's to report.
+
+Clearing a draft under the second proof is informational, not a failure: `DraftCleared` names the edit count
+and the version, and the upgrade is tried again against the re-read baseline. The worst an interleaving costs
+is a replan and a burnt version number.
 
 ## 8. Host integration contract
 

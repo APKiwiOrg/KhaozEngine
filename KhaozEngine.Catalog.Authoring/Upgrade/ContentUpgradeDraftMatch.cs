@@ -4,8 +4,10 @@ using System.Collections.Generic;
 namespace KhaozEngine.Catalog.Authoring;
 
 /// <summary>
-/// Whether an open draft holds EXACTLY the edits a plan would put in it. This is the proof an upgrade run
-/// needs before it treats a draft as its own, and it is a public check because it is the one comparison a
+/// The two proofs an upgrade run has about an open draft: <see cref="IsPlan"/>, which is EXACTLY one
+/// definition's change set and is what a run needs before it PUBLISHES a draft it did not write in this
+/// attempt, and <see cref="IsKnownWork"/>, which is every held edit belonging to some plan the run computed
+/// and is what it needs before it DISCARDS one. They are public because they are the comparisons every
 /// data-loss path turns on.
 /// <para>
 /// <b>An actor and a note are not proof.</b> Both stores KEEP the standing note when a writer passes an
@@ -61,6 +63,122 @@ public static class ContentUpgradeDraftMatch
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Whether EVERY edit the draft holds is one of the supplied known edits: the same target under the same
+    /// type, operation, definition id and key, and the same payload. It is a SUBSET question rather than an
+    /// equality one, which is what tells a draft two runs' change sets merged into apart from a draft an
+    /// operator added to.
+    /// <para>
+    /// <b>This is a discard proof and never a publish one.</b> A draft that is a subset of known work holds
+    /// nothing nobody planned, so losing it costs a replan and no content. It says nothing about the draft
+    /// being a complete change set, so nothing may be published out of it: that still takes
+    /// <see cref="IsPlan"/>.
+    /// </para>
+    /// <para>
+    /// <b>An EMPTY draft passes.</b> Nothing held is nothing to lose, and a run that refused to clear one
+    /// would stand off against a draft that cannot move until an operator resolves it by hand.
+    /// </para>
+    /// <para>
+    /// <b>Duplicates are handled from both sides.</b> One target twice in the DRAFT fails, because no plan
+    /// produces a change set like that and a store that returned one is not reproducing planned work. The
+    /// same target several times in the KNOWN set is ordinary, because two definitions may touch one row
+    /// differently, and a held edit matching any one of them is planned work.
+    /// </para>
+    /// </summary>
+    /// <param name="draft">The open draft as the store handed it back.</param>
+    /// <param name="known">Every edit of every plan the run computed, in any order and with repeats allowed.</param>
+    /// <exception cref="ArgumentNullException">An argument is null.</exception>
+    public static bool IsKnownWork(ContentDraft draft, IReadOnlyList<ContentEdit> known)
+    {
+        ArgumentNullException.ThrowIfNull(draft);
+        ArgumentNullException.ThrowIfNull(known);
+
+        IReadOnlyList<ContentEdit> held = draft.Changes.Edits;
+        if (held.Count == 0)
+        {
+            return true;
+        }
+
+        Dictionary<ContentUpgradeEditIdentity, List<ContentEdit>> byTarget = Index(known);
+        var seen = new HashSet<ContentUpgradeEditIdentity>(held.Count);
+        for (int i = 0; i < held.Count; i++)
+        {
+            if (!seen.Add(IdentityOf(held[i])) || !IsKnown(byTarget, held[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Whether ANY edit the draft holds came from the known set. It is the other side of
+    /// <see cref="IsKnownWork"/> and it proves nothing on its own: it tells a draft a run's own write merged
+    /// into apart from one that is another writer's whole, which decides who is asked to resolve it, and it
+    /// never decides whether anything may be destroyed.
+    /// </summary>
+    /// <param name="draft">The open draft as the store handed it back.</param>
+    /// <param name="known">Every edit of every plan the run computed, in any order and with repeats allowed.</param>
+    /// <exception cref="ArgumentNullException">An argument is null.</exception>
+    public static bool HoldsKnownWork(ContentDraft draft, IReadOnlyList<ContentEdit> known)
+    {
+        ArgumentNullException.ThrowIfNull(draft);
+        ArgumentNullException.ThrowIfNull(known);
+
+        IReadOnlyList<ContentEdit> held = draft.Changes.Edits;
+        Dictionary<ContentUpgradeEditIdentity, List<ContentEdit>> byTarget = Index(known);
+        for (int i = 0; i < held.Count; i++)
+        {
+            if (IsKnown(byTarget, held[i]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>The known edits by the row they act on, with several per row allowed.</summary>
+    static Dictionary<ContentUpgradeEditIdentity, List<ContentEdit>> Index(IReadOnlyList<ContentEdit> known)
+    {
+        var byTarget = new Dictionary<ContentUpgradeEditIdentity, List<ContentEdit>>(known.Count);
+        for (int i = 0; i < known.Count; i++)
+        {
+            ContentUpgradeEditIdentity identity = IdentityOf(known[i]);
+            if (!byTarget.TryGetValue(identity, out List<ContentEdit>? candidates))
+            {
+                candidates = [];
+                byTarget[identity] = candidates;
+            }
+
+            candidates.Add(known[i]);
+        }
+
+        return byTarget;
+    }
+
+    /// <summary>Whether any known edit of the held edit's row carries the held edit's payload too.</summary>
+    static bool IsKnown(
+        Dictionary<ContentUpgradeEditIdentity, List<ContentEdit>> byTarget,
+        ContentEdit held)
+    {
+        if (!byTarget.TryGetValue(IdentityOf(held), out List<ContentEdit>? planned))
+        {
+            return false;
+        }
+
+        for (int i = 0; i < planned.Count; i++)
+        {
+            if (SamePayload(planned[i], held))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>

@@ -180,7 +180,13 @@ public abstract partial class ContentAuthoringStoreConformance
     /// The committed bundle this build ships, built from the conformance registry's own declarations so it
     /// agrees with it by construction. That is what a game's committed bundle IS.
     /// </summary>
-    protected ContentBundle UpgradeTarget()
+    protected ContentBundle UpgradeTarget() => UpgradeTarget(
+        new ContentBundleRow(Thing, 1, new ContentKey("one"), false, null, CatalogFixtures.Fields(11)),
+        new ContentBundleRow(Thing, 2, new ContentKey("two"), false, null, CatalogFixtures.Fields(22)));
+
+    /// <summary>The same bundle over a caller's own rows, for a fact that ships more than one upgrade.</summary>
+    /// <param name="rows">Every row the shipped catalog carries, each naming its stable id.</param>
+    protected ContentBundle UpgradeTarget(params ContentBundleRow[] rows)
     {
         IReadOnlyList<ContentTypeRegistration> registered = Registry.ByTypeId;
         var types = new List<ContentBundleType>(registered.Count);
@@ -201,10 +207,7 @@ public abstract partial class ContentAuthoringStoreConformance
             "conformance-target",
             0,
             types,
-            [
-                new ContentBundleRow(Thing, 1, new ContentKey("one"), false, null, CatalogFixtures.Fields(11)),
-                new ContentBundleRow(Thing, 2, new ContentKey("two"), false, null, CatalogFixtures.Fields(22)),
-            ],
+            rows,
             [],
             []);
     }

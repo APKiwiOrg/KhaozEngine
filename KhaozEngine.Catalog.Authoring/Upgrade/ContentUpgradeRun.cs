@@ -275,8 +275,17 @@ sealed partial class ContentUpgradeRun
 
         try
         {
-            return definition.Plan(context)
+            ContentUpgradePlan plan = definition.Plan(context)
                 ?? ContentUpgradePlan.Refused("the planner returned no plan at all.");
+            if (plan.Kind == ContentUpgradePlanKind.Changes)
+            {
+                // Remembered here rather than where it is used, because this is the only place a change set
+                // this run itself computed comes into being, and the discard proof may not accept anything
+                // else as known work.
+                _known.Remember(plan.Edits);
+            }
+
+            return plan;
         }
         catch (Exception refused) when (refused is InvalidDataException
             or ContentAuthoringException

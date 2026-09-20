@@ -91,4 +91,11 @@ public static class ContentUpgradeCodes
     /// runs now, against the catalog as it stands.
     /// </summary>
     public const string PendingBelowApplied = "KECU0015";
+
+    /// <summary>
+    /// INFORMATIONAL. A draft stood between this run and its publish, every edit in it came from a plan this
+    /// run computed, so it was cleared and the upgrade was tried again. It is what a write that merged with
+    /// a second runner's leaves behind, and no operator work is ever cleared under it.
+    /// </summary>
+    public const string DraftCleared = "KECU0016";
 }

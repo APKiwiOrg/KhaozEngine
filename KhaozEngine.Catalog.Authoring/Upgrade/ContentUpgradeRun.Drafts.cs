@@ -138,35 +138,21 @@ sealed partial class ContentUpgradeRun
     /// releases its freeze on every exit path, so a marker standing here belongs to someone else. The draft
     /// is left exactly as it is and the caller re-reads the ledger and stands off.
     /// </para>
+    /// <para>
+    /// The plan match is not the only proof it accepts. A write that merged with a rival's leaves a draft
+    /// that is nobody's plan, and leaving that behind is what wedged two runners against each other, so a
+    /// draft <see cref="ReadDraftAsync"/> can account for edit by edit is cleared too.
+    /// </para>
     /// </summary>
+    /// <param name="draft">The standing draft, as the caller's own read just saw it.</param>
     /// <param name="note">The note this definition's draft carries.</param>
     /// <param name="planned">The edits this definition's plan produced.</param>
-    async Task<bool> DiscardOwnDraftAsync(string note, IReadOnlyList<ContentEdit> planned)
-    {
-        ContentDraft? draft = await Store.GetOpenDraftAsync(CancellationToken).ConfigureAwait(false);
-        if (draft is null || !IsOwn(draft, note, planned))
-        {
-            return false;
-        }
-
-        if (draft.IsFrozen)
-        {
-            return true;
-        }
-
-        try
-        {
-            await Store.DiscardDraftAsync(Options.Actor, Options.Operator, CancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch (ContentAuthoringException refused)
-            when (refused.Reason == ContentAuthoringException.PublishInProgressReason)
-        {
-            return true;
-        }
-
-        return false;
-    }
+    async Task<bool> DiscardOwnDraftAsync(
+        ContentDraft draft,
+        string note,
+        IReadOnlyList<ContentEdit> planned)
+        => await DisposeProvenDraftAsync(draft, note, planned).ConfigureAwait(false)
+            == ContentUpgradeDraftDisposal.RivalHoldsIt;
 
     /// <summary>
     /// The PENDING definition a draft's actor and note name, or null when the draft names none of them. It
@@ -228,7 +214,13 @@ sealed partial class ContentUpgradeRun
             return null;
         }
 
-        return plan is not null && plan.Kind == ContentUpgradePlanKind.Changes ? plan.Edits : null;
+        if (plan is null || plan.Kind != ContentUpgradePlanKind.Changes)
+        {
+            return null;
+        }
+
+        _known.Remember(plan.Edits);
+        return plan.Edits;
     }
 
     /// <summary>

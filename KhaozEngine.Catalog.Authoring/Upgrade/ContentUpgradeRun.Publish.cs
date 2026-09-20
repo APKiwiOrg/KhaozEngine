@@ -31,24 +31,41 @@ sealed partial class ContentUpgradeRun
         string note = ContentUpgradeRunner.NoteFor(definition.Id);
         Operation = "read the open draft";
 
-        // A draft standing here is either the one an interrupted run left holding exactly this plan, which
-        // this run publishes as it stands, or another runner's. Applying into another runner's would put two
-        // publishes over one change set, and a second set of edits in one draft is not this plan any more.
+        // A draft standing here is either the one an interrupted run left holding exactly this plan ON this
+        // baseline, which this run publishes as it stands, or it is not this run's to publish at all.
+        // Applying into another runner's would put two publishes over one change set, and a second set of
+        // edits in one draft is not this plan any more.
         ContentDraft? standing = await Store.GetOpenDraftAsync(CancellationToken).ConfigureAwait(false);
-        bool standingIsOwn = standing is not null && IsOwn(standing, note, plan.Edits);
+        bool standingIsOwn = standing is not null
+            && standing.BaseVersion == Active
+            && IsOwn(standing, note, plan.Edits);
         if (standing is not null && !standingIsOwn)
         {
-            // Only a RUNNER's draft is worth waiting out. An operator opens one between the gate and here as
-            // readily as before it, and waiting that out spends the whole attempt budget to report a state
-            // the first look already knew.
-            return IsRunnersDraft(standing)
-                ? await StandOffAsync(
-                    definition,
-                    standOff,
-                    FormattableString.Invariant(
-                        $"another publisher holds the open draft of {standing.EditCount} edit(s) on version {standing.BaseVersion}."))
-                    .ConfigureAwait(false)
-                : StopForOperatorDraft(definition, standing);
+            // Resolution comes BEFORE any judgement about whose draft it is: a draft this run can itself
+            // prove holds only its own planned work is one it clears, and standing off against that is how
+            // two runners used to wedge each other.
+            return await ResolveObstructionAsync(
+                definition,
+                plan,
+                note,
+                standOff,
+                FormattableString.Invariant(
+                    $"another publisher holds the open draft of {standing.EditCount} edit(s) on version {standing.BaseVersion}."),
+                standing)
+                .ConfigureAwait(false);
+        }
+
+        if (!standingIsOwn)
+        {
+            // The window between here and the write is what the whole obstruction path exists for, so it is
+            // narrowed first: an id a rival recorded while this run was planning costs nothing to notice now
+            // and a stale write to undo later.
+            Operation = "read the upgrade ledger";
+            ContentUpgradeRecord? already = await FindRecordAsync(definition.Id).ConfigureAwait(false);
+            if (already is not null)
+            {
+                return await AdoptRecordedAsync(definition, plan, already).ConfigureAwait(false);
+            }
         }
 
         Operation = "read the baseline version row";
@@ -66,9 +83,26 @@ sealed partial class ContentUpgradeRun
             if (!standingIsOwn)
             {
                 Operation = "write its edits into the draft";
-                await Store
+                ContentDraft written = await Store
                     .ApplyEditsAsync(plan.Edits, Options.Actor, Options.Operator, note, CancellationToken)
                     .ConfigureAwait(false);
+
+                // What came BACK decides, not what went in. The store appends into whatever draft is open,
+                // so a draft that opened inside the window between the read above and this write carries
+                // both change sets, and a draft that opened on a different baseline carries this plan
+                // against content it was not computed from. Neither is this plan and neither is published.
+                if (!ContentUpgradeDraftMatch.IsPlan(written, plan.Edits) || written.BaseVersion != Active)
+                {
+                    return await ResolveObstructionAsync(
+                        definition,
+                        plan,
+                        note,
+                        standOff,
+                        FormattableString.Invariant(
+                            $"the open draft this run wrote into holds {written.EditCount} edit(s) on version {written.BaseVersion}, which is not this upgrade's change set on version {Active}."),
+                        written)
+                        .ConfigureAwait(false);
+                }
             }
 
             Operation = "publish its edits as a new version";
@@ -100,6 +134,11 @@ sealed partial class ContentUpgradeRun
     /// ledger is READ rather than reasoned about. A row means the upgrade landed, here or in a concurrent
     /// runner, and either way it is never published twice. An exception after the commit point and a refusal
     /// before it look identical from here, and only the ledger tells them apart.
+    /// <para>
+    /// <b>A refusal over a draft that is not this plan says nothing about this plan.</b> A rival's write that
+    /// merged into the one draft inside the publish window is what makes a valid change set publish as an
+    /// invalid one, so the draft is resolved first and the upgrade is tried again rather than blamed.
+    /// </para>
     /// </summary>
     async Task<bool> ResolveFailureAsync(
         ContentUpgradeDefinition definition,
@@ -108,37 +147,25 @@ sealed partial class ContentUpgradeRun
         Exception failure,
         ContentUpgradeStandOff standOff)
     {
+        Operation = "read the open draft";
+        ContentDraft? over = await Store.GetOpenDraftAsync(CancellationToken).ConfigureAwait(false);
+        if (over is not null && !IsOwn(over, note, plan.Edits))
+        {
+            return await ResolveObstructionAsync(definition, plan, note, standOff, failure.Message, over)
+                .ConfigureAwait(false);
+        }
+
         Operation = "discard its own draft";
-        bool rivalIsLive = await DiscardOwnDraftAsync(note, plan.Edits).ConfigureAwait(false);
+        bool rivalIsLive = over is not null
+            && await DiscardOwnDraftAsync(over, note, plan.Edits).ConfigureAwait(false);
 
         Operation = "read the upgrade ledger";
         ContentUpgradeRecord? landed = await FindRecordAsync(definition.Id).ConfigureAwait(false);
         if (landed is not null)
         {
-            // The step says what the LEDGER says. A rival that found the catalog already satisfied wrote an
-            // adopted row and published no version at all, so reporting it as published as version N would
-            // name a version that says nothing about this upgrade.
-            //
-            // It never says WHO wrote the row, because nothing here can tell: this run's own commit landing
-            // before the exception that reached this handler looks exactly like a rival's, and two runners
-            // of one deploy write the same actor. Naming a rival would be false half the time, and it is
-            // the half an operator hunting a crashed boot is reading.
-            string token = ContentUpgradeDispositions.Token(landed.Disposition);
-            _steps.Add(landed.Disposition == ContentUpgradeDisposition.Applied
-                ? ContentUpgradeStepResult.Applied(definition, landed.VersionNumber, plan.ChangeLines)
-                : ContentUpgradeStepResult.Adopted(
-                    definition,
-                    FormattableString.Invariant(
-                        $"the ledger already records it as {token} at version {landed.VersionNumber}.")));
-            Add(
-                ContentUpgradeCodes.AppliedConcurrently,
-                landed.Disposition == ContentUpgradeDisposition.Applied
-                    ? FormattableString.Invariant(
-                        $"upgrade '{definition.Id}' was already published as version {landed.VersionNumber}, by this run before an interruption or by another runner, so this run adopted that result and continued.")
-                    : FormattableString.Invariant(
-                        $"upgrade '{definition.Id}' is already held in the ledger as {token} at version {landed.VersionNumber}, recorded rather than published, by this run before an interruption or by another runner, so this run adopted that result and continued."));
-            await RereadActiveAsync().ConfigureAwait(false);
-            return true;
+            // An exception after the commit point and a refusal before it look identical from here, and only
+            // the ledger tells them apart.
+            return await AdoptRecordedAsync(definition, plan, landed).ConfigureAwait(false);
         }
 
         // A live rival on this run's own draft is contention whatever the exception said, because the draft
@@ -169,15 +196,7 @@ sealed partial class ContentUpgradeRun
         }
 
         await Task.Delay(standOff.Delay, CancellationToken).ConfigureAwait(false);
-        if (!await RereadActiveAsync().ConfigureAwait(false))
-        {
-            // The version moved to one nobody previewed. The definition is left where it stands and the
-            // report says so, because publishing onto it is the refusal the expected version exists for.
-            _steps.Add(ContentUpgradeStepResult.Pending(definition));
-            return true;
-        }
-
-        return false;
+        return await RetryOrStopAsync(definition).ConfigureAwait(false);
     }
 
     /// <summary>

@@ -638,7 +638,8 @@ ContentUpgradeReport report = await ContentUpgradeRunner.RunAsync(
    a live publish or a dead one and nothing on the seam tells them apart, and a publish is the store's own
    recovery for a dead one. Any other open draft is operator work: `OperatorDraftOpen`, draft untouched. The
    publish pre-flight asks the same question, so a draft that appears after this step is answered the same
-   way, and only another runner's is waited out.
+   way, and only another runner's is waited out. What may be DISCARDED is a separate and weaker question,
+   answered below under the two draft proofs.
 6. A pin on another version is `PinnedElsewhere`. A pin on the active version does not block the publish, the
    pin is never moved, and the report carries a `PinHeld` diagnostic naming the version to repin to.
 7. A supplied `ExpectedVersion` that is not the active version is `BaselineMoved`. It is checked again at
@@ -651,16 +652,55 @@ ContentUpgradeReport report = await ContentUpgradeRunner.RunAsync(
    bundle exported at the version active right then, so the second definition sees the first one's result.
    The minimum builds rise to at least the running build's ordinals and never fall below the baseline's.
 9. After ANY publish failure the run READS the ledger and reports the disposition the row holds, which is
-   `Adopted` when a rival found the catalog already satisfied and published no version at all. It discards
-   its own draft only while that draft still passes step 5, and a `publish-in-progress` refusal means a rival
-   is live, so the draft is left alone and the run stands off. An exception thrown after the commit point and
-   a refusal before it look identical from outside, and only the ledger tells them apart.
+   `Adopted` when a rival found the catalog already satisfied and published no version at all. It discards a
+   draft only under one of the two proofs below, and a `publish-in-progress` refusal means a rival is live,
+   so the draft is left alone and the run stands off. A refusal over a draft that is NOT this plan says
+   nothing about this plan, so that draft is resolved and the upgrade is tried again rather than blamed. An
+   exception thrown after the commit point and a refusal before it look identical from outside, and only the
+   ledger tells them apart.
 10. `Preview` writes nothing. It plans the first pending definition exactly and lists the rest as pending,
     because a later plan depends on the published result of an earlier one.
 
 Every refusal carries a stable `KECU` code beside a message naming the catalog, the upgrade id and the next
 action, and `ContentUpgradeReport.WriteTo` renders every line through `ContentBoot.LinePrefix`.
 `ContentUpgradeReport.ExitCode` is 0 on a success and `ContentBootResult.ContentFailureExitCode` otherwise.
+
+### The two draft proofs
+
+`ContentUpgradeDraftMatch` holds both, and they authorise different acts.
+
+| Act | Proof | What it asks |
+|---|---|---|
+| Publish a draft this attempt did not write whole | `IsPlan` | The draft holds EXACTLY one definition's change set: the same count, one edit per planned target under the same type, operation, definition id and key, and the same payload on each. |
+| Discard a draft that is in the way | `IsKnownWork` | EVERY edit the draft holds is, by that same identity and payload comparison, an edit of some plan this run computed. |
+
+The known set is every plan the run computed during the run plus a fresh replan of each still-pending
+definition. One edit outside it means the draft may hold work an operator authored, and the draft is left
+exactly as it stands under `OperatorDraftOpen`. A draft that is exactly the plan of a definition still
+PENDING is not discarded either, because that is the shape a rival holds between its own write and its own
+publish, and it is waited out. A frozen draft is never discarded at all. So the discard proof is strictly
+weaker than the publish proof and it can destroy nothing an operator authored.
+
+It exists for one draft: the one two runners' writes merged into. A write into the draft is not atomic with
+the read that found none, and a store's write APPENDS into whatever draft is open, so a rival that reached
+its own write inside that window leaves the single draft holding two definitions' edits under one actor and
+one note. It is nobody's plan, so nobody may publish it, and without the second proof nobody could discard it
+either: both runners read it as the other's live work and stood off until their patience ran out.
+
+Three things close the window.
+
+1. The ledger is re-read for this definition immediately before the write, and a recorded id is adopted
+   rather than written again.
+2. The `ContentDraft` the write RETURNS decides what happens next, not the edits that went in. A draft that
+   is not exactly this plan, or one that opened on a different base version than the plan was computed
+   against, is never published. A draft that is exactly this run's own plan on the wrong base is discarded at
+   once rather than left for a rival to append into.
+3. A draft the run may not publish is RESOLVED before it is judged. The discard proof is offered first, and
+   only a draft the run cannot prove is then classified as a rival's to wait out or an operator's to report.
+
+Clearing a draft this way is informational rather than a failure: `KECU0016` names the edit count and the
+version, and the upgrade is tried again against the re-read baseline. The worst an interleaving costs is a
+replan and a burnt version number.
 
 Contention with a second runner is waited out rather than reported. Two replicas booting together is an
 ordinary deployment and a boot that lost a race is a real outage, so a run stands off while another publish

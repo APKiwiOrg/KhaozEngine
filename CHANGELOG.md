@@ -5,8 +5,50 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 19.9.1
+## 19.11.0
 
+- `SkySettings.ExtraDiscs` (a list of `SkyDisc`, up to `SkySettings.MaxDiscs` = 8 with the primary) puts more than
+  one body in the sky: a moon, a second sun. Each extra disc carries its own direction, colour, radius and halo.
+  The sky pass and the water reflection both loop over the list, in order, and every disc sets through a world
+  horizon. The primary disc stays on `SkySettings` because it follows the key light. Scenes with no extra discs
+  are byte-identical on all three backends (full rebakes moved no grid). New golden `scene3d_sky_two_discs`. The sky UBO becomes
+  6 vec4 plus three `vec4[8]`, the water UBO 34 vec4 plus three `vec4[8]` and its slot grows from 768 to 1280
+  bytes. `Sky.fragment` and the four water programs are repinned. Closes #1041.
+- Under `NightKeyMode.Moon`, `SunCycle` emits the moon as an extra disc (`SunCycleState.ExtraDiscCount`,
+  `GetExtraDisc`, `SunCycleDisc`) while the sun still holds the primary slot, and `SunCycle.Apply` replaces
+  `Sky.ExtraDiscs` with it, shaped like the primary. A moon rising as the sun sets now comes up through the
+  horizon instead of appearing once the sun lets go, and a moon that is up by day is now drawn. `SunCycleState`'s
+  constructor gains a trailing optional `extraDisc`.
+- Fixed: the water reflected the sun disc along the key light and ignored `Sky.SunDirectionOverride`. In 19.10.0
+  a `SunCycle` sun with `DiscSetElevationDegrees` above 0 under the default `AntiSolarMoon` night (where the key
+  flips anti-solar at the horizon) reflects a ghost sun opposite the real one while it sets. Each disc is now
+  reflected along its own direction.
+
+## 19.10.0
+
+- `TileInteractionReachPolicy` lets targets opt into diagonal and overlapping interaction reach. The
+  policy-aware `TileInteractionReach` kernel preserves collision, corner, plane and agent-footprint checks
+  across prediction, approach and arrival. `ITileTargets.GetInteractionReachPolicy` defaults to cardinal
+  reach, and compatible client/server constructor overloads accept an entity policy classifier. Existing
+  interaction defaults and combat reach are unchanged.
+
+- `SkySettings.Horizon` (`SkyHorizon`, default `Screen`) adds a world horizon to the procedural sky. `World`
+  anchors the gradient to the elevation of each pixel's view ray and paints `SkySettings.GroundColor` below
+  elevation zero (blend depth `HorizonSoftness`), so a finite world appears to run on to the horizon and the sun
+  disc sets through that line, occluded by the ground band. The screen-space sky had no notion of where elevation
+  zero was: a perspective camera pitched down at a finite world put the true horizon well above the world's
+  visible edge, so a low sun hung in mid-sky and could only fade out. It needs a perspective camera and
+  `SunAnchor.World`, and falls back to `Screen` without them. The water's reflected sky follows the same ground
+  band. The default is unchanged and no existing golden moved. New golden `scene3d_sky_world_horizon`. The sky
+  UBO grows to 9 vec4 and the water UBO to 35. `Sky.fragment` and the four water programs are repinned on all
+  three backends. Closes the horizon half of #396.
+- `SunCycleSettings.DiscSetElevationDegrees` (default 0, the historical cut at elevation zero) keeps a body's
+  disc that far below the horizon and moves the `SunDiscFadeElevationDegrees` band down with it, so under a
+  world horizon the disc crosses the line at full strength and the halo dims as an afterglow. The key light is
+  unaffected. When the key has flipped, moved to the moon or gone black, the disc stays pointed at the sun
+  through `DiscDirectionOverride`. `NightKeyMode.Moon` now decides the single disc slot apart from the key.
+- `SunCyclePalette.GroundColor`, `SunCycleState.GroundColor` and `SunCycle.Apply` drive the ground band across
+  day, dusk and night. `SunCycleState`'s constructor gains a trailing optional `groundColor`.
 - The sun and moon disc no longer turn into a black circle near the horizon. The sky and the water reflection
   replace-blend toward `SkySettings.SunColor`, and `SunCycle` faded a rising or setting disc by scaling that
   colour to black, so across the last `SunDiscFadeElevationDegrees` the disc painted a black hole in the
@@ -14,7 +56,19 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   use as the blend weight, so the disc dissolves into the sky and keeps its colour. `SunCycleState.SunColor`
   RGB is no longer darkened inside the fade band. A consumer that set a `SunColor` alpha below 1 by hand gets a
   correspondingly fainter disc. Alpha 1 is bit-identical, so no golden moved. `Sky.fragment` is repinned on all
-  three backends. Part 1 of #396. The horizon half of that issue stays open.
+  three backends. This fixes the disc-fade part of #396.
+
+- Map editor navigation uses middle-mouse terrain-pivot orbit, Shift+middle-mouse pan, wheel dolly,
+  captured right-mouse fly navigation, selection framing, and persisted fly speed.
+- The editor View panel exposes authored props, prop categories, named layers, water, markers, Terrain Only
+  and Show All. Visibility filters draw submission and picking without rebuilding streamed terrain or scatter.
+- `InputManager.SuppressPointerInput` blocks GUI mouse buttons and scrolling during captured navigation
+  while retaining hover, keyboard and gamepad input. Held buttons remain ignored until release.
+- Sculpt feedback adds a terrain-following footprint, falloff guide, screen-scaled centre marker and
+  localized operation/state labels. Segments crossing unloaded chunks are omitted.
+- Editor navigation samples terrain only when a new pivot is needed. Authored prop draws reuse their
+  preparation buffer, and hidden placement caches rebuild on reveal. The copied-island CPU profile
+  removes roughly 1.24 MB of warmed authored draw-preparation allocation per frame.
 
 ## 19.9.0
 

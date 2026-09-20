@@ -70,7 +70,7 @@ public sealed partial class TileWorldServer
                 $"Actor traversal map plane count {map.PlaneCount} does not match the server's {config.PlaneCount} planes.",
                 nameof(map));
         var actorSimulator = new TileMoveSimulator(map, config.StepTicks, interactionTargets, config.ActorMove,
-            combatTargets);
+            entityTargets);
         actorTraversalProfiles.Register(profile, map, actorSimulator);
     }
 
@@ -82,6 +82,18 @@ public sealed partial class TileWorldServer
             return true;
         }
         map = null!;
+        return false;
+    }
+
+    internal bool TryGetActorTraversalSimulator(TileActorTraversalProfile profile,
+        out TileMoveSimulator simulator)
+    {
+        if (actorTraversalProfiles.TryGet(profile, out TileActorTraversalEntry entry))
+        {
+            simulator = entry.Simulator;
+            return true;
+        }
+        simulator = null!;
         return false;
     }
 

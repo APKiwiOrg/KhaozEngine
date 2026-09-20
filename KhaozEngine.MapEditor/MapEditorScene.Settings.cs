@@ -136,7 +136,7 @@ public partial class MapEditorScene
     /// <para>The ring is the part that cannot be set: <c>ViewportWorld</c> reads its profile when it BUILDS (the
     /// streamer config and every prop layer's cull radius are baked there), so assigning the profile alone would
     /// widen the frustum and the ocean plane while the world quietly stayed the size it was. So a change to a built
-    /// world drives <see cref="RebuildWorldForVisibility"/>, the same rebuild path the Layers panel uses, and pays
+    /// world drives <see cref="RebuildWorldForVisibility"/>, the mesh-form and render-distance rebuild path, and pays
     /// its hitch. Before the first build this is a no-op beyond setting the profile, which is exactly right: the
     /// build that follows reads it.</para>
     /// <para>A tiled document that opened windowed is the one thing this cannot grow (see
@@ -194,6 +194,7 @@ public partial class MapEditorScene
     internal void OnSettingsChanged()
     {
         _settings.Sanitize();
+        _navigation.FlySpeed = _settings.FlySpeed;
         _options.Settings?.Save();
         ApplyRenderDistance();
         _environmentDirty = true;

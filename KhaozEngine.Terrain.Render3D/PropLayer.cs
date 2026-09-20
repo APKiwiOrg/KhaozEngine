@@ -93,6 +93,8 @@ namespace KhaozEngine.Terrain
         /// LOD0 and LOD1 share one deterministic distance transition and opposite coverage phases. Default 0 keeps
         /// the existing hard swap.</summary>
         public float LodCrossfadeWidth { get; }
+        /// <summary>Optional stable producer-assigned identity retained with this draw batch.</summary>
+        public string? Identity { get; }
 
         /// <summary>Per-kit FLAT source meshes for the layer's HLOD merge (the <c>PropLoader.LoadProp</c> vertex-colour
         /// form, or an authored low-poly proxy). Null when the layer has no HLOD (the default). When set with a positive
@@ -144,7 +146,8 @@ namespace KhaozEngine.Terrain
                   float hlodDistance = 0f, float hlodWeldCell = 0f, float hlodCrossfadeWidth = 0f,
                   IReadOnlyList<PropPlacement>? placements = null, bool registerColliders = true,
                   IPlacementSource? placementSource = null, bool castsShadows = true,
-                  IReadOnlyDictionary<string, float>? blobRadii = null, float lodCrossfadeWidth = 0f)
+                  IReadOnlyDictionary<string, float>? blobRadii = null, float lodCrossfadeWidth = 0f,
+                  string? identity = null)
         {
             Scatter = scatter;
             Companions = companions;
@@ -166,6 +169,7 @@ namespace KhaozEngine.Terrain
             PlacementSource = placementSource;
             CastsShadows = castsShadows;
             BlobRadii = blobRadii;
+            Identity = identity;
         }
 
         /// <summary>This layer with HLOD turned on: a copy carrying the per-kit flat <paramref name="sourceMeshes"/> to
@@ -180,7 +184,7 @@ namespace KhaozEngine.Terrain
             if (sourceMeshes == null) throw new ArgumentNullException(nameof(sourceMeshes));
             return new PropLayer(Scatter, Companions, HostLayerIndex, Meshes, PartMeshes, DrawRadius, FadeBandWidth,
                 LodMeshes, LodPartMeshes, LodDistance, sourceMeshes, hlodDistance, weldCell, crossfadeWidth,
-                Placements, RegisterColliders, PlacementSource, CastsShadows, BlobRadii, LodCrossfadeWidth);
+                Placements, RegisterColliders, PlacementSource, CastsShadows, BlobRadii, LodCrossfadeWidth, Identity);
         }
 
         /// <summary>This layer with an opt-in complementary LOD0 to LOD1 crossfade of
@@ -189,7 +193,17 @@ namespace KhaozEngine.Terrain
             new(Scatter, Companions, HostLayerIndex, Meshes, PartMeshes, DrawRadius, FadeBandWidth,
                 LodMeshes, LodPartMeshes, LodDistance, HlodSourceMeshes, HlodDistance, HlodWeldCell,
                 HlodCrossfadeWidth, Placements, RegisterColliders, PlacementSource, CastsShadows, BlobRadii,
-                crossfadeWidth);
+                crossfadeWidth, Identity);
+
+        /// <summary>This layer with a stable producer-assigned draw identity.</summary>
+        public PropLayer WithIdentity(string identity)
+        {
+            ArgumentException.ThrowIfNullOrEmpty(identity);
+            return new PropLayer(Scatter, Companions, HostLayerIndex, Meshes, PartMeshes, DrawRadius, FadeBandWidth,
+                LodMeshes, LodPartMeshes, LodDistance, HlodSourceMeshes, HlodDistance, HlodWeldCell,
+                HlodCrossfadeWidth, Placements, RegisterColliders, PlacementSource, CastsShadows, BlobRadii,
+                LodCrossfadeWidth, identity);
+        }
 
         /// <summary>A scatter layer driven by its own <see cref="ScatterConfig"/> (single-handle mesh set).
         /// <paramref name="fadeBandWidth"/> (default 0 = hard cut) is the dissolve fade band just inside

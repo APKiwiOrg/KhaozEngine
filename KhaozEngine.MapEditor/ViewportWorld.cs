@@ -52,10 +52,15 @@ public sealed class ViewportWorld : IDisposable
     readonly IReadOnlyList<AssetEntry> _entries;
     readonly Dictionary<string, float> _kindHeights;
     readonly Dictionary<string, string> _kindCategories;
+    readonly Dictionary<string, EditorPropCategory> _authoredCategories;
+    readonly Func<int, int, bool> _terrainChunkLoaded;
     readonly Dictionary<string, IReadOnlyList<MeshHandle>> _propMeshes = new();
     readonly PlacementCache _placements = new();
+    readonly AuthoredPlacementBuffer _authoredPlacements = new();
 
     Func<string, bool> _scatterLayerVisible = static _ => true;
+    Func<string, bool> _propKindVisible = static _ => true;
+    Func<string, EditorPropCategory>? _propCategoryResolver;
     Func<bool> _texturedPropsEnabled = static () => true;
     RenderDistanceProfile _renderDistance = RenderDistanceProfile.Default;
 
@@ -79,10 +84,12 @@ public sealed class ViewportWorld : IDisposable
     {
         ArgumentNullException.ThrowIfNull(manifestPaths);
         _scene = scene;
+        _terrainChunkLoaded = IsTerrainChunkLoaded;
 
         var entries = new List<AssetEntry>();
         var heights = new Dictionary<string, float>(StringComparer.Ordinal);
         var categories = new Dictionary<string, string>(StringComparer.Ordinal);
+        var authoredCategories = new Dictionary<string, EditorPropCategory>(StringComparer.Ordinal);
         foreach (string path in manifestPaths)
         {
             AssetManifest manifest = AssetManifest.Load(path);
@@ -94,22 +101,46 @@ public sealed class ViewportWorld : IDisposable
                 // heights/categories/meshes consistent. Heights used to be last-wins, a divergence closed here).
                 if (!heights.ContainsKey(entry.Id)) heights[entry.Id] = entry.HeightMeters;
                 if (!categories.ContainsKey(entry.Id)) categories[entry.Id] = entry.Category ?? stem;
+                if (!authoredCategories.ContainsKey(entry.Id))
+                    authoredCategories[entry.Id] = entry.Category is null
+                        ? EditorPropCategory.OtherProps : CategoryFromMetadata(entry.Category);
             }
         }
         _entries = entries;
         _kindHeights = heights;
         _kindCategories = categories;
+        _authoredCategories = authoredCategories;
     }
 
-    /// <summary>Predicate deciding whether a named scatter layer is streamed: the next <see cref="Build"/> /
-    /// <see cref="Rebuild"/> skips the prop layers of any layer for which this returns false (its companions go with
-    /// it), so hiding a scatter layer strips its props from the streamed world while the terrain streams unchanged.
-    /// Defaults to streaming every layer, and the scene points it at its
-    /// <see cref="EditorVisibility.GetLayer"/> and calls <see cref="Rebuild"/> when a toggle changes.</summary>
+    /// <summary>Predicate deciding whether a named scatter layer submits retained props at draw time. Companions
+    /// carry their host layer's identity and use the same predicate. Defaults to showing every layer.</summary>
     public Func<string, bool> ScatterLayerVisible
     {
         get => _scatterLayerVisible;
         set => _scatterLayerVisible = value ?? throw new ArgumentNullException(nameof(value));
+    }
+
+    /// <summary>Predicate deciding whether a kit identity is submitted from retained prop batches.</summary>
+    public Func<string, bool> PropKindVisible
+    {
+        get => _propKindVisible;
+        set => _propKindVisible = value ?? throw new ArgumentNullException(nameof(value));
+    }
+
+    /// <summary>Optional consumer classification callback. Explicit manifest metadata is used when null.</summary>
+    public Func<string, EditorPropCategory>? PropCategoryResolver
+    {
+        get => _propCategoryResolver;
+        set => _propCategoryResolver = value;
+    }
+
+    /// <summary>Resolves a kit identity without using manifest file-name palette fallbacks.</summary>
+    public EditorPropCategory PropCategoryOf(string kitId)
+    {
+        ArgumentNullException.ThrowIfNull(kitId);
+        if (_propCategoryResolver is not null) return _propCategoryResolver(kitId);
+        return _authoredCategories.TryGetValue(kitId, out EditorPropCategory category)
+            ? category : EditorPropCategory.OtherProps;
     }
 
     /// <summary>Predicate deciding whether a manifest entry's <see cref="AssetEntry.Textured"/> flag is honoured on
@@ -154,6 +185,24 @@ public sealed class ViewportWorld : IDisposable
     /// <summary>True once <see cref="Build"/> has run and before <see cref="Dispose"/>.</summary>
     public bool IsBuilt => _built;
 
+    /// <summary>True when the terrain chunk containing the world point has reached the applied streamer set.
+    /// Pending and deferred chunks return false, so editor feedback never claims an unloaded surface is editable.</summary>
+    internal bool IsTerrainLoaded(float x, float z)
+    {
+        if (!_built || _streamer is null || !float.IsFinite(x) || !float.IsFinite(z)) return false;
+        ChunkCoord wanted = ChunkGrid.CoordOf(x, z, _streamer.Config.ChunkSize);
+        return IsTerrainChunkLoaded(wanted.X, wanted.Z);
+    }
+
+    /// <summary>True when every applied terrain chunk touched by the segment is loaded.</summary>
+    internal bool IsTerrainSegmentLoaded(Vector2 from, Vector2 to) =>
+        _built && _streamer is not null
+        && SculptBrushOverlay.SegmentIsLoaded(
+            from, to, _streamer.Config.ChunkSize, _terrainChunkLoaded);
+
+    bool IsTerrainChunkLoaded(int x, int z) =>
+        _streamer is not null && _streamer.LodOf(new ChunkCoord(x, z)) >= 0;
+
     /// <summary>Each manifest kit id's declared <see cref="AssetEntry.HeightMeters"/>, the world-space box height
     /// picking multiplies by a placement's scale (feeds <see cref="EditorPicking"/>). First-manifest-wins on a
     /// duplicate id across manifests, matching <see cref="KindCategories"/> and the mesh tiebreak in
@@ -179,13 +228,12 @@ public sealed class ViewportWorld : IDisposable
 
     /// <summary>Rebuilds the streamed world from <paramref name="doc"/>: tears down the current sink + streamer
     /// (freeing the loaded ring) and reruns the full <see cref="Build"/> construction, honouring the live
-    /// <see cref="ScatterLayerVisible"/> filter (a scatter-layer visibility toggle rebuilds here, so hidden layers
-    /// drop out of the fresh prop layers). Unlike the old wholesale rebuild, the loaded kit meshes and the splat
+    /// full retained layer set. Unlike the old wholesale rebuild, the loaded kit meshes and the splat
     /// material are NOT torn down here: <see cref="LoadKitMeshes"/> skips any id already cached, and the retained
     /// splat material is reused as-is, so a rebuild stops re-decoding every prop glTF from disk. Call
     /// <see cref="InvalidateKitMeshes"/> first when the cached form must change (the textured-props toggle). The
     /// editor calls this when <see cref="EditorDocument.WorldRebuildPending"/> is set (terrain shape or scatter
-    /// inputs changed) and, separately, when a scatter-layer visibility toggle flips. Placement/spawn drags never
+    /// inputs changed). Placement/spawn drags and visibility changes never
     /// reach here. Throws <see cref="ObjectDisposedException"/> after <see cref="Dispose"/> and
     /// <see cref="InvalidOperationException"/> if never built.</summary>
     public void Rebuild(MapDocument doc, MapDocRegistry registry)
@@ -270,8 +318,8 @@ public sealed class ViewportWorld : IDisposable
     }
 
     /// <summary>Draws the streamed world plus the authored content, filtered by <paramref name="visibility"/>. The
-    /// terrain + streamed props go through the sink (hidden scatter layers already dropped out at
-    /// <see cref="Rebuild"/>). Authored placements draw OUTSIDE it (instanced, so a drag never rebuilds a chunk),
+    /// terrain + streamed props go through the sink, whose retained prop batches filter at submission. Authored
+    /// placements draw OUTSIDE it (instanced, so a drag never rebuilds a chunk),
     /// skipping any placement the <see cref="VisibilityGroup.Placements"/> group or its per-element hide flag turns
     /// off. The placement whose stable id is <paramref name="selectedPlacementId"/> re-draws once with
     /// <paramref name="highlightTint"/> when it is still visible. NPC spawn markers draw as ground-height billboards
@@ -297,10 +345,12 @@ public sealed class ViewportWorld : IDisposable
 
         _sink!.Draw(viewPos);
 
-        IReadOnlyList<EditorPlacement> placements = FilterVisiblePlacements(_placements.Get(_doc!, _field!), visibility);
-        (IReadOnlyList<EditorPlacement> unselected, EditorPlacement? selected) = Partition(placements, selectedPlacementId);
-        DrawAuthoredPlacements(unselected, viewPos);
-        if (selected is EditorPlacement sel) DrawHighlighted(sel, highlightTint);
+        _authoredPlacements.Prepare(
+            _placements, _doc!, _field!, visibility, _propKindVisible, selectedPlacementId);
+        // DrawProps consumes the scratch list synchronously through PropRenderer.EmitParts before this call returns.
+        _scene.DrawProps(_authoredPlacements.Unselected, _propMeshes, viewPos, AuthoredDrawRadius);
+        if (_authoredPlacements.Selected is EditorPlacement selected)
+            DrawHighlighted(selected, highlightTint);
         DrawSpawnMarkers(visibility);
         DrawPlayerSpawnMarkers(visibility);
     }
@@ -310,13 +360,14 @@ public sealed class ViewportWorld : IDisposable
     /// order-preserving, so the draw filter is headless-testable. Returns the input unchanged (a fast path) when
     /// nothing is hidden.</summary>
     internal static IReadOnlyList<EditorPlacement> FilterVisiblePlacements(
-        IReadOnlyList<EditorPlacement> placements, EditorVisibility visibility)
+        IReadOnlyList<EditorPlacement> placements, EditorVisibility visibility, Func<string, bool>? kindVisible = null)
     {
         if (!visibility.GetGroup(VisibilityGroup.Placements)) return Array.Empty<EditorPlacement>();
         List<EditorPlacement>? kept = null;
         for (int i = 0; i < placements.Count; i++)
         {
-            bool visible = !visibility.IsElementHidden(SelectionKind.Placement, placements[i].Id);
+            bool visible = !visibility.IsElementHidden(SelectionKind.Placement, placements[i].Id)
+                && (kindVisible is null || kindVisible(placements[i].Prop.Id));
             if (visible) kept?.Add(placements[i]);
             else kept ??= FirstN(placements, i);   // a hidden one: start copying the prefix we skipped over
         }
@@ -369,6 +420,7 @@ public sealed class ViewportWorld : IDisposable
         // by TeardownKitMeshes instead (see Dispose / InvalidateKitMeshes).
         _sink = new Scene3DChunkSink(_scene, _field, layers, TerrainChunkRegion.DefaultSize,
             material: _splatMaterial, ownsMaterial: false);
+        _sink.DrawFilter = PropVisible;
         // Synchronous streaming in the editor: the viewport wants blocking, deterministic loads (a mesh edit rebuilds
         // the ring and the result must be on screen immediately), not the game's background-build/apply-budget path.
         // The ring radii come from RenderDistance so the streamed far field reaches past the camera's far clip: the
@@ -413,64 +465,36 @@ public sealed class ViewportWorld : IDisposable
         new(entry.Id, entry.File, entry.HeightMeters, entry.Source, entry.License, entry.Collider,
             entry.Surface, entry.Heightmap, entry.CollisionShape, entry.CollisionProxy, textured, entry.Category);
 
-    // Turns the document's scatter + companion layers into the sink's index-aligned PropLayer list: the VISIBLE
-    // scatter layers first (recording each name's index), then companions pointing at their host scatter layer. A
-    // hidden scatter layer is skipped (its props drop out of the streamed world, terrain unchanged), and its
-    // companions go with it (their host is gone, so they cannot ring anything). A document with no visible scatter
-    // layers still gets one empty scatter layer so the terrain streams (the sink needs >= 1 layer).
+    // Turns every document scatter and companion layer into the sink's retained, index-aligned PropLayer list.
+    // Scatter identities survive into draw submission. Companions carry their host scatter identity so one layer
+    // switch gates both without rebuilding. A document with no scatter layers gets one empty terrain host layer.
     internal IReadOnlyList<PropLayer> BuildPropLayers(MapDocument doc)
     {
         var layers = new List<PropLayer>();
         var scatterIndex = new Dictionary<string, int>(StringComparer.Ordinal);
         IReadOnlyDictionary<string, ScatterConfig> scatters = MapRuntime.BuildScatterConfigs(doc);
 
-        foreach (string name in VisibleScatterLayerNames(doc, _scatterLayerVisible))
+        foreach (MapScatterLayer scatterLayer in doc.ScatterLayers)
         {
+            string name = scatterLayer.Name;
             scatterIndex[name] = layers.Count;
-            layers.Add(PropLayer.ScatterLayer(scatters[name], _propMeshes, _renderDistance.PropDrawRadius));
+            layers.Add(PropLayer.ScatterLayer(scatters[name], _propMeshes, _renderDistance.PropDrawRadius)
+                .WithIdentity(name));
         }
 
         foreach (MapCompanionLayer cl in doc.CompanionLayers)
         {
             if (!scatterIndex.TryGetValue(cl.HostLayer, out int hostIndex))
-            {
-                // Host absent from the visible set: skip a companion whose host layer merely got hidden (a hidden
-                // host suppresses its companions too), but still surface a companion naming a host the document
-                // never declares at all (a genuine authoring error, the pre-visibility guard).
-                if (DeclaresScatterLayer(doc, cl.HostLayer)) continue;
                 throw new MapDocumentException(
                     $"companion layer '{cl.Name}' names unknown host scatter layer '{cl.HostLayer}' in map '{doc.Id}'.");
-            }
             CompanionConfig companions = MapRuntime.BuildCompanionConfig(doc, cl.Name);
-            layers.Add(PropLayer.CompanionLayer(hostIndex, companions, _propMeshes, CompanionDrawRadius));
+            layers.Add(PropLayer.CompanionLayer(hostIndex, companions, _propMeshes, CompanionDrawRadius)
+                .WithIdentity(cl.HostLayer));
         }
 
         if (layers.Count == 0)
             layers.Add(PropLayer.ScatterLayer(EmptyScatter(), _propMeshes, _renderDistance.PropDrawRadius));
         return layers;
-    }
-
-    /// <summary>The document's scatter-layer names, in document order, keeping only those <paramref name="visible"/>
-    /// accepts. This is the seam <see cref="BuildPropLayers"/> uses to decide which scatter prop layers a
-    /// <see cref="Build"/> / <see cref="Rebuild"/> constructs, so a rebuild with a hidden layer omits it. Pure (no
-    /// GPU, no state), so the exclusion is headless-testable without building the world.</summary>
-    internal static List<string> VisibleScatterLayerNames(MapDocument doc, Func<string, bool> visible)
-    {
-        ArgumentNullException.ThrowIfNull(doc);
-        ArgumentNullException.ThrowIfNull(visible);
-        var names = new List<string>(doc.ScatterLayers.Count);
-        foreach (MapScatterLayer sl in doc.ScatterLayers)
-            if (visible(sl.Name)) names.Add(sl.Name);
-        return names;
-    }
-
-    // Whether the document declares a scatter layer of the given name (so a companion's missing host can be told
-    // apart: a hidden-but-declared host is skipped, an undeclared host is an authoring error).
-    static bool DeclaresScatterLayer(MapDocument doc, string name)
-    {
-        foreach (MapScatterLayer sl in doc.ScatterLayers)
-            if (string.Equals(sl.Name, name, StringComparison.Ordinal)) return true;
-        return false;
     }
 
     // A scatter config that places nothing (no biome rules), so a scatter-less zone still streams its terrain.
@@ -523,14 +547,6 @@ public sealed class ViewportWorld : IDisposable
             _scene.UnloadSplatMaterial(_splatMaterial);
             _splatMaterial = Scene3D.SplatMaterialHandle.Invalid;
         }
-    }
-
-    void DrawAuthoredPlacements(IReadOnlyList<EditorPlacement> placements, Vector3 focus)
-    {
-        // Reuse the instanced prop path. Authored content is never distance-culled, so pass the wide radius.
-        var props = new List<PropPlacement>(placements.Count);
-        foreach (EditorPlacement ep in placements) props.Add(ep.Prop);
-        _scene.DrawProps(props, _propMeshes, focus, AuthoredDrawRadius);
     }
 
     void DrawHighlighted(EditorPlacement ep, Color tint)
@@ -597,6 +613,16 @@ public sealed class ViewportWorld : IDisposable
             ? stem[..^manifestSuffix.Length]
             : stem;
     }
+
+    static EditorPropCategory CategoryFromMetadata(string category) => category.Trim().ToLowerInvariant() switch
+    {
+        "tree" or "trees" => EditorPropCategory.Trees,
+        "rock" or "rocks" => EditorPropCategory.Rocks,
+        _ => EditorPropCategory.OtherProps,
+    };
+
+    bool PropVisible(string? layerIdentity, string kitId) =>
+        (layerIdentity is null || _scatterLayerVisible(layerIdentity)) && _propKindVisible(kitId);
 
     /// <summary>Splits <paramref name="placements"/> into the unselected list plus the single placement whose
     /// stable id equals <paramref name="selectedId"/> (or null when the id is null or unmatched). Total and

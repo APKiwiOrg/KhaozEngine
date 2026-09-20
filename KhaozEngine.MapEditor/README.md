@@ -121,6 +121,15 @@ See `KhaozEngine.Showcase/RoomMapEditor.cs` for a worked example (`RoomMapEditor
 
 ## Keys
 
+The viewport uses a pivot-based editor camera. Middle drag orbits around the terrain point captured when the
+button is pressed. Shift+middle captures pan instead, and the chosen mode stays fixed until release. A terrain
+miss reuses the last pivot or starts 25 metres ahead of the camera. The wheel dollies toward or away from the
+pivot between 0.5 and 100000 metres without changing fly speed. Hold right mouse to look and use WASD plus E/Q
+to fly at the independently configured fly speed. Movement keys do nothing until a right-button press acquires
+the viewport. Navigation cannot start over editor chrome or while a field or modal owns input, and a captured
+gesture suppresses tool pointer input through its release frame. Press unmodified F to frame the current viewport
+selection. F does nothing for an empty or outline-only selection and remains text input while a field is focused.
+
 Ctrl+Z undo, Ctrl+Shift+Z or Ctrl+Y redo, Ctrl+S save, Ctrl+R reloads the current document from disk,
 Ctrl+D duplicates the current selection (see
 Duplicate below), Ctrl+Shift+F freezes the whole zone's procedural scatter into placements (see Freeze
@@ -135,8 +144,8 @@ the tool layer would consume this frame's Escape BEFORE the tool step runs, sinc
 handler sees the key the gesture is already cancelled and the mode is back to Select, so asking then would let
 the same press both cancel a drag and pop the menu open. Every Ctrl chord above also fires on Cmd
 (Super): `InputState.IsCommandDown` treats the two as the same modifier, so the Windows/Linux chords work
-unmodified on a Mac (Cmd+S, Cmd+R and Cmd+D also suppress the fly camera for that one frame, since those chords
-carry a WASD letter, see Camera bookmarks below for the Command-modifier suppression). All of them, plus the
+unmodified on a Mac. Cmd+S, Cmd+R and Cmd+D also suppress camera motion for that frame, since those chords carry
+a movement letter. All of them, plus the
 bare R hotkey and the bookmark digits, are suppressed while an inspector field, the kit-palette filter, or
 the spawn filter holds keyboard focus (`PropertyGrid.HasActiveEditor` ORed with the two filters' own
 `IsFocused`, see `MapEditorScene.AnyEditorFocused`), so typing an "R" or a Ctrl-chord letter into a name or a
@@ -191,7 +200,7 @@ Bare Escape, with nothing for the tool layer to cancel, opens a modal settings m
 a `NumberField` row holds a live edit, where that row's own Escape cancel takes the press first and the menu
 stays open. It sits one gate below the exit dialog in `OnUpdate`, so Shift+Escape still wins when both would
 apply and the two never stack. Built on `PropertyGrid` rather than the exit dialog's `PopupPanel` because the
-popup has label/value rows plus footer buttons and no interactive row type, and this is ten editable rows.
+popup has label/value rows plus footer buttons and no interactive row type.
 
 The rows, and what each one drives:
 
@@ -203,6 +212,8 @@ The rows, and what each one drives:
   the same rebuild path the Layers panel uses and pays its hitch. A tiled document that opened windowed is the
   one thing this cannot grow live (`EditorWindowRadius` is read at open time), so it says so in the status
   strip rather than under-loading in silence. Editor view only, it never touches the document.
+- **Navigation / Fly speed** - world units per second while right mouse owns the viewport, from 0.5 to 200.
+  This value is persisted independently from wheel dolly distance, so scrolling never changes flight speed.
 - **Sky / Sky preset** - `Day` (the default), `Sunset`, `Night`, `Starfield`, via
   `Render3D.EnvironmentPresets`. Picking one resets the sun and lighting sliders to that preset's own values,
   so a pick shows that preset rather than the previous one's sliders carried onto a new palette.
@@ -355,16 +366,15 @@ drift apart.
 
 ## Camera bookmarks
 
-Shift+1 through Shift+9 stores the fly camera's current pose (`Position`/`Yaw`/`Pitch`) into that numbered
+Shift+1 through Shift+9 stores the editor camera's current pose (`Position`/`Yaw`/`Pitch`) into that numbered
 slot, overwriting whatever was there. A bare 1 through 9 recalls a previously stored slot, snapping the
 camera straight back to it. Both are session-only (nothing persists across an editor close/reopen this
 round, see the design ledger for the deferred persistence follow-up), and the status strip confirms every
 store/recall, or reports an empty slot when a bare digit hits a slot never stored this session. Both are
 gated below `MapEditorScene.AnyEditorFocused` like every other chord, so typing a digit into a name or filter
-field never fires a bookmark. Cmd+S and Cmd+D carry a WASD letter (S and D), so the fly camera's own
-`_camController.Update` is skipped for any frame `InputState.IsCommandDown` is true, keeping those chords
-from also nudging the view one frame. The camera's aspect-ratio upkeep still runs every frame regardless, so
-a resize during a held modifier is never missed.
+field never fires a bookmark. Cmd+S and Cmd+D carry a WASD letter, but movement keys affect the camera only
+while a right-button navigation gesture owns the viewport. The camera's aspect-ratio upkeep still runs every
+frame, so a resize during a held modifier is never missed.
 
 ## Kit palette
 
@@ -527,9 +537,18 @@ stroke is one undo step: each frame's dab picks the terrain point under the curs
 (`EditorPicking.PickTerrain`, the same ground raycast the place tools use) and applies the brush, and the dabs
 coalesce into a single `TerrainSculptStrokeCommand` via `TryMerge`, exactly like the transform-gizmo drag.
 
-A terrain-following ring previews the live brush radius and ground pick while the pointer is over the
-viewport. It hides over editor chrome, outside sculpt mode, and when the terrain pick misses. The cursor
-uses the same ray and pick distance as the stroke.
+The viewport previews the live brush with a terrain-following outer footprint, a dashed guide at the
+half-strength falloff, and a centre cross whose world size follows camera distance so it remains readable in
+screen space. A nearby label names both the operation and its Hover, Active, or Unavailable state. Operation
+colour reinforces that label instead of carrying the meaning alone. The geometry uses the same field, pick,
+radius, paintable bounds, and applied terrain-chunk residency as the stroke. It clips at paintable document
+bounds and omits segments over unloaded or non-finite terrain. A missed or unloaded target shows Unavailable
+without presenting a valid footprint.
+
+The feedback hides over editor chrome and the View panel, under exit or settings modals, while navigation owns
+the pointer, and outside sculpt mode. Terrain Only keeps sculpt feedback visible while hiding unrelated markers.
+The overlay uses one fixed caller-owned 130-line buffer. Its outer footprint has 64 samples, its falloff guide
+has 64 samples, and the centre marker has two lines.
 
 The inspector shows the brush parameters while the tool is active (`BuildSculptInspector`), editing the
 controller directly (they are tool settings, not document edits, so they carry no undo gesture):
@@ -618,20 +637,32 @@ reversible document), an accepted view-only limit.
 
 `EditorVisibility` is editor-session view state, not part of the document: it gates whole
 `VisibilityGroup`s (`Placements`, `Spawns`, `Water`, `Exclusions`, `ScatterOverrides`, `Regions`,
-`FeatureMarkers`, `PlayerSpawns`), named scatter layers, and individual elements, and none of it is saved or undoable. A group or element toggle
+`FeatureMarkers`, `PlayerSpawns`), the `OtherProps`, `Trees`, and `Rocks` prop categories, named scatter
+layers, and individual elements. None of it is saved or undoable. A group or element toggle
 writes straight to `EditorVisibility`, never through `EditorDocument.Execute`, so hiding something never
 dirties the document (no leading `*` in the status strip) and never lands an undo step.
+
+The toolbar's persistent **View** button opens a floating `EditorViewPanel` without replacing the selection
+or sculpt inspector. Its **Authored props** switch gates all authored placements independently of the prop
+category and named scatter-layer choices. Its **Terrain Only** switch temporarily masks every non-terrain choice. Turning it off
+restores the underlying group, category, layer, and per-element choices, including choices edited while the
+mask was active. **Show All** clears every hide choice and exits Terrain Only. The panel uses localized
+`StringId` labels for fixed UI text and raw labels only for authored layer names.
+
+`MapEditorOptions.ResolvePropCategory` can explicitly classify each kit identity. When it is null, manifest
+entries whose authored `AssetEntry.Category` is `tree` or `trees` classify as `Trees`, and `rock` or `rocks`
+classify as `Rocks`. Every other kit is `OtherProps`. The palette-only manifest file-name fallback in
+`ViewportWorld.KindCategories` never classifies a kit.
 
 **Layers panel.** The empty-selection inspector (`MapEditorScene.BuildLayersInspector`) is the Layers
 panel: one `BoolRow` per `VisibilityGroup` (raw dev-tool labels, `FeatureMarkers` reads "Feature markers",
 `ScatterOverrides` reads "Scatter overrides", `PlayerSpawns` reads "Player spawns"),
 a **Rendering** section holding the "Textured props" `BoolRow` bound to `MapEditorOptions.TexturedProps`,
-then one `BoolRow` per named scatter layer in the open document. A group toggle only gates draws and picks,
-no rebuild. The "Textured props" toggle and a scatter-layer toggle both also call `ViewportWorld.Rebuild`
-(`RebuildWorldForVisibility`), since both are read at prop-mesh load time rather than live: flipping
+then one `BoolRow` per named scatter layer in the open document. A group or scatter-layer toggle only gates
+draws and picks, with no terrain, scatter, companion, or mesh rebuild. The "Textured props" toggle still calls
+`ViewportWorld.Rebuild` (`RebuildWorldForVisibility`), since mesh form is read at prop-mesh load time. Flipping
 "Textured props" reloads every manifest entry's mesh through `PropLoader.LoadPropAuto` under the new
-setting, and a hidden scatter layer's props actually drop out of the streamed world, taking its companion
-layers with it (their host is gone). Because `Rebuild` now retains the cached kit meshes and splat material
+setting. Because `Rebuild` now retains the cached kit meshes and splat material
 by default (see Rebuild semantics below), the "Textured props" toggle calls `ViewportWorld.InvalidateKitMeshes`
 first (`MapEditorScene.InvalidateViewportKitMeshes`) so the follow-up rebuild reloads every mesh in its new
 form instead of serving the stale cached one. The panel rebuilds on every selection change, so it always
@@ -779,10 +810,10 @@ match its sibling add/edit/remove commands' `AffectsWorld` value. Placement/spaw
 (they draw outside the streamed sink, so a drag never triggers a chunk rebuild). `EditorDocument` sets
 `WorldRebuildPending` whenever an executed, undone, or redone command's `AffectsWorld` is true.
 
-A scatter-layer visibility toggle also rebuilds the streamed world, but through a separate path
-(`MapEditorScene.RebuildWorldForVisibility` calling `ViewportWorld.Rebuild` directly), never through
-`WorldRebuildPending`: visibility is view-only session state, not a document change, so it never touches the
-command/dirty machinery above. See Visibility above.
+Visibility switches do not enter any rebuild path. `ViewportWorld.BuildPropLayers` keeps every scatter and
+companion layer resident and carries the host scatter-layer identity into its `PropLayer`. At draw time the
+sink filters retained batches by layer and kit identity. The same effective category predicate gates authored
+placement drawing, picking, and the selected placement gizmo. See Visibility above.
 
 A rebuild reads the document as it stands, and mid-edit that can be invalid: `ViewportWorld`'s prop-layer
 build throws `MapDocumentException` for a companion layer naming a host scatter layer the document does not

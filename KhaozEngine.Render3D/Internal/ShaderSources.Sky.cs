@@ -81,24 +81,39 @@ void main() {
 layout(set=0, binding=0) uniform Sky {
     vec4 Horizon;     // rgb gradient at the horizon (bottom)
     vec4 Zenith;      // rgb gradient at the zenith (top)
-    vec4 SunColor;    // rgb sun disc + halo colour, a = disc + halo opacity (the horizon fade)
-    vec4 SunNdc;      // xy = sun screen NDC, z = sunVisible (1/0), w = aspect (width/height)
-    vec4 Params;      // x=sunEnabled, y=sunRadius, z=haloStrength, w=haloFalloff
-    vec4 Res;         // xy = 1/renderWidth, 1/renderHeight
+    vec4 Res;         // xy = 1/renderWidth, 1/renderHeight, z = aspect (width/height), w = disc count
+    vec4 Ground;      // rgb ground band below the world horizon, a = blend depth (sin-elevation units)
+    vec4 HorizonRay;  // view ray through NDC (x,y) = (x * .x + .z, y * .y + .w, -1)
+    vec4 HorizonUp;   // xyz = world-Y of the camera right, up and back axes, w = 1 when the world horizon is live
+    vec4 DiscColor[8];  // per on-screen disc: rgb colour, a = opacity
+    vec4 DiscPlace[8];  // xy = screen NDC, z = radius, w = halo strength
+    vec4 DiscHalo[8];   // x = halo falloff
 };
 layout(location=0) out vec4 oColor;
 void main() {
     // NDC from gl_FragCoord (upper-left origin on every backend): x in [-1,1] rightward, y in [-1,1] UPWARD.
     vec2 ndc = vec2(gl_FragCoord.x * Res.x * 2.0 - 1.0, 1.0 - gl_FragCoord.y * Res.y * 2.0);
-    // Vertical screen gradient: NDC.y in [-1,1] -> [0,1] (bottom -> top), smoothstep for a soft ramp.
+    // Screen horizon: a vertical screen gradient, NDC.y in [-1,1] -> [0,1] (bottom -> top). World horizon: the same
+    // ramp off the elevation of this pixel's view ray (SkyHorizonFrame.SinElevation), which is the gradient the
+    // water's skyAlongDirection already uses.
+    float sinElevation = 0.0;
     float up = clamp(ndc.y * 0.5 + 0.5, 0.0, 1.0);
+    if (HorizonUp.w > 0.5) {
+        vec2 v = ndc * HorizonRay.xy + HorizonRay.zw;
+        sinElevation = (v.x * HorizonUp.x + v.y * HorizonUp.y - HorizonUp.z) / sqrt(dot(v, v) + 1.0);
+        up = clamp(sinElevation, 0.0, 1.0);
+    }
     float t = smoothstep(0.0, 1.0, up);
     vec3 col = mix(Horizon.rgb, Zenith.rgb, t);
 
-    if (Params.x > 0.5 && SunNdc.z > 0.5) {
-        float sunRadius = Params.y, haloStrength = Params.z, haloFalloff = Params.w, aspect = SunNdc.w;
-        float dx = (ndc.x - SunNdc.x) * aspect;   // aspect-correct so the disc is round in pixels
-        float dy = ndc.y - SunNdc.y;
+    // Every on-screen disc in order, a later one over an earlier one (SkyMath.ShadeDiscs). The CPU packs only
+    // the discs that project on screen, so there is no per-disc visibility flag.
+    int discCount = int(Res.w);
+    for (int i = 0; i < 8; i++) {
+        if (i >= discCount) break;
+        float sunRadius = DiscPlace[i].z, haloStrength = DiscPlace[i].w, haloFalloff = DiscHalo[i].x;
+        float dx = (ndc.x - DiscPlace[i].x) * Res.z;   // aspect-correct so the disc is round in pixels
+        float dy = ndc.y - DiscPlace[i].y;
         float d = sqrt(dx * dx + dy * dy);
         float feather = max(haloFalloff * 0.25, 1e-4);
         float disc = 1.0 - smoothstep(sunRadius, sunRadius + feather, d);
@@ -107,8 +122,12 @@ void main() {
             float beyond = max(0.0, d - sunRadius);
             halo = haloStrength * exp(-beyond / haloFalloff);
         }
-        float sun = clamp(disc + halo, 0.0, 1.0) * clamp(SunColor.a, 0.0, 1.0);
-        col = mix(col, SunColor.rgb, sun);
+        float sun = clamp(disc + halo, 0.0, 1.0) * clamp(DiscColor[i].a, 0.0, 1.0);
+        col = mix(col, DiscColor[i].rgb, sun);
+    }
+    // The ground goes over every disc: that is the horizon they set through (SkyGround.Weight).
+    if (HorizonUp.w > 0.5) {
+        col = mix(col, Ground.rgb, smoothstep(0.0, max(Ground.a, 1e-5), -sinElevation));
     }
     oColor = vec4(col, 1.0);   // alpha 1: opaque painted background (consistent with starfield)
 }";

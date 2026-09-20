@@ -49,6 +49,7 @@ public sealed partial class TileWorldServer : IDisposable
     readonly TileMoveSimulator simulator;
     readonly TileActorTraversalRegistry actorTraversalProfiles;
     readonly ITileTargets? interactionTargets;
+    readonly ITileTargets entityTargets;
     // The entity target space every simulator chases through, refreshed ONCE at the top of every tick. Owned here
     // rather than handed in, because the tick body is the only thing that may refresh it and the snapshot boundary
     // is the property the follow's determinism rests on. See TileEntityTargets.
@@ -109,6 +110,14 @@ public sealed partial class TileWorldServer : IDisposable
     public TileWorldServer(INetTransport transport, TileWorldServerConfig config, TileCollisionMap map,
         ITileTargets? targets = null, IConnectionAuthenticator? authenticator = null,
         ReplicationRegistry? registry = null)
+        : this(transport, config, map, targets, authenticator, registry, null)
+    {
+    }
+
+    /// <summary>Builds a tile server with an optional per-entity interaction reach policy.</summary>
+    public TileWorldServer(INetTransport transport, TileWorldServerConfig config, TileCollisionMap map,
+        ITileTargets? targets, IConnectionAuthenticator? authenticator, ReplicationRegistry? registry,
+        Func<long, TileInteractionReachPolicy>? entityInteractionReachPolicy)
     {
         ArgumentNullException.ThrowIfNull(transport);
         ArgumentNullException.ThrowIfNull(config);
@@ -135,15 +144,18 @@ public sealed partial class TileWorldServer : IDisposable
         this.config = config;
         this.registry = registry ?? TileProtocol.CreateRegistry(config.PlaneCount);
         interactionTargets = targets;
+        entityTargets = entityInteractionReachPolicy is null
+            ? combatTargets
+            : new TileInteractionPolicyTargets(combatTargets, entityInteractionReachPolicy);
         maxActionAgeTicks =
             (long)config.Move.MaxRouteSteps * (Math.Max(config.StepTicks.Walk, config.StepTicks.Run) + 1);
-        simulator = new TileMoveSimulator(map, config.StepTicks, targets, config.Move, combatTargets);
+        simulator = new TileMoveSimulator(map, config.StepTicks, targets, config.Move, entityTargets);
         // A SECOND instance rather than a second stepper. Nothing about TileMoveSimulator is stateful, so this costs
         // its options and nothing else, and it is what keeps a chasing actor's pathfinder scratch at 3 KB instead of
         // 83 KB. This is the default profile. Each registered map gets another instance with the same cadence,
         // actor knobs and TWO target seams. Every one gets the combat resolver because a player chasing a monster
         // and a monster chasing a player are the same follow over the same entity space.
-        var actorSimulator = new TileMoveSimulator(map, config.StepTicks, targets, config.ActorMove, combatTargets);
+        var actorSimulator = new TileMoveSimulator(map, config.StepTicks, targets, config.ActorMove, entityTargets);
         actorTraversalProfiles = new TileActorTraversalRegistry(actorSimulator);
         Actors = new TileActorHost(this);
         // The queue's own neutral is never what a starved player is stepped with: Admit replaces it with a Continue

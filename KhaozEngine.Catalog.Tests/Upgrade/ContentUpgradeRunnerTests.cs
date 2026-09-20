@@ -142,6 +142,48 @@ public sealed class ContentUpgradeRunnerTests
         Assert.Equal(ContentUpgradeCodes.BaselineMoved, report.Diagnostics[0].Code);
     }
 
+    /// <summary>
+    /// The expected version is checked at EVERY re-read of the active version, not once at the gate. A run
+    /// that stood off and came back to a version a rival left would otherwise publish onto a baseline nobody
+    /// previewed, which is the whole thing the hosted arm supplies the number for.
+    /// </summary>
+    [Fact]
+    public async Task AnExpectedVersionStopsTheRunWhenTheBaseMovesBetweenAttempts()
+    {
+        using var harness = new UpgradeHarness();
+        await harness.SeedOlderCatalogAsync();
+        var moving = new BaseMovesBetweenAttemptsStore(harness.Store);
+
+        ContentUpgradeReport report = await ContentUpgradeRunner.RunAsync(
+            moving, harness.Registry, harness.Set, UpgradeFixtures.Apply(expectedVersion: 1));
+
+        Assert.Equal(ContentUpgradeOutcome.BaselineMoved, report.Outcome);
+        Assert.Contains(
+            report.Diagnostics,
+            diagnostic => string.Equals(
+                diagnostic.Code, ContentUpgradeCodes.BaselineMoved, System.StringComparison.Ordinal));
+        Assert.Single(await harness.Store.ListVersionsAsync());
+        Assert.Empty(await harness.Store.ListUpgradesAsync());
+        Assert.Null(await harness.Store.GetOpenDraftAsync());
+    }
+
+    /// <summary>
+    /// The same re-read does NOT stop a run standing on a version it published itself, which is the ordinary
+    /// way a two-definition apply moves forward under an expected version.
+    /// </summary>
+    [Fact]
+    public async Task AnExpectedVersionDoesNotStopARunStandingOnItsOwnPublishedVersion()
+    {
+        using var harness = new UpgradeHarness();
+        await harness.SeedOlderCatalogAsync();
+
+        ContentUpgradeReport report = await ContentUpgradeRunner.RunAsync(
+            harness.Store, harness.Registry, harness.Set, UpgradeFixtures.Apply(expectedVersion: 1));
+
+        Assert.Equal(ContentUpgradeOutcome.Applied, report.Outcome);
+        Assert.Equal(3, report.ActiveVersionAfter);
+    }
+
     /// <summary>The LOCAL arm supplies no expected version and upgrades whatever it finds.</summary>
     [Fact]
     public async Task AnApplyWithNoExpectedVersionUpgradesWhateverItFinds()

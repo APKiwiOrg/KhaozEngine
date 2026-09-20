@@ -299,6 +299,55 @@ internal sealed class CountingContentAuthoringStore(InMemoryContentAuthoringStor
 }
 
 /// <summary>
+/// A store whose first publish is refused because the base version MOVED, and whose active version then
+/// reads as one higher, which is what a rival deploy leaves behind between two attempts. It is the state a
+/// run given an expected version must refuse to publish onto.
+/// </summary>
+internal sealed class BaseMovesBetweenAttemptsStore(InMemoryContentAuthoringStore inner)
+    : ForwardingContentAuthoringStore(inner), IContentUpgradeLedger
+{
+    bool _armed = true;
+    int _bump;
+
+    /// <inheritdoc />
+    public override async Task<int> GetActiveVersionAsync(CancellationToken cancellationToken = default)
+        => await base.GetActiveVersionAsync(cancellationToken) + _bump;
+
+    /// <inheritdoc />
+    public override async Task<ContentPublishResult> PublishAsync(
+        ContentPublishRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (!_armed)
+        {
+            return await base.PublishAsync(request, cancellationToken);
+        }
+
+        _armed = false;
+        _bump = 1;
+        throw new ContentAuthoringException(
+            "another publisher committed onto this base version first.",
+            default,
+            0,
+            ContentAuthoringException.BaseVersionMovedReason);
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<ContentUpgradeRecord>> ListUpgradesAsync(
+        CancellationToken cancellationToken = default)
+        => inner.ListUpgradesAsync(cancellationToken);
+
+    /// <inheritdoc />
+    public Task RecordUpgradeAsync(
+        ContentUpgradeStamp stamp,
+        ContentUpgradeDisposition disposition,
+        string actor,
+        string operatorId,
+        CancellationToken cancellationToken = default)
+        => inner.RecordUpgradeAsync(stamp, disposition, actor, operatorId, cancellationToken);
+}
+
+/// <summary>
 /// A store whose publish throws AFTER the commit transaction returns, which is the interruption design step 9
 /// exists for: the version is live, the ledger row is written, the draft is deleted, and the caller sees an
 /// exception. A runner that assumed the upgrade did not land would publish it a second time.

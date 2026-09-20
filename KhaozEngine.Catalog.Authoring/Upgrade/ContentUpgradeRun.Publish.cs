@@ -73,7 +73,7 @@ sealed partial class ContentUpgradeRun
                 },
                 CancellationToken).ConfigureAwait(false);
 
-            Active = published.VersionNumber;
+            RecordPublished(published.VersionNumber);
             _steps.Add(ContentUpgradeStepResult.Applied(definition, published.VersionNumber, plan.ChangeLines));
             return true;
         }
@@ -104,12 +104,12 @@ sealed partial class ContentUpgradeRun
         ContentUpgradeRecord? landed = await FindRecordAsync(definition.Id).ConfigureAwait(false);
         if (landed is not null)
         {
-            Active = await Store.GetActiveVersionAsync(CancellationToken).ConfigureAwait(false);
             _steps.Add(ContentUpgradeStepResult.Applied(definition, landed.VersionNumber, plan.ChangeLines));
             Add(
                 ContentUpgradeCodes.AppliedConcurrently,
                 FormattableString.Invariant(
                     $"upgrade '{definition.Id}' was published as version {landed.VersionNumber} by another runner, so this run adopted that result and continued."));
+            await RereadActiveAsync().ConfigureAwait(false);
             return true;
         }
 
@@ -132,7 +132,14 @@ sealed partial class ContentUpgradeRun
         }
 
         await Task.Delay(BackoffFor(attempt), CancellationToken).ConfigureAwait(false);
-        Active = await Store.GetActiveVersionAsync(CancellationToken).ConfigureAwait(false);
+        if (!await RereadActiveAsync().ConfigureAwait(false))
+        {
+            // The version moved to one nobody previewed. The definition is left where it stands and the
+            // report says so, because publishing onto it is the refusal the expected version exists for.
+            _steps.Add(ContentUpgradeStepResult.Pending(definition));
+            return true;
+        }
+
         return false;
     }
 

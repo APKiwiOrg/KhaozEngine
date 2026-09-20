@@ -48,6 +48,7 @@ sealed partial class ContentUpgradeRun
 
     readonly List<ContentUpgradeStepResult> _steps = [];
     readonly List<ContentUpgradeDiagnostic> _diagnostics = [];
+    readonly HashSet<int> _published = [];
     ContentUpgradeOutcome? _stopped;
 
     internal ContentUpgradeRun(
@@ -85,6 +86,42 @@ sealed partial class ContentUpgradeRun
 
     /// <summary>Whether the operator pin sits on the active version, which does not block a publish.</summary>
     internal bool PinnedOnActive { get; set; }
+
+    /// <summary>One version this run itself published, which is the only way the version may move under it.</summary>
+    /// <param name="versionNumber">The version the publish assigned.</param>
+    internal void RecordPublished(int versionNumber)
+    {
+        _published.Add(versionNumber);
+        Active = versionNumber;
+    }
+
+    /// <summary>
+    /// Re-reads the active version and answers whether the run may CARRY ON. Every path that stands off and
+    /// comes back reads the version again, and a supplied expected version has to hold at each of those
+    /// reads rather than only at the gate: a run that stood off and found a version a rival left would
+    /// otherwise publish onto a baseline nobody previewed, which is the one thing the hosted arm names a
+    /// version to prevent.
+    /// <para>
+    /// A version THIS run published is not a move. Nothing else is accepted, because two runners of one
+    /// deploy write the same actor and the ledger cannot tell their rows apart.
+    /// </para>
+    /// </summary>
+    internal async Task<bool> RereadActiveAsync()
+    {
+        int active = await Store.GetActiveVersionAsync(CancellationToken).ConfigureAwait(false);
+        Active = active;
+        if (Options.ExpectedVersion is not int expected || active == expected || _published.Contains(active))
+        {
+            return true;
+        }
+
+        Add(
+            ContentUpgradeCodes.BaselineMoved,
+            FormattableString.Invariant(
+                $"this run expected catalog version {expected} and version {active} is now active, published by neither this run nor the preview it was given, so the baseline moved under it. Preview again and rerun with the new version. Nothing further was changed."));
+        _stopped = ContentUpgradeOutcome.BaselineMoved;
+        return false;
+    }
 
     /// <summary>Builds the report, adding the pin instruction when a publish moved the version under a pin.</summary>
     /// <param name="outcome">How the run ended.</param>

@@ -49,6 +49,39 @@ public sealed class InputManagerSuppressionTests
         Assert.False(input.IsPointerJustReleased);
     }
 
+    [Theory]
+    [InlineData(MouseButton.Left)]
+    [InlineData(MouseButton.Middle)]
+    [InlineData(MouseButton.Right)]
+    public void SuppressedCompletedTapDoesNotSwallowImmediateFreshPress(MouseButton button)
+    {
+        var input = new InputManager();
+        input.Update(Frame(mousePressed: Buttons(button), mouseReleased: Buttons(button)));
+        AssertReleased(input, button);
+
+        input.SuppressPointerInput();
+        input.Update(Frame(mouseDown: Buttons(button), mousePressed: Buttons(button)));
+
+        AssertPressed(input, button);
+    }
+
+    [Theory]
+    [InlineData(MouseButton.Left)]
+    [InlineData(MouseButton.Middle)]
+    [InlineData(MouseButton.Right)]
+    public void SuppressedOrdinaryReleaseDoesNotSwallowImmediateFreshPress(MouseButton button)
+    {
+        var input = new InputManager();
+        input.Update(Frame(mouseDown: Buttons(button), mousePressed: Buttons(button)));
+        input.Update(Frame(mouseReleased: Buttons(button)));
+        AssertReleased(input, button);
+
+        input.SuppressPointerInput();
+        input.Update(Frame(mouseDown: Buttons(button), mousePressed: Buttons(button)));
+
+        AssertPressed(input, button);
+    }
+
     [Fact]
     public void SuppressionKeepsKeyboardGamepadAndHoverWhileClearingWheelForOneFrame()
     {
@@ -108,6 +141,31 @@ public sealed class InputManagerSuppressionTests
     static IReadOnlySet<Key> Keys(params Key[] keys) => new HashSet<Key>(keys);
 
     static IReadOnlySet<MouseButton> Buttons(params MouseButton[] buttons) => new HashSet<MouseButton>(buttons);
+
+    static void AssertReleased(InputManager input, MouseButton button)
+    {
+        bool released = button switch
+        {
+            MouseButton.Left => input.IsPointerJustReleased,
+            MouseButton.Middle => input.IsMiddleJustReleased,
+            MouseButton.Right => input.IsRightJustReleased,
+            _ => false,
+        };
+        Assert.True(released);
+    }
+
+    static void AssertPressed(InputManager input, MouseButton button)
+    {
+        (bool down, bool pressed) = button switch
+        {
+            MouseButton.Left => (input.IsPointerDown, input.IsPointerJustPressed),
+            MouseButton.Middle => (input.IsMiddleDown, input.IsMiddleJustPressed),
+            MouseButton.Right => (input.IsRightDown, input.IsRightJustPressed),
+            _ => (false, false),
+        };
+        Assert.True(down);
+        Assert.True(pressed);
+    }
 
     static GamepadState Pad(params GamepadButton[] buttons)
     {

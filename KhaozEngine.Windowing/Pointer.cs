@@ -162,11 +162,11 @@ namespace KhaozEngine.Windowing
 
         /// <summary>Suppress every mouse-button gesture currently in flight and ignore each held button until its
         /// physical release. Position and hover remain live for normal layout and feedback.</summary>
-        internal void SuppressButtonsUntilRelease()
+        internal void SuppressButtonsUntilRelease(InputState input)
         {
-            _ignoreLeftUntilReleased |= _down || _wasDown;
-            _ignoreMiddleUntilReleased |= _mid || _wasMid;
-            _ignoreRightUntilReleased |= _right || _wasRight;
+            _ignoreLeftUntilReleased |= input.IsDown(MouseButton.Left);
+            _ignoreMiddleUntilReleased |= input.IsDown(MouseButton.Middle);
+            _ignoreRightUntilReleased |= input.IsDown(MouseButton.Right);
             _down = _wasDown = _mid = _wasMid = _right = _wasRight = false;
             _pressOriginFresh = false;
         }

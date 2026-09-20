@@ -74,7 +74,7 @@ namespace KhaozEngine.Windowing
         public void SuppressPointerInput()
         {
             _pointerInputSuppressed = true;
-            _pointer.SuppressButtonsUntilRelease();
+            _pointer.SuppressButtonsUntilRelease(_input);
         }
 
         // ---- pointer (delegates to the composed Pointer) --------------------

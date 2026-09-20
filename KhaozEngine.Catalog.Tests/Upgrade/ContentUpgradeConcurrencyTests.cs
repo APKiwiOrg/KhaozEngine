@@ -70,14 +70,56 @@ public sealed class ContentUpgradeConcurrencyTests
         }
     }
 
+    /// <summary>
+    /// Two runners ADOPTING at once, on a real SQLite file, over a catalog that already holds every committed
+    /// row. Neither publishes anything, so the only write either makes is its ledger row, and the two land on
+    /// the same ids. Recording an id the ledger already holds is documented as a NO-OP on every store rather
+    /// than a refusal, and this is what says the runner may rely on that.
+    /// </summary>
+    [Fact]
+    public async Task TwoRunnersAdoptingAnAlreadySatisfiedSqliteCatalogBothSucceed()
+    {
+        for (int iteration = 0; iteration < Iterations; iteration++)
+        {
+            using var database = new TemporaryCatalogDatabase();
+            ContentTypeRegistry registry = PublishFixtures.Registry(
+                PublishFixtures.Thing, PublishFixtures.Other);
+            using var store = new SqliteContentAuthoringStore(
+                database.ConnectionString, registry, database.Pack());
+            await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
+            await store.ImportBundleAsync(
+                TargetFor(registry), UpgradeFixtures.Actor, UpgradeFixtures.Operator, "fresh install");
+
+            ContentUpgradeSet set = SetFor(registry);
+            ContentUpgradeReport[] reports = await Task.WhenAll(
+                Task.Run(() => ContentUpgradeRunner.RunAsync(store, registry, set, UpgradeFixtures.Apply())),
+                Task.Run(() => ContentUpgradeRunner.RunAsync(store, registry, set, UpgradeFixtures.Apply())));
+
+            string context = Describe(iteration, reports);
+            Assert.True(reports[0].Success, context);
+            Assert.True(reports[1].Success, context);
+
+            // One row per definition, adopted rather than applied, and no version published by either run.
+            IReadOnlyList<ContentUpgradeRecord> ledger = await store.ListUpgradesAsync();
+            Assert.Equal([UpgradeHarness.FirstId, UpgradeHarness.SecondId], Ids(ledger));
+            Assert.All(ledger, record => Assert.Equal(ContentUpgradeDisposition.Adopted, record.Disposition));
+            Assert.Single(await store.ListVersionsAsync());
+            Assert.Null(await store.GetOpenDraftAsync());
+        }
+    }
+
+    /// <summary>The committed bundle this build ships, over a registry.</summary>
+    /// <param name="registry">The registry the bundle declares its types from.</param>
+    static ContentBundle TargetFor(ContentTypeRegistry registry) => UpgradeFixtures.Target(
+        registry,
+        UpgradeFixtures.Row(UpgradeFixtures.Thing, 1, "old_row", 11),
+        UpgradeFixtures.Row(UpgradeFixtures.Other, 1, "new_row", 22),
+        UpgradeFixtures.Row(UpgradeFixtures.Other, 2, "second_new_row", 33));
+
     /// <summary>The two definitions this build ships, over a registry, with their committed target bundle.</summary>
     static ContentUpgradeSet SetFor(ContentTypeRegistry registry)
     {
-        ContentBundle target = UpgradeFixtures.Target(
-            registry,
-            UpgradeFixtures.Row(UpgradeFixtures.Thing, 1, "old_row", 11),
-            UpgradeFixtures.Row(UpgradeFixtures.Other, 1, "new_row", 22),
-            UpgradeFixtures.Row(UpgradeFixtures.Other, 2, "second_new_row", 33));
+        ContentBundle target = TargetFor(registry);
         return new ContentUpgradeSet(
             UpgradeFixtures.Adds(
                 UpgradeHarness.FirstId, 1, target, UpgradeFixtures.Identity(UpgradeFixtures.Other, "new_row")),

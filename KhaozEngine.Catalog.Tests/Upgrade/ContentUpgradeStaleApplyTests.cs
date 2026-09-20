@@ -114,7 +114,8 @@ public sealed class ContentUpgradeStaleApplyTests
 
     /// <summary>
     /// A rival write of content NO shipped definition plans, landing in the same window. The run stops for the
-    /// operator and the draft keeps every edit it held.
+    /// operator, and WHICH edits survive is the claim: an edit count alone would pass on a run that had
+    /// dropped the operator's edit and left two of its own.
     /// </summary>
     static async Task ForeignEditRacesAsync(string rivalActor, string rivalNote)
     {
@@ -128,6 +129,7 @@ public sealed class ContentUpgradeStaleApplyTests
             rivalActor,
             rivalNote,
             [ContentEdit.Add(UpgradeFixtures.Thing, new ContentKey("operator_row"), PublishFixtures.Fields(77))]);
+        int activeBefore = await race.GetActiveVersionAsync();
 
         ContentUpgradeReport report = await RunAsync(race, registry);
 
@@ -137,9 +139,19 @@ public sealed class ContentUpgradeStaleApplyTests
             report.Diagnostics,
             diagnostic => diagnostic.Code == ContentUpgradeCodes.OperatorDraftOpen);
 
+        // The catalog did not move: the same active version, no version published, and no ledger row for the
+        // upgrade that stopped.
+        Assert.Equal(activeBefore, await race.GetActiveVersionAsync());
+        Assert.Equal(activeBefore, report.ActiveVersionAfter);
+        Assert.Single(await race.ListVersionsAsync());
+        Assert.Empty(await race.ListUpgradesAsync());
+
+        // The operator's own row is still there, named rather than counted, beside the run's one planned edit.
         ContentDraft? draft = await race.GetOpenDraftAsync();
         Assert.NotNull(draft);
         Assert.Equal(2, draft.EditCount);
+        Assert.Contains(draft.Changes.Edits, edit => Targets(edit, UpgradeFixtures.Thing, "operator_row"));
+        Assert.Contains(draft.Changes.Edits, edit => Targets(edit, UpgradeFixtures.Other, "new_row"));
     }
 
     /// <summary>

@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Numerics;
 using KhaozEngine.MapDoc;
 using KhaozEngine.Render3D;
@@ -49,8 +50,20 @@ public partial class MapEditorScene
             && !AnyEditorFocused
             && !toolGesture;
         _navigation.UpdateLazy(input, viewportEligible, _navigationTerrainHit, dt);
+        SyncFlySpeedSetting();
         bool wheelNavigated = viewportEligible && float.IsFinite(input.ScrollDelta) && input.ScrollDelta != 0f;
         _navigationOwnsPointer = wasNavigating || _navigation.IsNavigating || wheelNavigated;
+    }
+
+    // The wheel retunes fly speed while right mouse flies. The settings value is the one source, so mirror the
+    // change back, persist it, and say the new speed in the status strip (the wheel gives no other feedback).
+    void SyncFlySpeedSetting()
+    {
+        if (_navigation.FlySpeed == _settings.FlySpeed) return;
+        _settings.FlySpeed = _navigation.FlySpeed;
+        _options.Settings?.Save();
+        _statusText = MapEditorStrings.Resolve(MapEditorStrings.FlySpeedStatus,
+            _settings.FlySpeed.ToString("0.#", CultureInfo.InvariantCulture));
     }
 
     /// <summary>Samples a navigation pivot through the editor's real terrain raycast path.</summary>

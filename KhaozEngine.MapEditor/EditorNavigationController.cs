@@ -13,6 +13,7 @@ internal sealed class EditorNavigationController
     const float MinDollyDistance = 0.5f;
     const float MaxDollyDistance = 100000f;
     const float DollyStep = 0.85f;
+    const float FlySpeedStep = 1.2f;
 
     readonly FlyCamera3D _camera;
     NavigationMode _mode;
@@ -89,7 +90,13 @@ internal sealed class EditorNavigationController
             return;
         }
 
-        if (viewportEligible && float.IsFinite(input.ScrollDelta) && input.ScrollDelta != 0f)
+        // The wheel belongs to the gesture in flight: while right mouse flies it sets the fly speed, the way it did
+        // before the wheel took over pivot distance. Everywhere else it dollies.
+        if (_mode == NavigationMode.Fly && input.IsDown(MouseButton.Right))
+        {
+            AdjustFlySpeed(input.ScrollDelta);
+        }
+        else if (viewportEligible && float.IsFinite(input.ScrollDelta) && input.ScrollDelta != 0f)
         {
             Vector3? dollyHit = null;
             if (_mode == NavigationMode.None)
@@ -239,6 +246,14 @@ internal sealed class EditorNavigationController
             ? Math.Clamp(distance * factor, MinDollyDistance, MaxDollyDistance)
             : scroll > 0f ? MinDollyDistance : MaxDollyDistance;
         _camera.Position = pivot + direction * nextDistance;
+    }
+
+    void AdjustFlySpeed(float scroll)
+    {
+        if (float.IsNaN(scroll) || scroll == 0f) return;
+        float factor = MathF.Pow(FlySpeedStep, scroll);
+        float next = float.IsFinite(factor) ? _flySpeed * factor : scroll > 0f ? float.MaxValue : 0f;
+        _flySpeed = Math.Clamp(next, EditorSettings.MinFlySpeed, EditorSettings.MaxFlySpeed);
     }
 
     void Fly(in InputState input, Vector2 delta, float dt)

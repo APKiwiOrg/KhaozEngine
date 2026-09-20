@@ -53,13 +53,6 @@ public partial class MapEditorScene
 
     protected virtual void InvalidateViewportKitMeshes() => _viewport.InvalidateKitMeshes();
 
-    bool ElementVisible(SelectionKind kind, string id)
-    {
-        if (!_visibility.IsElementVisible(kind, id)) return false;
-        return kind != SelectionKind.Placement || Placement(id) is not { } placement
-            || PropKindVisible(placement.Kind);
-    }
-
     bool PropKindVisible(string kitId) =>
         _visibility.GetCategory(_viewport.PropCategoryOf(kitId));
 

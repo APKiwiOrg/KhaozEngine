@@ -97,6 +97,7 @@ public partial class MapEditorScene : GameScene, IGameScene3D
     readonly InputManager _ui = new();
     TabBar _toolbar = null!;
     TreeView _outline = null!;
+    readonly PlacementOutline _placementOutline = new();
     PropertyGrid _inspector = null!;
     EditorViewPanel _viewPanel = null!;
     // The inspector's hover tooltip, built lazily on first draw (see DrawInspectorTooltip): BuildChrome runs
@@ -275,7 +276,7 @@ public partial class MapEditorScene : GameScene, IGameScene3D
         _controller = new EditorToolController(_document)
         {
             HeightOf = KindHeight,
-            IsVisible = ElementVisible,
+            IsVisible = _visibility.IsElementVisible, PlacementKindVisible = PropKindVisible,
         };
         _viewport = new ViewportWorld(_scene, _options.ManifestPaths)
         {
@@ -948,7 +949,9 @@ public partial class MapEditorScene : GameScene, IGameScene3D
         // real kind/id mismatch, so this should never see one, but costs nothing to assert here too).
         string id = _pendingSelectId is string pending && _pendingSelectKind == sel.Kind ? pending : sel.Id;
         var target = new OutlineRef(sel.Kind, id);
-        TreeNode? node = _outline.FindByTag(tag => tag is OutlineRef r && r.Equals(target));
+        // A placement resolves through its kit group, which answers with the group row while it is collapsed.
+        TreeNode? node = sel.Kind == SelectionKind.Placement ? _placementOutline.Resolve(id)
+            : _outline.FindByTag(tag => tag is OutlineRef r && r.Equals(target));
         _outline.Selected = node;
         if (node is not null) _outline.ScrollTo(node);
     }
@@ -959,6 +962,7 @@ public partial class MapEditorScene : GameScene, IGameScene3D
         // carries an OutlineAction instead and runs its side effect rather than moving the selection there.
         if (node.Tag is OutlineRef r) _document.Selection.Set(r.Kind, r.Id);
         else if (node.Tag is OutlineAction a) RunOutlineAction(a);
+        else PlacementOutline.ToggleGroup(node);   // a kit group row opens on a body tap, not only its caret
     }
 
     // Runs an outline action node's side effect. Today the only action appends a default biome band and selects it,
@@ -1205,7 +1209,7 @@ public partial class MapEditorScene : GameScene, IGameScene3D
         // Biomes sits BESIDE Terrain (a sibling category root, not a child), for consistency with the other
         // per-collection categories (Features, Exclusions): each is a top-level category of selectable nodes.
         _outline.Roots.Add(Category("Biomes", BiomeBandNodes()));
-        _outline.Roots.Add(Category("Placements", PlacementNodes()));
+        _outline.Roots.Add(_placementOutline.Rebuild(_document.Doc.Placements));
         _outline.Roots.Add(Category("Spawns", SpawnNodes()));
         _outline.Roots.Add(Category("Player Spawns", PlayerSpawnNodes()));
         _outline.Roots.Add(Category("Features", FeatureNodes()));
@@ -1231,12 +1235,6 @@ public partial class MapEditorScene : GameScene, IGameScene3D
         var root = new TreeNode(LocalizedText.Raw(label)) { Expanded = true };
         foreach (TreeNode child in children) root.Children.Add(child);
         return root;
-    }
-
-    IEnumerable<TreeNode> PlacementNodes()
-    {
-        foreach (MapPlacement p in _document.Doc.Placements)
-            yield return new TreeNode(LocalizedText.Raw($"{p.Id} ({p.Kind})"), new OutlineRef(SelectionKind.Placement, p.Id));
     }
 
     IEnumerable<TreeNode> SpawnNodes()

@@ -55,6 +55,17 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   stale temporary siblings of the same hash.
 - CI: a `catalog-sqlserver` job runs the catalog conformance facts against a SQL Server 2022 service
   container. They previously ran only through a manual leg.
+- Fixed: a map editor viewport click was quadratic in the authored placement count. The View panel's category
+  filter resolved each placement's kit through an id lookup inside the pick loop, which cost about 510 ms per
+  click on the 17,281-placement Ruinborne island. `EditorPicking.Pick` gains an overload with a kit-keyed
+  `placementKindVisible` filter, `EditorToolController.PlacementKindVisible` carries it, and the same click now
+  takes under 1 ms. A reload also dropped the category filter from picking, so a hidden category became
+  clickable again. Both filters are documented as constant-time per element.
+- Map editor: scrolling while right mouse flies retunes the fly speed (1.2 per notch, inside the 0.5 to 200
+  settings range), persists it and reports it in the status strip. The wheel still dollies outside a fly gesture.
+- Map editor: the outline groups placements by kit with a count (`PlacementOutline`). Groups of more than 12
+  start collapsed, a toggle away from that default survives document edits, picking into a collapsed group
+  highlights the group row, and a tap anywhere on a group row toggles it.
 
 ## 19.10.0
 

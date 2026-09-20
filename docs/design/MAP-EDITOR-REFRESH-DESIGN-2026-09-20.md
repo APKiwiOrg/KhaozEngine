@@ -45,8 +45,10 @@ A replacement offers layout freedom but creates much more integration and regres
   distance when no pivot exists. No gesture waits for unloaded terrain or jumps to world origin.
 - Shift+middle-mouse pans in the camera plane. Choose orbit or pan at press time and keep that mode
   until release. Pan translates both camera and pivot.
-- Wheel dollies toward or away from the navigation pivot with bounded distance and pitch. It must
-  not also change flight speed. Retain right-mouse fly navigation with explicit speed controls.
+- Wheel dollies toward or away from the navigation pivot with bounded distance and pitch. Retain
+  right-mouse fly navigation with explicit speed controls. Amended after the first playtest: the
+  settings menu alone made fly speed too slow to reach, so the wheel retunes it while right mouse
+  flies and dollies everywhere else.
 - Focus selection establishes a useful pivot and framing distance. Existing shortcut bindings must
   be checked before assigning a key. Do not silently replace an editing shortcut.
 - A navigation gesture owns pointer input until release or cancellation. It cannot start a sculpt,

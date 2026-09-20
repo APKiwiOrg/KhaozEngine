@@ -82,6 +82,30 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
+        public void WheelWhileFlyingScalesFlySpeedWithinSettingsRangeAndDoesNotDolly()
+        {
+            var camera = Camera();
+            var navigation = new EditorNavigationController(camera) { FlySpeed = 10f };
+            navigation.Update(Frame(MouseButton.Right, down: true), true, Vector3.Zero, 0.016f);
+            Vector3 before = camera.Position;
+
+            navigation.Update(Frame(MouseButton.Right, down: true, scroll: 1f), true, Vector3.Zero, 0.016f);
+            Assert.True(navigation.FlySpeed > 10f);
+            Assert.Equal(before, camera.Position);
+
+            float faster = navigation.FlySpeed;
+            navigation.Update(Frame(MouseButton.Right, down: true, scroll: -1f), true, Vector3.Zero, 0.016f);
+            AssertNear(10f, navigation.FlySpeed);
+            Assert.True(faster > navigation.FlySpeed);
+
+            navigation.Update(Frame(MouseButton.Right, down: true, scroll: 1000f), true, Vector3.Zero, 0.016f);
+            Assert.Equal(EditorSettings.MaxFlySpeed, navigation.FlySpeed);
+            navigation.Update(Frame(MouseButton.Right, down: true, scroll: -1000f), true, Vector3.Zero, 0.016f);
+            Assert.Equal(EditorSettings.MinFlySpeed, navigation.FlySpeed);
+            Assert.Equal(before, camera.Position);
+        }
+
+        [Fact]
         public void MissUsesForwardFallbackThenRetainsLastPivot()
         {
             var camera = new FlyCamera3D { Position = Vector3.Zero, Yaw = 0f, Pitch = 0f };
@@ -137,6 +161,7 @@ namespace KhaozEngine.Tests.MapEditor
                 viewportEligible: false, terrainHit: null, dt: 1f);
             Assert.Equal(before, camera.Position);
             Assert.False(navigation.IsNavigating);
+            Assert.Equal(10f, navigation.FlySpeed);   // the wheel only retunes speed inside an acquired fly
 
             navigation.Update(Frame(MouseButton.Right, down: false), true, null, 0.016f);
             navigation.Update(Frame(MouseButton.Right, down: true, keys: new[] { Key.W }),
@@ -144,8 +169,6 @@ namespace KhaozEngine.Tests.MapEditor
 
             Assert.True(navigation.IsNavigating);
             AssertNear(10f, Vector3.Distance(before, camera.Position));
-            navigation.Update(Frame(MouseButton.Right, down: true, scroll: 2f), true, Vector3.Zero, 0.016f);
-            Assert.Equal(10f, navigation.FlySpeed);
         }
 
         [Fact]

@@ -9135,8 +9135,9 @@ placements while a category filter is active.
 
 **Map editor navigation.** Middle drag orbits around the terrain point captured at press. Shift+middle captures
 pan mode at press and keeps it for the full gesture. A miss keeps the previous pivot or falls back to a point 25
-metres ahead. The wheel dollies between 0.5 and 100000 metres from that pivot and never changes fly speed. Hold
-right mouse to look and use WASD plus E/Q to fly at the separately configured fly speed. Movement keys are inert
+metres ahead. The wheel dollies between 0.5 and 100000 metres from that pivot. Hold right mouse to look and use
+WASD plus E/Q to fly. While right mouse flies, the wheel scales the persisted fly speed by 1.2 per notch instead of
+dollying and the status strip reports the new value. Movement keys are inert
 until the right-button press acquires the viewport. Chrome, focused fields, modals and active tool gestures block
 navigation acquisition. Navigation suppresses editor pointer edges through the release frame. Unmodified F frames
 the current viewport selection. It is a no-op with no selection or an outline-only selection, and focused fields
@@ -9183,8 +9184,8 @@ over the same world. It sits one gate below the exit dialog, so Shift+Escape sti
   rebuild and a brief hitch (the ring's radii are baked when the world builds). A tiled document that opened
   windowed is the one thing it cannot grow live, since re-windowing means reloading and discarding unsaved
   edits, so it says so in the status strip instead of under-loading in silence.
-- **Fly speed** sets right-button flight from 0.5 to 200 world units per second. It persists independently from
-  wheel dolly distance, so scrolling never changes it.
+- **Fly speed** sets right-button flight from 0.5 to 200 world units per second. Scrolling while right mouse
+  flies changes the same value. Scrolling outside a fly gesture only dollies.
 - **Sky and ocean** run through `EnvironmentPresets` / `OceanPresets` (above) plus the sliders on top. This is
   the editor writing to the HOST scene's `Post`, which is new: `MapEditorOptions.DriveEnvironment` (default
   true) is the seam. The default is what gives a freshly opened editor a day sky rather than the engine's

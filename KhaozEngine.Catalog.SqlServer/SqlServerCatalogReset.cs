@@ -51,36 +51,38 @@ public static class SqlServerCatalogReset
     const int TimeoutSeconds = 60;
 
     /// <summary>
-    /// The count the INITIALIZER decides create-or-validate on, which is what makes a partial drop fatal and
-    /// therefore what this file is shaped around.
+    /// How many of the schema's OWN tables stand. Zero means a database with no catalog in it, the full
+    /// count means a catalog to replace, and anything between means a partial one.
     /// </summary>
-    const string CountTablesSql = """
+    static readonly string CountTablesSql = FormattableString.Invariant($"""
         SELECT COUNT(*) FROM sys.tables
-        WHERE schema_id = SCHEMA_ID(N'dbo') AND name LIKE N'catalog[_]%';
-        """;
+        WHERE schema_id = SCHEMA_ID(N'dbo') AND name IN ({SqlServerCatalogSchemaExpectations.TableNameList});
+        """);
 
     /// <summary>
-    /// Every catalog object gone, driven off the names <c>sys.tables</c> actually holds under the rule the
-    /// initializer COUNTS with, so a table added to the schema later is dropped by this without anyone
-    /// remembering to add it here. The foreign keys go first, so the order the tables come off in does not
-    /// matter and does not have to be maintained beside the schema. An index, a check, a default and the
-    /// identity state all go with the table that owns them.
+    /// Every catalog object gone, driven off the schema's own INVENTORY intersected with what
+    /// <c>sys.tables</c> holds, so a table added to the schema is dropped by this without anyone remembering
+    /// to add it here and a host table that merely looks like one is never reached. The foreign keys go
+    /// first, so the order the tables come off in does not matter and does not have to be maintained beside
+    /// the schema. An index, a check, a default and the identity state all go with the table that owns them.
     /// </summary>
-    const string DropSql = """
+    static readonly string DropSql = FormattableString.Invariant($"""
         DECLARE @sql nvarchar(max) = N'';
 
         SELECT @sql = @sql + N'ALTER TABLE dbo.' + QUOTENAME(t.name)
             + N' DROP CONSTRAINT ' + QUOTENAME(fk.name) + N';'
         FROM sys.foreign_keys fk
         JOIN sys.tables t ON t.object_id = fk.parent_object_id
-        WHERE t.schema_id = SCHEMA_ID(N'dbo') AND t.name LIKE N'catalog[_]%';
+        WHERE t.schema_id = SCHEMA_ID(N'dbo')
+          AND t.name IN ({SqlServerCatalogSchemaExpectations.TableNameList});
 
         SELECT @sql = @sql + N'DROP TABLE dbo.' + QUOTENAME(name) + N';'
         FROM sys.tables
-        WHERE schema_id = SCHEMA_ID(N'dbo') AND name LIKE N'catalog[_]%';
+        WHERE schema_id = SCHEMA_ID(N'dbo')
+          AND name IN ({SqlServerCatalogSchemaExpectations.TableNameList});
 
         EXEC sys.sp_executesql @sql;
-        """;
+        """);
 
     /// <summary>
     /// Drops every catalog object and recreates the schema, all or nothing, and files one audit row in the

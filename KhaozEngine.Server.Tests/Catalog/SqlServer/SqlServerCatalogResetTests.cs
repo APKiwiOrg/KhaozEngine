@@ -31,23 +31,18 @@ namespace KhaozEngine.Tests.Catalog.SqlServer;
 [Collection(SqlServerCatalogCollection.Name)]
 public class SqlServerCatalogResetTests
 {
-    const string Actor = "sqlserver-reset-tests";
-    const string Operator = "oid:tests";
+    const string Actor = SqlServerCatalogResetHarness.Actor;
+    const string Operator = SqlServerCatalogResetHarness.Operator;
 
-    static ContentTypeId Thing => new(CatalogFixtures.ThingTypeId);
+    static ContentTypeId Thing => SqlServerCatalogResetHarness.Thing;
 
-    static ContentTypeRegistry Registry() => CatalogFixtures.Registry(CatalogFixtures.ThingSpec);
+    static ContentTypeRegistry Registry() => SqlServerCatalogResetHarness.Registry();
 
     static ContentPublishRequest Request(int expectedBaseVersion)
-        => new(Actor, Operator, "sql server reset tests", expectedBaseVersion);
+        => SqlServerCatalogResetHarness.Request(expectedBaseVersion);
 
-    static async Task<SqlServerContentAuthoringStore> OpenAsync(SqlServerCatalogDatabase database)
-    {
-        var store = new SqlServerContentAuthoringStore(
-            database.ConnectionString, Registry(), database.Pack());
-        await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
-        return store;
-    }
+    static Task<SqlServerContentAuthoringStore> OpenAsync(SqlServerCatalogDatabase database)
+        => SqlServerCatalogResetHarness.OpenAsync(database);
 
     [CatalogSqlServerFact]
     public async Task AResetLeavesASchemaTheInitializerValidatesAndACatalogThatPublishedNothing()
@@ -89,12 +84,15 @@ public class SqlServerCatalogResetTests
         Assert.Null(await reopened.GetPinnedVersionAsync());
         Assert.Equal(reset.StoreEpoch, await reopened.GetStoreEpochAsync());
 
-        // The table count is taken from a schema that has only ever been created, rather than written here as
-        // a number, so a table added to the schema later cannot leave this test passing on a short drop.
-        int afterReset = database.Scalar(CountTablesSql);
+        // The table count is read off a store that has only ever been created rather than written here as a
+        // number, so a schema that gains a table does not quietly move what this compares against. The count
+        // does NOT prove the drop skipped nothing: a table left standing is still counted, and the recreate
+        // would find it and leave it. What proves that is AResetDropsEveryTableSoNoRowAndNoIdentityMarkSurvivesIt,
+        // which counts the ROWS of every table the inventory names.
+        int afterReset = SqlServerCatalogResetHarness.CountTables(database);
         database.DropSchema();
         await OpenAsync(database);
-        Assert.Equal(database.Scalar(CountTablesSql), afterReset);
+        Assert.Equal(SqlServerCatalogResetHarness.CountTables(database), afterReset);
     }
 
     [CatalogSqlServerFact]
@@ -265,27 +263,12 @@ public class SqlServerCatalogResetTests
 
         Assert.Equal("schema-mismatch", refused.Reason);
         Assert.Contains("catalog-v1-initial", refused.Message, StringComparison.Ordinal);
-        Assert.Equal(0, database.Scalar(CountTablesSql));
+        Assert.Equal(0, SqlServerCatalogResetHarness.CountTables(database));
     }
-
-    /// <summary>The initializer's own count, which is the rule the drop is driven by.</summary>
-    const string CountTablesSql = """
-        SELECT COUNT(*) FROM sys.tables
-        WHERE schema_id = SCHEMA_ID(N'dbo') AND name LIKE N'catalog[_]%';
-        """;
 
     /// <summary>Two published rows, which is the smallest store with a version, rows and an audit trail.</summary>
-    static async Task Seed(SqlServerContentAuthoringStore store, params string[] keys)
-    {
-        var edits = new List<ContentEdit>(keys.Length);
-        for (int i = 0; i < keys.Length; i++)
-        {
-            edits.Add(ContentEdit.Add(Thing, new ContentKey(keys[i]), CatalogFixtures.Fields(11 * (i + 1))));
-        }
-
-        await store.ApplyEditsAsync(edits, Actor, Operator, "seed");
-        await store.PublishAsync(Request(0));
-    }
+    static Task Seed(SqlServerContentAuthoringStore store, params string[] keys)
+        => SqlServerCatalogResetHarness.Seed(store, keys);
 
     /// <summary>
     /// One bundle exported from a schema that is created for it and dropped after it, so the bundle carries
@@ -305,36 +288,13 @@ public class SqlServerCatalogResetTests
         return bundle;
     }
 
-    /// <summary>Every catalog table the database holds, by name, under the initializer's own rule.</summary>
+    /// <summary>Every catalog table the database holds, by the schema's own inventory.</summary>
     static IReadOnlyList<string> Tables(SqlServerCatalogDatabase database)
-    {
-        using var connection = new SqlConnection(database.ConnectionString);
-        connection.Open();
-        using SqlCommand command = connection.CreateCommand();
-        command.CommandText = """
-            SELECT name FROM sys.tables
-            WHERE schema_id = SCHEMA_ID(N'dbo') AND name LIKE N'catalog[_]%'
-            ORDER BY name;
-            """;
-        var names = new List<string>();
-        using SqlDataReader reader = command.ExecuteReader();
-        while (reader.Read())
-        {
-            names.Add(reader.GetString(0));
-        }
-
-        return names;
-    }
+        => SqlServerCatalogResetHarness.Tables(database);
 
     /// <summary>One text scalar on a raw connection, beside the fixture's numeric one.</summary>
     static string Text(SqlServerCatalogDatabase database, string sql)
-    {
-        using var connection = new SqlConnection(database.ConnectionString);
-        connection.Open();
-        using SqlCommand command = connection.CreateCommand();
-        command.CommandText = sql;
-        return command.ExecuteScalar() as string ?? string.Empty;
-    }
+        => SqlServerCatalogResetHarness.Text(database, sql);
 
     /// <summary>The ids the bundle NAMES, which an import is required to reproduce exactly.</summary>
     static int[] BundleIds(ContentBundle bundle)

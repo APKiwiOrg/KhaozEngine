@@ -129,8 +129,10 @@ public static class SqliteCatalogReset
         await ExecuteAsync(connection, transaction, "PRAGMA defer_foreign_keys = ON;", cancellationToken)
             .ConfigureAwait(false);
 
-        IReadOnlyList<string> tables = await ReadCatalogTablesAsync(connection, transaction, cancellationToken)
-            .ConfigureAwait(false);
+        // The schema's own inventory intersected with what stands, which is the rule the whole drop runs
+        // under. A name pattern would take a host's own catalogs, cataloguer or catalog_overrides_by_host
+        // with it, and those tables are none of this schema's business.
+        IReadOnlyList<string> tables = SqliteCatalogSchemaInventory.ReadExisting(connection, transaction);
         if (tables.Count == 0)
         {
             throw Mismatch("missing, so there is nothing to reset");
@@ -139,9 +141,7 @@ public static class SqliteCatalogReset
         ContentCatalogResetResult stood = await ReadBeforeAsync(
             connection, transaction, force, cancellationToken).ConfigureAwait(false);
 
-        // Driven off the names sqlite_master actually holds under the rule the initializer COUNTS with, so a
-        // table added to the schema later is dropped by this without anyone remembering to add it here. An
-        // index goes with the table that owns it, and so does the sqlite_sequence row behind AUTOINCREMENT.
+        // An index goes with the table that owns it, and so does the sqlite_sequence row behind AUTOINCREMENT.
         for (int i = 0; i < tables.Count; i++)
         {
             await ExecuteAsync(
@@ -285,34 +285,6 @@ public static class SqliteCatalogReset
         command.Parameters.AddWithValue("$before", result.Summary);
         command.Parameters.AddWithValue("$note", note);
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// Every catalog table, under the rule <c>SqliteCatalogSchemaValidation</c> reads objects with. Tables
-    /// outside the <c>catalog_</c> namespace are invisible here on purpose: a host may keep its own tables in
-    /// the same file, and this schema has no opinion about them.
-    /// </summary>
-    static async Task<IReadOnlyList<string>> ReadCatalogTablesAsync(
-        SqliteConnection connection,
-        SqliteTransaction transaction,
-        CancellationToken cancellationToken)
-    {
-        using SqliteCommand command = Command(
-            connection,
-            transaction,
-            """
-            SELECT name FROM sqlite_master
-            WHERE type = 'table' AND lower(name) LIKE 'catalog_%'
-            ORDER BY name COLLATE BINARY;
-            """);
-        var names = new List<string>();
-        using SqliteDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-        {
-            names.Add(reader.GetString(0));
-        }
-
-        return names;
     }
 
     static async Task ExecuteAsync(

@@ -24,15 +24,15 @@ namespace KhaozEngine.Tests.Catalog.Sqlite;
 /// </summary>
 public class SqliteCatalogResetTests
 {
-    const string Actor = "sqlite-reset-tests";
-    const string Operator = "oid:tests";
+    const string Actor = SqliteCatalogResetHarness.Actor;
+    const string Operator = SqliteCatalogResetHarness.Operator;
 
-    static ContentTypeId Thing => new(PublishFixtures.ThingTypeId);
+    static ContentTypeId Thing => SqliteCatalogResetHarness.Thing;
 
-    static ContentTypeRegistry Registry() => PublishFixtures.Registry(PublishFixtures.Thing);
+    static ContentTypeRegistry Registry() => SqliteCatalogResetHarness.Registry();
 
     static ContentPublishRequest Request(int expectedBaseVersion)
-        => new(Actor, Operator, "sqlite reset tests", expectedBaseVersion);
+        => SqliteCatalogResetHarness.Request(expectedBaseVersion);
 
     [Fact]
     public async Task AResetLeavesASchemaTheInitializerValidatesAndACatalogThatPublishedNothing()
@@ -79,8 +79,11 @@ public class SqliteCatalogResetTests
         Assert.Null(await reopened.GetPinnedVersionAsync());
         Assert.Equal(reset.StoreEpoch, await reopened.GetStoreEpochAsync());
 
-        // The table count is read off a store that has only ever been created, rather than written here as a
-        // number, so a table added to the schema later cannot leave this test passing on a short drop.
+        // The table count is read off a store that has only ever been created rather than written here as a
+        // number, so a schema that gains a table does not quietly move what this compares against. The count
+        // does NOT prove the drop skipped nothing: a table left standing is still counted, and the recreate
+        // would find it and leave it. What proves that is AResetDropsEveryTableSoNoRowAndNoIdentityMarkSurvivesIt,
+        // which counts the ROWS of every table the inventory names.
         using var fresh = new TemporaryCatalogDatabase();
         using (var creating = new SqliteContentAuthoringStore(fresh.ConnectionString, Registry()))
         {
@@ -287,17 +290,8 @@ public class SqliteCatalogResetTests
     }
 
     /// <summary>Two published rows, which is the smallest store with a version, rows and an audit trail.</summary>
-    static async Task Seed(SqliteContentAuthoringStore store, params string[] keys)
-    {
-        var edits = new List<ContentEdit>(keys.Length);
-        for (int i = 0; i < keys.Length; i++)
-        {
-            edits.Add(ContentEdit.Add(Thing, new ContentKey(keys[i]), PublishFixtures.Fields(11 * (i + 1))));
-        }
-
-        await store.ApplyEditsAsync(edits, Actor, Operator, "seed");
-        await store.PublishAsync(Request(0));
-    }
+    static Task Seed(SqliteContentAuthoringStore store, params string[] keys)
+        => SqliteCatalogResetHarness.Seed(store, keys);
 
     /// <summary>One bundle exported from its own throwaway database, carrying a family and the named rows.</summary>
     static async Task<ContentBundle> Bundle(string familyKey, params string[] keys)
@@ -311,47 +305,15 @@ public class SqliteCatalogResetTests
         return await store.ExportBundleAsync(1);
     }
 
-    /// <summary>Every catalog table the database holds, by name, under the initializer's own rule.</summary>
+    /// <summary>Every catalog table the database holds, by the schema's own inventory.</summary>
     static IReadOnlyList<string> Tables(TemporaryCatalogDatabase database)
-    {
-        using var connection = new SqliteConnection(database.ConnectionString);
-        connection.Open();
-        var names = new List<string>();
-        using (SqliteCommand command = connection.CreateCommand())
-        {
-            command.CommandText = """
-                SELECT name FROM sqlite_master
-                WHERE type = 'table' AND lower(name) LIKE 'catalog_%'
-                ORDER BY name COLLATE BINARY;
-                """;
-            using SqliteDataReader reader = command.ExecuteReader();
-            while (reader.Read())
-            {
-                names.Add(reader.GetString(0));
-            }
-        }
-
-        SqliteConnection.ClearPool(connection);
-        return names;
-    }
+        => SqliteCatalogResetHarness.Tables(database);
 
     static int CountTables(TemporaryCatalogDatabase database) => Tables(database).Count;
 
     /// <summary>One text scalar on a raw connection, beside the fixture's numeric one.</summary>
     static string Text(TemporaryCatalogDatabase database, string sql)
-    {
-        using var connection = new SqliteConnection(database.ConnectionString);
-        connection.Open();
-        string value;
-        using (SqliteCommand command = connection.CreateCommand())
-        {
-            command.CommandText = sql;
-            value = command.ExecuteScalar() as string ?? string.Empty;
-        }
-
-        SqliteConnection.ClearPool(connection);
-        return value;
-    }
+        => SqliteCatalogResetHarness.Text(database, sql);
 
     /// <summary>The ids the bundle NAMES, which an import is required to reproduce exactly.</summary>
     static int[] BundleIds(ContentBundle bundle)

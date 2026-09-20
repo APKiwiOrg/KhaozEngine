@@ -88,9 +88,14 @@ await store.ImportBundleAsync(bundle, "release-runner", "oid:8f2c", "autumn pass
 It drops every catalog object and recreates the schema from the same embedded DDL the initializer creates
 from, in ONE transaction. Either the catalog is replaced or it is exactly as it stood, which matters because
 a half-dropped catalog refuses the next open outright: the initializer creates only when it counts zero
-catalog tables and validates every object by name otherwise. The drop is driven off the names `sys.tables`
-holds under the same `catalog[_]%` rule the initializer counts with, so a table added to the schema later is
-dropped without anyone having to remember it here.
+catalog tables and validates every object by name otherwise.
+
+**The drop names the schema's own INVENTORY, not a name pattern.** It is the same set
+`SqlServerCatalogSchemaDriftTests` pins against `CatalogSchemaV1.sql`, intersected with what `sys.tables`
+holds, so a table added to the schema is dropped without anyone having to remember it here and a table this
+build does not declare is never touched. A pattern could not do that job: a host table named
+`catalog_overrides_by_host` matches every name rule an engine could write while belonging to nobody here.
+Keep whatever tables you like in the same database. The reset destroys exactly the fourteen above.
 
 Drop and recreate rather than `DELETE`, because a delete leaves the `IDENTITY` marks on `catalog_family`,
 `catalog_draft_edit` and `catalog_audit` where they stood, and the next family created after a reimport would

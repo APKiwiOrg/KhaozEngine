@@ -15100,9 +15100,12 @@ ONE transaction, so either the catalog is replaced or it is exactly as it stood.
 half-dropped catalog refuses the next open outright, because the initializer creates only when it counts zero
 catalog tables and validates every object by name otherwise. Drop and recreate rather than `DELETE`, because a
 delete leaves the identity state on `catalog_family`, `catalog_draft_edit` and `catalog_audit` where it stood
-and the next family id after a reimport would land above the bundle's. The drop is driven off the names the
-database holds under the same rule the initializer counts with, so a table added to the schema later goes with
-the rest.
+and the next family id after a reimport would land above the bundle's.
+
+The drop names the schema's own INVENTORY intersected with what the database holds, rather than a name
+pattern, so a table added to the schema goes with the rest and a table the build does not declare is never
+touched. A host may keep its own tables in the catalog's database or SQLite file, including tables whose names
+a `catalog_` pattern would match, and a reset leaves every one of them and their rows exactly as they stand.
 
 It is a separate type per provider rather than a member on `IContentAuthoringStore`, because a reset is DDL
 and the everyday authoring path is DML: a production deployment should not give its application role DDL at

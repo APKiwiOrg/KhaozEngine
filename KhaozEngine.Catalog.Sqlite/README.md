@@ -71,9 +71,15 @@ await store.ImportBundleAsync(bundle, "release-runner", "oid:8f2c", "autumn pass
 It drops every catalog object and recreates the schema from the same DDL the initializer creates from, in ONE
 transaction. Either the catalog is replaced or it is exactly as it stood, which matters because a half-dropped
 catalog refuses the next open outright: the initializer creates only when it counts zero catalog tables and
-validates every object by name otherwise. The drop is driven off the names `sqlite_master` holds under the
-same `catalog_%` rule the initializer reads objects with, so a table added to the schema later is dropped
-without anyone having to remember it here.
+validates every object by name otherwise.
+
+**The drop names the schema's own INVENTORY, not a name pattern.** The inventory is derived by running the
+same DDL into a throwaway in-memory database and reading the table names back, so a table added to the schema
+is dropped without anyone having to remember it here, and a table this build does not declare is never
+touched. A pattern could not do that job: in SQLite's `LIKE` an underscore matches any single character, so
+`catalog_%` also matches a host's own `catalogs` and `cataloguer`, and escaping the underscore still leaves a
+host table genuinely named `catalog_overrides_by_host` indistinguishable from an engine table. Keep whatever
+tables you like in the same file. The reset destroys exactly the fourteen above.
 
 Drop and recreate rather than `DELETE`, because a delete leaves the `sqlite_sequence` marks behind the
 `AUTOINCREMENT` columns on `catalog_family`, `catalog_draft_edit` and `catalog_audit` where they stood, and

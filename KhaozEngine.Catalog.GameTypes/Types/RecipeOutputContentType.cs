@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace KhaozEngine.Catalog.GameTypes;
 
@@ -78,8 +79,8 @@ public static class RecipeOutputContentType
     /// </remarks>
     /// <param name="registry">A registry that is not frozen and carries neither this id nor this key.</param>
     /// <param name="validator">
-    /// The type's own validator, or null for none. This package ships NO validators yet, so a game either
-    /// passes one of its own or passes null. The package's own arrive separately.
+    /// The type's own validator, or null for none. <see cref="Validator"/> is the one this package ships
+    /// for it, and a game passes that, one of its own, a wrapper over both, or null.
     /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="registry"/> is null.</exception>
     /// <exception cref="ContentRegistrationException">
@@ -108,5 +109,44 @@ public static class RecipeOutputContentType
         public Codec(ContentTypeId type, ContentFieldSchema schema) : base(type, schema)
         {
         }
+    }
+
+    /// <summary>
+    /// The output's own rules: a list position is unique within its recipe, a count is above zero, and no
+    /// output names an item that has left play.
+    /// </summary>
+    /// <remarks>
+    /// It takes NO options and it ACCUMULATES, so one run over a whole recipe book reports every defect
+    /// rather than the earliest. The rules are the input side's, read through the same control flow under
+    /// this side's own codes, so a report names which side of the recipe is wrong.
+    /// <para>
+    /// A RETIRED output is skipped, the same way the engine's reference pass skips a retired row. A
+    /// withdrawn output holds no list position and produces nothing.
+    /// </para>
+    /// </remarks>
+    public sealed class Validator : IContentValidator
+    {
+        /// <summary>The shared line rules, carrying the output side's codes, positions and nouns.</summary>
+        static readonly RecipeLineValidator Line = new()
+        {
+            Noun = "Output",
+            LowerNoun = "output",
+            Verb = "produces",
+            CountReason =
+                "Experience is paid per product item, so a line that makes nothing pays nothing and lands nothing.",
+            RetiredAction = "making",
+            RecipeIndex = RecipeIndex,
+            ItemIndex = ItemIndex,
+            CountIndex = CountIndex,
+            SortIndex = SortIndex,
+            FieldCount = FieldCount,
+            DuplicateSortCode = GameContentFindings.RecipeOutputDuplicateSort,
+            CountNotPositiveCode = GameContentFindings.RecipeOutputCountNotPositive,
+            RetiredItemCode = GameContentFindings.RecipeOutputRetiredItem,
+        };
+
+        /// <inheritdoc />
+        public void Validate(ContentTypeId type, IContentSnapshot candidate, ICollection<ContentFinding> findings)
+            => Line.Validate(type, candidate, findings);
     }
 }

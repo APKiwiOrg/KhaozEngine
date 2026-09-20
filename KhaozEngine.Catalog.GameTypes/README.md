@@ -4,9 +4,8 @@ The thirteen game-shaped content types most RPG-shaped worlds re-author from scr
 keys, ordered field schemas, row codecs and one registration call each over `KhaozEngine.Catalog`. GPU-free,
 zero third-party dependencies, part of the `KhaozEngine.Foundation` umbrella.
 
-**All thirteen types are here. Six of them now ship a validator**: `food`, `equip_stat_line`, `store`,
-`monster_drop`, `gathering_node` and `tool_tier`. The remaining validators and the cross-type sweep are
-still only the `KGT` codes they will emit.
+**All thirteen types are here. Nine of them now ship a validator.** The remaining two validators and the
+cross-type sweep are still only the `KGT` codes they will emit.
 
 The engine's own six types (`tag`, `item`, `stat`, `loot_table`, `loot_entry`, `base_socket`) are the shapes
 every catalog needs. These thirteen are the next layer up: the shapes a world with food, equipment, shops,
@@ -119,18 +118,21 @@ whole candidate, it ACCUMULATES rather than stopping at the first defect, and it
 reason. The engine runs it last in the sweep and folds every finding into `KEC0040` with the `KGT` code in
 the message.
 
-Six are here so far, each a nested `Validator` on its type class:
+Nine are here so far, each a nested `Validator` on its type class:
 
 | Type | Rules | Codes |
 | --- | --- | --- |
 | `food` | a heal above zero, a delay at or above zero, one row per item | `KGT0101` to `KGT0103` |
 | `equip_stat_line` | one line per profile and stat, no tied draw position within a profile | `KGT0201`, `KGT0202` |
 | `store` | one npc kind per store, no negative rate, no rate the price path overflows on | `KGT0301` to `KGT0303` |
+| `store_shelf` | one draw position per store, one shelf per item, no item that has left play | `KGT0401` to `KGT0403` |
 | `monster_drop` | one creature kind names one table | `KGT0501` |
 | `gathering_node` | at least one life, a reachable level, a yield still in play | `KGT0601` to `KGT0603` |
+| `recipe_input` | one list position per recipe, a count above zero, no item that has left play | `KGT0801` to `KGT0803` |
+| `recipe_output` | the same three rules on the product side | `KGT0901` to `KGT0903` |
 | `tool_tier` | one tier per rank within a family, both scales above zero | `KGT1001` to `KGT1003` |
 
-Four take nothing at all. `StoreContentType.Validator` takes the REGISTRY, because the one thing it needs
+All but one take nothing at all. `StoreContentType.Validator` takes the REGISTRY, because the one thing it needs
 from outside its own type is where the engine `item` type keeps its `value`, and **that index is read off
 the live registration at validation time, never off a schema the validator built at type load.** A static
 index is this build's idea of the item type rather than the one the candidate was registered against, and an
@@ -143,8 +145,13 @@ rule reads the ITEM rows because a rate alone cannot overflow.
 Every rule here is unit-neutral. A duration field is named for the game's own clock and the rules about one
 are about its SIGN, so the same validator serves `Ticks` and `Seconds` unchanged.
 
+**`recipe_input` and `recipe_output` share one rule set read twice.** The two are separate types and carry
+separate codes so a report names which side of the recipe is wrong, but the control flow is written once and
+each side supplies its own codes, positions and nouns. Two copies of it would let a correctness fix land on
+whichever side the next person happened to be editing.
+
 **The remaining validators and the cross-type sweep are not here yet.** A game passes its own or passes null
-for the other seven types.
+for the other four types.
 
 ## Usage
 
@@ -167,7 +174,7 @@ for the unit and the codec over it. **The visibility and the chunk slots are not
 slot count moves every content address, so two worlds authoring the same facts would stop agreeing about
 where they live. Neither fails loudly.
 
-The validator is a parameter the caller passes. Six types ship one as `Validator` on the type class, and a
+The validator is a parameter the caller passes. Nine types ship one as `Validator` on the type class, and a
 game passes that, one of its own, a wrapper over both, or null.
 
 A game registers only the types it authors. Nothing here registers itself, because which of the thirteen a

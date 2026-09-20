@@ -15370,17 +15370,19 @@ reused and never renumbered, which is why the whole table is written down before
 codes. The engine folds a game-band finding into `KEC0040` and puts the `KGT` code in the message text, so
 that is what an operator reads off a refused publish.
 
-**Six types ship a validator so far**, each a nested `Validator` on its type class: `food` (`KGT0101` to
-`KGT0103`), `equip_stat_line` (`KGT0201`, `KGT0202`), `store` (`KGT0301` to `KGT0303`), `monster_drop`
-(`KGT0501`), `gathering_node` (`KGT0601` to `KGT0603`) and `tool_tier` (`KGT1001` to `KGT1003`). Four take
-nothing. `StoreContentType.Validator` takes the registry, because it holds a rate against the dearest item
+**Nine types ship a validator so far**, each a nested `Validator` on its type class: `food` (`KGT0101` to
+`KGT0103`), `equip_stat_line` (`KGT0201`, `KGT0202`), `store` (`KGT0301` to `KGT0303`), `store_shelf`
+(`KGT0401` to `KGT0403`), `monster_drop` (`KGT0501`), `gathering_node` (`KGT0601` to `KGT0603`),
+`recipe_input` (`KGT0801` to `KGT0803`), `recipe_output` (`KGT0901` to `KGT0903`) and `tool_tier`
+(`KGT1001` to `KGT1003`). The two recipe sides are one rule set read twice, under two sets of codes, so a
+report names which side of the recipe is wrong. All but one take nothing. `StoreContentType.Validator` takes the registry, because it holds a rate against the dearest item
 the candidate carries and so needs where the engine `item` type keeps its `value`. **That index is read off
 the live registration at validation time and never off a schema the validator built at type load**, which is
 this build's idea of the item type rather than the one the candidate was registered against. Every rule is
 unit-neutral: a duration rule is about the number's SIGN, so one validator serves both spellings.
 
-**The remaining validators and the cross-type sweep are not here yet**, so a game passes its own validator to
-`Register` or passes null for the other seven types.
+**The remaining two validators and the cross-type sweep are not here yet**, so a game passes its own
+validator to `Register` or passes null for the other four types.
 
 `KhaozEngine.Catalog.GameTypes/README.md` is the API reference, type by type.
 

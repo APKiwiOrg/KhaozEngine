@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace KhaozEngine.Catalog.GameTypes;
 
@@ -71,8 +72,8 @@ public static class StoreShelfContentType
     /// </remarks>
     /// <param name="registry">A registry that is not frozen and carries neither this id nor this key.</param>
     /// <param name="validator">
-    /// The type's own validator, or null for none. This package ships NO validators yet, so a game either
-    /// passes one of its own or passes null. The package's own arrive separately.
+    /// The type's own validator, or null for none. <see cref="Validator"/> is the one this package ships
+    /// for it, and a game passes that, one of its own, a wrapper over both, or null.
     /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="registry"/> is null.</exception>
     /// <exception cref="ContentRegistrationException">
@@ -100,6 +101,94 @@ public static class StoreShelfContentType
         /// <summary>Builds the codec over the shelf schema.</summary>
         public Codec(ContentTypeId type, ContentFieldSchema schema) : base(type, schema)
         {
+        }
+    }
+
+    /// <summary>
+    /// The shelf's own rules: a draw position is unique within its store, an item appears at most once on a
+    /// store, and no shelf names an item that has left play.
+    /// </summary>
+    /// <remarks>
+    /// It takes NO options and it ACCUMULATES, so one run over a whole shop list reports every defect
+    /// rather than the earliest.
+    /// <para>
+    /// The retired check ADDS to the engine's own rather than restating it. The engine's reference pass
+    /// reports a reference to a row that is not live under <c>KEC0006</c>, which is a statement about a
+    /// dangling pointer. This one is a statement about a SHOP: the row is present and decodable, the shelf
+    /// resolves fine, and the shop would quietly keep selling something the game withdrew.
+    /// </para>
+    /// <para>
+    /// A RETIRED shelf is skipped, the same way the engine's reference pass skips a retired row. A withdrawn
+    /// shelf holds no draw position and sells nothing.
+    /// </para>
+    /// </remarks>
+    public sealed class Validator : IContentValidator
+    {
+        /// <inheritdoc />
+        public void Validate(ContentTypeId type, IContentSnapshot candidate, ICollection<ContentFinding> findings)
+        {
+            ArgumentNullException.ThrowIfNull(candidate);
+            ArgumentNullException.ThrowIfNull(findings);
+
+            var itemType = new ContentTypeId(EngineContentTypes.ItemTypeId);
+            var sorts = new Dictionary<(long Store, long Sort), int>();
+            var items = new Dictionary<(long Store, long Item), int>();
+
+            foreach (ContentRow row in candidate.Rows(type))
+            {
+                // A row whose value count does not match the schema is the engine's own finding, and reading
+                // it positionally here would be reading someone else's fields.
+                if (row.IsRetired || row.Fields.Count != FieldCount)
+                {
+                    continue;
+                }
+
+                ContentFieldValue store = row.Fields[StoreIndex];
+                ContentFieldValue item = row.Fields[ItemIndex];
+                ContentFieldValue sort = row.Fields[SortIndex];
+
+                // A reference of 0 is NO CONTENT rather than a dangling id, and a required field left empty
+                // is the engine's KEC0005. Either way there is no store to be unique within.
+                if (store.IsAbsent || store.Number == 0)
+                {
+                    continue;
+                }
+
+                if (!sort.IsAbsent && !sorts.TryAdd((store.Number, sort.Number), row.Id))
+                {
+                    findings.Add(new ContentFinding(
+                        type,
+                        row.Id,
+                        GameContentFindings.StoreShelfDuplicateSort,
+                        FormattableString.Invariant(
+                            $"Shelf {row.Id} of store {store.Number} claims draw position {sort.Number}, which shelf {sorts[(store.Number, sort.Number)]} already claims. The draw order is the sort field and never the row order, so two shelves at one position have no order between them.")));
+                }
+
+                if (item.IsAbsent || item.Number == 0)
+                {
+                    continue;
+                }
+
+                if (!items.TryAdd((store.Number, item.Number), row.Id))
+                {
+                    findings.Add(new ContentFinding(
+                        type,
+                        row.Id,
+                        GameContentFindings.StoreShelfDuplicateItem,
+                        FormattableString.Invariant(
+                            $"Shelf {row.Id} puts item {item.Number} on store {store.Number}, which shelf {items[(store.Number, item.Number)]} already does. One item is one line of one shop, so a second shelf draws the same stock twice.")));
+                }
+
+                if (candidate.IsRetired(itemType, (int)item.Number))
+                {
+                    findings.Add(new ContentFinding(
+                        type,
+                        row.Id,
+                        GameContentFindings.StoreShelfRetiredItem,
+                        FormattableString.Invariant(
+                            $"Shelf {row.Id} of store {store.Number} names item {item.Number}, which is retired. A retired row keeps its bytes so a stored stack still decodes, so the shelf still resolves and the shop would go on selling something the game withdrew.")));
+                }
+            }
         }
     }
 }

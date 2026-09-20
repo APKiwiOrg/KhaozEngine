@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace KhaozEngine.Catalog.GameTypes;
 
@@ -82,8 +83,8 @@ public static class RecipeInputContentType
     /// </remarks>
     /// <param name="registry">A registry that is not frozen and carries neither this id nor this key.</param>
     /// <param name="validator">
-    /// The type's own validator, or null for none. This package ships NO validators yet, so a game either
-    /// passes one of its own or passes null. The package's own arrive separately.
+    /// The type's own validator, or null for none. <see cref="Validator"/> is the one this package ships
+    /// for it, and a game passes that, one of its own, a wrapper over both, or null.
     /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="registry"/> is null.</exception>
     /// <exception cref="ContentRegistrationException">
@@ -112,5 +113,49 @@ public static class RecipeInputContentType
         public Codec(ContentTypeId type, ContentFieldSchema schema) : base(type, schema)
         {
         }
+    }
+
+    /// <summary>
+    /// The input's own rules: a list position is unique within its recipe, a count is above zero, and no
+    /// input names an item that has left play.
+    /// </summary>
+    /// <remarks>
+    /// It takes NO options and it ACCUMULATES, so one run over a whole recipe book reports every defect
+    /// rather than the earliest. The three rules are the output side's too, so the control flow is written
+    /// once and this side supplies its own codes, positions and nouns.
+    /// <para>
+    /// A recipe with NO input at all is not reported here, and neither is one with no output. Neither is a
+    /// statement about a row this type carries, so both belong to the cross-type pass that can see the
+    /// recipe and its children at once.
+    /// </para>
+    /// <para>
+    /// A RETIRED input is skipped, the same way the engine's reference pass skips a retired row. A withdrawn
+    /// input holds no list position and is consumed by nothing.
+    /// </para>
+    /// </remarks>
+    public sealed class Validator : IContentValidator
+    {
+        /// <summary>The shared line rules, carrying the input side's codes, positions and nouns.</summary>
+        static readonly RecipeLineValidator Line = new()
+        {
+            Noun = "Input",
+            LowerNoun = "input",
+            Verb = "consumes",
+            CountReason =
+                "A line that moves nothing is drawn in the panel and ignored by the step, so a count has to be above zero.",
+            RetiredAction = "asking for",
+            RecipeIndex = RecipeIndex,
+            ItemIndex = ItemIndex,
+            CountIndex = CountIndex,
+            SortIndex = SortIndex,
+            FieldCount = FieldCount,
+            DuplicateSortCode = GameContentFindings.RecipeInputDuplicateSort,
+            CountNotPositiveCode = GameContentFindings.RecipeInputCountNotPositive,
+            RetiredItemCode = GameContentFindings.RecipeInputRetiredItem,
+        };
+
+        /// <inheritdoc />
+        public void Validate(ContentTypeId type, IContentSnapshot candidate, ICollection<ContentFinding> findings)
+            => Line.Validate(type, candidate, findings);
     }
 }

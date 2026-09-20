@@ -290,23 +290,6 @@ public class SqliteCatalogResetTests
         Assert.Equal(1, await reopened.GetActiveVersionAsync());
     }
 
-    [Fact]
-    public async Task AResetOfADatabaseCarryingNoCatalogTableIsRefusedAndNamesTheMigration()
-    {
-        using var database = new TemporaryCatalogDatabase();
-        database.Execute("CREATE TABLE host_own_table(id INTEGER NOT NULL PRIMARY KEY);");
-
-        ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
-            () => SqliteCatalogReset.ResetAsync(database.ConnectionString, Actor, Operator, "content release"));
-
-        Assert.Equal("schema-mismatch", refused.Reason);
-        Assert.Contains("catalog-v1-initial", refused.Message, StringComparison.Ordinal);
-
-        // A table that is not the catalog's is none of the reset's business and is still there.
-        Assert.Equal(1L, database.Scalar(
-            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'host_own_table';"));
-    }
-
     /// <summary>Two published rows, which is the smallest store with a version, rows and an audit trail.</summary>
     static Task Seed(SqliteContentAuthoringStore store, params string[] keys)
         => SqliteCatalogResetHarness.Seed(store, keys);

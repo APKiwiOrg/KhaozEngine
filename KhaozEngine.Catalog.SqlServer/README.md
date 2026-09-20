@@ -106,8 +106,19 @@ because a reset is DDL and the everyday authoring path is DML. A production appl
 DDL at all, so the reset runs under the migration credential and the authoring seam keeps the surface it had.
 
 An open draft is refused with reason `draft-open`, because the reset would destroy unpublished authoring with
-nothing left afterwards that says what it held. Pass `force: true` to take it anyway. A database carrying no
-catalog table, or one at another schema version, is refused with `schema-mismatch` naming the migration.
+nothing left afterwards that says what it held. Pass `force: true` to take it anyway.
+
+**A database carrying NONE of the schema's tables is not an error.** The reset creates the schema through the
+same script, in the same transaction, with the same audit row, and returns a result saying nothing stood. The
+scripted release path is reset then import, so the first release against a new database takes that branch
+rather than being refused for a migration that exists only as this script.
+
+**A database carrying SOME of them is a half-finished deletion**, which no store can open and no read can
+describe. Without `force` it is refused with reason `catalog-partial` and a sentence naming the remedy. With
+`force` the reset drops what is left, recreates the schema and returns a result whose `PriorState` is
+`Unreadable`, because there is nothing truthful it can put in the version and the hashes. A schema version
+this build does not write is refused either way, force or no force, with `schema-mismatch` naming the
+migration: recreating version 1 over a database that says it is at version 2 would not be a repair.
 
 `actor`, `operatorId` and `note` are checked against the caps `dbo.catalog_audit` declares (1 to 128, 128 and
 1024 characters) BEFORE the transaction opens, and an argument outside them is an `ArgumentException` with

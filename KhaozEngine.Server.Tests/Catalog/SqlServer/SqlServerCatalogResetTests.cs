@@ -278,20 +278,6 @@ public class SqlServerCatalogResetTests
         }
     }
 
-    [CatalogSqlServerFact]
-    public async Task AResetOfADatabaseCarryingNoCatalogTableIsRefusedAndNamesTheMigration()
-    {
-        using var database = new SqlServerCatalogDatabase();
-
-        ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
-            () => SqlServerCatalogReset.ResetAsync(
-                database.ConnectionString, Actor, Operator, "content release"));
-
-        Assert.Equal("schema-mismatch", refused.Reason);
-        Assert.Contains("catalog-v1-initial", refused.Message, StringComparison.Ordinal);
-        Assert.Equal(0, SqlServerCatalogResetHarness.CountTables(database));
-    }
-
     /// <summary>Two published rows, which is the smallest store with a version, rows and an audit trail.</summary>
     static Task Seed(SqlServerContentAuthoringStore store, params string[] keys)
         => SqlServerCatalogResetHarness.Seed(store, keys);

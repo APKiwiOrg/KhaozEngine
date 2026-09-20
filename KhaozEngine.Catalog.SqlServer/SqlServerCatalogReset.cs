@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Data;
 using System.Threading;
 using System.Threading.Tasks;
@@ -60,12 +61,13 @@ public static class SqlServerCatalogReset
     const int NoteMaxLength = 1024;
 
     /// <summary>
-    /// How many of the schema's OWN tables stand. Zero means a database with no catalog in it, the full
-    /// count means a catalog to replace, and anything between means a partial one.
+    /// Which of the schema's OWN tables stand. None means a database with no catalog in it, all of them mean
+    /// a catalog to replace, and anything between means a partial one.
     /// </summary>
-    static readonly string CountTablesSql = FormattableString.Invariant($"""
-        SELECT COUNT(*) FROM sys.tables
-        WHERE schema_id = SCHEMA_ID(N'dbo') AND name IN ({SqlServerCatalogSchemaExpectations.TableNameList});
+    static readonly string ExistingTablesSql = FormattableString.Invariant($"""
+        SELECT name FROM sys.tables
+        WHERE schema_id = SCHEMA_ID(N'dbo') AND name IN ({SqlServerCatalogSchemaExpectations.TableNameList})
+        ORDER BY name;
         """);
 
     /// <summary>
@@ -100,6 +102,14 @@ public static class SqlServerCatalogReset
     /// The store this resets is left needing <see cref="SqlServerContentAuthoringStore.InitializeAsync"/>
     /// again, the same as a database that has just been created: <c>catalog_type</c> is empty until a store
     /// syncs its registry into it.
+    /// </para>
+    /// <para>
+    /// <b>A database carrying NONE of the schema's tables is created rather than refused</b>, through the
+    /// same script inside the same transaction, with the same audit row and a result saying nothing stood.
+    /// The scripted release path is reset then import, so the first release against a new database takes
+    /// that branch. A database carrying SOME of them is a half-finished deletion, refused under reason
+    /// <c>catalog-partial</c> and repaired by <paramref name="force"/>, which drops what is left and
+    /// recreates the schema. A schema version this build does not write is refused either way.
     /// </para>
     /// <para>
     /// <b>It takes no application lock, unlike the schema create.</b> The create takes one because two hosts
@@ -155,14 +165,10 @@ public static class SqlServerCatalogReset
         await using SqlTransaction transaction = (SqlTransaction)await connection
             .BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken).ConfigureAwait(false);
 
-        if (await ReadIntAsync(connection, transaction, CountTablesSql, cancellationToken)
-            .ConfigureAwait(false) == 0)
-        {
-            throw Mismatch("missing, so there is nothing to reset");
-        }
-
+        IReadOnlySet<string> tables = await ReadExistingTablesAsync(connection, transaction, cancellationToken)
+            .ConfigureAwait(false);
         ContentCatalogResetResult stood = await ReadBeforeAsync(
-            connection, transaction, force, cancellationToken).ConfigureAwait(false);
+            connection, transaction, tables, force, cancellationToken).ConfigureAwait(false);
 
         await ExecuteAsync(connection, transaction, DropSql, cancellationToken).ConfigureAwait(false);
         await ExecuteAsync(connection, transaction, SqlServerCatalogSchema.SchemaSql, cancellationToken)
@@ -186,13 +192,47 @@ public static class SqlServerCatalogReset
     /// <summary>
     /// What the store stood at, read while it still exists, with the open-draft refusal on the way past.
     /// The epoch on the returned record is the OLD one and the caller replaces it after the recreate.
+    /// <para>
+    /// <b>Three databases arrive here and only one of them has anything to say.</b> A database carrying NONE
+    /// of the schema's tables is not an error: the scripted release path is reset then import, so the first
+    /// release against a new database lands here and the reset creates the schema through the very same
+    /// script, dropping nothing. A database carrying SOME of them is a half-finished deletion that no store
+    /// can open and no read can describe, and <paramref name="force"/> repairs it. A whole catalog is read.
+    /// </para>
     /// </summary>
     static async Task<ContentCatalogResetResult> ReadBeforeAsync(
         SqlConnection connection,
         SqlTransaction transaction,
+        IReadOnlySet<string> tables,
         bool force,
         CancellationToken cancellationToken)
     {
+        if (tables.Count == 0)
+        {
+            return Nothing(ContentCatalogPriorState.Absent);
+        }
+
+        if (tables.Count != SqlServerCatalogSchemaExpectations.Tables.Count)
+        {
+            // A schema version that can still be READ is still binding. A partial catalog at another version
+            // is refused whatever the force flag says, because the recreate runs this build's script and
+            // moving a database to version 1 is not a repair.
+            if (tables.Contains(MetadataTable)
+                && await TryReadSchemaVersionAsync(connection, transaction, cancellationToken)
+                    .ConfigureAwait(false) is int version
+                && version != SqlServerCatalogSchema.CurrentVersion)
+            {
+                throw UnsupportedVersion(version);
+            }
+
+            if (!force)
+            {
+                throw Partial(tables.Count, SqlServerCatalogSchemaExpectations.Tables.Count);
+            }
+
+            return Nothing(ContentCatalogPriorState.Unreadable);
+        }
+
         int schema;
         int active;
         int versions;
@@ -233,8 +273,7 @@ public static class SqlServerCatalogReset
         // silently move it to version 1 and call that a reset.
         if (schema != SqlServerCatalogSchema.CurrentVersion)
         {
-            throw Mismatch(FormattableString.Invariant(
-                $"at unsupported version '{schema}', and a reset recreates version {SqlServerCatalogSchema.CurrentVersion}"));
+            throw UnsupportedVersion(schema);
         }
 
         if (drafts > 0 && !force)
@@ -382,6 +421,72 @@ public static class SqlServerCatalogReset
         command.CommandTimeout = TimeoutSeconds;
         return command;
     }
+
+    /// <summary>The metadata table, which is the one a partial catalog's schema version can still be read from.</summary>
+    const string MetadataTable = "catalog_metadata";
+
+    /// <summary>Which of the schema's own tables the database holds, by the inventory the drop names.</summary>
+    static async Task<IReadOnlySet<string>> ReadExistingTablesAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        await using SqlCommand command = Command(connection, transaction, ExistingTablesSql);
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        await using SqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken)
+            .ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            names.Add(reader.GetString(0));
+        }
+
+        return names;
+    }
+
+    /// <summary>
+    /// The schema version of a catalog that may be in pieces, or null when even that cannot be read. A
+    /// partial catalog is expected to fail here, and the caller treats the failure as the answer.
+    /// </summary>
+    static async Task<int?> TryReadSchemaVersionAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using SqlCommand command = Command(
+                connection,
+                transaction,
+                "SELECT schema_version FROM dbo.catalog_metadata WHERE metadata_key = 1;");
+            return await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) as int?;
+        }
+        catch (SqlException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>A result that claims nothing about what stood, which is all these two cases may claim.</summary>
+    static ContentCatalogResetResult Nothing(ContentCatalogPriorState priorState)
+        => new(0, null, null, 0, 0, string.Empty, priorState);
+
+    /// <summary>
+    /// The PARTIAL refusal: some of the schema's tables stand and the rest do not, which no store can open
+    /// and no read can describe. It carries its own reason token rather than <c>schema-mismatch</c>, because
+    /// the remedy is not a migration. The reset itself is the remedy, and the sentence says so.
+    /// </summary>
+    static ContentAuthoringException Partial(int standing, int expected)
+        => new(
+            FormattableString.Invariant(
+                $"The SQL Server content catalog is PARTIAL: {standing} of the {expected} tables version {SqlServerCatalogSchema.CurrentVersion} declares stand, so what it holds cannot be read. Pass the reset's force flag to drop what is left and recreate the schema, which repairs it."),
+            default,
+            0,
+            ContentAuthoringException.CatalogPartialReason);
+
+    /// <summary>The refusal a database at another schema version gets, which no force flag overrides.</summary>
+    static ContentAuthoringException UnsupportedVersion(int version)
+        => Mismatch(FormattableString.Invariant(
+            $"at unsupported version '{version}', and a reset recreates version {SqlServerCatalogSchema.CurrentVersion}"));
 
     /// <summary>
     /// The schema refusal, in the words and under the reason token the provider's own validation uses, so a

@@ -15110,13 +15110,26 @@ a `catalog_` pattern would match, and a reset leaves every one of them and their
 It is a separate type per provider rather than a member on `IContentAuthoringStore`, because a reset is DDL
 and the everyday authoring path is DML: a production deployment should not give its application role DDL at
 all, so the reset takes the migration credential's own connection string. An open draft is refused with reason
-`draft-open` unless `force` is set, and a database carrying no catalog table or one at another schema version
-is refused with `schema-mismatch`.
+`draft-open` unless `force` is set. `actor`, `operatorId` and `note` are checked against the caps
+`catalog_audit` declares before the transaction opens, so an argument outside them is an `ArgumentException`
+with nothing dropped rather than a provider error after the drop.
+
+A database carrying NONE of the schema's tables is CREATED rather than refused, through the same script in the
+same transaction, with the same audit row. The scripted release path is reset then import, so the first
+release against a new database takes that branch. A database carrying SOME of them is a half-finished deletion
+that no store can open: without `force` it is refused with reason `catalog-partial` and a sentence naming the
+remedy, and with `force` the reset drops what is left and recreates the schema. A schema version this build
+does not write is refused either way with `schema-mismatch`.
 
 `ContentCatalogResetResult` carries what stood (the active version number, its server and client manifest
 hashes, and the counts of versions and row revisions dropped) plus the NEW `store_epoch`. The epoch is fresh
 on purpose: a reset store shares no history with the one it replaced. The result is also the last moment those
 two hashes exist anywhere, because `catalog_version` goes with everything else.
+
+`PriorState` says which of the three a run was, and the record refuses to be built into a state that says two
+things: a version number with no row behind it reads as that number and the words "whose version row was
+MISSING" rather than as "nothing published", and a reset that read no catalog cannot report a version, a hash
+or anything dropped.
 
 **The pack store is NOT touched by a reset.** A caller that replaces content at the same version number must
 clear or rebuild its own pack root, because `ContentBoot.ReadManifestAsync` trusts the pack pointer it finds

@@ -46,6 +46,15 @@ namespace KhaozEngine.Catalog.Sqlite;
 /// </summary>
 public static class SqliteCatalogReset
 {
+    /// <summary>The cap on <c>catalog_audit.actor</c>, which also requires at least one character.</summary>
+    const int ActorMaxLength = 128;
+
+    /// <summary>The cap on <c>catalog_audit.operator</c>, which may be empty.</summary>
+    const int OperatorMaxLength = 128;
+
+    /// <summary>The cap on <c>catalog_audit.note</c>, which may be empty.</summary>
+    const int NoteMaxLength = 1024;
+
     /// <summary>
     /// Drops every catalog object and recreates the schema, all or nothing, and files one audit row in the
     /// new store recording what stood.
@@ -68,7 +77,8 @@ public static class SqliteCatalogReset
     /// <param name="cancellationToken">Cancels the work. Nothing is committed on the way out.</param>
     /// <returns>What stood before the reset, and the epoch the recreated schema minted.</returns>
     /// <exception cref="ArgumentNullException">A required argument is null.</exception>
-    /// <exception cref="ContentAuthoringException">The database carries no catalog schema this build supports, or it carries an open draft and <paramref name="force"/> is false.</exception>
+    /// <exception cref="ArgumentException"><paramref name="actor"/> is empty, or an argument is longer than the audit column that holds it.</exception>
+    /// <exception cref="ContentAuthoringException">The database carries a catalog schema version this build does not support, or it carries an open draft and <paramref name="force"/> is false.</exception>
     public static async Task<ContentCatalogResetResult> ResetAsync(
         string connectionString,
         string actor,
@@ -78,9 +88,7 @@ public static class SqliteCatalogReset
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(connectionString);
-        ArgumentNullException.ThrowIfNull(actor);
-        ArgumentNullException.ThrowIfNull(operatorId);
-        ArgumentNullException.ThrowIfNull(note);
+        ValidateAuditArguments(actor, operatorId, note);
 
         var connection = new SqliteConnection(connectionString);
         try
@@ -254,6 +262,42 @@ public static class SqliteCatalogReset
         }
 
         return new ContentCatalogResetResult(active, server, client, versions, rows, string.Empty);
+    }
+
+    /// <summary>
+    /// The audit row's own CHECK constraints, mirrored from <c>catalog_audit</c> in
+    /// <see cref="SqliteCatalogSchema.Tables"/> and applied BEFORE anything is opened or dropped.
+    /// <para>
+    /// The insert is the last statement of the reset, so without this an empty actor dropped the whole
+    /// catalog, recreated it, and then failed on its own argument list with a raw provider exception. The
+    /// catalog came back, because the transaction is all or nothing, but nothing about that is an answer a
+    /// caller should have to receive for a mistake it could be told about on the way in.
+    /// </para>
+    /// <para>
+    /// SQLite's <c>length()</c> counts every character, trailing blanks included, so these are plain string
+    /// lengths. The SQL Server sibling mirrors <c>LEN</c>, which does not.
+    /// </para>
+    /// </summary>
+    static void ValidateAuditArguments(string actor, string operatorId, string note)
+    {
+        ArgumentNullException.ThrowIfNull(actor);
+        ArgumentNullException.ThrowIfNull(operatorId);
+        ArgumentNullException.ThrowIfNull(note);
+
+        // CHECK (length(actor) BETWEEN 1 AND 128)
+        if (actor.Length == 0)
+        {
+            throw new ArgumentException(
+                "The reset's actor is written to catalog_audit.actor, which requires at least one character.",
+                nameof(actor));
+        }
+
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(actor.Length, ActorMaxLength, nameof(actor));
+
+        // CHECK (length(operator) <= 128) and CHECK (length(note) <= 1024). Both may be empty.
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(
+            operatorId.Length, OperatorMaxLength, nameof(operatorId));
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(note.Length, NoteMaxLength, nameof(note));
     }
 
     /// <summary>

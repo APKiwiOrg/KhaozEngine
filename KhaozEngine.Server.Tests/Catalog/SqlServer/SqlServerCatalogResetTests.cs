@@ -232,24 +232,50 @@ public class SqlServerCatalogResetTests
         string epochBefore = await store.GetStoreEpochAsync();
         int auditsBefore = database.Scalar("SELECT COUNT(*) FROM dbo.catalog_audit;");
 
-        // An actor the audit column cannot hold. The refusal lands on the LAST statement of the reset, after
-        // every table has been dropped and the schema recreated, which is the only moment the all-or-nothing
-        // rule can be observed from outside.
-        await Assert.ThrowsAsync<SqlException>(
-            () => SqlServerCatalogReset.ResetAsync(
-                database.ConnectionString, new string('a', 200), Operator, "content release"));
+        // A host table of the database's own, with a foreign key into the catalog version the store serves.
+        // The reset drops the foreign keys it OWNS and then the tables, and this one is not its to drop, so
+        // DROP TABLE dbo.catalog_version is refused by the engine with every owned foreign key already gone.
+        // No argument check can pre-empt it, because nothing about the arguments is wrong.
+        database.Execute(
+            """
+            CREATE TABLE dbo.host_release_log(
+                id int NOT NULL PRIMARY KEY,
+                version_number int NOT NULL
+                    CONSTRAINT fk_host_release_log_version REFERENCES dbo.catalog_version(version_number));
+            INSERT INTO dbo.host_release_log(id, version_number) VALUES (1, 1);
+            """);
 
-        Assert.Equal(epochBefore, Text(database, "SELECT store_epoch FROM dbo.catalog_metadata;"));
-        Assert.Equal(1, database.Scalar("SELECT active_version FROM dbo.catalog_metadata;"));
-        Assert.Equal(1, database.Scalar("SELECT COUNT(*) FROM dbo.catalog_version;"));
-        Assert.Equal(2, database.Scalar("SELECT COUNT(*) FROM dbo.catalog_row;"));
-        Assert.Equal(auditsBefore, database.Scalar("SELECT COUNT(*) FROM dbo.catalog_audit;"));
+        try
+        {
+            SqlException failed = await Assert.ThrowsAsync<SqlException>(
+                () => SqlServerCatalogReset.ResetAsync(
+                    database.ConnectionString, Actor, Operator, "content release"));
 
-        // Not merely present: still the schema a production host opens under ValidateOnly.
-        var reopened = new SqlServerContentAuthoringStore(
-            database.ConnectionString, Registry(), database.Pack());
-        await reopened.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
-        Assert.Equal(1, await reopened.GetActiveVersionAsync());
+            // Named, so this test cannot quietly start passing on a failure before the drop began.
+            Assert.Equal(3726, failed.Number);
+
+            Assert.Equal(epochBefore, Text(database, "SELECT store_epoch FROM dbo.catalog_metadata;"));
+            Assert.Equal(1, database.Scalar("SELECT active_version FROM dbo.catalog_metadata;"));
+            Assert.Equal(1, database.Scalar("SELECT COUNT(*) FROM dbo.catalog_version;"));
+            Assert.Equal(2, database.Scalar("SELECT COUNT(*) FROM dbo.catalog_row;"));
+            Assert.Equal(auditsBefore, database.Scalar("SELECT COUNT(*) FROM dbo.catalog_audit;"));
+
+            // The host's own table and its row came back with everything else.
+            Assert.Equal(1, database.Scalar("SELECT version_number FROM dbo.host_release_log;"));
+
+            // Not merely present, and not merely the tables: ValidateOnly compares every foreign key by name,
+            // and the reset had already dropped all thirteen of them when it was refused.
+            var reopened = new SqlServerContentAuthoringStore(
+                database.ConnectionString, Registry(), database.Pack());
+            await reopened.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
+            Assert.Equal(1, await reopened.GetActiveVersionAsync());
+        }
+        finally
+        {
+            // The fixture's sweep cannot drop catalog_version while this stands, so every later test in the
+            // collection would fail at its own setup.
+            database.Execute("DROP TABLE IF EXISTS dbo.host_release_log;");
+        }
     }
 
     [CatalogSqlServerFact]

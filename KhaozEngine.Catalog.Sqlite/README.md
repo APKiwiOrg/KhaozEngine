@@ -96,6 +96,10 @@ An open draft is refused with reason `draft-open`, because the reset would destr
 nothing left afterwards that says what it held. Pass `force: true` to take it anyway. A database carrying no
 catalog table, or one at another schema version, is refused with `schema-mismatch` naming the migration.
 
+`actor`, `operatorId` and `note` are checked against the caps `catalog_audit` declares (1 to 128, 128 and
+1024 characters) BEFORE the transaction opens, and an argument outside them is an `ArgumentException` with
+nothing dropped. The insert that would otherwise catch it is the reset's LAST statement.
+
 **The store epoch is NEW.** The recreate mints one, the same as a first create, and that is deliberate: a
 reset store shares no history with the one it replaced, so a durable page stamped against the old epoch must
 not be taken for a page of this one.

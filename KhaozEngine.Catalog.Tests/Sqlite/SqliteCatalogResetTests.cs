@@ -252,18 +252,36 @@ public class SqliteCatalogResetTests
 
         long auditsBefore = database.Scalar("SELECT COUNT(*) FROM catalog_audit;");
 
-        // An actor the audit column cannot hold. The refusal lands on the LAST statement of the reset, after
-        // every table has been dropped and the schema recreated, which is the only moment the all-or-nothing
-        // rule can be observed from outside.
-        await Assert.ThrowsAsync<SqliteException>(
+        // A host table of the file's own, carrying a row that points at the catalog version the store serves.
+        // The reset defers foreign keys, so the implicit delete behind DROP TABLE catalog_version does not
+        // fail there: the violation is counted and checked at COMMIT, which is the last thing the reset does,
+        // after every table has been dropped, the schema recreated and the audit row written. That is the one
+        // moment the all-or-nothing rule can be observed from outside, and no argument check can pre-empt it
+        // because nothing about the arguments is wrong.
+        database.Execute(
+            """
+            CREATE TABLE host_release_log(
+                id INTEGER NOT NULL PRIMARY KEY,
+                version_number INTEGER NOT NULL REFERENCES catalog_version(version_number));
+            """);
+        database.Execute("INSERT INTO host_release_log(id, version_number) VALUES (1, 1);");
+
+        SqliteException failed = await Assert.ThrowsAsync<SqliteException>(
             () => SqliteCatalogReset.ResetAsync(
-                database.ConnectionString, new string('a', 200), Operator, "content release"));
+                database.ConnectionString, Actor, Operator, "content release"));
+
+        // Named, so this test cannot quietly start passing on a failure that happens BEFORE the drop.
+        Assert.Equal(19, failed.SqliteErrorCode);
+        Assert.Contains("FOREIGN KEY", failed.Message, StringComparison.OrdinalIgnoreCase);
 
         Assert.Equal(epochBefore, Text(database, "SELECT store_epoch FROM catalog_metadata;"));
         Assert.Equal(1L, database.Scalar("SELECT active_version FROM catalog_metadata;"));
         Assert.Equal(1L, database.Scalar("SELECT COUNT(*) FROM catalog_version;"));
         Assert.Equal(2L, database.Scalar("SELECT COUNT(*) FROM catalog_row;"));
         Assert.Equal(auditsBefore, database.Scalar("SELECT COUNT(*) FROM catalog_audit;"));
+
+        // The host's own table and its row came back with everything else.
+        Assert.Equal(1L, database.Scalar("SELECT version_number FROM host_release_log;"));
 
         // Not merely present: still the schema a production host opens under ValidateOnly.
         using var reopened = new SqliteContentAuthoringStore(

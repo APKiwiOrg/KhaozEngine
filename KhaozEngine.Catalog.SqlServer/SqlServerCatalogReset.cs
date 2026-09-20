@@ -50,6 +50,15 @@ public static class SqlServerCatalogReset
     /// <summary>The seconds the drop and the recreate are given, matching the schema create's own budget.</summary>
     const int TimeoutSeconds = 60;
 
+    /// <summary>The cap on <c>catalog_audit.actor</c>, which also requires at least one character.</summary>
+    const int ActorMaxLength = 128;
+
+    /// <summary>The cap on <c>catalog_audit.[operator]</c>, which may be empty.</summary>
+    const int OperatorMaxLength = 128;
+
+    /// <summary>The cap on <c>catalog_audit.note</c>, which may be empty.</summary>
+    const int NoteMaxLength = 1024;
+
     /// <summary>
     /// How many of the schema's OWN tables stand. Zero means a database with no catalog in it, the full
     /// count means a catalog to replace, and anything between means a partial one.
@@ -109,7 +118,8 @@ public static class SqlServerCatalogReset
     /// <param name="cancellationToken">Cancels the work. Nothing is committed on the way out.</param>
     /// <returns>What stood before the reset, and the epoch the recreated schema minted.</returns>
     /// <exception cref="ArgumentNullException">A required argument is null.</exception>
-    /// <exception cref="ContentAuthoringException">The database carries no catalog schema this build supports, or it carries an open draft and <paramref name="force"/> is false.</exception>
+    /// <exception cref="ArgumentException"><paramref name="actor"/> is empty, or an argument is longer than the audit column that holds it.</exception>
+    /// <exception cref="ContentAuthoringException">The database carries a catalog schema version this build does not support, or it carries an open draft and <paramref name="force"/> is false.</exception>
     public static async Task<ContentCatalogResetResult> ResetAsync(
         string connectionString,
         string actor,
@@ -119,9 +129,7 @@ public static class SqlServerCatalogReset
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(connectionString);
-        ArgumentNullException.ThrowIfNull(actor);
-        ArgumentNullException.ThrowIfNull(operatorId);
-        ArgumentNullException.ThrowIfNull(note);
+        ValidateAuditArguments(actor, operatorId, note);
 
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
@@ -261,6 +269,47 @@ public static class SqlServerCatalogReset
 
         return new ContentCatalogResetResult(active, server, client, versions, rows, string.Empty);
     }
+
+    /// <summary>
+    /// The audit row's own CHECK constraints, mirrored from <c>dbo.catalog_audit</c> in
+    /// <c>CatalogSchemaV1.sql</c> and applied BEFORE anything is opened or dropped.
+    /// <para>
+    /// The insert is the last statement of the reset, so without this an empty actor dropped the whole
+    /// catalog, recreated it, and then failed on its own argument list with a raw provider exception. The
+    /// catalog came back, because the transaction is all or nothing, but nothing about that is an answer a
+    /// caller should have to receive for a mistake it could be told about on the way in.
+    /// </para>
+    /// <para>
+    /// <b>The lengths are measured the way <c>LEN</c> measures them.</b> T-SQL's <c>LEN</c> ignores TRAILING
+    /// SPACES, so an actor of one letter and a hundred blanks satisfies the CHECK and an actor of a hundred
+    /// blanks alone does not. Measuring with the raw string length instead would refuse the first and accept
+    /// the second, and the second is the one that reaches a constraint violation after the drop.
+    /// </para>
+    /// </summary>
+    static void ValidateAuditArguments(string actor, string operatorId, string note)
+    {
+        ArgumentNullException.ThrowIfNull(actor);
+        ArgumentNullException.ThrowIfNull(operatorId);
+        ArgumentNullException.ThrowIfNull(note);
+
+        // CHECK (LEN(actor) BETWEEN 1 AND 128)
+        if (StoredLength(actor) == 0)
+        {
+            throw new ArgumentException(
+                "The reset's actor is written to catalog_audit.actor, which requires at least one character that is not a trailing blank.",
+                nameof(actor));
+        }
+
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(StoredLength(actor), ActorMaxLength, nameof(actor));
+
+        // CHECK (LEN([operator]) <= 128) and CHECK (LEN(note) <= 1024). Both may be empty.
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(
+            StoredLength(operatorId), OperatorMaxLength, nameof(operatorId));
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(StoredLength(note), NoteMaxLength, nameof(note));
+    }
+
+    /// <summary>What <c>LEN</c> will say about the value, which is the length with trailing spaces removed.</summary>
+    static int StoredLength(string value) => value.TrimEnd(' ').Length;
 
     /// <summary>
     /// The ONE audit row the new store opens with. <c>catalog_audit</c> carries no foreign key to

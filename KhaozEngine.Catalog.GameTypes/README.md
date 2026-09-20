@@ -42,6 +42,21 @@ The engine `item` type carries an `equip_profile` key reference that is late bou
 down and registers no type under it. A type under any other key is one nothing ever points at, and every
 item's `equip_profile` would have to stay 0.
 
+## What a type class carries
+
+Every type is a static class with the same shape, so a game registers any of them the same way:
+
+- `DefaultChunkSlots`, the id slots per chunk, which is the unit of re-download.
+- `DefaultVisibility`, the type-level visibility. Only `monster_drop` is `ServerOnly`, because a client that
+  can read a drop table knows every roll before it happens.
+- One `<Name>Field` constant per field, the STORED spelling, which is also what a localization key is derived
+  from. A duration field has both spellings as constants and a method taking the unit.
+- `CreateSchema()`, or `CreateSchema(ContentDurationUnit)` on the four types with a duration.
+- A nested `Codec`, the engine's positional row walk with nothing added.
+
+Positions are deliberately NOT public. A reader resolves a field by name through `ContentFieldLookup`, once,
+against the schema the loaded runtime was actually built from.
+
 ## `ContentDurationUnit`
 
 ```csharp
@@ -104,7 +119,7 @@ registry.RegisterContentType(
     new FoodContentType.Codec(new ContentTypeId(GameContentTypeIds.Food), food),
     validator: null,
     food,
-    ContentVisibility.Client,
+    FoodContentType.DefaultVisibility,
     FoodContentType.DefaultChunkSlots);
 ```
 

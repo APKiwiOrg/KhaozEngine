@@ -15352,7 +15352,7 @@ registry.RegisterContentType(
     new FoodContentType.Codec(new ContentTypeId(GameContentTypeIds.Food), food),
     validator: null,
     food,
-    ContentVisibility.Client,
+    FoodContentType.DefaultVisibility,
     FoodContentType.DefaultChunkSlots);
 ```
 

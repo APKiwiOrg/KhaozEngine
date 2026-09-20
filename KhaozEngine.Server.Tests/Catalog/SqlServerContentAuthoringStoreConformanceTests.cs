@@ -386,4 +386,9 @@ public sealed class SqlServerContentAuthoringStoreConformanceTests : ContentAuth
     [CatalogSqlServerFact]
     public override Task ACarriedAddInsideAFamilysBlockNamingNoFamilyIsRefusedAndChangesNothing()
         => base.ACarriedAddInsideAFamilysBlockNamingNoFamilyIsRefusedAndChangesNothing();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task TwoRecordersOfOneUpgradeIdWriteExactlyOneRow()
+        => base.TwoRecordersOfOneUpgradeIdWriteExactlyOneRow();
 }

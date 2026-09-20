@@ -200,6 +200,38 @@ public abstract partial class ContentAuthoringStoreConformance
         Assert.Equal(["alpha", "charlie", "second"], Ids(records));
     }
 
+    /// <summary>
+    /// Two recorders of ONE upgrade id at the same time write exactly one ledger row and one audit row, and
+    /// neither of them throws.
+    /// <para>
+    /// <b>The record is a check then an insert, and the two have to be one decision.</b> Recording an id the
+    /// ledger already holds is a no-op by contract, so the loser has nothing to report, but it may not be a
+    /// deadlock victim either: a caller that asked for a no-op and got a provider error cannot tell the
+    /// difference between "already there" and "the write failed". On SQL Server that is what the update range
+    /// lock on the existence read is for, because two Serializable readers of an absent key would otherwise
+    /// both hold a shared range lock and deadlock converting it.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public virtual async Task TwoRecordersOfOneUpgradeIdWriteExactlyOneRow()
+    {
+        IContentAuthoringStore store = await OpenAsync();
+        await PublishAsync(store, ContentEdit.Add(Thing, new ContentKey("one"), CatalogFixtures.Fields(11)));
+        IContentUpgradeLedger ledger = Ledger(store);
+        var stamp = new ContentUpgradeStamp("shipped-in-the-bundle", 1);
+
+        // Through Task.Run on both sides: the in-memory store answers synchronously, so a bare call would run
+        // the first record to completion before the second one started.
+        await Task.WhenAll(
+            Task.Run(() => ledger.RecordUpgradeAsync(
+                stamp, ContentUpgradeDisposition.Baseline, CatalogFixtures.Actor, CatalogFixtures.Operator)),
+            Task.Run(() => ledger.RecordUpgradeAsync(
+                stamp, ContentUpgradeDisposition.Adopted, CatalogFixtures.Actor, CatalogFixtures.Operator)));
+
+        Assert.Single(await ledger.ListUpgradesAsync());
+        Assert.Single(await UpgradeAuditAsync(store));
+    }
+
     /// <summary>A publish request carrying an upgrade stamp, which is the only way an applied row is written.</summary>
     /// <param name="expectedBaseVersion">The base version the caller believes it is publishing onto.</param>
     /// <param name="upgradeId">The upgrade's stable id.</param>

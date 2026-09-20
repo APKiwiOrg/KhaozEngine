@@ -107,8 +107,8 @@ public sealed partial class SqlServerContentAuthoringStore : IContentUpgradeLedg
         }
 
         // Checked rather than left to the primary key, so the refusal carries the reason token a caller keys
-        // on. The read takes its range lock under Serializable, so a second publisher inserting the same id
-        // between the check and the insert is a contention failure rather than a silent second version.
+        // on. The read takes an UPDATE range lock, so a second publisher inserting the same id between the
+        // check and the insert waits and is then refused by name rather than deadlocking.
         if (await HoldsUpgradeAsync(scope, stamp.Id, cancellationToken).ConfigureAwait(false))
         {
             throw AlreadyRecorded(stamp.Id);
@@ -175,7 +175,18 @@ public sealed partial class SqlServerContentAuthoringStore : IContentUpgradeLedg
             cancellationToken).ConfigureAwait(false);
     }
 
-    /// <summary>Whether the ledger already holds one id. The caller owns the scope.</summary>
+    /// <summary>
+    /// Whether the ledger already holds one id. The caller owns the scope.
+    /// <para>
+    /// <b><c>UPDLOCK, HOLDLOCK</c> and not the Serializable default.</b> Serializable alone takes a SHARED
+    /// range lock on the key, so two recorders of one id both read, both find nothing, and both then try to
+    /// convert to an exclusive lock for the insert. That is a conversion deadlock, and the victim surfaces as
+    /// a provider deadlock error rather than as the refusal the caller keys on. <c>UPDLOCK</c> takes the
+    /// update lock at the READ, which only one of them can hold, so the second waits and then reads the row
+    /// the first one wrote. <c>HOLDLOCK</c> keeps the range locked on a key that is not there yet, which is
+    /// what makes the absence itself stable until the commit.
+    /// </para>
+    /// </summary>
     /// <param name="scope">The open scope.</param>
     /// <param name="upgradeId">The upgrade id.</param>
     /// <param name="cancellationToken">Cancels the read.</param>
@@ -185,7 +196,11 @@ public sealed partial class SqlServerContentAuthoringStore : IContentUpgradeLedg
         CancellationToken cancellationToken)
     {
         await using SqlCommand command = Command(
-            scope, "SELECT 1 FROM dbo.catalog_content_upgrade WHERE upgrade_id = @upgrade;");
+            scope,
+            """
+            SELECT 1 FROM dbo.catalog_content_upgrade WITH (UPDLOCK, HOLDLOCK)
+            WHERE upgrade_id = @upgrade;
+            """);
         BindText(command, "@upgrade", upgradeId);
         return await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) is not null;
     }

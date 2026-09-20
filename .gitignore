@@ -36,6 +36,9 @@ local.settings.json
 .codex/settings.local.json
 .claude/worktrees/
 .codex/worktrees/
+# The plain `git worktree add` root, for a worktree made by hand rather than by a tool. Untracked and
+# unignored, it showed up as a dirty tree in four repos and blocked a merge that was checking for one.
+.worktrees/
 .superpowers/
 # Superpowers plan/spec output, local-only (never committed):
 docs/superpowers/
@@ -75,6 +78,5 @@ networked-walk-world.db-shm
 # the docs/TODO.md sync problem that moving to Issues was meant to end.
 .ledger/
 
-# Build-home workaround dirs used by agent worktrees (HOME redirect for the gitconfig TCC issue)
+# Build-home workaround dir used by agent worktrees (HOME redirect for the gitconfig TCC issue)
 .buildhome/
-.worktrees/

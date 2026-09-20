@@ -130,3 +130,12 @@ backlog here: a follow-up recorded only in a design doc is invisible to the ledg
   `PACK_RELEASED_OK=1` is the deliberate exception, `scripts/hooks/pack-release-guard.sh` catches the bare
   `dotnet pack` an agent types from memory, and `scripts/check-local-feed.sh` reports a feed that already
   carries a re-packed release, which is the thing to run before vendoring the feed into a game.
+- The same window is refused at push time. `.githooks/pre-push` rejects a push of `main` whose
+  `<KhaozEngineVersion>` names a version already tagged at another commit, when the commits past that tag
+  carry changes that ship inside a package
+  ([#1033](https://github.com/APKiwiOrg/KhaozEngine/issues/1033)). It exists because a branch can be merged
+  while a concurrent session tags the version it was staged into, which happened twice on 2026-09-20 and
+  cost a repair commit each time. Documentation, tooling and governance ride a released version without
+  bumping it, so those pushes are not refused, and a side branch may sit at an old release untouched. The
+  rule is `tag_release_window` plus `tag_version_bearing` in `scripts/tag-standard.sh`, exercised by
+  `scripts/tests/version-push-guard.test.sh`. `git push --no-verify` is the deliberate exception.

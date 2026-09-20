@@ -164,8 +164,35 @@ namespace KhaozEngine.Tests.Render3D
         {
             // lat 0, dec 0 puts the exact horizon crossing at t = 0.25.
             var s = new SunCycleSettings { LatitudeDegrees = 0f, SolarDeclinationDegrees = 0f };
-            Assert.True(SunCycle.Evaluate(0.251f, s).SunColor.R < 0.05f);
+            var rising = SunCycle.Evaluate(0.251f, s);
+            Assert.True(rising.SunColor.A < 0.05f, $"disc should be nearly transparent, got alpha {rising.SunColor.A}");
             Assert.False(SunCycle.Evaluate(0.249f, s).SunEnabled);
+        }
+
+        [Fact]
+        public void Fading_sun_disc_keeps_its_colour_and_fades_in_alpha()
+        {
+            // The sky replace-blends toward SunColor, so a disc faded by darkening its RGB paints a black hole in the
+            // sky (#396). The fade rides in alpha, which the sky uses as the blend weight.
+            var s = new SunCycleSettings { LatitudeDegrees = 0f, SolarDeclinationDegrees = 0f };
+            var rising = SunCycle.Evaluate(0.251f, s);
+            Assert.True(rising.SunColor.R > 0.9f, $"a fading disc must not darken, got {rising.SunColor}");
+            Assert.Equal(1f, SunCycle.Evaluate(0.5f, s).SunColor.A, 4);
+        }
+
+        [Fact]
+        public void Fading_moon_disc_keeps_its_colour_and_fades_in_alpha()
+        {
+            var s = new SunCycleSettings { LatitudeDegrees = 0f, SolarDeclinationDegrees = 0f, NightKey = NightKeyMode.Moon };
+            bool sawFade = false;
+            for (int i = 0; i <= 2000; i++)
+            {
+                var st = SunCycle.Evaluate(i / 2000f, s);
+                if (st.ActiveSource != KeyLightSource.Moon || st.SunColor.A > 0.5f) continue;
+                sawFade = true;
+                AssertColorEqual(s.MoonDiscColor.WithAlpha(st.SunColor.A), st.SunColor);
+            }
+            Assert.True(sawFade, "the sweep never caught the moon inside its fade band");
         }
 
         [Fact]

@@ -44,7 +44,9 @@ namespace KhaozEngine.Render3D
         /// an outdoor daytime sky out of the box; set <c>false</c> for a plain gradient (overcast) sky.</summary>
         public bool SunEnabled = true;
 
-        /// <summary>Sun disc + halo colour. Default a bright warm white.</summary>
+        /// <summary>Sun disc + halo colour. Default a bright warm white. Alpha is the disc + halo opacity: the sky
+        /// replace-blends toward this colour, so fade a body out by lowering alpha, not by darkening the RGB (a dark
+        /// RGB paints a dark disc over the sky). The water's reflected disc follows the same alpha.</summary>
         public Color SunColor = new(1f, 0.96f, 0.85f, 1f);
 
         /// <summary>Screen-space radius of the solid sun disc, in NDC-y units (the vertical half-screen is 1.0, so

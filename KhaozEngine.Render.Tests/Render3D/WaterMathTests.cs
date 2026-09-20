@@ -526,6 +526,23 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
+        public void PackUbo_fades_the_reflected_sun_with_the_sky_disc_opacity()
+        {
+            // The sky dissolves a setting disc through SunColor alpha (#396). The sea must not keep reflecting it.
+            var settings = new WaterSettings { SkyReflectionSunStrength = 0.4f };
+            var vp = Matrix4x4.CreateLookAt(new Vector3(0, 5, 5), Vector3.Zero, Vector3.UnitY);
+            var light = new Vector3(-0.5f, -0.85f, -0.35f);
+            var lightColor = new Color(1f, 0.95f, 0.86f, 1f);
+
+            float Packed(float alpha) => WaterRenderer.PackUbo(vp, vp, light, lightColor, Vector3.Zero, settings,
+                new SkySettings { SunColor = new Color(1f, 0.6f, 0.3f, alpha) }, timeSeconds: 0f).ReflectGlint.Y;
+
+            Assert.Equal(0.4f, Packed(1f), 4);
+            Assert.Equal(0.1f, Packed(0.25f), 4);
+            Assert.Equal(0f, Packed(0f), 4);
+        }
+
+        [Fact]
         public void PackUbo_clamps_the_component_count_into_the_shader_loop_bound()
         {
             // The GLSL loop is bounded by KE_MAX_COMPONENTS (8, mirroring GerstnerWaves.MaxComponents) with an

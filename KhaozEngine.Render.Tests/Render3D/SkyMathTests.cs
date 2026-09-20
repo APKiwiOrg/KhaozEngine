@@ -121,6 +121,21 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
+        public void Sun_opacity_dissolves_the_disc_into_the_gradient()
+        {
+            // A fading disc lets the sky through instead of darkening toward black (#396).
+            var sunNdc = new Vector2(0f, 0.2f);
+            var gradient = SkyMath.Shade(sunNdc, sunNdc, false, 1f, Horizon, Zenith, Sun, false, 0.05f, 0.5f, 0.18f);
+            var gone = SkyMath.Shade(sunNdc, sunNdc, true, 1f, Horizon, Zenith, Sun, true, 0.05f, 0.5f, 0.18f, sunOpacity: 0f);
+            var half = SkyMath.Shade(sunNdc, sunNdc, true, 1f, Horizon, Zenith, Sun, true, 0.05f, 0.5f, 0.18f, sunOpacity: 0.5f);
+            Assert.Equal(gradient, gone);
+            var expectedHalf = Vector3.Lerp(gradient, Sun, 0.5f);
+            Assert.Equal(expectedHalf.X, half.X, 4);
+            Assert.Equal(expectedHalf.Y, half.Y, 4);
+            Assert.Equal(expectedHalf.Z, half.Z, 4);
+        }
+
+        [Fact]
         public void Disc_is_aspect_corrected_round_in_pixels()
         {
             // At the same NDC distance horizontally vs vertically, a wide aspect makes the horizontal reach stop

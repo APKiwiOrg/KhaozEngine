@@ -5,6 +5,17 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 19.9.1
+
+- The sun and moon disc no longer turn into a black circle near the horizon. The sky and the water reflection
+  replace-blend toward `SkySettings.SunColor`, and `SunCycle` faded a rising or setting disc by scaling that
+  colour to black, so across the last `SunDiscFadeElevationDegrees` the disc painted a black hole in the
+  twilight sky. The fade now rides in `SunColor` alpha, which `SkyFrag` and the water's reflected sun strength
+  use as the blend weight, so the disc dissolves into the sky and keeps its colour. `SunCycleState.SunColor`
+  RGB is no longer darkened inside the fade band. A consumer that set a `SunColor` alpha below 1 by hand gets a
+  correspondingly fainter disc. Alpha 1 is bit-identical, so no golden moved. `Sky.fragment` is repinned on all
+  three backends. Part 1 of #396. The horizon half of that issue stays open.
+
 ## 19.9.0
 
 - `ButcherSwing` directs the contact stroke down and forward through the real skeleton and grip sockets.

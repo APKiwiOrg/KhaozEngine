@@ -139,7 +139,9 @@ namespace KhaozEngine.Render3D
         /// effectively instantaneous.</summary>
         public float HorizonKeyDipDegrees { get; set; } = 2f;
 
-        /// <summary>Elevation in degrees over which the sun disc color fades in from the horizon. The moon disc reuses this width against the moon's elevation.</summary>
+        /// <summary>Elevation in degrees over which the sun disc fades in from the horizon. The fade is carried in the
+        /// alpha of <see cref="SunCycleState.SunColor"/>, so the disc dissolves into the sky and keeps its colour. The
+        /// moon disc reuses this width against the moon's elevation.</summary>
         public float SunDiscFadeElevationDegrees { get; set; } = 4f;
 
         /// <summary>Which night track the key light follows below the sun's horizon. Default
@@ -335,7 +337,9 @@ namespace KhaozEngine.Render3D
                 0f, MathF.Max(1e-3f, settings.SunDiscFadeElevationDegrees), elDeg);
 
             // The sun-owned disc (shared by AntiSolarMoon and None; the sun's disc is hidden below the horizon).
-            Color sunDisc = baseSun.ScaleRgb(sunDiscFade);
+            // The fade rides in ALPHA, the sky's blend weight. The sky replace-blends toward the disc colour, so
+            // darkening the RGB instead would paint a black disc over the twilight sky.
+            Color sunDisc = baseSun.WithAlpha(baseSun.A * sunDiscFade);
             bool sunUp = elDeg > 0f;
 
             Vector3 lightDir;
@@ -381,7 +385,7 @@ namespace KhaozEngine.Render3D
                             0f, MathF.Max(1e-3f, settings.SunDiscFadeElevationDegrees), moonElDeg);
                         lightDir = moonLightDir;
                         key = settings.MoonKeyColor.ScaleRgb(MathF.Min(moonKeyDip, handoverDip));
-                        disc = settings.MoonDiscColor.ScaleRgb(moonDiscFade);
+                        disc = settings.MoonDiscColor.WithAlpha(settings.MoonDiscColor.A * moonDiscFade);
                         discEnabled = true;
                         discOverride = moonToward;   // direction TO the moon (the moon light travels -moonToward)
                         source = KeyLightSource.Moon;

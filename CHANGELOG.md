@@ -7,6 +7,12 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 19.10.0
 
+- `TileInteractionReachPolicy` lets targets opt into diagonal and overlapping interaction reach. The
+  policy-aware `TileInteractionReach` kernel preserves collision, corner, plane and agent-footprint checks
+  across prediction, approach and arrival. `ITileTargets.GetInteractionReachPolicy` defaults to cardinal
+  reach, and compatible client/server constructor overloads accept an entity policy classifier. Existing
+  interaction defaults and combat reach are unchanged.
+
 - `SkySettings.Horizon` (`SkyHorizon`, default `Screen`) adds a world horizon to the procedural sky. `World`
   anchors the gradient to the elevation of each pixel's view ray and paints `SkySettings.GroundColor` below
   elevation zero (blend depth `HorizonSoftness`), so a finite world appears to run on to the horizon and the sun

@@ -580,7 +580,9 @@ one of the other two.
    no default this build ever shipped, so a patch would leave that row unappended forever. `AppendTag` reads
    the list the row holds, and a list already carrying the element is satisfied while a list without it is
    written back with the element at the END. Every element already there keeps its position, nothing is
-   sorted and nothing is deduplicated. A field whose schema kind is not a tag list is refused.
+   sorted and nothing is deduplicated. A field whose schema kind is not a tag list is refused, and so is a
+   tag id that is not a live tag row of the baseline or a tag row the same plan adds, which is exactly what
+   the publish validator accepts in a list. A retired tag row is not one of them.
 4. **A partial state is refused rather than completed.** Completing the remainder guesses which of the
    existing rows an operator owns, and that guess is unrecoverable once it publishes. Every verb counts
    toward the same satisfied and pending tallies, so a build saying "these six rows each get this tag, all
@@ -611,13 +613,13 @@ hand-written check already has.
 
 ```csharp
 var definition = new ContentUpgradeDefinition(
-    id: "harvest-profiles",
+    id: "2026-09-add-recipe-type",
     order: 4,
-    description: "adds the harvest profile type's rows",
+    description: "adds the recipe type's rows",
     plan: context => new ContentUpgradePlanBuilder(context, ShippedBundle)
-        .AddRows([new ContentUpgradeIdentity(harvestProfile, new ContentKey("cow"))])
-        .AppendTag(harvestProfile, new ContentKey("goat"), "tags", edibleTagId)
-        .RetireRow(monsterDrop, new ContentKey("cow"), ContentRetirePolicy.Placeholder)
+        .AddRows([new ContentUpgradeIdentity(recipeType, new ContentKey("iron_bar"))])
+        .AppendTag(itemType, new ContentKey("iron_ore"), "tags", smeltableTagId)
+        .RetireRow(recipeType, new ContentKey("iron_ingot"), ContentRetirePolicy.Placeholder)
         .Build());
 
 ContentUpgradeReport report = await ContentUpgradeRunner.RunAsync(

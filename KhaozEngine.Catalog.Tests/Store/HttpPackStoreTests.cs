@@ -387,6 +387,14 @@ public class HttpPackStoreTests
                     host.Dispose();
                     continue;
                 }
+                catch (HttpListenerException)
+                {
+                    // The last attempt throws the way it always did, but the host it built already owns a
+                    // temporary root, and a throw past it leaves that directory behind for the rest of the
+                    // run. Dispose first, then let the throw stand.
+                    host.Dispose();
+                    throw;
+                }
 
                 host._loop = Task.Run(host.AcceptAsync);
                 await Task.Yield();

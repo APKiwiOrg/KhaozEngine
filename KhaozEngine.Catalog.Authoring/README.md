@@ -633,10 +633,12 @@ ContentUpgradeReport report = await ContentUpgradeRunner.RunAsync(
    stands, and its definition runs FIRST, ahead of any pending upgrade ordered below it, because only that
    definition can publish the draft that is standing and every other one would read it as a rival
    publisher's. The jump is reported as `KECU0015` and changes nothing else: each definition is still planned
-   against a baseline exported at the version active right then. Its freeze is never cleared and it is never
-   discarded first: a marker naming the active version is
-   a live publish or a dead one and nothing on the seam tells them apart, and a publish is the store's own
-   recovery for a dead one. Any other open draft is operator work: `OperatorDraftOpen`, draft untouched. The
+   against a baseline exported at the version active right then. It is never discarded first and a marker
+   found standing over it is never cleared on sight: a marker naming the active version is a live publish or
+   a dead one and nothing on the seam tells them apart, and a publish is the store's own recovery for a dead
+   one. The publish path freezes the draft for itself and proves it again under that marker before taking it,
+   which the two draft proofs below set out. Any other open draft is operator work: `OperatorDraftOpen`,
+   draft untouched. The
    publish pre-flight asks the same question, so a draft that appears after this step is answered the same
    way, and only another runner's is waited out. What may be DISCARDED is a separate and weaker question,
    answered below under the two draft proofs.
@@ -679,7 +681,8 @@ definition. One edit outside it means the draft may hold work an operator author
 exactly as it stands under `OperatorDraftOpen`. A draft that is exactly the plan of a definition still
 PENDING is not discarded either, because that is the shape a rival holds between its own write and its own
 publish, and it is waited out. A frozen draft is never discarded at all. So the discard proof is strictly
-weaker than the publish proof and it can destroy nothing an operator authored.
+weaker than the publish proof, and it destroys nothing an operator had authored **as of the read it was
+computed over**.
 
 It exists for one draft: the one two runners' writes merged into. A write into the draft is not atomic with
 the read that found none, and a store's write APPENDS into whatever draft is open, so a rival that reached
@@ -687,16 +690,41 @@ its own write inside that window leaves the single draft holding two definitions
 one note. It is nobody's plan, so nobody may publish it, and without the second proof nobody could discard it
 either: both runners read it as the other's live work and stood off until their patience ran out.
 
-Three things close the window.
+### What is closed and what is only narrowed
 
-1. The ledger is re-read for this definition immediately before the write, and a recorded id is adopted
-   rather than written again.
-2. The `ContentDraft` the write RETURNS decides what happens next, not the edits that went in. A draft that
-   is not exactly this plan, or one that opened on a different base version than the plan was computed
-   against, is never published. A draft that is exactly this run's own plan on the wrong base is discarded at
-   once rather than left for a rival to append into.
-3. A draft the run may not publish is RESOLVED before it is judged. The discard proof is offered first, and
-   only a draft the run cannot prove is then classified as a rival's to wait out or an operator's to report.
+Three windows sit between a run's reads and its writes. One is closed and two are not.
+
+1. **Publish. CLOSED, by a freeze and a re-proof.** Every publish the runner performs calls `FreezeDraftAsync`
+   with the version the plan was computed against, re-reads the open draft under that marker, and publishes
+   only when it is exactly this definition's plan on that base version. While the marker stands the store
+   refuses `ApplyEditsAsync` and `DiscardDraftAsync`, so what was proved is what is published. A draft that
+   fails the re-proof takes the obstruction path, and the marker this attempt set is released before it does,
+   because a run that stops for an operator must not hand back a draft they can neither edit nor discard.
+   Releasing it is safe for the same reason the proof failed: a draft that is not a clean plan is one a
+   rival's own proof under its own freeze refuses too.
+2. **Discard. NARROWED, not closed.** `DiscardDraftAsync` is refused while a freeze stands, so the marker
+   that closes the publish window is the one thing that cannot guard this one, and the proof stays check then
+   act. It is as narrow as the seam allows: the run re-reads the draft and re-proves `IsKnownWork` over
+   exactly what that read returned, with nothing awaited between the read and the discard.
+3. **Apply. NARROWED, not closed.** The ledger is re-read for this definition immediately before the write,
+   and a recorded id is adopted rather than written again. The `ContentDraft` the write RETURNS decides what
+   happens next, not the edits that went in, so a draft that is not exactly this plan, or one that opened on
+   a different base version, is never published. A draft the run may not publish is RESOLVED before it is
+   judged, so only a draft the run cannot prove is classified as a rival's to wait out or an operator's to
+   report.
+
+Two residues remain, each one store round trip wide.
+
+- An operator edit landing between the known-work proof and the discard it authorised is lost.
+- An operator edit on the SAME target under the SAME operation as one of the run's planned edits, written
+  into the window where the run had seen no draft, is replaced by the run's own apply. A change set holds one
+  pending intent per row, so the second write of a target takes the first one's place.
+
+They are accepted rather than closed because of where the runner runs. A hosted upgrade runs in a maintenance
+window with editing stopped, and a local automatic boot has no operator at the keyboard at all. **A game
+whose admin console writes under the same actor string as its upgrade runner weakens every proof here**,
+because the actor is the first half of each of them, so the upgrade actor must be dedicated to the runner and
+used by nothing else.
 
 Clearing a draft this way is informational rather than a failure: `KECU0016` names the edit count and the
 version, and the upgrade is tried again against the re-read baseline. The worst an interleaving costs is a

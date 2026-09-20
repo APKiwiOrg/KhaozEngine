@@ -144,6 +144,16 @@ sealed partial class ContentUpgradeRun
     /// it. A frozen draft is never touched: a marker standing here belongs to a live publisher, because this
     /// run's own publish releases its freeze on every exit path, and a
     /// <c>publish-in-progress</c> refusal says the same thing one moment later.
+    /// <para>
+    /// <b>This is check then act and it CANNOT be made atomic on this seam.</b>
+    /// <see cref="IContentAuthoringStore.DiscardDraftAsync"/> is refused while a freeze stands, so the marker
+    /// that closes the publish window is exactly the thing that cannot guard this one. The window is narrowed
+    /// instead: the draft is read again and proved again over what THAT read returns, with nothing awaited
+    /// between the read and the discard. An operator edit landing inside that last round trip is still lost,
+    /// and nothing here can say otherwise. A hosted upgrade runs in a maintenance window with editing
+    /// stopped, and a local automatic boot has no operator at all, which is the whole of why the residue is
+    /// accepted.
+    /// </para>
     /// </summary>
     /// <param name="draft">The standing draft.</param>
     /// <param name="note">The note this definition's draft carries.</param>
@@ -179,6 +189,32 @@ sealed partial class ContentUpgradeRun
         if (draft.IsFrozen)
         {
             return ContentUpgradeDraftDisposal.RivalHoldsIt;
+        }
+
+        // The classification above costs a ledger read and a replan of every pending definition, so the view
+        // it proved is as old as all of that. The LAST thing before the discard is a fresh read, and the
+        // known-work proof again over exactly what that read returned. Nothing is awaited between it and the
+        // discard, which is the narrowest this can be made.
+        Operation = "re-read the draft it is about to discard";
+        ContentDraft? latest = await Store.GetOpenDraftAsync(CancellationToken).ConfigureAwait(false);
+        if (latest is null)
+        {
+            // Somebody cleared it first. The way is clear either way, which is what the answer means here.
+            return ContentUpgradeDraftDisposal.Discarded;
+        }
+
+        if (latest.IsFrozen)
+        {
+            return ContentUpgradeDraftDisposal.RivalHoldsIt;
+        }
+
+        if (!string.Equals(latest.OpenedBy, Options.Actor, StringComparison.Ordinal) || !_known.Holds(latest))
+        {
+            // It changed under the proof. Whoever appended, this run can no longer say it holds only work it
+            // computed, so it leaves the draft exactly as it stands.
+            return _known.HoldsSome(latest)
+                ? ContentUpgradeDraftDisposal.OperatorWorkMerged
+                : ContentUpgradeDraftDisposal.NotThisRuns;
         }
 
         Operation = "discard a draft this run proved holds only its own work";

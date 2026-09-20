@@ -147,9 +147,11 @@ ordinals.
    version. The actor and the note alone prove nothing: both stores keep the standing note when a writer
    passes none and neither rewrites the identity that opened a draft, so an operator's noteless edit lands
    under both. A draft that IS the runner's own is published as it stands, with the stamp, through the normal
-   publish path. Its freeze is never cleared and it is never discarded first, because a marker naming the
-   active version is a live publish or a dead one and nothing in the seam tells them apart, while a publish is
-   the store's own recovery for a dead one. Carried ids make two runners' plans for one definition identical,
+   publish path. It is never discarded first and a marker found standing over it is never cleared on sight,
+   because a marker naming the active version is a live publish or a dead one and nothing in the seam tells
+   them apart, while a publish is the store's own recovery for a dead one. The publish path freezes the draft
+   for itself and proves it again under that marker before taking it, which section 7.1 sets out. Carried ids
+   make two runners' plans for one definition identical,
    so the commit's version confirmation lets exactly one win and the loser resolves through the ledger. Any
    other open draft is operator work: outcome `OperatorDraftOpen`, draft untouched. The publish pre-flight
    asks the same question, so a draft that appears after this step is answered the same way and only another
@@ -194,24 +196,47 @@ An open draft is compared two ways and the two answers authorise different acts.
   PENDING is not discarded either, because that is the shape a rival holds between its own write and its own
   publish, and it is waited out instead. A frozen draft is never discarded at all.
 
-The discard proof is strictly weaker than the publish proof and it can destroy nothing an operator authored,
-which is what lets it clear the draft two runners' writes merged into. That draft is the reason it exists:
-the write into a draft is not atomic with the read that found none, and the store's write APPENDS into
-whatever draft is open, so a rival that reached its own write inside that window leaves the one draft holding
-two definitions' edits under one actor and one note. It is nobody's plan, so nobody could publish it, and
-before the second proof nobody could discard it either. Both runners read it as the other's live work and
-stood off until their patience ran out.
+The discard proof is strictly weaker than the publish proof, and it destroys nothing an operator had authored
+**as of the read it was computed over**. That is what lets it clear the draft two runners' writes merged
+into, which is the draft it exists for: the write into a draft is not atomic with the read that found none,
+and the store's write APPENDS into whatever draft is open, so a rival that reached its own write inside that
+window leaves the one draft holding two definitions' edits under one actor and one note. It is nobody's plan,
+so nobody could publish it, and before the second proof nobody could discard it either. Both runners read it
+as the other's live work and stood off until their patience ran out.
 
-Three things close that window.
+Three windows sit between a run's reads and its writes. One is closed and two are only narrowed.
 
-1. The ledger is re-read for this definition immediately before the write. An id a rival recorded while this
-   run was planning is adopted rather than written again.
-2. The `ContentDraft` the write RETURNS decides what happens next, not the edits that went in. A draft that
-   is not exactly this plan, or one that opened on a different base version than the plan was computed
-   against, is never published. A draft that is exactly this run's own plan on the wrong base is discarded at
-   once rather than left for a rival to append into.
-3. A draft the run may not publish is RESOLVED before it is judged. The run offers the discard proof first,
-   and only a draft it cannot prove is then classified as a rival's to wait out or an operator's to report.
+1. **The publish window is CLOSED, by a freeze and a re-proof.** Every publish the runner performs calls
+   `FreezeDraftAsync` with the version the plan was computed against, re-reads the open draft under that
+   marker, and publishes only when it is exactly this definition's plan on that base version. While the
+   marker stands the store refuses `ApplyEditsAsync` and `DiscardDraftAsync`, so what was proved is what is
+   published. A draft that fails the re-proof takes the obstruction path, and the marker this attempt set is
+   released before it does, because a run that stops for an operator must not hand back a draft they can
+   neither edit nor discard. Releasing it is safe for the same reason the proof failed: a draft that is not a
+   clean plan is one a rival's own proof under its own freeze refuses too.
+2. **The discard window is NARROWED and not closed.** `DiscardDraftAsync` is refused while a freeze stands,
+   so the marker that closes the publish window is the one thing that cannot guard this one, and the proof
+   stays check then act. It is made as narrow as the seam allows: the run re-reads the draft and re-proves
+   `IsKnownWork` over exactly what that read returned, with nothing awaited between the read and the discard.
+3. **The apply window is NARROWED and not closed.** The ledger is re-read for this definition immediately
+   before the write, so an id a rival recorded while this run was planning is adopted rather than written
+   again. The `ContentDraft` the write RETURNS decides what happens next rather than the edits that went in,
+   so a draft that is not exactly this plan, or that opened on a different base version, is never published.
+   A draft the run may not publish is resolved before it is judged, so only a draft it cannot prove is
+   classified as a rival's to wait out or an operator's to report.
+
+Two residues remain, and both are one store round trip wide.
+
+- An operator edit landing between the known-work proof and the discard it authorised is lost.
+- An operator edit on the SAME target under the SAME operation as one of the run's planned edits, written
+  into the window where the run had seen no draft, is replaced by the run's own apply. A change set holds one
+  pending intent per row, so the second write of a target takes the first one's place.
+
+They are accepted rather than closed because of where the runner runs. A hosted upgrade runs in a maintenance
+window with editing stopped, and a local automatic boot has no operator at the keyboard at all. A game whose
+admin console writes under the same actor string as its upgrade runner weakens every proof here, because the
+actor is the first half of each of them, so the upgrade actor must be dedicated to the runner and used by
+nothing else.
 
 Clearing a draft under the second proof is informational, not a failure: `DraftCleared` names the edit count
 and the version, and the upgrade is tried again against the re-read baseline. The worst an interleaving costs

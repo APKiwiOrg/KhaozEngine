@@ -122,6 +122,13 @@ sealed partial class ContentUpgradeRun
             return true;
         }
 
+        if (_stopped == ContentUpgradeOutcome.BaselineMoved)
+        {
+            // Already reported. The re-read runs on several paths and they can follow each other, and one
+            // move of the baseline is one line in the report rather than one per path that noticed it.
+            return false;
+        }
+
         Add(
             ContentUpgradeCodes.BaselineMoved,
             FormattableString.Invariant(

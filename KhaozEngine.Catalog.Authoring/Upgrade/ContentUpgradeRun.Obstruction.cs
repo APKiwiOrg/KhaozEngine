@@ -210,6 +210,20 @@ sealed partial class ContentUpgradeRun
     async Task<ContentUpgradeDraftReading> ReadDraftAsync(ContentDraft draft)
     {
         string working = OperationId;
+
+        // The replans below export at the version this run stands on, so a rival that ADVANCED it would be
+        // replanned against a baseline nobody is on any more. Its live draft would then match no plan, hold
+        // some of this run's own work, and read as Merged, which stops a boot with an operator draft for a
+        // draft holding nothing an operator wrote.
+        if (!await RereadActiveAsync().ConfigureAwait(false))
+        {
+            // The expected version the re-read carries says the baseline moved off the one this run was
+            // given, so the run is already stopping. Nothing may be done to the draft, and a live publisher
+            // is the one reading that leaves it exactly as it stands.
+            OperationId = working;
+            return ContentUpgradeDraftReading.LivePlan;
+        }
+
         Operation = "read the upgrade ledger";
         IReadOnlyList<ContentUpgradeRecord> records = await Ledger
             .ListUpgradesAsync(CancellationToken)

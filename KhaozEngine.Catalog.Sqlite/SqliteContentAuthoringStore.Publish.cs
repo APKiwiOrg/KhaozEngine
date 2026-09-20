@@ -130,6 +130,12 @@ public sealed partial class SqliteContentAuthoringStore
         // 6. Every audit row, field level, against the version the rows are leaving.
         await AppendPublishAuditAsync(before, plan, request, transaction, cancellationToken).ConfigureAwait(false);
 
+        // 6b. The applied ledger row, when this publish carries an upgrade. It is INSIDE this transaction, so
+        // the version and the history entry naming the upgrade that produced it land together, and an id the
+        // ledger already holds refuses the whole commit.
+        await InsertAppliedUpgradeAsync(transaction, request, plan.VersionNumber, cancellationToken)
+            .ConfigureAwait(false);
+
         // 7. The draft, scoped to the edits this plan FROZE. The freeze is what makes that the whole draft,
         // so anything else here survives rather than being deleted unpublished.
         await DeleteFrozenEditsAsync(plan, transaction, cancellationToken).ConfigureAwait(false);

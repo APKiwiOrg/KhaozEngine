@@ -23,14 +23,14 @@ public class SqliteCatalogSchemaTests
     static ContentTypeRegistry Registry() => PublishFixtures.Registry(PublishFixtures.Thing);
 
     [Fact]
-    public async Task AutoCreateOnAnEmptyDatabaseCreatesTheSchemaAndReportsVersionOne()
+    public async Task AutoCreateOnAnEmptyDatabaseCreatesTheSchemaAndReportsVersionTwo()
     {
         using var database = new TemporaryCatalogDatabase();
         using var store = new SqliteContentAuthoringStore(database.ConnectionString, Registry());
 
         await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
 
-        Assert.Equal(1, await store.GetSchemaVersionAsync());
+        Assert.Equal(2, await store.GetSchemaVersionAsync());
         Assert.Equal(0, await store.GetActiveVersionAsync());
         Assert.Null(await store.GetPinnedVersionAsync());
 
@@ -50,7 +50,7 @@ public class SqliteCatalogSchemaTests
             () => store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly));
 
         Assert.Equal("schema-mismatch", refused.Reason);
-        Assert.Contains("catalog-v1-initial", refused.Message, StringComparison.Ordinal);
+        Assert.Contains("catalog-v2-content-upgrade-ledger", refused.Message, StringComparison.Ordinal);
         Assert.Contains("missing", refused.Message, StringComparison.Ordinal);
     }
 
@@ -66,7 +66,7 @@ public class SqliteCatalogSchemaTests
         using var store = new SqliteContentAuthoringStore(database.ConnectionString, Registry());
         await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
 
-        Assert.Equal(1, await store.GetSchemaVersionAsync());
+        Assert.Equal(2, await store.GetSchemaVersionAsync());
     }
 
     [Fact]
@@ -92,7 +92,7 @@ public class SqliteCatalogSchemaTests
 
         Assert.Equal("schema-mismatch", refused.Reason);
         Assert.Contains("index:ix_catalog_row_live", refused.Message, StringComparison.Ordinal);
-        Assert.Contains("catalog-v1-initial", refused.Message, StringComparison.Ordinal);
+        Assert.Contains("catalog-v2-content-upgrade-ledger", refused.Message, StringComparison.Ordinal);
     }
 
     [Fact]

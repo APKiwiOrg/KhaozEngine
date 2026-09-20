@@ -493,6 +493,30 @@ minimum builds, the format generation, the publisher and the note. A published v
 moment its transaction commits, so there is no sealed flag. Holding a version back from a restart is the
 operator's PIN instead.
 
+## The content upgrade ledger
+
+`IContentUpgradeLedger` is a SEPARATE seam from `IContentAuthoringStore`, whose member list is fixed. The
+in-memory store and both providers implement it, and a provider holds it as the `catalog_content_upgrade`
+table schema version 2 adds.
+
+A `ContentUpgradeRecord` says which upgrade the catalog holds (`ContentUpgradeStamp`, a stable id of 1 to 128
+ordinal characters and a positive order), how it came to hold it, and at which version:
+
+- `Applied` means a runner published the upgrade's edits. The ledger row is written INSIDE the publish commit
+  from `ContentPublishRequest.Upgrade`, so the version and its history entry land together or neither does,
+  and a second publish of one upgrade id is refused whole with reason `upgrade-already-recorded`.
+- `Adopted` means the content was already present, so nothing was published.
+- `Baseline` means the catalog was seeded from a bundle that already carried the content.
+
+`RecordUpgradeAsync` writes the other two, with the ledger row and one `content-upgrade` audit row in one
+transaction. It refuses `Applied`, because only a publish commit can say a version was published, and
+recording an id the ledger already holds is a no-op, so a crash between a seed and its baseline record is
+resolved by running the record again. `ListUpgradesAsync` reads ascending by order and then by id.
+
+Engine package versions and published version numbers are not migration history. A version number says how
+many publishes happened, not which upgrades ran, and a convention over version notes cannot tell "applied,
+then tuned back" from "never applied".
+
 ## The bundle
 
 `ContentBundle` is the whole catalog as one document: a format version, the type list with their schemas,

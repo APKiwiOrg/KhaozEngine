@@ -134,8 +134,8 @@ public sealed class SqlServerContentAuthoringStoreConformanceTests : ContentAuth
 
     /// <inheritdoc />
     [CatalogSqlServerFact]
-    public override Task Fact01_AutoCreateOnAnEmptyStoreCreatesTheSchemaAndReportsVersionOne()
-        => base.Fact01_AutoCreateOnAnEmptyStoreCreatesTheSchemaAndReportsVersionOne();
+    public override Task Fact01_AutoCreateOnAnEmptyStoreCreatesTheSchemaAndReportsTheCurrentVersion()
+        => base.Fact01_AutoCreateOnAnEmptyStoreCreatesTheSchemaAndReportsTheCurrentVersion();
 
     /// <inheritdoc />
     [CatalogSqlServerFact]
@@ -286,4 +286,44 @@ public sealed class SqlServerContentAuthoringStoreConformanceTests : ContentAuth
     [CatalogSqlServerFact]
     public override Task EveryProviderPublishesAnEmptyLanguageListWhichIsWhatARebuildReliesOn()
         => base.EveryProviderPublishesAnEmptyLanguageListWhichIsWhatARebuildReliesOn();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task ANewStoreHoldsAnEmptyUpgradeLedger()
+        => base.ANewStoreHoldsAnEmptyUpgradeLedger();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task AStampedPublishWritesOneAppliedRowCarryingThePublishedVersion()
+        => base.AStampedPublishWritesOneAppliedRowCarryingThePublishedVersion();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task AnUnstampedPublishWritesNoLedgerRow()
+        => base.AnUnstampedPublishWritesNoLedgerRow();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task ASecondPublishOfOneUpgradeIdIsRefusedAndChangesNothing()
+        => base.ASecondPublishOfOneUpgradeIdIsRefusedAndChangesNothing();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task AnAdoptedAndABaselineUpgradeAreRecordedAgainstTheActiveVersion()
+        => base.AnAdoptedAndABaselineUpgradeAreRecordedAgainstTheActiveVersion();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task RecordingAnUpgradeTheLedgerAlreadyHoldsIsANoOp()
+        => base.RecordingAnUpgradeTheLedgerAlreadyHoldsIsANoOp();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task RecordingAnAppliedUpgradeIsRefused()
+        => base.RecordingAnAppliedUpgradeIsRefused();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task TheLedgerReadsAscendingByOrderThenId()
+        => base.TheLedgerReadsAscendingByOrderThenId();
 }

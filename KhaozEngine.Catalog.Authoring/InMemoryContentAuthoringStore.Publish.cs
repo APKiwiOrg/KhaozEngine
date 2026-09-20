@@ -157,6 +157,10 @@ public sealed partial class InMemoryContentAuthoringStore
             var staged = new List<ContentAuditEntry>();
             StagePublishAudit(staged, before, plan, request);
 
+            // 6b. The applied ledger row, when this publish carries an upgrade. A duplicate id refuses HERE,
+            // in the build, so the version and its history entry land together or neither does.
+            ContentUpgradeRecord? upgrade = StageAppliedUpgrade(staged, request, plan.VersionNumber);
+
             // 7. The draft, scoped to the edits this plan FROZE. The freeze is what makes that the whole
             // draft, so anything else here survives rather than being deleted unpublished.
             ContentDraft? draft = DraftAfterCommit(plan);
@@ -172,6 +176,11 @@ public sealed partial class InMemoryContentAuthoringStore
             }
 
             _published[plan.VersionNumber] = published;
+            if (upgrade is not null)
+            {
+                _upgrades.Add(upgrade.Id, upgrade);
+            }
+
             _audit.Commit(staged);
             _draft = draft;
 

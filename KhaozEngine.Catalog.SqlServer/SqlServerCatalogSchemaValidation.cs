@@ -26,9 +26,15 @@ namespace KhaozEngine.Catalog.SqlServer;
 /// </para>
 /// <para>
 /// Validation compares the NAMES of every catalog table, every named index, every check constraint, every
-/// foreign key and every default constraint against what version 1 declares, both directions, because a
+/// foreign key and every default constraint against what the declared version says, both directions, because a
 /// missing object and an extra one are each a schema this build cannot write to safely. A mismatch names the object and the required migration, since an operator can
 /// act on those two facts and cannot act on "schema is wrong".
+/// </para>
+/// <para>
+/// <b>A version 1 database is MIGRATED under AutoCreate and refused under ValidateOnly</b>, which is the
+/// journal's split per provider and per mode. The migration runs behind the same application lock the create
+/// takes and re-reads the version inside it, so two hosts starting at once are one migration and one host that
+/// finds the work already done.
 /// </para>
 /// </summary>
 internal static class SqlServerCatalogSchemaValidation
@@ -66,12 +72,28 @@ internal static class SqlServerCatalogSchemaValidation
             }
 
             int version = await ReadSchemaVersionAsync(connection, cancellationToken).ConfigureAwait(false);
+            if (version == 1)
+            {
+                // The version 1 shape is checked BEFORE the migration runs, so a database that is version 1
+                // and something else besides is refused rather than half migrated. Under ValidateOnly the
+                // refusal names the migration, which is the one thing an operator can act on.
+                await ValidateObjectsAsync(connection, 1, cancellationToken).ConfigureAwait(false);
+                if (mode == ContentAuthoringSchemaMode.ValidateOnly)
+                {
+                    throw Mismatch("at unsupported version '1'");
+                }
+
+                await MigrateVersionOneAsync(connection, cancellationToken).ConfigureAwait(false);
+                version = await ReadSchemaVersionAsync(connection, cancellationToken).ConfigureAwait(false);
+            }
+
             if (version != SqlServerCatalogSchema.CurrentVersion)
             {
                 throw Mismatch(FormattableString.Invariant($"at unsupported version '{version}'"));
             }
 
-            await ValidateObjectsAsync(connection, cancellationToken).ConfigureAwait(false);
+            await ValidateObjectsAsync(connection, SqlServerCatalogSchema.CurrentVersion, cancellationToken)
+                .ConfigureAwait(false);
         }
         catch (ContentAuthoringException)
         {
@@ -87,13 +109,25 @@ internal static class SqlServerCatalogSchemaValidation
     /// <param name="connection">An open connection.</param>
     /// <param name="cancellationToken">Cancels the read.</param>
     /// <exception cref="ContentAuthoringException">The metadata row is absent or does not hold a number.</exception>
-    internal static async Task<int> ReadSchemaVersionAsync(
+    internal static Task<int> ReadSchemaVersionAsync(
         SqlConnection connection,
+        CancellationToken cancellationToken)
+        => ReadSchemaVersionAsync(connection, null, cancellationToken);
+
+    /// <summary>The same read, enlisted in an open transaction.</summary>
+    /// <param name="connection">An open connection.</param>
+    /// <param name="transaction">The open transaction, or null.</param>
+    /// <param name="cancellationToken">Cancels the read.</param>
+    /// <exception cref="ContentAuthoringException">The metadata row is absent or does not hold a number.</exception>
+    static async Task<int> ReadSchemaVersionAsync(
+        SqlConnection connection,
+        SqlTransaction? transaction,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(connection);
 
         await using SqlCommand command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText = "SELECT schema_version FROM dbo.catalog_metadata WHERE metadata_key = 1;";
         object? raw = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
         return raw is int version
@@ -113,25 +147,7 @@ internal static class SqlServerCatalogSchemaValidation
         await using SqlTransaction transaction = (SqlTransaction)await connection
             .BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken).ConfigureAwait(false);
 
-        int held;
-        await using (SqlCommand applicationLock = connection.CreateCommand())
-        {
-            applicationLock.Transaction = transaction;
-            applicationLock.CommandText = """
-                DECLARE @result int;
-                EXEC @result = sys.sp_getapplock
-                    @Resource = @resource,
-                    @LockMode = 'Exclusive',
-                    @LockOwner = 'Transaction',
-                    @LockTimeout = @timeout;
-                SELECT @result;
-                """;
-            applicationLock.Parameters.Add("@resource", SqlDbType.NVarChar, 255).Value = LockResource;
-            applicationLock.Parameters.Add("@timeout", SqlDbType.Int).Value = LockTimeoutSeconds * 1000;
-            object? raw = await applicationLock.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-            held = raw is int code ? code : -999;
-        }
-
+        int held = await TakeApplicationLockAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
         if (held < 0)
         {
             await transaction.RollbackAsync(CancellationToken.None).ConfigureAwait(false);
@@ -153,6 +169,71 @@ internal static class SqlServerCatalogSchemaValidation
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// The version 1 to version 2 migration, behind the SAME exclusive application lock the create takes and
+    /// inside one transaction: the ledger table, its index, and the metadata row moved to 2. Two hosts
+    /// starting at once against one database is the ordinary deployment here, so the second one waits and then
+    /// finds the version already moved, which is why the version is re-read INSIDE the lock.
+    /// </summary>
+    /// <param name="connection">An open connection.</param>
+    /// <param name="cancellationToken">Cancels the migration.</param>
+    static async Task MigrateVersionOneAsync(SqlConnection connection, CancellationToken cancellationToken)
+    {
+        await using SqlTransaction transaction = (SqlTransaction)await connection
+            .BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken).ConfigureAwait(false);
+
+        int held = await TakeApplicationLockAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
+        if (held < 0)
+        {
+            await transaction.RollbackAsync(CancellationToken.None).ConfigureAwait(false);
+            throw Mismatch(FormattableString.Invariant(
+                $"locked by another process migrating it, which returned application lock code {held}, so this start changed nothing"));
+        }
+
+        if (await ReadSchemaVersionAsync(connection, transaction, cancellationToken).ConfigureAwait(false) == 1)
+        {
+            foreach (string sql in SqlServerCatalogSchema.VersionOneMigrationSql)
+            {
+                await using SqlCommand command = connection.CreateCommand();
+                command.Transaction = transaction;
+                command.CommandText = sql;
+                command.CommandTimeout = LockTimeoutSeconds;
+                await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The exclusive application lock, held for the transaction and released with it. Both the create and the
+    /// migration take it on the same resource, so one start cannot create while another migrates.
+    /// </summary>
+    /// <param name="connection">An open connection.</param>
+    /// <param name="transaction">The transaction the lock is held for.</param>
+    /// <param name="cancellationToken">Cancels the wait.</param>
+    static async Task<int> TakeApplicationLockAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        await using SqlCommand applicationLock = connection.CreateCommand();
+        applicationLock.Transaction = transaction;
+        applicationLock.CommandText = """
+            DECLARE @result int;
+            EXEC @result = sys.sp_getapplock
+                @Resource = @resource,
+                @LockMode = 'Exclusive',
+                @LockOwner = 'Transaction',
+                @LockTimeout = @timeout;
+            SELECT @result;
+            """;
+        applicationLock.Parameters.Add("@resource", SqlDbType.NVarChar, 255).Value = LockResource;
+        applicationLock.Parameters.Add("@timeout", SqlDbType.Int).Value = LockTimeoutSeconds * 1000;
+        object? raw = await applicationLock.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+        return raw is int code ? code : -999;
+    }
+
     static Task<int> CountTablesAsync(SqlConnection connection, CancellationToken cancellationToken)
         => CountTablesAsync(connection, null, cancellationToken);
 
@@ -172,12 +253,16 @@ internal static class SqlServerCatalogSchemaValidation
     }
 
     /// <summary>
-    /// The five name sets read back and compared against what version 1 declares. Tables outside the
+    /// The five name sets read back and compared against what the given version declares. Tables outside the
     /// <c>catalog_</c> namespace are invisible here on purpose: a host may keep its own tables in the same
     /// database, and this schema has no opinion about them.
     /// </summary>
-    static async Task ValidateObjectsAsync(SqlConnection connection, CancellationToken cancellationToken)
+    static async Task ValidateObjectsAsync(
+        SqlConnection connection,
+        int expectedVersion,
+        CancellationToken cancellationToken)
     {
+        bool versionOne = expectedVersion == 1;
         IReadOnlySet<string> tables = await ReadNamesAsync(
             connection,
             """
@@ -185,7 +270,11 @@ internal static class SqlServerCatalogSchemaValidation
             WHERE schema_id = SCHEMA_ID(N'dbo') AND name LIKE N'catalog[_]%';
             """,
             cancellationToken).ConfigureAwait(false);
-        Compare("table", tables, SqlServerCatalogSchemaExpectations.Tables);
+        Compare(
+            "table",
+            tables,
+            versionOne ? SqlServerCatalogSchemaExpectations.TablesV1 : SqlServerCatalogSchemaExpectations.Tables,
+            expectedVersion);
 
         IReadOnlySet<string> indexes = await ReadNamesAsync(
             connection,
@@ -196,7 +285,11 @@ internal static class SqlServerCatalogSchemaValidation
             WHERE t.schema_id = SCHEMA_ID(N'dbo') AND t.name LIKE N'catalog[_]%' AND i.name IS NOT NULL;
             """,
             cancellationToken).ConfigureAwait(false);
-        Compare("index", indexes, SqlServerCatalogSchemaExpectations.Indexes);
+        Compare(
+            "index",
+            indexes,
+            versionOne ? SqlServerCatalogSchemaExpectations.IndexesV1 : SqlServerCatalogSchemaExpectations.Indexes,
+            expectedVersion);
 
         IReadOnlySet<string> checks = await ReadNamesAsync(
             connection,
@@ -207,7 +300,11 @@ internal static class SqlServerCatalogSchemaValidation
             WHERE t.schema_id = SCHEMA_ID(N'dbo') AND t.name LIKE N'catalog[_]%';
             """,
             cancellationToken).ConfigureAwait(false);
-        Compare("check constraint", checks, SqlServerCatalogSchemaExpectations.Checks);
+        Compare(
+            "check constraint",
+            checks,
+            versionOne ? SqlServerCatalogSchemaExpectations.ChecksV1 : SqlServerCatalogSchemaExpectations.Checks,
+            expectedVersion);
 
         // The foreign keys and the defaults, which the journal's own validator has always compared and this
         // one did not. A missing foreign key accepts a chunk row pointing at a version that is not there, and
@@ -222,7 +319,11 @@ internal static class SqlServerCatalogSchemaValidation
             WHERE t.schema_id = SCHEMA_ID(N'dbo') AND t.name LIKE N'catalog[_]%';
             """,
             cancellationToken).ConfigureAwait(false);
-        Compare("foreign key", foreignKeys, SqlServerCatalogSchemaExpectations.ForeignKeys);
+        Compare(
+            "foreign key",
+            foreignKeys,
+            versionOne ? SqlServerCatalogSchemaExpectations.ForeignKeysV1 : SqlServerCatalogSchemaExpectations.ForeignKeys,
+            expectedVersion);
 
         IReadOnlySet<string> defaults = await ReadNamesAsync(
             connection,
@@ -233,7 +334,11 @@ internal static class SqlServerCatalogSchemaValidation
             WHERE t.schema_id = SCHEMA_ID(N'dbo') AND t.name LIKE N'catalog[_]%';
             """,
             cancellationToken).ConfigureAwait(false);
-        Compare("default constraint", defaults, SqlServerCatalogSchemaExpectations.Defaults);
+        Compare(
+            "default constraint",
+            defaults,
+            versionOne ? SqlServerCatalogSchemaExpectations.DefaultsV1 : SqlServerCatalogSchemaExpectations.Defaults,
+            expectedVersion);
     }
 
     static async Task<IReadOnlySet<string>> ReadNamesAsync(
@@ -258,7 +363,11 @@ internal static class SqlServerCatalogSchemaValidation
     /// extra one is a half-applied migration, which is worse: writing to it writes rows the next build cannot
     /// read.
     /// </summary>
-    static void Compare(string kind, IReadOnlySet<string> actual, IReadOnlySet<string> expected)
+    static void Compare(
+        string kind,
+        IReadOnlySet<string> actual,
+        IReadOnlySet<string> expected,
+        int expectedVersion)
     {
         foreach (string name in expected)
         {
@@ -273,7 +382,7 @@ internal static class SqlServerCatalogSchemaValidation
             if (!expected.Contains(name))
             {
                 throw Mismatch(FormattableString.Invariant(
-                    $"carrying unexpected {kind} '{name}', which version {SqlServerCatalogSchema.CurrentVersion} does not declare"));
+                    $"carrying unexpected {kind} '{name}', which version {expectedVersion} does not declare"));
             }
         }
     }

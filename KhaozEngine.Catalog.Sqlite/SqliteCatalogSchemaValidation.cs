@@ -24,6 +24,12 @@ namespace KhaozEngine.Catalog.Sqlite;
 /// object and the required migration, because an operator can act on those two facts and cannot act on
 /// "schema is wrong".
 /// </para>
+/// <para>
+/// <b>A version 1 database is MIGRATED in place under AutoCreate and refused under ValidateOnly</b>, which is
+/// the journal's split per provider and per mode. The migration adds one table in one transaction and touches
+/// nothing else, so an operator host that opens read-only still gets a refusal naming
+/// <see cref="SqliteCatalogSchema.RequiredMigration"/> rather than a file quietly rewritten underneath it.
+/// </para>
 /// </summary>
 internal static class SqliteCatalogSchemaValidation
 {
@@ -57,12 +63,28 @@ internal static class SqliteCatalogSchemaValidation
             }
 
             long version = ReadSchemaVersion(connection);
+            if (version == 1)
+            {
+                // The version 1 shape is checked BEFORE the migration runs, so a database that is version 1
+                // and something else besides is refused rather than half migrated. Under ValidateOnly the
+                // refusal names the migration, which is the one thing an operator can act on.
+                ValidateSchemaObjects(actual, SqliteCatalogSchema.VersionOneTables, 1);
+                if (mode == ContentAuthoringSchemaMode.ValidateOnly)
+                {
+                    throw Mismatch("at unsupported version '1'");
+                }
+
+                MigrateVersionOne(connection);
+                actual = ReadSchemaObjects(connection);
+                version = ReadSchemaVersion(connection);
+            }
+
             if (version != SqliteCatalogSchema.CurrentVersion)
             {
                 throw Mismatch(FormattableString.Invariant($"at unsupported version '{version}'"));
             }
 
-            ValidateSchemaObjects(actual);
+            ValidateSchemaObjects(actual, SqliteCatalogSchema.Tables, SqliteCatalogSchema.CurrentVersion);
 
             // The DDL declares every foreign key and SQLite enforces none of them unless this is on, so a
             // database opened with it off would accept a row pointing at a version that does not exist.
@@ -124,16 +146,41 @@ internal static class SqliteCatalogSchemaValidation
     }
 
     /// <summary>
-    /// Compares what is there against the same DDL run into a throwaway database. Both directions matter: a
+    /// The version 1 to version 2 migration, in ONE transaction on the held connection: the ledger table, its
+    /// index and the metadata row moved to 2. A failure anywhere in it leaves a version 1 database, which the
+    /// next open migrates again, rather than a database that is neither version.
+    /// </summary>
+    /// <param name="connection">The held connection.</param>
+    static void MigrateVersionOne(SqliteConnection connection)
+    {
+        using SqliteTransaction transaction = connection.BeginTransaction(deferred: false);
+        using (SqliteCommand command = connection.CreateCommand())
+        {
+            command.Transaction = transaction;
+            command.CommandText = SqliteCatalogSchema.MigrateToVersionTwo;
+            command.ExecuteNonQuery();
+        }
+
+        transaction.Commit();
+    }
+
+    /// <summary>
+    /// Compares what is there against the given DDL run into a throwaway database. Both directions matter: a
     /// missing object and an extra one are each a schema this build cannot write to safely.
     /// </summary>
-    static void ValidateSchemaObjects(IReadOnlyDictionary<string, string> actual)
+    /// <param name="actual">Every catalog object the open database holds.</param>
+    /// <param name="expectedTables">The DDL the objects are compared against.</param>
+    /// <param name="expectedVersion">The version that DDL declares, which a refusal names.</param>
+    static void ValidateSchemaObjects(
+        IReadOnlyDictionary<string, string> actual,
+        string expectedTables,
+        long expectedVersion)
     {
         using var reference = new SqliteConnection("Data Source=:memory:");
         reference.Open();
         using (SqliteCommand create = reference.CreateCommand())
         {
-            create.CommandText = SqliteCatalogSchema.Tables;
+            create.CommandText = expectedTables;
             create.ExecuteNonQuery();
         }
 
@@ -148,7 +195,7 @@ internal static class SqliteCatalogSchemaValidation
             if (!StringComparer.Ordinal.Equals(actualSql, expectedSql))
             {
                 throw Mismatch(FormattableString.Invariant(
-                    $"carrying object '{name}', which does not match the shape version {SqliteCatalogSchema.CurrentVersion} declares"));
+                    $"carrying object '{name}', which does not match the shape version {expectedVersion} declares"));
             }
         }
 
@@ -157,7 +204,7 @@ internal static class SqliteCatalogSchemaValidation
             if (!expected.ContainsKey(name))
             {
                 throw Mismatch(FormattableString.Invariant(
-                    $"carrying unexpected object '{name}', which version {SqliteCatalogSchema.CurrentVersion} does not declare"));
+                    $"carrying unexpected object '{name}', which version {expectedVersion} does not declare"));
             }
         }
     }

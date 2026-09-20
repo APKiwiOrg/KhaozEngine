@@ -15,9 +15,10 @@
          KhaozEngine.WorldStore.SqlServer ships for the journal. -->
     <EmbeddedResource Include="CatalogSchemaV1.sql" />
     <EmbeddedResource Include="CatalogSchemaV2.sql" />
-    <!-- SqlServerCatalogSchemaDriftTests reads the embedded DDL and the transcribed expectation sets and
-         asserts they name the same 117 objects, which is the one SQL Server schema check that needs no
-         instance (issue 922). Same grant KhaozEngine.WorldStore.SqlServer already makes. -->
+    <!-- SqlServerCatalogSchemaDriftTests reads the embedded version 2 DDL and the transcribed expectation
+         sets and asserts they name the same 159 objects (15 tables, 25 indexes, 13 foreign keys, 19 defaults
+         and 87 checks), which is the one SQL Server schema check that needs no instance (issue 922). Same
+         grant KhaozEngine.WorldStore.SqlServer already makes. -->
     <InternalsVisibleTo Include="KhaozEngine.Server.Tests" />
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>

@@ -7,8 +7,8 @@ using Xunit;
 namespace KhaozEngine.Tests.Catalog.SqlServer;
 
 /// <summary>
-/// The embedded <c>CatalogSchemaV1.sql</c> read as text for the naming rules SQL Server enforces at CREATE
-/// time, so a script that cannot be applied to an instance AT ALL goes red on a plain <c>dotnet test</c>.
+/// The embedded <c>CatalogSchemaV2.sql</c>, which is what a fresh create runs, read as text for the naming
+/// rules SQL Server enforces at CREATE time, so a script that cannot be applied to an instance AT ALL goes red on a plain <c>dotnet test</c>.
 /// <para>
 /// <b>Why this is not part of the drift test.</b> <c>SqlServerCatalogSchemaDriftTests</c> compares the DDL
 /// against the transcribed expectations as SETS, so a name declared twice collapses to one entry on each

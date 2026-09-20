@@ -30,10 +30,12 @@ the store holds no connection between calls.
 
 ## The schema, and its two modes
 
-Fourteen tables: `catalog_metadata`, `catalog_type`, `catalog_version`, `catalog_row`, `catalog_row_field`,
+Fifteen tables: `catalog_metadata`, `catalog_type`, `catalog_version`, `catalog_row`, `catalog_row_field`,
 `catalog_family`, `catalog_family_block`, `catalog_id_high_water`, `catalog_draft`, `catalog_draft_edit`,
-`catalog_draft_edit_field`, `catalog_audit`, `catalog_remap_rule` and `catalog_chunk`, shipped as the embedded
-resource `CatalogSchemaV1.sql`. Every key column is `nvarchar(N) COLLATE Latin1_General_100_BIN2`, because
+`catalog_draft_edit_field`, `catalog_audit`, `catalog_remap_rule`, `catalog_chunk` and
+`catalog_content_upgrade`, shipped as the embedded resource `CatalogSchemaV2.sql`. The first fourteen are
+version 1 and the ledger is what version 2 adds. Every key column is
+`nvarchar(N) COLLATE Latin1_General_100_BIN2`, because
 content keys compare ordinally and never case insensitively, and a SQL Server database default usually is case
 insensitive. Every size cap is a `CHECK`, `LEN` for text and `DATALENGTH` for binary, and every foreign key is
 declared, so a row can never point at a version that does not exist.

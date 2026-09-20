@@ -18,7 +18,7 @@ namespace KhaozEngine.Catalog.SqlServer;
 internal readonly record struct SqlServerCatalogScope(SqlConnection Connection, SqlTransaction? Transaction);
 
 /// <summary>
-/// The SQL Server and Azure SQL <see cref="IContentAuthoringStore"/> (spec 4.1, 4.2, 4.5): the fourteen
+/// The SQL Server and Azure SQL <see cref="IContentAuthoringStore"/> (spec 4.1, 4.2, 4.5): the fifteen
 /// catalog tables behind a fresh pooled connection per call, with a versioned schema that either auto-creates
 /// or validates.
 /// <para>

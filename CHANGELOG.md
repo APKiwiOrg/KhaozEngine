@@ -5,8 +5,25 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 19.9.1
+## 19.10.0
 
+- `SkySettings.Horizon` (`SkyHorizon`, default `Screen`) adds a world horizon to the procedural sky. `World`
+  anchors the gradient to the elevation of each pixel's view ray and paints `SkySettings.GroundColor` below
+  elevation zero (blend depth `HorizonSoftness`), so a finite world appears to run on to the horizon and the sun
+  disc sets through that line, occluded by the ground band. The screen-space sky had no notion of where elevation
+  zero was: a perspective camera pitched down at a finite world put the true horizon well above the world's
+  visible edge, so a low sun hung in mid-sky and could only fade out. It needs a perspective camera and
+  `SunAnchor.World`, and falls back to `Screen` without them. The water's reflected sky follows the same ground
+  band. The default is unchanged and no existing golden moved. New golden `scene3d_sky_world_horizon`. The sky
+  UBO grows to 9 vec4 and the water UBO to 35. `Sky.fragment` and the four water programs are repinned on all
+  three backends. Closes the horizon half of #396.
+- `SunCycleSettings.DiscSetElevationDegrees` (default 0, the historical cut at elevation zero) keeps a body's
+  disc that far below the horizon and moves the `SunDiscFadeElevationDegrees` band down with it, so under a
+  world horizon the disc crosses the line at full strength and the halo dims as an afterglow. The key light is
+  unaffected. When the key has flipped, moved to the moon or gone black, the disc stays pointed at the sun
+  through `DiscDirectionOverride`. `NightKeyMode.Moon` now decides the single disc slot apart from the key.
+- `SunCyclePalette.GroundColor`, `SunCycleState.GroundColor` and `SunCycle.Apply` drive the ground band across
+  day, dusk and night. `SunCycleState`'s constructor gains a trailing optional `groundColor`.
 - The sun and moon disc no longer turn into a black circle near the horizon. The sky and the water reflection
   replace-blend toward `SkySettings.SunColor`, and `SunCycle` faded a rising or setting disc by scaling that
   colour to black, so across the last `SunDiscFadeElevationDegrees` the disc painted a black hole in the

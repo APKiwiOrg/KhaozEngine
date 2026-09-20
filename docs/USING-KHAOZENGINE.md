@@ -3887,6 +3887,27 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     sits where the light comes from, so the sky and the scene lighting agree and the sun lands on the opposite screen
     axis from the shadows automatically. Override with `Sky.SunDirectionOverride` (a world direction TO the sun) to
     point it elsewhere.
+  - **Where the horizon is** (`Sky.Horizon`, a `SkyHorizon`, default `SkyHorizon.Screen`):
+    - `SkyHorizon.Screen` (default) is the historical groundless sky. The gradient is a vertical ramp over the
+      screen and there is no ground, so existing scenes are byte-stable. It reads under every camera, but it has no
+      notion of where elevation zero is. A perspective camera pitched down at a finite world puts the true horizon
+      well above the world's visible edge, so a low sun hangs in mid-sky and can only fade out, never set.
+    - `SkyHorizon.World` anchors the gradient to the WORLD horizon (the elevation of each pixel's view ray) and
+      paints `Sky.GroundColor` below it, so a finite world appears to run on to the horizon and the sun disc sets
+      THROUGH that line, occluded by the ground band. `Sky.HorizonSoftness` is the depth of the blend into the
+      ground, as the sine of the elevation angle (default `0.02`, about 1.1 degrees, a crisp line. Raise it for a
+      haze band the sun sinks into). The band is drawn unlit, so pick the colour the far terrain or sea reads as
+      under the current light. `SunCycle` drives it per palette (`SunCyclePalette.GroundColor`). It needs a
+      perspective camera and `SunAnchor.World`, and falls back to `Screen` without them (parallel orthographic rays
+      share one elevation, and the stylized disc is not at a physical position to clip). The water's reflected sky
+      follows the same setting, so the sea never reflects a sun the ground already hides.
+    - **Letting a `SunCycle` sun set.** By default `SunCycle` cuts the disc at elevation zero and fades it over the
+      `SunDiscFadeElevationDegrees` above that, which is right for the screen-space sky and wrong for this one: the
+      disc would dissolve before it reached the line. Set `SunCycleSettings.DiscSetElevationDegrees` past the disc's
+      angular size (6 is a good start). The whole fade band moves down with it, so the disc crosses the horizon at
+      full strength, the ground occludes it, and the halo left above the line dims as an afterglow. The key light
+      is unaffected and still dips to black at elevation zero. The disc slot is single, so under
+      `NightKeyMode.Moon` a moon rising at opposition takes the slot that many degrees late.
   - **Where the disc is placed** (`Sky.Anchor`, a `SunAnchor`, default `SunAnchor.World`):
     - `SunAnchor.World` (default) anchors the disc to the WORLD-space sun direction with a true point-at-infinity
       projection (rotate the world sun direction into view space, project through the camera projection,
@@ -6777,7 +6798,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="19.9.1" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="19.10.0" />
 ```
 
 ```csharp
@@ -12990,7 +13011,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="19.9.1" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="19.10.0" />
 ```
 
 ```csharp
@@ -13026,7 +13047,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="19.9.1" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="19.10.0" />
 ```
 
 ```csharp
@@ -13268,7 +13289,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="19.9.1" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="19.10.0" />
 ```
 
 ```csharp
@@ -16368,7 +16389,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="19.9.1" />
+  <PackageReference Include="KhaozEngine.Automation" Version="19.10.0" />
 </ItemGroup>
 ```
 

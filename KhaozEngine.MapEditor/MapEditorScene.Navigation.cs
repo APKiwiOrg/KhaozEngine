@@ -10,6 +10,7 @@ namespace KhaozEngine.MapEditor;
 public partial class MapEditorScene
 {
     EditorNavigationController _navigation = null!;
+    Func<Vector3?> _navigationTerrainHit = null!;
     bool _navigationOwnsPointer;
 
     // This scene-boundary property remains private because later editor surfaces use the ownership policy without
@@ -19,6 +20,7 @@ public partial class MapEditorScene
     void InitializeNavigation()
     {
         _navigation = new EditorNavigationController(_camera) { FlySpeed = _settings.FlySpeed };
+        _navigationTerrainHit = NavigationTerrainHit;
         _navigationOwnsPointer = false;
     }
 
@@ -46,14 +48,15 @@ public partial class MapEditorScene
             && !IsOverChrome(input.MousePosition)
             && !AnyEditorFocused
             && !toolGesture;
-        Vector3? terrainHit = viewportEligible ? NavigationTerrainHit(input) : null;
-        _navigation.Update(input, viewportEligible, terrainHit, dt);
+        _navigation.UpdateLazy(input, viewportEligible, _navigationTerrainHit, dt);
         bool wheelNavigated = viewportEligible && float.IsFinite(input.ScrollDelta) && input.ScrollDelta != 0f;
         _navigationOwnsPointer = wasNavigating || _navigation.IsNavigating || wheelNavigated;
     }
 
-    Vector3? NavigationTerrainHit(InputState input)
+    /// <summary>Samples a navigation pivot through the editor's real terrain raycast path.</summary>
+    protected virtual Vector3? NavigationTerrainHit()
     {
+        InputState input = Manager!.Input;
         TerrainField? field = _controller.Field ?? _viewport.Field;
         if (field is null) return null;
         int width = input.Width > 0 ? input.Width : 1;

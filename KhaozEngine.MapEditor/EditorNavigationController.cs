@@ -46,6 +46,17 @@ internal sealed class EditorNavigationController
 
     /// <summary>Updates navigation once for the supplied frame.</summary>
     internal void Update(in InputState input, bool viewportEligible, Vector3? terrainHit, float dt)
+        => UpdateCore(input, viewportEligible, null, terrainHit, terrainHitResolved: true, dt);
+
+    /// <summary>Updates navigation and resolves terrain only when this frame needs a new pivot.</summary>
+    internal void UpdateLazy(in InputState input, bool viewportEligible, Func<Vector3?> terrainHit, float dt)
+    {
+        ArgumentNullException.ThrowIfNull(terrainHit);
+        UpdateCore(input, viewportEligible, terrainHit, null, terrainHitResolved: false, dt);
+    }
+
+    void UpdateCore(in InputState input, bool viewportEligible, Func<Vector3?>? terrainHitProvider,
+        Vector3? terrainHit, bool terrainHitResolved, float dt)
     {
         EnsureFiniteCamera();
         ObserveReleases(input);
@@ -58,7 +69,19 @@ internal sealed class EditorNavigationController
 
         EndReleasedGesture(input);
         if (_mode == NavigationMode.None && viewportEligible)
-            TryAcquire(input, terrainHit);
+        {
+            NavigationMode acquire = AcquisitionMode(input);
+            if (acquire != NavigationMode.None)
+            {
+                if (!terrainHitResolved)
+                {
+                    terrainHit = terrainHitProvider!();
+                    terrainHitResolved = true;
+                }
+                EstablishPivot(terrainHit);
+                _mode = acquire;
+            }
+        }
 
         if (input.IsCommandDown)
         {
@@ -67,7 +90,19 @@ internal sealed class EditorNavigationController
         }
 
         if (viewportEligible && float.IsFinite(input.ScrollDelta) && input.ScrollDelta != 0f)
-            Dolly(input.ScrollDelta, _mode == NavigationMode.None ? terrainHit : null);
+        {
+            Vector3? dollyHit = null;
+            if (_mode == NavigationMode.None)
+            {
+                if (!terrainHitResolved)
+                {
+                    terrainHit = terrainHitProvider!();
+                    terrainHitResolved = true;
+                }
+                dollyHit = terrainHit;
+            }
+            Dolly(input.ScrollDelta, dollyHit);
+        }
 
         Vector2 delta = IsFinite(input.MouseDelta) ? input.MouseDelta : Vector2.Zero;
         switch (_mode)
@@ -106,19 +141,15 @@ internal sealed class EditorNavigationController
         EnsureFiniteCamera();
     }
 
-    void TryAcquire(in InputState input, Vector3? terrainHit)
+    NavigationMode AcquisitionMode(in InputState input)
     {
         if (input.WasPressed(MouseButton.Middle) && !_middleRequiresRelease)
         {
-            EstablishPivot(terrainHit);
             bool shift = input.IsDown(Key.LeftShift) || input.IsDown(Key.RightShift);
-            _mode = shift ? NavigationMode.Pan : NavigationMode.Orbit;
+            return shift ? NavigationMode.Pan : NavigationMode.Orbit;
         }
-        else if (input.WasPressed(MouseButton.Right) && !_rightRequiresRelease)
-        {
-            EstablishPivot(terrainHit);
-            _mode = NavigationMode.Fly;
-        }
+        return input.WasPressed(MouseButton.Right) && !_rightRequiresRelease
+            ? NavigationMode.Fly : NavigationMode.None;
     }
 
     void EndReleasedGesture(in InputState input)

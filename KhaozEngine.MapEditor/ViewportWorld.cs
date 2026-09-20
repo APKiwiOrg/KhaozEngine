@@ -56,6 +56,7 @@ public sealed class ViewportWorld : IDisposable
     readonly Func<int, int, bool> _terrainChunkLoaded;
     readonly Dictionary<string, IReadOnlyList<MeshHandle>> _propMeshes = new();
     readonly PlacementCache _placements = new();
+    readonly AuthoredPlacementBuffer _authoredPlacements = new();
 
     Func<string, bool> _scatterLayerVisible = static _ => true;
     Func<string, bool> _propKindVisible = static _ => true;
@@ -344,11 +345,12 @@ public sealed class ViewportWorld : IDisposable
 
         _sink!.Draw(viewPos);
 
-        IReadOnlyList<EditorPlacement> placements = FilterVisiblePlacements(
-            _placements.Get(_doc!, _field!), visibility, _propKindVisible);
-        (IReadOnlyList<EditorPlacement> unselected, EditorPlacement? selected) = Partition(placements, selectedPlacementId);
-        DrawAuthoredPlacements(unselected, viewPos);
-        if (selected is EditorPlacement sel) DrawHighlighted(sel, highlightTint);
+        _authoredPlacements.Prepare(
+            _placements, _doc!, _field!, visibility, _propKindVisible, selectedPlacementId);
+        // DrawProps consumes the scratch list synchronously through PropRenderer.EmitParts before this call returns.
+        _scene.DrawProps(_authoredPlacements.Unselected, _propMeshes, viewPos, AuthoredDrawRadius);
+        if (_authoredPlacements.Selected is EditorPlacement selected)
+            DrawHighlighted(selected, highlightTint);
         DrawSpawnMarkers(visibility);
         DrawPlayerSpawnMarkers(visibility);
     }
@@ -545,14 +547,6 @@ public sealed class ViewportWorld : IDisposable
             _scene.UnloadSplatMaterial(_splatMaterial);
             _splatMaterial = Scene3D.SplatMaterialHandle.Invalid;
         }
-    }
-
-    void DrawAuthoredPlacements(IReadOnlyList<EditorPlacement> placements, Vector3 focus)
-    {
-        // Reuse the instanced prop path. Authored content is never distance-culled, so pass the wide radius.
-        var props = new List<PropPlacement>(placements.Count);
-        foreach (EditorPlacement ep in placements) props.Add(ep.Prop);
-        _scene.DrawProps(props, _propMeshes, focus, AuthoredDrawRadius);
     }
 
     void DrawHighlighted(EditorPlacement ep, Color tint)

@@ -30,7 +30,9 @@ namespace KhaozEngine.Catalog;
 /// because two publishers writing ONE pack root write the same chunk hashes: the same-named temporary makes
 /// the second writer's open fail, or its move find nothing where the first writer's move already took the
 /// file. A per-write name makes concurrent puts of one hash two independent writes that both land on the
-/// same correct bytes, which is what a content-addressed store is entitled to promise.
+/// same correct bytes, which is what a content-addressed store is entitled to promise. The price is that a
+/// crashed write leaves a uniquely named orphan rather than one the next write overwrites, so a successful
+/// move deletes the temporaries of its OWN destination that are over an hour old.
 /// </para>
 /// <para>
 /// <b>The version pointer lives OUTSIDE the shard tree</b>, under <c>versions/</c>, because a shard name is
@@ -50,6 +52,13 @@ public sealed class FileSystemPackStore : IPackStore, IPackStorePruning, IConten
 
     const string TemporaryExtension = ".tmp";
     const int HashCharacters = 64;
+
+    /// <summary>
+    /// How old a sibling temporary has to be before a successful write of the same destination deletes it.
+    /// An hour is far longer than any single chunk write and far shorter than forever, which is how long a
+    /// crashed write's uniquely named orphan would otherwise sit there.
+    /// </summary>
+    static readonly TimeSpan StaleTemporaryAge = TimeSpan.FromHours(1);
 
     /// <summary>Creates the store, creating the root directory when it is not there yet.</summary>
     /// <param name="root">The directory the shard tree and the version pointers live under.</param>
@@ -366,8 +375,8 @@ public sealed class FileSystemPackStore : IPackStore, IPackStorePruning, IConten
     async Task WriteThenMoveAsync(string path, ReadOnlyMemory<byte> bytes, CancellationToken cancellationToken)
     {
         // Per WRITE rather than per destination, so two publishers filing one hash into one root do not
-        // collide on the temporary. The name still ends in the temporary extension, which is what a
-        // leftover-file sweep looks for, and it is never a content address, so the orphan walk skips it.
+        // collide on the temporary. The name ends in the temporary extension and is never a content address,
+        // so the orphan walk skips it.
         string temporary = FormattableString.Invariant(
             $"{path}.{Guid.NewGuid():n}{TemporaryExtension}");
         try
@@ -388,6 +397,48 @@ public sealed class FileSystemPackStore : IPackStore, IPackStorePruning, IConten
         {
             TryDeleteTemporary(temporary);
             throw;
+        }
+
+        SweepStaleTemporaries(path);
+    }
+
+    /// <summary>
+    /// Deletes the temporaries of THIS destination that a crashed write left behind. A per-write name is
+    /// what stops two publishers colliding, and the price of it is that a killed process leaves a uniquely
+    /// named orphan where an overwrite used to take care of itself.
+    /// <para>
+    /// <b>Only ones older than an hour, and only after a successful move.</b> A temporary a second writer
+    /// has open right now is seconds or minutes old, and deleting one would break a write that was going to
+    /// succeed. Every error here is ignored: a leftover temporary is never read, because a reader only ever
+    /// asks for a content address, so failing a completed write over one would be the worse answer.
+    /// </para>
+    /// </summary>
+    /// <param name="path">The destination whose siblings are swept.</param>
+    static void SweepStaleTemporaries(string path)
+    {
+        string? directory = Path.GetDirectoryName(path);
+        if (directory is null)
+        {
+            return;
+        }
+
+        DateTime before = DateTime.UtcNow - StaleTemporaryAge;
+        try
+        {
+            foreach (string sibling in Directory.EnumerateFiles(
+                directory, Path.GetFileName(path) + ".*" + TemporaryExtension))
+            {
+                if (File.GetLastWriteTimeUtc(sibling) < before)
+                {
+                    File.Delete(sibling);
+                }
+            }
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
         }
     }
 

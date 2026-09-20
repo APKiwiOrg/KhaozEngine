@@ -64,6 +64,35 @@ public class FileSystemPackStoreTests
         Assert.True(pack.TagChunk.StoredFile.Span.SequenceEqual(read.Value.Span));
     }
 
+    // A per-write temporary name is what lets two publishers file ONE hash into one root without colliding,
+    // and the price of it is that a crashed write leaves a uniquely named orphan where an overwrite used to
+    // take care of itself. A successful write of the same hash sweeps the stale ones up.
+    [Fact]
+    public async Task PutAsync_deletes_an_old_temporary_of_the_same_hash_and_spares_a_fresh_one()
+    {
+        using var root = new TemporaryRoot();
+        var store = new FileSystemPackStore(root.Path);
+        CatalogPack pack = CatalogPack.Build();
+        string hash = pack.TagChunk.Hash;
+        string path = store.PathFor(hash);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+
+        string crashed = path + ".0123456789abcdef0123456789abcdef.tmp";
+        await File.WriteAllBytesAsync(crashed, [1, 2, 3]);
+        File.SetLastWriteTimeUtc(crashed, DateTime.UtcNow.AddHours(-2));
+        string inFlight = path + ".fedcba9876543210fedcba9876543210.tmp";
+        await File.WriteAllBytesAsync(inFlight, [4, 5, 6]);
+
+        await store.PutAsync(hash, pack.TagChunk.StoredFile);
+
+        Assert.True(File.Exists(path));
+        Assert.False(File.Exists(crashed));
+
+        // A temporary a SECOND writer has open right now is minutes old at most, and deleting one would
+        // break a write that is going to succeed.
+        Assert.True(File.Exists(inFlight));
+    }
+
     // The one statement of the key layout, which three providers derive a name from: the local store's path,
     // the HTTP store's URI and the blob store's key. A change here moves all three together, which is what
     // lets a client read through HttpPackStore what another provider wrote.

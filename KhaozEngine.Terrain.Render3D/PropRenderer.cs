@@ -143,6 +143,17 @@ namespace KhaozEngine.Terrain
                                     IReadOnlyDictionary<string, MeshHandle>? lodMeshes = null, float lodDistance = 0f,
                                     float dissolveFloor = 0f, bool castsShadows = true,
                                     IReadOnlyDictionary<string, float>? blobRadii = null)
+            => DrawProps(scene, placements, meshes, focus, drawRadius, lodCrossfadeWidth, tint, fadeBandWidth,
+                lodMeshes, lodDistance, dissolveFloor, castsShadows, blobRadii, null, null);
+
+        /// <summary>Draw-time filtered single-mesh prop submission. A null filter preserves all placements.</summary>
+        public static int DrawProps(this Scene3D scene, IReadOnlyList<PropPlacement> placements,
+                                    IReadOnlyDictionary<string, MeshHandle> meshes, Vector3 focus, float drawRadius,
+                                    float lodCrossfadeWidth, Color? tint = null, float fadeBandWidth = 0f,
+                                    IReadOnlyDictionary<string, MeshHandle>? lodMeshes = null, float lodDistance = 0f,
+                                    float dissolveFloor = 0f, bool castsShadows = true,
+                                    IReadOnlyDictionary<string, float>? blobRadii = null,
+                                    PropDrawFilter? drawFilter = null, string? layerIdentity = null)
         {
             if (scene == null) throw new ArgumentNullException(nameof(scene));
             Color t = tint ?? Color.White;
@@ -151,7 +162,7 @@ namespace KhaozEngine.Terrain
                 new DrawState(scene, t, castsShadows), DrawSink,
                 emitBlobs ? blobRadii : null,
                 emitBlobs ? DrawBlobSink : null,
-                lodCrossfadeWidth);
+                lodCrossfadeWidth, drawFilter, layerIdentity);
         }
 
         /// <summary>Multi-part variant of <see cref="Queue(SceneInstances, IReadOnlyList{PropPlacement}, IReadOnlyDictionary{string, MeshHandle}, Vector3, float, Color?, float, IReadOnlyDictionary{string, MeshHandle}, float, float, bool)"/>: each kit id maps to ONE-OR-MANY
@@ -207,6 +218,18 @@ namespace KhaozEngine.Terrain
                                     IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>? lodParts = null,
                                     float lodDistance = 0f, float dissolveFloor = 0f, bool castsShadows = true,
                                     IReadOnlyDictionary<string, float>? blobRadii = null)
+            => DrawProps(scene, placements, parts, focus, drawRadius, lodCrossfadeWidth, tint, fadeBandWidth,
+                lodParts, lodDistance, dissolveFloor, castsShadows, blobRadii, null, null);
+
+        /// <summary>Draw-time filtered multi-part prop submission. A null filter preserves all placements.</summary>
+        public static int DrawProps(this Scene3D scene, IReadOnlyList<PropPlacement> placements,
+                                    IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> parts, Vector3 focus,
+                                    float drawRadius, float lodCrossfadeWidth, Color? tint = null,
+                                    float fadeBandWidth = 0f,
+                                    IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>? lodParts = null,
+                                    float lodDistance = 0f, float dissolveFloor = 0f, bool castsShadows = true,
+                                    IReadOnlyDictionary<string, float>? blobRadii = null,
+                                    PropDrawFilter? drawFilter = null, string? layerIdentity = null)
         {
             if (scene == null) throw new ArgumentNullException(nameof(scene));
             Color t = tint ?? Color.White;
@@ -215,7 +238,7 @@ namespace KhaozEngine.Terrain
                 new DrawState(scene, t, castsShadows), DrawSink,
                 emitBlobs ? blobRadii : null,
                 emitBlobs ? DrawBlobSink : null,
-                lodCrossfadeWidth);
+                lodCrossfadeWidth, drawFilter, layerIdentity);
         }
 
         /// <summary>Scene3D convenience: queue every part of each in-range prop into the SHADOW depth pass ALONE
@@ -268,7 +291,8 @@ namespace KhaozEngine.Terrain
                         TState state, Action<TState, MeshHandle, Matrix4x4, float, float> sink,
                         IReadOnlyDictionary<string, float>? blobRadii = null,
                         Action<TState, Vector3, float>? blobSink = null,
-                        float lodCrossfadeWidth = 0f)
+                        float lodCrossfadeWidth = 0f, PropDrawFilter? drawFilter = null,
+                        string? layerIdentity = null)
         {
             if (placements == null) throw new ArgumentNullException(nameof(placements));
             if (meshes == null) throw new ArgumentNullException(nameof(meshes));
@@ -287,6 +311,7 @@ namespace KhaozEngine.Terrain
             for (int i = 0; i < placements.Count; i++)
             {
                 PropPlacement p = placements[i];
+                if (drawFilter is not null && !drawFilter(layerIdentity, p.Id)) continue;
                 float dx = p.X - focus.X, dz = p.Z - focus.Z;
                 float d2 = dx * dx + dz * dz;
                 if (d2 > r2) continue;                                      // horizontal distance cull
@@ -350,7 +375,8 @@ namespace KhaozEngine.Terrain
                              TState state, Action<TState, MeshHandle, Matrix4x4, float, float> sink,
                              IReadOnlyDictionary<string, float>? blobRadii = null,
                              Action<TState, Vector3, float>? blobSink = null,
-                             float lodCrossfadeWidth = 0f)
+                             float lodCrossfadeWidth = 0f, PropDrawFilter? drawFilter = null,
+                             string? layerIdentity = null)
         {
             if (placements == null) throw new ArgumentNullException(nameof(placements));
             if (parts == null) throw new ArgumentNullException(nameof(parts));
@@ -369,6 +395,7 @@ namespace KhaozEngine.Terrain
             for (int i = 0; i < placements.Count; i++)
             {
                 PropPlacement p = placements[i];
+                if (drawFilter is not null && !drawFilter(layerIdentity, p.Id)) continue;
                 float dx = p.X - focus.X, dz = p.Z - focus.Z;
                 float d2 = dx * dx + dz * dz;
                 if (d2 > r2) continue;                                      // horizontal distance cull

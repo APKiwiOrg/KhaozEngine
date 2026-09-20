@@ -8997,6 +8997,13 @@ cancels), without a second tap. `EditorToolController.ModeHint` gives a one-line
 tool (folding in `PlaceKind` / `SpawnArchetype` / `PlaceFeatureType`) that the scene renders at the head of
 the status strip.
 
+While Sculpt Terrain is armed, the viewport draws a 64-sample surface-following outer footprint, a dashed
+half-strength falloff guide, and a screen-readable centre cross. Its localized label names the selected brush
+and Hover, Active, or Unavailable state, so colour is supplementary. The footprint uses the stroke's live field,
+radius, paintable document bounds, and applied streamed-terrain residency. Missed picks and unloaded targets do
+not show a valid footprint. Chrome, the View panel, modals, and navigation ownership suppress the feedback.
+Terrain Only leaves it visible while masking unrelated authoring markers.
+
 **Kit palette.** The bottom-left panel is tool-scoped, hosting at most one of three pickers. `PlacePlacement`
 shows every manifest kit id in a filter box over a collapsible `TreeView`, categorized by
 `AssetEntry.Category` when the manifest declares one, else the declaring manifest's own file-name stem
@@ -9104,17 +9111,36 @@ no kind in the host layer"), live-tracked through edits, host swaps, and undo/re
 `KhaozEngine.MapEditor` README's "Procedural setup editing" section for the full mechanics.
 
 **Visibility.** `EditorVisibility` is editor-session view state, not the document: it gates eight
-`VisibilityGroup`s (placements, spawns, water, exclusions, scatter overrides, regions, feature markers, player spawns), named scatter layers,
-and individual elements, and toggling any of it never dirties the document or lands an undo step. A per-element
+`VisibilityGroup`s (placements, spawns, water, exclusions, scatter overrides, regions, feature markers, player spawns),
+the `OtherProps`, `Trees`, and `Rocks` categories, named scatter layers, and individual elements. Toggling any
+of it never dirties the document or lands an undo step. A per-element
 hide follows its element across reorder, delete, and rename (including undo and redo), driven by the
 reorder/remove/rename commands' `IVisibilityEffect` through `EditorDocument`'s
 `CommandApplied`/`CommandRedone`/`CommandUndone` events. With
-nothing selected the inspector is the Layers panel (`MapEditorScene.BuildLayersInspector`): a `BoolRow` per
-group, then one per scatter layer in the open document (toggling a scatter layer also rebuilds the streamed
-world so its props actually drop out). Every element inspector also gets a per-element "Visible" `BoolRow`.
+nothing selected the inspector is the Layers panel (`MapEditorScene.BuildLayersInspector`). The toolbar's
+always-available **View** button opens the independent visibility panel while a selection inspector or terrain
+sculpt inspector remains active. **Authored props** gates all authored placements independently of the prop
+category and named scatter-layer choices. **Terrain Only** is a temporary mask and restores the underlying choices when
+cleared. **Show All** clears the mask and every hide override. Every element inspector also gets a per-element
+"Visible" `BoolRow`.
 A hidden element is neither drawn nor pickable from the viewport, but stays selectable from the outline tree
 (which reads straight off the document), so hiding something is always reversible. See the
 `KhaozEngine.MapEditor` README's "Visibility" section for the full mechanics.
+
+Set `MapEditorOptions.ResolvePropCategory` when the game has its own kit classification. Without a callback,
+only explicit manifest `category` values classify trees and rocks. Manifest file names and kit names are never
+guessed. Visibility switches filter retained flat, textured, companion, and HLOD-backed batches at submission
+time. They do not rebuild terrain or scatter. A mixed-category HLOD cluster falls back to its visible individual
+placements while a category filter is active.
+
+**Map editor navigation.** Middle drag orbits around the terrain point captured at press. Shift+middle captures
+pan mode at press and keeps it for the full gesture. A miss keeps the previous pivot or falls back to a point 25
+metres ahead. The wheel dollies between 0.5 and 100000 metres from that pivot and never changes fly speed. Hold
+right mouse to look and use WASD plus E/Q to fly at the separately configured fly speed. Movement keys are inert
+until the right-button press acquires the viewport. Chrome, focused fields, modals and active tool gestures block
+navigation acquisition. Navigation suppresses editor pointer edges through the release frame. Unmodified F frames
+the current viewport selection. It is a no-op with no selection or an outline-only selection, and focused fields
+keep F as text input.
 
 **Keys.** Ctrl+Z undo, Ctrl+Shift+Z or Ctrl+Y redo, Ctrl+S save, Ctrl+R reload, Ctrl+D duplicates the current selection
 (see Duplicate below), Ctrl+Shift+F freezes the whole zone's procedural scatter into placements (see
@@ -9125,8 +9151,8 @@ feature, exclusion, or scatter override row in the outline tree reorders it the 
 (see Camera bookmarks below), Escape cancels an in-flight gizmo/draw gesture and returns to `Select`, and
 opens the settings menu (below) when there is no gesture to cancel. Every
 Ctrl chord above also accepts Cmd (Super) in its place (`InputState.IsCommandDown` treats the two as one
-modifier), so the same keys work unmodified on a Mac (Cmd+S and Cmd+D also suppress the fly camera for that
-one frame, since both carry a WASD letter). All of the chords, plus the bare R hotkey and the bookmark
+modifier), so the same keys work unmodified on a Mac. Cmd+S and Cmd+D also suppress camera motion for that
+frame, since both carry a movement letter. All of the chords, plus the bare R hotkey and the bookmark
 digits, are suppressed while an inspector field, the kit-palette filter, or the spawn filter holds keyboard
 focus (`MapEditorScene.AnyEditorFocused`), so typing a name or a filter query never leaks into a document
 command. Escape carries extra nuance under that gate: a `NumberField` mid-edit cancels only its own typed
@@ -9147,7 +9173,7 @@ open and the work intact. **Save and Close** does the same save, then leaves the
 README's "Exit dialog" section for the full mechanics.
 
 **Settings menu** (since 17.6.0). Bare Escape with no gesture to cancel opens a modal settings menu over the
-editor's own view preferences: render distance (Base / 2x / 4x), sky (preset plus sun azimuth and elevation),
+editor's own view preferences: render distance (Base / 2x / 4x), navigation fly speed, sky (preset plus sun azimuth and elevation),
 lighting (key and ambient intensity multipliers), and ocean (preset, swell amplitude, foam strength, and a
 surf toggle). None of it touches the map document, so two operators can prefer different horizons and skies
 over the same world. It sits one gate below the exit dialog, so Shift+Escape still wins when both would apply.
@@ -9157,6 +9183,8 @@ over the same world. It sits one gate below the exit dialog, so Shift+Escape sti
   rebuild and a brief hitch (the ring's radii are baked when the world builds). A tiled document that opened
   windowed is the one thing it cannot grow live, since re-windowing means reloading and discarding unsaved
   edits, so it says so in the status strip instead of under-loading in silence.
+- **Fly speed** sets right-button flight from 0.5 to 200 world units per second. It persists independently from
+  wheel dolly distance, so scrolling never changes it.
 - **Sky and ocean** run through `EnvironmentPresets` / `OceanPresets` (above) plus the sliders on top. This is
   the editor writing to the HOST scene's `Post`, which is new: `MapEditorOptions.DriveEnvironment` (default
   true) is the seam. The default is what gives a freshly opened editor a day sky rather than the engine's
@@ -9213,7 +9241,7 @@ landing a status-strip note instead of a phantom undo entry. `ke-mapedit`'s `fre
 reuses the same command, so a GUI-driven and an MCP-driven freeze can never drift apart. See the
 `KhaozEngine.MapEditor` README's "Freeze zone" section for the full mechanics.
 
-**Camera bookmarks.** Shift+1..9 stores the fly camera's pose (position, yaw, pitch) into that numbered
+**Camera bookmarks.** Shift+1..9 stores the editor camera's pose (position, yaw, pitch) into that numbered
 slot, and a bare 1..9 recalls it. Session-only (nothing persists across a close/reopen this round), with the
 status strip confirming every store/recall or reporting an empty never-stored slot. Camera bookmarks are
 interactive viewport state, so they have no MCP equivalent: `ke-mapedit`'s render verbs are stateless,
@@ -9304,6 +9332,7 @@ draw gesture is live, so a fast mid-gesture edit stream does not re-mesh the wor
 and the splat material persist across a full rebuild by default, so it no longer re-decodes every prop glTF
 from disk; a toggle that changes their cached form (the "Textured props" toggle) calls
 `ViewportWorld.InvalidateKitMeshes` first.
+Layer, category, marker, Show All, and Terrain Only changes are draw-only and cause zero world rebuilds.
 
 See the `KhaozEngine.MapEditor` package README for the command stack and gesture sealing, world-rebuild
 semantics (including the partial vs full rebuild dispatch and the gesture-throttled full rebuild), the
@@ -10491,6 +10520,16 @@ nobody can reach costs one window rather than sixteen, and the tile it picks and
 ones a search per anchor gave.
 The same predicate is the follow's range test, the entity interaction's arrival and the combat roll, so a large
 body and a small one agree on reach whichever of them is attacking.
+
+An interaction target can opt into extra reach without changing global movement or combat. Override
+`ITileTargets.GetInteractionReachPolicy(target)` for authored objects, or pass the same seventh
+`Func<long, TileInteractionReachPolicy>` argument to `TileWorldServer` and `TileWorldClient` for entity targets.
+`TileInteractionReachPolicy.IncludeDiagonals` adds corner neighbours only when `TileCollision.CanStep` admits the
+diagonal without walls, blocked side tiles or corner cutting. `IncludeOverlap` adds anchors whose whole actor
+footprint passes `TileCollision.CanStand` and overlaps the target. The flags compose. `Default` remains the
+cardinal, non-overlapping `TileReach` behavior. The policy-aware `TileInteractionReach.Set`, `Contains`,
+`TryNearest` and `FacingToward` methods are the shared kernel used by prediction and authority. The wire layout and
+combat reach do not change.
 
 ### Standing a server up
 

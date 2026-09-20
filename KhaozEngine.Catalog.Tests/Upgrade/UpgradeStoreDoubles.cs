@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Data.Common;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -296,6 +297,89 @@ internal sealed class CountingContentAuthoringStore(InMemoryContentAuthoringStor
         string operatorId,
         CancellationToken cancellationToken = default)
         => inner.RecordUpgradeAsync(stamp, disposition, actor, operatorId, cancellationToken);
+}
+
+/// <summary>
+/// A provider fault with the ONE property the runner keys on. A permissions or connectivity fault is not
+/// transient and must cost one attempt, and a deadlock or a busy database is transient and is retried.
+/// </summary>
+/// <param name="message">The provider's message, which the report quotes.</param>
+/// <param name="transient">What <see cref="DbException.IsTransient"/> answers.</param>
+internal sealed class FakeDbException(string message, bool transient) : DbException(message)
+{
+    /// <inheritdoc />
+    public override bool IsTransient => transient;
+}
+
+/// <summary>
+/// A store whose export or whose publish raises a provider fault, which is how a permissions failure, a
+/// dropped connection and a deadlock all reach the runner.
+/// </summary>
+/// <param name="inner">The store behind the double.</param>
+/// <param name="onExport">Whether the bundle export faults.</param>
+/// <param name="onPublish">Whether the publish faults.</param>
+/// <param name="transient">Whether the fault reports itself as transient.</param>
+/// <param name="faults">How many calls fault before the double lets them through, or 0 for all of them.</param>
+internal sealed class DatabaseFaultStore(
+    InMemoryContentAuthoringStore inner,
+    bool onExport,
+    bool onPublish,
+    bool transient = false,
+    int faults = 0)
+    : ForwardingContentAuthoringStore(inner), IContentUpgradeLedger
+{
+    int _raised;
+
+    /// <summary>How many exports the runner asked for.</summary>
+    public int Exports { get; private set; }
+
+    /// <summary>How many publishes the runner started.</summary>
+    public int Publishes { get; private set; }
+
+    /// <inheritdoc />
+    public override async Task<ContentBundle> ExportBundleAsync(
+        int versionNumber,
+        CancellationToken cancellationToken = default)
+    {
+        Exports++;
+        Raise(onExport);
+        return await base.ExportBundleAsync(versionNumber, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public override async Task<ContentPublishResult> PublishAsync(
+        ContentPublishRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        Publishes++;
+        Raise(onPublish);
+        return await base.PublishAsync(request, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<ContentUpgradeRecord>> ListUpgradesAsync(
+        CancellationToken cancellationToken = default)
+        => inner.ListUpgradesAsync(cancellationToken);
+
+    /// <inheritdoc />
+    public Task RecordUpgradeAsync(
+        ContentUpgradeStamp stamp,
+        ContentUpgradeDisposition disposition,
+        string actor,
+        string operatorId,
+        CancellationToken cancellationToken = default)
+        => inner.RecordUpgradeAsync(stamp, disposition, actor, operatorId, cancellationToken);
+
+    void Raise(bool armed)
+    {
+        if (!armed || (faults > 0 && _raised >= faults))
+        {
+            return;
+        }
+
+        _raised++;
+        throw new FakeDbException("the catalog database refused the call.", transient);
+    }
 }
 
 /// <summary>

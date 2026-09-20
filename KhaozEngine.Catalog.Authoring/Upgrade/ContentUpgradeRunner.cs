@@ -47,6 +47,7 @@ public static partial class ContentUpgradeRunner
     /// <param name="options">The mode, the expected version, who is running it and the build ordinals.</param>
     /// <param name="cancellationToken">Cancels the reads and the publishes.</param>
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
     public static async Task<ContentUpgradeReport> RunAsync(
         IContentAuthoringStore store,
         ContentTypeRegistry registry,
@@ -70,21 +71,61 @@ public static partial class ContentUpgradeRunner
                     $"this catalog store keeps no upgrade ledger, so the {set.Count} shipped upgrade(s) cannot be applied. Open it at schema version 2 or later."));
         }
 
-        // Step 2. The runner never seeds. A host that imports its bundle calls RecordBaselineAsync next.
-        int active = await store.GetActiveVersionAsync(cancellationToken).ConfigureAwait(false);
-        if (active <= 0)
+        // EVERY store call from here on is inside this handler. A catalog fault is something an operator
+        // acts on, so it leaves as the same report every refusal does, and only a cancellation and a real
+        // defect escape as exceptions.
+        ContentUpgradeRun? run = null;
+        try
         {
-            return Stop(
-                ContentUpgradeOutcome.NoCatalog,
-                ContentUpgradeCodes.NoCatalog,
-                FormattableString.Invariant(
-                    $"this catalog holds no published version, so there is nothing to upgrade. Import the shipped bundle and record the baseline for the {set.Count} shipped upgrade(s)."));
-        }
+            // Step 2. The runner never seeds. A host that imports its bundle calls RecordBaselineAsync next.
+            int active = await store.GetActiveVersionAsync(cancellationToken).ConfigureAwait(false);
+            if (active <= 0)
+            {
+                return Stop(
+                    ContentUpgradeOutcome.NoCatalog,
+                    ContentUpgradeCodes.NoCatalog,
+                    FormattableString.Invariant(
+                        $"this catalog holds no published version, so there is nothing to upgrade. Import the shipped bundle and record the baseline for the {set.Count} shipped upgrade(s)."));
+            }
 
-        var run = new ContentUpgradeRun(store, ledger, registry, options, active, cancellationToken);
+            run = new ContentUpgradeRun(store, ledger, registry, options, active, cancellationToken);
+            return await GatesAsync(store, ledger, set, options, run, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception failure) when (ContentUpgradeFault.IsHandled(failure))
+        {
+            return run is not null
+                ? run.Failed(failure)
+                : Stop(
+                    ContentUpgradeOutcome.Failed,
+                    ContentUpgradeCodes.PublishFailed,
+                    ContentUpgradeFault.Message(string.Empty, "read the active version", 0, failure));
+        }
+    }
+
+    /// <summary>
+    /// Gates 3 to 7 and then the preview or the apply, with the run already standing on its active version.
+    /// It is apart from <see cref="RunAsync"/> so that one handler covers every store call rather than one
+    /// per gate.
+    /// </summary>
+    /// <param name="store">The authoring store.</param>
+    /// <param name="ledger">Its upgrade ledger half.</param>
+    /// <param name="set">The definitions this build ships.</param>
+    /// <param name="options">The run's options.</param>
+    /// <param name="run">The run, holding the active version and the report being built.</param>
+    /// <param name="cancellationToken">Cancels the reads and the publishes.</param>
+    static async Task<ContentUpgradeReport> GatesAsync(
+        IContentAuthoringStore store,
+        IContentUpgradeLedger ledger,
+        ContentUpgradeSet set,
+        ContentUpgradeOptions options,
+        ContentUpgradeRun run,
+        CancellationToken cancellationToken)
+    {
+        int active = run.Active;
 
         // Step 3. An id the ledger holds and this build does not ship means the catalog was upgraded by a
         // newer build. Running the older set against it would be a downgrade nothing here can reason about.
+        run.Operation = "read the upgrade ledger";
         IReadOnlyList<ContentUpgradeRecord> recorded = await ledger
             .ListUpgradesAsync(cancellationToken)
             .ConfigureAwait(false);
@@ -119,7 +160,9 @@ public static partial class ContentUpgradeRunner
                     $"this catalog at version {active} already holds all {set.Count} shipped upgrade(s). Nothing was written."));
         }
 
-        // Step 5. An interrupted run's own draft is discarded, and anything else is operator work.
+        // Step 5. A draft this run can prove is its own is left standing for the apply loop to publish, and
+        // anything else is operator work.
+        run.Operation = "read the open draft";
         ContentUpgradeOutcome? draftStop = await run.ResolveOpenDraftAsync(pending).ConfigureAwait(false);
         if (draftStop is ContentUpgradeOutcome stopped)
         {
@@ -128,6 +171,7 @@ public static partial class ContentUpgradeRunner
 
         // Step 6. A pin elsewhere means the baseline is not the version in force. A pin ON the active version
         // does not block the publish, and it is never moved: repinning is the operator's own decision.
+        run.Operation = "read the operator pin";
         int? pinned = await store.GetPinnedVersionAsync(cancellationToken).ConfigureAwait(false);
         if (pinned is int pin && pin != active)
         {

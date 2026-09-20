@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Data.Common;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -88,6 +87,29 @@ sealed partial class ContentUpgradeRun
     /// <summary>Whether the operator pin sits on the active version, which does not block a publish.</summary>
     internal bool PinnedOnActive { get; set; }
 
+    /// <summary>
+    /// What the run is doing RIGHT NOW, as a verb phrase, which is what a fault report names. It is tracked
+    /// rather than derived because every store call in a run is behind one handler, and a message that said
+    /// only "the catalog refused" would leave an operator guessing which call it was.
+    /// </summary>
+    internal string Operation { get; set; } = "read the catalog";
+
+    /// <summary>The upgrade the current operation belongs to, empty while the run is still at its gates.</summary>
+    internal string OperationId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The report for a fault the run could not resolve: a <see cref="ContentUpgradeOutcome.Failed"/> under
+    /// <see cref="ContentUpgradeCodes.PublishFailed"/>, naming the upgrade, the operation and the next step.
+    /// </summary>
+    /// <param name="failure">The fault.</param>
+    internal ContentUpgradeReport Failed(Exception failure)
+    {
+        Add(
+            ContentUpgradeCodes.PublishFailed,
+            ContentUpgradeFault.Message(OperationId, Operation, Active, failure));
+        return Report(ContentUpgradeOutcome.Failed);
+    }
+
     /// <summary>One version this run itself published, which is the only way the version may move under it.</summary>
     /// <param name="versionNumber">The version the publish assigned.</param>
     internal void RecordPublished(int versionNumber)
@@ -109,6 +131,7 @@ sealed partial class ContentUpgradeRun
     /// </summary>
     internal async Task<bool> RereadActiveAsync()
     {
+        Operation = "read the active version";
         int active = await Store.GetActiveVersionAsync(CancellationToken).ConfigureAwait(false);
         Active = active;
         if (Options.ExpectedVersion is not int expected || active == expected || _published.Contains(active))
@@ -235,6 +258,7 @@ sealed partial class ContentUpgradeRun
             case ContentUpgradePlanKind.AlreadySatisfied:
                 // No version is published, because nothing changed. The ledger row is what stops the next run
                 // planning it again and reapplying defaults over an operator's values.
+                Operation = "record it in the upgrade ledger";
                 await Ledger.RecordUpgradeAsync(
                     definition.Stamp,
                     ContentUpgradeDisposition.Adopted,
@@ -256,6 +280,8 @@ sealed partial class ContentUpgradeRun
     /// </summary>
     async Task<ContentUpgradePlan?> PlanAsync(ContentUpgradeDefinition definition)
     {
+        OperationId = definition.Id;
+        Operation = "export the baseline bundle";
         ContentBundle baseline = await Store.ExportBundleAsync(Active, CancellationToken).ConfigureAwait(false);
         var context = new ContentUpgradeContext(Active, baseline, Registry);
 

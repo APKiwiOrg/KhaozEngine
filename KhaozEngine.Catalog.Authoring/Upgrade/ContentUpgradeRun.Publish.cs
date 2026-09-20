@@ -1,7 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Data.Common;
-using System.IO;
 using System.Threading.Tasks;
 
 namespace KhaozEngine.Catalog.Authoring;
@@ -26,6 +24,7 @@ sealed partial class ContentUpgradeRun
     async Task<bool> PublishAsync(ContentUpgradeDefinition definition, ContentUpgradePlan plan, int attempt)
     {
         string note = ContentUpgradeRunner.NoteFor(definition.Id);
+        Operation = "read the open draft";
 
         // A draft standing here is either the one an interrupted run left holding exactly this plan, which
         // this run publishes as it stands, or another runner's. Applying into another runner's would put two
@@ -47,6 +46,7 @@ sealed partial class ContentUpgradeRun
                 : StopForOperatorDraft(definition, standing);
         }
 
+        Operation = "read the baseline version row";
         ContentVersionRecord? baseline = await Store
             .GetVersionAsync(Active, CancellationToken)
             .ConfigureAwait(false);
@@ -60,11 +60,13 @@ sealed partial class ContentUpgradeRun
         {
             if (!standingIsOwn)
             {
+                Operation = "write its edits into the draft";
                 await Store
                     .ApplyEditsAsync(plan.Edits, Options.Actor, Options.Operator, note, CancellationToken)
                     .ConfigureAwait(false);
             }
 
+            Operation = "publish its edits as a new version";
             ContentPublishResult published = await Store.PublishAsync(
                 new ContentPublishRequest(
                     Options.Actor,
@@ -82,10 +84,7 @@ sealed partial class ContentUpgradeRun
             _steps.Add(ContentUpgradeStepResult.Applied(definition, published.VersionNumber, plan.ChangeLines));
             return true;
         }
-        catch (Exception failure) when (failure is ContentAuthoringException
-            or ContentPackException
-            or DbException
-            or IOException)
+        catch (Exception failure) when (ContentUpgradeFault.IsHandled(failure))
         {
             return await ResolveFailureAsync(definition, plan, note, failure, attempt).ConfigureAwait(false);
         }
@@ -104,8 +103,10 @@ sealed partial class ContentUpgradeRun
         Exception failure,
         int attempt)
     {
+        Operation = "discard its own draft";
         bool rivalIsLive = await DiscardOwnDraftAsync(note, plan.Edits).ConfigureAwait(false);
 
+        Operation = "read the upgrade ledger";
         ContentUpgradeRecord? landed = await FindRecordAsync(definition.Id).ConfigureAwait(false);
         if (landed is not null)
         {
@@ -120,7 +121,7 @@ sealed partial class ContentUpgradeRun
 
         // A live rival on this run's own draft is contention whatever the exception said, because the draft
         // it would have to republish into is not free yet.
-        return rivalIsLive || IsContention(failure)
+        return rivalIsLive || ContentUpgradeFault.IsContention(failure)
             ? await StandOffAsync(definition, attempt, failure.Message).ConfigureAwait(false)
             : Fail(definition, failure.Message);
     }
@@ -159,22 +160,6 @@ sealed partial class ContentUpgradeRun
         _stopped = ContentUpgradeOutcome.Failed;
         return true;
     }
-
-    /// <summary>
-    /// Whether a failure is CONTENTION with another runner rather than a defect in the plan or the catalog.
-    /// The four refusal reasons are exactly what a second publisher produces: it took the draft, it took the
-    /// draft away, it moved the base version, or it recorded the upgrade first. A provider's own busy or
-    /// deadlock error is the same thing one layer down.
-    /// </summary>
-    static bool IsContention(Exception failure) => failure switch
-    {
-        ContentAuthoringException refused => refused.Reason is ContentAuthoringException.PublishInProgressReason
-            or ContentAuthoringException.NoOpenDraftReason
-            or ContentAuthoringException.BaseVersionMovedReason
-            or ContentAuthoringException.UpgradeAlreadyRecordedReason,
-        DbException => true,
-        _ => false,
-    };
 
     /// <summary>One ledger row by id, or null when the ledger does not hold the upgrade.</summary>
     async Task<ContentUpgradeRecord?> FindRecordAsync(string id)

@@ -161,6 +161,8 @@ sealed partial class ContentUpgradeRun
     /// </summary>
     async Task<IReadOnlyList<ContentEdit>?> ReplanAsync(ContentUpgradeDefinition definition)
     {
+        OperationId = definition.Id;
+        Operation = "export the baseline bundle";
         ContentBundle baseline = await Store.ExportBundleAsync(Active, CancellationToken).ConfigureAwait(false);
         var context = new ContentUpgradeContext(Active, baseline, Registry);
 

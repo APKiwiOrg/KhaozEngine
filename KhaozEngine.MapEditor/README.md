@@ -121,6 +121,15 @@ See `KhaozEngine.Showcase/RoomMapEditor.cs` for a worked example (`RoomMapEditor
 
 ## Keys
 
+The viewport uses a pivot-based editor camera. Middle drag orbits around the terrain point captured when the
+button is pressed. Shift+middle captures pan instead, and the chosen mode stays fixed until release. A terrain
+miss reuses the last pivot or starts 25 metres ahead of the camera. The wheel dollies toward or away from the
+pivot between 0.5 and 100000 metres without changing fly speed. Hold right mouse to look and use WASD plus E/Q
+to fly at the independently configured fly speed. Movement keys do nothing until a right-button press acquires
+the viewport. Navigation cannot start over editor chrome or while a field or modal owns input, and a captured
+gesture suppresses tool pointer input through its release frame. Press unmodified F to frame the current viewport
+selection. F does nothing for an empty or outline-only selection and remains text input while a field is focused.
+
 Ctrl+Z undo, Ctrl+Shift+Z or Ctrl+Y redo, Ctrl+S save, Ctrl+R reloads the current document from disk,
 Ctrl+D duplicates the current selection (see
 Duplicate below), Ctrl+Shift+F freezes the whole zone's procedural scatter into placements (see Freeze
@@ -135,8 +144,8 @@ the tool layer would consume this frame's Escape BEFORE the tool step runs, sinc
 handler sees the key the gesture is already cancelled and the mode is back to Select, so asking then would let
 the same press both cancel a drag and pop the menu open. Every Ctrl chord above also fires on Cmd
 (Super): `InputState.IsCommandDown` treats the two as the same modifier, so the Windows/Linux chords work
-unmodified on a Mac (Cmd+S, Cmd+R and Cmd+D also suppress the fly camera for that one frame, since those chords
-carry a WASD letter, see Camera bookmarks below for the Command-modifier suppression). All of them, plus the
+unmodified on a Mac. Cmd+S, Cmd+R and Cmd+D also suppress camera motion for that frame, since those chords carry
+a movement letter. All of them, plus the
 bare R hotkey and the bookmark digits, are suppressed while an inspector field, the kit-palette filter, or
 the spawn filter holds keyboard focus (`PropertyGrid.HasActiveEditor` ORed with the two filters' own
 `IsFocused`, see `MapEditorScene.AnyEditorFocused`), so typing an "R" or a Ctrl-chord letter into a name or a
@@ -191,7 +200,7 @@ Bare Escape, with nothing for the tool layer to cancel, opens a modal settings m
 a `NumberField` row holds a live edit, where that row's own Escape cancel takes the press first and the menu
 stays open. It sits one gate below the exit dialog in `OnUpdate`, so Shift+Escape still wins when both would
 apply and the two never stack. Built on `PropertyGrid` rather than the exit dialog's `PopupPanel` because the
-popup has label/value rows plus footer buttons and no interactive row type, and this is ten editable rows.
+popup has label/value rows plus footer buttons and no interactive row type.
 
 The rows, and what each one drives:
 
@@ -203,6 +212,8 @@ The rows, and what each one drives:
   the same rebuild path the Layers panel uses and pays its hitch. A tiled document that opened windowed is the
   one thing this cannot grow live (`EditorWindowRadius` is read at open time), so it says so in the status
   strip rather than under-loading in silence. Editor view only, it never touches the document.
+- **Navigation / Fly speed** - world units per second while right mouse owns the viewport, from 0.5 to 200.
+  This value is persisted independently from wheel dolly distance, so scrolling never changes flight speed.
 - **Sky / Sky preset** - `Day` (the default), `Sunset`, `Night`, `Starfield`, via
   `Render3D.EnvironmentPresets`. Picking one resets the sun and lighting sliders to that preset's own values,
   so a pick shows that preset rather than the previous one's sliders carried onto a new palette.
@@ -355,16 +366,15 @@ drift apart.
 
 ## Camera bookmarks
 
-Shift+1 through Shift+9 stores the fly camera's current pose (`Position`/`Yaw`/`Pitch`) into that numbered
+Shift+1 through Shift+9 stores the editor camera's current pose (`Position`/`Yaw`/`Pitch`) into that numbered
 slot, overwriting whatever was there. A bare 1 through 9 recalls a previously stored slot, snapping the
 camera straight back to it. Both are session-only (nothing persists across an editor close/reopen this
 round, see the design ledger for the deferred persistence follow-up), and the status strip confirms every
 store/recall, or reports an empty slot when a bare digit hits a slot never stored this session. Both are
 gated below `MapEditorScene.AnyEditorFocused` like every other chord, so typing a digit into a name or filter
-field never fires a bookmark. Cmd+S and Cmd+D carry a WASD letter (S and D), so the fly camera's own
-`_camController.Update` is skipped for any frame `InputState.IsCommandDown` is true, keeping those chords
-from also nudging the view one frame. The camera's aspect-ratio upkeep still runs every frame regardless, so
-a resize during a held modifier is never missed.
+field never fires a bookmark. Cmd+S and Cmd+D carry a WASD letter, but movement keys affect the camera only
+while a right-button navigation gesture owns the viewport. The camera's aspect-ratio upkeep still runs every
+frame, so a resize during a held modifier is never missed.
 
 ## Kit palette
 

@@ -194,6 +194,7 @@ public partial class MapEditorScene
     internal void OnSettingsChanged()
     {
         _settings.Sanitize();
+        _navigation.FlySpeed = _settings.FlySpeed;
         _options.Settings?.Save();
         ApplyRenderDistance();
         _environmentDirty = true;

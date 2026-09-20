@@ -87,7 +87,6 @@ public partial class MapEditorScene : GameScene, IGameScene3D
     ViewportWorld _viewport = null!;
     readonly EditorVisibility _visibility = new();
     FlyCamera3D _camera = null!;
-    FlyCameraController _camController = null!;
 
     // Session-only camera bookmarks (decision 9): index 0 = slot 1 ... index 8 = slot 9. Never persisted, so a
     // fresh editor session starts with every slot empty (CameraBookmark.Set false, the struct's default).
@@ -281,7 +280,7 @@ public partial class MapEditorScene : GameScene, IGameScene3D
             TexturedPropsEnabled = () => _options.TexturedProps,
         };
         _camera = CreateInitialCamera();
-        _camController = new FlyCameraController(_camera);
+        InitializeNavigation();
         ApplyRenderDistance();   // the persisted multiplier, before the first BuildWorld primes a ring from it
 
         BuildChrome();
@@ -350,10 +349,10 @@ public partial class MapEditorScene : GameScene, IGameScene3D
         // A modal exit dialog owns the frame: it updates FIRST (its keyboard + pointer-block route Esc/Enter and
         // clicks to its own buttons) and every other editor step is skipped, so no chord, tool pick, or camera
         // move leaks through to the frozen editor beneath the scrim (decision 3).
-        if (_exitDialog is not null) { UpdateExitDialog(dt); return; }
+        if (_exitDialog is not null) { CancelNavigation(); UpdateExitDialog(dt); return; }
         // The settings menu owns the frame the same way, one gate below the exit dialog: Shift+Escape's dialog
         // still wins when both would apply, and neither opens while the other is up.
-        if (_settingsDialog is not null) { UpdateSettingsDialog(dt); return; }
+        if (_settingsDialog is not null) { CancelNavigation(); UpdateSettingsDialog(dt); return; }
         // Sampled HERE, before the tool step, because the tool step is what consumes an Escape-cancellable
         // gesture: by the time HandleShortcuts runs (inside UpdateChrome) the drag is already cancelled and the
         // mode is back to Select, so asking then would always read "nothing was active" and the same keypress
@@ -364,18 +363,6 @@ public partial class MapEditorScene : GameScene, IGameScene3D
         UpdateChrome(dt);
         CheckWorldRebuild(dt);
         UpdateStreaming(dt);
-    }
-
-    /// <summary>Fly-camera step (aspect upkeep + WASD/mouselook). Overridable for headless order tests.</summary>
-    protected virtual void UpdateCamera(float dt)
-    {
-        int w = Manager!.Input.Width, h = Manager.Input.Height;
-        if (h > 0) _camera.AspectRatio = (float)w / h;
-        // Skip the fly step while a command modifier is held (decision 5): Cmd+S / Cmd+D and friends carry a WASD
-        // letter, and running the fly camera on those frames nudges the view one frame per chord. The aspect upkeep
-        // above still runs so a resize during a held modifier is not missed.
-        if (Manager.Input.IsCommandDown) return;
-        _camController.Update(Manager.Input, dt);
     }
 
     /// <summary>Tool step: builds the frame input from the camera + pointer and advances the controller.
@@ -3021,9 +3008,9 @@ public partial class MapEditorScene : GameScene, IGameScene3D
 
         bool overChrome = IsOverChrome(s.MousePosition);
         Pointer? ptr = Manager.Pointer;
-        bool pressed = !overChrome && (ptr?.IsJustPressed ?? false);
-        bool down = !overChrome && (ptr?.IsDown ?? false);
-        bool released = ptr?.IsJustReleased ?? false;
+        bool pressed = !NavigationOwnsPointer && !overChrome && (ptr?.IsJustPressed ?? false);
+        bool down = !NavigationOwnsPointer && !overChrome && (ptr?.IsDown ?? false);
+        bool released = !NavigationOwnsPointer && (ptr?.IsJustReleased ?? false);
         // Screen-space distance travelled since the press, in the pointer's own space (matches the TreeView row-drag
         // threshold precedent), so the body-drag gesture arms on the same 6f dead zone the outline reorder uses.
         float travel = ptr is not null ? (ptr.Position - ptr.PressOrigin).Length() : 0f;

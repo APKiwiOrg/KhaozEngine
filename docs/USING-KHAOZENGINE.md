@@ -9079,6 +9079,15 @@ A hidden element is neither drawn nor pickable from the viewport, but stays sele
 (which reads straight off the document), so hiding something is always reversible. See the
 `KhaozEngine.MapEditor` README's "Visibility" section for the full mechanics.
 
+**Map editor navigation.** Middle drag orbits around the terrain point captured at press. Shift+middle captures
+pan mode at press and keeps it for the full gesture. A miss keeps the previous pivot or falls back to a point 25
+metres ahead. The wheel dollies between 0.5 and 100000 metres from that pivot and never changes fly speed. Hold
+right mouse to look and use WASD plus E/Q to fly at the separately configured fly speed. Movement keys are inert
+until the right-button press acquires the viewport. Chrome, focused fields, modals and active tool gestures block
+navigation acquisition. Navigation suppresses editor pointer edges through the release frame. Unmodified F frames
+the current viewport selection. It is a no-op with no selection or an outline-only selection, and focused fields
+keep F as text input.
+
 **Keys.** Ctrl+Z undo, Ctrl+Shift+Z or Ctrl+Y redo, Ctrl+S save, Ctrl+R reload, Ctrl+D duplicates the current selection
 (see Duplicate below), Ctrl+Shift+F freezes the whole zone's procedural scatter into placements (see
 Freeze zone below), Delete removes the current selection, R snaps the selected placement to the ground
@@ -9088,8 +9097,8 @@ feature, exclusion, or scatter override row in the outline tree reorders it the 
 (see Camera bookmarks below), Escape cancels an in-flight gizmo/draw gesture and returns to `Select`, and
 opens the settings menu (below) when there is no gesture to cancel. Every
 Ctrl chord above also accepts Cmd (Super) in its place (`InputState.IsCommandDown` treats the two as one
-modifier), so the same keys work unmodified on a Mac (Cmd+S and Cmd+D also suppress the fly camera for that
-one frame, since both carry a WASD letter). All of the chords, plus the bare R hotkey and the bookmark
+modifier), so the same keys work unmodified on a Mac. Cmd+S and Cmd+D also suppress camera motion for that
+frame, since both carry a movement letter. All of the chords, plus the bare R hotkey and the bookmark
 digits, are suppressed while an inspector field, the kit-palette filter, or the spawn filter holds keyboard
 focus (`MapEditorScene.AnyEditorFocused`), so typing a name or a filter query never leaks into a document
 command. Escape carries extra nuance under that gate: a `NumberField` mid-edit cancels only its own typed
@@ -9110,7 +9119,7 @@ open and the work intact. **Save and Close** does the same save, then leaves the
 README's "Exit dialog" section for the full mechanics.
 
 **Settings menu** (since 17.6.0). Bare Escape with no gesture to cancel opens a modal settings menu over the
-editor's own view preferences: render distance (Base / 2x / 4x), sky (preset plus sun azimuth and elevation),
+editor's own view preferences: render distance (Base / 2x / 4x), navigation fly speed, sky (preset plus sun azimuth and elevation),
 lighting (key and ambient intensity multipliers), and ocean (preset, swell amplitude, foam strength, and a
 surf toggle). None of it touches the map document, so two operators can prefer different horizons and skies
 over the same world. It sits one gate below the exit dialog, so Shift+Escape still wins when both would apply.
@@ -9120,6 +9129,8 @@ over the same world. It sits one gate below the exit dialog, so Shift+Escape sti
   rebuild and a brief hitch (the ring's radii are baked when the world builds). A tiled document that opened
   windowed is the one thing it cannot grow live, since re-windowing means reloading and discarding unsaved
   edits, so it says so in the status strip instead of under-loading in silence.
+- **Fly speed** sets right-button flight from 0.5 to 200 world units per second. It persists independently from
+  wheel dolly distance, so scrolling never changes it.
 - **Sky and ocean** run through `EnvironmentPresets` / `OceanPresets` (above) plus the sliders on top. This is
   the editor writing to the HOST scene's `Post`, which is new: `MapEditorOptions.DriveEnvironment` (default
   true) is the seam. The default is what gives a freshly opened editor a day sky rather than the engine's
@@ -9176,7 +9187,7 @@ landing a status-strip note instead of a phantom undo entry. `ke-mapedit`'s `fre
 reuses the same command, so a GUI-driven and an MCP-driven freeze can never drift apart. See the
 `KhaozEngine.MapEditor` README's "Freeze zone" section for the full mechanics.
 
-**Camera bookmarks.** Shift+1..9 stores the fly camera's pose (position, yaw, pitch) into that numbered
+**Camera bookmarks.** Shift+1..9 stores the editor camera's pose (position, yaw, pitch) into that numbered
 slot, and a bare 1..9 recalls it. Session-only (nothing persists across a close/reopen this round), with the
 status strip confirming every store/recall or reporting an empty never-stored slot. Camera bookmarks are
 interactive viewport state, so they have no MCP equivalent: `ke-mapedit`'s render verbs are stateless,

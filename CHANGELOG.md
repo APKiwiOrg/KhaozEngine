@@ -34,7 +34,7 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   the note and the exact edits match a fresh plan), never moves the pin, never clears another publisher's
   freeze, re-checks `ExpectedVersion` on every re-read, retries only a transient `DbException`, and resolves
   every failure by reading the ledger, so two hosts racing publish each upgrade exactly once. Refusals carry
-  `KECU0001` to `KECU0015` and a failed report maps to `ContentBootResult.ContentFailureExitCode`. Closes #1038.
+  `KECU0001` to `KECU0016` and a failed report maps to `ContentBootResult.ContentFailureExitCode`. Closes #1038.
 - Catalog schema version 2 on both providers, migration `catalog-v2-content-upgrade-ledger`. The one new table
   is `catalog_content_upgrade`, read through the new `IContentUpgradeLedger` that the in-memory, SQLite and SQL
   Server stores implement. `ContentPublishRequest.Upgrade` is an optional init-only stamp, and an `applied`

@@ -19,7 +19,36 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     refs/heads/*)
       br=${local_ref#refs/heads/}
       case "$br" in
-        main|master) : ;;
+        main|master)
+          # VERSION PAST ITS RELEASE (issue #1033). The repo already refuses to TAG a taken version
+          # (tag-collision-guard.sh) and to PACK one (pack-release-guard.sh), but nothing stopped the
+          # push that leaves the integration branch SITTING on one, which is the state both of those
+          # exist to prevent. It happened twice on 2026-09-20: a branch merged while a concurrent
+          # session tagged the version it was staged into, so the knob named a released version and
+          # that version's changelog entry described content its tag does not carry. Both needed a
+          # repair commit that a refusal here would have turned into a bump before the push.
+          #
+          # Only the integration branch is asked. A side branch may legitimately sit at a released
+          # version (a control harness pinned to an old tag is exactly that), so this would be noise
+          # there. Documentation, tooling and governance ride a release without bumping by the
+          # contributor rules, so tag_version_bearing lets those through: a guard that refuses a docs
+          # commit for not bumping a version it is forbidden to bump is a guard people route around.
+          if [ "$have_tagstd" = 1 ]; then
+            pushver=$(git show "$local_sha:Directory.Build.props" 2>/dev/null | tag_props_version)
+            if [ -n "$pushver" ] && [ "$(tag_release_window "$pushver" "$local_sha")" = past-tag ]; then
+              tagc=$(git rev-parse -q --verify "refs/tags/v$pushver^{commit}" 2>/dev/null)
+              tagshort=$(git rev-parse --short "$tagc" 2>/dev/null)
+              if tag_version_bearing "$tagc" "$local_sha"; then
+                echo "pre-push: '$br' is at version $pushver, but v$pushver is already released at $tagshort." >&2
+                echo "          This push is past that tag and carries changes that ship inside a package," >&2
+                echo "          so it would put a released version number on content no tag describes, and" >&2
+                echo "          leave that version's changelog entry claiming content the tag does not carry." >&2
+                echo "          Bump the version knob in Directory.Build.props, move your notes to the new" >&2
+                echo "          entry, then push. Deliberate exception: 'git push --no-verify'." >&2
+                fail=1
+              fi
+            fi
+          fi ;;
         feature/*|fix/*|hotfix/*|worktree-*) : ;;
         *-promote) : ;;
         *)

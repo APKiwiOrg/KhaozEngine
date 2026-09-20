@@ -73,3 +73,37 @@ tag_msg_ok() {
   printf '%s' "$_rest" | grep -qF "($_ver): " && return 1
   return 0
 }
+
+# tag_release_window <version> <commit> -> one word naming where <commit> sits relative to v<version>:
+#   staged    no v<version> tag exists. The version is in flight and the commit may carry anything.
+#   at-tag    v<version> IS this commit. The release itself.
+#   past-tag  v<version> exists at some OTHER commit, so this commit claims a version already released.
+#
+# 'past-tag' is the state that cost two repair commits on 2026-09-20 (issue #1033): a branch merged to
+# the integration branch while a concurrent session tagged the version it was staged into, leaving the
+# version knob naming a released version and that version's changelog entry describing content its tag
+# does not carry. It is the same window the pack guard refuses (#492), asked at push time instead.
+tag_release_window() {
+  _rw_ver=$1; _rw_commit=${2:-HEAD}
+  git rev-parse -q --verify "refs/tags/v$_rw_ver" >/dev/null 2>&1 || { printf staged; return 0; }
+  _rw_tagc=$(git rev-parse -q --verify "refs/tags/v$_rw_ver^{commit}" 2>/dev/null || true)
+  _rw_headc=$(git rev-parse -q --verify "$_rw_commit^{commit}" 2>/dev/null || true)
+  if [ -n "${_rw_tagc:-}" ] && [ "${_rw_tagc:-x}" = "${_rw_headc:-y}" ]; then printf at-tag; return 0; fi
+  printf past-tag
+}
+
+# tag_version_bearing <from> <to> -> 0 when the range changes something that ships inside a package,
+# 1 when every change is documentation, tooling or repository governance.
+#
+# The carve-out is not leniency, it is the contributor rule: tooling, documentation and repository
+# governance do not bump the version. Without it, every docs or hook commit landing on top of a release
+# would be refused for failing to bump a version it is forbidden to bump, and a guard that cries wolf is
+# a guard people learn to pass --no-verify to. Markdown is excluded even though package READMEs are
+# packed: a README edit changes package BYTES but not package BEHAVIOUR, and the same rule says it rides.
+tag_version_bearing() {
+  _vb_from=$1; _vb_to=$2
+  git diff --name-only "$_vb_from" "$_vb_to" -- \
+    ':(exclude)docs/**' ':(exclude)*.md' ':(exclude)scripts/**' \
+    ':(exclude).github/**' ':(exclude).githooks/**' ':(exclude).claude/**' ':(exclude).codex/**' \
+    ':(exclude).filesize-baseline' 2>/dev/null | grep -q .
+}

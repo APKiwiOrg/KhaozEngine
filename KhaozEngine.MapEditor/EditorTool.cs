@@ -446,7 +446,7 @@ public sealed partial class EditorToolController
         out float? startY, out float startYaw, out float startScale, out bool rotatable)
     {
         pos = default; kind = SelectionKind.None; id = ""; startY = null; startYaw = 0f; startScale = 1f; rotatable = false;
-        EditorSelection sel = _document.Selection;
+        EditorSelection sel = _document.Selection; if (!IsVisible(sel.Kind, sel.Id)) return false;
         switch (sel.Kind)
         {
             case SelectionKind.Placement when FindPlacement(sel.Id) is { } p:

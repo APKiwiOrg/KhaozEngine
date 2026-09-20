@@ -79,6 +79,50 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
+        public void TerrainOnly_IsTemporaryAndUnderlyingChoicesRemainEditable()
+        {
+            var visibility = new EditorVisibility();
+            visibility.SetGroup(VisibilityGroup.Water, false);
+            visibility.SetLayer("forest", false);
+            visibility.SetCategory(EditorPropCategory.Trees, false);
+
+            visibility.TerrainOnly = true;
+
+            Assert.True(visibility.IsElementVisible(SelectionKind.Terrain, ""));
+            Assert.False(visibility.GetGroup(VisibilityGroup.Spawns));
+            Assert.False(visibility.GetLayer("rocks"));
+            Assert.False(visibility.GetCategory(EditorPropCategory.Rocks));
+            visibility.SetGroup(VisibilityGroup.Water, true);
+            visibility.SetLayer("forest", true);
+            visibility.SetCategory(EditorPropCategory.Trees, true);
+
+            visibility.TerrainOnly = false;
+
+            Assert.True(visibility.GetGroup(VisibilityGroup.Water));
+            Assert.True(visibility.GetLayer("forest"));
+            Assert.True(visibility.GetCategory(EditorPropCategory.Trees));
+        }
+
+        [Fact]
+        public void ShowAll_ClearsEveryHideAndSoloOverride()
+        {
+            var visibility = new EditorVisibility();
+            visibility.SetGroup(VisibilityGroup.Regions, false);
+            visibility.SetLayer("forest", false);
+            visibility.SetCategory(EditorPropCategory.Rocks, false);
+            visibility.SetElementHidden(SelectionKind.Placement, "ruin", true);
+            visibility.TerrainOnly = true;
+
+            visibility.ShowAll();
+
+            Assert.False(visibility.TerrainOnly);
+            Assert.True(visibility.GetGroup(VisibilityGroup.Regions));
+            Assert.True(visibility.GetLayer("forest"));
+            Assert.True(visibility.GetCategory(EditorPropCategory.Rocks));
+            Assert.True(visibility.IsElementVisible(SelectionKind.Placement, "ruin"));
+        }
+
+        [Fact]
         public void RemapIndex_ShiftsHideAcrossReorder_BothDirections()
         {
             // Moving LATER (from < to): list [A,B,C,D], Move(0, 2) -> [B,C,A,D]. A follows to slot 2, B and C

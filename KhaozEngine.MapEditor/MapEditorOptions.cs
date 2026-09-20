@@ -27,6 +27,11 @@ public sealed class MapEditorOptions
     /// <summary>Asset manifests parsed into the kit palette and the picking heights.</summary>
     public List<string> ManifestPaths = new();
 
+    /// <summary>Optional explicit classification of a kit identity for editor draw and pick filtering. When null,
+    /// the editor uses explicit manifest categories named trees or rocks and treats every other kit as
+    /// <see cref="EditorPropCategory.OtherProps"/>. Asset file names are never classification metadata.</summary>
+    public Func<string, EditorPropCategory>? ResolvePropCategory;
+
     /// <summary>The feature registry used to load / save / build the document. Null defaults to
     /// <see cref="MapDocRegistry.CreateDefault"/>.</summary>
     public MapDocRegistry? Registry;

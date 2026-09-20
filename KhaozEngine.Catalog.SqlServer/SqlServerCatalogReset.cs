@@ -112,12 +112,12 @@ public static class SqlServerCatalogReset
     /// recreates the schema. A schema version this build does not write is refused either way.
     /// </para>
     /// <para>
-    /// <b>It takes no application lock, unlike the schema create.</b> The create takes one because two hosts
-    /// starting at once is the ordinary deployment, and two bare creates would be one success and one "there
-    /// is already an object named" failure. A reset is a maintenance action taken with writers stopped, and
-    /// the schema modification locks its own drops hold already serialize it against a concurrent create or
-    /// reset in the database, so the second one waits and then finds a schema to work from rather than
-    /// interleaving with the first.
+    /// <b>It takes the SAME exclusive application lock the schema create takes, as the first statement of its
+    /// transaction.</b> The create takes one because two hosts starting at once is the ordinary deployment
+    /// here. A lock one side holds and the other does not is not a lock, so a reset without it could drop
+    /// fourteen tables while a starting host was half way through creating them, and the schema modification
+    /// locks each statement takes for itself do not prevent that: they serialize one statement at a time, not
+    /// the sequence. The lock is held for the transaction and released with it, however it ends.
     /// </para>
     /// </summary>
     /// <param name="connectionString">The ADO.NET connection string, under a credential holding DDL rights.</param>
@@ -148,9 +148,9 @@ public static class SqlServerCatalogReset
     }
 
     /// <summary>
-    /// The whole reset inside ONE serializable transaction. SQL Server runs DDL transactionally, so a failure
-    /// anywhere below (a drop, a create, or the audit insert refusing an over-long actor) rolls the drop back
-    /// with it and leaves the catalog exactly as it was. That is not a nicety: a half-dropped catalog fails
+    /// The whole reset inside ONE serializable transaction, behind the schema's application lock. SQL Server
+    /// runs DDL transactionally, so a failure anywhere below rolls the drop back with it and leaves the
+    /// catalog exactly as it was. That is not a nicety: a half-dropped catalog fails
     /// the next open outright, because the initializer creates only when it counts ZERO catalog tables and
     /// validates every object by name otherwise.
     /// </summary>
@@ -164,6 +164,11 @@ public static class SqlServerCatalogReset
     {
         await using SqlTransaction transaction = (SqlTransaction)await connection
             .BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken).ConfigureAwait(false);
+
+        // First, before anything is even READ, so a concurrent create or reset waits here rather than
+        // interleaving with this one. It is the create's own lock on the create's own resource name.
+        await SqlServerCatalogSchemaValidation
+            .TakeSchemaLockAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
 
         IReadOnlySet<string> tables = await ReadExistingTablesAsync(connection, transaction, cancellationToken)
             .ConfigureAwait(false);

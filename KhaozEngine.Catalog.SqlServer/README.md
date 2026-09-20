@@ -197,10 +197,13 @@ family membership survives the import.
 `sys` catalog views plus the ordinary read and write rights on the fourteen tables, which is what a production
 application login should have.
 
-`SqlServerCatalogReset.ResetAsync` needs DDL rights plus `EXECUTE` on `sys.sp_executesql`, so give it the
-migration credential rather than the application login. It takes no application lock, unlike the schema
-create: it is a maintenance action taken with writers stopped, and the schema modification locks its own drops
-hold already serialize it against a concurrent create or reset inside the database.
+`SqlServerCatalogReset.ResetAsync` needs DDL rights plus `EXECUTE` on both `sys.sp_executesql` and
+`sys.sp_getapplock`, so give it the migration credential rather than the application login. It takes the SAME
+exclusive application lock the schema create takes, on the same resource name, as the first statement of its
+transaction. A lock one side holds and the other does not is not a lock: without it a reset could drop the
+fourteen tables while a starting host was half way through creating them. The schema modification locks each
+statement takes for itself do not cover that, because they serialize one statement at a time and not the
+sequence.
 
 ## Testing this backend
 

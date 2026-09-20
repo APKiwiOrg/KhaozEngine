@@ -15288,16 +15288,23 @@ What the runner guarantees. A run with nothing pending writes nothing at all. Ea
 its own version. An operator's open draft is never discarded: a draft counts as the runner's own only when the
 actor, the note and the exact edits all match a fresh plan, and anything else is `OperatorDraftOpen`. The pin is
 never moved. A pin on the active version does not block the publish and the report names the version to repin
-to. The runner never clears another publisher's freeze. Before every publish it freezes the draft, re-reads it and
-requires exactly its own plan on the expected base, so an operator edit that lands in the draft is never
-published inside an upgrade. A ledger id this build does not ship is `CatalogAheadOfBuild`. Two hosts racing
-publish each upgrade exactly once.
+to. Before every publish it freezes the draft, re-reads it and requires exactly its own plan on the expected
+base, so an operator edit that lands in the draft is never published inside an upgrade. It freezes only a
+draft it has just read as exactly its own plan, and it releases that marker on every attempt that froze and
+did not publish, so no run leaves behind a draft nobody can edit or discard. A ledger id this build does not
+ship is `CatalogAheadOfBuild`. Two hosts racing publish each upgrade exactly once.
 
-What it cannot guarantee through this seam, stated plainly. Discarding a draft and applying into an empty one
-are narrowed and not closed: the store offers no compare and act, so an operator edit landing in the one re-read
-between the proof and the discard, or on the same target in the window where the runner saw no draft, can be
-lost. Run a hosted upgrade in a maintenance window with editing stopped, and give the runner a DEDICATED actor
-string that no console user authenticates as. A local automatic boot has no operator.
+What it cannot guarantee through this seam, stated plainly. Discarding a draft, applying into an empty one and
+the freeze itself are narrowed and not closed. The store offers no compare and act, so an operator edit landing
+in the one re-read between the proof and the discard, or on the same target in the window where the runner saw
+no draft, can be lost. And `FreezeDraftAsync` overwrites any standing marker and carries no identity, so a
+console publish that froze the same draft in the gap between the runner's read and the runner's own freeze
+loses its marker to the runner's and gets it released when the re-proof fails. An operator edit made under that
+released marker, on a target inside the console publish's frozen edit set, is deleted unpublished by that
+publish's own commit. A rival upgrade RUNNER is not exposed to it, because its own re-proof refuses the same
+contaminated draft. Run a hosted upgrade in a maintenance window with editing AND console publishing stopped,
+and give the runner a DEDICATED actor string that no console user authenticates as. A local automatic boot has
+no operator.
 
 The hosted arm never upgrades implicitly. A deploy step runs the game's command in `Preview`, then `Apply`
 with `ExpectedVersion` set to the version the preview printed, before the server starts. `Preview` writes

@@ -697,11 +697,16 @@ Three windows sit between a run's reads and its writes. One is closed and two ar
 1. **Publish. CLOSED, by a freeze and a re-proof.** Every publish the runner performs calls `FreezeDraftAsync`
    with the version the plan was computed against, re-reads the open draft under that marker, and publishes
    only when it is exactly this definition's plan on that base version. While the marker stands the store
-   refuses `ApplyEditsAsync` and `DiscardDraftAsync`, so what was proved is what is published. A draft that
-   fails the re-proof takes the obstruction path, and the marker this attempt set is released before it does,
-   because a run that stops for an operator must not hand back a draft they can neither edit nor discard.
-   Releasing it is safe for the same reason the proof failed: a draft that is not a clean plan is one a
-   rival's own proof under its own freeze refuses too.
+   refuses `ApplyEditsAsync` and `DiscardDraftAsync`, so what was proved is what is published. The rule for
+   the marker is the whole of it: the runner freezes only a draft it has just read as exactly its own plan,
+   and it releases the marker on every attempt that froze and did not publish, including a cancelled token
+   and a fault of a type this package does not report on, because a run that stops for an operator must not
+   hand back a draft they can neither edit nor discard. What it releases is not always what it set.
+   `FreezeDraftAsync` OVERWRITES and carries no identity, so a publisher that froze the same draft in the gap
+   between the runner's read and the runner's own freeze has already lost its marker to the runner's. A rival
+   RUNNER loses nothing by that, because its own re-proof under its own freeze refuses a contaminated draft
+   exactly as this one did. The admin console's publish takes whatever is drafted with no plan proof at all,
+   and that is the third residue below.
 2. **Discard. NARROWED, not closed.** `DiscardDraftAsync` is refused while a freeze stands, so the marker
    that closes the publish window is the one thing that cannot guard this one, and the proof stays check then
    act. It is as narrow as the seam allows: the run re-reads the draft and re-proves `IsKnownWork` over
@@ -713,18 +718,23 @@ Three windows sit between a run's reads and its writes. One is closed and two ar
    judged, so only a draft the run cannot prove is classified as a rival's to wait out or an operator's to
    report.
 
-Two residues remain, each one store round trip wide.
+Three residues remain. The first two are one store round trip wide.
 
 - An operator edit landing between the known-work proof and the discard it authorised is lost.
 - An operator edit on the SAME target under the SAME operation as one of the run's planned edits, written
   into the window where the run had seen no draft, is replaced by the run's own apply. A change set holds one
   pending intent per row, so the second write of a target takes the first one's place.
+- A CONSOLE publish that froze the same draft in the gap between the runner's read and the runner's own
+  freeze loses its marker. The runner reads the draft as exactly its own plan, an operator edit lands, the
+  console's publish freezes the draft, the runner freezes over that marker, re-reads, fails its re-proof on
+  the changed draft and releases what stands. A further operator edit on a target inside the console
+  publish's own frozen edit set is then accepted, and that publish's commit deletes it unpublished.
 
 They are accepted rather than closed because of where the runner runs. A hosted upgrade runs in a maintenance
-window with editing stopped, and a local automatic boot has no operator at the keyboard at all. **A game
-whose admin console writes under the same actor string as its upgrade runner weakens every proof here**,
-because the actor is the first half of each of them, so the upgrade actor must be dedicated to the runner and
-used by nothing else.
+window with editing AND console publishing stopped, and a local automatic boot has no operator at the
+keyboard at all. **A game whose admin console writes under the same actor string as its upgrade runner
+weakens every proof here**, because the actor is the first half of each of them, so the upgrade actor must be
+dedicated to the runner and used by nothing else.
 
 Clearing a draft this way is informational rather than a failure: `KECU0016` names the edit count and the
 version, and the upgrade is tried again against the re-read baseline. The worst an interleaving costs is a

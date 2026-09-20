@@ -150,9 +150,9 @@ sealed partial class ContentUpgradeRun
     /// that closes the publish window is exactly the thing that cannot guard this one. The window is narrowed
     /// instead: the draft is read again and proved again over what THAT read returns, with nothing awaited
     /// between the read and the discard. An operator edit landing inside that last round trip is still lost,
-    /// and nothing here can say otherwise. A hosted upgrade runs in a maintenance window with editing
-    /// stopped, and a local automatic boot has no operator at all, which is the whole of why the residue is
-    /// accepted.
+    /// and nothing here can say otherwise. A hosted upgrade runs in a maintenance window with editing AND
+    /// console publishing stopped, and a local automatic boot has no operator at all, which is the whole of
+    /// why the residue is accepted.
     /// </para>
     /// </summary>
     /// <param name="draft">The standing draft.</param>

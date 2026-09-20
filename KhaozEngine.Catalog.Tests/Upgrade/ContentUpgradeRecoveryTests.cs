@@ -62,13 +62,14 @@ public sealed class ContentUpgradeRecoveryTests
     }
 
     /// <summary>
-    /// The freeze a RIVAL publisher holds is never cleared by this runner. Waiting cannot outlast a pack
-    /// write to blob storage and nothing tells a live marker from a dead one, so clearing one would let an
-    /// operator's edit land in a draft the rival's commit then deletes. The only thing the runner does to a
-    /// frozen draft it can prove holds its own plan is PUBLISH it.
+    /// The runner clears NO marker on the path where its own re-proof passes. It finds a frozen draft it can
+    /// prove holds its own plan, and the only thing it does to one is PUBLISH it: no clear on sight, and no
+    /// clear before the publish takes the marker over. That is the whole of what this proves. The runner DOES
+    /// release a marker on an attempt that froze and did not publish, and that one may belong to a publisher
+    /// that froze the same draft first, which is the third residue the README names.
     /// </summary>
     [Fact]
-    public async Task TheRunnerNeverClearsAFreezeItDidNotSetItself()
+    public async Task TheRunnerClearsNoMarkerOnThePathWhereItsReProofPasses()
     {
         using var harness = new UpgradeHarness();
         await harness.SeedOlderCatalogAsync();

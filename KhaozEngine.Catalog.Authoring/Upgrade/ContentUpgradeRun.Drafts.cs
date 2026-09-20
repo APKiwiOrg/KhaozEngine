@@ -23,15 +23,19 @@ namespace KhaozEngine.Catalog.Authoring;
 /// would do to a draft it believed was its own is irreversible.
 /// </para>
 /// <para>
-/// <b>A proven own draft is PUBLISHED, never discarded, and its freeze is never cleared before the publish
-/// takes it.</b> A marker found standing here is either a live publish or a dead one and nothing on the seam
-/// tells them apart, so clearing one on sight would let a later edit land in a draft a live publisher's
-/// commit then deletes. The store's own rule is that a publish is how a dead freeze is recovered, because
+/// <b>A proven own draft is PUBLISHED, never discarded, and no marker is cleared ON SIGHT.</b> A marker
+/// found standing here is either a live publish or a dead one and nothing on the seam tells them apart, so
+/// clearing one where it is found would let a later edit land in a draft a live publisher's commit then
+/// deletes. The store's own rule is that a publish is how a dead freeze is recovered, because
 /// <see cref="IContentAuthoringStore.FreezeDraftAsync"/> overwrites the marker. So the publish path freezes
-/// the draft for ITSELF and proves it again under that marker before publishing it: only a run that then
-/// finds the draft is not its plan clears the marker, and only because that draft is one no publisher may
-/// take. Carried ids make two runners' plans for one definition identical and the commit's version
-/// confirmation lets exactly one of them win.
+/// the draft for ITSELF and proves it again under that marker before publishing it, and it releases what
+/// stands there on every attempt that froze and did not publish. What it releases is not always what it set:
+/// the freeze overwrites and carries no identity, so a publisher that froze the same draft in the gap
+/// between this run's read and its own freeze has already lost its marker to this one. A rival RUNNER loses
+/// nothing by that, because its own re-proof under its own freeze refuses a contaminated draft exactly as
+/// this one does, and an admin console publish carries no plan proof at all, which is the third residual
+/// window the README names. Carried ids make two runners' plans for one definition identical and the
+/// commit's version confirmation lets exactly one of them win.
 /// </para>
 /// </summary>
 sealed partial class ContentUpgradeRun

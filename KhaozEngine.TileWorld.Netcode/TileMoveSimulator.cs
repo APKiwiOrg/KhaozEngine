@@ -318,6 +318,9 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
         TileRect footprint = default;
         int plane = 0;
         bool resolved = resolver is not null && resolver.TryGetFootprint(target, out footprint, out plane);
+        TileInteractionReachPolicy reachPolicy = resolved
+            ? resolver!.GetInteractionReachPolicy(target)
+            : TileInteractionReachPolicy.Default;
 
         s.Mode = mode;
         s.InteractTarget = 0;
@@ -328,8 +331,8 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
         s.CombatTarget = 0;
 
         int size = s.FootprintSize;
-        if (!resolved || !TileReach.TryNearest(Map, footprint, plane, s.Tile, size, MaxPathRadius,
-                out TileCoord reachTile, out TilePath path, scratch))
+        if (!resolved || !TileInteractionReach.TryNearest(Map, footprint, plane, s.Tile, size, MaxPathRadius,
+                reachPolicy, out TileCoord reachTile, out TilePath path, scratch))
         {
             s.Route = TileRoute.None;
             return s;
@@ -342,7 +345,8 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
         s.InteractTarget = target;
         s.InteractDomain = TileInteractionTarget.DomainOf(kind);
         s.Route = RouteFor(path);
-        if (s.Route.IsIdle) s.Facing = TileReach.FacingToward(Map, footprint, plane, reachTile, size);
+        if (s.Route.IsIdle)
+            s.Facing = TileInteractionReach.FacingToward(Map, footprint, plane, reachTile, size, reachPolicy);
         return s;
     }
 
@@ -573,7 +577,7 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
     // booth for a round trip and then rotate. Both heads run this, so the turn is predicted with the rest of the
     // click and the server's own write of the same value becomes an idempotent backstop.
     //
-    // TileReach.Contains is a real guard, not a formality. Repath rebuilds a route through FindPath, whose
+    // TileInteractionReach.Contains is a real guard, not a formality. Repath rebuilds a route through FindPath, whose
     // nearest-reachable fallback can leave a live route that stops SHORT of a reach tile, and FacingToward answers
     // W for a tile that touches no footprint tile at all. Unguarded, that pair turns a player who never got there
     // to face west for no reason. Contains also refuses a target on another plane, so the plane needs no second
@@ -598,14 +602,15 @@ public sealed class TileMoveSimulator : ITickSimulator<TileMoveState, TileComman
             return s;
         }
         int size = s.FootprintSize;
-        if (!TileReach.Contains(Map, footprint, plane, s.Tile, size))
+        TileInteractionReachPolicy reachPolicy = resolver.GetInteractionReachPolicy(s.InteractTarget);
+        if (!TileInteractionReach.Contains(Map, footprint, plane, s.Tile, size, reachPolicy))
         {
             // The walk ended off the reach set, which is what a route truncated at MaxRouteSteps leaves behind.
             s.InteractTarget = 0;
             s.InteractDomain = TileInteractionDomain.AuthoredObject;
             return s;
         }
-        s.Facing = TileReach.FacingToward(Map, footprint, plane, s.Tile, size);
+        s.Facing = TileInteractionReach.FacingToward(Map, footprint, plane, s.Tile, size, reachPolicy);
         return s;
     }
 

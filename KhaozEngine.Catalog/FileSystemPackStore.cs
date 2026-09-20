@@ -18,12 +18,19 @@ namespace KhaozEngine.Catalog;
 /// provider lays the same tree out under an HTTP base address, so one tree serves both.
 /// </para>
 /// <para>
-/// Writes go to <c>&lt;hash&gt;.tmp</c> in the same shard directory and then
+/// Writes go to a UNIQUELY NAMED temporary in the same shard directory and then
 /// <c>File.Move(temp, final, overwrite: true)</c>, the map document's idiom. <c>overwrite: true</c> is
 /// correct here PRECISELY because the name is the content: rewriting a hash with its own bytes is a no-op by
 /// definition. An <c>fsync</c> before the move happens only under
 /// <see cref="PackDurability.PowerFail"/>, because a pack file lost to a power cut is refetchable from its
 /// hash and a lost world file is not.
+/// </para>
+/// <para>
+/// <b>The temporary's name carries a random token rather than being the destination plus an extension</b>,
+/// because two publishers writing ONE pack root write the same chunk hashes: the same-named temporary makes
+/// the second writer's open fail, or its move find nothing where the first writer's move already took the
+/// file. A per-write name makes concurrent puts of one hash two independent writes that both land on the
+/// same correct bytes, which is what a content-addressed store is entitled to promise.
 /// </para>
 /// <para>
 /// <b>The version pointer lives OUTSIDE the shard tree</b>, under <c>versions/</c>, because a shard name is
@@ -358,7 +365,11 @@ public sealed class FileSystemPackStore : IPackStore, IPackStorePruning, IConten
 
     async Task WriteThenMoveAsync(string path, ReadOnlyMemory<byte> bytes, CancellationToken cancellationToken)
     {
-        string temporary = path + TemporaryExtension;
+        // Per WRITE rather than per destination, so two publishers filing one hash into one root do not
+        // collide on the temporary. The name still ends in the temporary extension, which is what a
+        // leftover-file sweep looks for, and it is never a content address, so the orphan walk skips it.
+        string temporary = FormattableString.Invariant(
+            $"{path}.{Guid.NewGuid():n}{TemporaryExtension}");
         try
         {
             await using (var stream = new FileStream(

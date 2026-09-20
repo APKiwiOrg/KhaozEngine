@@ -326,11 +326,74 @@ public sealed class ContentUpgradeRunnerTests
         Assert.Equal(before, await harness.FootprintAsync());
         Assert.Equal(1, report.ActiveVersionAfter);
         Assert.Equal(
-            [ContentUpgradeStepState.Planned, ContentUpgradeStepState.Pending],
+            [ContentUpgradeStepState.WouldPublish, ContentUpgradeStepState.Pending],
             States(report));
         Assert.Single(report.Steps[0].ChangeLines);
         Assert.Contains("new_row", report.Steps[0].ChangeLines[0], System.StringComparison.Ordinal);
         Assert.Empty(report.Steps[1].ChangeLines);
+    }
+
+    /// <summary>
+    /// A previewed definition that an apply would PUBLISH says so in the ledger's own vocabulary, and the
+    /// line an operator reads names the id and the number of changes the version would carry. The
+    /// definitions after it are pending AND say why, which is that a later plan reads an earlier one's
+    /// published result rather than that they were skipped.
+    /// </summary>
+    [Fact]
+    public async Task APreviewSaysWhichDefinitionAnApplyWouldPublishAndWhyTheRestArePending()
+    {
+        using var harness = new UpgradeHarness();
+        await harness.SeedOlderCatalogAsync();
+
+        ContentUpgradeReport report = await ContentUpgradeRunner.RunAsync(
+            harness.Store, harness.Registry, harness.Set, UpgradeFixtures.Preview());
+
+        Assert.Equal(ContentUpgradeDisposition.Applied, report.Steps[0].WouldRecord);
+        Assert.Null(report.Steps[0].Disposition);
+        Assert.Null(report.Steps[1].WouldRecord);
+        Assert.Contains(
+            report.Lines,
+            line => line.Contains(
+                "upgrade '" + UpgradeHarness.FirstId + "' would publish a new version with these 1 change(s).",
+                System.StringComparison.Ordinal));
+        Assert.Contains(
+            report.Lines,
+            line => line.Contains("upgrade '" + UpgradeHarness.SecondId + "' is pending.", System.StringComparison.Ordinal)
+                && line.Contains("reads the published result", System.StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// The catalog this issue is about: seeded or repaired before the ledger existed, so every definition is
+    /// already satisfied and an apply would publish NOTHING. The preview says that in words rather than
+    /// reporting the same "planned" a publishing definition gets, and it still writes nothing.
+    /// </summary>
+    [Fact]
+    public async Task APreviewOfAnAlreadySatisfiedDefinitionSaysTheApplyWouldPublishNothing()
+    {
+        using var harness = new UpgradeHarness();
+        await harness.SeedCurrentCatalogAsync();
+        Assert.Empty(await harness.Store.ListUpgradesAsync());
+        CatalogFootprint before = await harness.FootprintAsync();
+
+        ContentUpgradeReport report = await ContentUpgradeRunner.RunAsync(
+            harness.Store, harness.Registry, harness.Set, UpgradeFixtures.Preview());
+
+        Assert.Equal(ContentUpgradeOutcome.PreviewOnly, report.Outcome);
+        Assert.Equal(
+            [ContentUpgradeStepState.WouldAdopt, ContentUpgradeStepState.Pending],
+            States(report));
+        Assert.Equal(ContentUpgradeDisposition.Adopted, report.Steps[0].WouldRecord);
+        Assert.Empty(report.Steps[0].ChangeLines);
+        Assert.Contains(
+            report.Lines,
+            line => line.Contains(
+                "upgrade '" + UpgradeHarness.FirstId
+                    + "' is already present and would only be recorded, no version published.",
+                System.StringComparison.Ordinal));
+
+        // The whole of the preview contract: no version, no audit row, no ledger row and no draft.
+        Assert.Equal(before, await harness.FootprintAsync());
+        Assert.Null(await harness.Store.GetOpenDraftAsync());
     }
 
     /// <summary>A store with no upgrade ledger cannot keep history, so the runner refuses to write anything.</summary>

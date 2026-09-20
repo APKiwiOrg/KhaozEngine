@@ -149,6 +149,60 @@ public abstract partial class ContentAuthoringStoreConformance
     }
 
     /// <summary>
+    /// A PREVIEW writes nothing and says which disposition an apply would record. This one would publish,
+    /// and the step carries the version-publishing answer beside the change lines.
+    /// </summary>
+    [Fact]
+    public virtual async Task TheUpgradeRunnerPreviewSaysAnApplyWouldPublishAndWritesNothing()
+    {
+        IContentAuthoringStore store = await OpenAsync();
+        await PublishAsync(store, ContentEdit.Add(Thing, new ContentKey("one"), CatalogFixtures.Fields(11)));
+        (int versions, int audit, int ledger) before = await FootprintAsync(store);
+
+        ContentUpgradeReport report = await ContentUpgradeRunner.RunAsync(
+            store, Registry, UpgradeSet(), UpgradeOptions(ContentUpgradeMode.Preview));
+
+        Assert.Equal(ContentUpgradeOutcome.PreviewOnly, report.Outcome);
+        ContentUpgradeStepResult step = Assert.Single(report.Steps);
+        Assert.Equal(ContentUpgradeStepState.WouldPublish, step.State);
+        Assert.Equal(ContentUpgradeDisposition.Applied, step.WouldRecord);
+        Assert.NotEmpty(step.ChangeLines);
+        Assert.Equal(before, await FootprintAsync(store));
+        Assert.Null(await store.GetOpenDraftAsync());
+    }
+
+    /// <summary>
+    /// The same preview against a catalog that already carries the content with an EMPTY ledger, which is
+    /// what a catalog seeded or repaired before the ledger existed looks like. An apply would write one
+    /// adopted ledger row and publish no version, and the preview says so rather than reporting a plan.
+    /// </summary>
+    [Fact]
+    public virtual async Task TheUpgradeRunnerPreviewSaysAnApplyWouldOnlyRecordAnAlreadyPresentUpgrade()
+    {
+        IContentAuthoringStore store = await OpenAsync();
+        await PublishAsync(
+            store,
+            ContentEdit.Add(Thing, new ContentKey("one"), CatalogFixtures.Fields(11)),
+            ContentEdit.Add(Thing, new ContentKey("two"), CatalogFixtures.Fields(22)));
+        Assert.Empty(await Ledger(store).ListUpgradesAsync());
+        (int versions, int audit, int ledger) before = await FootprintAsync(store);
+
+        ContentUpgradeReport report = await ContentUpgradeRunner.RunAsync(
+            store, Registry, UpgradeSet(), UpgradeOptions(ContentUpgradeMode.Preview));
+
+        Assert.Equal(ContentUpgradeOutcome.PreviewOnly, report.Outcome);
+        ContentUpgradeStepResult step = Assert.Single(report.Steps);
+        Assert.Equal(ContentUpgradeStepState.WouldAdopt, step.State);
+        Assert.Equal(ContentUpgradeDisposition.Adopted, step.WouldRecord);
+        Assert.Empty(step.ChangeLines);
+        Assert.Contains(
+            report.Lines,
+            line => line.Contains("would only be recorded, no version published", StringComparison.Ordinal));
+        Assert.Equal(before, await FootprintAsync(store));
+        Assert.Null(await store.GetOpenDraftAsync());
+    }
+
+    /// <summary>
     /// The edits this build's one definition plans against the catalog as it stands, which is what an
     /// interrupted run would have left in the draft.
     /// </summary>

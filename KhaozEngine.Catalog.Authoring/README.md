@@ -660,8 +660,15 @@ ContentUpgradeReport report = await ContentUpgradeRunner.RunAsync(
    nothing about this plan, so that draft is resolved and the upgrade is tried again rather than blamed. An
    exception thrown after the commit point and a refusal before it look identical from outside, and only the
    ledger tells them apart.
-10. `Preview` writes nothing. It plans the first pending definition exactly and lists the rest as pending,
-    because a later plan depends on the published result of an earlier one.
+10. `Preview` writes nothing. It plans the first pending definition exactly and says which disposition an
+    APPLY would record, because a definition the catalog already carries publishes no version at all and a
+    preview that called that a plan left an operator to find out by running the apply. The step state is
+    `WouldPublish` when the apply would publish a new version with the change lines the step holds, and
+    `WouldAdopt` when the content is already present and the apply would write one adopted ledger row and
+    publish nothing. `ContentUpgradeStepResult.WouldRecord` answers the same thing in the ledger's own
+    vocabulary, so the preview and the row the apply writes read alike. The rest are listed as pending
+    carrying the reason they did not run, because a later plan depends on the published result of an
+    earlier one.
 
 Every refusal carries a stable `KECU` code beside a message naming the catalog, the upgrade id and the next
 action, and `ContentUpgradeReport.WriteTo` renders every line through `ContentBoot.LinePrefix`.

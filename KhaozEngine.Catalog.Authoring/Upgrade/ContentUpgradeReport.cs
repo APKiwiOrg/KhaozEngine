@@ -138,6 +138,12 @@ public sealed class ContentUpgradeReport
             $"upgrade '{step.Id}' applied as version {step.PublishedVersion}. {step.Description}"),
         ContentUpgradeStepState.Adopted => FormattableString.Invariant(
             $"upgrade '{step.Id}' was already satisfied and is recorded as adopted. {step.Reason}"),
+        ContentUpgradeStepState.WouldPublish => FormattableString.Invariant(
+            $"upgrade '{step.Id}' would publish a new version with these {step.ChangeLines.Count} change(s). {step.Description}"),
+        ContentUpgradeStepState.WouldAdopt => FormattableString.Invariant(
+            $"upgrade '{step.Id}' is already present and would only be recorded, no version published. {step.Reason}"),
+        ContentUpgradeStepState.Pending when step.Reason.Length > 0 => FormattableString.Invariant(
+            $"upgrade '{step.Id}' is pending. {step.Reason} {step.Description}"),
         ContentUpgradeStepState.Planned when step.ChangeLines.Count == 0 => FormattableString.Invariant(
             $"upgrade '{step.Id}' plans no change. {step.Reason}"),
         ContentUpgradeStepState.Planned => FormattableString.Invariant(

@@ -18,6 +18,14 @@ namespace KhaozEngine.Catalog.Authoring;
 sealed partial class ContentUpgradeRun
 {
     /// <summary>
+    /// Why a preview lists every definition after the first as pending. It is said on the step rather than
+    /// only in the design notes, because a definition reported as pending beside one that was planned reads
+    /// as an omission to the operator holding the preview.
+    /// </summary>
+    const string PreviewPendingReason =
+        "A preview plans only the first pending upgrade, because a later plan reads the published result of the one before it.";
+
+    /// <summary>
     /// The attempts past the first exist for exactly one reason: a SECOND runner against the same catalog
     /// holds the one draft, or moves the base version, between this run's plan and its commit, and the plan
     /// is then stale through no fault of the catalog. Two replicas booting together is an ordinary deployment
@@ -190,8 +198,13 @@ sealed partial class ContentUpgradeRun
             return Report(ContentUpgradeOutcome.Refused);
         }
 
-        _steps.Add(ContentUpgradeStepResult.Planned(first, plan.ChangeLines, plan.Reason));
-        AddPending(pending, 1);
+        // What an APPLY would record, in the ledger's own vocabulary. A definition the catalog already
+        // carries publishes no version at all, and a preview that called both of them planned left an
+        // operator to find that out by running the apply.
+        _steps.Add(plan.Kind == ContentUpgradePlanKind.AlreadySatisfied
+            ? ContentUpgradeStepResult.WouldAdopt(first, plan.Reason)
+            : ContentUpgradeStepResult.WouldPublish(first, plan.ChangeLines));
+        AddPending(pending, 1, PreviewPendingReason);
         Add(
             ContentUpgradeCodes.PreviewOnly,
             FormattableString.Invariant(
@@ -318,11 +331,14 @@ sealed partial class ContentUpgradeRun
     }
 
     /// <summary>Every definition from <paramref name="from"/> onward, listed as pending and not run.</summary>
-    void AddPending(IReadOnlyList<ContentUpgradeDefinition> pending, int from)
+    /// <param name="pending">The pending definitions.</param>
+    /// <param name="from">The first index to list.</param>
+    /// <param name="reason">Why they did not run, empty when the stop above already said so.</param>
+    void AddPending(IReadOnlyList<ContentUpgradeDefinition> pending, int from, string reason = "")
     {
         for (int i = from; i < pending.Count; i++)
         {
-            _steps.Add(ContentUpgradeStepResult.Pending(pending[i]));
+            _steps.Add(ContentUpgradeStepResult.Pending(pending[i], reason));
         }
     }
 

@@ -344,6 +344,16 @@ public sealed class SqlServerContentAuthoringStoreConformanceTests : ContentAuth
 
     /// <inheritdoc />
     [CatalogSqlServerFact]
+    public override Task TheUpgradeRunnerPreviewSaysAnApplyWouldPublishAndWritesNothing()
+        => base.TheUpgradeRunnerPreviewSaysAnApplyWouldPublishAndWritesNothing();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task TheUpgradeRunnerPreviewSaysAnApplyWouldOnlyRecordAnAlreadyPresentUpgrade()
+        => base.TheUpgradeRunnerPreviewSaysAnApplyWouldOnlyRecordAnAlreadyPresentUpgrade();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
     public override Task TheUpgradeRunnerRefusesWhileAnOperatorDraftIsOpen()
         => base.TheUpgradeRunnerRefusesWhileAnOperatorDraftIsOpen();
 

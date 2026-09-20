@@ -9,7 +9,11 @@ public enum ContentUpgradeStepState
     /// <summary>Not run. A preview lists every definition after the first as pending, and a refusal or a failure leaves the rest here.</summary>
     Pending,
 
-    /// <summary>Planned, and the plan's change lines are on the step. A preview's first pending definition only.</summary>
+    /// <summary>
+    /// Planned, without saying which disposition an apply would record. No run produces it since a preview
+    /// split into <see cref="WouldPublish"/> and <see cref="WouldAdopt"/>, and it stays declared because the
+    /// vocabulary is public and a host that renders its own step lines still names it.
+    /// </summary>
     Planned,
 
     /// <summary>Published as its own version, with the ledger row written inside that commit.</summary>
@@ -20,6 +24,18 @@ public enum ContentUpgradeStepState
 
     /// <summary>The planner refused, or the publish failed and the ledger says it did not land.</summary>
     Refused,
+
+    /// <summary>
+    /// A preview's first pending definition, whose apply WOULD publish a new version carrying the change
+    /// lines the step holds.
+    /// </summary>
+    WouldPublish,
+
+    /// <summary>
+    /// A preview's first pending definition, whose apply would publish NOTHING: the catalog already carries
+    /// what the definition ships, so the apply writes one adopted ledger row and no version.
+    /// </summary>
+    WouldAdopt,
 }
 
 /// <summary>
@@ -84,10 +100,35 @@ public sealed class ContentUpgradeStepResult
         _ => null,
     };
 
+    /// <summary>
+    /// The disposition an APPLY of this previewed step would record, and null on every state a preview does
+    /// not produce. It is the ledger's own vocabulary, so a preview and the row the apply will write read
+    /// the same, which is what tells an operator that an apply publishes nothing.
+    /// </summary>
+    public ContentUpgradeDisposition? WouldRecord => State switch
+    {
+        ContentUpgradeStepState.WouldPublish => ContentUpgradeDisposition.Applied,
+        ContentUpgradeStepState.WouldAdopt => ContentUpgradeDisposition.Adopted,
+        _ => null,
+    };
+
     /// <summary>A definition that has not run, which is every definition after a stop and after a preview's first.</summary>
     /// <param name="definition">The definition.</param>
     public static ContentUpgradeStepResult Pending(ContentUpgradeDefinition definition)
         => new(definition, ContentUpgradeStepState.Pending, null, string.Empty, NoLines);
+
+    /// <summary>
+    /// The same, carrying why this definition did not run. A preview names it, because a definition listed
+    /// as pending beside one that was planned reads as an omission otherwise.
+    /// </summary>
+    /// <param name="definition">The definition.</param>
+    /// <param name="reason">Why it did not run, empty when the caller has nothing to add.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="reason"/> is null.</exception>
+    public static ContentUpgradeStepResult Pending(ContentUpgradeDefinition definition, string reason)
+    {
+        ArgumentNullException.ThrowIfNull(reason);
+        return new ContentUpgradeStepResult(definition, ContentUpgradeStepState.Pending, null, reason, NoLines);
+    }
 
     /// <summary>
     /// A preview's exact plan for the first pending definition. An already-satisfied definition previews as a
@@ -107,6 +148,36 @@ public sealed class ContentUpgradeStepResult
         ArgumentNullException.ThrowIfNull(reason);
         return new ContentUpgradeStepResult(
             definition, ContentUpgradeStepState.Planned, null, reason, changeLines);
+    }
+
+    /// <summary>
+    /// A preview's first pending definition, whose apply would PUBLISH a new version. The change lines are
+    /// the plan's own, so the report says what the version would carry rather than only that one is due.
+    /// </summary>
+    /// <param name="definition">The definition.</param>
+    /// <param name="changeLines">The plan's change lines.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="changeLines"/> is null.</exception>
+    public static ContentUpgradeStepResult WouldPublish(
+        ContentUpgradeDefinition definition,
+        IReadOnlyList<string> changeLines)
+    {
+        ArgumentNullException.ThrowIfNull(changeLines);
+        return new ContentUpgradeStepResult(
+            definition, ContentUpgradeStepState.WouldPublish, null, string.Empty, changeLines);
+    }
+
+    /// <summary>
+    /// A preview's first pending definition, whose apply would publish NOTHING and record the id as adopted.
+    /// It carries no change lines, because there is no change to make: an apply writes one ledger row.
+    /// </summary>
+    /// <param name="definition">The definition.</param>
+    /// <param name="reason">What the planner found.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="reason"/> is null.</exception>
+    public static ContentUpgradeStepResult WouldAdopt(ContentUpgradeDefinition definition, string reason)
+    {
+        ArgumentNullException.ThrowIfNull(reason);
+        return new ContentUpgradeStepResult(
+            definition, ContentUpgradeStepState.WouldAdopt, null, reason, NoLines);
     }
 
     /// <summary>A definition published as its own version.</summary>

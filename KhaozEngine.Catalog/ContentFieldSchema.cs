@@ -84,7 +84,7 @@ public sealed record ContentFieldEntry(
 /// </summary>
 public sealed class ContentFieldSchema
 {
-    readonly Dictionary<string, ContentFieldEntry> _byName;
+    readonly Dictionary<string, (ContentFieldEntry Entry, int Index)> _byName;
 
     /// <summary>Builds a schema, checking every entry against the rules of contracts 4.7.</summary>
     /// <exception cref="ArgumentException">A name is blank or repeated, or a reference target does not match its kind.</exception>
@@ -94,13 +94,13 @@ public sealed class ContentFieldSchema
         ArgumentNullException.ThrowIfNull(fields);
 
         var ordered = new ContentFieldEntry[fields.Count];
-        _byName = new Dictionary<string, ContentFieldEntry>(fields.Count, StringComparer.Ordinal);
+        _byName = new Dictionary<string, (ContentFieldEntry, int)>(fields.Count, StringComparer.Ordinal);
         for (int i = 0; i < fields.Count; i++)
         {
             ContentFieldEntry entry = fields[i] ?? throw new ArgumentException(
                 FormattableString.Invariant($"Field entry {i} is null."), nameof(fields));
             Check(entry, i, nameof(fields));
-            if (!_byName.TryAdd(entry.Name, entry))
+            if (!_byName.TryAdd(entry.Name, (entry, i)))
             {
                 throw new ArgumentException(
                     FormattableString.Invariant($"Field name '{entry.Name}' is declared twice, at index {i}."),
@@ -120,7 +120,37 @@ public sealed class ContentFieldSchema
     public bool TryGet(string name, [MaybeNullWhen(false)] out ContentFieldEntry entry)
     {
         ArgumentNullException.ThrowIfNull(name);
-        return _byName.TryGetValue(name, out entry);
+        if (_byName.TryGetValue(name, out (ContentFieldEntry Entry, int Index) found))
+        {
+            entry = found.Entry;
+            return true;
+        }
+
+        entry = null;
+        return false;
+    }
+
+    /// <summary>
+    /// The POSITION of a named field, which is also its index in every row of the type, or -1 when the
+    /// schema declares no such field.
+    /// </summary>
+    /// <remarks>
+    /// A row's values are parallel to <see cref="Fields"/> by index, so this is the one translation from the
+    /// name a reader, a validator or an editor writes down to the number it indexes with. It answers in
+    /// constant time off the same ordinal map <see cref="TryGet"/> reads, rather than walking the list.
+    /// <para>
+    /// It answers -1 rather than throwing, because several callers legitimately ask about a field an
+    /// optional or foreign type may not carry. A caller that must have the field wants
+    /// <see cref="ContentFieldLookup"/>, which refuses instead.
+    /// </para>
+    /// </remarks>
+    /// <param name="name">The field name, compared ORDINALLY.</param>
+    /// <returns>The index in <see cref="Fields"/>, or -1.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="name"/> is null.</exception>
+    public int IndexOf(string name)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        return _byName.TryGetValue(name, out (ContentFieldEntry Entry, int Index) found) ? found.Index : -1;
     }
 
     static void Check(ContentFieldEntry entry, int index, string parameterName)

@@ -68,6 +68,42 @@ public class ContentFieldSchemaTests
     }
 
     [Fact]
+    public void IndexOfAnswersTheDeclaredPositionAndMinusOneForAnythingElse()
+    {
+        // The position is what a row's values are parallel to, so this is the one translation from the name
+        // a reader writes down to the number it indexes with.
+        var schema = new ContentFieldSchema(new[] { Int("max_stack"), Int("sort"), Int("value") });
+
+        Assert.Equal(0, schema.IndexOf("max_stack"));
+        Assert.Equal(1, schema.IndexOf("sort"));
+        Assert.Equal(2, schema.IndexOf("value"));
+
+        // Ordinal, the same comparison TryGet uses, so a case difference is a different field and not a
+        // near miss the lookup forgives.
+        Assert.Equal(-1, schema.IndexOf("Max_Stack"));
+        Assert.Equal(-1, schema.IndexOf("missing"));
+        Assert.Equal(-1, schema.IndexOf(string.Empty));
+
+        Assert.Throws<ArgumentNullException>(() => schema.IndexOf(null!));
+    }
+
+    [Fact]
+    public void IndexOfAgreesWithTheDeclaredOrderOfEveryField()
+    {
+        // The map is built beside the ordered list rather than derived from it later, so this is the pin
+        // that the two never drift.
+        ContentFieldEntry[] fields = { Int("c"), Int("a"), Int("b"), Int("d") };
+        var schema = new ContentFieldSchema(fields);
+
+        for (int i = 0; i < fields.Length; i++)
+        {
+            Assert.Equal(i, schema.IndexOf(fields[i].Name));
+            Assert.True(schema.TryGet(fields[i].Name, out ContentFieldEntry? entry));
+            Assert.Same(schema.Fields[schema.IndexOf(fields[i].Name)], entry);
+        }
+    }
+
+    [Fact]
     public void ADuplicateFieldNameIsRefused()
     {
         ArgumentException error = Assert.Throws<ArgumentException>(

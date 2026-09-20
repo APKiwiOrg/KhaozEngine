@@ -1,6 +1,6 @@
 using System;
 
-namespace KhaozEngine.Catalog.GameTypes;
+namespace KhaozEngine.Catalog;
 
 /// <summary>
 /// Where a NAMED field sits in a row of its type, resolved once against the schema the loaded runtime was
@@ -20,6 +20,10 @@ namespace KhaozEngine.Catalog.GameTypes;
 /// It is meant to run at reader CONSTRUCTION, which on a server is boot, before a socket is open, so the
 /// refusal lands beside the operator's other content refusals rather than on the first trade of a world that
 /// has already accepted players.
+/// </para>
+/// <para>
+/// It is the LOUD half of <see cref="ContentFieldSchema.IndexOf"/>, which answers -1 for a caller that is
+/// entitled to ask about a field a type may not carry.
 /// </para>
 /// </remarks>
 public static class ContentFieldLookup
@@ -71,18 +75,14 @@ public static class ContentFieldLookup
         }
 
         ContentFieldSchema schema = registration.Schema;
-        for (int i = 0; i < schema.Fields.Count; i++)
+        int index = schema.IndexOf(field);
+        if (index < 0)
         {
-            if (!string.Equals(schema.Fields[i].Name, field, StringComparison.Ordinal))
-            {
-                continue;
-            }
-
-            scale = schema.Fields[i].Scale;
-            return i;
+            throw new InvalidOperationException(FormattableString.Invariant(
+                $"Content type '{registration.TypeKey}' carries no field named '{field}' in this runtime's schema, and a reader over it names that field. The world will not run on a catalog it cannot read."));
         }
 
-        throw new InvalidOperationException(FormattableString.Invariant(
-            $"Content type '{registration.TypeKey}' carries no field named '{field}' in this runtime's schema, and a reader over it names that field. The world will not run on a catalog it cannot read."));
+        scale = schema.Fields[index].Scale;
+        return index;
     }
 }

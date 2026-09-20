@@ -80,11 +80,13 @@ under either unit, so the choice costs a name in the generic editor and the loca
 it, and never a byte of layout. There is no conversion anywhere here: reading a stored number as a span of
 time is the game's, because only the game knows how long its tick is.
 
-## `ContentFieldLookup`
+## Reaching a field
 
 A reader indexes a row by position, and the position is not a game's to write down as a literal. A duration
 field is named for the game's unit, and a reordered or renamed field leaves a number pointing at a
 neighbour, which answers.
+
+`ContentFieldLookup` is in `KhaozEngine.Catalog`, because nothing about it is game shaped:
 
 ```csharp
 int healsIndex = ContentFieldLookup.IndexIn(runtime, foodType, FoodContentType.HealsField);

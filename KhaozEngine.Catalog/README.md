@@ -80,6 +80,22 @@ var key = new ContentKey(rowBlob, start, length);       // no string materialise
 - `ContentFieldSchema` and `ContentFieldEntry` - one type's ORDERED field list, which a row's values are
   parallel to BY INDEX rather than keyed by name, so a codec is a positional walk. An entry carries its name,
   its kind, a reference target, its visibility, whether a live row must carry it and a scaled int's scale.
+  `TryGet(name)` and `IndexOf(name)` answer ordinally in constant time, and `IndexOf` answers -1 for a name
+  the schema does not declare.
+- `ContentFieldLookup` - the LOUD by-name resolution, against the schema a loaded `ContentRuntime` was
+  actually built from. A reader indexes a row by position, and the position is not a caller's to write down
+  as a literal, so it names the field and resolves once at construction:
+
+  ```csharp
+  int healsIndex = ContentFieldLookup.IndexIn(runtime, foodType, "heals");
+  int valueIndex = ContentFieldLookup.IndexIn(runtime, tuningType, "value", out int scale);
+  ```
+
+  **A field the schema lacks is a REFUSAL, not a miss.** It throws, naming the type key and the field, so a
+  publish that moved a field stops a boot rather than pricing a world at zero and carrying on. The scale is
+  read for the same reason the position is. Run it at reader construction, which on a server is before a
+  socket is open. A caller entitled to ask about a field a type may not carry uses
+  `ContentFieldSchema.IndexOf` instead.
 - `ContentFieldKind` - the seven value kinds of contracts 4.7, numbered durably because the authoring store
   writes the number: `Int`, `ScaledInt`, `Bool`, `KeyReference`, `TagList`, `LocalizedTextKey` and
   `OpaqueBytes`. A `LocalizedTextKey` is a MARKER carrying no value and no bytes.

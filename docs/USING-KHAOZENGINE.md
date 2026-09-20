@@ -15358,7 +15358,7 @@ registry.RegisterContentType(
 
 **Reach a field BY NAME, never by a literal position.** A row's values are parallel by index to its type's
 schema, and a duration field is named for the game's own unit, so a reader resolves the position once at
-construction through `ContentFieldLookup.IndexIn(runtime, type, field)` and a field the schema lacks is a
+construction through `KhaozEngine.Catalog`'s `ContentFieldLookup.IndexIn(runtime, type, field)` and a field the schema lacks is a
 REFUSAL naming both rather than a -1 a caller reads as zero. On a server that runs at boot, before a socket is
 open, so a publish that moved a field stops the boot rather than pricing a world at nothing and carrying on.
 

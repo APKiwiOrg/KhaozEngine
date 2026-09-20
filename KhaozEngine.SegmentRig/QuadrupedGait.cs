@@ -1,4 +1,5 @@
 using System;
+using System.Numerics;
 
 namespace KhaozEngine.SegmentRig;
 
@@ -32,13 +33,23 @@ namespace KhaozEngine.SegmentRig;
 /// Zero everywhere but a strike.</param>
 /// <param name="Pitch">How far the whole body, legs included, is tipped about the line through the two
 /// shoulder joints, radians, positive dipping the muzzle end. Zero everywhere but a strike.</param>
+/// <param name="RootOffset">Local displacement of the whole body after a root fall, in metres. Zero for a
+/// body standing on its feet.</param>
+/// <param name="RootRoll">Roll of the whole body about the point its pose names, radians, positive lifting
+/// the animal's left side. Zero for a body standing on its feet.</param>
+/// <param name="LeftForeSplay">Outward splay of the left foreleg at its shoulder, radians.</param>
+/// <param name="RightForeSplay">Outward splay of the right foreleg at its shoulder, radians.</param>
+/// <param name="LeftHindSplay">Outward splay of the left hind leg at its hip, radians.</param>
+/// <param name="RightHindSplay">Outward splay of the right hind leg at its hip, radians.</param>
 /// <remarks>THE ORDER IS THE CONTRACT, as it is on <see cref="WalkPose"/>: every one of these is positional,
 /// so a new channel is appended and never slotted in beside the one it reads like.</remarks>
 public readonly record struct QuadrupedPose(
     float LeftForeSwing, float RightForeSwing, float LeftHindSwing, float RightHindSwing,
     float LeftForeFlex = 0f, float RightForeFlex = 0f, float LeftHindFlex = 0f, float RightHindFlex = 0f,
     float Bob = 0f, float HeadNod = 0f, float Roll = 0f, float TrunkYaw = 0f, float HeadYaw = 0f,
-    float Surge = 0f, float Pitch = 0f)
+    float Surge = 0f, float Pitch = 0f, Vector3 RootOffset = default, float RootRoll = 0f,
+    float LeftForeSplay = 0f, float RightForeSplay = 0f,
+    float LeftHindSplay = 0f, float RightHindSplay = 0f)
 {
     /// <summary>Every angle zero and no bob: a body standing square on four straight legs, which is the
     /// pose the pieces were authored in.</summary>

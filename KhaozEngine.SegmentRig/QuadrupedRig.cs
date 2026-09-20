@@ -94,10 +94,8 @@ public sealed record QuadrupedRig
     /// <see cref="Torso"/>.</summary>
     /// <param name="pose">Where and which way the body draws.</param>
     /// <param name="walk">This frame's biped-shaped pose, read for its run lean only. Its own bob is a
-    /// two-legged one and is ignored: the quadruped's comes from its own gait. <c>RootPitch</c> and
-    /// <c>RootRoll</c> are NOT read here either. Only the two-legged <see cref="BodyRig"/> turns about its
-    /// root, because nothing four-legged swims or falls yet. A game that sets them on a quadruped gets an
-    /// upright animal and no error, so add the read here when the first one needs it.</param>
+    /// two-legged one and is ignored: the quadruped's comes from its own gait. Its root channels are also ignored
+    /// because quadruped root motion comes from <paramref name="gait"/>.</param>
     /// <param name="gait">This frame's four-legged pose, for the bob, the surge and the pitch.</param>
     /// <remarks>Rotation THEN translation, the engine's own model-transform hand. The lean tips about the
     /// shoulder height rather than about a hip, because that is the pivot a body on four legs leans about,
@@ -105,9 +103,14 @@ public sealed record QuadrupedRig
     public Matrix4x4 Body(in BodyPose pose, in WalkPose walk, in QuadrupedPose gait)
     {
         float chest = RightShoulder.Y;
-        Matrix4x4 body = Matrix4x4.CreateTranslation(0f, -chest, 0f)
+        Matrix4x4 upright = Matrix4x4.CreateTranslation(0f, -chest, 0f)
             * Matrix4x4.CreateRotationX(walk.Lean)
-            * Matrix4x4.CreateTranslation(0f, chest, 0f)
+            * Matrix4x4.CreateTranslation(0f, chest, 0f);
+        Matrix4x4 rooted = gait.RootRoll == 0f && gait.RootOffset == Vector3.Zero
+            ? upright
+            : upright * Matrix4x4.CreateRotationZ(gait.RootRoll)
+              * Matrix4x4.CreateTranslation(gait.RootOffset);
+        Matrix4x4 body = rooted
             * Matrix4x4.CreateRotationY(pose.Yaw)
             * Matrix4x4.CreateTranslation(pose.Position + new Vector3(0f, gait.Bob, 0f));
         // Skipped rather than multiplied by an identity when there is no strike, so every other frame composes

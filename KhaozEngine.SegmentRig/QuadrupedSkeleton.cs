@@ -71,15 +71,23 @@ public static class QuadrupedSkeleton
         into[Trunk] = trunk;
         into[Poll] = rig.Head(gait.HeadNod, gait.HeadYaw) * trunk;
         Matrix4x4 legFrame = rig.Trunk(gait.TrunkYaw, body);
-        into[UpperForeLeft] = BodyRig.Limb(rig.LeftShoulder, gait.LeftForeSwing) * legFrame;
-        into[UpperForeRight] = BodyRig.Limb(rig.RightShoulder, gait.RightForeSwing) * legFrame;
-        into[UpperHindLeft] = BodyRig.Limb(rig.LeftHip, gait.LeftHindSwing) * legFrame;
-        into[UpperHindRight] = BodyRig.Limb(rig.RightHip, gait.RightHindSwing) * legFrame;
+        into[UpperForeLeft] = Leg(rig.LeftShoulder, gait.LeftForeSwing, gait.LeftForeSplay) * legFrame;
+        into[UpperForeRight] = Leg(rig.RightShoulder, gait.RightForeSwing, -gait.RightForeSplay) * legFrame;
+        into[UpperHindLeft] = Leg(rig.LeftHip, gait.LeftHindSwing, gait.LeftHindSplay) * legFrame;
+        into[UpperHindRight] = Leg(rig.RightHip, gait.RightHindSwing, -gait.RightHindSplay) * legFrame;
         into[LowerForeLeft] = rig.ForeHinge(gait.LeftForeFlex) * into[UpperForeLeft];
         into[LowerForeRight] = rig.ForeHinge(gait.RightForeFlex) * into[UpperForeRight];
         into[LowerHindLeft] = rig.HindHinge(gait.LeftHindFlex) * into[UpperHindLeft];
         into[LowerHindRight] = rig.HindHinge(gait.RightHindFlex) * into[UpperHindRight];
     }
+
+    // Positive splay means OUTWARD on both sides, so the right-hand channels are negated at the call above.
+    // The zero branch preserves the exact living composition that predates the additive channel.
+    static Matrix4x4 Leg(Vector3 pivot, float swing, float splay) =>
+        splay == 0f
+            ? BodyRig.Limb(pivot, swing)
+            : Matrix4x4.CreateRotationX(-swing) * Matrix4x4.CreateRotationZ(splay)
+              * Matrix4x4.CreateTranslation(pivot);
 
     /// <summary>Where each piece sits at REST, which is its own joint carried up through every joint above
     /// it, and the origin for the trunk. The same offsets <see cref="Compose"/> lands on at

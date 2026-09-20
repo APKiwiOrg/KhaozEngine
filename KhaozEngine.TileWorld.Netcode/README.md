@@ -302,6 +302,12 @@ understand. Its registered traversal profile can give that algorithm a different
   `Transient` at `DurableOnly`, so a cell eviction FREEZES it rather than ending it, and both doors instantiate
   the coordinate before they resolve: the cap counts a frozen actor rather than admitting a spawn on top of it,
   and the despawn reaches one rather than leaving it to come back as an entity nothing indexes.
+- **`TileStaticEntitySpawn`** / **`TileWorldServer.SpawnStaticEntity`** / **`DespawnStaticEntity`** - the retained
+  interaction-entity door. The spec carries facing and footprint size. A spawn writes an idle `TileMoveState`, so
+  normal interest replication and `InteractEntity` reach use the same path as every other entity. It writes no
+  actor, route, pending-command, health or combat state. The entity is `Transient` at `Always`, so a cell removal
+  drops it and its server index together. Despawn is type-safe and idempotent by answer. A game attaches its own
+  replicated identity immediately through `Host.TryGetOwner` and owns any durable source or journal lifecycle.
 - **`TileActorDefinition`** / **`TileActorSpawner`** / **`TileActorSpawnerState`** - what a spawn POINT is authored
   from (id, max health, step mode, attack cadence, wander and leash radii, respawn delay, a game-owned `Kind`, an
   optional registered `TraversalProfile`, and `FootprintSize`), and the spawner that owns one home tile, its live

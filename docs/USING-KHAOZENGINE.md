@@ -10073,6 +10073,16 @@ The VISUAL counterpart of the section above. `Locomotion` decides where a body i
 like there, for a game whose characters are **rigid segment meshes** (forearm, shin, torso) posed every frame
 by procedural code rather than by a skinned animation clip. Transforms out, nothing drawn.
 
+`QuadrupedCollapse.PoseAt(progress, restingPose)` blends into a caller-authored resting endpoint.
+The duration overload takes elapsed seconds and duration seconds. `QuadrupedPose` includes root offset,
+root roll and one outward splay channel per upper leg, so a fallen body can fold its limbs without
+changing its scale. The game owns the animal's resting angles and grounds the composed meshes against
+their actual bounds. The endpoint remains stable after the duration has elapsed.
+
+`ButcherSwing.PoseAt(elapsedSeconds, cycleDurationSeconds)` supplies a repeating low cutting pose.
+`ButcherSwing.Compose` blends it onto another `WalkPose`. Keep the cycle duration fixed when a harvest
+takes longer, rather than slowing the animation to fill the entire action.
+
 It depends on nothing at all: no `Render3D`, no `TileWorld`, no `Netcode`, no `Gpu`, not even `Primitives`.
 `Foundation` umbrella, beside `Locomotion`.
 
@@ -11446,6 +11456,19 @@ seated beside it, so one account never holds two live entities. `Kick` and `Begi
 neither is the player's decision. It is ONE number with TWO jobs, deliberately: it is the window's length, and it
 is also the lookback that decides whether a leaving player counts as being in a fight at all, so raising it widens
 both.
+
+### Retained interaction entities
+
+`TileWorldServer.SpawnStaticEntity(tile, new TileStaticEntitySpawn(facing, footprintSize))` creates an
+idle replicated target without actor AI, combat health or pickup semantics. It uses the same entity
+interaction path as other bodies: issue `TileCommand.InteractEntity`, then handle `OnInteractEntity`
+after the player arrives in reach. Attach a registered game component through `server.Host` to describe
+what the target represents.
+
+Use `DespawnStaticEntity(netId)` to remove it. The engine does not assign an owner, expiry or reward.
+A persistent game materializes these entities from its admitted journal source state and reconciles
+them after consumption, expiry, restart or correction. Net IDs are transient presentation identities.
+Keep durable source identity in the game's journal and replicated component.
 
 ### Ground items (drops on tiles, 18.9.0)
 
@@ -14848,6 +14871,12 @@ The `Stats` split applied to experience: the engine owns the arithmetic and the 
 skill IS. There is no enum, no name, no icon, no display order, no training action and no balance number in
 the package, and **no time base of any kind**, so a turn-based world stepping a few times a second and a
 continuous one at 30 Hz agree on what an experience number means.
+
+`HarvestYieldRange` distributes an inclusive set of yield ceilings across an inclusive level interval.
+For example, `new HarvestYieldRange(1, 50, 1, 10).CeilingAt(level)` gives ceiling 1 at levels 1 through 5,
+2 at levels 6 through 10, and 10 from level 46 onward. `ImprovisedCeilingAt` halves that ceiling with
+integer rounding down, retaining the minimum as its lower bound. Invalid ranges and a level below
+unlock throw. The game owns eligibility, tool tags, duration, random draws and journalled rewards.
 
 A game supplies dense `int` indices through one small interface:
 

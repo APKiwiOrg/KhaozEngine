@@ -34,6 +34,9 @@ assumption about update rate. A cadence is a `float` of seconds.
 - **`IdleBreath`** - the standing-still cycle: torso rise and tip, an arm sway a quarter cycle behind it, a
   held break at both elbows, and a solved rest stance that keeps each sole on the floor under its own hip.
 - **`QuadrupedGait`** / **`QuadrupedPose`** - the four-beat lateral-sequence walk off the same phase.
+- **`QuadrupedCollapse`** - a smooth fall from `QuadrupedPose.Rest` to a caller-authored resting pose,
+  sampled by normalized progress or elapsed seconds and duration. The pose tail carries root offset, whole-body
+  root roll and one outward-splay channel per leg. All default to zero, preserving the living composition.
 - **`HumanoidSkeleton`** / **`QuadrupedSkeleton`** - the composers: ordered piece names, one transform per
   piece into a caller's span, and the rest offsets those transforms land on at a zero pose. See below.
 - **`SegmentSockets`** - the wrist and off-hand turns a held piece rides, the hand chain that carries it, and
@@ -61,6 +64,9 @@ them is a static class with `PoseAt(...)` and `Compose(...)`, and the order they
   hard and sideways into the target, `HoldPhase` and `LiftPhase` its own two boundaries.
 - **`ProcessingSwing`** - the restrained two-handed working pose, one `Compose(pose, phase, atStation,
   weight)` and no pose type of its own.
+- **`ButcherSwing`** - a two-handed cutting loop sampled by elapsed seconds and a caller-selected cycle duration.
+  `PoseAt(elapsedSeconds, cycleDurationSeconds)` keeps its normal cycle speed however long the surrounding action
+  runs, and `Compose` blends only its arm, wrist and torso channels over another pose.
 - **`BlockRaise`** / **`BlockPose`** - the flinch a plate in the off hand answers a blow with. An AGE in
   seconds rather than a phase, because it is a reaction and does not wrap: `WeightAt(ageSeconds)` is the
   envelope, `StanceAt(weight, rig)` solves the braced legs so both soles stay planted, and `PoseAt` carries
@@ -105,6 +111,11 @@ its own root on.
 Everything past the first four channels is defaulted, and each is written by a small number of cycles: a walk
 writes the limbs, the bob and the lean, a breath writes the torso rise and tip and the rest stance, a stroke
 writes the arm yaws and the wrists, and only air or water writes the two root angles.
+
+`QuadrupedPose` follows the same append-only rule. Its root offset and root roll move the whole rig without
+scaling it. Its four splay channels use positive values for outward motion on both sides, with the composer
+mirroring the right side. A collapse endpoint remains game content, including creature-specific fold angles,
+head dip and the offset that grounds the authored mesh.
 
 ## Adding a pose of your own
 

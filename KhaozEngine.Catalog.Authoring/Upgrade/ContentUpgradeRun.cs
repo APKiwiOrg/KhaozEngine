@@ -49,6 +49,7 @@ sealed partial class ContentUpgradeRun
     readonly List<ContentUpgradeStepResult> _steps = [];
     readonly List<ContentUpgradeDiagnostic> _diagnostics = [];
     readonly HashSet<int> _published = [];
+    IReadOnlyList<ContentUpgradeDefinition> _pending = [];
     ContentUpgradeOutcome? _stopped;
 
     internal ContentUpgradeRun(
@@ -189,6 +190,10 @@ sealed partial class ContentUpgradeRun
     /// <param name="pending">The pending definitions, ascending by order.</param>
     internal async Task<ContentUpgradeReport> ApplyAsync(IReadOnlyList<ContentUpgradeDefinition> pending)
     {
+        // Held for the publish pre-flight, which has to ask whether a draft that appeared under it names an
+        // upgrade some runner is still working on.
+        _pending = pending;
+
         for (int i = 0; i < pending.Count; i++)
         {
             ContentUpgradeDefinition definition = pending[i];

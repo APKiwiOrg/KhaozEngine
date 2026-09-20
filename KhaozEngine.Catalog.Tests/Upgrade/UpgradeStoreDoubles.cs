@@ -299,6 +299,58 @@ internal sealed class CountingContentAuthoringStore(InMemoryContentAuthoringStor
 }
 
 /// <summary>
+/// A store where a draft appears AFTER the runner's step 5 gate, which is the window an operator's console
+/// and a second runner both really open one in. The draft is injected on the second look at the draft, which
+/// is the publish pre-flight, and optionally withdrawn on a later one the way a rival publisher's goes away.
+/// </summary>
+/// <param name="inner">The store behind the double.</param>
+/// <param name="actor">The identity that opens the injected draft.</param>
+/// <param name="note">The note the injected draft carries.</param>
+/// <param name="edit">The edit the injected draft holds.</param>
+/// <param name="withdrawAtLook">The look the draft is discarded on, or 0 to leave it standing.</param>
+internal sealed class DraftAppearsAfterTheGateStore(
+    InMemoryContentAuthoringStore inner,
+    string actor,
+    string note,
+    ContentEdit edit,
+    int withdrawAtLook = 0)
+    : ForwardingContentAuthoringStore(inner), IContentUpgradeLedger
+{
+    /// <summary>How many times the RUNNER looked at the open draft, which is how a stand-off is counted.</summary>
+    public int Looks { get; private set; }
+
+    /// <inheritdoc />
+    public override async Task<ContentDraft?> GetOpenDraftAsync(CancellationToken cancellationToken = default)
+    {
+        Looks++;
+        if (Looks == 2)
+        {
+            await inner.ApplyEditsAsync([edit], actor, "oid:injected", note, cancellationToken);
+        }
+        else if (withdrawAtLook > 0 && Looks == withdrawAtLook)
+        {
+            await inner.DiscardDraftAsync(actor, "oid:injected", cancellationToken);
+        }
+
+        return await base.GetOpenDraftAsync(cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<ContentUpgradeRecord>> ListUpgradesAsync(
+        CancellationToken cancellationToken = default)
+        => inner.ListUpgradesAsync(cancellationToken);
+
+    /// <inheritdoc />
+    public Task RecordUpgradeAsync(
+        ContentUpgradeStamp stamp,
+        ContentUpgradeDisposition disposition,
+        string actor,
+        string operatorId,
+        CancellationToken cancellationToken = default)
+        => inner.RecordUpgradeAsync(stamp, disposition, actor, operatorId, cancellationToken);
+}
+
+/// <summary>
 /// A store whose first publish is refused because the base version MOVED, and whose active version then
 /// reads as one higher, which is what a rival deploy leaves behind between two attempts. It is the state a
 /// run given an expected version must refuse to publish onto.

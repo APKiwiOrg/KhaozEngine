@@ -232,6 +232,52 @@ public sealed class ContentUpgradeRecoveryTests
     }
 
     /// <summary>
+    /// An operator draft opened AFTER the step 5 gate is still operator work. It is reported at once rather
+    /// than mistaken for another publisher and waited out until the attempt budget is spent.
+    /// </summary>
+    [Fact]
+    public async Task AnOperatorDraftOpenedAfterTheGateStopsTheRunAtOnce()
+    {
+        using var harness = new UpgradeHarness();
+        await harness.SeedOlderCatalogAsync();
+        var appearing = new DraftAppearsAfterTheGateStore(
+            harness.Store, "a-human-operator", "autumn price pass", Foreign);
+
+        ContentUpgradeReport report = await ContentUpgradeRunner.RunAsync(
+            appearing, harness.Registry, harness.Set, UpgradeFixtures.Apply());
+
+        Assert.Equal(ContentUpgradeOutcome.OperatorDraftOpen, report.Outcome);
+        Assert.Equal(2, appearing.Looks);
+        Assert.Single(await harness.Store.ListVersionsAsync());
+        Assert.Equal(1, (await harness.Store.GetOpenDraftAsync())!.EditCount);
+    }
+
+    /// <summary>
+    /// A draft another RUNNER holds is waited out, not refused. It carries the runner actor and a note
+    /// naming a pending upgrade, so it belongs to a publish in flight, and a boot that gave up on one would
+    /// be an outage where an ordinary two-replica deploy is enough.
+    /// </summary>
+    [Fact]
+    public async Task ARivalRunnersDraftOpenedAfterTheGateIsWaitedOut()
+    {
+        using var harness = new UpgradeHarness();
+        await harness.SeedOlderCatalogAsync();
+        var appearing = new DraftAppearsAfterTheGateStore(
+            harness.Store,
+            UpgradeFixtures.Actor,
+            ContentUpgradeRunner.NoteFor(UpgradeHarness.FirstId),
+            Foreign,
+            withdrawAtLook: 4);
+
+        ContentUpgradeReport report = await ContentUpgradeRunner.RunAsync(
+            appearing, harness.Registry, harness.Set, UpgradeFixtures.Apply());
+
+        Assert.Equal(ContentUpgradeOutcome.Applied, report.Outcome);
+        Assert.True(appearing.Looks >= 4, "the run stood off rather than refusing at the first look.");
+        await AssertRecoveredAsync(harness, report);
+    }
+
+    /// <summary>
     /// A pin on the ACTIVE version does not block the publish and is never moved. The report names the
     /// version to repin to, because the pin is what a restart will serve.
     /// </summary>

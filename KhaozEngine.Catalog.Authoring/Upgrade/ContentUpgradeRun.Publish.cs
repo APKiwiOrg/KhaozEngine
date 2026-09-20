@@ -34,12 +34,17 @@ sealed partial class ContentUpgradeRun
         bool standingIsOwn = standing is not null && IsOwn(standing, note, plan.Edits);
         if (standing is not null && !standingIsOwn)
         {
-            return await StandOffAsync(
-                definition,
-                attempt,
-                FormattableString.Invariant(
-                    $"another publisher holds the open draft of {standing.EditCount} edit(s) on version {standing.BaseVersion}."))
-                .ConfigureAwait(false);
+            // Only a RUNNER's draft is worth waiting out. An operator opens one between the gate and here as
+            // readily as before it, and waiting that out spends the whole attempt budget to report a state
+            // the first look already knew.
+            return IsRunnersDraft(standing)
+                ? await StandOffAsync(
+                    definition,
+                    attempt,
+                    FormattableString.Invariant(
+                        $"another publisher holds the open draft of {standing.EditCount} edit(s) on version {standing.BaseVersion}."))
+                    .ConfigureAwait(false)
+                : StopForOperatorDraft(definition, standing);
         }
 
         ContentVersionRecord? baseline = await Store

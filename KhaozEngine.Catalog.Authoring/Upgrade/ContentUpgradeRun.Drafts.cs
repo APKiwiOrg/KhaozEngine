@@ -179,6 +179,31 @@ sealed partial class ContentUpgradeRun
         return plan is not null && plan.Kind == ContentUpgradePlanKind.Changes ? plan.Edits : null;
     }
 
+    /// <summary>
+    /// Whether a draft is SOME upgrade run's rather than an operator's: the runner actor and a note naming
+    /// one of the upgrades still pending. Two replicas of one deploy carry the same actor, so this is the
+    /// most that can be said about a draft that is not provably this run's own.
+    /// </summary>
+    /// <param name="draft">The standing draft.</param>
+    bool IsRunnersDraft(ContentDraft draft) => NamedPending(draft, _pending) is not null;
+
+    /// <summary>
+    /// Stops the run on an operator's draft that appeared after the gate. The definition is recorded as not
+    /// run, because nothing of it was applied.
+    /// </summary>
+    /// <param name="definition">The definition that was being applied.</param>
+    /// <param name="draft">The draft that appeared.</param>
+    bool StopForOperatorDraft(ContentUpgradeDefinition definition, ContentDraft draft)
+    {
+        _steps.Add(ContentUpgradeStepResult.Pending(definition));
+        Add(
+            ContentUpgradeCodes.OperatorDraftOpen,
+            FormattableString.Invariant(
+                $"an open draft of {draft.EditCount} edit(s) on version {draft.BaseVersion} opened by '{draft.OpenedBy}' appeared while upgrade '{definition.Id}' was being applied, and this run cannot prove it belongs to an upgrade run. Publish or discard it, then run the remaining upgrade(s). The draft was left untouched."));
+        _stopped = ContentUpgradeOutcome.OperatorDraftOpen;
+        return true;
+    }
+
     /// <summary>The whole proof for one definition: the actor, the note and the edits.</summary>
     bool IsOwn(ContentDraft draft, string note, IReadOnlyList<ContentEdit> planned)
         => string.Equals(draft.OpenedBy, Options.Actor, StringComparison.Ordinal)

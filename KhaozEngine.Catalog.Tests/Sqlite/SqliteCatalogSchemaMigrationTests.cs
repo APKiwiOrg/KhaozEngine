@@ -414,6 +414,43 @@ public class SqliteCatalogSchemaMigrationTests
         Assert.Single(await store.ListUpgradesAsync());
     }
 
+    /// <summary>
+    /// Many hosts opening ONE version 1 file at the same time all succeed. Two replicas booting together is
+    /// an ordinary deployment, so exactly one of them migrates and the rest have to accept the result.
+    /// <para>
+    /// <b>The failure this pins is a validation reading a TORN view.</b> The open takes an object snapshot
+    /// and a schema version, and a host that read the objects while the file was version 1 and the version
+    /// after someone else's migration would compare a pre-migration snapshot against the version 2 DDL and
+    /// refuse a correct database for a missing <c>catalog_content_upgrade</c>. The objects are read after the
+    /// version is settled, immediately before they are compared, so the two always describe one state.
+    /// </para>
+    /// <para>
+    /// It LOOPS, because a window measured in microseconds shows up once in many runs and never in one.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task ManyHostsOpeningOneVersionOneFileAtOnceAllSucceed()
+    {
+        for (int iteration = 0; iteration < 20; iteration++)
+        {
+            using var database = new TemporaryCatalogDatabase();
+            WriteVersionOne(database);
+
+            var opens = new Task[8];
+            for (int i = 0; i < opens.Length; i++)
+            {
+                opens[i] = Task.Run(async () =>
+                {
+                    using var store = new SqliteContentAuthoringStore(database.ConnectionString, Registry());
+                    await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
+                    Assert.Equal(2, await store.GetSchemaVersionAsync());
+                });
+            }
+
+            await Task.WhenAll(opens);
+        }
+    }
+
     /// <summary>The frozen version 1 schema, then the content, into the test's own temporary file.</summary>
     /// <param name="database">The temporary database.</param>
     static void WriteVersionOne(TemporaryCatalogDatabase database)

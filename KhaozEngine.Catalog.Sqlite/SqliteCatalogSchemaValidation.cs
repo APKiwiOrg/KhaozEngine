@@ -75,7 +75,6 @@ internal static class SqliteCatalogSchemaValidation
                 }
 
                 MigrateVersionOne(connection);
-                actual = ReadSchemaObjects(connection);
                 version = ReadSchemaVersion(connection);
             }
 
@@ -84,7 +83,13 @@ internal static class SqliteCatalogSchemaValidation
                 throw Mismatch(FormattableString.Invariant($"at unsupported version '{version}'"));
             }
 
-            ValidateSchemaObjects(actual, SqliteCatalogSchema.Tables, SqliteCatalogSchema.CurrentVersion);
+            // The objects are read HERE, after the version is settled and immediately before they are
+            // compared, so the two always describe one state of the file. Reusing the snapshot taken above
+            // would let a second host that migrated in between hand this one a version 1 view of the objects
+            // and a version 2 answer for the number, and it would refuse a correct database for a missing
+            // catalog_content_upgrade. Two replicas booting together is an ordinary deployment.
+            ValidateSchemaObjects(
+                ReadSchemaObjects(connection), SqliteCatalogSchema.Tables, SqliteCatalogSchema.CurrentVersion);
 
             // The DDL declares every foreign key and SQLite enforces none of them unless this is on, so a
             // database opened with it off would accept a row pointing at a version that does not exist.

@@ -15072,9 +15072,19 @@ seeding document, imported into an EMPTY database only.
 
 ### The server boot
 
-`ContentBoot.RunAsync` is the whole boot in one call, and it FAILS CLOSED. Each of its twelve refusals comes
-back as a result carrying exit code 3 and the operator's exact lines, and there is no fallback to code
-defaults anywhere on the path, because a silent fallback catalog serves content no version names.
+`ContentBoot.RunAsync` is the whole boot in one call, and it FAILS CLOSED. Each of its refusals comes back as
+a result carrying exit code 3 and the operator's exact lines, and there is no fallback to code defaults
+anywhere on the path, because a silent fallback catalog serves content no version names.
+
+Step 3 checks the `versions/<n>` POINTER before it fetches anything, because the pointer is the one object in
+a content-addressed store that is not named by its own hash. A catalog replaced at the same version number,
+with the old pack root still on disk, passes every later check: the old manifest digests to its own name,
+declares the right number, decodes, and every chunk verifies, while the connect door advertises the new row's
+client hash over the old rows. When `Directory` is an `IContentVersionHashSource`, which every
+`IContentAuthoringStore` is out of its own version record, both halves of the pointer are compared ordinally
+with that record and a disagreement refuses as `PackPointerMismatch` naming the version, the store, the side
+and both hashes, which is the operator's cue to rebuild the root. A directory carrying version numbers and no
+record, or a boot handed no directory at all, has no fact to compare against and skips the check.
 
 ```csharp
 var holder = new ContentRuntimeHolder();
@@ -15112,7 +15122,9 @@ The authoring store keeps rows, rules and hashes and never the pack BYTES, so a 
 outlive its process comes back to an empty store while the database still names an active version, and the
 boot above refuses at step 3 with `manifest for version N absent`. `ContentPackRebuild.RunAsync` writes that
 version's whole pack again out of the authoring store: check the pointer first, rebuild when it is missing,
-then boot exactly as before.
+then boot exactly as before. A root that is STALE rather than empty, a pack the version number no longer
+means, is the same repair reached through a different line: the boot refuses with `PackPointerMismatch` and
+the rebuild overwrites the pointer and writes whatever the record's manifests name.
 
 The version to rebuild is the one the BOOT will load, which is what `ContentBoot.ResolveVersionAsync` answers
 out of the same options, and it is not in general the store's active version: a config pin wins over

@@ -581,8 +581,8 @@ if (!report.IsValid)
 
 ## The boot
 
-`ContentBoot.RunAsync(options)` is spec 9.5's order, run once at server start, and spec 9.6's twelve
-refusals. **It fails closed and it never exits the process**: every refusal comes back as a
+`ContentBoot.RunAsync(options)` is spec 9.5's order, run once at server start, spec 9.6's twelve refusals
+and the stale-pointer refusal beside them. **It fails closed and it never exits the process**: every refusal comes back as a
 `ContentBootResult` carrying exit code 3 and the operator's exact lines, and the HOST writes them and exits.
 That is what makes the whole exit table testable in process, and it is why the engine never decides the
 shutdown order of a process it knows nothing about. There is no fallback to code defaults anywhere on this
@@ -604,6 +604,15 @@ loads before the world and both load before the door opens.
    under AND against the version the boot resolved. A manifest whose embedded number differs means the
    pointer and the pack disagree, and the server would otherwise announce one number at the door while
    serving another version's chunks.
+
+   The pointer itself is checked FIRST, against the version record, because it is the one object in a
+   content-addressed store that is not named by its own hash. A catalog replaced at the SAME version number,
+   with the old pack root still on disk, passes every later check: the old manifest digests to its own name,
+   declares the right number, decodes, and every chunk verifies, while the connect door advertises the new
+   row's client hash over the old rows. Both halves of the pointer are compared ordinally with the version
+   record's two manifest hashes and a disagreement is `PackPointerMismatch`, naming the version, the store,
+   the side and both hashes, so the operator rebuilds the root rather than hunting a lost file. A directory
+   that carries version numbers and no record has no fact to compare against and skips the check.
 3. **Steps 4 and 5**, a pack generation this build cannot read and a server build the pack will not be
    served by.
 4. **Step 6, both type lists, before a single chunk is fetched**, then `Freeze()` on the registry. A
@@ -619,15 +628,17 @@ loads before the world and both load before the door opens.
   build's server build number, the optional config pin, the optional `IContentVersionDirectory` and
   `IContentVersionPointerSource`, and the world's content keys.
 - `IContentVersionDirectory` - the authoring database's pinned and active version reads, which is the only
-  thing the boot wants from one. `KhaozEngine.Catalog.Authoring`'s `IContentAuthoringStore` inherits it, so a
-  host that boots off its authoring database sets `Directory` to the store itself and writes no adapter.
-  `IContentVersionPointerSource` - the READ half of the version pointer, which `FileSystemPackStore`
+  thing the boot REQUIRES of one. `KhaozEngine.Catalog.Authoring`'s `IContentAuthoringStore` inherits it, so
+  a host that boots off its authoring database sets `Directory` to the store itself and writes no adapter.
+  `IContentVersionHashSource` is the optional half beside it, the version record's two manifest hashes as
+  `ContentVersionHashes`, which the store answers out of `GetVersionAsync` and no backend implements a member
+  for. `IContentVersionPointerSource` - the READ half of the version pointer, which `FileSystemPackStore`
   implements and a store that does not is handed separately.
 - `ContentWorldKeyReference` - one place a world document names content, as `(source, type key, content
   key)`. The world document never carries a content ID, because ids are allocated by the authoring store and
   a world file naming id 17 breaks the moment a content database is rebuilt from a bundle.
-- `ContentBootResult` and `ContentBootRefusal` - the published runtime, or which of the twelve rows stopped
-  the boot, the step it stopped at, and the stderr lines. `ExitCode` is 3 for every refusal, deliberately
+- `ContentBootResult` and `ContentBootRefusal` - the published runtime, or which row stopped the boot, the
+  step it stopped at, and the stderr lines. `ExitCode` is 3 for every refusal, deliberately
   distinct from the 2 a consumer already returns for a bad config, so a supervisor script tells a content
   failure from a config failure without parsing text.
 

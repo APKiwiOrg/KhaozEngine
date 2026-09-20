@@ -121,6 +121,44 @@ internal static class UpgradeFixtures
     public static ContentUpgradeDefinition Refuses(string id, int order, string reason)
         => new(id, order, "refuses", _ => ContentUpgradePlan.Refused(reason));
 
+    /// <summary>
+    /// A definition whose planner patches BOTH of one row's fields, which is two patches of ONE row and so
+    /// exactly one edit in the draft the store will hold.
+    /// </summary>
+    /// <param name="id">The definition's stable id.</param>
+    /// <param name="order">The definition's order.</param>
+    /// <param name="target">The committed target bundle.</param>
+    /// <param name="type">The content type.</param>
+    /// <param name="key">The row's key.</param>
+    /// <param name="oldValue">The int field's old shipped default.</param>
+    /// <param name="newValue">The int field's new value.</param>
+    public static ContentUpgradeDefinition PatchesBothFields(
+        string id,
+        int order,
+        ContentBundle target,
+        ContentTypeId type,
+        string key,
+        int oldValue,
+        int newValue)
+        => new(
+            id,
+            order,
+            "patches both fields of " + key,
+            context => new ContentUpgradePlanBuilder(context, target)
+                .PatchField(
+                    type,
+                    new ContentKey(key),
+                    PublishFixtures.ValueField,
+                    ContentFieldValue.OfNumber(ContentFieldKind.Int, oldValue),
+                    ContentFieldValue.OfNumber(ContentFieldKind.Int, newValue))
+                .PatchField(
+                    type,
+                    new ContentKey(key),
+                    PublishFixtures.LegacyField,
+                    ContentFieldValue.Absent(ContentFieldKind.Bool),
+                    ContentFieldValue.OfNumber(ContentFieldKind.Bool, 1))
+                .Build());
+
     /// <summary>The four numbers a "nothing was written" assertion compares.</summary>
     /// <param name="store">The store to read.</param>
     public static async Task<CatalogFootprint> FootprintAsync(IContentAuthoringStore store)

@@ -578,6 +578,13 @@ one of the other two.
    an operator and is left exactly as it is.
 3. **A partial state is refused rather than completed.** Completing the remainder guesses which of the
    existing rows an operator owns, and that guess is unrecoverable once it publishes.
+4. **One row is one edit.** A draft holds one pending intent per row, so the builder merges every patch of
+   one row into a single update carrying all the changed fields, in the order they were staged.
+
+A staging a draft could not hold verbatim is an `ArgumentException` from the builder, which the runner
+reports as an ordinary refusal: the same field patched twice, a row both patched and retired, and one row
+staged twice under either verb. None of them has a single answer the draft could keep, and a plan that
+emitted two edits of one row would lose one at the store and then fail its own recovery check for good.
 
 `ContentUpgradeChecks` and `ContentUpgradePlanBuilder` are those rules as code, generic over the types and
 keys a caller passes. The checks are the ones the first hand-written catalog upgrade command proved: the

@@ -24,13 +24,23 @@ public readonly record struct ContentUpgradeIdentity(ContentTypeId Type, Content
 /// holding the old shipped default, and a field holding anything else is left alone and counts toward
 /// neither side of the partial check, because operator tuning is not evidence that the upgrade ran.
 /// </para>
+/// <para>
+/// <b>ONE row is ONE edit, whatever a planner stages.</b> A draft holds one pending intent per row
+/// (<see cref="ContentChangeSet"/>), so two patches of one row are merged into a single
+/// <see cref="ContentEditOperation.Update"/> carrying both fields, in the order they were staged. Any
+/// staging a change set could not hold verbatim is thrown rather than emitted: the same field twice, a
+/// patch and a retire of one row, and one row staged twice under either verb. Emitting it would drop a
+/// change silently at the store and leave a draft no later run could ever prove is its own.
+/// </para>
 /// </summary>
 public sealed class ContentUpgradePlanBuilder
 {
     readonly ContentUpgradeContext _context;
     readonly ContentBundle _target;
     readonly List<ContentBundleRow> _additions = [];
-    readonly List<ContentEdit> _edits = [];
+    readonly List<StagedRow> _staged = [];
+    readonly Dictionary<ContentEditTarget, int> _byTarget = [];
+    readonly HashSet<ContentEditTarget> _addedTargets = [];
     readonly List<string> _lines = [];
     string? _refusal;
     int _satisfied;
@@ -62,6 +72,7 @@ public sealed class ContentUpgradePlanBuilder
     /// </summary>
     /// <param name="type">The content type.</param>
     /// <param name="key">The committed row's key.</param>
+    /// <exception cref="ArgumentException">The same row is already staged.</exception>
     public ContentUpgradePlanBuilder AddRow(ContentTypeId type, ContentKey key)
     {
         if (_refusal is not null)
@@ -85,7 +96,9 @@ public sealed class ContentUpgradePlanBuilder
                 _satisfied++;
                 break;
             case ContentUpgradeIdentityState.Absent:
+                RequireUnstaged(new ContentEditTarget(type, targetRow.Id ?? 0, key), type, key, "added");
                 _additions.Add(targetRow);
+                _addedTargets.Add(new ContentEditTarget(type, targetRow.Id ?? 0, key));
                 _pending++;
                 break;
             default:
@@ -117,6 +130,11 @@ public sealed class ContentUpgradePlanBuilder
     /// holding <paramref name="replacement"/> is satisfied, a field holding
     /// <paramref name="oldDefault"/> is patched, and a field holding anything else belongs to an operator and
     /// is left exactly as it is.
+    /// <para>
+    /// Every patch of ONE row lands in one <see cref="ContentEditOperation.Update"/> carrying all of them,
+    /// because that is what the draft will hold. Naming one FIELD twice, or patching a row this plan also
+    /// retires, is thrown rather than merged: neither has a single answer the store could keep.
+    /// </para>
     /// </summary>
     /// <param name="type">The content type.</param>
     /// <param name="key">The row's key.</param>
@@ -124,6 +142,7 @@ public sealed class ContentUpgradePlanBuilder
     /// <param name="oldDefault">The value this build shipped before, which is the only value that is patched.</param>
     /// <param name="replacement">The value this build ships now.</param>
     /// <exception cref="ArgumentNullException"><paramref name="fieldName"/> is null.</exception>
+    /// <exception cref="ArgumentException">The field is already patched, or the row is staged otherwise.</exception>
     public ContentUpgradePlanBuilder PatchField(
         ContentTypeId type,
         ContentKey key,
@@ -152,6 +171,18 @@ public sealed class ContentUpgradePlanBuilder
             return this;
         }
 
+        // The field is claimed BEFORE the catalog is consulted, because naming one field twice is the
+        // planner contradicting itself whatever the catalog happens to hold right now.
+        var target = new ContentEditTarget(type, id, key);
+        StagedRow patch = Stage(target, ContentEditOperation.Update, type, key, "patched");
+        if (!patch.Claim(fieldName))
+        {
+            throw new ArgumentException(
+                FormattableString.Invariant(
+                    $"This upgrade already patches {TypeName(type)} {id} '{key}' field '{fieldName}', and a row carries one value per field. Name each field once."),
+                nameof(fieldName));
+        }
+
         if (current == replacement)
         {
             _satisfied++;
@@ -165,7 +196,7 @@ public sealed class ContentUpgradePlanBuilder
             return this;
         }
 
-        _edits.Add(ContentEdit.Update(type, id, key, [new ContentFieldEdit(fieldName, replacement)]));
+        patch.Fields.Add(new ContentFieldEdit(fieldName, replacement));
         _lines.Add(FormattableString.Invariant(
             $"patch {TypeName(type)} {id} '{key}' field '{fieldName}' from the old shipped default"));
         _pending++;
@@ -180,6 +211,7 @@ public sealed class ContentUpgradePlanBuilder
     /// <param name="key">The row's key.</param>
     /// <param name="policy">Placeholder or replacement, contracts 8.2.</param>
     /// <param name="replacementId">The destination id under the replacement policy, and 0 otherwise.</param>
+    /// <exception cref="ArgumentException">The row is already staged by this plan.</exception>
     public ContentUpgradePlanBuilder RetireRow(
         ContentTypeId type,
         ContentKey key,
@@ -204,7 +236,10 @@ public sealed class ContentUpgradePlanBuilder
             return this;
         }
 
-        _edits.Add(ContentEdit.Retire(type, id, key, policy, replacementId));
+        StagedRow retire = Stage(
+            new ContentEditTarget(type, id, key), ContentEditOperation.Retire, type, key, "retired");
+        retire.Policy = policy;
+        retire.ReplacementId = replacementId;
         _lines.Add(FormattableString.Invariant($"retire {TypeName(type)} {id} '{key}'"));
         _pending++;
         return this;
@@ -212,8 +247,12 @@ public sealed class ContentUpgradePlanBuilder
 
     /// <summary>
     /// Resolves the staged work into one plan: the adds first, then the patches and retires in the order they
-    /// were staged. The adds go first because they read as the additive half of the upgrade, and the ids they
-    /// allocate are unaffected either way.
+    /// were staged, ONE edit per row. The adds go first because they read as the additive half of the
+    /// upgrade, and the ids they allocate are unaffected either way.
+    /// <para>
+    /// A row whose every patch turned out satisfied or operator tuned contributes NO edit, because an update
+    /// carrying no field is a write that says nothing.
+    /// </para>
     /// </summary>
     public ContentUpgradePlan Build()
     {
@@ -222,7 +261,7 @@ public sealed class ContentUpgradePlanBuilder
             return ContentUpgradePlan.Refused(_refusal);
         }
 
-        var edits = new List<ContentEdit>(_additions.Count + _edits.Count);
+        var edits = new List<ContentEdit>(_additions.Count + _staged.Count);
         var lines = new List<string>(_additions.Count + _lines.Count);
         if (_additions.Count > 0)
         {
@@ -254,7 +293,14 @@ public sealed class ContentUpgradePlanBuilder
             }
         }
 
-        edits.AddRange(_edits);
+        for (int i = 0; i < _staged.Count; i++)
+        {
+            if (_staged[i].TryBuild(out ContentEdit? edit))
+            {
+                edits.Add(edit);
+            }
+        }
+
         lines.AddRange(_lines);
 
         if (_pending == 0)
@@ -271,6 +317,82 @@ public sealed class ContentUpgradePlanBuilder
 
         return ContentUpgradePlan.Changes(edits, lines);
     }
+
+    /// <summary>
+    /// The staged edit for one row under one operation, CREATING it on the first call and answering the
+    /// standing one afterwards, so every patch of a row lands in the same update. It throws when the row is
+    /// already staged in a way a change set could not hold beside this one.
+    /// </summary>
+    /// <param name="target">The row the edit acts on, which is what a draft deduplicates by.</param>
+    /// <param name="operation">The operation being staged.</param>
+    /// <param name="type">The content type, for the message.</param>
+    /// <param name="key">The row's key, for the message.</param>
+    /// <param name="verb">What this call is doing to the row, for the message.</param>
+    StagedRow Stage(
+        ContentEditTarget target,
+        ContentEditOperation operation,
+        ContentTypeId type,
+        ContentKey key,
+        string verb)
+    {
+        RequireUnadded(target, type, key, verb);
+        if (!_byTarget.TryGetValue(target, out int index))
+        {
+            _byTarget.Add(target, _staged.Count);
+            var staged = new StagedRow(target, operation);
+            _staged.Add(staged);
+            return staged;
+        }
+
+        StagedRow held = _staged[index];
+        if (held.Operation != operation || operation == ContentEditOperation.Retire)
+        {
+            throw new ArgumentException(
+                FormattableString.Invariant(
+                    $"This upgrade already {Describe(held.Operation)} {TypeName(type)} {target.DefinitionId} '{key}', so it cannot also be {verb} by the same plan. A draft holds one pending intent per row. Split the two into two upgrades."),
+                nameof(key));
+        }
+
+        return held;
+    }
+
+    /// <summary>A row this plan ADDS is not a row it can also patch or retire in the same change set.</summary>
+    /// <param name="target">The row the edit acts on.</param>
+    /// <param name="type">The content type, for the message.</param>
+    /// <param name="key">The row's key, for the message.</param>
+    /// <param name="verb">What this call is doing to the row, for the message.</param>
+    void RequireUnadded(ContentEditTarget target, ContentTypeId type, ContentKey key, string verb)
+    {
+        if (_addedTargets.Contains(target))
+        {
+            throw new ArgumentException(
+                FormattableString.Invariant(
+                    $"This upgrade already adds {TypeName(type)} {target.DefinitionId} '{key}', so it cannot also have that row {verb} by the same plan. A draft holds one pending intent per row."),
+                nameof(key));
+        }
+    }
+
+    /// <summary>The same check for the additive half, which stages no <see cref="StagedRow"/> of its own.</summary>
+    /// <param name="target">The row the add names.</param>
+    /// <param name="type">The content type, for the message.</param>
+    /// <param name="key">The row's key, for the message.</param>
+    /// <param name="verb">What this call is doing to the row, for the message.</param>
+    void RequireUnstaged(ContentEditTarget target, ContentTypeId type, ContentKey key, string verb)
+    {
+        RequireUnadded(target, type, key, verb);
+        if (_byTarget.TryGetValue(target, out int index))
+        {
+            throw new ArgumentException(
+                FormattableString.Invariant(
+                    $"This upgrade already {Describe(_staged[index].Operation)} {TypeName(type)} {target.DefinitionId} '{key}', so it cannot also have that row {verb} by the same plan. A draft holds one pending intent per row."),
+                nameof(key));
+        }
+    }
+
+    /// <summary>What a standing edit did to its row, as the past tense a refusal reads with.</summary>
+    /// <param name="operation">The standing edit's operation.</param>
+    static string Describe(ContentEditOperation operation)
+        => operation == ContentEditOperation.Retire ? "retires" : "patches";
 
     /// <summary>
     /// One baseline row by key, with its id. A row an export produced always carries its id, so the id half
@@ -316,4 +438,56 @@ public sealed class ContentUpgradePlanBuilder
     }
 
     string TypeName(ContentTypeId type) => ContentUpgradeChecks.TypeName(_context.Registry, type);
+
+    /// <summary>
+    /// One ROW's pending edit while the plan is still being staged: the target, the operation, and the
+    /// fields the patches have named so far. It exists because the unit a draft stores is the row and the
+    /// unit a planner writes is the field, and something has to hold the many while they become the one.
+    /// </summary>
+    /// <param name="target">The row the edit acts on.</param>
+    /// <param name="operation">The operation, which is fixed once the row is staged.</param>
+    sealed class StagedRow(ContentEditTarget target, ContentEditOperation operation)
+    {
+        readonly HashSet<string> _claimed = new(StringComparer.Ordinal);
+
+        /// <summary>The operation, which a second staging of the same row has to agree with.</summary>
+        internal ContentEditOperation Operation { get; } = operation;
+
+        /// <summary>The changed fields, in the order the patches were staged.</summary>
+        internal List<ContentFieldEdit> Fields { get; } = [];
+
+        /// <summary>The retire policy, on a retire only.</summary>
+        internal ContentRetirePolicy Policy { get; set; }
+
+        /// <summary>The replacement id, on a replacement-policy retire only.</summary>
+        internal int ReplacementId { get; set; }
+
+        /// <summary>
+        /// Claims one field name for this row, answering false when it is already claimed. A field is
+        /// claimed whether or not it ended up producing an edit, because naming it twice is the planner
+        /// contradicting itself whatever the catalog holds.
+        /// </summary>
+        /// <param name="fieldName">The schema field.</param>
+        internal bool Claim(string fieldName) => _claimed.Add(fieldName);
+
+        /// <summary>
+        /// The one edit this row contributes, or false when it contributes none: a row every patch of which
+        /// was satisfied or operator tuned carries no changed field, and an update of nothing is a write
+        /// that says nothing.
+        /// </summary>
+        /// <param name="edit">The edit, populated only when this returns true.</param>
+        internal bool TryBuild([NotNullWhen(true)] out ContentEdit? edit)
+        {
+            if (Operation == ContentEditOperation.Retire)
+            {
+                edit = ContentEdit.Retire(target.Type, target.DefinitionId, target.Key, Policy, ReplacementId);
+                return true;
+            }
+
+            edit = Fields.Count == 0
+                ? null
+                : ContentEdit.Update(target.Type, target.DefinitionId, target.Key, Fields);
+            return edit is not null;
+        }
+    }
 }

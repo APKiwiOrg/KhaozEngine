@@ -210,6 +210,95 @@ internal sealed class LedgerlessStore(IContentAuthoringStore inner) : Forwarding
 }
 
 /// <summary>
+/// Counts the four writes a run can make to the one draft, so a test can say what the runner did rather than
+/// only what the catalog ended up holding.
+/// <para>
+/// The counters see the RUNNER's calls only. A store's own publish pipeline runs against the inner store, so
+/// the freeze it sets and releases for itself never reaches this decorator, which is exactly the separation
+/// the freeze assertion needs.
+/// </para>
+/// </summary>
+internal sealed class CountingContentAuthoringStore(InMemoryContentAuthoringStore inner)
+    : ForwardingContentAuthoringStore(inner), IContentUpgradeLedger
+{
+    /// <summary>How many times the runner wrote edits into the draft.</summary>
+    public int EditWrites { get; private set; }
+
+    /// <summary>How many times the runner discarded the draft.</summary>
+    public int Discards { get; private set; }
+
+    /// <summary>How many times the runner cleared a freeze marker.</summary>
+    public int FreezeClears { get; private set; }
+
+    /// <summary>How many publishes the runner started.</summary>
+    public int Publishes { get; private set; }
+
+    /// <summary>
+    /// What <see cref="FreezeClears"/> stood at when the runner started its FIRST publish, which is the
+    /// number that has to be zero: a freeze cleared before the runner has published the draft itself is a
+    /// live publisher's marker being taken away.
+    /// </summary>
+    public int FreezeClearsBeforeFirstPublish { get; private set; }
+
+    /// <inheritdoc />
+    public override Task<ContentDraft> ApplyEditsAsync(
+        IReadOnlyList<ContentEdit> edits,
+        string actor,
+        string operatorId,
+        string note,
+        CancellationToken cancellationToken = default)
+    {
+        EditWrites++;
+        return base.ApplyEditsAsync(edits, actor, operatorId, note, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public override Task DiscardDraftAsync(
+        string actor,
+        string operatorId,
+        CancellationToken cancellationToken = default)
+    {
+        Discards++;
+        return base.DiscardDraftAsync(actor, operatorId, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public override Task ClearDraftFreezeAsync(CancellationToken cancellationToken = default)
+    {
+        FreezeClears++;
+        return base.ClearDraftFreezeAsync(cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public override Task<ContentPublishResult> PublishAsync(
+        ContentPublishRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (Publishes == 0)
+        {
+            FreezeClearsBeforeFirstPublish = FreezeClears;
+        }
+
+        Publishes++;
+        return base.PublishAsync(request, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<ContentUpgradeRecord>> ListUpgradesAsync(
+        CancellationToken cancellationToken = default)
+        => inner.ListUpgradesAsync(cancellationToken);
+
+    /// <inheritdoc />
+    public Task RecordUpgradeAsync(
+        ContentUpgradeStamp stamp,
+        ContentUpgradeDisposition disposition,
+        string actor,
+        string operatorId,
+        CancellationToken cancellationToken = default)
+        => inner.RecordUpgradeAsync(stamp, disposition, actor, operatorId, cancellationToken);
+}
+
+/// <summary>
 /// A store whose publish throws AFTER the commit transaction returns, which is the interruption design step 9
 /// exists for: the version is live, the ledger row is written, the draft is deleted, and the caller sees an
 /// exception. A runner that assumed the upgrade did not land would publish it a second time.

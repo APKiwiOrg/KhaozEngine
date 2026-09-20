@@ -27,12 +27,12 @@ sealed partial class ContentUpgradeRun
     {
         string note = ContentUpgradeRunner.NoteFor(definition.Id);
 
-        // A draft standing here belongs to ANOTHER runner: this run's step 5 left none open, and each of its
-        // own publishes deletes the one it opened. Applying into it would put two publishes over one change
-        // set, and two publishes that both allocate ids for one add edit issue DIFFERENT ids, so whichever
-        // commits first files the row under a number the committed bundle names another row by.
+        // A draft standing here is either the one an interrupted run left holding exactly this plan, which
+        // this run publishes as it stands, or another runner's. Applying into another runner's would put two
+        // publishes over one change set, and a second set of edits in one draft is not this plan any more.
         ContentDraft? standing = await Store.GetOpenDraftAsync(CancellationToken).ConfigureAwait(false);
-        if (standing is not null)
+        bool standingIsOwn = standing is not null && IsOwn(standing, note, plan.Edits);
+        if (standing is not null && !standingIsOwn)
         {
             return await StandOffAsync(
                 definition,
@@ -53,8 +53,13 @@ sealed partial class ContentUpgradeRun
 
         try
         {
-            await Store.ApplyEditsAsync(plan.Edits, Options.Actor, Options.Operator, note, CancellationToken)
-                .ConfigureAwait(false);
+            if (!standingIsOwn)
+            {
+                await Store
+                    .ApplyEditsAsync(plan.Edits, Options.Actor, Options.Operator, note, CancellationToken)
+                    .ConfigureAwait(false);
+            }
+
             ContentPublishResult published = await Store.PublishAsync(
                 new ContentPublishRequest(
                     Options.Actor,
@@ -94,7 +99,7 @@ sealed partial class ContentUpgradeRun
         Exception failure,
         int attempt)
     {
-        await DiscardOwnDraftAsync(note, plan.Edits).ConfigureAwait(false);
+        bool rivalIsLive = await DiscardOwnDraftAsync(note, plan.Edits).ConfigureAwait(false);
 
         ContentUpgradeRecord? landed = await FindRecordAsync(definition.Id).ConfigureAwait(false);
         if (landed is not null)
@@ -108,7 +113,9 @@ sealed partial class ContentUpgradeRun
             return true;
         }
 
-        return IsContention(failure)
+        // A live rival on this run's own draft is contention whatever the exception said, because the draft
+        // it would have to republish into is not free yet.
+        return rivalIsLive || IsContention(failure)
             ? await StandOffAsync(definition, attempt, failure.Message).ConfigureAwait(false)
             : Fail(definition, failure.Message);
     }

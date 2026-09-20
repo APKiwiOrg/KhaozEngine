@@ -19,29 +19,35 @@ public sealed class ContentUpgradeRecoveryTests
         => ContentEdit.Add(UpgradeFixtures.Thing, new ContentKey("leftover"), PublishFixtures.Fields(77));
 
     /// <summary>
-    /// A run killed between its edits and its publish leaves an UNFROZEN draft. The next run proves it is its
-    /// own from the actor and the note, discards it, replans and publishes.
+    /// A run killed between its edits and its publish leaves an UNFROZEN draft holding exactly this build's
+    /// plan. The next run publishes THAT draft rather than discarding it and redoing the work, so the one
+    /// edit write in the whole run belongs to the second definition.
     /// </summary>
     [Fact]
-    public async Task AnInterruptedRunsUnfrozenDraftIsDiscardedAndTheUpgradeReplanned()
+    public async Task AnInterruptedRunsOwnUnfrozenDraftIsPublishedRatherThanRedone()
     {
         using var harness = new UpgradeHarness();
         await harness.SeedOlderCatalogAsync();
         await LeaveInterruptedDraftAsync(harness, freeze: false);
+        var counting = new CountingContentAuthoringStore(harness.Store);
 
         ContentUpgradeReport report = await ContentUpgradeRunner.RunAsync(
-            harness.Store, harness.Registry, harness.Set, UpgradeFixtures.Apply());
+            counting, harness.Registry, harness.Set, UpgradeFixtures.Apply());
 
         await AssertRecoveredAsync(harness, report);
+        Assert.Equal(1, counting.EditWrites);
+        Assert.Equal(0, counting.Discards);
+        Assert.Equal(0, counting.FreezeClears);
     }
 
     /// <summary>
-    /// A run killed between the publish's FREEZE and its commit leaves a frozen draft, which refuses every
-    /// later edit and every later discard. The next run clears the marker first and then discards, because a
-    /// draft nothing can write to and nothing can discard is a wedged catalog.
+    /// A run killed between the publish's FREEZE and its commit leaves a FROZEN draft, and nothing in the
+    /// seam says whether the publisher that set the marker is dead or live. The runner publishes the draft
+    /// as it stands, which is the store's own stated recovery, and the catalog still ends at exactly one
+    /// version per definition.
     /// </summary>
     [Fact]
-    public async Task AnInterruptedRunsFrozenDraftHasItsFreezeClearedAndIsThenDiscarded()
+    public async Task AnInterruptedRunsOwnFrozenDraftIsPublishedAndEndsAsExactlyOneVersion()
     {
         using var harness = new UpgradeHarness();
         await harness.SeedOlderCatalogAsync();
@@ -52,6 +58,29 @@ public sealed class ContentUpgradeRecoveryTests
             harness.Store, harness.Registry, harness.Set, UpgradeFixtures.Apply());
 
         await AssertRecoveredAsync(harness, report);
+    }
+
+    /// <summary>
+    /// The freeze a RIVAL publisher holds is never cleared by this runner. Waiting cannot outlast a pack
+    /// write to blob storage and nothing tells a live marker from a dead one, so clearing one would let an
+    /// operator's edit land in a draft the rival's commit then deletes. The only thing the runner does to a
+    /// frozen draft it can prove holds its own plan is PUBLISH it.
+    /// </summary>
+    [Fact]
+    public async Task TheRunnerNeverClearsAFreezeItDidNotSetItself()
+    {
+        using var harness = new UpgradeHarness();
+        await harness.SeedOlderCatalogAsync();
+        await LeaveInterruptedDraftAsync(harness, freeze: true);
+        var counting = new CountingContentAuthoringStore(harness.Store);
+
+        ContentUpgradeReport report = await ContentUpgradeRunner.RunAsync(
+            counting, harness.Registry, harness.Set, UpgradeFixtures.Apply());
+
+        Assert.Equal(ContentUpgradeOutcome.Applied, report.Outcome);
+        Assert.Equal(0, counting.FreezeClearsBeforeFirstPublish);
+        Assert.Equal(0, counting.FreezeClears);
+        Assert.Equal(0, counting.Discards);
     }
 
     /// <summary>

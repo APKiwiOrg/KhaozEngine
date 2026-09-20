@@ -22,19 +22,22 @@ namespace KhaozEngine.Catalog.Authoring;
 /// <b>Anything else is operator work</b> and is left exactly as it stands, because everything the runner
 /// would do to a draft it believed was its own is irreversible.
 /// </para>
+/// <para>
+/// <b>A proven own draft is PUBLISHED, never cleared and never discarded.</b> A freeze marker naming the
+/// active version is either a live publish or a dead one and nothing on the seam tells them apart, so
+/// clearing one would let a later edit land in a draft a live publisher's commit then deletes. The store's
+/// own rule is that a publish is how a dead freeze is recovered, because
+/// <see cref="IContentAuthoringStore.FreezeDraftAsync"/> overwrites the marker, so the runner publishes the
+/// draft as it stands. Carried ids make two runners' plans for one definition identical and the commit's
+/// version confirmation lets exactly one of them win.
+/// </para>
 /// </summary>
 sealed partial class ContentUpgradeRun
 {
     /// <summary>
-    /// How many times a frozen draft is looked at again before it is declared a dead run's leftover. The
-    /// looks are only paid when a frozen draft is actually there, which is a rare state.
-    /// </summary>
-    internal const int FrozenDraftLooks = 3;
-
-    /// <summary>
-    /// Step 5. Answers the outcome the run stops with, or null to carry on. A discard here is the one write a
-    /// run makes before it plans anything, and only an APPLY makes it: a preview writes nothing, so it says
-    /// what an apply would do instead.
+    /// Step 5. Answers the outcome the run stops with, or null to carry on. It WRITES NOTHING: a draft this
+    /// run can prove is its own is left standing for the apply loop to publish, and anything else is an
+    /// operator's to resolve.
     /// </summary>
     /// <param name="pending">The pending definitions, which is the set a note has to name one of.</param>
     internal async Task<ContentUpgradeOutcome?> ResolveOpenDraftAsync(
@@ -65,93 +68,54 @@ sealed partial class ContentUpgradeRun
             return ContentUpgradeOutcome.OperatorDraftOpen;
         }
 
-        if (Options.Mode == ContentUpgradeMode.Preview)
+        string frozen = draft.IsFrozen ? "frozen " : string.Empty;
+        Add(
+            ContentUpgradeCodes.DraftRecovered,
+            Options.Mode == ContentUpgradeMode.Preview
+                ? FormattableString.Invariant(
+                    $"an interrupted run of upgrade '{named.Id}' left a {frozen}draft of {draft.EditCount} edit(s) on version {draft.BaseVersion} that still holds exactly this build's plan. An apply publishes that draft as it stands. Nothing was written.")
+                : FormattableString.Invariant(
+                    $"an interrupted run of upgrade '{named.Id}' left a {frozen}draft of {draft.EditCount} edit(s) on version {draft.BaseVersion} that still holds exactly this build's plan, so this run publishes that draft as it stands."));
+        return null;
+    }
+
+    /// <summary>
+    /// Discards the draft this run itself opened for one definition, after ITS OWN publish failed. It is
+    /// scoped to this definition's plan, and it answers whether a RIVAL publisher is live on that draft,
+    /// which is the one thing a failure path cannot resolve by itself.
+    /// <para>
+    /// A frozen draft and a <c>publish-in-progress</c> refusal say the same thing: this run's own publish
+    /// releases its freeze on every exit path, so a marker standing here belongs to someone else. The draft
+    /// is left exactly as it is and the caller re-reads the ledger and stands off.
+    /// </para>
+    /// </summary>
+    /// <param name="note">The note this definition's draft carries.</param>
+    /// <param name="planned">The edits this definition's plan produced.</param>
+    async Task<bool> DiscardOwnDraftAsync(string note, IReadOnlyList<ContentEdit> planned)
+    {
+        ContentDraft? draft = await Store.GetOpenDraftAsync(CancellationToken).ConfigureAwait(false);
+        if (draft is null || !IsOwn(draft, note, planned))
         {
-            Add(
-                ContentUpgradeCodes.DraftRecovered,
-                FormattableString.Invariant(
-                    $"an interrupted run of upgrade '{named.Id}' left a draft of {draft.EditCount} edit(s) on version {draft.BaseVersion} that still holds exactly this build's plan. An apply discards it and replans. Nothing was written."));
-            return null;
+            return false;
         }
 
-        // A FROZEN draft is either a dead run's leftover or a live publish in flight, and the marker carries
-        // no owner to tell them apart. A dead one never moves, so the runner watches it: a draft that is gone
-        // on a later look was live and was never this run's to touch.
-        if (draft.IsFrozen && !await StillFrozenAsync(draft).ConfigureAwait(false))
+        if (draft.IsFrozen)
         {
-            return null;
+            return true;
         }
 
         try
         {
-            if (draft.IsFrozen)
-            {
-                // A publish that died before its commit left this. Clearing the marker is exactly what the
-                // next publish's own step 1 would do, and it has to come first because a frozen draft
-                // refuses a discard.
-                await Store.ClearDraftFreezeAsync(CancellationToken).ConfigureAwait(false);
-            }
-
             await Store.DiscardDraftAsync(Options.Actor, Options.Operator, CancellationToken)
                 .ConfigureAwait(false);
         }
         catch (ContentAuthoringException refused)
             when (refused.Reason == ContentAuthoringException.PublishInProgressReason)
         {
-            // The freeze came BACK between the clear and the discard, which only a live publish can do. So
-            // this is another runner's draft rather than a dead run's, and it is not this run's to take.
-            // The per-definition retry waits that publish out.
-            return null;
+            return true;
         }
 
-        Add(
-            ContentUpgradeCodes.DraftRecovered,
-            FormattableString.Invariant(
-                $"an interrupted run of upgrade '{named.Id}' left a {(draft.IsFrozen ? "frozen " : string.Empty)}draft of {draft.EditCount} edit(s) on version {draft.BaseVersion}, which this run discarded before replanning."));
-        return null;
-    }
-
-    /// <summary>
-    /// Watches a frozen draft for as long as a publish could reasonably hold one, and answers whether it is
-    /// STILL there, frozen, and unchanged. A draft that vanished or that moved belonged to a live publish,
-    /// which commits it away or lets it go, and a dead run's draft never does either.
-    /// </summary>
-    /// <param name="draft">The frozen draft as it was first seen.</param>
-    async Task<bool> StillFrozenAsync(ContentDraft draft)
-    {
-        for (int look = 1; look <= FrozenDraftLooks; look++)
-        {
-            await Task.Delay(BackoffFor(look), CancellationToken).ConfigureAwait(false);
-            ContentDraft? again = await Store.GetOpenDraftAsync(CancellationToken).ConfigureAwait(false);
-            if (again is null
-                || !again.IsFrozen
-                || again.OpenedAtUtc != draft.OpenedAtUtc
-                || again.EditCount != draft.EditCount)
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    /// <summary>
-    /// Discards the draft this run itself opened for one definition, on a failure path. It is scoped to THIS
-    /// definition's plan and skips a FROZEN draft, for one reason each: a draft that is not this plan belongs
-    /// to another run or to an operator, and a frozen draft belongs to a publish in flight, since this run's
-    /// own publish releases its freeze on every exit path.
-    /// </summary>
-    /// <param name="note">The note this definition's draft carries.</param>
-    /// <param name="planned">The edits this definition's plan produced.</param>
-    async Task DiscardOwnDraftAsync(string note, IReadOnlyList<ContentEdit> planned)
-    {
-        ContentDraft? draft = await Store.GetOpenDraftAsync(CancellationToken).ConfigureAwait(false);
-        if (draft is null || draft.IsFrozen || !IsOwn(draft, note, planned))
-        {
-            return;
-        }
-
-        await Store.DiscardDraftAsync(Options.Actor, Options.Operator, CancellationToken).ConfigureAwait(false);
+        return false;
     }
 
     /// <summary>

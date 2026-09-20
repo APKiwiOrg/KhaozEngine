@@ -188,6 +188,61 @@ public class LeafCodecTests
         }
     }
 
+    [Theory]
+    [InlineData(ContentDurationUnit.Ticks)]
+    [InlineData(ContentDurationUnit.Seconds)]
+    public void TheOneOptionalFieldRoundTripsAbsent(ContentDurationUnit unit)
+    {
+        // xp_per_damage is the only optional field across the whole package, and absence and zero share an
+        // encoding, so this is the one row shape where the decoder's resolution is load bearing: an unset
+        // knob has to come back unset rather than as a skill that pays zero per point of damage.
+        ContentTypeRegistry registry = Registered(unit);
+        Assert.True(registry.TryGetByKey(
+            GameContentTypeIds.SkillCurveKey, out ContentTypeRegistration? curve));
+
+        var row = new ContentRow(
+            curve.Type,
+            0,
+            new ContentKey("curve_row"),
+            0,
+            false,
+            new[]
+            {
+                ContentFieldValue.OfNumber(ContentFieldKind.Int, 4),
+                ContentFieldValue.Absent(ContentFieldKind.Int),
+            });
+
+        var buffer = new ArrayBufferWriter<byte>();
+        curve.Codec.Encode(row, buffer);
+
+        Assert.True(
+            curve.Codec.TryDecode(buffer.WrittenSpan, out ContentRow? back, out string? reason),
+            reason ?? curve.TypeKey);
+        Assert.Equal(4, back.Fields[0].Number);
+        Assert.True(back.Fields[1].IsAbsent);
+
+        // The required field beside it does not: a required knob of zero is an ordinary row rather than a
+        // missing one, and reporting it absent would turn it into a schema finding.
+        var zeroed = new ContentRow(
+            curve.Type,
+            0,
+            new ContentKey("curve_zero"),
+            0,
+            false,
+            new[]
+            {
+                ContentFieldValue.OfNumber(ContentFieldKind.Int, 0),
+                ContentFieldValue.Absent(ContentFieldKind.Int),
+            });
+
+        var second = new ArrayBufferWriter<byte>();
+        curve.Codec.Encode(zeroed, second);
+
+        Assert.True(curve.Codec.TryDecode(second.WrittenSpan, out ContentRow? zeroBack, out reason), reason);
+        Assert.False(zeroBack.Fields[0].IsAbsent);
+        Assert.Equal(0, zeroBack.Fields[0].Number);
+    }
+
     /// <summary>A row carrying a distinct positive value for every field of its type.</summary>
     static ContentRow Populated(ContentTypeRegistration registration)
     {

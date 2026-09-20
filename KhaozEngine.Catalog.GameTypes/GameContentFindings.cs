@@ -47,7 +47,7 @@ public static class GameContentFindings
     /// A rate that prices the catalog's most valuable item outside the range the trade path can hold, which
     /// it throws on rather than wrapping a purse.
     /// </summary>
-    public const string StoreRateOverValueCeiling = "KGT0303";
+    public const string StoreRateOverCurrencyCeiling = "KGT0303";
 
     /// <summary>Two live shelves of one store claim one draw position.</summary>
     public const string StoreShelfDuplicateSort = "KGT0401";

@@ -218,6 +218,23 @@ public class LeafSchemaGoldenTests
             moved.ToArray());
     }
 
+    [Fact]
+    public void ADurationNameUnderAnUndefinedUnitIsRefused()
+    {
+        // An enum value is only a number, so a cast of anything reaches these accessors. Falling back to
+        // one of the two spellings would build a schema carrying a field name nobody authored against, and
+        // a reader resolving the other name would then refuse a pack that decodes perfectly.
+        var undefined = (ContentDurationUnit)7;
+
+        Assert.Throws<System.ArgumentOutOfRangeException>(() => FoodContentType.AttackDelayField(undefined));
+        Assert.Throws<System.ArgumentOutOfRangeException>(() => EquipProfileContentType.AttackField(undefined));
+        Assert.Throws<System.ArgumentOutOfRangeException>(() => GatheringNodeContentType.RespawnField(undefined));
+        Assert.Throws<System.ArgumentOutOfRangeException>(() => RecipeContentType.BaseDurationField(undefined));
+
+        // And so does every schema that carries one, rather than the name alone.
+        Assert.Throws<System.ArgumentOutOfRangeException>(() => FoodContentType.CreateSchema(undefined));
+    }
+
     /// <summary>The nine leaf schemas, ASCENDING by type id, which is the order the moved names are read in.</summary>
     static IEnumerable<ContentFieldSchema> EverySchema(ContentDurationUnit unit)
     {

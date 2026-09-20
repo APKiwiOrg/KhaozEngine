@@ -275,7 +275,7 @@ public partial class MapEditorScene : GameScene, IGameScene3D
         _controller = new EditorToolController(_document)
         {
             HeightOf = KindHeight,
-            IsVisible = ElementVisible,
+            IsVisible = _visibility.IsElementVisible, PlacementKindVisible = PropKindVisible,
         };
         _viewport = new ViewportWorld(_scene, _options.ManifestPaths)
         {

@@ -32,7 +32,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   named old default, refuse a partial state, and CARRY the committed id on every added row. A run with nothing
   pending writes nothing. The runner never discards an operator draft (a draft is its own only when the actor,
   the note and the exact edits match a fresh plan), never moves the pin, never clears another publisher's
-  freeze, re-checks `ExpectedVersion` on every re-read, retries only a transient `DbException`, and resolves
+  freeze, publishes only after freezing the draft and re-proving it is exactly the plan, so an operator edit
+  that lands in the draft is never published inside an upgrade, re-checks `ExpectedVersion` on every re-read, retries only a transient `DbException`, and resolves
   every failure by reading the ledger, so two hosts racing publish each upgrade exactly once. Refusals carry
   `KECU0001` to `KECU0016` and a failed report maps to `ContentBootResult.ContentFailureExitCode`. Closes #1038.
 - Catalog schema version 2 on both providers, migration `catalog-v2-content-upgrade-ledger`. The one new table

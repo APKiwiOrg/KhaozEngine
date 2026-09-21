@@ -20,7 +20,7 @@ namespace KhaozEngine.Catalog;
 /// </summary>
 public static class ItemContentType
 {
-    /// <summary>Id slots per chunk, the smallest of the six, for the re-download reason above.</summary>
+    /// <summary>Id slots per chunk, the smallest of the seven, for the re-download reason above.</summary>
     public const int DefaultChunkSlots = 1024;
 
     /// <summary>

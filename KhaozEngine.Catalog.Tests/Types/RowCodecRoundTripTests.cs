@@ -331,9 +331,11 @@ public class RowCodecRoundTripTests
     /// so no prefix may decode at all and this theory is the flat refusal it always was.
     /// </para>
     /// <para>
-    /// The equivalence is also what puts the redundant LONG form on the refused side without naming it. A
-    /// prefix carrying the zero form of a trailing appended field is longer than the short form, so it is not
-    /// equal to it, so it must not decode.
+    /// <b>This theory does NOT cover the redundant long form.</b> It generates prefixes of a whole body, so
+    /// every case it runs is shorter than that body and the long form is never built. The facts that do cover
+    /// it are <see cref="AnExplicitZeroForAnAppendedFieldIsRefusedAsARedundantEncoding"/>, which appends the
+    /// zero byte to the short form of a real item row, and
+    /// <see cref="EveryKindsZeroFormEncodesToNothingAtTheTail"/>, which does the same per field kind.
     /// </para>
     /// </summary>
     [Theory]
@@ -479,6 +481,10 @@ public class RowCodecRoundTripTests
             baselineFieldCount: 1);
         var codec = new BareCodec(new ContentTypeId(2048), schema);
 
+        // LocalizedTextKey is the one row here that compares absent with absent, and it has to: OfNumber and
+        // OfBytes both refuse the marker kind, so its zero form IS absent and there is no second value to
+        // build. Its long form refusal below therefore lands through the trailing byte check rather than
+        // through CarriesRedundantTail, since a marker writes no bytes and can never be a redundant tail.
         byte[] absent = Encode(codec, Bare(schema, ContentFieldValue.Absent(kind)));
         byte[] zero = Encode(codec, Bare(schema, ZeroFormOf(kind)));
 
@@ -490,6 +496,73 @@ public class RowCodecRoundTripTests
         Assert.False(codec.TryDecode([.. absent, (byte)0], out _, out reason));
         Assert.Equal(ContentRowCodecBase.ReasonFieldMalformed, reason);
     }
+
+    /// <summary>
+    /// The shape the rule is written for and that no engine type has reached yet: TWO appended fields, from
+    /// two separate releases. Everything above exercises a tail of one, where "the last appended field that
+    /// carries a value" and "the only appended field" are the same thing and a scan that stopped at the first
+    /// field would pass.
+    /// <para>
+    /// The four bodies are the whole rule. <c>[base]</c> is the first release. <c>[base][05]</c> is the second.
+    /// <c>[base][00][05]</c> is the THIRD, and it is why the tail is a scan rather than a check of the last
+    /// field alone: the first appended field is the zero form and still has to be written, because a later one
+    /// carries a value and the walk is positional. <c>[base][05][00]</c> is the redundant encoding of
+    /// <c>[base][05]</c> and is refused.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void ASchemaWithTwoAppendedFieldsKeepsOneEncodingPerRow()
+    {
+        var schema = new ContentFieldSchema(
+            [
+                new ContentFieldEntry("value", ContentFieldKind.Int, null, ContentVisibility.Client, true),
+                new ContentFieldEntry("first", ContentFieldKind.Int, null, ContentVisibility.Client, false),
+                new ContentFieldEntry("second", ContentFieldKind.Int, null, ContentVisibility.Client, false),
+            ],
+            baselineFieldCount: 1);
+        var codec = new BareCodec(new ContentTypeId(2049), schema);
+
+        ContentFieldValue seven = ContentFieldValue.OfNumber(ContentFieldKind.Int, 7);
+        ContentFieldValue five = ContentFieldValue.OfNumber(ContentFieldKind.Int, 5);
+        ContentFieldValue zero = ContentFieldValue.OfNumber(ContentFieldKind.Int, 0);
+        ContentFieldValue absent = ContentFieldValue.Absent(ContentFieldKind.Int);
+
+        byte[] baseline = Encode(codec, Three(seven, absent, absent));
+        Assert.Equal(baseline, Encode(codec, Three(seven, zero, zero)));
+
+        // An explicit zero in the LAST appended field is dropped and the one before it is kept, which is the
+        // scan doing its job rather than a check of one field.
+        Assert.Equal<byte[]>([.. baseline, 0x05], Encode(codec, Three(seven, five, zero)));
+        Assert.Equal<byte[]>([.. baseline, 0x05], Encode(codec, Three(seven, five, absent)));
+
+        // A zero FIRST appended field is written when a later one carries a value, because the walk is
+        // positional and dropping it would shift the value that follows.
+        Assert.Equal<byte[]>([.. baseline, 0x00, 0x05], Encode(codec, Three(seven, zero, five)));
+
+        foreach (byte[] canonical in new[]
+        {
+            baseline,
+            (byte[])[.. baseline, 0x05],
+            (byte[])[.. baseline, 0x00, 0x05],
+        })
+        {
+            Assert.True(codec.TryDecode(canonical, out ContentRow? read, out string? reason), reason);
+            Assert.Equal(canonical, Encode(codec, read));
+        }
+
+        // The redundant encoding of [base][05], one field longer with the tail at its zero form.
+        Assert.False(codec.TryDecode([.. baseline, 0x05, 0x00], out _, out string? refusal));
+        Assert.Equal(ContentRowCodecBase.ReasonFieldMalformed, refusal);
+
+        // And so is the redundant encoding of the baseline itself, at either width.
+        Assert.False(codec.TryDecode([.. baseline, 0x00], out _, out refusal));
+        Assert.Equal(ContentRowCodecBase.ReasonFieldMalformed, refusal);
+        Assert.False(codec.TryDecode([.. baseline, 0x00, 0x00], out _, out refusal));
+        Assert.Equal(ContentRowCodecBase.ReasonFieldMalformed, refusal);
+    }
+
+    static ContentRow Three(ContentFieldValue value, ContentFieldValue first, ContentFieldValue second)
+        => new(new ContentTypeId(2049), 1, new ContentKey("bare"), 0, false, [value, first, second]);
 
     static string? ReferenceTargetFor(ContentFieldKind kind) => kind switch
     {

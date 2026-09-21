@@ -26,7 +26,7 @@ jobs:
   # cannot run this suite. Cost is no longer a factor either way, because a public repo's GitHub-hosted
   # standard runners are free. Every leg of cross-platform-gpu.yml is hosted now too, Metal included.
   build-test-pack:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
       packages: write
@@ -34,7 +34,7 @@ jobs:
       # nuget.config's github source reads this; CI uses the workflow token.
       GITHUB_PACKAGES_PAT: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         # fetch-depth: 0 (full history) is required by the selective path: scripts/ci-selective-test.sh
         # diffs the base sha against head, and both must be present locally, which the default depth-1
         # shallow clone does not guarantee. Cost is a slower checkout. The tag/dispatch full runs pay it
@@ -76,7 +76,7 @@ jobs:
           sh scripts/tests/pack-local-feed.test.sh
           sh scripts/tests/tag-collision-guard.test.sh
           sh scripts/tests/version-push-guard.test.sh
-      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: '10.0.x'
       # local-feed is git-ignored (dev inner-loop); create it so the nuget.config 'local' source resolves.
@@ -147,7 +147,7 @@ jobs:
   # step above because it needs the service container, and it does not gate the publish leg: a red run here
   # on a tag is a release to pull, which is the same standing the cross-platform GPU matrix has.
   catalog-sqlserver:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     permissions:
       contents: read
@@ -169,7 +169,7 @@ jobs:
       GITHUB_PACKAGES_PAT: ${{ secrets.GITHUB_TOKEN }}
       KE_CATALOG_SQLSERVER: 'Server=127.0.0.1,1433;Initial Catalog=khaoz-catalog-test-ci;User ID=sa;Password=KhaozEngine_CI_Catalog_41!;Encrypt=True;TrustServerCertificate=True'
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - name: Decide whether the catalog is affected
@@ -193,7 +193,7 @@ jobs:
           fi
           echo "run=$run" >> "$GITHUB_OUTPUT"
           echo "catalog-sqlserver: run=$run"
-      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         if: steps.affected.outputs.run == 'true'
         with:
           dotnet-version: '10.0.x'

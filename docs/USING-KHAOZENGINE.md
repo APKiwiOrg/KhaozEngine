@@ -6811,7 +6811,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="19.13.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="19.14.0" />
 ```
 
 ```csharp
@@ -13104,7 +13104,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="19.13.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="19.14.0" />
 ```
 
 ```csharp
@@ -13140,7 +13140,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="19.13.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="19.14.0" />
 ```
 
 ```csharp
@@ -13382,7 +13382,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="19.13.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="19.14.0" />
 ```
 
 ```csharp
@@ -14708,7 +14708,7 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
   and no time base of any kind, so a slow turn-based world and a continuous one share it (see "Skill
   progression" below).
 - **`KhaozEngine.Catalog`**: the tunable-content catalog's read half: a frozen `ContentTypeRegistry` with its
-  field schemas and the six engine content types, the content-addressed `KECC`/`KECM`/`KECT`/`KECR` pack
+  field schemas and the seven engine content types, the content-addressed `KECC`/`KECM`/`KECT`/`KECR` pack
   formats, the `IPackStore` seam with `FileSystemPackStore` and `ContentPackReader`, the `IContentSnapshot`
   read seam, and the pure `ContentValidator`. No third-party dependency at all (see "Content catalog" below).
 - **`KhaozEngine.Commerce`**: server-authoritative currency wallet (`IWalletStore`, `Wallet`, entitlement
@@ -15073,7 +15073,7 @@ Tunable content (items, stats, tags, loot tables) is authored in a database, pub
 content-addressed packs and loaded into a runtime of rows indexed by id. `KhaozEngine.Catalog` is the half
 every consumer needs, a game client included, and it takes no third-party dependency, so pulling the read side
 into a client puts no database in its graph. Both ways in start at a `ContentTypeRegistry`: a host registers
-the six engine types through `EngineContentTypes.Register`, then its own `Game`-band types, and `Freeze()`
+the seven engine types through `EngineContentTypes.Register`, then its own `Game`-band types, and `Freeze()`
 closes the registry at boot, so no type can appear halfway through a session. The SERVER's way in is eager,
 reading every chunk the manifest names through `ContentPackReader.ReadAllAsync` and assembling one
 `IContentSnapshot` over `ContentSnapshotBuilder`. The CLIENT's way in is the lazy one, `ReadRowAsync`, which
@@ -16567,7 +16567,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="19.13.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="19.14.0" />
 </ItemGroup>
 ```
 

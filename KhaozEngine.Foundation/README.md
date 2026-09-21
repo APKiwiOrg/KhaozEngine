@@ -12,7 +12,7 @@ Pulls in:
 - `KhaozEngine.Content` - JSON config/content loading with schema validation.
 - `KhaozEngine.Serialization` - shared `System.Text.Json` defaults (`JsonDefaults`).
 - `KhaozEngine.Catalog` - the tunable-content catalog's read half: the frozen content type registry with its
-  field schemas and the six engine content types, the content-addressed pack formats, the `IPackStore` seam,
+  field schemas and the seven engine content types, the content-addressed pack formats, the `IPackStore` seam,
   the `IContentSnapshot` read side and the pure validator. No third-party dependency.
 - `KhaozEngine.Persistence` - tamper-deterrent saves, atomic writes, `SettingsManager<T>`, `GameStorage`.
 - `KhaozEngine.ItemInstances` - the per-item instance record over `Items` and `Catalog`: the canonical tagged

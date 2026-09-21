@@ -107,17 +107,17 @@ var key = new ContentKey(rowBlob, start, length);       // no string materialise
   array. An unpaired surrogate in that string becomes the replacement character, matching a UTF-8
   encode and decode. Runtime callers holding row bytes use the byte-span overload.
 
-## The six engine content types
+## The seven engine content types
 
-`EngineContentTypes.Register(registry)` registers all six, once, before any pack loads. It carries their
+`EngineContentTypes.Register(registry)` registers all seven, once, before any pack loads. It carries their
 stable ids and keys, plus the two type keys the engine writes down and a GAME registers under,
 `equip_profile` and `socket_type`.
 
 - `TagContentType` - `tag`, id 1, the tag vocabulary contracts 4.6 makes content rather than strings. A
   derived name and the console's `sort` order, nothing else.
 - `ItemContentType` - `item`, id 2, the item base of spec 3.3: tags, stacking, tradability, value, three
-  asset references, the two icon-shot angles, durability, the socket CAP and the late-bound equip profile.
-  `IsAssetReference` is the shape it enforces, at most 128 bytes of `a-z0-9_./-`.
+  asset references, the two icon-shot angles, durability, the socket CAP, the late-bound equip profile and
+  the optional `category`. `IsAssetReference` is the shape it enforces, at most 128 bytes of `a-z0-9_./-`.
 - `StatContentType` - `stat`, id 3, contracts 13.1's table. A fixed power-of-ten `scale` with the stored
   integer scaled by it, so there is no float stat and no float modifier anywhere.
 - `LootTableContentType` - `loot_table`, id 4, `ServerOnly` at the type level, so the whole family is omitted
@@ -129,6 +129,29 @@ stable ids and keys, plus the two type keys the engine writes down and a GAME re
   would make `roll_count` meaningless on the table that set it.
 - `BaseSocketContentType` - `base_socket`, id 6, one socket an item base is authored WITH, in authored order,
   which `item.socket_max` caps rather than describes.
+- `ItemCategoryContentType` - `item_category`, id 7, the coarse bucket `item.category` names. The tag type's
+  shape exactly, a derived name and a `sort`, and it sits beside tags because a tag list is many per row and
+  reads as a predicate while a category is one per row and reads as a grouped listing. The engine ships no
+  category rows: a game publishes the vocabulary it wants and an item that belongs to none leaves the field
+  absent.
+
+### Adding a field to an engine type
+
+A type's field list may gain OPTIONAL fields at the END and nothing else. A row body is a positional walk, so
+inserting a field anywhere earlier moves every field after it and repoints every published row. `item.category`
+is the first field the engine has added this way and the rule it established:
+
+- The encoder is unchanged and still writes every field, so a new publish costs one zero byte per row.
+- A body that ENDS where an earlier field list ended decodes with the missing tail ABSENT, which is what lets a
+  published version, a carried-forward chunk and a shipped client pack all keep reading under a longer schema.
+  A body that runs PAST the schema is still refused, and so is one that stops short of a REQUIRED field.
+- The authoring store needs no migration. `catalog_type` holds a type row and `catalog_row_field` holds a row
+  per field NAME, so neither carries a per-type column list to move.
+- `ContentPackFormat.Generation` moves with the field, because an older reader stops one field short of the end
+  of every new row and would be wrong rather than merely older.
+- `ContentPackRebuild` of a version published under the SHORTER list is refused with
+  `server-manifest-mismatch`, which is the guard working: the rows now encode to different bytes than the
+  recorded manifest names. Rebuild is a recovery path for a version published by THIS build's schema.
 
 ## The four pack formats
 
@@ -194,7 +217,9 @@ decoder is also fuzzed against.
 - `ItemRow` - the typed view over the engine `item` type, and the only typed view in the catalog: a
   `ref struct` over the row body with `stackable`, `max_stack`, `value`, `durability_max` and `socket_max`
   decoded at construction, for the pricing, stacking and generation paths a field-by-name walk does not
-  budget for.
+  budget for. It walks the trailing fields it does not surface, `equip_profile` and `category`, and it
+  accepts a body that ends where an earlier field list ended. Read `category` off `ContentRow` instead: it is
+  a grouped-listing field rather than a per-operation one.
 
 ## The loaded runtime
 

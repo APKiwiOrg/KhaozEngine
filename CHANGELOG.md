@@ -5,6 +5,44 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 19.14.0
+
+- A new engine content type `item_category` (id 7, key `item_category`), the coarse bucket an item base
+  belongs to. It is the `tag` type's shape exactly, a derived `name` and a console `sort`, and it sits beside
+  tags rather than inside them: a tag list is many per row and reads as a predicate, a category is one per row
+  and reads as a grouped listing such as a collection log, a bank tab or a shop board. The engine ships no
+  category rows. A game publishes the vocabulary it wants through `ItemCategoryContentType`.
+- `item.category`, an OPTIONAL `KeyReference` to that type, `Client` visibility, appended as the LAST field of
+  the item schema so no existing field index moves. An item that belongs to no category leaves it absent. It
+  is validated by the same reference pass that validates `equip_profile`, so a category id no live row answers
+  to is `KEC0006` and is refused before the publish rather than after it.
+- **The engine now has a schema evolution rule and this is the first field to use it.** A type's field list may
+  gain OPTIONAL fields at the END and nothing else. `ContentRowCodecBase.TryDecode` reads a body that ENDS
+  where an earlier field list ended and returns the missing tail ABSENT, so a published version, a
+  carried-forward chunk and a shipped client pack all keep reading under a longer schema. A body that runs PAST
+  the schema is still `field-malformed`, and one that stops short of a REQUIRED field is still
+  `field-truncated`. `ItemRow`, the hand-written hot-field walk, follows the same rule. The ENCODER is
+  unchanged and still writes every field, so a publish under the new schema costs one zero byte per item row
+  and no existing chunk changes its hash.
+- `ContentPackFormat.Generation` moves to 2, which is the rule the constant already carried: an engine-owned
+  row codec gained a field an older reader cannot skip. A generation 1 reader stops one field short of the end
+  of every item row a generation 2 publish writes, so it is WRONG rather than merely older, and the bump moves
+  that refusal to the manifest where it reads as "this pack needs a newer build". It invalidates nothing
+  already published: a reader refuses only a manifest AHEAD of it, so this build reads every generation 1 pack.
+  A consumer's own older clients are refused by the first version it publishes after adopting this engine,
+  which is the announcement the number exists to make.
+- **Adopting it on an existing catalog needs no migration.** `catalog_type` gains a row for the new type on the
+  next `InitializeAsync`, under `ValidateOnly` as well as `AutoCreate`, because the SQLite and SQL Server
+  schemas hold a type row and a field row per NAME and carry no per-type column list. Bundle import checks the
+  type key and the chunk slots and never the field list, so a bundle exported before the field imports
+  unchanged. The one thing that does NOT survive is `ContentPackRebuild` of a version published under the
+  shorter field list: it refuses with `server-manifest-mismatch`, correctly, because those rows now encode to
+  bytes the recorded manifest does not name.
+- Tests pin the old-schema case rather than assuming it: the checked-in `chunk-item-0.kecc` golden, whose bytes
+  were baked before the field existed, still decodes row for row and reads `category` absent, and a SQLite
+  catalog published under the 16-field item schema boots under the 17-field one with its item chunk carried
+  forward at the SAME hash.
+
 ## 19.13.0
 
 - `ServerStatusReport.ServerAddress` (wire name `serverAddress`, optional, null by default) carries the address

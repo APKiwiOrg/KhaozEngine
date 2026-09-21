@@ -130,6 +130,7 @@ internal static class InstanceValidationFixtures
             ContentFieldValue.Absent(ContentFieldKind.ScaledInt),
             ContentFieldValue.Absent(ContentFieldKind.Int),
             Int(0),
+            ContentFieldValue.Absent(ContentFieldKind.KeyReference),
             ContentFieldValue.Absent(ContentFieldKind.KeyReference));
 
     public static ContentRow Mod(

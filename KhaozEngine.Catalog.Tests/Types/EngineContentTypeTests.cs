@@ -6,7 +6,7 @@ using Xunit;
 namespace KhaozEngine.Tests.Catalog.Types;
 
 /// <summary>
-/// The six engine content types of spec 3.1 to 3.5, pinned: their ids, their keys, their chunk slots,
+/// The seven engine content types, pinned: their ids, their keys, their chunk slots,
 /// their row caps, their type-level visibility, and every field NAME in its declared order.
 /// <para>
 /// The names are pinned LITERALLY rather than read back off the constants that produced them, because a
@@ -49,7 +49,7 @@ public class EngineContentTypeTests
     }
 
     [Fact]
-    public void SixTypesRegisterWithTheSpecIdsAndKeys()
+    public void SevenTypesRegisterWithTheSpecIdsAndKeys()
     {
         ContentTypeRegistry registry = Registered();
 
@@ -62,6 +62,7 @@ public class EngineContentTypeTests
                 (4, "loot_table"),
                 (5, "loot_entry"),
                 (6, "base_socket"),
+                (7, "item_category"),
             },
             registry.ByTypeId.Select(r => (r.Type.Value, r.TypeKey)).ToArray());
     }
@@ -81,7 +82,7 @@ public class EngineContentTypeTests
         ContentTypeRegistry registry = Registered();
 
         Assert.Equal(
-            new[] { 4096, 1024, 4096, 4096, 16384, 16384 },
+            new[] { 4096, 1024, 4096, 4096, 16384, 16384, 4096 },
             registry.ByTypeId.Select(r => r.ChunkSlots).ToArray());
     }
 
@@ -92,7 +93,7 @@ public class EngineContentTypeTests
 
         Assert.Equal(512, Type(registry, "loot_entry").MaxRowBytes);
         Assert.Equal(512, Type(registry, "base_socket").MaxRowBytes);
-        foreach (string key in new[] { "tag", "item", "stat", "loot_table" })
+        foreach (string key in new[] { "tag", "item", "stat", "loot_table", "item_category" })
         {
             Assert.Equal(ContentPackFormat.DefaultMaxRowBytes, Type(registry, key).MaxRowBytes);
         }
@@ -105,7 +106,7 @@ public class EngineContentTypeTests
 
         Assert.Equal(ContentVisibility.ServerOnly, Type(registry, "loot_table").DefaultVisibility);
         Assert.Equal(ContentVisibility.ServerOnly, Type(registry, "loot_entry").DefaultVisibility);
-        foreach (string key in new[] { "tag", "item", "stat", "base_socket" })
+        foreach (string key in new[] { "tag", "item", "stat", "base_socket", "item_category" })
         {
             Assert.Equal(ContentVisibility.Client, Type(registry, key).DefaultVisibility);
         }
@@ -137,11 +138,11 @@ public class EngineContentTypeTests
     }
 
     [Fact]
-    public void ItemSchemaIsTheSixteenFieldsOfSpecThreeThreeInOrder()
+    public void ItemSchemaIsTheSeventeenFieldsOfSpecThreeThreePlusCategoryInOrder()
     {
         ContentFieldSchema schema = Type(Registered(), "item").Schema;
 
-        Assert.Equal(16, schema.Fields.Count);
+        Assert.Equal(17, schema.Fields.Count);
         AssertField(schema, 0, "name", ContentFieldKind.LocalizedTextKey, null, ContentVisibility.Client, true);
         AssertField(schema, 1, "examine", ContentFieldKind.LocalizedTextKey, null, ContentVisibility.Client, false);
         AssertField(schema, 2, "tags", ContentFieldKind.TagList, "tag", ContentVisibility.Client, false);
@@ -158,6 +159,21 @@ public class EngineContentTypeTests
         AssertField(schema, 13, "durability_max", ContentFieldKind.Int, null, ContentVisibility.Client, false);
         AssertField(schema, 14, "socket_max", ContentFieldKind.Int, null, ContentVisibility.Client, false);
         AssertField(schema, 15, "equip_profile", ContentFieldKind.KeyReference, "equip_profile", ContentVisibility.Client, false);
+        AssertField(schema, 16, "category", ContentFieldKind.KeyReference, "item_category", ContentVisibility.Client, false);
+    }
+
+    /// <summary>
+    /// The category vocabulary is the tag type's shape exactly, because it answers the same kind of question
+    /// about a row and a second shape would be a second thing to keep in step.
+    /// </summary>
+    [Fact]
+    public void ItemCategorySchemaIsTheDerivedNameAndTheEditorSort()
+    {
+        ContentFieldSchema schema = Type(Registered(), "item_category").Schema;
+
+        Assert.Equal(2, schema.Fields.Count);
+        AssertField(schema, 0, "name", ContentFieldKind.LocalizedTextKey, null, ContentVisibility.Client, true);
+        AssertField(schema, 1, "sort", ContentFieldKind.Int, null, ContentVisibility.Client, false);
     }
 
     [Fact]

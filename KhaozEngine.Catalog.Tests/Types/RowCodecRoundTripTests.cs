@@ -19,7 +19,7 @@ namespace KhaozEngine.Tests.Catalog.Types;
 public class RowCodecRoundTripTests
 {
     static readonly string[] EveryTypeKey =
-        ["tag", "item", "stat", "loot_table", "loot_entry", "base_socket"];
+        ["tag", "item", "stat", "loot_table", "loot_entry", "base_socket", "item_category"];
 
     /// <summary>The reason tokens a row decode may return, contracts 9.7 plus the varint tokens.</summary>
     static readonly string[] DecodeReasons =
@@ -102,7 +102,13 @@ public class RowCodecRoundTripTests
             Number(ContentFieldKind.ScaledInt, 45000),
             Number(ContentFieldKind.Int, 100),
             Number(ContentFieldKind.Int, 3),
-            Number(ContentFieldKind.KeyReference, 7)),
+            Number(ContentFieldKind.KeyReference, 7),
+            Number(ContentFieldKind.KeyReference, 2)),
+        "item_category" => Row(
+            registration,
+            "tool",
+            ContentFieldValue.Absent(ContentFieldKind.LocalizedTextKey),
+            Number(ContentFieldKind.Int, 30)),
         "stat" => Row(
             registration,
             "attack_speed",
@@ -312,20 +318,84 @@ public class RowCodecRoundTripTests
             () => Encode(registration, new ContentRow(row.Type, 0, row.Key, 0, false, fields)));
     }
 
+    /// <summary>
+    /// Every prefix of a whole body, held to the schema evolution rule rather than to a flat refusal.
+    /// <para>
+    /// A prefix that ends INSIDE a field, or that leaves a required field with no bytes, is refused with a
+    /// listed reason. A prefix that ends exactly on a field boundary with only optional fields left is a row
+    /// written under an earlier version of this schema, and it DECODES with that tail absent. Nothing throws
+    /// either way, because the bytes arrive from a remote peer.
+    /// </para>
+    /// <para>
+    /// The decode is pinned rather than merely allowed: re-encoding what came back has to reproduce the prefix
+    /// exactly and then write the zero form of each missing field and nothing else. A decoder that invented a
+    /// value for a field the bytes never carried would fail that, and so would one that lost a field the bytes
+    /// did carry.
+    /// </para>
+    /// </summary>
     [Theory]
     [MemberData(nameof(TypeKeys))]
-    public void ATruncatedBodyIsRefusedWithAListedReasonAndNeverThrows(string typeKey)
+    public void ATruncatedBodyIsRefusedOrReadsAsAnEarlierSchemaAndNeverThrows(string typeKey)
     {
         ContentTypeRegistration registration = Type(typeKey);
         byte[] whole = Encode(registration, Populated(registration));
 
         for (int length = 0; length < whole.Length; length++)
         {
-            bool decoded = registration.Codec.TryDecode(whole.AsSpan(0, length), out _, out string? reason);
+            string where = length.ToString(CultureInfo.InvariantCulture);
+            if (!registration.Codec.TryDecode(whole.AsSpan(0, length), out ContentRow? row, out string? reason))
+            {
+                Assert.Contains(reason, DecodeReasons);
+                continue;
+            }
 
-            Assert.False(decoded, length.ToString(CultureInfo.InvariantCulture));
-            Assert.Contains(reason, DecodeReasons);
+            byte[] again = Encode(registration, row);
+            Assert.True(again.Length >= length, where);
+            Assert.True(whole.AsSpan(0, length).SequenceEqual(again.AsSpan(0, length)), where);
+            for (int i = length; i < again.Length; i++)
+            {
+                Assert.True(again[i] == 0, where);
+            }
         }
+    }
+
+    /// <summary>
+    /// A body that stops after the LAST required field of a schema whose tail is optional is exactly what an
+    /// older publish wrote, and it comes back with that tail absent rather than refused. The item type is the
+    /// one this matters for: every catalog published before <c>category</c> existed ends one field early.
+    /// </summary>
+    [Fact]
+    public void ABodyEndingWhereAnEarlierSchemaEndedDecodesWithTheNewFieldAbsent()
+    {
+        ContentTypeRegistration registration = Type("item");
+        byte[] whole = Encode(registration, Populated(registration));
+
+        // The populated row's category is a one byte varint, so the body an older publish wrote is this one
+        // without its last byte.
+        byte[] older = whole[..^1];
+
+        Assert.True(registration.Codec.TryDecode(older, out ContentRow? row, out string? reason), reason);
+
+        int category = IndexOf(registration, ItemContentType.CategoryField);
+        Assert.True(row.Fields[category].IsAbsent);
+        for (int i = 0; i < category; i++)
+        {
+            Assert.Equal(Populated(registration).Fields[i], row.Fields[i]);
+        }
+    }
+
+    static int IndexOf(ContentTypeRegistration registration, string fieldName)
+    {
+        for (int i = 0; i < registration.Schema.Fields.Count; i++)
+        {
+            if (string.Equals(registration.Schema.Fields[i].Name, fieldName, StringComparison.Ordinal))
+            {
+                return i;
+            }
+        }
+
+        Assert.Fail("The schema carries no field named " + fieldName);
+        return -1;
     }
 
     [Theory]
@@ -385,8 +455,9 @@ public class RowCodecRoundTripTests
         AppendVarint(body, (uint)reference.Length);
         body.AddRange(reference);
 
-        // mesh, held_mesh, ground_pose, icon_tilt, icon_spin, durability_max, socket_max, equip_profile.
-        body.AddRange([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+        // mesh, held_mesh, ground_pose, icon_tilt, icon_spin, durability_max, socket_max, equip_profile,
+        // category.
+        body.AddRange([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
         return [.. body];
     }
 

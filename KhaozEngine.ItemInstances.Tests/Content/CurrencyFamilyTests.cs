@@ -379,7 +379,7 @@ public class CurrencyFamilyTests
 
         InstanceContentTypes.Register(registry);
 
-        Assert.Equal(24, registry.ByTypeId.Count);
+        Assert.Equal(25, registry.ByTypeId.Count);
         Assert.True(registry.TryGetByKey(EngineContentTypes.SocketTypeTypeKey, out ContentTypeRegistration? socket));
         Assert.Equal(InstanceContentTypeIds.SocketTypeTypeId, socket.Type.Value);
     }

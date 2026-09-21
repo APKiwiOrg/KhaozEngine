@@ -44,7 +44,8 @@ internal static class CatalogSnapshotFixtures
         int maxStack,
         int durabilityMax,
         int socketMax,
-        bool isRetired = false)
+        bool isRetired = false,
+        int category = 0)
     {
         var fields = new List<ContentFieldValue>
         {
@@ -64,6 +65,9 @@ internal static class CatalogSnapshotFixtures
             ContentFieldValue.OfNumber(ContentFieldKind.Int, durabilityMax),
             ContentFieldValue.OfNumber(ContentFieldKind.Int, socketMax),
             ContentFieldValue.Absent(ContentFieldKind.KeyReference),             // equip_profile
+            category == 0
+                ? ContentFieldValue.Absent(ContentFieldKind.KeyReference)
+                : ContentFieldValue.OfNumber(ContentFieldKind.KeyReference, category),
         };
 
         return new ContentRow(ItemType, id, new ContentKey(key), 0, isRetired, fields);

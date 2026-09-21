@@ -74,10 +74,25 @@ public static class ItemContentType
     /// <summary>The game-owned equip profile, late bound at registry freeze.</summary>
     public const string EquipProfileField = "equip_profile";
 
+    /// <summary>
+    /// The one <c>item_category</c> row this base belongs to, or absent when it belongs to none. It is the
+    /// LAST field of the schema and it is optional, which is what lets a catalog published before the field
+    /// existed keep decoding: a body that ends where the old schema ended reads it absent.
+    /// </summary>
+    public const string CategoryField = "category";
+
     /// <summary>The scale <c>icon_tilt</c> and <c>icon_spin</c> store their thousandths under.</summary>
     const int IconAngleScale = 1000;
 
-    /// <summary>The ordered field list, spec 3.3's table exactly.</summary>
+    /// <summary>
+    /// The ordered field list, spec 3.3's table plus <c>category</c> appended after it.
+    /// <para>
+    /// <b>A field is only ever APPENDED here, and only ever as an optional one.</b> A row body is a
+    /// positional walk, so inserting anywhere else moves every field after it and repoints every published
+    /// row. Appending an optional field leaves every existing index where it was and costs one zero byte on a
+    /// row that does not carry it.
+    /// </para>
+    /// </summary>
     public static ContentFieldSchema CreateSchema() => new(
     [
         new ContentFieldEntry(NameField, ContentFieldKind.LocalizedTextKey, null, ContentVisibility.Client, true),
@@ -116,6 +131,12 @@ public static class ItemContentType
             EquipProfileField,
             ContentFieldKind.KeyReference,
             EngineContentTypes.EquipProfileTypeKey,
+            ContentVisibility.Client,
+            false),
+        new ContentFieldEntry(
+            CategoryField,
+            ContentFieldKind.KeyReference,
+            EngineContentTypes.ItemCategoryTypeKey,
             ContentVisibility.Client,
             false),
     ]);

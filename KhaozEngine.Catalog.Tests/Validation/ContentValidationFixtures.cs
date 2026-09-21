@@ -27,6 +27,8 @@ internal static class ContentValidationFixtures
 
     public static ContentTypeId ItemType => new(EngineContentTypes.ItemTypeId);
 
+    public static ContentTypeId CategoryType => new(EngineContentTypes.ItemCategoryTypeId);
+
     public static ContentTypeId TagType => new(EngineContentTypes.TagTypeId);
 
     public static ContentTypeId StatType => new(EngineContentTypes.StatTypeId);
@@ -142,6 +144,7 @@ internal static class ContentValidationFixtures
         int durabilityMax = 0,
         int socketMax = 0,
         int equipProfile = 0,
+        int category = 0,
         IReadOnlyList<int>? tagIds = null,
         int parentId = 0,
         bool isRetired = false)
@@ -168,6 +171,9 @@ internal static class ContentValidationFixtures
             equipProfile == 0
                 ? ContentFieldValue.Absent(ContentFieldKind.KeyReference)
                 : ContentFieldValue.OfNumber(ContentFieldKind.KeyReference, equipProfile),
+            category == 0
+                ? ContentFieldValue.Absent(ContentFieldKind.KeyReference)
+                : ContentFieldValue.OfNumber(ContentFieldKind.KeyReference, category),
         };
 
         return new ContentRow(ItemType, id, new ContentKey(key), parentId, isRetired, fields);
@@ -177,6 +183,19 @@ internal static class ContentValidationFixtures
     public static ContentRow Tag(int id, string key, bool isRetired = false)
         => new(
             TagType,
+            id,
+            new ContentKey(key),
+            0,
+            isRetired,
+            [
+                ContentFieldValue.Absent(ContentFieldKind.LocalizedTextKey),
+                ContentFieldValue.Absent(ContentFieldKind.Int),
+            ]);
+
+    /// <summary>An item category row: the derived name marker and the console's sort order.</summary>
+    public static ContentRow Category(int id, string key, bool isRetired = false)
+        => new(
+            CategoryType,
             id,
             new ContentKey(key),
             0,

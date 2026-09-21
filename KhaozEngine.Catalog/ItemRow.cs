@@ -134,9 +134,13 @@ public readonly ref struct ItemRow
             return false;
         }
 
-        // The walk covers every written field of spec 3.3's schema, so a body that has not landed exactly on
-        // its end is not an item row, whatever the fields before that read as.
-        if (offset != span.Length)
+        // The TAIL, which mirrors ContentRowCodecBase's schema evolution rule for this hand-written walk. A
+        // body that ends here was written before the item schema gained its trailing optional fields and is a
+        // valid item row with them absent. A body that carries more reads them, and one that has not landed
+        // exactly on its end after that is not an item row, whatever the fields before it read as.
+        if (offset != span.Length
+            && (!ContentVarint.TryRead(span, ref offset, out _, out _)          // category
+                || offset != span.Length))
         {
             return false;
         }

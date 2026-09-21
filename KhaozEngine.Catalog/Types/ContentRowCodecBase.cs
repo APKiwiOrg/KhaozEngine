@@ -162,6 +162,12 @@ public abstract class ContentRowCodecBase : IContentRowCodec
     /// The body carries the key and the fields and nothing else, so the decoded row takes id 0, parent 0
     /// and a live retired bit. A chunk's row TABLE owns the id and the retired flag (spec 7.3) and the
     /// chunk decoder is what puts them back on.
+    /// <para>
+    /// A body that ENDS before the schema does is a row written under an earlier field list, and
+    /// <see cref="TryEndAtTail"/> is the one rule that covers it. A body that runs PAST the schema is still
+    /// <see cref="ReasonFieldMalformed"/>: those bytes describe fields this reader has no list for, so it
+    /// cannot know what it would be discarding.
+    /// </para>
     /// </remarks>
     public bool TryDecode(ReadOnlySpan<byte> body, [MaybeNullWhen(false)] out ContentRow row, out string? reason)
     {
@@ -184,6 +190,16 @@ public abstract class ContentRowCodecBase : IContentRowCodec
         var values = new ContentFieldValue[Schema.Fields.Count];
         for (int i = 0; i < values.Length; i++)
         {
+            if (offset == body.Length)
+            {
+                if (!TryEndAtTail(i, values, out reason))
+                {
+                    return false;
+                }
+
+                break;
+            }
+
             if (!TryReadField(body, ref offset, i, Schema.Fields[i], out values[i], out reason))
             {
                 return false;
@@ -211,6 +227,49 @@ public abstract class ContentRowCodecBase : IContentRowCodec
     /// <param name="value">The value, never absent and never a derived marker.</param>
     protected virtual string? CheckFieldValue(int fieldIndex, ContentFieldEntry field, in ContentFieldValue value)
         => null;
+
+    /// <summary>
+    /// The body ran out before field <paramref name="from"/>, which is a row written under an EARLIER version
+    /// of this schema. Every remaining field comes back absent when they are all optional, and the row is
+    /// refused when one of them is required.
+    /// <para>
+    /// <b>This is the whole of the schema evolution rule, and it only works in one direction.</b> A type's
+    /// field list may gain OPTIONAL fields at the END. Rows written before those fields existed end exactly
+    /// where the older schema ended, and a reader carrying the longer list reads the difference as absence
+    /// rather than as a malformed row. Inserting a field anywhere else, or appending a required one, still
+    /// repoints every stored row and is still a break.
+    /// </para>
+    /// <para>
+    /// A derived marker takes no width in the body, so it is not treated as missing data even though it may be
+    /// required. A required field that DOES take width is <see cref="ReasonFieldTruncated"/>, because a row
+    /// that never carried it is not a row this schema can describe.
+    /// </para>
+    /// <para>
+    /// The ENCODER is unchanged and still writes every field, so the bytes a publish produces are exactly what
+    /// they were plus one zero byte per added field per row. Nothing re-encodes an old row into a new one on a
+    /// read, and no published chunk changes its hash because a reader got longer.
+    /// </para>
+    /// </summary>
+    /// <param name="from">The first field the body had no bytes left for.</param>
+    /// <param name="values">The value array being filled, which this completes.</param>
+    /// <param name="reason">The refusal token, or null.</param>
+    bool TryEndAtTail(int from, ContentFieldValue[] values, out string? reason)
+    {
+        for (int i = from; i < values.Length; i++)
+        {
+            ContentFieldEntry field = Schema.Fields[i];
+            if (field.Required && !field.IsDerivedMarker)
+            {
+                reason = ReasonFieldTruncated;
+                return false;
+            }
+
+            values[i] = ContentFieldValue.Absent(field.Kind);
+        }
+
+        reason = null;
+        return true;
+    }
 
     void CheckRowAgainstSchema(ContentRow row)
     {

@@ -43,9 +43,9 @@ internal sealed record GoldenRoundTrip(
 internal static class GoldenCodecs
 {
     /// <summary>
-    /// The six engine types, registered once and shared across every round trip. It is only READ after
+    /// Every engine type, registered once and shared across every round trip. It is only READ after
     /// construction, so the goldens and the fuzzer's theory cases may run against it in parallel, and the
-    /// alternative of a fresh registry per mutant would register six types 60,000 times a run.
+    /// alternative of a fresh registry per mutant would register them all 60,000 times a run.
     /// </summary>
     static readonly ContentTypeRegistry Engine = EngineRegistry();
 
@@ -77,7 +77,7 @@ internal static class GoldenCodecs
         return null;
     }
 
-    /// <summary>A registry carrying the six engine types, fresh, so no test shares one with another.</summary>
+    /// <summary>A registry carrying every engine type, fresh, so no test shares one with another.</summary>
     public static ContentTypeRegistry EngineRegistry()
     {
         var registry = new ContentTypeRegistry();

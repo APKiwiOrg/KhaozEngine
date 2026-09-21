@@ -15111,7 +15111,7 @@ if (!report.IsValid) return Refuse(report);         // boot exits non-zero, publ
 
 ### Registering a game type
 
-The engine's six types occupy ids 1 to 255, `KhaozEngine.ItemInstances` owns 256 to 1023, and a game's own
+The engine's seven types occupy ids 1 to 255, `KhaozEngine.ItemInstances` owns 256 to 1023, and a game's own
 types are 1024 and above. A caller CLAIMS its band through `ContentRegistrationBand` and the registry refuses
 a type id outside the band it claimed, so a game type cannot land on an engine id by accident.
 
@@ -15669,7 +15669,7 @@ difference between a server and a client.
 using KhaozEngine.Catalog;
 using KhaozEngine.ItemInstances;
 
-// ONCE at process start, before any pack loads, beside the engine's own six types.
+// ONCE at process start, before any pack loads, beside the engine's own seven types.
 var types = new ContentTypeRegistry();
 EngineContentTypes.Register(types);
 

@@ -80,7 +80,7 @@ internal static class InstanceValidationFixtures
     /// <summary>A fresh property registry, never shared, so no test can register into another's.</summary>
     public static InstancePropertyRegistry Properties() => InstancePropertyRegistry.CreateV1();
 
-    /// <summary>The six engine types plus the six Scope B stand-ins, fresh per call.</summary>
+    /// <summary>Every engine type plus the six Scope B stand-ins, fresh per call.</summary>
     public static ContentTypeRegistry Types()
     {
         var registry = new ContentTypeRegistry();

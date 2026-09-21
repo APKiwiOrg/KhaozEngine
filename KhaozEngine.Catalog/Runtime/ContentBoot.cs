@@ -19,7 +19,7 @@ namespace KhaozEngine.Catalog;
 /// </para>
 /// <para>
 /// <b>Step 1 is the caller's.</b> Every content type is registered before this runs, because a registry is
-/// built by the host out of the engine's six plus whatever the game declares, and the boot's own move is to
+/// built by the host out of the engine's own plus whatever the game declares, and the boot's own move is to
 /// FREEZE it at step 6. Steps 12 and 13, the connect door and accepting connections, are the caller's too:
 /// content loads before the world and both load before the door opens, so this returns with the runtime
 /// published and the host builds its door over it.

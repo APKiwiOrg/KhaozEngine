@@ -330,6 +330,11 @@ public class RowCodecRoundTripTests
     /// have lost a refusal it had before this rule existed. For those types the short form IS the whole body,
     /// so no prefix may decode at all and this theory is the flat refusal it always was.
     /// </para>
+    /// <para>
+    /// The equivalence is also what puts the redundant LONG form on the refused side without naming it. A
+    /// prefix carrying the zero form of a trailing appended field is longer than the short form, so it is not
+    /// equal to it, so it must not decode.
+    /// </para>
     /// </summary>
     [Theory]
     [MemberData(nameof(TypeKeys))]
@@ -395,21 +400,131 @@ public class RowCodecRoundTripTests
     }
 
     /// <summary>
-    /// The explicit zero form of a trailing appended field still DECODES even though the encoder never writes
-    /// it, which is what keeps a row assembled the long way readable. It comes back absent and re-encodes to
-    /// the short form.
+    /// The explicit zero form of a trailing appended field is REFUSED. It is a second encoding of a row that
+    /// already has one, and a content-addressed format cannot carry two byte strings for one row: accepting it
+    /// would let the same rows publish under two chunk hashes. The release that appends a field is the first
+    /// that could write such a body, so nothing has ever produced one and nothing is being taken away.
     /// </summary>
     [Fact]
-    public void AnExplicitZeroForAnAppendedFieldDecodesAndReEncodesShort()
+    public void AnExplicitZeroForAnAppendedFieldIsRefusedAsARedundantEncoding()
     {
         ContentTypeRegistration registration = Type("item");
         byte[] shortForm = Encode(registration, WithAppendedAbsent(registration, Populated(registration)));
         byte[] longForm = [.. shortForm, (byte)0];
 
-        Assert.True(registration.Codec.TryDecode(longForm, out ContentRow? read, out string? reason), reason);
+        Assert.True(registration.Codec.TryDecode(shortForm, out ContentRow? read, out string? reason), reason);
         Assert.True(read.Fields[^1].IsAbsent);
-        Assert.Equal(shortForm, Encode(registration, read));
+
+        Assert.False(registration.Codec.TryDecode(longForm, out _, out reason));
+        Assert.Equal(ContentRowCodecBase.ReasonFieldMalformed, reason);
     }
+
+    /// <summary>
+    /// <b>An explicit ZERO in an appended field encodes to the short form, byte identical to absent.</b>
+    /// Absence and zero are the same byte, and the decoder hands an optional field reading as zero back as
+    /// absent, so an encoder that kept a trailing explicit zero would write a row its own decoder reports
+    /// differently and would give one row two chunk hashes.
+    /// <para>
+    /// A key reference of 0 is not a hypothetical: the engine documents it as the legal stored value of
+    /// <c>item.equip_profile</c> when no type is registered under the key, and the SQLite store persists any
+    /// value that is not absent.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void AnExplicitZeroInAnAppendedFieldEncodesToTheShortForm()
+    {
+        ContentTypeRegistration registration = Type("item");
+        ContentRow absent = WithAppendedAbsent(registration, Populated(registration));
+
+        var zeroed = new ContentFieldValue[absent.Fields.Count];
+        for (int i = 0; i < zeroed.Length; i++)
+        {
+            zeroed[i] = i < registration.Schema.BaselineFieldCount
+                ? absent.Fields[i]
+                : ContentFieldValue.OfNumber(registration.Schema.Fields[i].Kind, 0);
+        }
+
+        byte[] shortForm = Encode(registration, absent);
+        byte[] fromZero = Encode(
+            registration,
+            new ContentRow(absent.Type, absent.Id, absent.Key, absent.ParentId, absent.IsRetired, zeroed));
+
+        Assert.Equal(shortForm, fromZero);
+        Assert.True(registration.Codec.TryDecode(fromZero, out ContentRow? read, out string? reason), reason);
+        Assert.True(read.Fields[^1].IsAbsent);
+        Assert.Equal(fromZero, Encode(registration, read));
+    }
+
+    /// <summary>
+    /// The zero form is a per KIND question, not a numeric one, so it is asserted over every kind an appended
+    /// optional field may declare. A tag list and an opaque bytes field carry BYTES, and their zero form is an
+    /// empty payload rather than a zero number, which a predicate written for varints alone would miss.
+    /// </summary>
+    [Theory]
+    [InlineData(ContentFieldKind.Int)]
+    [InlineData(ContentFieldKind.ScaledInt)]
+    [InlineData(ContentFieldKind.Bool)]
+    [InlineData(ContentFieldKind.KeyReference)]
+    [InlineData(ContentFieldKind.TagList)]
+    [InlineData(ContentFieldKind.OpaqueBytes)]
+    [InlineData(ContentFieldKind.LocalizedTextKey)]
+    public void EveryKindsZeroFormEncodesToNothingAtTheTail(ContentFieldKind kind)
+    {
+        var schema = new ContentFieldSchema(
+            [
+                new ContentFieldEntry("value", ContentFieldKind.Int, null, ContentVisibility.Client, true),
+                new ContentFieldEntry(
+                    "appended", kind, ReferenceTargetFor(kind), ContentVisibility.Client, false),
+            ],
+            baselineFieldCount: 1);
+        var codec = new BareCodec(new ContentTypeId(2048), schema);
+
+        byte[] absent = Encode(codec, Bare(schema, ContentFieldValue.Absent(kind)));
+        byte[] zero = Encode(codec, Bare(schema, ZeroFormOf(kind)));
+
+        Assert.Equal(absent, zero);
+        Assert.True(codec.TryDecode(zero, out ContentRow? read, out string? reason), reason);
+        Assert.True(read.Fields[1].IsAbsent);
+
+        // And the long form of that same field is refused, whatever the kind writes as its zero byte.
+        Assert.False(codec.TryDecode([.. absent, (byte)0], out _, out reason));
+        Assert.Equal(ContentRowCodecBase.ReasonFieldMalformed, reason);
+    }
+
+    static string? ReferenceTargetFor(ContentFieldKind kind) => kind switch
+    {
+        ContentFieldKind.KeyReference => "some_type",
+        ContentFieldKind.TagList => ContentFieldEntry.TagReferenceTarget,
+        _ => null,
+    };
+
+    /// <summary>A value that is NOT absent and still encodes to the zero byte, per kind.</summary>
+    static ContentFieldValue ZeroFormOf(ContentFieldKind kind) => kind switch
+    {
+        ContentFieldKind.TagList or ContentFieldKind.OpaqueBytes
+            => ContentFieldValue.OfBytes(kind, Array.Empty<byte>()),
+        ContentFieldKind.LocalizedTextKey => ContentFieldValue.Absent(kind),
+        _ => ContentFieldValue.OfNumber(kind, 0),
+    };
+
+    static ContentRow Bare(ContentFieldSchema schema, ContentFieldValue appended)
+        => new(
+            new ContentTypeId(2048),
+            1,
+            new ContentKey("bare"),
+            0,
+            false,
+            [ContentFieldValue.OfNumber(ContentFieldKind.Int, 7), appended]);
+
+    static byte[] Encode(IContentRowCodec codec, ContentRow row)
+    {
+        var buffer = new ArrayBufferWriter<byte>();
+        codec.Encode(row, buffer);
+        return buffer.WrittenSpan.ToArray();
+    }
+
+    /// <summary>The generic walk with nothing added, over a schema this suite builds by hand.</summary>
+    sealed class BareCodec(ContentTypeId type, ContentFieldSchema schema) : ContentRowCodecBase(type, schema);
 
     /// <summary>The same row with every APPENDED field absent, which is what the type's first release wrote.</summary>
     static ContentRow WithAppendedAbsent(ContentTypeRegistration registration, ContentRow row)

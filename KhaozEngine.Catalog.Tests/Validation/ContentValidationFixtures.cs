@@ -39,7 +39,7 @@ internal static class ContentValidationFixtures
 
     public static ContentTypeId GameType => new(GameTypeId);
 
-    /// <summary>A registry carrying the six engine types, fresh, so no test shares one with another.</summary>
+    /// <summary>A registry carrying every engine type, fresh, so no test shares one with another.</summary>
     public static ContentTypeRegistry EngineRegistry()
     {
         var registry = new ContentTypeRegistry();

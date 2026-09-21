@@ -134,18 +134,24 @@ public readonly ref struct ItemRow
             return false;
         }
 
-        // The walk above is exactly ItemContentType.BaselineFieldCount fields, the list the type first
-        // shipped with, and everything past this point is ContentRowTailRule's tail. A body that ends HERE
-        // is a row written before the schema gained its appended fields, or one written after it that sets
-        // none of them, which the canonical short encode makes the same bytes. A body that carries more reads
-        // them, and one that has not landed exactly on its end after that is not an item row, whatever the
-        // fields before it read as. Ending anywhere EARLIER is still refused above, field by field, which is
-        // the half of the rule that keeps a corrupt body from passing as a short one.
-        if (offset != span.Length
-            && (!ContentVarint.TryRead(span, ref offset, out _, out _)          // category
-                || offset != span.Length))
+        // The walk above is exactly ItemContentType.BaselineFieldCount fields, the list the type first shipped
+        // with, and what follows is ContentRowTailRule's tail: ONE appended field, `category`. A body that
+        // ends HERE is a row written before the schema gained it, or one written after that leaves it unset,
+        // which the canonical short encode makes the same bytes. A body that carries more must carry exactly
+        // that one varint, it must be NON ZERO because the zero form is what the short encode omits, and the
+        // body must land exactly on its end. Ending anywhere EARLIER is refused above, field by field.
+        //
+        // ItemRowTailAgreementTests holds this walk to the registered codec over every tail shape and asserts
+        // the item schema is still BaselineFieldCount + 1 fields. Appending a second field turns that red,
+        // which is the intended way for the next contributor to find this line.
+        if (offset != span.Length)
         {
-            return false;
+            if (!ContentVarint.TryRead(span, ref offset, out uint category, out _)
+                || offset != span.Length
+                || category == 0)
+            {
+                return false;
+            }
         }
 
         row = new ItemRow(

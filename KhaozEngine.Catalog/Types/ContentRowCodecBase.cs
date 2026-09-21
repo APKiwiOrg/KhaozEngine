@@ -165,9 +165,9 @@ public abstract class ContentRowCodecBase : IContentRowCodec
     /// <para>
     /// A body that ENDS before the schema does is a row written under an earlier field list, and
     /// <see cref="ContentRowTailRule"/> is the one rule that covers it: the body may run out at or after the
-    /// schema's baseline and never inside it. A body that runs PAST the schema is still
-    /// <see cref="ReasonFieldMalformed"/>: those bytes describe fields this reader has no list for, so it
-    /// cannot know what it would be discarding.
+    /// schema's baseline and never inside it. A body that runs PAST the schema is
+    /// <see cref="ReasonFieldMalformed"/>, and so is one that carries the ZERO FORM of a trailing appended
+    /// field, because the canonical encode omits it and a row may not have two byte strings.
     /// </para>
     /// </remarks>
     public bool TryDecode(ReadOnlySpan<byte> body, [MaybeNullWhen(false)] out ContentRow row, out string? reason)
@@ -189,11 +189,13 @@ public abstract class ContentRowCodecBase : IContentRowCodec
         offset += (int)keyLength;
 
         var values = new ContentFieldValue[Schema.Fields.Count];
+        int consumedThrough = values.Length;
         for (int i = 0; i < values.Length; i++)
         {
             if (offset == body.Length && ContentRowTailRule.MayEndAt(Schema, i))
             {
                 FillAbsentFrom(values, i);
+                consumedThrough = i;
                 break;
             }
 
@@ -203,7 +205,9 @@ public abstract class ContentRowCodecBase : IContentRowCodec
             }
         }
 
-        if (offset != body.Length)
+        // Bytes past the end of the schema, and bytes for an appended field the canonical short form leaves
+        // out, are the same defect and take the same token: this body is not the one encoding its row has.
+        if (offset != body.Length || ContentRowTailRule.CarriesRedundantTail(Schema, values, consumedThrough))
         {
             reason = ReasonFieldMalformed;
             return false;

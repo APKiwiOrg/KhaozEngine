@@ -18,7 +18,7 @@ internal static class CatalogSnapshotFixtures
     /// <summary>The tag type id, the second type the ordering tests need.</summary>
     public static ContentTypeId TagType => new(EngineContentTypes.TagTypeId);
 
-    /// <summary>A registry carrying the six engine types, fresh, so no test shares one with another.</summary>
+    /// <summary>A registry carrying every engine type, fresh, so no test shares one with another.</summary>
     public static ContentTypeRegistry Registry()
     {
         var registry = new ContentTypeRegistry();

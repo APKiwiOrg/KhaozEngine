@@ -47,7 +47,7 @@ internal sealed class CatalogPack
     /// <summary>The language the one text chunk is written for.</summary>
     public const string LanguageTag = "en-US";
 
-    /// <summary>The registry the chunks were encoded against, carrying the six engine types.</summary>
+    /// <summary>The registry the chunks were encoded against, carrying every engine type.</summary>
     public ContentTypeRegistry Registry { get; }
 
     /// <summary>The tag chunk, then the two item chunks, in the order they were encoded.</summary>

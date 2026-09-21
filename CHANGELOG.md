@@ -29,9 +29,16 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   baseline is an older row and the rest comes back absent, so a published version, a carried-forward chunk and
   a shipped client pack keep reading under the longer schema. A body that runs out INSIDE the baseline is
   refused with the token 19.13 gave it, including at the boundary of an optional baseline field, so a corrupt
-  row cannot pass as a short one. A body PAST the schema is still `field-malformed`. The explicit zero form of
-  a trailing appended field still decodes and comes back absent, though the encoder never writes it.
-  `ItemRow`, the hand-written hot-field walk, follows the same rule.
+  row cannot pass as a short one. A body PAST the schema is still `field-malformed`, and so is one carrying
+  the ZERO FORM of a trailing appended field: the canonical encode omits it, and a content-addressed format
+  cannot have two byte strings for one row. `ItemRow`, the hand-written hot-field walk, follows the same rule
+  and is held to the generic codec over every tail shape by a test that also goes red on the next append.
+- **The zero form is a per kind question and the engine now asks it in one place.**
+  `ContentFieldValue.IsZeroForm` is true for absent, for a zero number and for empty bytes, which is what the
+  single `00` byte on the wire means for every kind. The tail scan asks it rather than `IsAbsent`, because
+  absence and zero are the same byte and the decoder reports an optional field reading as zero back as absent:
+  a scan on absence would write a trailing explicit zero, and the same row would publish under two chunk
+  hashes. `ContentClientEncodeCheck` now reads the same predicate instead of its own copy.
 - **`ContentPackRebuild` of a version published under the shorter field list reproduces its recorded manifest
   digests**, which the short encode is what buys. A rebuild is how a server recovers the pack of the version it
   is about to boot, so a refusal there would have been a refused boot.

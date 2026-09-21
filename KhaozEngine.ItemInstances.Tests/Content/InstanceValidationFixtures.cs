@@ -12,14 +12,14 @@ namespace KhaozEngine.Tests.ItemInstances.Content;
 /// reading the fixture.
 /// <para>
 /// Every registry a fact builds is its OWN, through <see cref="InstanceContentTypes.Register"/> beside the
-/// six engine types, so nothing here writes process-global state and no <c>DisableParallelization</c>
+/// engine types, so nothing here writes process-global state and no <c>DisableParallelization</c>
 /// collection is needed.
 /// </para>
 /// </summary>
 internal static class InstanceValidationFixtures
 {
     /// <summary>
-    /// A fresh registry carrying the six engine types and all eighteen of the band, with the candidate
+    /// A fresh registry carrying every engine type and all eighteen of the band, with the candidate
     /// table load index attached to <c>mod</c> when a fact is about the boot that builds it.
     /// </summary>
     public static ContentTypeRegistry Registry(ModCandidateTablesIndex? modCandidateTables = null)

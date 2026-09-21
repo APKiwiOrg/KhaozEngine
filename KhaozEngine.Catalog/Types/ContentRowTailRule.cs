@@ -26,21 +26,30 @@ namespace KhaozEngine.Catalog;
 /// turn a corrupt row that happens to end on a field edge into a short row.
 /// </para>
 /// <para>
-/// <b>The explicit zero form of a trailing appended field still decodes.</b> The encoder never writes it, but
-/// reading it costs nothing: it is an ordinary field read that lands on the zero form and comes back absent,
-/// and the walk needs no branch for it. Accepting it means a row hand assembled the long way, or written by
-/// an engine build between the append and this rule, is read rather than refused.
+/// <b>The redundant long form is REFUSED, not tolerated.</b> A body whose last appended field is the zero form
+/// is a second encoding of a row that already has one, and a content-addressed format cannot have two byte
+/// strings for one row: the same rows would publish under two chunk hashes. The release that appends a field
+/// is the first release that can write it, so no build has ever produced such a body, and refusing costs
+/// nothing. It is <c>ContentRowCodecBase.ReasonFieldMalformed</c>, the same token a single trailing byte takes,
+/// because it is the same defect: bytes the canonical form does not have.
 /// </para>
 /// </summary>
 static class ContentRowTailRule
 {
     /// <summary>
     /// How many of the schema's fields a row's bytes carry: every baseline field, then the appended fields up
-    /// to and including the LAST one that carries a value.
+    /// to and including the LAST one whose bytes are not the ZERO FORM.
     /// <para>
-    /// A derived marker writes no bytes at all, so one sitting past the last valued field is dropped with the
-    /// rest of the tail and one sitting before it costs nothing to keep. Either way the bytes are the same,
-    /// which is why the scan looks only at the values.
+    /// <b>The scan asks <see cref="ContentFieldValue.IsZeroForm"/> and never
+    /// <see cref="ContentFieldValue.IsAbsent"/>, and the difference is the whole correctness of this
+    /// method.</b> Absence and zero are the same byte, and the decoder hands an optional field reading as zero
+    /// back as absent. A scan on absence would keep a trailing explicit zero, write a field the decoder then
+    /// reports absent, and produce a row whose re-encode is shorter than itself. In a content-addressed format
+    /// that is the same rows under two chunk hashes.
+    /// </para>
+    /// <para>
+    /// A derived marker writes no bytes at all and is always absent, so it is always zero form and can never
+    /// extend the tail, which is exactly right: a body cannot carry bytes for it.
     /// </para>
     /// </summary>
     /// <param name="schema">The type's field list and its baseline.</param>
@@ -50,13 +59,41 @@ static class ContentRowTailRule
         int baseline = schema.BaselineFieldCount;
         for (int i = schema.Fields.Count - 1; i >= baseline; i--)
         {
-            if (i < values.Count && !values[i].IsAbsent)
+            if (i < values.Count && !values[i].IsZeroForm)
             {
                 return i + 1;
             }
         }
 
         return baseline;
+    }
+
+    /// <summary>
+    /// True when a decoded body carried BYTES for an appended field the canonical short form leaves out, which
+    /// is the redundant long form and is refused.
+    /// <para>
+    /// A derived marker in that range is skipped rather than counted, because it takes no width: a schema
+    /// whose appended tail is a marker alone has one encoding, not two, and flagging it would refuse every row
+    /// of that type.
+    /// </para>
+    /// </summary>
+    /// <param name="schema">The type's field list and its baseline.</param>
+    /// <param name="values">The values the walk decoded.</param>
+    /// <param name="consumedThrough">How many schema fields the walk covered before the body ran out.</param>
+    public static bool CarriesRedundantTail(
+        ContentFieldSchema schema,
+        IReadOnlyList<ContentFieldValue> values,
+        int consumedThrough)
+    {
+        for (int i = WrittenFieldCount(schema, values); i < consumedThrough; i++)
+        {
+            if (!schema.Fields[i].IsDerivedMarker)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>

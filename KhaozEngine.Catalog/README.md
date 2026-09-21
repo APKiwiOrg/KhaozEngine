@@ -155,9 +155,14 @@ baseline is entirely baseline, which is every type that has never gained a field
   a carried-forward chunk and a shipped client pack keep reading under a longer schema. A body that runs out
   INSIDE the baseline is refused with the token it always was, including at the boundary of an optional
   baseline field, so a corrupt row cannot pass as a short one.
-- **The explicit zero form of a trailing appended field still decodes**, and comes back absent. The encoder
-  never writes it. Accepting it costs no branch and means a row assembled the long way is read rather than
-  refused.
+- **The redundant long form is REFUSED**, with `field-malformed`, the same token a single trailing byte takes.
+  A body whose last appended field is the zero form is a second encoding of a row that already has one, and a
+  content-addressed format cannot carry two byte strings for one row. The release that appends a field is the
+  first that could write such a body, so nothing is being taken away.
+- **The zero form is a per KIND question and `ContentFieldValue.IsZeroForm` is the one place it is asked.**
+  True for absent, for a zero number and for empty bytes. The tail scan asks it rather than `IsAbsent`:
+  absence and zero are the same byte, and the decoder reports an optional field reading as zero back as
+  absent, so a scan on absence would keep a trailing explicit zero and give one row two chunk hashes.
 - **`ContentPackRebuild` of a version published under the shorter field list reproduces its recorded manifest
   digests**, because the rows re-encode to the bytes they were published as. That matters: a rebuild is how a
   server recovers the pack of the version it is about to boot, so a refusal there is a refused boot.
@@ -181,6 +186,18 @@ should not be confused:
 - In the same direction, an older build cannot read a version published by a registry that has the new type:
   its manifest names a type the older build does not register, which is the first half of the same step 6
   check.
+
+### A `Generation` bump permanently retires pack rebuild for older versions
+
+Worth knowing before reaching for the constant. `ContentManifestBuilder` stamps `ContentPackFormat.Generation`
+into every manifest it builds, and `ContentPackRebuild` rebuilds both manifests through that same builder and
+compares their digests against the ones the version record holds. A manifest rebuilt at generation N+1 cannot
+digest to one published at generation N, so **every generation bump makes pack rebuild refuse for every
+version published before it, forever, whatever the rows do.**
+
+In this release that costs nothing extra, because those versions already refuse on the missing `item_category`
+type. It is a standing cost of any future bump on a release that adds no type, and it is a reason to spend the
+number only when an older reader really would be WRONG rather than merely older.
 
 ## The four pack formats
 

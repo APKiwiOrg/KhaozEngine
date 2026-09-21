@@ -139,19 +139,48 @@ stable ids and keys, plus the two type keys the engine writes down and a GAME re
 
 A type's field list may gain OPTIONAL fields at the END and nothing else. A row body is a positional walk, so
 inserting a field anywhere earlier moves every field after it and repoints every published row. `item.category`
-is the first field the engine has added this way and the rule it established:
+is the first field the engine has added this way and the rule it established. `ContentRowTailRule` owns it,
+`ContentFieldSchema.BaselineFieldCount` is what a type declares to opt in, and a schema that declares no
+baseline is entirely baseline, which is every type that has never gained a field.
 
-- The encoder is unchanged and still writes every field, so a new publish costs one zero byte per row.
-- A body that ENDS where an earlier field list ended decodes with the missing tail ABSENT, which is what lets a
-  published version, a carried-forward chunk and a shipped client pack all keep reading under a longer schema.
-  A body that runs PAST the schema is still refused, and so is one that stops short of a REQUIRED field.
-- The authoring store needs no migration. `catalog_type` holds a type row and `catalog_row_field` holds a row
-  per field NAME, so neither carries a per-type column list to move.
-- `ContentPackFormat.Generation` moves with the field, because an older reader stops one field short of the end
-  of every new row and would be wrong rather than merely older.
-- `ContentPackRebuild` of a version published under the SHORTER list is refused with
-  `server-manifest-mismatch`, which is the guard working: the rows now encode to different bytes than the
-  recorded manifest names. Rebuild is a recovery path for a version published by THIS build's schema.
+- **The baseline is the field count the type FIRST SHIPPED with**, `ItemContentType.BaselineFieldCount` is 16,
+  and it never moves again. Fields from that index on were appended later and must be optional, which
+  `ContentFieldSchema` refuses at declaration rather than leaving to a code review.
+- **ENCODE is canonical and SHORT.** Every baseline field is written, always. An appended field is written only
+  when it or a later appended field carries a value, so a row that sets none of them encodes to the bytes the
+  type's first release produced, BYTE FOR BYTE. A publish after an append therefore costs nothing at all on a
+  row that does not use the new field, and every untouched chunk keeps its hash.
+- **DECODE may end at the baseline boundary and never inside it.** A body that runs out at or after the
+  baseline is an older row and the rest of its fields come back absent, which is what lets a published version,
+  a carried-forward chunk and a shipped client pack keep reading under a longer schema. A body that runs out
+  INSIDE the baseline is refused with the token it always was, including at the boundary of an optional
+  baseline field, so a corrupt row cannot pass as a short one.
+- **The explicit zero form of a trailing appended field still decodes**, and comes back absent. The encoder
+  never writes it. Accepting it costs no branch and means a row assembled the long way is read rather than
+  refused.
+- **`ContentPackRebuild` of a version published under the shorter field list reproduces its recorded manifest
+  digests**, because the rows re-encode to the bytes they were published as. That matters: a rebuild is how a
+  server recovers the pack of the version it is about to boot, so a refusal there is a refused boot.
+- **The authoring store needs no migration.** `catalog_type` holds a type row and `catalog_row_field` holds a
+  row per field NAME, so neither carries a per-type column list to move.
+- **`ContentPackFormat.Generation` moves with the field**, because an older reader stops one field short of the
+  end of a row that sets the new field and would be wrong rather than merely older.
+
+### Adding a TYPE is a different and larger event
+
+Appending a field is transparent to an existing version. Registering a new content type is not, and the two
+should not be confused:
+
+- A manifest hash covers the REGISTRATION SET, not only the chunks, because a boot refuses a version whose
+  manifest does not name every type this build registers (`ContentBoot` step 6, `TypeAbsentFromVersion`). That
+  refusal is what makes an empty registered type distinguishable from a type the pack predates.
+- So a build that registers a new type cannot boot, and cannot rebuild, a version published before that type
+  existed. **A consumer adopting a release that adds an engine type republishes once under the new registry
+  before the new build serves.** Nothing needs authoring in that publish: every existing chunk carries forward
+  at its old hash and only the manifest is new.
+- In the same direction, an older build cannot read a version published by a registry that has the new type:
+  its manifest names a type the older build does not register, which is the first half of the same step 6
+  check.
 
 ## The four pack formats
 

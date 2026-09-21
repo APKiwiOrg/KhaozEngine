@@ -134,10 +134,13 @@ public readonly ref struct ItemRow
             return false;
         }
 
-        // The TAIL, which mirrors ContentRowCodecBase's schema evolution rule for this hand-written walk. A
-        // body that ends here was written before the item schema gained its trailing optional fields and is a
-        // valid item row with them absent. A body that carries more reads them, and one that has not landed
-        // exactly on its end after that is not an item row, whatever the fields before it read as.
+        // The walk above is exactly ItemContentType.BaselineFieldCount fields, the list the type first
+        // shipped with, and everything past this point is ContentRowTailRule's tail. A body that ends HERE
+        // is a row written before the schema gained its appended fields, or one written after it that sets
+        // none of them, which the canonical short encode makes the same bytes. A body that carries more reads
+        // them, and one that has not landed exactly on its end after that is not an item row, whatever the
+        // fields before it read as. Ending anywhere EARLIER is still refused above, field by field, which is
+        // the half of the rule that keeps a corrupt body from passing as a short one.
         if (offset != span.Length
             && (!ContentVarint.TryRead(span, ref offset, out _, out _)          // category
                 || offset != span.Length))

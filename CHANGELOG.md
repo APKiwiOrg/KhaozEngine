@@ -17,31 +17,40 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   is validated by the same reference pass that validates `equip_profile`, so a category id no live row answers
   to is `KEC0006` and is refused before the publish rather than after it.
 - **The engine now has a schema evolution rule and this is the first field to use it.** A type's field list may
-  gain OPTIONAL fields at the END and nothing else. `ContentRowCodecBase.TryDecode` reads a body that ENDS
-  where an earlier field list ended and returns the missing tail ABSENT, so a published version, a
-  carried-forward chunk and a shipped client pack all keep reading under a longer schema. A body that runs PAST
-  the schema is still `field-malformed`, and one that stops short of a REQUIRED field is still
-  `field-truncated`. `ItemRow`, the hand-written hot-field walk, follows the same rule. The ENCODER is
-  unchanged and still writes every field, so a publish under the new schema costs one zero byte per item row
-  and no existing chunk changes its hash.
+  gain OPTIONAL fields at the END and nothing else. `ContentFieldSchema.BaselineFieldCount` is the count the
+  type first shipped with, `ItemContentType.BaselineFieldCount` is 16, and `ContentRowTailRule` is the one
+  place the split means anything. A schema that declares no baseline is entirely baseline, so every other type
+  behaves exactly as it did.
+- **The encode is canonical and SHORT.** Every baseline field is written, always, and an appended field only
+  when it or a later appended field carries a value. An item that sets no category therefore encodes to the
+  bytes the 16 field release wrote, BYTE FOR BYTE, so a publish after adopting this engine costs nothing on a
+  row that does not use the field and every untouched chunk keeps its hash.
+- **The decode may end at the baseline boundary and never inside it.** A body that runs out at or after the
+  baseline is an older row and the rest comes back absent, so a published version, a carried-forward chunk and
+  a shipped client pack keep reading under the longer schema. A body that runs out INSIDE the baseline is
+  refused with the token 19.13 gave it, including at the boundary of an optional baseline field, so a corrupt
+  row cannot pass as a short one. A body PAST the schema is still `field-malformed`. The explicit zero form of
+  a trailing appended field still decodes and comes back absent, though the encoder never writes it.
+  `ItemRow`, the hand-written hot-field walk, follows the same rule.
+- **`ContentPackRebuild` of a version published under the shorter field list reproduces its recorded manifest
+  digests**, which the short encode is what buys. A rebuild is how a server recovers the pack of the version it
+  is about to boot, so a refusal there would have been a refused boot.
 - `ContentPackFormat.Generation` moves to 2, which is the rule the constant already carried: an engine-owned
-  row codec gained a field an older reader cannot skip. A generation 1 reader stops one field short of the end
-  of every item row a generation 2 publish writes, so it is WRONG rather than merely older, and the bump moves
-  that refusal to the manifest where it reads as "this pack needs a newer build". It invalidates nothing
-  already published: a reader refuses only a manifest AHEAD of it, so this build reads every generation 1 pack.
-  A consumer's own older clients are refused by the first version it publishes after adopting this engine,
-  which is the announcement the number exists to make.
-- **Adopting it on an existing catalog needs no migration.** `catalog_type` gains a row for the new type on the
-  next `InitializeAsync`, under `ValidateOnly` as well as `AutoCreate`, because the SQLite and SQL Server
-  schemas hold a type row and a field row per NAME and carry no per-type column list. Bundle import checks the
-  type key and the chunk slots and never the field list, so a bundle exported before the field imports
-  unchanged. The one thing that does NOT survive is `ContentPackRebuild` of a version published under the
-  shorter field list: it refuses with `server-manifest-mismatch`, correctly, because those rows now encode to
-  bytes the recorded manifest does not name.
-- Tests pin the old-schema case rather than assuming it: the checked-in `chunk-item-0.kecc` golden, whose bytes
-  were baked before the field existed, still decodes row for row and reads `category` absent, and a SQLite
-  catalog published under the 16-field item schema boots under the 17-field one with its item chunk carried
-  forward at the SAME hash.
+  row codec gained a field an older reader cannot skip. It invalidates nothing already published, because a
+  reader refuses only a manifest AHEAD of it, so this build reads every generation 1 pack.
+- **Adopting it on an existing catalog needs no migration, and needs one republish.** `catalog_type` gains a
+  row for the new type on the next `InitializeAsync`, under `ValidateOnly` as well as `AutoCreate`, because
+  the SQLite and SQL Server schemas hold a type row and a field row per NAME and carry no per-type column
+  list. Bundle import checks the type key and the chunk slots and never the field list, so a bundle exported
+  before the field imports unchanged. What a new TYPE does change is the manifest: a manifest hash covers the
+  registration set, and a boot refuses a version whose manifest does not name every registered type
+  (`ContentBoot` step 6, `TypeAbsentFromVersion`). So publish once under the new registry before the new build
+  serves. That publish authors nothing: every existing chunk carries forward at its old hash and only the
+  manifest is new.
+- Tests pin the old-schema cases rather than assuming them. The checked-in `chunk-item-0.kecc` golden, whose
+  bytes were baked before the field existed, decodes row for row and every row RE-ENCODES to its own bytes. A
+  SQLite catalog published under the 16 field item schema rebuilds and boots under the 17 field one. And a
+  prefix of a row body decodes if and only if it is that row's canonical short form.
 
 ## 19.13.0
 

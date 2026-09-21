@@ -104,45 +104,59 @@ public class ItemRowTests
         Assert.True(first.Key.Equals(new ContentKey("iron_sword")));
     }
 
+    /// <summary>
+    /// A body with no category IS the body a publish before the field existed wrote, because the encoder omits
+    /// a trailing appended field no row sets. So every PREFIX of it is a real truncation and is refused,
+    /// exactly as it was before the field was appended.
+    /// </summary>
     [Fact]
-    public void A_truncated_body_is_refused_unless_it_ends_where_an_earlier_schema_ended()
+    public void A_truncated_body_is_refused_rather_than_thrown_on()
     {
         ContentTypeRegistry registry = CatalogSnapshotFixtures.Registry();
         ContentRow row = CatalogSnapshotFixtures.ItemRow(2, "iron_sword", true, 64, 900, 3);
         byte[] body = CatalogSnapshotFixtures.Body(registry, EngineContentTypes.ItemTypeKey, row);
 
-        // The fixture's category is absent, so its last byte is that field's zero form and the body without
-        // it is exactly what a publish before the field existed wrote. Everything shorter than that is a real
-        // truncation and is refused.
-        for (int length = 0; length < body.Length - 1; length++)
+        for (int length = 0; length < body.Length; length++)
         {
             Assert.False(ItemRow.TryDecode(body, 0, length, false, out _));
         }
 
-        Assert.True(ItemRow.TryDecode(body, 0, body.Length - 1, false, out _));
         Assert.True(ItemRow.TryDecode(body, 0, body.Length, false, out _));
     }
 
     /// <summary>
-    /// A body written under the item schema as it stood before <c>category</c> was appended reads through the
-    /// typed view with the same hot fields. This is the shipped client pack case: the bytes on disk are one
-    /// field short of what this build's schema declares and they are still item rows.
+    /// The typed view reads BOTH generations of item bytes: the short body a catalog published before
+    /// <c>category</c> existed holds, and the one field longer body a row that sets a category writes. The
+    /// five hot fields are the same either way, which is the point of the walk skipping the tail rather than
+    /// surfacing it.
     /// </summary>
     [Fact]
-    public void A_body_from_before_the_category_field_reads_the_same_hot_fields()
+    public void A_body_with_and_without_a_category_reads_the_same_hot_fields()
     {
         ContentTypeRegistry registry = CatalogSnapshotFixtures.Registry();
-        ContentRow row = CatalogSnapshotFixtures.ItemRow(2, "iron_sword", true, 64, 900, 3);
-        byte[] body = CatalogSnapshotFixtures.Body(registry, EngineContentTypes.ItemTypeKey, row);
-        byte[] older = body[..^1];
+        byte[] older = CatalogSnapshotFixtures.Body(
+            registry,
+            EngineContentTypes.ItemTypeKey,
+            CatalogSnapshotFixtures.ItemRow(2, "iron_sword", true, 64, 900, 3));
+        byte[] newer = CatalogSnapshotFixtures.Body(
+            registry,
+            EngineContentTypes.ItemTypeKey,
+            CatalogSnapshotFixtures.ItemRow(2, "iron_sword", true, 64, 900, 3, category: 4));
 
-        Assert.True(ItemRow.TryDecode(older, 0, older.Length, false, out ItemRow view));
-        Assert.True(view.Stackable);
-        Assert.Equal(64, view.MaxStack);
-        Assert.Equal(250, view.Value);
-        Assert.Equal(900, view.DurabilityMax);
-        Assert.Equal(3, view.SocketMax);
-        Assert.Equal("iron_sword", view.Key.ToString());
+        // The one is the other plus the category varint, which is the whole of what the append cost.
+        Assert.Equal(older.Length + 1, newer.Length);
+        Assert.Equal(older, newer[..^1]);
+
+        foreach (byte[] body in new[] { older, newer })
+        {
+            Assert.True(ItemRow.TryDecode(body, 0, body.Length, false, out ItemRow view));
+            Assert.True(view.Stackable);
+            Assert.Equal(64, view.MaxStack);
+            Assert.Equal(250, view.Value);
+            Assert.Equal(900, view.DurabilityMax);
+            Assert.Equal(3, view.SocketMax);
+            Assert.Equal("iron_sword", view.Key.ToString());
+        }
     }
 
     [Fact]

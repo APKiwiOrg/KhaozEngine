@@ -23,6 +23,17 @@ public static class ItemContentType
     /// <summary>Id slots per chunk, the smallest of the six, for the re-download reason above.</summary>
     public const int DefaultChunkSlots = 1024;
 
+    /// <summary>
+    /// The field count the item type FIRST SHIPPED with, spec 3.3's table exactly, ending at
+    /// <see cref="EquipProfileField"/>. Everything from this index on was appended by a later engine release.
+    /// <para>
+    /// It is a durable number and it never moves again. A published row that sets none of the appended fields
+    /// encodes to exactly this many fields, which is why a version published before the append still rebuilds
+    /// to its recorded manifest hash.
+    /// </para>
+    /// </summary>
+    public const int BaselineFieldCount = 16;
+
     /// <summary>The most bytes an asset reference may carry, contracts 4.7.</summary>
     public const int MaxAssetReferenceBytes = 128;
 
@@ -85,12 +96,14 @@ public static class ItemContentType
     const int IconAngleScale = 1000;
 
     /// <summary>
-    /// The ordered field list, spec 3.3's table plus <c>category</c> appended after it.
+    /// The ordered field list, spec 3.3's table plus <c>category</c> appended after it, declared against the
+    /// <see cref="BaselineFieldCount"/> the type first shipped with.
     /// <para>
     /// <b>A field is only ever APPENDED here, and only ever as an optional one.</b> A row body is a
     /// positional walk, so inserting anywhere else moves every field after it and repoints every published
-    /// row. Appending an optional field leaves every existing index where it was and costs one zero byte on a
-    /// row that does not carry it.
+    /// row. <c>ContentRowTailRule</c> is what the baseline buys: an item that sets no category encodes to the
+    /// bytes the sixteen field release wrote, and a body that ends at field sixteen decodes with the category
+    /// absent.
     /// </para>
     /// </summary>
     public static ContentFieldSchema CreateSchema() => new(
@@ -139,7 +152,8 @@ public static class ItemContentType
             EngineContentTypes.ItemCategoryTypeKey,
             ContentVisibility.Client,
             false),
-    ]);
+    ],
+    BaselineFieldCount);
 
     /// <summary>
     /// True for an asset reference the engine will carry: at most <see cref="MaxAssetReferenceBytes"/>

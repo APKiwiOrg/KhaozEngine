@@ -127,6 +127,7 @@ public static class ContentTypes
         new("durability_max", ContentValueKind.Int, null, Client, false),
         new("socket_max", ContentValueKind.Int, null, Client, false),
         new("equip_profile", ContentValueKind.KeyReference, "equip_profile", Client, false),
+        new("category", ContentValueKind.KeyReference, "item_category", Client, false),
     ];
 
     private static ContentFieldSchema[] StatFields() =>

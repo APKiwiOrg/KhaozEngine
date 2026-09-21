@@ -1,4 +1,5 @@
 using System;
+using System.Net;
 
 #nullable enable
 
@@ -43,4 +44,17 @@ public readonly record struct ServerStatusView(
     ServerStatusState State,
     DateTimeOffset? ExpectedBackUtc,
     string? Motd,
-    ServerStatusReport? Report);
+    ServerStatusReport? Report)
+{
+    /// <summary>
+    /// The address the publisher says the server is reachable at, parsed and vetted through
+    /// <see cref="ServerStatusReport.TryGetServerAddress"/>, or null when no report is retained, the field is
+    /// unset, or the published value was refused. Surfaced here for the same reason as
+    /// <see cref="ExpectedBackUtc"/> and <see cref="Motd"/>: the poll to decision path reads this view, not
+    /// the raw report. Dial it only while <see cref="State"/> is <see cref="ServerStatusState.ServerOk"/> and
+    /// fall back to the configured host name otherwise, because a retained report keeps answering after the
+    /// address it named has gone.
+    /// </summary>
+    public IPAddress? ServerAddress =>
+        Report is { } report && report.TryGetServerAddress(out IPAddress? address) ? address : null;
+}

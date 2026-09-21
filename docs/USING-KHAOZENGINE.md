@@ -6811,7 +6811,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="19.12.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="19.13.0" />
 ```
 
 ```csharp
@@ -11796,14 +11796,53 @@ add fields and evolve ahead of already-shipped clients. The Function serves exac
   "lastHeartbeatUtc": "2026-07-14T09:41:12Z",
   "lastDeployUtc": "2026-07-14T09:30:00Z",
   "expectedBackUtc": null,
-  "motd": "Double XP weekend is live."
+  "motd": "Double XP weekend is live.",
+  "serverAddress": "4.254.6.139"
 }
 ```
 
 `health` is `healthy` | `restarting` | `down` | `unknown`. During a deploy window serve `restarting` with
 `expectedBackUtc` set to the ETA. Outside a window with a stale heartbeat serve `down`. Version fields are the
-games' `x.y.z` scheme, compared numerically (so `0.7.10` is newer than `0.7.9`). In code, `ServerStatusReport.TryParse(...)`
-(never throws, null on garbage) and `report.ToJson()` round-trip it.
+games' `x.y.z` scheme, compared numerically (so `0.7.10` is newer than `0.7.9`). `motd`, `expectedBackUtc` and
+`serverAddress` are nullable, and an unset one is written as a `null` literal rather than dropped from the
+object. In code, `ServerStatusReport.TryParse(...)` (never throws, null on garbage) and `report.ToJson()`
+round-trip it.
+
+#### `serverAddress`: the address, not the name
+
+A server hosted on something that releases its public address when it stops hands out a new one on every
+start, while its DNS label keeps a fixed TTL. A client that resolved the host name inside that window keeps
+dialling a dead address until the cache expires. `serverAddress` removes the resolver from the path: the
+publisher already talks to the platform to wake the server, so it knows the current address, and it serves
+that address over HTTPS from the status endpoint, a stronger anchor than the plain DNS answer it replaces.
+
+**The game's status endpoint fills it**, from whatever it already asks the platform for the wake. The engine
+carries the field and nothing more: no cloud dependency, no name lookup, no socket. It is optional and
+additive, so `schemaVersion` stays `1` and a publisher that never sets it changes nothing for anyone.
+
+**A client reads it through the accessor, never as a string.**
+
+```csharp
+if (view.State == ServerStatusState.ServerOk && view.ServerAddress is { } address)
+{
+    Connect(address, port);              // dial what the publisher vouches for, no DNS in the path
+}
+else
+{
+    Connect(ProductionHost, port);       // fall back to the configured host name
+}
+```
+
+`report.TryGetServerAddress(out IPAddress? address)` and `view.ServerAddress` answer only for a canonical IP
+literal that is plain unicast. They refuse null, empty, whitespace, a **host name** (refused rather than
+resolved, since skipping the resolver is the entire point), anything carrying a port or brackets, a literal
+the lenient `IPAddress.TryParse` would otherwise stretch into a different address (`1`, `0x7f.1`, `1.2.3`,
+`010.1.1.1`, an uncompressed IPv6 form), and the wildcard, broadcast, loopback, multicast and link local
+forms including their IPv4 mapped IPv6 spellings. Private ranges (`10/8`, `172.16/12`, `192.168/16`,
+`fc00::/7`) are **allowed**, because a game on a private network or a local rig legitimately publishes one.
+A field a client acts on by opening a socket refuses by default, or it is a way to point a client anywhere.
+Dial it only while the state reads `ServerOk`, and fall back to the host name otherwise, because a retained
+report keeps answering after the address it named has gone.
 
 ### Client wiring (poll + evaluate)
 
@@ -11839,9 +11878,9 @@ the whole state machine is unit-testable. It treats a report older than `MaxStal
 poll intervals) as `StatusUnknown`, so one dropped poll does not flip the screen but a real outage does.
 **Precedence** (first match wins): `StatusUnknown` -> `ServerDown` -> `ServerRestarting` -> `UpdateRequired` ->
 `UpdateAvailable` -> `ServerOk`. Transient health beats the version gates on purpose - during a deploy the
-"back soon" screen wins, and the update gate applies once the server is healthy again. `view.Motd` and
-`view.ExpectedBackUtc` are surfaced in every state that has a report, so a game can show an operator message or
-a countdown regardless of the headline state. No display strings ship from the engine - the states are enums,
+"back soon" screen wins, and the update gate applies once the server is healthy again. `view.Motd`,
+`view.ExpectedBackUtc` and `view.ServerAddress` are surfaced in every state that has a report, so a game can
+show an operator message or a countdown regardless of the headline state. No display strings ship from the engine - the states are enums,
 the game owns and localizes the words.
 
 ### Server heartbeat wiring
@@ -11911,11 +11950,12 @@ foreach (ServerStatusReadoutRow row in rows)
 }
 ```
 
-Each row is `(string Key, string Value, object? Raw)`. `ServerStatusReadoutKeys` exposes the 11 keys (`Health`,
+Each row is `(string Key, string Value, object? Raw)`. `ServerStatusReadoutKeys` exposes the 12 keys (`Health`,
 `ServerVersion`, `MinClientVersion`, `LatestClientVersion`, `ClientVersion`, `LastHeartbeat`, `LastDeploy`,
-`ExpectedBack`, `Staleness`, `State`, `Motd`, in that order via `ServerStatusReadoutKeys.All`) publicly, so a
-game never string-matches a row key by hand. The row set is stable: a fact with nothing to show (no report
-ever, or an optional field left unset) emits an empty `Value` and a null `Raw` rather than dropping the row.
+`ExpectedBack`, `Staleness`, `State`, `Motd`, `ServerAddress`, in that order via `ServerStatusReadoutKeys.All`)
+publicly, so a game never string-matches a row key by hand. The row set is stable: a fact with nothing to show
+(no report ever, or an optional field left unset) emits an empty `Value` and a null `Raw` rather than dropping
+the row. `ServerAddress` carries the vetted address, so a published value the accessor refuses reads as empty.
 Duration rows are preformatted as compact, invariant-culture, English strings ("12 s ago", "in 5 min") on
 purpose (no localization catalog dependency here). A game wanting a fully localized duration formats it from
 `Raw` (a `DateTimeOffset?` or `TimeSpan?`, per key) instead of `Value`. `Build` takes no clock of its own
@@ -13064,7 +13104,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="19.12.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="19.13.0" />
 ```
 
 ```csharp
@@ -13100,7 +13140,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="19.12.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="19.13.0" />
 ```
 
 ```csharp
@@ -13342,7 +13382,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="19.12.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="19.13.0" />
 ```
 
 ```csharp
@@ -16527,7 +16567,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="19.12.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="19.13.0" />
 </ItemGroup>
 ```
 

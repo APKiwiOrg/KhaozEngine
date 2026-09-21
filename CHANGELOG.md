@@ -5,6 +5,34 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 19.13.0
+
+- `ServerStatusReport.ServerAddress` (wire name `serverAddress`, optional, null by default) carries the address
+  the server is reachable at right now, as an IP literal. A host that releases its public address when it stops
+  hands out a new one on every start while its DNS label keeps a fixed TTL, so a client that resolved the name
+  inside that window keeps dialling a dead address until the cache expires (measured on Azure Container
+  Instances: a plain idle stop and wake moved `4.254.6.139` to `4.254.124.204`, with a 300 second TTL that is
+  not ours to change). The publisher already talks to the platform to wake the server, so it knows the current
+  address, and serving it over HTTPS from the game's own status endpoint is a stronger anchor than the plain DNS
+  answer it replaces. The engine carries the field only: no cloud dependency, no name lookup and no socket were
+  added anywhere, and the game's status endpoint is what fills it.
+- A client reads it through `report.TryGetServerAddress(out IPAddress? address)` or `view.ServerAddress`, never
+  as a raw string. Both answer only for a canonical IP literal that is plain unicast. They refuse null, empty,
+  whitespace, a host name (refused rather than resolved, since taking the resolver out of the path is the whole
+  point), anything carrying a port or brackets, a literal the lenient `IPAddress.TryParse` would otherwise
+  stretch into a different address (`1`, `0x7f.1`, `1.2.3`, `010.1.1.1`, an uncompressed IPv6 form), and the
+  wildcard, broadcast, loopback, multicast and link local forms including their IPv4 mapped IPv6 spellings.
+  Private ranges are allowed, because a game on a private network or a local rig legitimately publishes one.
+  Dial it only while the state reads `ServerOk` and fall back to the configured host name otherwise.
+- `ServerStatusReadoutKeys.ServerAddress` and its row are appended after `Motd`, so `Build` now returns 12 rows
+  and every existing row keeps its index. The row carries the vetted address, so a published value the accessor
+  refuses reads as empty rather than putting a string on screen the client may not act on.
+- All additive and optional. `schemaVersion` stays `1`: a client that has never heard of the field ignores it,
+  and a publisher that never sets it changes nothing for anyone. No existing member changed name, type, default
+  or wire name, and the health deriver, the evaluator precedence and the poller are untouched. No consumer
+  action is required to take this release. Engine half of
+  https://github.com/APKiwiOrg/Grimhollow/issues/296.
+
 ## 19.12.0
 
 - `ContentUpgradePlanBuilder.AppendTag(type, key, fieldName, tagId)` appends one element to a tag-list field of an

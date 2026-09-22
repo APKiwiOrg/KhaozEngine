@@ -12,9 +12,13 @@ public static class MoveProtocol
 {
     /// <summary>
     /// The engine wire-format generation. Bumped only on a breaking change to the on-the-wire snapshot / delta /
-    /// frame-header layout, so it labels the incompatible generations. It is <c>11</c> as of committed movement,
-    /// which appends <see cref="MovementState.Commitment"/> to the movement built-in so a server-authored ballistic
-    /// move survives reconciliation replay and cell handoff. <c>10</c> was AUTHORITATIVE FACING, which changed the
+    /// frame-header layout, so it labels the incompatible generations. It is <c>12</c> as of the owner-only movement
+    /// split, which moved <see cref="MovementOwnerState.TimeSinceGrounded"/> and
+    /// <see cref="MovementOwnerState.JumpBufferRemaining"/> out of the movement built-in (8 bytes fewer to every AoI
+    /// observer) into a new built-in, <see cref="MovementOwnerState"/> at id <see cref="MovementOwnerTypeId"/>, which
+    /// is served only to the owning client. Both built-ins changed shape, hence the bump. <c>11</c> was committed
+    /// movement, which appended <see cref="MovementState.Commitment"/> to the movement built-in so a server-authored
+    /// ballistic move survives reconciliation replay and cell handoff. <c>10</c> was AUTHORITATIVE FACING, which changed the
     /// wire in two places at once and took one bump for both. The client-to-server move frame's
     /// <c>run</c> byte became a FLAGS byte (bit 0 run, bit 1 <see cref="MoveCommand.FaceCamera"/>), reusing a byte
     /// that carried a bare bool through generation 9 rather than widening the frame - <c>MoveSize</c> stays 18, which
@@ -59,7 +63,7 @@ public static class MoveProtocol
     /// <see cref="WorldClientConfig.ProtocolVersion"/> game-version gate still layers on top via
     /// <see cref="VersionCheckingAuthenticator"/>.
     /// </summary>
-    public const int WireProtocolVersion = 11;
+    public const int WireProtocolVersion = 12;
 
     /// <summary>Type id of <see cref="ReplicatedPosition"/> in the shared registry.</summary>
     public const ushort PositionTypeId = 1;
@@ -82,9 +86,15 @@ public static class MoveProtocol
     /// to draw it. Spawned and driven server-side by <see cref="WorldPickups"/>.</summary>
     public const ushort PickupTypeId = 5;
 
+    /// <summary>Type id of <see cref="MovementOwnerState"/> (the owner-only feel timers) in the shared registry. The
+    /// one built-in registered <c>Default | OwnerOnly</c>: client AoI serving writes it only on the receiving client's
+    /// own player, while persistence and handoff write it for every player (see
+    /// <see cref="ReplicationRegistry.BuiltinChannelsAllowed"/>).</summary>
+    public const ushort MovementOwnerTypeId = 6;
+
     /// <summary>The lowest type id a consumer may register on top of the movement protocol (an NPC kind, HP,
     /// faction, …). Ids <c>1..15</c> are reserved for engine movement built-ins (currently
-    /// <see cref="PositionTypeId"/>/<see cref="MovementTypeId"/>/<see cref="IdentityTypeId"/>/<see cref="DynamicBodyTypeId"/>/<see cref="PickupTypeId"/>).
+    /// <see cref="PositionTypeId"/>/<see cref="MovementTypeId"/>/<see cref="IdentityTypeId"/>/<see cref="DynamicBodyTypeId"/>/<see cref="PickupTypeId"/>/<see cref="MovementOwnerTypeId"/>).
     /// Consumer components
     /// registered at or above this floor are length-prefixed on the wire, so a client that never registered the id
     /// SKIPS it instead of disconnecting (see <see cref="ReplicationRegistry.FirstExtensionTypeId"/>). Register the
@@ -128,7 +138,7 @@ public static class MoveProtocol
             // when the frames match, which is every snapshot pair except the one that crosses a shift.
             lerp: (a, b, t) => ReplicatedPosition.InFrame(
                 b.Frame, Vector3.Lerp(a.ToFrame(b.Frame).Local, b.Local, t)));
-        // Vertical movement state. NOT interpolated (its booleans/timers/quantized rate must never be blended into an
+        // Vertical movement state. NOT interpolated (its booleans/quantized rates must never be blended into an
         // impossible in-between), but fixed-delay nearest-SAMPLED (discreteSample) so a remote's grounded/swim/climb
         // flags ride the SAME delayed render timeline as its interpolated ReplicatedPosition instead of being read live
         // at the newest snapshot (~InterpolationDelayTicks ahead of the drawn feet). The local owner is excluded from
@@ -140,8 +150,7 @@ public static class MoveProtocol
             {
                 bw.Write(m.VerticalVelocity);
                 bw.Write(m.Grounded);
-                bw.Write(m.TimeSinceGrounded);
-                bw.Write(m.JumpBufferRemaining);
+                // wire generation 12: the two feel timers that sat here moved to MovementOwnerState (owner only)
                 bw.Write(m.Swimming);       // wire generation 3: the surface-swim flag rides alongside the vertical axis
                 bw.Write(m.TeleportEpoch);  // wire generation 4: the authoritative teleport epoch (hard-cut marker)
                 bw.Write(m.ClimbRateQ);     // wire generation 5: the quantized signed step-climb rate (0 = not climbing)
@@ -165,8 +174,6 @@ public static class MoveProtocol
             {
                 VerticalVelocity = br.ReadSingle(),
                 Grounded = br.ReadBoolean(),
-                TimeSinceGrounded = br.ReadSingle(),
-                JumpBufferRemaining = br.ReadSingle(),
                 Swimming = br.ReadBoolean(),
                 TeleportEpoch = br.ReadUInt32(),
                 ClimbRateQ = br.ReadSByte(),
@@ -233,6 +240,15 @@ public static class MoveProtocol
             PickupTypeId,
             write: (p, bw) => { bw.Write(p.PayloadId); bw.Write(p.OwnerNetId); },
             read: br => new PickupState { PayloadId = br.ReadInt64(), OwnerNetId = br.ReadInt64() });
+        // The owner-only feel timers: the coyote and jump-buffer accounting only the owning client's reconciliation
+        // replay reads. OwnerOnly keeps them off every other observer's wire. Persist and Migrate stay on, so a
+        // restored or handed-off player keeps its windows. Registered last among the built-ins so the ids ascend in
+        // registration order, which the cell-blob walk relies on (CellBlobWalkPolicy).
+        r.Register<MovementOwnerState>(
+            MovementOwnerTypeId,
+            write: (o, bw) => { bw.Write(o.TimeSinceGrounded); bw.Write(o.JumpBufferRemaining); },
+            read: br => new MovementOwnerState { TimeSinceGrounded = br.ReadSingle(), JumpBufferRemaining = br.ReadSingle() },
+            channels: ReplicationChannels.Default | ReplicationChannels.OwnerOnly);
         configure?.Invoke(r);   // consumer extension components (ids >= FirstConsumerTypeId)
         return r;
     }

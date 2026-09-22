@@ -88,6 +88,37 @@ internal sealed class CapturedComponents
     /// <summary>True when this entity captured component <paramref name="typeId"/>.</summary>
     public bool Contains(ushort typeId) => segments.ContainsKey(typeId);
 
+    // The view every viewer that does NOT own this entity is entitled to, built on first use and then shared by all
+    // of them for as long as this capture lives. Null until asked for. Holds this instance itself when nothing
+    // captured here is owner-only. Safe to cache because the capture is immutable once the scan finishes and a
+    // replicator reads it from one thread.
+    private CapturedComponents? publicView;
+
+    /// <summary>
+    /// This entity's components minus every <see cref="ReplicationChannels.OwnerOnly"/> one: exactly what any viewer
+    /// other than the owner may see. Computed once per capture and shared across every non-owning client, so an
+    /// owner-scoped registry costs one filtered copy per entity per tick rather than one per entity per client.
+    /// Returns this instance unchanged when the entity carries nothing owner-only.
+    /// </summary>
+    internal CapturedComponents PublicView(ReplicationRegistry registry)
+    {
+        if (publicView is not null) return publicView;
+        bool anyOwnerOnly = false;
+        foreach (ushort typeId in segments.Keys)
+            if (!IsPublic(registry, typeId)) { anyOwnerOnly = true; break; }
+        if (!anyOwnerOnly) return publicView = this;   // the common entity: nothing to strip, nothing to allocate
+
+        var filtered = new CapturedComponents(buffer, segments.Count) { Order = Order };
+        foreach (KeyValuePair<ushort, Segment> kv in segments)
+            if (IsPublic(registry, kv.Key)) filtered.Add(kv.Key, kv.Value.Offset, kv.Value.Length);
+        return publicView = filtered;
+    }
+
+    // Whether a viewer that does not own the entity may see component typeId (ownerNetId null is "nobody's owner").
+    private static bool IsPublic(ReplicationRegistry registry, ushort typeId) =>
+        registry.TryGet(typeId, out ComponentCodec codec)
+        && codec.ShouldWrite(ReplicationChannels.Replicate, netId: 0, ownerNetId: null);
+
     /// <summary>Yields component <paramref name="typeId"/>'s payload as a span over the shared buffer, without copying.</summary>
     public bool TryGetSpan(ushort typeId, out ReadOnlySpan<byte> span)
     {
@@ -153,20 +184,15 @@ internal sealed class CaptureScratch
 internal static class CaptureProjection
 {
     /// <summary>
-    /// Builds a filtered view of <paramref name="source"/> keeping only the components this client may see: an
-    /// <see cref="ReplicationChannels.OwnerOnly"/> component is dropped unless the entity's <paramref name="netId"/>
-    /// equals <paramref name="ownerNetId"/> (see <see cref="ComponentCodec.ShouldWrite"/>). The kept segments reference
-    /// <paramref name="source"/>'s buffer unchanged (no payload copy), so the result is exactly the replicate-channel
-    /// bytes this client is entitled to.
+    /// The view of <paramref name="source"/> this client may see: an <see cref="ReplicationChannels.OwnerOnly"/>
+    /// component is dropped unless the entity's <paramref name="netId"/> equals <paramref name="ownerNetId"/> (see
+    /// <see cref="ComponentCodec.ShouldWrite"/>). The owner gets <paramref name="source"/> itself, since the capture
+    /// holds only Replicate-channel components and the owner is entitled to all of them. Every other viewer gets the
+    /// entity's shared <see cref="CapturedComponents.PublicView"/>. Either way the segments reference
+    /// <paramref name="source"/>'s buffer unchanged (no payload copy), and both are immutable, so a per-client
+    /// baseline may hold them.
     /// </summary>
     public static CapturedComponents OwnerScope(CapturedComponents source, ReplicationRegistry registry,
         long netId, long? ownerNetId)
-    {
-        var comps = new CapturedComponents(source.Buffer, source.Count) { Order = source.Order };
-        foreach (KeyValuePair<ushort, Segment> kv in source.Segments)
-            if (registry.TryGet(kv.Key, out ComponentCodec codec)
-                && codec.ShouldWrite(ReplicationChannels.Replicate, netId, ownerNetId))
-                comps.Add(kv.Key, kv.Value.Offset, kv.Value.Length);
-        return comps;
-    }
+        => ownerNetId == netId ? source : source.PublicView(registry);
 }

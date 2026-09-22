@@ -21,10 +21,11 @@ public class WorldClientDecodeFailureTests
     private static readonly Func<float, float, float> Flat = (x, z) => 0f;
 
     // The lowest reserved built-in id the shared registry does NOT claim, so this fixture keeps meaning "an id from a
-    // newer core protocol" as the engine grows into the 1..15 band (it was 5 until PickupState took that). Assert-
+    // newer core protocol" as the engine grows into the 1..15 band (it was 5 until PickupState took that, and 6 until
+    // MovementOwnerState did). Assert-
     // pinned below rather than hand-tracked, so the next built-in fails loudly here instead of silently testing a
     // registered id.
-    private const ushort UnregisteredBuiltInTypeId = 6;
+    private const ushort UnregisteredBuiltInTypeId = 7;
 
     // A snapshot with one entity carrying a single component of an unregistered built-in type id (reserved below the
     // extension floor), wrapped as a server->client snapshot frame. Below the floor it is unframed, so an unknown id
@@ -55,6 +56,8 @@ public class WorldClientDecodeFailureTests
         Assert.NotEqual(MoveProtocol.IdentityTypeId, UnregisteredBuiltInTypeId);
         Assert.NotEqual(MoveProtocol.DynamicBodyTypeId, UnregisteredBuiltInTypeId);
         Assert.NotEqual(MoveProtocol.PickupTypeId, UnregisteredBuiltInTypeId);
+        Assert.NotEqual(MoveProtocol.MovementOwnerTypeId, UnregisteredBuiltInTypeId);
+        Assert.False(MoveProtocol.CreateRegistry().IsRegistered(UnregisteredBuiltInTypeId));
     }
 
     [Fact]

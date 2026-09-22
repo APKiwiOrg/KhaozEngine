@@ -281,7 +281,10 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
     generation), a blob written by a NEWER generation is `SkippedTooNew` instead of misread, and an older blob whose
     generation was never recorded is brought forward by `WireGenerationBlobMigration.NormalizeV3ToV4` inferring it
     from the body. Existing blobs are migrated in place on first load, one way: a v1/v2/v3 blob is rewritten as v4
-    once and reads clean from then on.
+    once and reads clean from then on. Bringing a body forward is a zero-pad of each built-in's appended fields, with
+    two exceptions: the position restructure at generation 9, and the movement payload's shrink at generation 12,
+    where the two feel timers are cut out and written into a `MovementOwnerState` frame after the entity's other
+    built-ins, so a restored entity keeps them.
   - **Inferring a pre-v4 blob's generation never guesses.** Every candidate generation is walked and judged against
     what the writer is known to do (built-in ids ascend within an entity and none follows an extension frame, no id
     repeats, a movement payload's bool bytes are 0 or 1, a display name is UTF-8, and an extension id the live
@@ -405,7 +408,7 @@ on a snapshot it cannot decode. Both are additive: the wire and existing ctors a
     the version layer, and set the client's connect token to `HandshakeToken.Wrap(worldHash, authToken)` alone.
     `WorldClient` stamps the wire layer over it, so the layers arrive as
     `[ke-wire:N][ProtocolVersion][worldHash][auth]`.
-  - **Wire-format generation (enforced automatically since 10.2.0).** `MoveProtocol.WireProtocolVersion` (= 11)
+  - **Wire-format generation (enforced automatically since 10.2.0).** `MoveProtocol.WireProtocolVersion` (= 12)
     labels
     the incompatible on-the-wire generations. 1 was the pre-10.0.0 32-bit line, and 2 was 10.0.0 widening `NetId` to
     64-bit (the snapshot/delta id field and the frame header, `[localNetId:long][ackSeq:int]`, grown 8 -> 12 bytes).
@@ -420,7 +423,9 @@ on a snapshot it cannot decode. Both are additive: the wire and existing ctors a
     below), and 10 is authoritative facing: the move frame's `run` byte became a flags byte (bit 1 is
     `MoveCommand.FaceCamera`, and `MoveSize` stays 18) and the movement built-in gained
     `MovementState.FacingYawQ`, one bump for both. Generation 11 appends `MovementState.Commitment`, the complete
-    carried state for a server-authored ballistic move. There is no
+    carried state for a server-authored ballistic move. Generation 12 moves the two feel timers out of
+    `MovementState` into the owner-only built-in `MovementOwnerState` at id 6 (see the owner-only movement timers
+    section below), the first change that shrank the movement payload. There is no
     dual-format wire, so peers on
     different generations MUST reject each other at connect rather than misparse a frame. As of 10.2.0 the engine
     enforces this for you: `WorldClient` always folds the
@@ -835,6 +840,39 @@ render-state exports.
 - **This is a wire break: generation 9 -> 10.** One bump covers the flags byte and `FacingYawQ` together. The
   movement built-in is not length-prefixed, so an old client cannot skip the two bytes and is rejected cleanly at
   connect by the always-on `WireGenerationAuthenticator`. **Client and server must ship together.**
+
+## Owner-only movement timers (wire generation 12)
+
+The two feel timers, `TimeSinceGrounded` (coyote time) and `JumpBufferRemaining` (jump buffer), exist only to make
+the owning client's reconciliation replay exact. Nothing a remote observer renders reads them, so they no longer ride
+`MovementState`.
+
+- **`MovementOwnerState`** carries them, as the built-in `MoveProtocol.MovementOwnerTypeId` (6), registered
+  `ReplicationChannels.Default | ReplicationChannels.OwnerOnly`. Both serve paths (full snapshot and AoI delta) on
+  both heads write it only on the receiving client's own player. Cell persistence and cell handoff write it for every
+  entity that has it, so a restored or handed-off player keeps its windows. A border ghost does not carry it, which
+  is safe because a ghost is never simulated.
+- **What an observer saves.** The movement payload drops from 64 to 56 bytes, so every moving player costs each
+  observer 8 bytes less per snapshot, and on the delta path a change confined to the timers (a decaying jump buffer
+  while nothing else moves) reaches the owner alone and costs an observer nothing. The owner pays 2 bytes more, the
+  owner frame's type id.
+- **`MovementState` keeps its meaning for remotes.** `VerticalVelocity`, `Grounded`, `Swimming`, `TeleportEpoch`,
+  `ClimbRateQ`, `SpeedScaleQ`, the carried arc, `FacingYawQ` and `Commitment` are all still there, in the same
+  order, with the two timer floats cut out after `Grounded`.
+- **API.** `PlayerMoveState.From(position, movement, owner)` takes the owner half as a required third argument (pass
+  `default` for an entity you do not own, which reads both timers as zero). `MovementState.From(state)` no longer
+  copies the timers and `MovementOwnerState.From(state)` does. Every engine spawn, teleport and restore path writes
+  both components. Code that writes a movable entity's components directly must write both too.
+  `PlayerMovementSystem` seeds a missing `MovementOwnerState` at the end of the entity's first step, so its coyote
+  clock carries from then on.
+- **The built-in channel rule.** A built-in id may now carry `OwnerOnly` on top of `Default`
+  (`ReplicationRegistry.BuiltinChannelsAllowed`). It drops the whole unframed frame for a non-owner and never changes
+  a frame's bytes, so the stream stays aligned for every client. Every other channel set on a built-in still throws.
+- **This is a wire break: generation 11 -> 12.** Both built-ins changed shape, so mixed-generation peers are rejected
+  at connect by the always-on `WireGenerationAuthenticator`. **Client and server must ship together.** A stored cell
+  blob from an older generation still loads: the bring-forward pass cuts the timer bytes out of its movement payload
+  and writes them into an owner frame (`BuiltinBlobLayout.MovementOwnerWireGeneration`), so the restored entity has
+  exactly the timers it was saved with.
 
 ## Island frames and the frame-relative wire (the floating-origin MAJOR)
 

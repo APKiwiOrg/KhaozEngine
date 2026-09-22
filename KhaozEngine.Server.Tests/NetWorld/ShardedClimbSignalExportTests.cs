@@ -145,6 +145,7 @@ public class ShardedClimbSignalExportTests
             host.Tick(Dt);
 
             MovementState before = source.World.Get<MovementState>(moving);
+            MovementOwnerState beforeOwner = source.World.Get<MovementOwnerState>(moving);
             ReplicatedPosition position = source.World.Get<ReplicatedPosition>(moving);
             bool crossed = host.CoordFor(position.Value.X, position.Value.Z) != source.Coord;
             if (!crossed || before.ClimbRateQ == 0)
@@ -158,8 +159,8 @@ public class ShardedClimbSignalExportTests
                 Position = position.Local,
                 VerticalVelocity = before.VerticalVelocity,
                 Grounded = before.Grounded,
-                TimeSinceGrounded = before.TimeSinceGrounded,
-                JumpBufferRemaining = before.JumpBufferRemaining,
+                TimeSinceGrounded = beforeOwner.TimeSinceGrounded,
+                JumpBufferRemaining = beforeOwner.JumpBufferRemaining,
                 Swimming = before.Swimming,
                 ClimbRateEwma = before.ClimbRateEwma,
                 SpeedScale = MovementState.DecodeSpeedScale(before.SpeedScaleQ),

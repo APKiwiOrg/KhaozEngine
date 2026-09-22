@@ -3407,9 +3407,31 @@ scene.Draw(tower, Matrix4x4.CreateTranslation(100_000f, 0f, 100_000f));   // sti
   unrelated. Nothing about simulation changes here - the simulation side is the island frame below. Terrain chunk
   VERTICES were the other half and are fixed separately, by the chunk-local bake (also below).
 
-If you write your own renderer against `Transform3D`, `ToMatrix(Vector3 renderOrigin)` builds the reduced matrix
-directly. You do not need it for `Scene3D`, which reduces the absolute matrix you hand it. Calling both
-double-subtracts.
+If you write your own renderer against `Transform3D` (from `KhaozEngine.Render3D.Ecs`, below),
+`ToMatrix(Vector3 renderOrigin)` builds the reduced matrix directly. You do not need it for `Scene3D`, which
+reduces the absolute matrix you hand it. Calling both double-subtracts.
+
+### ECS entities (`KhaozEngine.Render3D.Ecs`)
+
+`Scene3DBinder.Submit(world, scene)` draws every `KhaozEngine.Ecs` entity carrying both a `Transform3D` and a
+`MeshInstance`, carrying the instance `Material` through. A zero `Transform3D.Scale` is treated as one, a zero
+`Rotation` as identity, and a zero `MeshInstance.Tint` as white. The delegate overloads
+`Submit(world, draw)` are the pure core for a headless test with a recording delegate.
+
+```csharp
+world.Set(e, new Transform3D { Position = new Vector3(4f, 0f, 2f) });
+world.Set(e, new MeshInstance { Mesh = tower, Material = Material.Shiny });
+
+// per frame, inside OnDraw3D:
+scene.Begin();
+Scene3DBinder.Submit(world, scene);
+```
+
+The three types live in the `KhaozEngine.Render3D.Ecs` package, not in `KhaozEngine.Render3D`, so a render-only
+consumer (a bake tool, a snapshot CLI) never pulls `Ecs`, `Simulation` and `Serialization`. The namespace is still
+`KhaozEngine.Render3D`. A `Game3D` consumer gets the package through the umbrella and changes nothing. A consumer
+that references `KhaozEngine.Render3D` directly and uses any of the three types adds a
+`KhaozEngine.Render3D.Ecs` reference when it repins to 20.0.0. No source edit is needed.
 
 ### Transparency ordering
 

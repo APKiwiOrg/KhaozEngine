@@ -14653,11 +14653,11 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
 - **`KhaozEngine.Persistence`**: crash-safe saves: `AtomicJsonWriter`, `PersistenceQueue` (coalesced async
   writes, optional numbered backup-generation rotation), `SettingsManager<T>` + `FileSettingsStorage`,
   `SaveEncoder` (Base64 + HMAC, a versioned envelope carrying tamper-protected `SaveMetadata`), the
-  `GameStorage` facade (paths + queue + settings + encoder, default-on encoding, an outcome-reporting
-  recovery ladder, generation restore - see "Save data" below), the `SettingsManager<T>.StampInstall(...)`
-  convenience, versioned schema migration via `MigrationChain<T>` (see "Versioned save migrations"
-  below), and `BatchedWriter<T>` (a bounded async batch-write queue for a server-side append-only log -
-  see "Batched async writes" below).
+  `GameStorage` facade (paths + queue + settings + a required `SaveEncoding` save posture, an
+  outcome-reporting recovery ladder, generation restore - see "Save data" below), the
+  `SettingsManager<T>.StampInstall(...)` convenience, versioned schema migration via `MigrationChain<T>`
+  (see "Versioned save migrations" below), and `BatchedWriter<T>` (a bounded async batch-write queue for a
+  server-side append-only log - see "Batched async writes" below).
 - **`KhaozEngine.Content`**: config loading + JSON-schema validation: `ConfigLoader` (disk-then-embedded),
   `JsonSchemaValidator`, build-time schema enforcement via the bundled `Content.Validator` tool.
 - **`KhaozEngine.Serialization`**: shared `System.Text.Json` baselines. **JSONC (JSON with `//` / `/* */`
@@ -16341,29 +16341,39 @@ those files ambiguous.
 ## Save data (`GameStorage`)
 
 `KhaozEngine.Persistence.GameStorage` is the one-call facade over the save/settings stack: publisher-rooted
-`AppDataPaths`, a coalesced atomic `PersistenceQueue`, a `FileSettingsStorage`, and an optional
-`SaveEncoder`. See the package README for the full API. This section covers the consumer-facing decisions.
+`AppDataPaths`, a coalesced atomic `PersistenceQueue`, a `FileSettingsStorage`, and the save posture chosen at
+construction. See the package README for the full API. This section covers the consumer-facing decisions.
 
-For an isolated run or a test, pass `AppDataPaths.FromDirectory(absoluteRoot)` to the existing
-`GameStorage(AppDataPaths, GameStorageOptions?)` constructor. The same resolver works with
+**The save posture: saves encoded, settings plaintext.** Fleet policy is that game saves (progress, unlocks,
+campaign state) are tamper-encoded in every KhaozEngine game, and settings and user-set config (window
+position, preferences) stay plaintext because they are the player's to hand-edit. `GameStorage` makes the save
+half a required constructor argument, a `SaveEncoding`, the same way `LocalizedText` makes raw text a
+deliberate act. `SaveEncoding.Encoded(encoder)` is what a game passes for its saves. `SaveEncoding.Plaintext`
+is the explicit, greppable opt-out for a storage that holds no saves (the map editor's own stores use it) or
+a game that has decided on hand-editable saves. There is no constructor without the posture, and
+`GameStorageOptions` no longer carries an encoder, so a game cannot ship plaintext saves by leaving a field
+unset. The settings half needs no choice: `GameStorage.Settings` and `CreateSettingsManager` write plaintext
+JSON under either posture.
+
+For an isolated run or a test, pass `AppDataPaths.FromDirectory(absoluteRoot)` to the
+`GameStorage(AppDataPaths, SaveEncoding, GameStorageOptions?)` constructor. The same resolver works with
 `FileSettingsStorage`. It uses exactly that root and creates it lazily, without probing the OS application
 data directory. Relative paths are rejected.
 
 ```csharp
 using KhaozEngine.Persistence;
 
-var storage = new GameStorage("MyStudio", "MyGame", new GameStorageOptions
-{
-    Encoder = new SaveEncoder(hmacKey, "MGSV1"),   // configuring an encoder makes encoding the default
-    GameVersion = "1.4.2",                         // stamped into every encoded save's SaveMetadata.GameVersion
-});
+var storage = new GameStorage(
+    "MyStudio", "MyGame",
+    SaveEncoding.Encoded(new SaveEncoder(hmacKey, "MGSV1")),   // the save posture, required
+    new GameStorageOptions { GameVersion = "1.4.2" });          // stamped into every encoded save's SaveMetadata
 
-storage.Save("save.json", campaign);                // encoded (Base64 + HMAC) because Encoder is configured
+storage.Save("save.json", campaign);                // encoded (Base64 + HMAC) because the posture is Encoded
 storage.Flush();                                     // writes are queued: flush before reading the same file back
 SaveLoadResult<CampaignSaveData> result = storage.LoadWithOutcome<CampaignSaveData>("save.json");
 ```
 
-**Encoding is default-on, per-call opt-out.** Once `GameStorageOptions.Encoder` is configured, every `Save`
+**Encoding is default-on, per-call opt-out.** Under `SaveEncoding.Encoded`, every `Save`
 encodes unless a call opts out - the reverse of the old "opt in per call" behavior, so a forgotten flag can
 no longer ship an unprotected save. Force plaintext for a deliberately hand-editable file (or force encoding
 without changing the facade default) with `SaveWriteOptions`:
@@ -16379,8 +16389,8 @@ save editor and detects corruption. It does not stop a player willing to read th
 **Recovery ladder outcomes.** `Load<T>` never throws on a bad save. It probes the primary file, then each
 backup generation in order, and returns the first valid candidate, or a fresh default if none are.
 `LoadWithOutcome<T>` reports which path was taken via `SaveLoadOutcome`: `Loaded` (clean primary),
-`FreshDefault` (nothing on disk), `LoadedLegacyPlaintext` (a plaintext save read under a configured
-encoder - a subsequent default-on save re-encodes it, though a file the game keeps writing with
+`FreshDefault` (nothing on disk), `LoadedLegacyPlaintext` (a plaintext save read under
+`SaveEncoding.Encoded` - a subsequent default-on save re-encodes it, though a file the game keeps writing with
 `Encode = false` stays plaintext deliberately and is never re-encoded this way), `RecoveredFromBackup`
 (the primary failed but a backup loaded, and `SaveLoadResult<T>.RecoveredGeneration` names which one), and
 `RejectedAndDefaulted` (something was on disk but every candidate was invalid). A save whose HMAC does not

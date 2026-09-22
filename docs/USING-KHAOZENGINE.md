@@ -18803,7 +18803,7 @@ client.AdvancePresentation(dt);
 EntityRenderState[] snapshot = client.Snapshot();
 ```
 
-`ConnectionState` (a `WorldConnectionState`) is one of: `Connecting` (initial handshake), `Connected` (in-session), `Reconnecting` (between drop and re-join), `Disconnected` (terminal - bad token or explicit give-up). `DisconnectReason` values: `None`, `RejectedToken`, `Unreachable`, `ServerShutdown`, `Timeout`, `IncompatibleVersion` (the client is out of date - see "Version skew resilience" below), `SignedInElsewhere` and `AlreadySignedIn` (the duplicate-session gate, below), and `Banned` (the drop after a `ServerNoticeKind.Banned` notice, see "Bans" below). The single-transport ctor `WorldClient(INetTransport, ...)` is unchanged (no reconnect, `IDisposable` is a no-op).
+`ConnectionState` (a `WorldConnectionState`) is one of: `Connecting` (initial handshake), `Connected` (in-session), `Reconnecting` (between drop and re-join), `Disconnected` (terminal - bad token or explicit give-up). `DisconnectReason` values: `None`, `RejectedToken`, `Unreachable`, `ServerShutdown`, `Timeout`, `IncompatibleVersion` (the client is out of date - see "Version skew resilience" below), `SignedInElsewhere` and `AlreadySignedIn` (the duplicate-session gate, below), `Banned` (the drop after a `ServerNoticeKind.Banned` notice, see "Bans" below), and `ContentMismatch` (the client was built against different content than the server, see "Content identity" under "Version skew resilience" below). The single-transport ctor `WorldClient(INetTransport, ...)` is unchanged (no reconnect, `IDisposable` is a no-op).
 
 **One account, one live session (17.38.0).** The join gate keys a live session by the SUBJECT the authenticator verified, so two clients presenting one account's connect token cannot become two live sessions. Above the session layer that shape is unrepresentable: `WorldPersistence` keys one record per account, so the two shared it and the later join left the earlier session unrestored, then let its default-spawn state overwrite the record once the winner left (#662). Set the policy on either head:
 
@@ -18860,6 +18860,34 @@ var server = new WorldServer(transport, config, terrain.SampleHeight, MoveTuning
 ```
 
 A mismatch surfaces on the client as `DisconnectReason.IncompatibleVersion` with the server's required version in `DisconnectReasonDetail`; the client never proceeds to receive snapshots. A version-less client (one that did not set `ProtocolVersion`, e.g. an old build) presents version `""`, so the rule can reject it too. On a compatible version the inner token is delegated to the inner authenticator unchanged.
+
+*Content identity (opt-in, `KhaozEngine.NetWorld`).* Two builds can share a protocol version and still load different content, and a client on the wrong content that joins anyway renders its own local map against the server's authoritative positions. Set `WorldClientConfig.ContentIdentity` to an opaque string your game computes for the content it loaded (a map or data hash, say). The engine attaches no meaning to it and only compares it ordinally. The server half is the existing `KhaozEngine.Netcode.WorldIdentityGateAuthenticator`, composed just INSIDE the version gate:
+
+```csharp
+// client: the identity rides as its own layer, just inside the ProtocolVersion layer
+var client = new WorldClient(transport, terrain.SampleHeight, MoveTuning.Default,
+    new WorldClientConfig { ProtocolVersion = MyGame.ProtocolVersion, ContentIdentity = MyGame.ContentHash },
+    token: myAccountTokenBytes);
+
+// server: version gate outermost, content gate next, the game's own authenticator innermost
+var server = new WorldServer(transport, config, terrain.SampleHeight, MoveTuning.Default,
+    authenticator: new VersionCheckingAuthenticator(
+        serverVersion: MyGame.ProtocolVersion,
+        isCompatible: v => v == MyGame.ProtocolVersion,
+        inner: new WorldIdentityGateAuthenticator(MyGame.ContentHash,
+            inner: new HmacTokenAuthenticator(secret, () => DateTimeOffset.UtcNow),
+            log: Console.WriteLine)));
+```
+
+`ConnectionGate.Wrap(tokenAuth, protocolVersion, worldHash, ...)` builds the same version-then-identity door with exact version equality, and a `WorldClient` with `ContentIdentity = worldHash` presents exactly the token it expects.
+
+- A mismatch surfaces as `DisconnectReason.ContentMismatch`, terminal and not retried. `WorldClient.ContentMismatch` is a `ContentMismatchDetail(ServerIdentity, ClientIdentity)` carrying both identities, and `DisconnectReasonDetail` carries the server's. Map the reason to your own localized line. The wire token is `ke:world-mismatch:<server>|<client>`, and `ContentMismatchDetail.TryParse` reads it for a head that is not a `WorldClient`.
+- A server that requires an identity refuses a client that sent none as `ContentMismatch` with an empty `ClientIdentity`. If that client's auth token is itself a labelled handshake layer, `ClientIdentity` is that layer's label instead, because the gate peels whatever sits in the identity position.
+- Ordering is load-bearing. The version gate is outermost, so a client that is skewed on both reads `IncompatibleVersion` and never reaches the content check.
+- With neither side configured the Hello is byte-identical to the wire without the slot.
+- `ContentIdentity` must be non-empty, must not contain `|` (the refusal token's separator) and must fit `HandshakeToken.MaxLabelBytes` UTF-8 bytes, or the `WorldClient` constructor throws `ArgumentException`. The server identity is yours to keep pipe-free as well, since the gate itself does not check it.
+- **Adopting the slot is a wire change, so bump your own `ProtocolVersion` in the same release.** An older server reads the identity layer as the auth token, and an older client sends no identity layer. The version bump turns both away at the version gate with the ordinary out-of-date refusal before either can misread the other.
+- A bare `NetClient` builds the same token with `ProtocolHandshake.BuildClientToken(MoveProtocol.WireProtocolVersion, consumerVersion, ProtocolHandshake.WrapContentIdentity(contentIdentity, innerToken))`.
 
 3. *Graceful decode (last resort).* Even if both above are bypassed, an undecodable snapshot (an unregistered BUILT-IN component type id from a newer core protocol) becomes a clean `DisconnectReason.IncompatibleVersion` disconnect plus a `SnapshotDecodeFailed` event - never an unhandled exception in your frame loop. (An unregistered consumer *extension* id, at/above `ReplicationRegistry.FirstExtensionTypeId`, is skipped instead, so a newer server's added component never disconnects an older client - see the server-owned NPCs section above.)
 

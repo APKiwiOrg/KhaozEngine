@@ -24,8 +24,8 @@ namespace KhaozEngine.Catalog.Authoring;
 /// <b>The record CANNOT be built into a state that says two things.</b> Every rule runs in the constructor,
 /// and every property is get-only, so a <c>with</c> expression cannot move one value past the rules the
 /// others were checked against. The rules refuse manifest hashes under version 0, a hash without its pair,
-/// a prior schema version newer than the recreated one, and any claim about what stood on a reset that did
-/// not read it.
+/// a version row's hashes beside no version dropped, a prior schema version newer than the recreated one,
+/// and any claim about what stood on a reset that did not read it.
 /// </para>
 /// </summary>
 /// <param name="ActiveVersion">The version the store served before the reset, or 0 when it had published nothing or nothing was read.</param>
@@ -152,6 +152,15 @@ public sealed record ContentCatalogResetResult(
             throw new ArgumentException(
                 "A store that published nothing has no active version's manifest hashes, so a reset result cannot carry them under version 0.",
                 nameof(activeVersion));
+        }
+
+        // A version row that was found is a row catalog_version held, so the reset dropped at least that one.
+        // The converse is not a rule: a file with broken foreign keys can hold rows and no version at all.
+        if (serverManifestHash is not null && versionsDropped == 0)
+        {
+            throw new ArgumentException(
+                "A reset result carrying a version row's manifest hashes dropped at least that version, so it cannot report no versions dropped.",
+                nameof(versionsDropped));
         }
 
         if (priorState == ContentCatalogPriorState.Read)

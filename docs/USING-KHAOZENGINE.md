@@ -15281,8 +15281,9 @@ two hashes exist anywhere, because `catalog_version` goes with everything else.
 
 `PriorState` says which of the three a run was, and the record refuses to be built into a state that says two
 things: a version number with no row behind it reads as that number and the words "whose version row was
-MISSING" rather than as "nothing published", a reset that read no catalog cannot report a version, a hash, a
-prior schema version or anything dropped, and a prior schema version newer than the recreated one is refused.
+MISSING" rather than as "nothing published", a version row's hashes beside no version dropped are refused, a
+reset that read no catalog cannot report a version, a hash, a prior schema version or anything dropped, and a
+prior schema version newer than the recreated one is refused.
 Every property is get-only, so a `with` expression cannot move one value past those rules.
 
 **The pack store is NOT touched by a reset.** A pack root left standing under a replaced catalog still holds a

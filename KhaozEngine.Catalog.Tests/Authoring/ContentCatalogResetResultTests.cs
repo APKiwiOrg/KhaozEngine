@@ -81,6 +81,19 @@ public class ContentCatalogResetResultTests
             () => new ContentCatalogResetResult(2, null, Hash, 2, 3, Epoch, Current, Current, Read));
     }
 
+    [Fact]
+    public void AVersionRowThatWasFoundWithNoVersionDroppedIsRefused()
+    {
+        // The hashes come off a catalog_version row, so that row was among the versions dropped.
+        Assert.Throws<ArgumentException>(
+            () => new ContentCatalogResetResult(3, Hash, Hash, 0, 12, Epoch, Current, Current, Read));
+
+        // Rows with no version beside them are NOT refused: a SQLite file whose foreign keys were broken by
+        // hand can hold exactly that, and the reset reports what it counted.
+        var orphaned = new ContentCatalogResetResult(3, null, null, 0, 12, Epoch, Current, Current, Read);
+        Assert.Contains("0 versions and 12 row revisions", orphaned.Summary, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData(ContentCatalogPriorState.Absent)]
     [InlineData(ContentCatalogPriorState.Unreadable)]

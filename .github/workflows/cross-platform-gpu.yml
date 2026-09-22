@@ -212,6 +212,8 @@ on:
     branches: [ main ]
     paths:
       - 'KhaozEngine.Render3D/**'
+      # The Render3D ECS arm (Scene3DBinder, Transform3D, MeshInstance), split out of Render3D in 20.0.0.
+      - 'KhaozEngine.Render3D.Ecs/**'
       - 'KhaozEngine.Render2D/**'
       - 'KhaozEngine.Gpu/**'
       # The native Direct3D 11 backend. Its shader path owns the FXC call, so a change here can reject HLSL

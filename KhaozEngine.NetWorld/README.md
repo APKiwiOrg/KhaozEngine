@@ -405,9 +405,26 @@ on a snapshot it cannot decode. Both are additive: the wire and existing ctors a
     the connect token.** They carry no `ke-wire:` layer, so the always-on `WireGenerationAuthenticator` refuses
     them before the version gate is reached. `BuildToken` builds the INNER token and `ProtocolHandshake` wraps it.
     Pass `ConnectionGate.Wrap(...)` as the `authenticator:` arg, leave `WorldClientConfig.ProtocolVersion` to carry
-    the version layer, and set the client's connect token to `HandshakeToken.Wrap(worldHash, authToken)` alone.
-    `WorldClient` stamps the wire layer over it, so the layers arrive as
+    the version layer, set `WorldClientConfig.ContentIdentity = worldHash` and pass the auth token alone.
+    `WorldClient` stamps the wire layer outermost, so the layers arrive as
     `[ke-wire:N][ProtocolVersion][worldHash][auth]`.
+- **Content identity (opt-in).** Set `WorldClientConfig.ContentIdentity` to an opaque string the game computes for
+  the content it loaded (a map or data hash). The engine attaches no meaning to it. `WorldClient` wraps it as its
+  own layer just inside the `ProtocolVersion` layer (`ProtocolHandshake.WrapContentIdentity`). The server half is
+  `KhaozEngine.Netcode.WorldIdentityGateAuthenticator(identity, inner?, log?)`, composed just inside the
+  `VersionCheckingAuthenticator` (or `ConnectionGate.Wrap`, which builds the same door). A mismatch surfaces as
+  **`DisconnectReason.ContentMismatch`**, terminal and not retried, with both identities on
+  `WorldClient.ContentMismatch` (a `ContentMismatchDetail(ServerIdentity, ClientIdentity)`) and the server's in
+  `DisconnectReasonDetail`. The wire token is `ke:world-mismatch:<server>|<client>`, which
+  `ContentMismatchDetail.TryParse` reads.
+  - A server requiring an identity refuses a client that sent none with an EMPTY `ClientIdentity`, or with the
+    label of the client's auth token when that token is itself a labelled layer.
+  - The version gate stays outermost, so a client skewed on both reads `IncompatibleVersion`.
+  - Unconfigured on both sides, the Hello is byte-identical to the wire without the slot.
+  - `ContentIdentity` is non-empty, pipe-free and within `HandshakeToken.MaxLabelBytes`, or the `WorldClient`
+    constructor throws. Keep the server identity pipe-free too.
+  - **Adopting it is a wire change: bump the game's own `ProtocolVersion` in the same release**, so an old peer on
+    either side is turned away at the version gate before it can read the identity layer as an auth token.
   - **Wire-format generation (enforced automatically since 10.2.0).** `MoveProtocol.WireProtocolVersion` (= 12)
     labels
     the incompatible on-the-wire generations. 1 was the pre-10.0.0 32-bit line, and 2 was 10.0.0 widening `NetId` to

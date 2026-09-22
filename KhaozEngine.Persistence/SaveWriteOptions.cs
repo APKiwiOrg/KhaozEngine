@@ -6,10 +6,11 @@ namespace KhaozEngine.Persistence;
 public sealed class SaveWriteOptions
 {
     /// <summary>
-    /// Overrides whether this write is encoded. Null (default) follows <see cref="GameStorage"/>'s
-    /// default: encode when <see cref="GameStorageOptions.Encoder"/> is configured, plaintext otherwise.
-    /// Set to false to force plaintext for this call (for example a save meant to be hand-edited) even
-    /// when an encoder is configured. Set to true to force encoding.
+    /// Overrides whether this write is encoded. Null (default) follows the <see cref="SaveEncoding"/> the
+    /// <see cref="GameStorage"/> was built with: encode under <see cref="SaveEncoding.Encoded"/>, plaintext
+    /// under <see cref="SaveEncoding.Plaintext"/>. Set to false to force plaintext for this call (for example
+    /// a save meant to be hand-edited) even under <see cref="SaveEncoding.Encoded"/>. Set to true to force
+    /// encoding, which throws under <see cref="SaveEncoding.Plaintext"/>.
     /// </summary>
     public bool? Encode { get; init; }
 

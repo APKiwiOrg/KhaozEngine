@@ -35,34 +35,46 @@ string? loaded = encoder.Decode(onDisk);   // null only if not-our-format / malf
 ## GameStorage
 
 `GameStorage` is a one-call facade over the whole stack: publisher-rooted `KhaozEngine.App.AppDataPaths`,
-a shared `PersistenceQueue`, a `FileSettingsStorage`, and an optional `SaveEncoder`. It owns the write
-queue and flushes/disposes it on `Dispose`.
+a shared `PersistenceQueue`, a `FileSettingsStorage`, and the save posture chosen at construction. It owns
+the write queue and flushes/disposes it on `Dispose`.
+
+The save posture is a required constructor argument, a `SaveEncoding`:
+
+- **`SaveEncoding.Encoded(encoder)`** is the fleet default for game saves (progress, unlocks, campaign
+  state). Every `Save` encodes with that `SaveEncoder` unless a call opts out, and `Load` decodes
+  transparently.
+- **`SaveEncoding.Plaintext`** is the deliberate, greppable opt-out: a storage that holds no game saves
+  (an editor's preferences, a tool) or a game that has chosen hand-editable saves.
+
+There is no overload without it, so a game cannot fall into plaintext saves by leaving a field unset.
+Settings (`Settings`, `CreateSettingsManager`) stay plaintext JSON under either posture on purpose. They are
+the player's to hand-edit.
 
 ```csharp
 using KhaozEngine.Persistence;
 
-var storage = new GameStorage("MyStudio", "MyGame", new GameStorageOptions
+var storage = new GameStorage("MyStudio", "MyGame", SaveEncoding.Encoded(encoder), new GameStorageOptions
 {
-    Encoder = encoder,                       // configures encoding as the default for Save
     TamperPolicy = TamperPolicy.Strict,      // default: reject a save whose HMAC does not verify
-    AcceptLegacyPlaintext = true,            // default: still load a plaintext save under a configured encoder
+    AcceptLegacyPlaintext = true,            // default: still load a plaintext save under SaveEncoding.Encoded
     BackupGenerations = 2,                   // default: keep .bak1 and .bak2 alongside the primary
     GameVersion = "1.4.2",                   // stamped into every encoded save's SaveMetadata.GameVersion
 });
 
-storage.Save("save.json", myGameState);      // encoded when Encoder is configured, plaintext otherwise
+storage.Save("save.json", myGameState);      // encoded, because the posture is SaveEncoding.Encoded
 storage.Flush();                             // writes are queued: flush before Load reads the same file back
 MyGameState loaded = storage.Load<MyGameState>("save.json");
 ```
 
 For a portable root or a test that must not create the current user's application-data directory, pass an explicit
-`AppDataPaths` into the existing facade constructor. The same `GameStorageOptions` remain available.
+`AppDataPaths` into the other facade constructor. It takes the same posture and the same `GameStorageOptions`.
 
 ```csharp
 using KhaozEngine.App;
 
 var storage = new GameStorage(
     AppDataPaths.FromDirectory(temporaryDirectory),
+    SaveEncoding.Encoded(encoder),
     new GameStorageOptions { BackupGenerations = 2 });
 ```
 
@@ -72,8 +84,8 @@ either way (see above).
 
 ### Encoding: default-on, per-call opt-out
 
-Configuring `GameStorageOptions.Encoder` makes encoding the DEFAULT for every `Save` call, the reverse of
-the old opt-in-per-call behavior, so a forgotten flag can no longer ship an unprotected file. Opt out (or
+Under `SaveEncoding.Encoded`, encoding is the DEFAULT for every `Save` call, the reverse of the old
+opt-in-per-call behavior, so a forgotten flag can no longer ship an unprotected file. Opt out (or
 force it) per call with `SaveWriteOptions`, for example for a file meant to stay deliberately
 hand-editable:
 
@@ -86,13 +98,12 @@ storage.Save("save.json", value, new SaveWriteOptions { Encode = true, Summary =
 on a plaintext write). `GameStorageOptions.GameVersion` and the write time (`SaveMetadata.SavedAtUtc`) are
 stamped automatically on every encoded write. `Save(fileName, value, bool encode)` still works and maps
 onto the same `SaveWriteOptions` semantics as a two-argument shortcut. `Save` throws
-`InvalidOperationException` when encoding is requested (implicitly or explicitly) but no `Encoder` was
-configured.
+`InvalidOperationException` when a call forces encoding (`Encode = true`) under `SaveEncoding.Plaintext`.
 
 ### Loading: the recovery ladder and `LoadWithOutcome`
 
 `Load<T>(fileName, migrations?)` never throws on a bad save. It probes the primary file, then each backup
-generation in order, transparently decoding when an encoder is configured, and returns the first valid
+generation in order, transparently decoding under `SaveEncoding.Encoded`, and returns the first valid
 candidate, or a fresh `new T()` if none are. `LoadWithOutcome<T>` runs the same ladder but reports HOW it
 resolved via `SaveLoadResult<T>` (`Value`, `Outcome`, `Detail`, `RecoveredGeneration`, `Metadata`) and its
 `SaveLoadOutcome`:
@@ -100,7 +111,7 @@ resolved via `SaveLoadResult<T>` (`Value`, `Outcome`, `Detail`, `RecoveredGenera
 - **`Loaded`** - the primary file was valid.
 - **`FreshDefault`** - nothing existed on disk. A fresh default was returned and stamped current via
   `migrations` rather than migrated (see `MigrationChain<T>.StampCurrent` below).
-- **`LoadedLegacyPlaintext`** - the primary was a valid plaintext save read under a configured encoder (a
+- **`LoadedLegacyPlaintext`** - the primary was a valid plaintext save read under `SaveEncoding.Encoded` (a
   pre-upgrade or hand-edited save). A subsequent default-on `Save` re-encodes it, but a file the game keeps
   writing with `Encode = false` (`SaveWriteOptions`) stays plaintext deliberately and is never re-encoded
   this way.

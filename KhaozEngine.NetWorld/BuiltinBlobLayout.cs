@@ -15,11 +15,14 @@ namespace KhaozEngine.NetWorld;
 /// numbers here.
 /// </para>
 /// <para>
-/// Every growth so far APPENDED a field whose default encoding is zero bytes, so bringing a payload forward from an
-/// older generation is the old bytes followed by zeros - which is what <see cref="NormalizeToCurrent"/> does. The one
-/// exception is <see cref="MoveProtocol.PositionTypeId"/>, which was restructured (not appended to) at generation
-/// <see cref="FramedPositionWireGeneration"/> and gets an explicit rewrite. A future change that is neither an
-/// append nor covered here needs its own case in <see cref="CellBlobRewriter"/>, and the layout row below it.
+/// Almost every growth APPENDED a field whose default encoding is zero bytes, so bringing a payload forward from an
+/// older generation is the old bytes followed by zeros - which is what <see cref="NormalizeToCurrent"/> does. There
+/// are two exceptions, and each gets an explicit rewrite. <see cref="MoveProtocol.PositionTypeId"/> was restructured
+/// at generation <see cref="FramedPositionWireGeneration"/>. <see cref="MoveProtocol.MovementTypeId"/> SHRANK at
+/// generation <see cref="MovementOwnerWireGeneration"/>, when its two feel timers moved out into the new
+/// <see cref="MoveProtocol.MovementOwnerTypeId"/> frame, so an older movement payload is split in two
+/// (<see cref="MovementOwnerBlobSplit"/>). A future change that is neither an append nor covered here needs its own
+/// case in <see cref="CellBlobRewriter"/>, and the layout row below it.
 /// </para>
 /// </summary>
 public static class BuiltinBlobLayout
@@ -49,10 +52,35 @@ public static class BuiltinBlobLayout
     /// follows <see cref="MovementState.VerticalVelocity"/>, which has always been the first field.</summary>
     public const int MovementGroundedOffset = 4;
 
+    /// <summary>The generation that moved the two feel timers out of the movement payload into
+    /// <see cref="MovementOwnerState"/> (id <see cref="MoveProtocol.MovementOwnerTypeId"/>), served to the owning
+    /// client only. Below it a movement payload carries the timers at <see cref="MovementTimersOffset"/> and no body
+    /// carries an owner frame. From it the movement payload is 8 bytes shorter and every player carries an owner
+    /// frame instead.</summary>
+    public const int MovementOwnerWireGeneration = 12;
+
+    /// <summary>Byte offset of the two feel timers (<c>TimeSinceGrounded</c> then <c>JumpBufferRemaining</c>) in a
+    /// movement payload written BEFORE <see cref="MovementOwnerWireGeneration"/>: they followed
+    /// <see cref="MovementState.Grounded"/>.</summary>
+    public const int MovementTimersOffset = 5;
+
+    /// <summary>Payload bytes of a <see cref="MovementOwnerState"/>: two float32 timers. Also the number of bytes a
+    /// movement payload lost at <see cref="MovementOwnerWireGeneration"/>.</summary>
+    public const int MovementOwnerPayloadBytes = 8;
+
     /// <summary>Byte offset of <see cref="MovementState.Swimming"/> in a movement payload written at
-    /// <see cref="SwimmingWireGeneration"/> or later: it was appended after <c>JumpBufferRemaining</c> and nothing
-    /// has been inserted before it since.</summary>
-    public const int MovementSwimmingOffset = 13;
+    /// <paramref name="wireGeneration"/>, which must be <see cref="SwimmingWireGeneration"/> or later. It was
+    /// appended after the feel timers (offset 13), and it moved up to follow <see cref="MovementState.Grounded"/>
+    /// directly (offset 5) when the timers left at <see cref="MovementOwnerWireGeneration"/>.</summary>
+    public static int MovementSwimmingOffset(int wireGeneration)
+    {
+        if (wireGeneration < SwimmingWireGeneration)
+            throw new ArgumentOutOfRangeException(nameof(wireGeneration), wireGeneration,
+                $"A movement payload carries no swim byte before wire generation {SwimmingWireGeneration}.");
+        return wireGeneration >= MovementOwnerWireGeneration
+            ? MovementTimersOffset
+            : MovementTimersOffset + MovementOwnerPayloadBytes;
+    }
 
     /// <summary>The generation that introduced <see cref="PickupState"/> as a built-in id. A body carrying id
     /// <see cref="MoveProtocol.PickupTypeId"/> cannot have been written before it.</summary>
@@ -95,14 +123,18 @@ public static class BuiltinBlobLayout
             MoveProtocol.IdentityTypeId => LengthPrefixed,
             MoveProtocol.DynamicBodyTypeId => DynamicBodyPayloadBytes,
             MoveProtocol.PickupTypeId => wireGeneration >= PickupWireGeneration ? PickupPayloadBytes : NotPresent,
+            MoveProtocol.MovementOwnerTypeId => wireGeneration >= MovementOwnerWireGeneration
+                ? MovementOwnerPayloadBytes
+                : NotPresent,
             _ => NotPresent,
         };
     }
 
     /// <summary>
     /// The payload byte count of a <see cref="MovementState"/> frame written at <paramref name="wireGeneration"/>.
-    /// The ladder below is the codec's own append-only history (<see cref="MoveProtocol.CreateRegistry"/>, and the
-    /// generation notes on <see cref="MoveProtocol.WireProtocolVersion"/>), and every row is pinned against a
+    /// The ladder below is the codec's own history (<see cref="MoveProtocol.CreateRegistry"/>, and the generation
+    /// notes on <see cref="MoveProtocol.WireProtocolVersion"/>). It only appended until generation
+    /// <see cref="MovementOwnerWireGeneration"/>, which removed the two feel timers. Every row is pinned against a
     /// field-by-field re-encode in <c>BuiltinBlobLayoutTests</c>.
     /// </summary>
     public static int MovementPayloadLength(int wireGeneration) => wireGeneration switch
@@ -119,6 +151,7 @@ public static class BuiltinBlobLayout
         7 or 8 or 9 => 24,
         10 => 26,       // + FacingYawQ (short, 2)
         11 => 64,       // + MovementCommitment (38 bytes)
+        12 => 56,       // - TimeSinceGrounded, JumpBufferRemaining (moved to MovementOwnerState, owner only)
         _ => throw new ArgumentOutOfRangeException(nameof(wireGeneration), wireGeneration,
             $"No cell-blob movement layout is recorded for wire generation {wireGeneration}. Add its row here (and " +
             "its CellBlobRewriter case if the change was not a plain append) in the same change that bumps " +

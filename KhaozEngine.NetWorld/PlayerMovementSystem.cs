@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Ecs;
 using KhaozEngine.Locomotion;
@@ -18,7 +19,9 @@ namespace KhaozEngine.NetWorld;
 /// <see cref="CharacterMovement.Step(in MoveState, in MoveCommand, float, Func{float, float, float}, in MoveTuning, Func{float, float, Vector3}?, IPhysicsWorld?, Func{float, float, Vector2}?, Func{float, float, float, MovementMedium}?)"/>
 /// (the same step the single-<see cref="World"/> <see cref="WorldServer"/> and the client's prediction run, so
 /// they stay in lockstep). <see cref="MovementState"/> is required on every movable entity (added at spawn,
-/// carried across handoff because it is replicated). Read-only <see cref="Ghost"/>s and in-flight
+/// carried across handoff because it is replicated). Its owner-only half, <see cref="MovementOwnerState"/>, is
+/// written at spawn too, and an entity that steps without one gains it at the end of that tick, so the feel timers
+/// always persist tick to tick. Read-only <see cref="Ghost"/>s and in-flight
 /// <see cref="Migrating"/> entities are skipped: the owning cell is the sole simulator.
 /// <para>
 /// ONE INSTANCE PER CELL, holding that cell's physics world and that cell's island <see cref="Frame"/>. All of its
@@ -111,6 +114,10 @@ public sealed class PlayerMovementSystem : ISystem
         Func<float, float, Vector3>? normal = groundNormal is null ? null : (adaptSamplers ? GroundNormalIn : groundNormal);
         Func<float, float, float, MovementMedium>? fluid = medium is null ? null : (adaptSamplers ? MediumIn : medium);
         WorldFrame cellFrame = frame;
+        // Entities that stepped without a MovementOwnerState, and the timers they came out with. Adding a component
+        // inside the ForEach would be a structural change mid-iteration, so they are seeded after it. Normally empty:
+        // every engine spawn, restore and handoff door already writes the component.
+        List<(Entity Entity, MovementOwnerState Owner)>? unseeded = null;
         world.ForEach<NetId, ReplicatedPosition, PendingMove, MovementState>(
             (Entity e, ref NetId _, ref ReplicatedPosition pos, ref PendingMove move, ref MovementState ms) =>
         {
@@ -142,13 +149,16 @@ public sealed class PlayerMovementSystem : ISystem
             // covered entity per tick.
             if (pos.Frame != cellFrame) pos = pos.ToFrame(cellFrame);
 
+            // The feel timers ride their own owner-only component. Carried IN and written back OUT like every other
+            // carried field, so the coyote window and the jump buffer count across ticks.
+            bool hasOwner = world.TryGet(e, out MovementOwnerState owner);
             var state = new MoveState
             {
                 Position = pos.Local,
                 VerticalVelocity = ms.VerticalVelocity,
                 Grounded = ms.Grounded,
-                TimeSinceGrounded = ms.TimeSinceGrounded,
-                JumpBufferRemaining = ms.JumpBufferRemaining,
+                TimeSinceGrounded = owner.TimeSinceGrounded,
+                JumpBufferRemaining = owner.JumpBufferRemaining,
                 Swimming = ms.Swimming,   // carry the swim flag IN so the enter/exit hysteresis band works across ticks
                 // Carry the full sim-local average during ordinary ticks. A shard handoff reconstructs the component
                 // through its observer-safe codec, which intentionally omits that float but preserves ClimbRateQ.
@@ -185,8 +195,10 @@ public sealed class PlayerMovementSystem : ISystem
             pos = pos.WithLocal(state.Position);   // frame preserved by construction, never re-derived
             ms.VerticalVelocity = state.VerticalVelocity;
             ms.Grounded = state.Grounded;
-            ms.TimeSinceGrounded = state.TimeSinceGrounded;
-            ms.JumpBufferRemaining = state.JumpBufferRemaining;
+            owner.TimeSinceGrounded = state.TimeSinceGrounded;
+            owner.JumpBufferRemaining = state.JumpBufferRemaining;
+            if (hasOwner) world.Get<MovementOwnerState>(e) = owner;
+            else (unseeded ??= new List<(Entity, MovementOwnerState)>()).Add((e, owner));
             ms.Swimming = state.Swimming;   // write the swim flag back OUT so it replicates (TryGetPlayerState + remotes)
             ms.ClimbRateEwma = state.ClimbRateEwma;   // persist the sim-local ascent EWMA tick-to-tick (rides no wire)
             // Write the quantized step-climb rate OUT so it replicates to remotes (the glide signal). The single-World
@@ -215,5 +227,7 @@ public sealed class PlayerMovementSystem : ISystem
             ms.FacingYawQ = MovementState.QuantizeFacingYaw(state.FacingYaw);
             ms.Commitment = state.Commitment;
         });
+        if (unseeded is null) return;
+        foreach ((Entity e, MovementOwnerState owner) in unseeded) world.Set(e, owner);
     }
 }

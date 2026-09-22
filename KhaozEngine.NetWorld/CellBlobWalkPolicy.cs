@@ -91,7 +91,7 @@ internal readonly struct CellBlobWalkPolicy
         if (!Strict) return true;
         if (body[pos + BuiltinBlobLayout.MovementGroundedOffset] > 1) return false;
         return wireGeneration < BuiltinBlobLayout.SwimmingWireGeneration
-            || body[pos + BuiltinBlobLayout.MovementSwimmingOffset] <= 1;
+            || body[pos + BuiltinBlobLayout.MovementSwimmingOffset(wireGeneration)] <= 1;
     }
 
     /// <summary>Whether the <paramref name="len"/> display-name bytes at <paramref name="pos"/> are what the identity

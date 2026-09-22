@@ -194,7 +194,9 @@ public sealed class AoiDeltaReplicator
     /// the resulting baseline - and thus the changed-entity order on the wire - matches a full capture walk exactly
     /// (byte-identical to the pre-index projection). When no registered component is owner-scoped, each in-AoI
     /// entity's captured component set is referenced directly (it is immutable and identical for every client),
-    /// avoiding a per-client copy.
+    /// avoiding a per-client copy. When one is, the owner still gets the captured set itself and every other viewer
+    /// gets the entity's one shared public view (<see cref="CaptureProjection.OwnerScope"/>), so owner scoping costs
+    /// at most one filtered copy per entity per tick, not one per entity per client.
     /// </summary>
     private AoiBaseline Project(AoiBaseline capture, IReadOnlySet<long> interestSet, long? ownerNetId)
     {

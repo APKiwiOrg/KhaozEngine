@@ -34,15 +34,6 @@ namespace KhaozEngine.Gui
         /// <summary>The (lazily resolved) placeholder text drawn when the field is empty. Defaults to empty.</summary>
         public LocalizedText PlaceholderContent;
 
-        /// <summary>Obsolete shim for the former string field. Setting <c>Placeholder</c> stores a raw, non-localized value.</summary>
-        [Obsolete("Use PlaceholderContent (LocalizedText). Setting Placeholder stores a raw, non-localized value.")]
-        [LocalizationExempt]
-        public string Placeholder
-        {
-            get => PlaceholderContent.Resolve();
-            set => PlaceholderContent = LocalizedText.Raw(value);
-        }
-
         /// <summary>True on the frame <see cref="Text"/> changed (by typing or a <see cref="SetText"/> call).</summary>
         public bool TextChanged { get; private set; }
         /// <summary>Whether the caret is currently in its visible blink phase.</summary>

@@ -2270,13 +2270,13 @@ analyzer (already in the `Game2D`/`Game3D` umbrellas) enforces the rest. Adoptin
    `.editorconfig`:
 
    ```ini
-   dotnet_diagnostic.KELOC001.severity = error   # raw string at a player-facing Gui sink
+   dotnet_diagnostic.KELOC001.severity = error   # raw string at a [LocalizationStringSink] member
    dotnet_diagnostic.KELOC002.severity = error   # LocalizedText.Raw outside exempt/debug code
    dotnet_diagnostic.KELOC003.severity = error   # raw string literal drawn via SpriteBatch.DrawString
    ```
 
-The migration is warning-not-break: the old `string` Gui overloads remain `[Obsolete]`, so a game builds (with
-warnings) before any text is migrated. `KhaozEngine.Showcase` is the worked example (`ShowcaseStrings.resx` +
+The Gui sinks carry no `string` overload, so every player-facing call site must be migrated before a game
+builds against them. `KhaozEngine.Showcase` is the worked example (`ShowcaseStrings.resx` +
 `ShowcaseStrings` constants + `LocalizationContext` wiring).
 
 **A widget with no sink is invisible to the analyzer, which is the failure mode to watch for.** KELOC001 and
@@ -2297,8 +2297,8 @@ string shown = difficulty.SelectedLabel;               // resolved against the a
 LocalizedText raw = difficulty.SelectedContent;        // the unresolved value, to forward to another sink
 ```
 
-The `(string, int)` option ctor and the `DropdownOption.Label` member both remain, `[Obsolete]`, so an existing
-caller keeps building. Same for `DrawHeader`'s `string` title overload.
+`DropdownOption` has no `(string, int)` ctor and no `Label` member, and `DrawHeader` has no `string` title
+overload, so a bare literal at either sink does not compile.
 
 ### The low-level `SpriteBatch.DrawString` sink (`KELOC003`)
 
@@ -2348,9 +2348,8 @@ popup.SetRows(new[]
 });
 ```
 
-The former `Title` / `DismissText` / `PrimaryActionText` string members and the `PopupRow.Header(string)` /
-`Stat(string, ...)` factories remain as `[Obsolete]` shims (the string factories are `[LocalizationStringSink]`,
-so the analyzer flags a raw literal passed to them).
+`PopupPanel` has no `string` title or footer members and `PopupRow` has no `string` factories, so a raw literal
+at any of them is a compile error.
 
 Content that overflows the auto-sized panel scrolls: call `popup.Update(pointer, frame.Input.ScrollDelta)` (the
 wheel overload) to enable wheel + drag-to-scroll (scissor-clipped; `ScrollOffset` reads back, `ScrollWheelSpeed`

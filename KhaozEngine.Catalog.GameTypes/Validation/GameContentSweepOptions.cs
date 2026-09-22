@@ -108,7 +108,8 @@ public sealed class GameContentSweepOptions
     /// package's sweep. Here it rides the sweep and cannot run without it.
     /// </para>
     /// <para>
-    /// The rules run in list order, each once per validation. A rule that THROWS is the slot's throw: the
+    /// The rules run in list order, each once per validation, and every one of them reports AFTER the package's
+    /// last rule, the required knob check. A rule that THROWS is the slot's throw: the
     /// engine reports one <c>KEC0040</c> naming the slot's type and keeps none of the slot's findings, the
     /// same as for any per-type validator, so a rule that can fail on content reports a finding instead.
     /// </para>

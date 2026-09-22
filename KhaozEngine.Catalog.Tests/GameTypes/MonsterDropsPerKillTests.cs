@@ -175,6 +175,7 @@ public class MonsterDropsPerKillTests
     [InlineData("never_fires_and_pick", 1)]
     [InlineData("lone_certainty", 1)]
     [InlineData("below_the_depth_cap", 1)]
+    [InlineData("at_the_depth_cap", 2)]
     public void TheDropsPerKillMaximumIsComputedShapeByShape(string tree, int most)
     {
         // A tree at its own maximum passes, which is what says the number is EXACT rather than merely large
@@ -401,27 +402,49 @@ public class MonsterDropsPerKillTests
                 yield return LootTable(table, 3, "four_billion_more", rollCount: 4_000_000_000L);
                 yield return LootEntry(entry, 4, "floor_item", table: 3, weight: 1, guaranteed: false, chance: 10_000, item: 11);
                 break;
+            case "at_the_depth_cap":
+                // The same chain ending ONE level shallower, so its two lines sit in the deepest table a roll
+                // still reaches (table ids here are depth plus one). A walk that stopped a level early would
+                // score this tree 1 like the one below the cap.
+                foreach (ContentRow row in DepthChain(tree, table, entry, LootRoller.MaxNestedDepth + 1))
+                {
+                    yield return row;
+                }
+
+                break;
             default:
                 // A chain running past the roller's cap, with two lines waiting at the bottom that no roll can
                 // reach. The tree is worth the one line its top table's own pick leaves.
-                yield return LootTable(table, 1, tree, rollCount: 1);
-                yield return LootEntry(entry, 1, "top_item", table: 1, weight: 1, guaranteed: false, chance: 10_000, item: 11);
-                yield return LootEntry(entry, 2, "descends", table: 1, weight: 1, guaranteed: false, chance: 10_000, nested: 2);
-                int floor = LootRoller.MaxNestedDepth + 2;
-                for (int level = 2; level < floor; level++)
+                foreach (ContentRow row in DepthChain(tree, table, entry, LootRoller.MaxNestedDepth + 2))
                 {
-                    yield return LootTable(table, level, Level(level), rollCount: 1);
-                    yield return LootEntry(
-                        entry, level + 20, "down_" + Level(level), table: level,
-                        weight: 1, guaranteed: false, chance: 10_000, nested: level + 1);
+                    yield return row;
                 }
 
-                yield return LootTable(table, floor, "floor", rollCount: 2);
-                yield return LootEntry(
-                    entry, floor + 20, "floor_item", table: floor,
-                    weight: 1, guaranteed: false, chance: 10_000, item: 12);
                 break;
         }
+    }
+
+    static IEnumerable<ContentRow> DepthChain(
+        string tree,
+        ContentTypeRegistration table,
+        ContentTypeRegistration entry,
+        int floor)
+    {
+        yield return LootTable(table, 1, tree, rollCount: 1);
+        yield return LootEntry(entry, 1, "top_item", table: 1, weight: 1, guaranteed: false, chance: 10_000, item: 11);
+        yield return LootEntry(entry, 2, "descends", table: 1, weight: 1, guaranteed: false, chance: 10_000, nested: 2);
+        for (int level = 2; level < floor; level++)
+        {
+            yield return LootTable(table, level, Level(level), rollCount: 1);
+            yield return LootEntry(
+                entry, level + 20, "down_" + Level(level), table: level,
+                weight: 1, guaranteed: false, chance: 10_000, nested: level + 1);
+        }
+
+        yield return LootTable(table, floor, "floor", rollCount: 2);
+        yield return LootEntry(
+            entry, floor + 20, "floor_item", table: floor,
+            weight: 1, guaranteed: false, chance: 10_000, item: 12);
     }
 
     static string Level(int level) => "level_" + level.ToString(CultureInfo.InvariantCulture);

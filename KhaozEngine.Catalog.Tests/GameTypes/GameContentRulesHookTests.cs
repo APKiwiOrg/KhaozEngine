@@ -66,27 +66,33 @@ public class GameContentRulesHookTests
         Assert.StartsWith(GameContentTypeIds.FoodKey + ": " + GameCode, only.Message, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// A game rule that THROWS is the slot's throw, which is the engine's contract for any per-type validator:
+    /// one <c>KEC0040</c> naming the slot's type, the publish refused, and none of the slot's findings kept,
+    /// the package's own included. The option documents this, so the test keeps the documentation true.
+    /// </summary>
     [Fact]
-    public void NoGameRuleChangesNothing()
+    public void AThrowingGameRuleIsTheSlotsThrowAndKeepsNoneOfTheSlotsFindings()
     {
-        Assert.Empty(new GameContentSweepOptions().GameRules);
-        Assert.Empty(GameContentSweepOptions.None.GameRules);
-
-        ContentTypeRegistry registry = TypeRegistry();
+        var registry = new ContentTypeRegistry();
+        EngineContentTypes.Register(registry);
+        GameContentTypes.Register(registry, ContentDurationUnit.Ticks, Options(new GameContentSweepOptions
+        {
+            GameRules = [new ThrowingRule()],
+        }));
+        ContentTypeRegistration item = Registration(registry, EngineContentTypes.ItemTypeId);
         ContentTypeRegistration recipe = Registration(registry, GameContentTypeIds.Recipe);
-        ContentSnapshot candidate = Snapshot(registry, Recipe(recipe, 1), Recipe(recipe, 2));
-        var slot = new ContentTypeId(GameContentTypeIds.Food);
 
-        (int, string, string)[] without = Rows(Findings(
-            new GameContentChecks(registry, GameContentSweepOptions.None), slot, candidate));
-        (int, string, string)[] empty = Rows(Findings(
-            new GameContentChecks(registry, new GameContentSweepOptions { GameRules = [] }), slot, candidate));
+        // Without the throwing rule this candidate draws the package's recipe finding in the food slot.
+        ContentValidationReport report = ContentValidator.Validate(
+            Snapshot(registry, Item(item, 11, "tuna"), Recipe(recipe, 1)), null, [], registry);
 
-        Assert.Equal(2, without.Length);
-        Assert.Equal(without, empty);
-
-        static (int, string, string)[] Rows(List<ContentFinding> found)
-            => found.Select(f => (f.Id, f.Code, f.Message)).ToArray();
+        Assert.False(report.IsValid);
+        ContentFinding only = Assert.Single(
+            report.Findings,
+            f => string.Equals(f.Code, ContentValidator.TypeValidatorCode, StringComparison.Ordinal));
+        Assert.StartsWith(GameContentTypeIds.FoodKey + ": ", only.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(GameContentFindings.SweepRecipeWithoutOutput, only.Message, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -183,6 +189,13 @@ public class GameContentRulesHookTests
             (RecipeContentType.BaseTicksField, Int(4)),
             (RecipeContentType.XpPerItemField, Int(10)),
             (RecipeContentType.RepeatModeField, Int(0)));
+
+    /// <summary>A game rule that fails on every candidate, the way a buggy one would.</summary>
+    sealed class ThrowingRule : IContentValidator
+    {
+        public void Validate(ContentTypeId type, IContentSnapshot candidate, ICollection<ContentFinding> findings)
+            => throw new InvalidOperationException("the game rule is broken");
+    }
 
     /// <summary>A game rule that reports one finding and records what it was handed.</summary>
     sealed class RecordingRule : IContentValidator

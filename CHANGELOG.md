@@ -5,8 +5,219 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 19.9.1
+## 19.15.0
 
+- `ChatHistory` CONSOLIDATES a repeat wherever its match already is, rather than only against the entry
+  immediately before it. A player who does the same thing forty times now reads one line counting up to
+  `(40)`, where any other line arriving between two of them used to start the count over and fill the box
+  with the same sentence at slightly different moments.
+- The fold keeps the matched entry's PLACE and takes everything else from the arriving one, which is the rule
+  an adjacent fold already followed for its time, content, author and ownership. Holding the place keeps the
+  history stable under the reader's eye and stops a run of one repeated line pushing everything else off the
+  top. The consequence to know about is that times are no longer strictly ascending down the list: an older
+  line that just repeated carries a newer stamp than the line under it.
+- A fold is not an add, so it never evicts, and a match that has already been evicted is gone rather than
+  resurrected: that line starts a fresh count. `ChatHistory.Version` moves on a fold exactly as it does on an
+  add, so a box caching its layout against it still rebuilds.
+- Nothing else moves. `CanCollapse` is the same predicate on kind, source key and collapse key, and a caller
+  that wants two lines kept apart still separates them by any one of the three.
+
+## 19.14.0
+
+- A new engine content type `item_category` (id 7, key `item_category`), the coarse bucket an item base
+  belongs to. It is the `tag` type's shape exactly, a derived `name` and a console `sort`, and it sits beside
+  tags rather than inside them: a tag list is many per row and reads as a predicate, a category is one per row
+  and reads as a grouped listing such as a collection log, a bank tab or a shop board. The engine ships no
+  category rows. A game publishes the vocabulary it wants through `ItemCategoryContentType`.
+- `item.category`, an OPTIONAL `KeyReference` to that type, `Client` visibility, appended as the LAST field of
+  the item schema so no existing field index moves. An item that belongs to no category leaves it absent. It
+  is validated by the same reference pass that validates `equip_profile`, so a category id no live row answers
+  to is `KEC0006` and is refused before the publish rather than after it.
+- **The engine now has a schema evolution rule and this is the first field to use it.** A type's field list may
+  gain OPTIONAL fields at the END and nothing else. `ContentFieldSchema.BaselineFieldCount` is the count the
+  type first shipped with, `ItemContentType.BaselineFieldCount` is 16, and `ContentRowTailRule` is the one
+  place the split means anything. A schema that declares no baseline is entirely baseline, so every other type
+  behaves exactly as it did.
+- **The encode is canonical and SHORT.** Every baseline field is written, always, and an appended field only
+  when it or a later appended field carries a value. An item that sets no category therefore encodes to the
+  bytes the 16 field release wrote, BYTE FOR BYTE, so a publish after adopting this engine costs nothing on a
+  row that does not use the field and every untouched chunk keeps its hash.
+- **The decode may end at the baseline boundary and never inside it.** A body that runs out at or after the
+  baseline is an older row and the rest comes back absent, so a published version, a carried-forward chunk and
+  a shipped client pack keep reading under the longer schema. A body that runs out INSIDE the baseline is
+  refused with the token 19.13 gave it, including at the boundary of an optional baseline field, so a corrupt
+  row cannot pass as a short one. A body PAST the schema is still `field-malformed`, and so is one carrying
+  the ZERO FORM of a trailing appended field: the canonical encode omits it, and a content-addressed format
+  cannot have two byte strings for one row. `ItemRow`, the hand-written hot-field walk, follows the same rule
+  and is held to the generic codec over every tail shape by a test that also goes red on the next append.
+- **The zero form is a per kind question and the engine now asks it in one place.**
+  `ContentFieldValue.IsZeroForm` is true for absent, for a zero number and for empty bytes, which is what the
+  single `00` byte on the wire means for every kind. The tail scan asks it rather than `IsAbsent`, because
+  absence and zero are the same byte and the decoder reports an optional field reading as zero back as absent:
+  a scan on absence would write a trailing explicit zero, and the same row would publish under two chunk
+  hashes. `ContentClientEncodeCheck` now reads the same predicate instead of its own copy.
+- **`ContentPackRebuild` of a version published under the shorter field list reproduces its recorded manifest
+  digests**, which the short encode is what buys. A rebuild is how a server recovers the pack of the version it
+  is about to boot, so a refusal there would have been a refused boot.
+- `ContentPackFormat.Generation` moves to 2, which is the rule the constant already carried: an engine-owned
+  row codec gained a field an older reader cannot skip. It invalidates nothing already published, because a
+  reader refuses only a manifest AHEAD of it, so this build reads every generation 1 pack.
+- **Adopting it on an existing catalog needs no migration, and needs one republish.** `catalog_type` gains a
+  row for the new type on the next `InitializeAsync`, under `ValidateOnly` as well as `AutoCreate`, because
+  the SQLite and SQL Server schemas hold a type row and a field row per NAME and carry no per-type column
+  list. Bundle import checks the type key and the chunk slots and never the field list, so a bundle exported
+  before the field imports unchanged. What a new TYPE does change is the manifest: a manifest hash covers the
+  registration set, and a boot refuses a version whose manifest does not name every registered type
+  (`ContentBoot` step 6, `TypeAbsentFromVersion`). So publish once under the new registry before the new build
+  serves. That publish authors nothing: every existing chunk carries forward at its old hash and only the
+  manifest is new.
+- Tests pin the old-schema cases rather than assuming them. The checked-in `chunk-item-0.kecc` golden, whose
+  bytes were baked before the field existed, decodes row for row and every row RE-ENCODES to its own bytes. A
+  SQLite catalog published under the 16 field item schema rebuilds and boots under the 17 field one. And a
+  prefix of a row body decodes if and only if it is that row's canonical short form.
+
+## 19.13.0
+
+- `ServerStatusReport.ServerAddress` (wire name `serverAddress`, optional, null by default) carries the address
+  the server is reachable at right now, as an IP literal. A host that releases its public address when it stops
+  hands out a new one on every start while its DNS label keeps a fixed TTL, so a client that resolved the name
+  inside that window keeps dialling a dead address until the cache expires (measured on Azure Container
+  Instances: a plain idle stop and wake moved `4.254.6.139` to `4.254.124.204`, with a 300 second TTL that is
+  not ours to change). The publisher already talks to the platform to wake the server, so it knows the current
+  address, and serving it over HTTPS from the game's own status endpoint is a stronger anchor than the plain DNS
+  answer it replaces. The engine carries the field only: no cloud dependency, no name lookup and no socket were
+  added anywhere, and the game's status endpoint is what fills it.
+- A client reads it through `report.TryGetServerAddress(out IPAddress? address)` or `view.ServerAddress`, never
+  as a raw string. Both answer only for a canonical IP literal that is plain unicast. They refuse null, empty,
+  whitespace, a host name (refused rather than resolved, since taking the resolver out of the path is the whole
+  point), anything carrying a port or brackets, a literal the lenient `IPAddress.TryParse` would otherwise
+  stretch into a different address (`1`, `0x7f.1`, `1.2.3`, `010.1.1.1`, an uncompressed IPv6 form), and the
+  wildcard, broadcast, loopback, multicast and link local forms including their IPv4 mapped IPv6 spellings.
+  Private ranges are allowed, because a game on a private network or a local rig legitimately publishes one.
+  Dial it only while the state reads `ServerOk` and fall back to the configured host name otherwise.
+- `ServerStatusReadoutKeys.ServerAddress` and its row are appended after `Motd`, so `Build` now returns 12 rows
+  and every existing row keeps its index. The row carries the vetted address, so a published value the accessor
+  refuses reads as empty rather than putting a string on screen the client may not act on.
+- All additive and optional. `schemaVersion` stays `1`: a client that has never heard of the field ignores it,
+  and a publisher that never sets it changes nothing for anyone. No existing member changed name, type, default
+  or wire name, and the health deriver, the evaluator precedence and the poller are untouched. No consumer
+  action is required to take this release. Engine half of
+  https://github.com/APKiwiOrg/Grimhollow/issues/296.
+
+## 19.12.0
+
+- `ContentUpgradePlanBuilder.AppendTag(type, key, fieldName, tagId)` appends one element to a tag-list field of an
+  existing row. `PatchField` replaces a value only while it still equals a named old default, which is right for
+  a scalar and wrong for a list: a tag appended to an item whose list an operator has extended was skipped
+  forever, and the first consumer had to hand-write the fold. The verb finds the row by type and key, is
+  satisfied with no edit when the element is already present, and otherwise appends at the END, keeping every
+  existing element and its order. It merges into the one `Update` edit a row gets, so a draft read back from a
+  store still matches its plan, and it counts toward the builder's existing partial-state rule, so "these six
+  rows each get this tag, all six or none" refuses a mixed catalog. One field written twice on one row, by two
+  appends or by an append and a `PatchField`, throws naming the row and the field. The tag id must name a tag
+  row that is live in the catalog or added by the same plan, in either call order. An unknown or retired tag
+  is refused at plan time, which is exactly what the publish validator would reject as `KEC0008`, and no
+  wider. Closes #1050.
+- A `Preview` now says what an `Apply` would record. A pending definition whose content is already present
+  needs only a ledger row and publishes nothing, one with edits publishes a version, and both used to read as
+  planned, so a hosted operator could not tell that an apply would publish nothing. `ContentUpgradeStepState`
+  gains `WouldPublish` and `WouldAdopt`, `ContentUpgradeStepResult` gains `WouldRecord` with the matching
+  factories and a `Pending(definition, reason)` overload, and the rendered lines name the upgrade id. Preview
+  still plans only the first pending definition exactly and still writes nothing. All additive. Point 1 of #1051.
+- Fixed: the pack store test host found a free port by probing, released it, then bound, so anything taking
+  the port in between failed a test with `Address already in use`. Probe and bind now retry as one unit. Test
+  helper only. Closes #1057.
+
+## 19.11.0
+
+- `SkySettings.ExtraDiscs` (a list of `SkyDisc`, up to `SkySettings.MaxDiscs` = 8 with the primary) puts more than
+  one body in the sky: a moon, a second sun. Each extra disc carries its own direction, colour, radius and halo.
+  The sky pass and the water reflection both loop over the list, in order, and every disc sets through a world
+  horizon. The primary disc stays on `SkySettings` because it follows the key light. Scenes with no extra discs
+  are byte-identical on all three backends (full rebakes moved no grid). New golden `scene3d_sky_two_discs`. The sky UBO becomes
+  6 vec4 plus three `vec4[8]`, the water UBO 34 vec4 plus three `vec4[8]` and its slot grows from 768 to 1280
+  bytes. `Sky.fragment` and the four water programs are repinned. Closes #1041.
+- Under `NightKeyMode.Moon`, `SunCycle` emits the moon as an extra disc (`SunCycleState.ExtraDiscCount`,
+  `GetExtraDisc`, `SunCycleDisc`) while the sun still holds the primary slot, and `SunCycle.Apply` replaces
+  `Sky.ExtraDiscs` with it, shaped like the primary. A moon rising as the sun sets now comes up through the
+  horizon instead of appearing once the sun lets go, and a moon that is up by day is now drawn. `SunCycleState`'s
+  constructor gains a trailing optional `extraDisc`.
+- Fixed: the water reflected the sun disc along the key light and ignored `Sky.SunDirectionOverride`. In 19.10.0
+  a `SunCycle` sun with `DiscSetElevationDegrees` above 0 under the default `AntiSolarMoon` night (where the key
+  flips anti-solar at the horizon) reflects a ghost sun opposite the real one while it sets. Each disc is now
+  reflected along its own direction.
+- Catalog upgrade lifecycle. A game ships ordered `ContentUpgradeDefinition`s in a `ContentUpgradeSet` and
+  `ContentUpgradeRunner.RunAsync` applies the pending ones before the strict load, each as its own published
+  version, in `Preview` or `Apply` with an optional `ExpectedVersion`. It exists because an existing catalog
+  that lacked a newly registered type made a host exit before it listened while fresh installs and the whole
+  suite stayed green (https://github.com/APKiwiOrg/Grimhollow/issues/259). `ContentUpgradePlanBuilder` and
+  `ContentUpgradeChecks` detect by identity and never by value, patch a field only when it still holds the
+  named old default, refuse a partial state, and CARRY the committed id on every added row. A run with nothing
+  pending writes nothing. The runner discards a draft only when it can prove every edit in it is its own work (the actor matches
+  and each edit equals an edit of a plan this run computed), a proof that is narrowed and not closed against
+  an operator edit landing between it and the discard, never moves the pin, publishes only after freezing a draft
+  it has just read as exactly its own plan and re-proving it under that marker, so an operator edit
+  that lands in the draft is never published inside an upgrade, releases that marker on every attempt that
+  froze and did not publish, re-checks `ExpectedVersion` on every re-read, retries only a transient `DbException`, and resolves
+  every failure by reading the ledger, so two hosts racing publish each upgrade exactly once. Refusals carry
+  `KECU0001` to `KECU0016` and a failed report maps to `ContentBootResult.ContentFailureExitCode`. Closes #1038.
+- Catalog schema version 2 on both providers, migration `catalog-v2-content-upgrade-ledger`. The one new table
+  is `catalog_content_upgrade`, read through the new `IContentUpgradeLedger` that the in-memory, SQLite and SQL
+  Server stores implement. `ContentPublishRequest.Upgrade` is an optional init-only stamp, and an `applied`
+  row commits inside the publish transaction, so a version and its history land together or not at all. A
+  second publish of one upgrade id fails the commit with nothing changed. `IContentAuthoringStore` gains no
+  member. A SQLite file at version 1 migrates in place under `AutoCreate`. SQL Server ships
+  `CatalogSchemaV2.sql` as the operator script and migrates behind the create's application lock under
+  `AutoCreate`. **`ValidateOnly` refuses a version 1 database by naming the migration, so a hosted catalog
+  needs the script applied before a server on this version starts.**
+- A carried definition id (`ContentEdit.Import`) is now legal in a populated store and is fully policed. It is
+  refused when it matches a live row, a RETIRED row, another add in the same draft, exceeds the type's
+  ceiling, or falls inside a family's reserved block with no family named, and every refusal now lands BEFORE
+  the id marks advance. Previously a carried id on a retired row was refused only by an incidental publish
+  check, two refusals left the marks advanced for a version nobody published, and the family block case was
+  not refused at all.
+- Fixed: `FileSystemPackStore` used one fixed temporary name per hash, so two publishers filing the same chunk
+  into one pack root collided. Each write now takes its own temporary name, and a successful write removes
+  stale temporary siblings of the same hash.
+- CI: a `catalog-sqlserver` job runs the catalog conformance facts against a SQL Server 2022 service
+  container. They previously ran only through a manual leg.
+- Fixed: a map editor viewport click was quadratic in the authored placement count. The View panel's category
+  filter resolved each placement's kit through an id lookup inside the pick loop, which cost about 510 ms per
+  click on the 17,281-placement Ruinborne island. `EditorPicking.Pick` gains an overload with a kit-keyed
+  `placementKindVisible` filter, `EditorToolController.PlacementKindVisible` carries it, and the same click now
+  takes under 1 ms. A reload also dropped the category filter from picking, so a hidden category became
+  clickable again. Both filters are documented as constant-time per element.
+- Map editor: scrolling while right mouse flies retunes the fly speed (1.2 per notch, inside the 0.5 to 200
+  settings range), persists it and reports it in the status strip. The wheel still dollies outside a fly gesture.
+- Map editor: the outline groups placements by kit with a count (`PlacementOutline`). Groups of more than 12
+  start collapsed, a toggle away from that default survives document edits, picking into a collapsed group
+  highlights the group row, and a tap anywhere on a group row toggles it.
+
+## 19.10.0
+
+- `TileInteractionReachPolicy` lets targets opt into diagonal and overlapping interaction reach. The
+  policy-aware `TileInteractionReach` kernel preserves collision, corner, plane and agent-footprint checks
+  across prediction, approach and arrival. `ITileTargets.GetInteractionReachPolicy` defaults to cardinal
+  reach, and compatible client/server constructor overloads accept an entity policy classifier. Existing
+  interaction defaults and combat reach are unchanged.
+
+- `SkySettings.Horizon` (`SkyHorizon`, default `Screen`) adds a world horizon to the procedural sky. `World`
+  anchors the gradient to the elevation of each pixel's view ray and paints `SkySettings.GroundColor` below
+  elevation zero (blend depth `HorizonSoftness`), so a finite world appears to run on to the horizon and the sun
+  disc sets through that line, occluded by the ground band. The screen-space sky had no notion of where elevation
+  zero was: a perspective camera pitched down at a finite world put the true horizon well above the world's
+  visible edge, so a low sun hung in mid-sky and could only fade out. It needs a perspective camera and
+  `SunAnchor.World`, and falls back to `Screen` without them. The water's reflected sky follows the same ground
+  band. The default is unchanged and no existing golden moved. New golden `scene3d_sky_world_horizon`. The sky
+  UBO grows to 9 vec4 and the water UBO to 35. `Sky.fragment` and the four water programs are repinned on all
+  three backends. Closes the horizon half of #396.
+- `SunCycleSettings.DiscSetElevationDegrees` (default 0, the historical cut at elevation zero) keeps a body's
+  disc that far below the horizon and moves the `SunDiscFadeElevationDegrees` band down with it, so under a
+  world horizon the disc crosses the line at full strength and the halo dims as an afterglow. The key light is
+  unaffected. When the key has flipped, moved to the moon or gone black, the disc stays pointed at the sun
+  through `DiscDirectionOverride`. `NightKeyMode.Moon` now decides the single disc slot apart from the key.
+- `SunCyclePalette.GroundColor`, `SunCycleState.GroundColor` and `SunCycle.Apply` drive the ground band across
+  day, dusk and night. `SunCycleState`'s constructor gains a trailing optional `groundColor`.
 - The sun and moon disc no longer turn into a black circle near the horizon. The sky and the water reflection
   replace-blend toward `SkySettings.SunColor`, and `SunCycle` faded a rising or setting disc by scaling that
   colour to black, so across the last `SunDiscFadeElevationDegrees` the disc painted a black hole in the
@@ -14,7 +225,19 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   use as the blend weight, so the disc dissolves into the sky and keeps its colour. `SunCycleState.SunColor`
   RGB is no longer darkened inside the fade band. A consumer that set a `SunColor` alpha below 1 by hand gets a
   correspondingly fainter disc. Alpha 1 is bit-identical, so no golden moved. `Sky.fragment` is repinned on all
-  three backends. Part 1 of #396. The horizon half of that issue stays open.
+  three backends. This fixes the disc-fade part of #396.
+
+- Map editor navigation uses middle-mouse terrain-pivot orbit, Shift+middle-mouse pan, wheel dolly,
+  captured right-mouse fly navigation, selection framing, and persisted fly speed.
+- The editor View panel exposes authored props, prop categories, named layers, water, markers, Terrain Only
+  and Show All. Visibility filters draw submission and picking without rebuilding streamed terrain or scatter.
+- `InputManager.SuppressPointerInput` blocks GUI mouse buttons and scrolling during captured navigation
+  while retaining hover, keyboard and gamepad input. Held buttons remain ignored until release.
+- Sculpt feedback adds a terrain-following footprint, falloff guide, screen-scaled centre marker and
+  localized operation/state labels. Segments crossing unloaded chunks are omitted.
+- Editor navigation samples terrain only when a new pivot is needed. Authored prop draws reuse their
+  preparation buffer, and hidden placement caches rebuild on reveal. The copied-island CPU profile
+  removes roughly 1.24 MB of warmed authored draw-preparation allocation per frame.
 
 ## 19.9.0
 

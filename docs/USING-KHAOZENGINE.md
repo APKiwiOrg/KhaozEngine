@@ -3887,6 +3887,40 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     sits where the light comes from, so the sky and the scene lighting agree and the sun lands on the opposite screen
     axis from the shadows automatically. Override with `Sky.SunDirectionOverride` (a world direction TO the sun) to
     point it elsewhere.
+  - **Where the horizon is** (`Sky.Horizon`, a `SkyHorizon`, default `SkyHorizon.Screen`):
+    - `SkyHorizon.Screen` (default) is the historical groundless sky. The gradient is a vertical ramp over the
+      screen and there is no ground, so existing scenes are byte-stable. It reads under every camera, but it has no
+      notion of where elevation zero is. A perspective camera pitched down at a finite world puts the true horizon
+      well above the world's visible edge, so a low sun hangs in mid-sky and can only fade out, never set.
+    - `SkyHorizon.World` anchors the gradient to the WORLD horizon (the elevation of each pixel's view ray) and
+      paints `Sky.GroundColor` below it, so a finite world appears to run on to the horizon and the sun disc sets
+      THROUGH that line, occluded by the ground band. `Sky.HorizonSoftness` is the depth of the blend into the
+      ground, as the sine of the elevation angle (default `0.02`, about 1.1 degrees, a crisp line. Raise it for a
+      haze band the sun sinks into). The band is drawn unlit, so pick the colour the far terrain or sea reads as
+      under the current light. `SunCycle` drives it per palette (`SunCyclePalette.GroundColor`). It needs a
+      perspective camera and `SunAnchor.World`, and falls back to `Screen` without them (parallel orthographic rays
+      share one elevation, and the stylized disc is not at a physical position to clip). The water's reflected sky
+      follows the same setting, so the sea never reflects a sun the ground already hides.
+    - **Letting a `SunCycle` sun set.** By default `SunCycle` cuts the disc at elevation zero and fades it over the
+      `SunDiscFadeElevationDegrees` above that, which is right for the screen-space sky and wrong for this one: the
+      disc would dissolve before it reached the line. Set `SunCycleSettings.DiscSetElevationDegrees` past the disc's
+      angular size (6 is a good start). The whole fade band moves down with it, so the disc crosses the horizon at
+      full strength, the ground occludes it, and the halo left above the line dims as an afterglow. The key light
+      is unaffected and still dips to black at elevation zero. Under `NightKeyMode.Moon` the rising moon is drawn
+      as an extra disc until the sun lets go of the primary slot, so it comes up through the horizon too.
+  - **More than one body** (`Sky.ExtraDiscs`, a list of `SkyDisc`, empty by default): a moon, a second sun, a
+    neighbouring planet. The primary disc stays on `SkySettings` itself (`SunColor`, `SunRadius`, the halo knobs)
+    because it is the one that follows the key light. An extra disc always carries its own `Direction` (world
+    space, toward the body), plus `Color` (alpha is opacity), `Radius`, `HaloStrength` and `HaloFalloff`. Discs draw
+    in order, the primary first, so a later disc goes over an earlier one (an eclipse is two discs in the right
+    order). A frame draws at most `SkySettings.MaxDiscs` (8), the primary included, and ignores the rest. Every
+    disc sets through a `SkyHorizon.World` horizon and every disc is reflected by the water along its own
+    direction. `SunCycle.Apply` REPLACES this list each call with the cycle's own extra bodies (under
+    `NightKeyMode.Moon`, the moon while the sun still holds the primary slot, so a day moon shows and a rising
+    moon comes up through the horizon as the sun sets). Add your own discs after `Apply`. `SunCycle` models one
+    sun and one moon. A second sun is drawn with an extra disc, and which sun keys the light and drives the
+    palette is yours to decide. `SunCycle.SolarDirection` is the per-body arc (time offset, declination, heading)
+    for placing more bodies on their own tracks.
   - **Where the disc is placed** (`Sky.Anchor`, a `SunAnchor`, default `SunAnchor.World`):
     - `SunAnchor.World` (default) anchors the disc to the WORLD-space sun direction with a true point-at-infinity
       projection (rotate the world sun direction into view space, project through the camera projection,
@@ -6777,7 +6811,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="19.9.1" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="19.15.0" />
 ```
 
 ```csharp
@@ -8963,6 +8997,13 @@ cancels), without a second tap. `EditorToolController.ModeHint` gives a one-line
 tool (folding in `PlaceKind` / `SpawnArchetype` / `PlaceFeatureType`) that the scene renders at the head of
 the status strip.
 
+While Sculpt Terrain is armed, the viewport draws a 64-sample surface-following outer footprint, a dashed
+half-strength falloff guide, and a screen-readable centre cross. Its localized label names the selected brush
+and Hover, Active, or Unavailable state, so colour is supplementary. The footprint uses the stroke's live field,
+radius, paintable document bounds, and applied streamed-terrain residency. Missed picks and unloaded targets do
+not show a valid footprint. Chrome, the View panel, modals, and navigation ownership suppress the feedback.
+Terrain Only leaves it visible while masking unrelated authoring markers.
+
 **Kit palette.** The bottom-left panel is tool-scoped, hosting at most one of three pickers. `PlacePlacement`
 shows every manifest kit id in a filter box over a collapsible `TreeView`, categorized by
 `AssetEntry.Category` when the manifest declares one, else the declaring manifest's own file-name stem
@@ -9070,17 +9111,37 @@ no kind in the host layer"), live-tracked through edits, host swaps, and undo/re
 `KhaozEngine.MapEditor` README's "Procedural setup editing" section for the full mechanics.
 
 **Visibility.** `EditorVisibility` is editor-session view state, not the document: it gates eight
-`VisibilityGroup`s (placements, spawns, water, exclusions, scatter overrides, regions, feature markers, player spawns), named scatter layers,
-and individual elements, and toggling any of it never dirties the document or lands an undo step. A per-element
+`VisibilityGroup`s (placements, spawns, water, exclusions, scatter overrides, regions, feature markers, player spawns),
+the `OtherProps`, `Trees`, and `Rocks` categories, named scatter layers, and individual elements. Toggling any
+of it never dirties the document or lands an undo step. A per-element
 hide follows its element across reorder, delete, and rename (including undo and redo), driven by the
 reorder/remove/rename commands' `IVisibilityEffect` through `EditorDocument`'s
 `CommandApplied`/`CommandRedone`/`CommandUndone` events. With
-nothing selected the inspector is the Layers panel (`MapEditorScene.BuildLayersInspector`): a `BoolRow` per
-group, then one per scatter layer in the open document (toggling a scatter layer also rebuilds the streamed
-world so its props actually drop out). Every element inspector also gets a per-element "Visible" `BoolRow`.
+nothing selected the inspector is the Layers panel (`MapEditorScene.BuildLayersInspector`). The toolbar's
+always-available **View** button opens the independent visibility panel while a selection inspector or terrain
+sculpt inspector remains active. **Authored props** gates all authored placements independently of the prop
+category and named scatter-layer choices. **Terrain Only** is a temporary mask and restores the underlying choices when
+cleared. **Show All** clears the mask and every hide override. Every element inspector also gets a per-element
+"Visible" `BoolRow`.
 A hidden element is neither drawn nor pickable from the viewport, but stays selectable from the outline tree
 (which reads straight off the document), so hiding something is always reversible. See the
 `KhaozEngine.MapEditor` README's "Visibility" section for the full mechanics.
+
+Set `MapEditorOptions.ResolvePropCategory` when the game has its own kit classification. Without a callback,
+only explicit manifest `category` values classify trees and rocks. Manifest file names and kit names are never
+guessed. Visibility switches filter retained flat, textured, companion, and HLOD-backed batches at submission
+time. They do not rebuild terrain or scatter. A mixed-category HLOD cluster falls back to its visible individual
+placements while a category filter is active.
+
+**Map editor navigation.** Middle drag orbits around the terrain point captured at press. Shift+middle captures
+pan mode at press and keeps it for the full gesture. A miss keeps the previous pivot or falls back to a point 25
+metres ahead. The wheel dollies between 0.5 and 100000 metres from that pivot. Hold right mouse to look and use
+WASD plus E/Q to fly. While right mouse flies, the wheel scales the persisted fly speed by 1.2 per notch instead of
+dollying and the status strip reports the new value. Movement keys are inert
+until the right-button press acquires the viewport. Chrome, focused fields, modals and active tool gestures block
+navigation acquisition. Navigation suppresses editor pointer edges through the release frame. Unmodified F frames
+the current viewport selection. It is a no-op with no selection or an outline-only selection, and focused fields
+keep F as text input.
 
 **Keys.** Ctrl+Z undo, Ctrl+Shift+Z or Ctrl+Y redo, Ctrl+S save, Ctrl+R reload, Ctrl+D duplicates the current selection
 (see Duplicate below), Ctrl+Shift+F freezes the whole zone's procedural scatter into placements (see
@@ -9091,8 +9152,8 @@ feature, exclusion, or scatter override row in the outline tree reorders it the 
 (see Camera bookmarks below), Escape cancels an in-flight gizmo/draw gesture and returns to `Select`, and
 opens the settings menu (below) when there is no gesture to cancel. Every
 Ctrl chord above also accepts Cmd (Super) in its place (`InputState.IsCommandDown` treats the two as one
-modifier), so the same keys work unmodified on a Mac (Cmd+S and Cmd+D also suppress the fly camera for that
-one frame, since both carry a WASD letter). All of the chords, plus the bare R hotkey and the bookmark
+modifier), so the same keys work unmodified on a Mac. Cmd+S and Cmd+D also suppress camera motion for that
+frame, since both carry a movement letter. All of the chords, plus the bare R hotkey and the bookmark
 digits, are suppressed while an inspector field, the kit-palette filter, or the spawn filter holds keyboard
 focus (`MapEditorScene.AnyEditorFocused`), so typing a name or a filter query never leaks into a document
 command. Escape carries extra nuance under that gate: a `NumberField` mid-edit cancels only its own typed
@@ -9113,7 +9174,7 @@ open and the work intact. **Save and Close** does the same save, then leaves the
 README's "Exit dialog" section for the full mechanics.
 
 **Settings menu** (since 17.6.0). Bare Escape with no gesture to cancel opens a modal settings menu over the
-editor's own view preferences: render distance (Base / 2x / 4x), sky (preset plus sun azimuth and elevation),
+editor's own view preferences: render distance (Base / 2x / 4x), navigation fly speed, sky (preset plus sun azimuth and elevation),
 lighting (key and ambient intensity multipliers), and ocean (preset, swell amplitude, foam strength, and a
 surf toggle). None of it touches the map document, so two operators can prefer different horizons and skies
 over the same world. It sits one gate below the exit dialog, so Shift+Escape still wins when both would apply.
@@ -9123,6 +9184,8 @@ over the same world. It sits one gate below the exit dialog, so Shift+Escape sti
   rebuild and a brief hitch (the ring's radii are baked when the world builds). A tiled document that opened
   windowed is the one thing it cannot grow live, since re-windowing means reloading and discarding unsaved
   edits, so it says so in the status strip instead of under-loading in silence.
+- **Fly speed** sets right-button flight from 0.5 to 200 world units per second. Scrolling while right mouse
+  flies changes the same value. Scrolling outside a fly gesture only dollies.
 - **Sky and ocean** run through `EnvironmentPresets` / `OceanPresets` (above) plus the sliders on top. This is
   the editor writing to the HOST scene's `Post`, which is new: `MapEditorOptions.DriveEnvironment` (default
   true) is the seam. The default is what gives a freshly opened editor a day sky rather than the engine's
@@ -9179,7 +9242,7 @@ landing a status-strip note instead of a phantom undo entry. `ke-mapedit`'s `fre
 reuses the same command, so a GUI-driven and an MCP-driven freeze can never drift apart. See the
 `KhaozEngine.MapEditor` README's "Freeze zone" section for the full mechanics.
 
-**Camera bookmarks.** Shift+1..9 stores the fly camera's pose (position, yaw, pitch) into that numbered
+**Camera bookmarks.** Shift+1..9 stores the editor camera's pose (position, yaw, pitch) into that numbered
 slot, and a bare 1..9 recalls it. Session-only (nothing persists across a close/reopen this round), with the
 status strip confirming every store/recall or reporting an empty never-stored slot. Camera bookmarks are
 interactive viewport state, so they have no MCP equivalent: `ke-mapedit`'s render verbs are stateless,
@@ -9270,6 +9333,7 @@ draw gesture is live, so a fast mid-gesture edit stream does not re-mesh the wor
 and the splat material persist across a full rebuild by default, so it no longer re-decodes every prop glTF
 from disk; a toggle that changes their cached form (the "Textured props" toggle) calls
 `ViewportWorld.InvalidateKitMeshes` first.
+Layer, category, marker, Show All, and Terrain Only changes are draw-only and cause zero world rebuilds.
 
 See the `KhaozEngine.MapEditor` package README for the command stack and gesture sealing, world-rebuild
 semantics (including the partial vs full rebuild dispatch and the gesture-throttled full rebuild), the
@@ -10457,6 +10521,16 @@ nobody can reach costs one window rather than sixteen, and the tile it picks and
 ones a search per anchor gave.
 The same predicate is the follow's range test, the entity interaction's arrival and the combat roll, so a large
 body and a small one agree on reach whichever of them is attacking.
+
+An interaction target can opt into extra reach without changing global movement or combat. Override
+`ITileTargets.GetInteractionReachPolicy(target)` for authored objects, or pass the same seventh
+`Func<long, TileInteractionReachPolicy>` argument to `TileWorldServer` and `TileWorldClient` for entity targets.
+`TileInteractionReachPolicy.IncludeDiagonals` adds corner neighbours only when `TileCollision.CanStep` admits the
+diagonal without walls, blocked side tiles or corner cutting. `IncludeOverlap` adds anchors whose whole actor
+footprint passes `TileCollision.CanStand` and overlaps the target. The flags compose. `Default` remains the
+cardinal, non-overlapping `TileReach` behavior. The policy-aware `TileInteractionReach.Set`, `Contains`,
+`TryNearest` and `FacingToward` methods are the shared kernel used by prediction and authority. The wire layout and
+combat reach do not change.
 
 ### Standing a server up
 
@@ -11722,14 +11796,53 @@ add fields and evolve ahead of already-shipped clients. The Function serves exac
   "lastHeartbeatUtc": "2026-07-14T09:41:12Z",
   "lastDeployUtc": "2026-07-14T09:30:00Z",
   "expectedBackUtc": null,
-  "motd": "Double XP weekend is live."
+  "motd": "Double XP weekend is live.",
+  "serverAddress": "4.254.6.139"
 }
 ```
 
 `health` is `healthy` | `restarting` | `down` | `unknown`. During a deploy window serve `restarting` with
 `expectedBackUtc` set to the ETA. Outside a window with a stale heartbeat serve `down`. Version fields are the
-games' `x.y.z` scheme, compared numerically (so `0.7.10` is newer than `0.7.9`). In code, `ServerStatusReport.TryParse(...)`
-(never throws, null on garbage) and `report.ToJson()` round-trip it.
+games' `x.y.z` scheme, compared numerically (so `0.7.10` is newer than `0.7.9`). `motd`, `expectedBackUtc` and
+`serverAddress` are nullable, and an unset one is written as a `null` literal rather than dropped from the
+object. In code, `ServerStatusReport.TryParse(...)` (never throws, null on garbage) and `report.ToJson()`
+round-trip it.
+
+#### `serverAddress`: the address, not the name
+
+A server hosted on something that releases its public address when it stops hands out a new one on every
+start, while its DNS label keeps a fixed TTL. A client that resolved the host name inside that window keeps
+dialling a dead address until the cache expires. `serverAddress` removes the resolver from the path: the
+publisher already talks to the platform to wake the server, so it knows the current address, and it serves
+that address over HTTPS from the status endpoint, a stronger anchor than the plain DNS answer it replaces.
+
+**The game's status endpoint fills it**, from whatever it already asks the platform for the wake. The engine
+carries the field and nothing more: no cloud dependency, no name lookup, no socket. It is optional and
+additive, so `schemaVersion` stays `1` and a publisher that never sets it changes nothing for anyone.
+
+**A client reads it through the accessor, never as a string.**
+
+```csharp
+if (view.State == ServerStatusState.ServerOk && view.ServerAddress is { } address)
+{
+    Connect(address, port);              // dial what the publisher vouches for, no DNS in the path
+}
+else
+{
+    Connect(ProductionHost, port);       // fall back to the configured host name
+}
+```
+
+`report.TryGetServerAddress(out IPAddress? address)` and `view.ServerAddress` answer only for a canonical IP
+literal that is plain unicast. They refuse null, empty, whitespace, a **host name** (refused rather than
+resolved, since skipping the resolver is the entire point), anything carrying a port or brackets, a literal
+the lenient `IPAddress.TryParse` would otherwise stretch into a different address (`1`, `0x7f.1`, `1.2.3`,
+`010.1.1.1`, an uncompressed IPv6 form), and the wildcard, broadcast, loopback, multicast and link local
+forms including their IPv4 mapped IPv6 spellings. Private ranges (`10/8`, `172.16/12`, `192.168/16`,
+`fc00::/7`) are **allowed**, because a game on a private network or a local rig legitimately publishes one.
+A field a client acts on by opening a socket refuses by default, or it is a way to point a client anywhere.
+Dial it only while the state reads `ServerOk`, and fall back to the host name otherwise, because a retained
+report keeps answering after the address it named has gone.
 
 ### Client wiring (poll + evaluate)
 
@@ -11765,9 +11878,9 @@ the whole state machine is unit-testable. It treats a report older than `MaxStal
 poll intervals) as `StatusUnknown`, so one dropped poll does not flip the screen but a real outage does.
 **Precedence** (first match wins): `StatusUnknown` -> `ServerDown` -> `ServerRestarting` -> `UpdateRequired` ->
 `UpdateAvailable` -> `ServerOk`. Transient health beats the version gates on purpose - during a deploy the
-"back soon" screen wins, and the update gate applies once the server is healthy again. `view.Motd` and
-`view.ExpectedBackUtc` are surfaced in every state that has a report, so a game can show an operator message or
-a countdown regardless of the headline state. No display strings ship from the engine - the states are enums,
+"back soon" screen wins, and the update gate applies once the server is healthy again. `view.Motd`,
+`view.ExpectedBackUtc` and `view.ServerAddress` are surfaced in every state that has a report, so a game can
+show an operator message or a countdown regardless of the headline state. No display strings ship from the engine - the states are enums,
 the game owns and localizes the words.
 
 ### Server heartbeat wiring
@@ -11837,11 +11950,12 @@ foreach (ServerStatusReadoutRow row in rows)
 }
 ```
 
-Each row is `(string Key, string Value, object? Raw)`. `ServerStatusReadoutKeys` exposes the 11 keys (`Health`,
+Each row is `(string Key, string Value, object? Raw)`. `ServerStatusReadoutKeys` exposes the 12 keys (`Health`,
 `ServerVersion`, `MinClientVersion`, `LatestClientVersion`, `ClientVersion`, `LastHeartbeat`, `LastDeploy`,
-`ExpectedBack`, `Staleness`, `State`, `Motd`, in that order via `ServerStatusReadoutKeys.All`) publicly, so a
-game never string-matches a row key by hand. The row set is stable: a fact with nothing to show (no report
-ever, or an optional field left unset) emits an empty `Value` and a null `Raw` rather than dropping the row.
+`ExpectedBack`, `Staleness`, `State`, `Motd`, `ServerAddress`, in that order via `ServerStatusReadoutKeys.All`)
+publicly, so a game never string-matches a row key by hand. The row set is stable: a fact with nothing to show
+(no report ever, or an optional field left unset) emits an empty `Value` and a null `Raw` rather than dropping
+the row. `ServerAddress` carries the vetted address, so a published value the accessor refuses reads as empty.
 Duration rows are preformatted as compact, invariant-culture, English strings ("12 s ago", "in 5 min") on
 purpose (no localization catalog dependency here). A game wanting a fully localized duration formats it from
 `Raw` (a `DateTimeOffset?` or `TimeSpan?`, per key) instead of `Value`. `Build` takes no clock of its own
@@ -12990,7 +13104,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="19.9.1" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="19.15.0" />
 ```
 
 ```csharp
@@ -13026,7 +13140,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="19.9.1" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="19.15.0" />
 ```
 
 ```csharp
@@ -13268,7 +13382,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="19.9.1" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="19.15.0" />
 ```
 
 ```csharp
@@ -14594,7 +14708,7 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
   and no time base of any kind, so a slow turn-based world and a continuous one share it (see "Skill
   progression" below).
 - **`KhaozEngine.Catalog`**: the tunable-content catalog's read half: a frozen `ContentTypeRegistry` with its
-  field schemas and the six engine content types, the content-addressed `KECC`/`KECM`/`KECT`/`KECR` pack
+  field schemas and the seven engine content types, the content-addressed `KECC`/`KECM`/`KECT`/`KECR` pack
   formats, the `IPackStore` seam with `FileSystemPackStore` and `ContentPackReader`, the `IContentSnapshot`
   read seam, and the pure `ContentValidator`. No third-party dependency at all (see "Content catalog" below).
 - **`KhaozEngine.Commerce`**: server-authoritative currency wallet (`IWalletStore`, `Wallet`, entitlement
@@ -14959,7 +15073,7 @@ Tunable content (items, stats, tags, loot tables) is authored in a database, pub
 content-addressed packs and loaded into a runtime of rows indexed by id. `KhaozEngine.Catalog` is the half
 every consumer needs, a game client included, and it takes no third-party dependency, so pulling the read side
 into a client puts no database in its graph. Both ways in start at a `ContentTypeRegistry`: a host registers
-the six engine types through `EngineContentTypes.Register`, then its own `Game`-band types, and `Freeze()`
+the seven engine types through `EngineContentTypes.Register`, then its own `Game`-band types, and `Freeze()`
 closes the registry at boot, so no type can appear halfway through a session. The SERVER's way in is eager,
 reading every chunk the manifest names through `ContentPackReader.ReadAllAsync` and assembling one
 `IContentSnapshot` over `ContentSnapshotBuilder`. The CLIENT's way in is the lazy one, `ReadRowAsync`, which
@@ -14997,7 +15111,7 @@ if (!report.IsValid) return Refuse(report);         // boot exits non-zero, publ
 
 ### Registering a game type
 
-The engine's six types occupy ids 1 to 255, `KhaozEngine.ItemInstances` owns 256 to 1023, and a game's own
+The engine's seven types occupy ids 1 to 255, `KhaozEngine.ItemInstances` owns 256 to 1023, and a game's own
 types are 1024 and above. A caller CLAIMS its band through `ContentRegistrationBand` and the registry refuses
 a type id outside the band it claimed, so a game type cannot land on an engine id by accident.
 
@@ -15174,6 +15288,91 @@ comparison pins the whole closure. A second rebuild into the same store writes n
 rehydrated through the CALLER's registry, so a schema, `ChunkSlots` or visibility change since the publish
 refuses with `server-manifest-mismatch` or `client-manifest-mismatch` rather than filing a pack no version
 record describes.
+
+### Upgrading an existing catalog (19.11.0)
+
+A fresh install seeds the current bundle and boots. An existing catalog still holds the older content, so a
+build that registers a new type or needs new rows makes the strict load refuse and the host exits before it
+listens. A suite that only ever boots a fresh catalog stays green while that ships. The upgrade lifecycle is
+the fix: a game ships ordered `ContentUpgradeDefinition`s in its server assembly, and
+`ContentUpgradeRunner` applies the pending ones before `ContentBoot.RunAsync`.
+
+Migration history is its own ledger, the `catalog_content_upgrade` table added by catalog schema version 2.
+An engine package version does not say which upgrades ran, and neither does a published version number. An
+`applied` row commits inside the publish transaction, so a version and its history land together or not at
+all. A SQLite file at schema version 1 migrates in place when opened under `AutoCreate`. SQL Server ships
+`CatalogSchemaV2.sql` as the operator script for migration `catalog-v2-content-upgrade-ledger`, and
+`ValidateOnly` refuses a version 1 database by naming it.
+
+```csharp
+static readonly ContentUpgradeSet Upgrades = new(
+    new ContentUpgradeDefinition(
+        "2026-09-add-recipe-type", 1, "the recipe type and the item it needs",
+        context => new ContentUpgradePlanBuilder(context, ShippedBundle.Read())
+            .AddRow(RecipeType, new ContentKey("iron_bar"))
+            .AddRow(new ContentTypeId(EngineContentTypes.ItemTypeId), new ContentKey("iron_ore"))
+            .Build()));
+
+// Local arm, after the store is open and before the strict load.
+if (await store.GetActiveVersionAsync() == 0)
+{
+    await store.ImportBundleAsync(ShippedBundle.Read(), actor, operatorId, "first run seed");
+    await ContentUpgradeRunner.RecordBaselineAsync(store, Upgrades, actor, operatorId);
+}
+
+ContentUpgradeReport report = await ContentUpgradeRunner.RunAsync(
+    store, registry, Upgrades,
+    new ContentUpgradeOptions(ContentUpgradeMode.Apply, actor, operatorId, serverBuild, clientBuild));
+report.WriteTo(Console.Out, Console.Error);
+if (!report.Success) return report.ExitCode;
+```
+
+Planner rules, which the runner cannot enforce for you:
+
+- Detect by identity, never by value. A row present under the committed id and key is satisfied whatever its
+  fields hold, because those values may be operator tuning. `AddRow` does this.
+- A value patch names the old shipped default it replaces. `PatchField` leaves any other value alone.
+- A LIST is appended to, never patched. `AppendTag` (19.12.0) adds one element to a tag-list field, is satisfied
+  when the element is already there, and keeps every element an operator added and their order. The tag id
+  must name a tag row that is live in the catalog or added by the same plan, otherwise the plan is refused.
+  `PatchField` on a list would skip any row an operator had extended, because the field no longer equals the
+  old default.
+- A partial state is refused rather than completed by guesswork.
+- An added row CARRIES the id the committed bundle gives it. It is never left to the allocator, because a
+  publish refused after allocation burns ids and a predicted id would then be wrong.
+
+What the runner guarantees. A run with nothing pending writes nothing at all. Each definition publishes as
+its own version. A draft is PUBLISHED as it stands only when the actor, the note and the exact edits all
+match one definition's fresh plan. A draft is DISCARDED only when the runner can prove every edit in it is its
+own work: the actor matches and each edit equals an edit of a plan this run computed. Anything else is
+`OperatorDraftOpen`, untouched. The pin is
+never moved. A pin on the active version does not block the publish and the report names the version to repin
+to. Before every publish it freezes the draft, re-reads it and requires exactly its own plan on the expected
+base, so an operator edit that lands in the draft is never published inside an upgrade. It freezes only a
+draft it has just read as exactly its own plan, and it releases that marker on every attempt that froze and
+did not publish, so no run leaves behind a draft nobody can edit or discard. A ledger id this build does not
+ship is `CatalogAheadOfBuild`. Two hosts racing publish each upgrade exactly once.
+
+What it cannot guarantee through this seam, stated plainly. Discarding a draft, applying into an empty one and
+the freeze itself are narrowed and not closed. The store offers no compare and act, so an operator edit landing
+in the one re-read between the proof and the discard, or on the same target in the window where the runner saw
+no draft, can be lost. And `FreezeDraftAsync` overwrites any standing marker and carries no identity, so a
+console publish that froze the same draft in the gap between the runner's read and the runner's own freeze
+loses its marker to the runner's and gets it released when the re-proof fails. An operator edit made under that
+released marker, on a target inside the console publish's frozen edit set, is deleted unpublished by that
+publish's own commit. A rival upgrade RUNNER is not exposed to it, because its own re-proof refuses the same
+contaminated draft. Run a hosted upgrade in a maintenance window with editing AND console publishing stopped,
+and give the runner a DEDICATED actor string that no console user authenticates as. A local automatic boot has
+no operator.
+
+The hosted arm never upgrades implicitly. A deploy step runs the game's command in `Preview`, then `Apply`
+with `ExpectedVersion` set to the version the preview printed, before the server starts. `Preview` writes
+nothing, and since 19.12.0 it says what the apply would RECORD for the first pending definition: would publish
+a new version with these changes, or is already present and would only be recorded with no version published.
+A catalog seeded or repaired before the ledger existed reads as the second for every definition, so an
+operator can see that the apply publishes nothing. Every refusal carries a stable `KECU` code and a next action, and a failed report maps to
+`ContentBootResult.ContentFailureExitCode`. A solo client whose in-process host returns a failed report shows
+it instead of retrying a join that cannot succeed. Design: `docs/design/CATALOG-UPGRADE-LIFECYCLE-DESIGN-2026-09-20.md`.
 
 ### Rolling loot
 
@@ -15482,7 +15681,7 @@ difference between a server and a client.
 using KhaozEngine.Catalog;
 using KhaozEngine.ItemInstances;
 
-// ONCE at process start, before any pack loads, beside the engine's own six types.
+// ONCE at process start, before any pack loads, beside the engine's own seven types.
 var types = new ContentTypeRegistry();
 EngineContentTypes.Register(types);
 
@@ -16380,7 +16579,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="19.9.1" />
+  <PackageReference Include="KhaozEngine.Automation" Version="19.15.0" />
 </ItemGroup>
 ```
 

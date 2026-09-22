@@ -59,7 +59,7 @@ internal static class GenerationWorld
     /// <summary>The gem socket type the greatsword and the unique both seat.</summary>
     public const int GemSocket = 1;
 
-    /// <summary>A registry carrying the six engine types and all eighteen of the band.</summary>
+    /// <summary>A registry carrying every engine type and all eighteen of the band.</summary>
     public static ContentTypeRegistry World() => Registry();
 
     /// <summary>

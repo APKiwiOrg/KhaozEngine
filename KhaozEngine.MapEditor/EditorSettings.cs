@@ -8,7 +8,7 @@ namespace KhaozEngine.MapEditor;
 
 /// <summary>
 /// The editor's own view preferences, persisted across sessions in <see cref="EditorSettingsStore.FileName"/>:
-/// render distance, the sky / lighting look, and the ocean look. None of it touches the map document, so two
+/// render distance, fly speed, the sky / lighting look, and the ocean look. None of it touches the map document, so two
 /// operators can prefer different horizons and skies over the same world.
 /// <para>A plain mutable class with public properties so System.Text.Json round-trips it through the settings
 /// seam (the <see cref="RecentFilesRecord"/> shape). The enums serialize as their numeric values, which is why
@@ -42,6 +42,12 @@ public sealed class EditorSettings
     /// <summary>Highest foam strength the menu allows.</summary>
     public const float MaxFoamStrength = 2f;
 
+    /// <summary>Lowest independently configured right-button fly speed in world units per second.</summary>
+    public const float MinFlySpeed = 0.5f;
+
+    /// <summary>Highest independently configured right-button fly speed in world units per second.</summary>
+    public const float MaxFlySpeed = 200f;
+
     /// <summary>The default sky and lighting bundle: the map editor opens under a day sky, which is what stops the
     /// engine's default starfield background from showing through behind the terrain.</summary>
     public const EnvironmentPresetKind DefaultEnvironment = EnvironmentPresetKind.Day;
@@ -64,6 +70,9 @@ public sealed class EditorSettings
     /// <summary>Scale applied to <see cref="MapEditorOptions.RenderDistance"/> as one coherent set. One of
     /// <see cref="RenderDistanceMultipliers"/>.</summary>
     public float RenderDistanceMultiplier { get; set; } = 1f;
+
+    /// <summary>World units per second used by right-button fly navigation.</summary>
+    public float FlySpeed { get; set; } = 12f;
 
     /// <summary>The sky + lighting bundle applied to the host scene's post settings.</summary>
     public EnvironmentPresetKind Environment { get; set; } = DefaultEnvironment;
@@ -112,6 +121,7 @@ public sealed class EditorSettings
     {
         ArgumentNullException.ThrowIfNull(other);
         RenderDistanceMultiplier = other.RenderDistanceMultiplier;
+        FlySpeed = other.FlySpeed;
         Environment = other.Environment;
         SunAzimuthDegrees = other.SunAzimuthDegrees;
         SunElevationDegrees = other.SunElevationDegrees;
@@ -153,6 +163,7 @@ public sealed class EditorSettings
     public void Sanitize()
     {
         RenderDistanceMultiplier = NearestMultiplier(RenderDistanceMultiplier);
+        FlySpeed = Clamp(FlySpeed, MinFlySpeed, MaxFlySpeed, 12f);
         if (!Enum.IsDefined(Environment)) Environment = DefaultEnvironment;
         if (!Enum.IsDefined(Ocean)) Ocean = DefaultOcean;
 

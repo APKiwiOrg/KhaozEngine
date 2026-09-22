@@ -88,5 +88,19 @@ namespace KhaozEngine.Tests.Gpu
             water.DistantDetailScale = 0.18f;
             ApplyLakeScale(water, uniformGrid: true);
         }
+
+        /// <summary>A flat, fully reflective sea: no swell, almost no ripple, the whole reflected sky and every disc
+        /// in it at full strength. For goldens that pin WHAT the water reflects rather than how the surface moves,
+        /// where a body's mirror image has to land on a predictable pixel.</summary>
+        public static void ApplyCalmMirror(WaterSettings water)
+        {
+            water.SwellAmplitude = 0f;
+            water.NormalStrength = 0.02f;
+            water.SkyReflectionStrength = 1f;
+            water.SkyReflectionSunStrength = 1f;
+            water.GlintStrength = 0f;
+            water.FoamStrength = 0f;
+            water.GridFocusBias = 1f;
+        }
     }
 }

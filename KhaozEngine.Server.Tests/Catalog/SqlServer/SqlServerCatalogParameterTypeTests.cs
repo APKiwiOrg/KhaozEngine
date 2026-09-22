@@ -12,7 +12,7 @@ using Xunit;
 namespace KhaozEngine.Tests.Catalog.SqlServer;
 
 /// <summary>
-/// The embedded <c>CatalogSchemaV1.sql</c> and the provider's own source read together, so a parameter bound
+/// The embedded <c>CatalogSchemaV2.sql</c> and the provider's own source read together, so a parameter bound
 /// with the wrong SQL type goes red on a plain <c>dotnet test</c> instead of on the first live instance.
 /// <para>
 /// <b>What this class exists for.</b> Every write went through one untyped helper that called
@@ -55,7 +55,7 @@ public partial class SqlServerCatalogParameterTypeTests
 
         Assert.True(
             offenders.Length == 0,
-            "A column name carries two different SQL types in CatalogSchemaV1.sql. The parameter check in this "
+            "A column name carries two different SQL types in CatalogSchemaV2.sql. The parameter check in this "
             + "class resolves a column by name alone, which that breaks, so either give the two columns "
             + "different names or teach the check to track the table a statement is against.\n  "
             + string.Join("\n  ", offenders));

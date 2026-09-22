@@ -34,6 +34,24 @@ namespace KhaozEngine.Render3D
         /// <see cref="SunAnchor"/>.</summary>
         public SunAnchor Anchor = SunAnchor.World;
 
+        /// <summary>Where the horizon is. Default <see cref="SkyHorizon.Screen"/>, the historical groundless
+        /// screen-space ramp, so existing scenes are byte-stable. <see cref="SkyHorizon.World"/> anchors the
+        /// gradient to the world horizon and paints <see cref="GroundColor"/> below it, which is what lets the sun
+        /// disc set through the horizon line. It needs a perspective camera and <see cref="SunAnchor.World"/>, and
+        /// falls back to the screen ramp without them. The water's reflected sky follows the same setting.</summary>
+        public SkyHorizon Horizon = SkyHorizon.Screen;
+
+        /// <summary>Colour of the ground band below the world horizon (<see cref="SkyHorizon.World"/> only). Pick
+        /// the colour the far terrain or sea reads as under the current light, so a finite world appears to run on
+        /// to the horizon. It is drawn unlit, so a day/night cycle has to drive it
+        /// (<see cref="SunCyclePalette.GroundColor"/> does). Default a muted grass grey-green.</summary>
+        public Color GroundColor = new(0.30f, 0.34f, 0.28f, 1f);
+
+        /// <summary>How far below the world horizon the sky blends into <see cref="GroundColor"/>, as the sine of
+        /// the elevation angle (<c>0.02</c> is about 1.1 degrees). Small values give a crisp horizon line, larger
+        /// ones a haze band the sun sinks into. Default <c>0.02</c>. <see cref="SkyHorizon.World"/> only.</summary>
+        public float HorizonSoftness = 0.02f;
+
         /// <summary>Gradient colour at the horizon (where the view ray is level). Default a warm pale band.</summary>
         public Color HorizonColor = new(0.62f, 0.70f, 0.80f, 1f);
 
@@ -67,6 +85,16 @@ namespace KhaozEngine.Render3D
         /// the disc points here instead of at the key light. Default <c>null</c> = derive from
         /// <see cref="PixelPostProcessSettings.LightDirection"/> so the sky and lighting agree automatically.</summary>
         public Vector3? SunDirectionOverride = null;
+
+        /// <summary>The most discs one frame draws, the primary included. Further <see cref="ExtraDiscs"/> are
+        /// ignored.</summary>
+        public const int MaxDiscs = 8;
+
+        /// <summary>Celestial discs beyond the primary sun (a moon, a second sun), drawn in list order after it, so
+        /// a later disc goes over an earlier one. Each carries its own direction, colour and shape. Empty by
+        /// default. <see cref="SunCycle.Apply"/> rewrites this list every call (it owns the body that does not hold
+        /// the primary slot), so add your own after it.</summary>
+        public readonly System.Collections.Generic.List<SkyDisc> ExtraDiscs = new();
 
         /// <summary>The direction TO the sun this frame: <see cref="SunDirectionOverride"/> if set (normalized), else
         /// derived from the key-light travel direction (<c>-normalize(lightDirection)</c>). Used by the renderer to

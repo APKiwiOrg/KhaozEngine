@@ -98,6 +98,27 @@ public sealed class ContentPublisher
                 version, baseline, Empty(version), new ContentValidationReport(false, forkFindings), frozen);
         }
 
+        // The carried-id preconditions, also BEFORE the candidate is built. They have to run ahead of step 3
+        // rather than in step 4's sweep: the seeding inside step 3 raises the type's two marks on their own
+        // commits, so a carried id the sweep refused would leave them raised for a version nobody published.
+        // The family read is only paid by a draft that actually carries an id.
+        if (ContentCarriedIdChecks.CarriesAnId(draft.Changes))
+        {
+            IReadOnlyList<ContentFamily> families = await _store
+                .ListFamiliesAsync(default, cancellationToken).ConfigureAwait(false);
+            IReadOnlyList<ContentFinding> carriedFindings =
+                ContentCarriedIdChecks.Check(baseline, draft.Changes, _registry, families);
+            if (carriedFindings.Count > 0)
+            {
+                return Refused(
+                    version,
+                    baseline,
+                    Empty(version),
+                    new ContentValidationReport(false, carriedFindings),
+                    frozen);
+            }
+        }
+
         // STEP 2. Build the candidate by applying the draft's edits to the base version. Nothing walks a row
         // no edit names, which is what makes step 6 cheap.
         (List<ContentCandidateRow> rows, List<ContentPendingRule> pending) =

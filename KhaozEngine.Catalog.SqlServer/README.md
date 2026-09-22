@@ -30,10 +30,12 @@ the store holds no connection between calls.
 
 ## The schema, and its two modes
 
-Fourteen tables: `catalog_metadata`, `catalog_type`, `catalog_version`, `catalog_row`, `catalog_row_field`,
+Fifteen tables: `catalog_metadata`, `catalog_type`, `catalog_version`, `catalog_row`, `catalog_row_field`,
 `catalog_family`, `catalog_family_block`, `catalog_id_high_water`, `catalog_draft`, `catalog_draft_edit`,
-`catalog_draft_edit_field`, `catalog_audit`, `catalog_remap_rule` and `catalog_chunk`, shipped as the embedded
-resource `CatalogSchemaV1.sql`. Every key column is `nvarchar(N) COLLATE Latin1_General_100_BIN2`, because
+`catalog_draft_edit_field`, `catalog_audit`, `catalog_remap_rule`, `catalog_chunk` and
+`catalog_content_upgrade`, shipped as the embedded resource `CatalogSchemaV2.sql`. The first fourteen are
+version 1 and the ledger is what version 2 adds. Every key column is
+`nvarchar(N) COLLATE Latin1_General_100_BIN2`, because
 content keys compare ordinally and never case insensitively, and a SQL Server database default usually is case
 insensitive. Every size cap is a `CHECK`, `LEN` for text and `DATALENGTH` for binary, and every foreign key is
 declared, so a row can never point at a version that does not exist.
@@ -55,7 +57,15 @@ validates it, under an exclusive application lock inside one transaction, so two
 race. `ContentAuthoringSchemaMode.ValidateOnly` refuses an empty or mismatched database rather than creating
 anything, which is what a production host sets so a typo in a connection string cannot silently create a second
 empty catalog and serve it. A mismatch throws `ContentAuthoringException` with reason `schema-mismatch`, naming
-the object and the migration `catalog-v1-initial`.
+the object and the migration `catalog-v2-content-upgrade-ledger`.
+
+Schema version 2 adds `catalog_content_upgrade`, the content upgrade ledger behind `IContentUpgradeLedger`.
+`CatalogSchemaV2.sql` is what a fresh create runs, so a new database is version 2 directly, and
+`CatalogSchemaV1.sql` ships beside it as the operator's record of the shape the migration moves. A version 1
+database opened under `AutoCreate` is migrated behind the same application lock the create takes, in one
+transaction that adds that one table and changes nothing else. Under `ValidateOnly` it is refused instead,
+naming the migration. An applied ledger row is written inside the publish commit, so a duplicate upgrade id
+refuses the whole publish.
 
 `InitializeAsync` also writes the registry's types into `catalog_type`, which pins each type id to its key. A
 rename and a reassignment are both refused, because either one repoints every row already stored under the old
@@ -113,7 +123,7 @@ family membership survives the import.
 ## Permissions
 
 `AutoCreate` needs DDL rights plus `EXECUTE` on `sys.sp_getapplock`. `ValidateOnly` needs only `SELECT` on the
-`sys` catalog views plus the ordinary read and write rights on the fourteen tables, which is what a production
+`sys` catalog views plus the ordinary read and write rights on the fifteen tables, which is what a production
 application login should have.
 
 ## Testing this backend

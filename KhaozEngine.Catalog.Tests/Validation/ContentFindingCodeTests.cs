@@ -136,6 +136,53 @@ public class ContentFindingCodeTests
         Assert.Contains(EngineContentTypes.EquipProfileTypeKey, finding.Message, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// <c>item.category</c> is checked by the same reference pass that checks <c>equip_profile</c>, because
+    /// the pass walks every <c>KeyReference</c> field of every schema rather than a list of known fields.
+    /// A category id no live row answers to is a dangling reference and is refused before the publish.
+    /// </summary>
+    [Fact]
+    public void KEC0006_fires_on_an_item_category_that_is_not_a_live_row()
+    {
+        ContentTypeRegistry registry = EngineRegistry();
+        ContentSnapshot candidate = Snapshot(registry, Item(7, "sword", category: 3));
+
+        ContentValidationReport report = Validate(candidate, registry);
+
+        ContentFinding finding = Single(report, "KEC0006");
+        Assert.Equal(ItemType, finding.Type);
+        Assert.Equal(7, finding.Id);
+        Assert.Contains(ItemContentType.CategoryField, finding.Message, StringComparison.Ordinal);
+        Assert.Contains(EngineContentTypes.ItemCategoryTypeKey, finding.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>A RETIRED category is not a live row either, so pointing an item at one is the same refusal.</summary>
+    [Fact]
+    public void KEC0006_fires_on_an_item_category_that_has_been_retired()
+    {
+        ContentTypeRegistry registry = EngineRegistry();
+        ContentSnapshot candidate = Snapshot(
+            registry, Category(3, "tool", isRetired: true), Item(7, "sword", category: 3));
+
+        ContentValidationReport report = Validate(candidate, registry);
+
+        ContentFinding finding = Single(report, "KEC0006");
+        Assert.Equal(ItemType, finding.Type);
+        Assert.Equal(7, finding.Id);
+    }
+
+    /// <summary>The same item against a LIVE category carries no reference finding at all.</summary>
+    [Fact]
+    public void AnItemPointingAtALiveCategoryRaisesNoReferenceFinding()
+    {
+        ContentTypeRegistry registry = EngineRegistry();
+        ContentSnapshot candidate = Snapshot(registry, Category(3, "tool"), Item(7, "sword", category: 3));
+
+        ContentValidationReport report = Validate(candidate, registry);
+
+        Assert.DoesNotContain(report.Findings, finding => finding.Code is "KEC0006" or "KEC0007");
+    }
+
     [Fact]
     public void KEC0008_fires_on_a_tag_list_naming_a_tag_that_is_not_live()
     {

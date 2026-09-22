@@ -36,7 +36,7 @@ public class InMemoryContentAuthoringStoreTests
         => new(name, ContentFieldValue.OfNumber(ContentFieldKind.Int, value));
 
     [Fact]
-    public async Task AnEmptyStoreReportsSchemaVersionOneAnEpochAndNoActiveVersion()
+    public async Task AnEmptyStoreReportsTheCurrentSchemaVersionAnEpochAndNoActiveVersion()
     {
         InMemoryContentAuthoringStore store = NewStore();
         await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);

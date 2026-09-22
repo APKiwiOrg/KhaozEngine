@@ -37,6 +37,7 @@ namespace KhaozEngine.Terrain
         readonly HashSet<PropClusterKey> _retired = new();
         readonly HashSet<PropClusterKey> _invalidated = new();
         readonly HashSet<(PropClusterKey Key, long Generation)> _loggedFailures = new();
+        readonly List<PropPlacement> _filteredPlacements = new();
         long _hlodBuilt;
         long _hlodBuiltBytes;
         long _hlodUploaded;
@@ -139,27 +140,32 @@ namespace KhaozEngine.Terrain
                 if (!_latestGenerations.TryGetValue(key, out latest) || build.Generation > latest)
                     _latestGenerations[key] = build.Generation;
                 _clusters.TryGetValue(key, out Cluster? old);
+                IReadOnlyList<PropPlacement> filterPlacements = build.PreservesFilterPlacementBatch && old is not null
+                    ? old.FilterPlacements : build.FilterPlacementBatch;
                 if (!build.Succeeded)
                 {
                     if (old is null)
                         _clusters[key] = new Cluster(build.Generation, build.Area, build.Layer,
-                            build.PlacementBatch, handle: null, presentationGeneration: build.Generation);
+                            build.PlacementBatch, filterPlacements, handle: null,
+                            presentationGeneration: build.Generation);
                     else
                         _clusters[key] = new Cluster(old.Generation, build.Area, build.Layer,
-                            build.PlacementBatch, old.Handle, presentationGeneration: build.Generation);
+                            build.PlacementBatch, filterPlacements, old.Handle,
+                            presentationGeneration: build.Generation);
                     return;
                 }
                 if (build.ReusesCurrent)
                 {
                     if (old is not null)
                         _clusters[key] = new Cluster(old.Generation, build.Area, build.Layer,
-                            build.PlacementBatch, old.Handle, presentationGeneration: build.Generation);
+                            build.PlacementBatch, filterPlacements, old.Handle,
+                            presentationGeneration: build.Generation);
                     return;
                 }
 
                 MeshHandle? fresh = build.MergedMesh is { } mesh ? _backend.LoadMesh(mesh) : null;
-                var next = new Cluster(build.Generation, build.Area, build.Layer, build.PlacementBatch, fresh,
-                    build.Generation);
+                var next = new Cluster(build.Generation, build.Area, build.Layer, build.PlacementBatch,
+                    filterPlacements, fresh, build.Generation);
                 _clusters[key] = next;
                 _invalidated.Remove(key);
                 _loggedFailures.Remove((key, build.Generation));
@@ -196,7 +202,10 @@ namespace KhaozEngine.Terrain
         }
 
         /// <summary>Draw every retained cluster using the layer's existing LOD and HLOD rules.</summary>
-        public void Draw(Vector3 focus)
+        public void Draw(Vector3 focus) => Draw(focus, null);
+
+        /// <summary>Draw every retained cluster through an optional layer and kit predicate.</summary>
+        public void Draw(Vector3 focus, PropDrawFilter? drawFilter)
         {
             ThrowIfDisposed();
             lock (_sync)
@@ -204,6 +213,16 @@ namespace KhaozEngine.Terrain
                 foreach (Cluster cluster in _clusters.Values)
                 {
                     PropClusterDrawState state = ResolveDrawState(cluster, focus);
+                    FilterResult filtered = Filter(cluster, drawFilter, _filteredPlacements);
+                    if (filtered == FilterResult.None) continue;
+                    if (filtered == FilterResult.Some)
+                    {
+                        if ((state.DrawsIndividuals && cluster.Placements.Count > 0) || state.DrawsMerged)
+                        {
+                            _backend.DrawProps(_filteredPlacements, cluster.Layer, focus, 0f);
+                        }
+                        continue;
+                    }
                     if (state.DrawsIndividuals)
                         _backend.DrawProps(cluster.Placements, cluster.Layer, focus,
                             state.IndividualDissolveFloor);
@@ -214,7 +233,23 @@ namespace KhaozEngine.Terrain
             }
         }
 
-        /// <summary>Reports the exact representation decisions used by <see cref="Draw"/> for one retained cluster.</summary>
+        static FilterResult Filter(Cluster cluster, PropDrawFilter? filter, List<PropPlacement> visible)
+        {
+            if (filter is null) return FilterResult.All;
+            visible.Clear();
+            bool anyHidden = false;
+            foreach (PropPlacement placement in cluster.FilterPlacements)
+            {
+                if (filter(cluster.Layer.Identity, placement.Id)) visible.Add(placement);
+                else anyHidden = true;
+            }
+            if (visible.Count == 0) return FilterResult.None;
+            return anyHidden ? FilterResult.Some : FilterResult.All;
+        }
+
+        enum FilterResult { None, Some, All }
+
+        /// <summary>Reports the exact representation decisions used by <see cref="Draw(Vector3)"/> for one retained cluster.</summary>
         public bool TryGetDrawState(PropClusterKey key, Vector3 focus, out PropClusterDrawState state)
         {
             ThrowIfDisposed();
@@ -313,10 +348,12 @@ namespace KhaozEngine.Terrain
             public readonly RectArea Area;
             public readonly PropLayer Layer;
             public readonly IReadOnlyList<PropPlacement> Placements;
+            public readonly IReadOnlyList<PropPlacement> FilterPlacements;
             public readonly MeshHandle? Handle;
 
             public Cluster(long generation, RectArea area, PropLayer layer,
-                           IReadOnlyList<PropPlacement> placements, MeshHandle? handle,
+                           IReadOnlyList<PropPlacement> placements,
+                           IReadOnlyList<PropPlacement> filterPlacements, MeshHandle? handle,
                            long presentationGeneration)
             {
                 Generation = generation;
@@ -324,6 +361,7 @@ namespace KhaozEngine.Terrain
                 Area = area;
                 Layer = layer;
                 Placements = placements;
+                FilterPlacements = filterPlacements;
                 Handle = handle;
             }
         }

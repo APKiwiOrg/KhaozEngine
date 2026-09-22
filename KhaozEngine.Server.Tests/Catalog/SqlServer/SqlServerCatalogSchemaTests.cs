@@ -28,14 +28,14 @@ public class SqlServerCatalogSchemaTests
     static ContentTypeRegistry Registry() => CatalogFixtures.Registry(CatalogFixtures.ThingSpec);
 
     [CatalogSqlServerFact]
-    public async Task AutoCreateOnAnEmptyDatabaseCreatesTheSchemaAndReportsVersionOne()
+    public async Task AutoCreateOnAnEmptyDatabaseCreatesTheSchemaAndReportsVersionTwo()
     {
         using var database = new SqlServerCatalogDatabase();
         var store = new SqlServerContentAuthoringStore(database.ConnectionString, Registry());
 
         await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
 
-        Assert.Equal(1, await store.GetSchemaVersionAsync());
+        Assert.Equal(2, await store.GetSchemaVersionAsync());
         Assert.Equal(0, await store.GetActiveVersionAsync());
         Assert.Null(await store.GetPinnedVersionAsync());
 
@@ -45,8 +45,9 @@ public class SqlServerCatalogSchemaTests
         Assert.Equal(32, epoch.Length);
 
         // AutoCreate validates what it created, so this run also pins the expectation lists against the DDL
-        // file they were transcribed from.
-        Assert.Equal(14, database.Scalar(
+        // file they were transcribed from. Fifteen tables: the fourteen of spec 4.3 and the content upgrade
+        // ledger version 2 adds.
+        Assert.Equal(15, database.Scalar(
             """
             SELECT COUNT(*) FROM sys.tables
             WHERE schema_id = SCHEMA_ID(N'dbo') AND name LIKE N'catalog[_]%';
@@ -63,7 +64,7 @@ public class SqlServerCatalogSchemaTests
             () => store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly));
 
         Assert.Equal("schema-mismatch", refused.Reason);
-        Assert.Contains("catalog-v1-initial", refused.Message, StringComparison.Ordinal);
+        Assert.Contains("catalog-v2-content-upgrade-ledger", refused.Message, StringComparison.Ordinal);
         Assert.Contains("missing", refused.Message, StringComparison.Ordinal);
     }
 
@@ -77,7 +78,7 @@ public class SqlServerCatalogSchemaTests
         var store = new SqlServerContentAuthoringStore(database.ConnectionString, Registry());
         await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
 
-        Assert.Equal(1, await store.GetSchemaVersionAsync());
+        Assert.Equal(2, await store.GetSchemaVersionAsync());
     }
 
     [CatalogSqlServerFact]
@@ -102,7 +103,7 @@ public class SqlServerCatalogSchemaTests
 
         Assert.Equal("schema-mismatch", refused.Reason);
         Assert.Contains("catalog_row.ck_catalog_row_retired", refused.Message, StringComparison.Ordinal);
-        Assert.Contains("catalog-v1-initial", refused.Message, StringComparison.Ordinal);
+        Assert.Contains("catalog-v2-content-upgrade-ledger", refused.Message, StringComparison.Ordinal);
     }
 
     [CatalogSqlServerFact]

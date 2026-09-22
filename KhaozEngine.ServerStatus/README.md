@@ -46,17 +46,46 @@ the parse. The game-template Function implements against this exact shape:
   "lastHeartbeatUtc": "2026-07-14T09:41:12Z",
   "lastDeployUtc": "2026-07-14T09:30:00Z",
   "expectedBackUtc": null,
-  "motd": "Double XP weekend is live."
+  "motd": "Double XP weekend is live.",
+  "serverAddress": "4.254.6.139"
 }
 ```
 
 `health` is one of `healthy`, `restarting`, `down`, `unknown`. During a deploy window the endpoint serves
 `"health": "restarting"` with `expectedBackUtc` set to the ETA. Outside a window with a stale heartbeat it
-serves `"health": "down"`. `motd` and `expectedBackUtc` are nullable. Version fields are the games' `x.y.z`
+serves `"health": "down"`. `motd`, `expectedBackUtc` and `serverAddress` are nullable, and an unset one is
+written as a `null` literal rather than dropped from the object. Version fields are the games' `x.y.z`
 scheme (compared numerically, so `0.7.10` is newer than `0.7.9`).
 
 Parse / serialize in code with `ServerStatusReport.TryParse(...)` (never throws, returns null on garbage) and
 `report.ToJson()`.
+
+### `serverAddress`: dialling the address instead of the name
+
+A server hosted on something that releases its public address when it stops (Azure Container Instances does,
+measured: a plain idle stop and wake moved `4.254.6.139` to `4.254.124.204`) hands out a new address on every
+start, while the DNS label's TTL is fixed at 300 seconds. A client that resolved the host name inside that
+window keeps dialling the dead address for up to five minutes. `serverAddress` closes that hole: the
+publisher already talks to the platform to wake the server, so it knows the current address, and the report
+is served over HTTPS from the game's own status endpoint, which is a stronger anchor than the plain DNS
+answer it replaces.
+
+**Who fills it.** The game's own status endpoint, from whatever it already asks the platform for the wake.
+The engine carries the field and nothing else: no ARM dependency, no lookup, no socket. A publisher that
+leaves it null changes nothing for anyone, which is why `schemaVersion` stays `1`.
+
+**How a client reads it.** Never as a raw string. `report.TryGetServerAddress(out IPAddress? address)` and
+`view.ServerAddress` return an address only when the published value is a canonical IP literal that is plain
+unicast. They refuse null, empty, whitespace, a **host name** (refused rather than resolved, since taking the
+resolver out of the path is the whole point), anything carrying a port or brackets, a literal the lenient
+`IPAddress.TryParse` would otherwise stretch into something else (`1`, `0x7f.1`, `1.2.3`, `010.1.1.1`, an
+uncompressed IPv6 form), and the wildcard, broadcast, loopback, multicast and link local forms, including
+their IPv4 mapped IPv6 spellings. Private ranges (`10/8`, `172.16/12`, `192.168/16`, `fc00::/7`) are
+**allowed**, because a game on a private network or a local rig legitimately publishes one. A field a client
+acts on by opening a socket has to refuse by default, or it is a way to point a client anywhere.
+
+**When to dial it.** Only while the evaluated state is `ServerOk`. Fall back to the configured host name
+otherwise, because a retained report keeps answering after the address it named has gone.
 
 ## Client wiring (poller + state)
 
@@ -78,7 +107,8 @@ ServerStatusView view = ServerStatusEvaluator.Evaluate(
 
 switch (view.State)
 {
-    case ServerStatusState.ServerOk:        /* connect / reconnect normally */        break;
+    // view.ServerAddress is the vetted IPAddress the publisher vouches for, or null. Dial it only here.
+    case ServerStatusState.ServerOk:        /* connect to view.ServerAddress ?? configured host name */ break;
     case ServerStatusState.ServerRestarting:/* "back soon" screen, view.ExpectedBackUtc */ break;
     case ServerStatusState.ServerDown:      /* backoff + retry */                     break;
     case ServerStatusState.UpdateRequired:  /* forced-update prompt (below min) */    break;
@@ -118,10 +148,12 @@ foreach (ServerStatusReadoutRow row in rows)
 
 Each row is `(string Key, string Value, object? Raw)`. `Key` is one of the constants in
 `ServerStatusReadoutKeys` (`Health`, `ServerVersion`, `MinClientVersion`, `LatestClientVersion`,
-`ClientVersion`, `LastHeartbeat`, `LastDeploy`, `ExpectedBack`, `Staleness`, `State`, `Motd`, in that order -
-see `ServerStatusReadoutKeys.All`). The row set is stable: a fact with nothing to show (no report ever, or an
-optional field left unset) emits an empty `Value` and a null `Raw` instead of dropping the row, so a page can
-render a fixed layout and just gray out an empty row.
+`ClientVersion`, `LastHeartbeat`, `LastDeploy`, `ExpectedBack`, `Staleness`, `State`, `Motd`, `ServerAddress`,
+in that order - see `ServerStatusReadoutKeys.All`). The row set is stable: a fact with nothing to show (no
+report ever, or an optional field left unset) emits an empty `Value` and a null `Raw` instead of dropping the
+row, so a page can render a fixed layout and just gray out an empty row. The `ServerAddress` row carries the
+vetted address, so a published value the accessor refuses reads as empty rather than putting a string on
+screen that the client is not allowed to act on.
 
 Duration rows (`LastHeartbeat`, `LastDeploy`, `ExpectedBack`, `Staleness`) are preformatted as compact,
 invariant-culture, English strings ("12 s ago", "3 min ago", "2 h ago", "in 5 min") - deliberately not
@@ -130,7 +162,7 @@ game-localized page anyway. A game that wants a fully localized duration formats
 value (a `DateTimeOffset?` or `TimeSpan?`, per key) instead of `Value`.
 
 `Build` takes no clock of its own (`nowUtc` is a parameter) and does no IO, so it is fully deterministic:
-same inputs always produce the same 11 rows in the same order.
+same inputs always produce the same 12 rows in the same order.
 
 ## Server heartbeat wiring
 
@@ -218,7 +250,7 @@ you have built is a server that becomes unreachable.
 ## Pieces
 
 - **`ServerStatusReport`** / **`ServerHealth`** - the tolerant-read wire contract + health enum (`TryParse` /
-  `ToJson`).
+  `ToJson`), including the optional `serverAddress` and its vetting accessor `TryGetServerAddress`.
 - **`IServerStatusSource`** / **`HttpServerStatusSource`** - the fetch seam and its default HTTPS
   implementation (TLS enforced, response size-capped, never throws).
 - **`ServerStatusClient`** / **`ServerStatusSnapshot`** - the never-throwing poller and its degradable

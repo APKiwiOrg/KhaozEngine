@@ -261,5 +261,22 @@ namespace KhaozEngine.Tests.MapEditor
             Assert.Throws<ArgumentNullException>(() =>
                 EditorPicking.Pick(doc, field, Vector3.Zero, -Vector3.UnitY, 1f, null!, out _));
         }
+
+        // ---- kit-keyed placement filter ----------------------------------------------------------------
+
+        [Fact]
+        public void Pick_HiddenPlacementKind_FallsThroughToTerrain_AndAsksOncePerPlacement()
+        {
+            MapDocument doc = Fixture();
+            int asked = 0;
+
+            bool hit = EditorPicking.Pick(doc, FlatField(), new Vector3(10f, 50f, 0f), -Vector3.UnitY, 1000f,
+                HeightOf, out EditorPicking.PickResult result, visible: null,
+                placementKindVisible: kind => { asked++; return kind != "hut"; });
+
+            Assert.True(hit);
+            Assert.Equal(SelectionKind.None, result.Kind);   // the hut is filtered out, the ground under it hits
+            Assert.Equal(doc.Placements.Count, asked);
+        }
     }
 }

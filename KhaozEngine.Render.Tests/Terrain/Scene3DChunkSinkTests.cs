@@ -563,6 +563,8 @@ namespace KhaozEngine.Tests.Terrain
             Assert.Empty(decor.LayerProps[0]);                  // render-only: no individual props
             Assert.NotNull(decor.HlodMeshes![0]);               // but the merged mesh IS baked
             Assert.True(decor.HlodMeshes[0]!.TriangleCount > 0);
+            Assert.Empty(decor.PropClusters![0]!.PlacementBatch);
+            Assert.NotEmpty(decor.PropClusters[0]!.FilterPlacementBatch);
         }
 
         [Fact]

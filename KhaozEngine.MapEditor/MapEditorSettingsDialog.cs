@@ -189,6 +189,12 @@ internal sealed class MapEditorSettingsDialog
                 "clip, ocean extent) above the profile this editor was started with. A change rebuilds the " +
                 "streamed world, so expect a brief hitch. Editor view only, it never changes the document.")));
 
+        _grid.Rows.Add(new HeaderRow(LocalizedText.Raw(MapEditorStrings.Resolve(MapEditorStrings.Navigation))));
+        _grid.Rows.Add(new FloatRow(LocalizedText.Raw(MapEditorStrings.Resolve(MapEditorStrings.FlySpeed)),
+            () => _settings.FlySpeed, v => _settings.FlySpeed = v,
+            min: EditorSettings.MinFlySpeed, max: EditorSettings.MaxFlySpeed, dragScale: 0.1f, decimals: 1,
+            LocalizedText.Raw(MapEditorStrings.Resolve(MapEditorStrings.FlySpeedDescription))));
+
         _grid.Rows.Add(new HeaderRow(LocalizedText.Raw("Sky")));
         _grid.Rows.Add(new ChoiceRow(LocalizedText.Raw("Sky preset"), EnumLabels<EnvironmentPresetKind>(),
             () => _settings.Environment.ToString(),

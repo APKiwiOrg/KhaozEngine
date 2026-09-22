@@ -104,6 +104,11 @@ static class ContentClientEncodeCheck
         }
     }
 
-    static bool IsOmitted(in ContentFieldValue value)
-        => value.IsAbsent || (value.Number == 0 && value.Bytes.Length == 0);
+    /// <summary>
+    /// Omitted means the field went out as the ZERO FORM of its kind, which is what
+    /// <c>ContentSideRowEncoder</c> writes in place of a <c>ServerOnly</c> value, and which the decoder hands
+    /// back absent. The predicate is <see cref="ContentFieldValue.IsZeroForm"/> rather than a copy of it, so
+    /// this check and the tail rule can never come to different conclusions about the same bytes.
+    /// </summary>
+    static bool IsOmitted(in ContentFieldValue value) => value.IsZeroForm;
 }

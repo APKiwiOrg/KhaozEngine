@@ -1,9 +1,10 @@
+using System;
 using KhaozEngine.Catalog.Authoring;
 
 namespace KhaozEngine.Catalog.Sqlite;
 
 /// <summary>
-/// The content authoring schema as SQLite holds it (spec 4.4): the fourteen tables, their indexes and the
+/// The content authoring schema as SQLite holds it (spec 4.4): the fifteen tables, their indexes and the
 /// metadata seed, as one idempotent DDL script, plus the version and migration this build supports.
 /// <para>
 /// This file holds the DDL and the two constants and NOTHING else. Validating a database against it is
@@ -34,10 +35,10 @@ namespace KhaozEngine.Catalog.Sqlite;
 internal static class SqliteCatalogSchema
 {
     /// <summary>The schema version this build writes and the only one it accepts.</summary>
-    internal const int CurrentVersion = 1;
+    internal const int CurrentVersion = 2;
 
     /// <summary>The migration an operator is told to apply when the database does not match.</summary>
-    internal const string RequiredMigration = "catalog-v1-initial";
+    internal const string RequiredMigration = "catalog-v2-content-upgrade-ledger";
 
     /// <summary>
     /// The bootstrap the held connection runs on open. Foreign keys are OFF by default in SQLite, and every
@@ -64,8 +65,14 @@ internal static class SqliteCatalogSchema
     /// a dead publish's leftover that the next baseline read clears. Still schema version 1: nothing has
     /// released this schema yet, so there is no deployed database for a migration to move.
     /// </para>
+    /// <para>
+    /// <b>This constant is every table version 1 declared</b>, unchanged. The ledger table version 2 adds is
+    /// <see cref="UpgradeLedgerTable"/> and the metadata seed is <see cref="MetadataSeed"/>. Keeping the three
+    /// apart is what lets <see cref="VersionOneTables"/> be this script minus one table rather than a second
+    /// transcription of it, and lets the migration be that one table on its own.
+    /// </para>
     /// </summary>
-    internal const string Tables = """
+    internal const string CoreTables = """
         CREATE TABLE IF NOT EXISTS catalog_metadata (
             metadata_key INTEGER NOT NULL PRIMARY KEY CHECK (metadata_key = 1),
             schema_version INTEGER NOT NULL CHECK (schema_version >= 1),
@@ -232,8 +239,64 @@ internal static class SqliteCatalogSchema
             FOREIGN KEY (version_number) REFERENCES catalog_version(version_number),
             FOREIGN KEY (type_id) REFERENCES catalog_type(type_id));
         CREATE INDEX IF NOT EXISTS ix_catalog_chunk_hash ON catalog_chunk(chunk_hash);
+        """;
 
+    /// <summary>
+    /// The ONE table version 2 adds: which content upgrades this catalog holds, how it came to hold each of
+    /// them, and at which version.
+    /// <para>
+    /// <b><c>upgrade_id</c> is the primary key and that is the concurrency guarantee.</b> An applied row is
+    /// inserted inside the publish commit, so two runners applying one upgrade are one published version and
+    /// one refusal rather than two versions of the same edits.
+    /// </para>
+    /// <para>
+    /// The disposition is a CHECK rather than a lookup table, the same way every other enumerated column in
+    /// this schema is, and the index is what makes the boot-time read come back in upgrade order without a
+    /// sort.
+    /// </para>
+    /// </summary>
+    internal const string UpgradeLedgerTable = """
+        CREATE TABLE IF NOT EXISTS catalog_content_upgrade (
+            upgrade_id TEXT COLLATE BINARY NOT NULL PRIMARY KEY CHECK (length(upgrade_id) BETWEEN 1 AND 128),
+            upgrade_order INTEGER NOT NULL CHECK (upgrade_order >= 1),
+            disposition TEXT COLLATE BINARY NOT NULL CHECK (disposition IN ('applied', 'adopted', 'baseline')),
+            version_number INTEGER NOT NULL CHECK (version_number >= 0),
+            actor TEXT COLLATE BINARY NOT NULL CHECK (length(actor) BETWEEN 1 AND 128),
+            operator TEXT COLLATE BINARY NOT NULL DEFAULT '' CHECK (length(operator) <= 128),
+            recorded_at_utc INTEGER NOT NULL);
+        CREATE INDEX IF NOT EXISTS ix_catalog_content_upgrade_order
+            ON catalog_content_upgrade(upgrade_order, upgrade_id);
+        """;
+
+    /// <summary>
+    /// The metadata row a fresh create seeds, at the version this build writes. It is ignored rather than
+    /// replaced, so a create that runs twice leaves the epoch of the first one alone.
+    /// </summary>
+    internal const string MetadataSeed = """
         INSERT OR IGNORE INTO catalog_metadata(metadata_key, schema_version, store_epoch, active_version, pinned_version, updated_at_utc)
-        VALUES (1, 1, lower(hex(randomblob(16))), 0, NULL, CAST(strftime('%s', 'now') AS INTEGER) * 1000);
+        VALUES (1, 2, lower(hex(randomblob(16))), 0, NULL, CAST(strftime('%s', 'now') AS INTEGER) * 1000);
+        """;
+
+    /// <summary>The whole schema at the current version, which a fresh create runs as one script.</summary>
+    internal const string Tables = CoreTables + "\n" + UpgradeLedgerTable + "\n" + MetadataSeed;
+
+    /// <summary>
+    /// The schema exactly as version 1 declared it, which is what a version 1 database is validated against
+    /// BEFORE it is migrated. It is derived rather than transcribed, so the two can never drift: a database
+    /// this build refuses to migrate is one that does not match the shape version 1 really created.
+    /// </summary>
+    internal static string VersionOneTables { get; } =
+        CoreTables + "\n" + MetadataSeed.Replace("VALUES (1, 2,", "VALUES (1, 1,", StringComparison.Ordinal);
+
+    /// <summary>
+    /// The migration from version 1 to version 2, which a held connection runs in ONE transaction: the one
+    /// new table, its index, and the metadata row moved to 2. Nothing else is touched, so every row, the
+    /// history, the audit, the open draft, the pin and the store epoch all survive it unchanged.
+    /// </summary>
+    internal const string MigrateToVersionTwo = UpgradeLedgerTable + "\n" + """
+        UPDATE catalog_metadata
+        SET schema_version = 2,
+            updated_at_utc = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+        WHERE metadata_key = 1 AND schema_version = 1;
         """;
 }

@@ -9,7 +9,7 @@ using Microsoft.Data.Sqlite;
 namespace KhaozEngine.Catalog.Sqlite;
 
 /// <summary>
-/// The SQLite <see cref="IContentAuthoringStore"/> (spec 4.1 to 4.4): the fourteen catalog tables behind one
+/// The SQLite <see cref="IContentAuthoringStore"/> (spec 4.1 to 4.4): the fifteen catalog tables behind one
 /// held connection, with a versioned schema that either auto-creates or validates.
 /// <para>
 /// <b>It sits on <see cref="SqliteStoreConnection"/> and that is not optional.</b> One held connection, one

@@ -41,7 +41,8 @@ public partial class MapEditorScene
         bool ctrl = s.IsCommandDown;
         if (!ctrl)
         {
-            if (s.WasPressed(Key.R)) SnapSelectedPlacementToGround();
+            if (!shift && s.WasPressed(Key.F)) FocusSelection();
+            else if (s.WasPressed(Key.R)) SnapSelectedPlacementToGround();
             else HandleBookmarkChord(s, shift);   // bare / Shift+1..9 (decision 9)
             return;
         }

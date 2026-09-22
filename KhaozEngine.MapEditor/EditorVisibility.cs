@@ -32,8 +32,8 @@ public enum VisibilityGroup
 /// scatter layers stream, and which individual elements are hidden. It is view-only, NOT part of the
 /// <see cref="MapDoc.MapDocument"/> and never saved, so hiding a thing never mutates the document (it stays in the
 /// outline). The draw and pick paths consult <see cref="IsElementVisible"/> (group gate AND per-element hide), the
-/// water draw consults <see cref="GetGroup"/> with <see cref="VisibilityGroup.Water"/>, and the streamed-world
-/// rebuild consults <see cref="GetLayer"/>. Plain and headless: every default is "visible", so an untouched
+/// water draw consults <see cref="GetGroup"/> with <see cref="VisibilityGroup.Water"/>, and retained prop
+/// submission consults <see cref="GetLayer"/>. Plain and headless: every default is "visible", so an untouched
 /// instance shows everything.</summary>
 public sealed class EditorVisibility
 {
@@ -41,34 +41,67 @@ public sealed class EditorVisibility
     // absent element is not hidden. So a fresh instance shows everything without pre-populating any collection.
     readonly Dictionary<VisibilityGroup, bool> _groups = new();
     readonly Dictionary<string, bool> _layers = new(StringComparer.Ordinal);
+    readonly Dictionary<EditorPropCategory, bool> _categories = new();
     readonly HashSet<(SelectionKind Kind, string Id)> _hidden = new();
 
+    /// <summary>Whether the viewport temporarily shows terrain alone. This masks every non-terrain choice without
+    /// changing it, so clearing the override restores the underlying category, group, layer, and element state.</summary>
+    public bool TerrainOnly { get; set; }
+
     /// <summary>Whether <paramref name="group"/> is visible (the default for a group never toggled).</summary>
-    public bool GetGroup(VisibilityGroup group) => !_groups.TryGetValue(group, out bool visible) || visible;
+    public bool GetGroup(VisibilityGroup group) => !TerrainOnly && GetGroupChoice(group);
 
     /// <summary>Sets whether <paramref name="group"/> is visible.</summary>
     public void SetGroup(VisibilityGroup group, bool visible) => _groups[group] = visible;
 
-    /// <summary>Whether the scatter layer named <paramref name="name"/> is visible (streamed). An unknown or
-    /// never-toggled layer defaults to visible. The streamed-world rebuild skips a hidden layer's prop layers.</summary>
+    internal bool GetGroupChoice(VisibilityGroup group) =>
+        !_groups.TryGetValue(group, out bool visible) || visible;
+
+    /// <summary>Whether an explicitly classified prop category is effectively visible.</summary>
+    public bool GetCategory(EditorPropCategory category) => !TerrainOnly && GetCategoryChoice(category);
+
+    /// <summary>Sets the underlying visibility choice for an explicitly classified prop category.</summary>
+    public void SetCategory(EditorPropCategory category, bool visible) => _categories[category] = visible;
+
+    internal bool GetCategoryChoice(EditorPropCategory category) =>
+        !_categories.TryGetValue(category, out bool visible) || visible;
+
+    /// <summary>Whether the scatter layer named <paramref name="name"/> is effectively visible at draw time. An
+    /// unknown or never-toggled layer defaults to visible.</summary>
     public bool GetLayer(string name)
     {
         ArgumentNullException.ThrowIfNull(name);
-        return !_layers.TryGetValue(name, out bool visible) || visible;
+        return !TerrainOnly && GetLayerChoice(name);
     }
 
-    /// <summary>Sets whether the scatter layer named <paramref name="name"/> is visible (streamed).</summary>
+    /// <summary>Sets whether the scatter layer named <paramref name="name"/> is visible at draw time.</summary>
     public void SetLayer(string name, bool visible)
     {
         ArgumentNullException.ThrowIfNull(name);
         _layers[name] = visible;
     }
 
+    internal bool GetLayerChoice(string name)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        return !_layers.TryGetValue(name, out bool visible) || visible;
+    }
+
+    /// <summary>Shows every category, group, layer, and element and exits terrain-only mode.</summary>
+    public void ShowAll()
+    {
+        TerrainOnly = false;
+        _groups.Clear();
+        _layers.Clear();
+        _categories.Clear();
+        _hidden.Clear();
+    }
+
     /// <summary>Moves the visibility override for a renamed scatter layer from <paramref name="from"/> to
     /// <paramref name="to"/>, so a hidden layer stays hidden across a rename (the layer keys visibility by name).
     /// A no-op when the layer had no explicit override (it defaulted to visible under either name, so nothing to
     /// carry) or when the names match. The editor calls this alongside a <see cref="RenameScatterLayerCommand"/>
-    /// so the Layers visibility panel and the streamed-world filter both follow the rename. Undo/redo of the
+    /// so the Layers visibility panel and retained draw filter both follow the rename. Undo/redo of the
     /// rename does NOT re-follow the override (the same v1 residual as the reorder-hide remap), since visibility
     /// is view-only and never part of the reversible document.</summary>
     public void RenameLayer(string from, string to)
@@ -100,6 +133,7 @@ public sealed class EditorVisibility
     /// pick paths call this so a hidden element is neither drawn nor selectable from the viewport.</summary>
     public bool IsElementVisible(SelectionKind kind, string id)
     {
+        if (TerrainOnly && kind is not SelectionKind.Terrain) return false;
         if (TryGroupFor(kind, out VisibilityGroup group) && !GetGroup(group)) return false;
         return !IsElementHidden(kind, id);
     }

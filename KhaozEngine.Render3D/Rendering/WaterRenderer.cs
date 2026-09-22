@@ -22,7 +22,7 @@ namespace KhaozEngine.Render3D.Rendering
     internal sealed partial class WaterRenderer : IDisposable, IFramePreparer
     {
         /// <summary>Packed water-plane UBO matching the <c>Water</c> block in <see cref="ShaderSources.WaterFrag"/>
-        /// (2 mat4 + 34 vec4; every member 16-byte aligned, so std140 needs no extra padding).</summary>
+        /// (2 mat4 + 34 vec4 + three vec4[8] disc arrays; every member 16-byte aligned, so std140 needs no extra padding).</summary>
         [StructLayout(LayoutKind.Sequential)]
         public struct WaterUbo
         {
@@ -39,9 +39,8 @@ namespace KhaozEngine.Render3D.Rendering
             public Vector4 DetailParams;  // x=warpStrength, y=detailFadeDistance, z=distantDetailScale, w=shallowDepth
             public Vector4 SkyHorizon;    // rgb, the reflected sky's horizon colour
             public Vector4 SkyZenith;     // rgb, the reflected sky's zenith colour
-            public Vector4 SkySunColor;   // rgb, the reflected sun disc + halo colour
-            public Vector4 SkyParams;     // x=sunEnabled, y=sunRadius, z=haloStrength, w=haloFalloff
-            public Vector4 ReflectGlint;  // x=skyReflStrength, y=skyReflSunStrength * sun opacity, z=glintRoughness, w=glintDistantRoughness
+            public Vector4 SkyParams;     // x = reflected disc count, yzw unused
+            public Vector4 ReflectGlint;  // x=skyReflStrength, y=skyReflSunStrength, z=glintRoughness, w=glintDistantRoughness
             public Vector4 SwellParams;   // x=amplitude, y=wavelength, z=directionRadians, w=spreadRadians
             public Vector4 SwellShape;    // x=steepness, y=speedScale, z=componentCount, w=seed
             public Vector4 Absorption;    // rgb = per-metre coefficients (all-zero = legacy blend), w unused
@@ -62,11 +61,15 @@ namespace KhaozEngine.Render3D.Rendering
             public Vector4 SurfParams;        // x = surf strength, y = break depth (m), z = band width, w = crest bias
             public Vector4 SurfShape;         // x = trail width, y = amplitude collapse, z = plane surface Y, w = bathymetry texel metres
             public Vector4 RenderOrigin;      // xyz = the render origin the plane, the grid and the eye were reduced by
+            public Vector4 SkyGround;         // rgb = the reflected sky's ground band, a = blend depth (negative = no ground)
+            public SkyDiscVec4s SkyDiscColor; // per reflected disc: rgb colour, a = opacity
+            public SkyDiscVec4s SkyDiscDir;   // xyz = unit direction TO the body, w = radius
+            public SkyDiscVec4s SkyDiscHalo;  // x = halo strength, y = halo falloff
         }
 
         /// <summary>Byte size of <see cref="WaterUbo"/>, i.e. how much each slot actually uploads.
-        /// 2*64 (mat4) + 34*16 (vec4) = 672.</summary>
-        internal const uint PayloadBytes = 672;
+        /// 2*64 (mat4) + (34 + 3*8)*16 (vec4) = 1056.</summary>
+        internal const uint PayloadBytes = 1056;
 
         /// <summary>
         /// Per-plane stride in the shared UBO AND the size of the bound range. Each plane's params occupy their OWN
@@ -87,7 +90,7 @@ namespace KhaozEngine.Render3D.Rendering
         /// the raw payload size. UboLayoutTests guards it.
         /// </para>
         /// </summary>
-        internal const uint SlotBytes = 768;   // Align256(672)
+        internal const uint SlotBytes = 1280;   // Align256(1056)
 
         readonly IGpuDevice _gd;
         readonly IGpuShaderSet _shaders;
@@ -356,7 +359,12 @@ namespace KhaozEngine.Render3D.Rendering
             Vector4 lightCol = lightColor;
             Vector4 skyHorizon = sky.HorizonColor;
             Vector4 skyZenith = sky.ZenithColor;
-            Vector4 skySun = sky.SunColor;
+            // Every disc the sky draws, each along its OWN direction: the sea reflects the sky the camera sees.
+            int discCount = SkyDiscs.PackForWater(sky, lightDirection,
+                out SkyDiscVec4s discColor, out SkyDiscVec4s discDir, out SkyDiscVec4s discHalo);
+            // The sea reflects the sky the camera sees, ground band included, or a sun that has set would still
+            // show whole in the water.
+            SkyGround ground = SkyHorizonMath.ResolveGround(sky, rawViewProj);
             Vector4 absorption = settings.AbsorptionPerMetre;
             Vector4 foam = settings.FoamColor;
             // The sampling-frame group. Read whether or not the ocean is live: the shader gates every one of them
@@ -386,12 +394,8 @@ namespace KhaozEngine.Render3D.Rendering
                     settings.DistantDetailScale, settings.ShallowDepth),
                 SkyHorizon = skyHorizon,
                 SkyZenith = skyZenith,
-                SkySunColor = skySun,
-                SkyParams = new Vector4(sky.SunEnabled ? 1f : 0f, sky.SunRadius, sky.HaloStrength, sky.HaloFalloff),
-                // The reflected disc fades with the sky's own (SunColor alpha), so the sea never reflects a sun the sky
-                // has already dissolved.
-                ReflectGlint = new Vector4(settings.SkyReflectionStrength,
-                    settings.SkyReflectionSunStrength * Math.Clamp(sky.SunColor.A, 0f, 1f),
+                SkyParams = new Vector4(discCount, 0f, 0f, 0f),
+                ReflectGlint = new Vector4(settings.SkyReflectionStrength, settings.SkyReflectionSunStrength,
                     settings.GlintRoughness, settings.GlintDistantRoughness),
                 SwellParams = new Vector4(settings.SwellAmplitude, settings.SwellWavelength,
                     GerstnerWaves.DegreesToRadians(settings.SwellDirectionDegrees),
@@ -432,6 +436,10 @@ namespace KhaozEngine.Render3D.Rendering
                 // patterns (the swell phase, the ocean sampling frame, the ripple and foam lattices, the onshore
                 // focus point) add it back so they stay pinned to the world across an origin step.
                 RenderOrigin = new Vector4(renderOrigin, 0f),
+                SkyGround = ground.Live ? new Vector4(ground.Color, ground.Softness) : new Vector4(0f, 0f, 0f, -1f),
+                SkyDiscColor = discColor,
+                SkyDiscDir = discDir,
+                SkyDiscHalo = discHalo,
             };
         }
 

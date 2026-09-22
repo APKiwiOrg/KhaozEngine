@@ -166,6 +166,9 @@ Windowing + input foundation for the custom MonoGame-free stack.
   `WasReleased(MouseButton)` / `MouseReleased` (since 14.25.0) give the mouse the release edge the keyboard
   already had. `WithoutScroll()` returns the same snapshot with only `ScrollDelta` cleared, sharing every input
   collection and preserving every other value. It reuses the original snapshot when scroll is already zero.
+- `InputManager.SuppressPointerInput()` gives an owning surface a frame-level pointer arbitration boundary after
+  `Update`. It clears mouse buttons and wheel input for that frame, quarantines held buttons until their physical
+  release, and keeps keyboard, gamepad, pointer position, and hover available.
 - `InputAccumulator` (since 14.25.0) - the raw-event to snapshot state machine, split out of `AppWindow` so it is
   headless-testable. It owns the held/pressed/released sets and turns OS callbacks (`OnKeyDown`, `OnMouseUp`,
   `OnScroll`, `OnFocusChanged`, ...) into one immutable `InputState` per `Snapshot(...)` call, with the platform

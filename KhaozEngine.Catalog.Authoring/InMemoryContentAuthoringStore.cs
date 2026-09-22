@@ -27,8 +27,11 @@ namespace KhaozEngine.Catalog.Authoring;
 /// </summary>
 public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringStore, IContentIdPersistence
 {
-    /// <summary>The schema version this store reports, matching the providers' first migration.</summary>
-    public const int SchemaVersion = 1;
+    /// <summary>
+    /// The schema version this store reports, matching the version the providers carry: 2, which is the
+    /// content upgrade ledger this store holds as a dictionary and they hold as a table.
+    /// </summary>
+    public const int SchemaVersion = 2;
 
     /// <summary>The cap a page read is clamped to, which the seam leaves to the implementation.</summary>
     public const int MaxPageSize = 500;

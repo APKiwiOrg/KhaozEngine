@@ -18,12 +18,21 @@ namespace KhaozEngine.Catalog;
 /// provider lays the same tree out under an HTTP base address, so one tree serves both.
 /// </para>
 /// <para>
-/// Writes go to <c>&lt;hash&gt;.tmp</c> in the same shard directory and then
+/// Writes go to a UNIQUELY NAMED temporary in the same shard directory and then
 /// <c>File.Move(temp, final, overwrite: true)</c>, the map document's idiom. <c>overwrite: true</c> is
 /// correct here PRECISELY because the name is the content: rewriting a hash with its own bytes is a no-op by
 /// definition. An <c>fsync</c> before the move happens only under
 /// <see cref="PackDurability.PowerFail"/>, because a pack file lost to a power cut is refetchable from its
 /// hash and a lost world file is not.
+/// </para>
+/// <para>
+/// <b>The temporary's name carries a random token rather than being the destination plus an extension</b>,
+/// because two publishers writing ONE pack root write the same chunk hashes: the same-named temporary makes
+/// the second writer's open fail, or its move find nothing where the first writer's move already took the
+/// file. A per-write name makes concurrent puts of one hash two independent writes that both land on the
+/// same correct bytes, which is what a content-addressed store is entitled to promise. The price is that a
+/// crashed write leaves a uniquely named orphan rather than one the next write overwrites, so a successful
+/// move deletes the temporaries of its OWN destination that are over an hour old.
 /// </para>
 /// <para>
 /// <b>The version pointer lives OUTSIDE the shard tree</b>, under <c>versions/</c>, because a shard name is
@@ -43,6 +52,13 @@ public sealed class FileSystemPackStore : IPackStore, IPackStorePruning, IConten
 
     const string TemporaryExtension = ".tmp";
     const int HashCharacters = 64;
+
+    /// <summary>
+    /// How old a sibling temporary has to be before a successful write of the same destination deletes it.
+    /// An hour is far longer than any single chunk write and far shorter than forever, which is how long a
+    /// crashed write's uniquely named orphan would otherwise sit there.
+    /// </summary>
+    static readonly TimeSpan StaleTemporaryAge = TimeSpan.FromHours(1);
 
     /// <summary>Creates the store, creating the root directory when it is not there yet.</summary>
     /// <param name="root">The directory the shard tree and the version pointers live under.</param>
@@ -358,7 +374,11 @@ public sealed class FileSystemPackStore : IPackStore, IPackStorePruning, IConten
 
     async Task WriteThenMoveAsync(string path, ReadOnlyMemory<byte> bytes, CancellationToken cancellationToken)
     {
-        string temporary = path + TemporaryExtension;
+        // Per WRITE rather than per destination, so two publishers filing one hash into one root do not
+        // collide on the temporary. The name ends in the temporary extension and is never a content address,
+        // so the orphan walk skips it.
+        string temporary = FormattableString.Invariant(
+            $"{path}.{Guid.NewGuid():n}{TemporaryExtension}");
         try
         {
             await using (var stream = new FileStream(
@@ -377,6 +397,67 @@ public sealed class FileSystemPackStore : IPackStore, IPackStorePruning, IConten
         {
             TryDeleteTemporary(temporary);
             throw;
+        }
+
+        SweepStaleTemporaries(path);
+    }
+
+    /// <summary>
+    /// Deletes the temporaries of THIS destination that a crashed write left behind. A per-write name is
+    /// what stops two publishers colliding, and the price of it is that a killed process leaves a uniquely
+    /// named orphan where an overwrite used to take care of itself.
+    /// <para>
+    /// <b>Only ones older than an hour, and only after a successful move.</b> A temporary a second writer
+    /// has open right now is seconds or minutes old, and deleting one would break a write that was going to
+    /// succeed. Every error here is ignored: a leftover temporary is never read, because a reader only ever
+    /// asks for a content address, so failing a completed write over one would be the worse answer.
+    /// </para>
+    /// <para>
+    /// <b>The errors are ignored ONE FILE at a time.</b> A shared pack root can hold an orphan this process
+    /// is not allowed to delete, and a sweep that abandoned the rest of the listing at the first of them
+    /// would never catch up with the ones it can delete.
+    /// </para>
+    /// </summary>
+    /// <param name="path">The destination whose siblings are swept.</param>
+    static void SweepStaleTemporaries(string path)
+    {
+        string? directory = Path.GetDirectoryName(path);
+        if (directory is null)
+        {
+            return;
+        }
+
+        string[] siblings;
+        try
+        {
+            siblings = Directory.GetFiles(
+                directory, Path.GetFileName(path) + ".*" + TemporaryExtension);
+        }
+        catch (IOException)
+        {
+            return;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return;
+        }
+
+        DateTime before = DateTime.UtcNow - StaleTemporaryAge;
+        for (int i = 0; i < siblings.Length; i++)
+        {
+            try
+            {
+                if (File.GetLastWriteTimeUtc(siblings[i]) < before)
+                {
+                    File.Delete(siblings[i]);
+                }
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
         }
     }
 

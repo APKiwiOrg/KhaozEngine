@@ -75,12 +75,6 @@ internal sealed class CapturedComponents
     /// <summary>The captured component type ids, in capture (registration) order.</summary>
     public Dictionary<ushort, Segment>.KeyCollection TypeIds => segments.Keys;
 
-    /// <summary>The shared buffer these segments index (for a filtered owner-scope view over the same bytes).</summary>
-    internal CaptureBuffer Buffer => buffer;
-
-    /// <summary>The raw type-id to segment map (for owner-scope filtering that copies segments verbatim).</summary>
-    internal Dictionary<ushort, Segment> Segments => segments;
-
     /// <summary>Records that component <paramref name="typeId"/> occupies <paramref name="length"/> bytes at
     /// <paramref name="offset"/> in the shared buffer.</summary>
     internal void Add(ushort typeId, int offset, int length) => segments[typeId] = new Segment(offset, length);

@@ -9,10 +9,10 @@ namespace KhaozEngine.Catalog;
 /// The version numbers an AUTHORING database holds, which is the second and third arm of boot step 2's
 /// precedence (spec 10.7): the pinned version when it is not null, otherwise the active version.
 /// <para>
-/// <b>It is optional, and that is the deployment this design recommends.</b> A version pinned in the SERVER'S
-/// OWN CONFIG wins always, so a server configured with a pin and a pack store needs no authoring database at
-/// boot at all: the authoring database is a TOOLING dependency. This interface is what a server that does read
-/// one implements, and <c>IContentAuthoringStore</c> INHERITS it, so a host that boots off its authoring
+/// <b>It is optional.</b> A version pinned in the SERVER'S OWN CONFIG wins always, so a server configured with a
+/// pin reads no version NUMBER from an authoring database. Whether it reads the version RECORD is a separate
+/// choice, <see cref="ContentBootOptions.VersionHashes"/>, which buys the stale pointer check for one read at
+/// boot. This interface is what a server that does read version numbers implements, and <c>IContentAuthoringStore</c> INHERITS it, so a host that boots off its authoring
 /// database hands the boot the store itself rather than an adapter of its own
 /// (https://github.com/APKiwiOrg/KhaozEngine/issues/1015).
 /// </para>
@@ -129,7 +129,8 @@ public sealed class ContentBootOptions
 
     /// <summary>
     /// The version pinned in the SERVER'S OWN CONFIG, which wins always. With one set, a boot needs no
-    /// <see cref="Directory"/> at all.
+    /// <see cref="Directory"/> to find its version number, and it still reads <see cref="VersionHashes"/> when
+    /// that is set.
     /// </summary>
     public int? ConfiguredVersion { get; init; }
 

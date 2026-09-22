@@ -104,9 +104,12 @@ public static class ContentBoot
     /// <summary>
     /// Step 2's precedence, one order and no other (spec 10.7): a version pinned in the SERVER'S OWN CONFIG
     /// wins always, otherwise the authoring database's pinned version when it is not null, otherwise its
-    /// active version. A server configured with a pin and a pack store therefore reads no authoring database
-    /// at boot at all, which is the deployment this design recommends: the authoring database is a TOOLING
-    /// dependency.
+    /// active version. A server configured with a pin reads no version NUMBER from an authoring database. It
+    /// still reads that version's RECORD once at step 3 when the boot has a hash source
+    /// (<see cref="ContentBootOptions.VersionHashes"/>, or a <see cref="ContentBootOptions.Directory"/> that is
+    /// an <see cref="IContentVersionHashSource"/>), because the pin says which number to load and only the
+    /// record says which manifest that number means. With a pin, a pack store and no hash source the boot
+    /// reads no authoring database at all and the pointer is taken on trust.
     /// <para>
     /// This is the version <see cref="RunAsync"/> will LOAD out of these same options, and 0 is the answer
     /// when nothing named one, which is step 2's refusal. It is public because a caller that PREPARES the

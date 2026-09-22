@@ -55,7 +55,10 @@ public sealed record ContentRowRevision(
 /// declared. A host that boots off its authoring database assigns the store itself to
 /// <c>ContentBootOptions.Directory</c> and writes no adapter, and the two members have ONE home rather than
 /// the two that drifted apart. It is the boot's <see cref="IContentVersionHashSource"/> too, answered here
-/// out of <see cref="GetVersionAsync"/>, so the boot's stale-pointer check costs no backend a member.
+/// out of <see cref="GetVersionAsync"/>, so the boot's stale-pointer check costs no backend a member. That
+/// reaches the boot only when the boot is handed this object: a host that hands it a WRAPPER of its own
+/// implementing <see cref="IContentVersionDirectory"/> alone sets <c>ContentBootOptions.VersionHashes</c> to
+/// the store, or the check is skipped.
 /// </para>
 /// <para>
 /// Every member is asynchronous because both backends are, and every member takes a cancellation token so a

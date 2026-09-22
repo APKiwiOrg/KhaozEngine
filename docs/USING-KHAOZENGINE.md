@@ -15194,11 +15194,19 @@ Step 3 checks the `versions/<n>` POINTER before it fetches anything, because the
 a content-addressed store that is not named by its own hash. A catalog replaced at the same version number,
 with the old pack root still on disk, passes every later check: the old manifest digests to its own name,
 declares the right number, decodes, and every chunk verifies, while the connect door advertises the new row's
-client hash over the old rows. When `Directory` is an `IContentVersionHashSource`, which every
-`IContentAuthoringStore` is out of its own version record, both halves of the pointer are compared ordinally
-with that record and a disagreement refuses as `PackPointerMismatch` naming the version, the store, the side
-and both hashes, which is the operator's cue to rebuild the root. A directory carrying version numbers and no
-record, or a boot handed no directory at all, has no fact to compare against and skips the check.
+client hash over the old rows. The boot compares both halves of the pointer ordinally with the version record
+and a disagreement refuses as `PackPointerMismatch` naming the version, the store, the side and both hashes,
+which is the operator's cue to rebuild the root.
+
+The record comes from `VersionHashes` when it is set, otherwise from `Directory` only when that object is
+itself an `IContentVersionHashSource`, which every `IContentAuthoringStore` is out of its own version record.
+**A host that hands the boot a WRAPPER around its store skips the check.** A type of its own that implements
+`IContentVersionDirectory` and forwards the two number reads is not a hash source, so set `VersionHashes` to
+the store, or make the wrapper forward `IContentVersionHashSource` as well. `VersionHashes` is read under a
+config pin too, so a pinned server that sets it reads that one version record at boot. A source with no
+record of the version, or no source at all, has no fact to compare against and skips the check.
+`boot.PackPointerCrossChecked` is true only when the comparison ran and agreed, which is what a host's wiring
+test asserts, because a boot that skipped the check succeeds just the same.
 
 ```csharp
 var holder = new ContentRuntimeHolder();
@@ -15210,6 +15218,8 @@ ContentBootResult boot = await ContentBoot.RunAsync(
         Holder = holder,
         ServerBuild = buildOrdinal,                 // required: a default of 0 refuses every pack with a minimum
         ConfiguredVersion = config.ContentVersion,  // config wins over the operator's pin, always
+        Directory = catalogDatabase,                // a wrapper of the host's own around its authoring store
+        VersionHashes = authoringStore,             // so step 3 still checks the pointer against the record
         WorldKeys = world.ContentKeys,
     },
     ct);

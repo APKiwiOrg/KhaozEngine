@@ -665,8 +665,9 @@ loads before the world and both load before the door opens.
 
 1. **Step 2, the version, from exactly one place.** A version pinned in the SERVER'S OWN CONFIG wins always,
    otherwise the authoring database's pinned version when it is not null, otherwise its active version. A
-   server with a config pin and a pack store reads no authoring database at boot at all, which is the
-   deployment this design recommends: the authoring database is a TOOLING dependency.
+   server with a config pin reads no version NUMBER from an authoring database. It still reads that
+   version's record once at step 3 when it has a hash source (below), and with a pin, a pack store and no
+   hash source it reads no authoring database at boot at all.
    `ContentBoot.ResolveVersionAsync(options)` is that one precedence as a public member, answering 0 when
    nothing names a version, so a caller that prepares the pack store first (a `ContentPackRebuild` after a
    pack root did not outlive its process) prepares the version this boot will read rather than guessing at
@@ -682,8 +683,16 @@ loads before the world and both load before the door opens.
    declares the right number, decodes, and every chunk verifies, while the connect door advertises the new
    row's client hash over the old rows. Both halves of the pointer are compared ordinally with the version
    record's two manifest hashes and a disagreement is `PackPointerMismatch`, naming the version, the store,
-   the side and both hashes, so the operator rebuilds the root rather than hunting a lost file. A directory
-   that carries version numbers and no record has no fact to compare against and skips the check.
+   the side and both hashes, so the operator rebuilds the root rather than hunting a lost file.
+
+   The record comes from `ContentBootOptions.VersionHashes` when it is set, otherwise from `Directory` only
+   when that object is itself an `IContentVersionHashSource`. **A host that hands the boot a WRAPPER around
+   its store skips the check**: a type of its own that implements `IContentVersionDirectory` and forwards the
+   two number reads is not a hash source, so the boot has no record to compare with. Set `VersionHashes` to
+   the store, or make the wrapper forward `IContentVersionHashSource` too. `ContentBootResult`'s
+   `PackPointerCrossChecked` is true only when the comparison ran and agreed, so a wiring test asserts it
+   rather than trusting a successful boot, which a skipped check also produces. A source holding no record of
+   the version, or no source at all, has no fact to compare against and the boot runs as it did before.
 3. **Steps 4 and 5**, a pack generation this build cannot read and a server build the pack will not be
    served by.
 4. **Step 6, both type lists, before a single chunk is fetched**, then `Freeze()` on the registry. A
@@ -696,20 +705,22 @@ loads before the world and both load before the door opens.
 
 - `ContentBootOptions` - everything the boot needs, handed in rather than reached for, so it reads no
   ambient static, no environment variable and no file of its own: the registry, the store, the holder, this
-  build's server build number, the optional config pin, the optional `IContentVersionDirectory` and
-  `IContentVersionPointerSource`, and the world's content keys.
+  build's server build number, the optional config pin, the optional `IContentVersionDirectory`,
+  `IContentVersionHashSource` (`VersionHashes`) and `IContentVersionPointerSource`, and the world's content
+  keys.
 - `IContentVersionDirectory` - the authoring database's pinned and active version reads, which is the only
   thing the boot REQUIRES of one. `KhaozEngine.Catalog.Authoring`'s `IContentAuthoringStore` inherits it, so
   a host that boots off its authoring database sets `Directory` to the store itself and writes no adapter.
   `IContentVersionHashSource` is the optional half beside it, the version record's two manifest hashes as
   `ContentVersionHashes`, which the store answers out of `GetVersionAsync` and no backend implements a member
-  for. `IContentVersionPointerSource` - the READ half of the version pointer, which `FileSystemPackStore`
+  for. A host that boots off a wrapper sets `VersionHashes` to the store. `IContentVersionPointerSource` - the
+  READ half of the version pointer, which `FileSystemPackStore`
   implements and a store that does not is handed separately.
 - `ContentWorldKeyReference` - one place a world document names content, as `(source, type key, content
   key)`. The world document never carries a content ID, because ids are allocated by the authoring store and
   a world file naming id 17 breaks the moment a content database is rebuilt from a bundle.
 - `ContentBootResult` and `ContentBootRefusal` - the published runtime, or which row stopped the boot, the
-  step it stopped at, and the stderr lines. `ExitCode` is 3 for every refusal, deliberately
+  step it stopped at, the stderr lines, and `PackPointerCrossChecked`. `ExitCode` is 3 for every refusal, deliberately
   distinct from the 2 a consumer already returns for a bad config, so a supervisor script tells a content
   failure from a config failure without parsing text.
 

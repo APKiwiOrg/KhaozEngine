@@ -70,6 +70,32 @@ public sealed class ContentBootSourceFaultTests
     }
 
     /// <summary>
+    /// A driver that reports the caller's cancellation as its OWN exception type, which is how a cancelled SQL
+    /// read can surface, still propagates as a cancellation on the caller's token and never becomes a refusal.
+    /// </summary>
+    [Theory]
+    [InlineData(Read.Pinned)]
+    [InlineData(Read.Active)]
+    [InlineData(Read.Hashes)]
+    public async Task TheCallersCancellationPropagatesWhateverTypeTheDriverThrows(Read read)
+    {
+        using BootPack pack = await BootPack.CreateAsync();
+        using var cancel = new CancellationTokenSource();
+        var source = new BreakingSource(
+            pack,
+            read,
+            () => new InvalidOperationException("operation cancelled by user"),
+            cancel);
+
+        OperationCanceledException thrown = await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => ContentBoot.RunAsync(pack.Options(configuredVersion: null, directory: source), cancel.Token));
+        Assert.Equal(cancel.Token, thrown.CancellationToken);
+        Assert.IsType<InvalidOperationException>(thrown.InnerException);
+        Assert.Equal(1, source.BrokenReads);
+        Assert.False(pack.Holder.IsLoaded);
+    }
+
+    /// <summary>
     /// A cancellation the CALLER did not ask for, which is what a driver's own timeout looks like, is a fault
     /// of the provider and refuses like any other.
     /// </summary>
@@ -166,7 +192,10 @@ public sealed class ContentBootSourceFaultTests
             if (cancel is not null)
             {
                 cancel.Cancel();
-                cancellationToken.ThrowIfCancellationRequested();
+                if (fault is null)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
             }
 
             throw fault!();

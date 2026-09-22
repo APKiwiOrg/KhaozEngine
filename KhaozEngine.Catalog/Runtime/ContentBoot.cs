@@ -56,8 +56,9 @@ public static class ContentBoot
         {
             version = await ResolveVersionAsync(options, cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception fault) when (ContentBootSourceFault.IsFault(fault, cancellationToken))
+        catch (Exception fault)
         {
+            ContentBootSourceFault.ThrowIfCallerCancelled(fault, cancellationToken);
             return ContentBootSourceFault.Refuse(2, "version directory", fault);
         }
 
@@ -218,11 +219,11 @@ public static class ContentBoot
                     .ConfigureAwait(false);
                 if (generation > ContentPackFormat.Generation)
                 {
-                    return new ManifestStep(GenerationRefusal(generation));
+                    return AfterCheck(GenerationRefusal(generation));
                 }
             }
 
-            return new ManifestStep(ContentBootResult.Refuse(
+            return AfterCheck(ContentBootResult.Refuse(
                 ContentBootRefusal.ManifestUnreadable,
                 3,
                 FormattableString.Invariant(
@@ -232,7 +233,7 @@ public static class ContentBoot
         ContentManifest manifest = read.Manifest!;
         if (manifest.VersionNumber != (uint)version)
         {
-            return new ManifestStep(ContentBootResult.Refuse(
+            return AfterCheck(ContentBootResult.Refuse(
                 ContentBootRefusal.ManifestVersionMismatch,
                 3,
                 FormattableString.Invariant(
@@ -240,6 +241,11 @@ public static class ContentBoot
         }
 
         return new ManifestStep(manifest, read.Hash, check.CrossChecked);
+
+        // A refusal AFTER the pointer check still carries what the check found, because the flag is a fact
+        // about the comparison and not about whether the boot went on to succeed.
+        ManifestStep AfterCheck(ContentBootResult refusal)
+            => new(check.CrossChecked ? refusal.WithPackPointerCrossChecked() : refusal);
     }
 
     /// <summary>Step 3's outcome: the verified manifest and the address it was fetched under, or a refusal.</summary>

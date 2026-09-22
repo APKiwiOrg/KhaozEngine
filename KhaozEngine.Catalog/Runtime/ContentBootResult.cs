@@ -162,8 +162,9 @@ public sealed class ContentBootResult
 
     /// <summary>
     /// True only when step 3 COMPARED the pack store's <c>versions/&lt;n&gt;</c> pointer with the version
-    /// record's two manifest hashes and both halves agreed. It stays true on a later refusal, because it is a
-    /// fact about step 3 and not about the boot as a whole.
+    /// record's two manifest hashes and both halves agreed. It stays true on any refusal after the comparison,
+    /// step 3's own manifest checks included, because it is a fact about the comparison and not about the boot
+    /// as a whole.
     /// <para>
     /// It is false when the boot had no hash source (<see cref="ContentBootOptions.VersionHashes"/> unset and a
     /// <see cref="ContentBootOptions.Directory"/> that is not an <see cref="IContentVersionHashSource"/>, which

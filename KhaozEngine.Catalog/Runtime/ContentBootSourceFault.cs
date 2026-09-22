@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 
 namespace KhaozEngine.Catalog;
@@ -10,18 +11,39 @@ namespace KhaozEngine.Catalog;
 /// a fault in one of them is a refusal like any other: <see cref="ContentBootRefusal.VersionSourceUnreadable"/>,
 /// exit code 3, and one line naming the read and the fault.
 /// <para>
-/// The caller's own cancellation is NOT a fault. An <see cref="OperationCanceledException"/> thrown while the
-/// boot's token is cancelled propagates, because the caller asked to stop and is not waiting for a line. One
-/// thrown with the token NOT cancelled, such as a driver's own timeout, is a fault and refuses.
+/// The caller's own cancellation is NOT a fault. Anything a source throws while the boot's token is cancelled
+/// propagates as an <see cref="OperationCanceledException"/>, because the caller asked to stop and is not
+/// waiting for a line, and a driver may report a cancelled read as its own exception type rather than as a
+/// cancellation. A cancellation thrown with the token NOT cancelled, such as a driver's own timeout, is a fault
+/// and refuses.
 /// </para>
 /// </summary>
 internal static class ContentBootSourceFault
 {
-    /// <summary>True when the exception is a fault the boot refuses on, false for the caller's cancellation.</summary>
+    /// <summary>
+    /// Returns when the exception is a fault the boot refuses on, and throws when the caller cancelled: the
+    /// cancellation itself unchanged, and any other exception wrapped in an <see cref="OperationCanceledException"/>
+    /// on the boot's token with the source's exception as its inner exception.
+    /// </summary>
     /// <param name="exception">What the source threw.</param>
     /// <param name="cancellationToken">The boot's own token.</param>
-    public static bool IsFault(Exception exception, CancellationToken cancellationToken)
-        => !(exception is OperationCanceledException && cancellationToken.IsCancellationRequested);
+    public static void ThrowIfCallerCancelled(Exception exception, CancellationToken cancellationToken)
+    {
+        if (!cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+
+        if (exception is OperationCanceledException)
+        {
+            ExceptionDispatchInfo.Throw(exception);
+        }
+
+        throw new OperationCanceledException(
+            "The content boot was cancelled while a version source was being read.",
+            exception,
+            cancellationToken);
+    }
 
     /// <summary>The refusal: which read, and the fault's type and message on one line.</summary>
     /// <param name="step">The boot step the read belongs to.</param>

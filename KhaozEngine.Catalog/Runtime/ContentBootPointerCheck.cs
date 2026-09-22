@@ -61,8 +61,9 @@ internal static class ContentBootPointerCheck
         {
             recorded = await source.GetVersionHashesAsync(version, cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception fault) when (ContentBootSourceFault.IsFault(fault, cancellationToken))
+        catch (Exception fault)
         {
+            ContentBootSourceFault.ThrowIfCallerCancelled(fault, cancellationToken);
             return new Outcome(
                 ContentBootSourceFault.Refuse(
                     3,

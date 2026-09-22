@@ -300,7 +300,7 @@ public sealed class ContentBootPointerTests
         ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing);
         var pack = new FileSystemPackStore(root.Path);
         _ = await PublishAsync(registry, pack, value: 11);
-        InMemoryContentAuthoringStore empty = PublishFixtures.Store(registry, new FileSystemPackStore(root.Path));
+        var elsewhere = new FakeHashSource(VersionNumber + 1, new ContentVersionHashes("unused", "unused"));
 
         var host = new BootHost();
         ContentBootResult booted = await host.RunAsync(new ContentBootOptions
@@ -310,11 +310,12 @@ public sealed class ContentBootPointerTests
             Holder = new ContentRuntimeHolder(),
             ServerBuild = ServerBuild,
             ConfiguredVersion = VersionNumber,
-            VersionHashes = empty,
+            VersionHashes = elsewhere,
             StoreName = StoreName,
         });
 
         Assert.True(booted.Success, string.Join(" | ", host.Lines));
+        Assert.Equal(1, elsewhere.Reads);
         Assert.False(booted.PackPointerCrossChecked);
     }
 
@@ -344,6 +345,39 @@ public sealed class ContentBootPointerTests
         });
 
         Assert.Equal(ContentBootRefusal.ServerBuildTooOld, refused.Refusal);
+        Assert.Equal(1, record.Reads);
+        Assert.True(refused.PackPointerCrossChecked);
+    }
+
+    /// <summary>
+    /// A refusal INSIDE step 3 that comes after an agreeing comparison keeps the flag too. The pointer and the
+    /// record both name an object whose bytes are not what its name digests to, so the manifest read refuses.
+    /// </summary>
+    [Fact]
+    public async Task APointerThatAgreedStaysCrossCheckedWhenTheManifestReadRefuses()
+    {
+        using BootPack pack = await BootPack.CreateAsync();
+        pack.WriteUnverified(BootPack.OtherHash, ContentManifestCodec.Encode(pack.Manifest));
+        await pack.PointAtAsync(BootPack.OtherHash);
+        var record = new FakeHashSource(
+            BootPack.VersionNumber,
+            new ContentVersionHashes(BootPack.OtherHash, pack.ClientManifestHash));
+        ContentBootOptions options = pack.Options();
+
+        ContentBootResult refused = await new BootHost().RunAsync(new ContentBootOptions
+        {
+            Registry = options.Registry,
+            Store = options.Store,
+            Holder = options.Holder,
+            ServerBuild = options.ServerBuild,
+            ConfiguredVersion = options.ConfiguredVersion,
+            Pointers = options.Pointers,
+            VersionHashes = record,
+            StoreName = options.StoreName,
+        });
+
+        Assert.Equal(ContentBootRefusal.ManifestUnreadable, refused.Refusal);
+        Assert.Equal(3, refused.Step);
         Assert.Equal(1, record.Reads);
         Assert.True(refused.PackPointerCrossChecked);
     }

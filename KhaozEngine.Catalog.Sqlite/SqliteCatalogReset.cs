@@ -76,6 +76,13 @@ public static class SqliteCatalogReset
     /// database backwards.
     /// </para>
     /// <para>
+    /// <b>A host table's foreign key into the catalog is read before anything is dropped.</b> SQLite's
+    /// <c>DROP TABLE</c> deletes every row first, which fires a host key's delete action, so a key declared
+    /// <c>ON DELETE CASCADE</c>, <c>SET NULL</c> or <c>SET DEFAULT</c> is refused under reason
+    /// <c>host-foreign-key</c>, whatever <paramref name="force"/> says. A <c>NO ACTION</c> or <c>RESTRICT</c>
+    /// key with a host row still referencing the catalog fails the reset, which rolls back as a whole.
+    /// </para>
+    /// <para>
     /// It opens its OWN connection, so the connection string has to name a durable database. A plain
     /// <c>Data Source=:memory:</c> database belongs to the connection that opened it, so this would open a
     /// second empty one, create a schema into it and throw both away. Under <c>Cache=Shared</c> an in-memory
@@ -97,7 +104,7 @@ public static class SqliteCatalogReset
     /// <returns>What stood before the reset, and the schema version and epoch the recreated schema carries.</returns>
     /// <exception cref="ArgumentNullException">A required argument is null.</exception>
     /// <exception cref="ArgumentException"><paramref name="actor"/> is empty, or an argument is longer than the audit column that holds it.</exception>
-    /// <exception cref="ContentAuthoringException">The database carries a catalog schema version newer than this build writes, or a partial catalog or an open draft and <paramref name="force"/> is false.</exception>
+    /// <exception cref="ContentAuthoringException">The database carries a catalog schema version newer than this build writes, or a host table's foreign key into the catalog declared <c>ON DELETE CASCADE</c>, <c>SET NULL</c> or <c>SET DEFAULT</c>, or a partial catalog or an open draft and <paramref name="force"/> is false.</exception>
     public static async Task<ContentCatalogResetResult> ResetAsync(
         string connectionString,
         string actor,
@@ -136,7 +143,8 @@ public static class SqliteCatalogReset
     /// (a drop, the create, the audit insert, or a deferred foreign key checked at the commit) rolls the drop
     /// back with it and leaves the catalog exactly as it was. That is not a nicety: a half-dropped catalog
     /// fails the next open outright, because the initializer creates only when it counts ZERO catalog tables
-    /// and validates every object by name otherwise.
+    /// and validates every object by name otherwise. A host foreign key whose delete action would FIRE is not
+    /// a failure the commit sees, so it is refused before the first drop instead.
     /// </summary>
     static async Task<ContentCatalogResetResult> ResetAsync(
         SqliteConnection connection,
@@ -150,9 +158,10 @@ public static class SqliteCatalogReset
             .BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
 
         // Foreign keys are on and every catalog table references another, so the drop order would otherwise
-        // matter and would have to be maintained by hand beside the schema. Deferring moves the check to the
-        // commit, by which point there is no row left to violate anything. It is the one pragma that may be
-        // set INSIDE a transaction, and it resets itself when the transaction ends.
+        // matter and would have to be maintained by hand beside the schema. Deferring moves the check of a
+        // VIOLATION to the commit. It does not stop a delete ACTION from firing, which is why the host keys
+        // are read below. It is the one pragma that may be set INSIDE a transaction, and it resets itself
+        // when the transaction ends.
         await ExecuteAsync(connection, transaction, "PRAGMA defer_foreign_keys = ON;", cancellationToken)
             .ConfigureAwait(false);
 
@@ -160,6 +169,12 @@ public static class SqliteCatalogReset
         // under. A name pattern would take a host's own catalogs, cataloguer or catalog_overrides_by_host
         // with it, and those tables are none of this schema's business.
         IReadOnlyList<string> tables = SqliteCatalogSchemaInventory.ReadExisting(connection, transaction);
+
+        // Before anything is dropped, whatever force says: a drop's hidden delete would fire a host key's
+        // CASCADE, SET NULL or SET DEFAULT against the host's own rows.
+        await SqliteCatalogHostKeys.RefuseFiringKeysAsync(connection, transaction, cancellationToken)
+            .ConfigureAwait(false);
+
         Stood stood = await ReadBeforeAsync(connection, transaction, tables, force, cancellationToken)
             .ConfigureAwait(false);
 

@@ -109,6 +109,12 @@ whatever tables you like in the same database. The reset destroys exactly the ta
 host table whose name really starts with `catalog_` survives a reset like any other, but the store's own open
 refuses it as an object the schema does not declare, so keep host tables outside that prefix.
 
+**A host foreign key INTO the catalog fails the reset.** SQL Server refuses to drop a table any foreign key
+references, whatever the key's delete action, so the reset fails with SQL error 3726 and rolls back as a whole,
+leaving the catalog and the host's rows exactly as they stood. The SQLite reset refuses the same host shape
+before it drops anything, because there a drop would fire the key's action. Keep host references to the
+catalog out of foreign keys.
+
 Drop and recreate rather than `DELETE`, because a delete leaves the `IDENTITY` marks on `catalog_family`,
 `catalog_draft_edit` and `catalog_audit` where they stood, and the next family created after a reimport would
 land above the bundle's ids.

@@ -15239,10 +15239,19 @@ and the next family id after a reimport would land above the bundle's.
 
 The drop names the schema's own INVENTORY intersected with what the database holds, rather than a name
 pattern, so a table added to the schema goes with the rest and a table the build does not declare is never
-touched. A host may keep its own tables in the catalog's database or SQLite file, and a reset leaves every one
-of them and their rows exactly as they stand, including one whose name a `catalog_` pattern would match. The
-store's own open still refuses a host table whose name starts with `catalog_` as an object the schema does not
-declare, so keep host tables outside that prefix.
+touched. A host may keep its own tables in the catalog's database or SQLite file, including one whose name a
+`catalog_` pattern would match, and a reset never drops one or changes a row in one. The store's own open still
+refuses a host table whose name starts with `catalog_` as an object the schema does not declare, so keep host
+tables outside that prefix.
+
+A host FOREIGN KEY into a catalog table is where that could break, so both providers refuse instead. SQLite's
+`DROP TABLE` deletes every row before it drops the table, and that delete fires the host key's delete action,
+so the SQLite reset reads every host key first and refuses one declared `ON DELETE CASCADE`, `SET NULL` or
+`SET DEFAULT` with reason `host-foreign-key`, before anything is dropped and whatever `force` says. A
+`NO ACTION` or `RESTRICT` host key with a row still referencing the catalog fails the SQLite reset at its
+commit instead. SQL Server refuses to drop a table any foreign key references, whatever its action, so there
+every such key fails the reset with SQL error 3726. A failed reset rolls back as a whole on both providers,
+catalog and host alike. A host that resets its catalog keeps its references to it out of foreign keys.
 
 It is a separate type per provider rather than a member on `IContentAuthoringStore`, because a reset is DDL
 and the everyday authoring path is DML: a production deployment should not give its application role DDL at

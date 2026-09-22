@@ -90,6 +90,17 @@ tables you like in the same file. The reset destroys exactly the tables the sche
 whose name really starts with `catalog_` survives a reset like any other, but the store's own open refuses it
 as an object the schema does not declare, so keep host tables outside that prefix.
 
+**A host foreign key INTO the catalog is read before anything is dropped.** With foreign keys on, SQLite's
+`DROP TABLE` deletes every row of the table before it drops it, and that hidden delete fires the delete action
+of every key pointing at the table. Deferring the foreign key check does not stop an action from firing, and
+an action is not a violation the commit would refuse. So a host key declared `ON DELETE CASCADE`, `SET NULL`
+or `SET DEFAULT` would delete or rewrite the host's own rows, and the reset refuses it with reason
+`host-foreign-key` and a sentence naming the host table and the catalog table it references, before it drops
+anything and whatever `force` says. A `NO ACTION` or `RESTRICT` key fires nothing. A host row still
+referencing the catalog fails the reset at its commit instead, and the whole reset rolls back. Keep host
+references to the catalog out of foreign keys, or declare them `NO ACTION` and clear the referencing rows
+before a reset.
+
 Drop and recreate rather than `DELETE`, because a delete leaves the `sqlite_sequence` marks behind the
 `AUTOINCREMENT` columns on `catalog_family`, `catalog_draft_edit` and `catalog_audit` where they stood, and
 the next family created after a reimport would land above the bundle's ids. Dropping a table takes its

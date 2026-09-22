@@ -5,6 +5,23 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 19.15.0
+
+- `ChatHistory` CONSOLIDATES a repeat wherever its match already is, rather than only against the entry
+  immediately before it. A player who does the same thing forty times now reads one line counting up to
+  `(40)`, where any other line arriving between two of them used to start the count over and fill the box
+  with the same sentence at slightly different moments.
+- The fold keeps the matched entry's PLACE and takes everything else from the arriving one, which is the rule
+  an adjacent fold already followed for its time, content, author and ownership. Holding the place keeps the
+  history stable under the reader's eye and stops a run of one repeated line pushing everything else off the
+  top. The consequence to know about is that times are no longer strictly ascending down the list: an older
+  line that just repeated carries a newer stamp than the line under it.
+- A fold is not an add, so it never evicts, and a match that has already been evicted is gone rather than
+  resurrected: that line starts a fresh count. `ChatHistory.Version` moves on a fold exactly as it does on an
+  add, so a box caching its layout against it still rebuilds.
+- Nothing else moves. `CanCollapse` is the same predicate on kind, source key and collapse key, and a caller
+  that wants two lines kept apart still separates them by any one of the three.
+
 ## 19.14.0
 
 - A new engine content type `item_category` (id 7, key `item_category`), the coarse bucket an item base

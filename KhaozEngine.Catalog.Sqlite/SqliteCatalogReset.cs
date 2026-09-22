@@ -38,10 +38,11 @@ namespace KhaozEngine.Catalog.Sqlite;
 /// </para>
 /// <para>
 /// <b>What it does NOT touch is the pack store on disk.</b> The reset knows nothing about a pack root, and a
-/// caller that replaces content at the same version number must clear or rebuild its own, because
-/// <c>ContentBoot.ReadManifestAsync</c> trusts the pointer it finds on disk without comparing its hash with
-/// <c>catalog_version.server_manifest_hash</c>. The hashes that STOOD come back on
-/// <see cref="ContentCatalogResetResult"/> for exactly that comparison.
+/// pack root left standing under a replaced catalog still holds a version pointer naming the manifest of the
+/// content that was there before. A caller that replaces content at the same version number must REBUILD its
+/// pack root through <c>ContentPackRebuild</c>, rather than leave that to the boot to notice. The hashes that
+/// STOOD come back on <see cref="ContentCatalogResetResult"/>, which is the last moment they can be read, so
+/// an old pack root can be told from a new one.
 /// </para>
 /// </summary>
 public static class SqliteCatalogReset

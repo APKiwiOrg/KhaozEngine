@@ -15131,11 +15131,12 @@ things: a version number with no row behind it reads as that number and the word
 MISSING" rather than as "nothing published", and a reset that read no catalog cannot report a version, a hash
 or anything dropped.
 
-**The pack store is NOT touched by a reset.** A caller that replaces content at the same version number must
-clear or rebuild its own pack root, because `ContentBoot.ReadManifestAsync` trusts the pack pointer it finds
-and checks only the manifest's self-declared version number. Nothing compares that pointer's hash with
-`catalog_version.server_manifest_hash`, so a stale pack root under a replaced catalog is served as if it were
-the new content. The two hashes on the result are what a caller compares against its pack root to decide.
+**The pack store is NOT touched by a reset.** A pack root left standing under a replaced catalog still holds a
+`versions/<n>` pointer naming the manifest of the content that was there before, so a caller that replaces
+content at the same version number must REBUILD its pack root with `ContentPackRebuild.RunAsync`, which writes
+one published version's whole pack out of the store's own rows and rules and verifies it against the manifest
+digests the version row records. Do not leave that to the boot to notice. The two hashes on the result are the
+last record of what the pack root should have been holding, and are what a caller compares against it.
 
 ### The server boot
 

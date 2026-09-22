@@ -135,12 +135,13 @@ everything else, so the reset cannot record itself in the old one. The table car
 accepts. It holds the action `reset`, the actor, the operator, the note, and `reset.Summary` in
 `before_value`.
 
-**The pack store is NOT touched.** The reset knows nothing about a pack root, and a caller that replaces
-content at the same version number must clear or rebuild its own, because `ContentBoot.ReadManifestAsync`
-trusts the pack pointer it finds without comparing its hash with `catalog_version.server_manifest_hash`. A
-stale pack root under a replaced catalog is served as if it were the new content. `ContentCatalogResetResult`
-carries the server and client manifest hashes that stood, which is the last moment they can be read, for
-exactly that comparison.
+**The pack store is NOT touched.** The reset knows nothing about a pack root, and a pack root left standing
+under a replaced catalog still holds a `versions/<n>` pointer naming the manifest of the content that was
+there before. A caller that replaces content at the same version number must therefore REBUILD its pack root:
+`ContentPackRebuild.RunAsync` writes one published version's whole pack out of the store's own rows and rules,
+verified against the manifest digests the version row records. Do not leave that to the boot to notice.
+`ContentCatalogResetResult` carries the server and client manifest hashes that STOOD, which is the last moment
+they can be read, so a caller can tell an old pack root from a new one.
 
 ## What the tables hold, and what they do not
 

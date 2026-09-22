@@ -94,6 +94,10 @@ repins, and the notes below say what each game changes when it does.
 
 **Tooling.**
 
+- `KhaozEngine.Showcase` has a "Drag & drop" tab in the 2D & GUI tour
+  ([#378](https://github.com/APKiwiOrg/KhaozEngine/issues/378)). Two `SlotGrid`s share one default `GuiDragContext`,
+  with a slot that refuses, a destroy bin and painterless items, so the ghost, the `RejectTint` wash, the placeholder
+  frame and the 0.12 s fly-home can be judged by eye. The tour's tab bar draws at `TextScale` 0.85 to fit six tabs.
 - The cross-platform GPU workflow's path filter watches `KhaozEngine.Render3D.Ecs/**`, which the moved binder
   files would otherwise have left unwatched.
 

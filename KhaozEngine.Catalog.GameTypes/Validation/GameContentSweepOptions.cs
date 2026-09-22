@@ -8,8 +8,8 @@ namespace KhaozEngine.Catalog.GameTypes;
 /// </summary>
 /// <remarks>
 /// <b>A knob name is one world's vocabulary and never this package's.</b> A tuning row's key says what a
-/// world tunes, so the sweep holds the RULES and a game says which rows they read. Four of the seven rules
-/// need a name to do that, and the other three read nothing but rows.
+/// world tunes, so the sweep holds the RULES and a game says which rows they read. Six of the sixteen rules
+/// need a name to do that, and the other ten read nothing but rows.
 /// <para>
 /// <b>A null name disables that rule, and an empty list disables the required-knob rule.</b> A game with no
 /// level cap has no rule to run, and refusing to register would make an optional rule mandatory. A disabled
@@ -29,8 +29,9 @@ public sealed class GameContentSweepOptions
     /// choice explicit rather than defaulted.
     /// </summary>
     /// <remarks>
-    /// The three rules that read no knob still run: a shelf item's tradability, a recipe with no output and
-    /// a tool tier whose item lacks its family tag are statements about rows alone.
+    /// The ten rules that read no knob still run: a shelf item's tradability, a recipe with no output, a
+    /// tool tier whose item lacks its family tag and the seven loot number rules are statements about rows
+    /// alone.
     /// </remarks>
     public static GameContentSweepOptions None { get; } = new();
 
@@ -67,6 +68,28 @@ public sealed class GameContentSweepOptions
     /// </para>
     /// </remarks>
     public IReadOnlyList<string> RequiredKnobs { get; init; } = [];
+
+    /// <summary>
+    /// The knob holding the most lines one kill may leave, or null to run neither drops-per-kill rule.
+    /// </summary>
+    /// <remarks>
+    /// One name drives two codes: <see cref="GameContentFindings.SweepMonsterDropsMoreThanOne"/> on a
+    /// <c>monster_drop</c> row whose loot tree can leave more, and
+    /// <see cref="GameContentFindings.SweepMaxDropsPerKillUnusable"/> on a knob row that is not a whole number
+    /// at or above one.
+    /// <para>
+    /// <b>Named is not enforced. VERSION FOLLOWS CONTENT.</b> Both rules run only on a candidate that carries
+    /// a live row under this name. Absence says the catalog was authored before the rule, and a publish rule
+    /// that judged older content would refuse the seed of every older baseline and every intermediate
+    /// version an upgrade chain publishes on its way forward. The upgrade that adds the knob is the one that
+    /// makes the content satisfy it, and every publish after that is held to it.
+    /// </para>
+    /// <para>
+    /// So a game should NOT also list this name in <see cref="RequiredKnobs"/>, which would refuse exactly the
+    /// older catalogs the absence exists to let through.
+    /// </para>
+    /// </remarks>
+    public string? MaxDropsPerKillKnob { get; init; }
 
     /// <summary>
     /// The GAME's own whole-catalog rules, run in the sweep's slot AFTER every rule of the package's own, or

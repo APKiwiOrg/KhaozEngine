@@ -34,7 +34,8 @@ namespace KhaozEngine.Catalog.GameTypes;
 /// validation time, through <see cref="ContentFieldSchema.IndexOf"/>. A static index taken from a schema
 /// this class built at type load is this build's idea of the item type rather than the one the candidate
 /// was registered against, so an engine release that appended or reordered an item field would leave both
-/// rules reading a neighbour, silently.
+/// rules reading a neighbour, silently. The loot rules in <see cref="GameLootChecks"/> read the engine's
+/// two loot types the same way.
 /// </para>
 /// <para>
 /// It ACCUMULATES and it never throws for a content reason. A row whose value count does not match its
@@ -54,7 +55,7 @@ namespace KhaozEngine.Catalog.GameTypes;
 /// </param>
 /// <param name="options">
 /// Which knob-driven rules to run, under what names, and the game's own rules to run after them.
-/// <see cref="GameContentSweepOptions.None"/> runs the three that read no knob and no game rule.
+/// <see cref="GameContentSweepOptions.None"/> runs the ten that read no knob and no game rule.
 /// </param>
 /// <param name="beside">The registered type's own validator, run first, or null for the sweep alone.</param>
 public sealed class GameContentChecks(
@@ -78,11 +79,18 @@ public sealed class GameContentChecks(
 
         _beside?.Validate(type, candidate, findings);
 
-        var knobs = new KnobTable(candidate);
+        var knobs = new GameTuningKnobs(candidate);
         CheckShelfItemsAreTradable(candidate, findings);
         CheckGatheringNodes(candidate, knobs, findings);
         CheckRecipes(candidate, knobs, findings);
         CheckToolTierFamilies(candidate, findings);
+        GameLootChecks.CheckLootRows(_registry, candidate, findings);
+        GameLootChecks.CheckMonsterDropsLeaveOneThing(
+            _registry,
+            candidate,
+            knobs,
+            _options.MaxDropsPerKillKnob,
+            findings);
         CheckKnobsAreComplete(knobs, findings);
 
         foreach (IContentValidator rule in _gameRules)
@@ -170,7 +178,7 @@ public sealed class GameContentChecks(
     /// </summary>
     void CheckGatheringNodes(
         IContentSnapshot candidate,
-        KnobTable knobs,
+        GameTuningKnobs knobs,
         ICollection<ContentFinding> findings)
     {
         if (_options.MaxChanceKnob is null && _options.MaxLevelKnob is null)
@@ -198,7 +206,7 @@ public sealed class GameContentChecks(
                     row.Id,
                     GameContentFindings.SweepGatheringChanceOverCeiling,
                     FormattableString.Invariant(
-                        $"Node '{row.Key}' quotes {chance.Number} basis points, over the {chanceKnob} knob at {Whole(ceiling)}. The runtime clamps to the ceiling, so the authored number is one nobody ever rolls against.")));
+                        $"Node '{row.Key}' quotes {chance.Number} basis points, over the {chanceKnob} knob at {GameTuningKnobs.Whole(ceiling)}. The runtime clamps to the ceiling, so the authored number is one nobody ever rolls against.")));
             }
 
             ContentFieldValue level = row.Fields[GatheringNodeContentType.LevelRequiredIndex];
@@ -212,7 +220,7 @@ public sealed class GameContentChecks(
                     row.Id,
                     GameContentFindings.SweepGatheringLevelOverCap,
                     FormattableString.Invariant(
-                        $"Node '{row.Key}' asks for level {level.Number}, over the {levelKnob} knob at {Whole(cap)}. Nobody reaches that level, so the node stands and can never be worked.")));
+                        $"Node '{row.Key}' asks for level {level.Number}, over the {levelKnob} knob at {GameTuningKnobs.Whole(cap)}. Nobody reaches that level, so the node stands and can never be worked.")));
             }
         }
     }
@@ -224,7 +232,7 @@ public sealed class GameContentChecks(
     /// <remarks>
     /// The output rule reads no knob, so it runs whether or not a game named a level cap.
     /// </remarks>
-    void CheckRecipes(IContentSnapshot candidate, KnobTable knobs, ICollection<ContentFinding> findings)
+    void CheckRecipes(IContentSnapshot candidate, GameTuningKnobs knobs, ICollection<ContentFinding> findings)
     {
         var recipeType = new ContentTypeId(GameContentTypeIds.Recipe);
         var outputType = new ContentTypeId(GameContentTypeIds.RecipeOutput);
@@ -262,7 +270,7 @@ public sealed class GameContentChecks(
                     row.Id,
                     GameContentFindings.SweepRecipeLevelOverCap,
                     FormattableString.Invariant(
-                        $"Recipe '{row.Key}' asks for level {level.Number}, over the {levelKnob} knob at {Whole(cap)}. Nobody reaches that level, so the row is listed and can never be worked.")));
+                        $"Recipe '{row.Key}' asks for level {level.Number}, over the {levelKnob} knob at {GameTuningKnobs.Whole(cap)}. Nobody reaches that level, so the row is listed and can never be worked.")));
             }
 
             if (produces.Contains(row.Id))
@@ -341,7 +349,7 @@ public sealed class GameContentChecks(
     /// Every knob this build reads has a row, asymmetrically: a missing one is a finding and an UNKNOWN one
     /// is ignored, so a pack a newer build wrote still loads on an older server.
     /// </summary>
-    void CheckKnobsAreComplete(KnobTable knobs, ICollection<ContentFinding> findings)
+    void CheckKnobsAreComplete(GameTuningKnobs knobs, ICollection<ContentFinding> findings)
     {
         if (_options.RequiredKnobs.Count == 0 || !knobs.Authored)
         {
@@ -375,9 +383,6 @@ public sealed class GameContentChecks(
     /// </remarks>
     static bool Over(long authored, long scaledKnob) => authored * GameTuningContentType.ValueScale > scaledKnob;
 
-    /// <summary>A knob's stored number as the value an author typed, for a message.</summary>
-    static decimal Whole(long scaled) => scaled / (decimal)GameTuningContentType.ValueScale;
-
     /// <summary>
     /// Whether an item's tag list carries one tag id. False out of <c>readable</c> for bytes that are not a
     /// run of varints, which is the codec pass's own finding: guessing here would report a family defect on
@@ -408,42 +413,5 @@ public sealed class GameContentChecks(
         }
 
         return true;
-    }
-
-    /// <summary>
-    /// The candidate's <c>game_tuning</c> rows as a lookup, read once per sweep rather than once per rule.
-    /// </summary>
-    /// <remarks>
-    /// A duplicate knob name OVERWRITES rather than throwing, because two rows under one key is already the
-    /// engine's <c>KEC0002</c> and a validator that threw would be reported as a defective validator instead
-    /// of letting the real finding through.
-    /// </remarks>
-    sealed class KnobTable
-    {
-        readonly Dictionary<string, long> _byName = new(StringComparer.Ordinal);
-
-        internal KnobTable(IContentSnapshot candidate)
-        {
-            foreach (ContentRow row in candidate.Rows(new ContentTypeId(GameContentTypeIds.GameTuning)))
-            {
-                if (row.IsRetired || row.Fields.Count != GameTuningContentType.FieldCount)
-                {
-                    continue;
-                }
-
-                Authored = true;
-                ContentFieldValue value = row.Fields[GameTuningContentType.ValueIndex];
-                if (!value.IsAbsent)
-                {
-                    _byName[row.Key.ToString()] = value.Number;
-                }
-            }
-        }
-
-        /// <summary>Whether the candidate carries a live tuning row at all, which gates the set rule.</summary>
-        internal bool Authored { get; }
-
-        /// <summary>One knob's stored number, at <see cref="GameTuningContentType.ValueScale"/>.</summary>
-        internal bool TryGet(string knob, out long scaled) => _byName.TryGetValue(knob, out scaled);
     }
 }

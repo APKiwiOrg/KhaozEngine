@@ -37,7 +37,7 @@ public sealed class GameContentOptions
     /// </summary>
     /// <remarks>
     /// Required like the rest, and <see cref="GameContentSweepOptions.None"/> is the answer for a world with
-    /// no tuning table. A game that left it out would silently lose four rules, which is the same failure
+    /// no tuning table. A game that left it out would silently lose six rules, which is the same failure
     /// a missing predicate is.
     /// </remarks>
     public required GameContentSweepOptions Sweep { get; init; }

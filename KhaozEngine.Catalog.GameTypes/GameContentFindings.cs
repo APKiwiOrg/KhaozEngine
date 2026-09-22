@@ -19,6 +19,11 @@ namespace KhaozEngine.Catalog.GameTypes;
 /// reused and never renumbered: a withdrawn rule leaves its number withdrawn, and the 1200 band is held
 /// back rather than filled. 1300 is the cross-type sweep, which belongs to no single type.
 /// </para>
+/// <para>
+/// <b>1308 is held back too.</b> The numbers were first assigned in a game that spent 1308 on a refusal its
+/// own READ layer raises rather than on a sweep rule, and reads stay in each game. The number stays unused
+/// here so that a code means one thing under either prefix.
+/// </para>
 /// </remarks>
 public static class GameContentFindings
 {
@@ -156,4 +161,42 @@ public static class GameContentFindings
 
     /// <summary>A knob the game reads with no row in a tuning table that carries the rest of them.</summary>
     public const string SweepTuningKnobMissing = "KGT1307";
+
+    /// <summary>A weighted loot entry quoting a chance, which a weighted pick never rolls.</summary>
+    public const string SweepLootChanceNobodyRolls = "KGT1309";
+
+    /// <summary>A guaranteed loot entry carrying a weight, which no pick can ever land on.</summary>
+    public const string SweepLootWeightNobodyPicksBy = "KGT1310";
+
+    /// <summary>A weighted loot entry at no weight, which is an outcome the draw steps straight over.</summary>
+    public const string SweepLootEntryNeverPicked = "KGT1311";
+
+    /// <summary>A table asking for picks with no weight in its pool to pick from.</summary>
+    public const string SweepLootTableNothingToPick = "KGT1312";
+
+    /// <summary>A table taking no pick that still holds weighted entries, which nothing ever rolls.</summary>
+    public const string SweepLootTableRollsNobodyTakes = "KGT1313";
+
+    /// <summary>A loot chance outside the basis-point range, which a roll silently clamps.</summary>
+    public const string SweepLootChanceOutOfRange = "KGT1314";
+
+    /// <summary>A guaranteed loot entry at no chance, which is an entry that never fires.</summary>
+    public const string SweepLootGuaranteedNeverFires = "KGT1315";
+
+    /// <summary>
+    /// A monster whose drop tree can leave more lines off one kill than the drops-per-kill knob allows.
+    /// </summary>
+    /// <remarks>
+    /// The knob's NAME is the game's, through <see cref="GameContentSweepOptions.MaxDropsPerKillKnob"/>.
+    /// </remarks>
+    public const string SweepMonsterDropsMoreThanOne = "KGT1316";
+
+    /// <summary>
+    /// A drops-per-kill row nothing can be held against: below one, or not a whole number of drops.
+    /// </summary>
+    /// <remarks>
+    /// Its ABSENCE is not a finding and never will be, because absence is how a catalog authored before the
+    /// rule says so. A row that is present and says nothing usable is the opposite: somebody typed it.
+    /// </remarks>
+    public const string SweepMaxDropsPerKillUnusable = "KGT1317";
 }

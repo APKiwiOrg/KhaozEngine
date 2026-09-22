@@ -215,6 +215,7 @@ GameContentTypes.Register(registry, ContentDurationUnit.Ticks, new GameContentOp
         MaxLevelKnob = "max_level",
         MaxChanceKnob = "gathering_max_chance_bp",
         RequiredKnobs = MyGame.Tuning.EveryKnobThisBuildReads,
+        MaxDropsPerKillKnob = "max_drops_per_kill",
     },
 });
 ```
@@ -224,7 +225,7 @@ ordinary case, and a game that wants a validator of its own on one type needs th
 
 ## The cross-type sweep
 
-`GameContentChecks` holds the seven rules no single type can state, because each one reads a row of one type
+`GameContentChecks` holds the sixteen rules no single type can state, because each one reads a row of one type
 against a row of another or against a global knob.
 
 | Code | Rule | Needs |
@@ -236,18 +237,49 @@ against a row of another or against a global knob.
 | `KGT1305` | a recipe with no live `recipe_output` row | nothing |
 | `KGT1306` | a tool tier whose item does not carry its family tag | the engine `item` type |
 | `KGT1307` | a knob the build reads with no row in a table that carries the rest | `RequiredKnobs` |
+| `KGT1309` | a weighted loot entry quoting a chance, which a pick never rolls | the engine loot types |
+| `KGT1310` | a guaranteed loot entry carrying a weight, which no pick lands on | the engine loot types |
+| `KGT1311` | a weighted loot entry at no weight, which no pick reaches | the engine loot types |
+| `KGT1312` | a loot table asking for picks over a pool with no weight | the engine loot types |
+| `KGT1313` | a loot table taking no pick that still holds weighted entries | the engine loot types |
+| `KGT1314` | a guaranteed loot chance outside 0 to 10,000 basis points | the engine loot types |
+| `KGT1315` | a guaranteed loot entry at no chance, which never fires | the engine loot types |
+| `KGT1316` | a monster whose loot tree can leave more lines off one kill than the knob allows | `MaxDropsPerKillKnob` |
+| `KGT1317` | a drops-per-kill knob that is not a whole number at or above one | `MaxDropsPerKillKnob` |
+
+`KGT1308` is held back. The numbers were first assigned in a game that spent 1308 on a refusal its own read
+layer raises, and reads stay in each game, so the number stays unused here.
 
 **`GameContentSweepOptions` names the knobs and nothing else.** A tuning row's key is one world's vocabulary,
-so the sweep holds the rules and a game says which rows they read: `MaxLevelKnob`, `MaxChanceKnob` and
-`RequiredKnobs`. **A null name disables that rule and an empty list disables the required-knob rule**, so a
+so the sweep holds the rules and a game says which rows they read: `MaxLevelKnob`, `MaxChanceKnob`,
+`RequiredKnobs` and `MaxDropsPerKillKnob`. **A null name disables that rule and an empty list disables the required-knob rule**, so a
 world with no level cap has no rule to run rather than a rule that refuses everything or passes everything.
-`GameContentSweepOptions.None` is every knob-driven rule off, and the three that read no knob still run.
+`GameContentSweepOptions.None` is every knob-driven rule off, and the ten that read no knob still run.
 
 `KGT1307` is ASYMMETRIC on purpose. A required name with no row is a finding, because the boot would fall
 back to a default the pack does not name, and a row whose name is not required is IGNORED, because a knob a
 newer build writes must not stop an older server loading the pack. It is also gated on the table being
 authored at all: a candidate with no tuning rows makes no claim, and a boot falls back wholesale rather than
 half way.
+
+**The seven loot number rules are the engine's composition rule written down as refusals.** Every guaranteed
+entry rolls its own `chance_bp`, then a table takes `roll_count` weighted picks over the rest, and a pick
+never rolls a chance. So a chance on a weighted entry, a weight on a guaranteed one, a weighted entry at no
+weight, picks over an empty pool, a pool nothing picks from, a guaranteed chance outside the basis-point range
+and a guaranteed entry at no chance are all numbers nobody rolls against. The engine's own loot checks,
+`KEC0023` and `KEC0024`, refuse none of them. An ABSENT chance is nothing authored and is never refused, and a
+weighted entry whose chance is also out of range draws the weighted finding alone.
+
+**`KGT1316` is a MAXIMUM, computed.** A table's most lines is every live guaranteed entry's own most plus
+`roll_count` times the widest single weighted entry, recursing through `nested_table` down to
+`LootRoller.MaxNestedDepth` exactly as a roll does, and saturating at `long.MaxValue` rather than wrapping. One
+finding per offending monster, naming the deepest table whose own structure produced the count, unless a
+`roll_count` above one is doing the multiplying, in which case that table answers for it.
+
+**VERSION FOLLOWS CONTENT.** `KGT1316` and `KGT1317` run only on a candidate carrying a live row under
+`MaxDropsPerKillKnob`. Absence says the catalog was authored before the rule, so an older baseline and every
+intermediate version an upgrade chain publishes still sweep clean. For the same reason a game does not list
+that knob in `RequiredKnobs`.
 
 **The sweep rides ONE registration slot.** The engine takes one `IContentValidator` per type and hands each
 of them the WHOLE candidate, and it offers a game no whole-registry slot of its own: the one pass that is
@@ -257,8 +289,8 @@ the lowest game id, `food`, COMPOSED over that type's own validator, and runs on
 `GameContentTypes.Register` wires that up, and `GameContentChecks` is public with a `beside` parameter for a
 game registering by hand.
 
-Both rules that read an ITEM row resolve their field positions off the live registry at validation time,
-for the same reason the store's ceiling rule does.
+Both rules that read an ITEM row, and the loot rules, resolve their field positions off the live registry at
+validation time, for the same reason the store's ceiling rule does.
 
 Every knob is read out of the CANDIDATE. Nothing here reads a running process: a sweep that did would pass
 or fail the same pack differently depending on what a server happened to have loaded.

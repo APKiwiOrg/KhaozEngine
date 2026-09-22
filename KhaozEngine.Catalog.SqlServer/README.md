@@ -101,11 +101,11 @@ a half-dropped catalog refuses the next open outright: the initializer creates o
 catalog tables and validates every object by name otherwise.
 
 **The drop names the schema's own INVENTORY, not a name pattern.** It is the same set
-`SqlServerCatalogSchemaDriftTests` pins against `CatalogSchemaV1.sql`, intersected with what `sys.tables`
+`SqlServerCatalogSchemaDriftTests` pins against `CatalogSchemaV2.sql`, intersected with what `sys.tables`
 holds, so a table added to the schema is dropped without anyone having to remember it here and a table this
 build does not declare is never touched. A pattern could not do that job: a host table named
 `catalog_overrides_by_host` matches every name rule an engine could write while belonging to nobody here.
-Keep whatever tables you like in the same database. The reset destroys exactly the fourteen above.
+Keep whatever tables you like in the same database. The reset destroys exactly the tables the schema declares.
 
 Drop and recreate rather than `DELETE`, because a delete leaves the `IDENTITY` marks on `catalog_family`,
 `catalog_draft_edit` and `catalog_audit` where they stood, and the next family created after a reimport would
@@ -126,9 +126,17 @@ rather than being refused for a migration that exists only as this script.
 **A database carrying SOME of them is a half-finished deletion**, which no store can open and no read can
 describe. Without `force` it is refused with reason `catalog-partial` and a sentence naming the remedy. With
 `force` the reset drops what is left, recreates the schema and returns a result whose `PriorState` is
-`Unreadable`, because there is nothing truthful it can put in the version and the hashes. A schema version
-this build does not write is refused either way, force or no force, with `schema-mismatch` naming the
-migration: recreating version 1 over a database that says it is at version 2 would not be a repair.
+`Unreadable`, because there is nothing truthful it can put in the version and the hashes. What stood is
+still dropped, and the summary says so.
+
+**The schema version decides the rest, whenever it can be read.** A catalog at an OLDER schema version than
+this build writes is reset like any other and comes back at this build's version, because the recreate runs
+this build's script: a whole version 1 catalog, without the `catalog_content_upgrade` table version 2 added,
+is a whole catalog rather than a partial one, and needs no `force`. A catalog at a NEWER schema version is
+refused with `schema-mismatch` before anything is dropped, force or no force, because recreating an older
+schema over it would move the database backwards. The refusal names the remedy, which is a reset from a build
+that writes that version. The result carries both numbers, `PriorSchemaVersion` and `SchemaVersion`, and
+`reset.Summary` says both.
 
 `actor`, `operatorId` and `note` are checked against the caps `dbo.catalog_audit` declares (1 to 128, 128 and
 1024 characters) BEFORE the transaction opens, and an argument outside them is an `ArgumentException` with
@@ -145,11 +153,13 @@ everything else, so the reset cannot record itself in the old one. The table car
 accepts. It holds the action `reset`, the actor, the operator, the note, and `reset.Summary` in
 `before_value`.
 
-**The pack store is NOT touched.** The reset knows nothing about a pack root, and a pack root left standing
-under a replaced catalog still holds a `versions/<n>` pointer naming the manifest of the content that was
-there before. A caller that replaces content at the same version number must therefore REBUILD its pack root:
-`ContentPackRebuild.RunAsync` writes one published version's whole pack out of the store's own rows and rules,
-verified against the manifest digests the version row records. Do not leave that to the boot to notice.
+**The pack store is NOT touched.** The reset knows nothing about a pack root, and a pack root left
+standing under a replaced catalog still holds a `versions/<n>` pointer naming the manifest of the content that
+was there before. A caller that replaces content at the same version number must therefore CLEAR its pack
+root or REBUILD it. The import that follows a reset overwrites the pointer only in the pack store it was handed,
+so any other root a server boots from keeps the old one. `ContentPackRebuild.RunAsync` writes one published
+version's whole pack out of the store's own rows and rules, verified against the manifest digests the version
+row records. Do not leave that to the boot to notice.
 `ContentCatalogResetResult` carries the server and client manifest hashes that STOOD, which is the last moment
 they can be read, so a caller can tell an old pack root from a new one.
 
@@ -211,8 +221,9 @@ application login should have.
 `SqlServerCatalogReset.ResetAsync` needs DDL rights plus `EXECUTE` on both `sys.sp_executesql` and
 `sys.sp_getapplock`, so give it the migration credential rather than the application login. It takes the SAME
 exclusive application lock the schema create takes, on the same resource name, as the first statement of its
-transaction. A lock one side holds and the other does not is not a lock: without it a reset could drop the
-fourteen tables while a starting host was half way through creating them. The schema modification locks each
+transaction, and so does the version 1 migration. A lock one side holds and the other does not is not a lock:
+without it a reset could drop every catalog table while a starting host was half way through creating or
+migrating them. The schema modification locks each
 statement takes for itself do not cover that, because they serialize one statement at a time and not the
 sequence.
 

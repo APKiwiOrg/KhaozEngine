@@ -79,7 +79,9 @@ public class SqlServerCatalogResetTests
         var reopened = new SqlServerContentAuthoringStore(
             database.ConnectionString, Registry(), database.Pack());
         await reopened.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
-        Assert.Equal(1, await reopened.GetSchemaVersionAsync());
+        Assert.Equal(SqlServerCatalogSchema.CurrentVersion, await reopened.GetSchemaVersionAsync());
+        Assert.Equal(SqlServerCatalogSchema.CurrentVersion, reset.SchemaVersion);
+        Assert.Equal(SqlServerCatalogSchema.CurrentVersion, reset.PriorSchemaVersion);
         Assert.Equal(0, await reopened.GetActiveVersionAsync());
         Assert.Null(await reopened.GetPinnedVersionAsync());
         Assert.Equal(reset.StoreEpoch, await reopened.GetStoreEpochAsync());

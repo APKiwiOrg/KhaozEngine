@@ -8,7 +8,8 @@ namespace KhaozEngine.Tests.Catalog.SqlServer;
 
 /// <summary>
 /// The two databases that are not a whole catalog, mirroring <c>SqliteCatalogResetRepairTests</c> fact for
-/// fact: one carrying NONE of the schema's tables, and one carrying some of them.
+/// fact: one carrying NONE of the schema's tables, and one carrying some of them. The schema version rules
+/// are <c>SqlServerCatalogResetSchemaVersionTests</c>.
 /// </summary>
 [Collection(SqlServerCatalogCollection.Name)]
 public class SqlServerCatalogResetRepairTests
@@ -16,8 +17,8 @@ public class SqlServerCatalogResetRepairTests
     const string Actor = SqlServerCatalogResetHarness.Actor;
     const string Operator = SqlServerCatalogResetHarness.Operator;
 
-    /// <summary>How many tables a half-finished deletion leaves standing below.</summary>
-    const int Standing = 11;
+    /// <summary>How many of the schema's tables a half-finished deletion leaves standing below.</summary>
+    static int Standing => SqlServerCatalogSchemaExpectations.Tables.Count - 3;
 
     [CatalogSqlServerFact]
     public async Task ADatabaseCarryingNoCatalogTableIsCreatedRatherThanRefused()
@@ -114,40 +115,6 @@ public class SqlServerCatalogResetRepairTests
     }
 
     [CatalogSqlServerFact]
-    public async Task ASchemaVersionThisBuildDoesNotWriteIsRefusedEvenWithForce()
-    {
-        using var database = new SqlServerCatalogDatabase();
-        await SeedAsync(database);
-        database.Execute("UPDATE dbo.catalog_metadata SET schema_version = 2 WHERE metadata_key = 1;");
-
-        ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
-            () => SqlServerCatalogReset.ResetAsync(
-                database.ConnectionString, Actor, Operator, "content release", force: true));
-
-        Assert.Equal("schema-mismatch", refused.Reason);
-        Assert.Contains("unsupported version '2'", refused.Message, StringComparison.Ordinal);
-        Assert.Equal(1, database.Scalar("SELECT active_version FROM dbo.catalog_metadata;"));
-    }
-
-    [CatalogSqlServerFact]
-    public async Task APartialCatalogAtAnotherSchemaVersionIsRefusedEvenWithForce()
-    {
-        using var database = new SqlServerCatalogDatabase();
-        await SeedAsync(database);
-        database.Execute("UPDATE dbo.catalog_metadata SET schema_version = 2 WHERE metadata_key = 1;");
-        Halve(database);
-
-        // The version is still READABLE, so it still decides. Recreating version 1 over a database that says
-        // it is at version 2 would not be a repair.
-        ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
-            () => SqlServerCatalogReset.ResetAsync(
-                database.ConnectionString, Actor, Operator, "repair", force: true));
-
-        Assert.Equal("schema-mismatch", refused.Reason);
-        Assert.Equal(Standing, SqlServerCatalogResetHarness.CountTables(database));
-    }
-
-    [CatalogSqlServerFact]
     public async Task AnActiveVersionNamingARowThatIsNotThereIsNotReadAsNothingPublished()
     {
         using var database = new SqlServerCatalogDatabase();
@@ -173,7 +140,7 @@ public class SqlServerCatalogResetRepairTests
     }
 
     /// <summary>
-    /// A half-finished manual deletion: three of the schema's tables gone and eleven standing. Each of the
+    /// A half-finished manual deletion: three of the schema's tables gone and the rest standing. Each of the
     /// three is a leaf, so the foreign keys pointing into the rest do not have to be unpicked first, which is
     /// exactly how far an operator with a SQL prompt would have got.
     /// </summary>

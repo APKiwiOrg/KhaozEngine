@@ -60,7 +60,8 @@ internal static class SqlServerCatalogSchemaExpectations
     /// tables in the catalog's database, and a table it named <c>catalog_overrides_by_host</c> matches every
     /// name rule an engine could write while belonging to nobody here. Naming the inventory means a drop
     /// destroys exactly the tables above and cannot reach anything else, and the set is pinned against
-    /// <c>CatalogSchemaV1.sql</c> by <c>SqlServerCatalogSchemaDriftTests</c> without an instance.
+    /// <c>CatalogSchemaV2.sql</c> by <c>SqlServerCatalogSchemaDriftTests</c> without an instance. Version 1's
+    /// tables are a subset of it, so a version 1 catalog is dropped by the same list.
     /// </para>
     /// </summary>
     internal static string TableNameList { get; } = BuildTableNameList();

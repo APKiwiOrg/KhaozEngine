@@ -12,8 +12,8 @@ namespace KhaozEngine.Catalog.Authoring;
 public enum ContentCatalogPriorState
 {
     /// <summary>
-    /// A whole catalog stood and was read. The version, the hashes and the dropped counts on the result are
-    /// what it held.
+    /// A whole catalog stood and was read, at the build's own schema version or an older one. The version,
+    /// the hashes, the dropped counts and the prior schema version on the result are what it held.
     /// </summary>
     Read = 0,
 
@@ -25,9 +25,10 @@ public enum ContentCatalogPriorState
     Absent = 1,
 
     /// <summary>
-    /// The database carried SOME of the catalog's tables and not all of them, which no store can open and no
-    /// read can describe. A forced reset drops what stands and recreates the schema, which repairs it, and
-    /// says so here because there is nothing truthful it can put in the version and the hashes.
+    /// The database carried SOME of the catalog's tables and not the whole set its schema version declares,
+    /// which no store can open and no read can describe. A forced reset drops what stands and recreates the
+    /// schema, which repairs it, and says so here because there is nothing truthful it can put in the version,
+    /// the hashes and the counts.
     /// </summary>
     Unreadable = 2,
 }

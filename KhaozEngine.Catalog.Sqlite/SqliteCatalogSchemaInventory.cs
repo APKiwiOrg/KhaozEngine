@@ -18,8 +18,13 @@ namespace KhaozEngine.Catalog.Sqlite;
 /// <c>LIKE</c> an underscore matches any single character, so <c>'catalog_%'</c> also matches a host's own
 /// <c>catalogs</c> and <c>cataloguer</c>, and escaping the underscore still leaves a host table genuinely
 /// named <c>catalog_overrides_by_host</c> indistinguishable from an engine table. Dropping by inventory means
-/// the reset destroys exactly the fourteen tables this build declares and nothing else, whatever else the
-/// host keeps in the same file.
+/// the reset destroys exactly the tables this build declares and nothing else, whatever else the host keeps
+/// in the same file.
+/// </para>
+/// <para>
+/// <b>Version 1's set is derived the same way</b>, from <see cref="SqliteCatalogSchema.VersionOneTables"/>,
+/// because a version 1 catalog is a WHOLE catalog the reset replaces rather than a partial one it refuses.
+/// It is a subset of the current set, so the current set is still the one the drop intersects with.
 /// </para>
 /// </summary>
 internal static class SqliteCatalogSchemaInventory
@@ -38,7 +43,48 @@ internal static class SqliteCatalogSchemaInventory
     /// Every table this build's schema declares, read back from the script itself. Names compare case
     /// insensitively because SQLite resolves table names that way.
     /// </summary>
-    internal static IReadOnlySet<string> Tables { get; } = Derive();
+    internal static IReadOnlySet<string> Tables { get; } = Derive(SqliteCatalogSchema.Tables);
+
+    /// <summary>Every table schema version 1 declared, read back from version 1's script the same way.</summary>
+    internal static IReadOnlySet<string> VersionOneTables { get; } = Derive(SqliteCatalogSchema.VersionOneTables);
+
+    /// <summary>
+    /// The whole table set the given schema version declares, or null for a version this build holds no
+    /// script for.
+    /// </summary>
+    /// <param name="version">The schema version a catalog's metadata row names.</param>
+    internal static IReadOnlySet<string>? TablesAt(long version) => version switch
+    {
+        1 => VersionOneTables,
+        SqliteCatalogSchema.CurrentVersion => Tables,
+        _ => null,
+    };
+
+    /// <summary>
+    /// Whether the standing tables are EXACTLY the set the given version declares, no more and no fewer,
+    /// which is what makes a catalog whole rather than partial.
+    /// </summary>
+    /// <param name="standing">The inventory intersected with what stands, from <see cref="ReadExisting"/>.</param>
+    /// <param name="version">The schema version the catalog's metadata row names.</param>
+    internal static bool IsWhole(IReadOnlyList<string> standing, long version)
+    {
+        ArgumentNullException.ThrowIfNull(standing);
+
+        if (TablesAt(version) is not { } declared || standing.Count != declared.Count)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < standing.Count; i++)
+        {
+            if (!declared.Contains(standing[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     /// <summary>
     /// The inventory INTERSECTED with what the database actually holds, in name order. An empty answer means
@@ -69,13 +115,13 @@ internal static class SqliteCatalogSchemaInventory
         return names;
     }
 
-    static IReadOnlySet<string> Derive()
+    static IReadOnlySet<string> Derive(string script)
     {
         using var reference = new SqliteConnection("Data Source=:memory:");
         reference.Open();
         using (SqliteCommand create = reference.CreateCommand())
         {
-            create.CommandText = SqliteCatalogSchema.Tables;
+            create.CommandText = script;
             create.ExecuteNonQuery();
         }
 

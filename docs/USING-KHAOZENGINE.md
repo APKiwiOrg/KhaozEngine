@@ -15232,24 +15232,33 @@ A database carrying NONE of the schema's tables is CREATED rather than refused, 
 same transaction, with the same audit row. The scripted release path is reset then import, so the first
 release against a new database takes that branch. A database carrying SOME of them is a half-finished deletion
 that no store can open: without `force` it is refused with reason `catalog-partial` and a sentence naming the
-remedy, and with `force` the reset drops what is left and recreates the schema. A schema version this build
-does not write is refused either way with `schema-mismatch`.
+remedy, and with `force` the reset drops what is left and recreates the schema.
+
+The schema version decides the rest whenever it can be read. A catalog at an OLDER schema version than the
+build writes is reset like any other and comes back at the build's version, because the recreate runs the
+build's script. A whole version 1 catalog, without the `catalog_content_upgrade` table version 2 added, is a
+whole catalog and needs no `force`. A catalog at a NEWER schema version is refused with `schema-mismatch`
+before anything is dropped, `force` or not, because recreating an older schema over it would move the database
+backwards.
 
 `ContentCatalogResetResult` carries what stood (the active version number, its server and client manifest
-hashes, and the counts of versions and row revisions dropped) plus the NEW `store_epoch`. The epoch is fresh
-on purpose: a reset store shares no history with the one it replaced. The result is also the last moment those
+hashes, the counts of versions and row revisions dropped, and `PriorSchemaVersion`) plus the recreated
+`SchemaVersion` and the NEW `store_epoch`. The epoch is fresh on purpose: a reset store shares no history with
+the one it replaced. The result is also the last moment those
 two hashes exist anywhere, because `catalog_version` goes with everything else.
 
 `PriorState` says which of the three a run was, and the record refuses to be built into a state that says two
 things: a version number with no row behind it reads as that number and the words "whose version row was
-MISSING" rather than as "nothing published", and a reset that read no catalog cannot report a version, a hash
-or anything dropped.
+MISSING" rather than as "nothing published", a reset that read no catalog cannot report a version, a hash, a
+prior schema version or anything dropped, and a prior schema version newer than the recreated one is refused.
+Every property is get-only, so a `with` expression cannot move one value past those rules.
 
 **The pack store is NOT touched by a reset.** A pack root left standing under a replaced catalog still holds a
 `versions/<n>` pointer naming the manifest of the content that was there before, so a caller that replaces
-content at the same version number must REBUILD its pack root with `ContentPackRebuild.RunAsync`, which writes
-one published version's whole pack out of the store's own rows and rules and verifies it against the manifest
-digests the version row records. Do not leave that to the boot to notice. The two hashes on the result are the
+content at the same version number must CLEAR its pack root or REBUILD it with `ContentPackRebuild.RunAsync`,
+which writes one published version's whole pack out of the store's own rows and rules and verifies it against
+the manifest digests the version row records. The import after a reset overwrites the pointer only in the pack
+store it was handed. Do not leave that to the boot to notice. The two hashes on the result are the
 last record of what the pack root should have been holding, and are what a caller compares against it.
 
 ### The server boot

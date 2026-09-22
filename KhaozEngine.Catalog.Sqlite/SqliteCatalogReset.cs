@@ -39,8 +39,8 @@ namespace KhaozEngine.Catalog.Sqlite;
 /// <para>
 /// <b>What it does NOT touch is the pack store on disk.</b> The reset knows nothing about a pack root, and a
 /// pack root left standing under a replaced catalog still holds a version pointer naming the manifest of the
-/// content that was there before. A caller that replaces content at the same version number must REBUILD its
-/// pack root through <c>ContentPackRebuild</c>, rather than leave that to the boot to notice. The hashes that
+/// content that was there before. A caller that replaces content at the same version number must CLEAR its
+/// pack root or REBUILD it through <c>ContentPackRebuild</c>, rather than leave that to the boot to notice. The hashes that
 /// STOOD come back on <see cref="ContentCatalogResetResult"/>, which is the last moment they can be read, so
 /// an old pack root can be told from a new one.
 /// </para>
@@ -65,7 +65,15 @@ public static class SqliteCatalogReset
     /// The scripted release path is reset then import, so the first release against a new database takes
     /// that branch. A database carrying SOME of them is a half-finished deletion, refused under reason
     /// <c>catalog-partial</c> and repaired by <paramref name="force"/>, which drops what is left and
-    /// recreates the schema. A schema version this build does not write is refused either way.
+    /// recreates the schema.
+    /// </para>
+    /// <para>
+    /// <b>The schema version decides the rest, whenever it can be read.</b> A catalog at an OLDER schema
+    /// version than this build writes is reset like any other, and comes back at this build's version: the
+    /// recreate runs this build's script, so the reset converges the schema as well as emptying it. A
+    /// catalog at a NEWER one is refused under reason <c>schema-mismatch</c> before anything is dropped,
+    /// whatever <paramref name="force"/> says, because recreating an older schema over it would move the
+    /// database backwards.
     /// </para>
     /// <para>
     /// It opens its OWN connection, so the connection string has to name a durable database. A plain
@@ -86,10 +94,10 @@ public static class SqliteCatalogReset
     /// <param name="note">Why the catalog was replaced, at most 1024 characters.</param>
     /// <param name="force">Whether to reset even though a draft is open, which DESTROYS that draft.</param>
     /// <param name="cancellationToken">Cancels the work. Nothing is committed on the way out.</param>
-    /// <returns>What stood before the reset, and the epoch the recreated schema minted.</returns>
+    /// <returns>What stood before the reset, and the schema version and epoch the recreated schema carries.</returns>
     /// <exception cref="ArgumentNullException">A required argument is null.</exception>
     /// <exception cref="ArgumentException"><paramref name="actor"/> is empty, or an argument is longer than the audit column that holds it.</exception>
-    /// <exception cref="ContentAuthoringException">The database carries a catalog schema version this build does not support, or it carries an open draft and <paramref name="force"/> is false.</exception>
+    /// <exception cref="ContentAuthoringException">The database carries a catalog schema version newer than this build writes, or a partial catalog or an open draft and <paramref name="force"/> is false.</exception>
     public static async Task<ContentCatalogResetResult> ResetAsync(
         string connectionString,
         string actor,
@@ -125,10 +133,10 @@ public static class SqliteCatalogReset
 
     /// <summary>
     /// The whole reset inside ONE transaction. SQLite runs DDL transactionally, so a failure anywhere below
-    /// (a drop, a create, or the audit insert refusing an over-long actor) rolls the drop back with it and
-    /// leaves the catalog exactly as it was. That is not a nicety: a half-dropped catalog fails the next
-    /// open outright, because the initializer creates only when it counts ZERO catalog tables and validates
-    /// every object by name otherwise.
+    /// (a drop, the create, the audit insert, or a deferred foreign key checked at the commit) rolls the drop
+    /// back with it and leaves the catalog exactly as it was. That is not a nicety: a half-dropped catalog
+    /// fails the next open outright, because the initializer creates only when it counts ZERO catalog tables
+    /// and validates every object by name otherwise.
     /// </summary>
     static async Task<ContentCatalogResetResult> ResetAsync(
         SqliteConnection connection,
@@ -152,8 +160,8 @@ public static class SqliteCatalogReset
         // under. A name pattern would take a host's own catalogs, cataloguer or catalog_overrides_by_host
         // with it, and those tables are none of this schema's business.
         IReadOnlyList<string> tables = SqliteCatalogSchemaInventory.ReadExisting(connection, transaction);
-        ContentCatalogResetResult stood = await ReadBeforeAsync(
-            connection, transaction, tables, force, cancellationToken).ConfigureAwait(false);
+        Stood stood = await ReadBeforeAsync(connection, transaction, tables, force, cancellationToken)
+            .ConfigureAwait(false);
 
         // An index goes with the table that owns it, and so does the sqlite_sequence row behind AUTOINCREMENT.
         for (int i = 0; i < tables.Count; i++)
@@ -168,14 +176,28 @@ public static class SqliteCatalogReset
         await ExecuteAsync(connection, transaction, SqliteCatalogSchema.Tables, cancellationToken)
             .ConfigureAwait(false);
 
-        ContentCatalogResetResult result = stood with
-        {
-            StoreEpoch = await ReadTextAsync(
-                connection,
-                transaction,
-                "SELECT store_epoch FROM catalog_metadata WHERE metadata_key = 1;",
-                cancellationToken).ConfigureAwait(false),
-        };
+        // Both read back from the row the recreate just wrote rather than restated from a constant, so the
+        // result reports what the database now says.
+        long schemaVersion = await ReadLongAsync(
+            connection,
+            transaction,
+            "SELECT schema_version FROM catalog_metadata WHERE metadata_key = 1;",
+            cancellationToken).ConfigureAwait(false);
+        string epoch = await ReadTextAsync(
+            connection,
+            transaction,
+            "SELECT store_epoch FROM catalog_metadata WHERE metadata_key = 1;",
+            cancellationToken).ConfigureAwait(false);
+        var result = new ContentCatalogResetResult(
+            stood.ActiveVersion,
+            stood.ServerManifestHash,
+            stood.ClientManifestHash,
+            stood.VersionsDropped,
+            stood.RowsDropped,
+            epoch,
+            (int)stood.SchemaVersion,
+            (int)schemaVersion,
+            stood.State);
 
         await AppendResetAuditAsync(connection, transaction, actor, operatorId, note, result, cancellationToken)
             .ConfigureAwait(false);
@@ -185,16 +207,21 @@ public static class SqliteCatalogReset
 
     /// <summary>
     /// What the store stood at, read while it still exists, with the open-draft refusal on the way past.
-    /// The epoch on the returned record is the OLD one and the caller replaces it after the recreate.
     /// <para>
     /// <b>Three databases arrive here and only one of them has anything to say.</b> A database carrying NONE
     /// of the schema's tables is not an error: the scripted release path is reset then import, so the first
     /// release against a new database lands here and the reset creates the schema through the very same
-    /// script, dropping nothing. A database carrying SOME of them is a half-finished deletion that no store
-    /// can open and no read can describe, and <paramref name="force"/> repairs it. A whole catalog is read.
+    /// script, dropping nothing. A database whose standing tables are not the whole set its schema version
+    /// declares is a half-finished deletion that no store can open and no read can describe, and
+    /// <paramref name="force"/> repairs it. A whole catalog is read.
+    /// </para>
+    /// <para>
+    /// A version 1 catalog is WHOLE when it stands at version 1's own set, which lacks the table version 2
+    /// added. Judged against this build's set alone it would read as partial, and a plain reset of a store
+    /// that is merely older would be refused.
     /// </para>
     /// </summary>
-    static async Task<ContentCatalogResetResult> ReadBeforeAsync(
+    static async Task<Stood> ReadBeforeAsync(
         SqliteConnection connection,
         SqliteTransaction transaction,
         IReadOnlyList<string> tables,
@@ -203,42 +230,55 @@ public static class SqliteCatalogReset
     {
         if (tables.Count == 0)
         {
-            return Nothing(ContentCatalogPriorState.Absent);
+            return Stood.Nothing(ContentCatalogPriorState.Absent);
         }
 
-        if (tables.Count != SqliteCatalogSchemaInventory.Tables.Count)
+        long? version = Holds(tables, MetadataTable)
+            ? await TryReadSchemaVersionAsync(connection, transaction, cancellationToken).ConfigureAwait(false)
+            : null;
+
+        // A NEWER schema version is refused whatever else is true, partial or whole, forced or not. The
+        // recreate runs this build's script, and moving a database backwards is not a reset and not a repair.
+        if (version > SqliteCatalogSchema.CurrentVersion)
         {
-            // A schema version that can still be READ is still binding. A partial catalog at another version
-            // is refused whatever the force flag says, because the recreate runs this build's script and
-            // moving a database to version 1 is not a repair.
-            if (Holds(tables, MetadataTable)
-                && await TryReadSchemaVersionAsync(connection, transaction, cancellationToken)
-                    .ConfigureAwait(false) is long version
-                && version != SqliteCatalogSchema.CurrentVersion)
-            {
-                throw UnsupportedVersion(version);
-            }
-
-            if (!force)
-            {
-                throw Partial(tables.Count, SqliteCatalogSchemaInventory.Tables.Count);
-            }
-
-            return Nothing(ContentCatalogPriorState.Unreadable);
+            throw Newer(version.Value);
         }
 
-        long schema;
+        if (version is long readable && SqliteCatalogSchemaInventory.IsWhole(tables, readable))
+        {
+            return await ReadWholeAsync(connection, transaction, readable, force, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        // Every table this build declares stands and the version still cannot be read, which is not a
+        // deletion and not something a repair can be sure about.
+        if (version is null && SqliteCatalogSchemaInventory.IsWhole(tables, SqliteCatalogSchema.CurrentVersion))
+        {
+            throw Mismatch("carrying every catalog table and no readable schema version");
+        }
+
+        if (!force)
+        {
+            throw Partial(tables.Count, version);
+        }
+
+        return Stood.Nothing(ContentCatalogPriorState.Unreadable);
+    }
+
+    /// <summary>A whole catalog at <paramref name="schema"/>, which is this build's version or an older one.</summary>
+    static async Task<Stood> ReadWholeAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        long schema,
+        bool force,
+        CancellationToken cancellationToken)
+    {
         int active;
         int versions;
         int rows;
         long drafts;
         try
         {
-            schema = await ReadLongAsync(
-                connection,
-                transaction,
-                "SELECT schema_version FROM catalog_metadata WHERE metadata_key = 1;",
-                cancellationToken).ConfigureAwait(false);
             active = (int)await ReadLongAsync(
                 connection,
                 transaction,
@@ -256,18 +296,11 @@ public static class SqliteCatalogReset
         }
         catch (SqliteException exception)
         {
-            // Only the reads BEFORE the drop are folded into the schema refusal. A database carrying some
-            // catalog tables and not the ones this reads is a half-applied migration, and an operator can act
-            // on being told that. A provider error after the drop is a different thing entirely and is left
-            // to speak for itself, having rolled the reset back on the way out.
+            // Only the reads BEFORE the drop are folded into the schema refusal. Every table these name
+            // stands, so a failure here is a table that is not the shape its name promises, and an operator
+            // can act on being told that. A provider error after the drop is a different thing entirely and
+            // is left to speak for itself, having rolled the reset back on the way out.
             throw Mismatch("unreadable, so what it holds could not be checked", exception);
-        }
-
-        // The recreate runs THIS build's script, so resetting a database at another schema version would
-        // silently move it to version 1 and call that a reset.
-        if (schema != SqliteCatalogSchema.CurrentVersion)
-        {
-            throw UnsupportedVersion(schema);
         }
 
         if (drafts > 0 && !force)
@@ -300,7 +333,7 @@ public static class SqliteCatalogReset
             }
         }
 
-        return new ContentCatalogResetResult(active, server, client, versions, rows, string.Empty);
+        return new Stood(active, server, client, versions, rows, schema, ContentCatalogPriorState.Read);
     }
 
     /// <summary>
@@ -450,27 +483,38 @@ public static class SqliteCatalogReset
         }
     }
 
-    /// <summary>A result that claims nothing about what stood, which is all these two cases may claim.</summary>
-    static ContentCatalogResetResult Nothing(ContentCatalogPriorState priorState)
-        => new(0, null, null, 0, 0, string.Empty, priorState);
-
     /// <summary>
-    /// The PARTIAL refusal: some of the schema's tables stand and the rest do not, which no store can open
-    /// and no read can describe. It carries its own reason token rather than <c>schema-mismatch</c>, because
-    /// the remedy is not a migration. The reset itself is the remedy, and the sentence says so.
+    /// The PARTIAL refusal: the standing tables are not the whole set any readable schema version declares,
+    /// which no store can open and no read can describe. It carries its own reason token rather than
+    /// <c>schema-mismatch</c>, because the remedy is not a migration. The reset itself is the remedy, and the
+    /// sentence says so.
     /// </summary>
-    static ContentAuthoringException Partial(int standing, int expected)
+    static ContentAuthoringException Partial(int standing, long? version)
         => new(
             FormattableString.Invariant(
-                $"The SQLite content catalog is PARTIAL: {standing} of the {expected} tables version {SqliteCatalogSchema.CurrentVersion} declares stand, so what it holds cannot be read. Pass the reset's force flag to drop what is left and recreate the schema, which repairs it."),
+                $"The SQLite content catalog is PARTIAL: {standing} of the {SqliteCatalogSchemaInventory.Tables.Count} tables schema version {SqliteCatalogSchema.CurrentVersion} declares stand, which is not the whole set {Declared(version)} declares, so what it holds cannot be read. Pass the reset's force flag to drop what is left and recreate the schema at version {SqliteCatalogSchema.CurrentVersion}, which repairs it."),
             default,
             0,
             ContentAuthoringException.CatalogPartialReason);
 
-    /// <summary>The refusal a database at another schema version gets, which no force flag overrides.</summary>
-    static ContentAuthoringException UnsupportedVersion(long version)
-        => Mismatch(FormattableString.Invariant(
-            $"at unsupported version '{version}', and a reset recreates version {SqliteCatalogSchema.CurrentVersion}"));
+    /// <summary>Which schema version the partial refusal measured the standing tables against.</summary>
+    static string Declared(long? version)
+        => version is long known
+            ? FormattableString.Invariant($"the schema version '{known}' its metadata row names")
+            : "any schema version";
+
+    /// <summary>
+    /// The refusal a database at a NEWER schema version gets, which no force flag overrides. It carries the
+    /// schema reason token so a console keys on one answer, and names the remedy, which is a newer build
+    /// rather than a migration.
+    /// </summary>
+    static ContentAuthoringException Newer(long version)
+        => new(
+            FormattableString.Invariant(
+                $"The SQLite content catalog schema is at version '{version}', newer than version {SqliteCatalogSchema.CurrentVersion} this build writes, so a reset by this build would move it backwards. Nothing was dropped. Reset it from a build that writes schema version {version} or later."),
+            default,
+            0,
+            ContentAuthoringException.SchemaMismatchReason);
 
     /// <summary>
     /// The schema refusal, in the words and under the reason token the provider's own validation uses, so a
@@ -487,4 +531,21 @@ public static class SqliteCatalogReset
 
     static string Because(Exception? innerException)
         => innerException is null ? string.Empty : ": " + innerException.Message;
+
+    /// <summary>
+    /// What the pre-drop read found, held until the recreate has run and the result can be built once, with
+    /// the new schema version and epoch, rather than built early and patched.
+    /// </summary>
+    readonly record struct Stood(
+        int ActiveVersion,
+        string? ServerManifestHash,
+        string? ClientManifestHash,
+        int VersionsDropped,
+        int RowsDropped,
+        long SchemaVersion,
+        ContentCatalogPriorState State)
+    {
+        /// <summary>A read that found nothing it may claim, which is all an absent or partial catalog allows.</summary>
+        internal static Stood Nothing(ContentCatalogPriorState state) => new(0, null, null, 0, 0, 0, state);
+    }
 }

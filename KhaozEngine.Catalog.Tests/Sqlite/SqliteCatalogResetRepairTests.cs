@@ -18,12 +18,16 @@ namespace KhaozEngine.Tests.Catalog.Sqlite;
 /// <b>A partial catalog is a half-finished manual deletion.</b> No store can open it and no read can describe
 /// what it holds, so without <c>force</c> it is refused with the reason token and the sentence that name the
 /// remedy, and with <c>force</c> the reset repairs it by dropping what is left and recreating the schema.
+/// The schema version rules, older reset and newer refused, are <c>SqliteCatalogResetSchemaVersionTests</c>.
 /// </para>
 /// </summary>
 public class SqliteCatalogResetRepairTests
 {
     const string Actor = SqliteCatalogResetHarness.Actor;
     const string Operator = SqliteCatalogResetHarness.Operator;
+
+    /// <summary>How many of the schema's tables a half-finished deletion leaves standing below.</summary>
+    static int Standing => SqliteCatalogSchemaInventory.Tables.Count - 3;
 
     [Fact]
     public async Task ADatabaseCarryingNoCatalogTableIsCreatedRatherThanRefused()
@@ -92,7 +96,7 @@ public class SqliteCatalogResetRepairTests
             database, "SELECT store_epoch FROM catalog_metadata;"));
         Assert.Equal(1L, database.Scalar("SELECT active_version FROM catalog_metadata;"));
         Assert.Equal(2L, database.Scalar("SELECT COUNT(*) FROM catalog_row;"));
-        Assert.Equal(11, SqliteCatalogResetHarness.Tables(database).Count);
+        Assert.Equal(Standing, SqliteCatalogResetHarness.Tables(database).Count);
     }
 
     [Fact]
@@ -132,40 +136,6 @@ public class SqliteCatalogResetRepairTests
     }
 
     [Fact]
-    public async Task ASchemaVersionThisBuildDoesNotWriteIsRefusedEvenWithForce()
-    {
-        using var database = new TemporaryCatalogDatabase();
-        await SeedAsync(database);
-        database.Execute("UPDATE catalog_metadata SET schema_version = 2 WHERE metadata_key = 1;");
-
-        ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
-            () => SqliteCatalogReset.ResetAsync(
-                database.ConnectionString, Actor, Operator, "content release", force: true));
-
-        Assert.Equal("schema-mismatch", refused.Reason);
-        Assert.Contains("unsupported version '2'", refused.Message, StringComparison.Ordinal);
-        Assert.Equal(1L, database.Scalar("SELECT active_version FROM catalog_metadata;"));
-    }
-
-    [Fact]
-    public async Task APartialCatalogAtAnotherSchemaVersionIsRefusedEvenWithForce()
-    {
-        using var database = new TemporaryCatalogDatabase();
-        await SeedAsync(database);
-        database.Execute("UPDATE catalog_metadata SET schema_version = 2 WHERE metadata_key = 1;");
-        Halve(database);
-
-        // The version is still READABLE, so it still decides. Recreating version 1 over a database that says
-        // it is at version 2 would not be a repair.
-        ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
-            () => SqliteCatalogReset.ResetAsync(
-                database.ConnectionString, Actor, Operator, "repair", force: true));
-
-        Assert.Equal("schema-mismatch", refused.Reason);
-        Assert.Equal(11, SqliteCatalogResetHarness.Tables(database).Count);
-    }
-
-    [Fact]
     public async Task AnActiveVersionNamingARowThatIsNotThereIsNotReadAsNothingPublished()
     {
         using var database = new TemporaryCatalogDatabase();
@@ -195,7 +165,7 @@ public class SqliteCatalogResetRepairTests
     }
 
     /// <summary>
-    /// A half-finished manual deletion: three of the schema's tables gone and eleven standing. The raw
+    /// A half-finished manual deletion: three of the schema's tables gone and the rest standing. The raw
     /// connection runs without the store's bootstrap pragma, so foreign keys are off and the order is free,
     /// which is exactly how an operator with a SQL prompt would have got here.
     /// </summary>

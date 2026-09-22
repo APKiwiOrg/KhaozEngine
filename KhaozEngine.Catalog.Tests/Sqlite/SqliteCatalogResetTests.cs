@@ -74,7 +74,9 @@ public class SqliteCatalogResetTests
         using var reopened = new SqliteContentAuthoringStore(
             database.ConnectionString, Registry(), database.Pack());
         await reopened.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
-        Assert.Equal(1, await reopened.GetSchemaVersionAsync());
+        Assert.Equal(SqliteCatalogSchema.CurrentVersion, await reopened.GetSchemaVersionAsync());
+        Assert.Equal(SqliteCatalogSchema.CurrentVersion, reset.SchemaVersion);
+        Assert.Equal(SqliteCatalogSchema.CurrentVersion, reset.PriorSchemaVersion);
         Assert.Equal(0, await reopened.GetActiveVersionAsync());
         Assert.Null(await reopened.GetPinnedVersionAsync());
         Assert.Equal(reset.StoreEpoch, await reopened.GetStoreEpochAsync());

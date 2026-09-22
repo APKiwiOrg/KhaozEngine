@@ -68,7 +68,7 @@ public class SqliteCatalogResetHostTableTests
             database.ConnectionString, SqliteCatalogResetHarness.Registry(), database.Pack());
         await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
 
-        Assert.Equal(1, await store.GetSchemaVersionAsync());
+        Assert.Equal(SqliteCatalogSchema.CurrentVersion, await store.GetSchemaVersionAsync());
         Assert.Equal(0, await store.GetActiveVersionAsync());
     }
 

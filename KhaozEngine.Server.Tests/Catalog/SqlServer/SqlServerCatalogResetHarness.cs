@@ -84,8 +84,9 @@ internal static class SqlServerCatalogResetHarness
     }
 
     /// <summary>
-    /// How many of the schema's own tables stand, by the inventory the drop itself names. Fourteen is a whole
-    /// catalog, zero is a database with none, and anything between is a partial one.
+    /// How many of the schema's own tables stand, by the inventory the drop itself names. The whole
+    /// inventory is a current catalog, zero is a database with none, and a count between is either a partial
+    /// catalog or a version 1 one, which the reset tells apart by the version its metadata row names.
     /// </summary>
     internal static int CountTables(SqlServerCatalogDatabase database)
         => database.Scalar("SELECT COUNT(*) " + InventoryFromSql + ";");

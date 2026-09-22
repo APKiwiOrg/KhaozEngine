@@ -86,7 +86,7 @@ is dropped without anyone having to remember it here, and a table this build doe
 touched. A pattern could not do that job: in SQLite's `LIKE` an underscore matches any single character, so
 `catalog_%` also matches a host's own `catalogs` and `cataloguer`, and escaping the underscore still leaves a
 host table genuinely named `catalog_overrides_by_host` indistinguishable from an engine table. Keep whatever
-tables you like in the same file. The reset destroys exactly the fourteen above.
+tables you like in the same file. The reset destroys exactly the tables the schema declares.
 
 Drop and recreate rather than `DELETE`, because a delete leaves the `sqlite_sequence` marks behind the
 `AUTOINCREMENT` columns on `catalog_family`, `catalog_draft_edit` and `catalog_audit` where they stood, and
@@ -112,9 +112,17 @@ rather than being refused for a migration that exists only as this script.
 **A database carrying SOME of them is a half-finished deletion**, which no store can open and no read can
 describe. Without `force` it is refused with reason `catalog-partial` and a sentence naming the remedy. With
 `force` the reset drops what is left, recreates the schema and returns a result whose `PriorState` is
-`Unreadable`, because there is nothing truthful it can put in the version and the hashes. A schema version
-this build does not write is refused either way, force or no force, with `schema-mismatch` naming the
-migration: recreating version 1 over a database that says it is at version 2 would not be a repair.
+`Unreadable`, because there is nothing truthful it can put in the version and the hashes. What stood is
+still dropped, and the summary says so.
+
+**The schema version decides the rest, whenever it can be read.** A catalog at an OLDER schema version than
+this build writes is reset like any other and comes back at this build's version, because the recreate runs
+this build's script: a whole version 1 catalog, without the `catalog_content_upgrade` table version 2 added,
+is a whole catalog rather than a partial one, and needs no `force`. A catalog at a NEWER schema version is
+refused with `schema-mismatch` before anything is dropped, force or no force, because recreating an older
+schema over it would move the database backwards. The refusal names the remedy, which is a reset from a build
+that writes that version. The result carries both numbers, `PriorSchemaVersion` and `SchemaVersion`, and
+`reset.Summary` says both.
 
 `actor`, `operatorId` and `note` are checked against the caps `catalog_audit` declares (1 to 128, 128 and
 1024 characters) BEFORE the transaction opens, and an argument outside them is an `ArgumentException` with
@@ -139,9 +147,11 @@ provider's default.
 
 **The pack store on disk is NOT touched.** The reset knows nothing about a pack root, and a pack root left
 standing under a replaced catalog still holds a `versions/<n>` pointer naming the manifest of the content that
-was there before. A caller that replaces content at the same version number must therefore REBUILD its pack
-root: `ContentPackRebuild.RunAsync` writes one published version's whole pack out of the store's own rows and
-rules, verified against the manifest digests the version row records. Do not leave that to the boot to notice.
+was there before. A caller that replaces content at the same version number must therefore CLEAR its pack
+root or REBUILD it. The import that follows a reset overwrites the pointer only in the pack store it was handed,
+so any other root a server boots from keeps the old one. `ContentPackRebuild.RunAsync` writes one published
+version's whole pack out of the store's own rows and rules, verified against the manifest digests the version
+row records. Do not leave that to the boot to notice.
 `ContentCatalogResetResult` carries the server and client manifest hashes that STOOD, which is the last moment
 they can be read, so a caller can tell an old pack root from a new one.
 

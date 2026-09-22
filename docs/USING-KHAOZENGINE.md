@@ -9098,6 +9098,16 @@ their order IS significant: the FIRST matching override wins a patch of ground, 
 feature's live fold position. See the `KhaozEngine.MapEditor` README's "Feature apply order" section for
 the undo/redo selection-following caveat.
 
+**Authored placements.** `ViewportWorld` streams authored placements through its `Scene3DChunkSink` as one live
+`PropLayer.PlacementLayer` over the document (see Frozen zones: placement layers), not a whole-document
+`DrawProps` list. They follow the same chunk residency and `RenderDistance.PropDrawRadius` cull as scatter,
+driven by the editor camera, so a placement outside the gameplay ring (four 60 m chunks around the camera) is
+not drawn until its chunk streams in. An edit, undo or redo rebuilds only the chunks whose placements changed,
+on the next frame. The selected placement is drawn directly with the highlight tint, so a gizmo drag rebuilds
+no chunk. The MapEdit tool's `render_topdown` and `render_view` build the same `ViewportWorld`, so their
+placements follow the ring around the render focus too. See the `KhaozEngine.MapEditor` README's "Rebuild
+semantics" section.
+
 **Water.** `ViewportWorld.Draw` submits one `Scene3D.DrawWater` plane every frame, sized to the document
 bounds and derived live from `Terrain.WaterLevel`, so a level edit shows up immediately, ahead of the
 scatter rebuild it also triggers. The terrain root in the outline tree opens an inspector with all seven

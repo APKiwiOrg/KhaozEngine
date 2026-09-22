@@ -115,6 +115,11 @@ it into the throwaway `ViewportWorld` the render call builds (`ViewportWorld.Tex
 render call gets the same textured-vs-flat choice the GUI viewport does without a live editor session
 open. Additive parameter, no new verb.
 
+Authored placements draw through the world's streamed placement layer, like scatter, so a render shows only
+the placements inside the gameplay ring around its streaming focus (the rect centre for `render_topdown`, the
+document bounds centre for `render_view`). A wide `render_topdown` rect or a `render_view` eye far from the
+bounds centre can leave distant placements out of the image.
+
 ## Verb surface (78 tools)
 
 | Group | Verbs |

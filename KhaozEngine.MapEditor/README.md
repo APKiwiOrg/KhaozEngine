@@ -824,13 +824,32 @@ edit (`RenameScatterOverrideCommand`) is `false`, since a name change affects ne
 order. An exclusion reorder (`ReorderExclusionCommand`) is also `false`, since exclusions combine as a set
 union with no order dependency (see Feature apply order above), the one place a reorder command does NOT
 match its sibling add/edit/remove commands' `AffectsWorld` value. Placement/spawn/region edits are `false`
-(they draw outside the streamed sink, so a drag never triggers a chunk rebuild). `EditorDocument` sets
+(spawns and regions draw outside the streamed sink, and placements reach it through their own incremental
+layer path, below, so neither needs a world rebuild). `EditorDocument` sets
 `WorldRebuildPending` whenever an executed, undone, or redone command's `AffectsWorld` is true.
 
 Visibility switches do not enter any rebuild path. `ViewportWorld.BuildPropLayers` keeps every scatter and
 companion layer resident and carries the host scatter-layer identity into its `PropLayer`. At draw time the
 sink filters retained batches by layer and kit identity. The same effective category predicate gates authored
 placement drawing, picking, and the selected placement gizmo. See Visibility above.
+
+**Authored placements stream through the sink.** `ViewportWorld.BuildSinkLayers` appends one live
+`PropLayer.PlacementLayer` after the scatter and companion layers, backed by `AuthoredPlacementLayer` (an
+`IPlacementSource` over the document) and render-only (`colliders: false`). Authored placements therefore get
+the same chunk residency and `RenderDistance.PropDrawRadius` cull as scatter, driven by the editor camera: a
+placement outside the gameplay ring (four 60 m chunks around the camera at every render-distance setting) is
+not drawn, and it appears once its chunk streams in. The viewport no longer submits a whole-document
+`DrawProps` list every frame.
+
+`DocumentChanged` marks the layer dirty. The next `ViewportWorld.Draw` diffs the placements against the set the
+layer last published, keyed by stable id, and rebuilds only the loaded chunks whose placements changed (one
+chunk for a rotate, scale, add or delete, two for a move across a chunk edge). Execute, undo and redo all take
+this path, so an edit shows on the next frame. An idle frame costs a few compares and allocates nothing. The
+selected placement is kept out of the layer and drawn directly with the highlight tint, so a gizmo drag
+rebuilds no chunk, and a selection change rebuilds at most the two chunks it leaves and enters. A per-element
+hide leaves the layer the same way. The **Authored props** switch, Terrain Only and prop categories gate the
+layer through the sink's draw filter without a rebuild, and the diff is deferred while the group is hidden. A
+chunk rebuild re-meshes that chunk's terrain too, since the streamer has no props-only rebuild.
 
 A rebuild reads the document as it stands, and mid-edit that can be invalid: `ViewportWorld`'s prop-layer
 build throws `MapDocumentException` for a companion layer naming a host scatter layer the document does not
@@ -880,8 +899,9 @@ there to fix a one-frame lag the editor used to have: chrome used to run after t
 inspector edit's `WorldRebuildPending` flip landed one frame too late for that frame's rebuild). So when the
 inspector's `FloatRow` setter calls `EditorDocument.Execute(new EditFeatureCommand(...))`, the streamed world
 rebuilds (or partial-rebuilds) the SAME frame, same as a gizmo-driven drag (`UpdateTools`, which runs even
-earlier still). Placement/spawn drags never trigger a rebuild either way (`AffectsWorld` is always false,
-since they draw outside the streamed sink), and neither do region drags (game-interpreted, also `AffectsWorld`
+earlier still). Placement/spawn drags never trigger a rebuild either way (`AffectsWorld` is always false: a
+spawn draws outside the streamed sink, and the dragged placement is the selected one, which the authored
+placement layer serves outside the sink), and neither do region drags (game-interpreted, also `AffectsWorld`
 false).
 
 ## Bake-region

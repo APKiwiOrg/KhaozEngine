@@ -88,9 +88,9 @@ public class SqlServerCatalogResetTests
 
         // The table count is read off a store that has only ever been created rather than written here as a
         // number, so a schema that gains a table does not quietly move what this compares against. The count
-        // does NOT prove the drop skipped nothing: a table left standing is still counted, and the recreate
-        // would find it and leave it. What proves that is AResetDropsEveryTableSoNoRowAndNoIdentityMarkSurvivesIt,
-        // which counts the ROWS of every table the inventory names.
+        // does NOT prove the drop skipped nothing. On this backend a skipped table fails the recreate's CREATE
+        // TABLE and with it the whole reset, and the ROW counts are in
+        // AResetDropsEveryTableSoNoRowAndNoIdentityMarkSurvivesIt.
         int afterReset = SqlServerCatalogResetHarness.CountTables(database);
         database.DropSchema();
         await OpenAsync(database);
@@ -109,7 +109,8 @@ public class SqlServerCatalogResetTests
             database.ConnectionString, Actor, Operator, "content release");
 
         // Every catalog table, read back by NAME from the recreated database rather than listed here, so a
-        // table the drop skipped is caught by the same loop that checks the tables it did drop.
+        // table the drop skipped and that held rows is caught by the same loop. A skipped table fails the
+        // reset before this anyway, because the script's CREATE TABLE refuses a table that is still there.
         foreach (string table in Tables(database))
         {
             int expected = table switch

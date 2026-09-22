@@ -1,3 +1,4 @@
+using System;
 using System.Data;
 using System.Threading.Tasks;
 using KhaozEngine.Catalog.Authoring;
@@ -11,16 +12,19 @@ namespace KhaozEngine.Tests.Catalog.SqlServer;
 /// The reset behind the schema's application lock, which is the create's own lock on the create's own
 /// resource name.
 /// <para>
-/// <b>There is no race to lose here.</b> While a second session holds the lock exclusively the reset cannot
-/// be past its first statement, so asserting that it has not finished is a fact rather than a timing guess,
-/// and the catalog it would have replaced is still whole. Releasing the lock lets it through.
+/// <b>There is no race to lose here.</b> The fact waits until the server itself reports a session WAITING
+/// for this database's exclusive application lock, which only the reset can be. From that moment the reset
+/// is parked on its first statement for as long as the holder keeps the lock, so asserting that it has not
+/// finished and that the catalog is still whole is a fact rather than a timing guess. Releasing the lock
+/// lets it through. The wait for the waiter is bounded only so a reset that never asks for the lock fails
+/// here instead of hanging.
 /// </para>
 /// </summary>
 [Collection(SqlServerCatalogCollection.Name)]
 public class SqlServerCatalogResetLockTests
 {
-    /// <summary>How long the holder keeps the lock before letting the reset through.</summary>
-    const int HeldMilliseconds = 1500;
+    /// <summary>The longest the fact waits for the reset to show up as a waiter on the lock.</summary>
+    static readonly TimeSpan WaiterBound = TimeSpan.FromSeconds(30);
 
     [CatalogSqlServerFact]
     public async Task AResetWaitsBehindTheLockTheSchemaCreateTakes()
@@ -40,10 +44,12 @@ public class SqlServerCatalogResetLockTests
             SqlServerCatalogResetHarness.Operator,
             "content release");
 
-        await Task.Delay(HeldMilliseconds);
+        Assert.True(
+            await WaitForLockWaiterAsync(database, reset),
+            "The reset never showed up waiting on the schema's application lock.");
 
-        // Not merely unfinished. The lock is taken before the reset READS anything, so the catalog it would
-        // have replaced is untouched too.
+        // Not merely unfinished. The lock is the reset's first statement, so the catalog it would have
+        // replaced is untouched too.
         Assert.False(reset.IsCompleted);
         Assert.Equal(1, database.Scalar("SELECT active_version FROM dbo.catalog_metadata;"));
         Assert.Equal(2, database.Scalar("SELECT COUNT(*) FROM dbo.catalog_row;"));
@@ -53,6 +59,33 @@ public class SqlServerCatalogResetLockTests
         ContentCatalogResetResult done = await reset;
         Assert.Equal(1, done.ActiveVersion);
         Assert.Equal(0, database.Scalar("SELECT active_version FROM dbo.catalog_metadata;"));
+    }
+
+    /// <summary>
+    /// Whether a session is WAITING for an exclusive application lock in this database, polled until one is or
+    /// the reset has already finished, which would mean it never waited. The collection is serialized, so the
+    /// reset is the only session that can be waiting.
+    /// </summary>
+    static async Task<bool> WaitForLockWaiterAsync(SqlServerCatalogDatabase database, Task reset)
+    {
+        var bound = System.Diagnostics.Stopwatch.StartNew();
+        while (bound.Elapsed < WaiterBound && !reset.IsCompleted)
+        {
+            int waiting = database.Scalar(
+                """
+                SELECT COUNT(*) FROM sys.dm_tran_locks
+                WHERE resource_type = N'APPLICATION' AND request_mode = N'X' AND request_status = N'WAIT'
+                  AND resource_database_id = DB_ID();
+                """);
+            if (waiting > 0)
+            {
+                return true;
+            }
+
+            await Task.Delay(20);
+        }
+
+        return false;
     }
 
     /// <summary>

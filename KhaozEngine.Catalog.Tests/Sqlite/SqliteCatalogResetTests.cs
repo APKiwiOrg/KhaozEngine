@@ -84,8 +84,9 @@ public class SqliteCatalogResetTests
         // The table count is read off a store that has only ever been created rather than written here as a
         // number, so a schema that gains a table does not quietly move what this compares against. The count
         // does NOT prove the drop skipped nothing: a table left standing is still counted, and the recreate
-        // would find it and leave it. What proves that is AResetDropsEveryTableSoNoRowAndNoIdentityMarkSurvivesIt,
-        // which counts the ROWS of every table the inventory names.
+        // would find it and leave it. What catches a skipped table that held rows is
+        // AResetDropsEveryTableSoNoRowAndNoIdentityMarkSurvivesIt, which counts the ROWS of every table the
+        // inventory names.
         using var fresh = new TemporaryCatalogDatabase();
         using (var creating = new SqliteContentAuthoringStore(fresh.ConnectionString, Registry()))
         {
@@ -110,7 +111,9 @@ public class SqliteCatalogResetTests
         await SqliteCatalogReset.ResetAsync(database.ConnectionString, Actor, Operator, "content release");
 
         // Every catalog table, read back by NAME from the recreated database rather than listed here, so a
-        // table the drop skipped is caught by the same loop that checks the tables it did drop.
+        // table the drop skipped is caught by the same loop whenever it held rows before the reset. A table
+        // that was already empty reads the same either way, and this script creates only what is missing, so
+        // nothing here would catch a skip of one of those.
         foreach (string table in Tables(database))
         {
             long expected = table switch

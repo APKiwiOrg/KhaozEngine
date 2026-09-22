@@ -15673,6 +15673,28 @@ for the same reason the store's ceiling rule does.
 Every knob is read out of the CANDIDATE. Nothing here reads a running process: a sweep that did would pass
 or fail the same pack differently depending on what a server happened to have loaded.
 
+#### A game's own whole-catalog rules
+
+`GameContentSweepOptions.GameRules` is the hook for a cross-type rule the package does not hold. Each one is
+the engine's own `IContentValidator`, and it runs in the sweep's slot AFTER every rule of the package's own,
+handed the same slot type id, the same candidate and the same findings list:
+
+```csharp
+Sweep = new GameContentSweepOptions
+{
+    MaxLevelKnob = "max_level",
+    GameRules = [new MyGame.Content.QuestItemsAreNeverSold()],
+},
+```
+
+A game finding reaches the report the way a package finding does, folded into `KEC0040` under the slot's type
+key with the game's own code in the message. Empty, which is the default, changes nothing. **The hook rides
+the sweep and cannot run without it**, which is why it is not a second slot: a game rule mounted on a type of
+its own would run once per mounting, and one mounted on `food` in place of `GameContentChecks` would drop the
+package's sweep. A rule that throws is the slot's throw, reported as one `KEC0040` with none of the slot's
+findings kept, so a rule that can fail on content adds a finding instead. A null list or a null member is
+refused when `GameContentChecks` is built.
+
 `KhaozEngine.Catalog.GameTypes/README.md` is the API reference, type by type.
 
 ---

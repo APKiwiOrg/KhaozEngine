@@ -3,7 +3,8 @@ using System.Collections.Generic;
 namespace KhaozEngine.Catalog.GameTypes;
 
 /// <summary>
-/// Which of the cross-type sweep's knob-driven rules a game turns on, and under what NAMES.
+/// Which of the cross-type sweep's knob-driven rules a game turns on, under what NAMES, and the game's own
+/// whole-catalog rules that run after them.
 /// </summary>
 /// <remarks>
 /// <b>A knob name is one world's vocabulary and never this package's.</b> A tuning row's key says what a
@@ -66,4 +67,28 @@ public sealed class GameContentSweepOptions
     /// </para>
     /// </remarks>
     public IReadOnlyList<string> RequiredKnobs { get; init; } = [];
+
+    /// <summary>
+    /// The GAME's own whole-catalog rules, run in the sweep's slot AFTER every rule of the package's own, or
+    /// empty for none.
+    /// </summary>
+    /// <remarks>
+    /// A rule here is the engine's own <see cref="IContentValidator"/>, handed exactly what the sweep is
+    /// handed: the slot's type id, which is <c>food</c>'s, the same candidate and the same findings list. So a
+    /// game rule sees every row of every type, accumulates beside the package's findings rather than in a list
+    /// of its own, and reaches the report the way the package's do, folded into <c>KEC0040</c> under the
+    /// slot's type key with the game's own code in the message.
+    /// <para>
+    /// <b>It is the one place a game's cross-type rule can go without a second slot.</b> The engine offers a
+    /// game no whole-registry slot, so a game rule mounted on a type of its own would run once per mounting,
+    /// and one mounted on <c>food</c> in place of <see cref="GameContentChecks"/> would silently drop the
+    /// package's sweep. Here it rides the sweep and cannot run without it.
+    /// </para>
+    /// <para>
+    /// The rules run in list order, each once per validation. A rule that THROWS is the slot's throw: the
+    /// engine reports one <c>KEC0040</c> naming the slot's type and keeps none of the slot's findings, the
+    /// same as for any per-type validator, so a rule that can fail on content reports a finding instead.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<IContentValidator> GameRules { get; init; } = [];
 }

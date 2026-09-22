@@ -19,6 +19,12 @@ namespace KhaozEngine.Catalog.GameTypes;
 /// own pass, so a food defect and a cross-type defect both reach the report, each under its own code.
 /// </para>
 /// <para>
+/// <b>A game's own whole-catalog rules ride the same slot, LAST.</b>
+/// <see cref="GameContentSweepOptions.GameRules"/> runs after every rule of the package's own, over the same
+/// candidate and into the same findings, so a game adds a cross-type rule without a second slot and without
+/// a way to mount it that leaves the package's sweep out.
+/// </para>
+/// <para>
 /// <b>Every knob is read out of the CANDIDATE.</b> Nothing here reads a running process: a sweep that did
 /// would pass or fail the same pack differently depending on what a server happened to have loaded, which
 /// is the opposite of what a publish check is for.
@@ -47,8 +53,8 @@ namespace KhaozEngine.Catalog.GameTypes;
 /// come from at validation time.
 /// </param>
 /// <param name="options">
-/// Which knob-driven rules to run and under what names. <see cref="GameContentSweepOptions.None"/> runs the
-/// three that read no knob.
+/// Which knob-driven rules to run, under what names, and the game's own rules to run after them.
+/// <see cref="GameContentSweepOptions.None"/> runs the three that read no knob and no game rule.
 /// </param>
 /// <param name="beside">The registered type's own validator, run first, or null for the sweep alone.</param>
 public sealed class GameContentChecks(
@@ -61,6 +67,8 @@ public sealed class GameContentChecks(
     readonly GameContentSweepOptions _options = options ?? throw new ArgumentNullException(nameof(options));
 
     readonly IContentValidator? _beside = beside;
+
+    readonly IContentValidator[] _gameRules = GameRulesOf(options);
 
     /// <inheritdoc />
     public void Validate(ContentTypeId type, IContentSnapshot candidate, ICollection<ContentFinding> findings)
@@ -76,6 +84,35 @@ public sealed class GameContentChecks(
         CheckRecipes(candidate, knobs, findings);
         CheckToolTierFamilies(candidate, findings);
         CheckKnobsAreComplete(knobs, findings);
+
+        foreach (IContentValidator rule in _gameRules)
+        {
+            rule.Validate(type, candidate, findings);
+        }
+    }
+
+    /// <summary>
+    /// The game's own rules, copied once so a list the game later edits cannot change what a mounted sweep
+    /// runs, and refused at construction when a member is null rather than at the first publish.
+    /// </summary>
+    static IContentValidator[] GameRulesOf(GameContentSweepOptions? options)
+    {
+        if (options is null)
+        {
+            return [];
+        }
+
+        IReadOnlyList<IContentValidator> rules = options.GameRules
+            ?? throw new ArgumentException("The sweep options carry a null game rule list.", nameof(options));
+        var copy = new IContentValidator[rules.Count];
+        for (int i = 0; i < copy.Length; i++)
+        {
+            copy[i] = rules[i] ?? throw new ArgumentException(
+                FormattableString.Invariant($"Game rule {i} is null."),
+                nameof(options));
+        }
+
+        return copy;
     }
 
     /// <summary>

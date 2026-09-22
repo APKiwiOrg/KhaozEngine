@@ -7,9 +7,9 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 20.0.0
 
-A major, opened by a burn-down of the oldest backlog issues. Three of them remove or move public API: the raw-string
-Gui sinks are gone, the Render3D ECS binder lives in its own package, and the save posture is a required
-`GameStorage` argument. The rest are additive. Every consumer is on a vendored pin, so nothing moves until a game
+A major, opened by a burn-down of the oldest backlog issues. Four of them break something: the raw-string Gui sinks
+are gone, the Render3D ECS binder lives in its own package, the save posture is a required `GameStorage` argument,
+and the movement wire moves to generation 12. The rest are additive. Every consumer is on a vendored pin, so nothing moves until a game
 repins, and the notes below say what each game changes when it does.
 
 **Breaking, and what a consumer does about it.**
@@ -44,6 +44,19 @@ repins, and the notes below say what each game changes when it does.
   encoder. At repin, Hardpoint, Nullwake and SpaceGame move their encoder out of the options object into
   `SaveEncoding.Encoded(...)`, and Ruinborne's settings-only storage passes `SaveEncoding.Plaintext`.
 
+- The two movement feel timers, `TimeSinceGrounded` and `JumpBufferRemaining`, move off `MovementState` onto a
+  new built-in component `MovementOwnerState` (id 6, `MoveProtocol.MovementOwnerTypeId`) registered
+  `Default | OwnerOnly` ([#136](https://github.com/APKiwiOrg/KhaozEngine/issues/136)). They exist only for the owning
+  client's reconciliation replay, yet every AoI observer was sent them on every move. An observer's movement payload
+  shrinks from 64 to 56 bytes (66 to 58 with its type id), and a change confined to the timers no longer reaches observers at all. The owning
+  client, cell persistence and cell handoff still carry both, so replay, restores and handoffs behave exactly as
+  before, and border ghosts, which are never simulated, stop carrying them. This is wire generation 12, so client and
+  server ship together, and the automatic `WireGenerationAuthenticator` refuses a mixed pair at connect. A stored cell
+  blob from any older generation still loads: the bring-forward pass cuts the timers out of the old movement payload
+  and writes them as an id-6 frame where the live writer would. `PlayerMoveState.From` takes the owner half as a
+  required third argument, and `MovementState.From` no longer copies the timers (`MovementOwnerState.From` does).
+  Ruinborne reads none of the moved fields, so its repin is the wire bump alone.
+
 **Save posture is now written down.**
 
 - Settings stay plaintext under either posture. `GameStorage.Settings` and `CreateSettingsManager` never encode,
@@ -51,6 +64,15 @@ repins, and the notes below say what each game changes when it does.
   section of `docs/USING-KHAOZENGINE.md` state the fleet policy: game saves encoded, settings plaintext.
 - The map editor's own `EditorRecentFiles` and `EditorSettingsStore` build their storage with
   `SaveEncoding.Plaintext`. Their public constructors are unchanged.
+
+**Owner-only built-ins.**
+
+- `ReplicationRegistry` lets a built-in id carry `OwnerOnly` on top of `Default`
+  (`ReplicationRegistry.BuiltinChannelsAllowed`) and still refuses every other channel set on a built-in. Dropping a
+  whole unframed built-in frame for a non-owner keeps that client's stream aligned, because there is nothing left in
+  it to skip. `PlayerMovementSystem` adds a missing `MovementOwnerState` after an entity's first step.
+- Owner scoping now builds one shared public view per observed entity per capture rather than one filtered copy per
+  client, since every movement server now has an owner-only codec.
 
 **Content identity at connect.**
 

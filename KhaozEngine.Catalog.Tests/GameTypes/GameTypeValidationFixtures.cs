@@ -20,7 +20,7 @@ namespace KhaozEngine.Tests.Catalog.GameTypes;
 static class GameTypeValidationFixtures
 {
     /// <summary>
-    /// The six engine types plus all thirteen game types, each registered with NO validator, so a test
+    /// The seven engine types plus all thirteen game types, each registered with NO validator, so a test
     /// drives the one validator it is about and sees nothing else.
     /// </summary>
     internal static ContentTypeRegistry TypeRegistry(ContentDurationUnit unit = ContentDurationUnit.Ticks)
@@ -64,6 +64,11 @@ static class GameTypeValidationFixtures
         => RetiredRowOf(registration, id, key, false, set);
 
     /// <summary>The same, carrying the retired bit, which several rules are statements about.</summary>
+    /// <remarks>
+    /// Every name handed in must be a field of the schema. A name that matched nothing would leave that field
+    /// absent without a word, so a fixture spelled for the wrong unit or a renamed field would build a row
+    /// that quietly tests something else.
+    /// </remarks>
     internal static ContentRow RetiredRowOf(
         ContentTypeRegistration registration,
         int id,
@@ -73,6 +78,14 @@ static class GameTypeValidationFixtures
     {
         ArgumentNullException.ThrowIfNull(registration);
         ArgumentNullException.ThrowIfNull(set);
+
+        foreach ((string name, _) in set)
+        {
+            Assert.True(
+                registration.Schema.IndexOf(name) >= 0,
+                FormattableString.Invariant(
+                    $"Type '{registration.TypeKey}' declares no field '{name}', so the fixture would leave it absent."));
+        }
 
         var values = new ContentFieldValue[registration.Schema.Fields.Count];
         for (int i = 0; i < values.Length; i++)

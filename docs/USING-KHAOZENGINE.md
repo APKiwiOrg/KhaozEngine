@@ -15505,10 +15505,10 @@ documents its own connection string, schema mode and migration name. The reasoni
 
 ## Shared game content types (`KhaozEngine.Catalog.GameTypes`)
 
-The engine's own six content types (`tag`, `item`, `stat`, `loot_table`, `loot_entry`, `base_socket`) are the
-shapes every catalog needs. This package is the next layer up: the thirteen shapes a world with food,
-equipment, shops, drops, gathering, crafting, tools and tuning knobs writes anyway, so two games that author
-the same facts store them under the same keys and read them with the same code.
+The engine's own seven content types (`tag`, `item`, `stat`, `loot_table`, `loot_entry`, `base_socket`,
+`item_category`) are the shapes every catalog needs. This package is the next layer up: the thirteen shapes a
+world with food, equipment, shops, drops, gathering, crafting, tools and tuning knobs writes anyway, so two
+games that author the same facts store them under the same keys and read them with the same code.
 
 `GameContentTypeIds` is the whole id table, ascending and contiguous from the game band floor:
 
@@ -15551,6 +15551,11 @@ FoodContentType.Register(registry, Unit, new FoodContentType.Validator());
 StoreContentType.Register(registry, new StoreContentType.Validator(registry));
 MonsterDropContentType.Register(registry, new MonsterDropContentType.Validator());
 ```
+
+**This sample drops the cross-type sweep, silently.** `food`'s slot is where the sweep rides, and passing
+`FoodContentType.Validator` alone registers food's own rules and nothing else. A game registering by hand
+passes `new GameContentChecks(registry, sweepOptions, new FoodContentType.Validator())` there instead, and
+`GameContentTypes.Register` below does it for the whole set.
 
 Each type's own `Register` supplies the id, the key, the band, the type's visibility, its chunk slots, the
 schema for the unit and the codec over it. **The visibility and the chunk slot count are not a caller's to
@@ -15601,7 +15606,7 @@ different question from `IsPayableSkill` because a curve row is about any skill 
 message names the raw NUMBER.
 
 **`GameContentTypes.Register` puts all thirteen on a registry in one call**, the way
-`EngineContentTypes.Register` does for the engine's six. Every member of `GameContentOptions` is required,
+`EngineContentTypes.Register` does for the engine's seven. Every member of `GameContentOptions` is required,
 so a game cannot forget a seam and leave a rule silently never firing:
 
 ```csharp
@@ -15646,7 +15651,7 @@ against a row of another or against a global knob.
 so the sweep holds the rules and a game says which rows they read: `MaxLevelKnob`, `MaxChanceKnob` and
 `RequiredKnobs`. **A null name disables that rule and an empty list disables the required-knob rule**, so a
 world with no level cap has no rule to run rather than a rule that refuses everything or passes everything.
-`GameContentSweepOptions.None` is every knob-driven rule off, and the four that read no knob still run.
+`GameContentSweepOptions.None` is every knob-driven rule off, and the three that read no knob still run.
 
 `KGT1307` is ASYMMETRIC on purpose. A required name with no row is a finding, because the boot would fall
 back to a default the pack does not name, and a row whose name is not required is IGNORED, because a knob a

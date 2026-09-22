@@ -7,10 +7,10 @@ zero third-party dependencies, part of the `KhaozEngine.Foundation` umbrella.
 **All thirteen types are here with their schemas, codecs, registration, validators and the cross-type
 sweep.** `GameContentTypes.Register` puts the whole set on a registry in one call.
 
-The engine's own six types (`tag`, `item`, `stat`, `loot_table`, `loot_entry`, `base_socket`) are the shapes
-every catalog needs. These thirteen are the next layer up: the shapes a world with food, equipment, shops,
-drops, gathering, crafting, tools and tuning knobs writes anyway. Two worlds that author the same facts
-store them under the same keys and read them with the same code.
+The engine's own seven types (`tag`, `item`, `stat`, `loot_table`, `loot_entry`, `base_socket`,
+`item_category`) are the shapes every catalog needs. These thirteen are the next layer up: the shapes a world
+with food, equipment, shops, drops, gathering, crafting, tools and tuning knobs writes anyway. Two worlds that
+author the same facts store them under the same keys and read them with the same code.
 
 **The package owns no vocabulary.** A skill, a station, a repeat mode, an equip slot, a weapon archetype, an
 npc kind and a creature kind are all raw numbers here. There is no enum, no name, no icon, no roster and no
@@ -189,7 +189,7 @@ unchecked and would fold 256 onto the first constant rather than refusing it.
 
 ## One call for all thirteen
 
-`GameContentTypes.Register` is to these thirteen what `EngineContentTypes.Register` is to the engine's six.
+`GameContentTypes.Register` is to these thirteen what `EngineContentTypes.Register` is to the engine's seven.
 It takes the unit and ONE options object holding every answer the package needs from the game, and every
 member of it is required, so a game cannot forget a seam and leave a rule silently never firing.
 
@@ -241,7 +241,7 @@ against a row of another or against a global knob.
 so the sweep holds the rules and a game says which rows they read: `MaxLevelKnob`, `MaxChanceKnob` and
 `RequiredKnobs`. **A null name disables that rule and an empty list disables the required-knob rule**, so a
 world with no level cap has no rule to run rather than a rule that refuses everything or passes everything.
-`GameContentSweepOptions.None` is every knob-driven rule off, and the four that read no knob still run.
+`GameContentSweepOptions.None` is every knob-driven rule off, and the three that read no knob still run.
 
 `KGT1307` is ASYMMETRIC on purpose. A required name with no row is a finding, because the boot would fall
 back to a default the pack does not name, and a row whose name is not required is IGNORED, because a knob a
@@ -271,6 +271,10 @@ FoodContentType.Register(registry, Unit, new FoodContentType.Validator());
 StoreContentType.Register(registry, new StoreContentType.Validator(registry));
 MonsterDropContentType.Register(registry, validator: null);
 ```
+
+**This sample drops the cross-type sweep, silently.** `food`'s slot is where the sweep rides, and passing
+`FoodContentType.Validator` alone registers food's own rules and nothing else. A game registering by hand
+passes `new GameContentChecks(registry, sweepOptions, new FoodContentType.Validator())` there instead.
 
 Each `Register` supplies the id, the key, the band, the type's own visibility and chunk slots, the schema
 for the unit and the codec over it. **The visibility and the chunk slots are not a caller's to choose**:

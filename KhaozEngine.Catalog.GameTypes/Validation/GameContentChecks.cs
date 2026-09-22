@@ -48,7 +48,7 @@ namespace KhaozEngine.Catalog.GameTypes;
 /// </param>
 /// <param name="options">
 /// Which knob-driven rules to run and under what names. <see cref="GameContentSweepOptions.None"/> runs the
-/// four that read no knob.
+/// three that read no knob.
 /// </param>
 /// <param name="beside">The registered type's own validator, run first, or null for the sweep alone.</param>
 public sealed class GameContentChecks(

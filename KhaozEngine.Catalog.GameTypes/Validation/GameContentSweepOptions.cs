@@ -7,8 +7,8 @@ namespace KhaozEngine.Catalog.GameTypes;
 /// </summary>
 /// <remarks>
 /// <b>A knob name is one world's vocabulary and never this package's.</b> A tuning row's key says what a
-/// world tunes, so the sweep holds the RULES and a game says which rows they read. Three of the seven rules
-/// need a name to do that, and the other four read nothing but rows.
+/// world tunes, so the sweep holds the RULES and a game says which rows they read. Four of the seven rules
+/// need a name to do that, and the other three read nothing but rows.
 /// <para>
 /// <b>A null name disables that rule, and an empty list disables the required-knob rule.</b> A game with no
 /// level cap has no rule to run, and refusing to register would make an optional rule mandatory. A disabled
@@ -28,7 +28,7 @@ public sealed class GameContentSweepOptions
     /// choice explicit rather than defaulted.
     /// </summary>
     /// <remarks>
-    /// The four rules that read no knob still run: a shelf item's tradability, a recipe with no output and
+    /// The three rules that read no knob still run: a shelf item's tradability, a recipe with no output and
     /// a tool tier whose item lacks its family tag are statements about rows alone.
     /// </remarks>
     public static GameContentSweepOptions None { get; } = new();

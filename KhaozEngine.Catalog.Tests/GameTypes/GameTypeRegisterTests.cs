@@ -18,7 +18,7 @@ namespace KhaozEngine.Tests.Catalog.GameTypes;
 /// </summary>
 public class GameTypeRegisterTests
 {
-    /// <summary>Every type registered through its own helper, over the six engine types.</summary>
+    /// <summary>Every type registered through its own helper, over the seven engine types.</summary>
     static ContentTypeRegistry RegisterAll(ContentDurationUnit unit)
     {
         var registry = new ContentTypeRegistry();

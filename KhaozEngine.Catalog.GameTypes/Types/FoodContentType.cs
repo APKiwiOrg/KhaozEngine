@@ -69,6 +69,14 @@ public static class FoodContentType
     /// The visibility and the chunk slot count are the TYPE's rather than a caller's: a wrong visibility
     /// moves rows between the two manifests and a wrong slot count moves every content address, and neither
     /// fails loudly.
+    /// <para>
+    /// <b>This slot carries the CROSS-TYPE sweep as well as food's own rules.</b> Food holds the lowest game
+    /// id, and the engine hands every per-type validator the whole candidate, so a whole-registry check
+    /// mounted on all thirteen game types would report each cross-type defect thirteen times.
+    /// <see cref="GameContentTypes.Register"/> passes a <see cref="GameContentChecks"/> here, which runs
+    /// <see cref="Validator"/> first and then the sweep. A game registering by hand that passes
+    /// <see cref="Validator"/> alone registers food's own rules and silently drops the sweep.
+    /// </para>
     /// </remarks>
     /// <param name="registry">A registry that is not frozen and carries neither this id nor this key.</param>
     /// <param name="unit">The game's own time unit, which picks the duration field's name.</param>

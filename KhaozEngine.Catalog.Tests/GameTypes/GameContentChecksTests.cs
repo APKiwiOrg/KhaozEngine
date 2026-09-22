@@ -208,7 +208,7 @@ public class GameContentChecksTests
     }
 
     /// <summary>
-    /// A null knob name disables its rule and an empty required list disables the set rule, while the four
+    /// A null knob name disables its rule and an empty required list disables the set rule, while the three
     /// rules that read no knob keep running.
     /// </summary>
     [Fact]
@@ -279,50 +279,69 @@ public class GameContentChecksTests
     /// </summary>
     /// <remarks>
     /// The proof is a registry whose <c>item</c> type carries an extra leading field, which moves every item
-    /// field one place along. A rule holding a static index would read the neighbour of <c>tags</c>, find
-    /// bytes that are not a tag list, and report nothing at all for a tier whose item plainly lacks the tag.
+    /// field one place along. A rule holding this build's static index would read the field BEFORE
+    /// <c>tags</c>, which is <c>examine</c>, a text marker that is always absent. It would then see an item
+    /// with no tags at all and report the tier whose item plainly carries its family tag, while the item
+    /// that lacks it is reported either way. So the pair below only comes out right off the registry.
     /// </remarks>
     [Fact]
     public void TheToolTierFamilyRuleResolvesTheItemTagsIndexOffTheRegistry()
     {
-        var registry = new ContentTypeRegistry();
-        ContentFieldSchema shifted = new(
-            [
-                new ContentFieldEntry("shim", ContentFieldKind.Int, null, ContentVisibility.Client, false),
-                .. ItemContentType.CreateSchema().Fields,
-            ]);
-        registry.RegisterContentType(
-            ContentRegistrationBand.Engine,
-            EngineContentTypes.ItemTypeId,
-            EngineContentTypes.ItemTypeKey,
-            new ShimmedItemCodec(new ContentTypeId(EngineContentTypes.ItemTypeId), shifted),
-            validator: null,
-            shifted,
-            ContentVisibility.Client,
-            ContentTypeRegistry.MinChunkSlots);
+        ContentTypeRegistry registry = ShimmedItemRegistry(out ContentFieldSchema shifted);
         ToolTierContentType.Register(registry, validator: null);
 
         ContentTypeRegistration item = Registration(registry, EngineContentTypes.ItemTypeId);
         ContentTypeRegistration tier = Registration(registry, GameContentTypeIds.ToolTier);
+        int staticIndex = ItemContentType.CreateSchema().IndexOf(ItemContentType.TagsField);
+        Assert.Equal(staticIndex + 1, shifted.IndexOf(ItemContentType.TagsField));
+        Assert.Equal(ItemContentType.ExamineField, shifted.Fields[staticIndex].Name);
+
+        // Item 11 carries family tag 1 and item 12 carries only tag 2.
+        ContentSnapshot candidate = Snapshot(
+            registry,
+            ShimmedItem(item, 11, "bronze_cutter", tradable: true, maxStack: 1, tags: [1, 2]),
+            ShimmedItem(item, 12, "bronze_bar", tradable: true, maxStack: 1, tags: [2]),
+            Tier(tier, 1, item: 11, family: 1),
+            Tier(tier, 2, item: 12, family: 1));
+
         Assert.Equal(
-            ItemContentType.CreateSchema().IndexOf(ItemContentType.TagsField) + 1,
-            shifted.IndexOf(ItemContentType.TagsField));
+            new[] { (2, GameContentFindings.SweepToolTierItemLacksFamilyTag) },
+            SweepCodes(registry, candidate));
+    }
+
+    /// <summary>
+    /// The third live-registry lookup: the item TRADABLE index the shelf rule reads comes off the registry
+    /// too.
+    /// </summary>
+    /// <remarks>
+    /// Under the same shimmed <c>item</c> type, this build's static index lands on <c>max_stack</c>. So an
+    /// untradable item stacking to five reads as tradable and passes, and a tradable item stacking to zero
+    /// reads as untradable and is refused. Off the registry it is exactly the other way round.
+    /// </remarks>
+    [Fact]
+    public void TheShelfTradableRuleResolvesTheItemTradableIndexOffTheRegistry()
+    {
+        ContentTypeRegistry registry = ShimmedItemRegistry(out ContentFieldSchema shifted);
+        StoreContentType.Register(registry, validator: null);
+        StoreShelfContentType.Register(registry, validator: null);
+
+        ContentTypeRegistration item = Registration(registry, EngineContentTypes.ItemTypeId);
+        ContentTypeRegistration store = Registration(registry, GameContentTypeIds.Store);
+        ContentTypeRegistration shelf = Registration(registry, GameContentTypeIds.StoreShelf);
+        int staticIndex = ItemContentType.CreateSchema().IndexOf(ItemContentType.TradableField);
+        Assert.Equal(staticIndex + 1, shifted.IndexOf(ItemContentType.TradableField));
+        Assert.Equal(ItemContentType.MaxStackField, shifted.Fields[staticIndex].Name);
 
         ContentSnapshot candidate = Snapshot(
             registry,
-            RowOf(
-                item,
-                12,
-                "bronze_bar",
-                (ItemContentType.StackableField, Bool(false)),
-                (ItemContentType.MaxStackField, Int(1)),
-                (ItemContentType.TradableField, Bool(true)),
-                (ItemContentType.ValueField, Scaled(60)),
-                (ItemContentType.TagsField, ContentRowCodecBase.TagListValue([2]))),
-            Tier(tier, 1, item: 12, family: 1));
+            ShimmedItem(item, 11, "quest_token", tradable: false, maxStack: 5, tags: []),
+            ShimmedItem(item, 12, "bread", tradable: true, maxStack: 0, tags: []),
+            RowOf(store, 1, "general", (StoreContentType.NpcKindField, Int(4))),
+            Shelf(shelf, 20, store: 1, item: 11, sort: 0),
+            Shelf(shelf, 21, store: 1, item: 12, sort: 1));
 
         Assert.Equal(
-            new[] { (1, GameContentFindings.SweepToolTierItemLacksFamilyTag) },
+            new[] { (20, GameContentFindings.SweepShelfItemNotTradable) },
             SweepCodes(registry, candidate));
     }
 
@@ -482,6 +501,47 @@ public class GameContentChecksTests
             (ToolTierContentType.RankField, Int(id)),
             (ToolTierContentType.SuccessScaleBasisPointsField, Int(10_000)),
             (ToolTierContentType.TimeScaleBasisPointsField, Int(10_000)));
+
+    /// <summary>
+    /// A registry whose <c>item</c> type carries one extra leading field, so every item field sits one place
+    /// further along than this build's own schema puts it.
+    /// </summary>
+    static ContentTypeRegistry ShimmedItemRegistry(out ContentFieldSchema shifted)
+    {
+        var registry = new ContentTypeRegistry();
+        shifted = new ContentFieldSchema(
+            [
+                new ContentFieldEntry("shim", ContentFieldKind.Int, null, ContentVisibility.Client, false),
+                .. ItemContentType.CreateSchema().Fields,
+            ]);
+        registry.RegisterContentType(
+            ContentRegistrationBand.Engine,
+            EngineContentTypes.ItemTypeId,
+            EngineContentTypes.ItemTypeKey,
+            new ShimmedItemCodec(new ContentTypeId(EngineContentTypes.ItemTypeId), shifted),
+            validator: null,
+            shifted,
+            ContentVisibility.Client,
+            ContentTypeRegistry.MinChunkSlots);
+        return registry;
+    }
+
+    static ContentRow ShimmedItem(
+        ContentTypeRegistration item,
+        int id,
+        string key,
+        bool tradable,
+        int maxStack,
+        IReadOnlyList<int> tags)
+        => RowOf(
+            item,
+            id,
+            key,
+            (ItemContentType.StackableField, Bool(false)),
+            (ItemContentType.MaxStackField, Int(maxStack)),
+            (ItemContentType.TradableField, Bool(tradable)),
+            (ItemContentType.ValueField, Scaled(60)),
+            (ItemContentType.TagsField, ContentRowCodecBase.TagListValue(tags)));
 
     /// <summary>The positional walk over an item schema carrying one extra leading field.</summary>
     sealed class ShimmedItemCodec(ContentTypeId type, ContentFieldSchema schema)

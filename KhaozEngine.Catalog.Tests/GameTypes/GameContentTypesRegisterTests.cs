@@ -29,7 +29,7 @@ public class GameContentTypesRegisterTests
         IsKnownSkill = value => value is > 0 and < 100,
 
         // A world with no tuning table says so rather than leaving the member out, which the compiler would
-        // not let it do anyway. The four rules that read no knob still run.
+        // not let it do anyway. The three rules that read no knob still run.
         Sweep = GameContentSweepOptions.None,
     };
 

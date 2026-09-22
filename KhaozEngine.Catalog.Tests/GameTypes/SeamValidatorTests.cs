@@ -341,7 +341,8 @@ public class SeamValidatorTests
         long station = 1,
         int duration = 4,
         int xp = 10,
-        int repeatMode = 0)
+        int repeatMode = 0,
+        ContentDurationUnit unit = ContentDurationUnit.Ticks)
         => RowOf(
             recipe,
             id,
@@ -351,7 +352,7 @@ public class SeamValidatorTests
             (RecipeContentType.LevelRequiredField, Int(level)),
             (RecipeContentType.PrimaryItemField, Ref(item)),
             (RecipeContentType.StationField, Int(station)),
-            (RecipeContentType.BaseTicksField, Int(duration)),
+            (RecipeContentType.BaseDurationField(unit), Int(duration)),
             (RecipeContentType.XpPerItemField, Int(xp)),
             (RecipeContentType.RepeatModeField, Int(repeatMode)));
 

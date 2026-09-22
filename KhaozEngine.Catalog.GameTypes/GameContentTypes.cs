@@ -4,7 +4,7 @@ namespace KhaozEngine.Catalog.GameTypes;
 
 /// <summary>
 /// Registers all thirteen types in ONE call, each with the validator this package ships for it, the way
-/// <see cref="EngineContentTypes.Register"/> does for the engine's own six.
+/// <see cref="EngineContentTypes.Register"/> does for the engine's own seven.
 /// </summary>
 /// <remarks>
 /// The per-type <c>Register</c> calls stay public and a game is free to use them: registering only the
@@ -41,7 +41,7 @@ public static class GameContentTypes
     /// slots, with the package's own validator on every type that has one.
     /// </summary>
     /// <param name="registry">
-    /// A registry that is not frozen and carries none of these thirteen ids or keys. The engine's own six
+    /// A registry that is not frozen and carries none of these thirteen ids or keys. The engine's own seven
     /// go on first, because <c>equip_profile</c> closes a late binding the <c>item</c> type declares and
     /// several rules read an engine schema off this same registry.
     /// </param>

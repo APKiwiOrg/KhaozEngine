@@ -31,16 +31,6 @@ namespace KhaozEngine.Gui
             => new(PopupRowType.Stat, label.Resolve(), value.Resolve(), valueColor) { IconColor = iconColor };
 
         public static PopupRow Spacer() => new(PopupRowType.Spacer, "", "", Vector4.Zero);
-
-        /// <summary>Obsolete: pass a <see cref="LocalizedText"/>. A raw string bypasses localization.</summary>
-        [Obsolete("Pass a LocalizedText; a raw string bypasses localization. Use a StringId or LocalizedText.Raw(...) for non-localizable text.")]
-        [LocalizationStringSink]
-        public static PopupRow Header(string text) => new(PopupRowType.Header, text, "", Vector4.One);
-
-        /// <summary>Obsolete: pass <see cref="LocalizedText"/>. A raw string bypasses localization.</summary>
-        [Obsolete("Pass a LocalizedText; a raw string bypasses localization. Use a StringId or LocalizedText.Raw(...) for non-localizable text.")]
-        [LocalizationStringSink]
-        public static PopupRow Stat(string label, string value, Vector4 valueColor) => new(PopupRowType.Stat, label, value, valueColor);
     }
 
     /// <summary>
@@ -94,15 +84,6 @@ namespace KhaozEngine.Gui
         /// <summary>The (lazily resolved) title text, drawn in the title bar. Defaults to empty.</summary>
         public LocalizedText TitleContent;
 
-        /// <summary>Obsolete shim for the former string field. Setting <c>Title</c> stores a raw, non-localized value.</summary>
-        [Obsolete("Use TitleContent (LocalizedText). Setting Title stores a raw, non-localized value.")]
-        [LocalizationExempt]
-        public string Title
-        {
-            get => TitleContent.Resolve();
-            set => TitleContent = LocalizedText.Raw(value);
-        }
-
         public float WidthFraction = 0.85f;
         public float MaxHeightFraction = 0.85f;
         public float MinHeight = 150f;
@@ -122,24 +103,6 @@ namespace KhaozEngine.Gui
 
         /// <summary>The (lazily resolved) primary-action-button text. Defaults to a raw "OK".</summary>
         public LocalizedText PrimaryActionContent = LocalizedText.Raw("OK");
-
-        /// <summary>Obsolete shim for the former string field. Setting <c>DismissText</c> stores a raw, non-localized value.</summary>
-        [Obsolete("Use DismissContent (LocalizedText). Setting DismissText stores a raw, non-localized value.")]
-        [LocalizationExempt]
-        public string DismissText
-        {
-            get => DismissContent.Resolve();
-            set => DismissContent = LocalizedText.Raw(value);
-        }
-
-        /// <summary>Obsolete shim for the former string field. Setting <c>PrimaryActionText</c> stores a raw, non-localized value.</summary>
-        [Obsolete("Use PrimaryActionContent (LocalizedText). Setting PrimaryActionText stores a raw, non-localized value.")]
-        [LocalizationExempt]
-        public string PrimaryActionText
-        {
-            get => PrimaryActionContent.Resolve();
-            set => PrimaryActionContent = LocalizedText.Raw(value);
-        }
 
         public bool WasPrimaryActionClicked { get; private set; }
 

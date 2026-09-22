@@ -59,7 +59,7 @@ namespace KhaozEngine.Gui
     /// viewport) testable with a fake <see cref="ITextMeasurer"/>. The instance API is <see cref="Show(LocalizedText, IReadOnlyList{TooltipLine}, Vector2)"/> /
     /// <see cref="Hide"/> + <see cref="Draw"/>. The top margin is configurable via <see cref="TooltipMetrics"/>.
     /// <para>
-    /// Opt-in extras (all default to the pre-existing look): a two-column title (<see cref="Show(string,string,IReadOnlyList{TooltipLine},Vector2)"/>
+    /// Opt-in extras (all default to the pre-existing look): a two-column title (<see cref="Show(LocalizedText,LocalizedText,IReadOnlyList{TooltipLine},Vector2)"/>
     /// with a right-aligned value), a separator under the title (<see cref="ShowTitleSeparator"/>), a width cap that
     /// word-wraps long body lines downward instead of overflowing (<see cref="MaxWidth"/> / <see cref="MaxWidthFraction"/>),
     /// touch/mobile auto-dismiss (<see cref="Dismiss"/> = <see cref="TooltipDismiss.TapOutside"/> + calling <see cref="Update"/>),
@@ -165,20 +165,6 @@ namespace KhaozEngine.Gui
             IsVisible = true;
             _showedThisFrame = true;
         }
-
-        /// <summary>Obsolete: pass a <see cref="LocalizedText"/> title. A raw string bypasses localization.</summary>
-        [Obsolete("Pass a LocalizedText title; a raw string bypasses localization. Use a StringId or LocalizedText.Raw(...).")]
-        [LocalizationStringSink]
-        [LocalizationExempt]
-        public void Show(string title, IReadOnlyList<TooltipLine> lines, Vector2 anchor) =>
-            Show(LocalizedText.Raw(title), LocalizedText.Raw(""), lines, anchor);
-
-        /// <summary>Obsolete: pass <see cref="LocalizedText"/> titles. A raw string bypasses localization.</summary>
-        [Obsolete("Pass a LocalizedText title; a raw string bypasses localization. Use a StringId or LocalizedText.Raw(...).")]
-        [LocalizationStringSink]
-        [LocalizationExempt]
-        public void Show(string title, string titleRight, IReadOnlyList<TooltipLine> lines, Vector2 anchor) =>
-            Show(LocalizedText.Raw(title), LocalizedText.Raw(titleRight), lines, anchor);
 
         public void Hide() => IsVisible = false;
 

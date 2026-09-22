@@ -264,5 +264,5 @@ a compile error. `KhaozEngine.Localization.Analyzers` (in the `Game2D`/`Game3D` 
 
 - **`[LocalizationExempt]`** (assembly/type/member) marks a scope where `LocalizedText.Raw` is intentional, so
   the analyzer stays silent there (debug overlays, tools, sample chrome). **`[LocalizationStringSink]`**
-  (method/constructor) marks a discouraged raw-`string` sink so the analyzer flags its callers - the engine's
-  obsolete `string` Gui overloads carry it, and a game can mark its own sinks.
+  (method/constructor) marks a discouraged raw-`string` sink so the analyzer flags its callers. A game marks
+  its own sinks with it. The engine's Gui sinks take only `LocalizedText` and need no marker.

@@ -2270,13 +2270,13 @@ analyzer (already in the `Game2D`/`Game3D` umbrellas) enforces the rest. Adoptin
    `.editorconfig`:
 
    ```ini
-   dotnet_diagnostic.KELOC001.severity = error   # raw string at a player-facing Gui sink
+   dotnet_diagnostic.KELOC001.severity = error   # raw string at a [LocalizationStringSink] member
    dotnet_diagnostic.KELOC002.severity = error   # LocalizedText.Raw outside exempt/debug code
    dotnet_diagnostic.KELOC003.severity = error   # raw string literal drawn via SpriteBatch.DrawString
    ```
 
-The migration is warning-not-break: the old `string` Gui overloads remain `[Obsolete]`, so a game builds (with
-warnings) before any text is migrated. `KhaozEngine.Showcase` is the worked example (`ShowcaseStrings.resx` +
+The Gui sinks carry no `string` overload, so every player-facing call site must be migrated before a game
+builds against them. `KhaozEngine.Showcase` is the worked example (`ShowcaseStrings.resx` +
 `ShowcaseStrings` constants + `LocalizationContext` wiring).
 
 **A widget with no sink is invisible to the analyzer, which is the failure mode to watch for.** KELOC001 and
@@ -2297,8 +2297,8 @@ string shown = difficulty.SelectedLabel;               // resolved against the a
 LocalizedText raw = difficulty.SelectedContent;        // the unresolved value, to forward to another sink
 ```
 
-The `(string, int)` option ctor and the `DropdownOption.Label` member both remain, `[Obsolete]`, so an existing
-caller keeps building. Same for `DrawHeader`'s `string` title overload.
+`DropdownOption` has no `(string, int)` ctor and no `Label` member, and `DrawHeader` has no `string` title
+overload, so a bare literal at either sink does not compile.
 
 ### The low-level `SpriteBatch.DrawString` sink (`KELOC003`)
 
@@ -2348,9 +2348,8 @@ popup.SetRows(new[]
 });
 ```
 
-The former `Title` / `DismissText` / `PrimaryActionText` string members and the `PopupRow.Header(string)` /
-`Stat(string, ...)` factories remain as `[Obsolete]` shims (the string factories are `[LocalizationStringSink]`,
-so the analyzer flags a raw literal passed to them).
+`PopupPanel` has no `string` title or footer members and `PopupRow` has no `string` factories, so a raw literal
+at any of them is a compile error.
 
 Content that overflows the auto-sized panel scrolls: call `popup.Update(pointer, frame.Input.ScrollDelta)` (the
 wheel overload) to enable wheel + drag-to-scroll (scissor-clipped; `ScrollOffset` reads back, `ScrollWheelSpeed`
@@ -3408,9 +3407,31 @@ scene.Draw(tower, Matrix4x4.CreateTranslation(100_000f, 0f, 100_000f));   // sti
   unrelated. Nothing about simulation changes here - the simulation side is the island frame below. Terrain chunk
   VERTICES were the other half and are fixed separately, by the chunk-local bake (also below).
 
-If you write your own renderer against `Transform3D`, `ToMatrix(Vector3 renderOrigin)` builds the reduced matrix
-directly. You do not need it for `Scene3D`, which reduces the absolute matrix you hand it. Calling both
-double-subtracts.
+If you write your own renderer against `Transform3D` (from `KhaozEngine.Render3D.Ecs`, below),
+`ToMatrix(Vector3 renderOrigin)` builds the reduced matrix directly. You do not need it for `Scene3D`, which
+reduces the absolute matrix you hand it. Calling both double-subtracts.
+
+### ECS entities (`KhaozEngine.Render3D.Ecs`)
+
+`Scene3DBinder.Submit(world, scene)` draws every `KhaozEngine.Ecs` entity carrying both a `Transform3D` and a
+`MeshInstance`, carrying the instance `Material` through. A zero `Transform3D.Scale` is treated as one, a zero
+`Rotation` as identity, and a zero `MeshInstance.Tint` as white. The delegate overloads
+`Submit(world, draw)` are the pure core for a headless test with a recording delegate.
+
+```csharp
+world.Set(e, new Transform3D { Position = new Vector3(4f, 0f, 2f) });
+world.Set(e, new MeshInstance { Mesh = tower, Material = Material.Shiny });
+
+// per frame, inside OnDraw3D:
+scene.Begin();
+Scene3DBinder.Submit(world, scene);
+```
+
+The three types live in the `KhaozEngine.Render3D.Ecs` package, not in `KhaozEngine.Render3D`, so a render-only
+consumer (a bake tool, a snapshot CLI) never pulls `Ecs`, `Simulation` and `Serialization`. The namespace is still
+`KhaozEngine.Render3D`. A `Game3D` consumer gets the package through the umbrella and changes nothing. A consumer
+that references `KhaozEngine.Render3D` directly and uses any of the three types adds a
+`KhaozEngine.Render3D.Ecs` reference when it repins to 20.0.0. No source edit is needed.
 
 ### Transparency ordering
 
@@ -6811,7 +6832,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="19.15.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.0.0" />
 ```
 
 ```csharp
@@ -13104,7 +13125,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="19.15.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.0.0" />
 ```
 
 ```csharp
@@ -13140,7 +13161,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="19.15.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.0.0" />
 ```
 
 ```csharp
@@ -13382,7 +13403,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="19.15.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.0.0" />
 ```
 
 ```csharp
@@ -14653,11 +14674,11 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
 - **`KhaozEngine.Persistence`**: crash-safe saves: `AtomicJsonWriter`, `PersistenceQueue` (coalesced async
   writes, optional numbered backup-generation rotation), `SettingsManager<T>` + `FileSettingsStorage`,
   `SaveEncoder` (Base64 + HMAC, a versioned envelope carrying tamper-protected `SaveMetadata`), the
-  `GameStorage` facade (paths + queue + settings + encoder, default-on encoding, an outcome-reporting
-  recovery ladder, generation restore - see "Save data" below), the `SettingsManager<T>.StampInstall(...)`
-  convenience, versioned schema migration via `MigrationChain<T>` (see "Versioned save migrations"
-  below), and `BatchedWriter<T>` (a bounded async batch-write queue for a server-side append-only log -
-  see "Batched async writes" below).
+  `GameStorage` facade (paths + queue + settings + a required `SaveEncoding` save posture, an
+  outcome-reporting recovery ladder, generation restore - see "Save data" below), the
+  `SettingsManager<T>.StampInstall(...)` convenience, versioned schema migration via `MigrationChain<T>`
+  (see "Versioned save migrations" below), and `BatchedWriter<T>` (a bounded async batch-write queue for a
+  server-side append-only log - see "Batched async writes" below).
 - **`KhaozEngine.Content`**: config loading + JSON-schema validation: `ConfigLoader` (disk-then-embedded),
   `JsonSchemaValidator`, build-time schema enforcement via the bundled `Content.Validator` tool.
 - **`KhaozEngine.Serialization`**: shared `System.Text.Json` baselines. **JSONC (JSON with `//` / `/* */`
@@ -16420,29 +16441,39 @@ those files ambiguous.
 ## Save data (`GameStorage`)
 
 `KhaozEngine.Persistence.GameStorage` is the one-call facade over the save/settings stack: publisher-rooted
-`AppDataPaths`, a coalesced atomic `PersistenceQueue`, a `FileSettingsStorage`, and an optional
-`SaveEncoder`. See the package README for the full API. This section covers the consumer-facing decisions.
+`AppDataPaths`, a coalesced atomic `PersistenceQueue`, a `FileSettingsStorage`, and the save posture chosen at
+construction. See the package README for the full API. This section covers the consumer-facing decisions.
 
-For an isolated run or a test, pass `AppDataPaths.FromDirectory(absoluteRoot)` to the existing
-`GameStorage(AppDataPaths, GameStorageOptions?)` constructor. The same resolver works with
+**The save posture: saves encoded, settings plaintext.** Fleet policy is that game saves (progress, unlocks,
+campaign state) are tamper-encoded in every KhaozEngine game, and settings and user-set config (window
+position, preferences) stay plaintext because they are the player's to hand-edit. `GameStorage` makes the save
+half a required constructor argument, a `SaveEncoding`, the same way `LocalizedText` makes raw text a
+deliberate act. `SaveEncoding.Encoded(encoder)` is what a game passes for its saves. `SaveEncoding.Plaintext`
+is the explicit, greppable opt-out for a storage that holds no saves (the map editor's own stores use it) or
+a game that has decided on hand-editable saves. There is no constructor without the posture, and
+`GameStorageOptions` no longer carries an encoder, so a game cannot ship plaintext saves by leaving a field
+unset. The settings half needs no choice: `GameStorage.Settings` and `CreateSettingsManager` write plaintext
+JSON under either posture.
+
+For an isolated run or a test, pass `AppDataPaths.FromDirectory(absoluteRoot)` to the
+`GameStorage(AppDataPaths, SaveEncoding, GameStorageOptions?)` constructor. The same resolver works with
 `FileSettingsStorage`. It uses exactly that root and creates it lazily, without probing the OS application
 data directory. Relative paths are rejected.
 
 ```csharp
 using KhaozEngine.Persistence;
 
-var storage = new GameStorage("MyStudio", "MyGame", new GameStorageOptions
-{
-    Encoder = new SaveEncoder(hmacKey, "MGSV1"),   // configuring an encoder makes encoding the default
-    GameVersion = "1.4.2",                         // stamped into every encoded save's SaveMetadata.GameVersion
-});
+var storage = new GameStorage(
+    "MyStudio", "MyGame",
+    SaveEncoding.Encoded(new SaveEncoder(hmacKey, "MGSV1")),   // the save posture, required
+    new GameStorageOptions { GameVersion = "1.4.2" });          // stamped into every encoded save's SaveMetadata
 
-storage.Save("save.json", campaign);                // encoded (Base64 + HMAC) because Encoder is configured
+storage.Save("save.json", campaign);                // encoded (Base64 + HMAC) because the posture is Encoded
 storage.Flush();                                     // writes are queued: flush before reading the same file back
 SaveLoadResult<CampaignSaveData> result = storage.LoadWithOutcome<CampaignSaveData>("save.json");
 ```
 
-**Encoding is default-on, per-call opt-out.** Once `GameStorageOptions.Encoder` is configured, every `Save`
+**Encoding is default-on, per-call opt-out.** Under `SaveEncoding.Encoded`, every `Save`
 encodes unless a call opts out - the reverse of the old "opt in per call" behavior, so a forgotten flag can
 no longer ship an unprotected save. Force plaintext for a deliberately hand-editable file (or force encoding
 without changing the facade default) with `SaveWriteOptions`:
@@ -16458,8 +16489,8 @@ save editor and detects corruption. It does not stop a player willing to read th
 **Recovery ladder outcomes.** `Load<T>` never throws on a bad save. It probes the primary file, then each
 backup generation in order, and returns the first valid candidate, or a fresh default if none are.
 `LoadWithOutcome<T>` reports which path was taken via `SaveLoadOutcome`: `Loaded` (clean primary),
-`FreshDefault` (nothing on disk), `LoadedLegacyPlaintext` (a plaintext save read under a configured
-encoder - a subsequent default-on save re-encodes it, though a file the game keeps writing with
+`FreshDefault` (nothing on disk), `LoadedLegacyPlaintext` (a plaintext save read under
+`SaveEncoding.Encoded` - a subsequent default-on save re-encodes it, though a file the game keeps writing with
 `Encode = false` stays plaintext deliberately and is never re-encoded this way), `RecoveredFromBackup`
 (the primary failed but a backup loaded, and `SaveLoadResult<T>.RecoveredGeneration` names which one), and
 `RejectedAndDefaulted` (something was on disk but every candidate was invalid). A save whose HMAC does not
@@ -16646,7 +16677,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="19.15.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.0.0" />
 </ItemGroup>
 ```
 
@@ -18861,7 +18892,7 @@ client.AdvancePresentation(dt);
 EntityRenderState[] snapshot = client.Snapshot();
 ```
 
-`ConnectionState` (a `WorldConnectionState`) is one of: `Connecting` (initial handshake), `Connected` (in-session), `Reconnecting` (between drop and re-join), `Disconnected` (terminal - bad token or explicit give-up). `DisconnectReason` values: `None`, `RejectedToken`, `Unreachable`, `ServerShutdown`, `Timeout`, `IncompatibleVersion` (the client is out of date - see "Version skew resilience" below), `SignedInElsewhere` and `AlreadySignedIn` (the duplicate-session gate, below), and `Banned` (the drop after a `ServerNoticeKind.Banned` notice, see "Bans" below). The single-transport ctor `WorldClient(INetTransport, ...)` is unchanged (no reconnect, `IDisposable` is a no-op).
+`ConnectionState` (a `WorldConnectionState`) is one of: `Connecting` (initial handshake), `Connected` (in-session), `Reconnecting` (between drop and re-join), `Disconnected` (terminal - bad token or explicit give-up). `DisconnectReason` values: `None`, `RejectedToken`, `Unreachable`, `ServerShutdown`, `Timeout`, `IncompatibleVersion` (the client is out of date - see "Version skew resilience" below), `SignedInElsewhere` and `AlreadySignedIn` (the duplicate-session gate, below), `Banned` (the drop after a `ServerNoticeKind.Banned` notice, see "Bans" below), and `ContentMismatch` (the client was built against different content than the server, see "Content identity" under "Version skew resilience" below). The single-transport ctor `WorldClient(INetTransport, ...)` is unchanged (no reconnect, `IDisposable` is a no-op).
 
 **One account, one live session (17.38.0).** The join gate keys a live session by the SUBJECT the authenticator verified, so two clients presenting one account's connect token cannot become two live sessions. Above the session layer that shape is unrepresentable: `WorldPersistence` keys one record per account, so the two shared it and the later join left the earlier session unrestored, then let its default-spawn state overwrite the record once the winner left (#662). Set the policy on either head:
 
@@ -18918,6 +18949,34 @@ var server = new WorldServer(transport, config, terrain.SampleHeight, MoveTuning
 ```
 
 A mismatch surfaces on the client as `DisconnectReason.IncompatibleVersion` with the server's required version in `DisconnectReasonDetail`; the client never proceeds to receive snapshots. A version-less client (one that did not set `ProtocolVersion`, e.g. an old build) presents version `""`, so the rule can reject it too. On a compatible version the inner token is delegated to the inner authenticator unchanged.
+
+*Content identity (opt-in, `KhaozEngine.NetWorld`).* Two builds can share a protocol version and still load different content, and a client on the wrong content that joins anyway renders its own local map against the server's authoritative positions. Set `WorldClientConfig.ContentIdentity` to an opaque string your game computes for the content it loaded (a map or data hash, say). The engine attaches no meaning to it and only compares it ordinally. The server half is the existing `KhaozEngine.Netcode.WorldIdentityGateAuthenticator`, composed just INSIDE the version gate:
+
+```csharp
+// client: the identity rides as its own layer, just inside the ProtocolVersion layer
+var client = new WorldClient(transport, terrain.SampleHeight, MoveTuning.Default,
+    new WorldClientConfig { ProtocolVersion = MyGame.ProtocolVersion, ContentIdentity = MyGame.ContentHash },
+    token: myAccountTokenBytes);
+
+// server: version gate outermost, content gate next, the game's own authenticator innermost
+var server = new WorldServer(transport, config, terrain.SampleHeight, MoveTuning.Default,
+    authenticator: new VersionCheckingAuthenticator(
+        serverVersion: MyGame.ProtocolVersion,
+        isCompatible: v => v == MyGame.ProtocolVersion,
+        inner: new WorldIdentityGateAuthenticator(MyGame.ContentHash,
+            inner: new HmacTokenAuthenticator(secret, () => DateTimeOffset.UtcNow),
+            log: Console.WriteLine)));
+```
+
+`ConnectionGate.Wrap(tokenAuth, protocolVersion, worldHash, ...)` builds the same version-then-identity door with exact version equality, and a `WorldClient` with `ContentIdentity = worldHash` presents exactly the token it expects.
+
+- A mismatch surfaces as `DisconnectReason.ContentMismatch`, terminal and not retried. `WorldClient.ContentMismatch` is a `ContentMismatchDetail(ServerIdentity, ClientIdentity)` carrying both identities, and `DisconnectReasonDetail` carries the server's. Map the reason to your own localized line. The wire token is `ke:world-mismatch:<server>|<client>`, and `ContentMismatchDetail.TryParse` reads it for a head that is not a `WorldClient`.
+- A server that requires an identity refuses a client that sent none as `ContentMismatch` with an empty `ClientIdentity`. If that client's auth token is itself a labelled handshake layer, `ClientIdentity` is that layer's label instead, because the gate peels whatever sits in the identity position.
+- Ordering is load-bearing. The version gate is outermost, so a client that is skewed on both reads `IncompatibleVersion` and never reaches the content check.
+- With neither side configured the Hello is byte-identical to the wire without the slot.
+- `ContentIdentity` must be non-empty, must not contain `|` (the refusal token's separator) and must fit `HandshakeToken.MaxLabelBytes` UTF-8 bytes, or the `WorldClient` constructor throws `ArgumentException`. The server identity is yours to keep pipe-free as well, since the gate itself does not check it.
+- **Adopting the slot is a wire change, so bump your own `ProtocolVersion` in the same release.** An older server reads the identity layer as the auth token, and an older client sends no identity layer. The version bump turns both away at the version gate with the ordinary out-of-date refusal before either can misread the other.
+- A bare `NetClient` builds the same token with `ProtocolHandshake.BuildClientToken(MoveProtocol.WireProtocolVersion, consumerVersion, ProtocolHandshake.WrapContentIdentity(contentIdentity, innerToken))`.
 
 3. *Graceful decode (last resort).* Even if both above are bypassed, an undecodable snapshot (an unregistered BUILT-IN component type id from a newer core protocol) becomes a clean `DisconnectReason.IncompatibleVersion` disconnect plus a `SnapshotDecodeFailed` event - never an unhandled exception in your frame loop. (An unregistered consumer *extension* id, at/above `ReplicationRegistry.FirstExtensionTypeId`, is skipped instead, so a newer server's added component never disconnects an older client - see the server-owned NPCs section above.)
 

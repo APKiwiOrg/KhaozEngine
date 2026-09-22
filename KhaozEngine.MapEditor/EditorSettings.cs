@@ -259,7 +259,9 @@ public sealed class EditorSettingsStore : IEditorSettingsStore
     /// rides its settings storage, so the editor preferences nest beside the game's own data
     /// (<see cref="AppDataPaths"/>).</summary>
     public EditorSettingsStore(string publisher, string appName)
-        : this(new GameStorage(publisher, appName))
+        // Plaintext by choice: this storage only ever writes editor preferences through Settings, which
+        // are plaintext under either posture, and never a game save.
+        : this(new GameStorage(publisher, appName, SaveEncoding.Plaintext))
     {
     }
 

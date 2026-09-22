@@ -347,7 +347,7 @@ public partial class ArchitectureTests
             "KhaozEngine.Game3D",
             new[]
             {
-                "Game2D", "Render3D", "Game.Render3D", "Telegraphs.Render3D", "Terrain.Render3D",
+                "Game2D", "Render3D", "Render3D.Ecs", "Game.Render3D", "Telegraphs.Render3D", "Terrain.Render3D",
                 "TileWorld.Render3D", "Particles.Render3D", "Physics", "CodeHealth.Analyzers",
             }
         },
@@ -574,9 +574,10 @@ public partial class ArchitectureTests
         HashSet<string> actual = graph["KhaozEngine.Render3D"].ProjectRefs.Select(Short).ToHashSet(StringComparer.Ordinal);
 
         // Render3D talks to simulation only through dependency-free seams (Collision, Physics), never a backend.
+        // Ecs is not in the set: the ECS binder lives in the Render3D.Ecs arm (#199).
         var allowed = new HashSet<string>(StringComparer.Ordinal)
         {
-            "Ecs", "Windowing", "Gpu", "Primitives", "Render2D", "Collision", "Physics",
+            "Windowing", "Gpu", "Primitives", "Render2D", "Collision", "Physics",
         };
         string[] extra = actual.Where(a => !allowed.Contains(a)).OrderBy(a => a, StringComparer.Ordinal).ToArray();
         bool withinSeams = extra.Length == 0;
@@ -587,6 +588,29 @@ public partial class ArchitectureTests
         string[] backendEdges = actual.Where(OptInBackends.Contains).ToArray();
         bool noBackend = backendEdges.Length == 0;
         Assert.True(noBackend, "Render3D must never reference an opt-in backend package but references: " + string.Join(", ", backendEdges));
+    }
+
+    [Fact]
+    public void Render3D_ClosureStaysEcsFree()
+    {
+        IReadOnlyDictionary<string, Project> graph = LoadGraph();
+        HashSet<string> closure = TransitiveClosure("KhaozEngine.Render3D", graph).Select(Short).ToHashSet(StringComparer.Ordinal);
+        string[] hits = new[] { "Ecs", "Simulation", "Serialization" }.Where(closure.Contains).ToArray();
+
+        bool clean = hits.Length == 0;
+        Assert.True(clean,
+            "KhaozEngine.Render3D must stay ECS-free so a render-only consumer (ke-propbake, SnapshotTool) does not " +
+            "pay for the ECS. Entity rendering belongs in KhaozEngine.Render3D.Ecs, but the closure pulls in: " +
+            string.Join(", ", hits));
+    }
+
+    [Fact]
+    public void Render3DEcs_ReferencesOnlyEcsAndRender3D()
+    {
+        IReadOnlyDictionary<string, Project> graph = LoadGraph();
+        string[] actual = graph["KhaozEngine.Render3D.Ecs"].ProjectRefs.Select(Short).OrderBy(a => a, StringComparer.Ordinal).ToArray();
+
+        Assert.Equal(new[] { "Ecs", "Render3D" }, actual);
     }
 
     /// <summary>

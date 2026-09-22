@@ -5,6 +5,76 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.0.0
+
+A major, opened by a burn-down of the oldest backlog issues. Three of them remove or move public API: the raw-string
+Gui sinks are gone, the Render3D ECS binder lives in its own package, and the save posture is a required
+`GameStorage` argument. The rest are additive. Every consumer is on a vendored pin, so nothing moves until a game
+repins, and the notes below say what each game changes when it does.
+
+**Breaking, and what a consumer does about it.**
+
+- The raw-string overloads the LocalizedText migration left `[Obsolete]` on the Gui text sinks are deleted
+  ([#305](https://github.com/APKiwiOrg/KhaozEngine/issues/305)), so a bare string at a player-facing Gui sink is a
+  compile error rather than a CS0618 warning. Removed: the `string` constructors on `Button`, `Label` and
+  `DropdownOption`, the string properties `Button.Label`, `Label.Text`, `DropdownOption.Label`,
+  `TextInput.Placeholder`, `PopupPanel.Title`, `PopupPanel.DismissText` and `PopupPanel.PrimaryActionText`,
+  `PopupRow.Header(string)` and `PopupRow.Stat(string, string, Vector4)`, the `string` forms of `Tooltip.Show` and
+  `ScrollablePanel.DrawHeader`, and the `string` overloads of `GuiSurface.Label`, `GuiSurface.Button` and
+  `GuiSurface.StatChip`. A caller passes a `StringId` for localizable copy or `LocalizedText.Raw(...)` for names,
+  numbers and debug text, and uses `Content`, `TitleContent`, `DismissContent`, `PrimaryActionContent` and
+  `PlaceholderContent` where it used the string properties. `Resolved` and `Dropdown.SelectedLabel` still return the
+  resolved string. No consumer used any of them, since all five build warnings-as-errors with no CS0618 suppression.
+  `[LocalizationStringSink]` and KELOC001 stay for sinks a game marks itself.
+- `Scene3DBinder`, `MeshInstance` and `Transform3D` move out of `KhaozEngine.Render3D` into the new
+  `KhaozEngine.Render3D.Ecs` package ([#199](https://github.com/APKiwiOrg/KhaozEngine/issues/199)), and
+  `KhaozEngine.Render3D` drops its `KhaozEngine.Ecs` reference. The namespace stays `KhaozEngine.Render3D`, the
+  convention every other `.Render3D` arm follows, so source compiles unchanged once the package is referenced.
+  `KhaozEngine.Game3D` carries the new package, so a `Game3D` consumer changes nothing. A consumer that references
+  `KhaozEngine.Render3D` directly and uses these three types adds `KhaozEngine.Render3D.Ecs`. None of the five games
+  is in that position today. The payoff is that render-only consumers stop pulling Ecs, Simulation and
+  Serialization: `ke-propbake` and the snapshot tool no longer resolve any of the three.
+- The save posture is a required `GameStorage` constructor argument
+  ([#236](https://github.com/APKiwiOrg/KhaozEngine/issues/236)). Both constructors take a `SaveEncoding`, either
+  `SaveEncoding.Encoded(encoder)` or the explicit `SaveEncoding.Plaintext`, and `GameStorageOptions.Encoder` is
+  removed. A game can no longer ship plaintext saves by leaving an optional field unset, which happened twice in one
+  day during the 13.7.0 adoption, and a plaintext choice is now greppable at the construction site.
+  `SaveWriteOptions.Encode`, `AcceptLegacyPlaintext` and `TamperPolicy` keep their meaning, with the per-call default
+  taken from the posture. `GameStorage.SaveEncoding` reads the posture back and `GameStorage.Encoder` still reads the
+  encoder. At repin, Hardpoint, Nullwake and SpaceGame move their encoder out of the options object into
+  `SaveEncoding.Encoded(...)`, and Ruinborne's settings-only storage passes `SaveEncoding.Plaintext`.
+
+**Save posture is now written down.**
+
+- Settings stay plaintext under either posture. `GameStorage.Settings` and `CreateSettingsManager` never encode,
+  because settings and user-set config are the player's to hand-edit. `docs/SECURITY-BASELINE.md` and the save data
+  section of `docs/USING-KHAOZENGINE.md` state the fleet policy: game saves encoded, settings plaintext.
+- The map editor's own `EditorRecentFiles` and `EditorSettingsStore` build their storage with
+  `SaveEncoding.Plaintext`. Their public constructors are unchanged.
+
+**Content identity at connect.**
+
+- `WorldClientConfig.ContentIdentity` is an opt-in, opaque identity for the content a build loads (a map or data
+  hash), wrapped as its own connect-token layer just inside `ProtocolVersion`
+  ([#279](https://github.com/APKiwiOrg/KhaozEngine/issues/279)). The server half already existed: a server composes
+  the `WorldIdentityGateAuthenticator` promoted in 17.40.0 inside its version gate, so `ConnectionGate.Wrap` works
+  unchanged. With neither side configured the Hello is byte-identical.
+- `DisconnectReason.ContentMismatch` is a terminal refusal, never retried, for a client built against different
+  content than the server or one that sent no identity to a server requiring one. `WorldClient.ContentMismatch`
+  (`ContentMismatchDetail`) carries both identities, and `DisconnectReasonDetail` carries the server's, mirroring
+  `IncompatibleVersion`. The version gate still runs first, so a client skewed on both reads `IncompatibleVersion`.
+  The member is appended last, so no existing numeric value moves.
+- `ProtocolHandshake.WrapContentIdentity` builds the layer for a bare `NetClient`. An identity must be non-empty,
+  carry no `|` and fit the handshake label limit, and the `WorldClient` constructor refuses one that does not.
+- Adopting the slot is a wire change, so a game bumps its own `ProtocolVersion` in the same release. Ruinborne's
+  bespoke world-identity client half is the first adopter ([#677](https://github.com/APKiwiOrg/KhaozEngine/issues/677)).
+  Server-side hardening of the gate is [#1071](https://github.com/APKiwiOrg/KhaozEngine/issues/1071).
+
+**Tooling.**
+
+- The cross-platform GPU workflow's path filter watches `KhaozEngine.Render3D.Ecs/**`, which the moved binder
+  files would otherwise have left unwatched.
+
 ## 19.15.0
 
 - `ChatHistory` CONSOLIDATES a repeat wherever its match already is, rather than only against the entry

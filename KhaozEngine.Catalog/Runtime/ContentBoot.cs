@@ -157,7 +157,7 @@ public static class ContentBoot
                     $"{LinePrefix}manifest for version {version} absent from {options.StoreName}.")));
         }
 
-        ContentBootResult? stale = await CheckPointerAsync(options, version, pointer, cancellationToken)
+        ContentBootResult? stale = await ContentBootPointerCheck.RunAsync(options, version, pointer, cancellationToken)
             .ConfigureAwait(false);
         if (stale is not null)
         {
@@ -205,80 +205,6 @@ public static class ContentBoot
 
         return new ManifestStep(manifest, read.Hash);
     }
-
-    /// <summary>
-    /// Step 3's FIRST check, and the one nothing later in the boot can make for itself. The pointer is the
-    /// only object in a content-addressed store that is not named by its own hash, so a pack root left behind
-    /// by a catalog REPLACED at the same version number answers every later check perfectly: the manifest
-    /// digests to its own name, declares the right number, decodes, and every chunk verifies. Only the version
-    /// record knows which manifest that number is supposed to mean, and the connect door would meanwhile be
-    /// advertising the record's client hash over the old pack's rows.
-    /// <para>
-    /// It REFUSES rather than treating the pointer as absent. The recovery that repairs an absent pointer is
-    /// the CALLER's, and the caller reads the pointer itself, through the pack store, and rebuilds the version
-    /// only when that read answers null. A stale pointer is not null there either, so a boot pretending it was
-    /// absent would move nothing and would write a line naming no hashes. This one names the version and BOTH
-    /// hashes, which is what tells an operator to rebuild the root rather than to go looking for a lost file.
-    /// </para>
-    /// <para>
-    /// Both halves are compared, though the boot fetches only the server manifest, because the pointer's
-    /// client half is what a publish sweep builds a version's keep set out of and half a stale pointer is a
-    /// stale pointer. A directory carrying version NUMBERS and no record has no fact to compare against and
-    /// skips the check, which is the boot exactly as it ran before.
-    /// </para>
-    /// </summary>
-    static async Task<ContentBootResult?> CheckPointerAsync(
-        ContentBootOptions options,
-        int version,
-        PackVersionPointer pointer,
-        CancellationToken cancellationToken)
-    {
-        if (options.Directory is not IContentVersionHashSource source)
-        {
-            return null;
-        }
-
-        ContentVersionHashes? recorded = await source
-            .GetVersionHashesAsync(version, cancellationToken)
-            .ConfigureAwait(false);
-        if (recorded is not ContentVersionHashes hashes)
-        {
-            return null;
-        }
-
-        if (!string.Equals(pointer.ServerManifestHash, hashes.ServerManifestHash, StringComparison.Ordinal))
-        {
-            return PointerRefusal(
-                options,
-                version,
-                "server",
-                pointer.ServerManifestHash,
-                hashes.ServerManifestHash);
-        }
-
-        return string.Equals(pointer.ClientManifestHash, hashes.ClientManifestHash, StringComparison.Ordinal)
-            ? null
-            : PointerRefusal(
-                options,
-                version,
-                "client",
-                pointer.ClientManifestHash,
-                hashes.ClientManifestHash);
-    }
-
-    /// <summary>The stale pointer's line: which version, which store, which side, and the two hashes.</summary>
-    static ContentBootResult PointerRefusal(
-        ContentBootOptions options,
-        int version,
-        string side,
-        string pointed,
-        string recorded)
-        => ContentBootResult.Refuse(
-            ContentBootRefusal.PackPointerMismatch,
-            3,
-            FormattableString.Invariant(
-                $"{LinePrefix}version {version} in {options.StoreName} points at {side} manifest {pointed}, ")
-                + FormattableString.Invariant($"the version record names {recorded}."));
 
     /// <summary>Step 3's outcome: the verified manifest and the address it was fetched under, or a refusal.</summary>
     readonly struct ManifestStep

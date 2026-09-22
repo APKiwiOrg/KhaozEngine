@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.Catalog;
 using KhaozEngine.Catalog.Authoring;
@@ -167,6 +168,94 @@ public sealed class ContentBootPointerTests
     }
 
     /// <summary>
+    /// The consumers' real shape: the host hands the boot its OWN type around the authoring store, which
+    /// forwards the two number reads and is not a hash source. With <see cref="ContentBootOptions.VersionHashes"/>
+    /// set to the store the comparison runs anyway and refuses catalog A's pointer under catalog B's record.
+    /// </summary>
+    [Fact]
+    public async Task AWrapperDirectoryWithVersionHashesSetIsCheckedAndRefusesAStalePointer()
+    {
+        using var rootA = new TemporaryRoot();
+        using var rootB = new TemporaryRoot();
+        ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing);
+        var packA = new FileSystemPackStore(rootA.Path);
+        ContentPublishResult a = await PublishAsync(registry, packA, value: 11);
+        InMemoryContentAuthoringStore storeB = PublishFixtures.Store(registry, new FileSystemPackStore(rootB.Path));
+        ContentPublishResult b = await PublishAsync(storeB, value: 99);
+
+        // Sealed and not a hash source, which the compiler already knows, so the option is the only way in.
+        var wrapper = new WrappedDirectory(storeB);
+
+        var host = new BootHost();
+        ContentBootResult refused = await host.RunAsync(
+            Options(registry, packA, wrapper, new ContentRuntimeHolder(), versionHashes: storeB));
+
+        Assert.Equal(ContentBootRefusal.PackPointerMismatch, refused.Refusal);
+        Assert.Equal(
+            FormattableString.Invariant(
+                $"content: version {VersionNumber} in {StoreName} points at server manifest {a.ServerManifestHash}, ")
+                + FormattableString.Invariant($"the version record names {b.ServerManifestHash}."),
+            host.Line);
+    }
+
+    /// <summary>
+    /// The same wrapper with nothing set, which is the defect the option exists to make visible: the wrapper
+    /// is not a hash source, so the boot has no fact to compare against and loads catalog A's pack.
+    /// </summary>
+    [Fact]
+    public async Task AWrapperDirectoryWithoutVersionHashesIsNotChecked()
+    {
+        using var rootA = new TemporaryRoot();
+        using var rootB = new TemporaryRoot();
+        ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing);
+        var packA = new FileSystemPackStore(rootA.Path);
+        ContentPublishResult a = await PublishAsync(registry, packA, value: 11);
+        InMemoryContentAuthoringStore storeB = PublishFixtures.Store(registry, new FileSystemPackStore(rootB.Path));
+        _ = await PublishAsync(storeB, value: 99);
+
+        var host = new BootHost();
+        ContentBootResult booted = await host.RunAsync(
+            Options(registry, packA, new WrappedDirectory(storeB), new ContentRuntimeHolder()));
+
+        Assert.True(booted.Success, string.Join(" | ", host.Lines));
+        Assert.Equal(a.ServerManifestHash, booted.Runtime!.Identity.ManifestHash);
+    }
+
+    /// <summary>
+    /// The option is the one the boot reads when both are hash sources: a directory that agrees with the
+    /// pointer does not outvote the record the host named, and the option is read under a config pin too,
+    /// because the pin decides the number and the record decides which manifest it means.
+    /// </summary>
+    [Fact]
+    public async Task VersionHashesWinsOverTheDirectoryAndIsReadUnderAConfigPin()
+    {
+        using var rootA = new TemporaryRoot();
+        using var rootB = new TemporaryRoot();
+        ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing);
+        var packA = new FileSystemPackStore(rootA.Path);
+        InMemoryContentAuthoringStore storeA = PublishFixtures.Store(registry, packA);
+        _ = await PublishAsync(storeA, value: 11);
+        InMemoryContentAuthoringStore storeB = PublishFixtures.Store(registry, new FileSystemPackStore(rootB.Path));
+        _ = await PublishAsync(storeB, value: 99);
+
+        ContentBootResult overruled = await new BootHost().RunAsync(
+            Options(registry, packA, storeA, new ContentRuntimeHolder(), versionHashes: storeB));
+        Assert.Equal(ContentBootRefusal.PackPointerMismatch, overruled.Refusal);
+
+        ContentBootResult pinned = await new BootHost().RunAsync(new ContentBootOptions
+        {
+            Registry = registry,
+            Store = packA,
+            Holder = new ContentRuntimeHolder(),
+            ServerBuild = ServerBuild,
+            ConfiguredVersion = VersionNumber,
+            VersionHashes = storeB,
+            StoreName = StoreName,
+        });
+        Assert.Equal(ContentBootRefusal.PackPointerMismatch, pinned.Refusal);
+    }
+
+    /// <summary>
     /// One catalog published at version 1 into its own pack root, through the shipped publisher, so the
     /// version record and the pointer are written by the code that really writes them.
     /// </summary>
@@ -191,7 +280,8 @@ public sealed class ContentBootPointerTests
         ContentTypeRegistry registry,
         FileSystemPackStore pack,
         IContentVersionDirectory directory,
-        ContentRuntimeHolder holder)
+        ContentRuntimeHolder holder,
+        IContentVersionHashSource? versionHashes = null)
         => new()
         {
             Registry = registry,
@@ -200,6 +290,22 @@ public sealed class ContentBootPointerTests
             ServerBuild = ServerBuild,
             ConfiguredVersion = null,
             Directory = directory,
+            VersionHashes = versionHashes,
             StoreName = StoreName,
         };
+
+    /// <summary>
+    /// A host's own directory around its authoring store, forwarding the two number reads and nothing else,
+    /// which is how both consuming games hand the boot their catalog database.
+    /// </summary>
+    sealed class WrappedDirectory(IContentVersionDirectory inner) : IContentVersionDirectory
+    {
+        /// <inheritdoc />
+        public Task<int?> GetPinnedVersionAsync(CancellationToken cancellationToken = default)
+            => inner.GetPinnedVersionAsync(cancellationToken);
+
+        /// <inheritdoc />
+        public Task<int> GetActiveVersionAsync(CancellationToken cancellationToken = default)
+            => inner.GetActiveVersionAsync(cancellationToken);
+    }
 }

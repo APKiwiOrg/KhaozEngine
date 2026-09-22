@@ -47,10 +47,16 @@ public readonly record struct ContentVersionHashes(string ServerManifestHash, st
 /// therefore say which manifest a version number means, rather than only which number to load.
 /// <para>
 /// It is a SEPARATE interface because a directory is allowed to carry numbers and nothing else, and widening
-/// the seam every backend implements would make the hash a requirement for implementations that have none. A
-/// boot handed a directory that is not one of these skips the comparison at step 3, which is exactly the boot
-/// it ran before this check existed. <c>IContentAuthoringStore</c> IS one, out of its own version record, so a
-/// host that boots off its authoring database gets the comparison without writing an adapter.
+/// the seam every backend implements would make the hash a requirement for implementations that have none.
+/// <c>IContentAuthoringStore</c> IS one, out of its own version record, so a host that hands the boot the
+/// store itself as <see cref="ContentBootOptions.Directory"/> gets the comparison without writing an adapter.
+/// </para>
+/// <para>
+/// A host that hands the boot a WRAPPER around its store gets NO comparison, because the wrapper implements
+/// <see cref="IContentVersionDirectory"/> and not this. Such a host sets
+/// <see cref="ContentBootOptions.VersionHashes"/> to the store, or makes the wrapper forward this interface
+/// too. A boot with neither skips the comparison at step 3, which is exactly the boot it ran before this check
+/// existed.
 /// </para>
 /// </summary>
 public interface IContentVersionHashSource
@@ -129,6 +135,24 @@ public sealed class ContentBootOptions
 
     /// <summary>The authoring database's pinned and active versions, or null when the server reads neither.</summary>
     public IContentVersionDirectory? Directory { get; init; }
+
+    /// <summary>
+    /// Where step 3 reads the version RECORD's two manifest hashes, to compare with the pack store's
+    /// <c>versions/&lt;n&gt;</c> pointer before the manifest is fetched. When this is null the boot falls back to
+    /// <see cref="Directory"/>, and only when that object is itself an <see cref="IContentVersionHashSource"/>.
+    /// <para>
+    /// <b>A WRAPPER skips the check.</b> A host whose <see cref="Directory"/> is its own type around an
+    /// authoring store, implementing <see cref="IContentVersionDirectory"/> and forwarding the two number reads,
+    /// is not a hash source, and its boot compares nothing unless it sets this or the wrapper forwards
+    /// <see cref="IContentVersionHashSource"/> as well. Setting it names the source at the call site.
+    /// </para>
+    /// <para>
+    /// It is read even when <see cref="ConfiguredVersion"/> is set, because the pin decides the NUMBER and this
+    /// decides which manifest that number means. A pinned server that sets it therefore reads the version
+    /// record once at boot.
+    /// </para>
+    /// </summary>
+    public IContentVersionHashSource? VersionHashes { get; init; }
 
     /// <summary>
     /// Where the version pointer is read from, or null to use <see cref="Store"/> itself when it is one.

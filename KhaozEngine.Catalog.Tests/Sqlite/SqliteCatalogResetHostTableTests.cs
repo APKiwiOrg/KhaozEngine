@@ -16,6 +16,10 @@ namespace KhaozEngine.Tests.Catalog.Sqlite;
 /// really does start with <c>catalog_</c>: only the schema's own inventory can, and that is the rule the drop
 /// runs under.
 /// </para>
+/// <para>
+/// These facts pin what the RESET does with such a table. They do not reopen the store over it, and the
+/// store's validator refuses a table inside the <c>catalog_</c> namespace that the schema does not declare.
+/// </para>
 /// </summary>
 public class SqliteCatalogResetHostTableTests
 {

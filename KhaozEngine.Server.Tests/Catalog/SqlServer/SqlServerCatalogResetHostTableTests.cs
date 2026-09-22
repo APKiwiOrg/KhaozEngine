@@ -12,6 +12,10 @@ namespace KhaozEngine.Tests.Catalog.SqlServer;
 /// <c>cataloguer</c> were never at risk here. <c>catalog_overrides_by_host</c> always was, under any name
 /// rule at all, and the fix is the same on both providers: the drop names the schema's own INVENTORY.
 /// </para>
+/// <para>
+/// This fact pins what the RESET does with such a table. It does not reopen the store over it, and the
+/// store's validator refuses a table inside the <c>catalog_</c> namespace that the schema does not declare.
+/// </para>
 /// </summary>
 [Collection(SqlServerCatalogCollection.Name)]
 public class SqlServerCatalogResetHostTableTests

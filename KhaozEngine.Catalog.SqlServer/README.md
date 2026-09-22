@@ -104,8 +104,10 @@ catalog tables and validates every object by name otherwise.
 `SqlServerCatalogSchemaDriftTests` pins against `CatalogSchemaV2.sql`, intersected with what `sys.tables`
 holds, so a table added to the schema is dropped without anyone having to remember it here and a table this
 build does not declare is never touched. A pattern could not do that job: a host table named
-`catalog_overrides_by_host` matches every name rule an engine could write while belonging to nobody here.
-Keep whatever tables you like in the same database. The reset destroys exactly the tables the schema declares.
+`catalog_overrides_by_host` matches every name rule an engine could write while belonging to nobody here. Keep
+whatever tables you like in the same database. The reset destroys exactly the tables the schema declares. A
+host table whose name really starts with `catalog_` survives a reset like any other, but the store's own open
+refuses it as an object the schema does not declare, so keep host tables outside that prefix.
 
 Drop and recreate rather than `DELETE`, because a delete leaves the `IDENTITY` marks on `catalog_family`,
 `catalog_draft_edit` and `catalog_audit` where they stood, and the next family created after a reimport would

@@ -86,7 +86,9 @@ is dropped without anyone having to remember it here, and a table this build doe
 touched. A pattern could not do that job: in SQLite's `LIKE` an underscore matches any single character, so
 `catalog_%` also matches a host's own `catalogs` and `cataloguer`, and escaping the underscore still leaves a
 host table genuinely named `catalog_overrides_by_host` indistinguishable from an engine table. Keep whatever
-tables you like in the same file. The reset destroys exactly the tables the schema declares.
+tables you like in the same file. The reset destroys exactly the tables the schema declares. A host table
+whose name really starts with `catalog_` survives a reset like any other, but the store's own open refuses it
+as an object the schema does not declare, so keep host tables outside that prefix.
 
 Drop and recreate rather than `DELETE`, because a delete leaves the `sqlite_sequence` marks behind the
 `AUTOINCREMENT` columns on `catalog_family`, `catalog_draft_edit` and `catalog_audit` where they stood, and

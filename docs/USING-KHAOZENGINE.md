@@ -15218,8 +15218,10 @@ and the next family id after a reimport would land above the bundle's.
 
 The drop names the schema's own INVENTORY intersected with what the database holds, rather than a name
 pattern, so a table added to the schema goes with the rest and a table the build does not declare is never
-touched. A host may keep its own tables in the catalog's database or SQLite file, including tables whose names
-a `catalog_` pattern would match, and a reset leaves every one of them and their rows exactly as they stand.
+touched. A host may keep its own tables in the catalog's database or SQLite file, and a reset leaves every one
+of them and their rows exactly as they stand, including one whose name a `catalog_` pattern would match. The
+store's own open still refuses a host table whose name starts with `catalog_` as an object the schema does not
+declare, so keep host tables outside that prefix.
 
 It is a separate type per provider rather than a member on `IContentAuthoringStore`, because a reset is DDL
 and the everyday authoring path is DML: a production deployment should not give its application role DDL at

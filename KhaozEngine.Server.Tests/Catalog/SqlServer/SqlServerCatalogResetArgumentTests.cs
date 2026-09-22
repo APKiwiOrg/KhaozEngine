@@ -2,6 +2,7 @@ using System;
 using System.Threading.Tasks;
 using KhaozEngine.Catalog.Authoring;
 using KhaozEngine.Catalog.SqlServer;
+using Microsoft.Data.SqlClient;
 using Xunit;
 
 namespace KhaozEngine.Tests.Catalog.SqlServer;
@@ -13,6 +14,10 @@ namespace KhaozEngine.Tests.Catalog.SqlServer;
 /// <b>This backend measures them the way <c>LEN</c> does.</b> T-SQL's <c>LEN</c> ignores trailing spaces, so
 /// an actor of one letter and two hundred blanks satisfies <c>ck_catalog_audit_actor</c> and an actor of two
 /// hundred blanks alone does not, and both of those cases are pinned below.
+/// </para>
+/// <para>
+/// The gated facts prove nothing was dropped. <see cref="ABadArgumentIsRefusedBeforeAnyConnectionOpens"/>
+/// needs no instance, runs everywhere, and proves the check comes before the open.
 /// </para>
 /// </summary>
 [Collection(SqlServerCatalogCollection.Name)]
@@ -36,6 +41,24 @@ public class SqlServerCatalogResetArgumentTests
         await AssertUntouched(database, epochBefore);
     }
 
+    /// <summary>
+    /// The connection string names a port nothing listens on, so a reset that opened a connection before
+    /// checking its arguments would fail with the provider's connect error instead.
+    /// </summary>
+    [Fact]
+    public async Task ABadArgumentIsRefusedBeforeAnyConnectionOpens()
+    {
+        const string Unreachable = "Server=127.0.0.1,1;Database=absent;User Id=nobody;Password=none;Connect Timeout=1;Encrypt=False";
+
+        await Assert.ThrowsAsync<SqlException>(
+            () => SqlServerCatalogReset.ResetAsync(Unreachable, Actor, Operator, "note"));
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => SqlServerCatalogReset.ResetAsync(Unreachable, new string(' ', 200), Operator, "note"));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
+            () => SqlServerCatalogReset.ResetAsync(Unreachable, Actor, Operator, new string('n', 1025)));
+    }
+
     [CatalogSqlServerFact]
     public async Task EveryArgumentAtItsColumnsLimitIsAccepted()
     {
@@ -54,7 +77,7 @@ public class SqlServerCatalogResetArgumentTests
         Assert.Equal(1024, database.Scalar("SELECT LEN(note) FROM dbo.catalog_audit;"));
 
         // The summary is what goes into before_value, whose CHECK caps it at 4096. It is a fixed sentence
-        // around two 64-character hashes, a 32-character epoch and three numbers, so it cannot approach that.
+        // around two 64-character hashes, a 32-character epoch and five numbers, so it cannot approach that.
         Assert.True(
             database.Scalar("SELECT LEN(before_value) FROM dbo.catalog_audit;") < 4096,
             "The reset summary must stay well under the audit column's 4096 cap.");

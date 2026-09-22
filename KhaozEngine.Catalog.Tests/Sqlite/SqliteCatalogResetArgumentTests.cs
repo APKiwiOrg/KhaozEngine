@@ -2,6 +2,7 @@ using System;
 using System.Threading.Tasks;
 using KhaozEngine.Catalog.Authoring;
 using KhaozEngine.Catalog.Sqlite;
+using Microsoft.Data.Sqlite;
 using Xunit;
 
 namespace KhaozEngine.Tests.Catalog.Sqlite;
@@ -13,7 +14,8 @@ namespace KhaozEngine.Tests.Catalog.Sqlite;
 /// column cannot hold used to drop every table, recreate the schema, and only then fail, with a raw provider
 /// exception and a rollback. The catalog came back, but the caller was handed a
 /// <c>SqliteException</c> for a mistake in its own argument list. These are
-/// <c>ArgumentException</c> now, and nothing is opened, read or dropped on the way to them.
+/// <c>ArgumentException</c> now. The facts over a seeded store prove nothing was dropped, and
+/// <see cref="ABadArgumentIsRefusedBeforeAnyConnectionOpens"/> proves the check comes before the open.
 /// </para>
 /// </summary>
 public class SqliteCatalogResetArgumentTests
@@ -34,6 +36,27 @@ public class SqliteCatalogResetArgumentTests
             () => SqliteCatalogReset.ResetAsync(database.ConnectionString, actor, operatorId, note));
 
         await AssertUntouched(database, epochBefore);
+    }
+
+    /// <summary>
+    /// The connection string names a file that cannot be opened, so a reset that opened anything before
+    /// checking its arguments would fail with the provider's open error instead.
+    /// </summary>
+    [Fact]
+    public async Task ABadArgumentIsRefusedBeforeAnyConnectionOpens()
+    {
+        using var database = new TemporaryCatalogDatabase();
+        string unopenable = "Data Source=" + System.IO.Path.Combine(database.Root, "absent", "catalog.db") + ";Mode=ReadOnly";
+
+        await Assert.ThrowsAsync<SqliteException>(
+            () => SqliteCatalogReset.ResetAsync(
+                unopenable, SqliteCatalogResetHarness.Actor, SqliteCatalogResetHarness.Operator, "note"));
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => SqliteCatalogReset.ResetAsync(unopenable, string.Empty, SqliteCatalogResetHarness.Operator, "note"));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
+            () => SqliteCatalogReset.ResetAsync(
+                unopenable, SqliteCatalogResetHarness.Actor, SqliteCatalogResetHarness.Operator, new string('n', 1025)));
     }
 
     [Fact]
@@ -70,7 +93,7 @@ public class SqliteCatalogResetArgumentTests
         Assert.Equal(1024L, database.Scalar("SELECT length(note) FROM catalog_audit;"));
 
         // The summary is what goes into before_value, whose CHECK caps it at 4096. It is a fixed sentence
-        // around two 64-character hashes, a 32-character epoch and three numbers, so it cannot approach that.
+        // around two 64-character hashes, a 32-character epoch and five numbers, so it cannot approach that.
         Assert.True(
             database.Scalar("SELECT length(before_value) FROM catalog_audit;") < 4096L,
             "The reset summary must stay well under the audit column's 4096 cap.");

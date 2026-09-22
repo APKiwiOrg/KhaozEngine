@@ -1675,6 +1675,10 @@ cursor crosses the slot edge, which takes a drag's origin with it.
 geometry and a same-parent constraint this primitive deliberately does not model. Same-widget ordinal reorder
 is `TreeView`, cross-widget payload transfer is `GuiDragContext`.
 
+`KhaozEngine.Showcase`'s drag-and-drop page (`DragDropPage.cs`) is the runnable reference: enter the "2D & GUI"
+room and open the "Drag & drop" tab to see the ghost, the reject wash on a refused slot, a destroy bin and the
+fly-home of a cancelled drop, all at the context's defaults.
+
 ### Right-click hit-testing (17.9.0)
 
 `Pointer` has the right-button twins of the left-button bounds helpers, carrying the same press-origin

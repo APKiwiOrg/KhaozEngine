@@ -23,6 +23,10 @@
     <!-- ShowcaseBootLogTests names SessionLogOptions. -->
     <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
     <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
+    <!-- DragDropPageTests names ScreenStack, InputState and MouseFrames. -->
+    <ProjectReference Include="../KhaozEngine.Gui/KhaozEngine.Gui.csproj" />
+    <ProjectReference Include="../KhaozEngine.Windowing/KhaozEngine.Windowing.csproj" />
+    <ProjectReference Include="../KhaozEngine.TestSupport.Windowing/KhaozEngine.TestSupport.Windowing.csproj" />
     <ProjectReference Include="../KhaozEngine.Render3D/KhaozEngine.Render3D.csproj" />
     <ProjectReference Include="../KhaozEngine.Game.Render3D/KhaozEngine.Game.Render3D.csproj" />
     <ProjectReference Include="../KhaozEngine.Terrain/KhaozEngine.Terrain.csproj" />

@@ -20,12 +20,35 @@ public sealed class ChatHistory
     public IReadOnlyList<ChatEntry> Entries => entries;
     public long Version { get; private set; }
 
+    /// <summary>
+    /// Adds one entry, folding it into a matching one already in the history instead when there is one.
+    /// </summary>
+    /// <param name="entry">The entry to add.</param>
+    /// <remarks>
+    /// A repeat is CONSOLIDATED WHEREVER IT IS, not only against the entry immediately before. A player who
+    /// does the same thing forty times wants one line counting up, and against the previous entry alone any
+    /// other line arriving between two of them starts the count over, which is how a chat box fills with the
+    /// same sentence at slightly different moments.
+    /// <para>The fold keeps the matched entry's PLACE and takes everything else from the arriving one: its
+    /// time, its content, its author and its ownership, plus the count. Holding the place keeps the history
+    /// stable under the reader's eye rather than making old lines jump to the bottom, and it means a run of
+    /// one repeated line does not push everything else off the top. The consequence to know about is that
+    /// times are no longer strictly ascending down the list: an older line that just repeated carries a newer
+    /// stamp than the line under it.</para>
+    /// <para>The search runs BACKWARDS because the adjacent match is much the most common one and is found
+    /// first. At most one entry can match, since every earlier repeat has already been folded into it.</para>
+    /// </remarks>
     public void Add(ChatEntry entry)
     {
-        if (entries.Count > 0 && CanCollapse(entries[^1], entry))
-            entries[^1] = entry with { RepeatCount = entries[^1].RepeatCount + 1 };
-        else
-            entries.Add(entry with { RepeatCount = 1 });
+        for (int i = entries.Count - 1; i >= 0; i--)
+        {
+            if (!CanCollapse(entries[i], entry)) continue;
+            entries[i] = entry with { RepeatCount = entries[i].RepeatCount + 1 };
+            Version++;
+            return;
+        }
+
+        entries.Add(entry with { RepeatCount = 1 });
 
         if (entries.Count > Capacity)
             entries.RemoveAt(0);

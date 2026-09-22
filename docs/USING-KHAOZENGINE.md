@@ -4968,6 +4968,21 @@ its skin bone, or returns `-1` for a non-joint ancestor. A loaded skeleton conta
 the ancestors needed to compose those joints. It does not include a child outside `skin.joints`, so an authored
 socket that needs name lookup remains a zero-weight skin joint.
 
+`BoneSocket` composes a rigid piece onto one of those posed joints without a scene or GPU. System.Numerics uses
+row vectors, so the piece-local transform stays innermost:
+
+```csharp
+Matrix4x4 world = BoneSocket.Compose(pieceLocal, jointModel, model);
+// Same order, but the joint's scale and shear do not deform the attached rigid piece.
+Matrix4x4 rigidWorld = BoneSocket.ComposeRigid(pieceLocal, jointModel, model);
+```
+
+Both methods apply `pieceLocal * jointModel * model`. `ComposeRigid` first orthonormalises the joint's three basis
+rows and keeps its model-space translation. Use it for a solid held or worn prop when animation data may carry
+scale or shear that skinning blends across vertices but a one-joint attachment would show at full strength. A
+reflected joint stays reflected. If the basis is collapsed or otherwise has no orientation to recover, the joint
+passes through unchanged.
+
 ### Layered / masked animation (attack while running)
 
 `LayeredAnimator` composites N `AnimationLayer`s into one final skeleton pose: a base locomotion layer below,

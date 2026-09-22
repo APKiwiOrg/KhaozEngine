@@ -911,6 +911,11 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
     zero `MinBarWidth`, a black `TitleShadow`, drawn against a `Nameplate` carrying no `Bars`.
 
 - Animation (`Animation/`, pure + GPU-free, driven off a `Skeleton` + glTF `AnimationClip`s):
+  - `BoneSocket.Compose(local, jointModel, model)` attaches a rigid piece with the row-vector order
+    `local * jointModel * model`. `ComposeRigid` uses the same order after removing scale and shear from the joint
+    basis while keeping its translation. Use the rigid form for props that must follow a posed joint without
+    inheriting non-rigid animation data. It keeps a reflected basis reflected. A degenerate basis with no
+    recoverable orientation passes through unchanged.
   - `GltfLoader.LoadSkinned` retains each skeleton node's glTF name in `Skeleton.NodeNames` with an empty string for
     an unnamed node. `Skeleton.IndexOf` and `TryIndexOf` resolve those names, while `BoneIndexOfNode` maps a skeleton
     node back to its skin bone or returns `-1` for a non-joint ancestor. The skeleton includes every `skin.joints`
